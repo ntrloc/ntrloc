@@ -1,0 +1,8 @@
+org.nterloc.graph.ClusterAutoConfiguration
+org.nterloc.graph.JanusAutoConfiguration
+org.nterloc.graph.GraphQLAutoConfiguration
+org.nterloc.graph.SchemaAutoConfiguration
+org.nterloc.graph.WebAutoConfiguration
+org.nterloc.graph.RegistryAutoConfiguration
+org.nterloc.graph.StorageAutoConfiguration
+org.nterloc.graph.DBAutoConfiguration
