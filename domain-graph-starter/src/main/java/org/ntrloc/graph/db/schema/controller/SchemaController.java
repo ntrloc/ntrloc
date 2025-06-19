@@ -1,0 +1,38 @@
+package org.ntrloc.graph.db.schema.controller;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.ntrloc.graph.db.schema.EntityDefinition;
+import org.ntrloc.graph.db.schema.SchemaManager;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.Set;
+
+@RestController
+@RequestMapping("/api/schema")
+public class SchemaController {
+
+    private static final Logger LOG = LogManager.getLogger(SchemaController.class);
+
+    private final SchemaManager schemaManager;
+
+    public SchemaController(SchemaManager schemaManager) {
+        this.schemaManager = schemaManager;
+    }
+
+    @PutMapping("/entity")
+    void upsertEntityDefinition(@RequestBody EntityDefinition definition) {
+        LOG.info("Upserting definition {}", definition);
+        schemaManager.createEntityDefinition(definition);
+    }
+
+    @GetMapping("/entity")
+    Set<EntityDefinition> getEntityDefinitions() {
+        return schemaManager.retrieveEntityDefinitions();
+    }
+
+}
