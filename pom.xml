@@ -6,8 +6,8 @@
     <groupId>org.ntrloc</groupId>
     <artifactId>ntrloc</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-
     <packaging>pom</packaging>
+
     <modules>
         <module>domain-graph-starter</module>
         <module>api-gateway-model</module>
