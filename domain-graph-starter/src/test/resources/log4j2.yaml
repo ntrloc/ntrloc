@@ -18,7 +18,7 @@ Configuration:
       AppenderRef:
         - ref: Console_Appender
     logger:
-      - name: org.nterloc
+      - name: org.ntrloc
         level: INFO
       - name: org.janusgraph.graphdb.database.management
         level: WARN

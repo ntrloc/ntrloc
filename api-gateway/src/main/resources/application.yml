@@ -1,6 +1,6 @@
 spring:
   application:
-    name: nterloc-api-gateway
+    name: ntrloc-api-gateway
   threads:
     virtual:
       enabled: true
