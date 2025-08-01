@@ -22,6 +22,8 @@
         <jte.version>3.1.16</jte.version>
         <netflix.dgs.version>10.0.3</netflix.dgs.version>
         <tinkerpop.version>3.7.3</tinkerpop.version>
+        <thymeleaf.version>3.5.3</thymeleaf.version>
+        <thymeleaf-layout-dialect.version>3.4.0</thymeleaf-layout-dialect.version>
     </properties>
 
     <dependencies>
@@ -54,6 +56,14 @@
             <artifactId>spring-boot-starter-actuator</artifactId>
             <version>${spring.boot.version}</version>
         </dependency>
+
+        <!--
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-gateway</artifactId>
+            <version>${spring.gateway.version}</version>
+        </dependency>
+        -->
 
         <!-- Graph stuff -->
         <dependency>
@@ -154,6 +164,7 @@
         </dependency>
 
         <!-- Java Template Engine -->
+        <!--
         <dependency>
             <groupId>gg.jte</groupId>
             <artifactId>jte-spring-boot-starter-3</artifactId>
@@ -164,6 +175,24 @@
                     <artifactId>spring-boot-autoconfigure</artifactId>
                 </exclusion>
             </exclusions>
+        </dependency>
+        -->
+
+        <!-- Thymeleaf -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-thymeleaf</artifactId>
+            <version>${thymeleaf.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>nz.net.ultraq.thymeleaf</groupId>
+            <artifactId>thymeleaf-layout-dialect</artifactId>
+            <version>${thymeleaf-layout-dialect.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>ognl</groupId>
+            <artifactId>ognl</artifactId>
+            <version>3.4.7</version> <!-- Use a compatible version -->
         </dependency>
 
         <!-- Reactor testing -->

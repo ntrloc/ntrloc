@@ -1,0 +1,583 @@
+<html>
+<head>
+    <style>
+
+        #d3_area {
+        }
+
+        svg {
+            background-color: #eeeeee;
+        }
+
+        .links line {
+            stroke: #666;
+            stroke-opacity: 0.6;
+        }
+
+        .nodeLabel {
+            fill: black;
+            user-select: none;
+        }
+
+        .nodeType {
+            font-size: 0.6em;
+        }
+
+        .nodeName {
+            font-weight: bold;
+        }
+
+
+        text {
+            font-family: sans-serif;
+            font-size: 10px;
+        }
+
+    </style>
+
+
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+</head>
+
+<body>
+
+<button id="addNode">Add</button>
+<button id="disjointNode">Add disjointed</button>
+
+<div id="d3_area"></div>
+
+<script>
+
+    /*
+     * This example loads all graph data and starts by showing top-level domains.
+     *
+     * Nodes can be expanded or contracted by clicking on them.
+     */
+
+    function getRandomColor() {
+        var letters = '0123456789ABCDEF';
+        var color = '#';
+        for (var i = 0; i < 6; i++) {
+            color += letters[Math.floor(Math.random() * 16)];
+        }
+        return color;
+    }
+
+    var nodes;
+    var links;
+    var displayNodes = nodes;
+    var displayLinks = links;
+    let nodeTypes = new Set();
+
+    var [simulation, svg] = createSimulation();
+
+    const typeColors = {
+    }
+
+    var graphData;
+    var nodeDictionary = {};
+    var outgoingNodeLinks = {};
+    var incomingNodeLinks = {};
+
+    var nodeScales;
+    var maxNodeScale = 0;
+
+    var defaultAlphaDecay = 0.1;
+
+    /*
+      d3.json("/v1/graph").then(function(incomingGraphData) {
+          graphData = incomingGraphData;
+          console.info(graphData);
+
+          nodeDictionary = {};
+          for (node of graphData.nodes) {
+              nodeDictionary[node.id] = node;
+          }
+
+          outgoingNodeLinks = Object.groupBy(graphData.links, link => link.source);
+          incomingNodeLinks = Object.groupBy(graphData.links, link => link.target);
+
+          for (node of graphData.nodes) {
+              let type = node.type;
+              nodeTypes.add(type);
+          }
+          for (nodeType of nodeTypes) {
+              typeColors[nodeType] = getRandomColor();
+          }
+
+          console.info(nodeDictionary);
+          console.info(outgoingNodeLinks);
+          console.info(incomingNodeLinks);
+
+          nodes = graphData.nodes;
+          links = graphData.links;
+          nodeScales = Object.fromEntries(nodes.map(node => {
+              var s = nodeScale(node);
+              node.radius = s;
+              maxNodeScale = Math.max(maxNodeScale, s);
+              return [node.id, s];
+          }));
+
+          console.info(nodeScales);
+          console.info(maxNodeScale);
+
+          displayInitialData();
+      });
+
+     */
+
+
+    // this is temporary
+
+    graphData = {
+        nodes: [
+            {
+                id: "1",
+                label: "Backoffice",
+                type: "domain"
+            }, {
+                id: "2",
+                label: "Finance",
+                type: "program"
+            }, {
+                id: "3",
+                label: "Warehouse",
+                type: "program"
+            }, {
+                id: "4",
+                label: "Money Store",
+                type: "application"
+            }
+        ],
+        links: [
+            {
+                id: "link1",
+                source: "1",
+                target: "2",
+                label: "has-program"
+            },
+            {
+                id: "link2",
+                source: "1",
+                target: "3",
+                label: "has-program"
+            },
+            {
+                id: "link3",
+                source: "2",
+                target: "4",
+                label: "manages"
+            }
+        ]
+    };
+
+    nodeDictionary = {};
+    for (node of graphData.nodes) {
+        nodeDictionary[node.id] = node;
+    }
+
+    outgoingNodeLinks = Object.groupBy(graphData.links, link => link.source);
+    incomingNodeLinks = Object.groupBy(graphData.links, link => link.target);
+
+    for (node of graphData.nodes) {
+        let type = node.type;
+        nodeTypes.add(type);
+    }
+    for (nodeType of nodeTypes) {
+        typeColors[nodeType] = getRandomColor();
+    }
+
+    console.info(nodeDictionary);
+    console.info(outgoingNodeLinks);
+    console.info(incomingNodeLinks);
+
+    nodes = graphData.nodes;
+    links = graphData.links;
+    nodeScales = Object.fromEntries(nodes.map(node => {
+        var s = nodeScale(node);
+        node.radius = s;
+        maxNodeScale = Math.max(maxNodeScale, s);
+        return [node.id, s];
+    }));
+
+    console.info(nodeScales);
+    console.info(maxNodeScale);
+
+    displayInitialData();
+
+
+    // end temporary
+
+
+    function toggleNodeExpansion(node) {
+        console.info("Node clicked", node);
+        if (node.expanded) {
+            const outboundLinks = outgoingNodeLinks[node.id];
+            var outNodes = outboundLinks.map(link => {
+                console.info("Finding outbound node for link", link);
+                return nodeDictionary[link.target.id || link.target];
+            });
+            outNodes = outNodes.filter(node => node != undefined);
+
+            console.info("Outbound links", outboundLinks);
+            console.info("Outbound nodes", outNodes);
+
+            const outboundLinkIds = outboundLinks.map(d => d.id);
+            const outboundNodeIds = outNodes.map(d => d.id);
+
+            console.info("Node IDs", outboundNodeIds);
+            console.info("Link IDs", outboundLinkIds);
+
+            var newDisplayNodes = displayNodes.filter(node => outboundNodeIds.indexOf(node.id) == -1);
+            var newDisplayLinks = displayLinks.filter(link => outboundLinkIds.indexOf(link.id) == -1);
+
+            node.expanded = false;
+
+            displayNodes = newDisplayNodes;
+            displayLinks = newDisplayLinks;
+
+            drawGraph();
+        } else {
+            console.info("Expanding node", node);
+            console.info("Display node count", displayNodes.length);
+            console.info("Display link count", displayLinks.length);
+
+            const outboundLinks = outgoingNodeLinks[node.id];
+            const outNodes = outboundLinks.map(link => nodeDictionary[link.target.id || link.target]);
+
+            const nodeClones = structuredClone(outNodes);
+            for (var clone of nodeClones) {
+                clone.x = node.x;
+                clone.y = node.y;
+            }
+
+            displayNodes.push(...nodeClones);
+            displayLinks.push(...structuredClone(outboundLinks));
+            node.expanded = true;
+
+            drawGraph();
+        }
+    }
+
+    function nodeScale(node) {
+        if (node.type == "domain") {
+            var outboundLinks = outgoingNodeLinks[node.id] || [];
+            var outboundTargets = outboundLinks.map(link => link.target);
+            var outboundNodes = outboundTargets.map(target => nodeDictionary[target]);
+
+
+            var outboundSystems = outboundNodes.filter(node => node.type == "system");
+            var outboundDomains = outboundNodes.filter(node => node.type == "domain");
+
+            var childDomainScales = outboundDomains.map(child => nodeScale(child));
+            var scaleSum = childDomainScales.reduce((accumulator, currentValue) => accumulator + currentValue, 0);
+
+            // increase the node size by 5% for each outgoing link
+            return Math.sqrt(scaleSum) + (25 * (1 + (outboundSystems.length * 0.05)));
+        } else {
+            return 25;
+        }
+    }
+
+    function displayInitialData() {
+
+        const loadNodes = [];
+
+        for (const [nodeId, node] of Object.entries(nodeDictionary)) {
+            var incomingLinks = incomingNodeLinks[nodeId];
+            if (!incomingLinks) {
+                node.expanded = false;
+                node.radius = nodeScales[node.id];
+                console.info(node);
+                loadNodes.push(node);
+            }
+        }
+
+        displayNodes = loadNodes;
+        displayLinks = [];
+
+        drawGraph();
+    }
+
+
+    function createSimulation() {
+
+        console.info("Creating!");
+
+        const width = 1200;
+        const height = 800;
+
+        linkArc = linkData => {
+
+
+            var sourceX = linkData.source.x;
+            var sourceY = linkData.source.y;
+            var sourceRadius = linkData.source.radius;
+
+            var targetX = linkData.target.x;
+            var targetY = linkData.target.y;
+            var targetRadius = linkData.target.radius + 5;
+
+            const rise = targetY - sourceY;
+            const run = targetX - sourceX;
+            const slope = rise / run;
+            const theta = Math.atan(slope);
+
+            var sourceIntersectX;
+            var sourceIntersectY;
+            var targetIntersectX;
+            var targetIntersectY;
+
+            if (run > 0) {
+                sourceIntersectX = sourceX + sourceRadius * Math.cos(theta);
+                sourceIntersectY = sourceY + sourceRadius * Math.sin(theta);
+                targetIntersectX = targetX - targetRadius * Math.cos(theta);
+                targetIntersectY = targetY - targetRadius * Math.sin(theta);
+            } else {
+                sourceIntersectX = sourceX - sourceRadius * Math.cos(theta);
+                sourceIntersectY = sourceY - sourceRadius * Math.sin(theta);
+                targetIntersectX = targetX + targetRadius * Math.cos(theta);
+                targetIntersectY = targetY + targetRadius * Math.sin(theta);
+            }
+
+            linkData.position = {
+                sourceIntersectX: sourceIntersectX,
+                sourceIntersectY: sourceIntersectY,
+                targetIntersectX: targetIntersectX,
+                targetIntersectY: targetIntersectY
+            }
+
+            if (sourceIntersectX < targetIntersectX) {
+                return `M${sourceIntersectX},${sourceIntersectY}A0,0 0 0,1 ${targetIntersectX},${targetIntersectY}`;
+            } else {
+                return `M${targetIntersectX},${targetIntersectY}A0,0 0 0,1 ${sourceIntersectX},${sourceIntersectY}`;
+            }
+        };
+        console.info("Creating simulation");
+
+        const simulation = d3.forceSimulation(nodes)
+            .force("link", d3.forceLink(links).distance(200).id(d => d.id))
+            .force("charge", d3.forceManyBody().strength(-20))
+            .force("x", d3.forceX())
+            .force("y", d3.forceY())
+            .force('collide', d3.forceCollide().radius(d => nodeScale(d) + 20));
+            //.alphaTarget(0.1)
+            //.alphaDecay(0.3);
+
+        console.info("Creating SVG");
+
+        const svg = d3.select("#d3_area")
+            .append("svg")
+            .attr("width", width)
+            .attr("height", height)
+            .attr("viewBox", `${width / -2} ${height / -2} ${width} ${height}`)
+            .attr("xmlns", "http://www.w3.org/2000/svg")
+            .attr("xmlns:xlink", "http://www.w3.org/1999/xlink");
+
+        // Per-type markers, as they don't inherit styles.
+        svg.append("defs").selectAll("marker")
+            .data(["arrow"])
+            .enter().append("marker")
+            .attr("id", d => `arrow`)
+            .attr("viewBox", "0 0 10 10")
+            .attr("refX", 5)
+            .attr("refY", 5)
+            .attr("markerWidth", 5)
+            .attr("markerHeight", 5)
+            .attr("orient", "auto-start-reverse")
+            .append("path")
+            .attr("fill", "#999999")
+            .attr("d", 'M0 0 L 10 5 L 0 10');
+
+        return [simulation, svg];
+    }
+
+    var latestNode;
+
+    function drawGraph() {
+        console.info("Drawing graph");
+
+        const links = displayLinks;
+        const nodes = displayNodes;
+
+        try {
+            svg.select(".nodes").remove();
+            svg.select(".links").remove();
+        } catch (error) {
+            console.error(error);
+        }
+
+        console.info(links, nodes);
+
+        simulation.nodes(nodes);
+        simulation.force("link").links(links);
+
+
+        // draw the links
+        const linkHolder = svg.append("g")
+            .attr("class", "links")
+            .attr("fill", "none")
+            .attr("stroke-width", 1.5);
+
+        const link = linkHolder
+            .selectAll("path")
+            .data(links)
+            .enter().append("path")
+            .attr('id', d => `link_${d.id}`)
+            .attr("stroke", "#999");
+
+        const linkLabels = linkHolder
+            .selectAll(".linkLabel")
+            .data(links)
+            .enter().append("text")
+            .style("fill", "black")
+            .append("textPath")
+            .attr("class", "linkLabel")
+            .attr("startOffset", "50%")
+            .attr("text-anchor", "middle")
+            .attr("href", d => `#link_${d.id}`)
+            .text(d => d.label);
+
+        const nodeRadius = 25;
+
+
+
+        // draw the nodes
+        const node = svg.append("g")
+            .attr("class", "nodes")
+            .attr("fill", "currentColor")
+            .attr("stroke-linecap", "round")
+            .attr("stroke-linejoin", "round")
+            .selectAll("g")
+            .data(nodes)
+            .enter().append("g").attr("class", "node");
+
+        // node circle
+        node.append("circle")
+            .attr("stroke", "#334455")
+            .attr("stroke-width", 1)
+            .attr("r", d => nodeScale(d))
+            .attr("fill", function(d) { return typeColors[d.type]; });
+
+        latestNode = node;
+
+        // node label
+        nodeText = node.append("text").attr("class", "nodeLabel");
+
+        nodeText
+            .append("tspan")
+            .attr("class", "nodeType")
+            .attr("x", "0")
+            .attr("text-anchor", "middle")
+            .text(d => d.type);
+        nodeText
+            .append("tspan")
+            .attr("class", "nodeName")
+            .attr("text-anchor", "middle")
+            .attr("x", "0")
+            .attr("dy", "1em")
+            .text(d => d.label);
+
+        node.on('dblclick', (e, d) => console.log(nodes[d.index]));
+
+        // Create a drag handler and append it to the node object instead
+        function dragstarted(event, d) {
+            if (!event.active) {
+                simulation.alphaDecay(0.002).alphaTarget(0.5).restart();
+            }
+            d.fx = d.x;
+            d.fy = d.y;
+        }
+
+        function dragged(event, d) {
+            d.fx = event.x;
+            d.fy = event.y;
+        }
+
+        function dragended(event, d) {
+            if (!event.active) {
+                simulation.alphaDecay(defaultAlphaDecay).alphaTarget(0);
+            }
+            d.fx = null;
+            d.fy = null;
+        }
+
+        var drag_handler = d3.drag()
+            .on("start", dragstarted)
+            .on("drag", dragged)
+            .on("end", dragended);
+
+        drag_handler(node);
+
+
+        simulation.on("tick", () => {
+            link.attr("d", linkArc);
+            link.attr("marker-start", linkData => {
+                if (linkData.position.sourceIntersectX < linkData.position.targetIntersectX) {
+                    return null;
+                } else {
+                    return`url(${new URL(`#arrow`, location)})`;
+                }
+            });
+            link.attr("marker-end", linkData => {
+                if (linkData.position.sourceIntersectX < linkData.position.targetIntersectX) {
+                    return`url(${new URL(`#arrow`, location)})`;
+                } else {
+                    return null;
+                }
+            });
+            node.attr("transform", d => `translate(${d.x},${d.y})`);
+        });
+        simulation.on("end", () => {
+            resetViewport();
+        });
+
+        function resetViewport() {
+            console.info("Setting viewport!");
+
+            if (latestNode.data().length > 0) {
+
+                console.info("Got current node data", latestNode.data(), latestNode.data().length);
+
+                const xExtent = d3.extent(latestNode.data(), d => d.x);
+                const yExtent = d3.extent(latestNode.data(), d => d.y);
+                console.info("Extents: ", xExtent, yExtent);
+
+                const padding = nodeRadius * 3;
+
+                const minX = xExtent[0] - padding;
+                const minY = yExtent[0] - padding;
+
+                const newWidth = xExtent[1] - xExtent[0] + (padding * 2);
+                const newHeight = yExtent[1] - yExtent[0] + (padding * 2);
+
+                console.info("Setting view box to ", minX, minY, newWidth, newHeight);
+
+                gsap.to("svg", {
+                    duration: 1,
+                    attr: {viewBox: `${minX} ${minY} ${newWidth}, ${newHeight}`},
+                    ease: "power3.inOut"
+                });
+
+            } else {
+                console.info("No data to display");
+            }
+        }
+
+        d3.selectAll(".node").on("click", (event, d) => {
+            event.stopImmediatePropagation();
+            event.preventDefault();
+            console.info(`Clicked`, d, d.expanded);
+            toggleNodeExpansion(d);
+        });
+
+        simulation.alpha(0.3).restart();
+    }
+
+
+</script>
+
+</body>
+
+</html>

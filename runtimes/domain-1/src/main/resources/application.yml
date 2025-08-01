@@ -1,0 +1,41 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: domain-1
+  threads:
+    virtual:
+      enabled: true
+
+  thymeleaf:
+    prefix: classpath:/sites/admin/templates/
+  web:
+    resources:
+      static-locations: classpath:/static
+
+management:
+  health:
+    cassandra:
+      enabled: false
+  endpoints:
+    web:
+      exposure:
+        include:
+          - health
+          - info
+
+graph:
+  domainName: domain-1
+  backend: berkeley
+
+binary:
+  storage:
+    strategy: block
+    block:
+      location: target/storage-temp
+      autocreate: true
+
+logging:
+  level:
+    root: info

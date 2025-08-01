@@ -12,6 +12,8 @@
         <module>domain-graph-starter</module>
         <module>api-gateway-model</module>
         <module>api-gateway</module>
+        <module>runtimes</module>
+        <module>runtimes/domain-1</module>
     </modules>
 
     <properties>

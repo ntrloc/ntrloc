@@ -2,6 +2,7 @@ package org.ntrloc.graph.storage.impl;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.ntrloc.graph.db.storage.BinaryStorageAdapterConfiguration;
 import org.ntrloc.graph.db.storage.impl.BlockDeviceBinaryStorageAdapter;
 
 import java.io.IOException;
@@ -20,7 +21,7 @@ public class BlockDeviceBinaryStorageAdapterTest {
     void testOpenAndClose() throws IOException, NoSuchAlgorithmException {
         String tempFilePath = "target";
 
-        BlockDeviceBinaryStorageAdapter adapter = new BlockDeviceBinaryStorageAdapter(tempFilePath);
+        BlockDeviceBinaryStorageAdapter adapter = new BlockDeviceBinaryStorageAdapter(new BinaryStorageAdapterConfiguration(tempFilePath, true));
         var writer = adapter.openWriter();
         writer.write(new byte[] { 1, 2, 3});
         var hashes = adapter.close(writer);
@@ -34,7 +35,7 @@ public class BlockDeviceBinaryStorageAdapterTest {
     void testWriteAndRead() throws IOException, NoSuchAlgorithmException {
         String tempFilePath = "target";
 
-        BlockDeviceBinaryStorageAdapter adapter = new BlockDeviceBinaryStorageAdapter(tempFilePath);
+        BlockDeviceBinaryStorageAdapter adapter = new BlockDeviceBinaryStorageAdapter(new BinaryStorageAdapterConfiguration(tempFilePath, true));
         var writer = adapter.openWriter();
         byte[] data = new byte[] { 1, 2, 3};
         writer.write(data);

@@ -3,20 +3,18 @@ package org.ntrloc.graph.web;
 import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.server.ServerWebExchange;
 
-import static org.ntrloc.graph.web.WebAppController.PREFIX;
-
 @Controller
-@RequestMapping(PREFIX)
 public class WebAppController {
 
     static final String PREFIX = "/app";
 
-    @GetMapping("/**")
+    @GetMapping("/app/**")
     public String testGet(ServerWebExchange exchange) {
         ServerHttpRequest request = exchange.getRequest();
+        // String path = request.getPath().toString().substring(1);
+        // return path;
         return request.getPath().toString().substring(PREFIX.length() + 1);
     }
 

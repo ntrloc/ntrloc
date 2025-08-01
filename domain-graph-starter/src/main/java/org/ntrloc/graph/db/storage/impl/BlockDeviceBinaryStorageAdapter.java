@@ -6,7 +6,7 @@ import org.apache.logging.log4j.Logger;
 import org.ntrloc.graph.db.impl.HashingBinaryDataWriter;
 import org.ntrloc.graph.db.storage.BinaryHash;
 import org.ntrloc.graph.db.storage.BinaryStorageAdapter;
-import org.springframework.beans.factory.annotation.Value;
+import org.ntrloc.graph.db.storage.BinaryStorageAdapterConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
@@ -36,12 +36,21 @@ public class BlockDeviceBinaryStorageAdapter implements BinaryStorageAdapter {
 
     private Map<String, File> tempFileMap = new HashMap<>();
 
-    public BlockDeviceBinaryStorageAdapter(@Value("${binary.storage.block.location}") String storageLocation) {
-        File topLevelFile = new File(storageLocation);
+    public BlockDeviceBinaryStorageAdapter(BinaryStorageAdapterConfiguration configuration) throws IOException {
+        String location = configuration.getLocation();
+
+        File topLevelFile = new File(location);
         if (!topLevelFile.exists()) {
-            throw new IllegalArgumentException("Storage location does not exist: " + storageLocation);
+            if (configuration.isAutocreate()) {
+                boolean created = topLevelFile.mkdirs();
+                if (!created) {
+                    throw new RuntimeException("Storage location could not be created: " + location);
+                }
+            } else {
+                throw new IllegalArgumentException("Storage location does not exist: " + location);
+            }
         } else {
-            temporaryStorageFolder = new File(storageLocation, "temp");
+            temporaryStorageFolder = new File(location, "temp");
             if (temporaryStorageFolder.exists()) {
                 if (!temporaryStorageFolder.isDirectory()) {
                     throw new IllegalArgumentException("Temporary storage location is not a directory: " + temporaryStorageFolder.getAbsolutePath());
@@ -55,7 +64,7 @@ public class BlockDeviceBinaryStorageAdapter implements BinaryStorageAdapter {
                 }
             }
 
-            permanentStorageFolder = new File(storageLocation, "permanent");
+            permanentStorageFolder = new File(location, "permanent");
             if (permanentStorageFolder.exists()) {
                 if (!permanentStorageFolder.isDirectory()) {
                     throw new IllegalArgumentException("Permanent storage location is not a directory: " + permanentStorageFolder.getAbsolutePath());
