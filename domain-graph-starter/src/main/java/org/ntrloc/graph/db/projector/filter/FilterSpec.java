@@ -1,0 +1,9 @@
+package org.ntrloc.graph.db.projector.filter;
+
+import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversal;
+
+public interface FilterSpec {
+
+    public GraphTraversal<?, ?> apply(GraphTraversal<?, ?> traversal);
+
+}

@@ -1,0 +1,24 @@
+This is just a temporary package -- this stuff should be in the traversal package
+
+For relationships, we'll want to specify an EdgeProjectionSpec and what it should be called,
+e.g.
+
+We have a photographer, an agency, and some photos.
+
+VertexProjection
+    label = Photographer
+    all properties
+    AND
+    .edge("agency", new EdgeProjectionSpec("EMPLOYS", Direction.IN)
+        .properties(...)
+        .target(new NodeProjectionSpec()....)
+    .edge("photos", new EdgeProjectionSpec("CREATED", Direction.OUT)
+        .target(new NodeProjectionSpec()....)
+
+
+So the EdgeProjectionSpec should include:
+    1. The name the entire relationship will use within the "containing" projection. the photographer, in this case
+    2. The relationship label to follow, and in which direction
+    3. How the "target" vertex data should be projected
+    4. How the related entities should be filtered
+    5. How the related entities should be sorted
