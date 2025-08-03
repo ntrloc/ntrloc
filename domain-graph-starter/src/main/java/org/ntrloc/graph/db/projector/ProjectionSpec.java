@@ -6,6 +6,8 @@ import java.util.Map;
 
 public abstract class ProjectionSpec {
 
+    protected List<String> properties;
+
     protected Map<String, Object> getSimplifiedProperties(Map<String, Object> properties) {
         if (properties == null) {
             return null;

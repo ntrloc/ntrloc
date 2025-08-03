@@ -1,12 +1,8 @@
 package org.ntrloc.graph.db.projector;
 
-import org.apache.tinkerpop.gremlin.process.traversal.Order;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversal;
-import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversalSource;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.__;
 import org.apache.tinkerpop.gremlin.structure.Direction;
-import org.ntrloc.graph.Tuple;
-import org.ntrloc.graph.db.projector.filter.FilterSpec;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -20,9 +16,6 @@ public class VertexProjectionSpec extends ProjectionSpec {
     private static final Logger LOG = LoggerFactory.getLogger(VertexProjectionSpec.class);
 
     private GraphTraversal<?, ?> graphTraversal;
-    private FilterSpec filter;
-    private List<String> properties;
-    private List<Tuple<String, Order>> sorts;
 
     private Map<String, EdgeProjectionSpec> edges = new HashMap<>();
 
@@ -31,19 +24,11 @@ public class VertexProjectionSpec extends ProjectionSpec {
         // via the traversal() method before calling construct!
     }
 
-    public VertexProjectionSpec(GraphTraversalSource s, String label) {
-        this.graphTraversal = s.V().hasLabel(label);
-    }
-
     public VertexProjectionSpec traversal(GraphTraversal<?, ?> graphTraversal) {
         this.graphTraversal = graphTraversal;
         return this;
     }
 
-    public VertexProjectionSpec filter(FilterSpec filter) {
-        this.filter = filter;
-        return this;
-    }
 
     public VertexProjectionSpec properties(List<String> properties) {
         this.properties = properties;
@@ -55,16 +40,6 @@ public class VertexProjectionSpec extends ProjectionSpec {
         return this;
     }
 
-    public VertexProjectionSpec sort(List<Tuple<String, Order>> sorts) {
-        this.sorts = sorts;
-        return this;
-    }
-
-    public VertexProjectionSpec sort(Tuple<String, Order>... sorts) {
-        this.sorts = List.of(sorts);
-        return this;
-    }
-
     public VertexProjectionSpec edge(String projectionKey, EdgeProjectionSpec projectionSpec) {
         edges.put(projectionKey, projectionSpec);
         return this;
@@ -72,17 +47,6 @@ public class VertexProjectionSpec extends ProjectionSpec {
 
     public GraphTraversal<?, org.ntrloc.graph.db.projector.VertexProjection> construct() {
         var baseTraversal = (graphTraversal != null) ? graphTraversal : __.start();
-
-        if (filter != null)  {
-            baseTraversal = filter.apply(baseTraversal);
-        }
-
-        if (sorts != null) {
-            baseTraversal = baseTraversal.order();
-            for (Tuple<String, Order> sort : sorts) {
-                baseTraversal = baseTraversal.by(sort.first(), sort.second());
-            }
-        }
 
         // if the vertex spec includes required edges, add a filter for them
         if (edges != null && !edges.isEmpty()) {

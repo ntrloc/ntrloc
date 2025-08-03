@@ -55,7 +55,7 @@ public class EdgeProjectionSpec extends ProjectionSpec {
 
     public GraphTraversal<?, List<EdgeProjection>> construct() {
 
-        var baseTraversal = switch(direction) {
+        GraphTraversal<?, ?> baseTraversal = switch(direction) {
             case Direction.IN -> __.inE(edgeLabel).where(__.outV().hasLabel(vertexLabel));
             case Direction.OUT -> __.outE(edgeLabel).where(__.inV().hasLabel(vertexLabel));
             default -> throw new IllegalArgumentException("Invalid direction: " + direction);
@@ -84,15 +84,13 @@ public class EdgeProjectionSpec extends ProjectionSpec {
 
         return retTraversal.map(mapTraverser -> {
             var map = mapTraverser.get();
-            org.ntrloc.graph.db.projector.EdgeProjection ret = new org.ntrloc.graph.db.projector.EdgeProjection(
+            return new org.ntrloc.graph.db.projector.EdgeProjection(
                     (String) map.get("label"),
                     direction,
                     map.get("id"),
                     getSimplifiedProperties((Map) map.get("properties")),
                     (VertexProjection) map.get("target")
             );
-
-            return ret;
         }).fold();
 
     }

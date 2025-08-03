@@ -26,12 +26,11 @@ public class EdgeProjection extends Projection {
         StringJoiner joiner = new StringJoiner(", ", org.ntrloc.graph.db.projector.EdgeProjection.class.getSimpleName() + "[", "]")
                 .add("id=" + id)
                 .add("direction=" + direction)
-                .add("label='" + label + "'")
-                .add("target=" + target);
-
+                .add("label='" + label + "'");
         if (properties != null && !properties.isEmpty()) {
             joiner = joiner.add("properties=" + properties);
         }
+        joiner = joiner.add("target=" + target);
 
         return joiner.toString();
     }

@@ -22,3 +22,29 @@ So the EdgeProjectionSpec should include:
     3. How the "target" vertex data should be projected
     4. How the related entities should be filtered
     5. How the related entities should be sorted
+
+
+Now then, required projections....
+
+A vertex may have an edge projection that is marked as required.
+An edge projection may have a filter.
+An edge projection may include a filter on its target vertex.
+The target vertex may have a required edge projection.
+That second projection may have a filter on its target vertex.
+
+VertexSpec -> EdgeSpec (required, filtered) -> VertexSpec (NOT required) -> EdgeSpec (required) -> VertexSpec -> EdgeSpec (required, filtered)
+
+Category
+    category_name
+    systems { label: HAS_INTRINSIC_CATEGORY, direction: IN, type: System, required: true }
+        system_name
+        system_id
+        services { label: CONTAINS, direction: OUT, type: Service, required: true }
+            service_name
+            service_id
+            features { label: OFFERS, direction: OUT, type: Feature, required: false }
+                feature_name
+                used_by { label: USES, direction: IN, type: Group, required: true }
+
+In this example, we'd receive only Categories that contained at least one System. The System would only be returned if it contained at least one Service.
+The service would be returned EVEN IF it doesn't contain a Feature, and a Feature will only be returned if it's being used by a Group.
