@@ -15,7 +15,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public class VertexProjectionSpec {
+public class VertexProjectionSpec extends ProjectionSpec {
 
     private static final Logger LOG = LoggerFactory.getLogger(VertexProjectionSpec.class);
 
@@ -127,7 +127,7 @@ public class VertexProjectionSpec {
             Map<String, Object> finalProperties = new HashMap<>();
             Map<String, Object> props = (Map) map.get("properties");
             if (props != null) {
-                finalProperties.putAll(props);
+                finalProperties.putAll(getSimplifiedProperties(props));
             }
             if (edges != null) {
                 for (var entry : edges.entrySet()) {

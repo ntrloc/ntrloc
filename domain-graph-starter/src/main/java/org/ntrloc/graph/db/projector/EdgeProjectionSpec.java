@@ -11,7 +11,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public class EdgeProjectionSpec {
+public class EdgeProjectionSpec extends ProjectionSpec {
 
     private static final Logger LOG = LoggerFactory.getLogger(EdgeProjectionSpec.class);
 
@@ -88,7 +88,7 @@ public class EdgeProjectionSpec {
                     (String) map.get("label"),
                     direction,
                     map.get("id"),
-                    (Map) map.get("properties"),
+                    getSimplifiedProperties((Map) map.get("properties")),
                     (VertexProjection) map.get("target")
             );
 
