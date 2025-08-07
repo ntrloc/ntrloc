@@ -48,3 +48,22 @@ Category
 
 In this example, we'd receive only Categories that contained at least one System. The System would only be returned if it contained at least one Service.
 The service would be returned EVEN IF it doesn't contain a Feature, and a Feature will only be returned if it's being used by a Group.
+
+
+-------- Filters -------
+Filters can be used in a couple of different ways:
+1. To filter vertices, as part of a VertexSpec
+2. To filter edges, as part of an EdgeSpec
+    a. Edges can be filtered by properties on the edge
+    b. Edges can be filtered by properties on the edge's target vertex
+
+Not all filters work this way -- boolean filters have no concept of (this relates to a vertex or this relates to an edge)
+
+When setting up filters, we need some flexibility in setting of traversals to filter on.
+
+For a VertexSpec, we might say something like
+    vertexSpec.filter(AndFilterSpec.with(PropertyFilterSpec.on("name"), PropertyPredicateFilterSpec.on("age", P.gt(30))
+
+For an EdgeSpec, we might say something like
+    edgeSpec.filter(AndFilterSpec.with(PropertFilterSpec.on("hired"), PropertyPredicateFilterSpec.with(__.inV(), "age", P.gt(40))))
+

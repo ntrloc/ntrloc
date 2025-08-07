@@ -3,14 +3,15 @@ package org.ntrloc.graph.db.projector;
 import org.apache.tinkerpop.gremlin.process.traversal.Order;
 import org.apache.tinkerpop.gremlin.process.traversal.P;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversalSource;
+import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.__;
 import org.apache.tinkerpop.gremlin.structure.Direction;
 import org.janusgraph.core.JanusGraph;
 import org.janusgraph.core.JanusGraphFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.ntrloc.graph.Tuple;
-import org.ntrloc.graph.db.projector.filter.FilterSpecFactory;
+import org.ntrloc.graph.db.projector.filter.AndFilterSpec;
+import org.ntrloc.graph.db.projector.filter.PropertyPredicateFilterSpec;
 
 import java.io.File;
 import java.util.NoSuchElementException;
@@ -61,6 +62,7 @@ class ProjectorTest {
                 .addE("knows").property("met", 2023).from("jane").to("bill")
                 .addE("knows").property("met", 2000).from("bill").to("john")
                 .addE("knows").property("met", 2025).from("jenny").to("jack")
+                .addE("knows").property("met", 2000).from("bill").to("jane")
                 .iterate();
         traversalSource.tx().commit();
     }
@@ -69,19 +71,20 @@ class ProjectorTest {
     @DisplayName("should execute a default vertex projection")
     void testDefaultVertexProjection () {
         VertexSpec spec = new VertexSpec(traversalSource, "Person")
-                .filter(FilterSpecFactory.hasPredicate("age", P.between(22, 31)))
-                .sort(Tuple.of("age", Order.asc), Tuple.of("name", Order.desc));
+                .filter(PropertyPredicateFilterSpec.with("age", P.between(22, 31)))
+                .sort(VertexSort.on("age", Order.asc), VertexSort.on("name", Order.desc));
+                var knownByProjection = new VertexProjectionSpec().edge("known-by",
+                        new EdgeSpec("knows", Direction.IN, "Person").projection(new VertexProjectionSpec()).sort(EdgeSort.vertex("age", Order.desc), EdgeSort.edge("met", Order.desc)));
 
                 spec.projection()
                     .properties("name", "age")
                     .edge("knows",
-                        new EdgeProjectionSpec("knows", Direction.OUT, "Person", new VertexProjectionSpec()))
-                    .edge("known-by",
-                        new EdgeProjectionSpec("knows", Direction.IN, "Person", new VertexProjectionSpec()));
+                        new EdgeSpec("knows", Direction.OUT, "Person").projection(knownByProjection).sort(EdgeSort.vertex("age", Order.desc), EdgeSort.edge("met", Order.asc)))
+                    ;
         var iterator = spec.construct();
         while (iterator.hasNext()) {
             var v = iterator.next();
-            System.out.println(String.format("name: %s, age: %s, knows: %s, known by: %s", v.stringProperty("name"), v.intProperty("age"), v.projectionProperty("knows"), v.projectionProperty("known-by")));
+            System.out.println(String.format("name: %s, age: %s, knows: %s", v.stringProperty("name"), v.intProperty("age"), v.projectionProperty("knows")));
         }
 
     }
@@ -89,18 +92,38 @@ class ProjectorTest {
     @Test
     @DisplayName("should filter edge projections by property")
     void testFilterEdgeProjections() {
+
         VertexSpec spec = new VertexSpec(traversalSource, "Person");
         spec.projection()
                 .properties("name", "age")
                 .edge("knows",
-                        new EdgeProjectionSpec("knows", Direction.OUT, "Person", new VertexProjectionSpec())
+                        new EdgeSpec("knows", Direction.OUT, "Person", false).projection(new VertexProjectionSpec())
                 );
         var iterator = spec.construct();
         while (iterator.hasNext()) {
             var v = iterator.next();
             System.out.println(String.format("name: %s, age: %s, knows: %s", v.stringProperty("name"), v.intProperty("age"), v.projectionProperty("knows")));
         }
+    }
 
+    @Test
+    @DisplayName("should filter edge projections by edge properties and target vertex properties")
+    void testFilterEdgeProjectionsWithFilter() {
+        VertexSpec spec = new VertexSpec(traversalSource, "Person");
+        spec.projection()
+                .properties("name", "age")
+                .edge("knows",
+                        new EdgeSpec("knows", Direction.OUT, "Person")
+                                .filter(AndFilterSpec.with(PropertyPredicateFilterSpec.with("met", 2025), PropertyPredicateFilterSpec.with(__.inV(), "age", 4)))
+                                .projection(new VertexProjectionSpec())
+                )
+
+        ;
+        var iterator = spec.construct();
+        while (iterator.hasNext()) {
+            var v = iterator.next();
+            System.out.println(String.format("name: %s, age: %s, knows: %s", v.stringProperty("name"), v.intProperty("age"), v.projectionProperty("knows")));
+        }
     }
 
 

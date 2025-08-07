@@ -17,7 +17,7 @@ public class VertexProjectionSpec extends ProjectionSpec {
 
     private GraphTraversal<?, ?> graphTraversal;
 
-    private Map<String, EdgeProjectionSpec> edges = new HashMap<>();
+    private Map<String, EdgeSpec> edges = new HashMap<>();
 
     public VertexProjectionSpec() {
         // creates a spec without any starting traversal. NOTE: you'll need to set the traversal
@@ -40,7 +40,7 @@ public class VertexProjectionSpec extends ProjectionSpec {
         return this;
     }
 
-    public VertexProjectionSpec edge(String projectionKey, EdgeProjectionSpec projectionSpec) {
+    public VertexProjectionSpec edge(String projectionKey, EdgeSpec projectionSpec) {
         edges.put(projectionKey, projectionSpec);
         return this;
     }
@@ -50,8 +50,8 @@ public class VertexProjectionSpec extends ProjectionSpec {
 
         // if the vertex spec includes required edges, add a filter for them
         if (edges != null && !edges.isEmpty()) {
-            List<EdgeProjectionSpec> requiredSpecs = edges.values().stream().filter(EdgeProjectionSpec::isRequired).toList();
-            for (EdgeProjectionSpec spec: requiredSpecs) {
+            List<EdgeSpec> requiredSpecs = edges.values().stream().filter(EdgeSpec::isRequired).toList();
+            for (EdgeSpec spec: requiredSpecs) {
                 String edgeLabel = spec.getEdgeLabel();
                 String vertexLabel = spec.getVertexLabel();
                 Direction direction = spec.getDirection();
@@ -67,7 +67,7 @@ public class VertexProjectionSpec extends ProjectionSpec {
 
         for (var entry : edges.entrySet()) {
             String edgeKey = entry.getKey();
-            EdgeProjectionSpec spec = entry.getValue();
+            EdgeSpec spec = entry.getValue();
             projectionMap.put(edgeKey, spec.construct());
         }
 

@@ -2,12 +2,21 @@ package org.ntrloc.graph.db.projector.filter;
 
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversal;
 
-public class PropertyFilterSpec implements FilterSpec {
+public class PropertyFilterSpec extends ExplicitTraversalFilterSpec {
 
     private final String propertyName;
 
+    public static PropertyFilterSpec on(String propertyName) {
+        return new PropertyFilterSpec(propertyName);
+    }
+
     public PropertyFilterSpec(String propertyName) {
         this.propertyName = propertyName;
+    }
+
+    public PropertyFilterSpec(String propertyName, GraphTraversal<?, ?> traversal) {
+        this.propertyName = propertyName;
+        this.traversal = traversal;
     }
 
     public String getPropertyName() {
@@ -15,7 +24,7 @@ public class PropertyFilterSpec implements FilterSpec {
     }
 
     @Override
-    public GraphTraversal<?, ?> apply(GraphTraversal<?, ?> traversal) {
-        return traversal.has(propertyName);
+    public GraphTraversal<?, ?> build() {
+        return getTraversal().has(propertyName);
     }
 }

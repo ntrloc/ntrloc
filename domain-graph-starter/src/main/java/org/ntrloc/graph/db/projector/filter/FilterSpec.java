@@ -4,6 +4,6 @@ import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversal;
 
 public interface FilterSpec {
 
-    public GraphTraversal<?, ?> apply(GraphTraversal<?, ?> traversal);
+    GraphTraversal<?, ?> build();
 
 }

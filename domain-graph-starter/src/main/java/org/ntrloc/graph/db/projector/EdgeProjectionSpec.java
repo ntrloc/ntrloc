@@ -15,51 +15,13 @@ public class EdgeProjectionSpec extends ProjectionSpec {
 
     private static final Logger LOG = LoggerFactory.getLogger(EdgeProjectionSpec.class);
 
-    private String edgeLabel;
-
-    private String vertexLabel;
-
-    private Direction direction;
-
-    private boolean required;
-
     private VertexProjectionSpec vertexProjectionSpec;
 
-    public EdgeProjectionSpec(String edgeLabel, Direction direction, String vertexLabel, VertexProjectionSpec vertexProjectionSpec) {
-        this(edgeLabel, direction, vertexLabel, false, vertexProjectionSpec);
-    }
-
-    public EdgeProjectionSpec(String edgeLabel, Direction direction, String vertexLabel, boolean required, VertexProjectionSpec vertexProjectionSpec) {
-        this.edgeLabel = edgeLabel;
-        this.direction = direction;
-        this.vertexLabel = vertexLabel;
-        this.required = required;
+    public EdgeProjectionSpec(VertexProjectionSpec vertexProjectionSpec) {
         this.vertexProjectionSpec = vertexProjectionSpec;
     }
 
-    public boolean isRequired() {
-        return required;
-    }
-
-    public String getEdgeLabel() {
-        return edgeLabel;
-    }
-
-    public String getVertexLabel() {
-        return vertexLabel;
-    }
-
-    public Direction getDirection() {
-        return direction;
-    }
-
-    public GraphTraversal<?, List<EdgeProjection>> construct() {
-
-        GraphTraversal<?, ?> baseTraversal = switch(direction) {
-            case Direction.IN -> __.inE(edgeLabel).where(__.outV().hasLabel(vertexLabel));
-            case Direction.OUT -> __.outE(edgeLabel).where(__.inV().hasLabel(vertexLabel));
-            default -> throw new IllegalArgumentException("Invalid direction: " + direction);
-        };
+    public GraphTraversal<?, List<EdgeProjection>> construct(Direction direction, GraphTraversal<?, ?> baseTraversal) {
 
         var projectionMap = new HashMap<String, GraphTraversal<?, ?>>();
         projectionMap.put("label", __.label());

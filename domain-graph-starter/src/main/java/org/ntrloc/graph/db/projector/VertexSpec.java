@@ -1,10 +1,8 @@
 package org.ntrloc.graph.db.projector;
 
-import org.apache.tinkerpop.gremlin.process.traversal.Order;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversal;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversalSource;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.__;
-import org.ntrloc.graph.Tuple;
 import org.ntrloc.graph.db.projector.filter.FilterSpec;
 
 import java.util.List;
@@ -13,7 +11,7 @@ public class VertexSpec {
 
     private GraphTraversal<?, ?> graphTraversal;
 
-    private List<Tuple<String, Order>> sorts;
+    private List<VertexSort> sorts;
 
     protected FilterSpec filter;
 
@@ -23,12 +21,12 @@ public class VertexSpec {
         this.graphTraversal = s.V().hasLabel(label);
     }
 
-    public VertexSpec sort(List<Tuple<String, Order>> sorts) {
+    public VertexSpec sort(List<VertexSort> sorts) {
         this.sorts = sorts;
         return this;
     }
 
-    public VertexSpec sort(Tuple<String, Order>... sorts) {
+    public VertexSpec sort(VertexSort... sorts) {
         this.sorts = List.of(sorts);
         return this;
     }
@@ -50,13 +48,13 @@ public class VertexSpec {
         var baseTraversal = (graphTraversal != null) ? graphTraversal : __.start();
 
         if (filter != null)  {
-            baseTraversal = filter.apply(baseTraversal);
+            baseTraversal = baseTraversal.where(filter.build());
         }
 
         if (sorts != null) {
             baseTraversal = baseTraversal.order();
-            for (Tuple<String, Order> sort : sorts) {
-                baseTraversal = baseTraversal.by(sort.first(), sort.second());
+            for (VertexSort sort : sorts) {
+                baseTraversal = baseTraversal.by(sort.getPropertyName(), sort.getOrder());
             }
         }
 

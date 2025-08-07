@@ -11,6 +11,10 @@ public class AndFilterSpec implements FilterSpec {
 
     private List<FilterSpec> filters;
 
+    public static AndFilterSpec with(FilterSpec... filters) {
+        return new AndFilterSpec(filters);
+    }
+
     public AndFilterSpec(FilterSpec... filters) {
         this.filters = Arrays.stream(filters).toList();
     }
@@ -20,13 +24,13 @@ public class AndFilterSpec implements FilterSpec {
     }
 
     @Override
-    public GraphTraversal<?, ?> apply(GraphTraversal<?, ?> traversal) {
+    public GraphTraversal<?, ?> build() {
         List<GraphTraversal<?, ?>> travs = new ArrayList<>();
         for (FilterSpec filter : filters) {
-            travs.add(filter.apply(__.start()));
-        }
+            travs.add(filter.build());
 
-        return traversal.and(travs.toArray(GraphTraversal[]::new));
+        }
+        return __.and(travs.toArray(GraphTraversal[]::new));
     }
 
 }

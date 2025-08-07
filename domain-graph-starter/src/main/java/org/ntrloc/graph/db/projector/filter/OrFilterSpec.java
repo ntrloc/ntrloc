@@ -10,6 +10,10 @@ public class OrFilterSpec implements FilterSpec {
 
     private List<FilterSpec> filters;
 
+    public static OrFilterSpec with(FilterSpec... filters) {
+        return new OrFilterSpec(filters);
+    }
+
     public OrFilterSpec(FilterSpec... filters) {
         this.filters = filters.length == 0 ? null : List.of(filters);
     }
@@ -19,12 +23,12 @@ public class OrFilterSpec implements FilterSpec {
     }
 
     @Override
-    public GraphTraversal<?, ?> apply(GraphTraversal<?, ?> traversal) {
+    public GraphTraversal<?, ?> build() {
         List<GraphTraversal<?, ?>> travs = new ArrayList<>();
         for (FilterSpec filter : filters) {
-            travs.add(filter.apply(__.start()));
+            travs.add(filter.build());
         }
-        return traversal.or(travs.toArray(GraphTraversal[]::new));
+        return __.or(travs.toArray(GraphTraversal[]::new));
     }
 
 }
