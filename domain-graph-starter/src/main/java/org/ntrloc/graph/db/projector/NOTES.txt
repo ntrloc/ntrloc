@@ -1,69 +1,26 @@
 This is just a temporary package -- this stuff should be in the traversal package
 
-For relationships, we'll want to specify an EdgeProjectionSpec and what it should be called,
-e.g.
-
-We have a photographer, an agency, and some photos.
-
-VertexProjection
-    label = Photographer
-    all properties
-    AND
-    .edge("agency", new EdgeProjectionSpec("EMPLOYS", Direction.IN)
-        .properties(...)
-        .target(new NodeProjectionSpec()....)
-    .edge("photos", new EdgeProjectionSpec("CREATED", Direction.OUT)
-        .target(new NodeProjectionSpec()....)
+------ We need to get into path finding ----
 
 
-So the EdgeProjectionSpec should include:
-    1. The name the entire relationship will use within the "containing" projection. the photographer, in this case
-    2. The relationship label to follow, and in which direction
-    3. How the "target" vertex data should be projected
-    4. How the related entities should be filtered
-    5. How the related entities should be sorted
+
+------ We need to get into GraphQL projections -------
+
+Photographer
+    name
+    photos(filter: { colorspace: 'B&W'})
+        name
+        created
+    agency(edgeProperties: ['dateHired'])
+        name
 
 
-Now then, required projections....
+Overall 0.0.1 functionality:
 
-A vertex may have an edge projection that is marked as required.
-An edge projection may have a filter.
-An edge projection may include a filter on its target vertex.
-The target vertex may have a required edge projection.
-That second projection may have a filter on its target vertex.
-
-VertexSpec -> EdgeSpec (required, filtered) -> VertexSpec (NOT required) -> EdgeSpec (required) -> VertexSpec -> EdgeSpec (required, filtered)
-
-Category
-    category_name
-    systems { label: HAS_INTRINSIC_CATEGORY, direction: IN, type: System, required: true }
-        system_name
-        system_id
-        services { label: CONTAINS, direction: OUT, type: Service, required: true }
-            service_name
-            service_id
-            features { label: OFFERS, direction: OUT, type: Feature, required: false }
-                feature_name
-                used_by { label: USES, direction: IN, type: Group, required: true }
-
-In this example, we'd receive only Categories that contained at least one System. The System would only be returned if it contained at least one Service.
-The service would be returned EVEN IF it doesn't contain a Feature, and a Feature will only be returned if it's being used by a Group.
-
-
--------- Filters -------
-Filters can be used in a couple of different ways:
-1. To filter vertices, as part of a VertexSpec
-2. To filter edges, as part of an EdgeSpec
-    a. Edges can be filtered by properties on the edge
-    b. Edges can be filtered by properties on the edge's target vertex
-
-Not all filters work this way -- boolean filters have no concept of (this relates to a vertex or this relates to an edge)
-
-When setting up filters, we need some flexibility in setting of traversals to filter on.
-
-For a VertexSpec, we might say something like
-    vertexSpec.filter(AndFilterSpec.with(PropertyFilterSpec.on("name"), PropertyPredicateFilterSpec.on("age", P.gt(30))
-
-For an EdgeSpec, we might say something like
-    edgeSpec.filter(AndFilterSpec.with(PropertFilterSpec.on("hired"), PropertyPredicateFilterSpec.with(__.inV(), "age", P.gt(40))))
-
+1. Schemas
+2. Mutations
+3. Projections
+4. Edge finding
+5. Minimal UI
+    a. Schema viewer
+    b. Basic graph viewer (the D3 view)

@@ -2,7 +2,6 @@ package org.ntrloc.graph.db.pathfinder;
 
 
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversalSource;
-import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.__;
 import org.janusgraph.core.JanusGraph;
 import org.janusgraph.core.JanusGraphFactory;
 import org.junit.jupiter.api.BeforeEach;
@@ -12,7 +11,7 @@ import java.io.File;
 import java.util.NoSuchElementException;
 import java.util.UUID;
 
-public class PathfinderTest {
+class PathfinderTest {
 
     private JanusGraph janusGraph;
     private GraphTraversalSource traversalSource;
@@ -61,22 +60,47 @@ public class PathfinderTest {
                 .addV("System").property("name", "Outlook").as("outlook")
 
                 // link groups to groups
-                .addE("contains").from("topgroup").to("group1")
-                .addE("contains").from("topgroup").to("group2")
-                .addE("contains").from("topgroup").to("itgroup")
+                // NOTE: we're doing this the "ntrloc" way, where relationships are expressed with vertices
+
+                .addV("CONTAINS").as("topgroup_contains_group1")
+                .addE("contains_in").from("topgroup").to("topgroup_contains_group1")
+                .addE("contains_out").from("topgroup_contains_group1").to("group1")
+
+                .addV("CONTAINS").as("topgroup_contains_group2")
+                .addE("contains_in").from("topgroup").to("topgroup_contains_group2")
+                .addE("contains_out").from("topgroup_contains_group2").to("group2")
+
+                .addV("CONTAINS").as("topgroup_contains_itgroup")
+                .addE("contains_in").from("topgroup").to("topgroup_contains_itgroup")
+                .addE("contains_out").from("topgroup_contains_itgroup").to("itgroup")
 
                 // link groups to people
-                .addE("contains").from("group1").to("john")
-                .addE("contains").from("group2").to("jane")
-                .addE("contains").from("itgroup").to("bill")
+                .addV("CONTAINS").as("group1_contains_john")
+                .addE("contains_in").from("group1").to("group1_contains_john")
+                .addE("contains_out").from("group1_contains_john").to("john")
+
+                .addV("CONTAINS").as("group2_contains_jane")
+                .addE("contains_in").from("group2").to("group2_contains_jane")
+                .addE("contains_out").from("group2_contains_jane").to("jane")
+
+                .addV("CONTAINS").as("itgroup_contains_bill")
+                .addE("contains_in").from("itgroup").to("itgroup_contains_bill")
+                .addE("contains_out").from("itgroup_contains_bill").to("bill")
 
                 // link users to systems
-                .addE("uses").from("john").to("outlook")
-                .addE("uses").from("jane").to("outlook")
+                .addV("USES").as("john_uses_outlook")
+                .addE("uses_in").from("john").to("john_uses_outlook")
+                .addE("uses_out").from("john_uses_outlook").to("outlook")
+
+                .addV("USES").as("jane_uses_outlook")
+                .addE("uses_in").from("jane").to("jane_uses_outlook")
+                .addE("uses_out").from("jane_uses_outlook").to("outlook")
+
 
                 // link managers to systems
-                .addE("manages").from("bill").to("outlook")
-
+                .addV("MANAGES").as("bill_manages_outlook")
+                .addE("manages_in").from("bill").to("bill_manages_outlook")
+                .addE("manages_out").from("bill_manages_outlook").to("outlook")
 
                 .iterate();
         traversalSource.tx().commit();
@@ -84,27 +108,10 @@ public class PathfinderTest {
 
     @Test
     void testPathfinder() {
-        // find all paths from Group vertices to the system called "outlook"
-        var paths = traversalSource.V().hasLabel("System").has("name", "Outlook").as("system")
-                .repeat(
-                        __.bothE().as("e")
-                        .otherV().as("v")
-                        .simplePath()
-                )
-                .until(__.and(__.hasLabel("Group"), __.not(__.in().hasLabel("Group")))) // stop tracing the path when you arrive at a group that doesn't have a parent group
-                .path()
-
-                // assuming the start and end of the path is always a vertex
-                .by(
-                        __.project("label", "id", "props").by(__.label()).by(__.id()).by(__.valueMap())
-
-                ) // vertices get the label, id, and properties
-                .by(
-                        __.project("label", "in", "out", "props").by(__.label()).by(__.outV().id()).by(__.inV().id()).by(__.valueMap())
-                ) // edge get the label, in vertex id, out vertex id, and properties
-                ;
-        while (paths.hasNext()) {
-            var next = paths.next();
+        var pathfinder = new Pathfinder(traversalSource, "System", "Group");
+        var nodes = pathfinder.find();
+        while (nodes.hasNext()) {
+            var next = nodes.next();
             System.out.println(next);
         }
     }
