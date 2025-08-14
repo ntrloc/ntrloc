@@ -136,7 +136,7 @@ public class EntityManagerImpl implements EntityManager {
     public Transaction executeMutation(MutationRequest mutationRequest) {
         LOG.info("Executing mutation {}", mutationRequest);
 
-        Transaction t = new Transaction(UUID.randomUUID().toString());
+        Transaction t = new Transaction(traversalSource, UUID.randomUUID().toString());
 
         var transaction = traversalSource.tx();
         transaction.begin();
