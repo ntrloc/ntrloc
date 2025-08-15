@@ -1,7 +1,10 @@
 package org.ntrloc.graph.db.traversal.mutator;
 
+import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversal;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversalSource;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.__;
+import org.apache.tinkerpop.gremlin.structure.Vertex;
+import org.codehaus.jackson.map.ObjectMapper;
 import org.janusgraph.core.JanusGraph;
 import org.janusgraph.core.JanusGraphFactory;
 import org.junit.jupiter.api.BeforeEach;
@@ -10,23 +13,33 @@ import org.ntrloc.graph.db.EntityStatus;
 import org.ntrloc.graph.db.LabelConstants;
 import org.ntrloc.graph.db.mutation.StringProperty;
 
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Set;
+import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.ntrloc.graph.db.PropertyConstants.STATUS_PROPERTY;
 import static org.ntrloc.graph.db.PropertyConstants.TRANSACTION_ID_PROPERTY;
 import static org.ntrloc.graph.db.PropertyConstants.VERSION_PROPERTY;
+
+class NodeMutationResult extends Node {
+    public Node revision;
+    public Node version;
+}
 
 class MutatorTest {
 
     private JanusGraph janusGraph;
     private GraphTraversalSource traversalSource;
+    private ObjectMapper objectMapper = new ObjectMapper();
 
     @BeforeEach
     void init() {
@@ -46,19 +59,6 @@ class MutatorTest {
         janusGraph.tx().close();
     }
 
-    class NodeProjection {
-        public String id;
-        public String label;
-        public Map<String, Object> properties;
-    }
-
-    class NodeRevisionProjection {
-        public String id;
-        public String label;
-        public Map<String, Object> properties;
-        public Map<String, Object> revision;
-        public Map<String, Object> version;
-    }
 
     private Map<String, Object> flattenProperties(Map<String, Object> props) {
         Map<String, Object> flattened = new HashMap<>();
@@ -109,6 +109,28 @@ class MutatorTest {
         assertNull(valueMap.get(TRANSACTION_ID_PROPERTY));
     }
 
+    private void assertProperties(Map<String, Object> props, Object... keysAndValues) {
+        List<Object> expectedValues = Arrays.stream(keysAndValues).toList();
+        assertTrue(expectedValues.size() % 2 == 0, "expected even number of keys and values");
+        for (int i = 0; i < expectedValues.size(); i += 2) {
+            Object key = expectedValues.get(i);
+            if (!(key instanceof String)) {
+                throw new IllegalArgumentException("Even-numbered keys must be strings");
+            }
+        }
+
+        for (int i = 0; i < expectedValues.size(); i += 2) {
+            String key = (String) expectedValues.get(i);
+            Object expectedValue = expectedValues.get(i + 1);
+            if (expectedValue == null) {
+                assertFalse(props.containsKey(key), "found expected missing key " + key);
+            } else {
+                assertTrue(props.containsKey(key), "key " + key + " not found");
+                assertEquals(expectedValue, props.get(key), "value mismatch for key " + key);
+            }
+        }
+    }
+
     @Test
     void testUpdateNodeProperties() {
         Mutator mutator = new Mutator(traversalSource);
@@ -126,54 +148,51 @@ class MutatorTest {
                 new StringProperty("colorspace", null),
                 new StringProperty("author", "Bill")
         );
-        mutator.updateNode(newId, updatedProps);
 
+        mutator.updateNode(newId, updatedProps);
         mutator.checkpoint();
 
+        Function<GraphTraversal<Vertex, Vertex>, GraphTraversal<?, NodeMutationResult>> nodeWithUpdates = (t) -> {
+            var mapTraversal = t.project("id", "label", "properties", "revision", "version")
+                    .by(__.id())
+                    .by(__.label())
+                    .by(__.valueMap())
+                    .by(__.in(LabelConstants.IS_REVISION_OF_LABEL).project("id", "label", "properties").by(__.id()).by(__.label()).by(__.valueMap()))
+                    .by(__.in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).project("id", "label", "properties").by(__.id()).by(__.label()).by(__.valueMap()));
+            return mapTraversal.map(traversal -> {
+                var obj = traversal.get();
+                return objectMapper.convertValue(obj, NodeMutationResult.class);
+            });
+        };
+
         // check that the revision was created
-        var checkpointResult = traversalSource.V().hasLabel("Photo")
-                .project("props", "revision", "version")
-                .by(__.valueMap())
-                .by(__.in(LabelConstants.IS_REVISION_OF_LABEL).project("props").by(__.valueMap()))
-                .by(__.in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL))
-                .next();
-        assertNotNull(checkpointResult.get("revision"), "revision should not be null after checkpoint");
-        assertNull(checkpointResult.get("version"), "version should be null after checkpoint");
+        var checkpointResult = nodeWithUpdates.apply(traversalSource.V().hasLabel("Photo")).next();
+        var checkpointNode = objectMapper.convertValue(checkpointResult, NodeMutationResult.class);
+
+        assertNotNull(checkpointNode.revision, "revision should not be null after checkpoint");
+        assertNull(checkpointNode.version, "previous version should be null after checkpoint");
 
         // check that the new version is prepared
         mutator.prepare();
-
         mutator.checkpoint();
 
-        var prepareResult = traversalSource.V().hasLabel("Photo").has(STATUS_PROPERTY, EntityStatus.NORMAL.toString())
-                .project("props", "revision", "newVersion")
-                        .by(__.valueMap())
-                        .by(__.in(LabelConstants.IS_REVISION_OF_LABEL))
-                        .by(__.in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).project("props").by(__.valueMap())).next();
+        var prepareNode = nodeWithUpdates.apply(traversalSource.V().hasLabel("Photo").has(STATUS_PROPERTY, EntityStatus.NORMAL.toString())).next();
 
-        assertNull(prepareResult.get("revision"), "revision should be null after prepare");
-        var newVersion = (Map)prepareResult.get("newVersion");
+        assertNull(prepareNode.revision, "revision should be null after prepare");
+        var newVersion = prepareNode.version;
         assertNotNull(newVersion, "new node version not found");
-        var newProps = flattenProperties((Map)newVersion.get("props"));
-        assertEquals("photo2.jpg", newProps.get("Photo_name"));
-        assertNull(newProps.get("Photo_colorspace"));
-        assertEquals("Bill", newProps.get("Photo_author"));
-
+        var newProps = newVersion.properties;
+        assertProperties(newProps,"Photo_name", "photo2.jpg", "Photo_author", "Bill", "Photo_colorspace", null);
 
         // check that the node has a new committed version after commit
         mutator.commit();
 
-        var commitResult = traversalSource.V().hasLabel("Photo").has(STATUS_PROPERTY, EntityStatus.NORMAL.toString()).has(VERSION_PROPERTY, 2)
-                .project("props", "previousVersion")
-                .by(__.valueMap())
-                .by(__.out(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).project("props").by(__.valueMap())).next();
-        assertNotNull(commitResult.get("previousVersion"), "previous version should not be null after commit");
+        var commitNode = nodeWithUpdates.apply(traversalSource.V().hasLabel("Photo").has(STATUS_PROPERTY, EntityStatus.NORMAL.toString()).has(VERSION_PROPERTY, 1)).next();
 
-        var commitProps = flattenProperties((Map)commitResult.get("props"));
-        assertEquals(2, commitProps.get("version"));
-        assertEquals("photo2.jpg", commitProps.get("Photo_name"));
-        assertNull(commitProps.get("Photo_colorspace"));
-        assertEquals("Bill", commitProps.get("Photo_author"));
+        assertNotNull(commitNode.version, "previous version should not be null after commit");
+        var newNode = commitNode.version;
+        var commitProps = newNode.properties;
+        assertProperties(commitProps, "Photo_name", "photo2.jpg", "Photo_author", "Bill", "Photo_colorspace", null, "version", 2);
     }
 
 }
