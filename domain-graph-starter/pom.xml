@@ -20,7 +20,8 @@
         <hazelcast.version>5.5.0</hazelcast.version>
         <janusgraph.version>1.2.0-20250219-143145.6c030f7</janusgraph.version>
         <jte.version>3.1.16</jte.version>
-        <netflix.dgs.version>10.0.3</netflix.dgs.version>
+        <netflix.dgs.version>10.2.4</netflix.dgs.version>
+        <netty-macos-resolver.version>4.1.119.Final</netty-macos-resolver.version>
         <tinkerpop.version>3.7.3</tinkerpop.version>
         <thymeleaf.version>3.5.3</thymeleaf.version>
         <thymeleaf-layout-dialect.version>3.4.0</thymeleaf-layout-dialect.version>
@@ -56,6 +57,20 @@
             <artifactId>spring-boot-starter-actuator</artifactId>
             <version>${spring.boot.version}</version>
         </dependency>
+
+        <!--
+        <dependency>
+            <groupId>io.netty</groupId>
+            <artifactId>netty-resolver-dns-native-macos</artifactId>
+            <version>${netty-macos-resolver.version}</version>
+            <classifier>osx-aarch_64</classifier>
+        </dependency>
+        <dependency>
+            <groupId>io.netty</groupId>
+            <artifactId>netty-common</artifactId>
+            <version>${netty-macos-resolver.version}</version>
+        </dependency>
+        -->
 
         <!--
         <dependency>
@@ -129,6 +144,14 @@
                 </exclusion>
                 <exclusion>
                     <groupId>org.glassfish.jersey.containers</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>io.netty</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>com.fasterxml.jackson.core</groupId>
                     <artifactId>*</artifactId>
                 </exclusion>
             </exclusions>

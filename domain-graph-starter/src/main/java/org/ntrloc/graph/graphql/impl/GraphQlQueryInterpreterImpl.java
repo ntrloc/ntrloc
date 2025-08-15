@@ -8,10 +8,11 @@ import graphql.schema.GraphQLFieldDefinition;
 import graphql.schema.idl.TypeDefinitionRegistry;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.ntrloc.graph.graphql.GraphQlQueryInterpreter;
 import org.ntrloc.graph.db.schema.EntityDefinition;
 import org.ntrloc.graph.db.schema.SchemaManager;
+import org.ntrloc.graph.graphql.GraphQlQueryInterpreter;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -37,7 +38,7 @@ public class GraphQlQueryInterpreterImpl implements GraphQlQueryInterpreter {
                     .collect(Collectors.toMap(entityDefinition -> entityDefinition.getName(), entityDefinition -> {
                         DataFetcher<Object> fetcher = (dfe) -> {
                             LOG.info("Data fetching entity {}", entityDefinition.getName());
-                            return Map.of("ISBN", "whatever");
+                            return Map.of("name", "YO MAMA!");
                         };
                         return fetcher;
                     }));
@@ -48,7 +49,7 @@ public class GraphQlQueryInterpreterImpl implements GraphQlQueryInterpreter {
                 Map<String, Object> args = dfe.getArguments();
                 LOG.info("Mutating entity {} with args {}", fd, args);
 
-                return Map.of("ISBN", "whatever");
+                return List.of(Map.of("ISBN", "whatever"));
             };
 
             return codeRegistryBuilder

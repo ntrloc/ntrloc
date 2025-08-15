@@ -1,5 +1,8 @@
 package org.ntrloc.graph.db;
 
+import com.netflix.graphql.dgs.client.GraphQLClient;
+import com.netflix.graphql.dgs.client.GraphQLResponse;
+import com.netflix.graphql.dgs.client.RestClientGraphQLClient;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.GraphQLAutoConfiguration;
 import org.ntrloc.graph.JanusAutoConfiguration;
@@ -13,6 +16,8 @@ import org.ntrloc.graph.db.schema.SchemaManager;
 import org.ntrloc.graph.db.schema.impl.SchemaManagerImpl;
 import org.ntrloc.graph.db.storage.BinaryStorageAdapterConfiguration;
 import org.ntrloc.graph.db.storage.impl.BlockDeviceBinaryStorageAdapter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.autoconfigure.cassandra.CassandraAutoConfiguration;
@@ -25,8 +30,11 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.web.client.RestClient;
 import org.yaml.snakeyaml.Yaml;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
+
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @EnableAutoConfiguration(exclude = {CassandraAutoConfiguration.class})
@@ -37,12 +45,12 @@ import java.util.Set;
 })
 class MutationRetrievalIntegrationTest {
 
+    private static final Logger LOG = LoggerFactory.getLogger(MutationRetrievalIntegrationTest.class);
+
     @Autowired
     private SchemaManager schemaManager;
 
-
-    @LocalServerPort
-    private int port;
+    final GraphQLClient graphQlClient;
 
     @DynamicPropertySource
     static void yamlProperties(DynamicPropertyRegistry registry) {
@@ -79,6 +87,17 @@ class MutationRetrievalIntegrationTest {
         });
     }
 
+    MutationRetrievalIntegrationTest(@LocalServerPort Integer port) {
+        /*
+        WebClient webClient = WebClient.create("http://localhost:" + port.toString() + "/graphql");
+        graphQlClient = new WebClientGraphQLClient(webClient);
+
+         */
+
+        RestClient restClient = RestClient.create("http://localhost:" + port.toString() + "/graphql");
+        graphQlClient = new RestClientGraphQLClient(restClient);
+    }
+
     @Test
     public void testCreateEntity() throws InterruptedException {
 
@@ -89,8 +108,18 @@ class MutationRetrievalIntegrationTest {
         ));
         schemaManager.createEntityDefinition(definition);
 
-        RestClient client = RestClient.create();
-        Thread.sleep(2000);
+        LOG.info("Running query");
+        String query = """
+                { Photo { name } }
+                """;
+
+        // Read more about executeQuery() at https://netflix.github.io/dgs/advanced/java-client/
+        GraphQLResponse response =
+                graphQlClient.executeQuery(query);
+
+        List<?> titles = response.extractValueAsObject("Photo[*].name", List.class);
+
+        assertTrue(titles.contains("YO MAMA!"));
 
     }
 

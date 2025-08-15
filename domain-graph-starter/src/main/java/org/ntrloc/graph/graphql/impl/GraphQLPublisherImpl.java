@@ -50,7 +50,11 @@ public class GraphQLPublisherImpl implements ReloadSchemaIndicator {
 
     @Override
     public boolean reloadSchema() {
-        return schemaChanged && !schemaPublished;
+        var needsReload = schemaChanged && !schemaPublished;
+        if (needsReload) {
+            LOG.info("Reloading GraphQL schema");
+        }
+        return needsReload;
     }
 
     @DgsTypeDefinitionRegistry
