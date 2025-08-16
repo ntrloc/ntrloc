@@ -33,7 +33,10 @@ import org.yaml.snakeyaml.Yaml;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
+import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -101,6 +104,11 @@ class MutationRetrievalIntegrationTest {
     @Test
     public void testCreateEntity() throws InterruptedException {
 
+        AtomicBoolean schemaUpdated = new AtomicBoolean(false);
+        schemaManager.addSchemaChangeReaction(() -> {
+            schemaUpdated.set(true);
+        });
+
         EntityDefinition definition = new EntityDefinition();
         definition.setName("Photo");
         definition.setProperties(Set.of(
@@ -108,19 +116,18 @@ class MutationRetrievalIntegrationTest {
         ));
         schemaManager.createEntityDefinition(definition);
 
-        LOG.info("Running query");
-        String query = """
-                { Photo { name } }
-                """;
+        await().atMost(5, TimeUnit.SECONDS).until(() -> schemaUpdated.get());
 
-        // Read more about executeQuery() at https://netflix.github.io/dgs/advanced/java-client/
-        GraphQLResponse response =
-                graphQlClient.executeQuery(query);
+        LOG.info("Running query");
+        String query = "{ Photo { name } } ";
+
+        long start = System.currentTimeMillis();
+        GraphQLResponse response = graphQlClient.executeQuery(query);
+        long end = System.currentTimeMillis();
+        LOG.info("Query took {} ms", end - start);
 
         List<?> titles = response.extractValueAsObject("Photo[*].name", List.class);
-
         assertTrue(titles.contains("YO MAMA!"));
-
     }
 
 }

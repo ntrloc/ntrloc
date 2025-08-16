@@ -4,17 +4,19 @@ import graphql.language.Description;
 import graphql.language.FieldDefinition;
 import graphql.language.InputObjectTypeDefinition;
 import graphql.language.InputValueDefinition;
+import graphql.language.ListType;
+import graphql.language.NonNullType;
 import graphql.language.ObjectTypeDefinition;
 import graphql.language.ObjectTypeExtensionDefinition;
 import graphql.language.TypeName;
 import graphql.schema.idl.TypeDefinitionRegistry;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.ntrloc.graph.graphql.GraphQLSchemaGenerator;
 import org.ntrloc.graph.db.schema.EntityDefinition;
 import org.ntrloc.graph.db.schema.PropertyDefinition;
 import org.ntrloc.graph.db.schema.PropertyGroupDefinition;
 import org.ntrloc.graph.db.schema.RelationshipDefinition;
+import org.ntrloc.graph.graphql.GraphQLSchemaGenerator;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -56,7 +58,7 @@ public class GraphQLSchemaGeneratorImpl implements GraphQLSchemaGenerator {
             registry.add(getQueryExtensions(entityDefinitions));
         }
 
-        if (entityInputTypes.size() > 0) {
+        if (!entityInputTypes.isEmpty()) {
             List<FieldDefinition> mutationFields = entityInputTypes.entrySet().stream().map(entry -> {
                 ObjectTypeDefinition typeDefinition = entry.getKey();
                 InputObjectTypeDefinition inputObjectTypeDefinition = entry.getValue();
@@ -129,19 +131,17 @@ public class GraphQLSchemaGeneratorImpl implements GraphQLSchemaGenerator {
     }
 
     private ObjectTypeExtensionDefinition getQueryExtensions(Set<EntityDefinition> entityDefinitions) {
-
         List<FieldDefinition> fieldDefinitions = entityDefinitions.stream().map(def -> {
             return FieldDefinition.newFieldDefinition()
                     .name(def.getName())
-                    .type(new TypeName(def.getName()))
+                    .type(new NonNullType(new ListType(new NonNullType(new TypeName(def.getName())))))
                     .build();
         }).toList();
 
-        ObjectTypeExtensionDefinition queryDef = ObjectTypeExtensionDefinition.newObjectTypeExtensionDefinition()
+        return ObjectTypeExtensionDefinition.newObjectTypeExtensionDefinition()
                 .name("Query")
                 .fieldDefinitions(fieldDefinitions)
                 .build();
-        return queryDef;
     }
 
     private InputValueDefinition getInputValueDefinition(PropertyDefinition propertyDefinition) {
