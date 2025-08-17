@@ -1,2 +1,2 @@
-![alt text](artwork/ntrloc-horizontal.png)
+![NTRLOC logo](./artwork/Ntrloc-horizontal.png?raw=true)
 
