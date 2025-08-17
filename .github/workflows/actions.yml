@@ -38,8 +38,10 @@ jobs:
         uses: SonarSource/sonarqube-scan-action@v5.3.0
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_PROJECT_KEY: ntrloc_ntrloc
-          SONAR_ORGANIZATION: NTRLOC
+        with:
+          args: >
+            -Dsonar.projectKey=ntrloc_ntrloc
+            -Dsonar.organization=NTRLOC
 
       - name: Publish Test Report
         uses: dorny/test-reporter@v1
