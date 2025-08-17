@@ -21,6 +21,9 @@
         <maven.compiler.target>21</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
+        <sonar.organization>NTRLOC</sonar.organization>
+        <sonar.projectKey>ntrloc_ntrloc</sonar.projectKey>
+
         <jackson.version>2.19.0</jackson.version>
         <log4j.version>2.20.0</log4j.version>
         <spring.boot.version>3.4.4</spring.boot.version>
