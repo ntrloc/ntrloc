@@ -41,7 +41,7 @@ jobs:
         with:
           args: >
             -Dsonar.projectKey=ntrloc_ntrloc
-            -Dsonar.organization=NTRLOC
+            -Dsonar.organization=ntrloc
 
       - name: Publish Test Report
         uses: dorny/test-reporter@v1
