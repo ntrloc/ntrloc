@@ -26,7 +26,7 @@ jobs:
       - name: Cache Maven packages
         uses: actions/cache@v4
         with:
-          path: ~/.m2
+          path: ~/.m2/repository
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
           restore-keys: |
             ${{ runner.os }}-maven-    
@@ -42,6 +42,7 @@ jobs:
           args: >
             -Dsonar.projectKey=ntrloc_ntrloc
             -Dsonar.organization=ntrloc
+            -Dsonar.java.binaries=**/target/classes
 
       - name: Publish Test Report
         uses: dorny/test-reporter@v1
