@@ -19,7 +19,9 @@ jobs:
         run: mvn -B package
       - name: Publish Test Report
         uses: dorny/test-reporter@v1
+        if: always()
         with:
           name: Maven Surefire Tests
           path: '**/TEST-*.xml'
-          reporter: maven-surefire
+          reporter: java-junit
+          fail-on-error: true
