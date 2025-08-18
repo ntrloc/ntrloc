@@ -43,6 +43,7 @@ jobs:
             -Dsonar.projectKey=ntrloc_ntrloc
             -Dsonar.organization=ntrloc
             -Dsonar.java.binaries=**/target/classes
+            -Dsonar.coverage.jacoco.xmlReportPaths=**/target/site/jacoco/jacoco.xml
 
       - name: Publish Test Report
         uses: dorny/test-reporter@v1
