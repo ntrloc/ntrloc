@@ -24,6 +24,12 @@
         <sonar.organization>NTRLOC</sonar.organization>
         <sonar.projectKey>ntrloc_ntrloc</sonar.projectKey>
 
+        <!-- JaCoCo settings -->
+        <jacoco.maven.plugin.version>0.8.13</jacoco.maven.plugin.version>
+        <jacoco.exec.path>target/jacoco.exec</jacoco.exec.path>
+        <jacoco.class.dump.dir>target/instrumented-classes</jacoco.class.dump.dir>
+        <jacoco.includes>org/ntrloc/**</jacoco.includes>
+
         <jackson.version>2.19.0</jackson.version>
         <log4j.version>2.20.0</log4j.version>
         <spring.boot.version>3.4.4</spring.boot.version>
@@ -95,9 +101,49 @@
                 </configuration>
             </plugin>
             <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>${jacoco.maven.plugin.version}</version>
+                <configuration>
+                    <destFile>${jacoco.exec.path}</destFile>
+                    <output>file</output>
+                    <append>true</append>
+                    <classDumpDir>${jacoco.class.dump.dir}</classDumpDir>
+                    <includes>
+                        <include>${jacoco.includes}</include>
+                    </includes>
+                    <excludes>
+                        <exclude>**/*SpringCGLIB*</exclude>
+                        <exclude>**/*MockitoMock*</exclude>
+                        <exclude>**/*Test</exclude>
+                        <exclude>**/*Configuration*</exclude>
+                    </excludes>
+                </configuration>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>prepare-agent</goal>
+                        </goals>
+                        <configuration>
+                            <propertyName>jacocoArgLine</propertyName>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>report</id>
+                        <phase>test</phase>
+                        <goals>
+                            <goal>report</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>2.22.1</version>
+                <configuration>
+                    <argLine>@{jacocoArgLine} -Xms1024m -Xmx2048m</argLine>
+                </configuration>
             </plugin>
         </plugins>
     </build>
