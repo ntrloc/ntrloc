@@ -129,6 +129,7 @@
                         <include>${jacoco.includes}</include>
                     </includes>
                     <excludes>
+                        <exclude>**/Application</exclude>
                         <exclude>**/*SpringCGLIB*</exclude>
                         <exclude>**/*MockitoMock*</exclude>
                         <exclude>**/*Test</exclude>
