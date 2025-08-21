@@ -6,7 +6,6 @@ import graphql.language.Directive;
 import graphql.language.DirectiveDefinition;
 import graphql.language.DirectiveLocation;
 import graphql.language.FieldDefinition;
-import graphql.language.InputObjectTypeDefinition;
 import graphql.language.InputValueDefinition;
 import graphql.language.ListType;
 import graphql.language.NonNullType;
@@ -27,7 +26,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 @Service
 public class GraphQLSchemaGeneratorImpl implements GraphQLSchemaGenerator {
@@ -36,6 +34,185 @@ public class GraphQLSchemaGeneratorImpl implements GraphQLSchemaGenerator {
 
     public static final String ENTITY_TYPE_DIRECTIVE_NAME = "entityType";
     public static final String ENTITY_TYPE_NAME_ARGUMENT = "name";
+
+    public GraphqlDefinitions generateTypeDefinitions(Set<EntityDefinition> entityDefinitions, Set<RelationshipDefinition> relationshipDefinitions) {
+        GraphqlDefinitions retDef = new GraphqlDefinitions();
+
+        createDirectiveDefinitions(retDef);
+        createMatcherDefinitions(retDef);
+
+        for (EntityDefinition entityDefinition: entityDefinitions) {
+            Set<RelationshipDefinition> relationships = relationshipDefinitions == null ?
+                    Set.of() :
+                    relationshipDefinitions.stream().filter(reldef -> reldef.getSourceEntity().equals(entityDefinition.getName()) || reldef.getTargetEntity().equals(entityDefinition.getName())).collect(java.util.stream.Collectors.toSet());
+
+            createEntityDefinitions(entityDefinition, relationships, retDef);
+        }
+
+        createQueryExtensions(entityDefinitions, retDef);
+        createMutation(retDef);
+
+        return retDef;
+    }
+
+    private void createDirectiveDefinitions(GraphqlDefinitions definitions) {
+        DirectiveDefinition entityTypeDirectiveDefinition = DirectiveDefinition.newDirectiveDefinition()
+                .name(ENTITY_TYPE_DIRECTIVE_NAME)
+                .directiveLocation(DirectiveLocation.newDirectiveLocation().name("OBJECT").build())
+                .inputValueDefinition(new InputValueDefinition("name", new NonNullType(new TypeName("String"))))
+                .build();
+        definitions.addDirectiveDefinition(entityTypeDirectiveDefinition);
+    }
+
+    private void createMatcherDefinitions(GraphqlDefinitions definitions) {
+
+    }
+
+    private void createEntityDefinitions(EntityDefinition entityDefinition, Set<RelationshipDefinition> relationships, GraphqlDefinitions retDef) {
+        // create input definitions
+        createEntityInputDefinitions(entityDefinition, relationships, retDef);
+
+        // crate output definitions
+        createEntityOutputDefinitions(entityDefinition, relationships, retDef);
+    }
+
+    private void createEntityInputDefinitions(EntityDefinition entityDefinition, Set<RelationshipDefinition> relationships, GraphqlDefinitions retDef) {
+        // entity input object (oneOf entity create/update/delete)
+        // entity create
+        // entity update
+        // entity delete
+        // entity properties object
+        // entity links object
+        // for each link type,
+        //      entity link create
+        //      entity link update
+        //      entity link delete
+        //      entity link modification (oneOf create/update/delete)
+    }
+
+    private void createEntityOutputDefinitions(EntityDefinition entityDefinition, Set<RelationshipDefinition> relationships, GraphqlDefinitions retDef) {
+
+        // create an object type for each property group
+        List<ObjectTypeDefinition> propertyGroupDefinitions = entityDefinition.getPropertyGroups() == null ? List.of() :
+                entityDefinition.getPropertyGroups().stream().map(group -> getPropertyGroupTypeDefinition(entityDefinition, group)).toList();
+        for (ObjectTypeDefinition groupDef: propertyGroupDefinitions) {
+            retDef.addObjectTypeDefinition(groupDef);
+        }
+
+        // create the field definitions for the entity properties
+        List<FieldDefinition> fieldDefinitions = entityDefinition.getProperties() == null ?
+                List.of() :
+                entityDefinition.getProperties().stream().map(this::getPropertyFieldDefinition).toList();
+
+        // create the field definitions for the entity property groups
+        List<FieldDefinition> propertyGroupFields = propertyGroupDefinitions.stream().map(groupDef -> {
+            TypeName typeName = new TypeName(groupDef.getName());
+            Description groupPropertyDescription = groupDef.getDescription();
+            return FieldDefinition.newFieldDefinition()
+                    .name(groupDef.getAdditionalData().get("propertyGroupName").toLowerCase())
+                    .description(groupPropertyDescription)
+                    .type(typeName)
+                    .build();
+        }).toList();
+
+        // create an object type for the entity properties
+        List<FieldDefinition> allFields = new ArrayList<>();
+        allFields.addAll(fieldDefinitions);
+        allFields.addAll(propertyGroupFields);
+        ObjectTypeDefinition entityPropertiesTypeDefinition = ObjectTypeDefinition.newObjectTypeDefinition()
+                        .name(String.format("%sProperties", entityDefinition.getName()))
+                        .fieldDefinitions(allFields)
+                        .build();
+        retDef.addObjectTypeDefinition(entityPropertiesTypeDefinition);
+
+        // create the entity object type
+        Description entityDescription = entityDefinition.getDescription() == null ? null : new Description(entityDefinition.getDescription(), null, false);
+        Directive entityTypeDirective = Directive.newDirective()
+                .name(ENTITY_TYPE_DIRECTIVE_NAME)
+                .argument(Argument.newArgument().name(ENTITY_TYPE_NAME_ARGUMENT).value(StringValue.of(entityDefinition.getName())).build())
+                .build();
+        FieldDefinition idField = FieldDefinition.newFieldDefinition()
+                .name("id")
+                .type(new TypeName("String"))
+                .build();
+        FieldDefinition labelField = FieldDefinition.newFieldDefinition()
+                .name("label")
+                .type(new TypeName("String"))
+                .build();
+        FieldDefinition entityPropertyField = FieldDefinition.newFieldDefinition()
+                .name("properties")
+                .type(new TypeName(entityPropertiesTypeDefinition.getName()))
+                .build();
+        ObjectTypeDefinition entityObjectDefinition = ObjectTypeDefinition.newObjectTypeDefinition()
+                .name(entityDefinition.getName())
+                .description(entityDescription)
+                .fieldDefinitions(List.of(idField, labelField, entityPropertyField))
+                .directive(entityTypeDirective)
+                .build();
+        retDef.addEntityObjectTypeDefinition(entityObjectDefinition);
+
+        // for each link type:
+        //      link object
+        //      link property group objects
+        //      link properties object (includes property groups)
+        // entity links object (contains a field for each link type)
+    }
+
+    private FieldDefinition getPropertyFieldDefinition(PropertyDefinition propertyDefinition) {
+        TypeName typeName = switch (propertyDefinition.getType()) {
+            case STRING -> new TypeName("String");
+            case INT -> new TypeName("Int");
+            default -> throw new RuntimeException("Unsupported type: " + propertyDefinition.getType());
+        };
+        Description propertyDescription = propertyDefinition.getDescription() == null ? null : new Description(propertyDefinition.getDescription(), null, false);
+
+        return FieldDefinition.newFieldDefinition()
+                .name(propertyDefinition.getName())
+                .type(typeName)
+                .description(propertyDescription)
+                .build();
+    }
+
+    private ObjectTypeDefinition getPropertyGroupTypeDefinition(EntityDefinition entityDefinition, PropertyGroupDefinition propertyGroupDefinition) {
+        Description groupDescription = propertyGroupDefinition.getDescription() == null ? null : new Description(propertyGroupDefinition.getDescription(), null, false);
+
+        List<FieldDefinition> groupProperties = propertyGroupDefinition.getProperties().stream().map(this::getPropertyFieldDefinition).toList();
+
+        String groupTypeName = String.format("%s%s", entityDefinition.getName(), propertyGroupDefinition.getName());
+
+        return ObjectTypeDefinition.newObjectTypeDefinition()
+                .name(groupTypeName)
+                .description(groupDescription)
+                .additionalData(Map.of(
+                        "originalEntity", entityDefinition.getName(),
+                        "propertyGroupName", propertyGroupDefinition.getName()
+                ))
+                .fieldDefinitions(groupProperties)
+                .build();
+    }
+
+    private void createQueryExtensions(Set<EntityDefinition> entityDefinitions, GraphqlDefinitions definitions) {
+        List<FieldDefinition> fieldDefinitions = entityDefinitions.stream().map(def -> {
+            return FieldDefinition.newFieldDefinition()
+                    .name(def.getName())
+                    .type(new NonNullType(new ListType(new NonNullType(new TypeName(def.getName())))))
+                    .build();
+        }).toList();
+
+        if (!fieldDefinitions.isEmpty()) {
+            ObjectTypeExtensionDefinition def = ObjectTypeExtensionDefinition.newObjectTypeExtensionDefinition()
+                    .name("Query")
+                    .fieldDefinitions(fieldDefinitions)
+                    .build();
+            definitions.addObjectTypeExtensionDefinition(def);
+        }
+    }
+
+    private void createMutation(GraphqlDefinitions definitions) {
+
+    }
+
+    /*
 
     @Override
     public GraphqlDefinitions generateTypeDefinitions(Set<EntityDefinition> entityDefinitions, Set<RelationshipDefinition> relationshipDefinitions) {
@@ -55,59 +232,10 @@ public class GraphQLSchemaGeneratorImpl implements GraphQLSchemaGenerator {
         return retDef;
     }
 
-    private List<DirectiveDefinition> getDirectiveDefinitions() {
-        List<DirectiveDefinition> definitions = new ArrayList<>();
-
-        DirectiveDefinition entityTypeDirectiveDefinition = DirectiveDefinition.newDirectiveDefinition()
-                .name(ENTITY_TYPE_DIRECTIVE_NAME)
-                .directiveLocation(DirectiveLocation.newDirectiveLocation().name("OBJECT").build())
-                .inputValueDefinition(new InputValueDefinition("name", new NonNullType(new TypeName("String"))))
-                .build();
-        definitions.add(entityTypeDirectiveDefinition);
-
-        return definitions;
-
-    }
-
     private GraphqlDefinitions getGraphqlDefinitions(EntityDefinition entityDefinition, Set<RelationshipDefinition> relationshipDefinitions) {
         List<ObjectTypeDefinition> objectTypeDefinitions = new ArrayList<>();
 
-        Description entityDescription = entityDefinition.getDescription() == null ? null : new Description(entityDefinition.getDescription(), null, false);
-        List<FieldDefinition> fieldDefinitions = entityDefinition.getProperties() == null ?
-                List.of() :
-                entityDefinition.getProperties().stream().map(this::getPropertyFieldDefinition).toList();
 
-        List<ObjectTypeDefinition> propertyGroupDefinitions = entityDefinition.getPropertyGroups() == null ? List.of() :
-                entityDefinition.getPropertyGroups().stream().map(group -> getPropertyGroupTypeDefinition(entityDefinition, group)).toList();
-
-        List<FieldDefinition> propertyGroupFields = propertyGroupDefinitions.stream().map(groupDef -> {
-            TypeName typeName = new TypeName(groupDef.getName());
-            Description groupPropertyDescription = groupDef.getDescription();
-            return FieldDefinition.newFieldDefinition()
-                    .name(groupDef.getAdditionalData().get("propertyGroupName").toLowerCase())
-                    .description(groupPropertyDescription)
-                    .type(typeName)
-                    .build();
-        }).toList();
-
-        objectTypeDefinitions.addAll(propertyGroupDefinitions);
-
-        List<FieldDefinition> allFields = new ArrayList<>();
-        allFields.addAll(fieldDefinitions);
-        allFields.addAll(propertyGroupFields);
-
-        Directive entityTypeDirective = Directive.newDirective()
-                .name(ENTITY_TYPE_DIRECTIVE_NAME)
-                .argument(Argument.newArgument().name(ENTITY_TYPE_NAME_ARGUMENT).value(StringValue.of(entityDefinition.getName())).build())
-                .build();
-
-        ObjectTypeDefinition entityObjectDefinition = ObjectTypeDefinition.newObjectTypeDefinition()
-                .name(entityDefinition.getName())
-                .description(entityDescription)
-                .fieldDefinitions(allFields)
-                .directive(entityTypeDirective)
-                .build();
-        objectTypeDefinitions.add(entityObjectDefinition);
 
 
         // create types and fields for the relationships
@@ -172,52 +300,12 @@ public class GraphQLSchemaGeneratorImpl implements GraphQLSchemaGenerator {
                 //.directive(entityTypeDirective)
                 .build();
 
-        /* we also need to create the property object for the relationship
-         * note that the type is defined during construction of the outbound relationship type
-         * and is referenced again by the inbound relationship type
-         * e.g. Photographer, Photo, and Photographer->CREATED->Photo will yield:
-         * object type Photo
-         *      field properties: PhotoProperties
-         * object type PhotoProperties
-         *      (various fields)
-         * object type PhotoLinks
-         *      field creator: PhotoCreatorPhotographer
-         * object field PhotoCreatorPhotographer
-         *      field properties: PhotographerCreatedPhotoProperties
-         *      field from: Photographer
-         * object type Photographer
-         *      field properties: PhotographerProperties
-         * object type ProtographerProperties
-         *      (various fields)
-         * object type PhotographerLinks
-         *      field created: PhotographerCreatedPhoto
-         * object type PhotographerCreatedPhoto
-         *      field properties: PhotographerCreatedPhotoProperties
-         *      field to: Photo
-         * object type PhotographerCreatedPhotoProperties
-         *
-         * note: we're going to need input types for most of this stuff too
-         * note: we also need to define the create/update/delete input types for entities
-         * note: we also need to define the create/update/delete input types for entity relationships
-         */
 
         return relationshipObjectDefinition;
 
     }
 
-    private ObjectTypeExtensionDefinition getQueryExtensions(Set<EntityDefinition> entityDefinitions) {
-        List<FieldDefinition> fieldDefinitions = entityDefinitions.stream().map(def -> {
-            return FieldDefinition.newFieldDefinition()
-                    .name(def.getName())
-                    .type(new NonNullType(new ListType(new NonNullType(new TypeName(def.getName())))))
-                    .build();
-        }).toList();
 
-        return ObjectTypeExtensionDefinition.newObjectTypeExtensionDefinition()
-                .name("Query")
-                .fieldDefinitions(fieldDefinitions)
-                .build();
-    }
 
     private InputValueDefinition getInputValueDefinition(PropertyDefinition propertyDefinition) {
         TypeName typeName = switch (propertyDefinition.getType()) {
@@ -243,38 +331,8 @@ public class GraphQLSchemaGeneratorImpl implements GraphQLSchemaGenerator {
                 .build();
     }
 
-    private FieldDefinition getPropertyFieldDefinition(PropertyDefinition propertyDefinition) {
-        TypeName typeName = switch (propertyDefinition.getType()) {
-            case STRING -> new TypeName("String");
-            case INT -> new TypeName("Int");
-            default -> throw new RuntimeException("Unsupported type: " + propertyDefinition.getType());
-        };
-        Description propertyDescription = propertyDefinition.getDescription() == null ? null : new Description(propertyDefinition.getDescription(), null, false);
 
-        return FieldDefinition.newFieldDefinition()
-                .name(propertyDefinition.getName())
-                .type(typeName)
-                .description(propertyDescription)
-                .build();
-    }
 
-    private ObjectTypeDefinition getPropertyGroupTypeDefinition(EntityDefinition entityDefinition, PropertyGroupDefinition propertyGroupDefinition) {
-        Description groupDescription = propertyGroupDefinition.getDescription() == null ? null : new Description(propertyGroupDefinition.getDescription(), null, false);
-
-        List<FieldDefinition> groupProperties = propertyGroupDefinition.getProperties().stream().map(this::getPropertyFieldDefinition).toList();
-
-        String groupTypeName = String.format("%s%s", entityDefinition.getName(), propertyGroupDefinition.getName());
-
-        ObjectTypeDefinition groupDefinition = ObjectTypeDefinition.newObjectTypeDefinition()
-                .name(groupTypeName)
-                .description(groupDescription)
-                .additionalData(Map.of(
-                        "originalEntity", entityDefinition.getName(),
-                        "propertyGroupName", propertyGroupDefinition.getName()
-                ))
-                .fieldDefinitions(groupProperties)
-                .build();
-        return groupDefinition;
-    }
+     */
 
 }

@@ -7,43 +7,42 @@ import graphql.language.ObjectTypeExtensionDefinition;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Stream;
 
 public class GraphqlDefinitions {
 
-    private List<ObjectTypeDefinition> objectTypeDefinitions;
+    private List<ObjectTypeDefinition> entityObjectTypeDefinitions = new ArrayList<>();
+
+    private List<ObjectTypeDefinition> objectTypeDefinitions = new ArrayList<>();
 
     private List<InputObjectTypeDefinition> inputObjectTypeDefinitions;
 
-    private List<ObjectTypeExtensionDefinition> objectTypeExtensionDefinitions;
+    private List<ObjectTypeExtensionDefinition> objectTypeExtensionDefinitions = new ArrayList<>();
 
-    private List<DirectiveDefinition> directiveDefinitions;
+    private List<DirectiveDefinition> directiveDefinitions = new ArrayList<>();
 
     public GraphqlDefinitions() {
         // no-op
     }
 
-    public GraphqlDefinitions objectTypes(List<ObjectTypeDefinition> objectTypeDefinitions) {
-        this.objectTypeDefinitions = objectTypeDefinitions;
-        return this;
+    public void addDirectiveDefinition(DirectiveDefinition def) {
+        directiveDefinitions.add(def);
     }
 
-    public GraphqlDefinitions inputObjectTypes(List<InputObjectTypeDefinition> inputObjectTypeDefinitions) {
-        this.inputObjectTypeDefinitions = inputObjectTypeDefinitions;
-        return this;
+    public void addEntityObjectTypeDefinition(ObjectTypeDefinition def) {
+        entityObjectTypeDefinitions.add(def);
     }
 
-    public GraphqlDefinitions objectTypeExtensions(List<ObjectTypeExtensionDefinition> objectTypeExtensionDefinitions) {
-        this.objectTypeExtensionDefinitions = objectTypeExtensionDefinitions;
-        return this;
+    public void addObjectTypeDefinition(ObjectTypeDefinition def) {
+        objectTypeDefinitions.add(def);
     }
 
-    public GraphqlDefinitions directiveDefinitions(List<DirectiveDefinition> directiveDefinitions) {
-        this.directiveDefinitions = directiveDefinitions;
-        return this;
+    public void addObjectTypeExtensionDefinition(ObjectTypeExtensionDefinition def) {
+        objectTypeExtensionDefinitions.add(def);
     }
 
     public List<ObjectTypeDefinition> getObjectTypeDefinitions() {
-        return objectTypeDefinitions == null ? List.of() : objectTypeDefinitions;
+        return Stream.concat(entityObjectTypeDefinitions.stream(), objectTypeDefinitions.stream()).toList();
     }
 
     public List<InputObjectTypeDefinition> getInputObjectTypeDefinitions() {
@@ -55,47 +54,7 @@ public class GraphqlDefinitions {
     }
 
     public List<DirectiveDefinition> getDirectiveDefinitions() {
-        return directiveDefinitions == null ? List.of() : directiveDefinitions;
-    }
-
-    public GraphqlDefinitions merge(GraphqlDefinitions other) {
-        List<ObjectTypeDefinition> objectTypeDefinitions = new ArrayList<>();
-        if (this.objectTypeDefinitions != null) {
-            objectTypeDefinitions.addAll(this.objectTypeDefinitions);
-        }
-        if (other.objectTypeDefinitions != null) {
-            objectTypeDefinitions.addAll(other.objectTypeDefinitions);
-        }
-
-        List<InputObjectTypeDefinition> inputObjectTypeDefinitions = new ArrayList<>();
-        if (this.inputObjectTypeDefinitions != null) {
-            inputObjectTypeDefinitions.addAll(this.inputObjectTypeDefinitions);
-        }
-        if (other.inputObjectTypeDefinitions != null) {
-            inputObjectTypeDefinitions.addAll(other.inputObjectTypeDefinitions);
-        }
-
-        List<ObjectTypeExtensionDefinition> objectTypeExtensionDefinitions = new ArrayList<>();
-        if (this.objectTypeExtensionDefinitions != null) {
-            objectTypeExtensionDefinitions.addAll(this.objectTypeExtensionDefinitions);
-        }
-        if (other.objectTypeExtensionDefinitions != null) {
-            objectTypeExtensionDefinitions.addAll(other.objectTypeExtensionDefinitions);
-        }
-
-        List<DirectiveDefinition> directiveDefinitions = new ArrayList<>();
-        if (this.directiveDefinitions != null) {
-            directiveDefinitions.addAll(this.directiveDefinitions);
-        }
-        if (other.directiveDefinitions != null) {
-            directiveDefinitions.addAll(other.directiveDefinitions);
-        }
-
-        return new GraphqlDefinitions()
-                .objectTypes(objectTypeDefinitions)
-                .inputObjectTypes(inputObjectTypeDefinitions)
-                .objectTypeExtensions(objectTypeExtensionDefinitions)
-                .directiveDefinitions(directiveDefinitions);
+        return directiveDefinitions;
     }
 
 }

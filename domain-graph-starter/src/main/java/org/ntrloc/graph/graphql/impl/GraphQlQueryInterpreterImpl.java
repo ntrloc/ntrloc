@@ -38,7 +38,7 @@ public class GraphQlQueryInterpreterImpl implements GraphQlQueryInterpreter {
                     .collect(Collectors.toMap(entityDefinition -> entityDefinition.getName(), entityDefinition -> {
                         DataFetcher<Object> fetcher = (dfe) -> {
                             LOG.info("Data fetching entity {}", entityDefinition.getName());
-                            return List.of(Map.of("name", "YO MAMA!"), Map.of("name", "hey hey hey"));
+                            return List.of(Map.of("properties", Map.of("name", "YO MAMA!")));
                         };
                         return fetcher;
                     }));

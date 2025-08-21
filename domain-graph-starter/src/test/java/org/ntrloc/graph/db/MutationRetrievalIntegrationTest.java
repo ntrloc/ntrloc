@@ -170,14 +170,14 @@ class MutationRetrievalIntegrationTest {
         LOG.info("Schema: {}", schema);
 
         LOG.info("Running query");
-        String query = "{ Photo { name } } ";
+        String query = "{ Photo { properties { name } } } ";
 
         long start = System.currentTimeMillis();
         GraphQLResponse response = graphQlClient.executeQuery(query);
         long end = System.currentTimeMillis();
         LOG.info("Query took {} ms", end - start);
 
-        List<?> titles = response.extractValueAsObject("Photo[*].name", List.class);
+        List<?> titles = response.extractValueAsObject("Photo[*].properties.name", List.class);
         assertTrue(titles.contains("YO MAMA!"));
     }
 

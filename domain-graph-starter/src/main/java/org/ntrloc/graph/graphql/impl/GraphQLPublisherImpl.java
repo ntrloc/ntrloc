@@ -3,6 +3,10 @@ package org.ntrloc.graph.graphql.impl;
 import com.netflix.graphql.dgs.DgsComponent;
 import com.netflix.graphql.dgs.DgsTypeDefinitionRegistry;
 import com.netflix.graphql.dgs.ReloadSchemaIndicator;
+import graphql.language.DirectiveDefinition;
+import graphql.language.InputObjectTypeDefinition;
+import graphql.language.ObjectTypeDefinition;
+import graphql.language.ObjectTypeExtensionDefinition;
 import graphql.schema.idl.TypeDefinitionRegistry;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -10,7 +14,7 @@ import org.ntrloc.graph.cluster.ClusterService;
 import org.ntrloc.graph.db.schema.EntityDefinition;
 import org.ntrloc.graph.db.schema.RelationshipDefinition;
 import org.ntrloc.graph.db.schema.SchemaManager;
-import org.ntrloc.graph.graphql.GraphQLTypeRegistrar;
+import org.ntrloc.graph.graphql.GraphQLSchemaGenerator;
 
 import java.util.Set;
 
@@ -25,12 +29,12 @@ public class GraphQLPublisherImpl implements ReloadSchemaIndicator {
 
     private SchemaManager schemaManager;
 
-    private GraphQLTypeRegistrar typeRegistrar;
+    private GraphQLSchemaGenerator schemaGenerator;
 
     public GraphQLPublisherImpl(ClusterService clusterService,
-                                GraphQLTypeRegistrar registrar,
+                                GraphQLSchemaGenerator schemaGenerator,
                                 SchemaManager schemaManager) {
-        this.typeRegistrar = registrar;
+        this.schemaGenerator = schemaGenerator;
         this.schemaManager = schemaManager;
         clusterService.addClusterJoinReaction(() -> {
             LOG.info("Cluster joined; publishing GraphQL schema");
@@ -59,10 +63,33 @@ public class GraphQLPublisherImpl implements ReloadSchemaIndicator {
 
     @DgsTypeDefinitionRegistry
     public TypeDefinitionRegistry typeDefinitionRegistry() {
-        Set<EntityDefinition> entityDefinitionSet = schemaManager.retrieveEntityDefinitions();
+        Set<EntityDefinition> entityDefinitions = schemaManager.retrieveEntityDefinitions();
         Set<RelationshipDefinition> relationshipDefinitions = schemaManager.retrieveRelationshipDefinitions();
         try {
-            return typeRegistrar.getTypeDefinitionRegistry(entityDefinitionSet, relationshipDefinitions);
+            TypeDefinitionRegistry registry = new TypeDefinitionRegistry();
+
+            GraphqlDefinitions graphqlDefinitions = schemaGenerator.generateTypeDefinitions(entityDefinitions, relationshipDefinitions);
+
+            for (DirectiveDefinition def: graphqlDefinitions.getDirectiveDefinitions()) {
+                registry.add(def);
+            }
+
+            for (ObjectTypeDefinition def: graphqlDefinitions.getObjectTypeDefinitions()) {
+                LOG.info("Registering entity definition: {}", def.getName());
+                registry.add(def);
+            }
+
+            for (InputObjectTypeDefinition def: graphqlDefinitions.getInputObjectTypeDefinitions()) {
+                LOG.info("Registering entity input definition {}", def);
+                registry.add(def);
+            }
+
+            for (ObjectTypeExtensionDefinition def: graphqlDefinitions.getObjectTypeExtensionDefinitions()) {
+                LOG.info("Registering type extension definition {}", def);
+                registry.add(def);
+            }
+
+            return registry;
         } finally {
             schemaChanged = false;
             schemaPublished = true;
