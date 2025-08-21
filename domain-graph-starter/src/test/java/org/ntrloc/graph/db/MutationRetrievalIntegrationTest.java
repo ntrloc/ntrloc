@@ -9,9 +9,12 @@ import org.ntrloc.graph.JanusAutoConfiguration;
 import org.ntrloc.graph.cluster.config.StandaloneClusterConfigurationFactory;
 import org.ntrloc.graph.cluster.impl.ClusterServiceImpl;
 import org.ntrloc.graph.db.impl.EntityManagerImpl;
+import org.ntrloc.graph.db.schema.Cardinality;
 import org.ntrloc.graph.db.schema.EntityDefinition;
 import org.ntrloc.graph.db.schema.PropertyDefinition;
+import org.ntrloc.graph.db.schema.PropertyGroupDefinition;
 import org.ntrloc.graph.db.schema.PropertyType;
+import org.ntrloc.graph.db.schema.RelationshipDefinition;
 import org.ntrloc.graph.db.schema.SchemaManager;
 import org.ntrloc.graph.db.schema.impl.SchemaManagerImpl;
 import org.ntrloc.graph.db.storage.BinaryStorageAdapterConfiguration;
@@ -53,12 +56,17 @@ class MutationRetrievalIntegrationTest {
     @Autowired
     private SchemaManager schemaManager;
 
+    private Integer port;
+
     final GraphQLClient graphQlClient;
 
     @DynamicPropertySource
     static void yamlProperties(DynamicPropertyRegistry registry) {
         var yaml = """
-                spring.main.web-application-type: reactive
+                spring:
+                  main.web-application-type: reactive
+                  graphql.schema.printer.enabled: true
+                
                 storage.backend: inmemory
                 cache.tx-cache-size: 0
                 
@@ -91,32 +99,75 @@ class MutationRetrievalIntegrationTest {
     }
 
     MutationRetrievalIntegrationTest(@LocalServerPort Integer port) {
+        this.port = port;
         /*
         WebClient webClient = WebClient.create("http://localhost:" + port.toString() + "/graphql");
         graphQlClient = new WebClientGraphQLClient(webClient);
 
          */
 
+        LOG.info("Running on port {}", port);
+
         RestClient restClient = RestClient.create("http://localhost:" + port.toString() + "/graphql");
         graphQlClient = new RestClientGraphQLClient(restClient);
     }
 
+    private void initSchema() {
+        EntityDefinition photoEntity = new EntityDefinition();
+        photoEntity.setName("Photo");
+        photoEntity.setDescription("A photo");
+
+        PropertyDefinition photoName = new PropertyDefinition("name", PropertyType.STRING, "photo name");
+        PropertyDefinition photoNumber = new PropertyDefinition("number", PropertyType.INT, "photo number");
+        photoEntity.setProperties(Set.of(photoName, photoNumber));
+
+        PropertyDefinition title1 = new PropertyDefinition("title1", PropertyType.STRING, "title 1");
+        PropertyDefinition title2 = new PropertyDefinition("title2", PropertyType.STRING, "title 2");
+
+        PropertyGroupDefinition titleGroup = new PropertyGroupDefinition("Titles", "photo titless", Set.of(title1, title2));
+        photoEntity.setPropertyGroups(Set.of(titleGroup));
+
+        schemaManager.createEntityDefinition(photoEntity);
+
+        EntityDefinition photographerEntity = new EntityDefinition();
+        photographerEntity.setName("Photographer");
+        photographerEntity.setDescription("A photographer");
+        PropertyDefinition photographerName = new PropertyDefinition("name", PropertyType.STRING, "photographer name");
+        photographerEntity.setProperties(Set.of(photographerName));
+
+        schemaManager.createEntityDefinition(photographerEntity);
+
+        RelationshipDefinition photoRelationship = new RelationshipDefinition();
+        photoRelationship.setSourceEntity("Photographer");
+        photoRelationship.setTargetEntity("Photo");
+        photoRelationship.setSourceCardinality(new Cardinality(0, 1) );
+        photoRelationship.setTargetCardinality(new Cardinality(0, 1) );
+        photoRelationship.setSourceVersionAction(RelationshipDefinition.VersionAction.NONE);
+        photoRelationship.setTargetVersionAction(RelationshipDefinition.VersionAction.NONE);
+        photoRelationship.setName("CREATED");
+        photoRelationship.setSourceLabel("created");
+        photoRelationship.setTargetLabel("creator");
+
+        PropertyDefinition createdCountProperty = new PropertyDefinition("count", PropertyType.INT, "count");
+        photoRelationship.setProperties(Set.of(createdCountProperty));
+
+        schemaManager.createRelationshipDefinition(photoRelationship);
+    }
+
     @Test
-    public void testCreateEntity() throws InterruptedException {
+    public void testCreateEntity() {
 
         AtomicBoolean schemaUpdated = new AtomicBoolean(false);
         schemaManager.addSchemaChangeReaction(() -> {
             schemaUpdated.set(true);
         });
 
-        EntityDefinition definition = new EntityDefinition();
-        definition.setName("Photo");
-        definition.setProperties(Set.of(
-                new PropertyDefinition("name", PropertyType.STRING, "photo name")
-        ));
-        schemaManager.createEntityDefinition(definition);
+        initSchema();
 
         await().atMost(5, TimeUnit.SECONDS).until(() -> schemaUpdated.get());
+
+        var schema = RestClient.create().get().uri("http://localhost:" + port + "/graphql/schema").retrieve().body(String.class);
+        LOG.info("Schema: {}", schema);
 
         LOG.info("Running query");
         String query = "{ Photo { name } } ";

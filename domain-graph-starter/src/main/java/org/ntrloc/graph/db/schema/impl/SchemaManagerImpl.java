@@ -81,8 +81,6 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
         }
     }
 
-
-
     public void verifyGlobalPropertiesAndIndexes() throws InterruptedException {
         JanusGraphManagement management = janusGraph.openManagement();
 
@@ -358,6 +356,8 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
                 .property("description", definition.getDescription())
                 .property("sourceEntity", definition.getSourceEntity())
                 .property("targetEntity", definition.getTargetEntity())
+                .property("sourceLabel", definition.getSourceLabel())
+                .property("targetLabel", definition.getTargetLabel())
                 .property("targetCardinalityMin", definition.getTargetCardinality().getMin())
                 .property("targetCardinalityMax", definition.getTargetCardinality().getMax())
                 .property("sourceCardinalityMin", definition.getSourceCardinality().getMin())
@@ -459,6 +459,8 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
             schema.setDescription((String) propertyMap.get("description"));
             schema.setSourceEntity((String) propertyMap.get("sourceEntity"));
             schema.setTargetEntity((String) propertyMap.get("targetEntity"));
+            schema.setSourceLabel((String) propertyMap.get("sourceLabel"));
+            schema.setTargetLabel((String) propertyMap.get("targetLabel"));
             schema.setSourceCardinality(new org.ntrloc.graph.db.schema.Cardinality((Integer) propertyMap.get("sourceCardinalityMin"), (Integer) propertyMap.get("sourceCardinalityMax")));
             schema.setTargetCardinality(new org.ntrloc.graph.db.schema.Cardinality((Integer) propertyMap.get("targetCardinalityMin"), (Integer) propertyMap.get("targetCardinalityMax")));
             schema.setInstanceMaxCardinality((Integer) propertyMap.get("instanceMaxCardinality"));

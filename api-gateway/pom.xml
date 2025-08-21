@@ -17,7 +17,6 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
         <eureka.version>4.2.0</eureka.version>
-        <netflix.dgs.version>10.0.3</netflix.dgs.version>
     </properties>
 
     <dependencies>

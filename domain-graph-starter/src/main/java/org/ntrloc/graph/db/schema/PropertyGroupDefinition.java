@@ -12,6 +12,20 @@ public class PropertyGroupDefinition {
 
     private Set<PropertyDefinition> properties;
 
+    public PropertyGroupDefinition() {
+        // no-op
+    }
+
+    public PropertyGroupDefinition(String name, String description) {
+        this.name = name;
+        this.description = description;
+    }
+
+    public PropertyGroupDefinition(String name, String description, Set<PropertyDefinition> properties) {
+        this(name, description);
+        this.properties = properties;
+    }
+
     public String getName() {
         return name;
     }

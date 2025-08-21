@@ -7,10 +7,10 @@ import graphql.schema.idl.TypeDefinitionRegistry;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.ntrloc.graph.cluster.ClusterService;
-import org.ntrloc.graph.graphql.GraphQLSchemaGenerator;
 import org.ntrloc.graph.db.schema.EntityDefinition;
 import org.ntrloc.graph.db.schema.RelationshipDefinition;
 import org.ntrloc.graph.db.schema.SchemaManager;
+import org.ntrloc.graph.graphql.GraphQLTypeRegistrar;
 
 import java.util.Set;
 
@@ -25,12 +25,12 @@ public class GraphQLPublisherImpl implements ReloadSchemaIndicator {
 
     private SchemaManager schemaManager;
 
-    private GraphQLSchemaGenerator schemaGenerator;
+    private GraphQLTypeRegistrar typeRegistrar;
 
     public GraphQLPublisherImpl(ClusterService clusterService,
-                                GraphQLSchemaGenerator generator,
+                                GraphQLTypeRegistrar registrar,
                                 SchemaManager schemaManager) {
-        this.schemaGenerator = generator;
+        this.typeRegistrar = registrar;
         this.schemaManager = schemaManager;
         clusterService.addClusterJoinReaction(() -> {
             LOG.info("Cluster joined; publishing GraphQL schema");
@@ -62,7 +62,7 @@ public class GraphQLPublisherImpl implements ReloadSchemaIndicator {
         Set<EntityDefinition> entityDefinitionSet = schemaManager.retrieveEntityDefinitions();
         Set<RelationshipDefinition> relationshipDefinitions = schemaManager.retrieveRelationshipDefinitions();
         try {
-            return schemaGenerator.generateTypeDefinitions(entityDefinitionSet, relationshipDefinitions);
+            return typeRegistrar.getTypeDefinitionRegistry(entityDefinitionSet, relationshipDefinitions);
         } finally {
             schemaChanged = false;
             schemaPublished = true;

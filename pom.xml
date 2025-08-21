@@ -34,6 +34,7 @@
 
         <jackson.version>2.19.0</jackson.version>
         <log4j.version>2.20.0</log4j.version>
+        <netflix.dgs.version>10.2.4</netflix.dgs.version>
         <spring.boot.version>3.4.4</spring.boot.version>
         <junit.version>5.11.4</junit.version>
     </properties>

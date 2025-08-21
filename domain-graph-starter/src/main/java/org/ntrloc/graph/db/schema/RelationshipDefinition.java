@@ -20,6 +20,20 @@ public class RelationshipDefinition extends SchemaDefinition {
 
     private String targetEntity;
 
+    /**
+     * The display name used to represent this relationship from the source vertex's perspective.
+     * e.g., if the source type is Agency, the target is Person, and the relationship name is EMPLOYS,
+     * the source label might be "employs".
+     */
+    private String sourceLabel;
+
+    /**
+     *  The display name used to represent this relationship from the target vertex's perspective.
+     *  e.g., if the source type is Agency, the target is Person, and the relationship name is EMPLOYS,
+     *  the target label might be "worksFor".
+     */
+    private String targetLabel;
+
     private Cardinality targetCardinality;
 
     private Cardinality sourceCardinality;
@@ -52,6 +66,22 @@ public class RelationshipDefinition extends SchemaDefinition {
 
     public void setSourceEntity(String sourceEntity) {
         this.sourceEntity = sourceEntity;
+    }
+
+    public String getSourceLabel() {
+        return sourceLabel;
+    }
+
+    public void setSourceLabel(String sourceLabel) {
+        this.sourceLabel = sourceLabel;
+    }
+
+    public String getTargetLabel() {
+        return targetLabel;
+    }
+
+    public void setTargetLabel(String targetLabel) {
+        this.targetLabel = targetLabel;
     }
 
     public String getTargetEntity() {
