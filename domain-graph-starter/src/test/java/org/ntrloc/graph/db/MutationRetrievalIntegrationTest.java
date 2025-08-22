@@ -124,7 +124,7 @@ class MutationRetrievalIntegrationTest {
         PropertyDefinition title1 = new PropertyDefinition("title1", PropertyType.STRING, "title 1");
         PropertyDefinition title2 = new PropertyDefinition("title2", PropertyType.STRING, "title 2");
 
-        PropertyGroupDefinition titleGroup = new PropertyGroupDefinition("Titles", "photo titless", Set.of(title1, title2));
+        PropertyGroupDefinition titleGroup = new PropertyGroupDefinition("Titles", "photo titles", Set.of(title1, title2));
         photoEntity.setPropertyGroups(Set.of(titleGroup));
 
         schemaManager.createEntityDefinition(photoEntity);

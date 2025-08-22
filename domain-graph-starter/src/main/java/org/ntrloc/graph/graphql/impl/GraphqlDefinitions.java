@@ -6,14 +6,16 @@ import graphql.language.ObjectTypeDefinition;
 import graphql.language.ObjectTypeExtensionDefinition;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Stream;
 
 public class GraphqlDefinitions {
 
     private List<ObjectTypeDefinition> entityObjectTypeDefinitions = new ArrayList<>();
 
-    private List<ObjectTypeDefinition> objectTypeDefinitions = new ArrayList<>();
+    private Map<String, ObjectTypeDefinition> objectTypeDefinitions = new HashMap<>();
 
     private List<InputObjectTypeDefinition> inputObjectTypeDefinitions;
 
@@ -34,7 +36,15 @@ public class GraphqlDefinitions {
     }
 
     public void addObjectTypeDefinition(ObjectTypeDefinition def) {
-        objectTypeDefinitions.add(def);
+        objectTypeDefinitions.put(def.getName(), def);
+    }
+
+    public boolean containsObjectTypeDefinition(String name) {
+        return objectTypeDefinitions.containsKey(name);
+    }
+
+    public ObjectTypeDefinition getObjectTypeDefinition(String name) {
+        return objectTypeDefinitions.get(name);
     }
 
     public void addObjectTypeExtensionDefinition(ObjectTypeExtensionDefinition def) {
@@ -42,7 +52,7 @@ public class GraphqlDefinitions {
     }
 
     public List<ObjectTypeDefinition> getObjectTypeDefinitions() {
-        return Stream.concat(entityObjectTypeDefinitions.stream(), objectTypeDefinitions.stream()).toList();
+        return Stream.concat(entityObjectTypeDefinitions.stream(), objectTypeDefinitions.values().stream()).toList();
     }
 
     public List<InputObjectTypeDefinition> getInputObjectTypeDefinitions() {

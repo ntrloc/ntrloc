@@ -23,6 +23,7 @@ import org.ntrloc.graph.graphql.GraphQLSchemaGenerator;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -94,7 +95,7 @@ public class GraphQLSchemaGeneratorImpl implements GraphQLSchemaGenerator {
 
         // create an object type for each property group
         List<ObjectTypeDefinition> propertyGroupDefinitions = entityDefinition.getPropertyGroups() == null ? List.of() :
-                entityDefinition.getPropertyGroups().stream().map(group -> getPropertyGroupTypeDefinition(entityDefinition, group)).toList();
+                entityDefinition.getPropertyGroups().stream().map(group -> getEntityPropertyGroupTypeDefinition(entityDefinition, group)).toList();
         for (ObjectTypeDefinition groupDef: propertyGroupDefinitions) {
             retDef.addObjectTypeDefinition(groupDef);
         }
@@ -125,7 +126,75 @@ public class GraphQLSchemaGeneratorImpl implements GraphQLSchemaGenerator {
                         .build();
         retDef.addObjectTypeDefinition(entityPropertiesTypeDefinition);
 
-        // create the entity object type
+
+        // create the relationship types for this entity and record the "friendly" name and GraphQL object type.
+        Map<String, String> relationshipAliasToObjectTypeMap = new HashMap<>();
+
+        for (RelationshipDefinition relationshipDefinition : relationships) {
+            ObjectTypeDefinition relationshipPropertiesType = addRelationshipPropertiesType(relationshipDefinition, retDef);
+
+            Description relationshipDescription = relationshipDefinition.getDescription() == null ? null : new Description(relationshipDefinition.getDescription(), null, false);
+
+            FieldDefinition relationshipIdField = FieldDefinition.newFieldDefinition()
+                    .name("id")
+                    .type(new TypeName("String"))
+                    .build();
+            FieldDefinition relationshipLabelField = FieldDefinition.newFieldDefinition()
+                    .name("label")
+                    .type(new TypeName("String"))
+                    .build();
+            FieldDefinition relationshipPropertiesField = FieldDefinition.newFieldDefinition()
+                    .name("properties")
+                    .type(new TypeName(relationshipPropertiesType.getName()))
+                    .build();
+
+            String relationshipBaseTypeName = getRelationshipBaseTypeName(relationshipDefinition);
+
+            String relationshipAlias;
+            String relationshipTypeName;
+            FieldDefinition sourceOrTargetField;
+            if (relationshipDefinition.getSourceEntity().equals(entityDefinition.getName())) {
+                relationshipAlias = relationshipDefinition.getSourceLabel();
+                relationshipTypeName = String.format("%sTarget",relationshipBaseTypeName);
+                sourceOrTargetField = FieldDefinition.newFieldDefinition()
+                        .name("target")
+                        .type(new TypeName(relationshipDefinition.getTargetEntity()))
+                        .build();
+            } else {
+                relationshipAlias = relationshipDefinition.getTargetLabel();
+                relationshipTypeName = String.format("%sSource",relationshipBaseTypeName);
+                sourceOrTargetField = FieldDefinition.newFieldDefinition()
+                        .name("source")
+                        .type(new TypeName(relationshipDefinition.getSourceEntity()))
+                        .build();
+            }
+            relationshipAliasToObjectTypeMap.put(relationshipAlias, relationshipTypeName);
+
+            // create the relationship base type
+            ObjectTypeDefinition relationshipObjectDefinition = ObjectTypeDefinition.newObjectTypeDefinition()
+                    .name(relationshipTypeName)
+                    .description(relationshipDescription)
+                    .fieldDefinitions(List.of(relationshipIdField, relationshipLabelField, relationshipPropertiesField, sourceOrTargetField))
+                    .build();
+            retDef.addObjectTypeDefinition(relationshipObjectDefinition);
+        }
+
+        // entity links object (contains a field for each link type)
+        List<FieldDefinition> linkFieldDefinitions = relationshipAliasToObjectTypeMap.entrySet().stream()
+                .map(entry -> {
+                    FieldDefinition def = FieldDefinition.newFieldDefinition()
+                            .name(entry.getKey())
+                            .type(new TypeName(entry.getValue()))
+                            .build();
+                    return def;
+                }).toList();
+        ObjectTypeDefinition entityLinksType = ObjectTypeDefinition.newObjectTypeDefinition()
+                .name(String.format("%sLinks", entityDefinition.getName()))
+                .fieldDefinitions(linkFieldDefinitions)
+                .build();
+        retDef.addObjectTypeDefinition(entityLinksType);
+
+        // finally, create the entity object type
         Description entityDescription = entityDefinition.getDescription() == null ? null : new Description(entityDefinition.getDescription(), null, false);
         Directive entityTypeDirective = Directive.newDirective()
                 .name(ENTITY_TYPE_DIRECTIVE_NAME)
@@ -143,19 +212,17 @@ public class GraphQLSchemaGeneratorImpl implements GraphQLSchemaGenerator {
                 .name("properties")
                 .type(new TypeName(entityPropertiesTypeDefinition.getName()))
                 .build();
+        FieldDefinition entityLinksField = FieldDefinition.newFieldDefinition()
+                .name("links")
+                .type(new TypeName(entityLinksType.getName()))
+                .build();
         ObjectTypeDefinition entityObjectDefinition = ObjectTypeDefinition.newObjectTypeDefinition()
                 .name(entityDefinition.getName())
                 .description(entityDescription)
-                .fieldDefinitions(List.of(idField, labelField, entityPropertyField))
+                .fieldDefinitions(List.of(idField, labelField, entityPropertyField, entityLinksField))
                 .directive(entityTypeDirective)
                 .build();
         retDef.addEntityObjectTypeDefinition(entityObjectDefinition);
-
-        // for each link type:
-        //      link object
-        //      link property group objects
-        //      link properties object (includes property groups)
-        // entity links object (contains a field for each link type)
     }
 
     private FieldDefinition getPropertyFieldDefinition(PropertyDefinition propertyDefinition) {
@@ -173,18 +240,83 @@ public class GraphQLSchemaGeneratorImpl implements GraphQLSchemaGenerator {
                 .build();
     }
 
-    private ObjectTypeDefinition getPropertyGroupTypeDefinition(EntityDefinition entityDefinition, PropertyGroupDefinition propertyGroupDefinition) {
+    private ObjectTypeDefinition getEntityPropertyGroupTypeDefinition(EntityDefinition entityDefinition, PropertyGroupDefinition propertyGroupDefinition) {
         Description groupDescription = propertyGroupDefinition.getDescription() == null ? null : new Description(propertyGroupDefinition.getDescription(), null, false);
-
         List<FieldDefinition> groupProperties = propertyGroupDefinition.getProperties().stream().map(this::getPropertyFieldDefinition).toList();
-
         String groupTypeName = String.format("%s%s", entityDefinition.getName(), propertyGroupDefinition.getName());
-
         return ObjectTypeDefinition.newObjectTypeDefinition()
                 .name(groupTypeName)
                 .description(groupDescription)
                 .additionalData(Map.of(
                         "originalEntity", entityDefinition.getName(),
+                        "propertyGroupName", propertyGroupDefinition.getName()
+                ))
+                .fieldDefinitions(groupProperties)
+                .build();
+    }
+
+    private String getRelationshipBaseTypeName(RelationshipDefinition relationshipDefinition) {
+        return String.format("%s%s%s",
+                relationshipDefinition.getSourceEntity(),
+                relationshipDefinition.getName(),
+                relationshipDefinition.getTargetEntity());
+    }
+
+    /*
+     * Creates the properties object type for the given relationship if it hasn't already been registered.
+     * @returns the
+     */
+    private ObjectTypeDefinition addRelationshipPropertiesType(RelationshipDefinition relationshipDefinition, GraphqlDefinitions retDef) {
+        String relationshipBaseTypeName = getRelationshipBaseTypeName(relationshipDefinition);
+        String relationshipPropertiesTypeName = String.format("%sProperties", relationshipBaseTypeName);
+
+        if (!retDef.containsObjectTypeDefinition(relationshipBaseTypeName)) {
+            // create an object type for each property group
+            List<ObjectTypeDefinition> relationshipPropertyGroupDefinitions = relationshipDefinition.getPropertyGroups() == null ? List.of() :
+                    relationshipDefinition.getPropertyGroups().stream().map(group -> getRelationshipPropertyGroupTypeDefinition(relationshipDefinition, group)).toList();
+            for (ObjectTypeDefinition groupDef: relationshipPropertyGroupDefinitions) {
+                retDef.addObjectTypeDefinition(groupDef);
+            }
+
+            // create the field definitions for the relationship properties
+            List<FieldDefinition> relationshipFieldDefinitions = relationshipDefinition.getProperties() == null ?
+                    List.of() :
+                    relationshipDefinition.getProperties().stream().map(this::getPropertyFieldDefinition).toList();
+
+            List<FieldDefinition> relationshipPropertyGroupFields = relationshipPropertyGroupDefinitions.stream().map(groupDef -> {
+                TypeName typeName = new TypeName(groupDef.getName());
+                Description groupPropertyDescription = groupDef.getDescription();
+                return FieldDefinition.newFieldDefinition()
+                        .name(groupDef.getAdditionalData().get("propertyGroupName").toLowerCase())
+                        .description(groupPropertyDescription)
+                        .type(typeName)
+                        .build();
+            }).toList();
+
+            // create an object type for the relationship properties
+            List<FieldDefinition> allRelationshipFields = new ArrayList<>();
+            allRelationshipFields.addAll(relationshipFieldDefinitions);
+            allRelationshipFields.addAll(relationshipPropertyGroupFields);
+            ObjectTypeDefinition relationshipPropertiesTypeDefinition = ObjectTypeDefinition.newObjectTypeDefinition()
+                    .name(relationshipPropertiesTypeName)
+                    .fieldDefinitions(allRelationshipFields)
+                    .build();
+            retDef.addObjectTypeDefinition(relationshipPropertiesTypeDefinition);
+            return relationshipPropertiesTypeDefinition;
+        } else {
+            return retDef.getObjectTypeDefinition(relationshipPropertiesTypeName);
+        }
+    }
+
+    private ObjectTypeDefinition getRelationshipPropertyGroupTypeDefinition(RelationshipDefinition relationshipDefinition, PropertyGroupDefinition propertyGroupDefinition) {
+        Description groupDescription = propertyGroupDefinition.getDescription() == null ? null : new Description(propertyGroupDefinition.getDescription(), null, false);
+        List<FieldDefinition> groupProperties = propertyGroupDefinition.getProperties().stream().map(this::getPropertyFieldDefinition).toList();
+        String groupTypeName = String.format("%s%s", relationshipDefinition.getName(), propertyGroupDefinition.getName());
+        return ObjectTypeDefinition.newObjectTypeDefinition()
+                .name(groupTypeName)
+                .description(groupDescription)
+                .additionalData(Map.of(
+                        "originalRelationship", relationshipDefinition.getName(),
                         "propertyGroupName", propertyGroupDefinition.getName()
                 ))
                 .fieldDefinitions(groupProperties)
