@@ -41,6 +41,8 @@ public class GraphQLPublisherImpl implements ReloadSchemaIndicator {
             publishSchema();
         });
 
+        // TODO: refreshing the schema should probably be based on a message to a
+        // cluster-wide ReliableTopic so all instances in the cluster will refresh their schemas
         schemaManager.addSchemaChangeReaction(() -> {
             LOG.info("Schema changed; publishing GraphQL schema");
             publishSchema();

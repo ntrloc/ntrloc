@@ -17,7 +17,7 @@ public class GraphqlDefinitions {
 
     private Map<String, ObjectTypeDefinition> objectTypeDefinitions = new HashMap<>();
 
-    private List<InputObjectTypeDefinition> inputObjectTypeDefinitions;
+    private List<InputObjectTypeDefinition> inputObjectTypeDefinitions = new ArrayList<>();
 
     private List<ObjectTypeExtensionDefinition> objectTypeExtensionDefinitions = new ArrayList<>();
 
@@ -27,9 +27,17 @@ public class GraphqlDefinitions {
         // no-op
     }
 
+    // -------------- Directive definitions ---------------
+
     public void addDirectiveDefinition(DirectiveDefinition def) {
         directiveDefinitions.add(def);
     }
+
+    public List<DirectiveDefinition> getDirectiveDefinitions() {
+        return directiveDefinitions;
+    }
+
+    // -------------- Object type definitions ---------------
 
     public void addEntityObjectTypeDefinition(ObjectTypeDefinition def) {
         entityObjectTypeDefinitions.add(def);
@@ -47,24 +55,28 @@ public class GraphqlDefinitions {
         return objectTypeDefinitions.get(name);
     }
 
-    public void addObjectTypeExtensionDefinition(ObjectTypeExtensionDefinition def) {
-        objectTypeExtensionDefinitions.add(def);
-    }
-
     public List<ObjectTypeDefinition> getObjectTypeDefinitions() {
         return Stream.concat(entityObjectTypeDefinitions.stream(), objectTypeDefinitions.values().stream()).toList();
     }
 
-    public List<InputObjectTypeDefinition> getInputObjectTypeDefinitions() {
-        return inputObjectTypeDefinitions == null ? List.of() : inputObjectTypeDefinitions;
+    // -------------- Object type extension definitions ---------------
+
+    public void addObjectTypeExtensionDefinition(ObjectTypeExtensionDefinition def) {
+        objectTypeExtensionDefinitions.add(def);
     }
 
     public List<ObjectTypeExtensionDefinition> getObjectTypeExtensionDefinitions() {
         return objectTypeExtensionDefinitions == null ? List.of() : objectTypeExtensionDefinitions;
     }
 
-    public List<DirectiveDefinition> getDirectiveDefinitions() {
-        return directiveDefinitions;
+    // -------------- Input object type definitions ---------------
+
+    public void addInputObjectTypeDefinition(InputObjectTypeDefinition def) {
+        inputObjectTypeDefinitions.add(def);
+    }
+
+    public List<InputObjectTypeDefinition> getInputObjectTypeDefinitions() {
+        return inputObjectTypeDefinitions == null ? List.of() : inputObjectTypeDefinitions;
     }
 
 }

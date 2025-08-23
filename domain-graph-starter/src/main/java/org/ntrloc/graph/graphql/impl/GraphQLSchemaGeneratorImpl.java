@@ -6,6 +6,7 @@ import graphql.language.Directive;
 import graphql.language.DirectiveDefinition;
 import graphql.language.DirectiveLocation;
 import graphql.language.FieldDefinition;
+import graphql.language.InputObjectTypeDefinition;
 import graphql.language.InputValueDefinition;
 import graphql.language.ListType;
 import graphql.language.NonNullType;
@@ -78,10 +79,64 @@ public class GraphQLSchemaGeneratorImpl implements GraphQLSchemaGenerator {
     }
 
     private void createEntityInputDefinitions(EntityDefinition entityDefinition, Set<RelationshipDefinition> relationships, GraphqlDefinitions retDef) {
-        // entity input object (oneOf entity create/update/delete)
+
+        // entity properties input -- used in create and update
+        List<InputValueDefinition> entityPropertyInputDefinitions = entityDefinition.getProperties() == null ?
+                List.of() :
+                entityDefinition.getProperties().stream().map(this::getPropertyInputValueDefinition).toList();
+        InputObjectTypeDefinition entityPropertiesInputType = InputObjectTypeDefinition.newInputObjectDefinition()
+                .name(String.format("%sPropertiesInput", entityDefinition.getName()))
+                .inputValueDefinitions(entityPropertyInputDefinitions)
+                .build();
+        InputValueDefinition entityPropertiesInputValue = InputValueDefinition.newInputValueDefinition()
+                .name("properties")
+                .type(new TypeName(entityPropertiesInputType.getName()))
+                .build();
+        retDef.addInputObjectTypeDefinition(entityPropertiesInputType);
+
         // entity create
+        InputObjectTypeDefinition entityCreateInputType = InputObjectTypeDefinition.newInputObjectDefinition()
+                .name(String.format("%sCreateInput", entityDefinition.getName()))
+                .inputValueDefinitions(List.of(entityPropertiesInputValue))
+                .build();
+        retDef.addInputObjectTypeDefinition(entityCreateInputType);
+        InputValueDefinition createValue = InputValueDefinition.newInputValueDefinition()
+                .name("create")
+                .type(new TypeName(entityCreateInputType.getName()))
+                .build();
+
         // entity update
+        InputObjectTypeDefinition entityUpdateInputType = InputObjectTypeDefinition.newInputObjectDefinition()
+                .name(String.format("%sUpdateInput", entityDefinition.getName()))
+                .inputValueDefinitions(List.of(entityPropertiesInputValue))
+                .build();
+        retDef.addInputObjectTypeDefinition(entityUpdateInputType);
+        InputValueDefinition updateValue = InputValueDefinition.newInputValueDefinition()
+                .name("update")
+                .type(new TypeName(entityUpdateInputType.getName()))
+                .build();
+
         // entity delete
+        InputObjectTypeDefinition entityDeleteInputType = InputObjectTypeDefinition.newInputObjectDefinition()
+                .name(String.format("%sDeleteInput", entityDefinition.getName()))
+                .inputValueDefinition(InputValueDefinition.newInputValueDefinition().name("id").type(new TypeName("String")).build())
+                .build();
+        retDef.addInputObjectTypeDefinition(entityDeleteInputType);
+        InputValueDefinition deleteValue = InputValueDefinition.newInputValueDefinition()
+                .name("delete")
+                .type(new TypeName(entityDeleteInputType.getName()))
+                .build();
+
+        // entity input object (oneOf entity create/update/delete)
+
+        InputObjectTypeDefinition entityInputObjectDefinition = InputObjectTypeDefinition.newInputObjectDefinition()
+                .name(String.format("%sInput", entityDefinition.getName()))
+                .directive(Directive.newDirective().name("oneOf").build())
+                .inputValueDefinitions(List.of(createValue, updateValue, deleteValue))
+                .build();
+        retDef.addInputObjectTypeDefinition(entityInputObjectDefinition);
+
+
         // entity properties object
         // entity links object
         // for each link type,
@@ -231,9 +286,28 @@ public class GraphQLSchemaGeneratorImpl implements GraphQLSchemaGenerator {
             case INT -> new TypeName("Int");
             default -> throw new RuntimeException("Unsupported type: " + propertyDefinition.getType());
         };
-        Description propertyDescription = propertyDefinition.getDescription() == null ? null : new Description(propertyDefinition.getDescription(), null, false);
+        Description propertyDescription = propertyDefinition.getDescription() == null ?
+                null :
+                new Description(propertyDefinition.getDescription(), null, false);
 
         return FieldDefinition.newFieldDefinition()
+                .name(propertyDefinition.getName())
+                .type(typeName)
+                .description(propertyDescription)
+                .build();
+    }
+
+    private InputValueDefinition getPropertyInputValueDefinition(PropertyDefinition propertyDefinition) {
+        TypeName typeName = switch (propertyDefinition.getType()) {
+            case STRING -> new TypeName("String");
+            case INT -> new TypeName("Int");
+            default -> throw new RuntimeException("Unsupported type: " + propertyDefinition.getType());
+        };
+        Description propertyDescription = propertyDefinition.getDescription() == null ?
+                null :
+                new Description(propertyDefinition.getDescription(), null, false);
+
+        return InputValueDefinition.newInputValueDefinition()
                 .name(propertyDefinition.getName())
                 .type(typeName)
                 .description(propertyDescription)
@@ -263,8 +337,8 @@ public class GraphQLSchemaGeneratorImpl implements GraphQLSchemaGenerator {
     }
 
     /*
-     * Creates the properties object type for the given relationship if it hasn't already been registered.
-     * @returns the
+     * Returns the properties object type for the given relationship if it hasn't already been registered,
+     * creating it first if necessary.
      */
     private ObjectTypeDefinition addRelationshipPropertiesType(RelationshipDefinition relationshipDefinition, GraphqlDefinitions retDef) {
         String relationshipBaseTypeName = getRelationshipBaseTypeName(relationshipDefinition);
@@ -343,128 +417,5 @@ public class GraphQLSchemaGeneratorImpl implements GraphQLSchemaGenerator {
     private void createMutation(GraphqlDefinitions definitions) {
 
     }
-
-    /*
-
-    @Override
-    public GraphqlDefinitions generateTypeDefinitions(Set<EntityDefinition> entityDefinitions, Set<RelationshipDefinition> relationshipDefinitions) {
-        GraphqlDefinitions retDef = new GraphqlDefinitions();
-        retDef = retDef.directiveDefinitions(getDirectiveDefinitions());
-
-        for (EntityDefinition entityDefinition: entityDefinitions) {
-
-            Set<RelationshipDefinition> relationships = relationshipDefinitions == null ?
-                    Set.of() :
-                    relationshipDefinitions.stream().filter(reldef -> reldef.getSourceEntity().equals(entityDefinition.getName()) || reldef.getTargetEntity().equals(entityDefinition.getName())).collect(Collectors.toSet());
-
-            GraphqlDefinitions definition = getGraphqlDefinitions(entityDefinition, relationships);
-            retDef = retDef.merge(definition);
-        }
-
-        return retDef;
-    }
-
-    private GraphqlDefinitions getGraphqlDefinitions(EntityDefinition entityDefinition, Set<RelationshipDefinition> relationshipDefinitions) {
-        List<ObjectTypeDefinition> objectTypeDefinitions = new ArrayList<>();
-
-
-
-
-        // create types and fields for the relationships
-        for (RelationshipDefinition rel: relationshipDefinitions) {
-            var relationshipObjectDefinition = getRelationshipObjectDefinition(entityDefinition, rel);
-            objectTypeDefinitions.add(relationshipObjectDefinition);
-        }
-
-        ArrayList<InputValueDefinition> inputValueDefinitions = new ArrayList<>();
-        Set<PropertyDefinition> entityProps = entityDefinition.getProperties();
-        inputValueDefinitions.addAll(entityProps == null ? Set.of() : entityProps.stream().map(this::getInputValueDefinition).toList());
-
-        Set<PropertyGroupDefinition> propertyGroups = entityDefinition.getPropertyGroups();
-        inputValueDefinitions.addAll(propertyGroups == null ? Set.of() : propertyGroups.stream().flatMap(group -> group.getProperties().stream()).map(this::getInputValueDefinition).toList());
-
-        InputObjectTypeDefinition entityInputObjectDefinition = InputObjectTypeDefinition.newInputObjectDefinition()
-                .name(String.format("%sInput", entityDefinition.getName()))
-                .description(entityDescription)
-                .additionalData(Map.of(
-                        "originalEntity", entityDefinition.getName()
-                ))
-                .inputValueDefinitions(inputValueDefinitions)
-                .build();
-
-
-        return new GraphqlDefinitions().objectTypes(objectTypeDefinitions).inputObjectTypes(List.of(entityInputObjectDefinition));
-    }
-
-    private ObjectTypeDefinition getRelationshipObjectDefinition(EntityDefinition entityDefinition, RelationshipDefinition relationshipDefinition) {
-
-        var inboundRelationship = relationshipDefinition.getTargetEntity().equals(entityDefinition.getName());
-
-        List<FieldDefinition> relationshipFields = new ArrayList<>();
-
-        FieldDefinition entityRelationshipPropertiesField = FieldDefinition.newFieldDefinition()
-                .name("properties")
-                .type(new NonNullType(new ListType(new NonNullType(new TypeName("String"))))) // TODO: this should be the actual relationship properties type
-                .build();
-        relationshipFields.add(entityRelationshipPropertiesField);
-
-        String relationshipTypeName;
-        if (inboundRelationship) {
-            relationshipTypeName = String.format("%s%s%s", relationshipDefinition.getTargetEntity(), relationshipDefinition.getTargetLabel(), relationshipDefinition.getSourceEntity());
-            FieldDefinition entityRelationshipFromField = FieldDefinition.newFieldDefinition()
-                    .name("from")
-                    .type(new NonNullType(new TypeName(relationshipDefinition.getSourceEntity())))
-                    .build();
-            relationshipFields.add(entityRelationshipFromField);
-        } else {
-            relationshipTypeName = String.format("%s%s%s", relationshipDefinition.getSourceEntity(), relationshipDefinition.getSourceLabel(), relationshipDefinition.getTargetEntity());
-            FieldDefinition entityRelationshipToField = FieldDefinition.newFieldDefinition()
-                    .name("to")
-                    .type(new NonNullType(new TypeName(relationshipDefinition.getTargetEntity())))
-                    .build();
-            relationshipFields.add(entityRelationshipToField);
-        }
-
-        ObjectTypeDefinition relationshipObjectDefinition = ObjectTypeDefinition.newObjectTypeDefinition()
-                .name(relationshipTypeName)
-                .description(relationshipDefinition.getDescription() == null ? null : new Description(relationshipDefinition.getDescription(), null, false))
-                .fieldDefinitions(relationshipFields)
-                //.directive(entityTypeDirective)
-                .build();
-
-
-        return relationshipObjectDefinition;
-
-    }
-
-
-
-    private InputValueDefinition getInputValueDefinition(PropertyDefinition propertyDefinition) {
-        TypeName typeName = switch (propertyDefinition.getType()) {
-            case STRING -> new TypeName("String");
-            case INT -> new TypeName("Int");
-            default -> throw new RuntimeException("Unsupported type: " + propertyDefinition.getType());
-        };
-        Description propertyDescription = propertyDefinition.getDescription() == null ? null : new Description(propertyDefinition.getDescription(), null, false);
-
-        return InputValueDefinition.newInputValueDefinition()
-                .name(propertyDefinition.getName())
-                .type(typeName)
-                .description(propertyDescription)
-                .build();
-    }
-
-    private InputValueDefinition getInputValueDefinition(InputObjectTypeDefinition inputObjectTypeDefinition) {
-        String originalPropertyGroupName = inputObjectTypeDefinition.getAdditionalData().get("propertyGroupName");
-        return InputValueDefinition.newInputValueDefinition()
-                .name(originalPropertyGroupName == null ? inputObjectTypeDefinition.getName() : originalPropertyGroupName)
-                .type(new TypeName(inputObjectTypeDefinition.getName()))
-                .description(inputObjectTypeDefinition.getDescription())
-                .build();
-    }
-
-
-
-     */
 
 }
