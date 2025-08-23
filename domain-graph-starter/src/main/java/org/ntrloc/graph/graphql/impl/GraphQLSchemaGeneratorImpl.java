@@ -1,6 +1,7 @@
 package org.ntrloc.graph.graphql.impl;
 
 import graphql.language.Argument;
+import graphql.language.BooleanValue;
 import graphql.language.Description;
 import graphql.language.Directive;
 import graphql.language.DirectiveDefinition;
@@ -41,7 +42,8 @@ public class GraphQLSchemaGeneratorImpl implements GraphQLSchemaGenerator {
         GraphqlDefinitions retDef = new GraphqlDefinitions();
 
         createDirectiveDefinitions(retDef);
-        createMatcherDefinitions(retDef);
+
+        createMatcherInputTypes(retDef);
 
         for (EntityDefinition entityDefinition: entityDefinitions) {
             Set<RelationshipDefinition> relationships = relationshipDefinitions == null ?
@@ -66,7 +68,56 @@ public class GraphQLSchemaGeneratorImpl implements GraphQLSchemaGenerator {
         definitions.addDirectiveDefinition(entityTypeDirectiveDefinition);
     }
 
-    private void createMatcherDefinitions(GraphqlDefinitions definitions) {
+    private void createMatcherInputTypes(GraphqlDefinitions definitions) {
+        var allMatcherInput = InputObjectTypeDefinition.newInputObjectDefinition()
+                .name("AllMatcherInput")
+                .inputValueDefinition(InputValueDefinition.newInputValueDefinition().name("matchAll").type(new TypeName("Boolean")).defaultValue(BooleanValue.of(true)).build())
+                .build();
+        definitions.addInputObjectTypeDefinition(allMatcherInput);
+
+        var propertyMatcherInput = InputObjectTypeDefinition.newInputObjectDefinition()
+                .name("PropertyMatcherInput")
+                .inputValueDefinition(InputValueDefinition.newInputValueDefinition().name("name").type(new TypeName("String")).build())
+                .build();
+        definitions.addInputObjectTypeDefinition(propertyMatcherInput);
+
+        var propertyValueMatcherInput = InputObjectTypeDefinition.newInputObjectDefinition()
+                .name("PropertyValueMatcherInput")
+                .inputValueDefinitions(List.of(
+                        InputValueDefinition.newInputValueDefinition().name("name").type(new TypeName("String")).build(),
+                        InputValueDefinition.newInputValueDefinition().name("value").type(new TypeName("String")).build()
+                ))
+                .build();
+        definitions.addInputObjectTypeDefinition(propertyValueMatcherInput);
+
+        InputValueDefinition clauseValue = InputValueDefinition.newInputValueDefinition().name("clauses").type(new ListType(new NonNullType(new TypeName("MatcherInput")))).build();
+
+        var andMatcherInput = InputObjectTypeDefinition.newInputObjectDefinition()
+                .name("AndMatcherInput")
+                .inputValueDefinition(clauseValue)
+                .build();
+        definitions.addInputObjectTypeDefinition(andMatcherInput);
+
+        var orMatcherInput = InputObjectTypeDefinition.newInputObjectDefinition()
+                .name("OrMatcherInput")
+                .inputValueDefinition(clauseValue)
+                .build();
+        definitions.addInputObjectTypeDefinition(orMatcherInput);
+
+        var idMatcherValue = InputValueDefinition.newInputValueDefinition().type(new TypeName("String")).name("id").build();
+        var refMatcherValue = InputValueDefinition.newInputValueDefinition().type(new TypeName("String")).name("ref").build();
+        var allMatcherValue = InputValueDefinition.newInputValueDefinition().type(new TypeName("AllMatcherInput")).name("all").build();
+        var propertyMatcherValue = InputValueDefinition.newInputValueDefinition().type(new TypeName("PropertyMatcherInput")).name("property").build();
+        var propertyValueMatcherValue = InputValueDefinition.newInputValueDefinition().type(new TypeName("PropertyValueMatcherInput")).name("propertyValue").build();
+        var andValueMatcherValue = InputValueDefinition.newInputValueDefinition().type(new TypeName("AndMatcherInput")).name("and").build();
+        var orValueMatcherValue = InputValueDefinition.newInputValueDefinition().type(new TypeName("OrMatcherInput")).name("or").build();
+
+        var matcherInput = InputObjectTypeDefinition.newInputObjectDefinition()
+                .name("MatcherInput")
+                .directive(Directive.newDirective().name("oneOf").build())
+                .inputValueDefinitions(List.of(idMatcherValue, refMatcherValue, allMatcherValue, propertyMatcherValue, propertyValueMatcherValue, andValueMatcherValue, orValueMatcherValue))
+                .build();
+        definitions.addInputObjectTypeDefinition(matcherInput);
 
     }
 
@@ -128,7 +179,6 @@ public class GraphQLSchemaGeneratorImpl implements GraphQLSchemaGenerator {
                 .build();
 
         // entity input object (oneOf entity create/update/delete)
-
         InputObjectTypeDefinition entityInputObjectDefinition = InputObjectTypeDefinition.newInputObjectDefinition()
                 .name(String.format("%sInput", entityDefinition.getName()))
                 .directive(Directive.newDirective().name("oneOf").build())
@@ -136,8 +186,6 @@ public class GraphQLSchemaGeneratorImpl implements GraphQLSchemaGenerator {
                 .build();
         retDef.addInputObjectTypeDefinition(entityInputObjectDefinition);
 
-
-        // entity properties object
         // entity links object
         // for each link type,
         //      entity link create
