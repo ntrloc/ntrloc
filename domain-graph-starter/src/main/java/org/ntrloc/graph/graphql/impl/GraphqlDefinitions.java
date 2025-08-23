@@ -17,7 +17,7 @@ public class GraphqlDefinitions {
 
     private Map<String, ObjectTypeDefinition> objectTypeDefinitions = new HashMap<>();
 
-    private List<InputObjectTypeDefinition> inputObjectTypeDefinitions = new ArrayList<>();
+    private Map<String, InputObjectTypeDefinition> inputObjectTypeDefinitionMap = new HashMap<>();
 
     private List<ObjectTypeExtensionDefinition> objectTypeExtensionDefinitions = new ArrayList<>();
 
@@ -72,11 +72,15 @@ public class GraphqlDefinitions {
     // -------------- Input object type definitions ---------------
 
     public void addInputObjectTypeDefinition(InputObjectTypeDefinition def) {
-        inputObjectTypeDefinitions.add(def);
+        inputObjectTypeDefinitionMap.put(def.getName(), def);
+    }
+
+    public boolean containsInputObjectTypeDefinition(String name) {
+        return inputObjectTypeDefinitionMap.containsKey(name);
     }
 
     public List<InputObjectTypeDefinition> getInputObjectTypeDefinitions() {
-        return inputObjectTypeDefinitions == null ? List.of() : inputObjectTypeDefinitions;
+        return inputObjectTypeDefinitionMap.values().stream().toList();
     }
 
 }
