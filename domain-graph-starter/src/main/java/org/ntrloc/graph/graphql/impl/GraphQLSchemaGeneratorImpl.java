@@ -41,8 +41,10 @@ public class GraphQLSchemaGeneratorImpl implements GraphQLSchemaGenerator {
     public GraphqlDefinitions generateTypeDefinitions(Set<EntityDefinition> entityDefinitions, Set<RelationshipDefinition> relationshipDefinitions) {
         GraphqlDefinitions retDef = new GraphqlDefinitions();
 
+        // Global directive definitions
         createDirectiveDefinitions(retDef);
 
+        // Global matcher input types
         createMatcherInputTypes(retDef);
 
         for (EntityDefinition entityDefinition: entityDefinitions) {
@@ -130,67 +132,15 @@ public class GraphQLSchemaGeneratorImpl implements GraphQLSchemaGenerator {
     }
 
     private void createEntityInputDefinitions(EntityDefinition entityDefinition, Set<RelationshipDefinition> relationships, GraphqlDefinitions retDef) {
-
-        // entity properties input -- used in create and update
-        List<InputValueDefinition> entityPropertyInputDefinitions = entityDefinition.getProperties() == null ?
-                List.of() :
-                entityDefinition.getProperties().stream().map(this::getPropertyInputValueDefinition).toList();
-        InputObjectTypeDefinition entityPropertiesInputType = InputObjectTypeDefinition.newInputObjectDefinition()
-                .name(String.format("%sPropertiesInput", entityDefinition.getName()))
-                .inputValueDefinitions(entityPropertyInputDefinitions)
-                .build();
-        InputValueDefinition entityPropertiesInputValue = InputValueDefinition.newInputValueDefinition()
-                .name("properties")
-                .type(new TypeName(entityPropertiesInputType.getName()))
-                .build();
-        retDef.addInputObjectTypeDefinition(entityPropertiesInputType);
-
-        // entity create
-        InputObjectTypeDefinition entityCreateInputType = InputObjectTypeDefinition.newInputObjectDefinition()
-                .name(String.format("%sCreateInput", entityDefinition.getName()))
-                .inputValueDefinitions(List.of(entityPropertiesInputValue))
-                .build();
-        retDef.addInputObjectTypeDefinition(entityCreateInputType);
-        InputValueDefinition createValue = InputValueDefinition.newInputValueDefinition()
-                .name("create")
-                .type(new TypeName(entityCreateInputType.getName()))
-                .build();
-
-        // entity update
-        InputObjectTypeDefinition entityUpdateInputType = InputObjectTypeDefinition.newInputObjectDefinition()
-                .name(String.format("%sUpdateInput", entityDefinition.getName()))
-                .inputValueDefinitions(List.of(entityPropertiesInputValue))
-                .build();
-        retDef.addInputObjectTypeDefinition(entityUpdateInputType);
-        InputValueDefinition updateValue = InputValueDefinition.newInputValueDefinition()
-                .name("update")
-                .type(new TypeName(entityUpdateInputType.getName()))
-                .build();
-
-        // entity delete
-        InputObjectTypeDefinition entityDeleteInputType = InputObjectTypeDefinition.newInputObjectDefinition()
-                .name(String.format("%sDeleteInput", entityDefinition.getName()))
-                .inputValueDefinition(InputValueDefinition.newInputValueDefinition().name("id").type(new TypeName("String")).build())
-                .build();
-        retDef.addInputObjectTypeDefinition(entityDeleteInputType);
-        InputValueDefinition deleteValue = InputValueDefinition.newInputValueDefinition()
-                .name("delete")
-                .type(new TypeName(entityDeleteInputType.getName()))
-                .build();
-
-        // entity input object (oneOf entity create/update/delete)
-        InputObjectTypeDefinition entityInputObjectDefinition = InputObjectTypeDefinition.newInputObjectDefinition()
-                .name(String.format("%sInput", entityDefinition.getName()))
-                .directive(Directive.newDirective().name("oneOf").build())
-                .inputValueDefinitions(List.of(createValue, updateValue, deleteValue))
-                .build();
-        retDef.addInputObjectTypeDefinition(entityInputObjectDefinition);
-
-        List<RelationshipDefinition> outboundRelationships = relationships.stream().filter(rel -> rel.getSourceEntity().equals(entityDefinition.getName())).toList();
-
-
-        List<String> linkModificationTypeNames = outboundRelationships.stream().map(rel -> getEntityLinkModificationInputTypeName(rel, retDef)).toList();
-
+        EntityInputTypes entityInputTypes = new EntityInputTypes(entityDefinition, relationships);
+        List<InputObjectTypeDefinition> entityInputTypeDefs = entityInputTypes.getEntityInputTypes();
+        for (InputObjectTypeDefinition def: entityInputTypeDefs) {
+            retDef.addInputObjectTypeDefinition(def);
+        }
+        List<InputObjectTypeDefinition> relationshipInputTypeDefs = entityInputTypes.getRelationshipInputTypes();
+        for (InputObjectTypeDefinition def: relationshipInputTypeDefs) {
+            retDef.addInputObjectTypeDefinition(def);
+        }
     }
 
     private void createEntityOutputDefinitions(EntityDefinition entityDefinition, Set<RelationshipDefinition> relationships, GraphqlDefinitions retDef) {
@@ -338,91 +288,6 @@ public class GraphQLSchemaGeneratorImpl implements GraphQLSchemaGenerator {
                 new Description(propertyDefinition.getDescription(), null, false);
 
         return FieldDefinition.newFieldDefinition()
-                .name(propertyDefinition.getName())
-                .type(typeName)
-                .description(propertyDescription)
-                .build();
-    }
-
-    private String getEntityLinkPropertiesInputTypeName(RelationshipDefinition relationshipDefinition, GraphqlDefinitions retDef) {
-        String linkPropertiesTypeName = String.format("%s%s%sLinkProperties", relationshipDefinition.getName(), relationshipDefinition.getSourceLabel(), relationshipDefinition.getTargetLabel());
-        if (!retDef.containsInputObjectTypeDefinition(linkPropertiesTypeName)) {
-            List<InputValueDefinition> linkPropertyInputDefinitions = relationshipDefinition.getProperties() == null ?
-                    List.of() :
-                    relationshipDefinition.getProperties().stream().map(this::getPropertyInputValueDefinition).toList();
-            InputObjectTypeDefinition linkPropertiesInputType = InputObjectTypeDefinition.newInputObjectDefinition()
-                    .name(linkPropertiesTypeName)
-                    .inputValueDefinitions(linkPropertyInputDefinitions)
-                    .build();
-            retDef.addInputObjectTypeDefinition(linkPropertiesInputType);
-        }
-        return linkPropertiesTypeName;
-    }
-
-    private String getEntityLinkModificationInputTypeName(RelationshipDefinition relationshipDefinition, GraphqlDefinitions retDef) {
-        // each relationship type gets a properties object input type
-        String relationshipPropertiesTypeName = getEntityLinkPropertiesInputTypeName(relationshipDefinition, retDef);
-
-        InputValueDefinition matchDefinition = InputValueDefinition.newInputValueDefinition()
-                .type(new TypeName("MatcherInput"))
-                .name("target")
-                .build();
-        InputValueDefinition propertiesDefinition = InputValueDefinition.newInputValueDefinition()
-                .name("properties")
-                .type(new TypeName(relationshipPropertiesTypeName))
-                .build();
-
-        // link create input
-        String linkCreateType = String.format("%s%s%sLinkCreateInput", relationshipDefinition.getSourceEntity(), relationshipDefinition.getSourceLabel(), relationshipDefinition.getTargetEntity());
-        InputObjectTypeDefinition linkCreateInputType = InputObjectTypeDefinition.newInputObjectDefinition()
-                .name(linkCreateType)
-                .inputValueDefinitions(List.of(matchDefinition, propertiesDefinition))
-                .build();
-        retDef.addInputObjectTypeDefinition(linkCreateInputType);
-
-        // link update input
-        String linkUpdateType = String.format("%s%s%sLinkUpdateInput", relationshipDefinition.getSourceEntity(), relationshipDefinition.getSourceLabel(), relationshipDefinition.getTargetEntity());
-        InputObjectTypeDefinition linkUpdateInputType = InputObjectTypeDefinition.newInputObjectDefinition()
-                .name(linkUpdateType)
-                .inputValueDefinitions(List.of(matchDefinition, propertiesDefinition))
-                .build();
-        retDef.addInputObjectTypeDefinition(linkUpdateInputType);
-
-        // link delete input
-        String linkDeleteType = String.format("%s%s%sLinkDeleteInput", relationshipDefinition.getSourceEntity(), relationshipDefinition.getSourceLabel(), relationshipDefinition.getTargetEntity());
-        InputObjectTypeDefinition linkDeleteInputType = InputObjectTypeDefinition.newInputObjectDefinition()
-                .name(linkDeleteType)
-                .inputValueDefinitions(List.of(matchDefinition))
-                .build();
-        retDef.addInputObjectTypeDefinition(linkDeleteInputType);
-
-        // link modification input (oneOf create, update, or delete)
-        String linkModificationType = String.format("%s%s%sLinkModificationInput", relationshipDefinition.getSourceEntity(), relationshipDefinition.getSourceLabel(), relationshipDefinition.getTargetEntity());
-        InputObjectTypeDefinition linkModificationInputType = InputObjectTypeDefinition.newInputObjectDefinition()
-                .name(linkModificationType)
-                .directive(Directive.newDirective().name("oneOf").build())
-                .inputValueDefinitions(List.of(
-                        InputValueDefinition.newInputValueDefinition().name("create").type(new TypeName(linkCreateType)).build(),
-                        InputValueDefinition.newInputValueDefinition().name("update").type(new TypeName(linkUpdateType)).build(),
-                        InputValueDefinition.newInputValueDefinition().name("delete").type(new TypeName(linkDeleteType)).build()
-                ))
-                .build();
-        retDef.addInputObjectTypeDefinition(linkModificationInputType);
-
-        return linkModificationType;
-    }
-
-    private InputValueDefinition getPropertyInputValueDefinition(PropertyDefinition propertyDefinition) {
-        TypeName typeName = switch (propertyDefinition.getType()) {
-            case STRING -> new TypeName("String");
-            case INT -> new TypeName("Int");
-            default -> throw new RuntimeException("Unsupported type: " + propertyDefinition.getType());
-        };
-        Description propertyDescription = propertyDefinition.getDescription() == null ?
-                null :
-                new Description(propertyDefinition.getDescription(), null, false);
-
-        return InputValueDefinition.newInputValueDefinition()
                 .name(propertyDefinition.getName())
                 .type(typeName)
                 .description(propertyDescription)

@@ -75,10 +75,6 @@ public class GraphqlDefinitions {
         inputObjectTypeDefinitionMap.put(def.getName(), def);
     }
 
-    public boolean containsInputObjectTypeDefinition(String name) {
-        return inputObjectTypeDefinitionMap.containsKey(name);
-    }
-
     public List<InputObjectTypeDefinition> getInputObjectTypeDefinitions() {
         return inputObjectTypeDefinitionMap.values().stream().toList();
     }
