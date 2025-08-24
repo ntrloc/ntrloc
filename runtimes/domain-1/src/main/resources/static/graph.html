@@ -180,11 +180,11 @@
     outgoingNodeLinks = Object.groupBy(graphData.links, link => link.source);
     incomingNodeLinks = Object.groupBy(graphData.links, link => link.target);
 
-    for (node of graphData.nodes) {
+    for (let node of graphData.nodes) {
         let type = node.type;
         nodeTypes.add(type);
     }
-    for (nodeType of nodeTypes) {
+    for (let nodeType of nodeTypes) {
         typeColors[nodeType] = getRandomColor();
     }
 
@@ -463,7 +463,7 @@
         latestNode = node;
 
         // node label
-        nodeText = node.append("text").attr("class", "nodeLabel");
+        let nodeText = node.append("text").attr("class", "nodeLabel");
 
         nodeText
             .append("tspan")
