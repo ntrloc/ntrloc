@@ -174,13 +174,21 @@ class MutationRetrievalIntegrationTest {
 				    execute {
                         Photo(inputs: [
                             { create: { ref: "newPhoto" properties: { name: "photo1" } } },
-                            { update: { where: { id: "1234" } properties: { name: "photo12" } } }
+                            { update: { where: { id: "1234" } properties: { name: null } } }
                         ]) {
                             id
                             properties { name }
                         }
+   
                         Photographer(inputs: [
-                            { create: { properties: { name: "Bill" } } }
+                            {
+                                create: {
+                                    properties: { name: "Bill" }
+                                    links: {
+                                        created: { target: { ref: "newPhoto" } properties: { count: 2 } }
+                                    }
+                                }
+                            }
                         ]) {
                             id
                             properties { name }

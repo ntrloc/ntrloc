@@ -89,6 +89,7 @@ public class EntityInputTypesGenerator {
     }
 
     private void parseEntityInputTypes(EntityDefinition entityDefinition, Set<RelationshipDefinition> relationships) {
+
         // entity properties input -- used in create and update
         List<InputValueDefinition> entityPropertyInputDefinitions = entityDefinition.getProperties() == null ?
                 List.of() :
@@ -103,56 +104,12 @@ public class EntityInputTypesGenerator {
                 .type(new TypeName(entityPropertiesInputType.getName()))
                 .build();
 
-        InputValueDefinition referenceValueDefinition = InputValueDefinition.newInputValueDefinition()
-                .name("ref")
-                .type(new TypeName("String"))
-                .build();
-
         InputValueDefinition whereDefinition = InputValueDefinition.newInputValueDefinition()
                 .name("where")
                 .type(new TypeName("MatcherInput"))
                 .build();
 
-        // entity create
-        entityCreateInputType = InputObjectTypeDefinition.newInputObjectDefinition()
-                .name(String.format("%sCreateInput", entityDefinition.getName()))
-                .inputValueDefinitions(List.of(referenceValueDefinition, entityPropertiesInputValueDefinition))
-                .build();
-
-        InputValueDefinition createValue = InputValueDefinition.newInputValueDefinition()
-                .name("create")
-                .type(new TypeName(entityCreateInputType.getName()))
-                .build();
-
-        // entity update
-        entityUpdateInputType = InputObjectTypeDefinition.newInputObjectDefinition()
-                .name(String.format("%sUpdateInput", entityDefinition.getName()))
-                .inputValueDefinitions(List.of(referenceValueDefinition, whereDefinition, entityPropertiesInputValueDefinition))
-                .build();
-
-        InputValueDefinition updateValue = InputValueDefinition.newInputValueDefinition()
-                .name("update")
-                .type(new TypeName(entityUpdateInputType.getName()))
-                .build();
-
-        // entity delete
-        entityDeleteInputType = InputObjectTypeDefinition.newInputObjectDefinition()
-                .name(String.format("%sDeleteInput", entityDefinition.getName()))
-                .inputValueDefinition(whereDefinition)
-                .build();
-
-        InputValueDefinition deleteValue = InputValueDefinition.newInputValueDefinition()
-                .name("delete")
-                .type(new TypeName(entityDeleteInputType.getName()))
-                .build();
-
-        // entity input object (oneOf entity create/update/delete)
-        entityAnyOperationInputType = InputObjectTypeDefinition.newInputObjectDefinition()
-                .name(String.format("%sInput", entityDefinition.getName()))
-                .directive(Directive.newDirective().name("oneOf").build())
-                .inputValueDefinitions(List.of(createValue, updateValue, deleteValue))
-                .build();
-
+        // define the link types that can be used in entity creation and update
         List<RelationshipDefinition> outboundRelationships = relationships.stream().filter(rel -> rel.getSourceEntity().equals(entityDefinition.getName())).toList();
         outboundRelationshipInputTypeGenerators = outboundRelationships.stream().map(RelationshipInputTypesGenerator::new).toList();
 
@@ -191,6 +148,70 @@ public class EntityInputTypesGenerator {
                     .inputValueDefinitions(linkUpdateValues)
                     .build();
         }
+
+
+        // entity create
+        List<InputValueDefinition> entityCreateInputValues = new ArrayList<>();
+        InputValueDefinition referenceValueDefinition = InputValueDefinition.newInputValueDefinition()
+                .name("ref")
+                .type(new TypeName("String"))
+                .build();
+        entityCreateInputValues.addAll(List.of(referenceValueDefinition, entityPropertiesInputValueDefinition));
+        if (linkCreateInputType != null) {
+            entityCreateInputValues.add(InputValueDefinition.newInputValueDefinition()
+                    .name("links")
+                    .type(new ListType(new NonNullType(new TypeName(linkCreateInputType.getName()))))
+                    .build());
+        }
+        entityCreateInputType = InputObjectTypeDefinition.newInputObjectDefinition()
+                .name(String.format("%sCreateInput", entityDefinition.getName()))
+                .inputValueDefinitions(entityCreateInputValues)
+                .build();
+
+        InputValueDefinition createValue = InputValueDefinition.newInputValueDefinition()
+                .name("create")
+                .type(new TypeName(entityCreateInputType.getName()))
+                .build();
+
+        // entity update
+        List<InputValueDefinition> entityUpdateInputValues = new ArrayList<>();
+        entityUpdateInputValues.addAll(List.of(whereDefinition, entityPropertiesInputValueDefinition));
+        if (linkUpdateInputType != null) {
+            entityUpdateInputValues.add(InputValueDefinition.newInputValueDefinition()
+                    .name("links")
+                    .type(new ListType(new NonNullType(new TypeName(linkUpdateInputType.getName()))))
+                    .build());
+        }
+
+        entityUpdateInputType = InputObjectTypeDefinition.newInputObjectDefinition()
+                .name(String.format("%sUpdateInput", entityDefinition.getName()))
+                .inputValueDefinitions(entityUpdateInputValues)
+                .build();
+
+        InputValueDefinition updateValue = InputValueDefinition.newInputValueDefinition()
+                .name("update")
+                .type(new TypeName(entityUpdateInputType.getName()))
+                .build();
+
+        // entity delete
+        entityDeleteInputType = InputObjectTypeDefinition.newInputObjectDefinition()
+                .name(String.format("%sDeleteInput", entityDefinition.getName()))
+                .inputValueDefinition(whereDefinition)
+                .build();
+
+        InputValueDefinition deleteValue = InputValueDefinition.newInputValueDefinition()
+                .name("delete")
+                .type(new TypeName(entityDeleteInputType.getName()))
+                .build();
+
+        // entity input object (oneOf entity create/update/delete)
+        entityAnyOperationInputType = InputObjectTypeDefinition.newInputObjectDefinition()
+                .name(String.format("%sInput", entityDefinition.getName()))
+                .directive(Directive.newDirective().name("oneOf").build())
+                .inputValueDefinitions(List.of(createValue, updateValue, deleteValue))
+                .build();
+
+
 
     }
 
