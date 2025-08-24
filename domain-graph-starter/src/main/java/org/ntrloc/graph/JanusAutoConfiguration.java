@@ -5,50 +5,53 @@ import org.apache.logging.log4j.Logger;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversalSource;
 import org.janusgraph.core.JanusGraph;
 import org.janusgraph.core.JanusGraphFactory;
-import org.ntrloc.graph.db.GraphConfiguration;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.ntrloc.graph.db.config.BerkeleyStorageConfiguration;
+import org.ntrloc.graph.db.config.CassandraStorageBackend;
+import org.ntrloc.graph.db.config.IndexConfiguration;
+import org.ntrloc.graph.db.config.LuceneIndexConfiguration;
+import org.ntrloc.graph.db.config.StorageConfiguration;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
-@EnableConfigurationProperties(GraphConfiguration.class)
+@EnableConfigurationProperties({StorageConfiguration.class, IndexConfiguration.class})
 public class JanusAutoConfiguration {
 
     private static final Logger LOG = LogManager.getLogger(JanusAutoConfiguration.class);
 
-    @Bean
-    @ConditionalOnProperty(value = "graph.backend", havingValue = "berkeley")
-    public JanusGraph berkeleyGraph() {
-        LOG.info("Initializing Berkeley graph");
-        return JanusGraphFactory.build()
-                .set("storage.backend", "berkeleyje")
-                .set("storage.directory", "db/berkeleyje")
-                .set("index.search.backend", "lucene")
-                .set("index.search.directory", "db/lucene")
-                .open();
+    private StorageConfiguration storageConfiguration;
+    private IndexConfiguration indexConfiguration;
+
+    public JanusAutoConfiguration(StorageConfiguration storageConfiguration, IndexConfiguration indexConfiguration) {
+        this.storageConfiguration = storageConfiguration;
+        this.indexConfiguration = indexConfiguration;
     }
 
     @Bean
-    @ConditionalOnProperty(value = "graph.backend", havingValue = "cassandra")
-    public JanusGraph cassandraGraph() {
-        LOG.info("Initializing Cassandra graph");
-        return JanusGraphFactory.build().
-                set("storage.backend", "cql")
-                .set("storage.hostname", "localhost")
-                .open();
-    }
+    public JanusGraph graph() {
+        JanusGraphFactory.Builder builder = JanusGraphFactory.build();
+        if (storageConfiguration.getBerkeley() != null) {
+            BerkeleyStorageConfiguration berkeley = storageConfiguration.getBerkeley();
+            builder = builder.set("storage.backend", "berkeleyje")
+                    .set("storage.directory", berkeley.getDirectory());
+        } else if (storageConfiguration.getCassandra() != null) {
+            CassandraStorageBackend cassandra = storageConfiguration.getCassandra();
+            builder = builder.set("storage.backend", "cql")
+                .set("storage.hostname", cassandra.getHost());
+        } else {
+            LOG.warn("No storage backend configured, using in-memory storage");
+            builder = builder.set("storage.backend", "inmemory");
+        }
 
-    @Bean
-    @ConditionalOnMissingBean(JanusGraph.class)
-    public JanusGraph inMemoryGraph() {
-        LOG.info("Initializing in-memory graph");
-        return JanusGraphFactory.build()
-                .set("storage.backend", "inmemory")
-                .set("index.search.backend", "lucene")
-                .set("index.search.directory", "db/lucene")
-                .open();
+        if (indexConfiguration.getLucene() != null) {
+            LuceneIndexConfiguration lucene = indexConfiguration.getLucene();
+            builder = builder.set("index.search.backend", "lucene")
+                .set("index.search.directory", lucene.getDirectory());
+        } else {
+            throw new RuntimeException("No index backend configured");
+        }
+        return builder.open();
     }
 
     @Bean

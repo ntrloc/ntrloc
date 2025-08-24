@@ -67,8 +67,8 @@ class MutationRetrievalIntegrationTest {
                   main.web-application-type: reactive
                   graphql.schema.printer.enabled: true
                 
-                storage.backend: inmemory
                 cache.tx-cache-size: 0
+                graph.index.lucene.directory: target/db/lucene
                 
                 binary:
                   storage:
@@ -86,8 +86,7 @@ class MutationRetrievalIntegrationTest {
         flattenYamlProperties("", map, registry);
     }
 
-    private static void flattenYamlProperties(String prefix, Map<String, Object> properties,
-                                              DynamicPropertyRegistry registry) {
+    private static void flattenYamlProperties(String prefix, Map<String, Object> properties, DynamicPropertyRegistry registry) {
         properties.forEach((key, value) -> {
             String fullKey = prefix.isEmpty() ? key : prefix + "." + key;
             if (value instanceof Map) {

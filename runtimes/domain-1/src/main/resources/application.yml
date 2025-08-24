@@ -27,7 +27,12 @@ management:
 
 graph:
   domainName: domain-1
-  backend: berkeley
+  storage:
+    berkeley:
+      directory: target/db/berkeleyje
+  index:
+    lucene:
+      directory: target/db/lucene
 
 binary:
   storage:
