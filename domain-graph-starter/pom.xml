@@ -16,7 +16,7 @@
         <maven.compiler.target>21</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
-        <commons.lang3.version>3.13.0</commons.lang3.version>
+        <commons.lang3.version>3.18.0</commons.lang3.version>
         <hazelcast.version>5.5.0</hazelcast.version>
         <janusgraph.version>1.2.0-20250219-143145.6c030f7</janusgraph.version>
         <jte.version>3.1.16</jte.version>
