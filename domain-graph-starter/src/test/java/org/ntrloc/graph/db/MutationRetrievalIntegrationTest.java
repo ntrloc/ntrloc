@@ -169,12 +169,37 @@ class MutationRetrievalIntegrationTest {
         var schema = RestClient.create().get().uri("http://localhost:" + port + "/graphql/schema").retrieve().body(String.class);
         LOG.info("Schema: {}", schema);
 
-        LOG.info("Running query");
-        String query = "{ Photo { properties { name } } } ";
+        var mutation = """
+				mutation Mutation {
+				    execute {
+                        Photo(inputs: [
+                            { create: { ref: "newPhoto" properties: { name: "photo1" } } },
+                            { update: { where: { id: "1234" } properties: { name: "photo12" } } }
+                        ]) {
+                            id
+                            properties { name }
+                        }
+                        Photographer(inputs: [
+                            { create: { properties: { name: "Bill" } } }
+                        ]) {
+                            id
+                            properties { name }
+                        }
+					}
+				}
+				""";
+        LOG.info("Running mutation");
 
         long start = System.currentTimeMillis();
-        GraphQLResponse response = graphQlClient.executeQuery(query);
+        GraphQLResponse response = graphQlClient.executeQuery(mutation);
         long end = System.currentTimeMillis();
+        LOG.info("Mutation took {} ms", end - start);
+
+        LOG.info("Running query");
+        var query = "{ Photo { properties { name } } } ";
+        start = System.currentTimeMillis();
+        response = graphQlClient.executeQuery(query);
+        end = System.currentTimeMillis();
         LOG.info("Query took {} ms", end - start);
 
         List<?> titles = response.extractValueAsObject("Photo[*].properties.name", List.class);

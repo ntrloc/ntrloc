@@ -18,7 +18,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Stream;
 
-public class EntityInputTypes {
+public class EntityInputTypesGenerator {
 
     private EntityDefinition entityDefinition;
 
@@ -43,9 +43,9 @@ public class EntityInputTypes {
     /** An input type that is used to update links during entity update. */
     private InputObjectTypeDefinition linkUpdateInputType;
 
-    private List<RelationshipInputTypes> outboundRelationshipInputTypes;
+    private List<RelationshipInputTypesGenerator> outboundRelationshipInputTypeGenerators;
 
-    public EntityInputTypes(EntityDefinition entityDefinition, Set<RelationshipDefinition> relationships) {
+    public EntityInputTypesGenerator(EntityDefinition entityDefinition, Set<RelationshipDefinition> relationships) {
         this.entityDefinition = entityDefinition;
         parseEntityInputTypes(entityDefinition, relationships);
     }
@@ -74,8 +74,8 @@ public class EntityInputTypes {
         return entityAnyOperationInputType;
     }
 
-    public List<RelationshipInputTypes> getOutboundRelationshipInputTypes() {
-        return outboundRelationshipInputTypes;
+    public List<RelationshipInputTypesGenerator> getOutboundRelationshipInputTypes() {
+        return outboundRelationshipInputTypeGenerators;
     }
 
     public List<InputObjectTypeDefinition> getEntityInputTypes() {
@@ -85,7 +85,7 @@ public class EntityInputTypes {
     }
 
     public List<InputObjectTypeDefinition> getRelationshipInputTypes() {
-        return outboundRelationshipInputTypes.stream().map(RelationshipInputTypes::getInputTypes).flatMap(List::stream).toList();
+        return outboundRelationshipInputTypeGenerators.stream().map(RelationshipInputTypesGenerator::getInputTypes).flatMap(List::stream).toList();
     }
 
     private void parseEntityInputTypes(EntityDefinition entityDefinition, Set<RelationshipDefinition> relationships) {
@@ -98,7 +98,7 @@ public class EntityInputTypes {
                 .inputValueDefinitions(entityPropertyInputDefinitions)
                 .build();
 
-        InputValueDefinition entityPropertiesInputValue = InputValueDefinition.newInputValueDefinition()
+        InputValueDefinition entityPropertiesInputValueDefinition = InputValueDefinition.newInputValueDefinition()
                 .name("properties")
                 .type(new TypeName(entityPropertiesInputType.getName()))
                 .build();
@@ -108,10 +108,15 @@ public class EntityInputTypes {
                 .type(new TypeName("String"))
                 .build();
 
+        InputValueDefinition whereDefinition = InputValueDefinition.newInputValueDefinition()
+                .name("where")
+                .type(new TypeName("MatcherInput"))
+                .build();
+
         // entity create
         entityCreateInputType = InputObjectTypeDefinition.newInputObjectDefinition()
                 .name(String.format("%sCreateInput", entityDefinition.getName()))
-                .inputValueDefinitions(List.of(referenceValueDefinition, entityPropertiesInputValue))
+                .inputValueDefinitions(List.of(referenceValueDefinition, entityPropertiesInputValueDefinition))
                 .build();
 
         InputValueDefinition createValue = InputValueDefinition.newInputValueDefinition()
@@ -122,7 +127,7 @@ public class EntityInputTypes {
         // entity update
         entityUpdateInputType = InputObjectTypeDefinition.newInputObjectDefinition()
                 .name(String.format("%sUpdateInput", entityDefinition.getName()))
-                .inputValueDefinitions(List.of(referenceValueDefinition, entityPropertiesInputValue))
+                .inputValueDefinitions(List.of(referenceValueDefinition, whereDefinition, entityPropertiesInputValueDefinition))
                 .build();
 
         InputValueDefinition updateValue = InputValueDefinition.newInputValueDefinition()
@@ -133,7 +138,7 @@ public class EntityInputTypes {
         // entity delete
         entityDeleteInputType = InputObjectTypeDefinition.newInputObjectDefinition()
                 .name(String.format("%sDeleteInput", entityDefinition.getName()))
-                .inputValueDefinition(InputValueDefinition.newInputValueDefinition().name("id").type(new TypeName("String")).build())
+                .inputValueDefinition(whereDefinition)
                 .build();
 
         InputValueDefinition deleteValue = InputValueDefinition.newInputValueDefinition()
@@ -149,10 +154,10 @@ public class EntityInputTypes {
                 .build();
 
         List<RelationshipDefinition> outboundRelationships = relationships.stream().filter(rel -> rel.getSourceEntity().equals(entityDefinition.getName())).toList();
-        outboundRelationshipInputTypes = outboundRelationships.stream().map(RelationshipInputTypes::new).toList();
+        outboundRelationshipInputTypeGenerators = outboundRelationships.stream().map(RelationshipInputTypesGenerator::new).toList();
 
         // define the object type that governs what link info can be supplied during entity creation
-        List<Tuple<String, InputObjectTypeDefinition>> linkCreateTypes = outboundRelationshipInputTypes.stream().map(RelationshipInputTypes::getLinkCreateInputType).toList();
+        List<Tuple<String, InputObjectTypeDefinition>> linkCreateTypes = outboundRelationshipInputTypeGenerators.stream().map(RelationshipInputTypesGenerator::getLinkCreateInputType).toList();
         if (!linkCreateTypes.isEmpty()) {
             List<InputValueDefinition> linkInputValues = new ArrayList<>();
             for (Tuple<String, InputObjectTypeDefinition> linkInput: linkCreateTypes) {
@@ -170,7 +175,7 @@ public class EntityInputTypes {
         }
 
         // define the object type that governs what link info can be supplied during entity update
-        List<Tuple<String, InputObjectTypeDefinition>> linkUpdateTypes = outboundRelationshipInputTypes.stream().map(RelationshipInputTypes::getLinkModificationInputType).toList();
+        List<Tuple<String, InputObjectTypeDefinition>> linkUpdateTypes = outboundRelationshipInputTypeGenerators.stream().map(RelationshipInputTypesGenerator::getLinkModificationInputType).toList();
         if (!linkUpdateTypes.isEmpty()) {
             List<InputValueDefinition> linkUpdateValues = new ArrayList<>();
             for (Tuple<String, InputObjectTypeDefinition> linkInput: linkUpdateTypes) {

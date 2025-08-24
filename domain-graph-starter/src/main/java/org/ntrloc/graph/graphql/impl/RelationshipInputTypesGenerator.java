@@ -14,7 +14,7 @@ import java.util.List;
 /**
  * Used to create, but NOT REGISTER, GraphQL input types for a relationship.
  */
-class RelationshipInputTypes {
+class RelationshipInputTypesGenerator {
 
     private RelationshipDefinition relationshipDefinition;
 
@@ -33,7 +33,7 @@ class RelationshipInputTypes {
     /** The input object type to express any kind of relationship change (create, update, or delete) */
     private InputObjectTypeDefinition linkAnyModificationInputType;
 
-    public RelationshipInputTypes(RelationshipDefinition relationshipDefinition) {
+    public RelationshipInputTypesGenerator(RelationshipDefinition relationshipDefinition) {
         this.relationshipDefinition = relationshipDefinition;
         calculateInputTypes(relationshipDefinition);
     }

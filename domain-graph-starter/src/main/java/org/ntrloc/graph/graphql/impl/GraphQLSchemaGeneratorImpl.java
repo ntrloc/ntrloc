@@ -17,6 +17,7 @@ import graphql.language.StringValue;
 import graphql.language.TypeName;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.ntrloc.graph.Tuple;
 import org.ntrloc.graph.db.schema.EntityDefinition;
 import org.ntrloc.graph.db.schema.PropertyDefinition;
 import org.ntrloc.graph.db.schema.PropertyGroupDefinition;
@@ -47,16 +48,20 @@ public class GraphQLSchemaGeneratorImpl implements GraphQLSchemaGenerator {
         // Global matcher input types
         createMatcherInputTypes(retDef);
 
+        List<Tuple<String, InputObjectTypeDefinition>> entityInputTypes = new ArrayList<>();
         for (EntityDefinition entityDefinition: entityDefinitions) {
             Set<RelationshipDefinition> relationships = relationshipDefinitions == null ?
                     Set.of() :
                     relationshipDefinitions.stream().filter(reldef -> reldef.getSourceEntity().equals(entityDefinition.getName()) || reldef.getTargetEntity().equals(entityDefinition.getName())).collect(java.util.stream.Collectors.toSet());
 
-            createEntityDefinitions(entityDefinition, relationships, retDef);
+            entityInputTypes.add(createEntityDefinitions(entityDefinition, relationships, retDef));
         }
 
         createQueryExtensions(entityDefinitions, retDef);
-        createMutation(retDef);
+
+        if (!entityInputTypes.isEmpty()) {
+            createMutation(entityInputTypes, retDef);
+        }
 
         return retDef;
     }
@@ -123,24 +128,33 @@ public class GraphQLSchemaGeneratorImpl implements GraphQLSchemaGenerator {
 
     }
 
-    private void createEntityDefinitions(EntityDefinition entityDefinition, Set<RelationshipDefinition> relationships, GraphqlDefinitions retDef) {
+    /**
+     * Creates entity input and output types.
+     * @return the entity input types -- this will change
+     */
+    private Tuple<String, InputObjectTypeDefinition> createEntityDefinitions(EntityDefinition entityDefinition, Set<RelationshipDefinition> relationships, GraphqlDefinitions retDef) {
         // create input definitions
-        createEntityInputDefinitions(entityDefinition, relationships, retDef);
+        var entityInputTypes = createEntityInputDefinitions(entityDefinition, relationships, retDef);
 
         // crate output definitions
         createEntityOutputDefinitions(entityDefinition, relationships, retDef);
+
+        return entityInputTypes;
     }
 
-    private void createEntityInputDefinitions(EntityDefinition entityDefinition, Set<RelationshipDefinition> relationships, GraphqlDefinitions retDef) {
-        EntityInputTypes entityInputTypes = new EntityInputTypes(entityDefinition, relationships);
-        List<InputObjectTypeDefinition> entityInputTypeDefs = entityInputTypes.getEntityInputTypes();
-        for (InputObjectTypeDefinition def: entityInputTypeDefs) {
+    private Tuple<String, InputObjectTypeDefinition> createEntityInputDefinitions(EntityDefinition entityDefinition, Set<RelationshipDefinition> relationships, GraphqlDefinitions retDef) {
+        EntityInputTypesGenerator entityInputTypesGenerator = new EntityInputTypesGenerator(entityDefinition, relationships);
+
+        List<InputObjectTypeDefinition> allEntityInputTypes = entityInputTypesGenerator.getEntityInputTypes();
+        for (InputObjectTypeDefinition def: allEntityInputTypes) {
             retDef.addInputObjectTypeDefinition(def);
         }
-        List<InputObjectTypeDefinition> relationshipInputTypeDefs = entityInputTypes.getRelationshipInputTypes();
+        List<InputObjectTypeDefinition> relationshipInputTypeDefs = entityInputTypesGenerator.getRelationshipInputTypes();
         for (InputObjectTypeDefinition def: relationshipInputTypeDefs) {
             retDef.addInputObjectTypeDefinition(def);
         }
+
+        return Tuple.of(entityDefinition.getName(), entityInputTypesGenerator.getEntityAnyOperationInputType());
     }
 
     private void createEntityOutputDefinitions(EntityDefinition entityDefinition, Set<RelationshipDefinition> relationships, GraphqlDefinitions retDef) {
@@ -394,8 +408,32 @@ public class GraphQLSchemaGeneratorImpl implements GraphQLSchemaGenerator {
         }
     }
 
-    private void createMutation(GraphqlDefinitions definitions) {
+    private void createMutation(List<Tuple<String, InputObjectTypeDefinition>> entityInputTypes, GraphqlDefinitions definitions) {
+        List<FieldDefinition> entityMutationInputs = entityInputTypes.stream().map(tuple -> {
+            String entityName = tuple.first();
+            InputObjectTypeDefinition entityInput = tuple.second();
+            InputValueDefinition entityInputArgument = InputValueDefinition.newInputValueDefinition()
+                    .name("inputs")
+                    .type(new NonNullType(new ListType(new NonNullType(new TypeName(entityInput.getName())))))
+                    .build();
+           return FieldDefinition.newFieldDefinition()
+                    .name(entityName)
+                    .type(new ListType(new TypeName(entityName)))
+                    .inputValueDefinitions(List.of(entityInputArgument))
+                    .build();
+        }).toList();
 
+        ObjectTypeDefinition executeDefinition = ObjectTypeDefinition.newObjectTypeDefinition()
+                .name("MutationExecution")
+                .fieldDefinitions(entityMutationInputs)
+                .build();
+        definitions.addObjectTypeDefinition(executeDefinition);
+
+        ObjectTypeDefinition mutationDefinition = ObjectTypeDefinition.newObjectTypeDefinition()
+                .name("Mutation")
+                .fieldDefinition(new FieldDefinition("execute", new NonNullType(new TypeName(executeDefinition.getName()))))
+                .build();
+        definitions.addObjectTypeDefinition(mutationDefinition);
     }
 
 }

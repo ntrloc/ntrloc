@@ -3,6 +3,7 @@ package org.ntrloc.graph.graphql.impl;
 import com.netflix.graphql.dgs.DgsCodeRegistry;
 import com.netflix.graphql.dgs.DgsComponent;
 import graphql.schema.DataFetcher;
+import graphql.schema.FieldCoordinates;
 import graphql.schema.GraphQLCodeRegistry;
 import graphql.schema.GraphQLFieldDefinition;
 import graphql.schema.idl.TypeDefinitionRegistry;
@@ -30,6 +31,7 @@ public class GraphQlQueryInterpreterImpl implements GraphQlQueryInterpreter {
 
     @DgsCodeRegistry
     public GraphQLCodeRegistry.Builder registry(GraphQLCodeRegistry.Builder codeRegistryBuilder, TypeDefinitionRegistry registry) {
+
         Set<EntityDefinition> entityDefinitionSet = schemaManager.retrieveEntityDefinitions();
         if (entityDefinitionSet.isEmpty()) {
             return codeRegistryBuilder.clearDataFetchers();
@@ -49,13 +51,20 @@ public class GraphQlQueryInterpreterImpl implements GraphQlQueryInterpreter {
                 Map<String, Object> args = dfe.getArguments();
                 LOG.info("Mutating entity {} with args {}", fd, args);
 
-                return List.of(Map.of("ISBN", "whatever"));
+                Map<String, Object> fakePhoto = Map.of("properties", Map.of("name", "YO MAMA!"));
+                List<Map<String, Object>> fakePhotos = List.of(fakePhoto);
+
+                Map<String, Object> fakePhotographer = Map.of("id", "testID", "properties", Map.of("name", "Bill Nye"));
+                List<Map<String, Object>> fakePhotographers = List.of(fakePhotographer);
+
+                Map<String, Object> result = Map.of("Photo", fakePhotos, "Photographer", fakePhotographers);
+                return result;
             };
 
-            return codeRegistryBuilder
-                    .dataFetchers("Query", retrievalDataFetchers)
-                    .dataFetchers("Mutation", Map.of("addCover", mutatingFetcher));
+            codeRegistryBuilder = codeRegistryBuilder.dataFetchers("Query", retrievalDataFetchers);
+            codeRegistryBuilder = codeRegistryBuilder.dataFetcher(FieldCoordinates.coordinates("Mutation", "execute"), mutatingFetcher);
 
+            return codeRegistryBuilder;
 
         }
 
