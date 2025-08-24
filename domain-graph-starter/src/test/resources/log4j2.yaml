@@ -14,15 +14,6 @@ Configuration:
 
   Loggers:
     Root:
-      level: WARN
+      level: INFO
       AppenderRef:
         - ref: Console_Appender
-    logger:
-      - name: org.ntrloc
-        level: INFO
-      - name: org.janusgraph.graphdb.database.management
-        level: WARN
-      - name: org.janusgraph.diskstorage.lucene
-        level: DEBUG
-      - name: org.apache.lucene
-        level: DEBUG

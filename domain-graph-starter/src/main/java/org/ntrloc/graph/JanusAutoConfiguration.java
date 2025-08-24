@@ -1,7 +1,5 @@
 package org.ntrloc.graph;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversalSource;
 import org.janusgraph.core.JanusGraph;
 import org.janusgraph.core.JanusGraphFactory;
@@ -10,6 +8,8 @@ import org.ntrloc.graph.db.config.CassandraStorageBackend;
 import org.ntrloc.graph.db.config.IndexConfiguration;
 import org.ntrloc.graph.db.config.LuceneIndexConfiguration;
 import org.ntrloc.graph.db.config.StorageConfiguration;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -18,7 +18,7 @@ import org.springframework.context.annotation.Configuration;
 @EnableConfigurationProperties({StorageConfiguration.class, IndexConfiguration.class})
 public class JanusAutoConfiguration {
 
-    private static final Logger LOG = LogManager.getLogger(JanusAutoConfiguration.class);
+    private static final Logger LOG = LoggerFactory.getLogger(JanusAutoConfiguration.class);
 
     private StorageConfiguration storageConfiguration;
     private IndexConfiguration indexConfiguration;

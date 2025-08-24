@@ -4,8 +4,6 @@ import com.hazelcast.core.EntryEvent;
 import com.hazelcast.map.IMap;
 import com.hazelcast.map.listener.EntryAddedListener;
 import com.hazelcast.map.listener.EntryUpdatedListener;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversal;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversalSource;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.__;
@@ -33,6 +31,8 @@ import org.ntrloc.graph.db.schema.PropertyType;
 import org.ntrloc.graph.db.schema.RelationshipDefinition;
 import org.ntrloc.graph.db.schema.SchemaChangeReaction;
 import org.ntrloc.graph.db.schema.SchemaManager;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -54,7 +54,7 @@ import static org.ntrloc.graph.db.LabelConstants.RELATIONSHIP_DEFINITION_LABEL;
 @Service
 public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<String, Object>, EntryUpdatedListener<String, Object> {
 
-    private static final Logger LOG = LogManager.getLogger(SchemaManagerImpl.class);
+    private static final Logger LOG = LoggerFactory.getLogger(SchemaManagerImpl.class);
 
     private static final String SCHEMA_MAP_NAME = "schemaMap";
     private static final String SCHEMA_VERSION_LABEL = "version";

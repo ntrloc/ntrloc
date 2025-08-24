@@ -78,7 +78,7 @@ class MutationRetrievalIntegrationTest {
                       autocreate: true
                 logging:
                   level:
-                    root: debug
+                    root: DEBUG
                 
                 """;
         Yaml parser = new Yaml();
@@ -155,7 +155,6 @@ class MutationRetrievalIntegrationTest {
 
     @Test
     public void testCreateEntity() {
-
         AtomicBoolean schemaUpdated = new AtomicBoolean(false);
         schemaManager.addSchemaChangeReaction(() -> {
             schemaUpdated.set(true);
@@ -173,7 +172,7 @@ class MutationRetrievalIntegrationTest {
 				    execute {
                         Photo(inputs: [
                             { create: { ref: "newPhoto" properties: { name: "photo1" } } },
-                            { update: { where: { id: "1234" } properties: { name: null } } }
+                            { update: { where: { id: "1234" } properties: { name: null number: 5 } } }
                         ]) {
                             id
                             properties { name }

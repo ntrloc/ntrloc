@@ -8,20 +8,20 @@ import graphql.language.InputObjectTypeDefinition;
 import graphql.language.ObjectTypeDefinition;
 import graphql.language.ObjectTypeExtensionDefinition;
 import graphql.schema.idl.TypeDefinitionRegistry;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.ntrloc.graph.cluster.ClusterService;
 import org.ntrloc.graph.db.schema.EntityDefinition;
 import org.ntrloc.graph.db.schema.RelationshipDefinition;
 import org.ntrloc.graph.db.schema.SchemaManager;
 import org.ntrloc.graph.graphql.GraphQLSchemaGenerator;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Set;
 
 @DgsComponent
 public class GraphQLPublisherImpl implements ReloadSchemaIndicator {
 
-    private static final Logger LOG = LogManager.getLogger(GraphQLPublisherImpl.class);
+    private static final Logger LOG = LoggerFactory.getLogger(GraphQLPublisherImpl.class);
 
     private boolean schemaChanged = false;
 
