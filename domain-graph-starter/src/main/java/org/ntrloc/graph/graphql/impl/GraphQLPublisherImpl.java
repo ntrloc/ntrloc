@@ -13,6 +13,7 @@ import org.ntrloc.graph.db.schema.EntityDefinition;
 import org.ntrloc.graph.db.schema.RelationshipDefinition;
 import org.ntrloc.graph.db.schema.SchemaManager;
 import org.ntrloc.graph.graphql.GraphQLSchemaGenerator;
+import org.ntrloc.graph.graphql.GraphQLSchemaMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -31,9 +32,13 @@ public class GraphQLPublisherImpl implements ReloadSchemaIndicator {
 
     private GraphQLSchemaGenerator schemaGenerator;
 
+    private GraphQLSchemaMapper schemaMapper;
+
     public GraphQLPublisherImpl(ClusterService clusterService,
+                                GraphQLSchemaMapper schemaMapper,
                                 GraphQLSchemaGenerator schemaGenerator,
                                 SchemaManager schemaManager) {
+        this.schemaMapper = schemaMapper;
         this.schemaGenerator = schemaGenerator;
         this.schemaManager = schemaManager;
         clusterService.addClusterJoinReaction(() -> {
@@ -67,6 +72,9 @@ public class GraphQLPublisherImpl implements ReloadSchemaIndicator {
     public TypeDefinitionRegistry typeDefinitionRegistry() {
         Set<EntityDefinition> entityDefinitions = schemaManager.retrieveEntityDefinitions();
         Set<RelationshipDefinition> relationshipDefinitions = schemaManager.retrieveRelationshipDefinitions();
+
+        schemaMapper.mapSchemaElements(entityDefinitions, relationshipDefinitions);
+
         try {
             TypeDefinitionRegistry registry = new TypeDefinitionRegistry();
 

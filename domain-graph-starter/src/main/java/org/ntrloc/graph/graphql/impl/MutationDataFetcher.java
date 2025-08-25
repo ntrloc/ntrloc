@@ -35,7 +35,6 @@ public class MutationDataFetcher implements DataFetcher<Object> {
             Map<String, Object> args = dfe.getArguments();
             LOG.info("Mutating entity {} with args {}", fd, args);
 
-            GraphQLMutationParser mutationParser = new GraphQLMutationParserImpl();
             var mutations = mutationParser.parseMutations(dfe.getField());
 
             Map<String, Object> fakePhoto = Map.of("properties", Map.of("name", "YO MAMA!"));

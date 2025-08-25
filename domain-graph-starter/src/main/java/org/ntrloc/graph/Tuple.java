@@ -1,5 +1,7 @@
 package org.ntrloc.graph;
 
+import java.util.Objects;
+
 public class Tuple<O1, O2> {
 
     private final O1 _1;
@@ -22,4 +24,19 @@ public class Tuple<O1, O2> {
         return this._2;
     }
 
+    @Override
+    public String toString() {
+        return String.format("(%s, %s)", _1, _2);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (!(o instanceof Tuple<?, ?> tuple)) return false;
+        return Objects.equals(_1, tuple._1) && Objects.equals(_2, tuple._2);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(_1, _2);
+    }
 }
