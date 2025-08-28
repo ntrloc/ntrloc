@@ -12,7 +12,7 @@ import java.util.Map;
 import java.util.stream.Stream;
 
 /** An input type that allows the choice of link create, update, or delete during entity updates. */
-public class OutgoingRelationshipChoiceInputObjectTypeMapping implements OutgoingRelationshipInputTypeMapping, InputObjectTypeProducer {
+public class IncomingRelationshipChoiceInputObjectTypeMapping implements IncomingRelationshipInputTypeMapping, InputObjectTypeProducer {
 
     private static final String CREATE_MAPPING_KEY = "create";
     private static final String UPDATE_MAPPING_KEY = "update";
@@ -20,13 +20,13 @@ public class OutgoingRelationshipChoiceInputObjectTypeMapping implements Outgoin
 
     private String graphQlTypeName;
     private RelationshipDefinition targetRelationshipDefinition;
-    private Map<String, OutgoingRelationshipInputTypeMapping> mappings;
+    private Map<String, IncomingRelationshipInputTypeMapping> mappings;
 
-    public OutgoingRelationshipChoiceInputObjectTypeMapping(RelationshipDefinition targetRelationshipDefinition,
-                                                            OutgoingRelationshipCreateInputObjectTypeMapping createMapping,
-                                                            OutgoingRelationshipUpdateInputObjectTypeMapping updateMapping,
-                                                            OutgoingRelationshipDeleteInputObjectTypeMapping deleteMapping) {
-        String typeName = String.format("%s %s %s Link Choice Input", targetRelationshipDefinition.getSourceEntity(), targetRelationshipDefinition.getSourceLabel(), targetRelationshipDefinition.getTargetEntity());
+    public IncomingRelationshipChoiceInputObjectTypeMapping(RelationshipDefinition targetRelationshipDefinition,
+                                                            IncomingRelationshipCreateInputObjectTypeMapping createMapping,
+                                                            IncomingRelationshipUpdateInputObjectTypeMapping updateMapping,
+                                                            IncomingRelationshipDeleteInputObjectTypeMapping deleteMapping) {
+        String typeName = String.format("%s %s %s Link Choice Input", targetRelationshipDefinition.getTargetEntity(), targetRelationshipDefinition.getTargetLabel(), targetRelationshipDefinition.getSourceEntity());
         this.graphQlTypeName = CaseUtils.toCamelCase(typeName, true, '_', '-');
         this.targetRelationshipDefinition = targetRelationshipDefinition;
         mappings = Map.of(CREATE_MAPPING_KEY, createMapping, UPDATE_MAPPING_KEY, updateMapping, DELETE_MAPPING_KEY, deleteMapping);
@@ -36,25 +36,26 @@ public class OutgoingRelationshipChoiceInputObjectTypeMapping implements Outgoin
         return graphQlTypeName;
     }
 
-    public OutgoingRelationshipCreateInputObjectTypeMapping getCreateMapping() {
-        return (OutgoingRelationshipCreateInputObjectTypeMapping) mappings.get(CREATE_MAPPING_KEY);
+    public IncomingRelationshipCreateInputObjectTypeMapping getCreateMapping() {
+        return (IncomingRelationshipCreateInputObjectTypeMapping) mappings.get(CREATE_MAPPING_KEY);
     }
 
-    public OutgoingRelationshipUpdateInputObjectTypeMapping getUpdateMapping() {
-        return (OutgoingRelationshipUpdateInputObjectTypeMapping) mappings.get(UPDATE_MAPPING_KEY);
+    public IncomingRelationshipUpdateInputObjectTypeMapping getUpdateMapping() {
+        return (IncomingRelationshipUpdateInputObjectTypeMapping) mappings.get(UPDATE_MAPPING_KEY);
     }
 
-    public OutgoingRelationshipDeleteInputObjectTypeMapping getDeleteMapping() {
-        return (OutgoingRelationshipDeleteInputObjectTypeMapping) mappings.get(DELETE_MAPPING_KEY);
+    public IncomingRelationshipDeleteInputObjectTypeMapping getDeleteMapping() {
+        return (IncomingRelationshipDeleteInputObjectTypeMapping) mappings.get(DELETE_MAPPING_KEY);
     }
 
     @Override
-    public String getSourceLabel() {
-        return targetRelationshipDefinition.getSourceLabel();
+    public String getTargetLabel() {
+        return targetRelationshipDefinition.getTargetLabel();
     }
 
     @Override
     public List<InputObjectTypeDefinition> getInputObjectTypeDefinitions() {
+
         List<InputObjectTypeDefinition> allActionTypes = Stream.of(getCreateMapping(), getUpdateMapping(), getDeleteMapping())
                 .map(InputObjectTypeProducer::getInputObjectTypeDefinitions)
                 .flatMap((List::stream))

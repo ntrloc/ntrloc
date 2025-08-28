@@ -2,6 +2,8 @@ package org.ntrloc.graph.graphql.mapping;
 
 import org.ntrloc.graph.db.schema.EntityDefinition;
 import org.ntrloc.graph.db.schema.RelationshipDefinition;
+import org.ntrloc.graph.graphql.mapping.input.EntityInputTypesMapper;
+import org.ntrloc.graph.graphql.mapping.output.EntityOutputTypesMapper;
 
 import java.util.Set;
 

@@ -5,10 +5,8 @@ import graphql.language.InputObjectTypeDefinition;
 import graphql.language.InputValueDefinition;
 import graphql.language.TypeName;
 import org.apache.commons.text.CaseUtils;
-import org.ntrloc.graph.db.schema.EntityDefinition;
 import org.ntrloc.graph.db.schema.PropertyDefinition;
 import org.ntrloc.graph.db.schema.RelationshipDefinition;
-import org.ntrloc.graph.graphql.mapping.InputObjectTypeProducer;
 
 import java.util.HashMap;
 import java.util.List;
@@ -25,22 +23,9 @@ public class RelationshipPropertiesInputObjectTypeMapping implements InputObject
     /* Maps graphQL property names to their original property definitions. */
     private Map<String, PropertyDefinition> propertyDefinitions = new HashMap<>();
 
-    public RelationshipPropertiesInputObjectTypeMapping(EntityDefinition sourceEntity, RelationshipDefinition relationshipDefinition) {
-        String subjectName;
-        String predicateName;
-        String targetName;
+    public RelationshipPropertiesInputObjectTypeMapping(RelationshipDefinition relationshipDefinition) {
 
-        if (relationshipDefinition.getSourceEntity().equals(sourceEntity.getName())) {
-            subjectName = relationshipDefinition.getSourceEntity();
-            predicateName = relationshipDefinition.getSourceLabel();
-            targetName = relationshipDefinition.getTargetEntity();
-        } else {
-            subjectName = relationshipDefinition.getTargetEntity();
-            predicateName = relationshipDefinition.getTargetLabel();
-            targetName = relationshipDefinition.getSourceEntity();
-        }
-
-        String typeName = String.format("%s %s %s Properties Input", subjectName, predicateName, targetName);
+        String typeName = String.format("%s %s %s Properties Input", relationshipDefinition.getSourceEntity(), relationshipDefinition.getSourceLabel(), relationshipDefinition.getTargetEntity());
         this.graphQlTypeName = CaseUtils.toCamelCase(typeName, true, '_', '-');
 
         for (var propertyDefinition : relationshipDefinition.getProperties()) {

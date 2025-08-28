@@ -10,18 +10,18 @@ import org.ntrloc.graph.graphql.mapping.matcher.MatcherChoiceInputObjectTypeMapp
 import java.util.ArrayList;
 import java.util.List;
 
-/** Maps an entity's outbound relationship to an instruction to create a new instance of that relationship. */
-public class OutgoingRelationshipCreateInputObjectTypeMapping extends RelationshipCreateInputObjectTypeMapping implements OutgoingRelationshipInputTypeMapping, InputObjectTypeProducer {
+/** Maps an entity's inbound relationship to an instruction to create a new instance of that relationship. */
+public class IncomingRelationshipCreateInputObjectTypeMapping extends RelationshipCreateInputObjectTypeMapping implements IncomingRelationshipInputTypeMapping, InputObjectTypeProducer {
 
     private String graphQlTypeName;
-    private RelationshipDefinition targetRelationshipDefinition;
+    private RelationshipDefinition sourceRelationshipDefinition;
     private RelationshipPropertiesInputObjectTypeMapping propertiesMapping;
     private MatcherChoiceInputObjectTypeMapping matcherChoiceMapping;
 
-    public OutgoingRelationshipCreateInputObjectTypeMapping(RelationshipDefinition targetRelationshipDefinition, RelationshipPropertiesInputObjectTypeMapping propertiesMapping, MatcherChoiceInputObjectTypeMapping matcherChoiceMapping) {
-        String typeName = String.format("%s %s %s Link Create Input", targetRelationshipDefinition.getSourceEntity(), targetRelationshipDefinition.getSourceLabel(), targetRelationshipDefinition.getTargetEntity());
+    public IncomingRelationshipCreateInputObjectTypeMapping(RelationshipDefinition sourceRelationshipDefinition, RelationshipPropertiesInputObjectTypeMapping propertiesMapping, MatcherChoiceInputObjectTypeMapping matcherChoiceMapping) {
+        String typeName = String.format("%s %s %s Link Create Input", sourceRelationshipDefinition.getTargetEntity(), sourceRelationshipDefinition.getTargetLabel(), sourceRelationshipDefinition.getSourceEntity());
         this.graphQlTypeName = CaseUtils.toCamelCase(typeName, true, '_', '-');
-        this.targetRelationshipDefinition = targetRelationshipDefinition;
+        this.sourceRelationshipDefinition = sourceRelationshipDefinition;
         this.propertiesMapping = propertiesMapping;
         this.matcherChoiceMapping = matcherChoiceMapping;
     }
@@ -30,13 +30,13 @@ public class OutgoingRelationshipCreateInputObjectTypeMapping extends Relationsh
         return graphQlTypeName;
     }
 
-    public RelationshipDefinition getTargetRelationshipDefinition() {
-        return targetRelationshipDefinition;
+    public RelationshipDefinition getSourceRelationshipDefinition() {
+        return sourceRelationshipDefinition;
     }
 
     @Override
-    public String getSourceLabel() {
-        return targetRelationshipDefinition.getSourceLabel();
+    public String getTargetLabel() {
+        return sourceRelationshipDefinition.getTargetLabel();
     }
 
     @Override
@@ -46,17 +46,17 @@ public class OutgoingRelationshipCreateInputObjectTypeMapping extends Relationsh
                 .type(new TypeName(propertiesMapping.getGraphQlTypeName()))
                 .build();
         InputValueDefinition matcherValue = InputValueDefinition.newInputValueDefinition()
-                .name("target")
+                .name("source")
                 .type(new TypeName(matcherChoiceMapping.getGraphQlTypeName()))
                 .build();
         var thisDef = InputObjectTypeDefinition.newInputObjectDefinition()
-                        .name(graphQlTypeName)
-                        .inputValueDefinitions(List.of(propertiesValue, matcherValue))
-                        .build();
-
+                .name(graphQlTypeName)
+                .inputValueDefinitions(List.of(propertiesValue, matcherValue))
+                .build();
         List<InputObjectTypeDefinition> retTypes = new ArrayList<>(matcherChoiceMapping.getInputObjectTypeDefinitions());
         retTypes.addAll(propertiesMapping.getInputObjectTypeDefinitions());
         retTypes.add(thisDef);
         return retTypes;
     }
+
 }

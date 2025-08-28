@@ -8,7 +8,6 @@ import org.apache.commons.text.CaseUtils;
 import org.ntrloc.graph.Tuple;
 import org.ntrloc.graph.db.schema.EntityDefinition;
 import org.ntrloc.graph.db.schema.RelationshipDefinition;
-import org.ntrloc.graph.graphql.mapping.InputObjectTypeProducer;
 import org.ntrloc.graph.graphql.mapping.matcher.MatcherChoiceInputObjectTypeMapping;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -57,7 +56,25 @@ public class EntityMutationInputObjectTypeMapping implements InputObjectTypeProd
         return entityDefinition;
     }
 
-    public void mapOutgoingRelationships(List<Tuple<RelationshipDefinition, EntityMutationInputObjectTypeMapping>> relationshipTuples, MatcherChoiceInputObjectTypeMapping matcherChoiceInputTypeMapping) {
+    public void mapRelationships(List<Tuple<RelationshipDefinition, EntityMutationInputObjectTypeMapping>> incomingRelationshipTuples,
+                                 List<Tuple<RelationshipDefinition, EntityMutationInputObjectTypeMapping>> outgoingRelationshipTuples,
+                                 MatcherChoiceInputObjectTypeMapping matcherChoiceInputTypeMapping) {
+        var incomingMappingTuples = mapIncomingRelationships(incomingRelationshipTuples, matcherChoiceInputTypeMapping);
+        var outgoingMappingTuples = mapOutgoingRelationships(outgoingRelationshipTuples, matcherChoiceInputTypeMapping);
+
+        // then, the entity-level create links input type (PhotographerCreateLinksInput)
+        LOG.info("Create entity-wide links create type");
+        var entityCreateLinksInputTypeMapping = new EntityCreateLinksInputObjectTypeMapping(entityDefinition, incomingMappingTuples.first(), outgoingMappingTuples.first());
+        createInputTypeMapping.setLinkCreateInputType(entityCreateLinksInputTypeMapping);
+
+        // and the entity-level (PhotographerCreateLinksUpdate, which really should be PhotographerUpdateLinksInput)
+        LOG.info("Create entity-wide links update type");
+        var entityUpdateLinksInputTypeMapping = new EntityUpdateLinksInputObjectTypeMapping(entityDefinition, incomingMappingTuples.second(), outgoingMappingTuples.second());
+        updateInputTypeMapping.setLinkUpdateInputType(entityUpdateLinksInputTypeMapping);
+
+    }
+
+    private Tuple<Map<String, OutgoingRelationshipCreateInputObjectTypeMapping>, Map<String, OutgoingRelationshipChoiceInputObjectTypeMapping>> mapOutgoingRelationships(List<Tuple<RelationshipDefinition, EntityMutationInputObjectTypeMapping>> relationshipTuples, MatcherChoiceInputObjectTypeMapping matcherChoiceInputTypeMapping) {
 
         Map<String, OutgoingRelationshipCreateInputObjectTypeMapping> outgoingRelationshipCreateInputTypeMappings = new HashMap<>();
         Map<String, OutgoingRelationshipChoiceInputObjectTypeMapping> outgoingRelationshipChoiceInputTypeMappings = new HashMap<>();
@@ -69,7 +86,7 @@ public class EntityMutationInputObjectTypeMapping implements InputObjectTypeProd
             // link properties type (PhotographerCreatedPhotoLinkProperties)
 
             LOG.info("Mapping outgoing relationship {} from {} to {}", relationshipDefinition.getName(), graphQlTypeName, targetMapping.getGraphQlTypeName());
-            RelationshipPropertiesInputObjectTypeMapping relationshipPropertiesInputTypeMapping = new RelationshipPropertiesInputObjectTypeMapping(entityDefinition, relationshipDefinition);
+            RelationshipPropertiesInputObjectTypeMapping relationshipPropertiesInputTypeMapping = new RelationshipPropertiesInputObjectTypeMapping(relationshipDefinition);
 
             LOG.info("Got properties mapping {} for relationship {}", relationshipPropertiesInputTypeMapping.getGraphQlTypeName(), relationshipDefinition.getName());
 
@@ -77,34 +94,58 @@ public class EntityMutationInputObjectTypeMapping implements InputObjectTypeProd
             OutgoingRelationshipCreateInputObjectTypeMapping relationshipCreateType = new OutgoingRelationshipCreateInputObjectTypeMapping(relationshipDefinition, relationshipPropertiesInputTypeMapping, matcherChoiceInputTypeMapping);
 
             // link update type (PhotographerCreatedPhotoLinkUpdateInput)
-            OutgoingRelationshipUpdateInputTypeMapping relationshipUpdateType = new OutgoingRelationshipUpdateInputTypeMapping(relationshipDefinition, relationshipPropertiesInputTypeMapping, matcherChoiceInputTypeMapping);
+            OutgoingRelationshipUpdateInputObjectTypeMapping relationshipUpdateType = new OutgoingRelationshipUpdateInputObjectTypeMapping(relationshipDefinition, relationshipPropertiesInputTypeMapping, matcherChoiceInputTypeMapping);
 
             // link delete type (PhotographerCreatedPhotoLinkDeleteInput)
-            OutgoingRelationshipDeleteInputTypeMapping relationshipDeleteType = new OutgoingRelationshipDeleteInputTypeMapping(relationshipDefinition, matcherChoiceInputTypeMapping);
+            OutgoingRelationshipDeleteInputObjectTypeMapping relationshipDeleteType = new OutgoingRelationshipDeleteInputObjectTypeMapping(relationshipDefinition, matcherChoiceInputTypeMapping);
 
             // link modification type (PhotographerCreatedPhotoLinkModificationInput)
             OutgoingRelationshipChoiceInputObjectTypeMapping relationshipChoiceType = new OutgoingRelationshipChoiceInputObjectTypeMapping(relationshipDefinition, relationshipCreateType, relationshipUpdateType, relationshipDeleteType);
 
             outgoingRelationshipCreateInputTypeMappings.put(relationshipCreateType.getSourceLabel(), relationshipCreateType);
-            outgoingRelationshipChoiceInputTypeMappings.put(relationshipCreateType.getSourceLabel(), relationshipChoiceType);
+            outgoingRelationshipChoiceInputTypeMappings.put(relationshipChoiceType.getSourceLabel(), relationshipChoiceType);
 
             LOG.info("rel types created");
         }
 
-        // then, the entity-level create links input type (PhotographerCreateLinksInput)
-        LOG.info("Create entity-wide links create type");
-        var entityCreateLinksInputTypeMapping = new EntityCreateLinksInputObjectTypeMapping(entityDefinition, outgoingRelationshipCreateInputTypeMappings);
-        createInputTypeMapping.setLinkCreateInputType(entityCreateLinksInputTypeMapping);
-
-        // and the entity-level (PhotographerCreateLinksUpdate, which really should be PhotographerUpdateLinksInput)
-        LOG.info("Create entity-wide links update type");
-        var entityUpdateLinksInputTypeMapping = new EntityUpdateLinksInputObjectTypeMapping(entityDefinition, outgoingRelationshipChoiceInputTypeMappings);
-        updateInputTypeMapping.setLinkUpdateInputType(entityUpdateLinksInputTypeMapping);
+        return Tuple.of(outgoingRelationshipCreateInputTypeMappings, outgoingRelationshipChoiceInputTypeMappings);
 
     }
 
-    public void mapIncomingRelationships(List<Tuple<RelationshipDefinition, EntityMutationInputObjectTypeMapping>> relationshipTuples) {
-        //LOG.info("Mapping incoming relationship {} from {} to {}", relationshipDefinition.getName(), graphQlTypeName, sourceMapping.getGraphQlTypeName());
+    private Tuple<Map<String, IncomingRelationshipCreateInputObjectTypeMapping>, Map<String, IncomingRelationshipChoiceInputObjectTypeMapping>> mapIncomingRelationships(List<Tuple<RelationshipDefinition, EntityMutationInputObjectTypeMapping>> relationshipTuples, MatcherChoiceInputObjectTypeMapping matcherChoiceInputTypeMapping) {
+        Map<String, IncomingRelationshipCreateInputObjectTypeMapping> incomingRelationshipCreateInputTypeMappings = new HashMap<>();
+        Map<String, IncomingRelationshipChoiceInputObjectTypeMapping> incomingRelationshipChoiceInputTypeMappings = new HashMap<>();
+
+        for (var tuple: relationshipTuples) {
+            var relationshipDefinition = tuple.first();
+            var targetMapping = tuple.second();
+
+            // link properties type (PhotographerCreatedPhotoLinkProperties)
+
+            LOG.info("Mapping incomgin relationship {} from {} to {}", relationshipDefinition.getName(), graphQlTypeName, targetMapping.getGraphQlTypeName());
+            RelationshipPropertiesInputObjectTypeMapping relationshipPropertiesInputTypeMapping = new RelationshipPropertiesInputObjectTypeMapping(relationshipDefinition);
+
+            LOG.info("Got properties mapping {} for relationship {}", relationshipPropertiesInputTypeMapping.getGraphQlTypeName(), relationshipDefinition.getName());
+
+            // link create type (PhotographerCreatedPhotoLinkCreateInput)
+            IncomingRelationshipCreateInputObjectTypeMapping relationshipCreateType = new IncomingRelationshipCreateInputObjectTypeMapping(relationshipDefinition, relationshipPropertiesInputTypeMapping, matcherChoiceInputTypeMapping);
+
+            // link update type (PhotographerCreatedPhotoLinkUpdateInput)
+            IncomingRelationshipUpdateInputObjectTypeMapping relationshipUpdateType = new IncomingRelationshipUpdateInputObjectTypeMapping(relationshipDefinition, relationshipPropertiesInputTypeMapping, matcherChoiceInputTypeMapping);
+
+            // link delete type (PhotographerCreatedPhotoLinkDeleteInput)
+            IncomingRelationshipDeleteInputObjectTypeMapping relationshipDeleteType = new IncomingRelationshipDeleteInputObjectTypeMapping(relationshipDefinition, matcherChoiceInputTypeMapping);
+
+            // link modification type (PhotographerCreatedPhotoLinkModificationInput)
+            IncomingRelationshipChoiceInputObjectTypeMapping relationshipChoiceType = new IncomingRelationshipChoiceInputObjectTypeMapping(relationshipDefinition, relationshipCreateType, relationshipUpdateType, relationshipDeleteType);
+
+            incomingRelationshipCreateInputTypeMappings.put(relationshipCreateType.getTargetLabel(), relationshipCreateType);
+            incomingRelationshipChoiceInputTypeMappings.put(relationshipChoiceType.getTargetLabel(), relationshipChoiceType);
+
+            LOG.info("incoming rel types created");
+        }
+
+        return Tuple.of(incomingRelationshipCreateInputTypeMappings, incomingRelationshipChoiceInputTypeMappings);
     }
 
     @Override

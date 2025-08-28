@@ -11,15 +11,15 @@ import java.util.ArrayList;
 import java.util.List;
 
 /** Maps an entity's outbound relationship to an instruction to create a new instance of that relationship. */
-public class OutgoingRelationshipCreateInputObjectTypeMapping extends RelationshipCreateInputObjectTypeMapping implements OutgoingRelationshipInputTypeMapping, InputObjectTypeProducer {
+public class OutgoingRelationshipUpdateInputObjectTypeMapping implements OutgoingRelationshipInputTypeMapping, InputObjectTypeProducer {
 
     private String graphQlTypeName;
     private RelationshipDefinition targetRelationshipDefinition;
     private RelationshipPropertiesInputObjectTypeMapping propertiesMapping;
     private MatcherChoiceInputObjectTypeMapping matcherChoiceMapping;
 
-    public OutgoingRelationshipCreateInputObjectTypeMapping(RelationshipDefinition targetRelationshipDefinition, RelationshipPropertiesInputObjectTypeMapping propertiesMapping, MatcherChoiceInputObjectTypeMapping matcherChoiceMapping) {
-        String typeName = String.format("%s %s %s Link Create Input", targetRelationshipDefinition.getSourceEntity(), targetRelationshipDefinition.getSourceLabel(), targetRelationshipDefinition.getTargetEntity());
+    public OutgoingRelationshipUpdateInputObjectTypeMapping(RelationshipDefinition targetRelationshipDefinition, RelationshipPropertiesInputObjectTypeMapping propertiesMapping, MatcherChoiceInputObjectTypeMapping matcherChoiceMapping) {
+        String typeName = String.format("%s %s %s Link Update Input", targetRelationshipDefinition.getSourceEntity(), targetRelationshipDefinition.getSourceLabel(), targetRelationshipDefinition.getTargetEntity());
         this.graphQlTypeName = CaseUtils.toCamelCase(typeName, true, '_', '-');
         this.targetRelationshipDefinition = targetRelationshipDefinition;
         this.propertiesMapping = propertiesMapping;
@@ -50,10 +50,9 @@ public class OutgoingRelationshipCreateInputObjectTypeMapping extends Relationsh
                 .type(new TypeName(matcherChoiceMapping.getGraphQlTypeName()))
                 .build();
         var thisDef = InputObjectTypeDefinition.newInputObjectDefinition()
-                        .name(graphQlTypeName)
-                        .inputValueDefinitions(List.of(propertiesValue, matcherValue))
-                        .build();
-
+                .name(graphQlTypeName)
+                .inputValueDefinitions(List.of(propertiesValue, matcherValue))
+                .build();
         List<InputObjectTypeDefinition> retTypes = new ArrayList<>(matcherChoiceMapping.getInputObjectTypeDefinitions());
         retTypes.addAll(propertiesMapping.getInputObjectTypeDefinitions());
         retTypes.add(thisDef);

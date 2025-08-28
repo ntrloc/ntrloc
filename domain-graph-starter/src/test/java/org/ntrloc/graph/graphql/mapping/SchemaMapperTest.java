@@ -7,6 +7,8 @@ import org.ntrloc.graph.db.schema.PropertyDefinition;
 import org.ntrloc.graph.db.schema.PropertyGroupDefinition;
 import org.ntrloc.graph.db.schema.PropertyType;
 import org.ntrloc.graph.db.schema.RelationshipDefinition;
+import org.ntrloc.graph.graphql.mapping.input.EntityInputTypesMapper;
+import org.ntrloc.graph.graphql.mapping.output.EntityOutputTypesMapper;
 
 import java.util.Set;
 
@@ -43,7 +45,7 @@ class SchemaMapperTest {
         photoRelationship.setTargetVersionAction(RelationshipDefinition.VersionAction.NONE);
         photoRelationship.setName("CREATED");
         photoRelationship.setSourceLabel("created");
-        photoRelationship.setTargetLabel("creator");
+        photoRelationship.setTargetLabel("created by");
 
         PropertyDefinition createdCountProperty = new PropertyDefinition("count", PropertyType.INT, "count");
         photoRelationship.setProperties(Set.of(createdCountProperty));

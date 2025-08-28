@@ -1,11 +1,9 @@
-package org.ntrloc.graph.graphql.mapping;
+package org.ntrloc.graph.graphql.mapping.input;
 
 import graphql.language.InputObjectTypeDefinition;
 import org.ntrloc.graph.Tuple;
 import org.ntrloc.graph.db.schema.EntityDefinition;
 import org.ntrloc.graph.db.schema.RelationshipDefinition;
-import org.ntrloc.graph.graphql.mapping.input.EntityMutationInputObjectTypeMapping;
-import org.ntrloc.graph.graphql.mapping.input.InputTypeConstants;
 import org.ntrloc.graph.graphql.mapping.matcher.MatcherChoiceInputObjectTypeMapping;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -42,7 +40,6 @@ public class EntityInputTypesMapper {
                 EntityMutationInputObjectTypeMapping targetMapping = entityInputMap.get(definition.getTargetEntity());
                 outgoingTuples.add(Tuple.of(definition, targetMapping));
             }
-            sourceMapping.mapOutgoingRelationships(outgoingTuples, matcherChoiceInputTypeMapping);
 
             Set<RelationshipDefinition> inboundRelationships = relationshipDefinitions.stream().filter(rel -> rel.getTargetEntity().equals(entityName)).collect(Collectors.toSet());
             List<Tuple<RelationshipDefinition, EntityMutationInputObjectTypeMapping>> incomingTuples = new ArrayList<>();
@@ -50,24 +47,19 @@ public class EntityInputTypesMapper {
                 EntityMutationInputObjectTypeMapping targetMapping = entityInputMap.get(definition.getSourceEntity());
                 incomingTuples.add(Tuple.of(definition, targetMapping));
             }
-            sourceMapping.mapIncomingRelationships(incomingTuples);
+
+            sourceMapping.mapRelationships(incomingTuples, outgoingTuples, matcherChoiceInputTypeMapping);
         }
 
         LOG.info("Mapping complete");
 
 
-        Map<String, InputObjectTypeDefinition> allInputTypes = new HashMap<>();
-        for (InputObjectTypeDefinition matcherDef: matcherChoiceInputTypeMapping.getInputObjectTypeDefinitions()) {
-            allInputTypes.put(matcherDef.getName(), matcherDef);
-        }
-
         Map<String, InputObjectTypeDefinition> inputObjectTypeDefinitionMap = entityInputMap.values().stream()
                 .flatMap(mapping -> mapping.getInputObjectTypeDefinitions().stream())
                 .collect(Collectors.toMap(InputObjectTypeDefinition::getName, inputObjectTypeDefinition -> inputObjectTypeDefinition, (existingValue, newValue) -> existingValue));
-        allInputTypes.putAll(inputObjectTypeDefinitionMap);
 
 
-        List<InputObjectTypeDefinition> entityMutationDefinitions = allInputTypes.values().stream()
+        List<InputObjectTypeDefinition> entityMutationDefinitions = inputObjectTypeDefinitionMap.values().stream()
                 .filter(def -> def.getAdditionalData().getOrDefault(InputTypeConstants.IS_TOP_LEVEL_ENTITY_INPUT_TYPE, Boolean.toString(false)).equals(Boolean.toString(true))).collect(Collectors.toList());
 
         LOG.info("Got input types {}", inputObjectTypeDefinitionMap);

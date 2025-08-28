@@ -1,4 +1,4 @@
-package org.ntrloc.graph.graphql.mapping;
+package org.ntrloc.graph.graphql.mapping.output;
 
 import org.ntrloc.graph.db.schema.EntityDefinition;
 import org.ntrloc.graph.db.schema.RelationshipDefinition;

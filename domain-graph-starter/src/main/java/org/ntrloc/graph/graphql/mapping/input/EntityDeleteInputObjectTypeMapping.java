@@ -6,7 +6,6 @@ import graphql.language.NonNullType;
 import graphql.language.TypeName;
 import org.apache.commons.text.CaseUtils;
 import org.ntrloc.graph.db.schema.EntityDefinition;
-import org.ntrloc.graph.graphql.mapping.InputObjectTypeProducer;
 import org.ntrloc.graph.graphql.mapping.matcher.MatcherChoiceInputObjectTypeMapping;
 
 import java.util.List;

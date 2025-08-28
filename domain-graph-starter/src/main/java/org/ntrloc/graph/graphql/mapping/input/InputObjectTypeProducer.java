@@ -1,4 +1,4 @@
-package org.ntrloc.graph.graphql.mapping;
+package org.ntrloc.graph.graphql.mapping.input;
 
 import graphql.language.InputObjectTypeDefinition;
 
