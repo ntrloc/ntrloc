@@ -6,19 +6,19 @@ import graphql.language.NonNullType;
 import graphql.language.TypeName;
 import org.apache.commons.text.CaseUtils;
 import org.ntrloc.graph.db.schema.EntityDefinition;
-import org.ntrloc.graph.graphql.mapping.InputTypeProducer;
-import org.ntrloc.graph.graphql.mapping.matcher.MatcherChoiceInputTypeMapping;
+import org.ntrloc.graph.graphql.mapping.InputObjectTypeProducer;
+import org.ntrloc.graph.graphql.mapping.matcher.MatcherChoiceInputObjectTypeMapping;
 
 import java.util.List;
 
 /* Maps an entity to a GraphQL input object that represents a delete instruction. */
-public class EntityDeleteInputTypeMapping implements InputTypeProducer {
+public class EntityDeleteInputObjectTypeMapping implements InputObjectTypeProducer {
 
     private String graphQlTypeName;
     private EntityDefinition entityDefinition;
-    private MatcherChoiceInputTypeMapping matcherChoiceMapping;
+    private MatcherChoiceInputObjectTypeMapping matcherChoiceMapping;
 
-    public EntityDeleteInputTypeMapping(EntityDefinition entityDefinition, MatcherChoiceInputTypeMapping matcherChoiceMapping) {
+    public EntityDeleteInputObjectTypeMapping(EntityDefinition entityDefinition, MatcherChoiceInputObjectTypeMapping matcherChoiceMapping) {
         String typeName = String.format("%s Delete Input", entityDefinition.getName());
         this.graphQlTypeName = CaseUtils.toCamelCase(typeName, true, '_', '-');
         this.entityDefinition = entityDefinition;

@@ -7,19 +7,19 @@ import graphql.language.NonNullType;
 import graphql.language.TypeName;
 import org.apache.commons.text.CaseUtils;
 import org.ntrloc.graph.db.schema.EntityDefinition;
-import org.ntrloc.graph.graphql.mapping.InputTypeProducer;
+import org.ntrloc.graph.graphql.mapping.InputObjectTypeProducer;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-public class EntityCreateLinksInputTypeMapping implements InputTypeProducer {
+public class EntityUpdateLinksInputObjectTypeMapping implements InputObjectTypeProducer {
 
     private String graphQlTypeName;
-    private Map<String, OutgoingRelationshipCreateInputTypeMapping> outgoingTypes;
+    private Map<String, OutgoingRelationshipChoiceInputObjectTypeMapping> outgoingTypes;
 
-    public EntityCreateLinksInputTypeMapping(EntityDefinition entityDefinition, Map<String, OutgoingRelationshipCreateInputTypeMapping> outgoingTypes) {
-        String typeName = String.format("%s Create Links Input", entityDefinition.getName());
+    public EntityUpdateLinksInputObjectTypeMapping(EntityDefinition entityDefinition, Map<String, OutgoingRelationshipChoiceInputObjectTypeMapping> outgoingTypes) {
+        String typeName = String.format("%s Update Links Input", entityDefinition.getName());
         this.graphQlTypeName = CaseUtils.toCamelCase(typeName, true, '_', '-');
         this.outgoingTypes = outgoingTypes;
     }
@@ -29,9 +29,9 @@ public class EntityCreateLinksInputTypeMapping implements InputTypeProducer {
         List<InputObjectTypeDefinition> retDefinitions = new ArrayList<>();
 
         List<InputValueDefinition> linkInputValues = new ArrayList<>();
-        for (Map.Entry<String, OutgoingRelationshipCreateInputTypeMapping> entry : outgoingTypes.entrySet()) {
+        for (Map.Entry<String, OutgoingRelationshipChoiceInputObjectTypeMapping> entry : outgoingTypes.entrySet()) {
             String label = entry.getKey();
-            OutgoingRelationshipCreateInputTypeMapping type = entry.getValue();
+            OutgoingRelationshipChoiceInputObjectTypeMapping type = entry.getValue();
             retDefinitions.addAll(type.getInputObjectTypeDefinitions());
 
             linkInputValues.add(InputValueDefinition.newInputValueDefinition()
@@ -39,6 +39,7 @@ public class EntityCreateLinksInputTypeMapping implements InputTypeProducer {
                     .type(new ListType(new NonNullType(new TypeName(type.getGraphQlTypeName()))))
                     .build());
         }
+
         retDefinitions.add(InputObjectTypeDefinition.newInputObjectDefinition()
                 .name(graphQlTypeName)
                 .inputValueDefinitions(linkInputValues)

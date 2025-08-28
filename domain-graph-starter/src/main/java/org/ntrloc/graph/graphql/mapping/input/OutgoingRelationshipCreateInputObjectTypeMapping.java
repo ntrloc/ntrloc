@@ -5,20 +5,20 @@ import graphql.language.InputValueDefinition;
 import graphql.language.TypeName;
 import org.apache.commons.text.CaseUtils;
 import org.ntrloc.graph.db.schema.RelationshipDefinition;
-import org.ntrloc.graph.graphql.mapping.InputTypeProducer;
-import org.ntrloc.graph.graphql.mapping.matcher.MatcherChoiceInputTypeMapping;
+import org.ntrloc.graph.graphql.mapping.InputObjectTypeProducer;
+import org.ntrloc.graph.graphql.mapping.matcher.MatcherChoiceInputObjectTypeMapping;
 
 import java.util.List;
 
 /** Maps an entity's outbound relationship to an instruction to create a new instance of that relationship. */
-public class OutgoingRelationshipCreateInputTypeMapping implements OutgoingRelationshipInputTypeMapping, InputTypeProducer {
+public class OutgoingRelationshipCreateInputObjectTypeMapping implements OutgoingRelationshipInputTypeMapping, InputObjectTypeProducer {
 
     private String graphQlTypeName;
     private RelationshipDefinition targetRelationshipDefinition;
-    private RelationshipPropertiesInputTypeMapping propertiesMapping;
-    private MatcherChoiceInputTypeMapping matcherChoiceMapping;
+    private RelationshipPropertiesInputObjectTypeMapping propertiesMapping;
+    private MatcherChoiceInputObjectTypeMapping matcherChoiceMapping;
 
-    public OutgoingRelationshipCreateInputTypeMapping(RelationshipDefinition targetRelationshipDefinition, RelationshipPropertiesInputTypeMapping propertiesMapping, MatcherChoiceInputTypeMapping matcherChoiceMapping) {
+    public OutgoingRelationshipCreateInputObjectTypeMapping(RelationshipDefinition targetRelationshipDefinition, RelationshipPropertiesInputObjectTypeMapping propertiesMapping, MatcherChoiceInputObjectTypeMapping matcherChoiceMapping) {
         String typeName = String.format("%s %s %s Link Create Input", targetRelationshipDefinition.getSourceEntity(), targetRelationshipDefinition.getSourceLabel(), targetRelationshipDefinition.getTargetEntity());
         this.graphQlTypeName = CaseUtils.toCamelCase(typeName, true, '_', '-');
         this.targetRelationshipDefinition = targetRelationshipDefinition;

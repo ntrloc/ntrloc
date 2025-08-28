@@ -7,11 +7,10 @@ import org.ntrloc.graph.db.schema.PropertyDefinition;
 import org.ntrloc.graph.db.schema.PropertyGroupDefinition;
 import org.ntrloc.graph.db.schema.PropertyType;
 import org.ntrloc.graph.db.schema.RelationshipDefinition;
-import org.ntrloc.graph.graphql.mapping.matcher.MatcherChoiceInputTypeMapping;
 
 import java.util.Set;
 
-class EntityInputTypeMapperTest {
+class SchemaMapperTest {
 
     @Test
     void testMapInputTypes() {
@@ -52,10 +51,11 @@ class EntityInputTypeMapperTest {
         Set<EntityDefinition> entityDefinitions = Set.of(photoEntity, photographerEntity);
         Set<RelationshipDefinition> relationshipDefinitions = Set.of(photoRelationship);
 
-        MatcherChoiceInputTypeMapping matcherChoiceInputTypeMapping = new MatcherChoiceInputTypeMapping();
+        EntityInputTypesMapper inputTypesMapper = new EntityInputTypesMapper();
+        EntityOutputTypesMapper outputTypesMapper = new EntityOutputTypesMapper();
+        SchemaMapper mapper = new SchemaMapper(inputTypesMapper, outputTypesMapper);
 
-        EntityInputTypesMapper mapper = new EntityInputTypesMapper();
-        mapper.parseEntityInputTypes(entityDefinitions, relationshipDefinitions, matcherChoiceInputTypeMapping);
+        mapper.mapSchema(entityDefinitions, relationshipDefinitions);
 
     }
 

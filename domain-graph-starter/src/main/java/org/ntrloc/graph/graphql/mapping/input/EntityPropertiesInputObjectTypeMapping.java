@@ -7,7 +7,7 @@ import graphql.language.TypeName;
 import org.apache.commons.text.CaseUtils;
 import org.ntrloc.graph.db.schema.EntityDefinition;
 import org.ntrloc.graph.db.schema.PropertyDefinition;
-import org.ntrloc.graph.graphql.mapping.InputTypeProducer;
+import org.ntrloc.graph.graphql.mapping.InputObjectTypeProducer;
 
 import java.util.HashMap;
 import java.util.List;
@@ -16,7 +16,7 @@ import java.util.Map;
 /**
  * Maps an entity's properties to a GraphQL entity properties type.
  */
-public class EntityPropertiesInputTypeMapping implements InputTypeProducer {
+public class EntityPropertiesInputObjectTypeMapping implements InputObjectTypeProducer {
 
     private String graphQlTypeName;
 
@@ -26,7 +26,7 @@ public class EntityPropertiesInputTypeMapping implements InputTypeProducer {
     /* Maps graphQL property names to their original property definitions. */
     private Map<String, PropertyDefinition> propertyDefinitions = new HashMap<>();
 
-    public EntityPropertiesInputTypeMapping(EntityDefinition entityDefinition) {
+    public EntityPropertiesInputObjectTypeMapping(EntityDefinition entityDefinition) {
         String typeName = String.format("%s Properties Input", entityDefinition.getName());
         this.graphQlTypeName = CaseUtils.toCamelCase(typeName, true, '_', '-');
 

@@ -4,9 +4,9 @@ import graphql.language.InputObjectTypeDefinition;
 import org.ntrloc.graph.Tuple;
 import org.ntrloc.graph.db.schema.EntityDefinition;
 import org.ntrloc.graph.db.schema.RelationshipDefinition;
-import org.ntrloc.graph.graphql.mapping.input.EntityMutationInputTypeMapping;
+import org.ntrloc.graph.graphql.mapping.input.EntityMutationInputObjectTypeMapping;
 import org.ntrloc.graph.graphql.mapping.input.InputTypeConstants;
-import org.ntrloc.graph.graphql.mapping.matcher.MatcherChoiceInputTypeMapping;
+import org.ntrloc.graph.graphql.mapping.matcher.MatcherChoiceInputObjectTypeMapping;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -21,31 +21,33 @@ public class EntityInputTypesMapper {
 
     private static final Logger LOG = LoggerFactory.getLogger(EntityInputTypesMapper.class);
 
-    public void parseEntityInputTypes(Set<EntityDefinition> entityDefinitions, Set<RelationshipDefinition> relationshipDefinitions, MatcherChoiceInputTypeMapping matcherChoiceInputTypeMapping) {
-        Map<String, EntityMutationInputTypeMapping> entityInputMap = new HashMap<>();
+    public void parseEntityInputTypes(Set<EntityDefinition> entityDefinitions, Set<RelationshipDefinition> relationshipDefinitions) {
+        MatcherChoiceInputObjectTypeMapping matcherChoiceInputTypeMapping = new MatcherChoiceInputObjectTypeMapping();
+
+        Map<String, EntityMutationInputObjectTypeMapping> entityInputMap = new HashMap<>();
 
         for (EntityDefinition definition : entityDefinitions) {
-            EntityMutationInputTypeMapping mapping = new EntityMutationInputTypeMapping(definition, matcherChoiceInputTypeMapping);
+            EntityMutationInputObjectTypeMapping mapping = new EntityMutationInputObjectTypeMapping(definition, matcherChoiceInputTypeMapping);
             LOG.info("Parsed input type {} for entity {}", mapping.getGraphQlTypeName(), definition.getName());
             entityInputMap.put(definition.getName(), mapping);
         }
 
         for (EntityDefinition entityDefinition: entityDefinitions) {
             String entityName = entityDefinition.getName();
-            EntityMutationInputTypeMapping sourceMapping = entityInputMap.get(entityName);
+            EntityMutationInputObjectTypeMapping sourceMapping = entityInputMap.get(entityName);
 
             Set<RelationshipDefinition> outboundRelationships = relationshipDefinitions.stream().filter(rel -> rel.getSourceEntity().equals(entityName)).collect(Collectors.toSet());
-            List<Tuple<RelationshipDefinition, EntityMutationInputTypeMapping>> outgoingTuples = new ArrayList<>();
+            List<Tuple<RelationshipDefinition, EntityMutationInputObjectTypeMapping>> outgoingTuples = new ArrayList<>();
             for (RelationshipDefinition definition: outboundRelationships) {
-                EntityMutationInputTypeMapping targetMapping = entityInputMap.get(definition.getTargetEntity());
+                EntityMutationInputObjectTypeMapping targetMapping = entityInputMap.get(definition.getTargetEntity());
                 outgoingTuples.add(Tuple.of(definition, targetMapping));
             }
             sourceMapping.mapOutgoingRelationships(outgoingTuples, matcherChoiceInputTypeMapping);
 
             Set<RelationshipDefinition> inboundRelationships = relationshipDefinitions.stream().filter(rel -> rel.getTargetEntity().equals(entityName)).collect(Collectors.toSet());
-            List<Tuple<RelationshipDefinition, EntityMutationInputTypeMapping>> incomingTuples = new ArrayList<>();
+            List<Tuple<RelationshipDefinition, EntityMutationInputObjectTypeMapping>> incomingTuples = new ArrayList<>();
             for (RelationshipDefinition definition: inboundRelationships) {
-                EntityMutationInputTypeMapping targetMapping = entityInputMap.get(definition.getSourceEntity());
+                EntityMutationInputObjectTypeMapping targetMapping = entityInputMap.get(definition.getSourceEntity());
                 incomingTuples.add(Tuple.of(definition, targetMapping));
             }
             sourceMapping.mapIncomingRelationships(incomingTuples);
@@ -53,11 +55,19 @@ public class EntityInputTypesMapper {
 
         LOG.info("Mapping complete");
 
+
+        Map<String, InputObjectTypeDefinition> allInputTypes = new HashMap<>();
+        for (InputObjectTypeDefinition matcherDef: matcherChoiceInputTypeMapping.getInputObjectTypeDefinitions()) {
+            allInputTypes.put(matcherDef.getName(), matcherDef);
+        }
+
         Map<String, InputObjectTypeDefinition> inputObjectTypeDefinitionMap = entityInputMap.values().stream()
                 .flatMap(mapping -> mapping.getInputObjectTypeDefinitions().stream())
                 .collect(Collectors.toMap(InputObjectTypeDefinition::getName, inputObjectTypeDefinition -> inputObjectTypeDefinition, (existingValue, newValue) -> existingValue));
+        allInputTypes.putAll(inputObjectTypeDefinitionMap);
 
-        List<InputObjectTypeDefinition> entityMutationDefinitions =inputObjectTypeDefinitionMap.values().stream()
+
+        List<InputObjectTypeDefinition> entityMutationDefinitions = allInputTypes.values().stream()
                 .filter(def -> def.getAdditionalData().getOrDefault(InputTypeConstants.IS_TOP_LEVEL_ENTITY_INPUT_TYPE, Boolean.toString(false)).equals(Boolean.toString(true))).collect(Collectors.toList());
 
         LOG.info("Got input types {}", inputObjectTypeDefinitionMap);

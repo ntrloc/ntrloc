@@ -10,12 +10,12 @@ import org.ntrloc.graph.db.language.Matcher;
 
 import java.util.List;
 
-public class AllMatcherInputTypeMapping implements MatcherInputTypeMapping {
+public class AllMatcherInputObjectTypeMapping implements MatcherInputObjectTypeMapping {
 
     private String graphQlTypeName;
     private Matcher matcher = new AllNodesMatcher();
 
-    public AllMatcherInputTypeMapping() {
+    public AllMatcherInputObjectTypeMapping() {
         this.graphQlTypeName = CaseUtils.toCamelCase("All Matcher Input", true, '_', '-');
     }
 

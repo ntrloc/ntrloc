@@ -8,14 +8,14 @@ import org.apache.commons.text.CaseUtils;
 import org.ntrloc.graph.db.schema.EntityDefinition;
 import org.ntrloc.graph.db.schema.PropertyDefinition;
 import org.ntrloc.graph.db.schema.RelationshipDefinition;
-import org.ntrloc.graph.graphql.mapping.InputTypeProducer;
+import org.ntrloc.graph.graphql.mapping.InputObjectTypeProducer;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 /** Maps all properties for a relationship into a GraphQL input object type. */
-public class RelationshipPropertiesInputTypeMapping implements InputTypeProducer {
+public class RelationshipPropertiesInputObjectTypeMapping implements InputObjectTypeProducer {
 
     private String graphQlTypeName;
 
@@ -25,7 +25,7 @@ public class RelationshipPropertiesInputTypeMapping implements InputTypeProducer
     /* Maps graphQL property names to their original property definitions. */
     private Map<String, PropertyDefinition> propertyDefinitions = new HashMap<>();
 
-    public RelationshipPropertiesInputTypeMapping(EntityDefinition sourceEntity, RelationshipDefinition relationshipDefinition) {
+    public RelationshipPropertiesInputObjectTypeMapping(EntityDefinition sourceEntity, RelationshipDefinition relationshipDefinition) {
         String subjectName;
         String predicateName;
         String targetName;

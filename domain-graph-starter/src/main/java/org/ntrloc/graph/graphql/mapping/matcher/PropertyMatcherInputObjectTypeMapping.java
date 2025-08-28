@@ -9,12 +9,12 @@ import org.ntrloc.graph.db.language.OrMatcher;
 
 import java.util.List;
 
-public class PropertyMatcherInputTypeMapping implements MatcherInputTypeMapping {
+public class PropertyMatcherInputObjectTypeMapping implements MatcherInputObjectTypeMapping {
 
     private String graphQlTypeName;
     private Matcher matcher = new OrMatcher();
 
-    public PropertyMatcherInputTypeMapping() {
+    public PropertyMatcherInputObjectTypeMapping() {
         this.graphQlTypeName = CaseUtils.toCamelCase("Property Matcher Input", true, '_', '-');
     }
 

@@ -5,13 +5,13 @@ import graphql.language.InputValueDefinition;
 import graphql.language.TypeName;
 import org.apache.commons.text.CaseUtils;
 import org.ntrloc.graph.db.schema.RelationshipDefinition;
-import org.ntrloc.graph.graphql.mapping.InputTypeProducer;
+import org.ntrloc.graph.graphql.mapping.InputObjectTypeProducer;
 
 import java.util.List;
 import java.util.Map;
 
 /** An input type that allows the choice of link create, update, or delete during entity updates. */
-public class OutgoingRelationshipChoiceInputTypeMapping implements OutgoingRelationshipInputTypeMapping, InputTypeProducer {
+public class OutgoingRelationshipChoiceInputObjectTypeMapping implements OutgoingRelationshipInputTypeMapping, InputObjectTypeProducer {
 
     private static final String CREATE_MAPPING_KEY = "create";
     private static final String UPDATE_MAPPING_KEY = "update";
@@ -21,10 +21,10 @@ public class OutgoingRelationshipChoiceInputTypeMapping implements OutgoingRelat
     private RelationshipDefinition targetRelationshipDefinition;
     private Map<String, OutgoingRelationshipInputTypeMapping> mappings;
 
-    public OutgoingRelationshipChoiceInputTypeMapping(RelationshipDefinition targetRelationshipDefinition,
-                                                      OutgoingRelationshipCreateInputTypeMapping createMapping,
-                                                      OutgoingRelationshipUpdateInputTypeMapping updateMapping,
-                                                      OutgoingRelationshipDeleteInputTypeMapping deleteMapping) {
+    public OutgoingRelationshipChoiceInputObjectTypeMapping(RelationshipDefinition targetRelationshipDefinition,
+                                                            OutgoingRelationshipCreateInputObjectTypeMapping createMapping,
+                                                            OutgoingRelationshipUpdateInputTypeMapping updateMapping,
+                                                            OutgoingRelationshipDeleteInputTypeMapping deleteMapping) {
         String typeName = String.format("%s %s %s Link Choice Input", targetRelationshipDefinition.getSourceEntity(), targetRelationshipDefinition.getSourceLabel(), targetRelationshipDefinition.getTargetEntity());
         this.graphQlTypeName = CaseUtils.toCamelCase(typeName, true, '_', '-');
         this.targetRelationshipDefinition = targetRelationshipDefinition;
@@ -35,8 +35,8 @@ public class OutgoingRelationshipChoiceInputTypeMapping implements OutgoingRelat
         return graphQlTypeName;
     }
 
-    public OutgoingRelationshipCreateInputTypeMapping getCreateMapping() {
-        return (OutgoingRelationshipCreateInputTypeMapping) mappings.get(CREATE_MAPPING_KEY);
+    public OutgoingRelationshipCreateInputObjectTypeMapping getCreateMapping() {
+        return (OutgoingRelationshipCreateInputObjectTypeMapping) mappings.get(CREATE_MAPPING_KEY);
     }
 
     public OutgoingRelationshipUpdateInputTypeMapping getUpdateMapping() {

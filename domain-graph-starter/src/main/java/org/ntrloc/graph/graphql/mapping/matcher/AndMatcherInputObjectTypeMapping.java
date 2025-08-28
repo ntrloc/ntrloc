@@ -11,12 +11,12 @@ import org.ntrloc.graph.db.language.Matcher;
 
 import java.util.List;
 
-public class AndMatcherInputTypeMapping implements MatcherInputTypeMapping {
+public class AndMatcherInputObjectTypeMapping implements MatcherInputObjectTypeMapping {
 
     private String graphQlTypeName;
     private Matcher matcher = new AndMatcher();
 
-    public AndMatcherInputTypeMapping() {
+    public AndMatcherInputObjectTypeMapping() {
         this.graphQlTypeName = CaseUtils.toCamelCase("And Matcher Input", true, '_', '-');
     }
 

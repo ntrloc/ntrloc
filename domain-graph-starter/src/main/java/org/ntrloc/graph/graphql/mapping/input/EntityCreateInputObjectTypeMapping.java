@@ -7,21 +7,21 @@ import graphql.language.NonNullType;
 import graphql.language.TypeName;
 import org.apache.commons.text.CaseUtils;
 import org.ntrloc.graph.db.schema.EntityDefinition;
-import org.ntrloc.graph.graphql.mapping.InputTypeProducer;
+import org.ntrloc.graph.graphql.mapping.InputObjectTypeProducer;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Stream;
 
 /* Maps an entity to a GraphQL input object that represents a create instruction. */
-public class EntityCreateInputTypeMapping implements InputTypeProducer {
+public class EntityCreateInputObjectTypeMapping implements InputObjectTypeProducer {
 
     private String graphQlTypeName;
     private EntityDefinition entityDefinition;
-    private EntityPropertiesInputTypeMapping propertiesMapping;
-    private EntityCreateLinksInputTypeMapping linkCreateInputType;
+    private EntityPropertiesInputObjectTypeMapping propertiesMapping;
+    private EntityCreateLinksInputObjectTypeMapping linkCreateInputType;
 
-    public EntityCreateInputTypeMapping(EntityDefinition entityDefinition, EntityPropertiesInputTypeMapping propertiesMapping) {
+    public EntityCreateInputObjectTypeMapping(EntityDefinition entityDefinition, EntityPropertiesInputObjectTypeMapping propertiesMapping) {
         String typeName = String.format("%s Create Input", entityDefinition.getName());
         this.graphQlTypeName = CaseUtils.toCamelCase(typeName, true, '_', '-');
         this.entityDefinition = entityDefinition;
@@ -36,7 +36,7 @@ public class EntityCreateInputTypeMapping implements InputTypeProducer {
         return entityDefinition;
     }
 
-    public void setLinkCreateInputType(EntityCreateLinksInputTypeMapping linkCreateInputType) {
+    public void setLinkCreateInputType(EntityCreateLinksInputObjectTypeMapping linkCreateInputType) {
         this.linkCreateInputType = linkCreateInputType;
     }
 

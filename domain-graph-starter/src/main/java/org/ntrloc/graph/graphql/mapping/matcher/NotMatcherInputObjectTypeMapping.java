@@ -7,30 +7,30 @@ import graphql.language.NonNullType;
 import graphql.language.TypeName;
 import org.apache.commons.text.CaseUtils;
 import org.ntrloc.graph.db.language.Matcher;
-import org.ntrloc.graph.db.language.OrMatcher;
+import org.ntrloc.graph.db.language.NotMatcher;
 
 import java.util.List;
 
-public class OrMatcherInputTypeMapping implements MatcherInputTypeMapping {
+public class NotMatcherInputObjectTypeMapping implements MatcherInputObjectTypeMapping {
 
     private String graphQlTypeName;
-    private Matcher matcher = new OrMatcher();
+    private Matcher matcher = new NotMatcher();
 
-    public OrMatcherInputTypeMapping() {
-        this.graphQlTypeName = CaseUtils.toCamelCase("Or Matcher Input", true, '_', '-');
+    public NotMatcherInputObjectTypeMapping() {
+        this.graphQlTypeName = CaseUtils.toCamelCase("Not Matcher Input", true, '_', '-');
     }
 
     @Override
     public List<InputObjectTypeDefinition> getInputObjectTypeDefinitions() {
-        InputValueDefinition clauseValue = InputValueDefinition.newInputValueDefinition()
-                .name("clauses")
+        InputValueDefinition matchValue = InputValueDefinition.newInputValueDefinition()
+                .name("match")
                 .type(new NonNullType(new ListType(new NonNullType(new TypeName("MatcherInput")))))
                 .build();
-        var orMatcherInput = InputObjectTypeDefinition.newInputObjectDefinition()
+        var notMatcherInput = InputObjectTypeDefinition.newInputObjectDefinition()
                 .name(graphQlTypeName)
-                .inputValueDefinition(clauseValue)
+                .inputValueDefinition(matchValue)
                 .build();
-        return List.of(orMatcherInput);
+        return List.of(notMatcherInput);
     }
 
     public String getGraphQlTypeName() {
