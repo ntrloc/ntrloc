@@ -7,8 +7,8 @@ import org.ntrloc.graph.db.schema.PropertyDefinition;
 import org.ntrloc.graph.db.schema.PropertyGroupDefinition;
 import org.ntrloc.graph.db.schema.PropertyType;
 import org.ntrloc.graph.db.schema.RelationshipDefinition;
-import org.ntrloc.graph.graphql.mapping.input.EntityInputTypesMapper;
-import org.ntrloc.graph.graphql.mapping.output.EntityOutputTypesMapper;
+import org.ntrloc.graph.graphql.mapping.input.EntityInputObjectTypesMapper;
+import org.ntrloc.graph.graphql.mapping.output.EntityObjectTypesMapper;
 
 import java.util.Set;
 
@@ -53,8 +53,8 @@ class SchemaMapperTest {
         Set<EntityDefinition> entityDefinitions = Set.of(photoEntity, photographerEntity);
         Set<RelationshipDefinition> relationshipDefinitions = Set.of(photoRelationship);
 
-        EntityInputTypesMapper inputTypesMapper = new EntityInputTypesMapper();
-        EntityOutputTypesMapper outputTypesMapper = new EntityOutputTypesMapper();
+        EntityInputObjectTypesMapper inputTypesMapper = new EntityInputObjectTypesMapper();
+        EntityObjectTypesMapper outputTypesMapper = new EntityObjectTypesMapper();
         SchemaMapper mapper = new SchemaMapper(inputTypesMapper, outputTypesMapper);
 
         mapper.mapSchema(entityDefinitions, relationshipDefinitions);
