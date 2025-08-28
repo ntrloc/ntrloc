@@ -1,4 +1,4 @@
-package org.ntrloc.graph.graphql.mapping;
+package org.ntrloc.graph.graphql.mapping.legacy;
 
 import org.ntrloc.graph.db.schema.RelationshipDefinition;
 import org.ntrloc.graph.graphql.GraphQLSchemaMapper;

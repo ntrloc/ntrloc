@@ -3,9 +3,9 @@ package org.ntrloc.graph.graphql.impl;
 import org.ntrloc.graph.db.schema.EntityDefinition;
 import org.ntrloc.graph.db.schema.RelationshipDefinition;
 import org.ntrloc.graph.graphql.GraphQLSchemaMapper;
-import org.ntrloc.graph.graphql.mapping.EntityMapping;
-import org.ntrloc.graph.graphql.mapping.InboundRelationshipMapping;
-import org.ntrloc.graph.graphql.mapping.OutboundRelationshipMapping;
+import org.ntrloc.graph.graphql.mapping.legacy.EntityMapping;
+import org.ntrloc.graph.graphql.mapping.legacy.InboundRelationshipMapping;
+import org.ntrloc.graph.graphql.mapping.legacy.OutboundRelationshipMapping;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -28,6 +28,9 @@ public class GraphQLSchemaMapperImpl implements GraphQLSchemaMapper {
 
     public void mapSchemaElements(Set<EntityDefinition> entityDefinitions, Set<RelationshipDefinition> relationshipDefinitions) {
         parse(entityDefinitions, relationshipDefinitions);
+
+        parseSchema(entityDefinitions, relationshipDefinitions);
+
     }
 
     private void parse(Set<EntityDefinition> entityDefinitions, Set<RelationshipDefinition> relationshipDefinitions) {
@@ -88,5 +91,13 @@ public class GraphQLSchemaMapperImpl implements GraphQLSchemaMapper {
     public Optional<EntityMapping> getEntityMapping(String entityName) {
         return Optional.ofNullable(entityMappingMap.get(entityName));
     }
+
+
+    private void parseSchema(Set<EntityDefinition> entityDefinitions, Set<RelationshipDefinition> relationshipDefinitions) {
+        // this is the new implementation?
+
+    }
+
+
 
 }

@@ -19,7 +19,8 @@ public class GraphQLMutationParserImpl implements GraphQLMutationParser {
 
     @Override
     public List<EntityMutation> parseMutations(Field mutationField) {
-        mutationField.getSelectionSet().getSelections().forEach(selection -> {
+        var ss = mutationField.getSelectionSet();
+        ss.getSelections().forEach(selection -> {
             Field childField = (Field) selection;
             List<Argument> arguments = childField.getArguments(); // this is the list of inputs
             for (Argument argument : arguments) {
