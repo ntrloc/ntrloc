@@ -1,4 +1,4 @@
-package org.ntrloc.graph.db.mutation;
+package org.ntrloc.graph.db.language.mutation;
 
 public interface Property<T> {
 

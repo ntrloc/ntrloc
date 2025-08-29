@@ -10,9 +10,9 @@ import org.ntrloc.graph.db.LabelConstants;
 import org.ntrloc.graph.db.PropertyConstants;
 import org.ntrloc.graph.db.PropertyNameTranslator;
 import org.ntrloc.graph.db.Transaction;
-import org.ntrloc.graph.db.mutation.ListProperty;
-import org.ntrloc.graph.db.mutation.Property;
-import org.ntrloc.graph.db.mutation.ScalarProperty;
+import org.ntrloc.graph.db.language.mutation.ListProperty;
+import org.ntrloc.graph.db.language.mutation.Property;
+import org.ntrloc.graph.db.language.mutation.ScalarProperty;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

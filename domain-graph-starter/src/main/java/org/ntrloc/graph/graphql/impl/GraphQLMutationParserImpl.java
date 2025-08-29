@@ -4,7 +4,7 @@ import graphql.language.Argument;
 import graphql.language.ArrayValue;
 import graphql.language.Field;
 import graphql.language.Value;
-import org.ntrloc.graph.db.mutation.EntityMutation;
+import org.ntrloc.graph.db.language.mutation.EntityMutation;
 import org.ntrloc.graph.graphql.GraphQLMutationParser;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

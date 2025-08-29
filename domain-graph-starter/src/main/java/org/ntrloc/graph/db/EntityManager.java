@@ -1,9 +1,9 @@
 package org.ntrloc.graph.db;
 
 import org.ntrloc.graph.db.impl.HashingBinaryDataWriter;
-import org.ntrloc.graph.db.mutation.MutationRequest;
-import org.ntrloc.graph.db.query.Query;
-import org.ntrloc.graph.db.query.QueryResult;
+import org.ntrloc.graph.db.language.mutation.MutationRequest;
+import org.ntrloc.graph.db.language.query.Query;
+import org.ntrloc.graph.db.language.query.QueryResult;
 
 import java.io.IOException;
 

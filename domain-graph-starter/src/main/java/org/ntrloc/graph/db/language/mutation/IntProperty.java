@@ -1,4 +1,4 @@
-package org.ntrloc.graph.db.mutation;
+package org.ntrloc.graph.db.language.mutation;
 
 public class IntProperty implements ScalarProperty<Integer, Integer> {
 

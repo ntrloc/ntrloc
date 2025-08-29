@@ -1,4 +1,4 @@
-package org.ntrloc.graph.db.query;
+package org.ntrloc.graph.db.language.query;
 
 public class Query {
 

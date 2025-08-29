@@ -11,7 +11,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.db.EntityStatus;
 import org.ntrloc.graph.db.LabelConstants;
-import org.ntrloc.graph.db.mutation.StringProperty;
+import org.ntrloc.graph.db.language.mutation.StringProperty;
 
 import java.util.Arrays;
 import java.util.HashMap;
