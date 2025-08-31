@@ -1,4 +1,4 @@
-package org.ntrloc.graph.db.language.mutation;
+package org.ntrloc.graph.db.language;
 
 public class BooleanProperty implements ScalarProperty<Boolean, Boolean> {
 

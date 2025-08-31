@@ -3,9 +3,12 @@ package org.ntrloc.graph.graphql.mapping.input;
 import graphql.language.Directive;
 import graphql.language.InputObjectTypeDefinition;
 import graphql.language.InputValueDefinition;
+import graphql.language.ObjectField;
+import graphql.language.ObjectValue;
 import graphql.language.TypeName;
 import org.apache.commons.text.CaseUtils;
 import org.ntrloc.graph.Tuple;
+import org.ntrloc.graph.db.language.mutation.EntityMutation;
 import org.ntrloc.graph.db.schema.EntityDefinition;
 import org.ntrloc.graph.db.schema.RelationshipDefinition;
 import org.ntrloc.graph.graphql.mapping.matcher.MatcherChoiceInputObjectTypeMapping;
@@ -177,6 +180,23 @@ public class EntityInputObjectTypeMapping implements InputObjectTypeProducer {
         retList.addAll(inputObjectTypeDefinitions);
 
         return retList;
+    }
+
+    public List<EntityMutation> parseEntityMutations(List<ObjectValue> objectValues) {
+        List<EntityMutation> mutations = new ArrayList<>();
+        for (var objectValue: objectValues) {
+            ObjectField field = objectValue.getObjectFields().get(0); // there can only be one field
+            var mutation = switch (field.getName()) {
+                case CREATE_MAPPING_KEY -> createInputTypeMapping.parseCreateMutation((ObjectValue) field.getValue());
+                case UPDATE_MAPPING_KEY -> throw new IllegalArgumentException("Cannot update an entity-level mutation");
+                case DELETE_MAPPING_KEY -> throw new IllegalArgumentException("Cannot delete an entity-level mutation");
+                default -> throw new IllegalArgumentException("Unknown mutation type: " + field.getName());
+            };
+            mutation.setEntityType(entityDefinition.getName());
+            mutations.add(mutation);
+        }
+
+        return mutations;
     }
 
 }

@@ -175,7 +175,8 @@ class MutationRetrievalIntegrationTest {
 				mutation Mutation {
 				    execute {
                         Photo(inputs: [
-                            { create: { properties: { name: "photo1" } } }
+                            { create: { properties: { name: "photo1", number: null } } },
+                            { create: { properties: { name: "photo2" } } }
                         ]) {
                             properties { name }
                         }

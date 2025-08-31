@@ -10,9 +10,9 @@ import org.ntrloc.graph.db.LabelConstants;
 import org.ntrloc.graph.db.PropertyConstants;
 import org.ntrloc.graph.db.PropertyNameTranslator;
 import org.ntrloc.graph.db.Transaction;
-import org.ntrloc.graph.db.language.mutation.ListProperty;
-import org.ntrloc.graph.db.language.mutation.Property;
-import org.ntrloc.graph.db.language.mutation.ScalarProperty;
+import org.ntrloc.graph.db.language.ListProperty;
+import org.ntrloc.graph.db.language.Property;
+import org.ntrloc.graph.db.language.ScalarProperty;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -144,7 +144,7 @@ public class Mutator {
 
         transaction.begin();
 
-        GraphTraversal<?, ?> traversal = traversalSource.V();
+        GraphTraversal<?, ?> traversal = null;
         var objectMapper = new ObjectMapper();
 
         var revisionIter = traversalSource.V()
@@ -163,59 +163,65 @@ public class Mutator {
 
         List<Revision> revisions = revisionIter.toList();
 
-        for (Revision revision : revisions) {
-            LOG.info("Applying revision {}", revision);
+        if (revisions.isEmpty()) {
+            LOG.info("No revisions found for transaction {}", transaction.getId());
+        } else {
+            for (Revision revision : revisions) {
+                LOG.info("Applying revision {}", revision);
 
-            var revisionLabel = String.format("%s-revision", revision.getId());
-            var currentLabel = String.format("%s-current", revision.getRevisionOf().getId());
-            var newLabel = String.format("%s-new", revision.getRevisionOf().getId());
+                var revisionLabel = String.format("%s-revision", revision.getId());
+                var currentLabel = String.format("%s-current", revision.getRevisionOf().getId());
+                var newLabel = String.format("%s-new", revision.getRevisionOf().getId());
 
-            Node currentNode = revision.getRevisionOf();
+                Node currentNode = revision.getRevisionOf();
 
-            if (traversal == null) {
-                traversal = traversalSource.V(revision.id).as(revisionLabel);
-            } else {
-                traversal = traversal.V(revision.id).as(revisionLabel);
-            }
+                if (traversal == null) {
+                    traversal = traversalSource.V(revision.id).as(revisionLabel);
+                } else {
+                    traversal = traversal.V(revision.id).as(revisionLabel);
+                }
 
-            traversal = traversal.V(currentNode.getId()).as(currentLabel);
+                traversal = traversal.V(currentNode.getId()).as(currentLabel);
 
-            Map<Object, Object> appliedProperties = new HashMap<>();
+                Map<Object, Object> appliedProperties = new HashMap<>();
 
-            // collect all current properties
-            if (currentNode.getProperties() != null) {
-                appliedProperties.putAll(currentNode.getProperties());
-            }
+                // collect all current properties
+                if (currentNode.getProperties() != null) {
+                    appliedProperties.putAll(currentNode.getProperties());
+                }
 
-            // overwrite properties with new values in the revision
-            for (Map.Entry<String, Object> entry : revision.getProperties().entrySet()) {
-                String key = entry.getKey();
-                Object value = entry.getValue();
+                // overwrite properties with new values in the revision
+                for (Map.Entry<String, Object> entry : revision.getProperties().entrySet()) {
+                    String key = entry.getKey();
+                    Object value = entry.getValue();
 
-                if (key.equals(PropertyConstants.DELETED_PROPERTY_NAME)) {
-                    if (value instanceof List deleteList) {
-                        for (Object deletedProperty : deleteList) {
-                            appliedProperties.remove(deletedProperty);
+                    if (key.equals(PropertyConstants.DELETED_PROPERTY_NAME)) {
+                        if (value instanceof List deleteList) {
+                            for (Object deletedProperty : deleteList) {
+                                appliedProperties.remove(deletedProperty);
+                            }
+                        } else {
+                            appliedProperties.remove(value);
                         }
                     } else {
-                        appliedProperties.remove(value);
+                        appliedProperties.put(key, value);
                     }
-                } else {
-                    appliedProperties.put(key, value);
                 }
+
+                traversal = traversal.addV(currentNode.getLabel()).as(newLabel)
+                        .property(appliedProperties)
+                        .property(PropertyConstants.VERSION_PROPERTY, (int)currentNode.getProperties().getOrDefault(PropertyConstants.VERSION_PROPERTY, 1) + 1)
+                        .property(PropertyConstants.STATUS_PROPERTY, EntityStatus.UNCOMMITTED.toString())
+
+                        .addE(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).from(newLabel).to(currentLabel).outV()
+                        .V(revision.getId()).drop()
+                        .V(revision.getRevisionOf().getId());
             }
 
-            traversal = traversal.addV(currentNode.getLabel()).as(newLabel)
-                    .property(appliedProperties)
-                    .property(PropertyConstants.VERSION_PROPERTY, (int)currentNode.getProperties().getOrDefault(PropertyConstants.VERSION_PROPERTY, 1) + 1)
-                    .property(PropertyConstants.STATUS_PROPERTY, EntityStatus.UNCOMMITTED.toString())
+            traversal.iterate();
 
-                    .addE(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).from(newLabel).to(currentLabel).outV()
-                    .V(revision.getId()).drop()
-                    .V(revision.getRevisionOf().getId());
+            LOG.info("Applied {} node revisions to uncommitted nodes", revisions.size());
         }
-
-        traversal.iterate();
 
         LOG.info("Prepared transaction {} in {} ms", transaction.getId(), (new Date().getTime() - now) / 1000);
     }

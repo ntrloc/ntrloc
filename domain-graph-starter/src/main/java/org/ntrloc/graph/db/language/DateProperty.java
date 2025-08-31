@@ -1,4 +1,4 @@
-package org.ntrloc.graph.db.language.mutation;
+package org.ntrloc.graph.db.language;
 
 import java.util.Date;
 

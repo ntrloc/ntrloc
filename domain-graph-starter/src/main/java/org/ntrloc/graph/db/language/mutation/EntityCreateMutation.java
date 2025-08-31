@@ -1,11 +1,25 @@
 package org.ntrloc.graph.db.language.mutation;
 
+import org.ntrloc.graph.db.language.BinaryReferenceProperty;
+import org.ntrloc.graph.db.language.BooleanListProperty;
+import org.ntrloc.graph.db.language.BooleanProperty;
+import org.ntrloc.graph.db.language.DateListProperty;
+import org.ntrloc.graph.db.language.DateProperty;
+import org.ntrloc.graph.db.language.DoubleListProperty;
+import org.ntrloc.graph.db.language.DoubleProperty;
+import org.ntrloc.graph.db.language.IntListProperty;
+import org.ntrloc.graph.db.language.IntProperty;
+import org.ntrloc.graph.db.language.Property;
+import org.ntrloc.graph.db.language.StringListProperty;
+import org.ntrloc.graph.db.language.StringProperty;
+
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 public class EntityCreateMutation extends EntityMutation {
 
@@ -35,8 +49,8 @@ public class EntityCreateMutation extends EntityMutation {
         return refId;
     }
 
-    public void setProperties(Map<String, Property> properties) {
-        this.properties = properties;
+    public void setProperties(List<? extends Property> properties) {
+        this.properties = properties.stream().collect(Collectors.toMap(Property::getName, p -> p));
     }
 
     public EntityCreateMutation stringProperty(String name, String value) {

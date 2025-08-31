@@ -7,6 +7,7 @@ import org.ntrloc.graph.db.schema.PropertyDefinition;
 import org.ntrloc.graph.db.schema.PropertyGroupDefinition;
 import org.ntrloc.graph.db.schema.PropertyType;
 import org.ntrloc.graph.db.schema.RelationshipDefinition;
+import org.ntrloc.graph.graphql.impl.SchemaMapperImpl;
 import org.ntrloc.graph.graphql.mapping.input.EntityInputObjectTypesMapper;
 import org.ntrloc.graph.graphql.mapping.output.EntityObjectTypesMapper;
 
@@ -55,7 +56,7 @@ class SchemaMapperTest {
 
         EntityInputObjectTypesMapper inputTypesMapper = new EntityInputObjectTypesMapper();
         EntityObjectTypesMapper outputTypesMapper = new EntityObjectTypesMapper();
-        SchemaMapper mapper = new SchemaMapper(inputTypesMapper, outputTypesMapper);
+        SchemaMapper mapper = new SchemaMapperImpl(inputTypesMapper, outputTypesMapper);
 
         mapper.mapSchema(entityDefinitions, relationshipDefinitions);
 

@@ -7,7 +7,7 @@ import graphql.schema.DataFetchingEnvironment;
 import graphql.schema.GraphQLFieldDefinition;
 import org.ntrloc.graph.db.EntityManager;
 import org.ntrloc.graph.db.language.mutation.MutationRequest;
-import org.ntrloc.graph.graphql.GraphQLMutationParser;
+import org.ntrloc.graph.graphql.mapping.SchemaMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -21,11 +21,11 @@ public class MutationDataFetcher implements DataFetcher<Object> {
 
     private static final Logger LOG = LoggerFactory.getLogger(MutationDataFetcher.class);
 
-    private GraphQLMutationParser mutationParser;
+    private SchemaMapper schemaMapper;
     private EntityManager entityManager;
 
-    public MutationDataFetcher(GraphQLMutationParser mutationParser, EntityManager entityManager) {
-        this.mutationParser = mutationParser;
+    public MutationDataFetcher(EntityManager entityManager, SchemaMapper schemaMapper) {
+        this.schemaMapper = schemaMapper;
         this.entityManager = entityManager;
     }
 
@@ -39,7 +39,11 @@ public class MutationDataFetcher implements DataFetcher<Object> {
             Map<String, Object> args = dfe.getArguments();
             LOG.info("Mutating entity {} with args {}", fd, args);
 
-            var mutations = mutationParser.parseMutations(dfe.getField());
+            // TODO: this is temporary while I figure out how to best handle mutations and select-back
+            var mutes = schemaMapper.parseEntityMutations(dfe.getField());
+
+            var mutations = mutes.values().stream().flatMap(List::stream).toList();
+
             var request = new MutationRequest(mutations);
             entityManager.executeMutation(request);
 

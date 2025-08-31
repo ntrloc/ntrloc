@@ -1,5 +1,18 @@
 package org.ntrloc.graph.db.language.mutation;
 
+import org.ntrloc.graph.db.language.BinaryReferenceProperty;
+import org.ntrloc.graph.db.language.BooleanListProperty;
+import org.ntrloc.graph.db.language.BooleanProperty;
+import org.ntrloc.graph.db.language.DateListProperty;
+import org.ntrloc.graph.db.language.DateProperty;
+import org.ntrloc.graph.db.language.DoubleListProperty;
+import org.ntrloc.graph.db.language.DoubleProperty;
+import org.ntrloc.graph.db.language.IntListProperty;
+import org.ntrloc.graph.db.language.IntProperty;
+import org.ntrloc.graph.db.language.Property;
+import org.ntrloc.graph.db.language.StringListProperty;
+import org.ntrloc.graph.db.language.StringProperty;
+
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;

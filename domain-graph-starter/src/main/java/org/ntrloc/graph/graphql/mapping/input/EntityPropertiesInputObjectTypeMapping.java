@@ -3,10 +3,19 @@ package org.ntrloc.graph.graphql.mapping.input;
 import graphql.language.Description;
 import graphql.language.InputObjectTypeDefinition;
 import graphql.language.InputValueDefinition;
+import graphql.language.IntValue;
+import graphql.language.NullValue;
+import graphql.language.ObjectField;
+import graphql.language.ObjectValue;
+import graphql.language.StringValue;
 import graphql.language.TypeName;
 import org.apache.commons.text.CaseUtils;
+import org.ntrloc.graph.db.language.IntProperty;
+import org.ntrloc.graph.db.language.Property;
+import org.ntrloc.graph.db.language.StringProperty;
 import org.ntrloc.graph.db.schema.EntityDefinition;
 import org.ntrloc.graph.db.schema.PropertyDefinition;
+import org.ntrloc.graph.db.schema.PropertyType;
 
 import java.util.HashMap;
 import java.util.List;
@@ -74,5 +83,44 @@ public class EntityPropertiesInputObjectTypeMapping implements InputObjectTypePr
                 .type(typeName)
                 .description(propertyDescription)
                 .build();
+    }
+
+    List<? extends Property> mapProperties(ObjectValue propertiesValue) {
+        List<ObjectField> values = propertiesValue.getObjectFields();
+        return values.stream().map(value -> {
+            String propertyName = value.getName();
+            PropertyDefinition propertyDefinition = propertyDefinitions.get(propertyName);
+            PropertyType propertyType = propertyDefinition.getType();
+
+            if (propertyDefinition == null) {
+                throw new IllegalArgumentException("No property definition for " + propertyName);
+            }
+
+            return switch (propertyType) {
+                case PropertyType.STRING -> {
+                    if (!(value.getValue() instanceof StringValue || value.getValue() instanceof NullValue)) {
+                        throw new IllegalArgumentException("Expected string value for " + value.getName());
+                    } else {
+                        if (value.getValue() instanceof NullValue) {
+                            yield new StringProperty(propertyName, null);
+                        } else {
+                            yield new StringProperty(propertyName, ((StringValue) value.getValue()).getValue());
+                        }
+                    }
+                }
+                case PropertyType.INT -> {
+                    if (!(value.getValue() instanceof IntValue || value.getValue() instanceof NullValue)) {
+                        throw new IllegalArgumentException("Expected int value for " + value.getName());
+                    } else {
+                        if (value.getValue() instanceof NullValue) {
+                            yield new IntProperty(propertyName, null);
+                        } else {
+                            yield new IntProperty(propertyName, ((IntValue) value.getValue()).getValue().intValue());
+                        }
+                    }
+                }
+                default -> throw new IllegalArgumentException("Unsupported property type: " + propertyType);
+            };
+        }).toList();
     }
 }
