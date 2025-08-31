@@ -18,6 +18,10 @@ public class EntityCreateMutation extends EntityMutation {
         return this;
     }
 
+    public void setEntityType(String entityType) {
+        this.entityType = entityType;
+    }
+
     public String getEntityType() {
         return entityType;
     }
@@ -29,6 +33,10 @@ public class EntityCreateMutation extends EntityMutation {
 
     public String getRefId() {
         return refId;
+    }
+
+    public void setProperties(Map<String, Property> properties) {
+        this.properties = properties;
     }
 
     public EntityCreateMutation stringProperty(String name, String value) {

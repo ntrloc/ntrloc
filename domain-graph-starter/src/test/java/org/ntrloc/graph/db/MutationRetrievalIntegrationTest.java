@@ -3,6 +3,7 @@ package org.ntrloc.graph.db;
 import com.netflix.graphql.dgs.client.GraphQLClient;
 import com.netflix.graphql.dgs.client.GraphQLResponse;
 import com.netflix.graphql.dgs.client.RestClientGraphQLClient;
+import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversalSource;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.GraphQLAutoConfiguration;
 import org.ntrloc.graph.JanusAutoConfiguration;
@@ -55,6 +56,9 @@ class MutationRetrievalIntegrationTest {
 
     @Autowired
     private SchemaManager schemaManager;
+
+    @Autowired
+    private GraphTraversalSource traversalSource;
 
     private Integer port;
 
@@ -154,7 +158,7 @@ class MutationRetrievalIntegrationTest {
     }
 
     @Test
-    public void testCreateEntity() {
+    void testCreateEntity() {
         AtomicBoolean schemaUpdated = new AtomicBoolean(false);
         schemaManager.addSchemaChangeReaction(() -> {
             schemaUpdated.set(true);
@@ -171,24 +175,8 @@ class MutationRetrievalIntegrationTest {
 				mutation Mutation {
 				    execute {
                         Photo(inputs: [
-                            { create: { ref: "newPhoto" properties: { name: "photo1" } } },
-                            { update: { where: { id: "1234" } properties: { name: null number: 5 } } }
+                            { create: { properties: { name: "photo1" } } }
                         ]) {
-                            id
-                            properties { name }
-                        }
-   
-                        Photographer(inputs: [
-                            {
-                                create: {
-                                    properties: { name: "Bill" }
-                                    links: {
-                                        created: { target: { ref: "newPhoto" } properties: { count: 2 } }
-                                    }
-                                }
-                            }
-                        ]) {
-                            id
                             properties { name }
                         }
 					}
@@ -200,6 +188,8 @@ class MutationRetrievalIntegrationTest {
         GraphQLResponse response = graphQlClient.executeQuery(mutation);
         long end = System.currentTimeMillis();
         LOG.info("Mutation took {} ms", end - start);
+
+        var vertices = traversalSource.V().hasLabel("Photo").elementMap().toList();
 
         LOG.info("Running query");
         var query = "{ Photo { properties { name } } } ";

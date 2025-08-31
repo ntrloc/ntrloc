@@ -67,6 +67,8 @@ public class Mutator {
         }
         traversal.iterate();
 
+        LOG.info("Created node {} with properties {}", uniqueId, properties);
+
         return uniqueId;
     }
 
@@ -142,6 +144,7 @@ public class Mutator {
 
         transaction.begin();
 
+        GraphTraversal<?, ?> traversal = traversalSource.V();
         var objectMapper = new ObjectMapper();
 
         var revisionIter = traversalSource.V()
@@ -160,7 +163,6 @@ public class Mutator {
 
         List<Revision> revisions = revisionIter.toList();
 
-        GraphTraversal<?, ?> traversal = null;
         for (Revision revision : revisions) {
             LOG.info("Applying revision {}", revision);
 

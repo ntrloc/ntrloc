@@ -5,6 +5,8 @@ import com.netflix.graphql.dgs.reactive.internal.DgsReactiveRequestData;
 import graphql.schema.DataFetcher;
 import graphql.schema.DataFetchingEnvironment;
 import graphql.schema.GraphQLFieldDefinition;
+import org.ntrloc.graph.db.EntityManager;
+import org.ntrloc.graph.db.language.mutation.MutationRequest;
 import org.ntrloc.graph.graphql.GraphQLMutationParser;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,9 +22,11 @@ public class MutationDataFetcher implements DataFetcher<Object> {
     private static final Logger LOG = LoggerFactory.getLogger(MutationDataFetcher.class);
 
     private GraphQLMutationParser mutationParser;
+    private EntityManager entityManager;
 
-    public MutationDataFetcher(GraphQLMutationParser mutationParser) {
+    public MutationDataFetcher(GraphQLMutationParser mutationParser, EntityManager entityManager) {
         this.mutationParser = mutationParser;
+        this.entityManager = entityManager;
     }
 
     @Override
@@ -36,6 +40,10 @@ public class MutationDataFetcher implements DataFetcher<Object> {
             LOG.info("Mutating entity {} with args {}", fd, args);
 
             var mutations = mutationParser.parseMutations(dfe.getField());
+            var request = new MutationRequest(mutations);
+            entityManager.executeMutation(request);
+
+            LOG.info("OK?");
 
             Map<String, Object> fakePhoto = Map.of("properties", Map.of("name", "YO MAMA!"));
             List<Map<String, Object>> fakePhotos = List.of(fakePhoto);

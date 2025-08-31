@@ -1,33 +1,21 @@
 package org.ntrloc.graph.db.language.mutation;
 
-import java.util.Collections;
-import java.util.Set;
+import java.util.List;
 
 public class MutationRequest {
 
-    private Set<EntityMutation> entityMutations;
+    private List<EntityMutation> entityMutations;
 
-    private Set<RelationshipMutation> relationshipMutations;
-
-    public MutationRequest(Set<EntityMutation> entityMutations, Set<RelationshipMutation> relationshipMutations) {
-        this.entityMutations = entityMutations;
-        this.relationshipMutations = relationshipMutations;
-    }
-
-    public Set<EntityMutation> getEntityMutations() {
-        return entityMutations == null ? Collections.emptySet() : entityMutations;
-    }
-
-    public void setEntityMutations(Set<EntityMutation> entityMutations) {
+    public MutationRequest(List<EntityMutation> entityMutations) {
         this.entityMutations = entityMutations;
     }
 
-    public Set<RelationshipMutation> getRelationshipMutations() {
-        return relationshipMutations == null ? Collections.emptySet() : relationshipMutations;
+    public List<EntityMutation> getEntityMutations() {
+        return entityMutations == null ? List.of() : entityMutations;
     }
 
-    public void setRelationshipMutations(Set<RelationshipMutation> relationshipMutations) {
-        this.relationshipMutations = relationshipMutations;
+    public void setEntityMutations(List<EntityMutation> entityMutations) {
+        this.entityMutations = entityMutations;
     }
 
 }

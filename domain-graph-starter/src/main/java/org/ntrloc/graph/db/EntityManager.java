@@ -27,18 +27,7 @@ public interface EntityManager {
      */
     void abandonBinary(HashingBinaryDataWriter writer);
 
-    /**
-     * Applies a mutation request and returns a transaction that can either be committed or rolled back (2-phase commit).
-     * @param mutationRequest a mutation request
-     * @return a transaction that is ready to be committed or aborted
-     */
-    Transaction executeMutation(MutationRequest mutationRequest);
-
-    void prepare(Transaction transaction);
-
-    void commit(Transaction transaction);
-
-    void abort(Transaction transaction);
+    void executeMutation(MutationRequest mutationRequest);
 
     QueryResult executeQuery(Query query);
 
