@@ -1,9 +1,11 @@
 package org.ntrloc.graph.graphql.mapping;
 
+import graphql.language.Field;
 import graphql.language.FieldDefinition;
 import graphql.language.NonNullType;
 import graphql.language.ObjectTypeDefinition;
 import graphql.language.TypeName;
+import org.ntrloc.graph.db.language.mutation.EntityMutation;
 import org.ntrloc.graph.graphql.mapping.input.EntityInputObjectTypeMapping;
 import org.ntrloc.graph.graphql.mapping.output.EntityObjectTypeMapping;
 import org.ntrloc.graph.graphql.mapping.output.ObjectTypeProducer;
@@ -31,6 +33,14 @@ public class MutationObjectTypeMapping implements ObjectTypeProducer {
                 .build();
 
         return List.of(executeDefinition, mutationDefinition);
+    }
+
+    public Map<String, List<EntityMutation>> parseEntityMutations(Field mutationField) {
+        if (mutationField.getName().equals(EXECUTE_FIELD_NAME)) {
+            return mutationExecutionObjectTypeMapping.parseEntityMutations(mutationField);
+        } else {
+            throw new IllegalArgumentException("Unknown mutation field " + mutationField.getName());
+        }
     }
 
 }
