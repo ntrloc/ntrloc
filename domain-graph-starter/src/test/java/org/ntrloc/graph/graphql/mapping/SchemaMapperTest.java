@@ -7,7 +7,7 @@ import org.ntrloc.graph.db.schema.PropertyDefinition;
 import org.ntrloc.graph.db.schema.PropertyGroupDefinition;
 import org.ntrloc.graph.db.schema.PropertyType;
 import org.ntrloc.graph.db.schema.RelationshipDefinition;
-import org.ntrloc.graph.graphql.impl.SchemaMapperImpl;
+import org.ntrloc.graph.graphql.mapping.impl.SchemaMapperImpl;
 import org.ntrloc.graph.graphql.mapping.input.EntityInputObjectTypesMapper;
 import org.ntrloc.graph.graphql.mapping.output.EntityObjectTypesMapper;
 

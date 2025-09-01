@@ -1,21 +1,20 @@
-package org.ntrloc.graph.graphql.impl;
+package org.ntrloc.graph.graphql.mapping.impl;
 
 import graphql.language.Argument;
 import graphql.language.ArrayValue;
 import graphql.language.Field;
 import graphql.language.FieldDefinition;
 import graphql.language.InputObjectTypeDefinition;
-import graphql.language.InputValueDefinition;
 import graphql.language.ListType;
 import graphql.language.NonNullType;
 import graphql.language.ObjectTypeDefinition;
 import graphql.language.ObjectTypeExtensionDefinition;
 import graphql.language.ObjectValue;
 import graphql.language.TypeName;
-import org.ntrloc.graph.Tuple;
 import org.ntrloc.graph.db.language.mutation.EntityMutation;
 import org.ntrloc.graph.db.schema.EntityDefinition;
 import org.ntrloc.graph.db.schema.RelationshipDefinition;
+import org.ntrloc.graph.graphql.mapping.MutationObjectTypeMapping;
 import org.ntrloc.graph.graphql.mapping.SchemaMapper;
 import org.ntrloc.graph.graphql.mapping.input.EntityInputObjectTypeMapping;
 import org.ntrloc.graph.graphql.mapping.input.EntityInputObjectTypesMapper;
@@ -48,6 +47,8 @@ public class SchemaMapperImpl implements SchemaMapper {
     private Map<String, EntityInputObjectTypeMapping> entityInputTypes;
     private Map<String, EntityObjectTypeMapping> entityOutputTypes;
 
+    private MutationObjectTypeMapping mutationObjectTypeMapping;
+
     public SchemaMapperImpl(EntityInputObjectTypesMapper inputTypesMapper, EntityObjectTypesMapper outputTypesMapper) {
         this.inputTypesMapper = inputTypesMapper;
         this.outputTypesMapper = outputTypesMapper;
@@ -65,9 +66,17 @@ public class SchemaMapperImpl implements SchemaMapper {
 
         // create the mutation type to allow mutations on all entity inputs
         if (!entityInputTypes.isEmpty() && !entityOutputTypes.isEmpty()) {
+            /*
             Tuple<ObjectTypeDefinition, ObjectTypeDefinition> executeAndMutationTypes = createMutationTypes(entityInputTypes, entityOutputTypes);
             outputTypeDefinitions.put(executeAndMutationTypes.first().getName(), executeAndMutationTypes.first());
             outputTypeDefinitions.put(executeAndMutationTypes.second().getName(), executeAndMutationTypes.second());
+
+             */
+            this.mutationObjectTypeMapping = new MutationObjectTypeMapping(entityInputTypes, entityOutputTypes);
+            List<ObjectTypeDefinition> mutationDefinitions = mutationObjectTypeMapping.getObjectTypeDefinitions();
+            for (ObjectTypeDefinition mutationDefinition : mutationDefinitions) {
+                outputTypeDefinitions.put(mutationDefinition.getName(), mutationDefinition);
+            }
         }
 
         extensionDefinitions = new HashMap<>();
@@ -112,44 +121,11 @@ public class SchemaMapperImpl implements SchemaMapper {
         }
     }
 
-    private Tuple<ObjectTypeDefinition, ObjectTypeDefinition> createMutationTypes(Map<String, EntityInputObjectTypeMapping> entityInputTypes, Map<String, EntityObjectTypeMapping> entityOutputTypes) {
-        List<FieldDefinition> entityMutationInputs = entityInputTypes.entrySet().stream().map(entry -> {
-
-            String outputType = entityOutputTypes.get(entry.getKey()).getGraphQlTypeName();
-
-            String entityName = entry.getKey();
-            EntityInputObjectTypeMapping entityInput = entry.getValue();
-            String entityGraphQlTypeName = entityInput.getGraphQlTypeName();
-            InputValueDefinition entityInputArgument = InputValueDefinition.newInputValueDefinition()
-                    .name(INPUTS_FIELD_NAME)
-                    .type(new NonNullType(new ListType(new NonNullType(new TypeName(entityGraphQlTypeName)))))
-                    .build();
-            return FieldDefinition.newFieldDefinition()
-                    .name(entityName)
-                    .type(new ListType(new TypeName(outputType)))
-                    .inputValueDefinitions(List.of(entityInputArgument))
-                    .build();
-        }).toList();
-
-        ObjectTypeDefinition executeDefinition = ObjectTypeDefinition.newObjectTypeDefinition()
-                .name("MutationExecution")
-                .fieldDefinitions(entityMutationInputs)
-                .build();
-        ObjectTypeDefinition mutationDefinition = ObjectTypeDefinition.newObjectTypeDefinition()
-                .name("Mutation")
-                .fieldDefinition(new FieldDefinition(EXECUTE_FIELD_NAME, new NonNullType(new TypeName(executeDefinition.getName()))))
-                .build();
-
-        return Tuple.of(executeDefinition, mutationDefinition);
-    }
-
     public Map<String, List<EntityMutation>> parseEntityMutations(Field mutationField) {
 
         /*
          * do this next:
          *
-         * Create a class that represents the mutation object ("mutationDefinition" above).
-         * Create a class that represents the mutation execution object ("executeDefinition" above).
          *
          * Then you should be able to simply pass the mutationField object in this method and pass it to the mutation class,
          * which hands it to the execution class, etc., so that the below logic is spread out into more appropriate classes
