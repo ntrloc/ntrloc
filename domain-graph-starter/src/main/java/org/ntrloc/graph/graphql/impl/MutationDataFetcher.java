@@ -7,14 +7,17 @@ import graphql.schema.DataFetchingEnvironment;
 import graphql.schema.GraphQLFieldDefinition;
 import org.ntrloc.graph.db.EntityManager;
 import org.ntrloc.graph.db.language.mutation.MutationRequest;
+import org.ntrloc.graph.db.language.mutation.MutationResponseItem;
 import org.ntrloc.graph.graphql.mapping.SchemaMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.net.URI;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @Component
 public class MutationDataFetcher implements DataFetcher<Object> {
@@ -45,18 +48,16 @@ public class MutationDataFetcher implements DataFetcher<Object> {
             var mutations = mutes.values().stream().flatMap(List::stream).toList();
 
             var request = new MutationRequest(mutations);
-            entityManager.executeMutation(request);
+            var response = entityManager.executeMutation(request);
 
-            LOG.info("OK?");
+            var itemsByAction = response.getItems().stream().collect(Collectors.groupingBy(MutationResponseItem::getMutationType));
 
-            Map<String, Object> fakePhoto = Map.of("properties", Map.of("name", "YO MAMA!"));
-            List<Map<String, Object>> fakePhotos = List.of(fakePhoto);
+            var retMap = new HashMap<String, List<MutationResponseItem>>();
+            retMap.put("created", itemsByAction.get(MutationResponseItem.MutationType.CREATE));
+            retMap.put("updated", itemsByAction.get(MutationResponseItem.MutationType.UPDATE));
+            retMap.put("deleted", itemsByAction.get(MutationResponseItem.MutationType.DELETE));
 
-            Map<String, Object> fakePhotographer = Map.of("id", "testID", "properties", Map.of("name", "Bill Nye"));
-            List<Map<String, Object>> fakePhotographers = List.of(fakePhotographer);
-
-            Map<String, Object> result = Map.of("Photo", fakePhotos, "Photographer", fakePhotographers);
-            return result;
+            return retMap;
         } catch (Exception e) {
             LOG.error("Error while executing mutation", e);
             throw new RuntimeException("Error while executing mutation", e);

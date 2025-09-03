@@ -2,6 +2,7 @@ package org.ntrloc.graph.db;
 
 import org.ntrloc.graph.db.impl.HashingBinaryDataWriter;
 import org.ntrloc.graph.db.language.mutation.MutationRequest;
+import org.ntrloc.graph.db.language.mutation.MutationResponse;
 import org.ntrloc.graph.db.language.query.Query;
 import org.ntrloc.graph.db.language.query.QueryResult;
 
@@ -27,7 +28,7 @@ public interface EntityManager {
      */
     void abandonBinary(HashingBinaryDataWriter writer);
 
-    void executeMutation(MutationRequest mutationRequest);
+    MutationResponse executeMutation(MutationRequest mutationRequest);
 
     QueryResult executeQuery(Query query);
 

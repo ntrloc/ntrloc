@@ -7,6 +7,8 @@ import org.ntrloc.graph.db.EntityManager;
 import org.ntrloc.graph.db.language.mutation.EntityCreateMutation;
 import org.ntrloc.graph.db.language.mutation.EntityMutation;
 import org.ntrloc.graph.db.language.mutation.MutationRequest;
+import org.ntrloc.graph.db.language.mutation.MutationResponse;
+import org.ntrloc.graph.db.language.mutation.MutationResponseItem;
 import org.ntrloc.graph.db.language.query.Query;
 import org.ntrloc.graph.db.language.query.QueryResult;
 import org.ntrloc.graph.db.schema.EntityDefinition;
@@ -108,20 +110,26 @@ public class EntityManagerImpl implements EntityManager {
     /* -------------------------------- Mutation methods -------------------------------- */
 
     @Override
-    public void executeMutation(MutationRequest mutationRequest) {
+    public MutationResponse executeMutation(MutationRequest mutationRequest) {
         LOG.info("Executing mutation {}", mutationRequest);
 
         Mutator mutator = new Mutator(traversalSource);
+
+        MutationResponse response = new MutationResponse();
 
         List<EntityMutation> entityMutations = mutationRequest.getEntityMutations();
         Set<EntityCreateMutation> createMutations = entityMutations.stream().filter(EntityCreateMutation.class::isInstance)
                 .map(EntityCreateMutation.class::cast).collect(Collectors.toSet());
         for (EntityCreateMutation createMutation: createMutations) {
-            mutator.createNode(createMutation.getEntityType(), createMutation.getProperties());
+            String createdId = mutator.createNode(createMutation.getEntityType(), createMutation.getProperties());
+            MutationResponseItem item = new MutationResponseItem(MutationResponseItem.MutationType.CREATE, createMutation.getEntityType(), createdId);
+            response.addItem(item);
         }
 
         mutator.prepare();
         mutator.commit();
+
+        return response;
     }
 
     /* -------------------------------- Query methods -------------------------------- */

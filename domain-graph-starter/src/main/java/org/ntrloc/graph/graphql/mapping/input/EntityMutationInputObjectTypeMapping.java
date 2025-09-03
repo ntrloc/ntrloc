@@ -22,11 +22,11 @@ import java.util.Map;
 import java.util.stream.Stream;
 
 /**
- * Maps an entity to an input object that can contain a create, update, or delete operation.
+ * Maps an entity to an input object that can contain a create, update, or delete operation for that specific entity.
  */
-public class EntityInputObjectTypeMapping implements InputObjectTypeProducer {
+public class EntityMutationInputObjectTypeMapping implements InputObjectTypeProducer {
 
-    private static final Logger LOG = LoggerFactory.getLogger(EntityInputObjectTypeMapping.class);
+    private static final Logger LOG = LoggerFactory.getLogger(EntityMutationInputObjectTypeMapping.class);
 
     private static final String CREATE_MAPPING_KEY = "create";
     private static final String UPDATE_MAPPING_KEY = "update";
@@ -39,8 +39,10 @@ public class EntityInputObjectTypeMapping implements InputObjectTypeProducer {
     private EntityUpdateInputObjectTypeMapping updateInputTypeMapping;
     private EntityDeleteInputObjectTypeMapping deleteInputTypeMapping;
 
-    public EntityInputObjectTypeMapping(EntityDefinition entityDefinition, MatcherChoiceInputObjectTypeMapping matcherChoiceInputTypeMapping) {
-        String typeName = String.format("%s Input", entityDefinition.getName());
+    private InputObjectTypeDefinition choiceDefinition;
+
+    public EntityMutationInputObjectTypeMapping(EntityDefinition entityDefinition, MatcherChoiceInputObjectTypeMapping matcherChoiceInputTypeMapping) {
+        String typeName = String.format("%s Mutation Choice Input", entityDefinition.getName());
         this.graphQlTypeName = CaseUtils.toCamelCase(typeName, true, '_', '-');
         this.entityDefinition = entityDefinition;
 
@@ -59,8 +61,8 @@ public class EntityInputObjectTypeMapping implements InputObjectTypeProducer {
         return entityDefinition;
     }
 
-    public void mapRelationships(List<Tuple<RelationshipDefinition, EntityInputObjectTypeMapping>> incomingRelationshipTuples,
-                                 List<Tuple<RelationshipDefinition, EntityInputObjectTypeMapping>> outgoingRelationshipTuples,
+    public void mapRelationships(List<Tuple<RelationshipDefinition, EntityMutationInputObjectTypeMapping>> incomingRelationshipTuples,
+                                 List<Tuple<RelationshipDefinition, EntityMutationInputObjectTypeMapping>> outgoingRelationshipTuples,
                                  MatcherChoiceInputObjectTypeMapping matcherChoiceInputTypeMapping) {
         var incomingMappingTuples = mapIncomingRelationships(incomingRelationshipTuples, matcherChoiceInputTypeMapping);
         var outgoingMappingTuples = mapOutgoingRelationships(outgoingRelationshipTuples, matcherChoiceInputTypeMapping);
@@ -77,7 +79,7 @@ public class EntityInputObjectTypeMapping implements InputObjectTypeProducer {
 
     }
 
-    private Tuple<Map<String, OutgoingRelationshipCreateInputObjectTypeMapping>, Map<String, OutgoingRelationshipChoiceInputObjectTypeMapping>> mapOutgoingRelationships(List<Tuple<RelationshipDefinition, EntityInputObjectTypeMapping>> relationshipTuples, MatcherChoiceInputObjectTypeMapping matcherChoiceInputTypeMapping) {
+    private Tuple<Map<String, OutgoingRelationshipCreateInputObjectTypeMapping>, Map<String, OutgoingRelationshipChoiceInputObjectTypeMapping>> mapOutgoingRelationships(List<Tuple<RelationshipDefinition, EntityMutationInputObjectTypeMapping>> relationshipTuples, MatcherChoiceInputObjectTypeMapping matcherChoiceInputTypeMapping) {
 
         Map<String, OutgoingRelationshipCreateInputObjectTypeMapping> outgoingRelationshipCreateInputTypeMappings = new HashMap<>();
         Map<String, OutgoingRelationshipChoiceInputObjectTypeMapping> outgoingRelationshipChoiceInputTypeMappings = new HashMap<>();
@@ -115,7 +117,7 @@ public class EntityInputObjectTypeMapping implements InputObjectTypeProducer {
 
     }
 
-    private Tuple<Map<String, IncomingRelationshipCreateInputObjectTypeMapping>, Map<String, IncomingRelationshipChoiceInputObjectTypeMapping>> mapIncomingRelationships(List<Tuple<RelationshipDefinition, EntityInputObjectTypeMapping>> relationshipTuples, MatcherChoiceInputObjectTypeMapping matcherChoiceInputTypeMapping) {
+    private Tuple<Map<String, IncomingRelationshipCreateInputObjectTypeMapping>, Map<String, IncomingRelationshipChoiceInputObjectTypeMapping>> mapIncomingRelationships(List<Tuple<RelationshipDefinition, EntityMutationInputObjectTypeMapping>> relationshipTuples, MatcherChoiceInputObjectTypeMapping matcherChoiceInputTypeMapping) {
         Map<String, IncomingRelationshipCreateInputObjectTypeMapping> incomingRelationshipCreateInputTypeMappings = new HashMap<>();
         Map<String, IncomingRelationshipChoiceInputObjectTypeMapping> incomingRelationshipChoiceInputTypeMappings = new HashMap<>();
 
@@ -151,34 +153,36 @@ public class EntityInputObjectTypeMapping implements InputObjectTypeProducer {
         return Tuple.of(incomingRelationshipCreateInputTypeMappings, incomingRelationshipChoiceInputTypeMappings);
     }
 
+    InputObjectTypeDefinition getChoiceInputTypeDefinition() {
+        if (choiceDefinition == null) {
+            InputValueDefinition createValue = InputValueDefinition.newInputValueDefinition()
+                    .name(CREATE_MAPPING_KEY)
+                    .type(new TypeName(createInputTypeMapping.getGraphQlTypeName()))
+                    .build();
+            InputValueDefinition updateValue = InputValueDefinition.newInputValueDefinition()
+                    .name(UPDATE_MAPPING_KEY)
+                    .type(new TypeName(updateInputTypeMapping.getGraphQlTypeName()))
+                    .build();
+            InputValueDefinition deleteValue = InputValueDefinition.newInputValueDefinition()
+                    .name(DELETE_MAPPING_KEY)
+                    .type(new TypeName(deleteInputTypeMapping.getGraphQlTypeName()))
+                    .build();
+            choiceDefinition = InputObjectTypeDefinition.newInputObjectDefinition()
+                    .name(graphQlTypeName)
+                    .directive(Directive.newDirective().name("oneOf").build())
+                    .inputValueDefinitions(List.of(createValue, updateValue, deleteValue))
+                    .additionalData(InputTypeConstants.IS_TOP_LEVEL_ENTITY_INPUT_TYPE, Boolean.toString(true))
+                    .build();
+        }
+        return choiceDefinition;
+    }
+
     @Override
     public List<InputObjectTypeDefinition> getInputObjectTypeDefinitions() {
-
-        InputValueDefinition createValue = InputValueDefinition.newInputValueDefinition()
-                .name(CREATE_MAPPING_KEY)
-                .type(new TypeName(createInputTypeMapping.getGraphQlTypeName()))
-                .build();
-        InputValueDefinition updateValue = InputValueDefinition.newInputValueDefinition()
-                .name(UPDATE_MAPPING_KEY)
-                .type(new TypeName(updateInputTypeMapping.getGraphQlTypeName()))
-                .build();
-        InputValueDefinition deleteValue = InputValueDefinition.newInputValueDefinition()
-                .name(DELETE_MAPPING_KEY)
-                .type(new TypeName(deleteInputTypeMapping.getGraphQlTypeName()))
-                .build();
-        InputObjectTypeDefinition mutationDefinition = InputObjectTypeDefinition.newInputObjectDefinition()
-                .name(graphQlTypeName)
-                .directive(Directive.newDirective().name("oneOf").build())
-                .inputValueDefinitions(List.of(createValue, updateValue, deleteValue))
-                .additionalData(InputTypeConstants.IS_TOP_LEVEL_ENTITY_INPUT_TYPE, Boolean.toString(true))
-                .build();
-
         List<InputObjectTypeDefinition> inputObjectTypeDefinitions = Stream.of(createInputTypeMapping, updateInputTypeMapping, deleteInputTypeMapping).flatMap(producer -> producer.getInputObjectTypeDefinitions().stream()).toList();
-
         List<InputObjectTypeDefinition> retList = new ArrayList<>();
-        retList.add(mutationDefinition);
+        retList.add(getChoiceInputTypeDefinition());
         retList.addAll(inputObjectTypeDefinitions);
-
         return retList;
     }
 

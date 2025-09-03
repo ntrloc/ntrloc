@@ -13,83 +13,56 @@ import org.ntrloc.graph.db.schema.EntityDefinition;
 import org.ntrloc.graph.db.schema.RelationshipDefinition;
 import org.ntrloc.graph.graphql.mapping.MutationObjectTypeMapping;
 import org.ntrloc.graph.graphql.mapping.SchemaMapper;
-import org.ntrloc.graph.graphql.mapping.input.EntityInputObjectTypeMapping;
-import org.ntrloc.graph.graphql.mapping.input.EntityInputObjectTypesMapper;
 import org.ntrloc.graph.graphql.mapping.output.EntityObjectTypeMapping;
-import org.ntrloc.graph.graphql.mapping.output.EntityObjectTypesMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
-import java.util.HashMap;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @Component
 public class SchemaMapperImpl implements SchemaMapper {
 
     private static final Logger LOG = LoggerFactory.getLogger(SchemaMapperImpl.class);
 
-    private static final String EXECUTE_FIELD_NAME = "execute";
-    private static final String INPUTS_FIELD_NAME = "inputs";
-
-    private EntityInputObjectTypesMapper inputTypesMapper;
-    private EntityObjectTypesMapper outputTypesMapper;
-
-    private Map<String, InputObjectTypeDefinition> inputTypeDefinitions;
-    private Map<String, ObjectTypeDefinition> outputTypeDefinitions;
-    private Map<String, ObjectTypeExtensionDefinition> extensionDefinitions;
-
-    private Map<String, EntityInputObjectTypeMapping> entityInputTypes;
-    private Map<String, EntityObjectTypeMapping> entityOutputTypes;
+    private List<InputObjectTypeDefinition> inputTypeDefinitions;
+    private List<ObjectTypeDefinition> outputTypeDefinitions;
+    private List<ObjectTypeExtensionDefinition> extensionDefinitions;
 
     private MutationObjectTypeMapping mutationObjectTypeMapping;
 
-    public SchemaMapperImpl(EntityInputObjectTypesMapper inputTypesMapper, EntityObjectTypesMapper outputTypesMapper) {
-        this.inputTypesMapper = inputTypesMapper;
-        this.outputTypesMapper = outputTypesMapper;
+    public SchemaMapperImpl() {
     }
 
     public void mapSchema(Set<EntityDefinition> entityDefinitions, Set<RelationshipDefinition> relationshipDefinitions) {
+        mutationObjectTypeMapping = new MutationObjectTypeMapping(entityDefinitions, relationshipDefinitions);
 
-        inputTypeDefinitions = new HashMap<>();
-        inputTypeDefinitions.putAll(inputTypesMapper.mapInputObjectTypes(entityDefinitions, relationshipDefinitions));
-        entityInputTypes = inputTypesMapper.getEntityMapping();
+        // extend the query type to allow queries for all entity outputs
+        inputTypeDefinitions = mutationObjectTypeMapping.getInputObjectTypeDefinitions().stream()
+                .collect(Collectors.toMap(InputObjectTypeDefinition::getName, inputObjectTypeDefinition -> inputObjectTypeDefinition, (existingValue, newValue) -> existingValue))
+                .values().stream().toList();
 
-        outputTypeDefinitions = new HashMap<>();
-        outputTypeDefinitions.putAll(outputTypesMapper.mapObjectTypes(entityDefinitions, relationshipDefinitions));
-        entityOutputTypes = outputTypesMapper.getEntityOutputTypes();
+        outputTypeDefinitions = mutationObjectTypeMapping.getObjectTypeDefinitions().stream()
+                .collect(Collectors.toMap(ObjectTypeDefinition::getName, def -> def, (existingValue, newValue) -> existingValue))
+                        .values().stream().toList();
 
-        // create the mutation type to allow mutations on all entity inputs
-        if (!entityInputTypes.isEmpty() && !entityOutputTypes.isEmpty()) {
-            this.mutationObjectTypeMapping = new MutationObjectTypeMapping(entityInputTypes, entityOutputTypes);
-            List<ObjectTypeDefinition> mutationDefinitions = mutationObjectTypeMapping.getObjectTypeDefinitions();
-            for (ObjectTypeDefinition mutationDefinition : mutationDefinitions) {
-                outputTypeDefinitions.put(mutationDefinition.getName(), mutationDefinition);
-            }
-        }
-
-        extensionDefinitions = new HashMap<>();
-        if (!entityOutputTypes.isEmpty()) {
-            var queryType = createQueryTypeExtension(entityOutputTypes);
-            extensionDefinitions.put(queryType.getName(), queryType);
-        }
-
-        // extend the query type to allow queries all entity outputs
-        LOG.info("maybe?");
+        extensionDefinitions = new ArrayList<>();
     }
 
     public List<InputObjectTypeDefinition> getInputTypes() {
-        return inputTypeDefinitions.values().stream().toList();
+        return inputTypeDefinitions;
     }
 
     public List<ObjectTypeDefinition> getOutputTypes() {
-        return outputTypeDefinitions.values().stream().toList();
+        return outputTypeDefinitions;
     }
 
     public List<ObjectTypeExtensionDefinition> getExtensionTypes() {
-        return extensionDefinitions.values().stream().toList();
+        return extensionDefinitions;
     }
 
     private ObjectTypeExtensionDefinition createQueryTypeExtension(Map<String, EntityObjectTypeMapping> entityOutputTypes) {

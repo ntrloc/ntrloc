@@ -41,7 +41,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.awaitility.Awaitility.await;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @EnableAutoConfiguration(exclude = {CassandraAutoConfiguration.class})
@@ -149,7 +149,7 @@ class MutationRetrievalIntegrationTest {
         photoRelationship.setTargetVersionAction(RelationshipDefinition.VersionAction.NONE);
         photoRelationship.setName("CREATED");
         photoRelationship.setSourceLabel("created");
-        photoRelationship.setTargetLabel("creator");
+        photoRelationship.setTargetLabel("createdBy");
 
         PropertyDefinition createdCountProperty = new PropertyDefinition("count", PropertyType.INT, "count");
         photoRelationship.setProperties(Set.of(createdCountProperty));
@@ -172,17 +172,19 @@ class MutationRetrievalIntegrationTest {
         LOG.info("Schema: {}", schema);
 
         var mutation = """
-				mutation Mutation {
-				    execute {
-                        Photo(inputs: [
-                            { create: { properties: { name: "photo1", number: null } } },
-                            { create: { properties: { name: "photo2" } } }
-                        ]) {
-                            properties { name }
+                mutation Mutation {
+                     execute(inputs: [
+                         { Photo: { create: { properties: { name: "photo1" } } } },
+                         { Photo: { create: { properties: { name: "photo2" } } } },
+                         { Photographer: { create: { properties: { name: "Bill" } } } }
+                     ]) {
+                        created {
+                            entityType
+                            id
                         }
-					}
-				}
-				""";
+                     }
+                }
+                """;
         LOG.info("Running mutation");
 
         long start = System.currentTimeMillis();
@@ -190,8 +192,9 @@ class MutationRetrievalIntegrationTest {
         long end = System.currentTimeMillis();
         LOG.info("Mutation took {} ms", end - start);
 
-        var vertices = traversalSource.V().hasLabel("Photo").elementMap().toList();
+        var vertices = traversalSource.V().hasLabel("Photo", "Photographer").elementMap().toList();
 
+        /*
         LOG.info("Running query");
         var query = "{ Photo { properties { name } } } ";
         start = System.currentTimeMillis();
@@ -199,8 +202,10 @@ class MutationRetrievalIntegrationTest {
         end = System.currentTimeMillis();
         LOG.info("Query took {} ms", end - start);
 
-        List<?> titles = response.extractValueAsObject("Photo[*].properties.name", List.class);
-        assertTrue(titles.contains("YO MAMA!"));
+         */
+
+        List<?> ids = response.extractValueAsObject("execute.created[*].id", List.class);
+        assertFalse(ids.isEmpty());
     }
 
 }
