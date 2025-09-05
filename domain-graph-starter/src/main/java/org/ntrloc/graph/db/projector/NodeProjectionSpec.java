@@ -1,11 +1,13 @@
 package org.ntrloc.graph.db.projector;
 
 import java.util.List;
+import java.util.Map;
 
 public class NodeProjectionSpec {
 
     private NodeSelector nodeSelector;
     private List<String> properties;
+    private Map<String, LinkProjectionSpec> links;
 
     public NodeProjectionSpec() {
         // no-op
@@ -32,4 +34,20 @@ public class NodeProjectionSpec {
         return properties;
     }
 
+    public void setProperties(List<String> properties) {
+        this.properties = properties;
+    }
+
+    public NodeProjectionSpec links(Map<String, LinkProjectionSpec> links) {
+        this.links = links;
+        return this;
+    }
+
+    public Map<String, LinkProjectionSpec> getLinks() {
+        return links;
+    }
+
+    public void setLinks(Map<String, LinkProjectionSpec> links) {
+        this.links = links;
+    }
 }

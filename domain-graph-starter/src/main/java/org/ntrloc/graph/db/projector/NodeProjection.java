@@ -9,6 +9,7 @@ public class NodeProjection {
     private String nodeType;
 
     private Map<String, Object> properties;
+    private Map<String, LinkProjection> links;
 
     public String getId() {
         return id;
@@ -32,6 +33,14 @@ public class NodeProjection {
 
     void setProperties(Map<String, Object> properties) {
         this.properties = properties;
+    }
+
+    public Map<String, LinkProjection> getLinks() {
+        return links;
+    }
+
+    public void setLinks(Map<String, LinkProjection> links) {
+        this.links = links;
     }
 
     @Override

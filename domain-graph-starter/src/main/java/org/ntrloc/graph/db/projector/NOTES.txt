@@ -36,7 +36,7 @@ A NodeProjection contains the projected properties and links for a single node.
         .properties("name")
         .links(
             List.of(
-                new LinkProjectionSpec("created by", new NodeProjectionSpec().properties("name"))
+                new LinkProjectionSpec("CREATED", new NodeProjectionSpec().properties("name"))
             )
         );
 

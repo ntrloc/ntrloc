@@ -1,6 +1,7 @@
 package org.ntrloc.graph.db.projector;
 
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversalSource;
+import org.apache.tinkerpop.gremlin.structure.Direction;
 import org.janusgraph.core.JanusGraph;
 import org.janusgraph.core.JanusGraphFactory;
 import org.junit.jupiter.api.BeforeEach;
@@ -12,6 +13,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.util.List;
+import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.UUID;
 
@@ -52,21 +54,21 @@ class ProjectorTest {
         traversalSource
                 // entity nodes
                 .addV("Photo")
-                    .property(PropertyConstants.UNIQUE_ID_PROPERTY, "abc1")
+                    .property(PropertyConstants.UNIQUE_ID_PROPERTY, "p1")
                     .property(PropertyConstants.NODE_TYPE_PROPERTY, "Photo")
                     .property("Photo_name", "photo1")
                     .property("Photo_colorspace", "B&W")
 
                     .as("photo1")
                 .addV("Photo")
-                    .property(PropertyConstants.UNIQUE_ID_PROPERTY, "abc2")
+                    .property(PropertyConstants.UNIQUE_ID_PROPERTY, "p2")
                     .property(PropertyConstants.NODE_TYPE_PROPERTY, "Photo")
                     .property("Photo_name", "photo2")
                     .property("Photo_colorspace", "RGB")
 
                     .as("photo2")
                 .addV("Photographer")
-                    .property(PropertyConstants.UNIQUE_ID_PROPERTY, "abc3")
+                    .property(PropertyConstants.UNIQUE_ID_PROPERTY, "ph3")
                     .property(PropertyConstants.NODE_TYPE_PROPERTY, "Photographer")
                     .property("Photographer_name", "Bill")
                     .as("photographer1")
@@ -106,7 +108,11 @@ class ProjectorTest {
     void testNodeProjectionWithLinks() {
         Projector projector = new Projector(traversalSource);
         NodeProjectionSpec spec = new NodeProjectionSpec(LabelSelector.on("Photo"))
-                .properties(List.of("Photo_name", "Photo_colorspace"));
+                .properties(List.of("Photo_name", "Photo_colorspace"))
+                .links(
+                        Map.of("createdBy", new LinkProjectionSpec("CREATED", Direction.IN).properties(List.of("date"))
+                                .targetProjection(new NodeProjectionSpec().properties(List.of("Photographer_name"))))
+                );
         Iterable<NodeProjection> projections = projector.project(spec);
         for (NodeProjection projection: projections) {
             LOG.info("Got projection {}", projection);
