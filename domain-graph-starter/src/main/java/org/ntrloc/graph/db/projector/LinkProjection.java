@@ -2,10 +2,9 @@ package org.ntrloc.graph.db.projector;
 
 import java.util.Map;
 
-public class LinkProjection {
+public abstract class LinkProjection {
 
-    private Map<String, Object> properties;
-    private NodeProjection target;
+    protected Map<String, Object> properties;
 
     public Map<String, Object> getProperties() {
         return properties;
@@ -13,14 +12,6 @@ public class LinkProjection {
 
     public void setProperties(Map<String, Object> properties) {
         this.properties = properties;
-    }
-
-    public NodeProjection getTarget() {
-        return target;
-    }
-
-    public void setTarget(NodeProjection target) {
-        this.target = target;
     }
 
 }

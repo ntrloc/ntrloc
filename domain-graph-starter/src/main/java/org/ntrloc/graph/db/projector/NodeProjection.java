@@ -1,5 +1,6 @@
 package org.ntrloc.graph.db.projector;
 
+import java.util.List;
 import java.util.Map;
 import java.util.StringJoiner;
 
@@ -9,7 +10,7 @@ public class NodeProjection {
     private String nodeType;
 
     private Map<String, Object> properties;
-    private Map<String, LinkProjection> links;
+    private Map<String, List<LinkProjection>> links;
 
     public String getId() {
         return id;
@@ -35,11 +36,11 @@ public class NodeProjection {
         this.properties = properties;
     }
 
-    public Map<String, LinkProjection> getLinks() {
+    public Map<String, List<LinkProjection>> getLinks() {
         return links;
     }
 
-    public void setLinks(Map<String, LinkProjection> links) {
+    public void setLinks(Map<String, List<LinkProjection>> links) {
         this.links = links;
     }
 
@@ -49,6 +50,7 @@ public class NodeProjection {
                 .add("id='" + id + "'")
                 .add("nodeType='" + nodeType + "'")
                 .add("properties=" + properties)
+                .add("links=" + links)
                 .toString();
     }
 }

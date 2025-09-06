@@ -8,12 +8,20 @@ public class LinkProjectionSpec {
 
     private String linkName;
     private Direction direction;
+    private String nodeLabel;
     private List<String> properties;
-    private NodeProjectionSpec targetProjection;
+    private NodeProjectionSpec nodeProjection;
 
-    public LinkProjectionSpec(String linkName, Direction direction) {
+    /**
+     * Specifies the information to return for a link between items in the graph.
+     * @param linkName the name of the link
+     * @param direction the direction of the link
+     * @param nodeLabel the label of the item on the "other side" of the link
+     */
+    public LinkProjectionSpec(String linkName, Direction direction, String nodeLabel) {
         this.linkName = linkName;
         this.direction = direction;
+        this.nodeLabel = nodeLabel;
     }
 
     public String getLinkName() {
@@ -22,6 +30,10 @@ public class LinkProjectionSpec {
 
     public Direction getDirection() {
         return direction;
+    }
+
+    public String getNodeLabel() {
+        return nodeLabel;
     }
 
     public LinkProjectionSpec properties(List<String> properties) {
@@ -37,17 +49,14 @@ public class LinkProjectionSpec {
         this.properties = properties;
     }
 
-    public LinkProjectionSpec targetProjection(NodeProjectionSpec targetProjection) {
-        this.targetProjection = targetProjection;
+    public LinkProjectionSpec nodeProjection(NodeProjectionSpec nodeProjection) {
+        this.nodeProjection = nodeProjection;
         return this;
     }
 
-    public NodeProjectionSpec getTargetProjection() {
-        return targetProjection;
+    public NodeProjectionSpec getNodeProjection() {
+        return nodeProjection;
     }
 
-    public void setTargetProjection(NodeProjectionSpec targetProjection) {
-        this.targetProjection = targetProjection;
-    }
 
 }

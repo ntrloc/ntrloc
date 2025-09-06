@@ -9,6 +9,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -26,27 +27,11 @@ public class Projector {
     Iterable<NodeProjection> project(NodeProjectionSpec spec) {
         GraphTraversal<?, ?> traversal = traversalSource.V();
         traversal = select(traversal, spec.getNodeSelector());
-        var mapTraversal = projectNode(traversal, spec);
-
-        GraphTraversal<?, NodeProjection> projectionTraversal = mapTraversal.map(input -> {
-            Map<String, Object> value = input.get();
-            String uid = (String) value.get(PropertyConstants.UNIQUE_ID_PROPERTY);
-            String nodeType = (String) value.get(PropertyConstants.NODE_TYPE_PROPERTY);
-            Map<String, Object> properties = (Map<String, Object>) value.get("properties");
-            NodeProjection projection = new NodeProjection();
-            projection.setId(uid);
-            projection.setNodeType(nodeType);
-            projection.setProperties(properties);
-
-            // TODO: map in the traversed link projections
-
-            return projection;
-        });
+        var projectionTraversal = projectNodes(traversal, spec);
 
         List<NodeProjection> nodeProjections = new ArrayList<>();
         while (projectionTraversal.hasNext()) {
             var next =  projectionTraversal.next();
-            LOG.info("Got next {}", next);
             nodeProjections.add(next);
         }
         return nodeProjections;
@@ -63,20 +48,26 @@ public class Projector {
     }
 
     /** Returns a traverser that adds a property projection to the given traverser. */
-    private GraphTraversal<?, Map<String, Object>> projectNode(GraphTraversal<?, ?> traversal, NodeProjectionSpec spec) {
-        List<String> properties = spec.getProperties();
-
+    private GraphTraversal<?, NodeProjection> projectNodes(GraphTraversal<?, ?> traversal, NodeProjectionSpec spec) {
         Map<String, GraphTraversal<?, ?>> projectionTraversals = new TreeMap<>();
         projectionTraversals.put(PropertyConstants.UNIQUE_ID_PROPERTY, __.values(PropertyConstants.UNIQUE_ID_PROPERTY));
         projectionTraversals.put(PropertyConstants.NODE_TYPE_PROPERTY, __.values(PropertyConstants.NODE_TYPE_PROPERTY));
-        projectionTraversals.put("properties", __.valueMap(properties.toArray(new String[0])));
+        if (spec.getProperties() != null) {
+            projectionTraversals.put("properties", __.valueMap(spec.getProperties().toArray(new String[0])));
+        }
 
         if (spec.getLinks() != null) {
             for (Map.Entry<String, LinkProjectionSpec> entry : spec.getLinks().entrySet()) {
                 String linkAlias = entry.getKey();
                 LinkProjectionSpec linkSpec = entry.getValue();
-                var linkTraversal = linkSpec.getDirection().equals(Direction.IN) ? __.inE(linkSpec.getLinkName() + "-out").outV() : __.outE(linkSpec.getLinkName() + "-in").inV();
-                projectionTraversals.put(linkAlias, projectLink(linkTraversal, linkSpec));
+                String otherNodeName = linkSpec.getNodeLabel();
+                var linkTraversal = linkSpec.getDirection().equals(Direction.IN) ?
+                        __.in(getLinkPropertyOutEdgeName(linkSpec.getLinkName()))
+                                .where(__.in(getLinkPropertyInEdgeName(linkSpec.getLinkName())).has(PropertyConstants.NODE_TYPE_PROPERTY, otherNodeName))
+                        :
+                        __.out(getLinkPropertyInEdgeName(linkSpec.getLinkName()))
+                                .where(__.out(getLinkPropertyOutEdgeName(linkSpec.getLinkName())).has(PropertyConstants.NODE_TYPE_PROPERTY, otherNodeName));
+                projectionTraversals.put(linkAlias, projectLinks(linkTraversal, linkSpec));
             }
         }
 
@@ -85,26 +76,51 @@ public class Projector {
         for (var trav: projectionTraversals.values()) {
             projectionTraversal = projectionTraversal.by(trav);
         }
-        return projectionTraversal;
+
+        return projectionTraversal.map(input -> {
+            Map<String, Object> value = input.get();
+            String uid = (String) value.get(PropertyConstants.UNIQUE_ID_PROPERTY);
+            String nodeType = (String) value.get(PropertyConstants.NODE_TYPE_PROPERTY);
+            Map<String, Object> nodeProps = (Map<String, Object>) value.get("properties");
+            NodeProjection projection = new NodeProjection();
+            projection.setId(uid);
+            projection.setNodeType(nodeType);
+            projection.setProperties(nodeProps);
+
+            if (spec.getLinks() != null) {
+                Map<String, List<LinkProjection>> links = new HashMap<>();
+                for (var entry: spec.getLinks().keySet()) {
+                    links.put(entry, (List<LinkProjection>) value.get(entry));
+                }
+                projection.setLinks(links);
+            }
+
+            return projection;
+        });
     }
 
-    private GraphTraversal<?, Map<String, Object>> projectLink(GraphTraversal<?, ?> traversal, LinkProjectionSpec spec) {
-        List<String> properties = spec.getProperties();
-
+    private GraphTraversal<?, List<LinkProjection>> projectLinks(GraphTraversal<?, ?> traversal, LinkProjectionSpec spec) {
         Map<String, GraphTraversal<?, ?>> projectionTraversals = new TreeMap<>();
         projectionTraversals.put(PropertyConstants.UNIQUE_ID_PROPERTY, __.values(PropertyConstants.UNIQUE_ID_PROPERTY));
         projectionTraversals.put(PropertyConstants.NODE_TYPE_PROPERTY, __.values(PropertyConstants.NODE_TYPE_PROPERTY));
-        projectionTraversals.put("properties", __.valueMap(properties.toArray(new String[0])));
+        if (spec.getProperties() != null) {
+            projectionTraversals.put("properties", __.valueMap(spec.getProperties().toArray(new String[0])));
+        }
 
-        // TODO: add projection for the link target/source
-        // remamber that this traversal we're given is going to be sitting on a relationship node,
-        // so to get to the "target" or "source" we need to follow the <LINKNAME>-in or <LINKNAME>-out edge
+        NodeProjectionSpec nodeProjectionSpec = spec.getNodeProjection();
+        if (nodeProjectionSpec == null) {
+            nodeProjectionSpec = new NodeProjectionSpec();
+        }
+
+        // add the node on the other side of the link to the projection
         if (spec.getDirection().equals(Direction.IN)) {
-            var sourceTraversal = __.inE(spec.getLinkName() + "-in").outV();
-            projectionTraversals.put("source", projectNode(sourceTraversal, spec.getTargetProjection()));
+            var sourceTraversal = __.inE( getLinkPropertyInEdgeName(spec.getLinkName())).outV();
+            var projectedNodes = projectNodes(sourceTraversal, nodeProjectionSpec);
+            projectionTraversals.put("source", projectedNodes);
         } else {
-            var targetTraversal = __.outE(spec.getLinkName() + "-out").inV();
-            projectionTraversals.put("target", projectNode(targetTraversal, spec.getTargetProjection()));
+            var targetTraversal = __.outE( getLinkPropertyOutEdgeName(spec.getLinkName())).inV();
+            var projectedNodes = projectNodes(targetTraversal, nodeProjectionSpec);
+            projectionTraversals.put("target", projectedNodes);
         }
 
         List<String> projectionKeys = projectionTraversals.keySet().stream().toList();
@@ -112,7 +128,35 @@ public class Projector {
         for (var trav: projectionTraversals.values()) {
             projectionTraversal = projectionTraversal.by(trav);
         }
-        return projectionTraversal;
+        var foldTraversal = projectionTraversal.fold();
+        return foldTraversal.map(inputs -> {
+            List<Map<String, Object>> inputList = inputs.get();
+            return inputList.stream().map(value -> {
+                LinkProjection linkProjection = null;
+                if (value.containsKey("source")) {
+                    IncomingLinkProjection in = new IncomingLinkProjection();
+                    in.setSource((NodeProjection) value.get("source"));
+                    linkProjection = in;
+                } else if (value.containsKey("target")) {
+                    OutgoingLinkProjection out = new OutgoingLinkProjection();
+                    out.setTarget((NodeProjection) value.get("target"));
+                    linkProjection = out;
+                } else {
+                    LOG.warn("mapped link contains no source or target node");
+                }
+                linkProjection.setProperties((Map<String, Object>) value.get("properties"));
+
+                return linkProjection;
+            }).toList();
+        });
+    }
+
+    private String getLinkPropertyInEdgeName(String linkName) {
+        return linkName + "-in";
+    }
+
+    private String getLinkPropertyOutEdgeName(String linkName) {
+        return linkName + "-out";
     }
 
 }
