@@ -4,13 +4,17 @@ import java.util.StringJoiner;
 
 public class IncomingLinkProjection extends LinkProjection {
 
-    private NodeProjection source;
+    private ItemProjection source;
 
-    public NodeProjection getSource() {
+    public ItemProjection getSource() {
         return source;
     }
 
-    public void setSource(NodeProjection source) {
+    IncomingLinkProjection() {
+        // no-op
+    }
+
+    public void setSource(ItemProjection source) {
         this.source = source;
     }
 

@@ -1,6 +1,6 @@
-package org.ntrloc.graph.db.projector;
+package org.ntrloc.graph.db.projector.selectors;
 
-public class LabelSelector extends NodeSelector {
+public class LabelSelector implements ItemSelector, LinkSelector {
 
     private String label;
 

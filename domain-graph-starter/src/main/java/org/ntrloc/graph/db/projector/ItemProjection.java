@@ -4,13 +4,17 @@ import java.util.List;
 import java.util.Map;
 import java.util.StringJoiner;
 
-public class NodeProjection {
+public class ItemProjection {
 
     private String id;
     private String nodeType;
 
     private Map<String, Object> properties;
     private Map<String, List<LinkProjection>> links;
+
+    ItemProjection() {
+        // no-op
+    }
 
     public String getId() {
         return id;
@@ -46,7 +50,7 @@ public class NodeProjection {
 
     @Override
     public String toString() {
-        return new StringJoiner(", ", NodeProjection.class.getSimpleName() + "[", "]")
+        return new StringJoiner(", ", ItemProjection.class.getSimpleName() + "[", "]")
                 .add("id='" + id + "'")
                 .add("nodeType='" + nodeType + "'")
                 .add("properties=" + properties)

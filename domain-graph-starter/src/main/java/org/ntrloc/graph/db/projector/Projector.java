@@ -5,6 +5,8 @@ import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversal;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversalSource;
 import org.apache.tinkerpop.gremlin.structure.Direction;
 import org.ntrloc.graph.db.PropertyConstants;
+import org.ntrloc.graph.db.projector.selectors.LabelSelector;
+import org.ntrloc.graph.db.projector.selectors.ItemSelector;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -24,21 +26,21 @@ public class Projector {
         this.traversalSource = traversalSource;
     }
 
-    Iterable<NodeProjection> project(NodeProjectionSpec spec) {
+    Iterable<ItemProjection> project(SelectableItemProjectionSpec spec) {
         GraphTraversal<?, ?> traversal = traversalSource.V();
-        traversal = select(traversal, spec.getNodeSelector());
-        var projectionTraversal = projectNodes(traversal, spec);
+        traversal = select(traversal, spec.getItemSelector());
+        var projectionTraversal = projectItems(traversal, spec);
 
-        List<NodeProjection> nodeProjections = new ArrayList<>();
+        List<ItemProjection> itemProjections = new ArrayList<>();
         while (projectionTraversal.hasNext()) {
             var next =  projectionTraversal.next();
-            nodeProjections.add(next);
+            itemProjections.add(next);
         }
-        return nodeProjections;
+        return itemProjections;
     }
 
     /** Returns a new traverser that adds a node selection to the given traversal. */
-    private GraphTraversal<?, ?> select(GraphTraversal<?, ?> traversal, NodeSelector selector) {
+    private GraphTraversal<?, ?> select(GraphTraversal<?, ?> traversal, ItemSelector selector) {
         GraphTraversal<?, ?> result;
         switch (selector) {
             case LabelSelector labelSelector -> result = traversal.hasLabel(labelSelector.getLabel());
@@ -48,7 +50,7 @@ public class Projector {
     }
 
     /** Returns a traverser that adds a property projection to the given traverser. */
-    private GraphTraversal<?, NodeProjection> projectNodes(GraphTraversal<?, ?> traversal, NodeProjectionSpec spec) {
+    private GraphTraversal<?, ItemProjection> projectItems(GraphTraversal<?, ?> traversal, ItemProjectionSpec spec) {
         Map<String, GraphTraversal<?, ?>> projectionTraversals = new TreeMap<>();
         projectionTraversals.put(PropertyConstants.UNIQUE_ID_PROPERTY, __.values(PropertyConstants.UNIQUE_ID_PROPERTY));
         projectionTraversals.put(PropertyConstants.NODE_TYPE_PROPERTY, __.values(PropertyConstants.NODE_TYPE_PROPERTY));
@@ -82,7 +84,7 @@ public class Projector {
             String uid = (String) value.get(PropertyConstants.UNIQUE_ID_PROPERTY);
             String nodeType = (String) value.get(PropertyConstants.NODE_TYPE_PROPERTY);
             Map<String, Object> nodeProps = (Map<String, Object>) value.get("properties");
-            NodeProjection projection = new NodeProjection();
+            ItemProjection projection = new ItemProjection();
             projection.setId(uid);
             projection.setNodeType(nodeType);
             projection.setProperties(nodeProps);
@@ -107,19 +109,19 @@ public class Projector {
             projectionTraversals.put("properties", __.valueMap(spec.getProperties().toArray(new String[0])));
         }
 
-        NodeProjectionSpec nodeProjectionSpec = spec.getNodeProjection();
-        if (nodeProjectionSpec == null) {
-            nodeProjectionSpec = new NodeProjectionSpec();
+        ItemProjectionSpec itemProjectionSpec = spec.getNodeProjection();
+        if (itemProjectionSpec == null) {
+            itemProjectionSpec = new ItemProjectionSpec();
         }
 
         // add the node on the other side of the link to the projection
         if (spec.getDirection().equals(Direction.IN)) {
             var sourceTraversal = __.inE( getLinkPropertyInEdgeName(spec.getLinkName())).outV();
-            var projectedNodes = projectNodes(sourceTraversal, nodeProjectionSpec);
+            var projectedNodes = projectItems(sourceTraversal, itemProjectionSpec);
             projectionTraversals.put("source", projectedNodes);
         } else {
             var targetTraversal = __.outE( getLinkPropertyOutEdgeName(spec.getLinkName())).inV();
-            var projectedNodes = projectNodes(targetTraversal, nodeProjectionSpec);
+            var projectedNodes = projectItems(targetTraversal, itemProjectionSpec);
             projectionTraversals.put("target", projectedNodes);
         }
 
@@ -135,11 +137,11 @@ public class Projector {
                 LinkProjection linkProjection = null;
                 if (value.containsKey("source")) {
                     IncomingLinkProjection in = new IncomingLinkProjection();
-                    in.setSource((NodeProjection) value.get("source"));
+                    in.setSource((ItemProjection) value.get("source"));
                     linkProjection = in;
                 } else if (value.containsKey("target")) {
                     OutgoingLinkProjection out = new OutgoingLinkProjection();
-                    out.setTarget((NodeProjection) value.get("target"));
+                    out.setTarget((ItemProjection) value.get("target"));
                     linkProjection = out;
                 } else {
                     LOG.warn("mapped link contains no source or target node");

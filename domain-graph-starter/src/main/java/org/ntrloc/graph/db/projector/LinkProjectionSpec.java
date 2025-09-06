@@ -10,7 +10,7 @@ public class LinkProjectionSpec {
     private Direction direction;
     private String nodeLabel;
     private List<String> properties;
-    private NodeProjectionSpec nodeProjection;
+    private ItemProjectionSpec nodeProjection;
 
     /**
      * Specifies the information to return for a link between items in the graph.
@@ -49,12 +49,12 @@ public class LinkProjectionSpec {
         this.properties = properties;
     }
 
-    public LinkProjectionSpec nodeProjection(NodeProjectionSpec nodeProjection) {
+    public LinkProjectionSpec nodeProjection(ItemProjectionSpec nodeProjection) {
         this.nodeProjection = nodeProjection;
         return this;
     }
 
-    public NodeProjectionSpec getNodeProjection() {
+    public ItemProjectionSpec getNodeProjection() {
         return nodeProjection;
     }
 

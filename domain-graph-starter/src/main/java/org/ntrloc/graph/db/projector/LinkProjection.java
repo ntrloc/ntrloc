@@ -4,6 +4,10 @@ import java.util.Map;
 
 public abstract class LinkProjection {
 
+    LinkProjection() {
+        // no-op
+    }
+
     protected Map<String, Object> properties;
 
     public Map<String, Object> getProperties() {

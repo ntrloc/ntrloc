@@ -8,12 +8,12 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.db.PropertyConstants;
+import org.ntrloc.graph.db.projector.selectors.LabelSelector;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.util.List;
-import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.UUID;
 
@@ -117,55 +117,50 @@ class ProjectorTest {
     }
 
     @Test
-    @DisplayName("should execute a simple node projection")
-    void testSimpleNodeProjection() {
+    @DisplayName("should execute a simple item projection")
+    void testSimpleItemProjection() {
         Projector projector = new Projector(traversalSource);
-        NodeProjectionSpec spec = new NodeProjectionSpec(LabelSelector.on("Photo"))
+        SelectableItemProjectionSpec spec = new SelectableItemProjectionSpec(LabelSelector.on("Photo"))
                 .properties(List.of("Photo_name", "Photo_colorspace"));
-        Iterable<NodeProjection> projections = projector.project(spec);
-        for (NodeProjection projection: projections) {
+        Iterable<ItemProjection> projections = projector.project(spec);
+        for (ItemProjection projection: projections) {
             LOG.info("Got projection {}", projection);
         }
     }
 
     @Test
-    @DisplayName("should project links by a specific node type")
+    @DisplayName("should project links by a specific item type")
     void testProjectLinksByNodeType() {
         Projector projector = new Projector(traversalSource);
-        NodeProjectionSpec spec = new NodeProjectionSpec(LabelSelector.on("Photographer"))
+        SelectableItemProjectionSpec spec = new SelectableItemProjectionSpec(LabelSelector.on("Photographer"))
                 .properties(List.of("Photographer_name"))
-                .links(Map.of(
-                        "created", new LinkProjectionSpec("CREATED", Direction.OUT, "Photo").properties(List.of("date")),
-                        "worksFor", new LinkProjectionSpec("EMPLOYS", Direction.IN, "Agency")
-                ));
-        Iterable<NodeProjection> projections = projector.project(spec);
-        for (NodeProjection projection: projections) {
+                .link("created", new LinkProjectionSpec("CREATED", Direction.OUT, "Photo").properties(List.of("date")))
+                .link("worksFor", new LinkProjectionSpec("EMPLOYS", Direction.IN, "Agency"));
+        Iterable<ItemProjection> projections = projector.project(spec);
+        for (ItemProjection projection: projections) {
             LOG.info("Got projection {}", projection);
         }
     }
 
     @Test
-    @DisplayName("should execute a node projection with links")
-    void testNodeProjectionWithLinks() {
+    @DisplayName("should execute a item projection with links")
+    void testItemProjectionWithLinks() {
         Projector projector = new Projector(traversalSource);
-        NodeProjectionSpec spec = new NodeProjectionSpec(LabelSelector.on("Photo"))
+        SelectableItemProjectionSpec spec = new SelectableItemProjectionSpec(LabelSelector.on("Photo"))
                 .properties(List.of("Photo_name", "Photo_colorspace"))
-                .links(
-                        Map.of("createdBy", new LinkProjectionSpec("CREATED", Direction.IN, "Photographer")
-                                .properties(List.of("date"))
-                                .nodeProjection(new NodeProjectionSpec()
-                                        .properties(List.of("Photographer_name"))
-                                        .links(Map.of("worksFor", new LinkProjectionSpec("EMPLOYS", Direction.IN, "Agency")))
-                                )
-                        )
-                );
+                .link("createdBy", new LinkProjectionSpec("CREATED", Direction.IN, "Photographer")
+                        .properties(List.of("date"))
+                        .nodeProjection(new ItemProjectionSpec()
+                                .properties(List.of("Photographer_name"))
+                                .link("worksFor", new LinkProjectionSpec("EMPLOYS", Direction.IN, "Agency"))
+                        ));
 
         long start = System.currentTimeMillis();
-        Iterable<NodeProjection> projections = projector.project(spec);
+        Iterable<ItemProjection> projections = projector.project(spec);
         long end = System.currentTimeMillis();
         LOG.info("Projection took {} ms", end - start);
 
-        for (NodeProjection projection: projections) {
+        for (ItemProjection projection: projections) {
             LOG.info("Got projection {}", projection);
         }
     }

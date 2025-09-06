@@ -4,13 +4,17 @@ import java.util.StringJoiner;
 
 public class OutgoingLinkProjection extends LinkProjection {
 
-    private NodeProjection target;
+    private ItemProjection target;
 
-    public NodeProjection getTarget() {
+    OutgoingLinkProjection() {
+        // no-op
+    }
+
+    public ItemProjection getTarget() {
         return target;
     }
 
-    public void setTarget(NodeProjection target) {
+    public void setTarget(ItemProjection target) {
         this.target = target;
     }
 
@@ -21,4 +25,5 @@ public class OutgoingLinkProjection extends LinkProjection {
                 .add("target=" + target)
                 .toString();
     }
+
 }
