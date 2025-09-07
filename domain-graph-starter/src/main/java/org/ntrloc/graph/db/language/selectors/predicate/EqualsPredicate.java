@@ -1,6 +1,6 @@
 package org.ntrloc.graph.db.language.selectors.predicate;
 
-public class EqualsPredicate implements UnaryPredicate {
+public class EqualsPredicate implements UnaryPredicate<Object> {
 
     Object value;
 

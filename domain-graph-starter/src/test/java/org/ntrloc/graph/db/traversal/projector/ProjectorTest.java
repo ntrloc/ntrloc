@@ -13,14 +13,14 @@ import org.ntrloc.graph.db.language.selectors.predicate.EqualsPredicate;
 import org.ntrloc.graph.db.language.selectors.predicate.GreaterThanPredicate;
 import org.ntrloc.graph.db.language.selectors.predicate.LessThanPredicate;
 import org.ntrloc.graph.db.language.selectors.predicate.NotEqualsPredicate;
+import org.ntrloc.graph.db.language.selectors.predicate.WithinPredicate;
+import org.ntrloc.graph.db.language.selectors.predicate.WithoutPredicate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.File;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Optional;
-import java.util.UUID;
 import java.util.stream.StreamSupport;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -41,14 +41,6 @@ class ProjectorTest {
             janusGraph.close();
         }
 
-        String indexPath;
-        do {
-            String tmpId = UUID.randomUUID().toString().substring(0, 8);
-            indexPath = "target/db/lucene-test-" + tmpId;
-        } while (new File(indexPath).exists());
-
-
-        File indexDir = new File(indexPath);
         janusGraph = JanusGraphFactory.build()
                 .set("storage.backend", "inmemory")
                 .set("cache.tx-cache-size", 0)
@@ -220,6 +212,62 @@ class ProjectorTest {
         assertEquals(1, list.size());
         ItemProjection photographer = list.get(0);
         assertEquals(List.of("Jack"), photographer.getProperties().get("name"));
+    }
+
+    @Test
+    @DisplayName("should project nodes that have a property value (string within)")
+    void testProjectNodesByStringWithin() {
+        Projector projector = new Projector(traversalSource);
+        SelectableItemProjectionSpec spec = new SelectableItemProjectionSpec("Photographer")
+                .select(HasPropertyValueSelector.of("name", WithinPredicate.on(List.of("Bob", "Bill"))))
+                .properties(List.of("name"));
+        Iterable<ItemProjection> projections = projector.project(spec);
+        List<ItemProjection> list = StreamSupport.stream(projections.spliterator(), false).toList();
+        assertEquals(1, list.size());
+        ItemProjection photographer = list.get(0);
+        assertEquals(List.of("Bill"), photographer.getProperties().get("name"));
+    }
+
+    @Test
+    @DisplayName("should project nodes that have a property value (number within)")
+    void testProjectNodesByNumberWithin() {
+        Projector projector = new Projector(traversalSource);
+        SelectableItemProjectionSpec spec = new SelectableItemProjectionSpec("Photographer")
+                .select(HasPropertyValueSelector.of("age", WithinPredicate.on(List.of(55, 22))))
+                .properties(List.of("name", "age"));
+        Iterable<ItemProjection> projections = projector.project(spec);
+        List<ItemProjection> list = StreamSupport.stream(projections.spliterator(), false).toList();
+        assertEquals(1, list.size());
+        ItemProjection photographer = list.get(0);
+        assertEquals(List.of("Jack"), photographer.getProperties().get("name"));
+    }
+
+    @Test
+    @DisplayName("should project nodes that have a property value (string without)")
+    void testProjectNodesByStringWithout() {
+        Projector projector = new Projector(traversalSource);
+        SelectableItemProjectionSpec spec = new SelectableItemProjectionSpec("Photographer")
+                .select(HasPropertyValueSelector.of("name", WithoutPredicate.on(List.of("Bob", "Bill"))))
+                .properties(List.of("name"));
+        Iterable<ItemProjection> projections = projector.project(spec);
+        List<ItemProjection> list = StreamSupport.stream(projections.spliterator(), false).toList();
+        assertEquals(1, list.size());
+        ItemProjection photographer = list.get(0);
+        assertEquals(List.of("Jack"), photographer.getProperties().get("name"));
+    }
+
+    @Test
+    @DisplayName("should project nodes that have a property value (number without)")
+    void testProjectNodesByNumberWithout() {
+        Projector projector = new Projector(traversalSource);
+        SelectableItemProjectionSpec spec = new SelectableItemProjectionSpec("Photographer")
+                .select(HasPropertyValueSelector.of("age", WithoutPredicate.on(List.of(55, 22))))
+                .properties(List.of("name", "age"));
+        Iterable<ItemProjection> projections = projector.project(spec);
+        List<ItemProjection> list = StreamSupport.stream(projections.spliterator(), false).toList();
+        assertEquals(1, list.size());
+        ItemProjection photographer = list.get(0);
+        assertEquals(List.of("Bill"), photographer.getProperties().get("name"));
     }
 
 }

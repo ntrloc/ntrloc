@@ -1,8 +1,8 @@
 package org.ntrloc.graph.db.language.selectors.predicate;
 
 /* A predicate that accepts a single value */
-public interface UnaryPredicate extends Predicate {
+public interface UnaryPredicate<T> extends Predicate {
 
-    Object getValue();
+    T getValue();
 
 }

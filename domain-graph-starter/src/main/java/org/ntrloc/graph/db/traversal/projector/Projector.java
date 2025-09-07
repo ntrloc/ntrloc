@@ -14,6 +14,8 @@ import org.ntrloc.graph.db.language.selectors.predicate.GreaterThanPredicate;
 import org.ntrloc.graph.db.language.selectors.predicate.LessThanPredicate;
 import org.ntrloc.graph.db.language.selectors.predicate.NotEqualsPredicate;
 import org.ntrloc.graph.db.language.selectors.predicate.Predicate;
+import org.ntrloc.graph.db.language.selectors.predicate.WithinPredicate;
+import org.ntrloc.graph.db.language.selectors.predicate.WithoutPredicate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -194,6 +196,8 @@ public class Projector {
             case NotEqualsPredicate neq -> P.neq(neq.getValue());
             case LessThanPredicate lt -> P.lt(lt.getValue());
             case GreaterThanPredicate gt -> P.gt(gt.getValue());
+            case WithinPredicate within -> P.within(within.getValue());
+            case WithoutPredicate without -> P.without(without.getValue());
             default -> throw new RuntimeException("Not implemented yet");
         };
     }

@@ -1,6 +1,6 @@
 package org.ntrloc.graph.db.language.selectors.predicate;
 
-public class LessThanPredicate implements UnaryPredicate {
+public class LessThanPredicate implements UnaryPredicate<Object> {
 
     Object value;
 
