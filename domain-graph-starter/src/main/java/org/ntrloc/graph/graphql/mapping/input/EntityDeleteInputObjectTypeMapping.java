@@ -6,7 +6,7 @@ import graphql.language.NonNullType;
 import graphql.language.TypeName;
 import org.apache.commons.text.CaseUtils;
 import org.ntrloc.graph.db.schema.EntityDefinition;
-import org.ntrloc.graph.graphql.mapping.matcher.MatcherChoiceInputObjectTypeMapping;
+import org.ntrloc.graph.graphql.mapping.selector.SelectorChoiceInputObjectTypeMapping;
 
 import java.util.List;
 
@@ -15,9 +15,9 @@ public class EntityDeleteInputObjectTypeMapping implements InputObjectTypeProduc
 
     private String graphQlTypeName;
     private EntityDefinition entityDefinition;
-    private MatcherChoiceInputObjectTypeMapping matcherChoiceMapping;
+    private SelectorChoiceInputObjectTypeMapping matcherChoiceMapping;
 
-    public EntityDeleteInputObjectTypeMapping(EntityDefinition entityDefinition, MatcherChoiceInputObjectTypeMapping matcherChoiceMapping) {
+    public EntityDeleteInputObjectTypeMapping(EntityDefinition entityDefinition, SelectorChoiceInputObjectTypeMapping matcherChoiceMapping) {
         String typeName = String.format("%s Delete Input", entityDefinition.getName());
         this.graphQlTypeName = CaseUtils.toCamelCase(typeName, true, '_', '-');
         this.entityDefinition = entityDefinition;

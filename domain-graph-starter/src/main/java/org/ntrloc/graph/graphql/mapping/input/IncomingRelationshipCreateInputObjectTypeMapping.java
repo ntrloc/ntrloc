@@ -5,7 +5,7 @@ import graphql.language.InputValueDefinition;
 import graphql.language.TypeName;
 import org.apache.commons.text.CaseUtils;
 import org.ntrloc.graph.db.schema.RelationshipDefinition;
-import org.ntrloc.graph.graphql.mapping.matcher.MatcherChoiceInputObjectTypeMapping;
+import org.ntrloc.graph.graphql.mapping.selector.SelectorChoiceInputObjectTypeMapping;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -16,9 +16,9 @@ public class IncomingRelationshipCreateInputObjectTypeMapping extends Relationsh
     private String graphQlTypeName;
     private RelationshipDefinition sourceRelationshipDefinition;
     private RelationshipPropertiesInputObjectTypeMapping propertiesMapping;
-    private MatcherChoiceInputObjectTypeMapping matcherChoiceMapping;
+    private SelectorChoiceInputObjectTypeMapping matcherChoiceMapping;
 
-    public IncomingRelationshipCreateInputObjectTypeMapping(RelationshipDefinition sourceRelationshipDefinition, RelationshipPropertiesInputObjectTypeMapping propertiesMapping, MatcherChoiceInputObjectTypeMapping matcherChoiceMapping) {
+    public IncomingRelationshipCreateInputObjectTypeMapping(RelationshipDefinition sourceRelationshipDefinition, RelationshipPropertiesInputObjectTypeMapping propertiesMapping, SelectorChoiceInputObjectTypeMapping matcherChoiceMapping) {
         String typeName = String.format("%s %s %s Link Create Input", sourceRelationshipDefinition.getTargetEntity(), sourceRelationshipDefinition.getTargetLabel(), sourceRelationshipDefinition.getSourceEntity());
         this.graphQlTypeName = CaseUtils.toCamelCase(typeName, true, '_', '-');
         this.sourceRelationshipDefinition = sourceRelationshipDefinition;

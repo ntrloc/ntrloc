@@ -5,7 +5,7 @@ import graphql.language.InputValueDefinition;
 import graphql.language.TypeName;
 import org.apache.commons.text.CaseUtils;
 import org.ntrloc.graph.db.schema.RelationshipDefinition;
-import org.ntrloc.graph.graphql.mapping.matcher.MatcherChoiceInputObjectTypeMapping;
+import org.ntrloc.graph.graphql.mapping.selector.SelectorChoiceInputObjectTypeMapping;
 
 import java.util.List;
 
@@ -14,9 +14,9 @@ public class IncomingRelationshipDeleteInputObjectTypeMapping implements Incomin
 
     private String graphQlTypeName;
     private RelationshipDefinition sourceRelationshipDefinition;
-    private MatcherChoiceInputObjectTypeMapping matcherChoiceMapping;
+    private SelectorChoiceInputObjectTypeMapping matcherChoiceMapping;
 
-    public IncomingRelationshipDeleteInputObjectTypeMapping(RelationshipDefinition sourceRelationshipDefinition, MatcherChoiceInputObjectTypeMapping matcherChoiceMapping) {
+    public IncomingRelationshipDeleteInputObjectTypeMapping(RelationshipDefinition sourceRelationshipDefinition, SelectorChoiceInputObjectTypeMapping matcherChoiceMapping) {
         String typeName = String.format("%s %s %s Link Delete Input", sourceRelationshipDefinition.getTargetEntity(), sourceRelationshipDefinition.getTargetLabel(), sourceRelationshipDefinition.getSourceEntity());
         this.graphQlTypeName = CaseUtils.toCamelCase(typeName, true, '_', '-');
         this.sourceRelationshipDefinition = sourceRelationshipDefinition;

@@ -7,7 +7,7 @@ import graphql.language.NonNullType;
 import graphql.language.TypeName;
 import org.apache.commons.text.CaseUtils;
 import org.ntrloc.graph.db.schema.EntityDefinition;
-import org.ntrloc.graph.graphql.mapping.matcher.MatcherChoiceInputObjectTypeMapping;
+import org.ntrloc.graph.graphql.mapping.selector.SelectorChoiceInputObjectTypeMapping;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -20,9 +20,9 @@ public class EntityUpdateInputObjectTypeMapping implements InputObjectTypeProduc
     private EntityDefinition entityDefinition;
     private EntityPropertiesInputObjectTypeMapping propertiesMapping;
     private EntityUpdateLinksInputObjectTypeMapping updateLinksInputTypeMapping;
-    private MatcherChoiceInputObjectTypeMapping matcherChoiceMapping;
+    private SelectorChoiceInputObjectTypeMapping matcherChoiceMapping;
 
-    public EntityUpdateInputObjectTypeMapping(EntityDefinition entityDefinition, EntityPropertiesInputObjectTypeMapping propertiesMapping, MatcherChoiceInputObjectTypeMapping matcherChoiceMapping) {
+    public EntityUpdateInputObjectTypeMapping(EntityDefinition entityDefinition, EntityPropertiesInputObjectTypeMapping propertiesMapping, SelectorChoiceInputObjectTypeMapping matcherChoiceMapping) {
         String typeName = String.format("%s Update Input", entityDefinition.getName());
         this.graphQlTypeName = CaseUtils.toCamelCase(typeName, true, '_', '-');
         this.entityDefinition = entityDefinition;

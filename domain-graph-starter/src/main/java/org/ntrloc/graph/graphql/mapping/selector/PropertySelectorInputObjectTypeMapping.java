@@ -1,21 +1,21 @@
-package org.ntrloc.graph.graphql.mapping.matcher;
+package org.ntrloc.graph.graphql.mapping.selector;
 
 import graphql.language.InputObjectTypeDefinition;
 import graphql.language.InputValueDefinition;
 import graphql.language.TypeName;
 import org.apache.commons.text.CaseUtils;
-import org.ntrloc.graph.db.language.Matcher;
-import org.ntrloc.graph.db.language.OrMatcher;
+import org.ntrloc.graph.db.language.selectors.HasPropertySelector;
+import org.ntrloc.graph.db.language.selectors.ItemSelector;
 
 import java.util.List;
 
-public class PropertyMatcherInputObjectTypeMapping implements MatcherInputObjectTypeMapping {
+public class PropertySelectorInputObjectTypeMapping implements SelectorInputObjectTypeMapping {
 
     private String graphQlTypeName;
-    private Matcher matcher = new OrMatcher();
+    private ItemSelector selector = new HasPropertySelector();
 
-    public PropertyMatcherInputObjectTypeMapping() {
-        this.graphQlTypeName = CaseUtils.toCamelCase("Property Matcher Input", true, '_', '-');
+    public PropertySelectorInputObjectTypeMapping() {
+        this.graphQlTypeName = CaseUtils.toCamelCase("Property Selector Input", true, '_', '-');
     }
 
     @Override

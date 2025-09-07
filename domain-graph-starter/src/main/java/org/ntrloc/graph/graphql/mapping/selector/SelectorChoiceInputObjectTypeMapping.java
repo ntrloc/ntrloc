@@ -1,4 +1,4 @@
-package org.ntrloc.graph.graphql.mapping.matcher;
+package org.ntrloc.graph.graphql.mapping.selector;
 
 import graphql.language.Directive;
 import graphql.language.InputObjectTypeDefinition;
@@ -11,20 +11,20 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public class MatcherChoiceInputObjectTypeMapping implements MatcherInputObjectTypeMapping {
+public class SelectorChoiceInputObjectTypeMapping implements SelectorInputObjectTypeMapping {
 
     private String graphQlTypeName;
-    private Map<String, MatcherInputObjectTypeMapping> matchers = new HashMap<>();
+    private Map<String, SelectorInputObjectTypeMapping> matchers = new HashMap<>();
 
-    public MatcherChoiceInputObjectTypeMapping() {
-        this.graphQlTypeName = CaseUtils.toCamelCase("Matcher Input", true, '_', '-');
+    public SelectorChoiceInputObjectTypeMapping() {
+        this.graphQlTypeName = CaseUtils.toCamelCase("Selector Input", true, '_', '-');
 
-        matchers.put("all", new AllMatcherInputObjectTypeMapping());
-        matchers.put("and", new AndMatcherInputObjectTypeMapping());
-        matchers.put("not", new NotMatcherInputObjectTypeMapping());
-        matchers.put("or", new OrMatcherInputObjectTypeMapping());
-        matchers.put("property", new PropertyMatcherInputObjectTypeMapping());
-        matchers.put("propertyValue", new PropertyValueMatcherInputObjectTypeMapping());
+        matchers.put("all", new AllSelectorInputObjectTypeMapping());
+        matchers.put("and", new AndSelectorInputObjectTypeMapping());
+        matchers.put("not", new NotSelectorInputObjectTypeMapping());
+        matchers.put("or", new OrSelectorInputObjectTypeMapping());
+        matchers.put("property", new PropertySelectorInputObjectTypeMapping());
+        matchers.put("propertyValue", new PropertyValueSelectorInputObjectTypeMapping());
     }
 
     @Override
@@ -37,9 +37,9 @@ public class MatcherChoiceInputObjectTypeMapping implements MatcherInputObjectTy
         matcherValueDefinitions.add(idMatcherValue);
         matcherValueDefinitions.add(refMatcherValue);
 
-        for (Map.Entry<String, MatcherInputObjectTypeMapping> entry : matchers.entrySet()) {
+        for (Map.Entry<String, SelectorInputObjectTypeMapping> entry : matchers.entrySet()) {
             String name = entry.getKey();
-            MatcherInputObjectTypeMapping mapping = entry.getValue();
+            SelectorInputObjectTypeMapping mapping = entry.getValue();
             var matcherValue = InputValueDefinition.newInputValueDefinition().type(new TypeName(mapping.getGraphQlTypeName())).name(name).build();
             matcherValueDefinitions.add(matcherValue);
         }

@@ -11,7 +11,7 @@ import org.ntrloc.graph.Tuple;
 import org.ntrloc.graph.db.language.mutation.EntityMutation;
 import org.ntrloc.graph.db.schema.EntityDefinition;
 import org.ntrloc.graph.db.schema.RelationshipDefinition;
-import org.ntrloc.graph.graphql.mapping.matcher.MatcherChoiceInputObjectTypeMapping;
+import org.ntrloc.graph.graphql.mapping.selector.SelectorChoiceInputObjectTypeMapping;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -41,7 +41,7 @@ public class EntityMutationInputObjectTypeMapping implements InputObjectTypeProd
 
     private InputObjectTypeDefinition choiceDefinition;
 
-    public EntityMutationInputObjectTypeMapping(EntityDefinition entityDefinition, MatcherChoiceInputObjectTypeMapping matcherChoiceInputTypeMapping) {
+    public EntityMutationInputObjectTypeMapping(EntityDefinition entityDefinition, SelectorChoiceInputObjectTypeMapping matcherChoiceInputTypeMapping) {
         String typeName = String.format("%s Mutation Choice Input", entityDefinition.getName());
         this.graphQlTypeName = CaseUtils.toCamelCase(typeName, true, '_', '-');
         this.entityDefinition = entityDefinition;
@@ -63,7 +63,7 @@ public class EntityMutationInputObjectTypeMapping implements InputObjectTypeProd
 
     public void mapRelationships(List<Tuple<RelationshipDefinition, EntityMutationInputObjectTypeMapping>> incomingRelationshipTuples,
                                  List<Tuple<RelationshipDefinition, EntityMutationInputObjectTypeMapping>> outgoingRelationshipTuples,
-                                 MatcherChoiceInputObjectTypeMapping matcherChoiceInputTypeMapping) {
+                                 SelectorChoiceInputObjectTypeMapping matcherChoiceInputTypeMapping) {
         var incomingMappingTuples = mapIncomingRelationships(incomingRelationshipTuples, matcherChoiceInputTypeMapping);
         var outgoingMappingTuples = mapOutgoingRelationships(outgoingRelationshipTuples, matcherChoiceInputTypeMapping);
 
@@ -79,7 +79,7 @@ public class EntityMutationInputObjectTypeMapping implements InputObjectTypeProd
 
     }
 
-    private Tuple<Map<String, OutgoingRelationshipCreateInputObjectTypeMapping>, Map<String, OutgoingRelationshipChoiceInputObjectTypeMapping>> mapOutgoingRelationships(List<Tuple<RelationshipDefinition, EntityMutationInputObjectTypeMapping>> relationshipTuples, MatcherChoiceInputObjectTypeMapping matcherChoiceInputTypeMapping) {
+    private Tuple<Map<String, OutgoingRelationshipCreateInputObjectTypeMapping>, Map<String, OutgoingRelationshipChoiceInputObjectTypeMapping>> mapOutgoingRelationships(List<Tuple<RelationshipDefinition, EntityMutationInputObjectTypeMapping>> relationshipTuples, SelectorChoiceInputObjectTypeMapping matcherChoiceInputTypeMapping) {
 
         Map<String, OutgoingRelationshipCreateInputObjectTypeMapping> outgoingRelationshipCreateInputTypeMappings = new HashMap<>();
         Map<String, OutgoingRelationshipChoiceInputObjectTypeMapping> outgoingRelationshipChoiceInputTypeMappings = new HashMap<>();
@@ -117,7 +117,7 @@ public class EntityMutationInputObjectTypeMapping implements InputObjectTypeProd
 
     }
 
-    private Tuple<Map<String, IncomingRelationshipCreateInputObjectTypeMapping>, Map<String, IncomingRelationshipChoiceInputObjectTypeMapping>> mapIncomingRelationships(List<Tuple<RelationshipDefinition, EntityMutationInputObjectTypeMapping>> relationshipTuples, MatcherChoiceInputObjectTypeMapping matcherChoiceInputTypeMapping) {
+    private Tuple<Map<String, IncomingRelationshipCreateInputObjectTypeMapping>, Map<String, IncomingRelationshipChoiceInputObjectTypeMapping>> mapIncomingRelationships(List<Tuple<RelationshipDefinition, EntityMutationInputObjectTypeMapping>> relationshipTuples, SelectorChoiceInputObjectTypeMapping matcherChoiceInputTypeMapping) {
         Map<String, IncomingRelationshipCreateInputObjectTypeMapping> incomingRelationshipCreateInputTypeMappings = new HashMap<>();
         Map<String, IncomingRelationshipChoiceInputObjectTypeMapping> incomingRelationshipChoiceInputTypeMappings = new HashMap<>();
 

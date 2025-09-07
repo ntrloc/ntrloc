@@ -12,7 +12,7 @@ import org.ntrloc.graph.Tuple;
 import org.ntrloc.graph.db.language.mutation.EntityMutation;
 import org.ntrloc.graph.db.schema.EntityDefinition;
 import org.ntrloc.graph.db.schema.RelationshipDefinition;
-import org.ntrloc.graph.graphql.mapping.matcher.MatcherChoiceInputObjectTypeMapping;
+import org.ntrloc.graph.graphql.mapping.selector.SelectorChoiceInputObjectTypeMapping;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -39,7 +39,7 @@ public class MutationChoiceInputObjectTypeMapping implements InputObjectTypeProd
         String typeName = String.format("Mutation Choice Input");
         this.graphQlTypeName = CaseUtils.toCamelCase(typeName, true, '_', '-');
 
-        MatcherChoiceInputObjectTypeMapping matcherChoiceInputTypeMapping = new MatcherChoiceInputObjectTypeMapping();
+        SelectorChoiceInputObjectTypeMapping matcherChoiceInputTypeMapping = new SelectorChoiceInputObjectTypeMapping();
 
         for (EntityDefinition definition : entityDefinitions) {
             EntityMutationInputObjectTypeMapping mapping = new EntityMutationInputObjectTypeMapping(definition, matcherChoiceInputTypeMapping);

@@ -1,4 +1,4 @@
-package org.ntrloc.graph.graphql.mapping.matcher;
+package org.ntrloc.graph.graphql.mapping.selector;
 
 import graphql.language.InputObjectTypeDefinition;
 import graphql.language.InputValueDefinition;
@@ -6,25 +6,24 @@ import graphql.language.ListType;
 import graphql.language.NonNullType;
 import graphql.language.TypeName;
 import org.apache.commons.text.CaseUtils;
-import org.ntrloc.graph.db.language.Matcher;
-import org.ntrloc.graph.db.language.OrMatcher;
+import org.ntrloc.graph.db.language.selectors.OrItemSelector;
 
 import java.util.List;
 
-public class OrMatcherInputObjectTypeMapping implements MatcherInputObjectTypeMapping {
+public class OrSelectorInputObjectTypeMapping implements SelectorInputObjectTypeMapping {
 
     private String graphQlTypeName;
-    private Matcher matcher = new OrMatcher();
+    private OrItemSelector selector = new OrItemSelector();
 
-    public OrMatcherInputObjectTypeMapping() {
-        this.graphQlTypeName = CaseUtils.toCamelCase("Or Matcher Input", true, '_', '-');
+    public OrSelectorInputObjectTypeMapping() {
+        this.graphQlTypeName = CaseUtils.toCamelCase("Or Selector Input", true, '_', '-');
     }
 
     @Override
     public List<InputObjectTypeDefinition> getInputObjectTypeDefinitions() {
         InputValueDefinition clauseValue = InputValueDefinition.newInputValueDefinition()
                 .name("clauses")
-                .type(new NonNullType(new ListType(new NonNullType(new TypeName("MatcherInput")))))
+                .type(new NonNullType(new ListType(new NonNullType(new TypeName("SelectorInput")))))
                 .build();
         var orMatcherInput = InputObjectTypeDefinition.newInputObjectDefinition()
                 .name(graphQlTypeName)
