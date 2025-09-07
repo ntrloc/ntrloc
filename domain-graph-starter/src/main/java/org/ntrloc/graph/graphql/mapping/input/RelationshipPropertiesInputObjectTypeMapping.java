@@ -1,9 +1,7 @@
 package org.ntrloc.graph.graphql.mapping.input;
 
-import graphql.language.Description;
 import graphql.language.InputObjectTypeDefinition;
 import graphql.language.InputValueDefinition;
-import graphql.language.TypeName;
 import org.apache.commons.text.CaseUtils;
 import org.ntrloc.graph.db.schema.PropertyDefinition;
 import org.ntrloc.graph.db.schema.RelationshipDefinition;
@@ -13,7 +11,7 @@ import java.util.List;
 import java.util.Map;
 
 /** Maps all properties for a relationship into a GraphQL input object type. */
-public class RelationshipPropertiesInputObjectTypeMapping implements InputObjectTypeProducer {
+public class RelationshipPropertiesInputObjectTypeMapping implements InputObjectTypeProducer, PropertyInputValueDefinitionMapper {
 
     private String graphQlTypeName;
 
@@ -56,23 +54,6 @@ public class RelationshipPropertiesInputObjectTypeMapping implements InputObject
                 .name(graphQlTypeName)
                 .inputValueDefinitions(entityPropertyInputDefinitions)
                 .build());
-    }
-
-    private InputValueDefinition getPropertyInputValueDefinition(PropertyDefinition propertyDefinition) {
-        TypeName typeName = switch (propertyDefinition.getType()) {
-            case STRING -> new TypeName("String");
-            case INT -> new TypeName("Int");
-            default -> throw new RuntimeException("Unsupported type: " + propertyDefinition.getType());
-        };
-        Description propertyDescription = propertyDefinition.getDescription() == null ?
-                null :
-                new Description(propertyDefinition.getDescription(), null, false);
-
-        return InputValueDefinition.newInputValueDefinition()
-                .name(CaseUtils.toCamelCase(propertyDefinition.getName(), false, '_', '-'))
-                .type(typeName)
-                .description(propertyDescription)
-                .build();
     }
 
 }
