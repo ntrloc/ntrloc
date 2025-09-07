@@ -10,6 +10,8 @@ import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.db.PropertyConstants;
 import org.ntrloc.graph.db.projector.selectors.HasPropertyValueSelector;
 import org.ntrloc.graph.db.projector.selectors.predicate.EqualsPredicate;
+import org.ntrloc.graph.db.projector.selectors.predicate.GreaterThanPredicate;
+import org.ntrloc.graph.db.projector.selectors.predicate.LessThanPredicate;
 import org.ntrloc.graph.db.projector.selectors.predicate.NotEqualsPredicate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -79,12 +81,14 @@ class ProjectorTest {
                     .property(PropertyConstants.UNIQUE_ID_PROPERTY, "ph3")
                     .property(PropertyConstants.NODE_TYPE_PROPERTY, "Photographer")
                     .property("Photographer_name", "Bill")
+                    .property("Photographer_age", 30)
                     .as("photographer1")
 
                 .addV("Photographer")
                     .property(PropertyConstants.UNIQUE_ID_PROPERTY, "ph4")
                     .property(PropertyConstants.NODE_TYPE_PROPERTY, "Photographer")
                     .property("Photographer_name", "Jack")
+                    .property("Photographer_age", 55)
                     .as("photographer2")
 
                 .addV("Lightbox")
@@ -188,6 +192,34 @@ class ProjectorTest {
         assertEquals(1, list.size());
         ItemProjection photographer = list.get(0);
         assertEquals(List.of("Bill"), photographer.getProperties().get("name"));
+    }
+
+    @Test
+    @DisplayName("should project nodes that have a property value (less than)")
+    void testProjectNodesByLessThan() {
+        Projector projector = new Projector(traversalSource);
+        SelectableItemProjectionSpec spec = new SelectableItemProjectionSpec("Photographer")
+                .select(HasPropertyValueSelector.of("age", LessThanPredicate.of(50)))
+                .properties(List.of("name"));
+        Iterable<ItemProjection> projections = projector.project(spec);
+        List<ItemProjection> list = StreamSupport.stream(projections.spliterator(), false).toList();
+        assertEquals(1, list.size());
+        ItemProjection photographer = list.get(0);
+        assertEquals(List.of("Bill"), photographer.getProperties().get("name"));
+    }
+
+    @Test
+    @DisplayName("should project nodes that have a property value (greater than)")
+    void testProjectNodesByGreaterThan() {
+        Projector projector = new Projector(traversalSource);
+        SelectableItemProjectionSpec spec = new SelectableItemProjectionSpec("Photographer")
+                .select(HasPropertyValueSelector.of("age", GreaterThanPredicate.of(50)))
+                .properties(List.of("name"));
+        Iterable<ItemProjection> projections = projector.project(spec);
+        List<ItemProjection> list = StreamSupport.stream(projections.spliterator(), false).toList();
+        assertEquals(1, list.size());
+        ItemProjection photographer = list.get(0);
+        assertEquals(List.of("Jack"), photographer.getProperties().get("name"));
     }
 
 }

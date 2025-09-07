@@ -10,6 +10,8 @@ import org.ntrloc.graph.db.PropertyConstants;
 import org.ntrloc.graph.db.projector.selectors.HasPropertyValueSelector;
 import org.ntrloc.graph.db.projector.selectors.ItemSelector;
 import org.ntrloc.graph.db.projector.selectors.predicate.EqualsPredicate;
+import org.ntrloc.graph.db.projector.selectors.predicate.GreaterThanPredicate;
+import org.ntrloc.graph.db.projector.selectors.predicate.LessThanPredicate;
 import org.ntrloc.graph.db.projector.selectors.predicate.NotEqualsPredicate;
 import org.ntrloc.graph.db.projector.selectors.predicate.Predicate;
 import org.slf4j.Logger;
@@ -190,6 +192,8 @@ public class Projector {
         return switch (predicate) {
             case EqualsPredicate eq -> P.eq(eq.getValue());
             case NotEqualsPredicate neq -> P.neq(neq.getValue());
+            case LessThanPredicate lt -> P.lt(lt.getValue());
+            case GreaterThanPredicate gt -> P.gt(gt.getValue());
             default -> throw new RuntimeException("Not implemented yet");
         };
     }
