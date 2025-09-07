@@ -1,29 +1,36 @@
 package org.ntrloc.graph.db.traversal.projector;
 
-import org.apache.tinkerpop.gremlin.process.traversal.Order;
-import org.apache.tinkerpop.gremlin.process.traversal.P;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversalSource;
-import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.__;
 import org.apache.tinkerpop.gremlin.structure.Direction;
 import org.janusgraph.core.JanusGraph;
 import org.janusgraph.core.JanusGraphFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.ntrloc.graph.db.traversal.projector.EdgeSort;
-import org.ntrloc.graph.db.traversal.projector.EdgeSpec;
-import org.ntrloc.graph.db.traversal.projector.VertexProjectionSpec;
-import org.ntrloc.graph.db.traversal.projector.VertexSort;
-import org.ntrloc.graph.db.traversal.projector.VertexSpec;
-import org.ntrloc.graph.db.traversal.projector.filter.AndFilterSpec;
-import org.ntrloc.graph.db.traversal.projector.filter.PropertyPredicateFilterSpec;
+import org.ntrloc.graph.db.PropertyConstants;
+import org.ntrloc.graph.db.language.selectors.HasPropertyValueSelector;
+import org.ntrloc.graph.db.language.selectors.predicate.EqualsPredicate;
+import org.ntrloc.graph.db.language.selectors.predicate.GreaterThanPredicate;
+import org.ntrloc.graph.db.language.selectors.predicate.LessThanPredicate;
+import org.ntrloc.graph.db.language.selectors.predicate.NotEqualsPredicate;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.File;
+import java.util.List;
 import java.util.NoSuchElementException;
+import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.StreamSupport;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @DisplayName("A projector")
 class ProjectorTest {
+
+    private static final Logger LOG = LoggerFactory.getLogger(ProjectorTest.class);
 
     private JanusGraph janusGraph;
     private GraphTraversalSource traversalSource;
@@ -44,8 +51,6 @@ class ProjectorTest {
         File indexDir = new File(indexPath);
         janusGraph = JanusGraphFactory.build()
                 .set("storage.backend", "inmemory")
-                .set("index.search.backend", "lucene")
-                .set("index.search.directory", indexPath)
                 .set("cache.tx-cache-size", 0)
                 .open();
         traversalSource = janusGraph.traversal();
@@ -57,79 +62,164 @@ class ProjectorTest {
 
         traversalSource.tx().begin();
         traversalSource
-                .addV("Person").property("name", "John").property("age", 30).as("john")
-                .addV("Person").property("name", "Jane").property("age", 22).as("jane")
-                .addV("Person").property("name", "Jenny").property("age", 11).as("jenny")
-                .addV("Person").property("name", "Bill").property("age", 25).as("bill")
-                .addV("Person").property("name", "Jack").property("age", 4).as("jack")
-                .addE("knows").property("met", 2011).from("john").to("jane")
-                .addE("knows").property("met", 2020).from("john").to("jenny")
-                .addE("knows").property("met", 2023).from("jane").to("bill")
-                .addE("knows").property("met", 2000).from("bill").to("john")
-                .addE("knows").property("met", 2025).from("jenny").to("jack")
-                .addE("knows").property("met", 2000).from("bill").to("jane")
+                // entity nodes
+                .addV("Photo")
+                    .property(PropertyConstants.UNIQUE_ID_PROPERTY, "p1")
+                    .property(PropertyConstants.NODE_TYPE_PROPERTY, "Photo")
+                    .property("Photo_name", "photo1")
+                    .property("Photo_colorspace", "B&W")
+                    .as("photo1")
+
+                .addV("Photo")
+                    .property(PropertyConstants.UNIQUE_ID_PROPERTY, "p2")
+                    .property(PropertyConstants.NODE_TYPE_PROPERTY, "Photo")
+                    .property("Photo_name", "photo2")
+                    .property("Photo_colorspace", "RGB")
+                    .as("photo2")
+
+                .addV("Photographer")
+                    .property(PropertyConstants.UNIQUE_ID_PROPERTY, "ph3")
+                    .property(PropertyConstants.NODE_TYPE_PROPERTY, "Photographer")
+                    .property("Photographer_name", "Bill")
+                    .property("Photographer_age", 30)
+                    .as("photographer1")
+
+                .addV("Photographer")
+                    .property(PropertyConstants.UNIQUE_ID_PROPERTY, "ph4")
+                    .property(PropertyConstants.NODE_TYPE_PROPERTY, "Photographer")
+                    .property("Photographer_name", "Jack")
+                    .property("Photographer_age", 55)
+                    .as("photographer2")
+
+                .addV("Lightbox")
+                    .property(PropertyConstants.UNIQUE_ID_PROPERTY, "lb1")
+                    .property(PropertyConstants.NODE_TYPE_PROPERTY, "Lightbox")
+                    .property("Lightbox_name", "lightbox1")
+                    .as("lb1")
+
+                .addV("Agency")
+                    .property(PropertyConstants.UNIQUE_ID_PROPERTY, "a3")
+                    .property(PropertyConstants.NODE_TYPE_PROPERTY, "Agency")
+                    .property("Agency_name", "Some Agency")
+                    .as("a3")
+
+                // link node
+                .addV("CREATED")
+                    .property("date", "2020-01-01")
+                    .property(PropertyConstants.UNIQUE_ID_PROPERTY, "created1")
+                    .as("createdProp1")
+                .addV("CREATED")
+                    .property("date", "2025-01-01")
+                    .property(PropertyConstants.UNIQUE_ID_PROPERTY, "created2")
+                    .as("createdProp2")
+                .addV("CREATED")
+                    .property("date", "2025-09-01")
+                    .property(PropertyConstants.UNIQUE_ID_PROPERTY, "created3")
+                    .as("createdProp3")
+                .addV("EMPLOYS")
+                    .property(PropertyConstants.UNIQUE_ID_PROPERTY, "employs1")
+                    .as("employsProp1")
+
+                // connection from entity->link->entity
+                .addE("CREATED-in").from("photographer1").to("createdProp1")
+                .addE("CREATED-out").from("createdProp1").to("photo1")
+                .addE("CREATED-in").from("photographer1").to("createdProp2")
+                .addE("CREATED-out").from("createdProp2").to("photo2")
+                .addE("CREATED-in").from("photographer1").to("createdProp3")
+                .addE("CREATED-out").from("createdProp3").to("lb1")
+                .addE("EMPLOYS-in").from("a3").to("employsProp1")
+                .addE("EMPLOYS-out").from("employsProp1").to("photographer1")
+
                 .iterate();
         traversalSource.tx().commit();
     }
 
     @Test
-    @DisplayName("should execute a default vertex projection")
-    void testDefaultVertexProjection () {
-        VertexSpec spec = new VertexSpec(traversalSource, "Person")
-                .filter(PropertyPredicateFilterSpec.with("age", P.between(22, 31)))
-                .sort(VertexSort.on("age", Order.asc), VertexSort.on("name", Order.desc));
-                var knownByProjection = new VertexProjectionSpec().edge("known-by",
-                        new EdgeSpec("knows", Direction.IN, "Person").projection(new VertexProjectionSpec()).sort(EdgeSort.vertex("age", Order.desc), EdgeSort.edge("met", Order.desc)));
-
-                spec.projection()
-                    .properties("name", "age")
-                    .edge("knows",
-                        new EdgeSpec("knows", Direction.OUT, "Person").projection(knownByProjection).sort(EdgeSort.vertex("age", Order.desc), EdgeSort.edge("met", Order.asc)))
-                    ;
-        var iterator = spec.construct();
-        while (iterator.hasNext()) {
-            var v = iterator.next();
-            System.out.println(String.format("name: %s, age: %s, knows: %s", v.stringProperty("name"), v.intProperty("age"), v.projectionProperty("knows")));
-        }
-
-    }
-
-    @Test
-    @DisplayName("should filter edge projections by property")
-    void testFilterEdgeProjections() {
-
-        VertexSpec spec = new VertexSpec(traversalSource, "Person");
-        spec.projection()
-                .properties("name", "age")
-                .edge("knows",
-                        new EdgeSpec("knows", Direction.OUT, "Person", false).projection(new VertexProjectionSpec())
-                );
-        var iterator = spec.construct();
-        while (iterator.hasNext()) {
-            var v = iterator.next();
-            System.out.println(String.format("name: %s, age: %s, knows: %s", v.stringProperty("name"), v.intProperty("age"), v.projectionProperty("knows")));
+    @DisplayName("should execute a simple item projection")
+    void testSimpleItemProjection() {
+        Projector projector = new Projector(traversalSource);
+        SelectableItemProjectionSpec spec = new SelectableItemProjectionSpec("Photo")
+                .properties(List.of("name", "colorspace"));
+        Iterable<ItemProjection> projections = projector.project(spec);
+        List<ItemProjection> list = StreamSupport.stream(projections.spliterator(), false).toList();
+        assertEquals(2, list.size());
+        for (ItemProjection projection: list) {
+            assertNotNull(projection.getId());
+            assertNotNull(projection.getNodeType());
+            assertTrue(projection.getProperties().containsKey("name"));
+            assertTrue(projection.getProperties().containsKey("colorspace"));
         }
     }
 
     @Test
-    @DisplayName("should filter edge projections by edge properties and target vertex properties")
-    void testFilterEdgeProjectionsWithFilter() {
-        VertexSpec spec = new VertexSpec(traversalSource, "Person");
-        spec.projection()
-                .properties("name", "age")
-                .edge("knows",
-                        new EdgeSpec("knows", Direction.OUT, "Person")
-                                .filter(AndFilterSpec.with(PropertyPredicateFilterSpec.with("met", 2025), PropertyPredicateFilterSpec.with(__.inV(), "age", 4)))
-                                .projection(new VertexProjectionSpec())
-                )
-
-        ;
-        var iterator = spec.construct();
-        while (iterator.hasNext()) {
-            var v = iterator.next();
-            System.out.println(String.format("name: %s, age: %s, knows: %s", v.stringProperty("name"), v.intProperty("age"), v.projectionProperty("knows")));
-        }
+    @DisplayName("should project links by a specific item type")
+    void testProjectLinksByNodeType() {
+        Projector projector = new Projector(traversalSource);
+        SelectableItemProjectionSpec spec = new SelectableItemProjectionSpec("Photographer")
+                .properties(List.of("name"))
+                .link("created", new LinkProjectionSpec("CREATED", Direction.OUT, "Photo").properties(List.of("date")))
+                .link("worksFor", new LinkProjectionSpec("EMPLOYS", Direction.IN, "Agency"));
+        Iterable<ItemProjection> projections = projector.project(spec);
+        List<ItemProjection> list = StreamSupport.stream(projections.spliterator(), false).toList();
+        assertEquals(2, list.size());
+        Optional<ItemProjection> photographer = list.stream().filter(p -> !p.getLinks().get("created").isEmpty() && !p.getLinks().get("worksFor").isEmpty()).findFirst();
+        assertTrue(photographer.isPresent());
     }
 
+    @Test
+    @DisplayName("should project nodes that have a property value (equals)")
+    void testProjectNodesByEquals() {
+        Projector projector = new Projector(traversalSource);
+        SelectableItemProjectionSpec spec = new SelectableItemProjectionSpec("Photographer")
+                .select(HasPropertyValueSelector.of("name", EqualsPredicate.of("Jack")))
+                .properties(List.of("name"));
+        Iterable<ItemProjection> projections = projector.project(spec);
+        List<ItemProjection> list = StreamSupport.stream(projections.spliterator(), false).toList();
+        assertEquals(1, list.size());
+        ItemProjection photographer = list.get(0);
+        assertEquals(List.of("Jack"), photographer.getProperties().get("name"));
+    }
+
+    @Test
+    @DisplayName("should project nodes that have a property value (not equals)")
+    void testProjectNodesByNotEquals() {
+        Projector projector = new Projector(traversalSource);
+        SelectableItemProjectionSpec spec = new SelectableItemProjectionSpec("Photographer")
+                .select(HasPropertyValueSelector.of("name", NotEqualsPredicate.of("Jack")))
+                .properties(List.of("name"));
+        Iterable<ItemProjection> projections = projector.project(spec);
+        List<ItemProjection> list = StreamSupport.stream(projections.spliterator(), false).toList();
+        assertEquals(1, list.size());
+        ItemProjection photographer = list.get(0);
+        assertEquals(List.of("Bill"), photographer.getProperties().get("name"));
+    }
+
+    @Test
+    @DisplayName("should project nodes that have a property value (less than)")
+    void testProjectNodesByLessThan() {
+        Projector projector = new Projector(traversalSource);
+        SelectableItemProjectionSpec spec = new SelectableItemProjectionSpec("Photographer")
+                .select(HasPropertyValueSelector.of("age", LessThanPredicate.of(50)))
+                .properties(List.of("name"));
+        Iterable<ItemProjection> projections = projector.project(spec);
+        List<ItemProjection> list = StreamSupport.stream(projections.spliterator(), false).toList();
+        assertEquals(1, list.size());
+        ItemProjection photographer = list.get(0);
+        assertEquals(List.of("Bill"), photographer.getProperties().get("name"));
+    }
+
+    @Test
+    @DisplayName("should project nodes that have a property value (greater than)")
+    void testProjectNodesByGreaterThan() {
+        Projector projector = new Projector(traversalSource);
+        SelectableItemProjectionSpec spec = new SelectableItemProjectionSpec("Photographer")
+                .select(HasPropertyValueSelector.of("age", GreaterThanPredicate.of(50)))
+                .properties(List.of("name"));
+        Iterable<ItemProjection> projections = projector.project(spec);
+        List<ItemProjection> list = StreamSupport.stream(projections.spliterator(), false).toList();
+        assertEquals(1, list.size());
+        ItemProjection photographer = list.get(0);
+        assertEquals(List.of("Jack"), photographer.getProperties().get("name"));
+    }
 
 }

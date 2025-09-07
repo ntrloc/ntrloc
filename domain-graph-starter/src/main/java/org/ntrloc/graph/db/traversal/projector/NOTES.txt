@@ -1,26 +1,53 @@
-This is just a temporary package -- this stuff should be in the traversal package
+Here's the general idea:
 
------- We need to get into path finding ----
+Projections start with a NodeProjectionSpec.  It contains:
+
+1. A NodeSelector -- at the top level, this determines the nodes that will be used
+    to start the projection (typically by node label)
+2. The node properties to be projected
+3. The links to be projected (i.e., LinkProjectionSpec objects)
+
+A LinkProjectionSpec specifies how a given link should be projected.  It contains:
+
+1. The link properties to be projected
+2. A target projection (a NodeProjectionSpec)
+
+The Projector class is used to execute a NodeProjectionSpec.
+The end result of a projection should be NodeProjection.
+A NodeProjection contains the projected properties and links for a single node.
+
+------- examples ------
+
+1. A simple Photo projection
+
+    NodeProjectionSpec spec = new NodeProjectionSpec(LabelSelector.on("Photo"))
+        .properties(List.of("name", "colorspace"));
+    List<NodeProjection> projections = projector.project(spec);
+
+    result:
+    NodeProjection
+        properties:
+            name: <some name>
+            colorspace: <some colorspace>
+
+2. A Photo projection that includes the photographer that created it
+
+    NodeProjectionSpec spec = new NodeProjectionSpec(LabelSelector.of("Photo"))
+        .properties("name")
+        .links(
+            List.of(
+                new LinkProjectionSpec("CREATED", new NodeProjectionSpec().properties("name"))
+            )
+        );
+
+    result:
+    NodeProjection
+        properties:
+            name: <some photo name>
+        links
+            creator:
+                name: <some photographer name>
 
 
 
------- We need to get into GraphQL projections -------
 
-Photographer
-    name
-    photos(filter: { colorspace: 'B&W'})
-        name
-        created
-    agency(edgeProperties: ['dateHired'])
-        name
-
-
-Overall 0.0.1 functionality:
-
-1. Schemas
-2. Mutations
-3. Projections
-4. Edge finding
-5. Minimal UI
-    a. Schema viewer
-    b. Basic graph viewer (the D3 view)
