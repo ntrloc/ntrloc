@@ -3,37 +3,25 @@ package org.ntrloc.graph.graphql.mapping.input;
 import graphql.language.InputObjectTypeDefinition;
 import graphql.language.InputValueDefinition;
 import graphql.language.TypeName;
-import org.apache.commons.text.CaseUtils;
 import org.ntrloc.graph.db.schema.RelationshipDefinition;
 import org.ntrloc.graph.graphql.mapping.selector.SelectorChoiceInputObjectTypeMapping;
 
 import java.util.List;
 
 /** Maps an entity's outbound relationship to an instruction to create a new instance of that relationship. */
-public class OutgoingRelationshipDeleteInputObjectTypeMapping implements OutgoingRelationshipInputTypeMapping, InputObjectTypeProducer {
-
-    private String graphQlTypeName;
-    private RelationshipDefinition targetRelationshipDefinition;
-    private SelectorChoiceInputObjectTypeMapping matcherChoiceMapping;
+public class OutgoingRelationshipDeleteInputObjectTypeMapping extends RelationshipDeleteAbstractInputObjectTypeMapping implements OutgoingRelationshipInputTypeMapping, InputObjectTypeProducer {
 
     public OutgoingRelationshipDeleteInputObjectTypeMapping(RelationshipDefinition targetRelationshipDefinition, SelectorChoiceInputObjectTypeMapping matcherChoiceMapping) {
-        String typeName = String.format("%s %s %s Link Delete Input", targetRelationshipDefinition.getSourceEntity(), targetRelationshipDefinition.getSourceLabel(), targetRelationshipDefinition.getTargetEntity());
-        this.graphQlTypeName = CaseUtils.toCamelCase(typeName, true, '_', '-');
-        this.targetRelationshipDefinition = targetRelationshipDefinition;
-        this.matcherChoiceMapping = matcherChoiceMapping;
-    }
-
-    public String getGraphQlTypeName() {
-        return graphQlTypeName;
+        super(String.format("%s %s %s Link Delete Input", targetRelationshipDefinition.getSourceEntity(), targetRelationshipDefinition.getSourceLabel(), targetRelationshipDefinition.getTargetEntity()), targetRelationshipDefinition, matcherChoiceMapping);
     }
 
     public RelationshipDefinition getTargetRelationshipDefinition() {
-        return targetRelationshipDefinition;
+        return relationshipDefinition;
     }
 
     @Override
     public String getRelationshipSourceLabel() {
-        return targetRelationshipDefinition.getSourceLabel();
+        return relationshipDefinition.getSourceLabel();
     }
 
     @Override
