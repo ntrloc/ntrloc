@@ -11,7 +11,6 @@ import org.ntrloc.graph.graphql.mapping.selector.SelectorChoiceInputObjectTypeMa
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Stream;
 
 /* Maps an entity to a GraphQL input object that represents an update instruction. */
 public class EntityUpdateInputObjectTypeMapping implements InputObjectTypeProducer {
@@ -69,6 +68,12 @@ public class EntityUpdateInputObjectTypeMapping implements InputObjectTypeProduc
                 .inputValueDefinitions(entityUpdateInputValues)
                 .build();
 
-        return Stream.of(Stream.of(entityUpdateType), propertiesMapping.getInputObjectTypeDefinitions().stream(), updateLinksInputTypeMapping.getInputObjectTypeDefinitions().stream()).flatMap(s -> s).toList();
+        var retList = new ArrayList<InputObjectTypeDefinition>();
+        retList.add(entityUpdateType);
+        retList.addAll(propertiesMapping.getInputObjectTypeDefinitions());
+        if (updateLinksInputTypeMapping != null) {
+            retList.addAll(updateLinksInputTypeMapping.getInputObjectTypeDefinitions());
+        }
+        return retList;
     }
 }

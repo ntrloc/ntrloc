@@ -8,8 +8,8 @@ import graphql.language.ObjectField;
 import graphql.language.ObjectValue;
 import graphql.language.TypeName;
 import org.apache.commons.text.CaseUtils;
-import org.ntrloc.graph.db.language.mutation.EntityCreateMutation;
 import org.ntrloc.graph.db.language.Property;
+import org.ntrloc.graph.db.language.mutation.EntityCreateMutation;
 import org.ntrloc.graph.db.schema.EntityDefinition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,7 +17,6 @@ import org.slf4j.LoggerFactory;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Stream;
 
 /* Maps an entity to a GraphQL input object that represents a create instruction. */
 public class EntityCreateInputObjectTypeMapping implements InputObjectTypeProducer {
@@ -79,7 +78,13 @@ public class EntityCreateInputObjectTypeMapping implements InputObjectTypeProduc
                 .inputValueDefinitions(entityCreateInputValues)
                 .build();
 
-        return Stream.of(Stream.of(entityCreateType), propertiesMapping.getInputObjectTypeDefinitions().stream(), linkCreateInputType.getInputObjectTypeDefinitions().stream()).flatMap(s -> s).toList();
+        var retList = new ArrayList<InputObjectTypeDefinition>();
+        retList.add(entityCreateType);
+        retList.addAll(propertiesMapping.getInputObjectTypeDefinitions());
+        if (linkCreateInputType != null) {
+            retList.addAll(linkCreateInputType.getInputObjectTypeDefinitions());
+        }
+        return retList;
     }
 
     public EntityCreateMutation parseCreateMutation(ObjectValue objectValue) {
