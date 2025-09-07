@@ -11,7 +11,7 @@ import org.apache.commons.text.CaseUtils;
 import org.ntrloc.graph.db.language.IntProperty;
 import org.ntrloc.graph.db.language.Property;
 import org.ntrloc.graph.db.language.StringProperty;
-import org.ntrloc.graph.db.schema.EntityDefinition;
+import org.ntrloc.graph.db.schema.ItemDefinition;
 import org.ntrloc.graph.db.schema.PropertyDefinition;
 import org.ntrloc.graph.db.schema.PropertyType;
 
@@ -32,18 +32,18 @@ public class EntityPropertiesInputObjectTypeMapping implements InputObjectTypePr
     /* Maps graphQL property names to their original property definitions. */
     private Map<String, PropertyDefinition> propertyDefinitions = new HashMap<>();
 
-    public EntityPropertiesInputObjectTypeMapping(EntityDefinition entityDefinition) {
-        String typeName = String.format("%s Properties Input", entityDefinition.getName());
+    public EntityPropertiesInputObjectTypeMapping(ItemDefinition itemDefinition) {
+        String typeName = String.format("%s Properties Input", itemDefinition.getName());
         this.graphQlTypeName = CaseUtils.toCamelCase(typeName, true, '_', '-');
 
-        for (var propertyDefinition : entityDefinition.getProperties()) {
+        for (var propertyDefinition : itemDefinition.getProperties()) {
             InputValueDefinition inputValueDefinition = getPropertyInputValueDefinition(propertyDefinition);
             inputProperties.put(inputValueDefinition.getName(), inputValueDefinition);
             propertyDefinitions.put(inputValueDefinition.getName(), propertyDefinition);
         }
 
-        if (entityDefinition.getPropertyGroups() != null) {
-            for (var group : entityDefinition.getPropertyGroups()) {
+        if (itemDefinition.getPropertyGroups() != null) {
+            for (var group : itemDefinition.getPropertyGroups()) {
                 for (var propertyDefinition : group.getProperties()) {
                     InputValueDefinition inputValueDefinition = getPropertyInputValueDefinition(propertyDefinition);
                     inputProperties.put(inputValueDefinition.getName(), inputValueDefinition);

@@ -8,8 +8,8 @@ import graphql.language.ObjectTypeDefinition;
 import graphql.language.ObjectTypeExtensionDefinition;
 import graphql.schema.idl.TypeDefinitionRegistry;
 import org.ntrloc.graph.cluster.ClusterService;
-import org.ntrloc.graph.db.schema.EntityDefinition;
-import org.ntrloc.graph.db.schema.RelationshipDefinition;
+import org.ntrloc.graph.db.schema.ItemDefinition;
+import org.ntrloc.graph.db.schema.LinkDefinition;
 import org.ntrloc.graph.db.schema.SchemaManager;
 import org.ntrloc.graph.graphql.mapping.SchemaMapper;
 import org.slf4j.Logger;
@@ -64,10 +64,10 @@ public class GraphQLPublisherImpl implements ReloadSchemaIndicator {
 
     @DgsTypeDefinitionRegistry
     public TypeDefinitionRegistry typeDefinitionRegistry() {
-        Set<EntityDefinition> entityDefinitions = schemaManager.retrieveEntityDefinitions();
-        Set<RelationshipDefinition> relationshipDefinitions = schemaManager.retrieveRelationshipDefinitions();
+        Set<ItemDefinition> itemDefinitions = schemaManager.retrieveEntityDefinitions();
+        Set<LinkDefinition> linkDefinitions = schemaManager.retrieveRelationshipDefinitions();
 
-        newSchemaMapper.mapSchema(entityDefinitions, relationshipDefinitions);
+        newSchemaMapper.mapSchema(itemDefinitions, linkDefinitions);
 
         try {
             TypeDefinitionRegistry registry = new TypeDefinitionRegistry();

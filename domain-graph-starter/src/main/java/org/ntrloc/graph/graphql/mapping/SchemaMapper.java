@@ -5,8 +5,8 @@ import graphql.language.InputObjectTypeDefinition;
 import graphql.language.ObjectTypeDefinition;
 import graphql.language.ObjectTypeExtensionDefinition;
 import org.ntrloc.graph.db.language.mutation.EntityMutation;
-import org.ntrloc.graph.db.schema.EntityDefinition;
-import org.ntrloc.graph.db.schema.RelationshipDefinition;
+import org.ntrloc.graph.db.schema.ItemDefinition;
+import org.ntrloc.graph.db.schema.LinkDefinition;
 
 import java.util.List;
 import java.util.Map;
@@ -14,7 +14,7 @@ import java.util.Set;
 
 public interface SchemaMapper {
 
-    void mapSchema(Set<EntityDefinition> entityDefinitions, Set<RelationshipDefinition> relationshipDefinitions);
+    void mapSchema(Set<ItemDefinition> itemDefinitions, Set<LinkDefinition> linkDefinitions);
 
     List<InputObjectTypeDefinition> getInputTypes();
 

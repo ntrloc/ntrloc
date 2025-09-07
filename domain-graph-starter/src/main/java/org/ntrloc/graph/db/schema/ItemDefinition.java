@@ -4,7 +4,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.StringJoiner;
 
-public class EntityDefinition extends SchemaDefinition implements DefinitionWithPropertyGroups {
+public class ItemDefinition extends SchemaDefinition implements DefinitionWithPropertyGroups {
 
     private Set<PropertyDefinition> properties;
 
@@ -28,7 +28,7 @@ public class EntityDefinition extends SchemaDefinition implements DefinitionWith
 
     @Override
     public String toString() {
-        return new StringJoiner(", ", EntityDefinition.class.getSimpleName() + "[", "]")
+        return new StringJoiner(", ", ItemDefinition.class.getSimpleName() + "[", "]")
                 .add("name='" + name + "'")
                 .add("properties=" + properties)
                 .add("propertyGroups=" + propertyGroupDefinitions)
@@ -38,7 +38,7 @@ public class EntityDefinition extends SchemaDefinition implements DefinitionWith
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
-        if (!(o instanceof EntityDefinition schema)) return false;
+        if (!(o instanceof ItemDefinition schema)) return false;
         return Objects.equals(properties, schema.properties) && Objects.equals(propertyGroupDefinitions, schema.propertyGroupDefinitions);
     }
 

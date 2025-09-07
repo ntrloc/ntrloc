@@ -1,4 +1,4 @@
-package org.ntrloc.graph.db.traversal.projector;
+package org.ntrloc.graph.db.language.projection;
 
 import java.util.StringJoiner;
 
@@ -6,7 +6,7 @@ public class OutgoingLinkProjection extends LinkProjection {
 
     private ItemProjection target;
 
-    OutgoingLinkProjection() {
+    public OutgoingLinkProjection() {
         // no-op
     }
 

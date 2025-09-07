@@ -3,20 +3,21 @@ package org.ntrloc.graph.db.impl;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversal;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversalSource;
 import org.apache.tinkerpop.gremlin.structure.Vertex;
-import org.ntrloc.graph.db.EntityManager;
+import org.ntrloc.graph.db.ItemManager;
 import org.ntrloc.graph.db.language.mutation.EntityCreateMutation;
 import org.ntrloc.graph.db.language.mutation.EntityMutation;
 import org.ntrloc.graph.db.language.mutation.MutationRequest;
 import org.ntrloc.graph.db.language.mutation.MutationResponse;
 import org.ntrloc.graph.db.language.mutation.MutationResponseItem;
-import org.ntrloc.graph.db.language.query.Query;
-import org.ntrloc.graph.db.language.query.QueryResult;
-import org.ntrloc.graph.db.schema.EntityDefinition;
-import org.ntrloc.graph.db.schema.RelationshipDefinition;
+import org.ntrloc.graph.db.language.projection.ItemProjection;
+import org.ntrloc.graph.db.language.projection.SelectableItemProjectionSpec;
+import org.ntrloc.graph.db.schema.ItemDefinition;
+import org.ntrloc.graph.db.schema.LinkDefinition;
 import org.ntrloc.graph.db.schema.SchemaManager;
 import org.ntrloc.graph.db.storage.BinaryHash;
 import org.ntrloc.graph.db.storage.BinaryStorageAdapter;
 import org.ntrloc.graph.db.traversal.mutator.Mutator;
+import org.ntrloc.graph.db.traversal.projector.Projector;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -32,24 +33,29 @@ import java.util.stream.Collectors;
 import static org.ntrloc.graph.db.LabelConstants.DATA_LABEL;
 
 @Service
-public class EntityManagerImpl implements EntityManager {
+public class ItemManagerImpl implements ItemManager {
 
-    private static final Logger LOG = LoggerFactory.getLogger(EntityManagerImpl.class);
+    private static final Logger LOG = LoggerFactory.getLogger(ItemManagerImpl.class);
 
     private GraphTraversalSource traversalSource;
     private BinaryStorageAdapter binaryStorageAdapter;
 
-    Map<String, EntityDefinition> entityDefinitionMap;
-    Map<String, RelationshipDefinition> relationshipDefinitionMap;
+    private Mutator mutator;
+    private Projector projector;
 
-    public EntityManagerImpl(GraphTraversalSource traversalSource, BinaryStorageAdapter binaryStorageAdapter, SchemaManager schemaManager) {
+    Map<String, ItemDefinition> entityDefinitionMap;
+    Map<String, LinkDefinition> relationshipDefinitionMap;
+
+    public ItemManagerImpl(GraphTraversalSource traversalSource, BinaryStorageAdapter binaryStorageAdapter, SchemaManager schemaManager, Mutator mutator, Projector projector) {
         this.traversalSource = traversalSource;
         this.binaryStorageAdapter = binaryStorageAdapter;
+        this.mutator = mutator;
+        this.projector = projector;
         schemaManager.addSchemaChangeReaction(() -> {
-            Set<EntityDefinition> entityDefinitionSet = schemaManager.retrieveEntityDefinitions();
-            entityDefinitionMap = entityDefinitionSet.stream().collect(Collectors.toMap(EntityDefinition::getName, Function.identity()));
-            Set<RelationshipDefinition> relationshipDefinitions = schemaManager.retrieveRelationshipDefinitions();
-            relationshipDefinitionMap = relationshipDefinitions.stream().collect(Collectors.toMap(RelationshipDefinition::getName, Function.identity()));
+            Set<ItemDefinition> itemDefinitionSet = schemaManager.retrieveEntityDefinitions();
+            entityDefinitionMap = itemDefinitionSet.stream().collect(Collectors.toMap(ItemDefinition::getName, Function.identity()));
+            Set<LinkDefinition> linkDefinitions = schemaManager.retrieveRelationshipDefinitions();
+            relationshipDefinitionMap = linkDefinitions.stream().collect(Collectors.toMap(LinkDefinition::getName, Function.identity()));
         });
     }
 
@@ -113,8 +119,6 @@ public class EntityManagerImpl implements EntityManager {
     public MutationResponse executeMutation(MutationRequest mutationRequest) {
         LOG.info("Executing mutation {}", mutationRequest);
 
-        Mutator mutator = new Mutator(traversalSource);
-
         MutationResponse response = new MutationResponse();
 
         List<EntityMutation> entityMutations = mutationRequest.getEntityMutations();
@@ -132,10 +136,11 @@ public class EntityManagerImpl implements EntityManager {
         return response;
     }
 
-    /* -------------------------------- Query methods -------------------------------- */
+    /* -------------------------------- Projection methods -------------------------------- */
 
     @Override
-    public QueryResult executeQuery(Query query) {
-        throw new RuntimeException("Not implemented yet");
+    public List<ItemProjection> executeProjection(SelectableItemProjectionSpec spec) {
+        return projector.project(spec);
     }
+
 }

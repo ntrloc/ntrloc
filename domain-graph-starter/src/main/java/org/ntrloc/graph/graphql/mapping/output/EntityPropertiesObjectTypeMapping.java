@@ -5,7 +5,7 @@ import graphql.language.FieldDefinition;
 import graphql.language.ObjectTypeDefinition;
 import graphql.language.TypeName;
 import org.apache.commons.text.CaseUtils;
-import org.ntrloc.graph.db.schema.EntityDefinition;
+import org.ntrloc.graph.db.schema.ItemDefinition;
 import org.ntrloc.graph.db.schema.PropertyDefinition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,20 +32,20 @@ public class EntityPropertiesObjectTypeMapping implements ObjectTypeProducer {
 
     private Map<String, EntityPropertyGroupObjectTypeMapping> groupMappings = new HashMap<>();
 
-    public EntityPropertiesObjectTypeMapping(EntityDefinition entityDefinition) {
-        String typeName = String.format("%s Properties", entityDefinition.getName());
+    public EntityPropertiesObjectTypeMapping(ItemDefinition itemDefinition) {
+        String typeName = String.format("%s Properties", itemDefinition.getName());
         this.graphQlTypeName = CaseUtils.toCamelCase(typeName, true, '_', '-');
 
-        for (var propertyDefinition : entityDefinition.getProperties()) {
+        for (var propertyDefinition : itemDefinition.getProperties()) {
             FieldDefinition fieldDefinition = getPropertyFieldDefinition(propertyDefinition);
             inputProperties.put(fieldDefinition.getName(), fieldDefinition);
             propertyDefinitions.put(fieldDefinition.getName(), propertyDefinition);
         }
 
 
-        if (entityDefinition.getPropertyGroups() != null) {
-            for (var group : entityDefinition.getPropertyGroups()) {
-                var groupMapping = new EntityPropertyGroupObjectTypeMapping(entityDefinition, group);
+        if (itemDefinition.getPropertyGroups() != null) {
+            for (var group : itemDefinition.getPropertyGroups()) {
+                var groupMapping = new EntityPropertyGroupObjectTypeMapping(itemDefinition, group);
                 String groupFieldName = CaseUtils.toCamelCase(group.getName(), false, '_', '-');
                 groupMappings.put(groupFieldName, groupMapping);
             }

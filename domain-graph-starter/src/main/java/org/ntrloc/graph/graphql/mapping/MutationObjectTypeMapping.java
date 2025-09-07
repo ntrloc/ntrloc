@@ -12,8 +12,8 @@ import graphql.language.ObjectTypeDefinition;
 import graphql.language.TypeName;
 import graphql.language.Value;
 import org.ntrloc.graph.db.language.mutation.EntityMutation;
-import org.ntrloc.graph.db.schema.EntityDefinition;
-import org.ntrloc.graph.db.schema.RelationshipDefinition;
+import org.ntrloc.graph.db.schema.ItemDefinition;
+import org.ntrloc.graph.db.schema.LinkDefinition;
 import org.ntrloc.graph.graphql.mapping.input.InputObjectTypeProducer;
 import org.ntrloc.graph.graphql.mapping.input.MutationChoiceInputObjectTypeMapping;
 import org.ntrloc.graph.graphql.mapping.output.ObjectTypeProducer;
@@ -32,8 +32,8 @@ public class MutationObjectTypeMapping implements ObjectTypeProducer, InputObjec
     private MutationChoiceInputObjectTypeMapping mutationChoiceInputObjectTypeMapping;
     private MutationResultObjectTypeMapping mutationResultObjectTypeMapping = new MutationResultObjectTypeMapping();
 
-    public MutationObjectTypeMapping(Set<EntityDefinition> entityDefinitions, Set<RelationshipDefinition> relationshipDefinitions) {
-        this.mutationChoiceInputObjectTypeMapping = new MutationChoiceInputObjectTypeMapping(entityDefinitions, relationshipDefinitions);
+    public MutationObjectTypeMapping(Set<ItemDefinition> itemDefinitions, Set<LinkDefinition> linkDefinitions) {
+        this.mutationChoiceInputObjectTypeMapping = new MutationChoiceInputObjectTypeMapping(itemDefinitions, linkDefinitions);
     }
 
     @Override

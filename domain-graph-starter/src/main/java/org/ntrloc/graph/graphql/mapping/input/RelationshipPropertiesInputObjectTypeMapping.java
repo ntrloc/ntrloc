@@ -4,7 +4,7 @@ import graphql.language.InputObjectTypeDefinition;
 import graphql.language.InputValueDefinition;
 import org.apache.commons.text.CaseUtils;
 import org.ntrloc.graph.db.schema.PropertyDefinition;
-import org.ntrloc.graph.db.schema.RelationshipDefinition;
+import org.ntrloc.graph.db.schema.LinkDefinition;
 
 import java.util.HashMap;
 import java.util.List;
@@ -21,19 +21,19 @@ public class RelationshipPropertiesInputObjectTypeMapping implements InputObject
     /* Maps graphQL property names to their original property definitions. */
     private Map<String, PropertyDefinition> propertyDefinitions = new HashMap<>();
 
-    public RelationshipPropertiesInputObjectTypeMapping(RelationshipDefinition relationshipDefinition) {
+    public RelationshipPropertiesInputObjectTypeMapping(LinkDefinition linkDefinition) {
 
-        String typeName = String.format("%s %s %s Properties Input", relationshipDefinition.getSourceEntity(), relationshipDefinition.getSourceLabel(), relationshipDefinition.getTargetEntity());
+        String typeName = String.format("%s %s %s Properties Input", linkDefinition.getSourceEntity(), linkDefinition.getSourceLabel(), linkDefinition.getTargetEntity());
         this.graphQlTypeName = CaseUtils.toCamelCase(typeName, true, '_', '-');
 
-        for (var propertyDefinition : relationshipDefinition.getProperties()) {
+        for (var propertyDefinition : linkDefinition.getProperties()) {
             InputValueDefinition inputValueDefinition = getPropertyInputValueDefinition(propertyDefinition);
             inputProperties.put(inputValueDefinition.getName(), inputValueDefinition);
             propertyDefinitions.put(inputValueDefinition.getName(), propertyDefinition);
         }
 
-        if (relationshipDefinition.getPropertyGroups() != null) {
-            for (var group : relationshipDefinition.getPropertyGroups()) {
+        if (linkDefinition.getPropertyGroups() != null) {
+            for (var group : linkDefinition.getPropertyGroups()) {
                 for (var propertyDefinition : group.getProperties()) {
                     InputValueDefinition inputValueDefinition = getPropertyInputValueDefinition(propertyDefinition);
                     inputProperties.put(inputValueDefinition.getName(), inputValueDefinition);

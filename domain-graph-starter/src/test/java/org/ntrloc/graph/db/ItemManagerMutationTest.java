@@ -8,15 +8,17 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.cluster.ClusterService;
-import org.ntrloc.graph.db.impl.EntityManagerImpl;
+import org.ntrloc.graph.db.impl.ItemManagerImpl;
 import org.ntrloc.graph.db.schema.Cardinality;
-import org.ntrloc.graph.db.schema.EntityDefinition;
+import org.ntrloc.graph.db.schema.ItemDefinition;
 import org.ntrloc.graph.db.schema.PropertyDefinition;
 import org.ntrloc.graph.db.schema.PropertyType;
-import org.ntrloc.graph.db.schema.RelationshipDefinition;
+import org.ntrloc.graph.db.schema.LinkDefinition;
 import org.ntrloc.graph.db.schema.SchemaManager;
 import org.ntrloc.graph.db.schema.impl.SchemaManagerImpl;
 import org.ntrloc.graph.db.storage.BinaryStorageAdapter;
+import org.ntrloc.graph.db.traversal.mutator.Mutator;
+import org.ntrloc.graph.db.traversal.projector.Projector;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -31,15 +33,15 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
 @DisplayName("An entity manager")
-class EntityManagerMutationTest {
+class ItemManagerMutationTest {
 
-    private static final Logger LOG = LoggerFactory.getLogger(EntityManagerMutationTest.class);
+    private static final Logger LOG = LoggerFactory.getLogger(ItemManagerMutationTest.class);
 
     private GraphTraversalSource traversalSource;
     private JanusGraph janusGraph;
 
     private SchemaManager schemaManager;
-    private EntityManager entityManager;
+    private ItemManager itemManager;
 
     @BeforeEach
     void init() throws IOException {
@@ -70,14 +72,16 @@ class EntityManagerMutationTest {
 
         BinaryStorageAdapter adapter = mock(BinaryStorageAdapter.class);
         ClusterService clusterService = mock(ClusterService.class);
+        Mutator mutator = mock(Mutator.class);
+        Projector projector = mock(Projector.class);
         doReturn(mock(IMap.class)).when(clusterService).getMap(anyString());
         schemaManager = new SchemaManagerImpl(janusGraph, traversalSource, clusterService);
-        entityManager = new EntityManagerImpl(traversalSource, adapter, schemaManager);
+        itemManager = new ItemManagerImpl(traversalSource, adapter, schemaManager, mutator, projector);
         setUpSchema();
     }
 
     private void setUpSchema() {
-        EntityDefinition photoDefinition = new EntityDefinition();
+        ItemDefinition photoDefinition = new ItemDefinition();
         photoDefinition.setName("Photo");
 
         PropertyDefinition nameDefinition = new PropertyDefinition("name", PropertyType.STRING, "");
@@ -90,21 +94,21 @@ class EntityManagerMutationTest {
 
         schemaManager.createEntityDefinition(photoDefinition);
 
-        EntityDefinition photographerDefinition = new EntityDefinition();
+        ItemDefinition photographerDefinition = new ItemDefinition();
         photographerDefinition.setName("Photographer");
         PropertyDefinition photographerNameDefinition = new PropertyDefinition("name", PropertyType.STRING, "");
         photographerDefinition.setProperties(Set.of(photographerNameDefinition));
         schemaManager.createEntityDefinition(photographerDefinition);
 
-        RelationshipDefinition relationshipDefinition = new RelationshipDefinition();
-        relationshipDefinition.setName("created");
-        relationshipDefinition.setSourceEntity(photographerDefinition.getName());
-        relationshipDefinition.setTargetEntity(photoDefinition.getName());
-        relationshipDefinition.setSourceCardinality(new Cardinality(1, 1));
-        relationshipDefinition.setSourceVersionAction(RelationshipDefinition.VersionAction.COPY);
-        relationshipDefinition.setTargetCardinality(new Cardinality(0, null));
-        relationshipDefinition.setTargetVersionAction(RelationshipDefinition.VersionAction.MOVE);
-        schemaManager.createRelationshipDefinition(relationshipDefinition);
+        LinkDefinition linkDefinition = new LinkDefinition();
+        linkDefinition.setName("created");
+        linkDefinition.setSourceEntity(photographerDefinition.getName());
+        linkDefinition.setTargetEntity(photoDefinition.getName());
+        linkDefinition.setSourceCardinality(new Cardinality(1, 1));
+        linkDefinition.setSourceVersionAction(LinkDefinition.VersionAction.COPY);
+        linkDefinition.setTargetCardinality(new Cardinality(0, null));
+        linkDefinition.setTargetVersionAction(LinkDefinition.VersionAction.MOVE);
+        schemaManager.createRelationshipDefinition(linkDefinition);
     }
 
     @Test

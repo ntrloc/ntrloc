@@ -1,4 +1,4 @@
-package org.ntrloc.graph.db.traversal.projector;
+package org.ntrloc.graph.db.language.projection;
 
 import org.apache.tinkerpop.gremlin.structure.Direction;
 

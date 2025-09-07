@@ -4,7 +4,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.StringJoiner;
 
-public class RelationshipDefinition extends SchemaDefinition implements DefinitionWithPropertyGroups {
+public class LinkDefinition extends SchemaDefinition implements DefinitionWithPropertyGroups {
 
     public enum VersionAction {
         NONE,
@@ -134,7 +134,7 @@ public class RelationshipDefinition extends SchemaDefinition implements Definiti
 
     @Override
     public boolean equals(Object o) {
-        if (!(o instanceof RelationshipDefinition that)) return false;
+        if (!(o instanceof LinkDefinition that)) return false;
         if (!super.equals(o)) return false;
         return Objects.equals(propertyGroups, that.propertyGroups)
                 && Objects.equals(properties, that.properties)
@@ -154,7 +154,7 @@ public class RelationshipDefinition extends SchemaDefinition implements Definiti
 
     @Override
     public String toString() {
-        return new StringJoiner(", ", RelationshipDefinition.class.getSimpleName() + "[", "]")
+        return new StringJoiner(", ", LinkDefinition.class.getSimpleName() + "[", "]")
                 .add("propertyGroups=" + propertyGroups)
                 .add("properties=" + properties)
                 .add("sourceEntity='" + sourceEntity + "'")

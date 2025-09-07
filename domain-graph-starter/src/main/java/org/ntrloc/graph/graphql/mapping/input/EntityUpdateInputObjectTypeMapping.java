@@ -6,7 +6,7 @@ import graphql.language.ListType;
 import graphql.language.NonNullType;
 import graphql.language.TypeName;
 import org.apache.commons.text.CaseUtils;
-import org.ntrloc.graph.db.schema.EntityDefinition;
+import org.ntrloc.graph.db.schema.ItemDefinition;
 import org.ntrloc.graph.graphql.mapping.selector.SelectorChoiceInputObjectTypeMapping;
 
 import java.util.ArrayList;
@@ -16,15 +16,15 @@ import java.util.List;
 public class EntityUpdateInputObjectTypeMapping implements InputObjectTypeProducer {
 
     private String graphQlTypeName;
-    private EntityDefinition entityDefinition;
+    private ItemDefinition itemDefinition;
     private EntityPropertiesInputObjectTypeMapping propertiesMapping;
     private EntityUpdateLinksInputObjectTypeMapping updateLinksInputTypeMapping;
     private SelectorChoiceInputObjectTypeMapping matcherChoiceMapping;
 
-    public EntityUpdateInputObjectTypeMapping(EntityDefinition entityDefinition, EntityPropertiesInputObjectTypeMapping propertiesMapping, SelectorChoiceInputObjectTypeMapping matcherChoiceMapping) {
-        String typeName = String.format("%s Update Input", entityDefinition.getName());
+    public EntityUpdateInputObjectTypeMapping(ItemDefinition itemDefinition, EntityPropertiesInputObjectTypeMapping propertiesMapping, SelectorChoiceInputObjectTypeMapping matcherChoiceMapping) {
+        String typeName = String.format("%s Update Input", itemDefinition.getName());
         this.graphQlTypeName = CaseUtils.toCamelCase(typeName, true, '_', '-');
-        this.entityDefinition = entityDefinition;
+        this.itemDefinition = itemDefinition;
         this.propertiesMapping = propertiesMapping;
         this.matcherChoiceMapping = matcherChoiceMapping;
     }
@@ -33,8 +33,8 @@ public class EntityUpdateInputObjectTypeMapping implements InputObjectTypeProduc
         return graphQlTypeName;
     }
 
-    public EntityDefinition getEntityDefinition() {
-        return entityDefinition;
+    public ItemDefinition getEntityDefinition() {
+        return itemDefinition;
     }
 
     public void setLinkUpdateInputType(EntityUpdateLinksInputObjectTypeMapping updateLinksInputType) {

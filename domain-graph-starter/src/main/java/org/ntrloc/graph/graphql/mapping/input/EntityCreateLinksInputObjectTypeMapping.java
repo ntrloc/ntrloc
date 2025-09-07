@@ -6,7 +6,7 @@ import graphql.language.ListType;
 import graphql.language.NonNullType;
 import graphql.language.TypeName;
 import org.apache.commons.text.CaseUtils;
-import org.ntrloc.graph.db.schema.EntityDefinition;
+import org.ntrloc.graph.db.schema.ItemDefinition;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -18,8 +18,8 @@ public class EntityCreateLinksInputObjectTypeMapping implements InputObjectTypeP
     private Map<String, IncomingRelationshipCreateInputObjectTypeMapping> incomingTypes;
     private Map<String, OutgoingRelationshipCreateInputObjectTypeMapping> outgoingTypes;
 
-    public EntityCreateLinksInputObjectTypeMapping(EntityDefinition entityDefinition, Map<String, IncomingRelationshipCreateInputObjectTypeMapping> incomingTypes, Map<String, OutgoingRelationshipCreateInputObjectTypeMapping> outgoingTypes) {
-        String typeName = String.format("%s Create Links Input", entityDefinition.getName());
+    public EntityCreateLinksInputObjectTypeMapping(ItemDefinition itemDefinition, Map<String, IncomingRelationshipCreateInputObjectTypeMapping> incomingTypes, Map<String, OutgoingRelationshipCreateInputObjectTypeMapping> outgoingTypes) {
+        String typeName = String.format("%s Create Links Input", itemDefinition.getName());
         this.graphQlTypeName = CaseUtils.toCamelCase(typeName, true, '_', '-');
         this.incomingTypes = incomingTypes;
         this.outgoingTypes = outgoingTypes;

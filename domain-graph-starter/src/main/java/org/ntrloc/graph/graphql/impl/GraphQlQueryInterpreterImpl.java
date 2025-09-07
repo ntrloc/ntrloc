@@ -8,7 +8,7 @@ import graphql.schema.GraphQLCodeRegistry;
 import graphql.schema.idl.TypeDefinitionRegistry;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.ntrloc.graph.db.schema.EntityDefinition;
+import org.ntrloc.graph.db.schema.ItemDefinition;
 import org.ntrloc.graph.db.schema.SchemaManager;
 import org.ntrloc.graph.graphql.GraphQlQueryInterpreter;
 
@@ -33,11 +33,11 @@ public class GraphQlQueryInterpreterImpl implements GraphQlQueryInterpreter {
     @DgsCodeRegistry
     public GraphQLCodeRegistry.Builder registry(GraphQLCodeRegistry.Builder codeRegistryBuilder, TypeDefinitionRegistry registry) {
 
-        Set<EntityDefinition> entityDefinitionSet = schemaManager.retrieveEntityDefinitions();
-        if (entityDefinitionSet.isEmpty()) {
+        Set<ItemDefinition> itemDefinitionSet = schemaManager.retrieveEntityDefinitions();
+        if (itemDefinitionSet.isEmpty()) {
             return codeRegistryBuilder.clearDataFetchers();
         } else {
-            Map<String, DataFetcher<?>> retrievalDataFetchers = entityDefinitionSet.stream()
+            Map<String, DataFetcher<?>> retrievalDataFetchers = itemDefinitionSet.stream()
                     .collect(Collectors.toMap(entityDefinition -> entityDefinition.getName(), entityDefinition -> {
                         DataFetcher<Object> fetcher = (dfe) -> {
                             LOG.info("Data fetching entity {}", entityDefinition.getName());

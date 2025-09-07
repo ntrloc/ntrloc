@@ -5,7 +5,7 @@ import com.netflix.graphql.dgs.reactive.internal.DgsReactiveRequestData;
 import graphql.schema.DataFetcher;
 import graphql.schema.DataFetchingEnvironment;
 import graphql.schema.GraphQLFieldDefinition;
-import org.ntrloc.graph.db.EntityManager;
+import org.ntrloc.graph.db.ItemManager;
 import org.ntrloc.graph.db.language.mutation.MutationRequest;
 import org.ntrloc.graph.db.language.mutation.MutationResponseItem;
 import org.ntrloc.graph.graphql.mapping.SchemaMapper;
@@ -25,11 +25,11 @@ public class MutationDataFetcher implements DataFetcher<Object> {
     private static final Logger LOG = LoggerFactory.getLogger(MutationDataFetcher.class);
 
     private SchemaMapper schemaMapper;
-    private EntityManager entityManager;
+    private ItemManager itemManager;
 
-    public MutationDataFetcher(EntityManager entityManager, SchemaMapper schemaMapper) {
+    public MutationDataFetcher(ItemManager itemManager, SchemaMapper schemaMapper) {
         this.schemaMapper = schemaMapper;
-        this.entityManager = entityManager;
+        this.itemManager = itemManager;
     }
 
     @Override
@@ -48,7 +48,7 @@ public class MutationDataFetcher implements DataFetcher<Object> {
             var mutations = mutes.values().stream().flatMap(List::stream).toList();
 
             var request = new MutationRequest(mutations);
-            var response = entityManager.executeMutation(request);
+            var response = itemManager.executeMutation(request);
 
             var itemsByAction = response.getItems().stream().collect(Collectors.groupingBy(MutationResponseItem::getMutationType));
 

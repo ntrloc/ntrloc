@@ -3,7 +3,7 @@ package org.ntrloc.graph.graphql.mapping.input;
 import graphql.language.InputObjectTypeDefinition;
 import graphql.language.InputValueDefinition;
 import graphql.language.TypeName;
-import org.ntrloc.graph.db.schema.RelationshipDefinition;
+import org.ntrloc.graph.db.schema.LinkDefinition;
 import org.ntrloc.graph.graphql.mapping.selector.SelectorChoiceInputObjectTypeMapping;
 
 import java.util.List;
@@ -11,17 +11,17 @@ import java.util.List;
 /** Maps an entity's outbound relationship to an instruction to create a new instance of that relationship. */
 public class OutgoingRelationshipDeleteInputObjectTypeMapping extends RelationshipDeleteAbstractInputObjectTypeMapping implements OutgoingRelationshipInputTypeMapping, InputObjectTypeProducer {
 
-    public OutgoingRelationshipDeleteInputObjectTypeMapping(RelationshipDefinition targetRelationshipDefinition, SelectorChoiceInputObjectTypeMapping matcherChoiceMapping) {
-        super(String.format("%s %s %s Link Delete Input", targetRelationshipDefinition.getSourceEntity(), targetRelationshipDefinition.getSourceLabel(), targetRelationshipDefinition.getTargetEntity()), targetRelationshipDefinition, matcherChoiceMapping);
+    public OutgoingRelationshipDeleteInputObjectTypeMapping(LinkDefinition targetLinkDefinition, SelectorChoiceInputObjectTypeMapping matcherChoiceMapping) {
+        super(String.format("%s %s %s Link Delete Input", targetLinkDefinition.getSourceEntity(), targetLinkDefinition.getSourceLabel(), targetLinkDefinition.getTargetEntity()), targetLinkDefinition, matcherChoiceMapping);
     }
 
-    public RelationshipDefinition getTargetRelationshipDefinition() {
-        return relationshipDefinition;
+    public LinkDefinition getTargetRelationshipDefinition() {
+        return linkDefinition;
     }
 
     @Override
     public String getRelationshipSourceLabel() {
-        return relationshipDefinition.getSourceLabel();
+        return linkDefinition.getSourceLabel();
     }
 
     @Override

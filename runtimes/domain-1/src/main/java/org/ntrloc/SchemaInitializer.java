@@ -1,11 +1,11 @@
 package org.ntrloc;
 
 import org.ntrloc.graph.db.schema.Cardinality;
-import org.ntrloc.graph.db.schema.EntityDefinition;
+import org.ntrloc.graph.db.schema.ItemDefinition;
 import org.ntrloc.graph.db.schema.PropertyDefinition;
 import org.ntrloc.graph.db.schema.PropertyGroupDefinition;
 import org.ntrloc.graph.db.schema.PropertyType;
-import org.ntrloc.graph.db.schema.RelationshipDefinition;
+import org.ntrloc.graph.db.schema.LinkDefinition;
 import org.ntrloc.graph.db.schema.SchemaManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,7 +29,7 @@ public class SchemaInitializer {
         LOG.info("Initializing schema");
         var entityDefs = schemaManager.retrieveEntityDefinitions();
         if (entityDefs.isEmpty()) {
-            EntityDefinition photoEntity = new EntityDefinition();
+            ItemDefinition photoEntity = new ItemDefinition();
             photoEntity.setName("Photo");
             photoEntity.setDescription("A photo");
 
@@ -45,7 +45,7 @@ public class SchemaInitializer {
 
             schemaManager.createEntityDefinition(photoEntity);
 
-            EntityDefinition photographerEntity = new EntityDefinition();
+            ItemDefinition photographerEntity = new ItemDefinition();
             photographerEntity.setName("Photographer");
             photographerEntity.setDescription("A photographer");
             PropertyDefinition photographerName = new PropertyDefinition("name", PropertyType.STRING, "photographer name");
@@ -53,13 +53,13 @@ public class SchemaInitializer {
 
             schemaManager.createEntityDefinition(photographerEntity);
 
-            RelationshipDefinition photoRelationship = new RelationshipDefinition();
+            LinkDefinition photoRelationship = new LinkDefinition();
             photoRelationship.setSourceEntity("Photographer");
             photoRelationship.setTargetEntity("Photo");
             photoRelationship.setSourceCardinality(new Cardinality(0, 1) );
             photoRelationship.setTargetCardinality(new Cardinality(0, 1) );
-            photoRelationship.setSourceVersionAction(RelationshipDefinition.VersionAction.NONE);
-            photoRelationship.setTargetVersionAction(RelationshipDefinition.VersionAction.NONE);
+            photoRelationship.setSourceVersionAction(LinkDefinition.VersionAction.NONE);
+            photoRelationship.setTargetVersionAction(LinkDefinition.VersionAction.NONE);
             photoRelationship.setName("CREATED");
             photoRelationship.setSourceLabel("created");
             photoRelationship.setTargetLabel("creator");

@@ -4,7 +4,7 @@ import graphql.language.FieldDefinition;
 import graphql.language.ObjectTypeDefinition;
 import graphql.language.TypeName;
 import org.apache.commons.text.CaseUtils;
-import org.ntrloc.graph.db.schema.EntityDefinition;
+import org.ntrloc.graph.db.schema.ItemDefinition;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -12,24 +12,24 @@ import java.util.List;
 public class EntityObjectTypeMapping implements ObjectTypeProducer {
 
     private String graphQlTypeName;
-    private EntityDefinition entityDefinition;
+    private ItemDefinition itemDefinition;
 
     private EntityPropertiesObjectTypeMapping propertiesMapping;
 
-    public EntityObjectTypeMapping(EntityDefinition entityDefinition) {
-        this.entityDefinition = entityDefinition;
-        String typeName = String.format("%s", entityDefinition.getName());
+    public EntityObjectTypeMapping(ItemDefinition itemDefinition) {
+        this.itemDefinition = itemDefinition;
+        String typeName = String.format("%s", itemDefinition.getName());
         this.graphQlTypeName = CaseUtils.toCamelCase(typeName, true, '_', '-');
 
-        propertiesMapping = new EntityPropertiesObjectTypeMapping(entityDefinition);
+        propertiesMapping = new EntityPropertiesObjectTypeMapping(itemDefinition);
     }
 
     public String getGraphQlTypeName() {
         return graphQlTypeName;
     }
 
-    public EntityDefinition getEntityDefinition() {
-        return entityDefinition;
+    public ItemDefinition getEntityDefinition() {
+        return itemDefinition;
     }
 
     @Override

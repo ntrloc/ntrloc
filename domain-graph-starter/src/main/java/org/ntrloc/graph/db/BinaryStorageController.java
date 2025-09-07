@@ -24,10 +24,10 @@ public class BinaryStorageController {
 
     private Pattern boundaryPattern = Pattern.compile("multipart/form-data; boundary=(.+)");
 
-    private EntityManager entityManager;
+    private ItemManager itemManager;
 
-    public BinaryStorageController(EntityManager entityManager) {
-        this.entityManager = entityManager;
+    public BinaryStorageController(ItemManager itemManager) {
+        this.itemManager = itemManager;
     }
 
     @PutMapping("/upload")
@@ -41,7 +41,7 @@ public class BinaryStorageController {
         Matcher boundaryMatcher = boundaryPattern.matcher(contentType);
         if (boundaryMatcher.matches()) {
             String boundary = boundaryMatcher.group(1);
-            MultipartParser multipartParser = new MultipartParser(boundary, entityManager);
+            MultipartParser multipartParser = new MultipartParser(boundary, itemManager);
             return multipartParser.parse(bufferFlux);
         } else {
             return Mono.empty();

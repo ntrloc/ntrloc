@@ -1,8 +1,8 @@
 package org.ntrloc.graph.graphql.mapping.output;
 
 import graphql.language.ObjectTypeDefinition;
-import org.ntrloc.graph.db.schema.EntityDefinition;
-import org.ntrloc.graph.db.schema.RelationshipDefinition;
+import org.ntrloc.graph.db.schema.ItemDefinition;
+import org.ntrloc.graph.db.schema.LinkDefinition;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
@@ -18,11 +18,11 @@ public class EntityObjectTypesMapper {
 
     private Map<String, EntityObjectTypeMapping> entityOutputMap = new HashMap<>();
 
-    public Map<String, ObjectTypeDefinition> mapObjectTypes(Set<EntityDefinition> entityDefinitions, Set<RelationshipDefinition> relationshipDefinitions) {
+    public Map<String, ObjectTypeDefinition> mapObjectTypes(Set<ItemDefinition> itemDefinitions, Set<LinkDefinition> linkDefinitions) {
 
         entityOutputMap = new HashMap<>();
 
-        for (EntityDefinition definition : entityDefinitions) {
+        for (ItemDefinition definition : itemDefinitions) {
             EntityObjectTypeMapping mapping = new EntityObjectTypeMapping(definition);
             LOG.info("Parsed input type {} for entity {}", mapping.getGraphQlTypeName(), definition.getName());
             entityOutputMap.put(definition.getName(), mapping);

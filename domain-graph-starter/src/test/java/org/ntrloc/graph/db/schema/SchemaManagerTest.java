@@ -55,8 +55,8 @@ public class SchemaManagerTest {
     @Test
     @DisplayName("create and retrieve entity definition")
     void testCreateEntityDefinition() {
-        EntityDefinition entityDefinition = new EntityDefinition();
-        entityDefinition.setName("Product");
+        ItemDefinition itemDefinition = new ItemDefinition();
+        itemDefinition.setName("Product");
 
         PropertyDefinition isbnPropertyDefinition = new PropertyDefinition();
         isbnPropertyDefinition.setName("ISBN");
@@ -73,24 +73,24 @@ public class SchemaManagerTest {
         graLevelDefinition.setName("GRA");
         graLevelDefinition.setType(PropertyType.STRING);
         levelGroupDefinition.setProperties(Set.of(graLevelDefinition));
-        entityDefinition.setPropertyGroups(Set.of(levelGroupDefinition));
+        itemDefinition.setPropertyGroups(Set.of(levelGroupDefinition));
 
-        entityDefinition.setProperties(Set.of(isbnPropertyDefinition, titlePropertyDefinition));
-        schemaManager.createEntityDefinition(entityDefinition);
+        itemDefinition.setProperties(Set.of(isbnPropertyDefinition, titlePropertyDefinition));
+        schemaManager.createEntityDefinition(itemDefinition);
 
-        Set<EntityDefinition> definitions = schemaManager.retrieveEntityDefinitions();
+        Set<ItemDefinition> definitions = schemaManager.retrieveEntityDefinitions();
         assertEquals(1, definitions.size(), "Incorrect number of entity definitions");
 
-        Optional<EntityDefinition> schemaOpt = schemaManager.retrieveEntityDefinition("Product");
+        Optional<ItemDefinition> schemaOpt = schemaManager.retrieveEntityDefinition("Product");
         assertTrue(schemaOpt.isPresent(), "Schema not returned");
-        assertEquals(entityDefinition, schemaOpt.get());
+        assertEquals(itemDefinition, schemaOpt.get());
     }
 
     @Test
     @DisplayName("prepare the system to work with a new entity type")
     void testInitializeEntityDefinition() {
-        EntityDefinition entityDefinition = new EntityDefinition();
-        entityDefinition.setName("Product");
+        ItemDefinition itemDefinition = new ItemDefinition();
+        itemDefinition.setName("Product");
 
         PropertyDefinition isbnPropertyDefinition = new PropertyDefinition();
         isbnPropertyDefinition.setName("ISBN");
@@ -104,10 +104,10 @@ public class SchemaManagerTest {
         graLevelDefinition.setType(PropertyType.STRING);
 
         levelGroupDefinition.setProperties(Set.of(graLevelDefinition));
-        entityDefinition.setPropertyGroups(Set.of(levelGroupDefinition));
+        itemDefinition.setPropertyGroups(Set.of(levelGroupDefinition));
 
-        entityDefinition.setProperties(Set.of(isbnPropertyDefinition));
-        schemaManager.createEntityDefinition(entityDefinition);
+        itemDefinition.setProperties(Set.of(isbnPropertyDefinition));
+        schemaManager.createEntityDefinition(itemDefinition);
 
         JanusGraphManagement management = janusGraph.openManagement();
         try {
@@ -133,15 +133,15 @@ public class SchemaManagerTest {
     @Test
     @DisplayName("create and retrieve relationship definition")
     void testCreateRelationshipDefinition() {
-        RelationshipDefinition relationshipDefinition = new RelationshipDefinition();
-        relationshipDefinition.setInstanceMaxCardinality(1);
-        relationshipDefinition.setSourceEntity("Product");
-        relationshipDefinition.setTargetEntity("Cover");
-        relationshipDefinition.setSourceCardinality(new Cardinality(1, 1));
-        relationshipDefinition.setTargetCardinality(new Cardinality(0, null));
-        relationshipDefinition.setSourceVersionAction(RelationshipDefinition.VersionAction.COPY);
-        relationshipDefinition.setTargetVersionAction(RelationshipDefinition.VersionAction.MOVE);
-        relationshipDefinition.setName("has-cover");
+        LinkDefinition linkDefinition = new LinkDefinition();
+        linkDefinition.setInstanceMaxCardinality(1);
+        linkDefinition.setSourceEntity("Product");
+        linkDefinition.setTargetEntity("Cover");
+        linkDefinition.setSourceCardinality(new Cardinality(1, 1));
+        linkDefinition.setTargetCardinality(new Cardinality(0, null));
+        linkDefinition.setSourceVersionAction(LinkDefinition.VersionAction.COPY);
+        linkDefinition.setTargetVersionAction(LinkDefinition.VersionAction.MOVE);
+        linkDefinition.setName("has-cover");
 
         PropertyDefinition propDef1 = new PropertyDefinition();
         propDef1.setName("prop1");
@@ -155,16 +155,16 @@ public class SchemaManagerTest {
         propDef2.setType(PropertyType.INT);
 
         groupDef.setProperties(Set.of(propDef2));
-        relationshipDefinition.setPropertyGroups(Set.of(groupDef));
-        relationshipDefinition.setProperties(Set.of(propDef1));
-        schemaManager.createRelationshipDefinition(relationshipDefinition);
+        linkDefinition.setPropertyGroups(Set.of(groupDef));
+        linkDefinition.setProperties(Set.of(propDef1));
+        schemaManager.createRelationshipDefinition(linkDefinition);
 
-        Set<RelationshipDefinition> definitions = schemaManager.retrieveRelationshipDefinitions();
+        Set<LinkDefinition> definitions = schemaManager.retrieveRelationshipDefinitions();
         assertEquals(1, definitions.size(), "Incorrect number of relationship definitions");
 
-        Optional<RelationshipDefinition> schemaOpt = schemaManager.retrieveRelationshipDefinition(relationshipDefinition.getName());
+        Optional<LinkDefinition> schemaOpt = schemaManager.retrieveRelationshipDefinition(linkDefinition.getName());
         assertTrue(schemaOpt.isPresent(), "Schema not returned");
-        assertEquals(relationshipDefinition, schemaOpt.get());
+        assertEquals(linkDefinition, schemaOpt.get());
     }
 
 }

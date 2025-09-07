@@ -9,13 +9,13 @@ import org.ntrloc.graph.GraphQLAutoConfiguration;
 import org.ntrloc.graph.JanusAutoConfiguration;
 import org.ntrloc.graph.cluster.config.StandaloneClusterConfigurationFactory;
 import org.ntrloc.graph.cluster.impl.ClusterServiceImpl;
-import org.ntrloc.graph.db.impl.EntityManagerImpl;
+import org.ntrloc.graph.db.impl.ItemManagerImpl;
 import org.ntrloc.graph.db.schema.Cardinality;
-import org.ntrloc.graph.db.schema.EntityDefinition;
+import org.ntrloc.graph.db.schema.ItemDefinition;
 import org.ntrloc.graph.db.schema.PropertyDefinition;
 import org.ntrloc.graph.db.schema.PropertyGroupDefinition;
 import org.ntrloc.graph.db.schema.PropertyType;
-import org.ntrloc.graph.db.schema.RelationshipDefinition;
+import org.ntrloc.graph.db.schema.LinkDefinition;
 import org.ntrloc.graph.db.schema.SchemaManager;
 import org.ntrloc.graph.db.schema.impl.SchemaManagerImpl;
 import org.ntrloc.graph.db.storage.BinaryStorageAdapterConfiguration;
@@ -46,7 +46,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @EnableAutoConfiguration(exclude = {CassandraAutoConfiguration.class})
 @EnableConfigurationProperties(BinaryStorageAdapterConfiguration.class)
-@ContextConfiguration(classes = {EntityManagerImpl.class, SchemaManagerImpl.class, JanusAutoConfiguration.class,
+@ContextConfiguration(classes = {ItemManagerImpl.class, SchemaManagerImpl.class, JanusAutoConfiguration.class,
         BlockDeviceBinaryStorageAdapter.class, StandaloneClusterConfigurationFactory.class, ClusterServiceImpl.class,
         GraphQLAutoConfiguration.class
 })
@@ -116,7 +116,7 @@ class MutationRetrievalIntegrationTest {
     }
 
     private void initSchema() {
-        EntityDefinition photoEntity = new EntityDefinition();
+        ItemDefinition photoEntity = new ItemDefinition();
         photoEntity.setName("Photo");
         photoEntity.setDescription("A photo");
 
@@ -132,7 +132,7 @@ class MutationRetrievalIntegrationTest {
 
         schemaManager.createEntityDefinition(photoEntity);
 
-        EntityDefinition photographerEntity = new EntityDefinition();
+        ItemDefinition photographerEntity = new ItemDefinition();
         photographerEntity.setName("Photographer");
         photographerEntity.setDescription("A photographer");
         PropertyDefinition photographerName = new PropertyDefinition("name", PropertyType.STRING, "photographer name");
@@ -140,13 +140,13 @@ class MutationRetrievalIntegrationTest {
 
         schemaManager.createEntityDefinition(photographerEntity);
 
-        RelationshipDefinition photoRelationship = new RelationshipDefinition();
+        LinkDefinition photoRelationship = new LinkDefinition();
         photoRelationship.setSourceEntity("Photographer");
         photoRelationship.setTargetEntity("Photo");
         photoRelationship.setSourceCardinality(new Cardinality(0, 1) );
         photoRelationship.setTargetCardinality(new Cardinality(0, 1) );
-        photoRelationship.setSourceVersionAction(RelationshipDefinition.VersionAction.NONE);
-        photoRelationship.setTargetVersionAction(RelationshipDefinition.VersionAction.NONE);
+        photoRelationship.setSourceVersionAction(LinkDefinition.VersionAction.NONE);
+        photoRelationship.setTargetVersionAction(LinkDefinition.VersionAction.NONE);
         photoRelationship.setName("CREATED");
         photoRelationship.setSourceLabel("created");
         photoRelationship.setTargetLabel("createdBy");

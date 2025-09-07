@@ -15,6 +15,7 @@ import org.ntrloc.graph.db.language.Property;
 import org.ntrloc.graph.db.language.ScalarProperty;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Component;
 
 import java.util.Date;
 import java.util.HashMap;
@@ -26,6 +27,7 @@ import java.util.UUID;
 
 import static org.ntrloc.graph.db.PropertyConstants.UNIQUE_ID_PROPERTY;
 
+@Component
 public class Mutator {
 
     private static final Logger LOG = LoggerFactory.getLogger(Mutator.class);

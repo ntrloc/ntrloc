@@ -5,17 +5,17 @@ import java.util.Set;
 
 public interface SchemaManager {
 
-    Set<EntityDefinition> retrieveEntityDefinitions();
-    void createEntityDefinition(EntityDefinition definition);
-    void updateEntityDefinition(EntityDefinition definition);
-    Optional<EntityDefinition> retrieveEntityDefinition(String name);
-    void deleteEntityDefinition(EntityDefinition definition);
+    Set<ItemDefinition> retrieveEntityDefinitions();
+    void createEntityDefinition(ItemDefinition definition);
+    void updateEntityDefinition(ItemDefinition definition);
+    Optional<ItemDefinition> retrieveEntityDefinition(String name);
+    void deleteEntityDefinition(ItemDefinition definition);
 
-    Set<RelationshipDefinition> retrieveRelationshipDefinitions();
-    void createRelationshipDefinition(RelationshipDefinition definition);
-    void updateRelationshipDefinition(RelationshipDefinition definition);
-    Optional<RelationshipDefinition> retrieveRelationshipDefinition(String name);
-    void deleteRelationshipDefinition(RelationshipDefinition definition);
+    Set<LinkDefinition> retrieveRelationshipDefinitions();
+    void createRelationshipDefinition(LinkDefinition definition);
+    void updateRelationshipDefinition(LinkDefinition definition);
+    Optional<LinkDefinition> retrieveRelationshipDefinition(String name);
+    void deleteRelationshipDefinition(LinkDefinition definition);
 
     void addSchemaChangeReaction(SchemaChangeReaction reaction);
 

@@ -3,12 +3,13 @@ package org.ntrloc.graph.db;
 import org.ntrloc.graph.db.impl.HashingBinaryDataWriter;
 import org.ntrloc.graph.db.language.mutation.MutationRequest;
 import org.ntrloc.graph.db.language.mutation.MutationResponse;
-import org.ntrloc.graph.db.language.query.Query;
-import org.ntrloc.graph.db.language.query.QueryResult;
+import org.ntrloc.graph.db.language.projection.ItemProjection;
+import org.ntrloc.graph.db.language.projection.SelectableItemProjectionSpec;
 
 import java.io.IOException;
+import java.util.List;
 
-public interface EntityManager {
+public interface ItemManager {
 
     void resetGraph();
 
@@ -30,6 +31,6 @@ public interface EntityManager {
 
     MutationResponse executeMutation(MutationRequest mutationRequest);
 
-    QueryResult executeQuery(Query query);
+    List<ItemProjection> executeProjection(SelectableItemProjectionSpec query);
 
 }

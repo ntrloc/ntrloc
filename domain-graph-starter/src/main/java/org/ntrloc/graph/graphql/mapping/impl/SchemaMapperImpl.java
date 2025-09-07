@@ -9,8 +9,8 @@ import graphql.language.ObjectTypeDefinition;
 import graphql.language.ObjectTypeExtensionDefinition;
 import graphql.language.TypeName;
 import org.ntrloc.graph.db.language.mutation.EntityMutation;
-import org.ntrloc.graph.db.schema.EntityDefinition;
-import org.ntrloc.graph.db.schema.RelationshipDefinition;
+import org.ntrloc.graph.db.schema.ItemDefinition;
+import org.ntrloc.graph.db.schema.LinkDefinition;
 import org.ntrloc.graph.graphql.mapping.MutationObjectTypeMapping;
 import org.ntrloc.graph.graphql.mapping.SchemaMapper;
 import org.ntrloc.graph.graphql.mapping.output.EntityObjectTypeMapping;
@@ -38,8 +38,8 @@ public class SchemaMapperImpl implements SchemaMapper {
     public SchemaMapperImpl() {
     }
 
-    public void mapSchema(Set<EntityDefinition> entityDefinitions, Set<RelationshipDefinition> relationshipDefinitions) {
-        mutationObjectTypeMapping = new MutationObjectTypeMapping(entityDefinitions, relationshipDefinitions);
+    public void mapSchema(Set<ItemDefinition> itemDefinitions, Set<LinkDefinition> linkDefinitions) {
+        mutationObjectTypeMapping = new MutationObjectTypeMapping(itemDefinitions, linkDefinitions);
 
         // extend the query type to allow queries for all entity outputs
         inputTypeDefinitions = mutationObjectTypeMapping.getInputObjectTypeDefinitions().stream()

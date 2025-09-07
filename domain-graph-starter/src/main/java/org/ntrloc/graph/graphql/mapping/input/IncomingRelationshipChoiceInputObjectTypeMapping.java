@@ -4,7 +4,7 @@ import graphql.language.InputObjectTypeDefinition;
 import graphql.language.InputValueDefinition;
 import graphql.language.TypeName;
 import org.apache.commons.text.CaseUtils;
-import org.ntrloc.graph.db.schema.RelationshipDefinition;
+import org.ntrloc.graph.db.schema.LinkDefinition;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -19,16 +19,16 @@ public class IncomingRelationshipChoiceInputObjectTypeMapping implements Incomin
     private static final String DELETE_MAPPING_KEY = "delete";
 
     private String graphQlTypeName;
-    private RelationshipDefinition targetRelationshipDefinition;
+    private LinkDefinition targetLinkDefinition;
     private Map<String, IncomingRelationshipInputTypeMapping> mappings;
 
-    public IncomingRelationshipChoiceInputObjectTypeMapping(RelationshipDefinition targetRelationshipDefinition,
+    public IncomingRelationshipChoiceInputObjectTypeMapping(LinkDefinition targetLinkDefinition,
                                                             IncomingRelationshipCreateInputObjectTypeMapping createMapping,
                                                             IncomingRelationshipUpdateInputObjectTypeMapping updateMapping,
                                                             IncomingRelationshipDeleteInputObjectTypeMapping deleteMapping) {
-        String typeName = String.format("%s %s %s Link Choice Input", targetRelationshipDefinition.getTargetEntity(), targetRelationshipDefinition.getTargetLabel(), targetRelationshipDefinition.getSourceEntity());
+        String typeName = String.format("%s %s %s Link Choice Input", targetLinkDefinition.getTargetEntity(), targetLinkDefinition.getTargetLabel(), targetLinkDefinition.getSourceEntity());
         this.graphQlTypeName = CaseUtils.toCamelCase(typeName, true, '_', '-');
-        this.targetRelationshipDefinition = targetRelationshipDefinition;
+        this.targetLinkDefinition = targetLinkDefinition;
         mappings = Map.of(CREATE_MAPPING_KEY, createMapping, UPDATE_MAPPING_KEY, updateMapping, DELETE_MAPPING_KEY, deleteMapping);
     }
 
@@ -50,7 +50,7 @@ public class IncomingRelationshipChoiceInputObjectTypeMapping implements Incomin
 
     @Override
     public String getRelationshipTargetLabel() {
-        return targetRelationshipDefinition.getTargetLabel();
+        return targetLinkDefinition.getTargetLabel();
     }
 
     @Override

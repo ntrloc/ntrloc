@@ -7,6 +7,13 @@ import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversalSo
 import org.apache.tinkerpop.gremlin.structure.Direction;
 import org.apache.tinkerpop.gremlin.structure.Vertex;
 import org.ntrloc.graph.db.PropertyConstants;
+import org.ntrloc.graph.db.language.projection.IncomingLinkProjection;
+import org.ntrloc.graph.db.language.projection.ItemProjection;
+import org.ntrloc.graph.db.language.projection.ItemProjectionSpec;
+import org.ntrloc.graph.db.language.projection.LinkProjection;
+import org.ntrloc.graph.db.language.projection.LinkProjectionSpec;
+import org.ntrloc.graph.db.language.projection.OutgoingLinkProjection;
+import org.ntrloc.graph.db.language.projection.SelectableItemProjectionSpec;
 import org.ntrloc.graph.db.language.selectors.HasPropertyValueSelector;
 import org.ntrloc.graph.db.language.selectors.ItemSelector;
 import org.ntrloc.graph.db.language.selectors.predicate.EqualsPredicate;
@@ -18,6 +25,7 @@ import org.ntrloc.graph.db.language.selectors.predicate.WithinPredicate;
 import org.ntrloc.graph.db.language.selectors.predicate.WithoutPredicate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -26,6 +34,7 @@ import java.util.Map;
 import java.util.TreeMap;
 import java.util.stream.Collectors;
 
+@Component
 public class Projector {
 
     private static final Logger LOG = LoggerFactory.getLogger(Projector.class);
@@ -36,7 +45,7 @@ public class Projector {
         this.traversalSource = traversalSource;
     }
 
-    Iterable<ItemProjection> project(SelectableItemProjectionSpec spec) {
+    public List<ItemProjection> project(SelectableItemProjectionSpec spec) {
         GraphTraversal<?, Vertex> traversal = traversalSource.V();
         traversal = select(traversal, spec);
         var projectionTraversal = projectItems(traversal, spec, spec.getItemType());

@@ -1,4 +1,4 @@
-package org.ntrloc.graph.db.traversal.projector;
+package org.ntrloc.graph.db.language.projection;
 
 import java.util.List;
 import java.util.Map;
@@ -12,7 +12,7 @@ public class ItemProjection {
     private Map<String, Object> properties;
     private Map<String, List<LinkProjection>> links;
 
-    ItemProjection() {
+    public ItemProjection() {
         // no-op
     }
 
@@ -20,7 +20,7 @@ public class ItemProjection {
         return id;
     }
 
-    void setId(String id) {
+    public void setId(String id) {
         this.id = id;
     }
 
@@ -28,7 +28,7 @@ public class ItemProjection {
         return nodeType;
     }
 
-    void setNodeType(String nodeType) {
+    public void setNodeType(String nodeType) {
         this.nodeType = nodeType;
     }
 
@@ -36,7 +36,7 @@ public class ItemProjection {
         return properties;
     }
 
-    void setProperties(Map<String, Object> properties) {
+    public void setProperties(Map<String, Object> properties) {
         this.properties = properties;
     }
 

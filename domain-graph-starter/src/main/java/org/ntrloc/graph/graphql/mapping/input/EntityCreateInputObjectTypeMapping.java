@@ -10,7 +10,7 @@ import graphql.language.TypeName;
 import org.apache.commons.text.CaseUtils;
 import org.ntrloc.graph.db.language.Property;
 import org.ntrloc.graph.db.language.mutation.EntityCreateMutation;
-import org.ntrloc.graph.db.schema.EntityDefinition;
+import org.ntrloc.graph.db.schema.ItemDefinition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -28,14 +28,14 @@ public class EntityCreateInputObjectTypeMapping implements InputObjectTypeProduc
     private static final String PROPERTIES_FIELD_NAME = "properties";
 
     private String graphQlTypeName;
-    private EntityDefinition entityDefinition;
+    private ItemDefinition itemDefinition;
     private EntityPropertiesInputObjectTypeMapping propertiesMapping;
     private EntityCreateLinksInputObjectTypeMapping linkCreateInputType;
 
-    public EntityCreateInputObjectTypeMapping(EntityDefinition entityDefinition, EntityPropertiesInputObjectTypeMapping propertiesMapping) {
-        String typeName = String.format("%s Create Input", entityDefinition.getName());
+    public EntityCreateInputObjectTypeMapping(ItemDefinition itemDefinition, EntityPropertiesInputObjectTypeMapping propertiesMapping) {
+        String typeName = String.format("%s Create Input", itemDefinition.getName());
         this.graphQlTypeName = CaseUtils.toCamelCase(typeName, true, '_', '-');
-        this.entityDefinition = entityDefinition;
+        this.itemDefinition = itemDefinition;
         this.propertiesMapping = propertiesMapping;
     }
 
@@ -43,8 +43,8 @@ public class EntityCreateInputObjectTypeMapping implements InputObjectTypeProduc
         return graphQlTypeName;
     }
 
-    public EntityDefinition getEntityDefinition() {
-        return entityDefinition;
+    public ItemDefinition getEntityDefinition() {
+        return itemDefinition;
     }
 
     public void setLinkCreateInputType(EntityCreateLinksInputObjectTypeMapping linkCreateInputType) {

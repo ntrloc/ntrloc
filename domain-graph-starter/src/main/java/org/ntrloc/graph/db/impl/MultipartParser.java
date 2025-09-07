@@ -2,7 +2,7 @@ package org.ntrloc.graph.db.impl;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.ntrloc.graph.db.EntityManager;
+import org.ntrloc.graph.db.ItemManager;
 import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.core.io.buffer.DataBufferUtils;
 import reactor.core.Exceptions;
@@ -31,7 +31,7 @@ public class MultipartParser {
         END_MULTIPART
     }
 
-    private EntityManager entityManager;
+    private ItemManager itemManager;
 
     private State currentState = State.SEEKING_INITIAL_BOUNDARY;
 
@@ -62,8 +62,8 @@ public class MultipartParser {
 
     private HashingBinaryDataWriter hashingBinaryDataWriter;
 
-    public MultipartParser(String boundary, EntityManager entityManager) {
-        this.entityManager = entityManager;
+    public MultipartParser(String boundary, ItemManager itemManager) {
+        this.itemManager = itemManager;
         LOG.info("Created multipart parser with boundary {}", boundary);
         this.initialBoundaryBytes = ("--" + boundary + "\r\n").getBytes(UTF_8);
         this.subsequentBoundaryBytesStart = ("\r\n--" + boundary).getBytes(UTF_8); // improve this to not include \r\n this way
@@ -102,7 +102,7 @@ public class MultipartParser {
             Matcher matcher = contentIdPattern.matcher(disposition);
             if (matcher.matches()) {
                 currentPartId = matcher.group(1);
-                hashingBinaryDataWriter = entityManager.openWriter();
+                hashingBinaryDataWriter = itemManager.openWriter();
             } else {
                 throw new IllegalStateException(disposition + " is not a valid Content-Disposition header");
             }
@@ -120,7 +120,7 @@ public class MultipartParser {
     // called when a part ends
     private void partEnded() throws IOException {
         LOG.info("Part ended");
-        String dataId = entityManager.commitBinary(hashingBinaryDataWriter);
+        String dataId = itemManager.commitBinary(hashingBinaryDataWriter);
         partHashMap.put(currentPartId, dataId);
     }
 

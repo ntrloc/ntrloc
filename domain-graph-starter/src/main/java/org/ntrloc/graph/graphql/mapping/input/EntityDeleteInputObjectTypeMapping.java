@@ -5,7 +5,7 @@ import graphql.language.InputValueDefinition;
 import graphql.language.NonNullType;
 import graphql.language.TypeName;
 import org.apache.commons.text.CaseUtils;
-import org.ntrloc.graph.db.schema.EntityDefinition;
+import org.ntrloc.graph.db.schema.ItemDefinition;
 import org.ntrloc.graph.graphql.mapping.selector.SelectorChoiceInputObjectTypeMapping;
 
 import java.util.List;
@@ -14,13 +14,13 @@ import java.util.List;
 public class EntityDeleteInputObjectTypeMapping implements InputObjectTypeProducer {
 
     private String graphQlTypeName;
-    private EntityDefinition entityDefinition;
+    private ItemDefinition itemDefinition;
     private SelectorChoiceInputObjectTypeMapping matcherChoiceMapping;
 
-    public EntityDeleteInputObjectTypeMapping(EntityDefinition entityDefinition, SelectorChoiceInputObjectTypeMapping matcherChoiceMapping) {
-        String typeName = String.format("%s Delete Input", entityDefinition.getName());
+    public EntityDeleteInputObjectTypeMapping(ItemDefinition itemDefinition, SelectorChoiceInputObjectTypeMapping matcherChoiceMapping) {
+        String typeName = String.format("%s Delete Input", itemDefinition.getName());
         this.graphQlTypeName = CaseUtils.toCamelCase(typeName, true, '_', '-');
-        this.entityDefinition = entityDefinition;
+        this.itemDefinition = itemDefinition;
         this.matcherChoiceMapping = matcherChoiceMapping;
     }
 
@@ -28,8 +28,8 @@ public class EntityDeleteInputObjectTypeMapping implements InputObjectTypeProduc
         return graphQlTypeName;
     }
 
-    public EntityDefinition getEntityDefinition() {
-        return entityDefinition;
+    public ItemDefinition getEntityDefinition() {
+        return itemDefinition;
     }
 
     @Override
@@ -39,7 +39,7 @@ public class EntityDeleteInputObjectTypeMapping implements InputObjectTypeProduc
                 .type(new NonNullType(new TypeName(matcherChoiceMapping.getGraphQlTypeName())))
                 .build();
         return List.of(InputObjectTypeDefinition.newInputObjectDefinition()
-                .name(String.format("%sDeleteInput", entityDefinition.getName()))
+                .name(String.format("%sDeleteInput", itemDefinition.getName()))
                 .inputValueDefinition(whereValue)
                 .build());
     }

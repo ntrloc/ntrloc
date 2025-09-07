@@ -9,8 +9,8 @@ import graphql.language.TypeName;
 import org.apache.commons.text.CaseUtils;
 import org.ntrloc.graph.Tuple;
 import org.ntrloc.graph.db.language.mutation.EntityMutation;
-import org.ntrloc.graph.db.schema.EntityDefinition;
-import org.ntrloc.graph.db.schema.RelationshipDefinition;
+import org.ntrloc.graph.db.schema.ItemDefinition;
+import org.ntrloc.graph.db.schema.LinkDefinition;
 import org.ntrloc.graph.graphql.mapping.selector.SelectorChoiceInputObjectTypeMapping;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -33,7 +33,7 @@ public class EntityMutationInputObjectTypeMapping implements InputObjectTypeProd
     private static final String DELETE_MAPPING_KEY = "delete";
 
     private String graphQlTypeName;
-    private EntityDefinition entityDefinition;
+    private ItemDefinition itemDefinition;
 
     private EntityCreateInputObjectTypeMapping createInputTypeMapping;
     private EntityUpdateInputObjectTypeMapping updateInputTypeMapping;
@@ -41,45 +41,45 @@ public class EntityMutationInputObjectTypeMapping implements InputObjectTypeProd
 
     private InputObjectTypeDefinition choiceDefinition;
 
-    public EntityMutationInputObjectTypeMapping(EntityDefinition entityDefinition, SelectorChoiceInputObjectTypeMapping matcherChoiceInputTypeMapping) {
-        String typeName = String.format("%s Mutation Choice Input", entityDefinition.getName());
+    public EntityMutationInputObjectTypeMapping(ItemDefinition itemDefinition, SelectorChoiceInputObjectTypeMapping matcherChoiceInputTypeMapping) {
+        String typeName = String.format("%s Mutation Choice Input", itemDefinition.getName());
         this.graphQlTypeName = CaseUtils.toCamelCase(typeName, true, '_', '-');
-        this.entityDefinition = entityDefinition;
+        this.itemDefinition = itemDefinition;
 
-        var inputPropertiesMapping = new EntityPropertiesInputObjectTypeMapping(entityDefinition);
+        var inputPropertiesMapping = new EntityPropertiesInputObjectTypeMapping(itemDefinition);
 
-        this.createInputTypeMapping = new EntityCreateInputObjectTypeMapping(entityDefinition, inputPropertiesMapping);
-        this.updateInputTypeMapping = new EntityUpdateInputObjectTypeMapping(entityDefinition, inputPropertiesMapping, matcherChoiceInputTypeMapping);
-        this.deleteInputTypeMapping = new EntityDeleteInputObjectTypeMapping(entityDefinition, matcherChoiceInputTypeMapping);
+        this.createInputTypeMapping = new EntityCreateInputObjectTypeMapping(itemDefinition, inputPropertiesMapping);
+        this.updateInputTypeMapping = new EntityUpdateInputObjectTypeMapping(itemDefinition, inputPropertiesMapping, matcherChoiceInputTypeMapping);
+        this.deleteInputTypeMapping = new EntityDeleteInputObjectTypeMapping(itemDefinition, matcherChoiceInputTypeMapping);
     }
 
     public String getGraphQlTypeName() {
         return graphQlTypeName;
     }
 
-    public EntityDefinition getEntityDefinition() {
-        return entityDefinition;
+    public ItemDefinition getEntityDefinition() {
+        return itemDefinition;
     }
 
-    public void mapRelationships(List<Tuple<RelationshipDefinition, EntityMutationInputObjectTypeMapping>> incomingRelationshipTuples,
-                                 List<Tuple<RelationshipDefinition, EntityMutationInputObjectTypeMapping>> outgoingRelationshipTuples,
+    public void mapRelationships(List<Tuple<LinkDefinition, EntityMutationInputObjectTypeMapping>> incomingRelationshipTuples,
+                                 List<Tuple<LinkDefinition, EntityMutationInputObjectTypeMapping>> outgoingRelationshipTuples,
                                  SelectorChoiceInputObjectTypeMapping matcherChoiceInputTypeMapping) {
         var incomingMappingTuples = mapIncomingRelationships(incomingRelationshipTuples, matcherChoiceInputTypeMapping);
         var outgoingMappingTuples = mapOutgoingRelationships(outgoingRelationshipTuples, matcherChoiceInputTypeMapping);
 
         // then, the entity-level create links input type (PhotographerCreateLinksInput)
         LOG.info("Create entity-wide links create type");
-        var entityCreateLinksInputTypeMapping = new EntityCreateLinksInputObjectTypeMapping(entityDefinition, incomingMappingTuples.first(), outgoingMappingTuples.first());
+        var entityCreateLinksInputTypeMapping = new EntityCreateLinksInputObjectTypeMapping(itemDefinition, incomingMappingTuples.first(), outgoingMappingTuples.first());
         createInputTypeMapping.setLinkCreateInputType(entityCreateLinksInputTypeMapping);
 
         // and the entity-level (PhotographerCreateLinksUpdate, which really should be PhotographerUpdateLinksInput)
         LOG.info("Create entity-wide links update type");
-        var entityUpdateLinksInputTypeMapping = new EntityUpdateLinksInputObjectTypeMapping(entityDefinition, incomingMappingTuples.second(), outgoingMappingTuples.second());
+        var entityUpdateLinksInputTypeMapping = new EntityUpdateLinksInputObjectTypeMapping(itemDefinition, incomingMappingTuples.second(), outgoingMappingTuples.second());
         updateInputTypeMapping.setLinkUpdateInputType(entityUpdateLinksInputTypeMapping);
 
     }
 
-    private Tuple<Map<String, OutgoingRelationshipCreateInputObjectTypeMapping>, Map<String, OutgoingRelationshipChoiceInputObjectTypeMapping>> mapOutgoingRelationships(List<Tuple<RelationshipDefinition, EntityMutationInputObjectTypeMapping>> relationshipTuples, SelectorChoiceInputObjectTypeMapping matcherChoiceInputTypeMapping) {
+    private Tuple<Map<String, OutgoingRelationshipCreateInputObjectTypeMapping>, Map<String, OutgoingRelationshipChoiceInputObjectTypeMapping>> mapOutgoingRelationships(List<Tuple<LinkDefinition, EntityMutationInputObjectTypeMapping>> relationshipTuples, SelectorChoiceInputObjectTypeMapping matcherChoiceInputTypeMapping) {
 
         Map<String, OutgoingRelationshipCreateInputObjectTypeMapping> outgoingRelationshipCreateInputTypeMappings = new HashMap<>();
         Map<String, OutgoingRelationshipChoiceInputObjectTypeMapping> outgoingRelationshipChoiceInputTypeMappings = new HashMap<>();
@@ -117,7 +117,7 @@ public class EntityMutationInputObjectTypeMapping implements InputObjectTypeProd
 
     }
 
-    private Tuple<Map<String, IncomingRelationshipCreateInputObjectTypeMapping>, Map<String, IncomingRelationshipChoiceInputObjectTypeMapping>> mapIncomingRelationships(List<Tuple<RelationshipDefinition, EntityMutationInputObjectTypeMapping>> relationshipTuples, SelectorChoiceInputObjectTypeMapping matcherChoiceInputTypeMapping) {
+    private Tuple<Map<String, IncomingRelationshipCreateInputObjectTypeMapping>, Map<String, IncomingRelationshipChoiceInputObjectTypeMapping>> mapIncomingRelationships(List<Tuple<LinkDefinition, EntityMutationInputObjectTypeMapping>> relationshipTuples, SelectorChoiceInputObjectTypeMapping matcherChoiceInputTypeMapping) {
         Map<String, IncomingRelationshipCreateInputObjectTypeMapping> incomingRelationshipCreateInputTypeMappings = new HashMap<>();
         Map<String, IncomingRelationshipChoiceInputObjectTypeMapping> incomingRelationshipChoiceInputTypeMappings = new HashMap<>();
 
@@ -196,7 +196,7 @@ public class EntityMutationInputObjectTypeMapping implements InputObjectTypeProd
                 case DELETE_MAPPING_KEY -> throw new IllegalArgumentException("Cannot delete an entity-level mutation");
                 default -> throw new IllegalArgumentException("Unknown mutation type: " + field.getName());
             };
-            mutation.setEntityType(entityDefinition.getName());
+            mutation.setEntityType(itemDefinition.getName());
             mutations.add(mutation);
         }
 

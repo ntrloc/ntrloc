@@ -5,7 +5,7 @@ import graphql.language.FieldDefinition;
 import graphql.language.ObjectTypeDefinition;
 import graphql.language.TypeName;
 import org.apache.commons.text.CaseUtils;
-import org.ntrloc.graph.db.schema.EntityDefinition;
+import org.ntrloc.graph.db.schema.ItemDefinition;
 import org.ntrloc.graph.db.schema.PropertyDefinition;
 import org.ntrloc.graph.db.schema.PropertyGroupDefinition;
 
@@ -25,9 +25,9 @@ public class EntityPropertyGroupObjectTypeMapping implements ObjectTypeProducer 
     /* Maps graphQL property names to their original property definitions. */
     private Map<String, PropertyDefinition> propertyDefinitions = new HashMap<>();
 
-    public EntityPropertyGroupObjectTypeMapping(EntityDefinition entityDefinition, PropertyGroupDefinition propertyGroupDefinition) {
+    public EntityPropertyGroupObjectTypeMapping(ItemDefinition itemDefinition, PropertyGroupDefinition propertyGroupDefinition) {
         this.propertyGroupDefinition = propertyGroupDefinition;
-        String typeName = String.format("%s %s Property Group", entityDefinition.getName(), propertyGroupDefinition.getName());
+        String typeName = String.format("%s %s Property Group", itemDefinition.getName(), propertyGroupDefinition.getName());
         this.graphQlTypeName = CaseUtils.toCamelCase(typeName, true, '_', '-');
 
         for (var propertyDefinition : propertyGroupDefinition.getProperties()) {

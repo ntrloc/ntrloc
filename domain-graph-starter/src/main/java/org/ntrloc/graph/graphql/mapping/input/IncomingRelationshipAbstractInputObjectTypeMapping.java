@@ -4,7 +4,7 @@ import graphql.language.InputObjectTypeDefinition;
 import graphql.language.InputValueDefinition;
 import graphql.language.TypeName;
 import org.apache.commons.text.CaseUtils;
-import org.ntrloc.graph.db.schema.RelationshipDefinition;
+import org.ntrloc.graph.db.schema.LinkDefinition;
 import org.ntrloc.graph.graphql.mapping.selector.SelectorChoiceInputObjectTypeMapping;
 
 import java.util.ArrayList;
@@ -13,14 +13,14 @@ import java.util.List;
 public class IncomingRelationshipAbstractInputObjectTypeMapping implements IncomingRelationshipInputTypeMapping, InputObjectTypeProducer {
 
     protected String graphQlTypeName;
-    protected RelationshipDefinition sourceRelationshipDefinition;
+    protected LinkDefinition sourceLinkDefinition;
     protected RelationshipPropertiesInputObjectTypeMapping propertiesMapping;
     protected SelectorChoiceInputObjectTypeMapping matcherChoiceMapping;
 
-    public IncomingRelationshipAbstractInputObjectTypeMapping(String namePattern, RelationshipDefinition sourceRelationshipDefinition, RelationshipPropertiesInputObjectTypeMapping propertiesMapping, SelectorChoiceInputObjectTypeMapping matcherChoiceMapping) {
-        String typeName = String.format(namePattern, sourceRelationshipDefinition.getTargetEntity(), sourceRelationshipDefinition.getTargetLabel(), sourceRelationshipDefinition.getSourceEntity());
+    public IncomingRelationshipAbstractInputObjectTypeMapping(String namePattern, LinkDefinition sourceLinkDefinition, RelationshipPropertiesInputObjectTypeMapping propertiesMapping, SelectorChoiceInputObjectTypeMapping matcherChoiceMapping) {
+        String typeName = String.format(namePattern, sourceLinkDefinition.getTargetEntity(), sourceLinkDefinition.getTargetLabel(), sourceLinkDefinition.getSourceEntity());
         this.graphQlTypeName = CaseUtils.toCamelCase(typeName, true, '_', '-');
-        this.sourceRelationshipDefinition = sourceRelationshipDefinition;
+        this.sourceLinkDefinition = sourceLinkDefinition;
         this.propertiesMapping = propertiesMapping;
         this.matcherChoiceMapping = matcherChoiceMapping;
     }
@@ -29,13 +29,13 @@ public class IncomingRelationshipAbstractInputObjectTypeMapping implements Incom
         return graphQlTypeName;
     }
 
-    public RelationshipDefinition getSourceRelationshipDefinition() {
-        return sourceRelationshipDefinition;
+    public LinkDefinition getSourceRelationshipDefinition() {
+        return sourceLinkDefinition;
     }
 
     @Override
     public String getRelationshipTargetLabel() {
-        return sourceRelationshipDefinition.getTargetLabel();
+        return sourceLinkDefinition.getTargetLabel();
     }
 
     @Override

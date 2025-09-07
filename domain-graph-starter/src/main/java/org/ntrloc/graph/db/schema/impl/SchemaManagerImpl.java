@@ -25,11 +25,11 @@ import org.ntrloc.graph.db.LabelConstants;
 import org.ntrloc.graph.db.PropertyConstants;
 import org.ntrloc.graph.db.PropertyNameTranslator;
 import org.ntrloc.graph.db.schema.DefinitionWithPropertyGroups;
-import org.ntrloc.graph.db.schema.EntityDefinition;
+import org.ntrloc.graph.db.schema.ItemDefinition;
 import org.ntrloc.graph.db.schema.PropertyDefinition;
 import org.ntrloc.graph.db.schema.PropertyGroupDefinition;
 import org.ntrloc.graph.db.schema.PropertyType;
-import org.ntrloc.graph.db.schema.RelationshipDefinition;
+import org.ntrloc.graph.db.schema.LinkDefinition;
 import org.ntrloc.graph.db.schema.SchemaChangeReaction;
 import org.ntrloc.graph.db.schema.SchemaManager;
 import org.slf4j.Logger;
@@ -111,7 +111,7 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
     }
 
     @Override
-    public void createEntityDefinition(EntityDefinition definition) {
+    public void createEntityDefinition(ItemDefinition definition) {
 
         StandardJanusGraph standard = (StandardJanusGraph) janusGraph;
         Set<? extends JanusGraphTransaction> transactions = standard.getOpenTransactions();
@@ -258,20 +258,20 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
     }
 
     @Override
-    public void updateEntityDefinition(EntityDefinition definition) {
+    public void updateEntityDefinition(ItemDefinition definition) {
         throw new RuntimeException("not done");
     }
 
     @Override
-    public Set<EntityDefinition> retrieveEntityDefinitions() {
+    public Set<ItemDefinition> retrieveEntityDefinitions() {
         GraphTraversal<Vertex, Vertex> start = traversalSource.V().hasLabel(ENTITY_DEFINITION_LABEL);
         return retrieveEntityDefinitions(start);
     }
 
     @Override
-    public Optional<EntityDefinition> retrieveEntityDefinition(String name) {
+    public Optional<ItemDefinition> retrieveEntityDefinition(String name) {
         GraphTraversal<Vertex, Vertex> start = traversalSource.V().hasLabel(ENTITY_DEFINITION_LABEL).has("name", name);
-        Set<EntityDefinition> defs = retrieveEntityDefinitions(start);
+        Set<ItemDefinition> defs = retrieveEntityDefinitions(start);
         if (defs.isEmpty()) {
             return Optional.empty();
         } else {
@@ -279,7 +279,7 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
         }
     }
 
-    private Set<EntityDefinition> retrieveEntityDefinitions(GraphTraversal<Vertex, Vertex> startingTraversal) {
+    private Set<ItemDefinition> retrieveEntityDefinitions(GraphTraversal<Vertex, Vertex> startingTraversal) {
         var elementProjectionName = "elements";
         var propertyNodeProjectionName = "propertyNodes";
         var propertyGroupProjectionName = "propertyGroups";
@@ -300,7 +300,7 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
                 );
 
         return iter.toStream().map(v -> {
-            EntityDefinition schema = new EntityDefinition();
+            ItemDefinition schema = new ItemDefinition();
             var propertyMap = (HashMap) v.get(elementProjectionName);
             schema.setName((String) propertyMap.get("name"));
             schema.setDescription((String) propertyMap.get("description"));
@@ -340,14 +340,14 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
     }
 
     @Override
-    public void deleteEntityDefinition(EntityDefinition definition) {
+    public void deleteEntityDefinition(ItemDefinition definition) {
         throw new RuntimeException("not done");
     }
 
 
 
     @Override
-    public void createRelationshipDefinition(RelationshipDefinition definition) {
+    public void createRelationshipDefinition(LinkDefinition definition) {
         var tx = traversalSource.tx();
         boolean foundVertex = traversalSource.V().hasLabel(RELATIONSHIP_DEFINITION_LABEL).has("name", definition.getName()).hasNext();
         tx.close();
@@ -404,17 +404,17 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
     }
 
     @Override
-    public void updateRelationshipDefinition(RelationshipDefinition definition) {
+    public void updateRelationshipDefinition(LinkDefinition definition) {
         throw new RuntimeException("not done");
     }
 
     @Override
-    public Set<RelationshipDefinition> retrieveRelationshipDefinitions() {
+    public Set<LinkDefinition> retrieveRelationshipDefinitions() {
         GraphTraversal<Vertex, Vertex> start = traversalSource.V().hasLabel(RELATIONSHIP_DEFINITION_LABEL);
         return retrieveRelationshipDefinitions(start);
     }
 
-    private Set<RelationshipDefinition> retrieveRelationshipDefinitions(GraphTraversal<Vertex, Vertex> startingTraversal) {
+    private Set<LinkDefinition> retrieveRelationshipDefinitions(GraphTraversal<Vertex, Vertex> startingTraversal) {
         var elementProjectionName = "elements";
         var propertyNodeProjectionName = "propertyNodes";
         var propertyGroupProjectionName = "propertyGroups";
@@ -435,7 +435,7 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
                 );
 
         return iter.toStream().map(v -> {
-            RelationshipDefinition schema = new RelationshipDefinition();
+            LinkDefinition schema = new LinkDefinition();
             var propertyMap = (HashMap) v.get(elementProjectionName);
             schema.setName((String) propertyMap.get("name"));
             schema.setDescription((String) propertyMap.get("description"));
@@ -446,8 +446,8 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
             schema.setSourceCardinality(new org.ntrloc.graph.db.schema.Cardinality((Integer) propertyMap.get("sourceCardinalityMin"), (Integer) propertyMap.get("sourceCardinalityMax")));
             schema.setTargetCardinality(new org.ntrloc.graph.db.schema.Cardinality((Integer) propertyMap.get("targetCardinalityMin"), (Integer) propertyMap.get("targetCardinalityMax")));
             schema.setInstanceMaxCardinality((Integer) propertyMap.get("instanceMaxCardinality"));
-            schema.setSourceVersionAction(RelationshipDefinition.VersionAction.valueOf((String) propertyMap.get("sourceVersionAction")));
-            schema.setTargetVersionAction(RelationshipDefinition.VersionAction.valueOf((String) propertyMap.get("targetVersionAction")));
+            schema.setSourceVersionAction(LinkDefinition.VersionAction.valueOf((String) propertyMap.get("sourceVersionAction")));
+            schema.setTargetVersionAction(LinkDefinition.VersionAction.valueOf((String) propertyMap.get("targetVersionAction")));
 
             ArrayList<Map<String, Object>> properties = (ArrayList) v.get(propertyNodeProjectionName);
             Set<PropertyDefinition> schemaProps = properties.stream()
@@ -464,9 +464,9 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
     }
 
     @Override
-    public Optional<RelationshipDefinition> retrieveRelationshipDefinition(String name) {
+    public Optional<LinkDefinition> retrieveRelationshipDefinition(String name) {
         GraphTraversal<Vertex, Vertex> start = traversalSource.V().hasLabel(RELATIONSHIP_DEFINITION_LABEL).has("name", name);
-        Set<RelationshipDefinition> defs = retrieveRelationshipDefinitions(start);
+        Set<LinkDefinition> defs = retrieveRelationshipDefinitions(start);
         if (defs.isEmpty()) {
             return Optional.empty();
         } else {
@@ -475,7 +475,7 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
     }
 
     @Override
-    public void deleteRelationshipDefinition(RelationshipDefinition definition) {
+    public void deleteRelationshipDefinition(LinkDefinition definition) {
         throw new RuntimeException("not done");
     }
 

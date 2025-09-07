@@ -1,6 +1,6 @@
 package org.ntrloc.graph.db.schema;
 
-public class EntityReferenceDefinition extends SchemaDefinition {
+public class ItemReferenceDefinition extends SchemaDefinition {
 
     String domain;
 

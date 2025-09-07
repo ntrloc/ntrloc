@@ -2,7 +2,7 @@ package org.ntrloc.graph.db.schema.controller;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.ntrloc.graph.db.schema.EntityDefinition;
+import org.ntrloc.graph.db.schema.ItemDefinition;
 import org.ntrloc.graph.db.schema.SchemaManager;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -25,13 +25,13 @@ public class SchemaController {
     }
 
     @PutMapping("/entity")
-    void upsertEntityDefinition(@RequestBody EntityDefinition definition) {
+    void upsertEntityDefinition(@RequestBody ItemDefinition definition) {
         LOG.info("Upserting definition {}", definition);
         schemaManager.createEntityDefinition(definition);
     }
 
     @GetMapping("/entity")
-    Set<EntityDefinition> getEntityDefinitions() {
+    Set<ItemDefinition> getEntityDefinitions() {
         return schemaManager.retrieveEntityDefinitions();
     }
 

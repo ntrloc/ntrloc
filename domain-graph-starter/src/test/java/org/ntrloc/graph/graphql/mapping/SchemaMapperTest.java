@@ -2,11 +2,11 @@ package org.ntrloc.graph.graphql.mapping;
 
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.db.schema.Cardinality;
-import org.ntrloc.graph.db.schema.EntityDefinition;
+import org.ntrloc.graph.db.schema.ItemDefinition;
 import org.ntrloc.graph.db.schema.PropertyDefinition;
 import org.ntrloc.graph.db.schema.PropertyGroupDefinition;
 import org.ntrloc.graph.db.schema.PropertyType;
-import org.ntrloc.graph.db.schema.RelationshipDefinition;
+import org.ntrloc.graph.db.schema.LinkDefinition;
 import org.ntrloc.graph.graphql.mapping.impl.SchemaMapperImpl;
 
 import java.util.Set;
@@ -15,7 +15,7 @@ class SchemaMapperTest {
 
     @Test
     void testMapInputTypes() {
-        EntityDefinition photoEntity = new EntityDefinition();
+        ItemDefinition photoEntity = new ItemDefinition();
         photoEntity.setName("Photo");
         photoEntity.setDescription("A photo");
 
@@ -29,19 +29,19 @@ class SchemaMapperTest {
         PropertyGroupDefinition titleGroup = new PropertyGroupDefinition("Titles", "photo titles", Set.of(title1, title2));
         photoEntity.setPropertyGroups(Set.of(titleGroup));
 
-        EntityDefinition photographerEntity = new EntityDefinition();
+        ItemDefinition photographerEntity = new ItemDefinition();
         photographerEntity.setName("Photographer");
         photographerEntity.setDescription("A photographer");
         PropertyDefinition photographerName = new PropertyDefinition("name", PropertyType.STRING, "photographer name");
         photographerEntity.setProperties(Set.of(photographerName));
 
-        RelationshipDefinition photoRelationship = new RelationshipDefinition();
+        LinkDefinition photoRelationship = new LinkDefinition();
         photoRelationship.setSourceEntity("Photographer");
         photoRelationship.setTargetEntity("Photo");
         photoRelationship.setSourceCardinality(new Cardinality(0, 1) );
         photoRelationship.setTargetCardinality(new Cardinality(0, 1) );
-        photoRelationship.setSourceVersionAction(RelationshipDefinition.VersionAction.NONE);
-        photoRelationship.setTargetVersionAction(RelationshipDefinition.VersionAction.NONE);
+        photoRelationship.setSourceVersionAction(LinkDefinition.VersionAction.NONE);
+        photoRelationship.setTargetVersionAction(LinkDefinition.VersionAction.NONE);
         photoRelationship.setName("CREATED");
         photoRelationship.setSourceLabel("created");
         photoRelationship.setTargetLabel("created by");
@@ -49,12 +49,12 @@ class SchemaMapperTest {
         PropertyDefinition createdCountProperty = new PropertyDefinition("count", PropertyType.INT, "count");
         photoRelationship.setProperties(Set.of(createdCountProperty));
 
-        Set<EntityDefinition> entityDefinitions = Set.of(photoEntity, photographerEntity);
-        Set<RelationshipDefinition> relationshipDefinitions = Set.of(photoRelationship);
+        Set<ItemDefinition> itemDefinitions = Set.of(photoEntity, photographerEntity);
+        Set<LinkDefinition> linkDefinitions = Set.of(photoRelationship);
 
         SchemaMapper mapper = new SchemaMapperImpl();
 
-        mapper.mapSchema(entityDefinitions, relationshipDefinitions);
+        mapper.mapSchema(itemDefinitions, linkDefinitions);
 
     }
 

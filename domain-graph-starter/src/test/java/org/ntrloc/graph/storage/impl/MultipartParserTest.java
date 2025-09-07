@@ -5,7 +5,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.ntrloc.graph.db.EntityManager;
+import org.ntrloc.graph.db.ItemManager;
 import org.ntrloc.graph.db.impl.HashingBinaryDataWriter;
 import org.ntrloc.graph.db.impl.MultipartParser;
 import org.springframework.core.io.buffer.DataBuffer;
@@ -42,7 +42,7 @@ public class MultipartParserTest {
     @DisplayName("test parse simple multipart upload")
     void testSimpleMultipartUpload() throws IOException {
 
-        var entityManager = mock(EntityManager.class);
+        var entityManager = mock(ItemManager.class);
 
         var writer1 = mock(HashingBinaryDataWriter.class);
         var writer2 = mock(HashingBinaryDataWriter.class);

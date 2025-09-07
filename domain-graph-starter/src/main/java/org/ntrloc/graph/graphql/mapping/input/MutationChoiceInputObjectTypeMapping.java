@@ -10,8 +10,8 @@ import graphql.language.Value;
 import org.apache.commons.text.CaseUtils;
 import org.ntrloc.graph.Tuple;
 import org.ntrloc.graph.db.language.mutation.EntityMutation;
-import org.ntrloc.graph.db.schema.EntityDefinition;
-import org.ntrloc.graph.db.schema.RelationshipDefinition;
+import org.ntrloc.graph.db.schema.ItemDefinition;
+import org.ntrloc.graph.db.schema.LinkDefinition;
 import org.ntrloc.graph.graphql.mapping.selector.SelectorChoiceInputObjectTypeMapping;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,32 +35,32 @@ public class MutationChoiceInputObjectTypeMapping implements InputObjectTypeProd
     private String graphQlTypeName;
     private Map<String, EntityMutationInputObjectTypeMapping> entityInputTypes = new java.util.HashMap<>();
 
-    public MutationChoiceInputObjectTypeMapping(Set<EntityDefinition> entityDefinitions, Set<RelationshipDefinition> relationshipDefinitions) {
+    public MutationChoiceInputObjectTypeMapping(Set<ItemDefinition> itemDefinitions, Set<LinkDefinition> linkDefinitions) {
         String typeName = String.format("Mutation Choice Input");
         this.graphQlTypeName = CaseUtils.toCamelCase(typeName, true, '_', '-');
 
         SelectorChoiceInputObjectTypeMapping matcherChoiceInputTypeMapping = new SelectorChoiceInputObjectTypeMapping();
 
-        for (EntityDefinition definition : entityDefinitions) {
+        for (ItemDefinition definition : itemDefinitions) {
             EntityMutationInputObjectTypeMapping mapping = new EntityMutationInputObjectTypeMapping(definition, matcherChoiceInputTypeMapping);
             LOG.info("Parsed input type {} for entity {}", mapping.getGraphQlTypeName(), definition.getName());
             entityInputTypes.put(definition.getName(), mapping);
         }
 
-        for (EntityDefinition entityDefinition: entityDefinitions) {
-            String entityName = entityDefinition.getName();
+        for (ItemDefinition itemDefinition : itemDefinitions) {
+            String entityName = itemDefinition.getName();
             EntityMutationInputObjectTypeMapping sourceMapping = entityInputTypes.get(entityName);
 
-            Set<RelationshipDefinition> outboundRelationships = relationshipDefinitions.stream().filter(rel -> rel.getSourceEntity().equals(entityName)).collect(Collectors.toSet());
-            List<Tuple<RelationshipDefinition, EntityMutationInputObjectTypeMapping>> outgoingTuples = new ArrayList<>();
-            for (RelationshipDefinition definition: outboundRelationships) {
+            Set<LinkDefinition> outboundRelationships = linkDefinitions.stream().filter(rel -> rel.getSourceEntity().equals(entityName)).collect(Collectors.toSet());
+            List<Tuple<LinkDefinition, EntityMutationInputObjectTypeMapping>> outgoingTuples = new ArrayList<>();
+            for (LinkDefinition definition: outboundRelationships) {
                 EntityMutationInputObjectTypeMapping targetMapping = entityInputTypes.get(definition.getTargetEntity());
                 outgoingTuples.add(Tuple.of(definition, targetMapping));
             }
 
-            Set<RelationshipDefinition> inboundRelationships = relationshipDefinitions.stream().filter(rel -> rel.getTargetEntity().equals(entityName)).collect(Collectors.toSet());
-            List<Tuple<RelationshipDefinition, EntityMutationInputObjectTypeMapping>> incomingTuples = new ArrayList<>();
-            for (RelationshipDefinition definition: inboundRelationships) {
+            Set<LinkDefinition> inboundRelationships = linkDefinitions.stream().filter(rel -> rel.getTargetEntity().equals(entityName)).collect(Collectors.toSet());
+            List<Tuple<LinkDefinition, EntityMutationInputObjectTypeMapping>> incomingTuples = new ArrayList<>();
+            for (LinkDefinition definition: inboundRelationships) {
                 EntityMutationInputObjectTypeMapping targetMapping = entityInputTypes.get(definition.getSourceEntity());
                 incomingTuples.add(Tuple.of(definition, targetMapping));
             }
