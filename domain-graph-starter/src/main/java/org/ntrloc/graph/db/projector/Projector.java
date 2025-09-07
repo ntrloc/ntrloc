@@ -5,10 +5,12 @@ import org.apache.tinkerpop.gremlin.process.traversal.P;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversal;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversalSource;
 import org.apache.tinkerpop.gremlin.structure.Direction;
+import org.apache.tinkerpop.gremlin.structure.Vertex;
 import org.ntrloc.graph.db.PropertyConstants;
 import org.ntrloc.graph.db.projector.selectors.HasPropertyValueSelector;
 import org.ntrloc.graph.db.projector.selectors.ItemSelector;
 import org.ntrloc.graph.db.projector.selectors.predicate.EqualsPredicate;
+import org.ntrloc.graph.db.projector.selectors.predicate.NotEqualsPredicate;
 import org.ntrloc.graph.db.projector.selectors.predicate.Predicate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,6 +20,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.stream.Collectors;
 
 public class Projector {
 
@@ -30,9 +33,9 @@ public class Projector {
     }
 
     Iterable<ItemProjection> project(SelectableItemProjectionSpec spec) {
-        GraphTraversal<?, ?> traversal = traversalSource.V();
+        GraphTraversal<?, Vertex> traversal = traversalSource.V();
         traversal = select(traversal, spec);
-        var projectionTraversal = projectItems(traversal, spec);
+        var projectionTraversal = projectItems(traversal, spec, spec.getItemType());
 
         List<ItemProjection> itemProjections = new ArrayList<>();
         while (projectionTraversal.hasNext()) {
@@ -43,29 +46,30 @@ public class Projector {
     }
 
     /** Returns a new traverser that adds a node selection to the given traversal. */
-    private GraphTraversal<?, ?> select(GraphTraversal<?, ?> traversal, SelectableItemProjectionSpec spec) {
+    private GraphTraversal<?, Vertex> select(GraphTraversal<?, Vertex> traversal, SelectableItemProjectionSpec spec) {
         var retTraversal =  traversal.has(PropertyConstants.NODE_TYPE_PROPERTY, spec.getItemType());
         if (spec.getItemSelector() != null) {
-            var selectTraversal = getItemSelectionTraversal(spec.getItemSelector());
+            var selectTraversal = getItemSelectionTraversal(spec.getItemType(), spec.getItemSelector());
             retTraversal = retTraversal.and(selectTraversal);
         }
         return retTraversal;
     }
 
     /** Returns a traverser that adds a property projection to the given traverser. */
-    private GraphTraversal<?, ItemProjection> projectItems(GraphTraversal<?, ?> traversal, ItemProjectionSpec spec) {
+    private GraphTraversal<?, ItemProjection> projectItems(GraphTraversal<?, Vertex> traversal, ItemProjectionSpec spec, String itemType) {
         Map<String, GraphTraversal<?, ?>> projectionTraversals = new TreeMap<>();
         projectionTraversals.put(PropertyConstants.UNIQUE_ID_PROPERTY, __.values(PropertyConstants.UNIQUE_ID_PROPERTY));
         projectionTraversals.put(PropertyConstants.NODE_TYPE_PROPERTY, __.values(PropertyConstants.NODE_TYPE_PROPERTY));
         if (spec.getProperties() != null) {
-            projectionTraversals.put("properties", __.valueMap(spec.getProperties().toArray(new String[0])));
+            var internalPropertyNames = spec.getProperties().stream().map(p -> externalToInternalPropertyName(itemType, p)).toList();
+            projectionTraversals.put("properties", __.valueMap(internalPropertyNames.toArray(new String[0])));
         }
 
         if (spec.getLinks() != null) {
             for (Map.Entry<String, LinkProjectionSpec> entry : spec.getLinks().entrySet()) {
                 String linkAlias = entry.getKey();
                 LinkProjectionSpec linkSpec = entry.getValue();
-                String otherNodeName = linkSpec.getNodeLabel();
+                String otherNodeName = linkSpec.getRelatedItemType();
                 var linkTraversal = linkSpec.getDirection().equals(Direction.IN) ?
                         __.in(getLinkPropertyOutEdgeName(linkSpec.getLinkName()))
                                 .where(__.in(getLinkPropertyInEdgeName(linkSpec.getLinkName())).has(PropertyConstants.NODE_TYPE_PROPERTY, otherNodeName))
@@ -87,10 +91,13 @@ public class Projector {
             String uid = (String) value.get(PropertyConstants.UNIQUE_ID_PROPERTY);
             String nodeType = (String) value.get(PropertyConstants.NODE_TYPE_PROPERTY);
             Map<String, Object> nodeProps = (Map<String, Object>) value.get("properties");
+            Map<String, Object> translatedProps = nodeProps == null ? null : nodeProps.entrySet().stream()
+                    .collect(Collectors.toMap(entry -> internalToExternalPropertyName(nodeType, entry.getKey()), Map.Entry::getValue));
+
             ItemProjection projection = new ItemProjection();
             projection.setId(uid);
             projection.setNodeType(nodeType);
-            projection.setProperties(nodeProps);
+            projection.setProperties(translatedProps);
 
             if (spec.getLinks() != null) {
                 Map<String, List<LinkProjection>> links = new HashMap<>();
@@ -104,7 +111,7 @@ public class Projector {
         });
     }
 
-    private GraphTraversal<?, List<LinkProjection>> projectLinks(GraphTraversal<?, ?> traversal, LinkProjectionSpec spec) {
+    private GraphTraversal<?, List<LinkProjection>> projectLinks(GraphTraversal<?, Vertex> traversal, LinkProjectionSpec spec) {
         Map<String, GraphTraversal<?, ?>> projectionTraversals = new TreeMap<>();
         projectionTraversals.put(PropertyConstants.UNIQUE_ID_PROPERTY, __.values(PropertyConstants.UNIQUE_ID_PROPERTY));
         projectionTraversals.put(PropertyConstants.NODE_TYPE_PROPERTY, __.values(PropertyConstants.NODE_TYPE_PROPERTY));
@@ -119,12 +126,12 @@ public class Projector {
 
         // add the node on the other side of the link to the projection
         if (spec.getDirection().equals(Direction.IN)) {
-            var sourceTraversal = __.inE( getLinkPropertyInEdgeName(spec.getLinkName())).outV();
-            var projectedNodes = projectItems(sourceTraversal, itemProjectionSpec);
+            var sourceTraversal = __.inE(getLinkPropertyInEdgeName(spec.getLinkName())).outV();
+            var projectedNodes = projectItems(sourceTraversal, itemProjectionSpec, spec.getRelatedItemType());
             projectionTraversals.put("source", projectedNodes);
         } else {
-            var targetTraversal = __.outE( getLinkPropertyOutEdgeName(spec.getLinkName())).inV();
-            var projectedNodes = projectItems(targetTraversal, itemProjectionSpec);
+            var targetTraversal = __.outE(getLinkPropertyOutEdgeName(spec.getLinkName())).inV();
+            var projectedNodes = projectItems(targetTraversal, itemProjectionSpec, spec.getRelatedItemType());
             projectionTraversals.put("target", projectedNodes);
         }
 
@@ -156,6 +163,14 @@ public class Projector {
         });
     }
 
+    private String externalToInternalPropertyName(String itemType, String propertyName) {
+        return "%s_%s".formatted(itemType, propertyName);
+    }
+
+    private String internalToExternalPropertyName(String itemType, String propertyName) {
+        return propertyName.replaceFirst("%s_%s".formatted(itemType, ""), "");
+    }
+
     private String getLinkPropertyInEdgeName(String linkName) {
         return linkName + "-in";
     }
@@ -164,9 +179,9 @@ public class Projector {
         return linkName + "-out";
     }
 
-    private GraphTraversal<?, ?> getItemSelectionTraversal(ItemSelector selector) {
+    private GraphTraversal<?, ?> getItemSelectionTraversal(String itemtYpe, ItemSelector selector) {
         return switch (selector) {
-            case HasPropertyValueSelector valueSelector -> __.start().has(valueSelector.getName(), getPredicate(valueSelector.getPredicate()));
+            case HasPropertyValueSelector valueSelector -> __.start().has(externalToInternalPropertyName(itemtYpe, valueSelector.getName()), getPredicate(valueSelector.getPredicate()));
             default -> throw new RuntimeException("Not implemented yet");
         };
     }
@@ -174,6 +189,7 @@ public class Projector {
     private P<?> getPredicate(Predicate predicate) {
         return switch (predicate) {
             case EqualsPredicate eq -> P.eq(eq.getValue());
+            case NotEqualsPredicate neq -> P.neq(neq.getValue());
             default -> throw new RuntimeException("Not implemented yet");
         };
     }

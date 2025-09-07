@@ -8,7 +8,7 @@ public class LinkProjectionSpec {
 
     private String linkName;
     private Direction direction;
-    private String nodeLabel;
+    private String relatedItemType;
     private List<String> properties;
     private ItemProjectionSpec nodeProjection;
 
@@ -16,12 +16,12 @@ public class LinkProjectionSpec {
      * Specifies the information to return for a link between items in the graph.
      * @param linkName the name of the link
      * @param direction the direction of the link
-     * @param nodeLabel the label of the item on the "other side" of the link
+     * @param relatedItemType the label of the item on the "other side" of the link
      */
-    public LinkProjectionSpec(String linkName, Direction direction, String nodeLabel) {
+    public LinkProjectionSpec(String linkName, Direction direction, String relatedItemType) {
         this.linkName = linkName;
         this.direction = direction;
-        this.nodeLabel = nodeLabel;
+        this.relatedItemType = relatedItemType;
     }
 
     public String getLinkName() {
@@ -32,8 +32,8 @@ public class LinkProjectionSpec {
         return direction;
     }
 
-    public String getNodeLabel() {
-        return nodeLabel;
+    public String getRelatedItemType() {
+        return relatedItemType;
     }
 
     public LinkProjectionSpec properties(List<String> properties) {
