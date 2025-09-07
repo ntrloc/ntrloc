@@ -24,6 +24,10 @@ public class MulticastClusterConfigurationFactory extends AbstractClusterConfigu
     @Value("${cluster.multicast.init-timeout:5}")
     private int multicastJoinTimeout;
 
+    public MulticastClusterConfigurationFactory(@Value("${cluster.name:ntrloc}") String clusterName) {
+        super(clusterName);
+    }
+
     @Override
     public Config getObject() {
         LOG.info("Enabling multicast clustering");

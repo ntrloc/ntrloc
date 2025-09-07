@@ -4,6 +4,7 @@ import com.hazelcast.config.Config;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.ntrloc.graph.cluster.ClusterConfigurationFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
@@ -12,6 +13,10 @@ import org.springframework.stereotype.Component;
 public class StandaloneClusterConfigurationFactory extends AbstractClusterConfiguration implements ClusterConfigurationFactory {
 
     private static final Logger LOG = LogManager.getLogger(StandaloneClusterConfigurationFactory.class);
+
+    public StandaloneClusterConfigurationFactory(@Value("${cluster.name:ntrloc}") String clusterName) {
+        super(clusterName);
+    }
 
     @Override
     public Config getObject() {

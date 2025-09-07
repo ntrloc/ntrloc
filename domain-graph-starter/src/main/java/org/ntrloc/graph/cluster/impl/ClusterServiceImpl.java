@@ -41,7 +41,7 @@ public class ClusterServiceImpl implements ClusterService, MembershipListener {
     }
 
     @PreDestroy
-    private void shutdown() {
+    void shutdown() {
         LOG.warn("Shutting down cluster connection");
         hazelcast.shutdown();
     }

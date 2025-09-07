@@ -32,6 +32,10 @@ public class KubernetesClusterConfigurationFactory extends AbstractClusterConfig
     @Value("${cluster.label.value:}")
     private Optional<String> serviceLabelValue;
 
+    public KubernetesClusterConfigurationFactory(@Value("${cluster.name:ntrloc}") String clusterName) {
+        super(clusterName);
+    }
+
     @Override
     public Config getObject() {
         LOG.info("Enabling Kubernetes clustering");

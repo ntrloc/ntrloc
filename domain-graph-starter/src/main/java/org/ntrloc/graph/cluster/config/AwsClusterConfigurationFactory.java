@@ -26,6 +26,9 @@ public class AwsClusterConfigurationFactory extends AbstractClusterConfiguration
     @Value("${cluster.aws.tagValue}")
     private String tagValue;
 
+    public AwsClusterConfigurationFactory(@Value("${cluster.name:ntrloc}") String clusterName) {
+        super(clusterName);
+    }
 
     @Override
     public Config getObject() {

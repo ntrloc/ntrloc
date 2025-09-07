@@ -7,12 +7,10 @@ import com.hazelcast.config.MapConfig;
 import com.hazelcast.config.QueueConfig;
 import com.hazelcast.config.ScheduledExecutorConfig;
 import com.hazelcast.config.TopicConfig;
-import com.hazelcast.spring.context.SpringManagedContext;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -24,8 +22,7 @@ public abstract class AbstractClusterConfiguration {
 
     private static final Logger LOG = LogManager.getLogger(AbstractClusterConfiguration.class);
 
-    @Value("${cluster.name:ntrloc}")
-    private String clusterName;
+    protected String clusterName;
 
     @Autowired(required = false)
     private List<MapConfig> mapConfigs;
@@ -42,14 +39,14 @@ public abstract class AbstractClusterConfiguration {
     @Autowired(required = false)
     private List<ScheduledExecutorConfig> scheduledExecutorConfigs;
 
-    @Autowired
-    private ApplicationContext applicationContext;
+    AbstractClusterConfiguration(@Value("${cluster.name:ntrloc}") String clusterName) {
+        this.clusterName = clusterName;
+    }
 
     protected Config getBaseConfiguration() {
         LOG.info("Initializing cluster configuration");
 
         Config cfg = new Config();
-        cfg.setManagedContext(new SpringManagedContext(applicationContext));
         cfg.setInstanceName(clusterName + UUID.randomUUID().toString().replace("-", ""));
         cfg.setClusterName(clusterName);
         cfg.setProperty("hazelcast.logging.type", "log4j2");
