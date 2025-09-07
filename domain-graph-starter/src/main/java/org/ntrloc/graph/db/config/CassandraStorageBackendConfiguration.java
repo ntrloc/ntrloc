@@ -1,6 +1,6 @@
 package org.ntrloc.graph.db.config;
 
-public class CassandraStorageBackend {
+public class CassandraStorageBackendConfiguration {
 
     private String host;
 

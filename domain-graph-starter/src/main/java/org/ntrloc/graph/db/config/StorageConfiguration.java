@@ -6,7 +6,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public class StorageConfiguration {
 
     private BerkeleyStorageConfiguration berkeley;
-    private CassandraStorageBackend cassandra;
+    private CassandraStorageBackendConfiguration cassandra;
 
     public BerkeleyStorageConfiguration getBerkeley() {
         return berkeley;
@@ -16,11 +16,11 @@ public class StorageConfiguration {
         this.berkeley = berkeleyStorageConfiguration;
     }
 
-    public CassandraStorageBackend getCassandra() {
+    public CassandraStorageBackendConfiguration getCassandra() {
         return cassandra;
     }
 
-    public void setCassandraS(CassandraStorageBackend cassandraStorageBackend) {
+    public void setCassandraS(CassandraStorageBackendConfiguration cassandraStorageBackend) {
         this.cassandra = cassandraStorageBackend;
     }
 

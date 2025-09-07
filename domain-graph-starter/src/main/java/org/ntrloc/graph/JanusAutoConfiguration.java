@@ -4,7 +4,7 @@ import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversalSo
 import org.janusgraph.core.JanusGraph;
 import org.janusgraph.core.JanusGraphFactory;
 import org.ntrloc.graph.db.config.BerkeleyStorageConfiguration;
-import org.ntrloc.graph.db.config.CassandraStorageBackend;
+import org.ntrloc.graph.db.config.CassandraStorageBackendConfiguration;
 import org.ntrloc.graph.db.config.IndexConfiguration;
 import org.ntrloc.graph.db.config.LuceneIndexConfiguration;
 import org.ntrloc.graph.db.config.StorageConfiguration;
@@ -36,7 +36,7 @@ public class JanusAutoConfiguration {
             builder = builder.set("storage.backend", "berkeleyje")
                     .set("storage.directory", berkeley.getDirectory());
         } else if (storageConfiguration.getCassandra() != null) {
-            CassandraStorageBackend cassandra = storageConfiguration.getCassandra();
+            CassandraStorageBackendConfiguration cassandra = storageConfiguration.getCassandra();
             builder = builder.set("storage.backend", "cql")
                 .set("storage.hostname", cassandra.getHost());
         } else {
