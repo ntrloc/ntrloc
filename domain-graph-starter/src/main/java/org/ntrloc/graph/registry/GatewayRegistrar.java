@@ -12,6 +12,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
 
+import java.util.Optional;
+
 @Service
 @ConditionalOnBean(GatewayConfiguration.class)
 public class GatewayRegistrar {
@@ -28,15 +30,19 @@ public class GatewayRegistrar {
 
     private boolean registrationEnabled = false;
 
+    private WebClient webClient;
+
     public GatewayRegistrar(
             @Value("${graph.domainName}") String domainName,
             @Value("${server.port}") int port,
             ClusterService clusterService,
-            GatewayConfiguration gatewayConfiguration) {
+            GatewayConfiguration gatewayConfiguration,
+            Optional<WebClient> webClientOptional) {
         this.domainName = domainName;
         this.serverPort = port;
         this.clusterService = clusterService;
         this.gatewayConfiguration = gatewayConfiguration;
+        webClientOptional.ifPresent(client -> this.webClient = client);
     }
 
     @Scheduled(initialDelayString = "#{@gatewayConfiguration.renewalRateMilliseconds}", fixedRateString = "#{@gatewayConfiguration.renewalRateMilliseconds}")
@@ -61,9 +67,11 @@ public class GatewayRegistrar {
 
             LOG.info("Registering domain instance {} using gateway configuration {}", info, gatewayConfiguration);
 
-            WebClient webClient = WebClient.create(String.format("%s://%s:%d/%s",
-                    gatewayConfiguration.getScheme(), gatewayConfiguration.getHostname(), gatewayConfiguration.getPort(),
-                    gatewayConfiguration.getRegistrationPath()));
+            if (webClient == null) {
+                webClient = WebClient.create(String.format("%s://%s:%d/%s",
+                        gatewayConfiguration.getScheme(), gatewayConfiguration.getHostname(), gatewayConfiguration.getPort(),
+                        gatewayConfiguration.getRegistrationPath()));
+            }
             webClient.put().bodyValue(info).exchangeToMono(response -> {
                 LOG.info("Received response {} from gateway", response.statusCode());
                 return Mono.empty();
