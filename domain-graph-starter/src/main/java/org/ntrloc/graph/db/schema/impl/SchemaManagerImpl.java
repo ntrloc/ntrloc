@@ -24,6 +24,7 @@ import org.ntrloc.graph.cluster.ClusterService;
 import org.ntrloc.graph.db.LabelConstants;
 import org.ntrloc.graph.db.PropertyConstants;
 import org.ntrloc.graph.db.PropertyNameTranslator;
+import org.ntrloc.graph.db.schema.DefinitionWithPropertyGroups;
 import org.ntrloc.graph.db.schema.EntityDefinition;
 import org.ntrloc.graph.db.schema.PropertyDefinition;
 import org.ntrloc.graph.db.schema.PropertyGroupDefinition;
@@ -216,6 +217,18 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
         }
 
         // add property groups
+        traversal = appendPropertyGroupTraversal(traversal, definition, vertexCount);
+
+        traversal.iterate();
+        tx.commit();
+        tx.close();
+
+        LOG.info("Created definition {}", definition);
+        signalSchemaChange();
+
+    }
+
+    private GraphTraversal<Vertex, ?> appendPropertyGroupTraversal(GraphTraversal<Vertex, ?> traversal, DefinitionWithPropertyGroups definition, AtomicInteger vertexCount) {
         Set<PropertyGroupDefinition> propertyGroups = definition.getPropertyGroups() == null ? Set.of() : definition.getPropertyGroups();
 
         for (PropertyGroupDefinition groupDefinition : propertyGroups) {
@@ -241,13 +254,7 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
             }
         }
 
-        traversal.iterate();
-        tx.commit();
-        tx.close();
-
-        LOG.info("Created definition {}", definition);
-        signalSchemaChange();
-
+        return traversal;
     }
 
     @Override
@@ -385,32 +392,7 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
         }
 
         // add property groups
-        if (definition.getPropertyGroups() != null) {
-            Set<PropertyGroupDefinition> propertyGroups = definition.getPropertyGroups() == null ? Set.of() : definition.getPropertyGroups();
-
-            for (PropertyGroupDefinition groupDefinition : propertyGroups) {
-                String groupRef = String.valueOf(vertexCount.getAndIncrement());
-
-                traversal = traversal.addV(LabelConstants.PROPERTY_GROUP_DEFINITION_LABEL)
-                        .property("name", groupDefinition.getName())
-                        .property("description", groupDefinition.getDescription())
-                        .as(groupRef);
-                traversal = traversal.addE("has-property-group")
-                        .from("schema").to(groupRef);
-
-                for (PropertyDefinition groupPropertyDef : groupDefinition.getProperties()) {
-                    String ref = String.valueOf(vertexCount.getAndIncrement());
-
-                    traversal = traversal.addV(LabelConstants.PROPERTY_DEFINITION_LABEL)
-                            .property("name", groupPropertyDef.getName())
-                            .property("description", groupPropertyDef.getDescription())
-                            .property("type", groupPropertyDef.getType().toString())
-                            .as(ref);
-                    traversal = traversal.addE("has-property")
-                            .from(groupRef).to(ref);
-                }
-            }
-        }
+        traversal = appendPropertyGroupTraversal(traversal, definition, vertexCount);
 
         traversal.iterate();
         tx.commit();

@@ -4,7 +4,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.StringJoiner;
 
-public class EntityDefinition extends SchemaDefinition {
+public class EntityDefinition extends SchemaDefinition implements DefinitionWithPropertyGroups {
 
     private Set<PropertyDefinition> properties;
 

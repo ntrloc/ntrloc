@@ -4,7 +4,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.StringJoiner;
 
-public class RelationshipDefinition extends SchemaDefinition {
+public class RelationshipDefinition extends SchemaDefinition implements DefinitionWithPropertyGroups {
 
     public enum VersionAction {
         NONE,
