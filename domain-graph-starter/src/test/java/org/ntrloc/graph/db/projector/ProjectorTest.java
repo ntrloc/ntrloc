@@ -8,14 +8,21 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.db.PropertyConstants;
-import org.ntrloc.graph.db.projector.selectors.LabelSelector;
+import org.ntrloc.graph.db.projector.selectors.HasPropertyValueSelector;
+import org.ntrloc.graph.db.projector.selectors.predicate.EqualsPredicate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.util.List;
 import java.util.NoSuchElementException;
+import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.StreamSupport;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @DisplayName("A projector")
 class ProjectorTest {
@@ -73,6 +80,12 @@ class ProjectorTest {
                     .property("Photographer_name", "Bill")
                     .as("photographer1")
 
+                .addV("Photographer")
+                    .property(PropertyConstants.UNIQUE_ID_PROPERTY, "ph4")
+                    .property(PropertyConstants.NODE_TYPE_PROPERTY, "Photographer")
+                    .property("Photographer_name", "Jack")
+                    .as("photographer2")
+
                 .addV("Lightbox")
                     .property(PropertyConstants.UNIQUE_ID_PROPERTY, "lb1")
                     .property(PropertyConstants.NODE_TYPE_PROPERTY, "Lightbox")
@@ -120,11 +133,16 @@ class ProjectorTest {
     @DisplayName("should execute a simple item projection")
     void testSimpleItemProjection() {
         Projector projector = new Projector(traversalSource);
-        SelectableItemProjectionSpec spec = new SelectableItemProjectionSpec(LabelSelector.on("Photo"))
+        SelectableItemProjectionSpec spec = new SelectableItemProjectionSpec("Photo")
                 .properties(List.of("Photo_name", "Photo_colorspace"));
         Iterable<ItemProjection> projections = projector.project(spec);
-        for (ItemProjection projection: projections) {
-            LOG.info("Got projection {}", projection);
+        List<ItemProjection> list = StreamSupport.stream(projections.spliterator(), false).toList();
+        assertEquals(2, list.size());
+        for (ItemProjection projection: list) {
+            assertNotNull(projection.getId());
+            assertNotNull(projection.getNodeType());
+            assertTrue(projection.getProperties().containsKey("Photo_name"));
+            assertTrue(projection.getProperties().containsKey("Photo_colorspace"));
         }
     }
 
@@ -132,37 +150,29 @@ class ProjectorTest {
     @DisplayName("should project links by a specific item type")
     void testProjectLinksByNodeType() {
         Projector projector = new Projector(traversalSource);
-        SelectableItemProjectionSpec spec = new SelectableItemProjectionSpec(LabelSelector.on("Photographer"))
+        SelectableItemProjectionSpec spec = new SelectableItemProjectionSpec("Photographer")
                 .properties(List.of("Photographer_name"))
                 .link("created", new LinkProjectionSpec("CREATED", Direction.OUT, "Photo").properties(List.of("date")))
                 .link("worksFor", new LinkProjectionSpec("EMPLOYS", Direction.IN, "Agency"));
         Iterable<ItemProjection> projections = projector.project(spec);
-        for (ItemProjection projection: projections) {
-            LOG.info("Got projection {}", projection);
-        }
+        List<ItemProjection> list = StreamSupport.stream(projections.spliterator(), false).toList();
+        assertEquals(2, list.size());
+        Optional<ItemProjection> photographer = list.stream().filter(p -> !p.getLinks().get("created").isEmpty() && !p.getLinks().get("worksFor").isEmpty()).findFirst();
+        assertTrue(photographer.isPresent());
     }
 
     @Test
-    @DisplayName("should execute a item projection with links")
-    void testItemProjectionWithLinks() {
+    @DisplayName("should project nodes that have a property value (equals)")
+    void testProjectNodesBySelector() {
         Projector projector = new Projector(traversalSource);
-        SelectableItemProjectionSpec spec = new SelectableItemProjectionSpec(LabelSelector.on("Photo"))
-                .properties(List.of("Photo_name", "Photo_colorspace"))
-                .link("createdBy", new LinkProjectionSpec("CREATED", Direction.IN, "Photographer")
-                        .properties(List.of("date"))
-                        .nodeProjection(new ItemProjectionSpec()
-                                .properties(List.of("Photographer_name"))
-                                .link("worksFor", new LinkProjectionSpec("EMPLOYS", Direction.IN, "Agency"))
-                        ));
-
-        long start = System.currentTimeMillis();
+        SelectableItemProjectionSpec spec = new SelectableItemProjectionSpec("Photographer")
+                .select(HasPropertyValueSelector.of("Photographer_name", EqualsPredicate.of("Jack")))
+                .properties(List.of("Photographer_name"));
         Iterable<ItemProjection> projections = projector.project(spec);
-        long end = System.currentTimeMillis();
-        LOG.info("Projection took {} ms", end - start);
-
-        for (ItemProjection projection: projections) {
-            LOG.info("Got projection {}", projection);
-        }
+        List<ItemProjection> list = StreamSupport.stream(projections.spliterator(), false).toList();
+        assertEquals(1, list.size());
+        ItemProjection photographer = list.get(0);
+        assertEquals(List.of("Jack"), photographer.getProperties().get("Photographer_name"));
     }
 
 }

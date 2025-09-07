@@ -1,24 +1,33 @@
 package org.ntrloc.graph.db.projector.selectors;
 
+import org.ntrloc.graph.db.projector.selectors.predicate.Predicate;
+
 public class HasPropertyValueSelector implements ItemSelector, LinkSelector {
 
-    private String propertyName;
-    private Object propertyValue;
+    private String name;
+    private Predicate predicate;
 
-    public String getPropertyName() {
-        return propertyName;
+    public String getName() {
+        return name;
     }
 
-    public void setPropertyName(String propertyName) {
-        this.propertyName = propertyName;
+    public void setName(String name) {
+        this.name = name;
     }
 
-    public Object getPropertyValue() {
-        return propertyValue;
+    public Predicate getPredicate() {
+        return predicate;
     }
 
-    public void setPropertyValue(Object propertyValue) {
-        this.propertyValue = propertyValue;
+    public void setPredicate(Predicate predicate) {
+        this.predicate = predicate;
+    }
+
+    public static HasPropertyValueSelector of(String name, Predicate predicate) {
+        HasPropertyValueSelector selector = new HasPropertyValueSelector();
+        selector.setName(name);
+        selector.setPredicate(predicate);
+        return selector;
     }
 
 }

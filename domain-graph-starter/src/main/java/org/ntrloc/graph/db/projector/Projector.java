@@ -1,12 +1,15 @@
 package org.ntrloc.graph.db.projector;
 
 import org.apache.tinkerpop.gremlin.groovy.jsr223.dsl.credential.__;
+import org.apache.tinkerpop.gremlin.process.traversal.P;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversal;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversalSource;
 import org.apache.tinkerpop.gremlin.structure.Direction;
 import org.ntrloc.graph.db.PropertyConstants;
-import org.ntrloc.graph.db.projector.selectors.LabelSelector;
+import org.ntrloc.graph.db.projector.selectors.HasPropertyValueSelector;
 import org.ntrloc.graph.db.projector.selectors.ItemSelector;
+import org.ntrloc.graph.db.projector.selectors.predicate.EqualsPredicate;
+import org.ntrloc.graph.db.projector.selectors.predicate.Predicate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -28,7 +31,7 @@ public class Projector {
 
     Iterable<ItemProjection> project(SelectableItemProjectionSpec spec) {
         GraphTraversal<?, ?> traversal = traversalSource.V();
-        traversal = select(traversal, spec.getItemSelector());
+        traversal = select(traversal, spec);
         var projectionTraversal = projectItems(traversal, spec);
 
         List<ItemProjection> itemProjections = new ArrayList<>();
@@ -40,13 +43,13 @@ public class Projector {
     }
 
     /** Returns a new traverser that adds a node selection to the given traversal. */
-    private GraphTraversal<?, ?> select(GraphTraversal<?, ?> traversal, ItemSelector selector) {
-        GraphTraversal<?, ?> result;
-        switch (selector) {
-            case LabelSelector labelSelector -> result = traversal.hasLabel(labelSelector.getLabel());
-            default -> throw new IllegalStateException("Unsupported selector: " + selector);
+    private GraphTraversal<?, ?> select(GraphTraversal<?, ?> traversal, SelectableItemProjectionSpec spec) {
+        var retTraversal =  traversal.has(PropertyConstants.NODE_TYPE_PROPERTY, spec.getItemType());
+        if (spec.getItemSelector() != null) {
+            var selectTraversal = getItemSelectionTraversal(spec.getItemSelector());
+            retTraversal = retTraversal.and(selectTraversal);
         }
-        return result;
+        return retTraversal;
     }
 
     /** Returns a traverser that adds a property projection to the given traverser. */
@@ -159,6 +162,20 @@ public class Projector {
 
     private String getLinkPropertyOutEdgeName(String linkName) {
         return linkName + "-out";
+    }
+
+    private GraphTraversal<?, ?> getItemSelectionTraversal(ItemSelector selector) {
+        return switch (selector) {
+            case HasPropertyValueSelector valueSelector -> __.start().has(valueSelector.getName(), getPredicate(valueSelector.getPredicate()));
+            default -> throw new RuntimeException("Not implemented yet");
+        };
+    }
+
+    private P<?> getPredicate(Predicate predicate) {
+        return switch (predicate) {
+            case EqualsPredicate eq -> P.eq(eq.getValue());
+            default -> throw new RuntimeException("Not implemented yet");
+        };
     }
 
 }

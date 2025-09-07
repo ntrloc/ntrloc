@@ -7,10 +7,19 @@ import java.util.List;
 
 public class SelectableItemProjectionSpec extends ItemProjectionSpec {
 
+    private String itemType;
     private ItemSelector itemSelector;
 
-    public SelectableItemProjectionSpec(ItemSelector itemSelector) {
-        this.itemSelector = itemSelector;
+    public SelectableItemProjectionSpec(String itemType) {
+        this.itemType = itemType;
+    }
+
+    public String getItemType() {
+        return itemType;
+    }
+
+    public void setItemType(String itemType) {
+        this.itemType = itemType;
     }
 
     public ItemSelector getItemSelector() {
@@ -31,6 +40,11 @@ public class SelectableItemProjectionSpec extends ItemProjectionSpec {
             links = new HashMap<>();
         }
         links.put(linkName, linkProjectionSpec);
+        return this;
+    }
+
+    public SelectableItemProjectionSpec select(ItemSelector selector) {
+        this.itemSelector = selector;
         return this;
     }
 
