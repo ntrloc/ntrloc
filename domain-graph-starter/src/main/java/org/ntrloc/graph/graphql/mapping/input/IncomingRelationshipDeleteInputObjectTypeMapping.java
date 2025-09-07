@@ -32,7 +32,7 @@ public class IncomingRelationshipDeleteInputObjectTypeMapping implements Incomin
     }
 
     @Override
-    public String getTargetLabel() {
+    public String getRelationshipTargetLabel() {
         return sourceRelationshipDefinition.getTargetLabel();
     }
 

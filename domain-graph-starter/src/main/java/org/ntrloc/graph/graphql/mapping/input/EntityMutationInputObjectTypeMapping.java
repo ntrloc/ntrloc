@@ -107,8 +107,8 @@ public class EntityMutationInputObjectTypeMapping implements InputObjectTypeProd
             // link modification type (PhotographerCreatedPhotoLinkModificationInput)
             OutgoingRelationshipChoiceInputObjectTypeMapping relationshipChoiceType = new OutgoingRelationshipChoiceInputObjectTypeMapping(relationshipDefinition, relationshipCreateType, relationshipUpdateType, relationshipDeleteType);
 
-            outgoingRelationshipCreateInputTypeMappings.put(relationshipCreateType.getSourceLabel(), relationshipCreateType);
-            outgoingRelationshipChoiceInputTypeMappings.put(relationshipChoiceType.getSourceLabel(), relationshipChoiceType);
+            outgoingRelationshipCreateInputTypeMappings.put(relationshipCreateType.getRelationshipSourceLabel(), relationshipCreateType);
+            outgoingRelationshipChoiceInputTypeMappings.put(relationshipChoiceType.getRelationshipSourceLabel(), relationshipChoiceType);
 
             LOG.info("rel types created");
         }
@@ -144,8 +144,8 @@ public class EntityMutationInputObjectTypeMapping implements InputObjectTypeProd
             // link modification type (PhotographerCreatedPhotoLinkModificationInput)
             IncomingRelationshipChoiceInputObjectTypeMapping relationshipChoiceType = new IncomingRelationshipChoiceInputObjectTypeMapping(relationshipDefinition, relationshipCreateType, relationshipUpdateType, relationshipDeleteType);
 
-            incomingRelationshipCreateInputTypeMappings.put(relationshipCreateType.getTargetLabel(), relationshipCreateType);
-            incomingRelationshipChoiceInputTypeMappings.put(relationshipChoiceType.getTargetLabel(), relationshipChoiceType);
+            incomingRelationshipCreateInputTypeMappings.put(relationshipCreateType.getRelationshipTargetLabel(), relationshipCreateType);
+            incomingRelationshipChoiceInputTypeMappings.put(relationshipChoiceType.getRelationshipTargetLabel(), relationshipChoiceType);
 
             LOG.info("incoming rel types created");
         }

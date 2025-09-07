@@ -49,7 +49,7 @@ public class IncomingRelationshipChoiceInputObjectTypeMapping implements Incomin
     }
 
     @Override
-    public String getTargetLabel() {
+    public String getRelationshipTargetLabel() {
         return targetRelationshipDefinition.getTargetLabel();
     }
 

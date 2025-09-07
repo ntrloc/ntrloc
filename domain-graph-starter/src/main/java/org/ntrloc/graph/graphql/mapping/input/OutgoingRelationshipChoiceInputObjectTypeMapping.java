@@ -49,7 +49,7 @@ public class OutgoingRelationshipChoiceInputObjectTypeMapping implements Outgoin
     }
 
     @Override
-    public String getSourceLabel() {
+    public String getRelationshipSourceLabel() {
         return targetRelationshipDefinition.getSourceLabel();
     }
 
