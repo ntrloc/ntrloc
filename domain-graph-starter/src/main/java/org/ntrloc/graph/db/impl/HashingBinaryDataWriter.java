@@ -19,6 +19,7 @@ public class HashingBinaryDataWriter {
 
     MessageDigest md5Digest;
 
+    @SuppressWarnings("java:S4790")
     public HashingBinaryDataWriter(String id, OutputStream outputStream) throws NoSuchAlgorithmException {
         this.id = id;
 

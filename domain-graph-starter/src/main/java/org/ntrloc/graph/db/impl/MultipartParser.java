@@ -49,6 +49,7 @@ public class MultipartParser {
 
     private ArrayBuffer buffer = new ArrayBuffer(64000);
 
+    @SuppressWarnings("java:S5852")
     private Pattern contentIdPattern = Pattern.compile("form-data; name=\"(.+)\"; filename=\".+\"");
 
     private Pattern headerPattern = Pattern.compile("([^:]+): (.+)");
