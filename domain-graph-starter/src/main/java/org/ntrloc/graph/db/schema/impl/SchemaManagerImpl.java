@@ -59,6 +59,7 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
 
     private static final String SCHEMA_MAP_NAME = "schemaMap";
     private static final String SCHEMA_VERSION_LABEL = "version";
+    private final ClusterService clusterService;
 
     private IMap<String, Object> schemaMap;
     private List<SchemaChangeReaction> reactions = new ArrayList<>();
@@ -80,6 +81,7 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
             LOG.error("Interrupted", ie);
             throw new RuntimeException(ie);
         }
+        this.clusterService = clusterService;
     }
 
     public void verifyGlobalPropertiesAndIndexes() throws InterruptedException {
@@ -481,6 +483,7 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
 
     public void signalSchemaChange() {
         LOG.info("Signaling schema change");
+        reactions.forEach(SchemaChangeReaction::onSchemaChange);
         String uuid = UUID.randomUUID().toString();
         schemaMap.put(SCHEMA_VERSION_LABEL, uuid);
     }
@@ -488,12 +491,18 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
     @Override
     public void addSchemaChangeReaction(SchemaChangeReaction reaction) {
         reactions.add(reaction);
+        reaction.onSchemaChange();
     }
 
     private void entryChanged(EntryEvent<String, Object> entryEvent) {
         LOG.info("got entry event {}", entryEvent);
+
         if (entryEvent.getKey().equals(SCHEMA_VERSION_LABEL)) {
-            reactions.forEach(SchemaChangeReaction::onSchemaChange);
+            var local = clusterService.getLocalMember();
+            var eventOrigin = entryEvent.getMember();
+            if (!local.equals(eventOrigin)) {
+                reactions.forEach(SchemaChangeReaction::onSchemaChange);
+            }
         }
     }
 

@@ -1,22 +1,16 @@
 package org.ntrloc.graph.db.language.mutation;
 
-public class MutationResponseItem {
-
-    public enum MutationType {
-        CREATE,
-        UPDATE,
-        DELETE
-    }
+public class ItemMutationResponse {
 
     private MutationType mutationType;
     private String itemType;
     private String id;
 
-    public MutationResponseItem() {
+    public ItemMutationResponse() {
         // no-op
     }
 
-    public MutationResponseItem(MutationType mutationType, String itemType, String id) {
+    public ItemMutationResponse(MutationType mutationType, String itemType, String id) {
         this.mutationType = mutationType;
         this.itemType = itemType;
         this.id = id;
@@ -45,4 +39,5 @@ public class MutationResponseItem {
     public void setId(String id) {
         this.id = id;
     }
+
 }

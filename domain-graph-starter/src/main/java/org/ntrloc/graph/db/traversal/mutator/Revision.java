@@ -6,7 +6,7 @@ import java.util.StringJoiner;
 
 public class Revision extends Node {
 
-    enum RevisionType {
+    public enum RevisionType {
         UPDATE,
         DELETE
     }

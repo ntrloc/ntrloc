@@ -6,8 +6,9 @@ import graphql.schema.DataFetcher;
 import graphql.schema.DataFetchingEnvironment;
 import graphql.schema.GraphQLFieldDefinition;
 import org.ntrloc.graph.db.ItemManager;
+import org.ntrloc.graph.db.language.mutation.ItemMutationResponse;
 import org.ntrloc.graph.db.language.mutation.MutationRequest;
-import org.ntrloc.graph.db.language.mutation.MutationResponseItem;
+import org.ntrloc.graph.db.language.mutation.MutationType;
 import org.ntrloc.graph.graphql.mapping.SchemaMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -50,12 +51,12 @@ public class MutationDataFetcher implements DataFetcher<Object> {
             var request = new MutationRequest(mutations);
             var response = itemManager.executeMutation(request);
 
-            var itemsByAction = response.getItems().stream().collect(Collectors.groupingBy(MutationResponseItem::getMutationType));
+            var itemsByAction = response.getItemMutationResponses().stream().collect(Collectors.groupingBy(ItemMutationResponse::getMutationType));
 
-            var retMap = new HashMap<String, List<MutationResponseItem>>();
-            retMap.put("created", itemsByAction.get(MutationResponseItem.MutationType.CREATE));
-            retMap.put("updated", itemsByAction.get(MutationResponseItem.MutationType.UPDATE));
-            retMap.put("deleted", itemsByAction.get(MutationResponseItem.MutationType.DELETE));
+            var retMap = new HashMap<String, List<ItemMutationResponse>>();
+            retMap.put("created", itemsByAction.get(MutationType.CREATE));
+            retMap.put("updated", itemsByAction.get(MutationType.UPDATE));
+            retMap.put("deleted", itemsByAction.get(MutationType.DELETE));
 
             return retMap;
         } catch (Exception e) {

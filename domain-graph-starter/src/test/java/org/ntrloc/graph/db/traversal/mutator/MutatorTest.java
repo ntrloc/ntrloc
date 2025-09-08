@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.db.ItemStatus;
 import org.ntrloc.graph.db.LabelConstants;
 import org.ntrloc.graph.db.language.StringProperty;
+import org.ntrloc.graph.db.traversal.mutator.impl.MutatorImpl;
 
 import java.util.Arrays;
 import java.util.HashMap;
@@ -80,7 +81,7 @@ class MutatorTest {
 
     @Test
     void testCreateNode() {
-        Mutator mutator = new Mutator(traversalSource);
+        Mutator mutator = new MutatorImpl(traversalSource);
 
         var label = "Photo";
         var props = Set.of(new StringProperty("name", "photo1.jpg"));
@@ -96,7 +97,7 @@ class MutatorTest {
 
         List<String> txId = (List<String>) valueMap.get(TRANSACTION_ID_PROPERTY);
         assertEquals(1, txId.size());
-        assertEquals(mutator.getTransaction().getId(), txId.get(0));
+        assertEquals(mutator.getTransactionId(), txId.get(0));
 
         // commit the mutation and check that the node is in a normal state now
         mutator.commit();
@@ -133,7 +134,7 @@ class MutatorTest {
 
     @Test
     void testUpdateNodeProperties() {
-        Mutator mutator = new Mutator(traversalSource);
+        Mutator mutator = new MutatorImpl(traversalSource);
         var label = "Photo";
         var props = Set.of(
                 new StringProperty("name", "photo1.jpg"),

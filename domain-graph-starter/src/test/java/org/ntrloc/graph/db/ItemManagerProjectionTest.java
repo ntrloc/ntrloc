@@ -12,6 +12,7 @@ import org.ntrloc.graph.db.language.projection.SelectableItemProjectionSpec;
 import org.ntrloc.graph.db.schema.SchemaManager;
 import org.ntrloc.graph.db.storage.BinaryStorageAdapter;
 import org.ntrloc.graph.db.traversal.mutator.Mutator;
+import org.ntrloc.graph.db.traversal.mutator.impl.MutatorImpl;
 import org.ntrloc.graph.db.traversal.projector.Projector;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -127,7 +128,7 @@ public class ItemManagerProjectionTest {
 
         BinaryStorageAdapter adapter = mock(BinaryStorageAdapter.class);
         SchemaManager schemaManager = mock(SchemaManager.class);
-        Mutator mutator = new Mutator(traversalSource);
+        Mutator mutator = new MutatorImpl(traversalSource);
         Projector projector = new Projector(traversalSource);
         manager = new ItemManagerImpl(traversalSource, adapter, schemaManager, mutator, projector);
     }

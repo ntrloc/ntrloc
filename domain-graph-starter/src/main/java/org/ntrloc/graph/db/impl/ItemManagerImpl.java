@@ -7,9 +7,14 @@ import org.ntrloc.graph.db.ItemManager;
 import org.ntrloc.graph.db.language.mutation.ItemCreateMutation;
 import org.ntrloc.graph.db.language.mutation.ItemDeleteMutation;
 import org.ntrloc.graph.db.language.mutation.ItemMutation;
+import org.ntrloc.graph.db.language.mutation.ItemMutationResponse;
+import org.ntrloc.graph.db.language.mutation.ItemReference;
+import org.ntrloc.graph.db.language.mutation.LinkCreateMutation;
+import org.ntrloc.graph.db.language.mutation.LinkMutationResponse;
 import org.ntrloc.graph.db.language.mutation.MutationRequest;
 import org.ntrloc.graph.db.language.mutation.MutationResponse;
-import org.ntrloc.graph.db.language.mutation.MutationResponseItem;
+import org.ntrloc.graph.db.language.mutation.MutationType;
+import org.ntrloc.graph.db.language.mutation.ReferenceableItemMutation;
 import org.ntrloc.graph.db.language.projection.ItemProjection;
 import org.ntrloc.graph.db.language.projection.SelectableItemProjectionSpec;
 import org.ntrloc.graph.db.schema.ItemDefinition;
@@ -24,8 +29,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
@@ -128,17 +135,64 @@ public class ItemManagerImpl implements ItemManager {
         Set<ItemDeleteMutation> deleteMutations = itemMutations.stream().filter(ItemDeleteMutation.class::isInstance)
                 .map(ItemDeleteMutation.class::cast).collect(Collectors.toSet());
 
+        /* Used to map item mutations to the ID of the items they mutated */
+        Map<String, ReferenceableItemMutation> mutationIdMap = new HashMap<>();
+
         for (ItemCreateMutation createMutation: createMutations) {
             String createdId = mutator.createNode(createMutation.getEntityType(), createMutation.getProperties());
-            MutationResponseItem item = new MutationResponseItem(MutationResponseItem.MutationType.CREATE, createMutation.getEntityType(), createdId);
-            response.addItem(item);
+            mutationIdMap.put(createdId, createMutation);
+            ItemMutationResponse item = new ItemMutationResponse(MutationType.CREATE, createMutation.getEntityType(), createdId);
+            response.addItemMutationResponse(item);
         }
 
         for (ItemDeleteMutation deleteMutation: deleteMutations) {
             String deleteId = deleteMutation.getId();
             String itemType = mutator.deleteNode(deleteId);
-            MutationResponseItem item = new MutationResponseItem(MutationResponseItem.MutationType.DELETE, itemType, deleteId);
-            response.addItem(item);
+            ItemMutationResponse item = new ItemMutationResponse(MutationType.DELETE, itemType, deleteId);
+            response.addItemMutationResponse(item);
+        }
+
+        for (ItemCreateMutation createMutation: createMutations) {
+            String fromId = null;
+            Optional<Map.Entry<String, ReferenceableItemMutation>> createdEntryOpt = mutationIdMap.entrySet().stream().filter(entry -> entry.getValue() == createMutation).findAny();
+            if (createdEntryOpt.isPresent()) {
+                fromId = createdEntryOpt.get().getKey();
+            } else {
+                throw new RuntimeException("Item mutation " + createMutation + " not found");
+            }
+
+            for (LinkCreateMutation linkCreate: createMutation.getLinks()) {
+                var linkType = linkCreate.getLinkType();
+                var linkDefinition = relationshipDefinitionMap.get(linkType);
+                if (linkDefinition == null) {
+                    throw new RuntimeException("Link type " + linkType + " not found");
+                }
+                var reference = linkCreate.getLinkedItemReference();
+                String toId = switch(reference.getType()) {
+                    case ItemReference.ReferenceType.MUTATION -> {
+                        // find the ID of the item whose reference matches this reference ID
+                        Optional<Map.Entry<String, ReferenceableItemMutation>> mutationEntryOpt = mutationIdMap.entrySet()
+                                .stream()
+                                .filter(entry -> entry.getValue().getRefId() != null && entry.getValue().getRefId().equals(reference.getId()))
+                                .findAny();
+                        if (mutationEntryOpt.isPresent()) {
+                            yield mutationEntryOpt.get().getKey();
+                        } else {
+                            throw new RuntimeException("Linked item " + reference.getId() + " not found");
+                        }
+                    }
+                    case ItemReference.ReferenceType.GRAPH -> reference.getId();
+                };
+                if (toId == null) {
+                    throw new RuntimeException("Linked item " + reference.getId() + " not found");
+                } else {
+                    LOG.info("Linking item to item {}", toId);
+                    String linkId = mutator.createLink(fromId, toId, linkDefinition.getName(), linkCreate.getProperties());
+                    LinkMutationResponse link = new LinkMutationResponse(MutationType.CREATE, linkId, fromId, toId, linkDefinition.getName());
+                    response.addLinkMutationResponse(link);
+                }
+
+            }
         }
 
         mutator.prepare();

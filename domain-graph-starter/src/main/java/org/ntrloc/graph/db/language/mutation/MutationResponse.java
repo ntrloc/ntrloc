@@ -5,14 +5,23 @@ import java.util.List;
 
 public class MutationResponse {
 
-    private List<MutationResponseItem> itemList = new ArrayList<>();
+    private List<ItemMutationResponse> itemMutationResponses = new ArrayList<>();
+    private List<LinkMutationResponse> linkMutationResponses = new ArrayList<>();
 
-    public void addItem(MutationResponseItem item) {
-        itemList.add(item);
+    public void addItemMutationResponse(ItemMutationResponse itemMutationResponse) {
+        itemMutationResponses.add(itemMutationResponse);
     }
 
-    public List<MutationResponseItem> getItems() {
-        return itemList;
+    public void addLinkMutationResponse(LinkMutationResponse linkMutationResponse) {
+        linkMutationResponses.add(linkMutationResponse);
+    }
+
+    public List<ItemMutationResponse> getItemMutationResponses() {
+        return itemMutationResponses;
+    }
+
+    public List<LinkMutationResponse> getLinkMutationResponses() {
+        return linkMutationResponses;
     }
 
 }

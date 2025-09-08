@@ -13,6 +13,8 @@ import org.ntrloc.graph.db.impl.ItemManagerImpl;
 import org.ntrloc.graph.db.language.StringProperty;
 import org.ntrloc.graph.db.language.mutation.ItemCreateMutation;
 import org.ntrloc.graph.db.language.mutation.ItemDeleteMutation;
+import org.ntrloc.graph.db.language.mutation.ItemReference;
+import org.ntrloc.graph.db.language.mutation.LinkCreateMutation;
 import org.ntrloc.graph.db.language.mutation.MutationRequest;
 import org.ntrloc.graph.db.schema.Cardinality;
 import org.ntrloc.graph.db.schema.ItemDefinition;
@@ -23,6 +25,7 @@ import org.ntrloc.graph.db.schema.SchemaManager;
 import org.ntrloc.graph.db.schema.impl.SchemaManagerImpl;
 import org.ntrloc.graph.db.storage.BinaryStorageAdapter;
 import org.ntrloc.graph.db.traversal.mutator.Mutator;
+import org.ntrloc.graph.db.traversal.mutator.impl.MutatorImpl;
 import org.ntrloc.graph.db.traversal.projector.Projector;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -85,7 +88,7 @@ class ItemManagerMutationTest {
 
         BinaryStorageAdapter adapter = mock(BinaryStorageAdapter.class);
         ClusterService clusterService = mock(ClusterService.class);
-        Mutator mutator = new Mutator(traversalSource);
+        Mutator mutator = new MutatorImpl(traversalSource);
         Projector projector = new Projector(traversalSource);
         doReturn(mock(IMap.class)).when(clusterService).getMap(anyString());
         schemaManager = new SchemaManagerImpl(janusGraph, traversalSource, clusterService);
@@ -114,7 +117,9 @@ class ItemManagerMutationTest {
         schemaManager.createEntityDefinition(photographerDefinition);
 
         LinkDefinition linkDefinition = new LinkDefinition();
-        linkDefinition.setName("created");
+        linkDefinition.setName("CREATED");
+        linkDefinition.setSourceLabel("created");
+        linkDefinition.setTargetLabel("createdBy");
         linkDefinition.setSourceEntity(photographerDefinition.getName());
         linkDefinition.setTargetEntity(photoDefinition.getName());
         linkDefinition.setSourceCardinality(new Cardinality(1, 1));
@@ -125,7 +130,7 @@ class ItemManagerMutationTest {
     }
 
     @Test
-    @DisplayName("should create items with properties")
+    @DisplayName("should create an item with properties")
     void testCreateItem() {
         ItemCreateMutation photoCreate = new ItemCreateMutation();
         photoCreate.setEntityType("Photo");
@@ -134,8 +139,8 @@ class ItemManagerMutationTest {
         ));
         MutationRequest req = new MutationRequest(List.of(photoCreate));
         var res = itemManager.executeMutation(req);
-        assertEquals(1, res.getItems().size());
-        var id = res.getItems().get(0).getId();
+        assertEquals(1, res.getItemMutationResponses().size());
+        var id = res.getItemMutationResponses().get(0).getId();
         assertNotNull(id, "null id returned");
         var iter = traversalSource.V().has(UNIQUE_ID_PROPERTY, id)
                 .project("id", "label", "props")
@@ -152,7 +157,7 @@ class ItemManagerMutationTest {
     }
 
     @Test
-    @DisplayName("should delete items")
+    @DisplayName("should delete an item")
     void testDeleteItem() {
         ItemCreateMutation photoCreate = new ItemCreateMutation();
         photoCreate.setEntityType("Photo");
@@ -161,14 +166,43 @@ class ItemManagerMutationTest {
         ));
         MutationRequest req = new MutationRequest(List.of(photoCreate));
         var res = itemManager.executeMutation(req);
-        assertEquals(1, res.getItems().size());
-        var id = res.getItems().get(0).getId();
+        assertEquals(1, res.getItemMutationResponses().size());
+        var id = res.getItemMutationResponses().get(0).getId();
         assertNotNull(id, "null id returned");
         ItemDeleteMutation delete = new ItemDeleteMutation(id);
         MutationRequest deleteReq = new MutationRequest(List.of(delete));
         var deleteRes = itemManager.executeMutation(deleteReq);
-        assertEquals(1, deleteRes.getItems().size(), "delete item count mismatch");
-        assertEquals(id, deleteRes.getItems().get(0).getId(), "deleted item id mismatch");
+        assertEquals(1, deleteRes.getItemMutationResponses().size(), "delete item count mismatch");
+        assertEquals(id, deleteRes.getItemMutationResponses().get(0).getId(), "deleted item id mismatch");
+    }
+
+    @Test
+    @DisplayName("should create two items and link them")
+    void testCreateAndLinkItems() {
+        ItemCreateMutation photoCreate = new ItemCreateMutation();
+        photoCreate.setEntityType("Photo");
+        photoCreate.setRefId("photoRef");
+        photoCreate.setProperties(List.of(
+                new StringProperty("name", "photo1")
+        ));
+        ItemCreateMutation photographerCreate = new ItemCreateMutation();
+        photographerCreate.setEntityType("Photographer");
+        photographerCreate.setProperties(List.of(
+                new StringProperty("name", "photographer1")
+        ));
+        LinkCreateMutation linkCreate = new LinkCreateMutation();
+        linkCreate.setLinkType("CREATED");
+        ItemReference reference = new ItemReference();
+        reference.setType(ItemReference.ReferenceType.MUTATION);
+        reference.setId(photoCreate.getRefId());
+        linkCreate.setLinkedItemReference(reference);
+        photographerCreate.setLinks(List.of(linkCreate));
+
+        MutationRequest req = new MutationRequest(List.of(photoCreate, photographerCreate));
+        var res = itemManager.executeMutation(req);
+        assertEquals(2, res.getItemMutationResponses().size());
+        assertEquals(1, res.getLinkMutationResponses().size());
+
     }
 
 }
