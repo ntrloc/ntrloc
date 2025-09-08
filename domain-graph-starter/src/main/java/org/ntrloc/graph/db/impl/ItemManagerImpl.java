@@ -4,8 +4,9 @@ import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversal;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversalSource;
 import org.apache.tinkerpop.gremlin.structure.Vertex;
 import org.ntrloc.graph.db.ItemManager;
-import org.ntrloc.graph.db.language.mutation.EntityCreateMutation;
-import org.ntrloc.graph.db.language.mutation.EntityMutation;
+import org.ntrloc.graph.db.language.mutation.ItemCreateMutation;
+import org.ntrloc.graph.db.language.mutation.ItemDeleteMutation;
+import org.ntrloc.graph.db.language.mutation.ItemMutation;
 import org.ntrloc.graph.db.language.mutation.MutationRequest;
 import org.ntrloc.graph.db.language.mutation.MutationResponse;
 import org.ntrloc.graph.db.language.mutation.MutationResponseItem;
@@ -121,12 +122,22 @@ public class ItemManagerImpl implements ItemManager {
 
         MutationResponse response = new MutationResponse();
 
-        List<EntityMutation> entityMutations = mutationRequest.getEntityMutations();
-        Set<EntityCreateMutation> createMutations = entityMutations.stream().filter(EntityCreateMutation.class::isInstance)
-                .map(EntityCreateMutation.class::cast).collect(Collectors.toSet());
-        for (EntityCreateMutation createMutation: createMutations) {
+        List<ItemMutation> itemMutations = mutationRequest.getItemMutations();
+        Set<ItemCreateMutation> createMutations = itemMutations.stream().filter(ItemCreateMutation.class::isInstance)
+                .map(ItemCreateMutation.class::cast).collect(Collectors.toSet());
+        Set<ItemDeleteMutation> deleteMutations = itemMutations.stream().filter(ItemDeleteMutation.class::isInstance)
+                .map(ItemDeleteMutation.class::cast).collect(Collectors.toSet());
+
+        for (ItemCreateMutation createMutation: createMutations) {
             String createdId = mutator.createNode(createMutation.getEntityType(), createMutation.getProperties());
             MutationResponseItem item = new MutationResponseItem(MutationResponseItem.MutationType.CREATE, createMutation.getEntityType(), createdId);
+            response.addItem(item);
+        }
+
+        for (ItemDeleteMutation deleteMutation: deleteMutations) {
+            String deleteId = deleteMutation.getId();
+            String itemType = mutator.deleteNode(deleteId);
+            MutationResponseItem item = new MutationResponseItem(MutationResponseItem.MutationType.DELETE, itemType, deleteId);
             response.addItem(item);
         }
 

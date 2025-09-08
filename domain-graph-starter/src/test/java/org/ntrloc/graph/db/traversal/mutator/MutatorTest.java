@@ -9,7 +9,7 @@ import org.janusgraph.core.JanusGraph;
 import org.janusgraph.core.JanusGraphFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.ntrloc.graph.db.EntityStatus;
+import org.ntrloc.graph.db.ItemStatus;
 import org.ntrloc.graph.db.LabelConstants;
 import org.ntrloc.graph.db.language.StringProperty;
 
@@ -92,7 +92,7 @@ class MutatorTest {
         Map<Object, Object> valueMap = traversalSource.V().hasLabel("Photo").valueMap().next();
         List<String> status = (List<String>) valueMap.get(STATUS_PROPERTY);
         assertEquals(1, status.size());
-        assertEquals(EntityStatus.UNCOMMITTED.toString(), status.get(0));
+        assertEquals(ItemStatus.UNCOMMITTED_CREATE.toString(), status.get(0));
 
         List<String> txId = (List<String>) valueMap.get(TRANSACTION_ID_PROPERTY);
         assertEquals(1, txId.size());
@@ -104,9 +104,9 @@ class MutatorTest {
 
         status = (List<String>) valueMap.get(STATUS_PROPERTY);
         assertEquals(1, status.size());
-        assertEquals(EntityStatus.NORMAL.toString(), status.get(0));
+        assertEquals(ItemStatus.NORMAL.toString(), status.get(0));
 
-        assertNull(valueMap.get(TRANSACTION_ID_PROPERTY));
+        assertNotNull(valueMap.get(TRANSACTION_ID_PROPERTY));
     }
 
     private void assertProperties(Map<String, Object> props, Object... keysAndValues) {
@@ -176,7 +176,7 @@ class MutatorTest {
         mutator.prepare();
         mutator.checkpoint();
 
-        var prepareNode = nodeWithUpdates.apply(traversalSource.V().hasLabel("Photo").has(STATUS_PROPERTY, EntityStatus.NORMAL.toString())).next();
+        var prepareNode = nodeWithUpdates.apply(traversalSource.V().hasLabel("Photo").has(STATUS_PROPERTY, ItemStatus.NORMAL.toString())).next();
 
         assertNull(prepareNode.revision, "revision should be null after prepare");
         var newVersion = prepareNode.version;
@@ -187,7 +187,7 @@ class MutatorTest {
         // check that the node has a new committed version after commit
         mutator.commit();
 
-        var commitNode = nodeWithUpdates.apply(traversalSource.V().hasLabel("Photo").has(STATUS_PROPERTY, EntityStatus.NORMAL.toString()).has(VERSION_PROPERTY, 1)).next();
+        var commitNode = nodeWithUpdates.apply(traversalSource.V().hasLabel("Photo").has(STATUS_PROPERTY, ItemStatus.NORMAL.toString()).has(VERSION_PROPERTY, 1)).next();
 
         assertNotNull(commitNode.version, "previous version should not be null after commit");
         var newNode = commitNode.version;

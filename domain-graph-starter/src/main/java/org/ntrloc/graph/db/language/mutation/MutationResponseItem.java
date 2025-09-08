@@ -9,16 +9,16 @@ public class MutationResponseItem {
     }
 
     private MutationType mutationType;
-    private String entityType;
+    private String itemType;
     private String id;
 
     public MutationResponseItem() {
         // no-op
     }
 
-    public MutationResponseItem(MutationType mutationType, String entityType, String id) {
+    public MutationResponseItem(MutationType mutationType, String itemType, String id) {
         this.mutationType = mutationType;
-        this.entityType = entityType;
+        this.itemType = itemType;
         this.id = id;
     }
 
@@ -30,12 +30,12 @@ public class MutationResponseItem {
         this.mutationType = mutationType;
     }
 
-    public String getEntityType() {
-        return entityType;
+    public String getItemType() {
+        return itemType;
     }
 
-    public void setEntityType(String type) {
-        this.entityType = type;
+    public void setItemType(String type) {
+        this.itemType = type;
     }
 
     public String getId() {

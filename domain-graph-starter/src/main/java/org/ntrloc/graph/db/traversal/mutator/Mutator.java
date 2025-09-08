@@ -1,11 +1,12 @@
 package org.ntrloc.graph.db.traversal.mutator;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.tinkerpop.gremlin.process.traversal.P;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversal;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversalSource;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.__;
 import org.apache.tinkerpop.gremlin.structure.VertexProperty;
-import org.ntrloc.graph.db.EntityStatus;
+import org.ntrloc.graph.db.ItemStatus;
 import org.ntrloc.graph.db.LabelConstants;
 import org.ntrloc.graph.db.PropertyConstants;
 import org.ntrloc.graph.db.PropertyNameTranslator;
@@ -17,6 +18,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -25,6 +27,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
+import static org.ntrloc.graph.db.PropertyConstants.ITEM_TYPE_PROPERTY;
+import static org.ntrloc.graph.db.PropertyConstants.STATUS_PROPERTY;
 import static org.ntrloc.graph.db.PropertyConstants.UNIQUE_ID_PROPERTY;
 
 @Component
@@ -50,8 +54,9 @@ public class Mutator {
                 .addV(label)
                 .as(uniqueId)
                 .property(UNIQUE_ID_PROPERTY, uniqueId)
+                .property(ITEM_TYPE_PROPERTY, label)
                 .property(PropertyConstants.VERSION_PROPERTY, 1)
-                .property(PropertyConstants.STATUS_PROPERTY, EntityStatus.UNCOMMITTED.toString())
+                .property(PropertyConstants.STATUS_PROPERTY, ItemStatus.UNCOMMITTED_CREATE.toString())
                 .property(PropertyConstants.TRANSACTION_ID_PROPERTY, transaction.getId());
         for (Property property : properties) {
             String translatedPropertyName = PropertyNameTranslator.externalPropertyNameToInternalName(label, property.getName());
@@ -93,7 +98,8 @@ public class Mutator {
         var traversal = traversalSource.V().has(UNIQUE_ID_PROPERTY, uniqueId).as(updateNodeAlias)
                 .addV(LabelConstants.REVISION_LABEL).as(revisionAlias)
                 .property(PropertyConstants.TRANSACTION_ID_PROPERTY, transaction.getId())
-                .property(UNIQUE_ID_PROPERTY, uniqueId);
+                .property(UNIQUE_ID_PROPERTY, uniqueId)
+                .property(PropertyConstants.REVISION_TYPE_PROPERTY, Revision.RevisionType.UPDATE.toString());
 
         Set<String> deletedProperties = new HashSet<>();
         for (Property property : properties) {
@@ -124,6 +130,32 @@ public class Mutator {
 
         traversal = traversal.addE(LabelConstants.IS_REVISION_OF_LABEL).from(revisionAlias).to(updateNodeAlias).outV();
         traversal.iterate();
+    }
+
+    public String deleteNode(String uniqueId) {
+        transaction.begin();
+
+        String label = null;
+        var labelTraversal = traversalSource.V().has(UNIQUE_ID_PROPERTY, uniqueId).project("label").by(__.label());
+        if (!labelTraversal.hasNext()) {
+            throw new IllegalArgumentException("No node with unique ID " + uniqueId + " found");
+        } else {
+            label = labelTraversal.next().get("label").toString();
+        }
+
+        var updateNodeAlias = "updateNode";
+        var revisionAlias = "nodeRevision";
+
+        var traversal = traversalSource.V().has(UNIQUE_ID_PROPERTY, uniqueId).as(updateNodeAlias)
+                .addV(LabelConstants.REVISION_LABEL).as(revisionAlias)
+                .property(PropertyConstants.TRANSACTION_ID_PROPERTY, transaction.getId())
+                .property(UNIQUE_ID_PROPERTY, uniqueId)
+                .property(PropertyConstants.REVISION_TYPE_PROPERTY, Revision.RevisionType.DELETE.toString());
+
+        traversal = traversal.addE(LabelConstants.IS_REVISION_OF_LABEL).from(revisionAlias).to(updateNodeAlias).outV();
+        traversal.iterate();
+
+        return label;
     }
 
     /* --------------------- Transaction methods --------------------- */
@@ -185,39 +217,49 @@ public class Mutator {
 
                 traversal = traversal.V(currentNode.getId()).as(currentLabel);
 
-                Map<Object, Object> appliedProperties = new HashMap<>();
+                if (revision.getType() == Revision.RevisionType.UPDATE) {
+                    Map<Object, Object> appliedProperties = new HashMap<>();
 
-                // collect all current properties
-                if (currentNode.getProperties() != null) {
-                    appliedProperties.putAll(currentNode.getProperties());
-                }
+                    // collect all current properties
+                    if (currentNode.getProperties() != null) {
+                        appliedProperties.putAll(currentNode.getProperties());
+                    }
 
-                // overwrite properties with new values in the revision
-                for (Map.Entry<String, Object> entry : revision.getProperties().entrySet()) {
-                    String key = entry.getKey();
-                    Object value = entry.getValue();
+                    // overwrite properties with new values in the revision
+                    for (Map.Entry<String, Object> entry : revision.getProperties().entrySet()) {
+                        String key = entry.getKey();
+                        Object value = entry.getValue();
 
-                    if (key.equals(PropertyConstants.DELETED_PROPERTY_NAME)) {
-                        if (value instanceof List deleteList) {
-                            for (Object deletedProperty : deleteList) {
-                                appliedProperties.remove(deletedProperty);
+                        if (key.equals(PropertyConstants.DELETED_PROPERTY_NAME)) {
+                            if (value instanceof List deleteList) {
+                                for (Object deletedProperty : deleteList) {
+                                    appliedProperties.remove(deletedProperty);
+                                }
+                            } else {
+                                appliedProperties.remove(value);
                             }
                         } else {
-                            appliedProperties.remove(value);
+                            appliedProperties.put(key, value);
                         }
-                    } else {
-                        appliedProperties.put(key, value);
                     }
+
+                    traversal = traversal.addV(currentNode.getLabel()).as(newLabel)
+                            .property(appliedProperties)
+                            .property(PropertyConstants.VERSION_PROPERTY, (int) currentNode.getProperties().getOrDefault(PropertyConstants.VERSION_PROPERTY, 1) + 1)
+                            .property(PropertyConstants.STATUS_PROPERTY, ItemStatus.UNCOMMITTED_UPDATE.toString())
+                            .addE(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).from(newLabel).to(currentLabel).outV()
+                            .V(revision.getId()).drop()
+                            .V(revision.getRevisionOf().getId());
+                } else if (revision.getType() == Revision.RevisionType.DELETE) {
+                    traversal = traversal.addV(currentNode.getLabel()).as(newLabel)
+                            .property(UNIQUE_ID_PROPERTY, currentNode.getProperties().get(UNIQUE_ID_PROPERTY))
+                            .property(PropertyConstants.VERSION_PROPERTY, (int) currentNode.getProperties().getOrDefault(PropertyConstants.VERSION_PROPERTY, 1) + 1)
+                            .property(PropertyConstants.STATUS_PROPERTY, ItemStatus.UNCOMMITTED_DELETE.toString())
+                            .property(PropertyConstants.TRANSACTION_ID_PROPERTY, transaction.getId())
+                            .addE(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).from(newLabel).to(currentLabel).outV()
+                            .V(revision.getId()).drop()
+                            .V(revision.getRevisionOf().getId());
                 }
-
-                traversal = traversal.addV(currentNode.getLabel()).as(newLabel)
-                        .property(appliedProperties)
-                        .property(PropertyConstants.VERSION_PROPERTY, (int)currentNode.getProperties().getOrDefault(PropertyConstants.VERSION_PROPERTY, 1) + 1)
-                        .property(PropertyConstants.STATUS_PROPERTY, EntityStatus.UNCOMMITTED.toString())
-
-                        .addE(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).from(newLabel).to(currentLabel).outV()
-                        .V(revision.getId()).drop()
-                        .V(revision.getRevisionOf().getId());
             }
 
             traversal.iterate();
@@ -228,21 +270,56 @@ public class Mutator {
         LOG.info("Prepared transaction {} in {} ms", transaction.getId(), (new Date().getTime() - now) / 1000);
     }
 
-    public void commit() {
+    /**
+     * Commits the transaction and returns the items that were created, updated, or deleted.
+     */
+    public List<MutationResult> commit() {
         LOG.info("Committing transaction {}", transaction.getId());
         long now = new Date().getTime();
 
         transaction.begin();
 
-        traversalSource.V()
-                .has(PropertyConstants.STATUS_PROPERTY, EntityStatus.UNCOMMITTED.toString())
+        List<MutationResult> results = new ArrayList<>();
+
+        String nodeLabel = "node";
+        String priorStatusLabel = "priorStatus";
+        String newStatusLabel = "newStatus";
+
+        var iterator = traversalSource.V()
+                .has(STATUS_PROPERTY, P.within(ItemStatus.UNCOMMITTED_CREATE.toString(), ItemStatus.UNCOMMITTED_UPDATE.toString(), ItemStatus.UNCOMMITTED_DELETE.toString()))
                 .has(PropertyConstants.TRANSACTION_ID_PROPERTY, transaction.getId())
-                .property(PropertyConstants.STATUS_PROPERTY, EntityStatus.NORMAL.toString())
-                .property(PropertyConstants.TRANSACTION_ID_PROPERTY, null)
-                .iterate();
+                .as(nodeLabel)
+                .values(STATUS_PROPERTY).as(priorStatusLabel)
+                .select(nodeLabel)
+                .property(STATUS_PROPERTY, __.values(STATUS_PROPERTY).map(v -> {
+                    var value = (String)v.get();
+                    if (value.equals(ItemStatus.UNCOMMITTED_CREATE.toString())) {
+                        return ItemStatus.NORMAL.toString();
+                    } else if (value.equals(ItemStatus.UNCOMMITTED_UPDATE.toString())) {
+                        return ItemStatus.NORMAL.toString();
+                    } else if (value.equals(ItemStatus.UNCOMMITTED_DELETE.toString())) {
+                        return ItemStatus.DELETED.toString();
+                    } else {
+                        throw new IllegalArgumentException("Unexpected status value: " + value);
+                    }
+                }))
+                .project( "uid", priorStatusLabel, newStatusLabel)
+                .by(__.values(UNIQUE_ID_PROPERTY))
+                .by(__.select(priorStatusLabel))
+                .by(__.values(STATUS_PROPERTY));
+        while (iterator.hasNext()) {
+            Map<String, Object> proj = iterator.next();
+            String uid = (String) proj.get("uid");
+            String priorStatus = (String) proj.get("priorStatus");
+            String newStatus = (String) proj.get("newStatus");
+            MutationResult result = new MutationResult(ItemStatus.valueOf(priorStatus), ItemStatus.valueOf(newStatus), uid);
+            results.add(result);
+        }
         LOG.info("Committed transaction {} in {} ms", transaction.getId(), (new Date().getTime() - now) / 1000);
 
         transaction.commit();
+
+        return results;
     }
 
 }

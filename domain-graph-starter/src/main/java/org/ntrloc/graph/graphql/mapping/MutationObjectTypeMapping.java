@@ -11,12 +11,12 @@ import graphql.language.NonNullType;
 import graphql.language.ObjectTypeDefinition;
 import graphql.language.TypeName;
 import graphql.language.Value;
-import org.ntrloc.graph.db.language.mutation.EntityMutation;
+import org.ntrloc.graph.db.language.mutation.ItemMutation;
 import org.ntrloc.graph.db.schema.ItemDefinition;
 import org.ntrloc.graph.db.schema.LinkDefinition;
-import org.ntrloc.graph.graphql.mapping.input.InputObjectTypeProducer;
-import org.ntrloc.graph.graphql.mapping.input.MutationChoiceInputObjectTypeMapping;
-import org.ntrloc.graph.graphql.mapping.output.ObjectTypeProducer;
+import org.ntrloc.graph.graphql.mapping.mutation.InputObjectTypeProducer;
+import org.ntrloc.graph.graphql.mapping.mutation.MutationChoiceInputObjectTypeMapping;
+import org.ntrloc.graph.graphql.mapping.query.ObjectTypeProducer;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -66,7 +66,7 @@ public class MutationObjectTypeMapping implements ObjectTypeProducer, InputObjec
         return mutationChoiceInputObjectTypeMapping.getInputObjectTypeDefinitions();
     }
 
-    public Map<String, List<EntityMutation>> parseEntityMutations(Field mutationField) {
+    public Map<String, List<ItemMutation>> parseEntityMutations(Field mutationField) {
         /*
         if (mutationField.getName().equals(EXECUTE_FIELD_NAME)) {
             return mutationExecutionObjectTypeMapping.parseEntityMutations(mutationField);

@@ -4,7 +4,7 @@ import graphql.language.Field;
 import graphql.language.InputObjectTypeDefinition;
 import graphql.language.ObjectTypeDefinition;
 import graphql.language.ObjectTypeExtensionDefinition;
-import org.ntrloc.graph.db.language.mutation.EntityMutation;
+import org.ntrloc.graph.db.language.mutation.ItemMutation;
 import org.ntrloc.graph.db.schema.ItemDefinition;
 import org.ntrloc.graph.db.schema.LinkDefinition;
 
@@ -22,6 +22,6 @@ public interface SchemaMapper {
 
     List<ObjectTypeExtensionDefinition> getExtensionTypes();
 
-    Map<String, List<EntityMutation>> parseEntityMutations(Field mutationField);
+    Map<String, List<ItemMutation>> parseEntityMutations(Field mutationField);
 
 }

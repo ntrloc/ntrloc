@@ -60,7 +60,7 @@ public class Projector {
 
     /** Returns a new traverser that adds a node selection to the given traversal. */
     private GraphTraversal<?, Vertex> select(GraphTraversal<?, Vertex> traversal, SelectableItemProjectionSpec spec) {
-        var retTraversal =  traversal.has(PropertyConstants.NODE_TYPE_PROPERTY, spec.getItemType());
+        var retTraversal =  traversal.has(PropertyConstants.ITEM_TYPE_PROPERTY, spec.getItemType());
         if (spec.getItemSelector() != null) {
             var selectTraversal = getItemSelectionTraversal(spec.getItemType(), spec.getItemSelector());
             retTraversal = retTraversal.and(selectTraversal);
@@ -72,7 +72,7 @@ public class Projector {
     private GraphTraversal<?, ItemProjection> projectItems(GraphTraversal<?, Vertex> traversal, ItemProjectionSpec spec, String itemType) {
         Map<String, GraphTraversal<?, ?>> projectionTraversals = new TreeMap<>();
         projectionTraversals.put(PropertyConstants.UNIQUE_ID_PROPERTY, __.values(PropertyConstants.UNIQUE_ID_PROPERTY));
-        projectionTraversals.put(PropertyConstants.NODE_TYPE_PROPERTY, __.values(PropertyConstants.NODE_TYPE_PROPERTY));
+        projectionTraversals.put(PropertyConstants.ITEM_TYPE_PROPERTY, __.values(PropertyConstants.ITEM_TYPE_PROPERTY));
         if (spec.getProperties() != null) {
             var internalPropertyNames = spec.getProperties().stream().map(p -> externalToInternalPropertyName(itemType, p)).toList();
             projectionTraversals.put("properties", __.valueMap(internalPropertyNames.toArray(new String[0])));
@@ -85,10 +85,10 @@ public class Projector {
                 String otherNodeName = linkSpec.getRelatedItemType();
                 var linkTraversal = linkSpec.getDirection().equals(Direction.IN) ?
                         __.in(getLinkPropertyOutEdgeName(linkSpec.getLinkName()))
-                                .where(__.in(getLinkPropertyInEdgeName(linkSpec.getLinkName())).has(PropertyConstants.NODE_TYPE_PROPERTY, otherNodeName))
+                                .where(__.in(getLinkPropertyInEdgeName(linkSpec.getLinkName())).has(PropertyConstants.ITEM_TYPE_PROPERTY, otherNodeName))
                         :
                         __.out(getLinkPropertyInEdgeName(linkSpec.getLinkName()))
-                                .where(__.out(getLinkPropertyOutEdgeName(linkSpec.getLinkName())).has(PropertyConstants.NODE_TYPE_PROPERTY, otherNodeName));
+                                .where(__.out(getLinkPropertyOutEdgeName(linkSpec.getLinkName())).has(PropertyConstants.ITEM_TYPE_PROPERTY, otherNodeName));
                 projectionTraversals.put(linkAlias, projectLinks(linkTraversal, linkSpec));
             }
         }
@@ -102,7 +102,7 @@ public class Projector {
         return projectionTraversal.map(input -> {
             Map<String, Object> value = input.get();
             String uid = (String) value.get(PropertyConstants.UNIQUE_ID_PROPERTY);
-            String nodeType = (String) value.get(PropertyConstants.NODE_TYPE_PROPERTY);
+            String nodeType = (String) value.get(PropertyConstants.ITEM_TYPE_PROPERTY);
             Map<String, Object> nodeProps = (Map<String, Object>) value.get("properties");
             Map<String, Object> translatedProps = nodeProps == null ? null : nodeProps.entrySet().stream()
                     .collect(Collectors.toMap(entry -> internalToExternalPropertyName(nodeType, entry.getKey()), Map.Entry::getValue));
@@ -127,7 +127,7 @@ public class Projector {
     private GraphTraversal<?, List<LinkProjection>> projectLinks(GraphTraversal<?, Vertex> traversal, LinkProjectionSpec spec) {
         Map<String, GraphTraversal<?, ?>> projectionTraversals = new TreeMap<>();
         projectionTraversals.put(PropertyConstants.UNIQUE_ID_PROPERTY, __.values(PropertyConstants.UNIQUE_ID_PROPERTY));
-        projectionTraversals.put(PropertyConstants.NODE_TYPE_PROPERTY, __.values(PropertyConstants.NODE_TYPE_PROPERTY));
+        projectionTraversals.put(PropertyConstants.ITEM_TYPE_PROPERTY, __.values(PropertyConstants.ITEM_TYPE_PROPERTY));
         if (spec.getProperties() != null) {
             projectionTraversals.put("properties", __.valueMap(spec.getProperties().toArray(new String[0])));
         }

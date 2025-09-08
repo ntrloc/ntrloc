@@ -4,7 +4,7 @@ import graphql.language.FieldDefinition;
 import graphql.language.ObjectTypeDefinition;
 import graphql.language.TypeName;
 import org.apache.commons.text.CaseUtils;
-import org.ntrloc.graph.graphql.mapping.output.ObjectTypeProducer;
+import org.ntrloc.graph.graphql.mapping.query.ObjectTypeProducer;
 
 import java.util.List;
 

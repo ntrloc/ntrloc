@@ -2,6 +2,7 @@ package org.ntrloc.graph.db;
 
 import com.hazelcast.map.IMap;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversalSource;
+import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.__;
 import org.janusgraph.core.JanusGraph;
 import org.janusgraph.core.JanusGraphFactory;
 import org.junit.jupiter.api.BeforeEach;
@@ -9,11 +10,15 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.cluster.ClusterService;
 import org.ntrloc.graph.db.impl.ItemManagerImpl;
+import org.ntrloc.graph.db.language.StringProperty;
+import org.ntrloc.graph.db.language.mutation.ItemCreateMutation;
+import org.ntrloc.graph.db.language.mutation.ItemDeleteMutation;
+import org.ntrloc.graph.db.language.mutation.MutationRequest;
 import org.ntrloc.graph.db.schema.Cardinality;
 import org.ntrloc.graph.db.schema.ItemDefinition;
+import org.ntrloc.graph.db.schema.LinkDefinition;
 import org.ntrloc.graph.db.schema.PropertyDefinition;
 import org.ntrloc.graph.db.schema.PropertyType;
-import org.ntrloc.graph.db.schema.LinkDefinition;
 import org.ntrloc.graph.db.schema.SchemaManager;
 import org.ntrloc.graph.db.schema.impl.SchemaManagerImpl;
 import org.ntrloc.graph.db.storage.BinaryStorageAdapter;
@@ -24,15 +29,23 @@ import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.List;
+import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Set;
 import java.util.UUID;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
+import static org.ntrloc.graph.db.PropertyConstants.ITEM_TYPE_PROPERTY;
+import static org.ntrloc.graph.db.PropertyConstants.STATUS_PROPERTY;
+import static org.ntrloc.graph.db.PropertyConstants.UNIQUE_ID_PROPERTY;
 
-@DisplayName("An entity manager")
+@DisplayName("An item manager")
 class ItemManagerMutationTest {
 
     private static final Logger LOG = LoggerFactory.getLogger(ItemManagerMutationTest.class);
@@ -72,8 +85,8 @@ class ItemManagerMutationTest {
 
         BinaryStorageAdapter adapter = mock(BinaryStorageAdapter.class);
         ClusterService clusterService = mock(ClusterService.class);
-        Mutator mutator = mock(Mutator.class);
-        Projector projector = mock(Projector.class);
+        Mutator mutator = new Mutator(traversalSource);
+        Projector projector = new Projector(traversalSource);
         doReturn(mock(IMap.class)).when(clusterService).getMap(anyString());
         schemaManager = new SchemaManagerImpl(janusGraph, traversalSource, clusterService);
         itemManager = new ItemManagerImpl(traversalSource, adapter, schemaManager, mutator, projector);
@@ -112,8 +125,50 @@ class ItemManagerMutationTest {
     }
 
     @Test
-    void testCreateEntity() {
+    @DisplayName("should create items with properties")
+    void testCreateItem() {
+        ItemCreateMutation photoCreate = new ItemCreateMutation();
+        photoCreate.setEntityType("Photo");
+        photoCreate.setProperties(List.of(
+                new StringProperty("name", "photo1")
+        ));
+        MutationRequest req = new MutationRequest(List.of(photoCreate));
+        var res = itemManager.executeMutation(req);
+        assertEquals(1, res.getItems().size());
+        var id = res.getItems().get(0).getId();
+        assertNotNull(id, "null id returned");
+        var iter = traversalSource.V().has(UNIQUE_ID_PROPERTY, id)
+                .project("id", "label", "props")
+                .by(__.id())
+                .by(__.label())
+                .by(__.valueMap());
+        assertTrue(iter.hasNext(), "no graph item found");
+        var item = iter.next();
+        var props = (Map<String, Object>) item.get("props");
+        assertTrue(props.containsKey("Photo_name"), "name not set");
+        assertTrue(props.containsKey(UNIQUE_ID_PROPERTY), "uid not set");
+        assertTrue(props.containsKey(ITEM_TYPE_PROPERTY), "type not set");
+        assertEquals(ItemStatus.NORMAL.toString(), ((List)props.get(STATUS_PROPERTY)).get(0));
+    }
 
+    @Test
+    @DisplayName("should delete items")
+    void testDeleteItem() {
+        ItemCreateMutation photoCreate = new ItemCreateMutation();
+        photoCreate.setEntityType("Photo");
+        photoCreate.setProperties(List.of(
+                new StringProperty("name", "photo1")
+        ));
+        MutationRequest req = new MutationRequest(List.of(photoCreate));
+        var res = itemManager.executeMutation(req);
+        assertEquals(1, res.getItems().size());
+        var id = res.getItems().get(0).getId();
+        assertNotNull(id, "null id returned");
+        ItemDeleteMutation delete = new ItemDeleteMutation(id);
+        MutationRequest deleteReq = new MutationRequest(List.of(delete));
+        var deleteRes = itemManager.executeMutation(deleteReq);
+        assertEquals(1, deleteRes.getItems().size(), "delete item count mismatch");
+        assertEquals(id, deleteRes.getItems().get(0).getId(), "deleted item id mismatch");
     }
 
 }

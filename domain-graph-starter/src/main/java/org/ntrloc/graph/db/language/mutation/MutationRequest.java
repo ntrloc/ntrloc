@@ -4,18 +4,18 @@ import java.util.List;
 
 public class MutationRequest {
 
-    private List<EntityMutation> entityMutations;
+    private List<ItemMutation> itemMutations;
 
-    public MutationRequest(List<EntityMutation> entityMutations) {
-        this.entityMutations = entityMutations;
+    public MutationRequest(List<ItemMutation> itemMutations) {
+        this.itemMutations = itemMutations;
     }
 
-    public List<EntityMutation> getEntityMutations() {
-        return entityMutations == null ? List.of() : entityMutations;
+    public List<ItemMutation> getItemMutations() {
+        return itemMutations == null ? List.of() : itemMutations;
     }
 
-    public void setEntityMutations(List<EntityMutation> entityMutations) {
-        this.entityMutations = entityMutations;
+    public void setItemMutations(List<ItemMutation> itemMutations) {
+        this.itemMutations = itemMutations;
     }
 
 }

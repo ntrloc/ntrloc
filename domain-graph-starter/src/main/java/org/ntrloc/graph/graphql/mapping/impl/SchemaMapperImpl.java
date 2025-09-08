@@ -8,12 +8,12 @@ import graphql.language.NonNullType;
 import graphql.language.ObjectTypeDefinition;
 import graphql.language.ObjectTypeExtensionDefinition;
 import graphql.language.TypeName;
-import org.ntrloc.graph.db.language.mutation.EntityMutation;
+import org.ntrloc.graph.db.language.mutation.ItemMutation;
 import org.ntrloc.graph.db.schema.ItemDefinition;
 import org.ntrloc.graph.db.schema.LinkDefinition;
 import org.ntrloc.graph.graphql.mapping.MutationObjectTypeMapping;
 import org.ntrloc.graph.graphql.mapping.SchemaMapper;
-import org.ntrloc.graph.graphql.mapping.output.EntityObjectTypeMapping;
+import org.ntrloc.graph.graphql.mapping.query.ItemObjectTypeMapping;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -65,10 +65,10 @@ public class SchemaMapperImpl implements SchemaMapper {
         return extensionDefinitions;
     }
 
-    private ObjectTypeExtensionDefinition createQueryTypeExtension(Map<String, EntityObjectTypeMapping> entityOutputTypes) {
+    private ObjectTypeExtensionDefinition createQueryTypeExtension(Map<String, ItemObjectTypeMapping> entityOutputTypes) {
         List<FieldDefinition> fieldDefinitions = entityOutputTypes.entrySet().stream().map(key -> {
             String entityName = key.getKey();
-            EntityObjectTypeMapping entityOutput = key.getValue();
+            ItemObjectTypeMapping entityOutput = key.getValue();
             return FieldDefinition.newFieldDefinition()
                     .name(entityName)
                     .type(new NonNullType(new ListType(new NonNullType(new TypeName(entityOutput.getGraphQlTypeName())))))
@@ -85,7 +85,7 @@ public class SchemaMapperImpl implements SchemaMapper {
         }
     }
 
-    public Map<String, List<EntityMutation>> parseEntityMutations(Field mutationField) {
+    public Map<String, List<ItemMutation>> parseEntityMutations(Field mutationField) {
         return mutationObjectTypeMapping.parseEntityMutations(mutationField);
     }
 
