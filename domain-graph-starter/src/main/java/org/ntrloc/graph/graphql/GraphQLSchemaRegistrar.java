@@ -1,4 +1,4 @@
-package org.ntrloc.graph.graphql.impl;
+package org.ntrloc.graph.graphql;
 
 import com.netflix.graphql.dgs.DgsComponent;
 import com.netflix.graphql.dgs.DgsTypeDefinitionRegistry;
@@ -18,9 +18,9 @@ import org.slf4j.LoggerFactory;
 import java.util.Set;
 
 @DgsComponent
-public class GraphQLPublisherImpl implements ReloadSchemaIndicator {
+public class GraphQLSchemaRegistrar implements ReloadSchemaIndicator {
 
-    private static final Logger LOG = LoggerFactory.getLogger(GraphQLPublisherImpl.class);
+    private static final Logger LOG = LoggerFactory.getLogger(GraphQLSchemaRegistrar.class);
 
     private boolean schemaChanged = false;
 
@@ -30,9 +30,9 @@ public class GraphQLPublisherImpl implements ReloadSchemaIndicator {
 
     private SchemaMapper newSchemaMapper;
 
-    public GraphQLPublisherImpl(ClusterService clusterService,
-                                SchemaManager schemaManager,
-                                SchemaMapper newSchemaMapper) {
+    public GraphQLSchemaRegistrar(ClusterService clusterService,
+                                  SchemaManager schemaManager,
+                                  SchemaMapper newSchemaMapper) {
         this.schemaManager = schemaManager;
         this.newSchemaMapper = newSchemaMapper;
         clusterService.addClusterJoinReaction(() -> {
@@ -64,8 +64,8 @@ public class GraphQLPublisherImpl implements ReloadSchemaIndicator {
 
     @DgsTypeDefinitionRegistry
     public TypeDefinitionRegistry typeDefinitionRegistry() {
-        Set<ItemDefinition> itemDefinitions = schemaManager.retrieveEntityDefinitions();
-        Set<LinkDefinition> linkDefinitions = schemaManager.retrieveRelationshipDefinitions();
+        Set<ItemDefinition> itemDefinitions = schemaManager.retrieveItemDefinitions();
+        Set<LinkDefinition> linkDefinitions = schemaManager.retrieveLinkDefinitions();
 
         newSchemaMapper.mapSchema(itemDefinitions, linkDefinitions);
 

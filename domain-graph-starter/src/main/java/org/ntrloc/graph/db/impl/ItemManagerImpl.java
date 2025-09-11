@@ -19,6 +19,7 @@ import org.ntrloc.graph.db.language.projection.ItemProjection;
 import org.ntrloc.graph.db.language.projection.SelectableItemProjectionSpec;
 import org.ntrloc.graph.db.schema.ItemDefinition;
 import org.ntrloc.graph.db.schema.LinkDefinition;
+import org.ntrloc.graph.db.schema.PropertyDefinition;
 import org.ntrloc.graph.db.schema.SchemaManager;
 import org.ntrloc.graph.db.storage.BinaryHash;
 import org.ntrloc.graph.db.storage.BinaryStorageAdapter;
@@ -51,8 +52,8 @@ public class ItemManagerImpl implements ItemManager {
     private Mutator mutator;
     private Projector projector;
 
-    Map<String, ItemDefinition> entityDefinitionMap;
-    Map<String, LinkDefinition> relationshipDefinitionMap;
+    Map<String, ItemDefinition> itemDefinitionMap;
+    Map<String, LinkDefinition> linkDefinitionMap;
 
     public ItemManagerImpl(GraphTraversalSource traversalSource, BinaryStorageAdapter binaryStorageAdapter, SchemaManager schemaManager, Mutator mutator, Projector projector) {
         this.traversalSource = traversalSource;
@@ -60,10 +61,10 @@ public class ItemManagerImpl implements ItemManager {
         this.mutator = mutator;
         this.projector = projector;
         schemaManager.addSchemaChangeReaction(() -> {
-            Set<ItemDefinition> itemDefinitionSet = schemaManager.retrieveEntityDefinitions();
-            entityDefinitionMap = itemDefinitionSet.stream().collect(Collectors.toMap(ItemDefinition::getName, Function.identity()));
-            Set<LinkDefinition> linkDefinitions = schemaManager.retrieveRelationshipDefinitions();
-            relationshipDefinitionMap = linkDefinitions.stream().collect(Collectors.toMap(LinkDefinition::getName, Function.identity()));
+            Set<ItemDefinition> itemDefinitionSet = schemaManager.retrieveItemDefinitions();
+            itemDefinitionMap = itemDefinitionSet.stream().collect(Collectors.toMap(ItemDefinition::getName, Function.identity()));
+            Set<LinkDefinition> linkDefinitions = schemaManager.retrieveLinkDefinitions();
+            linkDefinitionMap = linkDefinitions.stream().collect(Collectors.toMap(LinkDefinition::getName, Function.identity()));
         });
     }
 
@@ -163,7 +164,7 @@ public class ItemManagerImpl implements ItemManager {
 
             for (LinkCreateMutation linkCreate: createMutation.getLinks()) {
                 var linkType = linkCreate.getLinkType();
-                var linkDefinition = relationshipDefinitionMap.get(linkType);
+                var linkDefinition = linkDefinitionMap.get(linkType);
                 if (linkDefinition == null) {
                     throw new RuntimeException("Link type " + linkType + " not found");
                 }
@@ -205,7 +206,32 @@ public class ItemManagerImpl implements ItemManager {
 
     @Override
     public List<ItemProjection> executeProjection(SelectableItemProjectionSpec spec) {
-        return projector.project(spec);
+        List<ItemProjection> projections = projector.project(spec);
+        List<ItemProjection> transformedProjections = projections.stream().map(this::transformItemProjection).toList();
+        return transformedProjections;
+    }
+
+    private ItemProjection transformItemProjection(ItemProjection itemProjection) {
+        if (itemProjection.getProperties() != null) {
+            Map<String, Object> currentProperties = itemProjection.getProperties();
+            ItemDefinition definition = itemDefinitionMap.get(itemProjection.getItemType());
+            Map<String, Object> transformedProperties = new HashMap<>();
+            for (Map.Entry<String, Object> entry: currentProperties.entrySet()) {
+                PropertyDefinition propertyDefinition = definition.getPropertyDefinition(entry.getKey());
+                String propertyName = entry.getKey();
+                List<Object> value = (List)entry.getValue();
+                Object transformedValue = switch(propertyDefinition.getType()) {
+                    case BOOLEAN, DATE, DOUBLE, INT, STRING -> value.get(0);
+                    default -> value;
+                };
+                transformedProperties.put(propertyName, transformedValue);
+            }
+            itemProjection.setProperties(transformedProperties);
+        }
+
+        // TODO: transform links
+
+        return itemProjection;
     }
 
 }

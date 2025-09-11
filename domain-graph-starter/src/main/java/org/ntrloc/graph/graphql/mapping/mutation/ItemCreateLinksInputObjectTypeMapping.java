@@ -7,6 +7,7 @@ import graphql.language.NonNullType;
 import graphql.language.TypeName;
 import org.apache.commons.text.CaseUtils;
 import org.ntrloc.graph.db.schema.ItemDefinition;
+import org.ntrloc.graph.graphql.mapping.InputObjectTypeProducer;
 
 import java.util.ArrayList;
 import java.util.List;

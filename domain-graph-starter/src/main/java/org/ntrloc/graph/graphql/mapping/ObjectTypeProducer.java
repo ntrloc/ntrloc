@@ -1,4 +1,4 @@
-package org.ntrloc.graph.graphql.mapping.query;
+package org.ntrloc.graph.graphql.mapping;
 
 import graphql.language.ObjectTypeDefinition;
 

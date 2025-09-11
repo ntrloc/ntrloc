@@ -7,7 +7,7 @@ import java.util.StringJoiner;
 public class ItemProjection {
 
     private String id;
-    private String nodeType;
+    private String itemType;
 
     private Map<String, Object> properties;
     private Map<String, List<LinkProjection>> links;
@@ -24,12 +24,12 @@ public class ItemProjection {
         this.id = id;
     }
 
-    public String getNodeType() {
-        return nodeType;
+    public String getItemType() {
+        return itemType;
     }
 
-    public void setNodeType(String nodeType) {
-        this.nodeType = nodeType;
+    public void setItemType(String nodeType) {
+        this.itemType = nodeType;
     }
 
     public Map<String, Object> getProperties() {
@@ -52,7 +52,7 @@ public class ItemProjection {
     public String toString() {
         return new StringJoiner(", ", ItemProjection.class.getSimpleName() + "[", "]")
                 .add("id='" + id + "'")
-                .add("nodeType='" + nodeType + "'")
+                .add("itemType='" + itemType + "'")
                 .add("properties=" + properties)
                 .add("links=" + links)
                 .toString();

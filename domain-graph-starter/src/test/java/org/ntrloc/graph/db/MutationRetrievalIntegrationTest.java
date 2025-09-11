@@ -12,10 +12,10 @@ import org.ntrloc.graph.cluster.impl.ClusterServiceImpl;
 import org.ntrloc.graph.db.impl.ItemManagerImpl;
 import org.ntrloc.graph.db.schema.Cardinality;
 import org.ntrloc.graph.db.schema.ItemDefinition;
+import org.ntrloc.graph.db.schema.LinkDefinition;
 import org.ntrloc.graph.db.schema.PropertyDefinition;
 import org.ntrloc.graph.db.schema.PropertyGroupDefinition;
 import org.ntrloc.graph.db.schema.PropertyType;
-import org.ntrloc.graph.db.schema.LinkDefinition;
 import org.ntrloc.graph.db.schema.SchemaManager;
 import org.ntrloc.graph.db.schema.impl.SchemaManagerImpl;
 import org.ntrloc.graph.db.storage.BinaryStorageAdapterConfiguration;
@@ -130,7 +130,7 @@ class MutationRetrievalIntegrationTest {
         PropertyGroupDefinition titleGroup = new PropertyGroupDefinition("Titles", "photo titles", Set.of(title1, title2));
         photoEntity.setPropertyGroups(Set.of(titleGroup));
 
-        schemaManager.createEntityDefinition(photoEntity);
+        schemaManager.createItemDefinition(photoEntity);
 
         ItemDefinition photographerEntity = new ItemDefinition();
         photographerEntity.setName("Photographer");
@@ -138,7 +138,7 @@ class MutationRetrievalIntegrationTest {
         PropertyDefinition photographerName = new PropertyDefinition("name", PropertyType.STRING, "photographer name");
         photographerEntity.setProperties(Set.of(photographerName));
 
-        schemaManager.createEntityDefinition(photographerEntity);
+        schemaManager.createItemDefinition(photographerEntity);
 
         LinkDefinition photoRelationship = new LinkDefinition();
         photoRelationship.setSourceEntity("Photographer");
@@ -154,7 +154,7 @@ class MutationRetrievalIntegrationTest {
         PropertyDefinition createdCountProperty = new PropertyDefinition("count", PropertyType.INT, "count");
         photoRelationship.setProperties(Set.of(createdCountProperty));
 
-        schemaManager.createRelationshipDefinition(photoRelationship);
+        schemaManager.createLinkDefinition(photoRelationship);
     }
 
     @Test
@@ -174,8 +174,8 @@ class MutationRetrievalIntegrationTest {
         var mutation = """
                 mutation Mutation {
                      execute(inputs: [
-                         { Photo: { create: { properties: { name: "photo1" } } } },
-                         { Photo: { create: { properties: { name: "photo2" } } } },
+                         { Photo: { create: { properties: { name: "photo1" number: 23 } } } },
+                         { Photo: { create: { properties: { name: "photo2" number: 34 } } } },
                          { Photographer: { create: { properties: { name: "Bill" } } } }
                      ]) {
                         created {
@@ -194,18 +194,29 @@ class MutationRetrievalIntegrationTest {
 
         var vertices = traversalSource.V().hasLabel("Photo", "Photographer").elementMap().toList();
 
-        /*
+        List<?> ids = response.extractValueAsObject("execute.created[*].id", List.class);
+        assertFalse(ids.isEmpty());
+
         LOG.info("Running query");
-        var query = "{ Photo { properties { name } } } ";
+        var query = """
+                {
+                    Photo {
+                        properties {
+                            name
+                            number
+                        }
+                    }
+                    Photographer {
+                        properties { name }
+                    }
+                }
+                """;
         start = System.currentTimeMillis();
         response = graphQlClient.executeQuery(query);
         end = System.currentTimeMillis();
         LOG.info("Query took {} ms", end - start);
 
-         */
 
-        List<?> ids = response.extractValueAsObject("execute.created[*].id", List.class);
-        assertFalse(ids.isEmpty());
     }
 
 }

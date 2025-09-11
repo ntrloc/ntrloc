@@ -1,12 +1,15 @@
 package org.ntrloc.graph.db.schema;
 
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.StringJoiner;
+import java.util.stream.Collectors;
 
 public class ItemDefinition extends SchemaDefinition implements DefinitionWithPropertyGroups {
 
     private Set<PropertyDefinition> properties;
+    private Map<String, PropertyDefinition> propertyDefinitionMap;
 
     private Set<PropertyGroupDefinition> propertyGroupDefinitions;
 
@@ -14,8 +17,13 @@ public class ItemDefinition extends SchemaDefinition implements DefinitionWithPr
         return properties;
     }
 
+    public PropertyDefinition getPropertyDefinition(String name) {
+        return propertyDefinitionMap.get(name);
+    }
+
     public void setProperties(Set<PropertyDefinition> properties) {
         this.properties = properties;
+        this.propertyDefinitionMap = properties.stream().collect(Collectors.toMap(PropertyDefinition::getName, def -> def));
     }
 
     public Set<PropertyGroupDefinition> getPropertyGroups() {

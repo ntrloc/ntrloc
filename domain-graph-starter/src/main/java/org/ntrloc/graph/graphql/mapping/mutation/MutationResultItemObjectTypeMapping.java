@@ -1,10 +1,10 @@
-package org.ntrloc.graph.graphql.mapping;
+package org.ntrloc.graph.graphql.mapping.mutation;
 
 import graphql.language.FieldDefinition;
 import graphql.language.ObjectTypeDefinition;
 import graphql.language.TypeName;
 import org.apache.commons.text.CaseUtils;
-import org.ntrloc.graph.graphql.mapping.query.ObjectTypeProducer;
+import org.ntrloc.graph.graphql.mapping.ObjectTypeProducer;
 
 import java.util.List;
 

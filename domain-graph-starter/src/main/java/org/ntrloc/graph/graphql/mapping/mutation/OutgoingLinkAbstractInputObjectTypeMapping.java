@@ -5,6 +5,7 @@ import graphql.language.InputValueDefinition;
 import graphql.language.TypeName;
 import org.apache.commons.text.CaseUtils;
 import org.ntrloc.graph.db.schema.LinkDefinition;
+import org.ntrloc.graph.graphql.mapping.InputObjectTypeProducer;
 import org.ntrloc.graph.graphql.mapping.selector.SelectorChoiceInputObjectTypeMapping;
 
 import java.util.ArrayList;

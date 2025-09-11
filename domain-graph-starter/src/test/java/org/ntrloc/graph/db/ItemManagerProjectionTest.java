@@ -144,7 +144,7 @@ public class ItemManagerProjectionTest {
         assertEquals(2, list.size());
         for (ItemProjection projection: list) {
             assertNotNull(projection.getId());
-            assertNotNull(projection.getNodeType());
+            assertNotNull(projection.getItemType());
             assertTrue(projection.getProperties().containsKey("name"));
             assertTrue(projection.getProperties().containsKey("colorspace"));
         }

@@ -54,7 +54,7 @@ public class SchemaManagerTest {
 
     @Test
     @DisplayName("create and retrieve entity definition")
-    void testCreateEntityDefinition() {
+    void testCreateItemDefinition() {
         ItemDefinition itemDefinition = new ItemDefinition();
         itemDefinition.setName("Product");
 
@@ -76,12 +76,12 @@ public class SchemaManagerTest {
         itemDefinition.setPropertyGroups(Set.of(levelGroupDefinition));
 
         itemDefinition.setProperties(Set.of(isbnPropertyDefinition, titlePropertyDefinition));
-        schemaManager.createEntityDefinition(itemDefinition);
+        schemaManager.createItemDefinition(itemDefinition);
 
-        Set<ItemDefinition> definitions = schemaManager.retrieveEntityDefinitions();
+        Set<ItemDefinition> definitions = schemaManager.retrieveItemDefinitions();
         assertEquals(1, definitions.size(), "Incorrect number of entity definitions");
 
-        Optional<ItemDefinition> schemaOpt = schemaManager.retrieveEntityDefinition("Product");
+        Optional<ItemDefinition> schemaOpt = schemaManager.retrieveItemDefinition("Product");
         assertTrue(schemaOpt.isPresent(), "Schema not returned");
         assertEquals(itemDefinition, schemaOpt.get());
     }
@@ -107,7 +107,7 @@ public class SchemaManagerTest {
         itemDefinition.setPropertyGroups(Set.of(levelGroupDefinition));
 
         itemDefinition.setProperties(Set.of(isbnPropertyDefinition));
-        schemaManager.createEntityDefinition(itemDefinition);
+        schemaManager.createItemDefinition(itemDefinition);
 
         JanusGraphManagement management = janusGraph.openManagement();
         try {
@@ -132,7 +132,7 @@ public class SchemaManagerTest {
 
     @Test
     @DisplayName("create and retrieve relationship definition")
-    void testCreateRelationshipDefinition() {
+    void testCreateLinkDefinition() {
         LinkDefinition linkDefinition = new LinkDefinition();
         linkDefinition.setInstanceMaxCardinality(1);
         linkDefinition.setSourceEntity("Product");
@@ -157,12 +157,12 @@ public class SchemaManagerTest {
         groupDef.setProperties(Set.of(propDef2));
         linkDefinition.setPropertyGroups(Set.of(groupDef));
         linkDefinition.setProperties(Set.of(propDef1));
-        schemaManager.createRelationshipDefinition(linkDefinition);
+        schemaManager.createLinkDefinition(linkDefinition);
 
-        Set<LinkDefinition> definitions = schemaManager.retrieveRelationshipDefinitions();
+        Set<LinkDefinition> definitions = schemaManager.retrieveLinkDefinitions();
         assertEquals(1, definitions.size(), "Incorrect number of relationship definitions");
 
-        Optional<LinkDefinition> schemaOpt = schemaManager.retrieveRelationshipDefinition(linkDefinition.getName());
+        Optional<LinkDefinition> schemaOpt = schemaManager.retrieveLinkDefinition(linkDefinition.getName());
         assertTrue(schemaOpt.isPresent(), "Schema not returned");
         assertEquals(linkDefinition, schemaOpt.get());
     }

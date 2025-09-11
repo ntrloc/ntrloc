@@ -27,12 +27,12 @@ public class SchemaController {
     @PutMapping("/entity")
     void upsertEntityDefinition(@RequestBody ItemDefinition definition) {
         LOG.info("Upserting definition {}", definition);
-        schemaManager.createEntityDefinition(definition);
+        schemaManager.createItemDefinition(definition);
     }
 
     @GetMapping("/entity")
     Set<ItemDefinition> getEntityDefinitions() {
-        return schemaManager.retrieveEntityDefinitions();
+        return schemaManager.retrieveItemDefinitions();
     }
 
 }

@@ -108,13 +108,13 @@ class ItemManagerMutationTest {
         PropertyDefinition intListDefinition = new PropertyDefinition("intList", PropertyType.INT_LIST, "");
         photoDefinition.setProperties(Set.of(nameDefinition, numberDefinition, booleanDefinition, dateDefinition, doublePropertyDefinition, intListDefinition));
 
-        schemaManager.createEntityDefinition(photoDefinition);
+        schemaManager.createItemDefinition(photoDefinition);
 
         ItemDefinition photographerDefinition = new ItemDefinition();
         photographerDefinition.setName("Photographer");
         PropertyDefinition photographerNameDefinition = new PropertyDefinition("name", PropertyType.STRING, "");
         photographerDefinition.setProperties(Set.of(photographerNameDefinition));
-        schemaManager.createEntityDefinition(photographerDefinition);
+        schemaManager.createItemDefinition(photographerDefinition);
 
         LinkDefinition linkDefinition = new LinkDefinition();
         linkDefinition.setName("CREATED");
@@ -126,7 +126,7 @@ class ItemManagerMutationTest {
         linkDefinition.setSourceVersionAction(LinkDefinition.VersionAction.COPY);
         linkDefinition.setTargetCardinality(new Cardinality(0, null));
         linkDefinition.setTargetVersionAction(LinkDefinition.VersionAction.MOVE);
-        schemaManager.createRelationshipDefinition(linkDefinition);
+        schemaManager.createLinkDefinition(linkDefinition);
     }
 
     @Test

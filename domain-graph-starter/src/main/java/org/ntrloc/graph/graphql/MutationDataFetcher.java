@@ -1,4 +1,4 @@
-package org.ntrloc.graph.graphql.impl;
+package org.ntrloc.graph.graphql;
 
 import com.netflix.graphql.dgs.context.DgsContext;
 import com.netflix.graphql.dgs.reactive.internal.DgsReactiveRequestData;

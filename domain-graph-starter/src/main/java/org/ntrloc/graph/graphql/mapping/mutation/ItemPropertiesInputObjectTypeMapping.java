@@ -14,6 +14,7 @@ import org.ntrloc.graph.db.language.StringProperty;
 import org.ntrloc.graph.db.schema.ItemDefinition;
 import org.ntrloc.graph.db.schema.PropertyDefinition;
 import org.ntrloc.graph.db.schema.PropertyType;
+import org.ntrloc.graph.graphql.mapping.InputObjectTypeProducer;
 
 import java.util.HashMap;
 import java.util.List;

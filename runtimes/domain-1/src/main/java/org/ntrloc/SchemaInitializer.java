@@ -27,7 +27,7 @@ public class SchemaInitializer {
     @EventListener(ApplicationReadyEvent.class)
     void initSchema() {
         LOG.info("Initializing schema");
-        var entityDefs = schemaManager.retrieveEntityDefinitions();
+        var entityDefs = schemaManager.retrieveItemDefinitions();
         if (entityDefs.isEmpty()) {
             ItemDefinition photoEntity = new ItemDefinition();
             photoEntity.setName("Photo");
@@ -43,7 +43,7 @@ public class SchemaInitializer {
             PropertyGroupDefinition titleGroup = new PropertyGroupDefinition("Titles", "photo titles", Set.of(title1, title2));
             photoEntity.setPropertyGroups(Set.of(titleGroup));
 
-            schemaManager.createEntityDefinition(photoEntity);
+            schemaManager.createItemDefinition(photoEntity);
 
             ItemDefinition photographerEntity = new ItemDefinition();
             photographerEntity.setName("Photographer");
@@ -51,7 +51,7 @@ public class SchemaInitializer {
             PropertyDefinition photographerName = new PropertyDefinition("name", PropertyType.STRING, "photographer name");
             photographerEntity.setProperties(Set.of(photographerName));
 
-            schemaManager.createEntityDefinition(photographerEntity);
+            schemaManager.createItemDefinition(photographerEntity);
 
             LinkDefinition photoRelationship = new LinkDefinition();
             photoRelationship.setSourceEntity("Photographer");
@@ -67,7 +67,7 @@ public class SchemaInitializer {
             PropertyDefinition createdCountProperty = new PropertyDefinition("count", PropertyType.INT, "count");
             photoRelationship.setProperties(Set.of(createdCountProperty));
 
-            schemaManager.createRelationshipDefinition(photoRelationship);
+            schemaManager.createLinkDefinition(photoRelationship);
             LOG.info("Created schema");
         } else {
             LOG.info("Found {} entities", entityDefs.size());

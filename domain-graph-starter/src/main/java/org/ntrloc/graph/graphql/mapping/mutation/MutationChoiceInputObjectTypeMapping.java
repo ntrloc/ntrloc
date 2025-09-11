@@ -12,6 +12,7 @@ import org.ntrloc.graph.Tuple;
 import org.ntrloc.graph.db.language.mutation.ItemMutation;
 import org.ntrloc.graph.db.schema.ItemDefinition;
 import org.ntrloc.graph.db.schema.LinkDefinition;
+import org.ntrloc.graph.graphql.mapping.InputObjectTypeProducer;
 import org.ntrloc.graph.graphql.mapping.selector.SelectorChoiceInputObjectTypeMapping;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

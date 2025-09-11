@@ -113,7 +113,7 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
     }
 
     @Override
-    public void createEntityDefinition(ItemDefinition definition) {
+    public void createItemDefinition(ItemDefinition definition) {
 
         StandardJanusGraph standard = (StandardJanusGraph) janusGraph;
         Set<? extends JanusGraphTransaction> transactions = standard.getOpenTransactions();
@@ -260,18 +260,18 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
     }
 
     @Override
-    public void updateEntityDefinition(ItemDefinition definition) {
+    public void updateItemDefinition(ItemDefinition definition) {
         throw new RuntimeException("not done");
     }
 
     @Override
-    public Set<ItemDefinition> retrieveEntityDefinitions() {
+    public Set<ItemDefinition> retrieveItemDefinitions() {
         GraphTraversal<Vertex, Vertex> start = traversalSource.V().hasLabel(ENTITY_DEFINITION_LABEL);
         return retrieveEntityDefinitions(start);
     }
 
     @Override
-    public Optional<ItemDefinition> retrieveEntityDefinition(String name) {
+    public Optional<ItemDefinition> retrieveItemDefinition(String name) {
         GraphTraversal<Vertex, Vertex> start = traversalSource.V().hasLabel(ENTITY_DEFINITION_LABEL).has("name", name);
         Set<ItemDefinition> defs = retrieveEntityDefinitions(start);
         if (defs.isEmpty()) {
@@ -342,14 +342,14 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
     }
 
     @Override
-    public void deleteEntityDefinition(ItemDefinition definition) {
+    public void deleteItemDefinition(ItemDefinition definition) {
         throw new RuntimeException("not done");
     }
 
 
 
     @Override
-    public void createRelationshipDefinition(LinkDefinition definition) {
+    public void createLinkDefinition(LinkDefinition definition) {
         var tx = traversalSource.tx();
         boolean foundVertex = traversalSource.V().hasLabel(RELATIONSHIP_DEFINITION_LABEL).has("name", definition.getName()).hasNext();
         tx.close();
@@ -406,12 +406,12 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
     }
 
     @Override
-    public void updateRelationshipDefinition(LinkDefinition definition) {
+    public void updateLinkDefinition(LinkDefinition definition) {
         throw new RuntimeException("not done");
     }
 
     @Override
-    public Set<LinkDefinition> retrieveRelationshipDefinitions() {
+    public Set<LinkDefinition> retrieveLinkDefinitions() {
         GraphTraversal<Vertex, Vertex> start = traversalSource.V().hasLabel(RELATIONSHIP_DEFINITION_LABEL);
         return retrieveRelationshipDefinitions(start);
     }
@@ -466,7 +466,7 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
     }
 
     @Override
-    public Optional<LinkDefinition> retrieveRelationshipDefinition(String name) {
+    public Optional<LinkDefinition> retrieveLinkDefinition(String name) {
         GraphTraversal<Vertex, Vertex> start = traversalSource.V().hasLabel(RELATIONSHIP_DEFINITION_LABEL).has("name", name);
         Set<LinkDefinition> defs = retrieveRelationshipDefinitions(start);
         if (defs.isEmpty()) {
@@ -477,7 +477,7 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
     }
 
     @Override
-    public void deleteRelationshipDefinition(LinkDefinition definition) {
+    public void deleteLinkDefinition(LinkDefinition definition) {
         throw new RuntimeException("not done");
     }
 

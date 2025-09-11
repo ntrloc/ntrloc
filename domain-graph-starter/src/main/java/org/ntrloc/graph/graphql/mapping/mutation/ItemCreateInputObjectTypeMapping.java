@@ -11,6 +11,7 @@ import org.apache.commons.text.CaseUtils;
 import org.ntrloc.graph.db.language.Property;
 import org.ntrloc.graph.db.language.mutation.ItemCreateMutation;
 import org.ntrloc.graph.db.schema.ItemDefinition;
+import org.ntrloc.graph.graphql.mapping.InputObjectTypeProducer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

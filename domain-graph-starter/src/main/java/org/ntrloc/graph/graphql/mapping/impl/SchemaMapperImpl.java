@@ -1,19 +1,16 @@
 package org.ntrloc.graph.graphql.mapping.impl;
 
 import graphql.language.Field;
-import graphql.language.FieldDefinition;
 import graphql.language.InputObjectTypeDefinition;
-import graphql.language.ListType;
-import graphql.language.NonNullType;
 import graphql.language.ObjectTypeDefinition;
 import graphql.language.ObjectTypeExtensionDefinition;
-import graphql.language.TypeName;
 import org.ntrloc.graph.db.language.mutation.ItemMutation;
+import org.ntrloc.graph.db.language.projection.SelectableItemProjectionSpec;
 import org.ntrloc.graph.db.schema.ItemDefinition;
 import org.ntrloc.graph.db.schema.LinkDefinition;
-import org.ntrloc.graph.graphql.mapping.MutationObjectTypeMapping;
 import org.ntrloc.graph.graphql.mapping.SchemaMapper;
-import org.ntrloc.graph.graphql.mapping.query.ItemObjectTypeMapping;
+import org.ntrloc.graph.graphql.mapping.mutation.MutationObjectTypeMapping;
+import org.ntrloc.graph.graphql.mapping.query.QueryObjectTypeMapping;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -34,19 +31,26 @@ public class SchemaMapperImpl implements SchemaMapper {
     private List<ObjectTypeExtensionDefinition> extensionDefinitions;
 
     private MutationObjectTypeMapping mutationObjectTypeMapping;
+    private QueryObjectTypeMapping queryObjectTypeMapping;
 
     public SchemaMapperImpl() {
     }
 
+    /* --------------------------- GraphQL type mappings --------------------- */
+
     public void mapSchema(Set<ItemDefinition> itemDefinitions, Set<LinkDefinition> linkDefinitions) {
+        queryObjectTypeMapping = new QueryObjectTypeMapping(itemDefinitions, linkDefinitions);
         mutationObjectTypeMapping = new MutationObjectTypeMapping(itemDefinitions, linkDefinitions);
 
-        // extend the query type to allow queries for all entity outputs
         inputTypeDefinitions = mutationObjectTypeMapping.getInputObjectTypeDefinitions().stream()
                 .collect(Collectors.toMap(InputObjectTypeDefinition::getName, inputObjectTypeDefinition -> inputObjectTypeDefinition, (existingValue, newValue) -> existingValue))
                 .values().stream().toList();
 
-        outputTypeDefinitions = mutationObjectTypeMapping.getObjectTypeDefinitions().stream()
+        List<ObjectTypeDefinition> objectTypeDefinitions = new ArrayList<>();
+        objectTypeDefinitions.addAll(mutationObjectTypeMapping.getObjectTypeDefinitions());
+        objectTypeDefinitions.addAll(queryObjectTypeMapping.getObjectTypeDefinitions());
+
+        outputTypeDefinitions = objectTypeDefinitions.stream()
                 .collect(Collectors.toMap(ObjectTypeDefinition::getName, def -> def, (existingValue, newValue) -> existingValue))
                         .values().stream().toList();
 
@@ -65,28 +69,16 @@ public class SchemaMapperImpl implements SchemaMapper {
         return extensionDefinitions;
     }
 
-    private ObjectTypeExtensionDefinition createQueryTypeExtension(Map<String, ItemObjectTypeMapping> entityOutputTypes) {
-        List<FieldDefinition> fieldDefinitions = entityOutputTypes.entrySet().stream().map(key -> {
-            String entityName = key.getKey();
-            ItemObjectTypeMapping entityOutput = key.getValue();
-            return FieldDefinition.newFieldDefinition()
-                    .name(entityName)
-                    .type(new NonNullType(new ListType(new NonNullType(new TypeName(entityOutput.getGraphQlTypeName())))))
-                    .build();
-        }).toList();
-
-        if (!fieldDefinitions.isEmpty()) {
-           return ObjectTypeExtensionDefinition.newObjectTypeExtensionDefinition()
-                    .name("Query")
-                    .fieldDefinitions(fieldDefinitions)
-                    .build();
-        } else {
-            return null;
-        }
-    }
+    /* -------------------------- GraphQL request parsers -------------------- */
 
     public Map<String, List<ItemMutation>> parseEntityMutations(Field mutationField) {
-        return mutationObjectTypeMapping.parseEntityMutations(mutationField);
+        return mutationObjectTypeMapping.parseItemMutations(mutationField);
+    }
+
+    @Override
+    public SelectableItemProjectionSpec parseProjection(Field queryField) {
+        LOG.info("Parsing query field {}", queryField);
+        return queryObjectTypeMapping.parseQueryField(queryField);
     }
 
 }

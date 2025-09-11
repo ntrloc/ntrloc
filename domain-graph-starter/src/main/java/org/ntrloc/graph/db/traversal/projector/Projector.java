@@ -102,14 +102,14 @@ public class Projector {
         return projectionTraversal.map(input -> {
             Map<String, Object> value = input.get();
             String uid = (String) value.get(PropertyConstants.UNIQUE_ID_PROPERTY);
-            String nodeType = (String) value.get(PropertyConstants.ITEM_TYPE_PROPERTY);
+            String iType = (String) value.get(PropertyConstants.ITEM_TYPE_PROPERTY);
             Map<String, Object> nodeProps = (Map<String, Object>) value.get("properties");
             Map<String, Object> translatedProps = nodeProps == null ? null : nodeProps.entrySet().stream()
-                    .collect(Collectors.toMap(entry -> internalToExternalPropertyName(nodeType, entry.getKey()), Map.Entry::getValue));
+                    .collect(Collectors.toMap(entry -> internalToExternalPropertyName(iType, entry.getKey()), Map.Entry::getValue));
 
             ItemProjection projection = new ItemProjection();
             projection.setId(uid);
-            projection.setNodeType(nodeType);
+            projection.setItemType(iType);
             projection.setProperties(translatedProps);
 
             if (spec.getLinks() != null) {
