@@ -8,7 +8,6 @@ import org.ntrloc.graph.db.language.mutation.ItemCreateMutation;
 import org.ntrloc.graph.db.language.mutation.ItemDeleteMutation;
 import org.ntrloc.graph.db.language.mutation.ItemMutation;
 import org.ntrloc.graph.db.language.mutation.ItemMutationResponse;
-import org.ntrloc.graph.db.language.mutation.ItemReference;
 import org.ntrloc.graph.db.language.mutation.LinkCreateMutation;
 import org.ntrloc.graph.db.language.mutation.LinkMutationResponse;
 import org.ntrloc.graph.db.language.mutation.MutationRequest;
@@ -17,6 +16,7 @@ import org.ntrloc.graph.db.language.mutation.MutationType;
 import org.ntrloc.graph.db.language.mutation.ReferenceableItemMutation;
 import org.ntrloc.graph.db.language.projection.ItemProjection;
 import org.ntrloc.graph.db.language.projection.SelectableItemProjectionSpec;
+import org.ntrloc.graph.db.language.selectors.IdSelector;
 import org.ntrloc.graph.db.schema.ItemDefinition;
 import org.ntrloc.graph.db.schema.LinkDefinition;
 import org.ntrloc.graph.db.schema.PropertyDefinition;
@@ -168,24 +168,28 @@ public class ItemManagerImpl implements ItemManager {
                 if (linkDefinition == null) {
                     throw new RuntimeException("Link type " + linkType + " not found");
                 }
-                var reference = linkCreate.getLinkedItemReference();
-                String toId = switch(reference.getType()) {
-                    case ItemReference.ReferenceType.MUTATION -> {
+                var selector = linkCreate.getSelector();
+                if (!(selector instanceof IdSelector)) {
+                    throw new RuntimeException("Selector for link type " + linkType + " must be an ID selector");
+                }
+                var idSelector = (IdSelector)selector;
+                String toId = switch(idSelector.getType()) {
+                    case IdSelector.Type.LOCAL -> {
                         // find the ID of the item whose reference matches this reference ID
                         Optional<Map.Entry<String, ReferenceableItemMutation>> mutationEntryOpt = mutationIdMap.entrySet()
                                 .stream()
-                                .filter(entry -> entry.getValue().getRefId() != null && entry.getValue().getRefId().equals(reference.getId()))
+                                .filter(entry -> entry.getValue().getRefId() != null && entry.getValue().getRefId().equals(idSelector.getId()))
                                 .findAny();
                         if (mutationEntryOpt.isPresent()) {
                             yield mutationEntryOpt.get().getKey();
                         } else {
-                            throw new RuntimeException("Linked item " + reference.getId() + " not found");
+                            throw new RuntimeException("Linked item " + idSelector.getId() + " not found");
                         }
                     }
-                    case ItemReference.ReferenceType.GRAPH -> reference.getId();
+                    case IdSelector.Type.GLOBAL -> idSelector.getId();
                 };
                 if (toId == null) {
-                    throw new RuntimeException("Linked item " + reference.getId() + " not found");
+                    throw new RuntimeException("Linked item " + idSelector.getId() + " not found");
                 } else {
                     LOG.info("Linking item to item {}", toId);
                     String linkId = mutator.createLink(fromId, toId, linkDefinition.getName(), linkCreate.getProperties());

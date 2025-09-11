@@ -6,10 +6,12 @@ import graphql.language.ListType;
 import graphql.language.NonNullType;
 import graphql.language.ObjectField;
 import graphql.language.ObjectValue;
+import graphql.language.StringValue;
 import graphql.language.TypeName;
 import org.apache.commons.text.CaseUtils;
 import org.ntrloc.graph.db.language.Property;
 import org.ntrloc.graph.db.language.mutation.ItemCreateMutation;
+import org.ntrloc.graph.db.language.mutation.LinkCreateMutation;
 import org.ntrloc.graph.db.schema.ItemDefinition;
 import org.ntrloc.graph.graphql.mapping.InputObjectTypeProducer;
 import org.slf4j.Logger;
@@ -91,10 +93,22 @@ public class ItemCreateInputObjectTypeMapping implements InputObjectTypeProducer
     public ItemCreateMutation parseCreateMutation(ObjectValue objectValue) {
         Map<String, ObjectField> objectFieldMap = objectValue.getObjectFields().stream().collect(java.util.stream.Collectors.toMap(ObjectField::getName, f -> f));
         ItemCreateMutation mutation = new ItemCreateMutation();
+
+        if (objectFieldMap.containsKey(REF_FIELD_NAME)) {
+            ObjectField refField = objectFieldMap.get(REF_FIELD_NAME);
+            StringValue refValue = (StringValue)refField.getValue();
+            mutation.setRefId(refValue.getValue());
+        }
         if (objectFieldMap.containsKey(PROPERTIES_FIELD_NAME)) {
             LOG.info("I need to map properties {}", objectFieldMap.get(PROPERTIES_FIELD_NAME));
             List<? extends Property> properties = propertiesMapping.mapProperties((ObjectValue) objectFieldMap.get(PROPERTIES_FIELD_NAME).getValue());
             mutation.setProperties(properties);
+        }
+        if (objectFieldMap.containsKey(LINKS_FIELD_NAME)) {
+            LOG.info("Mapping links");
+            ObjectField linksField = objectFieldMap.get(LINKS_FIELD_NAME);
+            List<LinkCreateMutation> createMutations = linkCreateInputType.parseLinkCreateMutations(linksField);
+            mutation.setLinks(createMutations);
         }
         return mutation;
     }

@@ -27,7 +27,7 @@ public class MutationResultItemObjectTypeMapping implements ObjectTypeProducer {
                 .name(graphQlTypeName)
                 .fieldDefinitions(List.of(
                         FieldDefinition.newFieldDefinition().name("id").type(new TypeName("String")).build(),
-                        FieldDefinition.newFieldDefinition().name("entityType").type(new TypeName("String")).build()
+                        FieldDefinition.newFieldDefinition().name("itemType").type(new TypeName("String")).build()
                 ))
                 .build();
 

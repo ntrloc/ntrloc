@@ -13,17 +13,20 @@ import java.util.List;
 
 public abstract class OutgoingLinkAbstractInputObjectTypeMapping implements OutgoingLinkInputTypeMapping, InputObjectTypeProducer {
 
+    protected String propertiesFieldName = "properties";
+    protected String targetFieldName = "target";
+
     protected LinkDefinition targetLinkDefinition;
     protected String graphQlTypeName;
     protected LinkPropertiesInputObjectTypeMapping propertiesMapping;
-    protected SelectorChoiceInputObjectTypeMapping matcherChoiceMapping;
+    protected SelectorChoiceInputObjectTypeMapping selectorChoiceInputObjectTypeMapping;
 
-    OutgoingLinkAbstractInputObjectTypeMapping(String typePattern, LinkDefinition targetLinkDefinition, LinkPropertiesInputObjectTypeMapping propertiesMapping, SelectorChoiceInputObjectTypeMapping matcherChoiceMapping) {
+    OutgoingLinkAbstractInputObjectTypeMapping(String typePattern, LinkDefinition targetLinkDefinition, LinkPropertiesInputObjectTypeMapping propertiesMapping, SelectorChoiceInputObjectTypeMapping selectorChoiceInputObjectTypeMapping) {
         String typeName = String.format(typePattern, targetLinkDefinition.getSourceEntity(), targetLinkDefinition.getSourceLabel(), targetLinkDefinition.getTargetEntity());
         this.graphQlTypeName = CaseUtils.toCamelCase(typeName, true, '_', '-');
         this.targetLinkDefinition = targetLinkDefinition;
         this.propertiesMapping = propertiesMapping;
-        this.matcherChoiceMapping = matcherChoiceMapping;
+        this.selectorChoiceInputObjectTypeMapping = selectorChoiceInputObjectTypeMapping;
     }
 
     public String getGraphQlTypeName() {
@@ -42,19 +45,19 @@ public abstract class OutgoingLinkAbstractInputObjectTypeMapping implements Outg
     @Override
     public List<InputObjectTypeDefinition> getInputObjectTypeDefinitions() {
         InputValueDefinition propertiesValue = InputValueDefinition.newInputValueDefinition()
-                .name("properties")
+                .name(propertiesFieldName)
                 .type(new TypeName(propertiesMapping.getGraphQlTypeName()))
                 .build();
         InputValueDefinition matcherValue = InputValueDefinition.newInputValueDefinition()
-                .name("target")
-                .type(new TypeName(matcherChoiceMapping.getGraphQlTypeName()))
+                .name(targetFieldName)
+                .type(new TypeName(selectorChoiceInputObjectTypeMapping.getGraphQlTypeName()))
                 .build();
         var thisDef = InputObjectTypeDefinition.newInputObjectDefinition()
                 .name(graphQlTypeName)
                 .inputValueDefinitions(List.of(propertiesValue, matcherValue))
                 .build();
 
-        List<InputObjectTypeDefinition> retTypes = new ArrayList<>(matcherChoiceMapping.getInputObjectTypeDefinitions());
+        List<InputObjectTypeDefinition> retTypes = new ArrayList<>(selectorChoiceInputObjectTypeMapping.getInputObjectTypeDefinitions());
         retTypes.addAll(propertiesMapping.getInputObjectTypeDefinitions());
         retTypes.add(thisDef);
         return retTypes;

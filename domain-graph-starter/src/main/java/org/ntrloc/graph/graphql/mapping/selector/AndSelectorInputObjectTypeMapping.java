@@ -4,9 +4,11 @@ import graphql.language.InputObjectTypeDefinition;
 import graphql.language.InputValueDefinition;
 import graphql.language.ListType;
 import graphql.language.NonNullType;
+import graphql.language.ObjectValue;
 import graphql.language.TypeName;
 import org.apache.commons.text.CaseUtils;
 import org.ntrloc.graph.db.language.selectors.AndItemSelector;
+import org.ntrloc.graph.db.language.selectors.Selector;
 
 import java.util.List;
 
@@ -31,5 +33,10 @@ public class AndSelectorInputObjectTypeMapping implements SelectorInputObjectTyp
                 .inputValueDefinition(clauseValue)
                 .build();
         return List.of(andMatcherInput);
+    }
+
+    @Override
+    public Selector parseSelector(ObjectValue objectValue) {
+        return null;
     }
 }

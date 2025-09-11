@@ -1,19 +1,27 @@
 package org.ntrloc.graph.graphql.mapping.mutation;
 
+import graphql.language.ArrayValue;
 import graphql.language.InputObjectTypeDefinition;
 import graphql.language.InputValueDefinition;
 import graphql.language.ListType;
 import graphql.language.NonNullType;
+import graphql.language.ObjectField;
+import graphql.language.ObjectValue;
 import graphql.language.TypeName;
 import org.apache.commons.text.CaseUtils;
+import org.ntrloc.graph.db.language.mutation.LinkCreateMutation;
 import org.ntrloc.graph.db.schema.ItemDefinition;
 import org.ntrloc.graph.graphql.mapping.InputObjectTypeProducer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
 public class ItemCreateLinksInputObjectTypeMapping implements InputObjectTypeProducer {
+
+    private static final Logger LOG = LoggerFactory.getLogger(ItemCreateLinksInputObjectTypeMapping.class);
 
     private String graphQlTypeName;
     private Map<String, IncomingLinkCreateInputObjectTypeMapping> incomingTypes;
@@ -64,5 +72,24 @@ public class ItemCreateLinksInputObjectTypeMapping implements InputObjectTypePro
 
     public String getGraphQlTypeName() {
         return graphQlTypeName;
+    }
+
+    List<LinkCreateMutation> parseLinkCreateMutations(ObjectField createInputObject) {
+        List<LinkCreateMutation> retMutations = new ArrayList<>();
+        ObjectValue value = (ObjectValue) createInputObject.getValue();
+        List<ObjectField> objectFields = value.getObjectFields();
+        for (ObjectField objectField : objectFields) {
+            String fieldName = objectField.getName();
+            IncomingLinkCreateInputObjectTypeMapping incomingType = incomingTypes.get(fieldName);
+            if (incomingType == null) {
+                OutgoingLinkCreateInputObjectTypeMapping outgoingType = outgoingTypes.get(fieldName);
+                List<LinkCreateMutation> mutations = outgoingType.parseLinkCreateMutations((ArrayValue) objectField.getValue());
+                retMutations.addAll(mutations);
+            } else {
+                List<LinkCreateMutation> mutations = incomingType.parseLinkCreateMutations((ArrayValue) objectField.getValue());
+                retMutations.addAll(mutations);
+            }
+        }
+        return retMutations;
     }
 }

@@ -8,7 +8,6 @@ import java.util.List;
 public class SelectableItemProjectionSpec extends ItemProjectionSpec {
 
     private String itemType;
-    private ItemSelector itemSelector;
 
     public SelectableItemProjectionSpec(String itemType) {
         this.itemType = itemType;

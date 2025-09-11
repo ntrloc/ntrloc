@@ -10,6 +10,10 @@ public class ItemProjectionSpec {
 
     protected ItemSelector itemSelector;
     protected List<String> properties;
+
+    /**
+     * Maps a link projection spec to the name with which it should be returned.
+     */
     protected Map<String, LinkProjectionSpec> links;
 
     public ItemProjectionSpec() {
@@ -38,15 +42,19 @@ public class ItemProjectionSpec {
         return links;
     }
 
+    /**
+     * Sets the links to include in the item projection.
+     * @param links maps a link projection to the name by which the projection should be returned
+     */
     public void setLinks(Map<String, LinkProjectionSpec> links) {
         this.links = links;
     }
 
-    public ItemProjectionSpec link(String linkName, LinkProjectionSpec linkProjectionSpec) {
+    public ItemProjectionSpec link(String projectedFieldName, LinkProjectionSpec linkProjectionSpec) {
         if (links == null) {
             links = new HashMap<>();
         }
-        links.put(linkName, linkProjectionSpec);
+        links.put(projectedFieldName, linkProjectionSpec);
         return this;
     }
 

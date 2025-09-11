@@ -132,7 +132,7 @@ public class Projector {
             projectionTraversals.put("properties", __.valueMap(spec.getProperties().toArray(new String[0])));
         }
 
-        ItemProjectionSpec itemProjectionSpec = spec.getNodeProjection();
+        ItemProjectionSpec itemProjectionSpec = spec.getItemProjectionSpec();
         if (itemProjectionSpec == null) {
             itemProjectionSpec = new ItemProjectionSpec();
         }

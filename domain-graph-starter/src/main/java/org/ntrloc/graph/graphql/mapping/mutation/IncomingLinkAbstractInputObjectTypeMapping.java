@@ -13,17 +13,20 @@ import java.util.List;
 
 public class IncomingLinkAbstractInputObjectTypeMapping implements IncomingLinkInputTypeMapping, InputObjectTypeProducer {
 
+    String propertyFieldName = "properties";
+    String sourceFieldName = "source";
+
     protected String graphQlTypeName;
     protected LinkDefinition sourceLinkDefinition;
     protected LinkPropertiesInputObjectTypeMapping propertiesMapping;
-    protected SelectorChoiceInputObjectTypeMapping matcherChoiceMapping;
+    protected SelectorChoiceInputObjectTypeMapping selectorChoiceInputObjectTypeMapping;
 
-    public IncomingLinkAbstractInputObjectTypeMapping(String namePattern, LinkDefinition sourceLinkDefinition, LinkPropertiesInputObjectTypeMapping propertiesMapping, SelectorChoiceInputObjectTypeMapping matcherChoiceMapping) {
+    public IncomingLinkAbstractInputObjectTypeMapping(String namePattern, LinkDefinition sourceLinkDefinition, LinkPropertiesInputObjectTypeMapping propertiesMapping, SelectorChoiceInputObjectTypeMapping selectorChoiceInputObjectTypeMapping) {
         String typeName = String.format(namePattern, sourceLinkDefinition.getTargetEntity(), sourceLinkDefinition.getTargetLabel(), sourceLinkDefinition.getSourceEntity());
         this.graphQlTypeName = CaseUtils.toCamelCase(typeName, true, '_', '-');
         this.sourceLinkDefinition = sourceLinkDefinition;
         this.propertiesMapping = propertiesMapping;
-        this.matcherChoiceMapping = matcherChoiceMapping;
+        this.selectorChoiceInputObjectTypeMapping = selectorChoiceInputObjectTypeMapping;
     }
 
     public String getGraphQlTypeName() {
@@ -42,18 +45,18 @@ public class IncomingLinkAbstractInputObjectTypeMapping implements IncomingLinkI
     @Override
     public List<InputObjectTypeDefinition> getInputObjectTypeDefinitions() {
         InputValueDefinition propertiesValue = InputValueDefinition.newInputValueDefinition()
-                .name("properties")
+                .name(propertyFieldName)
                 .type(new TypeName(propertiesMapping.getGraphQlTypeName()))
                 .build();
         InputValueDefinition matcherValue = InputValueDefinition.newInputValueDefinition()
-                .name("source")
-                .type(new TypeName(matcherChoiceMapping.getGraphQlTypeName()))
+                .name(sourceFieldName)
+                .type(new TypeName(selectorChoiceInputObjectTypeMapping.getGraphQlTypeName()))
                 .build();
         var thisDef = InputObjectTypeDefinition.newInputObjectDefinition()
                 .name(graphQlTypeName)
                 .inputValueDefinitions(List.of(propertiesValue, matcherValue))
                 .build();
-        List<InputObjectTypeDefinition> retTypes = new ArrayList<>(matcherChoiceMapping.getInputObjectTypeDefinitions());
+        List<InputObjectTypeDefinition> retTypes = new ArrayList<>(selectorChoiceInputObjectTypeMapping.getInputObjectTypeDefinitions());
         retTypes.addAll(propertiesMapping.getInputObjectTypeDefinitions());
         retTypes.add(thisDef);
         return retTypes;

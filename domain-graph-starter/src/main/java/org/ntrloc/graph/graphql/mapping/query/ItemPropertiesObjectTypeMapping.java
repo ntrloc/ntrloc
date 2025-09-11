@@ -14,20 +14,20 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-public class QueryItemPropertyObjectTypeMapping implements ObjectTypeProducer, PropertyFieldValueDefinitionMapper {
+public class ItemPropertiesObjectTypeMapping implements ObjectTypeProducer, PropertyFieldValueDefinitionMapper {
 
-    static String IS_PROPERTY_TYPE_FLAG = "isPropertyType";
+    static final String IS_PROPERTY_TYPE_FLAG = "isPropertyType";
 
-    private String graphQlTypeName;
-    private ItemDefinition itemDefinition;
+    private final String graphQlTypeName;
+    private final ItemDefinition itemDefinition;
 
     /** Maps the graphQL name of properties to the field definition of those properties. */
-    private Map<String, FieldDefinition> propertyFieldMappings;
+    private final Map<String, FieldDefinition> propertyFieldMappings;
 
     /** Maps the graphQL name of property groups to the mapping for those groups. */
-    private Map<String, QueryItemPropertyGroupObjectTypeMapping> groupMappings;
+    private final Map<String, ItemPropertyGroupObjectTypeMapping> groupMappings;
 
-    public QueryItemPropertyObjectTypeMapping(ItemDefinition itemDefinition) {
+    public ItemPropertiesObjectTypeMapping(ItemDefinition itemDefinition) {
         this.itemDefinition = itemDefinition;
         String typeName = "%s Properties".formatted(itemDefinition.getName());
         this.graphQlTypeName = CaseUtils.toCamelCase(typeName, true, '_', '-');
@@ -36,7 +36,7 @@ public class QueryItemPropertyObjectTypeMapping implements ObjectTypeProducer, P
 
         groupMappings = itemDefinition.getPropertyGroups() == null ?
                 Map.of() :
-                itemDefinition.getPropertyGroups().stream().collect(Collectors.toMap(pg -> getGroupFieldName(pg.getName()), pg -> new QueryItemPropertyGroupObjectTypeMapping(itemDefinition, pg)));
+                itemDefinition.getPropertyGroups().stream().collect(Collectors.toMap(pg -> getGroupFieldName(pg.getName()), pg -> new ItemPropertyGroupObjectTypeMapping(itemDefinition, pg)));
     }
 
     private String getGroupFieldName(String propertyGroupName) {
@@ -50,7 +50,7 @@ public class QueryItemPropertyObjectTypeMapping implements ObjectTypeProducer, P
         var propertyFieldDefinitions = new ArrayList<FieldDefinition>();
         propertyFieldDefinitions.addAll(this.propertyFieldMappings.values());
 
-        for (Map.Entry<String, QueryItemPropertyGroupObjectTypeMapping> entry : groupMappings.entrySet()) {
+        for (Map.Entry<String, ItemPropertyGroupObjectTypeMapping> entry : groupMappings.entrySet()) {
             String fieldName = entry.getKey();
             var groupMapping = entry.getValue();
             List<ObjectTypeDefinition> groupTypeDefinitions = groupMapping.getObjectTypeDefinitions();

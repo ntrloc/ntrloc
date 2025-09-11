@@ -174,12 +174,24 @@ class MutationRetrievalIntegrationTest {
         var mutation = """
                 mutation Mutation {
                      execute(inputs: [
-                         { Photo: { create: { properties: { name: "photo1" number: 23 } } } },
-                         { Photo: { create: { properties: { name: "photo2" number: 34 } } } },
-                         { Photographer: { create: { properties: { name: "Bill" } } } }
+                         { Photo: { create: { ref: "photo1" properties: { name: "photo1" number: 23 } } } },
+                         { Photo: { create: { ref: "photo2" properties: { name: "photo2" number: 34 } } } },
+                         {
+                            Photographer: {
+                                create: {
+                                    properties: { name: "Bill" }
+                                    links: {
+                                        created: [
+                                            { target: { ref: "photo1" } },
+                                            { target: { ref: "photo2" } }
+                                        ]
+                                    }
+                                }
+                            }
+                         }
                      ]) {
                         created {
-                            entityType
+                            itemType
                             id
                         }
                      }
@@ -205,9 +217,25 @@ class MutationRetrievalIntegrationTest {
                             name
                             number
                         }
+                        links {
+                            createdby {
+                                source {
+                                    properties {
+                                        name
+                                    }
+                                }
+                            }
+                        }
                     }
                     Photographer {
                         properties { name }
+                        links {
+                            created {
+                                target {
+                                    properties { name }
+                                }
+                            }
+                        }
                     }
                 }
                 """;

@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-public class QueryItemPropertyGroupObjectTypeMapping implements ObjectTypeProducer, PropertyFieldValueDefinitionMapper {
+public class ItemPropertyGroupObjectTypeMapping implements ObjectTypeProducer, PropertyFieldValueDefinitionMapper {
 
     static String IS_PROPERTY_GROUP_TYPE = "isPropertyGroup";
 
@@ -22,7 +22,7 @@ public class QueryItemPropertyGroupObjectTypeMapping implements ObjectTypeProduc
 
     private Map<String, FieldDefinition> propertyFieldDefinitions;
 
-    public QueryItemPropertyGroupObjectTypeMapping(ItemDefinition itemDefinition, PropertyGroupDefinition propertyGroupDefinition) {
+    public ItemPropertyGroupObjectTypeMapping(ItemDefinition itemDefinition, PropertyGroupDefinition propertyGroupDefinition) {
         this.propertyGroupDefinition = propertyGroupDefinition;
         String typeName = "%s %s Property Group".formatted(itemDefinition.getName(), propertyGroupDefinition.getName());
         this.graphQlTypeName = CaseUtils.toCamelCase(typeName, true, '_', '-');

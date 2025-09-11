@@ -13,9 +13,9 @@ import org.ntrloc.graph.db.impl.ItemManagerImpl;
 import org.ntrloc.graph.db.language.StringProperty;
 import org.ntrloc.graph.db.language.mutation.ItemCreateMutation;
 import org.ntrloc.graph.db.language.mutation.ItemDeleteMutation;
-import org.ntrloc.graph.db.language.mutation.ItemReference;
 import org.ntrloc.graph.db.language.mutation.LinkCreateMutation;
 import org.ntrloc.graph.db.language.mutation.MutationRequest;
+import org.ntrloc.graph.db.language.selectors.IdSelector;
 import org.ntrloc.graph.db.schema.Cardinality;
 import org.ntrloc.graph.db.schema.ItemDefinition;
 import org.ntrloc.graph.db.schema.LinkDefinition;
@@ -192,10 +192,8 @@ class ItemManagerMutationTest {
         ));
         LinkCreateMutation linkCreate = new LinkCreateMutation();
         linkCreate.setLinkType("CREATED");
-        ItemReference reference = new ItemReference();
-        reference.setType(ItemReference.ReferenceType.MUTATION);
-        reference.setId(photoCreate.getRefId());
-        linkCreate.setLinkedItemReference(reference);
+        IdSelector selector = new IdSelector(photoCreate.getRefId(), IdSelector.Type.LOCAL);
+        linkCreate.setSelector(selector);
         photographerCreate.setLinks(List.of(linkCreate));
 
         MutationRequest req = new MutationRequest(List.of(photoCreate, photographerCreate));

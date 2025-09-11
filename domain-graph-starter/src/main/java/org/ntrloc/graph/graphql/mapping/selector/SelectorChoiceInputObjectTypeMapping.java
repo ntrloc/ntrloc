@@ -3,8 +3,13 @@ package org.ntrloc.graph.graphql.mapping.selector;
 import graphql.language.Directive;
 import graphql.language.InputObjectTypeDefinition;
 import graphql.language.InputValueDefinition;
+import graphql.language.ObjectField;
+import graphql.language.ObjectValue;
+import graphql.language.StringValue;
 import graphql.language.TypeName;
 import org.apache.commons.text.CaseUtils;
+import org.ntrloc.graph.db.language.selectors.IdSelector;
+import org.ntrloc.graph.db.language.selectors.Selector;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -61,6 +66,15 @@ public class SelectorChoiceInputObjectTypeMapping implements SelectorInputObject
     @Override
     public String getGraphQlTypeName() {
         return graphQlTypeName;
+    }
+
+    public Selector parseSelector(ObjectValue objectValue) {
+        ObjectField field = objectValue.getObjectFields().get(0);
+        return switch (field.getName()) {
+            case "id" -> new IdSelector(((StringValue)field.getValue()).getValue(), IdSelector.Type.GLOBAL);
+            case "ref" -> new IdSelector(((StringValue)field.getValue()).getValue(), IdSelector.Type.LOCAL);
+            default -> throw new IllegalArgumentException("Unknown selector choice: " + field.getName());
+        };
     }
 
 }

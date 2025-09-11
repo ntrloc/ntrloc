@@ -4,9 +4,11 @@ import graphql.language.InputObjectTypeDefinition;
 import graphql.language.InputValueDefinition;
 import graphql.language.ListType;
 import graphql.language.NonNullType;
+import graphql.language.ObjectValue;
 import graphql.language.TypeName;
 import org.apache.commons.text.CaseUtils;
 import org.ntrloc.graph.db.language.selectors.OrItemSelector;
+import org.ntrloc.graph.db.language.selectors.Selector;
 
 import java.util.List;
 
@@ -36,4 +38,8 @@ public class OrSelectorInputObjectTypeMapping implements SelectorInputObjectType
         return graphQlTypeName;
     }
 
+    @Override
+    public Selector parseSelector(ObjectValue objectValue) {
+        return null;
+    }
 }

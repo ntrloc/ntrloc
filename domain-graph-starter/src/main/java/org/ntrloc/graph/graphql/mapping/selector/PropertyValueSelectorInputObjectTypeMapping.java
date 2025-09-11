@@ -2,17 +2,16 @@ package org.ntrloc.graph.graphql.mapping.selector;
 
 import graphql.language.InputObjectTypeDefinition;
 import graphql.language.InputValueDefinition;
+import graphql.language.ObjectValue;
 import graphql.language.TypeName;
 import org.apache.commons.text.CaseUtils;
-import org.ntrloc.graph.db.language.selectors.HasPropertyValueSelector;
-import org.ntrloc.graph.db.language.selectors.ItemSelector;
+import org.ntrloc.graph.db.language.selectors.Selector;
 
 import java.util.List;
 
 public class PropertyValueSelectorInputObjectTypeMapping implements SelectorInputObjectTypeMapping {
 
     private String graphQlTypeName;
-    private ItemSelector selector = new HasPropertyValueSelector();
 
     public PropertyValueSelectorInputObjectTypeMapping() {
         this.graphQlTypeName = CaseUtils.toCamelCase("Property Value Selector Input", true, '_', '-');
@@ -33,4 +32,8 @@ public class PropertyValueSelectorInputObjectTypeMapping implements SelectorInpu
         return graphQlTypeName;
     }
 
+    @Override
+    public Selector parseSelector(ObjectValue objectValue) {
+        return null;
+    }
 }

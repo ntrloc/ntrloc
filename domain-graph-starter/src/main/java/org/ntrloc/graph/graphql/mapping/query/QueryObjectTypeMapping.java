@@ -25,14 +25,19 @@ public class QueryObjectTypeMapping implements ObjectTypeProducer {
 
     protected String graphQlTypeName;
 
-    private Map<String, QueryItemObjectTypeMapping> itemTypeMappings = new HashMap();
+    private final Map<String, ItemObjectTypeMapping> itemTypeMappings = new HashMap<>();
 
     public QueryObjectTypeMapping(Set<ItemDefinition> itemDefinitions, Set<LinkDefinition> linkDefinitions) {
         this.graphQlTypeName = "Query";
 
         for (ItemDefinition itemDefinition : itemDefinitions) {
             Set<LinkDefinition> itemLinks = linkDefinitions.stream().filter(l -> l.getSourceEntity().equals(itemDefinition.getName()) || l.getTargetEntity().equals(itemDefinition.getName())).collect(java.util.stream.Collectors.toSet());
-            itemTypeMappings.put(itemDefinition.getName(), new QueryItemObjectTypeMapping(itemDefinition, itemLinks));
+            itemTypeMappings.put(itemDefinition.getName(), new ItemObjectTypeMapping(itemDefinition, itemLinks));
+        }
+
+        // now that all the item types have been mapped, register them with each other
+        for (ItemObjectTypeMapping itemTypeMapping : itemTypeMappings.values()) {
+            itemTypeMapping.registerItemTypeMappingsForLinks(itemTypeMappings);
         }
     }
 
@@ -41,7 +46,7 @@ public class QueryObjectTypeMapping implements ObjectTypeProducer {
         List<ObjectTypeDefinition> retList = new ArrayList<>();
 
         List<FieldDefinition> fieldDefinitions = new ArrayList<>();
-        for (QueryItemObjectTypeMapping itemTypeMapping : itemTypeMappings.values()) {
+        for (ItemObjectTypeMapping itemTypeMapping : itemTypeMappings.values()) {
             retList.addAll(itemTypeMapping.getObjectTypeDefinitions());
 
             FieldDefinition definition = FieldDefinition.newFieldDefinition()
@@ -64,8 +69,8 @@ public class QueryObjectTypeMapping implements ObjectTypeProducer {
     public SelectableItemProjectionSpec parseQueryField(Field field) {
         LOG.info("parsing query field {}", field);
         String itemName = field.getName();
-        QueryItemObjectTypeMapping itemTypeMapping = itemTypeMappings.get(itemName);
-        return itemTypeMapping.parseQueryField(field);
+        ItemObjectTypeMapping itemTypeMapping = itemTypeMappings.get(itemName);
+        return itemTypeMapping.parseSelectableQueryField(field);
     }
 
 }
