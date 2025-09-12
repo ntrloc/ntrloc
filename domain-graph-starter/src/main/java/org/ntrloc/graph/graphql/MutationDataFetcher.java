@@ -58,6 +58,8 @@ public class MutationDataFetcher implements DataFetcher<Object> {
             retMap.put("updated", itemsByAction.get(MutationType.UPDATE));
             retMap.put("deleted", itemsByAction.get(MutationType.DELETE));
 
+            LOG.info("Executed mutation {} with response {}", fd, retMap);
+
             return retMap;
         } catch (Exception e) {
             LOG.error("Error while executing mutation", e);

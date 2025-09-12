@@ -357,9 +357,9 @@ public class MutatorImpl implements Mutator {
             MutationResult result = new MutationResult(ItemStatus.valueOf(priorStatus), ItemStatus.valueOf(newStatus), uid);
             results.add(result);
         }
-        LOG.info("Committed transaction {} in {} ms", transaction.getId(), (new Date().getTime() - now) / 1000);
 
         transaction.commit();
+        LOG.info("Committed transaction {} in {} ms", transaction.getId(), (new Date().getTime() - now) / 1000);
 
         return results;
     }

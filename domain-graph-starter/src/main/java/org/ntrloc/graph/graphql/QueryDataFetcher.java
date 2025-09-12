@@ -43,10 +43,9 @@ public class QueryDataFetcher implements DataFetcher<Object> {
         var projectionSpec = schemaMapper.parseProjection(field);
 
         List<ItemProjection> projections = itemManager.executeProjection(projectionSpec);
+        LOG.info("Executed query {} with projections {}", projectionSpec, projections);
 
         return projections;
-
-        // return List.of(Map.of("properties", Map.of("name", "YO MAMA!")));
     }
 
 }

@@ -7,6 +7,8 @@ import java.util.StringJoiner;
 public class ItemProjection {
 
     private String id;
+    private Integer version;
+    private boolean isLatestVersion;
     private String itemType;
 
     private Map<String, Object> properties;
@@ -22,6 +24,22 @@ public class ItemProjection {
 
     public void setId(String id) {
         this.id = id;
+    }
+
+    public Integer getVersion() {
+        return version;
+    }
+
+    public void setVersion(Integer version) {
+        this.version = version;
+    }
+
+    public boolean isLatestVersion() {
+        return isLatestVersion;
+    }
+
+    public void setLatestVersion(boolean latestVersion) {
+        isLatestVersion = latestVersion;
     }
 
     public String getItemType() {

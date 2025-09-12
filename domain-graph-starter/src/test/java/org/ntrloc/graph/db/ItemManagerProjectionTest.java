@@ -28,7 +28,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 
 @DisplayName("An entity manager")
-public class ItemManagerProjectionTest {
+class ItemManagerProjectionTest {
 
     private static final Logger LOG = LoggerFactory.getLogger(ItemManagerProjectionTest.class);
 
@@ -59,6 +59,7 @@ public class ItemManagerProjectionTest {
                 .addV("Photo")
                 .property(PropertyConstants.UNIQUE_ID_PROPERTY, "p1")
                 .property(PropertyConstants.ITEM_TYPE_PROPERTY, "Photo")
+                .property(PropertyConstants.VERSION_PROPERTY, 1)
                 .property("Photo_name", "photo1")
                 .property("Photo_colorspace", "B&W")
                 .as("photo1")
@@ -66,6 +67,7 @@ public class ItemManagerProjectionTest {
                 .addV("Photo")
                 .property(PropertyConstants.UNIQUE_ID_PROPERTY, "p2")
                 .property(PropertyConstants.ITEM_TYPE_PROPERTY, "Photo")
+                .property(PropertyConstants.VERSION_PROPERTY, 1)
                 .property("Photo_name", "photo2")
                 .property("Photo_colorspace", "RGB")
                 .as("photo2")
@@ -73,6 +75,7 @@ public class ItemManagerProjectionTest {
                 .addV("Photographer")
                 .property(PropertyConstants.UNIQUE_ID_PROPERTY, "ph3")
                 .property(PropertyConstants.ITEM_TYPE_PROPERTY, "Photographer")
+                .property(PropertyConstants.VERSION_PROPERTY, 1)
                 .property("Photographer_name", "Bill")
                 .property("Photographer_age", 30)
                 .as("photographer1")
@@ -80,6 +83,7 @@ public class ItemManagerProjectionTest {
                 .addV("Photographer")
                 .property(PropertyConstants.UNIQUE_ID_PROPERTY, "ph4")
                 .property(PropertyConstants.ITEM_TYPE_PROPERTY, "Photographer")
+                .property(PropertyConstants.VERSION_PROPERTY, 1)
                 .property("Photographer_name", "Jack")
                 .property("Photographer_age", 55)
                 .as("photographer2")
@@ -87,12 +91,14 @@ public class ItemManagerProjectionTest {
                 .addV("Lightbox")
                 .property(PropertyConstants.UNIQUE_ID_PROPERTY, "lb1")
                 .property(PropertyConstants.ITEM_TYPE_PROPERTY, "Lightbox")
+                .property(PropertyConstants.VERSION_PROPERTY, 1)
                 .property("Lightbox_name", "lightbox1")
                 .as("lb1")
 
                 .addV("Agency")
                 .property(PropertyConstants.UNIQUE_ID_PROPERTY, "a3")
                 .property(PropertyConstants.ITEM_TYPE_PROPERTY, "Agency")
+                .property(PropertyConstants.VERSION_PROPERTY, 1)
                 .property("Agency_name", "Some Agency")
                 .as("a3")
 

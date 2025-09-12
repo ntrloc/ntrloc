@@ -29,6 +29,8 @@ public class ItemObjectTypeMapping implements ObjectTypeProducer {
     private static final String PROPERTIES_FIELD_NAME = "properties";
     private static final String VERSION_FIELD_NAME = "version";
 
+    private static final List<String> IMPLICIT_PROPERTIES = List.of(ID_FIELD_NAME, VERSION_FIELD_NAME, IS_LATEST_VERSION_FIELD_NAME);
+
     private final String graphQlTypeName;
     private final ItemDefinition itemDefinition;
     private final ItemPropertiesObjectTypeMapping propertyObjectTypeMapping;
@@ -136,6 +138,7 @@ public class ItemObjectTypeMapping implements ObjectTypeProducer {
         selections.stream()
                 .filter(s -> s instanceof Field)
                 .map(s -> (Field) s)
+                .filter(f -> !IMPLICIT_PROPERTIES.contains(f.getName()))
                 .forEach(f -> {
                     switch (f.getName()) {
                         case PROPERTIES_FIELD_NAME -> {

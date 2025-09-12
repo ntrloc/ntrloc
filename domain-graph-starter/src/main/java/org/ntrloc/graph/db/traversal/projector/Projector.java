@@ -6,6 +6,7 @@ import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversal;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversalSource;
 import org.apache.tinkerpop.gremlin.structure.Direction;
 import org.apache.tinkerpop.gremlin.structure.Vertex;
+import org.ntrloc.graph.db.LabelConstants;
 import org.ntrloc.graph.db.PropertyConstants;
 import org.ntrloc.graph.db.language.projection.IncomingLinkProjection;
 import org.ntrloc.graph.db.language.projection.ItemProjection;
@@ -72,7 +73,14 @@ public class Projector {
     private GraphTraversal<?, ItemProjection> projectItems(GraphTraversal<?, Vertex> traversal, ItemProjectionSpec spec, String itemType) {
         Map<String, GraphTraversal<?, ?>> projectionTraversals = new TreeMap<>();
         projectionTraversals.put(PropertyConstants.UNIQUE_ID_PROPERTY, __.values(PropertyConstants.UNIQUE_ID_PROPERTY));
+        projectionTraversals.put(PropertyConstants.VERSION_PROPERTY, __.values(PropertyConstants.VERSION_PROPERTY));
+        projectionTraversals.put(PropertyConstants.IS_LATEST_VERSION_PROPERTY,  __.choose(
+                __.inE(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).limit(1),
+                __.constant(false),
+                __.constant(true)
+        ));
         projectionTraversals.put(PropertyConstants.ITEM_TYPE_PROPERTY, __.values(PropertyConstants.ITEM_TYPE_PROPERTY));
+
         if (spec.getProperties() != null) {
             var internalPropertyNames = spec.getProperties().stream().map(p -> externalToInternalPropertyName(itemType, p)).toList();
             projectionTraversals.put("properties", __.valueMap(internalPropertyNames.toArray(new String[0])));
@@ -102,6 +110,8 @@ public class Projector {
         return projectionTraversal.map(input -> {
             Map<String, Object> value = input.get();
             String uid = (String) value.get(PropertyConstants.UNIQUE_ID_PROPERTY);
+            int version = (int) value.get(PropertyConstants.VERSION_PROPERTY);
+            boolean isLatestVersion = (boolean) value.get(PropertyConstants.IS_LATEST_VERSION_PROPERTY);
             String iType = (String) value.get(PropertyConstants.ITEM_TYPE_PROPERTY);
             Map<String, Object> nodeProps = (Map<String, Object>) value.get("properties");
             Map<String, Object> translatedProps = nodeProps == null ? null : nodeProps.entrySet().stream()
@@ -109,6 +119,8 @@ public class Projector {
 
             ItemProjection projection = new ItemProjection();
             projection.setId(uid);
+            projection.setVersion(version);
+            projection.setLatestVersion(isLatestVersion);
             projection.setItemType(iType);
             projection.setProperties(translatedProps);
 
