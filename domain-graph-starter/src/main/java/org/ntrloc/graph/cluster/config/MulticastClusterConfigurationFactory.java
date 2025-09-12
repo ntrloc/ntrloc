@@ -2,7 +2,12 @@ package org.ntrloc.graph.cluster.config;
 
 import com.hazelcast.config.Config;
 import com.hazelcast.config.JoinConfig;
+import com.hazelcast.config.ListConfig;
+import com.hazelcast.config.MapConfig;
 import com.hazelcast.config.NetworkConfig;
+import com.hazelcast.config.QueueConfig;
+import com.hazelcast.config.ScheduledExecutorConfig;
+import com.hazelcast.config.TopicConfig;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.ntrloc.graph.cluster.ClusterConfigurationFactory;
@@ -11,6 +16,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.util.Arrays;
+import java.util.List;
 
 @Component
 @ConditionalOnProperty(value = "cluster.strategy", havingValue = "multicast")
@@ -24,8 +30,13 @@ public class MulticastClusterConfigurationFactory extends AbstractClusterConfigu
     @Value("${cluster.multicast.init-timeout:5}")
     private int multicastJoinTimeout;
 
-    public MulticastClusterConfigurationFactory(@Value("${cluster.name:ntrloc}") String clusterName) {
-        super(clusterName);
+    public MulticastClusterConfigurationFactory(@Value("${cluster.name:ntrloc}") String clusterName,
+                                                List<MapConfig> mapConfigs,
+                                                List<ListConfig> listConfigs,
+                                                List<TopicConfig> topicConfigs,
+                                                List<QueueConfig> queueConfigs,
+                                                List<ScheduledExecutorConfig> scheduledExecutorConfigs) {
+        super(clusterName, mapConfigs, listConfigs, topicConfigs, queueConfigs, scheduledExecutorConfigs);
     }
 
     @Override

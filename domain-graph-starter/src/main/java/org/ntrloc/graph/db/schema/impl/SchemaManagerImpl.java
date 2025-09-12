@@ -59,6 +59,9 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
 
     private static final String SCHEMA_MAP_NAME = "schemaMap";
     private static final String SCHEMA_VERSION_LABEL = "version";
+    private static final String HAS_PROPERTY_GROUP = "has-property-group";
+    private static final String HAS_PROPERTY = "has-property";
+
     private final ClusterService clusterService;
 
     private IMap<String, Object> schemaMap;
@@ -218,7 +221,7 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
                     .property("description", p.getDescription())
                     .property("type", p.getType().toString())
                     .as(ref);
-            traversal = traversal.addE("has-property")
+            traversal = traversal.addE(HAS_PROPERTY)
                     .from("schema").to(ref);
         }
 
@@ -244,7 +247,7 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
                     .property("name", groupDefinition.getName())
                     .property("description", groupDefinition.getDescription())
                     .as(groupRef);
-            traversal = traversal.addE("has-property-group")
+            traversal = traversal.addE(HAS_PROPERTY_GROUP)
                     .from("schema").to(groupRef);
 
             for (PropertyDefinition groupPropertyDef : groupDefinition.getProperties()) {
@@ -255,7 +258,7 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
                         .property("description", groupPropertyDef.getDescription())
                         .property("type", groupPropertyDef.getType().toString())
                         .as(ref);
-                traversal = traversal.addE("has-property")
+                traversal = traversal.addE(HAS_PROPERTY)
                         .from(groupRef).to(ref);
             }
         }
@@ -295,13 +298,13 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
                 // elements of the schema node
                 .by(__.elementMap())
                 // a list of the property nodes tied to the schema node
-                .by(__.out("has-property").elementMap().fold())
+                .by(__.out(HAS_PROPERTY).elementMap().fold())
                 // a map of the property groups tied to the schema and the properties in them
                 .by(
-                        __.out("has-property-group")
+                        __.out(HAS_PROPERTY_GROUP)
                                 .project(elementProjectionName, propertyNodeProjectionName)
                                 .by(__.elementMap())
-                                .by(__.out("has-property").elementMap().fold())
+                                .by(__.out(HAS_PROPERTY).elementMap().fold())
                                 .fold()
                 );
 
@@ -392,7 +395,7 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
                         .property("description", p.getDescription())
                         .property("type", p.getType().toString())
                         .as(ref);
-                traversal = traversal.addE("has-property")
+                traversal = traversal.addE(HAS_PROPERTY)
                         .from("schema").to(ref);
             }
         }
@@ -430,13 +433,13 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
                 // elements of the schema node
                 .by(__.elementMap())
                 // a list of the property nodes tied to the schema node
-                .by(__.out("has-property").elementMap().fold())
+                .by(__.out(HAS_PROPERTY).elementMap().fold())
                 // a map of the property groups tied to the schema and the properties in them
                 .by(
-                        __.out("has-property-group")
+                        __.out(HAS_PROPERTY_GROUP)
                                 .project(elementProjectionName, propertyNodeProjectionName)
                                 .by(__.elementMap())
-                                .by(__.out("has-property").elementMap().fold())
+                                .by(__.out(HAS_PROPERTY).elementMap().fold())
                                 .fold()
                 );
 

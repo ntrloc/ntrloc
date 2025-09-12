@@ -38,12 +38,12 @@ public class ItemObjectTypeMapping implements ObjectTypeProducer {
 
     public ItemObjectTypeMapping(ItemDefinition itemDefinition, Set<LinkDefinition> linkDefinitions) {
         this.itemDefinition = itemDefinition;
-        this.graphQlTypeName = getGraphQLTypeName(itemDefinition.getName());
+        this.graphQlTypeName = getItemGraphQlTypeName(itemDefinition.getName());
         propertyObjectTypeMapping = new ItemPropertiesObjectTypeMapping(itemDefinition);
         linksObjectTypeMapping = new ItemLinksObjectTypeMapping(itemDefinition, linkDefinitions);
     }
 
-    static String getGraphQLTypeName(String itemType) {
+    static String getItemGraphQlTypeName(String itemType) {
         String typeName = "%s".formatted(itemType);
         return CaseUtils.toCamelCase(typeName, true, '_', '-');
     }

@@ -6,7 +6,6 @@ import graphql.language.ListType;
 import graphql.language.NonNullType;
 import graphql.language.TypeName;
 import org.apache.commons.text.CaseUtils;
-import org.ntrloc.graph.db.language.selectors.AndItemSelector;
 import org.ntrloc.graph.db.language.selectors.Selector;
 
 import java.util.List;
@@ -15,7 +14,6 @@ import java.util.Map;
 public class AndSelectorInputObjectTypeMapping implements SelectorInputObjectTypeMapping {
 
     private String graphQlTypeName;
-    private AndItemSelector selector = new AndItemSelector();
 
     public AndSelectorInputObjectTypeMapping() {
         this.graphQlTypeName = CaseUtils.toCamelCase("And Selector Input", true, '_', '-');

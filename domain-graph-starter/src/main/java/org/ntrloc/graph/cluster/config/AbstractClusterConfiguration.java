@@ -9,7 +9,6 @@ import com.hazelcast.config.ScheduledExecutorConfig;
 import com.hazelcast.config.TopicConfig;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -24,23 +23,28 @@ public abstract class AbstractClusterConfiguration {
 
     protected String clusterName;
 
-    @Autowired(required = false)
     private List<MapConfig> mapConfigs;
 
-    @Autowired(required = false)
     private List<ListConfig> listConfigs;
 
-    @Autowired(required = false)
     private List<TopicConfig> topicConfigs;
 
-    @Autowired(required = false)
     private List<QueueConfig> queueConfigs;
 
-    @Autowired(required = false)
     private List<ScheduledExecutorConfig> scheduledExecutorConfigs;
 
-    AbstractClusterConfiguration(@Value("${cluster.name:ntrloc}") String clusterName) {
+    AbstractClusterConfiguration(@Value("${cluster.name:ntrloc}") String clusterName,
+                                 List<MapConfig> mapConfigs,
+                                 List<ListConfig> listConfigs,
+                                 List<TopicConfig> topicConfigs,
+                                 List<QueueConfig> queueConfigs,
+                                 List<ScheduledExecutorConfig> scheduledExecutorConfigs) {
         this.clusterName = clusterName;
+        this.mapConfigs = mapConfigs;
+        this.listConfigs = listConfigs;
+        this.topicConfigs = topicConfigs;
+        this.queueConfigs = queueConfigs;
+        this.scheduledExecutorConfigs = scheduledExecutorConfigs;
     }
 
     protected Config getBaseConfiguration() {
@@ -59,7 +63,7 @@ public abstract class AbstractClusterConfiguration {
         joinConfig.getAwsConfig().setEnabled(false);
         joinConfig.getAutoDetectionConfig().setEnabled(false);
 
-        if (mapConfigs != null) {
+        if (mapConfigs != null && !mapConfigs.isEmpty()) {
             LOG.debug("Applying cluster map configurations");
             mapConfigs.forEach(mapConfig -> {
                 MapConfig clusterMapConfig = cfg.getMapConfig(mapConfig.getName());
@@ -70,7 +74,7 @@ public abstract class AbstractClusterConfiguration {
             LOG.debug("No cluster map configurations found; skipping.");
         }
 
-        if (listConfigs != null) {
+        if (listConfigs != null && !listConfigs.isEmpty()) {
             LOG.debug("Applying cluster list configurations");
             listConfigs.forEach(listConfig -> {
                 ListConfig clusterListConfig = cfg.getListConfig(listConfig.getName());
@@ -81,7 +85,7 @@ public abstract class AbstractClusterConfiguration {
             LOG.debug("No cluster list configurations found; skipping.");
         }
 
-        if (topicConfigs != null) {
+        if (topicConfigs != null && !topicConfigs.isEmpty()) {
             LOG.debug("Applying cluster topic configurations");
             topicConfigs.forEach(topicConfig -> {
                 TopicConfig clusterTopicConfig = cfg.getTopicConfig(topicConfig.getName());
@@ -95,7 +99,7 @@ public abstract class AbstractClusterConfiguration {
             LOG.debug("No cluster topic configurations found; skipping.");
         }
 
-        if (queueConfigs != null) {
+        if (queueConfigs != null && !queueConfigs.isEmpty()) {
             LOG.debug("Applying cluster queue configurations");
             queueConfigs.forEach(queueConfig -> {
                 QueueConfig clusterQueueConfig = cfg.getQueueConfig(queueConfig.getName());
@@ -108,7 +112,7 @@ public abstract class AbstractClusterConfiguration {
             LOG.debug("No cluster queue configurations found; skipping.");
         }
 
-        if (scheduledExecutorConfigs != null) {
+        if (scheduledExecutorConfigs != null && !scheduledExecutorConfigs.isEmpty()) {
             cfg.setScheduledExecutorConfigs(scheduledExecutorConfigs.stream().collect(Collectors.toMap(ScheduledExecutorConfig::getName, c -> {
                 LOG.info("Applied configuration for scheduled executor {}", c.getName());
                 return c;

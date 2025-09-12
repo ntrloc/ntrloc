@@ -3,7 +3,12 @@ package org.ntrloc.graph.cluster.config;
 import com.hazelcast.config.Config;
 import com.hazelcast.config.JoinConfig;
 import com.hazelcast.config.KubernetesConfig;
+import com.hazelcast.config.ListConfig;
+import com.hazelcast.config.MapConfig;
 import com.hazelcast.config.NetworkConfig;
+import com.hazelcast.config.QueueConfig;
+import com.hazelcast.config.ScheduledExecutorConfig;
+import com.hazelcast.config.TopicConfig;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.ntrloc.graph.cluster.ClusterConfigurationFactory;
@@ -12,6 +17,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
 import java.util.Optional;
 
 @Component
@@ -32,8 +38,13 @@ public class KubernetesClusterConfigurationFactory extends AbstractClusterConfig
     @Value("${cluster.label.value:}")
     private Optional<String> serviceLabelValue;
 
-    public KubernetesClusterConfigurationFactory(@Value("${cluster.name:ntrloc}") String clusterName) {
-        super(clusterName);
+    public KubernetesClusterConfigurationFactory(@Value("${cluster.name:ntrloc}") String clusterName,
+                                                 List<MapConfig> mapConfigs,
+                                                 List<ListConfig> listConfigs,
+                                                 List<TopicConfig> topicConfigs,
+                                                 List<QueueConfig> queueConfigs,
+                                                 List<ScheduledExecutorConfig> scheduledExecutorConfigs) {
+        super(clusterName, mapConfigs, listConfigs, topicConfigs, queueConfigs, scheduledExecutorConfigs);
     }
 
     @Override

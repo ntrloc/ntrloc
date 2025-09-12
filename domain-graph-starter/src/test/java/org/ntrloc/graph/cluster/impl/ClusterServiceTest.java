@@ -22,7 +22,7 @@ class ClusterServiceTest {
 
     @BeforeEach
     void init() {
-        service = new ClusterServiceImpl(new StandaloneClusterConfigurationFactory("testCluster").getObject());
+        service = new ClusterServiceImpl(new StandaloneClusterConfigurationFactory("testCluster", null, null, null, null, null).getObject());
     }
 
     @Test

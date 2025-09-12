@@ -62,7 +62,7 @@ public class ItemOutgoingLinkObjectTypeMapping extends ItemLinkObjectTypeMapping
 
         FieldDefinition targetField = FieldDefinition.newFieldDefinition()
                 .name(targetFieldName)
-                .type(new TypeName(ItemObjectTypeMapping.getGraphQLTypeName(linkDefinition.getTargetEntity())))
+                .type(new TypeName(ItemObjectTypeMapping.getItemGraphQlTypeName(linkDefinition.getTargetEntity())))
                 .build();
         fieldDefinitions.add(targetField);
 

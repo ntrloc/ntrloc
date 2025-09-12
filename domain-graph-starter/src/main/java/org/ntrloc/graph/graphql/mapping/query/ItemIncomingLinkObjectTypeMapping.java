@@ -61,7 +61,7 @@ public class ItemIncomingLinkObjectTypeMapping extends ItemLinkObjectTypeMapping
         }
         FieldDefinition sourceField = FieldDefinition.newFieldDefinition()
                 .name(sourceFieldName)
-                .type(new TypeName(ItemObjectTypeMapping.getGraphQLTypeName(linkDefinition.getSourceEntity())))
+                .type(new TypeName(ItemObjectTypeMapping.getItemGraphQlTypeName(linkDefinition.getSourceEntity())))
                 .build();
         fieldDefinitions.add(sourceField);
 
