@@ -1,12 +1,9 @@
 package org.ntrloc.graph.graphql.mapping.mutation;
 
-import graphql.language.ArrayValue;
 import graphql.language.InputObjectTypeDefinition;
 import graphql.language.InputValueDefinition;
 import graphql.language.ListType;
 import graphql.language.NonNullType;
-import graphql.language.ObjectField;
-import graphql.language.ObjectValue;
 import graphql.language.TypeName;
 import org.apache.commons.text.CaseUtils;
 import org.ntrloc.graph.db.language.mutation.LinkCreateMutation;
@@ -74,22 +71,24 @@ public class ItemCreateLinksInputObjectTypeMapping implements InputObjectTypePro
         return graphQlTypeName;
     }
 
-    List<LinkCreateMutation> parseLinkCreateMutations(ObjectField createInputObject) {
+    List<LinkCreateMutation> parseLinkCreateMutations(Map<String, List<Map<String, Object>>> linkCreateMap) {
         List<LinkCreateMutation> retMutations = new ArrayList<>();
-        ObjectValue value = (ObjectValue) createInputObject.getValue();
-        List<ObjectField> objectFields = value.getObjectFields();
-        for (ObjectField objectField : objectFields) {
-            String fieldName = objectField.getName();
+
+        for (Map.Entry<String, List<Map<String, Object>>> entry : linkCreateMap.entrySet()) {
+            String fieldName = entry.getKey();
             IncomingLinkCreateInputObjectTypeMapping incomingType = incomingTypes.get(fieldName);
             if (incomingType == null) {
                 OutgoingLinkCreateInputObjectTypeMapping outgoingType = outgoingTypes.get(fieldName);
-                List<LinkCreateMutation> mutations = outgoingType.parseLinkCreateMutations((ArrayValue) objectField.getValue());
+                List<Map<String, Map<String, Object>>> linkMutations = (List)entry.getValue();
+                List<LinkCreateMutation> mutations = outgoingType.parseLinkCreateMutations(linkMutations);
                 retMutations.addAll(mutations);
             } else {
-                List<LinkCreateMutation> mutations = incomingType.parseLinkCreateMutations((ArrayValue) objectField.getValue());
+                List<Map<String, Map<String, Object>>> linkMutations = (List)entry.getValue();
+                List<LinkCreateMutation> mutations = incomingType.parseLinkCreateMutations(linkMutations);
                 retMutations.addAll(mutations);
             }
         }
+
         return retMutations;
     }
 }

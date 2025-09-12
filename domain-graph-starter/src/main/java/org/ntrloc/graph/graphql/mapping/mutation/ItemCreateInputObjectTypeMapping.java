@@ -2,11 +2,6 @@ package org.ntrloc.graph.graphql.mapping.mutation;
 
 import graphql.language.InputObjectTypeDefinition;
 import graphql.language.InputValueDefinition;
-import graphql.language.ListType;
-import graphql.language.NonNullType;
-import graphql.language.ObjectField;
-import graphql.language.ObjectValue;
-import graphql.language.StringValue;
 import graphql.language.TypeName;
 import org.apache.commons.text.CaseUtils;
 import org.ntrloc.graph.db.language.Property;
@@ -72,7 +67,7 @@ public class ItemCreateInputObjectTypeMapping implements InputObjectTypeProducer
         if (linkCreateInputType != null) {
             entityCreateInputValues.add(InputValueDefinition.newInputValueDefinition()
                     .name(LINKS_FIELD_NAME)
-                    .type(new ListType(new NonNullType(new TypeName(linkCreateInputType.getGraphQlTypeName()))))
+                    .type(new TypeName(linkCreateInputType.getGraphQlTypeName()))
                     .build());
         }
 
@@ -90,23 +85,19 @@ public class ItemCreateInputObjectTypeMapping implements InputObjectTypeProducer
         return retList;
     }
 
-    public ItemCreateMutation parseCreateMutation(ObjectValue objectValue) {
-        Map<String, ObjectField> objectFieldMap = objectValue.getObjectFields().stream().collect(java.util.stream.Collectors.toMap(ObjectField::getName, f -> f));
+    public ItemCreateMutation parseCreateMutation(Map<String, Object> inputMap) {
         ItemCreateMutation mutation = new ItemCreateMutation();
 
-        if (objectFieldMap.containsKey(REF_FIELD_NAME)) {
-            ObjectField refField = objectFieldMap.get(REF_FIELD_NAME);
-            StringValue refValue = (StringValue)refField.getValue();
-            mutation.setRefId(refValue.getValue());
+        if (inputMap.containsKey(REF_FIELD_NAME)) {
+            mutation.setRefId((String)inputMap.get(REF_FIELD_NAME));
         }
-        if (objectFieldMap.containsKey(PROPERTIES_FIELD_NAME)) {
-            LOG.info("I need to map properties {}", objectFieldMap.get(PROPERTIES_FIELD_NAME));
-            List<? extends Property> properties = propertiesMapping.mapProperties((ObjectValue) objectFieldMap.get(PROPERTIES_FIELD_NAME).getValue());
+        if (inputMap.containsKey(PROPERTIES_FIELD_NAME)) {
+            List<? extends Property> properties = propertiesMapping.mapProperties((Map<String, Object>) inputMap.get(PROPERTIES_FIELD_NAME));
             mutation.setProperties(properties);
         }
-        if (objectFieldMap.containsKey(LINKS_FIELD_NAME)) {
+        if (inputMap.containsKey(LINKS_FIELD_NAME)) {
             LOG.info("Mapping links");
-            ObjectField linksField = objectFieldMap.get(LINKS_FIELD_NAME);
+            Map<String, List<Map<String, Object>>> linksField = (Map)inputMap.get(LINKS_FIELD_NAME);
             List<LinkCreateMutation> createMutations = linkCreateInputType.parseLinkCreateMutations(linksField);
             mutation.setLinks(createMutations);
         }

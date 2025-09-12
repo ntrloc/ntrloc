@@ -44,7 +44,7 @@ public class MutationDataFetcher implements DataFetcher<Object> {
             LOG.info("Mutating entity {} with args {}", fd, args);
 
             // TODO: this is temporary while I figure out how to best handle mutations and select-back
-            var mutes = schemaMapper.parseEntityMutations(dfe.getField());
+            var mutes = schemaMapper.parseEntityMutations(args);
 
             var mutations = mutes.values().stream().flatMap(List::stream).toList();
 

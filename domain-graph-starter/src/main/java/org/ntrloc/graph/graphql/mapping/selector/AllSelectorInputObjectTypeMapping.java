@@ -3,12 +3,12 @@ package org.ntrloc.graph.graphql.mapping.selector;
 import graphql.language.BooleanValue;
 import graphql.language.InputObjectTypeDefinition;
 import graphql.language.InputValueDefinition;
-import graphql.language.ObjectValue;
 import graphql.language.TypeName;
 import org.apache.commons.text.CaseUtils;
 import org.ntrloc.graph.db.language.selectors.Selector;
 
 import java.util.List;
+import java.util.Map;
 
 public class AllSelectorInputObjectTypeMapping implements SelectorInputObjectTypeMapping {
 
@@ -35,7 +35,7 @@ public class AllSelectorInputObjectTypeMapping implements SelectorInputObjectTyp
     }
 
     @Override
-    public Selector parseSelector(ObjectValue objectValue) {
+    public Selector parseSelector(Map<String, Object> objectValue) {
         return null;
     }
 }

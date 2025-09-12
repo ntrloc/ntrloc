@@ -4,13 +4,17 @@ import graphql.language.Field;
 import graphql.language.InputObjectTypeDefinition;
 import graphql.language.ObjectTypeDefinition;
 import graphql.language.ObjectTypeExtensionDefinition;
+import graphql.language.ScalarTypeDefinition;
 import org.ntrloc.graph.db.language.mutation.ItemMutation;
 import org.ntrloc.graph.db.language.projection.SelectableItemProjectionSpec;
 import org.ntrloc.graph.db.schema.ItemDefinition;
 import org.ntrloc.graph.db.schema.LinkDefinition;
+import org.ntrloc.graph.graphql.mapping.ScalarTypeProducer;
 import org.ntrloc.graph.graphql.mapping.SchemaMapper;
 import org.ntrloc.graph.graphql.mapping.mutation.MutationObjectTypeMapping;
 import org.ntrloc.graph.graphql.mapping.query.QueryObjectTypeMapping;
+import org.ntrloc.graph.graphql.mapping.scalars.BinaryScalarTypeMapping;
+import org.ntrloc.graph.graphql.mapping.scalars.DateScalarTypeMapping;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -33,12 +37,15 @@ public class SchemaMapperImpl implements SchemaMapper {
     private MutationObjectTypeMapping mutationObjectTypeMapping;
     private QueryObjectTypeMapping queryObjectTypeMapping;
 
+    private List<ScalarTypeProducer> scalarTypeProducers = List.of(new DateScalarTypeMapping(), new BinaryScalarTypeMapping());
+
     public SchemaMapperImpl() {
     }
 
     /* --------------------------- GraphQL type mappings --------------------- */
 
     public void mapSchema(Set<ItemDefinition> itemDefinitions, Set<LinkDefinition> linkDefinitions) {
+
         queryObjectTypeMapping = new QueryObjectTypeMapping(itemDefinitions, linkDefinitions);
         mutationObjectTypeMapping = new MutationObjectTypeMapping(itemDefinitions, linkDefinitions);
 
@@ -57,6 +64,11 @@ public class SchemaMapperImpl implements SchemaMapper {
         extensionDefinitions = new ArrayList<>();
     }
 
+    @Override
+    public List<ScalarTypeDefinition> getScalarTypes() {
+        return scalarTypeProducers.stream().map(ScalarTypeProducer::getScalarTypeDefinition).toList();
+    }
+
     public List<InputObjectTypeDefinition> getInputTypes() {
         return inputTypeDefinitions;
     }
@@ -71,8 +83,8 @@ public class SchemaMapperImpl implements SchemaMapper {
 
     /* -------------------------- GraphQL request parsers -------------------- */
 
-    public Map<String, List<ItemMutation>> parseEntityMutations(Field mutationField) {
-        return mutationObjectTypeMapping.parseItemMutations(mutationField);
+    public Map<String, List<ItemMutation>> parseEntityMutations(Map<String, Object> mutationFields) {
+        return mutationObjectTypeMapping.parseItemMutations(mutationFields);
     }
 
     @Override

@@ -3,13 +3,12 @@ package org.ntrloc.graph.graphql.mapping.selector;
 import graphql.language.Directive;
 import graphql.language.InputObjectTypeDefinition;
 import graphql.language.InputValueDefinition;
-import graphql.language.ObjectField;
-import graphql.language.ObjectValue;
-import graphql.language.StringValue;
 import graphql.language.TypeName;
 import org.apache.commons.text.CaseUtils;
 import org.ntrloc.graph.db.language.selectors.IdSelector;
 import org.ntrloc.graph.db.language.selectors.Selector;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -17,6 +16,8 @@ import java.util.List;
 import java.util.Map;
 
 public class SelectorChoiceInputObjectTypeMapping implements SelectorInputObjectTypeMapping {
+
+    private static final Logger LOG = LoggerFactory.getLogger(SelectorChoiceInputObjectTypeMapping.class);
 
     private String graphQlTypeName;
     private Map<String, SelectorInputObjectTypeMapping> matchers = new HashMap<>();
@@ -68,13 +69,16 @@ public class SelectorChoiceInputObjectTypeMapping implements SelectorInputObject
         return graphQlTypeName;
     }
 
-    public Selector parseSelector(ObjectValue objectValue) {
-        ObjectField field = objectValue.getObjectFields().get(0);
-        return switch (field.getName()) {
-            case "id" -> new IdSelector(((StringValue)field.getValue()).getValue(), IdSelector.Type.GLOBAL);
-            case "ref" -> new IdSelector(((StringValue)field.getValue()).getValue(), IdSelector.Type.LOCAL);
-            default -> throw new IllegalArgumentException("Unknown selector choice: " + field.getName());
-        };
+    public Selector parseSelector(Map<String, Object> selectorObject) {
+        LOG.info("wait");
+
+        if (selectorObject.containsKey("ref")) {
+            return new IdSelector((String) selectorObject.get("ref"), IdSelector.Type.LOCAL);
+        } else if (selectorObject.containsKey("id")) {
+            return new IdSelector((String) selectorObject.get("id"), IdSelector.Type.GLOBAL);
+        } else {
+            throw new IllegalArgumentException("Unknown selector choice");
+        }
     }
 
 }

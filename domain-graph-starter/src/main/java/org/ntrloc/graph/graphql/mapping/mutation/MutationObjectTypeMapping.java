@@ -1,8 +1,5 @@
 package org.ntrloc.graph.graphql.mapping.mutation;
 
-import graphql.language.Argument;
-import graphql.language.ArrayValue;
-import graphql.language.Field;
 import graphql.language.FieldDefinition;
 import graphql.language.InputObjectTypeDefinition;
 import graphql.language.InputValueDefinition;
@@ -10,12 +7,13 @@ import graphql.language.ListType;
 import graphql.language.NonNullType;
 import graphql.language.ObjectTypeDefinition;
 import graphql.language.TypeName;
-import graphql.language.Value;
 import org.ntrloc.graph.db.language.mutation.ItemMutation;
 import org.ntrloc.graph.db.schema.ItemDefinition;
 import org.ntrloc.graph.db.schema.LinkDefinition;
 import org.ntrloc.graph.graphql.mapping.InputObjectTypeProducer;
 import org.ntrloc.graph.graphql.mapping.ObjectTypeProducer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -24,6 +22,8 @@ import java.util.Optional;
 import java.util.Set;
 
 public class MutationObjectTypeMapping implements ObjectTypeProducer, InputObjectTypeProducer {
+
+    private static final Logger LOG = LoggerFactory.getLogger(MutationObjectTypeMapping.class);
 
     private static final String EXECUTE_FIELD_NAME = "execute";
     private static final String INPUT_ARGUMENT_NAME = "inputs";
@@ -65,14 +65,12 @@ public class MutationObjectTypeMapping implements ObjectTypeProducer, InputObjec
         return mutationChoiceInputObjectTypeMapping.getInputObjectTypeDefinitions();
     }
 
-    public Map<String, List<ItemMutation>> parseItemMutations(Field mutationField) {
-        Optional<Argument> argument = mutationField.getArguments().stream().filter(a -> a.getName().equals(INPUT_ARGUMENT_NAME)).findFirst();
-        if (argument.isPresent()) {
-            Argument inputArgument = argument.get();
-            Value argValue = inputArgument.getValue();
-            if (argValue instanceof ArrayValue arrayValue) {
-                List<Value> values = arrayValue.getValues();
-                return mutationChoiceInputObjectTypeMapping.parseEntityMutations(values);
+    public Map<String, List<ItemMutation>> parseItemMutations(Map<String, Object> arguments) {
+        Optional<Object> inputsOpt = Optional.ofNullable(arguments.get(INPUT_ARGUMENT_NAME));
+        if (inputsOpt.isPresent()) {
+            Object inputArgument = inputsOpt.get();
+            if (inputArgument instanceof ArrayList arrayValue) {
+                return mutationChoiceInputObjectTypeMapping.parseEntityMutations(arrayValue);
             } else {
                 throw new IllegalArgumentException("Mutation field " + EXECUTE_FIELD_NAME + ", argument " + INPUT_ARGUMENT_NAME + " must be an array");
             }

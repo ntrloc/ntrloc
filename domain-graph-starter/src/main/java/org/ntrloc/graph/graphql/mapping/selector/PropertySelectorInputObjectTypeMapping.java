@@ -2,7 +2,6 @@ package org.ntrloc.graph.graphql.mapping.selector;
 
 import graphql.language.InputObjectTypeDefinition;
 import graphql.language.InputValueDefinition;
-import graphql.language.ObjectValue;
 import graphql.language.TypeName;
 import org.apache.commons.text.CaseUtils;
 import org.ntrloc.graph.db.language.selectors.HasPropertySelector;
@@ -10,6 +9,7 @@ import org.ntrloc.graph.db.language.selectors.ItemSelector;
 import org.ntrloc.graph.db.language.selectors.Selector;
 
 import java.util.List;
+import java.util.Map;
 
 public class PropertySelectorInputObjectTypeMapping implements SelectorInputObjectTypeMapping {
 
@@ -34,7 +34,7 @@ public class PropertySelectorInputObjectTypeMapping implements SelectorInputObje
     }
 
     @Override
-    public Selector parseSelector(ObjectValue objectValue) {
+    public Selector parseSelector(Map<String, Object> objectValue) {
         return null;
     }
 }

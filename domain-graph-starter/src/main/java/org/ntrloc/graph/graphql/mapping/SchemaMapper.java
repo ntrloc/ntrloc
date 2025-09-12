@@ -4,6 +4,7 @@ import graphql.language.Field;
 import graphql.language.InputObjectTypeDefinition;
 import graphql.language.ObjectTypeDefinition;
 import graphql.language.ObjectTypeExtensionDefinition;
+import graphql.language.ScalarTypeDefinition;
 import org.ntrloc.graph.db.language.mutation.ItemMutation;
 import org.ntrloc.graph.db.language.projection.SelectableItemProjectionSpec;
 import org.ntrloc.graph.db.schema.ItemDefinition;
@@ -19,6 +20,8 @@ public interface SchemaMapper {
 
     void mapSchema(Set<ItemDefinition> itemDefinitions, Set<LinkDefinition> linkDefinitions);
 
+    List<ScalarTypeDefinition> getScalarTypes();
+
     List<InputObjectTypeDefinition> getInputTypes();
 
     List<ObjectTypeDefinition> getOutputTypes();
@@ -27,7 +30,7 @@ public interface SchemaMapper {
 
     /* -------------------------- GraphQL request parsers -------------------- */
 
-    Map<String, List<ItemMutation>> parseEntityMutations(Field mutationField);
+    Map<String, List<ItemMutation>> parseEntityMutations(Map<String, Object> mutationFields);
 
     SelectableItemProjectionSpec parseProjection(Field projectionField);
 

@@ -3,8 +3,6 @@ package org.ntrloc.graph.graphql.mapping.mutation;
 import graphql.language.Directive;
 import graphql.language.InputObjectTypeDefinition;
 import graphql.language.InputValueDefinition;
-import graphql.language.ObjectField;
-import graphql.language.ObjectValue;
 import graphql.language.TypeName;
 import org.apache.commons.text.CaseUtils;
 import org.ntrloc.graph.Tuple;
@@ -187,17 +185,18 @@ public class ItemMutationInputObjectTypeMapping implements InputObjectTypeProduc
         return retList;
     }
 
-    public List<ItemMutation> parseEntityMutations(List<ObjectValue> objectValues) {
+    public List<ItemMutation> parseEntityMutations(List<Map<String, Map<String, Object>>> objectValues) {
         List<ItemMutation> mutations = new ArrayList<>();
-        for (var objectValue: objectValues) {
-            ObjectField field = objectValue.getObjectFields().get(0); // there can only be one field
-            var mutation = switch (field.getName()) {
-                case CREATE_MAPPING_KEY -> createInputTypeMapping.parseCreateMutation((ObjectValue) field.getValue());
-                case UPDATE_MAPPING_KEY -> throw new IllegalArgumentException("Cannot update an entity-level mutation");
-                case DELETE_MAPPING_KEY -> throw new IllegalArgumentException("Cannot delete an entity-level mutation");
-                default -> throw new IllegalArgumentException("Unknown mutation type: " + field.getName());
-            };
-            mutation.setEntityType(itemDefinition.getName());
+
+        for (Map<String, Map<String, Object>> objectValue: objectValues) {
+            ItemMutation mutation;
+            if (objectValue.containsKey(CREATE_MAPPING_KEY)) {
+                var create = createInputTypeMapping.parseCreateMutation(objectValue.get(CREATE_MAPPING_KEY));
+                create.setEntityType(itemDefinition.getName());
+                mutation = create;
+            } else {
+                throw new IllegalArgumentException("Cannot update an entity-level mutation");
+            }
             mutations.add(mutation);
         }
 

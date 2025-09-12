@@ -3,10 +3,7 @@ package org.ntrloc.graph.graphql.mapping.mutation;
 import graphql.language.Directive;
 import graphql.language.InputObjectTypeDefinition;
 import graphql.language.InputValueDefinition;
-import graphql.language.ObjectField;
-import graphql.language.ObjectValue;
 import graphql.language.TypeName;
-import graphql.language.Value;
 import org.apache.commons.text.CaseUtils;
 import org.ntrloc.graph.Tuple;
 import org.ntrloc.graph.db.language.mutation.ItemMutation;
@@ -111,22 +108,23 @@ public class MutationChoiceInputObjectTypeMapping implements InputObjectTypeProd
         }
     }
 
-    public Map<String, List<ItemMutation>> parseEntityMutations(List<Value> mutationValues) {
-        List<ObjectValue> objectValues = mutationValues.stream().map(v -> (ObjectValue) v).collect(Collectors.toList());
-        List<ObjectField> objectFields = objectValues.stream().map(o -> o.getObjectFields().get(0)).collect(Collectors.toList());
-        Map<String, List<ObjectValue>> mutationsByEntity = objectFields.stream().collect(
-                Collectors.groupingBy(
-                        ObjectField::getName,
-                        Collectors.mapping(f -> (ObjectValue) f.getValue(), Collectors.toList())
-                )
-        );
+    public Map<String, List<ItemMutation>> parseEntityMutations(List<Map<String, Object>> mutationValues) {
+        Map<String, List<Map<String, Object>>> mutationsByEntity = new java.util.HashMap<>();
+        mutationValues.forEach(mutationValue -> {
+            Map.Entry<String, Object> entry = mutationValue.entrySet().iterator().next();
+            String itemType = entry.getKey();
+            Map<String, Object> mutationValueObject = (Map)entry.getValue();
+            List<Map<String, Object>> typeMutations = mutationsByEntity.getOrDefault(itemType, new ArrayList<>());
+            typeMutations.add(mutationValueObject);
+            mutationsByEntity.put(entry.getKey(), typeMutations);
+        });
 
         Map<String, List<ItemMutation>> ret = mutationsByEntity.entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey, entry -> {
             ItemMutationInputObjectTypeMapping mapping = entityInputTypes.get(entry.getKey());
-            return mapping.parseEntityMutations(entry.getValue());
+            List<Map<String, Map<String, Object>>> mutationMaps = (List) entry.getValue();
+            return mapping.parseEntityMutations(mutationMaps);
         }));
 
-        LOG.info(">?");
         return ret;
     }
 }

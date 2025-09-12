@@ -1,6 +1,7 @@
 package org.ntrloc.graph.db;
 
 import com.netflix.graphql.dgs.client.GraphQLClient;
+import com.netflix.graphql.dgs.client.GraphQLError;
 import com.netflix.graphql.dgs.client.GraphQLResponse;
 import com.netflix.graphql.dgs.client.RestClientGraphQLClient;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversalSource;
@@ -42,6 +43,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @EnableAutoConfiguration(exclude = {CassandraAutoConfiguration.class})
@@ -103,26 +105,35 @@ class MutationRetrievalIntegrationTest {
 
     MutationRetrievalIntegrationTest(@LocalServerPort Integer port) {
         this.port = port;
-        /*
-        WebClient webClient = WebClient.create("http://localhost:" + port.toString() + "/graphql");
-        graphQlClient = new WebClientGraphQLClient(webClient);
-
-         */
-
         LOG.info("Running on port {}", port);
-
         RestClient restClient = RestClient.create("http://localhost:" + port.toString() + "/graphql");
         graphQlClient = new RestClientGraphQLClient(restClient);
     }
 
     private void initSchema() {
+        AtomicBoolean schemaUpdated = new AtomicBoolean(false);
+        schemaManager.addSchemaChangeReaction(() -> {
+            schemaUpdated.set(true);
+        });
+
+
         ItemDefinition photoEntity = new ItemDefinition();
         photoEntity.setName("Photo");
         photoEntity.setDescription("A photo");
 
         PropertyDefinition photoName = new PropertyDefinition("name", PropertyType.STRING, "photo name");
         PropertyDefinition photoNumber = new PropertyDefinition("number", PropertyType.INT, "photo number");
-        photoEntity.setProperties(Set.of(photoName, photoNumber));
+        PropertyDefinition photoBoolean = new PropertyDefinition("boolean", PropertyType.BOOLEAN, "photo boolean");
+        PropertyDefinition photoDate = new PropertyDefinition("date", PropertyType.DATE, "photo date");
+        PropertyDefinition photoDouble = new PropertyDefinition("double", PropertyType.DOUBLE, "photo double");
+        PropertyDefinition photoBinary = new PropertyDefinition("binary", PropertyType.BINARY, "photo binary");
+        PropertyDefinition photoStringList = new PropertyDefinition("stringList", PropertyType.STRING_LIST, "photo string list");
+        PropertyDefinition photoIntList = new PropertyDefinition("intList", PropertyType.INT_LIST, "photo int list");
+        PropertyDefinition photoBooleanList = new PropertyDefinition("booleanList", PropertyType.BOOLEAN_LIST, "photo boolean list");
+        PropertyDefinition photoDateList = new PropertyDefinition("dateList", PropertyType.DATE_LIST, "photo date list");
+        PropertyDefinition photoDoubleList = new PropertyDefinition("doubleList", PropertyType.DOUBLE_LIST, "photo double list");
+
+        photoEntity.setProperties(Set.of(photoName, photoNumber, photoBoolean, photoDate, photoDouble, photoBinary, photoStringList, photoIntList, photoBooleanList, photoDateList, photoDoubleList));
 
         PropertyDefinition title1 = new PropertyDefinition("title1", PropertyType.STRING, "title 1");
         PropertyDefinition title2 = new PropertyDefinition("title2", PropertyType.STRING, "title 2");
@@ -155,21 +166,68 @@ class MutationRetrievalIntegrationTest {
         photoRelationship.setProperties(Set.of(createdCountProperty));
 
         schemaManager.createLinkDefinition(photoRelationship);
-    }
-
-    @Test
-    void testCreateEntity() {
-        AtomicBoolean schemaUpdated = new AtomicBoolean(false);
-        schemaManager.addSchemaChangeReaction(() -> {
-            schemaUpdated.set(true);
-        });
-
-        initSchema();
 
         await().atMost(5, TimeUnit.SECONDS).until(() -> schemaUpdated.get());
 
         var schema = RestClient.create().get().uri("http://localhost:" + port + "/graphql/schema").retrieve().body(String.class);
         LOG.info("Schema: {}", schema);
+    }
+
+    private void init() {
+        if (schemaManager.retrieveItemDefinition("Photo").isEmpty()) {
+            initSchema();
+        }
+
+        traversalSource.V().hasLabel("Photo").drop().iterate();
+        traversalSource.V().hasLabel("Photographer").drop().iterate();
+        traversalSource.V().hasLabel("CREATED").drop().iterate();
+        traversalSource.tx().commit();
+        LOG.info("Graph cleared");
+    }
+
+    @Test
+    void testCreateEntityWithAllDataTypes() {
+        init();
+
+        var mutation = """
+                mutation Mutation {
+                     execute(inputs: [
+                         { Photo: { create: { properties: {
+                            name: "photo1"
+                            number: 23,
+                            boolean: true,
+                            date: "2021-01-01",
+                            double: 123.456,
+                            binary: "AQIDBAU=",
+                            stringList: ["a", "b", "c"],
+                            intList: [1, 2, 3],
+                            booleanList: [true, false],
+                            dateList: ["2021-01-01", "2021-01-02"],
+                            doubleList: [123.456, 789.123]
+                         } } } }
+                     ]) {
+                        created {
+                            itemType
+                            id
+                        }
+                     }
+                }
+                """;
+
+        long start = System.currentTimeMillis();
+        GraphQLResponse response = graphQlClient.executeQuery(mutation);
+        List<GraphQLError> errors = response.getErrors();
+        assertTrue(errors.isEmpty(), "Found errors: " + errors);
+        long end = System.currentTimeMillis();
+        LOG.info("Mutation took {} ms", end - start);
+
+        var vertices = traversalSource.V().hasLabel("Photo").valueMap().toList();
+        System.out.println(vertices);
+    }
+
+    @Test
+    void testCreateEntity() {
+        init();
 
         var mutation = """
                 mutation Mutation {

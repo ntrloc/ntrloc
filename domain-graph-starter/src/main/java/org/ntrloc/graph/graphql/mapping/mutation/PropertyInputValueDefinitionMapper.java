@@ -1,26 +1,24 @@
 package org.ntrloc.graph.graphql.mapping.mutation;
 
+import com.google.common.base.CaseFormat;
 import graphql.language.Description;
 import graphql.language.InputValueDefinition;
-import graphql.language.TypeName;
-import org.apache.commons.text.CaseUtils;
+import graphql.language.Type;
 import org.ntrloc.graph.db.schema.PropertyDefinition;
+import org.ntrloc.graph.graphql.mapping.PropertyTypeGraphQLMapping;
 
 public interface PropertyInputValueDefinitionMapper {
 
     default InputValueDefinition getPropertyInputValueDefinition(PropertyDefinition propertyDefinition) {
-        TypeName typeName = switch (propertyDefinition.getType()) {
-            case STRING -> new TypeName("String");
-            case INT -> new TypeName("Int");
-            default -> throw new RuntimeException("Unsupported type: " + propertyDefinition.getType());
-        };
+        Type fieldType = PropertyTypeGraphQLMapping.mapPropertyDefinition(propertyDefinition);
         Description propertyDescription = propertyDefinition.getDescription() == null ?
                 null :
                 new Description(propertyDefinition.getDescription(), null, false);
+        String propertyGraphQlName = CaseFormat.LOWER_CAMEL.to(CaseFormat.LOWER_CAMEL, propertyDefinition.getName());
 
         return InputValueDefinition.newInputValueDefinition()
-                .name(CaseUtils.toCamelCase(propertyDefinition.getName(), false, '_', '-'))
-                .type(typeName)
+                .name(propertyGraphQlName)
+                .type(fieldType)
                 .description(propertyDescription)
                 .build();
     }

@@ -6,6 +6,7 @@ import com.netflix.graphql.dgs.ReloadSchemaIndicator;
 import graphql.language.InputObjectTypeDefinition;
 import graphql.language.ObjectTypeDefinition;
 import graphql.language.ObjectTypeExtensionDefinition;
+import graphql.language.ScalarTypeDefinition;
 import graphql.schema.idl.TypeDefinitionRegistry;
 import org.ntrloc.graph.cluster.ClusterService;
 import org.ntrloc.graph.db.schema.ItemDefinition;
@@ -71,6 +72,11 @@ public class GraphQLSchemaRegistrar implements ReloadSchemaIndicator {
 
         try {
             TypeDefinitionRegistry registry = new TypeDefinitionRegistry();
+
+            for (ScalarTypeDefinition def: newSchemaMapper.getScalarTypes()) {
+                LOG.info("Registering scalar definition {}", def);
+                registry.add(def);
+            }
 
             for (ObjectTypeDefinition def: newSchemaMapper.getOutputTypes()) {
                 LOG.info("Registering entity definition: {}", def.getName());

@@ -15,6 +15,8 @@ public enum PropertyType {
     DATE_LIST,
 
     STRING,
-    STRING_LIST
+    STRING_LIST,
+
+    BINARY
 
 }

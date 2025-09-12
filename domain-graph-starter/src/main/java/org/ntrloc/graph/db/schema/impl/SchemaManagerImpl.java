@@ -26,10 +26,10 @@ import org.ntrloc.graph.db.PropertyConstants;
 import org.ntrloc.graph.db.PropertyNameTranslator;
 import org.ntrloc.graph.db.schema.DefinitionWithPropertyGroups;
 import org.ntrloc.graph.db.schema.ItemDefinition;
+import org.ntrloc.graph.db.schema.LinkDefinition;
 import org.ntrloc.graph.db.schema.PropertyDefinition;
 import org.ntrloc.graph.db.schema.PropertyGroupDefinition;
 import org.ntrloc.graph.db.schema.PropertyType;
-import org.ntrloc.graph.db.schema.LinkDefinition;
 import org.ntrloc.graph.db.schema.SchemaChangeReaction;
 import org.ntrloc.graph.db.schema.SchemaManager;
 import org.slf4j.Logger;
@@ -159,15 +159,19 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
                 case DATE, DATE_LIST -> Date.class;
                 case BOOLEAN, BOOLEAN_LIST -> Boolean.class;
                 case DOUBLE, DOUBLE_LIST -> Double.class;
+                case BINARY -> null;
             };
 
             Cardinality cardinality = switch (propertyDefinition.getType()) {
                 case STRING, INT, DATE, BOOLEAN, DOUBLE -> Cardinality.SINGLE;
                 case STRING_LIST, INT_LIST, DATE_LIST, BOOLEAN_LIST, DOUBLE_LIST -> Cardinality.LIST;
+                case BINARY -> null;
             };
 
-            management.makePropertyKey(propertyKeyName).dataType(keyClass).cardinality(cardinality).make();
-            propertyKeyNames.add(propertyKeyName);
+            if (keyClass != null || cardinality != null) {
+                management.makePropertyKey(propertyKeyName).dataType(keyClass).cardinality(cardinality).make();
+                propertyKeyNames.add(propertyKeyName);
+            }
         }
 
         // create the entity index
