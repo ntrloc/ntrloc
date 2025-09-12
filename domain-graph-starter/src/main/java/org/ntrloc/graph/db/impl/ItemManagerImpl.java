@@ -4,6 +4,7 @@ import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversal;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversalSource;
 import org.apache.tinkerpop.gremlin.structure.Vertex;
 import org.ntrloc.graph.db.ItemManager;
+import org.ntrloc.graph.db.MutationException;
 import org.ntrloc.graph.db.language.mutation.ItemCreateMutation;
 import org.ntrloc.graph.db.language.mutation.ItemDeleteMutation;
 import org.ntrloc.graph.db.language.mutation.ItemMutation;
@@ -159,18 +160,18 @@ public class ItemManagerImpl implements ItemManager {
             if (createdEntryOpt.isPresent()) {
                 fromId = createdEntryOpt.get().getKey();
             } else {
-                throw new RuntimeException("Item mutation " + createMutation + " not found");
+                throw new MutationException("Item mutation " + createMutation + " not found");
             }
 
             for (LinkCreateMutation linkCreate: createMutation.getLinks()) {
                 var linkType = linkCreate.getLinkType();
                 var linkDefinition = linkDefinitionMap.get(linkType);
                 if (linkDefinition == null) {
-                    throw new RuntimeException("Link type " + linkType + " not found");
+                    throw new MutationException("Link type " + linkType + " not found");
                 }
                 var selector = linkCreate.getSelector();
                 if (!(selector instanceof IdSelector)) {
-                    throw new RuntimeException("Selector for link type " + linkType + " must be an ID selector");
+                    throw new MutationException("Selector for link type " + linkType + " must be an ID selector");
                 }
                 var idSelector = (IdSelector)selector;
                 String toId = switch(idSelector.getType()) {
@@ -183,20 +184,19 @@ public class ItemManagerImpl implements ItemManager {
                         if (mutationEntryOpt.isPresent()) {
                             yield mutationEntryOpt.get().getKey();
                         } else {
-                            throw new RuntimeException("Linked item " + idSelector.getId() + " not found");
+                            throw new MutationException("Linked item " + idSelector.getId() + " not found");
                         }
                     }
                     case IdSelector.Type.GLOBAL -> idSelector.getId();
                 };
                 if (toId == null) {
-                    throw new RuntimeException("Linked item " + idSelector.getId() + " not found");
+                    throw new MutationException("Linked item " + idSelector.getId() + " not found");
                 } else {
                     LOG.info("Linking item to item {}", toId);
                     String linkId = mutator.createLink(fromId, toId, linkDefinition.getName(), linkCreate.getProperties());
                     LinkMutationResponse link = new LinkMutationResponse(MutationType.CREATE, linkId, fromId, toId, linkDefinition.getName());
                     response.addLinkMutationResponse(link);
                 }
-
             }
         }
 
@@ -211,8 +211,7 @@ public class ItemManagerImpl implements ItemManager {
     @Override
     public List<ItemProjection> executeProjection(SelectableItemProjectionSpec spec) {
         List<ItemProjection> projections = projector.project(spec);
-        List<ItemProjection> transformedProjections = projections.stream().map(this::transformItemProjection).toList();
-        return transformedProjections;
+        return projections.stream().map(this::transformItemProjection).toList();
     }
 
     private ItemProjection transformItemProjection(ItemProjection itemProjection) {

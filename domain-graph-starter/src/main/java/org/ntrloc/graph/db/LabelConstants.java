@@ -13,4 +13,8 @@ public class LabelConstants {
     public static final String PROPERTY_GROUP_DEFINITION_LABEL = "system:propertyGroupDefinition";
     public static final String PROPERTY_DEFINITION_LABEL = "system:propertyDefinition";
 
+    private LabelConstants() {
+        // No-op
+    }
+
 }

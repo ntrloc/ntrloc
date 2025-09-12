@@ -11,4 +11,8 @@ public class PropertyConstants {
     public static final String TRANSACTION_ID_PROPERTY = "transactionId";
     public static final String REVISION_TYPE_PROPERTY = "revisionType";
 
+    private PropertyConstants() {
+        // no-op
+    }
+
 }
