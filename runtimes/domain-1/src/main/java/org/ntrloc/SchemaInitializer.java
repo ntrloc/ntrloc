@@ -26,9 +26,10 @@ public class SchemaInitializer {
 
     @EventListener(ApplicationReadyEvent.class)
     void initSchema() {
-        LOG.info("Initializing schema");
+
         var entityDefs = schemaManager.retrieveItemDefinitions();
         if (entityDefs.isEmpty()) {
+            LOG.info("Initializing schema");
             ItemDefinition photoEntity = new ItemDefinition();
             photoEntity.setName("Photo");
             photoEntity.setDescription("A photo");
@@ -70,6 +71,7 @@ public class SchemaInitializer {
             schemaManager.createLinkDefinition(photoRelationship);
             LOG.info("Created schema");
         } else {
+            LOG.info("Schema already initialized");
             LOG.info("Found {} entities", entityDefs.size());
         }
     }
