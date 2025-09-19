@@ -1,0 +1,29 @@
+@property --ntrloc-form-decoration-color {
+    syntax: "<color>";
+    inherits: false;
+    initial-value: #50a9e1;
+}
+
+.ntrloc-textInput {
+
+    padding: 5px;
+    display: flex;
+    flex-direction: column;
+    row-gap: 5px;
+
+    .label {
+        color: var(--ntrloc-form-decoration-color);
+    }
+
+    .input {
+        background: none;
+        color: white;
+        padding: 5px;
+        border: 1px solid var(--ntrloc-form-decoration-color);
+    }
+
+    .input:focus {
+        border: 1px solid yellow;
+    }
+
+}

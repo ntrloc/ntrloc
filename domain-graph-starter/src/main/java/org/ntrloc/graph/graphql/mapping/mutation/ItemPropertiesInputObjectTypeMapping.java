@@ -73,7 +73,6 @@ public class ItemPropertiesInputObjectTypeMapping implements InputObjectTypeProd
     }
 
     List<? extends Property> mapProperties(Map<String, Object> propertiesValue) {
-
         return propertiesValue.entrySet().stream().map(entry -> {
             String propertyName = entry.getKey();
             PropertyDefinition propertyDefinition = propertyDefinitions.get(propertyName);
@@ -90,7 +89,7 @@ public class ItemPropertiesInputObjectTypeMapping implements InputObjectTypeProd
                 case PropertyType.DATE_LIST -> new DateListProperty(propertyName, (List<Date>)propertyValue);
                 case PropertyType.DOUBLE -> new DoubleProperty(propertyName, (Double)propertyValue);
                 case PropertyType.DOUBLE_LIST -> new DoubleListProperty(propertyName, (List<Double>)propertyValue);
-                case PropertyType.BINARY -> new BinaryReferenceProperty(propertyName, -1L);
+                case PropertyType.BINARY -> new BinaryReferenceProperty(propertyName, (String)propertyValue);
             };
         }).toList();
     }

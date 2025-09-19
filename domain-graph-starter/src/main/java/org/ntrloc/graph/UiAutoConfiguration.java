@@ -4,6 +4,6 @@ import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
-@ComponentScan("org.ntrloc.graph.web")
-public class WebAutoConfiguration {
+@ComponentScan("org.ntrloc.graph.ui")
+public class UiAutoConfiguration {
 }

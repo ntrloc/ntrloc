@@ -49,33 +49,33 @@ public class BlockDeviceBinaryStorageAdapter implements BinaryStorageAdapter {
             } else {
                 throw new IllegalArgumentException("Storage location does not exist: " + location);
             }
-        } else {
-            temporaryStorageFolder = new File(location, "temp");
-            if (temporaryStorageFolder.exists()) {
-                if (!temporaryStorageFolder.isDirectory()) {
-                    throw new IllegalArgumentException("Temporary storage location is not a directory: " + temporaryStorageFolder.getAbsolutePath());
-                }
-            } else {
-                boolean created = temporaryStorageFolder.mkdirs();
-                if (created) {
-                    LOG.info("Created temporary binary storage location {}", temporaryStorageFolder.getAbsolutePath());
-                } else {
-                    throw new IllegalArgumentException("Temporary storage location could not be created: " + temporaryStorageFolder.getAbsolutePath());
-                }
-            }
+        }
 
-            permanentStorageFolder = new File(location, "permanent");
-            if (permanentStorageFolder.exists()) {
-                if (!permanentStorageFolder.isDirectory()) {
-                    throw new IllegalArgumentException("Permanent storage location is not a directory: " + permanentStorageFolder.getAbsolutePath());
-                }
+        temporaryStorageFolder = new File(location, "temp");
+        if (temporaryStorageFolder.exists()) {
+            if (!temporaryStorageFolder.isDirectory()) {
+                throw new IllegalArgumentException("Temporary storage location is not a directory: " + temporaryStorageFolder.getAbsolutePath());
+            }
+        } else {
+            boolean created = temporaryStorageFolder.mkdirs();
+            if (created) {
+                LOG.info("Created temporary binary storage location {}", temporaryStorageFolder.getAbsolutePath());
             } else {
-                boolean created = permanentStorageFolder.mkdirs();
-                if (created) {
-                    LOG.info("Created permanent binary storage location {}", permanentStorageFolder.getAbsolutePath());
-                } else {
-                    throw new IllegalArgumentException("Permanent storage location could not be created: " + permanentStorageFolder.getAbsolutePath());
-                }
+                throw new IllegalArgumentException("Temporary storage location could not be created: " + temporaryStorageFolder.getAbsolutePath());
+            }
+        }
+
+        permanentStorageFolder = new File(location, "permanent");
+        if (permanentStorageFolder.exists()) {
+            if (!permanentStorageFolder.isDirectory()) {
+                throw new IllegalArgumentException("Permanent storage location is not a directory: " + permanentStorageFolder.getAbsolutePath());
+            }
+        } else {
+            boolean created = permanentStorageFolder.mkdirs();
+            if (created) {
+                LOG.info("Created permanent binary storage location {}", permanentStorageFolder.getAbsolutePath());
+            } else {
+                throw new IllegalArgumentException("Permanent storage location could not be created: " + permanentStorageFolder.getAbsolutePath());
             }
         }
     }

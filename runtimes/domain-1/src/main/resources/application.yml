@@ -33,6 +33,8 @@ graph:
   index:
     lucene:
       directory: target/db/lucene
+  management:
+    resource.location: file:///Users/michaelcoddington/Documents/Projects/ntrloc/domain-graph-starter/src/main/resources/org/ntrloc/graph/ui
 
 binary:
   storage:

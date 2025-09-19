@@ -8,10 +8,12 @@ import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.__;
 import org.apache.tinkerpop.gremlin.structure.VertexProperty;
 import org.ntrloc.graph.db.ItemStatus;
 import org.ntrloc.graph.db.LabelConstants;
+import org.ntrloc.graph.db.MutationException;
 import org.ntrloc.graph.db.PropertyConstants;
 import org.ntrloc.graph.db.PropertyNameTranslator;
 import org.ntrloc.graph.db.Transaction;
 import org.ntrloc.graph.db.language.ListProperty;
+import org.ntrloc.graph.db.language.NodeProperty;
 import org.ntrloc.graph.db.language.Property;
 import org.ntrloc.graph.db.language.ScalarProperty;
 import org.ntrloc.graph.db.traversal.mutator.MutationResult;
@@ -55,6 +57,17 @@ public class MutatorImpl implements Mutator {
 
         transaction.begin();
 
+        List<NodeProperty> nodeProperties = properties.stream().filter(property -> property instanceof NodeProperty).map(property -> (NodeProperty)property).toList();
+        Map<String, Object> nodePropertiesToNodeIdMap = new HashMap<>();
+        for (NodeProperty nodeProperty : nodeProperties) {
+            var nodeId = traversalSource.V().hasLabel(LabelConstants.DATA_LABEL).has(UNIQUE_ID_PROPERTY, nodeProperty.getNodeId()).id();
+            if (nodeId.hasNext()) {
+                nodePropertiesToNodeIdMap.put(nodeProperty.getName(), nodeId.next());
+            } else {
+                throw new MutationException("Data node with ID " + nodeProperty.getNodeId() + " does not exist");
+            }
+        }
+
         var traversal = traversalSource
                 .addV(label)
                 .as(uniqueId)
@@ -73,6 +86,13 @@ public class MutatorImpl implements Mutator {
                 for (Object value : listProperty.getValues()) {
                     traversal = traversal.property(VertexProperty.Cardinality.list, translatedPropertyName, value);
                 }
+            } else if (property instanceof NodeProperty nodeProperty) {
+                LOG.info("Applying node property {}", property.getName());
+                traversal = traversal
+                        .addE(LabelConstants.NODE_PROPERTY_EDGE_LABEL)
+                        .property("propertyName", property.getName())
+                        .from(uniqueId).to(__.V(nodePropertiesToNodeIdMap.get(nodeProperty.getName())))
+                        .select(uniqueId);
             } else {
                 throw new IllegalArgumentException("Unsupported property type: " + property.getClass());
             }

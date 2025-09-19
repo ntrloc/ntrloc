@@ -2,7 +2,7 @@ org.ntrloc.graph.ClusterAutoConfiguration
 org.ntrloc.graph.JanusAutoConfiguration
 org.ntrloc.graph.GraphQLAutoConfiguration
 org.ntrloc.graph.SchemaAutoConfiguration
-org.ntrloc.graph.WebAutoConfiguration
+org.ntrloc.graph.UiAutoConfiguration
 org.ntrloc.graph.RegistryAutoConfiguration
 org.ntrloc.graph.StorageAutoConfiguration
 org.ntrloc.graph.DBAutoConfiguration

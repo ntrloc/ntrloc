@@ -37,6 +37,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -44,6 +45,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
@@ -274,13 +276,13 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
     @Override
     public Set<ItemDefinition> retrieveItemDefinitions() {
         GraphTraversal<Vertex, Vertex> start = traversalSource.V().hasLabel(ENTITY_DEFINITION_LABEL);
-        return retrieveEntityDefinitions(start);
+        return retrieveItemDefinitions(start);
     }
 
     @Override
     public Optional<ItemDefinition> retrieveItemDefinition(String name) {
         GraphTraversal<Vertex, Vertex> start = traversalSource.V().hasLabel(ENTITY_DEFINITION_LABEL).has("name", name);
-        Set<ItemDefinition> defs = retrieveEntityDefinitions(start);
+        Set<ItemDefinition> defs = retrieveItemDefinitions(start);
         if (defs.isEmpty()) {
             return Optional.empty();
         } else {
@@ -288,7 +290,7 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
         }
     }
 
-    private Set<ItemDefinition> retrieveEntityDefinitions(GraphTraversal<Vertex, Vertex> startingTraversal) {
+    private Set<ItemDefinition> retrieveItemDefinitions(GraphTraversal<Vertex, Vertex> startingTraversal) {
         var elementProjectionName = "elements";
         var propertyNodeProjectionName = "propertyNodes";
         var propertyGroupProjectionName = "propertyGroups";
@@ -308,7 +310,7 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
                                 .fold()
                 );
 
-        return iter.toStream().map(v -> {
+        Set<ItemDefinition> defs = iter.toStream().map(v -> {
             ItemDefinition schema = new ItemDefinition();
             var propertyMap = (HashMap) v.get(elementProjectionName);
             schema.setName((String) propertyMap.get("name"));
@@ -326,6 +328,10 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
             schema.setPropertyGroups(groups);
             return schema;
         }).collect(Collectors.toSet());
+
+        TreeSet<ItemDefinition> retSet = new TreeSet<>(Comparator.comparing(ItemDefinition::getName));
+        retSet.addAll(defs);
+        return retSet;
     }
 
     private PropertyDefinition mapToPropertyDefinition(Map<String, Object> map) {

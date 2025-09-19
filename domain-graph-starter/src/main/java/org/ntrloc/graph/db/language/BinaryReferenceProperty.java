@@ -1,13 +1,13 @@
 package org.ntrloc.graph.db.language;
 
-public class BinaryReferenceProperty implements ScalarProperty<Long, Long> {
+public class BinaryReferenceProperty implements NodeProperty {
 
     private String name;
-    private Long value;
+    private String nodeId;
 
-    public BinaryReferenceProperty(String name, Long value) {
+    public BinaryReferenceProperty(String name, String nodeId) {
         this.name = name;
-        this.value = value;
+        this.nodeId = nodeId;
     }
 
     @Override
@@ -15,9 +15,9 @@ public class BinaryReferenceProperty implements ScalarProperty<Long, Long> {
         return name;
     }
 
-    @Override
-    public Long getValue() {
-        return value;
+    public String getNodeId() {
+        return nodeId;
     }
+
 
 }

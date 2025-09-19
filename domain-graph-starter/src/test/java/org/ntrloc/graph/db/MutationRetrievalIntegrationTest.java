@@ -5,6 +5,7 @@ import com.netflix.graphql.dgs.client.GraphQLError;
 import com.netflix.graphql.dgs.client.GraphQLResponse;
 import com.netflix.graphql.dgs.client.RestClientGraphQLClient;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversalSource;
+import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.__;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.GraphQLAutoConfiguration;
 import org.ntrloc.graph.JanusAutoConfiguration;
@@ -35,6 +36,7 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.web.client.RestClient;
 import org.yaml.snakeyaml.Yaml;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -58,6 +60,9 @@ class MutationRetrievalIntegrationTest {
 
     @Autowired
     private SchemaManager schemaManager;
+
+    @Autowired
+    private ItemManager itemManager;
 
     @Autowired
     private GraphTraversalSource traversalSource;
@@ -186,8 +191,12 @@ class MutationRetrievalIntegrationTest {
     }
 
     @Test
-    void testCreateEntityWithAllDataTypes() {
+    void testCreateEntityWithAllDataTypes() throws IOException {
         init();
+
+        var writer = itemManager.openWriter();
+        writer.write(new byte[] { 1, 2, 3, 4, 5});
+        String dataNodeId = itemManager.commitBinary(writer);
 
         var mutation = """
                 mutation Mutation {
@@ -198,7 +207,7 @@ class MutationRetrievalIntegrationTest {
                             boolean: true,
                             date: "2021-01-01",
                             double: 123.456,
-                            binary: "AQIDBAU=",
+                            binary: "{DATA_NODE_ID}",
                             stringList: ["a", "b", "c"],
                             intList: [1, 2, 3],
                             booleanList: [true, false],
@@ -212,7 +221,7 @@ class MutationRetrievalIntegrationTest {
                         }
                      }
                 }
-                """;
+                """.replace("{DATA_NODE_ID}", dataNodeId);
 
         long start = System.currentTimeMillis();
         GraphQLResponse response = graphQlClient.executeQuery(mutation);
@@ -221,7 +230,13 @@ class MutationRetrievalIntegrationTest {
         long end = System.currentTimeMillis();
         LOG.info("Mutation took {} ms", end - start);
 
-        var vertices = traversalSource.V().hasLabel("Photo").valueMap().toList();
+        var vertices = traversalSource.V().hasLabel("Photo")
+                .project("out", "values")
+                .by(__.outE().project("edge", "target")
+                        .by(__.valueMap())
+                        .by(__.inV().valueMap()))
+                .by(__.valueMap())
+                .toList();
         System.out.println(vertices);
     }
 

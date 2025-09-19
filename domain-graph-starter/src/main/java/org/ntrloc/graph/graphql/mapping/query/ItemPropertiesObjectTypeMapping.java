@@ -74,10 +74,14 @@ public class ItemPropertiesObjectTypeMapping implements ObjectTypeProducer, Prop
     }
 
     List<String> parseQueryProperties(Field field) {
+
+        // TODO: note that property groups are represented as properties in GraphQL!
+
         // here we need to translate the graphQL property name, like "firstName", back to the original property name, like "First Name".
         List<Selection> propertySelections = field.getSelectionSet().getSelections();
         List<Field> propertyFields = propertySelections.stream().map(s -> (Field) s).collect(Collectors.toList());
         return propertyFields.stream().map(f -> propertyFieldMappings.get(f.getName()).getAdditionalData().get(ORIGINAL_PROPERTY_NAME_FIELD)).collect(Collectors.toList());
+
     }
 
 }

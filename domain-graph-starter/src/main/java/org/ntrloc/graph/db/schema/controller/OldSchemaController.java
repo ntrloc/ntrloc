@@ -13,14 +13,14 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.Set;
 
 @RestController
-@RequestMapping("/api/schema")
-public class SchemaController {
+@RequestMapping("/api/schema/old")
+public class OldSchemaController {
 
-    private static final Logger LOG = LogManager.getLogger(SchemaController.class);
+    private static final Logger LOG = LogManager.getLogger(OldSchemaController.class);
 
     private final SchemaManager schemaManager;
 
-    public SchemaController(SchemaManager schemaManager) {
+    public OldSchemaController(SchemaManager schemaManager) {
         this.schemaManager = schemaManager;
     }
 

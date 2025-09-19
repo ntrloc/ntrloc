@@ -7,6 +7,7 @@ public class LabelConstants {
 
     public static final String REVISION_LABEL = "system:revision";
     public static final String DATA_LABEL = "system:data";
+    public static final String NODE_PROPERTY_EDGE_LABEL = "system:nodeProperty";
 
     public static final String ENTITY_DEFINITION_LABEL = "system:entityDefinition";
     public static final String RELATIONSHIP_DEFINITION_LABEL = "system:relationshipDefinition";
