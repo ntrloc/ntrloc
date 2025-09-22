@@ -1,6 +1,14 @@
-<html>
+<html xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout">
     <head>
         <title>NTRLOC</title>
+
+        <script src="jquery/jquery.js"></script>
+        <script src="jquery/jquery-ui.min.js"></script>
+        <script src="textInput.js"></script>
+        <script src="htmx/htmx.min.js"></script>
+        <link rel="stylesheet" href="jquery/jquery-ui.min.css">
+        <link rel="stylesheet" href="jquery/jquery-ui.theme.min.css">
+        <link rel="stylesheet" href="css/ntrloc-ui.css">
 
         <style>
             body {
@@ -33,19 +41,26 @@
                     border-radius: 0;
                     min-height: 0;
                     background: none;
+                    color: white;
 
                 }
             }
         </style>
     </head>
     <body>
-    <div id="main">
-        <div id="header">
-            <img src="images/ntrloc-logo-horizontal.png"/>
-        </div>
-        <div id="content">
+        <div id="main">
+            <div id="header">
+                <img src="images/ntrloc-logo-horizontal.png"/>
 
+                <a href="search.html">Search</a>
+                <a href="schema.html">Schema</a>
+                <a href="explorer.html">Explorer</a>
+            </div>
+            <div id="content">
+                <div layout:fragment="content">
+                    <!-- Default content or empty placeholder -->
+                </div>
+            </div>
         </div>
-    </div>
     </body>
 </html>

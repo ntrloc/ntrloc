@@ -1,5 +1,6 @@
 package org.ntrloc.graph.ui;
 
+import nz.net.ultraq.thymeleaf.layoutdialect.LayoutDialect;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
@@ -33,6 +34,7 @@ public class AdminConfiguration {
         SpringTemplateEngine templateEngine = new SpringTemplateEngine();
         templateEngine.setTemplateResolver(resourceTemplateResolver);
         templateEngine.setEnableSpringELCompiler(true);
+        templateEngine.addDialect(new LayoutDialect());
         return templateEngine;
     }
 

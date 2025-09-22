@@ -12,7 +12,7 @@ spring:
     prefix: classpath:/sites/admin/templates/
   web:
     resources:
-      static-locations: classpath:/static
+      add-mappings: false
 
 management:
   health:
