@@ -52,7 +52,9 @@ public class WebInterfaceController {
         }
 
         try {
-            if (path.endsWith(".html")) {
+            if (path.endsWith("/search")) {
+                return ResponseEntity.ok(resourceLoader.getResource(resourceLocation + "/search.html"));
+            } else if (path.endsWith(".html")) {
                 Context context = new Context();
                 context.setVariable("schemaManager", schemaManager);
                 var result = templateEngine.process(path, context);
