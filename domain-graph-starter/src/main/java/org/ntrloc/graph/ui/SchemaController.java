@@ -14,7 +14,6 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.server.ServerWebExchange;
 import org.thymeleaf.TemplateEngine;
 import org.thymeleaf.context.Context;
 
@@ -24,53 +23,17 @@ import static org.ntrloc.graph.ui.AdminConfiguration.ADMIN_TEMPLATE;
 
 @RestController
 @RequestMapping(SchemaController.SCHEMA_PREFIX)
-public class SchemaController {
+public class SchemaController extends AbstractController {
 
     private static final Logger LOG = LoggerFactory.getLogger(SchemaController.class);
 
     static final String SCHEMA_PREFIX = "/schema";
 
-    private String resourceLocation;
-    private TemplateEngine templateEngine;
-    private ResourceLoader resourceLoader;
-    private SchemaManager schemaManager;
-
-    private SchemaController(@Value("${graph.management.resource.location:classpath:/org/ntrloc/graph/ui/}") String resourceLocation,
-                            @Qualifier(ADMIN_TEMPLATE) TemplateEngine templateEngine,
-                             ResourceLoader resourceLoader,
-                            SchemaManager schemaManager) {
-        this.resourceLocation = resourceLocation;
-        this.templateEngine = templateEngine;
-        this.resourceLoader = resourceLoader;
-        this.schemaManager = schemaManager;
-    }
-
-    @GetMapping("/**")
-    public ResponseEntity<Resource> index(ServerWebExchange exchange) {
-        var requestPath = exchange.getRequest().getPath().toString();
-        var relPath = requestPath.substring(SCHEMA_PREFIX.length());
-        var params = exchange.getRequest().getQueryParams();
-        if (relPath.isEmpty() || relPath.substring(1).isEmpty()) {
-            Context context = new Context();
-            context.setVariable("schemaManager", schemaManager);
-            var result = templateEngine.process("/schema/schema.html", context);
-            return ResponseEntity.ok(new ByteArrayResource(result.getBytes()));
-        }
-
-        try {
-            if (relPath.endsWith(".html")) {
-                Context context = new Context();
-                context.setVariable("schemaManager", schemaManager);
-                var result = templateEngine.process(relPath, context);
-                return ResponseEntity.ok(new ByteArrayResource(result.getBytes()));
-            } else {
-                return ResponseEntity.ok(resourceLoader.getResource(resourceLocation + relPath));
-            }
-        } catch (Exception er) {
-            LOG.warn("Error resolving web resource", er);
-            return ResponseEntity.ok(resourceLoader.getResource(resourceLocation + relPath));
-        }
-
+    SchemaController(@Value("${graph.management.resource.location:classpath:/org/ntrloc/graph/ui/}") String resourceLocation,
+                     @Qualifier(ADMIN_TEMPLATE) TemplateEngine templateEngine,
+                     ResourceLoader resourceLoader,
+                     SchemaManager schemaManager) {
+        super("schema", resourceLocation, templateEngine, resourceLoader, schemaManager);
     }
 
     @GetMapping("/item/{name}/fields")

@@ -47,14 +47,12 @@ public class WebInterfaceController {
         String path = requestPath.toString();
         if (path.substring(1).isEmpty()) {
             var headers = new HttpHeaders();
-            headers.add("Location", "/search.html");
+            headers.add("Location", "/search");
             return new ResponseEntity<>(headers, HttpStatus.MOVED_TEMPORARILY);
         }
 
         try {
-            if (path.endsWith("/search")) {
-                return ResponseEntity.ok(resourceLoader.getResource(resourceLocation + "/search.html"));
-            } else if (path.endsWith(".html")) {
+            if (path.endsWith(".html")) {
                 Context context = new Context();
                 context.setVariable("schemaManager", schemaManager);
                 var result = templateEngine.process(path, context);

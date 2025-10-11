@@ -1,0 +1,121 @@
+<html xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout" layout:decorate="~{/layout.html}">
+    <head>
+        <style>
+            #searchContent {
+                display: flex;
+                flex-direction: column;
+                min-height: 0;
+                flex: 1;
+
+                #searchResults {
+                    padding: 10px;
+                    min-height: 0;
+                    flex: 1;
+                    display: grid;
+                    grid-gap: 10px;
+                    grid-auto-rows: min-content;
+                    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+                    overflow-y: auto;
+
+                    .result {
+                        border: solid 1px #999999;
+                        display: flex;
+                        flex-direction: column;
+                        padding: 10px;
+                        cursor: pointer;
+
+                        .resultType {
+                            background-color: var(--ntrloc-form-decoration-color);
+                            color: white;
+                            font-weight: bold;
+                            border-radius: 5px;
+                            align-self: flex-start;
+                            padding: 5px;
+                            margin-bottom: 10px;
+
+                            &[data-itemtype="Photographer"] {
+                                background-color: darkgreen;
+                            }
+                        }
+
+                        .properties {
+                            display: grid;
+                            grid-template-columns: minmax(50px, 1fr) 2fr;
+
+                            .propertyName {
+                                font-weight: bold;
+                                color: var(--ntrloc-form-decoration-color);
+                            }
+
+                            .propertyValue {
+                                text-overflow: ellipsis;
+                            }
+                        }
+
+                        .resultId {
+                            margin-top: 20px;
+                            color: #666666;
+                            font-size: 0.8em;
+                        }
+                    }
+                }
+            }
+        </style>
+        <base href="/search/"/>
+        <script>
+            function search() {
+                let searchObject = `
+                {
+                  Photo {
+                        itemType
+                        id
+                        version
+                        properties {
+                            name
+                            number
+                        }
+                  }
+                  Photographer {
+                        itemType
+                        id
+                        version
+                        properties {
+                            name
+                        }
+                  }
+                }
+                `.replace(/\s+/g, " ");
+                window.location.href = "/search/execute?searchObject=" + encodeURIComponent(searchObject) + "&page=1";
+            }
+        </script>
+    </head>
+    <body>
+        <div id="searchContent" layout:fragment="content">
+            <button id="searchButton" onclick="search()">Search</button>
+            <div id="searchResults">
+                <div class="result" th:each="def: ${searchResults}">
+                    <div class="resultType" th:attr="data-itemType=${def.itemType}" th:text="${def.itemType}"></div>
+                    <div class="properties">
+
+                        <th:block th:each="prop: ${def.properties}">
+                            <span class="propertyName" th:text="${prop.key}"></span>
+                            <span class="propertyValue" th:text="${prop.value}"></span>
+                        </th:block>
+
+                        <span class="propertyName">version</span>
+                        <span class="propertyValue" th:text="${def.version}"></span>
+                    </div>
+
+                    <span class="resultId" th:text="${def.id}"></span>
+
+                </div>
+            </div>
+            <script>
+                $("#searchButton").button();
+            </script>
+        </div>
+    </body>
+</html>
+
+
+

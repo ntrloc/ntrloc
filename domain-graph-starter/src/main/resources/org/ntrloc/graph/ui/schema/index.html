@@ -148,7 +148,7 @@
                             <button class="ui-priority-primary">New item type</button>
                             <hr/>
 
-                            <div class="item" th:each="def: ${schemaManager.retrieveItemDefinitions()}" th:text="${def.name}" th:attr="hx-get=|schema/item/${def.name}/fields|" hx-trigger="click" hx-target="#items-editor" hx-swap="innerHTML"></div>
+                            <div class="item" th:each="def: ${schemaManager.retrieveItemDefinitions()}" th:text="${def.name}" th:attr="hx-get=|item/${def.name}/fields|" hx-trigger="click" hx-target="#items-editor" hx-swap="innerHTML"></div>
                         </div>
 
                         <div class="vertical-rule"></div>

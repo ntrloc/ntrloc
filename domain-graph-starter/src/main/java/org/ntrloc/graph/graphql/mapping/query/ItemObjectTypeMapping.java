@@ -25,11 +25,12 @@ public class ItemObjectTypeMapping implements ObjectTypeProducer {
 
     private static final String ID_FIELD_NAME = "id";
     private static final String IS_LATEST_VERSION_FIELD_NAME = "isLatestVersion";
+    private static final String ITEM_TYPE_FIELD_NAME = "itemType";
     private static final String LINKS_FIELD_NAME = "links";
     private static final String PROPERTIES_FIELD_NAME = "properties";
     private static final String VERSION_FIELD_NAME = "version";
 
-    private static final List<String> IMPLICIT_PROPERTIES = List.of(ID_FIELD_NAME, VERSION_FIELD_NAME, IS_LATEST_VERSION_FIELD_NAME);
+    private static final List<String> IMPLICIT_PROPERTIES = List.of(ID_FIELD_NAME, ITEM_TYPE_FIELD_NAME, VERSION_FIELD_NAME, IS_LATEST_VERSION_FIELD_NAME);
 
     private final String graphQlTypeName;
     private final ItemDefinition itemDefinition;
@@ -85,6 +86,12 @@ public class ItemObjectTypeMapping implements ObjectTypeProducer {
                 .type(new TypeName("String"))
                 .build();
         fieldDefinitions.add(idField);
+
+        FieldDefinition itemTypeField = FieldDefinition.newFieldDefinition()
+                .name(ITEM_TYPE_FIELD_NAME)
+                .type(new TypeName("String"))
+                .build();
+        fieldDefinitions.add(itemTypeField);
 
         FieldDefinition versionField = FieldDefinition.newFieldDefinition()
                 .name(VERSION_FIELD_NAME)
