@@ -145,7 +145,7 @@
                     </ul>
                     <div id="items-tab">
                         <div id="items-list">
-                            <button class="ui-priority-primary">New item type</button>
+                            <button id="newItemType" class="ui-priority-primary" hx-trigger="click"  hx-target="#items-editor" hx-get="item/new" hx-swap="innerHTML">New item type</button>
                             <hr/>
 
                             <div class="item" th:each="def: ${schemaManager.retrieveItemDefinitions()}" th:text="${def.name}" th:attr="hx-get=|item/${def.name}/fields|" hx-trigger="click" hx-target="#items-editor" hx-swap="innerHTML"></div>

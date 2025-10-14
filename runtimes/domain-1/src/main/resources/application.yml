@@ -29,10 +29,10 @@ graph:
   domainName: domain-1
   storage:
     berkeley:
-      directory: target/db/berkeleyje
+      directory: target/domain1/berkeleyje
   index:
     lucene:
-      directory: target/db/lucene
+      directory: target/domain1/lucene
   management:
     resource.location: file:///Users/michaelcoddington/Documents/Projects/ntrloc/domain-graph-starter/src/main/resources/org/ntrloc/graph/ui
 

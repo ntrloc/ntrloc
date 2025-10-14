@@ -4,6 +4,7 @@ import org.ntrloc.graph.db.language.selectors.ItemSelector;
 
 import java.util.HashMap;
 import java.util.List;
+import java.util.StringJoiner;
 
 public class SelectableItemProjectionSpec extends ItemProjectionSpec {
 
@@ -47,4 +48,13 @@ public class SelectableItemProjectionSpec extends ItemProjectionSpec {
         return this;
     }
 
+    @Override
+    public String toString() {
+        return new StringJoiner(", ", SelectableItemProjectionSpec.class.getSimpleName() + "[", "]")
+                .add("itemType='" + itemType + "'")
+                .add("links=" + links)
+                .add("itemSelector=" + itemSelector)
+                .add("properties=" + properties)
+                .toString();
+    }
 }

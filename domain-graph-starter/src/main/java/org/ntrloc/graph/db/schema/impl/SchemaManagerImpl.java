@@ -100,12 +100,17 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
         if (transactionKey == null) {
             transactionKey = management.makePropertyKey(PropertyConstants.TRANSACTION_ID_PROPERTY).dataType(String.class).make();
         }
+        PropertyKey itemTypeKey = management.getPropertyKey(PropertyConstants.ITEM_TYPE_PROPERTY);
+        if (itemTypeKey == null) {
+            itemTypeKey = management.makePropertyKey(PropertyConstants.ITEM_TYPE_PROPERTY).dataType(String.class).make();
+        }
 
         String globalIndexName = "GLOBAL";
         if (management.getGraphIndex(globalIndexName) == null) {
             JanusGraphManagement.IndexBuilder builder = management.buildIndex(globalIndexName, Vertex.class);
             builder.addKey(statusKey, Mapping.STRING.asParameter());
             builder.addKey(transactionKey, Mapping.STRING.asParameter());
+            builder.addKey(itemTypeKey, Mapping.STRING.asParameter());
             builder.buildMixedIndex("search");
             management.commit();
 

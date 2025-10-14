@@ -3,62 +3,77 @@
         <style>
             #searchContent {
                 display: flex;
-                flex-direction: column;
+                flex-direction: row;
                 min-height: 0;
                 flex: 1;
 
-                #searchResults {
-                    padding: 10px;
-                    min-height: 0;
+                #searchOptions {
+                    min-width: 250px;
+                }
+
+                #searchOutput {
                     flex: 1;
-                    display: grid;
-                    grid-gap: 10px;
-                    grid-auto-rows: min-content;
-                    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-                    overflow-y: auto;
+                    display: flex;
+                    flex-direction: column;
 
-                    .result {
-                        border: solid 1px #999999;
-                        display: flex;
-                        flex-direction: column;
-                        padding: 10px;
-                        cursor: pointer;
+                    #searchResults {
+                        padding: 20px;
+                        min-height: 0;
+                        flex: 1;
+                        display: grid;
+                        grid-gap: 20px;
+                        grid-auto-rows: min-content;
+                        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+                        overflow-y: auto;
 
-                        .resultType {
-                            background-color: var(--ntrloc-form-decoration-color);
-                            color: white;
-                            font-weight: bold;
-                            border-radius: 5px;
-                            align-self: flex-start;
-                            padding: 5px;
-                            margin-bottom: 10px;
+                        .result {
+                            border: solid 1px #666666;
+                            display: flex;
+                            flex-direction: column;
+                            padding: 10px;
+                            border-radius: 10px;
+                            cursor: pointer;
 
-                            &[data-itemtype="Photographer"] {
-                                background-color: darkgreen;
-                            }
-                        }
-
-                        .properties {
-                            display: grid;
-                            grid-template-columns: minmax(50px, 1fr) 2fr;
-
-                            .propertyName {
+                            .resultType {
+                                background-color: var(--ntrloc-form-decoration-color);
+                                color: white;
                                 font-weight: bold;
-                                color: var(--ntrloc-form-decoration-color);
+                                border-radius: 5px;
+                                align-self: flex-start;
+                                padding: 5px;
+                                margin-bottom: 20px;
+
+                                &[data-itemtype="Photographer"] {
+                                    background-color: darkgreen;
+                                }
                             }
 
-                            .propertyValue {
-                                text-overflow: ellipsis;
-                            }
-                        }
+                            .properties {
+                                display: grid;
+                                grid-template-columns: minmax(50px, 1fr) 2fr;
+                                column-gap: 10px;
+                                row-gap: 5px;
+                                margin-bottom: 20px;
 
-                        .resultId {
-                            margin-top: 20px;
-                            color: #666666;
-                            font-size: 0.8em;
+                                .propertyName {
+                                    font-weight: bold;
+                                    color: var(--ntrloc-form-decoration-color);
+                                }
+
+                                .propertyValue {
+                                    text-overflow: ellipsis;
+                                }
+                            }
+
+                            .resultId {
+                                margin-top: auto;
+                                color: #666666;
+                                font-size: 0.8em;
+                            }
                         }
                     }
                 }
+
             }
         </style>
         <base href="/search/"/>
@@ -90,29 +105,55 @@
         </script>
     </head>
     <body>
-        <div id="searchContent" layout:fragment="content">
-            <button id="searchButton" onclick="search()">Search</button>
-            <div id="searchResults">
-                <div class="result" th:each="def: ${searchResults}">
-                    <div class="resultType" th:attr="data-itemType=${def.itemType}" th:text="${def.itemType}"></div>
-                    <div class="properties">
+        <div id="searchContent" layout:fragment="content"> <!-- /* Render this section in the main layout */-->
 
-                        <th:block th:each="prop: ${def.properties}">
-                            <span class="propertyName" th:text="${prop.key}"></span>
-                            <span class="propertyValue" th:text="${prop.value}"></span>
-                        </th:block>
+            <div id="searchOptions">
+                <button id="searchButton" onclick="search()">Search</button>
 
-                        <span class="propertyName">version</span>
-                        <span class="propertyValue" th:text="${def.version}"></span>
+                <button id="itemTypesToggle">Item Type</button>
+                <div id="itemTypesMenu" style="display:none">
+                    <div id="itemTypesMenuContent" style="display: flex; flex-direction: column;">
+                        <div class="itemTypeChoice">
+                            <input type="checkbox" id="Photo" name="Photo" value="Photo"><label for="Photo">Photo</label>
+                        </div>
+                        <div class="itemTypeChoice">
+                            <input type="checkbox" id="Photographer" name="Photographer" value="Photographer"><label for="Photographer">Photographer</label>
+                        </div>
                     </div>
-
-                    <span class="resultId" th:text="${def.id}"></span>
-
                 </div>
             </div>
+
+            <div id="searchOutput">
+                <div id="searchResults">
+                    <div class="result" th:each="def: ${searchResults}">
+                        <div class="resultType" th:attr="data-itemType=${def.itemType}" th:text="${def.itemType}"></div>
+                        <div class="properties">
+
+                            <th:block th:each="prop: ${def.properties}">
+                                <span class="propertyName" th:text="${prop.key}"></span>
+                                <span class="propertyValue" th:text="${prop.value}"></span>
+                            </th:block>
+
+                            <span class="propertyName">version</span>
+                            <span class="propertyValue" th:text="${def.version}"></span>
+                        </div>
+
+                        <span class="resultId" th:text="${def.id}"></span>
+
+                    </div>
+                </div>
+
+                <div th:if="${elapsedSeconds}" class="message">[['Search executed in ' +  ${elapsedSeconds} + ' seconds']]</div>
+            </div>
+
             <script>
                 $("#searchButton").button();
+                function showHide() {
+                    $( "#itemTypesMenu" ).toggle( "slide", {direction: "up"}, 200 );
+                }
+                $("#itemTypesToggle").on( "click", showHide);
             </script>
+
         </div>
     </body>
 </html>

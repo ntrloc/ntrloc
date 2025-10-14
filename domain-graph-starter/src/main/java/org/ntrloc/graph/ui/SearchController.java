@@ -49,13 +49,17 @@ public class SearchController extends AbstractController {
 
         var query = arguments.get("searchObject");
 
+        var start = System.currentTimeMillis();
+
         Mono<ExecutionResult> executionResult = queryExecutor.execute(query, Map.of(), Map.of(), exchange.getRequest().getHeaders(), null, serverRequest);
 
         return executionResult.map(result -> {
-            LOG.info("Got query result {}", result);
+            var end = System.currentTimeMillis();
+            LOG.debug("Got query result {}", result);
+            var elapsedSeconds = (end - start) / 1000.0;
             var data = (Map<String, List>)result.getData();
             var items = data.values().stream().flatMap(List::stream).toList();
-            return processTemplate(String.format("/%s/index.html", requestPrefix), Map.of("searchResults", items));
+            return processTemplate(String.format("/%s/index.html", requestPrefix), Map.of("searchResults", items, "elapsedSeconds", elapsedSeconds));
         });
 
     }

@@ -37,7 +37,7 @@ public class SchemaController extends AbstractController {
     }
 
     @GetMapping("/item/{name}/fields")
-    public ResponseEntity<Resource> test(@PathVariable("name") String name) {
+    public ResponseEntity<Resource> getItemFields(@PathVariable("name") String name) {
         Context context = new Context();
         Optional<ItemDefinition> opt = schemaManager.retrieveItemDefinition(name);
         if (opt.isPresent()) {
@@ -48,6 +48,13 @@ public class SchemaController extends AbstractController {
         } else {
             return ResponseEntity.notFound().build();
         }
+    }
+
+    @GetMapping("/item/new")
+    public ResponseEntity<Resource> newItem() {
+        Context context = new Context();
+        var result = templateEngine.process("/fragments/newItem.html", context);
+        return ResponseEntity.ok(new ByteArrayResource(result.getBytes()));
     }
 
 }

@@ -3,6 +3,7 @@ package org.ntrloc.graph.db.language.projection;
 import org.apache.tinkerpop.gremlin.structure.Direction;
 
 import java.util.List;
+import java.util.StringJoiner;
 
 public class LinkProjectionSpec {
 
@@ -62,5 +63,14 @@ public class LinkProjectionSpec {
         return itemProjectionSpec;
     }
 
-
+    @Override
+    public String toString() {
+        return new StringJoiner(", ", LinkProjectionSpec.class.getSimpleName() + "[", "]")
+                .add("linkName='" + linkName + "'")
+                .add("direction=" + direction)
+                .add("relatedItemType='" + relatedItemType + "'")
+                .add("properties=" + properties)
+                .add("itemProjectionSpec=" + itemProjectionSpec)
+                .toString();
+    }
 }
