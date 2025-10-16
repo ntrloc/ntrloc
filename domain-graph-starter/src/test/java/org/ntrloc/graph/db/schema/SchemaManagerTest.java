@@ -14,6 +14,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.cluster.ClusterService;
 import org.ntrloc.graph.db.schema.impl.SchemaManagerImpl;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
@@ -28,6 +30,8 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
 public class SchemaManagerTest {
+
+    private static final Logger LOG = LoggerFactory.getLogger(SchemaManagerTest.class);
 
     private JanusGraph janusGraph;
     private GraphTraversalSource traversalSource;
@@ -114,6 +118,10 @@ public class SchemaManagerTest {
             VertexLabel label = management.getVertexLabel(itemDefinition.getUid());
             assertNotNull(label, "vertex label should not be null");
 
+            management.getRelationTypes(PropertyKey.class).forEach(key -> {
+                LOG.info("Got property key {}", key);
+            });
+
             PropertyKey isbnKey = management.getPropertyKey(isbnPropertyDefinition.getUid());
             assertNotNull(isbnKey, "ISBN key should not be null");
             PropertyKey graKey = management.getPropertyKey(graLevelDefinition.getUid());
@@ -131,12 +139,20 @@ public class SchemaManagerTest {
     }
 
     @Test
-    @DisplayName("create and retrieve relationship definition")
+    @DisplayName("create and retrieve link definition")
     void testCreateLinkDefinition() {
+        ItemDefinition productDefinition = new ItemDefinition();
+        productDefinition.setName("Product");
+        schemaManager.createItemDefinition(productDefinition);
+
+        ItemDefinition coverDefinition = new ItemDefinition();
+        coverDefinition.setName("Cover");
+        schemaManager.createItemDefinition(coverDefinition);
+
         LinkDefinition linkDefinition = new LinkDefinition();
         linkDefinition.setInstanceMaxCardinality(1);
-        linkDefinition.setSourceEntityUid("Product");
-        linkDefinition.setTargetEntityUid("Cover");
+        linkDefinition.setSourceItemType("Product");
+        linkDefinition.setTargetItemType("Cover");
         linkDefinition.setSourceCardinality(new Cardinality(1, 1));
         linkDefinition.setTargetCardinality(new Cardinality(0, null));
         linkDefinition.setSourceVersionAction(LinkDefinition.VersionAction.COPY);

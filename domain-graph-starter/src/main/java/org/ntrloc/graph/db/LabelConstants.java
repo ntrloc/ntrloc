@@ -10,7 +10,9 @@ public class LabelConstants {
     public static final String NODE_PROPERTY_EDGE_LABEL = "system:nodeProperty";
 
     public static final String ITEM_DEFINITION_LABEL = "system:entityDefinition";
-    public static final String Link_DEFINITION_LABEL = "system:relationshipDefinition";
+    public static final String LINK_DEFINITION_LABEL = "system:relationshipDefinition";
+    public static final String LINK_SOURCE_LABEL = "system:has-source-item";
+    public static final String LINK_TARGET_LABEL = "system:has-target-item";
     public static final String PROPERTY_GROUP_DEFINITION_LABEL = "system:propertyGroupDefinition";
     public static final String PROPERTY_DEFINITION_LABEL = "system:propertyDefinition";
 

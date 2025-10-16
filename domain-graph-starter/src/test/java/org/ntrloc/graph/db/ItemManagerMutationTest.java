@@ -120,8 +120,8 @@ class ItemManagerMutationTest {
         linkDefinition.setName("CREATED");
         linkDefinition.setSourceLabel("created");
         linkDefinition.setTargetLabel("createdBy");
-        linkDefinition.setSourceEntityUid(photographerDefinition.getName());
-        linkDefinition.setTargetEntityUid(photoDefinition.getName());
+        linkDefinition.setSourceItemType(photographerDefinition.getName());
+        linkDefinition.setTargetItemType(photoDefinition.getName());
         linkDefinition.setSourceCardinality(new Cardinality(1, 1));
         linkDefinition.setSourceVersionAction(LinkDefinition.VersionAction.COPY);
         linkDefinition.setTargetCardinality(new Cardinality(0, null));

@@ -36,8 +36,8 @@ class SchemaMapperTest {
         photographerEntity.setProperties(Set.of(photographerName));
 
         LinkDefinition photoRelationship = new LinkDefinition();
-        photoRelationship.setSourceEntityUid("Photographer");
-        photoRelationship.setTargetEntityUid("Photo");
+        photoRelationship.setSourceItemType("Photographer");
+        photoRelationship.setTargetItemType("Photo");
         photoRelationship.setSourceCardinality(new Cardinality(0, 1) );
         photoRelationship.setTargetCardinality(new Cardinality(0, 1) );
         photoRelationship.setSourceVersionAction(LinkDefinition.VersionAction.NONE);

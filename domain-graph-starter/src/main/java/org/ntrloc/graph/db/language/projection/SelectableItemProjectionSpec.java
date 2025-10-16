@@ -57,4 +57,5 @@ public class SelectableItemProjectionSpec extends ItemProjectionSpec {
                 .add("properties=" + properties)
                 .toString();
     }
+
 }

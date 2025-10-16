@@ -16,7 +16,7 @@ public class ItemLinkPropertiesObjectTypeMapping implements PropertyFieldValueDe
     private final LinkDefinition linkDefinition;
 
     ItemLinkPropertiesObjectTypeMapping(LinkDefinition linkDefinition) {
-        String typeName = "%s %s %s Link Properties".formatted(linkDefinition.getSourceEntityUid(), linkDefinition.getSourceLabel(), linkDefinition.getTargetEntityUid());
+        String typeName = "%s %s %s Link Properties".formatted(linkDefinition.getSourceItemType(), linkDefinition.getSourceLabel(), linkDefinition.getTargetItemType());
         this.graphQlTypeName = CaseUtils.toCamelCase(typeName, true, '_', '-');
         this.linkDefinition = linkDefinition;
     }

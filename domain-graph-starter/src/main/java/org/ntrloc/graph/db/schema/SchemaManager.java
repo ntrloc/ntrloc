@@ -6,7 +6,7 @@ import java.util.Set;
 public interface SchemaManager {
 
     Set<ItemDefinition> retrieveItemDefinitions();
-    void createItemDefinition(ItemDefinition definition);
+    String createItemDefinition(ItemDefinition definition);
     void updateItemDefinition(ItemDefinition definition);
     Optional<ItemDefinition> retrieveItemDefinition(String name);
     void deleteItemDefinition(ItemDefinition definition);

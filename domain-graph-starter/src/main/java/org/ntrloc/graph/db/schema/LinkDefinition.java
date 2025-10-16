@@ -16,9 +16,9 @@ public class LinkDefinition extends SchemaDefinition implements DefinitionWithPr
 
     private Set<PropertyDefinition> properties;
 
-    private String sourceEntityUid;
+    private String sourceItemType;
 
-    private String targetEntityUid;
+    private String targetItemType;
 
     /**
      * The display name used to represent this relationship from the source vertex's perspective.
@@ -60,12 +60,12 @@ public class LinkDefinition extends SchemaDefinition implements DefinitionWithPr
         this.properties = properties;
     }
 
-    public String getSourceEntityUid() {
-        return sourceEntityUid;
+    public String getSourceItemType() {
+        return sourceItemType;
     }
 
-    public void setSourceEntityUid(String sourceEntityUid) {
-        this.sourceEntityUid = sourceEntityUid;
+    public void setSourceItemType(String sourceItemType) {
+        this.sourceItemType = sourceItemType;
     }
 
     public String getSourceLabel() {
@@ -76,20 +76,20 @@ public class LinkDefinition extends SchemaDefinition implements DefinitionWithPr
         this.sourceLabel = sourceLabel;
     }
 
+    public String getTargetItemType() {
+        return targetItemType;
+    }
+
+    public void setTargetItemType(String targetItemType) {
+        this.targetItemType = targetItemType;
+    }
+
     public String getTargetLabel() {
         return targetLabel;
     }
 
     public void setTargetLabel(String targetLabel) {
         this.targetLabel = targetLabel;
-    }
-
-    public String getTargetEntityUid() {
-        return targetEntityUid;
-    }
-
-    public void setTargetEntityUid(String targetEntityUid) {
-        this.targetEntityUid = targetEntityUid;
     }
 
     public Cardinality getTargetCardinality() {
@@ -138,8 +138,8 @@ public class LinkDefinition extends SchemaDefinition implements DefinitionWithPr
         if (!super.equals(o)) return false;
         return Objects.equals(propertyGroups, that.propertyGroups)
                 && Objects.equals(properties, that.properties)
-                && Objects.equals(sourceEntityUid, that.sourceEntityUid)
-                && Objects.equals(targetEntityUid, that.targetEntityUid)
+                && Objects.equals(sourceItemType, that.sourceItemType)
+                && Objects.equals(targetItemType, that.targetItemType)
                 && Objects.equals(targetCardinality, that.targetCardinality)
                 && Objects.equals(sourceCardinality, that.sourceCardinality)
                 && sourceVersionAction == that.sourceVersionAction
@@ -149,7 +149,7 @@ public class LinkDefinition extends SchemaDefinition implements DefinitionWithPr
 
     @Override
     public int hashCode() {
-        return Objects.hash(super.hashCode(), propertyGroups, properties, sourceEntityUid, targetEntityUid, targetCardinality, sourceCardinality, sourceVersionAction, targetVersionAction, instanceMaxCardinality);
+        return Objects.hash(super.hashCode(), propertyGroups, properties, sourceItemType, targetItemType, targetCardinality, sourceCardinality, sourceVersionAction, targetVersionAction, instanceMaxCardinality);
     }
 
     @Override
@@ -157,8 +157,8 @@ public class LinkDefinition extends SchemaDefinition implements DefinitionWithPr
         return new StringJoiner(", ", LinkDefinition.class.getSimpleName() + "[", "]")
                 .add("propertyGroups=" + propertyGroups)
                 .add("properties=" + properties)
-                .add("sourceEntity='" + sourceEntityUid + "'")
-                .add("targetEntity='" + targetEntityUid + "'")
+                .add("sourceItemType='" + sourceItemType + "'")
+                .add("targetItemType='" + targetItemType + "'")
                 .add("targetCardinality=" + targetCardinality)
                 .add("sourceCardinality=" + sourceCardinality)
                 .add("sourceFollowLatest=" + sourceVersionAction)
