@@ -40,6 +40,7 @@ public class ItemDefinition extends SchemaDefinition implements DefinitionWithPr
                 .add("name='" + name + "'")
                 .add("properties=" + properties)
                 .add("propertyGroups=" + propertyGroupDefinitions)
+                .add("uid='" + uid + "'")
                 .toString();
     }
 

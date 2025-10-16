@@ -49,17 +49,17 @@ public class MutationChoiceInputObjectTypeMapping implements InputObjectTypeProd
             String entityName = itemDefinition.getName();
             ItemMutationInputObjectTypeMapping sourceMapping = entityInputTypes.get(entityName);
 
-            Set<LinkDefinition> outboundRelationships = linkDefinitions.stream().filter(rel -> rel.getSourceEntity().equals(entityName)).collect(Collectors.toSet());
+            Set<LinkDefinition> outboundRelationships = linkDefinitions.stream().filter(rel -> rel.getSourceEntityUid().equals(entityName)).collect(Collectors.toSet());
             List<Tuple<LinkDefinition, ItemMutationInputObjectTypeMapping>> outgoingTuples = new ArrayList<>();
             for (LinkDefinition definition: outboundRelationships) {
-                ItemMutationInputObjectTypeMapping targetMapping = entityInputTypes.get(definition.getTargetEntity());
+                ItemMutationInputObjectTypeMapping targetMapping = entityInputTypes.get(definition.getTargetEntityUid());
                 outgoingTuples.add(Tuple.of(definition, targetMapping));
             }
 
-            Set<LinkDefinition> inboundRelationships = linkDefinitions.stream().filter(rel -> rel.getTargetEntity().equals(entityName)).collect(Collectors.toSet());
+            Set<LinkDefinition> inboundRelationships = linkDefinitions.stream().filter(rel -> rel.getTargetEntityUid().equals(entityName)).collect(Collectors.toSet());
             List<Tuple<LinkDefinition, ItemMutationInputObjectTypeMapping>> incomingTuples = new ArrayList<>();
             for (LinkDefinition definition: inboundRelationships) {
-                ItemMutationInputObjectTypeMapping targetMapping = entityInputTypes.get(definition.getSourceEntity());
+                ItemMutationInputObjectTypeMapping targetMapping = entityInputTypes.get(definition.getSourceEntityUid());
                 incomingTuples.add(Tuple.of(definition, targetMapping));
             }
 

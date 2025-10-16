@@ -12,10 +12,10 @@ import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.db.ItemStatus;
 import org.ntrloc.graph.db.LabelConstants;
 import org.ntrloc.graph.db.language.StringProperty;
+import org.ntrloc.graph.db.schema.SchemaManager;
 import org.ntrloc.graph.db.traversal.mutator.impl.MutatorImpl;
 
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
@@ -27,6 +27,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
 import static org.ntrloc.graph.db.PropertyConstants.STATUS_PROPERTY;
 import static org.ntrloc.graph.db.PropertyConstants.TRANSACTION_ID_PROPERTY;
 import static org.ntrloc.graph.db.PropertyConstants.VERSION_PROPERTY;
@@ -60,28 +62,12 @@ class MutatorTest {
         janusGraph.tx().close();
     }
 
-
-    private Map<String, Object> flattenProperties(Map<String, Object> props) {
-        Map<String, Object> flattened = new HashMap<>();
-        for (var entry : props.entrySet()) {
-            String key = entry.getKey();
-            Object value = entry.getValue();
-            if (value instanceof List list) {
-                if (list.size() == 1) {
-                    flattened.put(key, list.get(0));
-                } else {
-                    flattened.put(key, list);
-                }
-            } else {
-                flattened.put(key, value);
-            }
-        }
-        return flattened;
-    }
-
     @Test
     void testCreateNode() {
-        Mutator mutator = new MutatorImpl(traversalSource);
+        SchemaManager schemaManager = mock(SchemaManager.class);
+        doReturn("abc123").when(schemaManager).getItemPropertyId("Photo", "name");
+
+        Mutator mutator = new MutatorImpl(schemaManager, traversalSource);
 
         var label = "Photo";
         var props = Set.of(new StringProperty("name", "photo1.jpg"));
@@ -134,7 +120,13 @@ class MutatorTest {
 
     @Test
     void testUpdateNodeProperties() {
-        Mutator mutator = new MutatorImpl(traversalSource);
+        SchemaManager schemaManager = mock(SchemaManager.class);
+        doReturn("abc123").when(schemaManager).getItemPropertyId("Photo", "name");
+        doReturn("xyz767").when(schemaManager).getItemPropertyId("Photo", "author");
+        doReturn("bgg765").when(schemaManager).getItemPropertyId("Photo", "colorspace");
+
+        Mutator mutator = new MutatorImpl(schemaManager, traversalSource);
+
         var label = "Photo";
         var props = Set.of(
                 new StringProperty("name", "photo1.jpg"),
@@ -183,7 +175,7 @@ class MutatorTest {
         var newVersion = prepareNode.version;
         assertNotNull(newVersion, "new node version not found");
         var newProps = newVersion.properties;
-        assertProperties(newProps,"Photo_name", "photo2.jpg", "Photo_author", "Bill", "Photo_colorspace", null);
+        assertProperties(newProps,"abc123", "photo2.jpg", "xyz767", "Bill", "bgg765", null);
 
         // check that the node has a new committed version after commit
         mutator.commit();
@@ -193,7 +185,7 @@ class MutatorTest {
         assertNotNull(commitNode.version, "previous version should not be null after commit");
         var newNode = commitNode.version;
         var commitProps = newNode.properties;
-        assertProperties(commitProps, "Photo_name", "photo2.jpg", "Photo_author", "Bill", "Photo_colorspace", null, "version", 2);
+        assertProperties(commitProps, "abc123", "photo2.jpg", "xyz767", "Bill", "bgg765", null, "version", 2);
     }
 
 }

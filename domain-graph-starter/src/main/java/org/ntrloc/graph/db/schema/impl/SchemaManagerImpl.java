@@ -20,10 +20,10 @@ import org.janusgraph.graphdb.database.StandardJanusGraph;
 import org.janusgraph.graphdb.database.management.GraphIndexStatusReport;
 import org.janusgraph.graphdb.database.management.ManagementSystem;
 import org.ntrloc.graph.DuplicateException;
+import org.ntrloc.graph.Tuple;
 import org.ntrloc.graph.cluster.ClusterService;
 import org.ntrloc.graph.db.LabelConstants;
 import org.ntrloc.graph.db.PropertyConstants;
-import org.ntrloc.graph.db.PropertyNameTranslator;
 import org.ntrloc.graph.db.schema.DefinitionWithPropertyGroups;
 import org.ntrloc.graph.db.schema.ItemDefinition;
 import org.ntrloc.graph.db.schema.LinkDefinition;
@@ -51,8 +51,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import static org.ntrloc.graph.db.LabelConstants.ENTITY_DEFINITION_LABEL;
-import static org.ntrloc.graph.db.LabelConstants.RELATIONSHIP_DEFINITION_LABEL;
+import static org.ntrloc.graph.db.LabelConstants.ITEM_DEFINITION_LABEL;
+import static org.ntrloc.graph.db.LabelConstants.Link_DEFINITION_LABEL;
 
 @Service
 public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<String, Object>, EntryUpdatedListener<String, Object> {
@@ -72,6 +72,20 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
     private final JanusGraph janusGraph;
 
     private final GraphTraversalSource traversalSource;
+
+    /*
+     * so basically, items have a name and uid.
+     * links have a name and uid.
+     * properties have a name and uid.
+     * all uids are globally unique and cannot change.
+     * when an item is created in the graph, its label is its item type uid.
+     * the properties on the item use the property uids, not property names.
+     *
+     */
+
+    private Map<String, ItemDefinition> itemDefinitionByNameMap;
+    private Map<String, ItemDefinition> itemDefinitionByIdMap;
+    private Map<Tuple<String, String>, PropertyDefinition> propertyDefinitionByNameMap;
 
     // TODO: we don't need the traversal source in the constructor if we're getting the graph
     public SchemaManagerImpl(JanusGraph graph, GraphTraversalSource traversalSource, ClusterService clusterService) {
@@ -122,6 +136,26 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
         management.commit();
     }
 
+    private void cacheSchemaDefinitions() {
+        itemDefinitionByNameMap = new HashMap<>();
+        itemDefinitionByIdMap = new HashMap<>();
+        propertyDefinitionByNameMap = new HashMap<>();
+
+        GraphTraversal<Vertex, Vertex> start = traversalSource.V().hasLabel(ITEM_DEFINITION_LABEL);
+        var definitions = retrieveItemDefinitions(start);
+
+        for (ItemDefinition def : definitions) {
+            itemDefinitionByNameMap.put(def.getName(), def);
+            itemDefinitionByIdMap.put(def.getUid(), def);
+            Set<PropertyDefinition> propertyDefinitions = def.getProperties();
+            if (propertyDefinitions != null) {
+                for (PropertyDefinition propertyDefinition : propertyDefinitions) {
+                    propertyDefinitionByNameMap.put(Tuple.of(def.getName(), propertyDefinition.getName()), propertyDefinition);
+                }
+            }
+        }
+    }
+
     @Override
     public void createItemDefinition(ItemDefinition definition) {
 
@@ -134,7 +168,7 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
         }
 
         var tx = traversalSource.tx();
-        boolean foundVertex = traversalSource.V().hasLabel(ENTITY_DEFINITION_LABEL).has("name", definition.getName()).hasNext();
+        boolean foundVertex = traversalSource.V().hasLabel(ITEM_DEFINITION_LABEL).has("name", definition.getName()).hasNext();
         tx.close();
 
         if (foundVertex) {
@@ -143,14 +177,16 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
 
         // create the vertex label
         janusGraph.tx().begin();
-        VertexLabel typeLabel = janusGraph.getVertexLabel(definition.getName());
+        String itemTypeUid = UUID.randomUUID().toString(); // TODO guarantee this is unique
+        definition.setUid(itemTypeUid);
+        VertexLabel typeLabel = janusGraph.getVertexLabel(itemTypeUid);
         if (typeLabel == null) {
-            typeLabel = janusGraph.makeVertexLabel(definition.getName()).make();
+            typeLabel = janusGraph.makeVertexLabel(itemTypeUid).make();
             LOG.info("Created new vertex label {}", typeLabel);
             janusGraph.tx().commit();
         } else {
             janusGraph.tx().rollback();
-            throw new DuplicateException(String.format("Vertex label for entity %s already exists", definition.getName()));
+            throw new DuplicateException(String.format("Vertex label for entity %s already exists", itemTypeUid));
         }
 
         Set<PropertyDefinition> propertyDefinitions = definition.getProperties() == null ? Set.of() : definition.getProperties();
@@ -161,8 +197,8 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
         JanusGraphManagement management = janusGraph.openManagement();
         Set<String> propertyKeyNames = new HashSet<>();
         for (PropertyDefinition propertyDefinition : allProperties) {
-            String propertyKeyName = PropertyNameTranslator.externalPropertyNameToInternalName(definition.getName(), propertyDefinition.getName());
-
+            String propertyUid = UUID.randomUUID().toString(); // TODO guarantee this is unique
+            propertyDefinition.setUid(propertyUid);
             Class keyClass = switch (propertyDefinition.getType()) {
                 case STRING, STRING_LIST -> String.class;
                 case INT, INT_LIST -> Integer.class;
@@ -179,15 +215,15 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
             };
 
             if (keyClass != null || cardinality != null) {
-                management.makePropertyKey(propertyKeyName).dataType(keyClass).cardinality(cardinality).make();
-                propertyKeyNames.add(propertyKeyName);
+                management.makePropertyKey(propertyUid).dataType(keyClass).cardinality(cardinality).make();
+                propertyKeyNames.add(propertyUid);
             }
         }
 
-        // create the entity index
-        VertexLabel entityTypeLabel = management.getVertexLabel(definition.getName());
+        // create the item index
+        VertexLabel entityTypeLabel = management.getVertexLabel(itemTypeUid);
         Set<PropertyKey> keys = propertyKeyNames.stream().map(management::getPropertyKey).collect(Collectors.toSet());
-        JanusGraphManagement.IndexBuilder builder = management.buildIndex(definition.getName(), Vertex.class);
+        JanusGraphManagement.IndexBuilder builder = management.buildIndex(itemTypeUid, Vertex.class);
         for (PropertyKey propertyKey : keys) {
             if (propertyKey.dataType() == String.class) {
                 builder = builder.addKey(propertyKey, Mapping.STRING.asParameter());
@@ -201,7 +237,7 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
         management = janusGraph.openManagement();
 
         try {
-            GraphIndexStatusReport report = ManagementSystem.awaitGraphIndexStatus(janusGraph, definition.getName()).status(SchemaStatus.ENABLED).call();
+            GraphIndexStatusReport report = ManagementSystem.awaitGraphIndexStatus(janusGraph, itemTypeUid).status(SchemaStatus.ENABLED).call();
             LOG.info("Index status: {}", report);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -212,7 +248,8 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
 
         // create the schema vertices and edges
         tx = traversalSource.tx();
-        GraphTraversal<Vertex, ?> traversal = traversalSource.addV(ENTITY_DEFINITION_LABEL)
+        GraphTraversal<Vertex, ?> traversal = traversalSource.addV(ITEM_DEFINITION_LABEL)
+                .property("uid", itemTypeUid)
                 .property("name", definition.getName())
                 .property("description", definition.getDescription())
                 .as("schema");
@@ -227,6 +264,7 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
                     .property("name", p.getName())
                     .property("description", p.getDescription())
                     .property("type", p.getType().toString())
+                    .property("uid", p.getUid())
                     .as(ref);
             traversal = traversal.addE(HAS_PROPERTY)
                     .from("schema").to(ref);
@@ -280,13 +318,16 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
 
     @Override
     public Set<ItemDefinition> retrieveItemDefinitions() {
-        GraphTraversal<Vertex, Vertex> start = traversalSource.V().hasLabel(ENTITY_DEFINITION_LABEL);
-        return retrieveItemDefinitions(start);
+        if (itemDefinitionByIdMap == null) {
+            return Set.of();
+        } else {
+            return new HashSet<>(itemDefinitionByIdMap.values());
+        }
     }
 
     @Override
     public Optional<ItemDefinition> retrieveItemDefinition(String name) {
-        GraphTraversal<Vertex, Vertex> start = traversalSource.V().hasLabel(ENTITY_DEFINITION_LABEL).has("name", name);
+        GraphTraversal<Vertex, Vertex> start = traversalSource.V().hasLabel(ITEM_DEFINITION_LABEL).has("name", name);
         Set<ItemDefinition> defs = retrieveItemDefinitions(start);
         if (defs.isEmpty()) {
             return Optional.empty();
@@ -342,6 +383,7 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
     private PropertyDefinition mapToPropertyDefinition(Map<String, Object> map) {
         PropertyDefinition p = new PropertyDefinition();
         p.setName((String) map.get("name"));
+        p.setUid((String) map.get("uid"));
         p.setDescription((String) map.get("description"));
         p.setType(PropertyType.valueOf((String) map.get("type")));
         return p;
@@ -364,12 +406,10 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
         throw new RuntimeException("not done");
     }
 
-
-
     @Override
     public void createLinkDefinition(LinkDefinition definition) {
         var tx = traversalSource.tx();
-        boolean foundVertex = traversalSource.V().hasLabel(RELATIONSHIP_DEFINITION_LABEL).has("name", definition.getName()).hasNext();
+        boolean foundVertex = traversalSource.V().hasLabel(Link_DEFINITION_LABEL).has("name", definition.getName()).hasNext();
         tx.close();
 
         if (foundVertex) {
@@ -378,11 +418,11 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
 
         // create the schema vertices and edges
         tx = traversalSource.tx();
-        GraphTraversal<Vertex, ?> traversal = traversalSource.addV(RELATIONSHIP_DEFINITION_LABEL)
+        GraphTraversal<Vertex, ?> traversal = traversalSource.addV(Link_DEFINITION_LABEL)
                 .property("name", definition.getName())
                 .property("description", definition.getDescription())
-                .property("sourceEntity", definition.getSourceEntity())
-                .property("targetEntity", definition.getTargetEntity())
+                .property("sourceEntity", definition.getSourceEntityUid())
+                .property("targetEntity", definition.getTargetEntityUid())
                 .property("sourceLabel", definition.getSourceLabel())
                 .property("targetLabel", definition.getTargetLabel())
                 .property("targetCardinalityMin", definition.getTargetCardinality().getMin())
@@ -430,7 +470,7 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
 
     @Override
     public Set<LinkDefinition> retrieveLinkDefinitions() {
-        GraphTraversal<Vertex, Vertex> start = traversalSource.V().hasLabel(RELATIONSHIP_DEFINITION_LABEL);
+        GraphTraversal<Vertex, Vertex> start = traversalSource.V().hasLabel(Link_DEFINITION_LABEL);
         return retrieveRelationshipDefinitions(start);
     }
 
@@ -459,8 +499,8 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
             var propertyMap = (HashMap) v.get(elementProjectionName);
             schema.setName((String) propertyMap.get("name"));
             schema.setDescription((String) propertyMap.get("description"));
-            schema.setSourceEntity((String) propertyMap.get("sourceEntity"));
-            schema.setTargetEntity((String) propertyMap.get("targetEntity"));
+            schema.setSourceEntityUid((String) propertyMap.get("sourceEntity"));
+            schema.setTargetEntityUid((String) propertyMap.get("targetEntity"));
             schema.setSourceLabel((String) propertyMap.get("sourceLabel"));
             schema.setTargetLabel((String) propertyMap.get("targetLabel"));
             schema.setSourceCardinality(new org.ntrloc.graph.db.schema.Cardinality((Integer) propertyMap.get("sourceCardinalityMin"), (Integer) propertyMap.get("sourceCardinalityMax")));
@@ -485,7 +525,7 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
 
     @Override
     public Optional<LinkDefinition> retrieveLinkDefinition(String name) {
-        GraphTraversal<Vertex, Vertex> start = traversalSource.V().hasLabel(RELATIONSHIP_DEFINITION_LABEL).has("name", name);
+        GraphTraversal<Vertex, Vertex> start = traversalSource.V().hasLabel(Link_DEFINITION_LABEL).has("name", name);
         Set<LinkDefinition> defs = retrieveRelationshipDefinitions(start);
         if (defs.isEmpty()) {
             return Optional.empty();
@@ -501,6 +541,7 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
 
     public void signalSchemaChange() {
         LOG.info("Signaling schema change");
+        cacheSchemaDefinitions();
         reactions.forEach(SchemaChangeReaction::onSchemaChange);
         String uuid = UUID.randomUUID().toString();
         schemaMap.put(SCHEMA_VERSION_LABEL, uuid);
@@ -534,5 +575,25 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
     @Override
     public void entryUpdated(EntryEvent<String, Object> entryEvent) {
         entryChanged(entryEvent);
+    }
+
+    @Override
+    public String getItemTypeId(String itemTypeName) {
+        return itemDefinitionByNameMap.get(itemTypeName).getUid();
+    }
+
+    @Override
+    public String getItemPropertyId(String itemType, String propertyName) {
+        return propertyDefinitionByNameMap.get(Tuple.of(itemType, propertyName)).getUid();
+    }
+
+    @Override
+    public String getLinkPropertyId(String linkType, String propertyName) {
+        throw new RuntimeException("not done");
+    }
+
+    @Override
+    public String getPropertyName(String itemPropertyId) {
+        throw new RuntimeException("not done");
     }
 }

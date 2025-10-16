@@ -39,12 +39,12 @@ public class ItemLinksObjectTypeMapping implements ObjectTypeProducer {
 
         linkObjectTypeMappings = new HashMap<>();
 
-        Set<LinkDefinition> outgoingLinks = linkDefinitions.stream().filter(def -> def.getSourceEntity().equals(itemDefinition.getName())).collect(Collectors.toSet());
+        Set<LinkDefinition> outgoingLinks = linkDefinitions.stream().filter(def -> def.getSourceEntityUid().equals(itemDefinition.getName())).collect(Collectors.toSet());
         linkObjectTypeMappings.putAll(outgoingLinks.stream()
                 .map(ItemOutgoingLinkObjectTypeMapping::new)
                 .collect(Collectors.toMap(ItemOutgoingLinkObjectTypeMapping::getLinkGraphQlFieldName, mapping -> mapping)));
 
-        Set<LinkDefinition> incomingLinks = linkDefinitions.stream().filter(def -> def.getTargetEntity().equals(itemDefinition.getName())).collect(Collectors.toSet());
+        Set<LinkDefinition> incomingLinks = linkDefinitions.stream().filter(def -> def.getTargetEntityUid().equals(itemDefinition.getName())).collect(Collectors.toSet());
         linkObjectTypeMappings.putAll(incomingLinks.stream()
                 .map(ItemIncomingLinkObjectTypeMapping::new)
                 .collect(Collectors.toMap(ItemIncomingLinkObjectTypeMapping::getLinkGraphQlFieldName, mapping -> mapping)));

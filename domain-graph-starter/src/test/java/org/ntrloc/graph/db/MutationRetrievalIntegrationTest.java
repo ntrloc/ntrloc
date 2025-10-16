@@ -157,8 +157,8 @@ class MutationRetrievalIntegrationTest {
         schemaManager.createItemDefinition(photographerEntity);
 
         LinkDefinition photoRelationship = new LinkDefinition();
-        photoRelationship.setSourceEntity("Photographer");
-        photoRelationship.setTargetEntity("Photo");
+        photoRelationship.setSourceEntityUid("Photographer");
+        photoRelationship.setTargetEntityUid("Photo");
         photoRelationship.setSourceCardinality(new Cardinality(0, 1) );
         photoRelationship.setTargetCardinality(new Cardinality(0, 1) );
         photoRelationship.setSourceVersionAction(LinkDefinition.VersionAction.NONE);

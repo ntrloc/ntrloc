@@ -5,6 +5,8 @@ import java.util.StringJoiner;
 
 public class PropertyDefinition {
 
+    String uid;
+
     String name;
 
     PropertyType type;
@@ -30,6 +32,14 @@ public class PropertyDefinition {
         this.type = type;
         this.description = description;
         this.versionOnChange = versionOnChange;
+    }
+
+    public String getUid() {
+        return uid;
+    }
+
+    public void setUid(String uid) {
+        this.uid = uid;
     }
 
     public String getName() {
@@ -81,6 +91,7 @@ public class PropertyDefinition {
         return new StringJoiner(", ", PropertyDefinition.class.getSimpleName() + "[", "]")
                 .add("name='" + name + "'")
                 .add("type=" + type)
+                .add("uid='" + uid + "'")
                 .toString();
     }
 }

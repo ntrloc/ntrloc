@@ -152,6 +152,10 @@
                     $( "#itemTypesMenu" ).toggle( "slide", {direction: "up"}, 200 );
                 }
                 $("#itemTypesToggle").on( "click", showHide);
+                $(".result").on("click", function () {
+                    const id = $(this).attr('data-id');
+                    window.location.href = "/item/" + encodeURIComponent(id);
+                });
             </script>
 
         </div>

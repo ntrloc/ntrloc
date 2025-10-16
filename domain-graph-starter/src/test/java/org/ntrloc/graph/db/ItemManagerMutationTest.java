@@ -88,10 +88,10 @@ class ItemManagerMutationTest {
 
         BinaryStorageAdapter adapter = mock(BinaryStorageAdapter.class);
         ClusterService clusterService = mock(ClusterService.class);
-        Mutator mutator = new MutatorImpl(traversalSource);
         Projector projector = new Projector(traversalSource);
         doReturn(mock(IMap.class)).when(clusterService).getMap(anyString());
         schemaManager = new SchemaManagerImpl(janusGraph, traversalSource, clusterService);
+        Mutator mutator = new MutatorImpl(schemaManager, traversalSource);
         itemManager = new ItemManagerImpl(traversalSource, adapter, schemaManager, mutator, projector);
         setUpSchema();
     }
@@ -120,8 +120,8 @@ class ItemManagerMutationTest {
         linkDefinition.setName("CREATED");
         linkDefinition.setSourceLabel("created");
         linkDefinition.setTargetLabel("createdBy");
-        linkDefinition.setSourceEntity(photographerDefinition.getName());
-        linkDefinition.setTargetEntity(photoDefinition.getName());
+        linkDefinition.setSourceEntityUid(photographerDefinition.getName());
+        linkDefinition.setTargetEntityUid(photoDefinition.getName());
         linkDefinition.setSourceCardinality(new Cardinality(1, 1));
         linkDefinition.setSourceVersionAction(LinkDefinition.VersionAction.COPY);
         linkDefinition.setTargetCardinality(new Cardinality(0, null));
@@ -150,7 +150,10 @@ class ItemManagerMutationTest {
         assertTrue(iter.hasNext(), "no graph item found");
         var item = iter.next();
         var props = (Map<String, Object>) item.get("props");
-        assertTrue(props.containsKey("Photo_name"), "name not set");
+
+        String nameId = schemaManager.getItemPropertyId("Photo", "name");
+
+        assertTrue(props.containsKey(nameId), "name not set");
         assertTrue(props.containsKey(UNIQUE_ID_PROPERTY), "uid not set");
         assertTrue(props.containsKey(ITEM_TYPE_PROPERTY), "type not set");
         assertEquals(ItemStatus.NORMAL.toString(), ((List)props.get(STATUS_PROPERTY)).get(0));

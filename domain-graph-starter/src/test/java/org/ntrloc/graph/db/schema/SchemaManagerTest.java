@@ -111,15 +111,15 @@ public class SchemaManagerTest {
 
         JanusGraphManagement management = janusGraph.openManagement();
         try {
-            VertexLabel label = management.getVertexLabel("Product");
+            VertexLabel label = management.getVertexLabel(itemDefinition.getUid());
             assertNotNull(label, "vertex label should not be null");
 
-            PropertyKey isbnKey = management.getPropertyKey("Product_ISBN");
+            PropertyKey isbnKey = management.getPropertyKey(isbnPropertyDefinition.getUid());
             assertNotNull(isbnKey, "ISBN key should not be null");
-            PropertyKey graKey = management.getPropertyKey("Product_GRA");
+            PropertyKey graKey = management.getPropertyKey(graLevelDefinition.getUid());
             assertNotNull(graKey, "GRA key should not be null");
 
-            JanusGraphIndex index = management.getGraphIndex("Product");
+            JanusGraphIndex index = management.getGraphIndex(itemDefinition.getUid());
             assertNotNull(index, "index should not be null");
 
             PropertyKey[] indexKeys = index.getFieldKeys();
@@ -135,8 +135,8 @@ public class SchemaManagerTest {
     void testCreateLinkDefinition() {
         LinkDefinition linkDefinition = new LinkDefinition();
         linkDefinition.setInstanceMaxCardinality(1);
-        linkDefinition.setSourceEntity("Product");
-        linkDefinition.setTargetEntity("Cover");
+        linkDefinition.setSourceEntityUid("Product");
+        linkDefinition.setTargetEntityUid("Cover");
         linkDefinition.setSourceCardinality(new Cardinality(1, 1));
         linkDefinition.setTargetCardinality(new Cardinality(0, null));
         linkDefinition.setSourceVersionAction(LinkDefinition.VersionAction.COPY);

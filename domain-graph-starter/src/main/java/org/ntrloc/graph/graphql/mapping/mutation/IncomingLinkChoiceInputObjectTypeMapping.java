@@ -27,7 +27,7 @@ public class IncomingLinkChoiceInputObjectTypeMapping implements IncomingLinkInp
                                                     IncomingLinkCreateInputObjectTypeMapping createMapping,
                                                     IncomingLinkUpdateInputObjectTypeMapping updateMapping,
                                                     IncomingLinkDeleteInputObjectTypeMapping deleteMapping) {
-        String typeName = String.format("%s %s %s Link Choice Input", targetLinkDefinition.getTargetEntity(), targetLinkDefinition.getTargetLabel(), targetLinkDefinition.getSourceEntity());
+        String typeName = String.format("%s %s %s Link Choice Input", targetLinkDefinition.getTargetEntityUid(), targetLinkDefinition.getTargetLabel(), targetLinkDefinition.getSourceEntityUid());
         this.graphQlTypeName = CaseUtils.toCamelCase(typeName, true, '_', '-');
         this.targetLinkDefinition = targetLinkDefinition;
         mappings = Map.of(CREATE_MAPPING_KEY, createMapping, UPDATE_MAPPING_KEY, updateMapping, DELETE_MAPPING_KEY, deleteMapping);

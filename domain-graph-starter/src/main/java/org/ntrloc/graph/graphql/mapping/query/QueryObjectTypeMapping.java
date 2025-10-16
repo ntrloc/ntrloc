@@ -31,7 +31,7 @@ public class QueryObjectTypeMapping implements ObjectTypeProducer {
         this.graphQlTypeName = "Query";
 
         for (ItemDefinition itemDefinition : itemDefinitions) {
-            Set<LinkDefinition> itemLinks = linkDefinitions.stream().filter(l -> l.getSourceEntity().equals(itemDefinition.getName()) || l.getTargetEntity().equals(itemDefinition.getName())).collect(java.util.stream.Collectors.toSet());
+            Set<LinkDefinition> itemLinks = linkDefinitions.stream().filter(l -> l.getSourceEntityUid().equals(itemDefinition.getName()) || l.getTargetEntityUid().equals(itemDefinition.getName())).collect(java.util.stream.Collectors.toSet());
             itemTypeMappings.put(itemDefinition.getName(), new ItemObjectTypeMapping(itemDefinition, itemLinks));
         }
 

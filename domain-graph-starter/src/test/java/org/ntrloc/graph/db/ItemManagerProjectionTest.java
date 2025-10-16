@@ -134,7 +134,7 @@ class ItemManagerProjectionTest {
 
         BinaryStorageAdapter adapter = mock(BinaryStorageAdapter.class);
         SchemaManager schemaManager = mock(SchemaManager.class);
-        Mutator mutator = new MutatorImpl(traversalSource);
+        Mutator mutator = new MutatorImpl(schemaManager, traversalSource);
         Projector projector = new Projector(traversalSource);
         manager = new ItemManagerImpl(traversalSource, adapter, schemaManager, mutator, projector);
     }

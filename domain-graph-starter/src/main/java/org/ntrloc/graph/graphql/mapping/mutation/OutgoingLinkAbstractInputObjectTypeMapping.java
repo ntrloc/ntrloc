@@ -22,7 +22,7 @@ public abstract class OutgoingLinkAbstractInputObjectTypeMapping implements Outg
     protected SelectorChoiceInputObjectTypeMapping selectorChoiceInputObjectTypeMapping;
 
     OutgoingLinkAbstractInputObjectTypeMapping(String typePattern, LinkDefinition targetLinkDefinition, LinkPropertiesInputObjectTypeMapping propertiesMapping, SelectorChoiceInputObjectTypeMapping selectorChoiceInputObjectTypeMapping) {
-        String typeName = String.format(typePattern, targetLinkDefinition.getSourceEntity(), targetLinkDefinition.getSourceLabel(), targetLinkDefinition.getTargetEntity());
+        String typeName = String.format(typePattern, targetLinkDefinition.getSourceEntityUid(), targetLinkDefinition.getSourceLabel(), targetLinkDefinition.getTargetEntityUid());
         this.graphQlTypeName = CaseUtils.toCamelCase(typeName, true, '_', '-');
         this.targetLinkDefinition = targetLinkDefinition;
         this.propertiesMapping = propertiesMapping;

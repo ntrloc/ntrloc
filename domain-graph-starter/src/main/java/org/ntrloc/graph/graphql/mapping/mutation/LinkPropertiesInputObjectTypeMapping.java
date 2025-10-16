@@ -24,7 +24,7 @@ public class LinkPropertiesInputObjectTypeMapping implements InputObjectTypeProd
 
     public LinkPropertiesInputObjectTypeMapping(LinkDefinition linkDefinition) {
 
-        String typeName = String.format("%s %s %s Properties Input", linkDefinition.getSourceEntity(), linkDefinition.getSourceLabel(), linkDefinition.getTargetEntity());
+        String typeName = String.format("%s %s %s Properties Input", linkDefinition.getSourceEntityUid(), linkDefinition.getSourceLabel(), linkDefinition.getTargetEntityUid());
         this.graphQlTypeName = CaseUtils.toCamelCase(typeName, true, '_', '-');
 
         for (var propertyDefinition : linkDefinition.getProperties()) {

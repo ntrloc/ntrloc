@@ -13,7 +13,7 @@ import java.util.List;
 public class IncomingLinkDeleteInputObjectTypeMapping extends LinkDeleteAbstractInputObjectTypeMapping implements IncomingLinkInputTypeMapping, InputObjectTypeProducer {
 
     public IncomingLinkDeleteInputObjectTypeMapping(LinkDefinition sourceLinkDefinition, SelectorChoiceInputObjectTypeMapping matcherChoiceMapping) {
-        super(String.format("%s %s %s Link Delete Input", sourceLinkDefinition.getTargetEntity(), sourceLinkDefinition.getTargetLabel(), sourceLinkDefinition.getSourceEntity()), sourceLinkDefinition, matcherChoiceMapping);
+        super(String.format("%s %s %s Link Delete Input", sourceLinkDefinition.getTargetEntityUid(), sourceLinkDefinition.getTargetLabel(), sourceLinkDefinition.getSourceEntityUid()), sourceLinkDefinition, matcherChoiceMapping);
     }
 
     public LinkDefinition getSourceRelationshipDefinition() {

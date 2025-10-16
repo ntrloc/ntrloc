@@ -25,7 +25,7 @@ public class ItemIncomingLinkObjectTypeMapping extends ItemLinkObjectTypeMapping
     private final ItemLinkPropertiesObjectTypeMapping propertiesObjectTypeMapping;
 
     ItemIncomingLinkObjectTypeMapping(LinkDefinition linkDefinition) {
-        String typeName = "%s %s %s Link".formatted(linkDefinition.getTargetEntity(), linkDefinition.getTargetLabel(), linkDefinition.getSourceEntity());
+        String typeName = "%s %s %s Link".formatted(linkDefinition.getTargetEntityUid(), linkDefinition.getTargetLabel(), linkDefinition.getSourceEntityUid());
         this.graphQlTypeName = CaseUtils.toCamelCase(typeName, true, '_', '-');
         this.linkDefinition = linkDefinition;
         this.propertiesObjectTypeMapping = new ItemLinkPropertiesObjectTypeMapping(linkDefinition);
@@ -38,7 +38,7 @@ public class ItemIncomingLinkObjectTypeMapping extends ItemLinkObjectTypeMapping
 
     @Override
     void registerRelatedItemType(Map<String, ItemObjectTypeMapping> mappings) {
-        this.relatedItemObjectTypeMapping = mappings.get(linkDefinition.getSourceEntity());
+        this.relatedItemObjectTypeMapping = mappings.get(linkDefinition.getSourceEntityUid());
     }
 
     @Override
@@ -61,7 +61,7 @@ public class ItemIncomingLinkObjectTypeMapping extends ItemLinkObjectTypeMapping
         }
         FieldDefinition sourceField = FieldDefinition.newFieldDefinition()
                 .name(sourceFieldName)
-                .type(new TypeName(ItemObjectTypeMapping.getItemGraphQlTypeName(linkDefinition.getSourceEntity())))
+                .type(new TypeName(ItemObjectTypeMapping.getItemGraphQlTypeName(linkDefinition.getSourceEntityUid())))
                 .build();
         fieldDefinitions.add(sourceField);
 
@@ -82,7 +82,7 @@ public class ItemIncomingLinkObjectTypeMapping extends ItemLinkObjectTypeMapping
     LinkProjectionSpec parseLinkProjectionSpec(Field field) {
         List<Selection> selections = field.getSelectionSet().getSelections();
         List<Field> selectionFields = selections.stream().filter(s -> s instanceof Field).map(s -> (Field) s).toList();
-        LinkProjectionSpec spec = new LinkProjectionSpec(linkDefinition.getName(), Direction.IN, linkDefinition.getSourceEntity());
+        LinkProjectionSpec spec = new LinkProjectionSpec(linkDefinition.getName(), Direction.IN, linkDefinition.getSourceEntityUid());
 
         Optional<Field> propertiesField = selectionFields.stream().filter(f -> f.getName().equals(propertiesFieldName)).findFirst();
         if (propertiesField.isPresent()) {

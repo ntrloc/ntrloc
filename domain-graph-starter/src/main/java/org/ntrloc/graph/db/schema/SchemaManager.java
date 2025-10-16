@@ -19,4 +19,9 @@ public interface SchemaManager {
 
     void addSchemaChangeReaction(SchemaChangeReaction reaction);
 
+    String getItemTypeId(String itemTypeName);
+    String getItemPropertyId(String itemTypeName, String propertyName);
+    String getLinkPropertyId(String linkTypeName, String propertyName);
+    String getPropertyName(String itemPropertyId);
+
 }

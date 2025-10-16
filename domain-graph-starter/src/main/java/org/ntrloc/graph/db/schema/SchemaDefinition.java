@@ -4,9 +4,19 @@ import java.util.Objects;
 
 public abstract class SchemaDefinition {
 
+    String uid;
+
     String name;
 
     String description;
+
+    public String getUid() {
+        return uid;
+    }
+
+    public void setUid(String uid) {
+        this.uid = uid;
+    }
 
     public String getName() {
         return name;

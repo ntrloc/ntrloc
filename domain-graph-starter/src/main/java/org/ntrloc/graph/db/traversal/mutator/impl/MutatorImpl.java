@@ -10,12 +10,12 @@ import org.ntrloc.graph.db.ItemStatus;
 import org.ntrloc.graph.db.LabelConstants;
 import org.ntrloc.graph.db.MutationException;
 import org.ntrloc.graph.db.PropertyConstants;
-import org.ntrloc.graph.db.PropertyNameTranslator;
 import org.ntrloc.graph.db.Transaction;
 import org.ntrloc.graph.db.language.ListProperty;
 import org.ntrloc.graph.db.language.NodeProperty;
 import org.ntrloc.graph.db.language.Property;
 import org.ntrloc.graph.db.language.ScalarProperty;
+import org.ntrloc.graph.db.schema.SchemaManager;
 import org.ntrloc.graph.db.traversal.mutator.MutationResult;
 import org.ntrloc.graph.db.traversal.mutator.Mutator;
 import org.ntrloc.graph.db.traversal.mutator.Node;
@@ -42,10 +42,12 @@ public class MutatorImpl implements Mutator {
 
     private static final Logger LOG = LoggerFactory.getLogger(Mutator.class);
 
+    private SchemaManager schemaManager;
     private GraphTraversalSource traversalSource;
     private Transaction transaction;
 
-    public MutatorImpl(GraphTraversalSource traversalSource) {
+    public MutatorImpl(SchemaManager manager, GraphTraversalSource traversalSource) {
+        this.schemaManager = manager;
         this.traversalSource = traversalSource;
         transaction = new Transaction(traversalSource, UUID.randomUUID().toString());
     }
@@ -77,7 +79,7 @@ public class MutatorImpl implements Mutator {
                 .property(PropertyConstants.STATUS_PROPERTY, ItemStatus.UNCOMMITTED_CREATE.toString())
                 .property(PropertyConstants.TRANSACTION_ID_PROPERTY, transaction.getId());
         for (Property property : properties) {
-            String translatedPropertyName = PropertyNameTranslator.externalPropertyNameToInternalName(label, property.getName());
+            String translatedPropertyName = schemaManager.getItemPropertyId(label, property.getName());
             if (property instanceof ScalarProperty<?, ?> scalarProperty) {
                 LOG.info("Applying scalar property {}", translatedPropertyName);
                 traversal = traversal.property(translatedPropertyName, scalarProperty.getValue());
@@ -129,7 +131,7 @@ public class MutatorImpl implements Mutator {
 
         Set<String> deletedProperties = new HashSet<>();
         for (Property property : properties) {
-            String translatedPropertyName = PropertyNameTranslator.externalPropertyNameToInternalName(label, property.getName());
+            String translatedPropertyName = schemaManager.getItemPropertyId(label, property.getName());
             if (property instanceof ScalarProperty<?, ?> scalarProperty) {
                 LOG.info("Applying scalar property {}", translatedPropertyName);
                 if (scalarProperty.getValue() == null) {
@@ -196,7 +198,7 @@ public class MutatorImpl implements Mutator {
                 .V().has(UNIQUE_ID_PROPERTY, toItemId).as("toNode")
                 .addV(relationshipName).as("relationship");
         for (Property property : properties) {
-            String translatedPropertyName = PropertyNameTranslator.externalPropertyNameToInternalName(relationshipName, property.getName());
+            String translatedPropertyName = schemaManager.getLinkPropertyId(relationshipName, property.getName());
             if (property instanceof ScalarProperty<?, ?> scalarProperty) {
                 LOG.info("Applying scalar property {}", translatedPropertyName);
                 traversal = traversal.property(translatedPropertyName, scalarProperty.getValue());
