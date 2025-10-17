@@ -22,4 +22,9 @@ public class IntListProperty implements ListProperty<Integer> {
         return name;
     }
 
+    @Override
+    public IntListProperty renamedTo(String name) {
+        return new IntListProperty(name, values);
+    }
+
 }

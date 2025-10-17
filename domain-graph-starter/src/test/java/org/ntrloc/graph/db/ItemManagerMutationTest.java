@@ -88,10 +88,11 @@ class ItemManagerMutationTest {
 
         BinaryStorageAdapter adapter = mock(BinaryStorageAdapter.class);
         ClusterService clusterService = mock(ClusterService.class);
-        Projector projector = new Projector(traversalSource);
+
         doReturn(mock(IMap.class)).when(clusterService).getMap(anyString());
         schemaManager = new SchemaManagerImpl(janusGraph, traversalSource, clusterService);
-        Mutator mutator = new MutatorImpl(schemaManager, traversalSource);
+        Projector projector = new Projector(traversalSource);
+        Mutator mutator = new MutatorImpl(traversalSource);
         itemManager = new ItemManagerImpl(traversalSource, adapter, schemaManager, mutator, projector);
         setUpSchema();
     }

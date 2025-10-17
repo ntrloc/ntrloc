@@ -20,4 +20,8 @@ public class DoubleProperty implements ScalarProperty<Double, Double> {
         return value;
     }
 
+    @Override
+    public ScalarProperty<Double, Double> renamedTo(String name) {
+        return new DoubleProperty(name, value);
+    }
 }

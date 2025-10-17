@@ -22,4 +22,9 @@ public class DoubleListProperty implements ListProperty<Double> {
         return name;
     }
 
+    @Override
+    public DoubleListProperty renamedTo(String name) {
+        return new DoubleListProperty(name, values);
+    }
+
 }

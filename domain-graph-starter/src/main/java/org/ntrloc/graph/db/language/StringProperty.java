@@ -21,4 +21,9 @@ public class StringProperty implements ScalarProperty<String, String> {
         return value;
     }
 
+    @Override
+    public ScalarProperty<String, String> renamedTo(String name) {
+        return new StringProperty(name, value);
+    }
+
 }

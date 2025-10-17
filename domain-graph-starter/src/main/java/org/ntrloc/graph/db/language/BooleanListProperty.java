@@ -21,4 +21,9 @@ public class BooleanListProperty implements ListProperty<Boolean> {
     public String getName() {
         return name;
     }
+
+    @Override
+    public BooleanListProperty renamedTo(String name) {
+        return new BooleanListProperty(name, values);
+    }
 }

@@ -22,4 +22,9 @@ public class StringListProperty implements ListProperty<String> {
         return name;
     }
 
+    @Override
+    public StringListProperty renamedTo(String name) {
+        return new StringListProperty(name, values);
+    }
+
 }

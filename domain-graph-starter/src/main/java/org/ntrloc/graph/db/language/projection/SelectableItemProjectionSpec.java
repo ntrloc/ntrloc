@@ -8,26 +8,14 @@ import java.util.StringJoiner;
 
 public class SelectableItemProjectionSpec extends ItemProjectionSpec {
 
-    private String itemType;
+    private ItemSelector itemSelector;
 
-    public SelectableItemProjectionSpec(String itemType) {
-        this.itemType = itemType;
-    }
-
-    public String getItemType() {
-        return itemType;
-    }
-
-    public void setItemType(String itemType) {
-        this.itemType = itemType;
+    public SelectableItemProjectionSpec(ItemSelector itemSelector) {
+        this.itemSelector = itemSelector;
     }
 
     public ItemSelector getItemSelector() {
         return itemSelector;
-    }
-
-    public void setItemSelector(ItemSelector itemSelector) {
-        this.itemSelector = itemSelector;
     }
 
     public SelectableItemProjectionSpec properties(List<String> properties) {
@@ -43,15 +31,14 @@ public class SelectableItemProjectionSpec extends ItemProjectionSpec {
         return this;
     }
 
-    public SelectableItemProjectionSpec select(ItemSelector selector) {
-        this.itemSelector = selector;
+    public SelectableItemProjectionSpec filter(ItemSelector selector) {
+        this.filter = selector;
         return this;
     }
 
     @Override
     public String toString() {
         return new StringJoiner(", ", SelectableItemProjectionSpec.class.getSimpleName() + "[", "]")
-                .add("itemType='" + itemType + "'")
                 .add("links=" + links)
                 .add("itemSelector=" + itemSelector)
                 .add("properties=" + properties)

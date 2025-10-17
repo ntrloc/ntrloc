@@ -5,6 +5,7 @@ import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversalSo
 import org.apache.tinkerpop.gremlin.structure.Vertex;
 import org.ntrloc.graph.db.ItemManager;
 import org.ntrloc.graph.db.MutationException;
+import org.ntrloc.graph.db.language.Property;
 import org.ntrloc.graph.db.language.mutation.ItemCreateMutation;
 import org.ntrloc.graph.db.language.mutation.ItemDeleteMutation;
 import org.ntrloc.graph.db.language.mutation.ItemMutation;
@@ -50,6 +51,8 @@ public class ItemManagerImpl implements ItemManager {
     private GraphTraversalSource traversalSource;
     private BinaryStorageAdapter binaryStorageAdapter;
 
+    private SchemaManager schemaManager;
+
     private Mutator mutator;
     private Projector projector;
 
@@ -61,6 +64,7 @@ public class ItemManagerImpl implements ItemManager {
         this.binaryStorageAdapter = binaryStorageAdapter;
         this.mutator = mutator;
         this.projector = projector;
+        this.schemaManager = schemaManager;
         schemaManager.addSchemaChangeReaction(() -> {
             Set<ItemDefinition> itemDefinitionSet = schemaManager.retrieveItemDefinitions();
             itemDefinitionMap = itemDefinitionSet.stream().collect(Collectors.toMap(ItemDefinition::getName, Function.identity()));
@@ -141,7 +145,10 @@ public class ItemManagerImpl implements ItemManager {
         Map<String, ReferenceableItemMutation> mutationIdMap = new HashMap<>();
 
         for (ItemCreateMutation createMutation: createMutations) {
-            String createdId = mutator.createNode(createMutation.getEntityType(), createMutation.getProperties());
+            String itemTypeId = schemaManager.getItemTypeId(createMutation.getEntityType());
+            Map<String, String> propertyIds = schemaManager.getItemPropertyNameToIdMap(itemTypeId);
+            Set<Property> renamedProperties = createMutation.getProperties().stream().map(p -> p.renamedTo(propertyIds.get(p.getName()))).collect(Collectors.toSet());
+            String createdId = mutator.createNode(createMutation.getEntityType(), renamedProperties);
             mutationIdMap.put(createdId, createMutation);
             ItemMutationResponse item = new ItemMutationResponse(MutationType.CREATE, createMutation.getEntityType(), createdId);
             response.addItemMutationResponse(item);

@@ -81,6 +81,9 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
     private Map<String, ItemDefinition> itemDefinitionByIdMap;
     private Map<Tuple<String, String>, PropertyDefinition> propertyDefinitionByNameMap;
 
+    private Map<String, Map<String, String>> itemTypePropertyIdToNameMap;
+    private Map<String, Map<String, String>> itemTypePropertyNameToIdMap;
+
     // TODO: we don't need the traversal source in the constructor if we're getting the graph
     public SchemaManagerImpl(JanusGraph graph, GraphTraversalSource traversalSource, ClusterService clusterService) {
         this.janusGraph = graph;
@@ -134,6 +137,7 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
         itemDefinitionByNameMap = new HashMap<>();
         itemDefinitionByIdMap = new HashMap<>();
         propertyDefinitionByNameMap = new HashMap<>();
+        itemTypePropertyNameToIdMap = new HashMap<>();
 
         GraphTraversal<Vertex, Vertex> start = traversalSource.V().hasLabel(ITEM_DEFINITION_LABEL);
         var definitions = retrieveItemDefinitions(start);
@@ -146,6 +150,9 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
                 for (PropertyDefinition propertyDefinition : propertyDefinitions) {
                     propertyDefinitionByNameMap.put(Tuple.of(def.getName(), propertyDefinition.getName()), propertyDefinition);
                 }
+
+                Map<String, String> propertyNameToIdMap = propertyDefinitions.stream().collect(Collectors.toMap(PropertyDefinition::getName, PropertyDefinition::getUid));
+                itemTypePropertyNameToIdMap.put(def.getUid(), propertyNameToIdMap);
             }
         }
     }
@@ -605,5 +612,10 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
     @Override
     public String getPropertyName(String itemPropertyId) {
         throw new RuntimeException("not done");
+    }
+
+    @Override
+    public Map<String, String> getItemPropertyNameToIdMap(String itemTypeID) {
+        return itemTypePropertyNameToIdMap.get(itemTypeID);
     }
 }

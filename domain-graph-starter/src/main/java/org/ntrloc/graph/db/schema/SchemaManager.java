@@ -1,5 +1,6 @@
 package org.ntrloc.graph.db.schema;
 
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -22,6 +23,7 @@ public interface SchemaManager {
     String getItemTypeId(String itemTypeName);
     String getItemPropertyId(String itemTypeName, String propertyName);
     String getLinkPropertyId(String linkTypeName, String propertyName);
+    Map<String, String> getItemPropertyNameToIdMap(String itemTypeID);
     String getPropertyName(String itemPropertyId);
 
 }

@@ -8,7 +8,7 @@ import java.util.Map;
 
 public class ItemProjectionSpec {
 
-    protected ItemSelector itemSelector;
+    protected ItemSelector filter;
     protected List<String> properties;
 
     /**
@@ -23,6 +23,14 @@ public class ItemProjectionSpec {
     public ItemProjectionSpec properties(List<String> properties) {
         this.properties = properties;
         return this;
+    }
+
+    public ItemSelector getFilter() {
+        return filter;
+    }
+
+    public void setFilter(ItemSelector filter) {
+        this.filter = filter;
     }
 
     public List<String> getProperties() {

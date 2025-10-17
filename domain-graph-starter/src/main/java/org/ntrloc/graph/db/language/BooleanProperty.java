@@ -20,4 +20,9 @@ public class BooleanProperty implements ScalarProperty<Boolean, Boolean> {
         return value;
     }
 
+    @Override
+    public ScalarProperty<Boolean, Boolean> renamedTo(String name) {
+        return new BooleanProperty(name, value);
+    }
+
 }

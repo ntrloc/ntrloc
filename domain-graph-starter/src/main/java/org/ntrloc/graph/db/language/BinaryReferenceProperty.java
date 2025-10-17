@@ -19,5 +19,9 @@ public class BinaryReferenceProperty implements NodeProperty {
         return nodeId;
     }
 
+    @Override
+    public NodeProperty renamedTo(String name) {
+        return new BinaryReferenceProperty(name, nodeId);
+    }
 
 }

@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.db.impl.ItemManagerImpl;
 import org.ntrloc.graph.db.language.projection.ItemProjection;
 import org.ntrloc.graph.db.language.projection.SelectableItemProjectionSpec;
+import org.ntrloc.graph.db.language.selectors.LabelSelector;
 import org.ntrloc.graph.db.schema.SchemaManager;
 import org.ntrloc.graph.db.storage.BinaryStorageAdapter;
 import org.ntrloc.graph.db.traversal.mutator.Mutator;
@@ -27,7 +28,6 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 
-@DisplayName("An entity manager")
 class ItemManagerProjectionTest {
 
     private static final Logger LOG = LoggerFactory.getLogger(ItemManagerProjectionTest.class);
@@ -35,6 +35,7 @@ class ItemManagerProjectionTest {
     private GraphTraversalSource traversalSource;
     private JanusGraph janusGraph;
     private ItemManager manager;
+    private SchemaManager schemaManager;
 
     @BeforeEach
     void init() throws IOException {
@@ -60,46 +61,46 @@ class ItemManagerProjectionTest {
                 .property(PropertyConstants.UNIQUE_ID_PROPERTY, "p1")
                 .property(PropertyConstants.ITEM_TYPE_PROPERTY, "Photo")
                 .property(PropertyConstants.VERSION_PROPERTY, 1)
-                .property("Photo_name", "photo1")
-                .property("Photo_colorspace", "B&W")
+                .property("photoName", "photo1")
+                .property("photoColorspace", "B&W")
                 .as("photo1")
 
                 .addV("Photo")
                 .property(PropertyConstants.UNIQUE_ID_PROPERTY, "p2")
                 .property(PropertyConstants.ITEM_TYPE_PROPERTY, "Photo")
                 .property(PropertyConstants.VERSION_PROPERTY, 1)
-                .property("Photo_name", "photo2")
-                .property("Photo_colorspace", "RGB")
+                .property("photoName", "photo2")
+                .property("photoColorspace", "RGB")
                 .as("photo2")
 
                 .addV("Photographer")
                 .property(PropertyConstants.UNIQUE_ID_PROPERTY, "ph3")
                 .property(PropertyConstants.ITEM_TYPE_PROPERTY, "Photographer")
                 .property(PropertyConstants.VERSION_PROPERTY, 1)
-                .property("Photographer_name", "Bill")
-                .property("Photographer_age", 30)
+                .property("photographerName", "Bill")
+                .property("photographerAge", 30)
                 .as("photographer1")
 
                 .addV("Photographer")
                 .property(PropertyConstants.UNIQUE_ID_PROPERTY, "ph4")
                 .property(PropertyConstants.ITEM_TYPE_PROPERTY, "Photographer")
                 .property(PropertyConstants.VERSION_PROPERTY, 1)
-                .property("Photographer_name", "Jack")
-                .property("Photographer_age", 55)
+                .property("photographerName", "Jack")
+                .property("photographerAge", 55)
                 .as("photographer2")
 
                 .addV("Lightbox")
                 .property(PropertyConstants.UNIQUE_ID_PROPERTY, "lb1")
                 .property(PropertyConstants.ITEM_TYPE_PROPERTY, "Lightbox")
                 .property(PropertyConstants.VERSION_PROPERTY, 1)
-                .property("Lightbox_name", "lightbox1")
+                .property("lightboxName", "lightbox1")
                 .as("lb1")
 
                 .addV("Agency")
                 .property(PropertyConstants.UNIQUE_ID_PROPERTY, "a3")
                 .property(PropertyConstants.ITEM_TYPE_PROPERTY, "Agency")
                 .property(PropertyConstants.VERSION_PROPERTY, 1)
-                .property("Agency_name", "Some Agency")
+                .property("agencyName", "Some Agency")
                 .as("a3")
 
                 // link node
@@ -133,8 +134,8 @@ class ItemManagerProjectionTest {
         traversalSource.tx().commit();
 
         BinaryStorageAdapter adapter = mock(BinaryStorageAdapter.class);
-        SchemaManager schemaManager = mock(SchemaManager.class);
-        Mutator mutator = new MutatorImpl(schemaManager, traversalSource);
+        schemaManager = mock(SchemaManager.class);
+        Mutator mutator = new MutatorImpl(traversalSource);
         Projector projector = new Projector(traversalSource);
         manager = new ItemManagerImpl(traversalSource, adapter, schemaManager, mutator, projector);
     }
@@ -143,16 +144,15 @@ class ItemManagerProjectionTest {
     @DisplayName("should be able to return all entities of a given type")
     void testRetrieveEntities() {
         Projector projector = new Projector(traversalSource);
-        SelectableItemProjectionSpec spec = new SelectableItemProjectionSpec("Photo")
-                .properties(List.of("name", "colorspace"));
+        SelectableItemProjectionSpec spec = new SelectableItemProjectionSpec(new LabelSelector("Photo")).properties(List.of("photoName", "photoColorspace"));
         Iterable<ItemProjection> projections = projector.project(spec);
         List<ItemProjection> list = StreamSupport.stream(projections.spliterator(), false).toList();
         assertEquals(2, list.size());
         for (ItemProjection projection: list) {
             assertNotNull(projection.getId());
             assertNotNull(projection.getItemType());
-            assertTrue(projection.getProperties().containsKey("name"));
-            assertTrue(projection.getProperties().containsKey("colorspace"));
+            assertTrue(projection.getProperties().containsKey("photoName"));
+            assertTrue(projection.getProperties().containsKey("photoColorspace"));
         }
     }
 

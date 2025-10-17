@@ -6,4 +6,6 @@ public interface ListProperty<T> extends Property<T> {
 
     List<T> getValues();
 
+    ListProperty<T> renamedTo(String name);
+
 }

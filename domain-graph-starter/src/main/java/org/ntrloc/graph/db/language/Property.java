@@ -4,4 +4,6 @@ public interface Property<T> {
 
     String getName();
 
+    Property<T> renamedTo(String name);
+
 }

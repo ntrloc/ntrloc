@@ -20,4 +20,9 @@ public class IntProperty implements ScalarProperty<Integer, Integer> {
         return value;
     }
 
+    @Override
+    public ScalarProperty<Integer, Integer> renamedTo(String name) {
+        return new IntProperty(name, value);
+    }
+
 }

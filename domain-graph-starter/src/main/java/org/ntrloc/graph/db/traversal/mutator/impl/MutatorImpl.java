@@ -15,7 +15,6 @@ import org.ntrloc.graph.db.language.ListProperty;
 import org.ntrloc.graph.db.language.NodeProperty;
 import org.ntrloc.graph.db.language.Property;
 import org.ntrloc.graph.db.language.ScalarProperty;
-import org.ntrloc.graph.db.schema.SchemaManager;
 import org.ntrloc.graph.db.traversal.mutator.MutationResult;
 import org.ntrloc.graph.db.traversal.mutator.Mutator;
 import org.ntrloc.graph.db.traversal.mutator.Node;
@@ -42,12 +41,10 @@ public class MutatorImpl implements Mutator {
 
     private static final Logger LOG = LoggerFactory.getLogger(Mutator.class);
 
-    private SchemaManager schemaManager;
     private GraphTraversalSource traversalSource;
     private Transaction transaction;
 
-    public MutatorImpl(SchemaManager manager, GraphTraversalSource traversalSource) {
-        this.schemaManager = manager;
+    public MutatorImpl(GraphTraversalSource traversalSource) {
         this.traversalSource = traversalSource;
         transaction = new Transaction(traversalSource, UUID.randomUUID().toString());
     }
@@ -79,20 +76,20 @@ public class MutatorImpl implements Mutator {
                 .property(PropertyConstants.STATUS_PROPERTY, ItemStatus.UNCOMMITTED_CREATE.toString())
                 .property(PropertyConstants.TRANSACTION_ID_PROPERTY, transaction.getId());
         for (Property property : properties) {
-            String translatedPropertyName = schemaManager.getItemPropertyId(label, property.getName());
+            String propertyName = property.getName();
             if (property instanceof ScalarProperty<?, ?> scalarProperty) {
-                LOG.info("Applying scalar property {}", translatedPropertyName);
-                traversal = traversal.property(translatedPropertyName, scalarProperty.getValue());
+                LOG.info("Applying scalar property {}", propertyName);
+                traversal = traversal.property(propertyName, scalarProperty.getValue());
             } else if (property instanceof ListProperty<?> listProperty) {
-                LOG.info("Applying list property {}", translatedPropertyName);
+                LOG.info("Applying list property {}", propertyName);
                 for (Object value : listProperty.getValues()) {
-                    traversal = traversal.property(VertexProperty.Cardinality.list, translatedPropertyName, value);
+                    traversal = traversal.property(VertexProperty.Cardinality.list, propertyName, value);
                 }
             } else if (property instanceof NodeProperty nodeProperty) {
                 LOG.info("Applying node property {}", property.getName());
                 traversal = traversal
                         .addE(LabelConstants.NODE_PROPERTY_EDGE_LABEL)
-                        .property("propertyName", property.getName())
+                        .property("propertyName", propertyName)
                         .from(uniqueId).to(__.V(nodePropertiesToNodeIdMap.get(nodeProperty.getName())))
                         .select(uniqueId);
             } else {
@@ -131,21 +128,21 @@ public class MutatorImpl implements Mutator {
 
         Set<String> deletedProperties = new HashSet<>();
         for (Property property : properties) {
-            String translatedPropertyName = schemaManager.getItemPropertyId(label, property.getName());
+            String propertyName = property.getName();
             if (property instanceof ScalarProperty<?, ?> scalarProperty) {
-                LOG.info("Applying scalar property {}", translatedPropertyName);
+                LOG.info("Applying scalar property {}", propertyName);
                 if (scalarProperty.getValue() == null) {
-                    deletedProperties.add(translatedPropertyName);
+                    deletedProperties.add(propertyName);
                 } else {
-                    traversal = traversal.property(translatedPropertyName, scalarProperty.getValue());
+                    traversal = traversal.property(propertyName, scalarProperty.getValue());
                 }
             } else if (property instanceof ListProperty<?> listProperty) {
-                LOG.info("Applying list property {}", translatedPropertyName);
+                LOG.info("Applying list property {}", propertyName);
                 if (listProperty.getValues() == null || listProperty.getValues().isEmpty()) {
-                    deletedProperties.add(translatedPropertyName);
+                    deletedProperties.add(propertyName);
                 } else {
                     for (Object value : listProperty.getValues()) {
-                        traversal = traversal.property(VertexProperty.Cardinality.list, translatedPropertyName, value);
+                        traversal = traversal.property(VertexProperty.Cardinality.list, propertyName, value);
                     }
                 }
             } else {
@@ -198,12 +195,15 @@ public class MutatorImpl implements Mutator {
                 .V().has(UNIQUE_ID_PROPERTY, toItemId).as("toNode")
                 .addV(relationshipName).as("relationship");
         for (Property property : properties) {
-            String translatedPropertyName = schemaManager.getLinkPropertyId(relationshipName, property.getName());
+            String propertyName = property.getName();
             if (property instanceof ScalarProperty<?, ?> scalarProperty) {
-                LOG.info("Applying scalar property {}", translatedPropertyName);
-                traversal = traversal.property(translatedPropertyName, scalarProperty.getValue());
+                LOG.info("Applying scalar property {}", propertyName);
+                traversal = traversal.property(propertyName, scalarProperty.getValue());
             } else if (property instanceof ListProperty<?> listProperty) {
-                LOG.info("Applying list property {}", translatedPropertyName);
+                LOG.info("Applying list property {}", propertyName);
+                for (Object value : listProperty.getValues()) {
+                    traversal = traversal.property(VertexProperty.Cardinality.list, propertyName, value);
+                }
             }
         }
         traversal = traversal.property(UNIQUE_ID_PROPERTY, uniqueId)

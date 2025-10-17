@@ -22,4 +22,9 @@ public class DateProperty implements ScalarProperty<Date, Long> {
         return value.getTime();
     }
 
+    @Override
+    public ScalarProperty<Date, Long> renamedTo(String name) {
+        return new DateProperty(name, value);
+    }
+
 }

@@ -23,4 +23,9 @@ public class DateListProperty implements ListProperty<Date> {
         return name;
     }
 
+    @Override
+    public DateListProperty renamedTo(String name) {
+        return new DateListProperty(name, values);
+    }
+
 }

@@ -67,7 +67,7 @@ class MutatorTest {
         SchemaManager schemaManager = mock(SchemaManager.class);
         doReturn("abc123").when(schemaManager).getItemPropertyId("Photo", "name");
 
-        Mutator mutator = new MutatorImpl(schemaManager, traversalSource);
+        Mutator mutator = new MutatorImpl(traversalSource);
 
         var label = "Photo";
         var props = Set.of(new StringProperty("name", "photo1.jpg"));
@@ -120,17 +120,13 @@ class MutatorTest {
 
     @Test
     void testUpdateNodeProperties() {
-        SchemaManager schemaManager = mock(SchemaManager.class);
-        doReturn("abc123").when(schemaManager).getItemPropertyId("Photo", "name");
-        doReturn("xyz767").when(schemaManager).getItemPropertyId("Photo", "author");
-        doReturn("bgg765").when(schemaManager).getItemPropertyId("Photo", "colorspace");
 
-        Mutator mutator = new MutatorImpl(schemaManager, traversalSource);
+        Mutator mutator = new MutatorImpl(traversalSource);
 
         var label = "Photo";
         var props = Set.of(
                 new StringProperty("name", "photo1.jpg"),
-                new StringProperty("colorspace", "RGB")
+                new StringProperty("cspace", "RGB")
         );
         var newId = mutator.createNode(label, props);
         mutator.commit();
@@ -138,7 +134,7 @@ class MutatorTest {
         // add, remove, and modify properties
         var updatedProps = Set.of(
                 new StringProperty("name", "photo2.jpg"),
-                new StringProperty("colorspace", null),
+                new StringProperty("cspace", null),
                 new StringProperty("author", "Bill")
         );
 
@@ -175,7 +171,7 @@ class MutatorTest {
         var newVersion = prepareNode.version;
         assertNotNull(newVersion, "new node version not found");
         var newProps = newVersion.properties;
-        assertProperties(newProps,"abc123", "photo2.jpg", "xyz767", "Bill", "bgg765", null);
+        assertProperties(newProps,"name", "photo2.jpg", "author", "Bill", "cspace", null);
 
         // check that the node has a new committed version after commit
         mutator.commit();
@@ -185,7 +181,7 @@ class MutatorTest {
         assertNotNull(commitNode.version, "previous version should not be null after commit");
         var newNode = commitNode.version;
         var commitProps = newNode.properties;
-        assertProperties(commitProps, "abc123", "photo2.jpg", "xyz767", "Bill", "bgg765", null, "version", 2);
+        assertProperties(commitProps, "name", "photo2.jpg", "author", "Bill", "cspace", null, "version", 2);
     }
 
 }
