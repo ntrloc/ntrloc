@@ -42,6 +42,8 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import static org.ntrloc.graph.db.LabelConstants.DATA_LABEL;
+import static org.ntrloc.graph.db.PropertyConstants.ITEM_TYPE_PROPERTY;
+import static org.ntrloc.graph.db.PropertyConstants.UNIQUE_ID_PROPERTY;
 
 @Service
 public class ItemManagerImpl implements ItemManager {
@@ -101,23 +103,33 @@ public class ItemManagerImpl implements ItemManager {
                 .has("md5", hash.getMd5Hash())
                 .elementMap();
         if (iterator.hasNext()) {
-            return (String) iterator.next().get("uid");
+            return (String) iterator.next().get(UNIQUE_ID_PROPERTY);
         } else {
             var transaction = traversalSource.tx();
             String uid;
             GraphTraversal<Vertex, Vertex> traversal;
             do {
                 uid = UUID.randomUUID().toString();
-                traversal = traversalSource.V().hasLabel(DATA_LABEL).has("uid", uid);
+                traversal = traversalSource.V().hasLabel(DATA_LABEL).has(UNIQUE_ID_PROPERTY, uid);
             } while (traversal.hasNext());
 
-            traversalSource.addV(DATA_LABEL).property(Map.of(
+            Map<Object, Object> dataProps = Map.of(
                     "sha256", hash.getSha256Hash(),
                     "md5", hash.getMd5Hash(),
-                    "uid", uid
-            )).next();
+                    UNIQUE_ID_PROPERTY, uid,
+                    ITEM_TYPE_PROPERTY, DATA_LABEL
+            );
+            traversalSource.addV(DATA_LABEL).property(dataProps).next();
+            LOG.info("Wrote binary with UID {}, SHA-256 {}, MD5 {}", uid, hash.getSha256Hash(), hash.getMd5Hash());
 
+            LOG.info("Committing transaction {}", transaction);
             transaction.commit();
+            transaction.close();
+
+            var confirmIter = traversalSource.V().hasLabel(DATA_LABEL).has(UNIQUE_ID_PROPERTY, uid).valueMap();
+            assert(confirmIter.hasNext()) : "Data node with UID " + uid + " not found after commit";
+            LOG.info("Confirmed binary node with values {}", confirmIter.next());
+
             return uid;
         }
     }
@@ -132,6 +144,8 @@ public class ItemManagerImpl implements ItemManager {
     @Override
     public MutationResponse executeMutation(MutationRequest mutationRequest) {
         LOG.info("Executing mutation {}", mutationRequest);
+
+        mutator.begin();
 
         MutationResponse response = new MutationResponse();
 

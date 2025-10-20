@@ -12,7 +12,6 @@ import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.db.ItemStatus;
 import org.ntrloc.graph.db.LabelConstants;
 import org.ntrloc.graph.db.language.StringProperty;
-import org.ntrloc.graph.db.schema.SchemaManager;
 import org.ntrloc.graph.db.traversal.mutator.impl.MutatorImpl;
 
 import java.util.Arrays;
@@ -27,8 +26,6 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.Mockito.doReturn;
-import static org.mockito.Mockito.mock;
 import static org.ntrloc.graph.db.PropertyConstants.STATUS_PROPERTY;
 import static org.ntrloc.graph.db.PropertyConstants.TRANSACTION_ID_PROPERTY;
 import static org.ntrloc.graph.db.PropertyConstants.VERSION_PROPERTY;
@@ -64,16 +61,12 @@ class MutatorTest {
 
     @Test
     void testCreateNode() {
-        SchemaManager schemaManager = mock(SchemaManager.class);
-        doReturn("abc123").when(schemaManager).getItemPropertyId("Photo", "name");
 
         Mutator mutator = new MutatorImpl(traversalSource);
 
         var label = "Photo";
         var props = Set.of(new StringProperty("name", "photo1.jpg"));
         mutator.createNode(label, props);
-
-        mutator.checkpoint();
 
         // we've created the node, but we haven't committed the mutation, so the new node should be uncommitted and have the correct transaction ID
         Map<Object, Object> valueMap = traversalSource.V().hasLabel("Photo").valueMap().next();
@@ -182,6 +175,33 @@ class MutatorTest {
         var newNode = commitNode.version;
         var commitProps = newNode.properties;
         assertProperties(commitProps, "name", "photo2.jpg", "author", "Bill", "cspace", null, "version", 2);
+    }
+
+    @Test
+    void testLinkNodes() {
+        Mutator mutator = new MutatorImpl(traversalSource);
+
+        var photoLabel = "Photo";
+        var photoProps = Set.of(new StringProperty("name", "photo1.jpg"));
+        var photoId = mutator.createNode(photoLabel, photoProps);
+
+        var photographerLabel = "Photographer";
+        var photographerProps = Set.of(new StringProperty("name", "bill"));
+        var photographerId = mutator.createNode(photographerLabel, photographerProps);
+
+        mutator.createLink(photographerId, photoId, "CREATED", Set.of());
+        mutator.checkpoint();
+        mutator.prepare();
+        mutator.commit();
+
+        traversalSource.tx().commit();
+
+        var nodes = traversalSource.V().toList();
+        var edges = traversalSource.E().toList();
+
+        assertEquals(3, nodes.size());
+        assertEquals(2, edges.size());
+
     }
 
 }

@@ -78,10 +78,11 @@ public class Projector {
     }
 
     /** Returns a traverser that adds a property projection to the given traverser. */
-    private GraphTraversal<?, ItemProjection> projectItems(GraphTraversal<?, Vertex> traversalx, ItemProjectionSpec spec) {
-        var traversal = (GraphTraversal<?, Vertex>) traversalx.as("vertex");
+    private GraphTraversal<?, ItemProjection> projectItems(GraphTraversal<?, Vertex> traversal, ItemProjectionSpec spec) {
 
         Map<String, GraphTraversal<?, ?>> projectionTraversals = new LinkedHashMap<>();
+        projectionTraversals.put("id", __.id());
+        projectionTraversals.put("label", __.label());
         projectionTraversals.put(PropertyConstants.UNIQUE_ID_PROPERTY, __.values(PropertyConstants.UNIQUE_ID_PROPERTY));
         projectionTraversals.put(PropertyConstants.VERSION_PROPERTY, __.values(PropertyConstants.VERSION_PROPERTY));
         projectionTraversals.put(PropertyConstants.IS_LATEST_VERSION_PROPERTY,  __.choose(
@@ -94,6 +95,8 @@ public class Projector {
         if (spec.getProperties() != null) {
             String[] props = spec.getProperties().toArray(new String[0]);
             projectionTraversals.put("properties", __.valueMap(props));
+        } else {
+            projectionTraversals.put("properties", __.valueMap());
         }
 
         if (spec.getLinks() != null) {

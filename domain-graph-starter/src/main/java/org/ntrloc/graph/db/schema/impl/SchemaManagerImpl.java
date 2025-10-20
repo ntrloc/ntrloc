@@ -81,7 +81,6 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
     private Map<String, ItemDefinition> itemDefinitionByIdMap;
     private Map<Tuple<String, String>, PropertyDefinition> propertyDefinitionByNameMap;
 
-    private Map<String, Map<String, String>> itemTypePropertyIdToNameMap;
     private Map<String, Map<String, String>> itemTypePropertyNameToIdMap;
 
     // TODO: we don't need the traversal source in the constructor if we're getting the graph
@@ -115,6 +114,10 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
         if (itemTypeKey == null) {
             itemTypeKey = management.makePropertyKey(PropertyConstants.ITEM_TYPE_PROPERTY).dataType(String.class).make();
         }
+        PropertyKey uidKey = management.getPropertyKey(UNIQUE_ID_PROPERTY);
+        if (uidKey == null) {
+            uidKey = management.makePropertyKey(UNIQUE_ID_PROPERTY).dataType(String.class).make();
+        }
 
         String globalIndexName = "GLOBAL";
         if (management.getGraphIndex(globalIndexName) == null) {
@@ -122,12 +125,15 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
             builder.addKey(statusKey, Mapping.STRING.asParameter());
             builder.addKey(transactionKey, Mapping.STRING.asParameter());
             builder.addKey(itemTypeKey, Mapping.STRING.asParameter());
+            builder.addKey(uidKey, Mapping.STRING.asParameter());
             builder.buildMixedIndex("search");
             management.commit();
 
             management = janusGraph.openManagement();
             GraphIndexStatusReport report = ManagementSystem.awaitGraphIndexStatus(janusGraph, globalIndexName).status(SchemaStatus.ENABLED).call();
             LOG.info("Initial index status: {}", report);
+        } else {
+            LOG.info("Global index already exists");
         }
 
         management.commit();
@@ -183,7 +189,7 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
         VertexLabel typeLabel = janusGraph.getVertexLabel(itemTypeUid);
         if (typeLabel == null) {
             typeLabel = janusGraph.makeVertexLabel(itemTypeUid).make();
-            LOG.info("Created new vertex label {}", typeLabel);
+            LOG.info("Created new vertex label {} for type {}", typeLabel, definition.getName());
             janusGraph.tx().commit();
         } else {
             janusGraph.tx().rollback();

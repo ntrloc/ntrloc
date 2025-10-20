@@ -13,7 +13,9 @@ public interface Mutator {
 
     String createLink(String fromItemId, String toItemId, String relationshipName, Set<? extends Property> properties);
 
+    /* Transaction methods */
     String getTransactionId();
+    void begin();
     void checkpoint();
     void prepare();
     List<MutationResult> commit();

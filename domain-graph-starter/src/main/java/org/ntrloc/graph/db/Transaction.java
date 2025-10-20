@@ -25,11 +25,9 @@ public class Transaction {
     }
 
     public void begin() {
-        if (!gremlinTransaction.isOpen()) {
-            LOG.info("Starting transaction {}", id);
-            gremlinTransaction.begin();
-        } else {
-            LOG.info("Transaction {} already open", id);
+        if (gremlinTransaction.isOpen()) {
+           gremlinTransaction.rollback();
+           gremlinTransaction.begin();
         }
     }
 

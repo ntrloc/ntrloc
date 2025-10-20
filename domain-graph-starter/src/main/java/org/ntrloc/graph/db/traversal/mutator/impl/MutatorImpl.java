@@ -54,8 +54,6 @@ public class MutatorImpl implements Mutator {
 
         var uniqueId = UUID.randomUUID().toString();
 
-        transaction.begin();
-
         List<NodeProperty> nodeProperties = properties.stream().filter(property -> property instanceof NodeProperty).map(property -> (NodeProperty)property).toList();
         Map<String, Object> nodePropertiesToNodeIdMap = new HashMap<>();
         for (NodeProperty nodeProperty : nodeProperties) {
@@ -105,8 +103,6 @@ public class MutatorImpl implements Mutator {
 
     @Override
     public void updateNode(String uniqueId, Set<? extends Property> properties) {
-
-        transaction.begin();
 
         String label = null;
 
@@ -159,7 +155,6 @@ public class MutatorImpl implements Mutator {
 
     @Override
     public String deleteNode(String uniqueId) {
-        transaction.begin();
 
         String label = null;
         var labelTraversal = traversalSource.V().has(UNIQUE_ID_PROPERTY, uniqueId).project("label").by(__.label());
@@ -187,8 +182,6 @@ public class MutatorImpl implements Mutator {
     @Override
     public String createLink(String fromItemId, String toItemId, String relationshipName, Set<? extends Property> properties) {
         var uniqueId = UUID.randomUUID().toString();
-
-        transaction.begin();
 
         var traversal = traversalSource
                 .V().has(UNIQUE_ID_PROPERTY, fromItemId).as("fromNode")
@@ -221,6 +214,11 @@ public class MutatorImpl implements Mutator {
     /* --------------------- Transaction methods --------------------- */
 
     @Override
+    public void begin() {
+        transaction.begin();
+    }
+
+    @Override
     public String getTransactionId() {
         return transaction.getId();
     }
@@ -238,8 +236,6 @@ public class MutatorImpl implements Mutator {
     public void prepare() {
         LOG.info("Preparing transaction {}", transaction.getId());
         long now = new Date().getTime();
-
-        transaction.begin();
 
         GraphTraversal<?, ?> traversal = null;
         var objectMapper = new ObjectMapper();
@@ -331,6 +327,8 @@ public class MutatorImpl implements Mutator {
         }
 
         LOG.info("Prepared transaction {} in {} ms", transaction.getId(), (new Date().getTime() - now) / 1000);
+
+        checkpoint();
     }
 
     /**
@@ -340,8 +338,6 @@ public class MutatorImpl implements Mutator {
     public List<MutationResult> commit() {
         LOG.info("Committing transaction {}", transaction.getId());
         long now = new Date().getTime();
-
-        transaction.begin();
 
         List<MutationResult> results = new ArrayList<>();
 

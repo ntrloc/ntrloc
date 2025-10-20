@@ -198,6 +198,13 @@ class MutationRetrievalIntegrationTest {
         writer.write(new byte[] { 1, 2, 3, 4, 5});
         String dataNodeId = itemManager.commitBinary(writer);
 
+        var startvertices = traversalSource.V()
+                .project("label", "values")
+                .by(__.label())
+                .by(__.valueMap())
+                .toList();
+        LOG.info("Vertices before mutation: {}", startvertices);
+
         var mutation = """
                 mutation Mutation {
                      execute(inputs: [
@@ -277,7 +284,13 @@ class MutationRetrievalIntegrationTest {
         long end = System.currentTimeMillis();
         LOG.info("Mutation took {} ms", end - start);
 
-        var vertices = traversalSource.V().hasLabel("Photo", "Photographer").elementMap().toList();
+        traversalSource.tx().commit();
+        traversalSource.tx().begin();
+        var vertices = traversalSource.V().project("label", "id", "props").by(__.label()).by(__.id()).by(__.valueMap()).toList();
+        LOG.info("Vertices: {}", vertices);
+        var edges = traversalSource.E().project("label", "id", "from", "to").by(__.label()).by(__.id()).by(__.outV().id()).by(__.inV().id()).toList();
+        LOG.info("edges: {}", edges);
+
 
         List<?> ids = response.extractValueAsObject("execute.created[*].id", List.class);
         assertFalse(ids.isEmpty());
@@ -314,6 +327,7 @@ class MutationRetrievalIntegrationTest {
                 """;
         start = System.currentTimeMillis();
         response = graphQlClient.executeQuery(query);
+        assertFalse(response.getData().isEmpty());
         end = System.currentTimeMillis();
         LOG.info("Query took {} ms", end - start);
 
