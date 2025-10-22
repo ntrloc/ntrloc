@@ -86,7 +86,8 @@ public class ItemIncomingLinkObjectTypeMapping extends ItemLinkObjectTypeMapping
 
         Optional<Field> propertiesField = selectionFields.stream().filter(f -> f.getName().equals(propertiesFieldName)).findFirst();
         if (propertiesField.isPresent()) {
-            // TODO
+            var properties = propertiesObjectTypeMapping.parseLinkProperties(propertiesField.get());
+            spec.setProperties(properties);
         }
 
         Optional<Field> sourceField = selectionFields.stream().filter(f -> f.getName().equals(sourceFieldName)).findFirst();

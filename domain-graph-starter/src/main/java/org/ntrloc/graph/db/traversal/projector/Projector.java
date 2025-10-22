@@ -151,7 +151,7 @@ public class Projector {
     private GraphTraversal<?, List<LinkProjection>> projectLinks(GraphTraversal<?, Vertex> traversal, LinkProjectionSpec spec) {
         Map<String, GraphTraversal<?, ?>> projectionTraversals = new TreeMap<>();
         projectionTraversals.put(PropertyConstants.UNIQUE_ID_PROPERTY, __.values(PropertyConstants.UNIQUE_ID_PROPERTY));
-        projectionTraversals.put(PropertyConstants.ITEM_TYPE_PROPERTY, __.values(PropertyConstants.ITEM_TYPE_PROPERTY));
+        projectionTraversals.put(PropertyConstants.LINK_TYPE_PROPERTY, __.values(PropertyConstants.LINK_TYPE_PROPERTY));
         if (spec.getProperties() != null) {
             projectionTraversals.put("properties", __.valueMap(spec.getProperties().toArray(new String[0])));
         }
@@ -193,6 +193,7 @@ public class Projector {
                 } else {
                     LOG.warn("mapped link contains no source or target node");
                 }
+                linkProjection.setLinkType((String) value.get(PropertyConstants.LINK_TYPE_PROPERTY));
                 linkProjection.setProperties((Map<String, Object>) value.get("properties"));
 
                 return linkProjection;

@@ -9,6 +9,7 @@ import org.janusgraph.core.PropertyKey;
 import org.janusgraph.core.VertexLabel;
 import org.janusgraph.core.schema.JanusGraphIndex;
 import org.janusgraph.core.schema.JanusGraphManagement;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -21,15 +22,19 @@ import java.io.File;
 import java.io.IOException;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 
+import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 
-public class SchemaManagerTest {
+class SchemaManagerTest {
 
     private static final Logger LOG = LoggerFactory.getLogger(SchemaManagerTest.class);
 
@@ -38,13 +43,20 @@ public class SchemaManagerTest {
     private SchemaManager schemaManager;
 
     @BeforeEach
-    void setup() throws IOException {
-        String indexPath = "target/db/lucene";
+    void setup()  {
+        String indexPath = "target/db/lucene-schemaManagerTest";
+
         File indexDir = new File(indexPath);
         if (indexDir.exists()) {
-            FileUtils.deleteDirectory(indexDir);
+            try {
+                FileUtils.deleteDirectory(indexDir);
+            } catch (IOException ioe) {
+                fail("Failed to delete index directory");
+            }
         }
+        assertFalse(indexDir.exists());
 
+        LOG.info("Creating graph with index at {}", indexPath);
         janusGraph = JanusGraphFactory.build()
                 .set("storage.backend", "inmemory")
                 .set("index.search.backend", "lucene")
@@ -54,6 +66,15 @@ public class SchemaManagerTest {
         ClusterService clusterService = mock(ClusterService.class);
         doReturn(mock(IMap.class)).when(clusterService).getMap(anyString());
         schemaManager = new SchemaManagerImpl(janusGraph, traversalSource, clusterService);
+    }
+
+    @AfterEach
+    void tearDown() throws Exception {
+        if (janusGraph != null) {
+            LOG.info("Shutting down graph");
+            JanusGraphFactory.close(janusGraph);
+            await().atMost(30, TimeUnit.SECONDS).until(() -> janusGraph.isClosed());
+        }
     }
 
     @Test

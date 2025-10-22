@@ -14,6 +14,10 @@ public class SelectableItemProjectionSpec extends ItemProjectionSpec {
         this.itemSelector = itemSelector;
     }
 
+    public void setItemSelector(ItemSelector itemSelector) {
+        this.itemSelector = itemSelector;
+    }
+
     public ItemSelector getItemSelector() {
         return itemSelector;
     }

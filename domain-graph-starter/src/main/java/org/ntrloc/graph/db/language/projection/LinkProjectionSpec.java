@@ -29,8 +29,16 @@ public class LinkProjectionSpec {
         return linkName;
     }
 
+    public void setLinkName(String linkName) {
+        this.linkName = linkName;
+    }
+
     public Direction getDirection() {
         return direction;
+    }
+
+    public void setRelatedItemType(String relatedItemType) {
+        this.relatedItemType = relatedItemType;
     }
 
     public String getRelatedItemType() {

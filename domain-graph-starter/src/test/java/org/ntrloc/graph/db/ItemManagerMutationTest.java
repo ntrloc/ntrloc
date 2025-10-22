@@ -10,6 +10,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.cluster.ClusterService;
 import org.ntrloc.graph.db.impl.ItemManagerImpl;
+import org.ntrloc.graph.db.language.DateProperty;
 import org.ntrloc.graph.db.language.StringProperty;
 import org.ntrloc.graph.db.language.mutation.ItemCreateMutation;
 import org.ntrloc.graph.db.language.mutation.ItemDeleteMutation;
@@ -27,11 +28,13 @@ import org.ntrloc.graph.db.storage.BinaryStorageAdapter;
 import org.ntrloc.graph.db.traversal.mutator.Mutator;
 import org.ntrloc.graph.db.traversal.mutator.impl.MutatorImpl;
 import org.ntrloc.graph.db.traversal.projector.Projector;
+import org.opentest4j.AssertionFailedError;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
@@ -45,6 +48,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.ntrloc.graph.db.PropertyConstants.ITEM_TYPE_PROPERTY;
+import static org.ntrloc.graph.db.PropertyConstants.LINK_TYPE_PROPERTY;
 import static org.ntrloc.graph.db.PropertyConstants.STATUS_PROPERTY;
 import static org.ntrloc.graph.db.PropertyConstants.UNIQUE_ID_PROPERTY;
 
@@ -62,6 +66,17 @@ class ItemManagerMutationTest {
     @BeforeEach
     void init() throws IOException {
         if (janusGraph != null && janusGraph.isOpen()) {
+            try {
+                traversalSource.V().drop().next();
+            } catch (NoSuchElementException nee) {
+            }
+
+            try {
+                traversalSource.E().drop().next();
+            } catch (NoSuchElementException nee) {
+
+            }
+
             janusGraph.close();
         }
 
@@ -127,6 +142,9 @@ class ItemManagerMutationTest {
         linkDefinition.setSourceVersionAction(LinkDefinition.VersionAction.COPY);
         linkDefinition.setTargetCardinality(new Cardinality(0, null));
         linkDefinition.setTargetVersionAction(LinkDefinition.VersionAction.MOVE);
+        PropertyDefinition createdDateDefinition = new PropertyDefinition("createdDate", PropertyType.DATE, "Photo date created");
+        linkDefinition.setProperties(Set.of(createdDateDefinition));
+
         schemaManager.createLinkDefinition(linkDefinition);
     }
 
@@ -204,6 +222,89 @@ class ItemManagerMutationTest {
         var res = itemManager.executeMutation(req);
         assertEquals(2, res.getItemMutationResponses().size());
         assertEquals(1, res.getLinkMutationResponses().size());
+
+    }
+
+    @Test
+    @DisplayName("should label items and properties by ID")
+    void testLabelItemsWithId() {
+        ItemCreateMutation photoCreate = new ItemCreateMutation();
+        photoCreate.setEntityType("Photo");
+        photoCreate.setRefId("photoRef");
+        photoCreate.setProperties(List.of(
+                new StringProperty("name", "photo1")
+        ));
+        MutationRequest req = new MutationRequest(List.of(photoCreate));
+        var res = itemManager.executeMutation(req);
+        var createdPhoto = res.getItemMutationResponses().get(0);
+        var createdPhotoType = createdPhoto.getItemType();
+        assertEquals("Photo", createdPhotoType, "mutation item type mismatch");
+        var photoUid = createdPhoto.getId();
+
+        var photoTypeId = schemaManager.getItemTypeId("Photo");
+        var photoNameId = schemaManager.getItemPropertyId("Photo", "name");
+
+        var photoData = traversalSource.V().has(UNIQUE_ID_PROPERTY, photoUid).project("label", "props").by(__.label()).by(__.valueMap()).next();
+        var photoLabel = (String) photoData.get("label");
+        var photoProps = (Map<String, Object>) photoData.get("props");
+        var itemType = ((List) photoProps.get(ITEM_TYPE_PROPERTY)).get(0);
+
+        assertEquals(photoTypeId, photoLabel, "label mismatch");
+        assertEquals(photoTypeId, itemType, "item type mismatch");
+        try {
+            assertTrue(photoProps.containsKey(photoNameId), "name not set");
+        } catch (AssertionFailedError afe) {
+            LOG.error("photo props: {}", photoProps);
+            throw afe;
+        }
+
+    }
+
+    @Test
+    @DisplayName("should label links and properties by ID")
+    void testLabelLinksWithId() {
+        ItemCreateMutation photoCreate = new ItemCreateMutation();
+        photoCreate.setEntityType("Photo");
+        photoCreate.setRefId("photoRef");
+        photoCreate.setProperties(List.of(
+                new StringProperty("name", "photo1")
+        ));
+        ItemCreateMutation photographerCreate = new ItemCreateMutation();
+        photographerCreate.setEntityType("Photographer");
+        photographerCreate.setProperties(List.of(
+                new StringProperty("name", "photographer1")
+        ));
+        LinkCreateMutation linkCreate = new LinkCreateMutation();
+        linkCreate.setLinkType("CREATED");
+        linkCreate.setProperties(List.of(new DateProperty("createdDate", new Date())));
+        IdSelector selector = new IdSelector(photoCreate.getRefId(), IdSelector.Type.LOCAL);
+        linkCreate.setSelector(selector);
+        photographerCreate.setLinks(List.of(linkCreate));
+
+        MutationRequest req = new MutationRequest(List.of(photoCreate, photographerCreate));
+        var res = itemManager.executeMutation(req);
+
+        var linkTypeId = schemaManager.getLinkTypeId("CREATED");
+        var linkCreatedId = schemaManager.getLinkPropertyId("CREATED", "createdDate");
+
+        var createdLinkMutation = res.getLinkMutationResponses().get(0);
+        var createdLinkId = createdLinkMutation.getLinkId();
+        var createdLinkType = createdLinkMutation.getLinkType();
+        assertEquals("CREATED", createdLinkType, "mutation link type mismatch");
+        var linkData = traversalSource.V().has(UNIQUE_ID_PROPERTY, createdLinkId).project("label", "props").by(__.label()).by(__.valueMap()).next();
+
+        var linkLabel = (String) linkData.get("label");
+        var linkProps = (Map<String, Object>) linkData.get("props");
+        var linkType = ((List) linkProps.get(LINK_TYPE_PROPERTY)).get(0);
+
+        assertEquals(linkTypeId, linkLabel, "label mismatch");
+        assertEquals(linkTypeId, linkType, "item type mismatch");
+        try {
+            assertTrue(linkProps.containsKey(linkCreatedId), "created date not set");
+        } catch (AssertionFailedError afe) {
+            LOG.error("photo props: {}", linkProps);
+            throw afe;
+        }
 
     }
 

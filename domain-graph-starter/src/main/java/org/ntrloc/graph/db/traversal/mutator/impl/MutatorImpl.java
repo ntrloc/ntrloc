@@ -33,6 +33,7 @@ import java.util.Set;
 import java.util.UUID;
 
 import static org.ntrloc.graph.db.PropertyConstants.ITEM_TYPE_PROPERTY;
+import static org.ntrloc.graph.db.PropertyConstants.LINK_TYPE_PROPERTY;
 import static org.ntrloc.graph.db.PropertyConstants.STATUS_PROPERTY;
 import static org.ntrloc.graph.db.PropertyConstants.UNIQUE_ID_PROPERTY;
 
@@ -200,6 +201,7 @@ public class MutatorImpl implements Mutator {
             }
         }
         traversal = traversal.property(UNIQUE_ID_PROPERTY, uniqueId)
+                .property(LINK_TYPE_PROPERTY, relationshipName)
                 .property(PropertyConstants.TRANSACTION_ID_PROPERTY, transaction.getId())
                 .property(PropertyConstants.STATUS_PROPERTY, ItemStatus.UNCOMMITTED_CREATE.toString())
                 .property(PropertyConstants.VERSION_PROPERTY, 1);

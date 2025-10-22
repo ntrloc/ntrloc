@@ -44,7 +44,7 @@ jobs:
             -Dsonar.organization=ntrloc
             -Dsonar.java.binaries=**/target/classes
             -Dsonar.coverage.jacoco.xmlReportPaths=**/target/site/jacoco/jacoco.xml
-            -Dsonar.exclusions=.github/**/*,runtimes/**/*,api-gateway/**/*,api-gateway-model/**/*,**/*Test.java,**/*Configuration.java,**/*ConfigurationFactory.java
+            -Dsonar.exclusions=.github/**/*,runtimes/**/*,api-gateway/**/*,api-gateway-model/**/*,**/*Test.java,**/*Configuration.java,**/*ConfigurationFactory.java,domain-graph-starter/**/*.js,domain-graph-starter/**/*.html
 
       - name: Publish Test Report
         uses: dorny/test-reporter@dc3a92680fcc15842eef52e8c4606ea7ce6bd3f3 # version 2.1.1

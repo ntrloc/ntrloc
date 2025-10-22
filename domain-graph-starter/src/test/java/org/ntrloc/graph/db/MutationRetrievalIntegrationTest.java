@@ -4,8 +4,10 @@ import com.netflix.graphql.dgs.client.GraphQLClient;
 import com.netflix.graphql.dgs.client.GraphQLError;
 import com.netflix.graphql.dgs.client.GraphQLResponse;
 import com.netflix.graphql.dgs.client.RestClientGraphQLClient;
+import net.javacrumbs.jsonunit.core.Option;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversalSource;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.__;
+import org.janusgraph.core.JanusGraph;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.GraphQLAutoConfiguration;
 import org.ntrloc.graph.JanusAutoConfiguration;
@@ -43,6 +45,7 @@ import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import static net.javacrumbs.jsonunit.assertj.JsonAssertions.assertThatJson;
 import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -66,6 +69,9 @@ class MutationRetrievalIntegrationTest {
 
     @Autowired
     private GraphTraversalSource traversalSource;
+
+    @Autowired
+    private JanusGraph janusGraph;
 
     private Integer port;
 
@@ -116,6 +122,21 @@ class MutationRetrievalIntegrationTest {
     }
 
     private void initSchema() {
+
+        try {
+            traversalSource.V().drop().iterate();
+        } catch (Exception e) {
+
+        }
+
+        try {
+            traversalSource.E().drop().iterate();
+        } catch (Exception e) {
+
+        }
+
+        traversalSource.tx().commit();
+
         AtomicBoolean schemaUpdated = new AtomicBoolean(false);
         schemaManager.addSchemaChangeReaction(() -> {
             schemaUpdated.set(true);
@@ -178,21 +199,9 @@ class MutationRetrievalIntegrationTest {
         LOG.info("Schema: {}", schema);
     }
 
-    private void init() {
-        if (schemaManager.retrieveItemDefinition("Photo").isEmpty()) {
-            initSchema();
-        }
-
-        traversalSource.V().hasLabel("Photo").drop().iterate();
-        traversalSource.V().hasLabel("Photographer").drop().iterate();
-        traversalSource.V().hasLabel("CREATED").drop().iterate();
-        traversalSource.tx().commit();
-        LOG.info("Graph cleared");
-    }
-
     @Test
     void testCreateEntityWithAllDataTypes() throws IOException {
-        init();
+        initSchema();
 
         var writer = itemManager.openWriter();
         writer.write(new byte[] { 1, 2, 3, 4, 5});
@@ -249,7 +258,7 @@ class MutationRetrievalIntegrationTest {
 
     @Test
     void testCreateEntity() {
-        init();
+        initSchema();
 
         var mutation = """
                 mutation Mutation {
@@ -262,8 +271,8 @@ class MutationRetrievalIntegrationTest {
                                     properties: { name: "Bill" }
                                     links: {
                                         created: [
-                                            { target: { ref: "photo1" } },
-                                            { target: { ref: "photo2" } }
+                                            { properties: { count: 2 } target: { ref: "photo1" } },
+                                            { properties: { count: 5} target: { ref: "photo2" } }
                                         ]
                                     }
                                 }
@@ -284,13 +293,38 @@ class MutationRetrievalIntegrationTest {
         long end = System.currentTimeMillis();
         LOG.info("Mutation took {} ms", end - start);
 
-        traversalSource.tx().commit();
-        traversalSource.tx().begin();
-        var vertices = traversalSource.V().project("label", "id", "props").by(__.label()).by(__.id()).by(__.valueMap()).toList();
-        LOG.info("Vertices: {}", vertices);
-        var edges = traversalSource.E().project("label", "id", "from", "to").by(__.label()).by(__.id()).by(__.outV().id()).by(__.inV().id()).toList();
-        LOG.info("edges: {}", edges);
+        var expectedMutationResponse = """
+                {
+                    "data": {
+                        "execute": {
+                            "created": [
+                                {
+                                    "itemType": "Photo",
+                                    "id": "${json-unit.any-string}"
+                                },
+                                {
+                                    "itemType": "Photographer",
+                                    "id": "${json-unit.any-string}"
+                                },
+                                {
+                                    "itemType": "Photo",
+                                    "id": "${json-unit.any-string}"
+                                }
+                            ]
+                        }
+                    }
+                }
+                """;
+        try {
+            assertThatJson(response.getJson())
+                    .when(Option.IGNORING_ARRAY_ORDER)
+                    .when(Option.IGNORING_EXTRA_ARRAY_ITEMS)
+                    .isEqualTo(expectedMutationResponse);
 
+        } catch (AssertionError e) {
+            LOG.error("Mutation response: {}", response.getJson());
+            throw e;
+        }
 
         List<?> ids = response.extractValueAsObject("execute.created[*].id", List.class);
         assertFalse(ids.isEmpty());
@@ -305,6 +339,7 @@ class MutationRetrievalIntegrationTest {
                         }
                         links {
                             createdby {
+                                properties { count }
                                 source {
                                     properties {
                                         name
@@ -317,6 +352,7 @@ class MutationRetrievalIntegrationTest {
                         properties { name }
                         links {
                             created {
+                                properties { count }
                                 target {
                                     properties { name }
                                 }
@@ -329,8 +365,66 @@ class MutationRetrievalIntegrationTest {
         response = graphQlClient.executeQuery(query);
         assertFalse(response.getData().isEmpty());
         end = System.currentTimeMillis();
-        LOG.info("Query took {} ms", end - start);
 
+        var expectedQueryResult = """
+                {
+                    "data": {
+                        "Photo": [
+                            {
+                                "properties": {
+                                    "name": "photo1",
+                                    "number": 23
+                                },
+                                "links": {
+                                    "createdby": [
+                                        {
+                                            "properties": { "count": 2 },
+                                            "source": { "properties": { "name": "Bill" } }
+                                        }
+                                    ]
+                                }
+                            },
+                            {
+                                "properties": {
+                                    "name": "photo2",
+                                    "number": 34
+                                },
+                                "links": {
+                                    "createdby": [
+                                        {
+                                            "properties": { "count": 5 },
+                                            "source": { "properties": { "name": "Bill" } }
+                                        }
+                                    ]
+                                }
+                            }
+                        ],
+                        "Photographer": [
+                            {
+                                "properties": { "name": "Bill" },
+                                "links": {
+                                    "created": [
+                                        {
+                                            "properties": { "count": 5 },
+                                            "target": { "properties": { "name": "photo2" } }
+                                        },
+                                        {
+                                            "properties": { "count": 2 },
+                                            "target": { "properties": { "name": "photo1" } }
+                                        }
+                                    ]
+                                }
+                            }
+                        ]
+                    }
+                }
+                """;
+        assertThatJson(response.getJson())
+                .when(Option.IGNORING_ARRAY_ORDER)
+                .when(Option.IGNORING_EXTRA_ARRAY_ITEMS)
+                .isEqualTo(expectedQueryResult);
+
+        LOG.info("Query took {} ms", end - start);
 
     }
 

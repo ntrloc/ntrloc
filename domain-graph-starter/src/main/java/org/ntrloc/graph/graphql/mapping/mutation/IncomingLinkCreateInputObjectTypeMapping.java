@@ -1,5 +1,6 @@
 package org.ntrloc.graph.graphql.mapping.mutation;
 
+import org.ntrloc.graph.db.language.Property;
 import org.ntrloc.graph.db.language.mutation.LinkCreateMutation;
 import org.ntrloc.graph.db.language.selectors.Selector;
 import org.ntrloc.graph.db.schema.LinkDefinition;
@@ -15,6 +16,7 @@ import java.util.Map;
 public class IncomingLinkCreateInputObjectTypeMapping extends IncomingLinkAbstractInputObjectTypeMapping {
 
     private static final Logger LOG = LoggerFactory.getLogger(IncomingLinkCreateInputObjectTypeMapping.class);
+    private static final String PROPERTIES_FIELD_NAME = "properties";
 
     public IncomingLinkCreateInputObjectTypeMapping(LinkDefinition sourceLinkDefinition, LinkPropertiesInputObjectTypeMapping propertiesMapping, SelectorChoiceInputObjectTypeMapping selectorChoiceInputObjectTypeMapping) {
         super("%s %s %s Link Create Input", sourceLinkDefinition, propertiesMapping, selectorChoiceInputObjectTypeMapping);
@@ -32,6 +34,12 @@ public class IncomingLinkCreateInputObjectTypeMapping extends IncomingLinkAbstra
                 LinkCreateMutation mutation = new LinkCreateMutation();
                 mutation.setLinkType(sourceLinkDefinition.getName());
                 mutation.setSelector(selector);
+
+                if (mutationMap.containsKey(PROPERTIES_FIELD_NAME)) {
+                    List<? extends Property> properties = propertiesMapping.mapProperties((Map<String, Object>) mutationMap.get(PROPERTIES_FIELD_NAME));
+                    mutation.setProperties(properties);
+                }
+
                 retList.add(mutation);
             }
         }

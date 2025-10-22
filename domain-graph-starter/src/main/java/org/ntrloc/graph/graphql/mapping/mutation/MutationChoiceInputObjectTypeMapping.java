@@ -110,6 +110,7 @@ public class MutationChoiceInputObjectTypeMapping implements InputObjectTypeProd
 
     public Map<String, List<ItemMutation>> parseEntityMutations(List<Map<String, Object>> mutationValues) {
         Map<String, List<Map<String, Object>>> mutationsByEntity = new java.util.HashMap<>();
+
         mutationValues.forEach(mutationValue -> {
             Map.Entry<String, Object> entry = mutationValue.entrySet().iterator().next();
             String itemType = entry.getKey();

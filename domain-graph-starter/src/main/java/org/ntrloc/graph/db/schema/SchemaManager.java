@@ -20,10 +20,16 @@ public interface SchemaManager {
 
     void addSchemaChangeReaction(SchemaChangeReaction reaction);
 
+    String getItemTypeName(String itemTypeId);
     String getItemTypeId(String itemTypeName);
     String getItemPropertyId(String itemTypeName, String propertyName);
-    String getLinkPropertyId(String linkTypeName, String propertyName);
     Map<String, String> getItemPropertyNameToIdMap(String itemTypeID);
-    String getPropertyName(String itemPropertyId);
+    Map<String, PropertyDefinition> getItemPropertyDefinitionsById(String itemTypeID);
+
+    String getLinkTypeName(String linkTypeId);
+    String getLinkTypeId(String linkTypeName);
+    String getLinkPropertyId(String linkTypeName, String propertyName);
+    Map<String, String> getLinkPropertyNameToIdMap(String itemTypeID);
+    Map<String, PropertyDefinition> getLinkPropertyDefinitionsById(String linkTypeID);
 
 }

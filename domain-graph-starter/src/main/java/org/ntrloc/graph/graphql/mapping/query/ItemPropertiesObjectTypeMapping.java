@@ -7,6 +7,7 @@ import graphql.language.Selection;
 import graphql.language.TypeName;
 import org.apache.commons.text.CaseUtils;
 import org.ntrloc.graph.db.schema.ItemDefinition;
+import org.ntrloc.graph.db.schema.PropertyDefinition;
 import org.ntrloc.graph.graphql.mapping.ObjectTypeProducer;
 
 import java.util.ArrayList;
@@ -20,6 +21,7 @@ public class ItemPropertiesObjectTypeMapping implements ObjectTypeProducer, Prop
 
     private final String graphQlTypeName;
     private final ItemDefinition itemDefinition;
+    private final Map<String, PropertyDefinition> itemPropertyTypeDefinitions;
 
     /** Maps the graphQL name of properties to the field definition of those properties. */
     private final Map<String, FieldDefinition> propertyFieldMappings;
@@ -29,6 +31,7 @@ public class ItemPropertiesObjectTypeMapping implements ObjectTypeProducer, Prop
 
     public ItemPropertiesObjectTypeMapping(ItemDefinition itemDefinition) {
         this.itemDefinition = itemDefinition;
+        this.itemPropertyTypeDefinitions = itemDefinition.getProperties().stream().collect(Collectors.toMap(PropertyDefinition::getName, p -> p));
         String typeName = "%s Properties".formatted(itemDefinition.getName());
         this.graphQlTypeName = CaseUtils.toCamelCase(typeName, true, '_', '-');
 
@@ -74,13 +77,15 @@ public class ItemPropertiesObjectTypeMapping implements ObjectTypeProducer, Prop
     }
 
     List<String> parseQueryProperties(Field field) {
-
-        // TODO: note that property groups are represented as properties in GraphQL!
-
         // here we need to translate the graphQL property name, like "firstName", back to the original property name, like "First Name".
         List<Selection> propertySelections = field.getSelectionSet().getSelections();
         List<Field> propertyFields = propertySelections.stream().map(s -> (Field) s).collect(Collectors.toList());
-        return propertyFields.stream().map(f -> propertyFieldMappings.get(f.getName()).getAdditionalData().get(ORIGINAL_PROPERTY_NAME_FIELD)).collect(Collectors.toList());
+
+        return propertyFields.stream().map(f -> {
+            String originalFieldName = propertyFieldMappings.get(f.getName()).getAdditionalData().get(ORIGINAL_PROPERTY_NAME_FIELD);
+            PropertyDefinition pd = itemPropertyTypeDefinitions.get(originalFieldName);
+            return pd.getUid();
+        }).collect(Collectors.toList());
 
     }
 
