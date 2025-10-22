@@ -30,7 +30,7 @@ import org.ntrloc.graph.db.language.selectors.LabelSelector;
 import org.ntrloc.graph.db.schema.PropertyDefinition;
 import org.ntrloc.graph.db.schema.PropertyType;
 import org.ntrloc.graph.db.schema.SchemaManager;
-import org.ntrloc.graph.db.storage.BinaryHash;
+import org.ntrloc.graph.db.storage.BinaryContentInfo;
 import org.ntrloc.graph.db.storage.BinaryStorageAdapter;
 import org.ntrloc.graph.db.traversal.mutator.Mutator;
 import org.ntrloc.graph.db.traversal.projector.Projector;
@@ -94,7 +94,7 @@ public class ItemManagerImpl implements ItemManager {
 
     @Override
     public String commitBinary(HashingBinaryDataWriter writer) throws IOException {
-        BinaryHash hash = binaryStorageAdapter.close(writer);
+        BinaryContentInfo hash = binaryStorageAdapter.close(writer);
         var iterator = traversalSource.V().hasLabel(DATA_LABEL)
                 .has("sha256", hash.getSha256Hash())
                 .has("md5", hash.getMd5Hash())
@@ -111,13 +111,15 @@ public class ItemManagerImpl implements ItemManager {
             } while (traversal.hasNext());
 
             Map<Object, Object> dataProps = Map.of(
+                    UNIQUE_ID_PROPERTY, uid,
+                    ITEM_TYPE_PROPERTY, DATA_LABEL,
                     "sha256", hash.getSha256Hash(),
                     "md5", hash.getMd5Hash(),
-                    UNIQUE_ID_PROPERTY, uid,
-                    ITEM_TYPE_PROPERTY, DATA_LABEL
+                    "mimeType", hash.getMimeType()
+
             );
             traversalSource.addV(DATA_LABEL).property(dataProps).next();
-            LOG.info("Wrote binary with UID {}, SHA-256 {}, MD5 {}", uid, hash.getSha256Hash(), hash.getMd5Hash());
+            LOG.info("Wrote binary with UID {}, SHA-256 {}, MD5 {}, mimeType {}", uid, hash.getSha256Hash(), hash.getMd5Hash(), hash.getMimeType());
 
             LOG.info("Committing transaction {}", transaction);
             transaction.commit();

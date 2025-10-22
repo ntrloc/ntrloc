@@ -1,6 +1,6 @@
 package org.ntrloc.graph.db.impl;
 
-import org.ntrloc.graph.db.storage.BinaryHash;
+import org.ntrloc.graph.db.storage.BinaryContentInfo;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -40,13 +40,13 @@ public class HashingBinaryDataWriter {
         return id;
     }
 
-    public BinaryHash close() throws IOException {
+    public BinaryContentInfo close() throws IOException {
         hashingOutputStream.flush();
         hashingOutputStream.close();
 
         String sha256Hash = getHash(sha256Digest);
         String md5Hash = getHash(md5Digest);
-        return new BinaryHash(sha256Hash, md5Hash);
+        return new BinaryContentInfo(sha256Hash, md5Hash);
     }
 
     private String getHash(MessageDigest digest) {

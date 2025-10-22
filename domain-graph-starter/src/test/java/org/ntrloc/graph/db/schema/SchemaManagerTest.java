@@ -28,6 +28,7 @@ import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -202,6 +203,60 @@ class SchemaManagerTest {
         Optional<LinkDefinition> schemaOpt = schemaManager.retrieveLinkDefinition(linkDefinition.getName());
         assertTrue(schemaOpt.isPresent(), "Schema not returned");
         assertEquals(linkDefinition, schemaOpt.get());
+    }
+
+    @Test
+    @DisplayName("add property to an item definition")
+    void testAddPropertyToItemDefinition() {
+        ItemDefinition itemDef = new ItemDefinition();
+        itemDef.setName("Product");
+        itemDef = schemaManager.createItemDefinition(itemDef);
+
+        PropertyDefinition propDef = new PropertyDefinition();
+        propDef.setName("Title");
+        propDef.setDescription("A title");
+        propDef.setType(PropertyType.STRING);
+
+        PropertyDefinition created = schemaManager.createItemPropertyDefinition(itemDef.getUid(), propDef);
+        assertNotNull(created);
+
+        var itemDef2 = schemaManager.retrieveItemDefinition(itemDef.getName());
+        assertTrue(itemDef2.isPresent());
+        var updatedProp = itemDef2.get().getProperties().stream().filter(p -> p.getName().equals("Title")).findFirst();
+        assertTrue(updatedProp.isPresent());
+    }
+
+    @Test
+    @DisplayName("fail to update nonexistent property")
+    void testUpdateNonexistentProperty() {
+        assertThrows(SchemaException.class, () -> schemaManager.updatePropertyDefinition("badId", "newISBN", "New ISBN description"));
+    }
+
+    @Test
+    @DisplayName("update a property definition")
+    void testUpdatePropertyDefinition() {
+        ItemDefinition itemDefinition = new ItemDefinition();
+        itemDefinition.setName("Product");
+
+        PropertyDefinition isbnPropertyDefinition = new PropertyDefinition();
+        isbnPropertyDefinition.setName("ISBN");
+        isbnPropertyDefinition.setDescription("An ISBN");
+        isbnPropertyDefinition.setType(PropertyType.STRING);
+        itemDefinition.setProperties(Set.of(isbnPropertyDefinition));
+
+        var def = schemaManager.createItemDefinition(itemDefinition);
+        var propOpt = def.getProperties().stream().filter(p -> p.getName().equals("ISBN")).findFirst();
+        assertTrue(propOpt.isPresent());
+        var isbnProp = propOpt.get();
+
+        PropertyDefinition newDef = schemaManager.updatePropertyDefinition(isbnProp.uid, "newISBN", "New ISBN description");
+        assertEquals("newISBN", newDef.getName());
+        assertEquals("New ISBN description", newDef.getDescription());
+
+        var photoDef2 = schemaManager.retrieveItemDefinition(def.getName());
+        assertTrue(photoDef2.isPresent());
+        var updatedProp = photoDef2.get().getProperties().stream().filter(p -> p.getName().equals("newISBN")).findFirst();
+        assertTrue(updatedProp.isPresent());
     }
 
 }

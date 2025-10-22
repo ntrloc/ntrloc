@@ -3,8 +3,9 @@ package org.ntrloc.graph.db.storage.impl;
 import com.google.common.base.Splitter;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.apache.tika.Tika;
 import org.ntrloc.graph.db.impl.HashingBinaryDataWriter;
-import org.ntrloc.graph.db.storage.BinaryHash;
+import org.ntrloc.graph.db.storage.BinaryContentInfo;
 import org.ntrloc.graph.db.storage.BinaryStorageAdapter;
 import org.ntrloc.graph.db.storage.BinaryStorageAdapterConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -98,20 +99,27 @@ public class BlockDeviceBinaryStorageAdapter implements BinaryStorageAdapter {
     }
 
     @Override
-    public BinaryHash close(HashingBinaryDataWriter writer) throws IOException {
-        BinaryHash dataHash = writer.close();
+    public BinaryContentInfo close(HashingBinaryDataWriter writer) throws IOException {
+        BinaryContentInfo contentInfo = writer.close();
         String id = writer.getId();
 
         File outputFile = tempFileMap.remove(id);
         if (outputFile != null && outputFile.exists()) {
+            try {
+                var tika = new Tika();
+                String mimeType = tika.detect(outputFile);
+                contentInfo.setMimeType(mimeType);
+            } catch (Exception er) {
+                LOG.error("Error while trying to detect mime type", er);
+            }
 
             Path permanentPath = permanentStorageFolder.toPath();
-            Path permanentFileRelPath = getPermanentStorageRelativeLocation(dataHash);
+            Path permanentFileRelPath = getPermanentStorageRelativeLocation(contentInfo);
             Path permanentFilePath = permanentPath.resolve(permanentFileRelPath);
 
             File permanentFile = permanentFilePath.toFile();
             if (permanentFile.exists()) {
-                LOG.info("Found permanent file for hash {}", dataHash);
+                LOG.info("Found permanent file for hash {}", contentInfo);
                 boolean deleted = outputFile.delete();
                 if (!deleted) {
                     LOG.warn("Failed to delete temporary file {}", outputFile.getAbsolutePath());
@@ -127,14 +135,14 @@ public class BlockDeviceBinaryStorageAdapter implements BinaryStorageAdapter {
                     LOG.warn("Failed to move temporary file {} to permanent storage path {}", outputFile.getAbsolutePath(), permanentFile.getAbsolutePath());
                 }
             }
-            return dataHash;
+            return contentInfo;
         } else {
             throw new IOException("Could not find temporary storage file " + outputFile.getAbsolutePath() + " for binary writer " + id);
         }
     }
 
     @Override
-    public InputStream openReader(BinaryHash hash) throws IOException {
+    public InputStream openReader(BinaryContentInfo hash) throws IOException {
         Path permanentPath = permanentStorageFolder.toPath();
         Path permanentFileRelPath = getPermanentStorageRelativeLocation(hash);
         Path permanentFilePath = permanentPath.resolve(permanentFileRelPath);
@@ -142,9 +150,9 @@ public class BlockDeviceBinaryStorageAdapter implements BinaryStorageAdapter {
         return new FileInputStream(permanentFile);
     }
 
-    private Path getPermanentStorageRelativeLocation(BinaryHash binaryHash) {
-        String sha256Hash = binaryHash.getSha256Hash();
-        String md5Hash = binaryHash.getMd5Hash();
+    private Path getPermanentStorageRelativeLocation(BinaryContentInfo binaryContentInfo) {
+        String sha256Hash = binaryContentInfo.getSha256Hash();
+        String md5Hash = binaryContentInfo.getMd5Hash();
 
         var shaSplit = Splitter.fixedLength(4).split(sha256Hash);
         String shaPath = StreamSupport.stream(shaSplit.spliterator(), false).collect(Collectors.joining("/"));

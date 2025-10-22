@@ -31,6 +31,7 @@ import org.ntrloc.graph.db.schema.PropertyDefinition;
 import org.ntrloc.graph.db.schema.PropertyGroupDefinition;
 import org.ntrloc.graph.db.schema.PropertyType;
 import org.ntrloc.graph.db.schema.SchemaChangeReaction;
+import org.ntrloc.graph.db.schema.SchemaException;
 import org.ntrloc.graph.db.schema.SchemaManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -55,6 +56,8 @@ import static org.ntrloc.graph.db.LabelConstants.ITEM_DEFINITION_LABEL;
 import static org.ntrloc.graph.db.LabelConstants.LINK_DEFINITION_LABEL;
 import static org.ntrloc.graph.db.LabelConstants.LINK_SOURCE_LABEL;
 import static org.ntrloc.graph.db.LabelConstants.LINK_TARGET_LABEL;
+import static org.ntrloc.graph.db.LabelConstants.PROPERTY_DEFINITION_LABEL;
+import static org.ntrloc.graph.db.PropertyConstants.DESCRIPTION_PROPERTY;
 import static org.ntrloc.graph.db.PropertyConstants.NAME_PROPERTY;
 import static org.ntrloc.graph.db.PropertyConstants.UNIQUE_ID_PROPERTY;
 
@@ -106,6 +109,8 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
             throw new RuntimeException(ie);
         }
         this.clusterService = clusterService;
+
+        cacheSchemaDefinitions();
     }
 
     public void verifyGlobalPropertiesAndIndexes() throws InterruptedException {
@@ -204,7 +209,7 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
     }
 
     @Override
-    public String createItemDefinition(ItemDefinition definition) {
+    public ItemDefinition createItemDefinition(ItemDefinition definition) {
 
         StandardJanusGraph standard = (StandardJanusGraph) janusGraph;
         Set<? extends JanusGraphTransaction> transactions = standard.getOpenTransactions();
@@ -327,10 +332,14 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
         tx.commit();
         tx.close();
 
-        LOG.info("Created definition {}", definition);
-        signalSchemaChange();
-
-        return itemTypeUid;
+        var defOpt = retrieveItemDefinition(definition.getName());
+        if (defOpt.isPresent()) {
+            LOG.info("Created item definition {}", definition);
+            signalSchemaChange();
+            return defOpt.get();
+        } else {
+            throw new SchemaException("Definition " + definition.getName() + " not found");
+        }
 
     }
 
@@ -464,6 +473,25 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
     }
 
     @Override
+    public PropertyDefinition createItemPropertyDefinition(String itemDefinitionId, PropertyDefinition definition) {
+        ItemDefinition itemDefinition = itemDefinitionByIdMap.get(itemDefinitionId);
+        String uid = UUID.randomUUID().toString();
+        var traversal = traversalSource.addV(LabelConstants.PROPERTY_DEFINITION_LABEL)
+                .property("name", definition.getName())
+                .property("description", definition.getDescription())
+                .property("type", definition.getType().toString())
+                .property(UNIQUE_ID_PROPERTY, uid)
+                .as("prop")
+                .addE(HAS_PROPERTY).from(__.V().has(UNIQUE_ID_PROPERTY, itemDefinition.getUid())).to("prop");
+        traversal.iterate();
+        traversalSource.tx().commit();
+
+        var newProp = getPropertyDefinition(uid);
+        signalSchemaChange();
+        return newProp;
+    }
+
+    @Override
     public void createLinkDefinition(LinkDefinition definition) {
         var tx = traversalSource.tx();
         boolean foundVertex = traversalSource.V().hasLabel(LINK_DEFINITION_LABEL).has("name", definition.getName()).hasNext();
@@ -532,6 +560,39 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
     @Override
     public void updateLinkDefinition(LinkDefinition definition) {
         throw new RuntimeException("not done");
+    }
+
+    @Override
+    public PropertyDefinition updatePropertyDefinition(String propertyUid, String name, String description) {
+        var updateTrav =traversalSource.V().hasLabel(PROPERTY_DEFINITION_LABEL).has(UNIQUE_ID_PROPERTY, propertyUid)
+                .property(NAME_PROPERTY, name)
+                .property(DESCRIPTION_PROPERTY, description);
+        if (updateTrav.hasNext()) {
+            updateTrav.next();
+        } else {
+            throw new SchemaException(String.format("Property %s not found", propertyUid));
+        }
+        traversalSource.tx().commit();
+
+        var updatedProp = getPropertyDefinition(propertyUid);
+        signalSchemaChange();
+        return updatedProp;
+    }
+
+    private PropertyDefinition getPropertyDefinition(String propertyUid) {
+        var propTraversal = traversalSource.V()
+                .hasLabel(PROPERTY_DEFINITION_LABEL).has(UNIQUE_ID_PROPERTY, propertyUid)
+                .elementMap()
+                .map(elem -> {
+                    var elementMap = elem.get();
+                    var transMap = elementMap.keySet().stream().filter(String.class::isInstance).collect(Collectors.toMap(k -> (String)k, k -> elementMap.get(k)));
+                    return mapToPropertyDefinition(transMap);
+                });
+        if (propTraversal.hasNext()) {
+            return propTraversal.next();
+        } else {
+            throw new SchemaException(String.format("Property %s not found", propertyUid));
+        }
     }
 
     @Override

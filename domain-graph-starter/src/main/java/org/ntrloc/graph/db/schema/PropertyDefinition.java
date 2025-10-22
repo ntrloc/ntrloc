@@ -3,15 +3,9 @@ package org.ntrloc.graph.db.schema;
 import java.util.Objects;
 import java.util.StringJoiner;
 
-public class PropertyDefinition {
-
-    String uid;
-
-    String name;
+public class PropertyDefinition extends SchemaDefinition {
 
     PropertyType type;
-
-    String description;
 
     /**
      * Indicates that a modification to the property should result in the creation of a new
@@ -34,36 +28,12 @@ public class PropertyDefinition {
         this.versionOnChange = versionOnChange;
     }
 
-    public String getUid() {
-        return uid;
-    }
-
-    public void setUid(String uid) {
-        this.uid = uid;
-    }
-
-    public String getName() {
-        return name;
-    }
-
-    public void setName(String name) {
-        this.name = name;
-    }
-
     public PropertyType getType() {
         return type;
     }
 
     public void setType(PropertyType type) {
         this.type = type;
-    }
-
-    public String getDescription() {
-        return description;
-    }
-
-    public void setDescription(String description) {
-        this.description = description;
     }
 
     public boolean isVersionOnChange() {
@@ -92,6 +62,9 @@ public class PropertyDefinition {
                 .add("name='" + name + "'")
                 .add("type=" + type)
                 .add("uid='" + uid + "'")
+                .add("description='" + description + "'")
+                .add("versionOnChange=" + versionOnChange)
                 .toString();
     }
+
 }

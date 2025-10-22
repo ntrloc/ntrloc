@@ -16,6 +16,7 @@ public class PropertyConstants {
     public static final String STATUS_PROPERTY = "status";
     public static final String TRANSACTION_ID_PROPERTY = "transactionId";
     public static final String REVISION_TYPE_PROPERTY = "revisionType";
+    public static final String DESCRIPTION_PROPERTY = "description";
 
     public static final Map<String, PropertyType> IMPLICIT_PROPERTY_TYPES = Map.of(
             IS_LATEST_VERSION_PROPERTY, PropertyType.BOOLEAN,
@@ -23,6 +24,7 @@ public class PropertyConstants {
             STATUS_PROPERTY, PropertyType.STRING,
             TRANSACTION_ID_PROPERTY, PropertyType.STRING,
             UNIQUE_ID_PROPERTY, PropertyType.STRING,
+            DESCRIPTION_PROPERTY, PropertyType.STRING,
             VERSION_PROPERTY, PropertyType.INT
     );
 

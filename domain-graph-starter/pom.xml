@@ -19,12 +19,11 @@
         <commons.lang3.version>3.18.0</commons.lang3.version>
         <hazelcast.version>5.5.0</hazelcast.version>
         <janusgraph.version>1.2.0-20250219-143145.6c030f7</janusgraph.version>
-        <jte.version>3.1.16</jte.version>
-
         <netty-macos-resolver.version>4.1.119.Final</netty-macos-resolver.version>
-        <tinkerpop.version>3.7.3</tinkerpop.version>
         <thymeleaf.version>3.5.3</thymeleaf.version>
         <thymeleaf-layout-dialect.version>3.4.0</thymeleaf-layout-dialect.version>
+        <tinkerpop.version>3.7.3</tinkerpop.version>
+        <tika.version>3.2.3</tika.version>
     </properties>
 
     <dependencies>
@@ -199,6 +198,13 @@
             <groupId>ognl</groupId>
             <artifactId>ognl</artifactId>
             <version>3.4.7</version> <!-- Use a compatible version -->
+        </dependency>
+
+        <!-- -->
+        <dependency>
+            <groupId>org.apache.tika</groupId>
+            <artifactId>tika-core</artifactId>
+            <version>${tika.version}</version>
         </dependency>
 
         <!-- Reactor testing -->

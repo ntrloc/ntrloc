@@ -25,6 +25,8 @@ import org.ntrloc.graph.db.schema.PropertyType;
 import org.ntrloc.graph.db.schema.SchemaManager;
 import org.ntrloc.graph.db.schema.impl.SchemaManagerImpl;
 import org.ntrloc.graph.db.storage.BinaryStorageAdapter;
+import org.ntrloc.graph.db.storage.BinaryStorageAdapterConfiguration;
+import org.ntrloc.graph.db.storage.impl.BlockDeviceBinaryStorageAdapter;
 import org.ntrloc.graph.db.traversal.mutator.Mutator;
 import org.ntrloc.graph.db.traversal.mutator.impl.MutatorImpl;
 import org.ntrloc.graph.db.traversal.projector.Projector;
@@ -101,7 +103,10 @@ class ItemManagerMutationTest {
 
         janusGraph.tx().close();
 
-        BinaryStorageAdapter adapter = mock(BinaryStorageAdapter.class);
+        BinaryStorageAdapterConfiguration storageAdapterConfiguration = new BinaryStorageAdapterConfiguration();
+        storageAdapterConfiguration.setAutocreate(true);
+        storageAdapterConfiguration.setLocation("target/itemmanager/storage");
+        BinaryStorageAdapter adapter = new BlockDeviceBinaryStorageAdapter(storageAdapterConfiguration);
         ClusterService clusterService = mock(ClusterService.class);
 
         doReturn(mock(IMap.class)).when(clusterService).getMap(anyString());
@@ -146,6 +151,25 @@ class ItemManagerMutationTest {
         linkDefinition.setProperties(Set.of(createdDateDefinition));
 
         schemaManager.createLinkDefinition(linkDefinition);
+    }
+
+    @Test
+    @DisplayName("should capture the MIME type for an uploaded binary")
+    void testCaptureMimeType() throws IOException {
+        var files = Map.of("test.jpg", "image/jpeg", "test.png", "image/png");
+
+        for (var entry: files.entrySet()) {
+            var image = entry.getKey();
+            var mimeType = entry.getValue();
+            var inputStream = getClass().getClassLoader().getResourceAsStream(String.format("testImages/%s", image));
+            var writer = itemManager.openWriter();
+            writer.write(inputStream.readAllBytes());
+            String dataNodeId = itemManager.commitBinary(writer);
+            var dataNode = traversalSource.V().has(UNIQUE_ID_PROPERTY, dataNodeId).elementMap().next();
+            assert(dataNode.containsKey("mimeType"));
+            var recordedType = dataNode.get("mimeType");
+            assertEquals(mimeType, recordedType);
+        }
     }
 
     @Test

@@ -12,9 +12,9 @@ public interface BinaryStorageAdapter {
 
     HashingBinaryDataWriter openWriter() throws IOException;
 
-    BinaryHash close(HashingBinaryDataWriter writer) throws IOException;
+    BinaryContentInfo close(HashingBinaryDataWriter writer) throws IOException;
 
-    InputStream openReader(BinaryHash hash) throws IOException;
+    InputStream openReader(BinaryContentInfo hash) throws IOException;
 
     void abandon(HashingBinaryDataWriter writer);
 
