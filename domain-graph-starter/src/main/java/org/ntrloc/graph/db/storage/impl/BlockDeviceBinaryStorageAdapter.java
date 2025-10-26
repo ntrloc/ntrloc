@@ -105,6 +105,7 @@ public class BlockDeviceBinaryStorageAdapter implements BinaryStorageAdapter {
 
         File outputFile = tempFileMap.remove(id);
         if (outputFile != null && outputFile.exists()) {
+            contentInfo.setLength(outputFile.length());
             try {
                 var tika = new Tika();
                 String mimeType = tika.detect(outputFile);
@@ -114,7 +115,7 @@ public class BlockDeviceBinaryStorageAdapter implements BinaryStorageAdapter {
             }
 
             Path permanentPath = permanentStorageFolder.toPath();
-            Path permanentFileRelPath = getPermanentStorageRelativeLocation(contentInfo);
+            Path permanentFileRelPath = getPermanentStorageRelativeLocation(contentInfo.getSha256Hash(), contentInfo.getMd5Hash());
             Path permanentFilePath = permanentPath.resolve(permanentFileRelPath);
 
             File permanentFile = permanentFilePath.toFile();
@@ -142,18 +143,16 @@ public class BlockDeviceBinaryStorageAdapter implements BinaryStorageAdapter {
     }
 
     @Override
-    public InputStream openReader(BinaryContentInfo hash) throws IOException {
+    public InputStream openReader(String sha256Hash, String md5Hash) throws IOException {
         Path permanentPath = permanentStorageFolder.toPath();
-        Path permanentFileRelPath = getPermanentStorageRelativeLocation(hash);
+        Path permanentFileRelPath = getPermanentStorageRelativeLocation(sha256Hash, md5Hash);
         Path permanentFilePath = permanentPath.resolve(permanentFileRelPath);
         File permanentFile = permanentFilePath.toFile();
         return new FileInputStream(permanentFile);
     }
 
-    private Path getPermanentStorageRelativeLocation(BinaryContentInfo binaryContentInfo) {
-        String sha256Hash = binaryContentInfo.getSha256Hash();
-        String md5Hash = binaryContentInfo.getMd5Hash();
 
+    private Path getPermanentStorageRelativeLocation(String sha256Hash, String md5Hash) {
         var shaSplit = Splitter.fixedLength(4).split(sha256Hash);
         String shaPath = StreamSupport.stream(shaSplit.spliterator(), false).collect(Collectors.joining("/"));
         String permanentPath = String.format("%s/%s-%s", shaPath, sha256Hash, md5Hash);

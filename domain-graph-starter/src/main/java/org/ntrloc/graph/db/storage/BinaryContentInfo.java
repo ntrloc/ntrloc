@@ -8,6 +8,8 @@ public class BinaryContentInfo {
 
     private String mimeType;
 
+    private Long length;
+
     public BinaryContentInfo(String sha256Hash, String md5Hash) {
         this.sha256Hash = sha256Hash;
         this.md5Hash = md5Hash;
@@ -35,5 +37,13 @@ public class BinaryContentInfo {
 
     public void setMimeType(String mimeType) {
         this.mimeType = mimeType;
+    }
+
+    public Long getLength() {
+        return length;
+    }
+
+    public void setLength(Long length) {
+        this.length = length;
     }
 }

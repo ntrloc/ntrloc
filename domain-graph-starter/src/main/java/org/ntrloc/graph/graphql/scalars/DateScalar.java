@@ -12,41 +12,54 @@ import graphql.schema.CoercingSerializeException;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
 
-import java.time.LocalDate;
-import java.util.Date;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
 import java.util.Locale;
 
 @DgsScalar(name = "Date")
-public class DateScalar implements Coercing<Date, String> {
+public class DateScalar implements Coercing<String, String> {
+
+    private static SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd");
+    private static String DATE_ERROR_MESSAGE = "Not a valid date";
 
     @Override
     public @Nullable String serialize(@NonNull Object dataFetcherResult, @NonNull GraphQLContext graphQLContext, @NonNull Locale locale) throws CoercingSerializeException {
-        if (dataFetcherResult instanceof Date d) {
-            return d.toString();
+        if (dataFetcherResult instanceof String d) {
+            try {
+                dateFormat.parse(d);
+                return d;
+            } catch (ParseException pe) {
+                throw new CoercingSerializeException(DATE_ERROR_MESSAGE);
+            }
         }
-        throw new CoercingSerializeException("Not a valid date");
+        throw new CoercingSerializeException(DATE_ERROR_MESSAGE);
     }
 
     @Override
-    public @Nullable Date parseValue(@NonNull Object input, @NonNull GraphQLContext graphQLContext, @NonNull Locale locale) throws CoercingParseValueException {
+    public @Nullable String parseValue(@NonNull Object input, @NonNull GraphQLContext graphQLContext, @NonNull Locale locale) throws CoercingParseValueException {
         if (input instanceof String s) {
-            return parse(s);
+            try {
+                dateFormat.parse(s);
+                return s;
+            } catch (ParseException pe) {
+                throw new CoercingSerializeException(DATE_ERROR_MESSAGE);
+            }
         }
-        throw new CoercingParseValueException("Not a valid date");
+        throw new CoercingParseValueException(DATE_ERROR_MESSAGE);
     }
 
     @Override
-    public @Nullable Date parseLiteral(@NonNull Value<?> input, @NonNull CoercedVariables variables, @NonNull GraphQLContext graphQLContext, @NonNull Locale locale) throws CoercingParseLiteralException {
+    public @Nullable String parseLiteral(@NonNull Value<?> input, @NonNull CoercedVariables variables, @NonNull GraphQLContext graphQLContext, @NonNull Locale locale) throws CoercingParseLiteralException {
         if (input instanceof StringValue sv) {
-            return parse(sv.getValue());
+            try {
+                dateFormat.parse(sv.getValue());
+                return sv.getValue();
+            } catch (ParseException pe) {
+                throw new CoercingSerializeException(DATE_ERROR_MESSAGE);
+            }
         } else {
-            throw new CoercingParseLiteralException("Not a valid date");
+            throw new CoercingParseLiteralException(DATE_ERROR_MESSAGE);
         }
-    }
-
-    private Date parse(String input) {
-        LocalDate date = LocalDate.parse(input);
-        return Date.from(date.atStartOfDay().toInstant(java.time.ZoneOffset.UTC));
     }
 
 }

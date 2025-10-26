@@ -1,20 +1,19 @@
 package org.ntrloc.graph.db.language;
 
-import java.util.Date;
 import java.util.List;
 
-public class DateListProperty implements ListProperty<Date> {
+public class DateListProperty implements ListProperty<String> {
 
     private String name;
-    private List<Date> values;
+    private List<String> values;
 
-    public DateListProperty(String name, List<Date> values) {
+    public DateListProperty(String name, List<String> values) {
         this.name = name;
         this.values = values;
     }
 
     @Override
-    public List<Date> getValues() {
+    public List<String> getValues() {
         return values;
     }
 

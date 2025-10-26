@@ -1,13 +1,11 @@
 package org.ntrloc.graph.db.language;
 
-import java.util.Date;
-
-public class DateProperty implements ScalarProperty<Date, Long> {
+public class DateProperty implements ScalarProperty<String, String> {
 
     private String name;
-    private Date value;
+    private String value;
 
-    public DateProperty(String name, Date value) {
+    public DateProperty(String name, String value) {
         this.name = name;
         this.value = value;
     }
@@ -18,12 +16,12 @@ public class DateProperty implements ScalarProperty<Date, Long> {
     }
 
     @Override
-    public Long getValue() {
-        return value.getTime();
+    public String getValue() {
+        return value;
     }
 
     @Override
-    public ScalarProperty<Date, Long> renamedTo(String name) {
+    public ScalarProperty<String, String> renamedTo(String name) {
         return new DateProperty(name, value);
     }
 

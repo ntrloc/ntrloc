@@ -125,7 +125,7 @@
 
             <div id="searchOutput">
                 <div id="searchResults">
-                    <div class="result" th:each="def: ${searchResults}">
+                    <div class="result" th:each="def: ${searchResults}" th:attr="data-id=${def.id}">
                         <div class="resultType" th:attr="data-itemType=${def.itemType}" th:text="${def.itemType}"></div>
                         <div class="properties">
 

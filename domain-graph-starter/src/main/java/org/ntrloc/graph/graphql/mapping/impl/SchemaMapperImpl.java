@@ -15,6 +15,7 @@ import org.ntrloc.graph.graphql.mapping.mutation.MutationObjectTypeMapping;
 import org.ntrloc.graph.graphql.mapping.query.QueryObjectTypeMapping;
 import org.ntrloc.graph.graphql.mapping.scalars.BinaryScalarTypeMapping;
 import org.ntrloc.graph.graphql.mapping.scalars.DateScalarTypeMapping;
+import org.ntrloc.graph.graphql.mapping.scalars.DateTimeScalarTypeMapping;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -37,7 +38,7 @@ public class SchemaMapperImpl implements SchemaMapper {
     private MutationObjectTypeMapping mutationObjectTypeMapping;
     private QueryObjectTypeMapping queryObjectTypeMapping;
 
-    private List<ScalarTypeProducer> scalarTypeProducers = List.of(new DateScalarTypeMapping(), new BinaryScalarTypeMapping());
+    private List<ScalarTypeProducer> scalarTypeProducers = List.of(new DateScalarTypeMapping(), new DateTimeScalarTypeMapping(), new BinaryScalarTypeMapping());
 
     public SchemaMapperImpl() {
     }

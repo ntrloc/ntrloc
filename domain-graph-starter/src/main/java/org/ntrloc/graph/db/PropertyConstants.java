@@ -18,6 +18,9 @@ public class PropertyConstants {
     public static final String REVISION_TYPE_PROPERTY = "revisionType";
     public static final String DESCRIPTION_PROPERTY = "description";
 
+    /** This property is set on system:nodeProperty edges to identify the name of the property they represent */
+    public static final String NODE_PROPERTY_NAME_PROPERTY = "nodePropertyName";
+
     public static final Map<String, PropertyType> IMPLICIT_PROPERTY_TYPES = Map.of(
             IS_LATEST_VERSION_PROPERTY, PropertyType.BOOLEAN,
             ITEM_TYPE_PROPERTY, PropertyType.STRING,

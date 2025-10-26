@@ -14,6 +14,9 @@ public enum PropertyType {
     DATE,
     DATE_LIST,
 
+    DATETIME,
+    DATETIME_LIST,
+
     STRING,
     STRING_LIST,
 

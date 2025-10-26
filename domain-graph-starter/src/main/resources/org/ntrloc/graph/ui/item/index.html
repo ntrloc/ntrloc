@@ -4,7 +4,12 @@
 </head>
 <body>
 <div id="itemContent" layout:fragment="content">
-    Item!
+   <div>Item type is: [[${item.itemType}]]</div>
+
+    <div th:each="prop: ${item.properties}">
+        [[${prop.key}]]:   [[${prop.value}]]
+    </div>
+
 </div>
 </body>
 </html>

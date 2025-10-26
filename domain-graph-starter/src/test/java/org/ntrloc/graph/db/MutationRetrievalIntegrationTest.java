@@ -151,15 +151,17 @@ class MutationRetrievalIntegrationTest {
         PropertyDefinition photoNumber = new PropertyDefinition("number", PropertyType.INT, "photo number");
         PropertyDefinition photoBoolean = new PropertyDefinition("boolean", PropertyType.BOOLEAN, "photo boolean");
         PropertyDefinition photoDate = new PropertyDefinition("date", PropertyType.DATE, "photo date");
+        PropertyDefinition photoDateTime = new PropertyDefinition("dateTime", PropertyType.DATETIME, "photo dateTime");
         PropertyDefinition photoDouble = new PropertyDefinition("double", PropertyType.DOUBLE, "photo double");
         PropertyDefinition photoBinary = new PropertyDefinition("binary", PropertyType.BINARY, "photo binary");
         PropertyDefinition photoStringList = new PropertyDefinition("stringList", PropertyType.STRING_LIST, "photo string list");
         PropertyDefinition photoIntList = new PropertyDefinition("intList", PropertyType.INT_LIST, "photo int list");
         PropertyDefinition photoBooleanList = new PropertyDefinition("booleanList", PropertyType.BOOLEAN_LIST, "photo boolean list");
         PropertyDefinition photoDateList = new PropertyDefinition("dateList", PropertyType.DATE_LIST, "photo date list");
+        PropertyDefinition photoDateTimeList = new PropertyDefinition("dateTimeList", PropertyType.DATETIME_LIST, "photo dateTime list");
         PropertyDefinition photoDoubleList = new PropertyDefinition("doubleList", PropertyType.DOUBLE_LIST, "photo double list");
 
-        photoEntity.setProperties(Set.of(photoName, photoNumber, photoBoolean, photoDate, photoDouble, photoBinary, photoStringList, photoIntList, photoBooleanList, photoDateList, photoDoubleList));
+        photoEntity.setProperties(Set.of(photoName, photoNumber, photoBoolean, photoDate, photoDateTime, photoDouble, photoBinary, photoStringList, photoIntList, photoBooleanList, photoDateList, photoDateTimeList, photoDoubleList));
 
         PropertyDefinition title1 = new PropertyDefinition("title1", PropertyType.STRING, "title 1");
         PropertyDefinition title2 = new PropertyDefinition("title2", PropertyType.STRING, "title 2");
@@ -222,12 +224,14 @@ class MutationRetrievalIntegrationTest {
                             number: 23,
                             boolean: true,
                             date: "2021-01-01",
+                            dateTime: "2022-01-01T07:22:40Z",
                             double: 123.456,
                             binary: "{DATA_NODE_ID}",
                             stringList: ["a", "b", "c"],
                             intList: [1, 2, 3],
                             booleanList: [true, false],
                             dateList: ["2021-01-01", "2021-01-02"],
+                            dateTimeList: ["2022-01-01T07:22:40Z", "2022-01-02T08:22:40Z"],
                             doubleList: [123.456, 789.123]
                          } } } }
                      ]) {
@@ -246,14 +250,36 @@ class MutationRetrievalIntegrationTest {
         long end = System.currentTimeMillis();
         LOG.info("Mutation took {} ms", end - start);
 
-        var vertices = traversalSource.V().hasLabel("Photo")
-                .project("out", "values")
-                .by(__.outE().project("edge", "target")
-                        .by(__.valueMap())
-                        .by(__.inV().valueMap()))
-                .by(__.valueMap())
-                .toList();
-        System.out.println(vertices);
+        var query = """
+                {
+                    Photo {
+                        properties {
+                            name
+                            number
+                            boolean
+                            date
+                            dateTime
+                            double
+                            binary {
+                                md5
+                                sha256
+                                mimeType
+                                length
+                                url
+                            }
+                            stringList
+                            intList
+                            booleanList
+                            dateList
+                            dateTimeList
+                            doubleList
+                        }
+                    }
+                }
+                """;
+        response = graphQlClient.executeQuery(query);
+        System.out.println("hi");
+
     }
 
     @Test

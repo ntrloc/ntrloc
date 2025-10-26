@@ -14,7 +14,7 @@ public interface BinaryStorageAdapter {
 
     BinaryContentInfo close(HashingBinaryDataWriter writer) throws IOException;
 
-    InputStream openReader(BinaryContentInfo hash) throws IOException;
+    InputStream openReader(String sha256Hash, String md5Hash) throws IOException;
 
     void abandon(HashingBinaryDataWriter writer);
 

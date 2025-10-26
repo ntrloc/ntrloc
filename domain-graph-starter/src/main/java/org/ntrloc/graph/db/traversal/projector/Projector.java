@@ -29,17 +29,30 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+import java.util.stream.Collectors;
+
+import static org.ntrloc.graph.db.LabelConstants.NODE_PROPERTY_EDGE_LABEL;
+import static org.ntrloc.graph.db.PropertyConstants.ITEM_TYPE_PROPERTY;
+import static org.ntrloc.graph.db.PropertyConstants.NODE_PROPERTY_NAME_PROPERTY;
+import static org.ntrloc.graph.db.PropertyConstants.STATUS_PROPERTY;
+import static org.ntrloc.graph.db.PropertyConstants.TRANSACTION_ID_PROPERTY;
+import static org.ntrloc.graph.db.PropertyConstants.UNIQUE_ID_PROPERTY;
+import static org.ntrloc.graph.db.PropertyConstants.VERSION_PROPERTY;
 
 @Component
 public class Projector {
 
     private static final Logger LOG = LoggerFactory.getLogger(Projector.class);
+
+    private static final List<String> SUPPRESSED_PROPERTIES = List.of(VERSION_PROPERTY, UNIQUE_ID_PROPERTY, STATUS_PROPERTY, TRANSACTION_ID_PROPERTY, ITEM_TYPE_PROPERTY);
 
     private GraphTraversalSource traversalSource;
 
@@ -47,11 +60,16 @@ public class Projector {
         this.traversalSource = traversalSource;
     }
 
+
     public List<ItemProjection> project(SelectableItemProjectionSpec spec) {
+        return project(spec, null);
+    }
+
+    public List<ItemProjection> project(SelectableItemProjectionSpec spec, URI binaryDownloadUri) {
         GraphTraversal<?, Vertex> traversal = traversalSource.V();
         traversal = select(traversal, spec);
 
-        var projectionTraversal = projectItems(traversal, spec);
+        var projectionTraversal = projectItems(traversal, spec, binaryDownloadUri);
 
         List<ItemProjection> itemProjections = new ArrayList<>();
         while (projectionTraversal.hasNext()) {
@@ -78,7 +96,7 @@ public class Projector {
     }
 
     /** Returns a traverser that adds a property projection to the given traverser. */
-    private GraphTraversal<?, ItemProjection> projectItems(GraphTraversal<?, Vertex> traversal, ItemProjectionSpec spec) {
+    private GraphTraversal<?, ItemProjection> projectItems(GraphTraversal<?, Vertex> traversal, ItemProjectionSpec spec, URI binaryDownloadUri) {
 
         Map<String, GraphTraversal<?, ?>> projectionTraversals = new LinkedHashMap<>();
         projectionTraversals.put("id", __.id());
@@ -94,9 +112,13 @@ public class Projector {
 
         if (spec.getProperties() != null) {
             String[] props = spec.getProperties().toArray(new String[0]);
+            // this will map any "actual" properties to the "properties" projection field
             projectionTraversals.put("properties", __.valueMap(props));
+            projectionTraversals.put("nodeProperties", __.outE(NODE_PROPERTY_EDGE_LABEL).has(NODE_PROPERTY_NAME_PROPERTY, P.within(props)).group().by(__.values(NODE_PROPERTY_NAME_PROPERTY)).by(__.inV().elementMap()));
         } else {
+            // this will map any "actual" properties to the "properties" projection field
             projectionTraversals.put("properties", __.valueMap());
+            projectionTraversals.put("nodeProperties", __.outE(NODE_PROPERTY_EDGE_LABEL).group().by(__.values(NODE_PROPERTY_NAME_PROPERTY)).by(__.inV().elementMap()));
         }
 
         if (spec.getLinks() != null) {
@@ -110,7 +132,7 @@ public class Projector {
                         :
                         __.out(getLinkPropertyInEdgeName(linkSpec.getLinkName()))
                                 .where(__.out(getLinkPropertyOutEdgeName(linkSpec.getLinkName())).has(PropertyConstants.ITEM_TYPE_PROPERTY, otherNodeName));
-                projectionTraversals.put(linkAlias, projectLinks(linkTraversal, linkSpec));
+                projectionTraversals.put(linkAlias, projectLinks(linkTraversal, linkSpec, binaryDownloadUri));
             }
         }
 
@@ -127,14 +149,35 @@ public class Projector {
             boolean isLatestVersion = (boolean) value.get(PropertyConstants.IS_LATEST_VERSION_PROPERTY);
             String iType = (String) value.get(PropertyConstants.ITEM_TYPE_PROPERTY);
 
-            Map<String, Object> nodeProps = (Map<String, Object>) value.get("properties");
+            Map<String, Object> properties = (Map<String, Object>) value.get("properties");
+            Map<String, Map<String, Object>> nodePropsMap = (Map) value.get("nodeProperties");
+            Map<String, BinaryProjection> binaryPropsMap = nodePropsMap.entrySet().stream().collect(Collectors.toMap(entry -> entry.getKey(), entry -> {
+                        Map<String, Object> props = entry.getValue();
+                        BinaryProjection binaryProp = new BinaryProjection();
+                        binaryProp.setMd5((String) props.get("md5"));
+                        binaryProp.setSha256((String) props.get("sha256"));
+                        binaryProp.setMimeType((String) props.get("mimeType"));
+                        binaryProp.setLength((Long) props.get("length"));
+                        binaryProp.setId((String) props.get(UNIQUE_ID_PROPERTY));
+                        if (binaryDownloadUri != null) {
+                            try {
+                                var downloadUri = binaryDownloadUri.resolve(new URI(binaryProp.getId())).toString();
+                                binaryProp.setUrl(downloadUri);
+                            } catch (URISyntaxException mue) {
+                                LOG.error("Error setting binary download URI", mue);
+                            }
+                        }
+                        return binaryProp;
+            }));
+            properties.putAll(binaryPropsMap);
 
             ItemProjection projection = new ItemProjection();
             projection.setId(uid);
             projection.setVersion(version);
             projection.setLatestVersion(isLatestVersion);
             projection.setItemType(iType);
-            projection.setProperties(nodeProps);
+            properties.keySet().removeAll(SUPPRESSED_PROPERTIES);
+            projection.setProperties(properties);
 
             if (spec.getLinks() != null) {
                 Map<String, List<LinkProjection>> links = new HashMap<>();
@@ -148,7 +191,7 @@ public class Projector {
         });
     }
 
-    private GraphTraversal<?, List<LinkProjection>> projectLinks(GraphTraversal<?, Vertex> traversal, LinkProjectionSpec spec) {
+    private GraphTraversal<?, List<LinkProjection>> projectLinks(GraphTraversal<?, Vertex> traversal, LinkProjectionSpec spec, URI binaryDownloadUri) {
         Map<String, GraphTraversal<?, ?>> projectionTraversals = new TreeMap<>();
         projectionTraversals.put(PropertyConstants.UNIQUE_ID_PROPERTY, __.values(PropertyConstants.UNIQUE_ID_PROPERTY));
         projectionTraversals.put(PropertyConstants.LINK_TYPE_PROPERTY, __.values(PropertyConstants.LINK_TYPE_PROPERTY));
@@ -164,11 +207,11 @@ public class Projector {
         // add the node on the other side of the link to the projection
         if (spec.getDirection().equals(Direction.IN)) {
             var sourceTraversal = __.inE(getLinkPropertyInEdgeName(spec.getLinkName())).outV();
-            var projectedNodes = projectItems(sourceTraversal, itemProjectionSpec);
+            var projectedNodes = projectItems(sourceTraversal, itemProjectionSpec, binaryDownloadUri);
             projectionTraversals.put("source", projectedNodes);
         } else {
             var targetTraversal = __.outE(getLinkPropertyOutEdgeName(spec.getLinkName())).inV();
-            var projectedNodes = projectItems(targetTraversal, itemProjectionSpec);
+            var projectedNodes = projectItems(targetTraversal, itemProjectionSpec, binaryDownloadUri);
             projectionTraversals.put("target", projectedNodes);
         }
 

@@ -3,14 +3,14 @@ package org.ntrloc.graph.graphql.mapping.scalars;
 import graphql.language.ScalarTypeDefinition;
 import org.ntrloc.graph.graphql.mapping.ScalarTypeProducer;
 
-public class BinaryScalarTypeMapping implements ScalarTypeProducer {
+public class DateTimeScalarTypeMapping implements ScalarTypeProducer {
 
-    public static final String BINARY_SCALAR_TYPE_NAME = "BinaryInput";
+    public static final String DATE_TIME_SCALAR_TYPE_NAME = "DateTime";
 
     @Override
     public ScalarTypeDefinition getScalarTypeDefinition() {
         return ScalarTypeDefinition.newScalarTypeDefinition()
-                .name(BINARY_SCALAR_TYPE_NAME)
+                .name(DATE_TIME_SCALAR_TYPE_NAME)
                 .build();
     }
 

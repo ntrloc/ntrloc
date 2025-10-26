@@ -34,6 +34,7 @@ public class QueryDataFetcher implements DataFetcher<Object> {
 
         DgsReactiveRequestData requestData = (DgsReactiveRequestData) DgsContext.getRequestData(dfe);
         URI requestUri = requestData.getServerRequest().uri();
+        var downloadEndpoint = requestUri.resolve("/binary/download");
 
         GraphQLFieldDefinition fd = dfe.getFieldDefinition();
         Map<String, Object> args = dfe.getArguments();
@@ -42,7 +43,7 @@ public class QueryDataFetcher implements DataFetcher<Object> {
         var field = dfe.getField();
         var projectionSpec = schemaMapper.parseProjection(field);
 
-        List<ItemProjection> projections = itemManager.executeProjection(projectionSpec);
+        List<ItemProjection> projections = itemManager.executeProjection(projectionSpec, downloadEndpoint);
         LOG.info("Executed query {} with projections {}", projectionSpec, projections);
 
         return projections;

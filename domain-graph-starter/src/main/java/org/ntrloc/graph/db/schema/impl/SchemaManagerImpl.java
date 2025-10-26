@@ -254,15 +254,16 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
             Class keyClass = switch (propertyDefinition.getType()) {
                 case STRING, STRING_LIST -> String.class;
                 case INT, INT_LIST -> Integer.class;
-                case DATE, DATE_LIST -> Date.class;
+                case DATE, DATE_LIST -> String.class;
+                case DATETIME, DATETIME_LIST -> Date.class;
                 case BOOLEAN, BOOLEAN_LIST -> Boolean.class;
                 case DOUBLE, DOUBLE_LIST -> Double.class;
                 case BINARY -> null;
             };
 
             Cardinality cardinality = switch (propertyDefinition.getType()) {
-                case STRING, INT, DATE, BOOLEAN, DOUBLE -> Cardinality.SINGLE;
-                case STRING_LIST, INT_LIST, DATE_LIST, BOOLEAN_LIST, DOUBLE_LIST -> Cardinality.LIST;
+                case STRING, INT, DATE, DATETIME, BOOLEAN, DOUBLE -> Cardinality.SINGLE;
+                case STRING_LIST, INT_LIST, DATE_LIST, DATETIME_LIST, BOOLEAN_LIST, DOUBLE_LIST -> Cardinality.LIST;
                 case BINARY -> null;
             };
 

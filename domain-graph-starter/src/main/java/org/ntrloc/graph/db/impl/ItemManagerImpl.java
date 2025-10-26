@@ -31,6 +31,7 @@ import org.ntrloc.graph.db.schema.PropertyDefinition;
 import org.ntrloc.graph.db.schema.PropertyType;
 import org.ntrloc.graph.db.schema.SchemaManager;
 import org.ntrloc.graph.db.storage.BinaryContentInfo;
+import org.ntrloc.graph.db.storage.BinaryContentInfoWithStream;
 import org.ntrloc.graph.db.storage.BinaryStorageAdapter;
 import org.ntrloc.graph.db.traversal.mutator.Mutator;
 import org.ntrloc.graph.db.traversal.projector.Projector;
@@ -39,6 +40,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.net.URI;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -115,7 +118,8 @@ public class ItemManagerImpl implements ItemManager {
                     ITEM_TYPE_PROPERTY, DATA_LABEL,
                     "sha256", hash.getSha256Hash(),
                     "md5", hash.getMd5Hash(),
-                    "mimeType", hash.getMimeType()
+                    "mimeType", hash.getMimeType(),
+                    "length", hash.getLength()
 
             );
             traversalSource.addV(DATA_LABEL).property(dataProps).next();
@@ -130,6 +134,26 @@ public class ItemManagerImpl implements ItemManager {
             LOG.info("Confirmed binary node with values {}", confirmIter.next());
 
             return uid;
+        }
+    }
+
+    @Override
+    public Optional<BinaryContentInfoWithStream> getBinaryStream(String uuid) throws IOException {
+        var iterator = traversalSource.V().hasLabel(DATA_LABEL).has(UNIQUE_ID_PROPERTY, uuid).elementMap();
+        if (iterator.hasNext()) {
+            Map<Object, Object> elements = iterator.next();
+            String sha256 = (String) elements.get("sha256");
+            String md5Hash = (String) elements.get("md5");
+            String mimeType = (String) elements.get("mimeType");
+            Long length = (Long) elements.get("length");
+            InputStream stream = binaryStorageAdapter.openReader(sha256, md5Hash);
+            BinaryContentInfoWithStream contentInfoWithStream = new BinaryContentInfoWithStream(sha256, md5Hash);
+            contentInfoWithStream.setLength(length);
+            contentInfoWithStream.setMimeType(mimeType);
+            contentInfoWithStream.setBinaryStream(stream);
+            return Optional.of(contentInfoWithStream);
+        } else {
+            return Optional.empty();
         }
     }
 
@@ -260,8 +284,13 @@ public class ItemManagerImpl implements ItemManager {
 
     @Override
     public List<ItemProjection> executeProjection(SelectableItemProjectionSpec spec) {
+        return executeProjection(spec, null);
+    }
+
+    @Override
+    public List<ItemProjection> executeProjection(SelectableItemProjectionSpec spec, URI binaryDownloadUri) {
         SelectableItemProjectionSpec transformedSpec = transformExternalItemProjectionToInternal(spec);
-        List<ItemProjection> projections = projector.project(transformedSpec);
+        List<ItemProjection> projections = projector.project(transformedSpec, binaryDownloadUri);
         return projections.stream().map(this::transformInternalItemProjectionToExternal).toList();
     }
 
@@ -300,7 +329,7 @@ public class ItemManagerImpl implements ItemManager {
                 PropertyType propertyType;
 
                 PropertyDefinition propertyDefinition = propertyMap.get(entry.getKey());
-                List<Object> value = (List) entry.getValue();
+                Object value = entry.getValue();
 
                 if (propertyDefinition == null) {
                     externalPropertyName = entry.getKey();
@@ -310,7 +339,7 @@ public class ItemManagerImpl implements ItemManager {
                     propertyType = propertyDefinition.getType();
                 }
                 Object transformedValue = switch (propertyType) {
-                    case BOOLEAN, DATE, DOUBLE, INT, STRING -> value.get(0);
+                    case BOOLEAN, DATE, DATETIME, DOUBLE, INT, STRING -> ((List)value).get(0);
                     default -> value;
                 };
                 transformedProperties.put(externalPropertyName, transformedValue);

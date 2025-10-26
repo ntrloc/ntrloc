@@ -7,18 +7,17 @@ import org.ntrloc.graph.db.storage.impl.BlockDeviceBinaryStorageAdapter;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
-public class BlockDeviceBinaryStorageAdapterTest {
+class BlockDeviceBinaryStorageAdapterTest {
 
     @Test
     @DisplayName("should be able to open and close a binary data writer")
-    void testOpenAndClose() throws IOException, NoSuchAlgorithmException {
+    void testOpenAndClose() throws IOException {
         String tempFilePath = "target";
 
         BlockDeviceBinaryStorageAdapter adapter = new BlockDeviceBinaryStorageAdapter(new BinaryStorageAdapterConfiguration(tempFilePath, true));
@@ -32,7 +31,7 @@ public class BlockDeviceBinaryStorageAdapterTest {
 
     @Test
     @DisplayName("should be able to read the permanent data previously written")
-    void testWriteAndRead() throws IOException, NoSuchAlgorithmException {
+    void testWriteAndRead() throws IOException {
         String tempFilePath = "target";
 
         BlockDeviceBinaryStorageAdapter adapter = new BlockDeviceBinaryStorageAdapter(new BinaryStorageAdapterConfiguration(tempFilePath, true));
@@ -41,7 +40,7 @@ public class BlockDeviceBinaryStorageAdapterTest {
         writer.write(data);
         var hashes = adapter.close(writer);
 
-        InputStream inputStream = adapter.openReader(hashes);
+        InputStream inputStream = adapter.openReader(hashes.getSha256Hash(), hashes.getMd5Hash());
         try {
             assertNotNull(inputStream, "null input stream");
 

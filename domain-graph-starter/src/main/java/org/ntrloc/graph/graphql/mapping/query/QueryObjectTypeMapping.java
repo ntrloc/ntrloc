@@ -45,6 +45,9 @@ public class QueryObjectTypeMapping implements ObjectTypeProducer {
     public List<ObjectTypeDefinition> getObjectTypeDefinitions() {
         List<ObjectTypeDefinition> retList = new ArrayList<>();
 
+
+        retList.add(GlobalOutputTypeFactory.getBinaryObjectTypeDefinition());
+
         List<FieldDefinition> fieldDefinitions = new ArrayList<>();
         for (ItemObjectTypeMapping itemTypeMapping : itemTypeMappings.values()) {
             retList.addAll(itemTypeMapping.getObjectTypeDefinitions());

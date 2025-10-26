@@ -10,7 +10,7 @@ import org.ntrloc.graph.graphql.mapping.PropertyTypeGraphQLMapping;
 public interface PropertyInputValueDefinitionMapper {
 
     default InputValueDefinition getPropertyInputValueDefinition(PropertyDefinition propertyDefinition) {
-        Type fieldType = PropertyTypeGraphQLMapping.mapPropertyDefinition(propertyDefinition);
+        Type fieldType = PropertyTypeGraphQLMapping.mapPropertyDefinition(propertyDefinition, PropertyTypeGraphQLMapping.InputOutputType.INPUT);
         Description propertyDescription = propertyDefinition.getDescription() == null ?
                 null :
                 new Description(propertyDefinition.getDescription(), null, false);

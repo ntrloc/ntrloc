@@ -34,6 +34,7 @@ import java.util.UUID;
 
 import static org.ntrloc.graph.db.PropertyConstants.ITEM_TYPE_PROPERTY;
 import static org.ntrloc.graph.db.PropertyConstants.LINK_TYPE_PROPERTY;
+import static org.ntrloc.graph.db.PropertyConstants.NODE_PROPERTY_NAME_PROPERTY;
 import static org.ntrloc.graph.db.PropertyConstants.STATUS_PROPERTY;
 import static org.ntrloc.graph.db.PropertyConstants.UNIQUE_ID_PROPERTY;
 
@@ -88,7 +89,7 @@ public class MutatorImpl implements Mutator {
                 LOG.info("Applying node property {}", property.getName());
                 traversal = traversal
                         .addE(LabelConstants.NODE_PROPERTY_EDGE_LABEL)
-                        .property("propertyName", propertyName)
+                        .property(NODE_PROPERTY_NAME_PROPERTY, propertyName)
                         .from(uniqueId).to(__.V(nodePropertiesToNodeIdMap.get(nodeProperty.getName())))
                         .select(uniqueId);
             } else {

@@ -10,7 +10,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.cluster.ClusterService;
 import org.ntrloc.graph.db.impl.ItemManagerImpl;
-import org.ntrloc.graph.db.language.DateProperty;
+import org.ntrloc.graph.db.language.DateTimeProperty;
 import org.ntrloc.graph.db.language.StringProperty;
 import org.ntrloc.graph.db.language.mutation.ItemCreateMutation;
 import org.ntrloc.graph.db.language.mutation.ItemDeleteMutation;
@@ -300,7 +300,7 @@ class ItemManagerMutationTest {
         ));
         LinkCreateMutation linkCreate = new LinkCreateMutation();
         linkCreate.setLinkType("CREATED");
-        linkCreate.setProperties(List.of(new DateProperty("createdDate", new Date())));
+        linkCreate.setProperties(List.of(new DateTimeProperty("createdDate", new Date())));
         IdSelector selector = new IdSelector(photoCreate.getRefId(), IdSelector.Type.LOCAL);
         linkCreate.setSelector(selector);
         photographerCreate.setLinks(List.of(linkCreate));

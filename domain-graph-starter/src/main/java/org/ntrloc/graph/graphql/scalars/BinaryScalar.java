@@ -10,10 +10,11 @@ import graphql.schema.CoercingParseValueException;
 import graphql.schema.CoercingSerializeException;
 import org.jspecify.annotations.NonNull;
 import org.jspecify.annotations.Nullable;
+import org.ntrloc.graph.graphql.mapping.scalars.BinaryScalarTypeMapping;
 
 import java.util.Locale;
 
-@DgsScalar(name = "Binary")
+@DgsScalar(name = BinaryScalarTypeMapping.BINARY_SCALAR_TYPE_NAME)
 public class BinaryScalar implements Coercing<String, String> {
 
     @Override
