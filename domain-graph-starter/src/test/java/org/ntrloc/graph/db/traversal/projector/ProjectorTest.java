@@ -11,6 +11,7 @@ import org.ntrloc.graph.db.PropertyConstants;
 import org.ntrloc.graph.db.language.projection.ItemProjection;
 import org.ntrloc.graph.db.language.projection.LinkProjectionSpec;
 import org.ntrloc.graph.db.language.projection.SelectableItemProjectionSpec;
+import org.ntrloc.graph.db.language.projection.SpecificLinksProjectionSpec;
 import org.ntrloc.graph.db.language.selectors.HasPropertyValueSelector;
 import org.ntrloc.graph.db.language.selectors.LabelSelector;
 import org.ntrloc.graph.db.language.selectors.predicate.EqualsPredicate;
@@ -23,6 +24,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
+import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.stream.StreamSupport;
@@ -157,10 +159,13 @@ class ProjectorTest {
     @DisplayName("should project links by a specific item type")
     void testProjectLinksByNodeType() {
         Projector projector = new Projector(traversalSource);
+        SpecificLinksProjectionSpec linksSpec = new SpecificLinksProjectionSpec(Map.of(
+                "created", new LinkProjectionSpec("CREATED", Direction.OUT, "Photo").properties(List.of("date")),
+                "worksFor", new LinkProjectionSpec("EMPLOYS", Direction.IN, "Agency")
+        ));
         SelectableItemProjectionSpec spec = new SelectableItemProjectionSpec(new LabelSelector("Photographer"))
                 .properties(List.of("name"))
-                .link("created", new LinkProjectionSpec("CREATED", Direction.OUT, "Photo").properties(List.of("date")))
-                .link("worksFor", new LinkProjectionSpec("EMPLOYS", Direction.IN, "Agency"));
+                .link(linksSpec);
         Iterable<ItemProjection> projections = projector.project(spec);
         List<ItemProjection> list = StreamSupport.stream(projections.spliterator(), false).toList();
         assertEquals(2, list.size());

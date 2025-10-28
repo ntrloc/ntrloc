@@ -8,6 +8,7 @@ import graphql.language.Selection;
 import graphql.language.TypeName;
 import org.apache.commons.text.CaseUtils;
 import org.ntrloc.graph.db.language.projection.LinkProjectionSpec;
+import org.ntrloc.graph.db.language.projection.SpecificLinksProjectionSpec;
 import org.ntrloc.graph.db.schema.ItemDefinition;
 import org.ntrloc.graph.db.schema.LinkDefinition;
 import org.ntrloc.graph.graphql.mapping.ObjectTypeProducer;
@@ -84,7 +85,7 @@ public class ItemLinksObjectTypeMapping implements ObjectTypeProducer {
         return retList;
     }
 
-    Map<String, LinkProjectionSpec> parseQueryLinks(Field field) {
+    SpecificLinksProjectionSpec parseQueryLinks(Field field) {
         LOG.info("parsing query links field {}", field);
         Map<String, LinkProjectionSpec> retMap = new HashMap<>();
         List<Selection> selections = field.getSelectionSet().getSelections();
@@ -95,7 +96,7 @@ public class ItemLinksObjectTypeMapping implements ObjectTypeProducer {
             LinkProjectionSpec lps = linkMapping.parseLinkProjectionSpec(selectionField);
             retMap.put(selectionField.getName(), lps);
         }
-        return retMap;
+        return new SpecificLinksProjectionSpec(retMap);
     }
 
 }

@@ -7,6 +7,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.db.impl.ItemManagerImpl;
+import org.ntrloc.graph.db.language.projection.AllLinksProjectionSpec;
 import org.ntrloc.graph.db.language.projection.ItemProjection;
 import org.ntrloc.graph.db.language.projection.SelectableItemProjectionSpec;
 import org.ntrloc.graph.db.language.selectors.LabelSelector;
@@ -107,23 +108,27 @@ class ItemManagerProjectionTest {
                 .addV("CREATED")
                 .property("date", "2020-01-01")
                 .property(PropertyConstants.UNIQUE_ID_PROPERTY, "created1")
+                .property(PropertyConstants.LINK_TYPE_PROPERTY, "CREATED")
                 .as("createdProp1")
                 .addV("CREATED")
                 .property("date", "2025-01-01")
                 .property(PropertyConstants.UNIQUE_ID_PROPERTY, "created2")
+                .property(PropertyConstants.LINK_TYPE_PROPERTY, "CREATED")
                 .as("createdProp2")
                 .addV("CREATED")
                 .property("date", "2025-09-01")
                 .property(PropertyConstants.UNIQUE_ID_PROPERTY, "created3")
+                .property(PropertyConstants.LINK_TYPE_PROPERTY, "CREATED")
                 .as("createdProp3")
                 .addV("EMPLOYS")
                 .property(PropertyConstants.UNIQUE_ID_PROPERTY, "employs1")
+                .property(PropertyConstants.LINK_TYPE_PROPERTY, "EMPLOYS")
                 .as("employsProp1")
 
                 // connection from entity->link->entity
                 .addE("CREATED-in").from("photographer1").to("createdProp1")
                 .addE("CREATED-out").from("createdProp1").to("photo1")
-                .addE("CREATED-in").from("photographer1").to("createdProp2")
+                .addE("CREATED-in").from("photographer2").to("createdProp2")
                 .addE("CREATED-out").from("createdProp2").to("photo2")
                 .addE("CREATED-in").from("photographer1").to("createdProp3")
                 .addE("CREATED-out").from("createdProp3").to("lb1")
@@ -153,6 +158,23 @@ class ItemManagerProjectionTest {
             assertNotNull(projection.getItemType());
             assertTrue(projection.getProperties().containsKey("photoName"));
             assertTrue(projection.getProperties().containsKey("photoColorspace"));
+        }
+    }
+
+    @Test
+    @DisplayName("should be able to retrieve all links for an item")
+    void testRetrieveAllLinks() {
+        Projector projector = new Projector(traversalSource);
+        AllLinksProjectionSpec linksSpec = new AllLinksProjectionSpec();
+        SelectableItemProjectionSpec spec = new SelectableItemProjectionSpec(new LabelSelector("Photographer")).properties(List.of("photographerName", "photographerAge"));
+        spec.setLinks(linksSpec);
+        Iterable<ItemProjection> projections = projector.project(spec);
+        List<ItemProjection> list = StreamSupport.stream(projections.spliterator(), false).toList();
+        assertEquals(2, list.size());
+        for (ItemProjection projection: list) {
+            assertNotNull(projection.getId());
+            assertNotNull(projection.getItemType());
+            assertNotNull(projection.getLinks());
         }
     }
 

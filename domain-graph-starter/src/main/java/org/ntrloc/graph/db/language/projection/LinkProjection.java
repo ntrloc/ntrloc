@@ -4,6 +4,8 @@ import java.util.Map;
 
 public abstract class LinkProjection {
 
+    private String id;
+
     private String linkType;
 
     LinkProjection() {
@@ -11,6 +13,14 @@ public abstract class LinkProjection {
     }
 
     protected Map<String, Object> properties;
+
+    public String getId() {
+        return id;
+    }
+
+    public void setId(String id) {
+        this.id = id;
+    }
 
     public Map<String, Object> getProperties() {
         return properties;

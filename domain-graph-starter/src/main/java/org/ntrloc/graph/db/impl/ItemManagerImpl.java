@@ -18,12 +18,14 @@ import org.ntrloc.graph.db.language.mutation.MutationRequest;
 import org.ntrloc.graph.db.language.mutation.MutationResponse;
 import org.ntrloc.graph.db.language.mutation.MutationType;
 import org.ntrloc.graph.db.language.mutation.ReferenceableItemMutation;
+import org.ntrloc.graph.db.language.projection.AllLinksProjectionSpec;
 import org.ntrloc.graph.db.language.projection.IncomingLinkProjection;
 import org.ntrloc.graph.db.language.projection.ItemProjection;
 import org.ntrloc.graph.db.language.projection.LinkProjection;
 import org.ntrloc.graph.db.language.projection.LinkProjectionSpec;
 import org.ntrloc.graph.db.language.projection.OutgoingLinkProjection;
 import org.ntrloc.graph.db.language.projection.SelectableItemProjectionSpec;
+import org.ntrloc.graph.db.language.projection.SpecificLinksProjectionSpec;
 import org.ntrloc.graph.db.language.selectors.IdSelector;
 import org.ntrloc.graph.db.language.selectors.ItemSelector;
 import org.ntrloc.graph.db.language.selectors.LabelSelector;
@@ -302,15 +304,24 @@ public class ItemManagerImpl implements ItemManager {
             LabelSelector newLabelSelector = new LabelSelector(itemTypeId);
             itemProjectionSpec.setItemSelector(newLabelSelector);
         }
-        if (itemProjectionSpec.getLinks() != null) {
-            for (Map.Entry<String, LinkProjectionSpec> entry : itemProjectionSpec.getLinks().entrySet()) {
-                LinkProjectionSpec linkProjectionSpec = entry.getValue();
-                String externalLinkName = linkProjectionSpec.getLinkName();
-                String internalLinkID = schemaManager.getLinkTypeId(externalLinkName);
-                linkProjectionSpec.setLinkName(internalLinkID);
-                String externalRelatedType = linkProjectionSpec.getRelatedItemType();
-                String internalItemId = schemaManager.getItemTypeId(externalRelatedType);
-                linkProjectionSpec.setRelatedItemType(internalItemId);
+        switch (itemProjectionSpec.getLinks()) {
+            case null -> { }
+            case SpecificLinksProjectionSpec specificLinks -> {
+                for (Map.Entry<String, LinkProjectionSpec> entry : specificLinks.getLinks().entrySet()) {
+                    LinkProjectionSpec linkProjectionSpec = entry.getValue();
+                    String externalLinkName = linkProjectionSpec.getLinkName();
+                    String internalLinkID = schemaManager.getLinkTypeId(externalLinkName);
+                    linkProjectionSpec.setLinkName(internalLinkID);
+                    String externalRelatedType = linkProjectionSpec.getRelatedItemType();
+                    String internalItemId = schemaManager.getItemTypeId(externalRelatedType);
+                    linkProjectionSpec.setRelatedItemType(internalItemId);
+                }
+            }
+            case AllLinksProjectionSpec allLinksSpec -> {
+                LOG.info("Using all-links projection spec");
+            }
+            default -> {
+                // don't retrieve links if none were requested
             }
         }
         return itemProjectionSpec;

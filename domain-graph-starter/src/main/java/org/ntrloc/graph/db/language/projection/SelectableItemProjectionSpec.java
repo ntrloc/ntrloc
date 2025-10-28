@@ -2,7 +2,6 @@ package org.ntrloc.graph.db.language.projection;
 
 import org.ntrloc.graph.db.language.selectors.ItemSelector;
 
-import java.util.HashMap;
 import java.util.List;
 import java.util.StringJoiner;
 
@@ -27,11 +26,8 @@ public class SelectableItemProjectionSpec extends ItemProjectionSpec {
         return this;
     }
 
-    public SelectableItemProjectionSpec link(String linkName, LinkProjectionSpec linkProjectionSpec) {
-        if (links == null) {
-            links = new HashMap<>();
-        }
-        links.put(linkName, linkProjectionSpec);
+    public SelectableItemProjectionSpec link(LinksProjectionSpec linksSpec) {
+        this.links = linksSpec;
         return this;
     }
 

@@ -1,6 +1,7 @@
 package org.ntrloc.graph.ui;
 
 import org.ntrloc.graph.db.ItemManager;
+import org.ntrloc.graph.db.language.projection.AllLinksProjectionSpec;
 import org.ntrloc.graph.db.language.projection.ItemProjection;
 import org.ntrloc.graph.db.language.projection.SelectableItemProjectionSpec;
 import org.ntrloc.graph.db.language.selectors.IdSelector;
@@ -49,6 +50,8 @@ public class ItemController extends AbstractController {
     public ResponseEntity<Resource> getItem(@PathVariable("id") String id, ServerWebExchange exchange) {
         var selector = new IdSelector(id, IdSelector.Type.GLOBAL);
         SelectableItemProjectionSpec query = new SelectableItemProjectionSpec(selector);
+        AllLinksProjectionSpec allLinksSpec = new AllLinksProjectionSpec();
+        query.setLinks(allLinksSpec);
         URI requestUri = exchange.getRequest().getURI().resolve("/binary/download");
         List<ItemProjection> projectionList = itemManager.executeProjection(query, requestUri);
 
