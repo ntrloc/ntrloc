@@ -38,15 +38,16 @@ public class QueryDataFetcher implements DataFetcher<Object> {
 
         GraphQLFieldDefinition fd = dfe.getFieldDefinition();
         Map<String, Object> args = dfe.getArguments();
-        LOG.info("Executing query {} with args {}", fd, args);
+        LOG.debug("Executing query {} with args {}", fd, args);
 
         var field = dfe.getField();
-        var projectionSpec = schemaMapper.parseProjection(field);
+        var projectionSpec = schemaMapper.parseProjectionSpec(field);
 
         List<ItemProjection> projections = itemManager.executeProjection(projectionSpec, downloadEndpoint);
-        LOG.info("Executed query {} with projections {}", projectionSpec, projections);
+        List<ItemProjection> translatedProjections = projections.stream().map(schemaMapper::translateItemProjection).toList();
+        LOG.info("Executed query {} with projections {}", projectionSpec, translatedProjections);
 
-        return projections;
+        return translatedProjections;
     }
 
 }

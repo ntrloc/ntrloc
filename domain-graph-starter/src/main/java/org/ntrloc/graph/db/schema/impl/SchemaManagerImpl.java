@@ -20,7 +20,6 @@ import org.janusgraph.graphdb.database.StandardJanusGraph;
 import org.janusgraph.graphdb.database.management.GraphIndexStatusReport;
 import org.janusgraph.graphdb.database.management.ManagementSystem;
 import org.ntrloc.graph.DuplicateException;
-import org.ntrloc.graph.Tuple;
 import org.ntrloc.graph.cluster.ClusterService;
 import org.ntrloc.graph.db.LabelConstants;
 import org.ntrloc.graph.db.PropertyConstants;
@@ -81,18 +80,8 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
     private final GraphTraversalSource traversalSource;
 
     private boolean cachesInitialized = false;
-
     private Map<String, ItemDefinition> itemDefinitionByNameMap;
     private Map<String, ItemDefinition> itemDefinitionByIdMap;
-    private Map<String, Map<String, String>> itemTypePropertyNameToIdMap;
-    private Map<Tuple<String, String>, PropertyDefinition> itemPropertyDefinitionByNameMap;
-    private Map<String, Map<String, PropertyDefinition>> itemTypePropertyDefinitionByIdMap;
-
-    private Map<String, LinkDefinition> linkDefinitionByNameMap;
-    private Map<String, LinkDefinition> linkDefinitionByIdMap;
-    private Map<String, Map<String, String>> linkTypePropertyNameToIdMap;
-    private Map<Tuple<String, String>, PropertyDefinition> linkPropertyDefinitionByNameMap;
-    private Map<String, Map<String, PropertyDefinition>> linkTypePropertyDefinitionByIdMap;
 
 
     // TODO: we don't need the traversal source in the constructor if we're getting the graph
@@ -156,15 +145,6 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
     private void cacheSchemaDefinitions() {
         itemDefinitionByNameMap = new HashMap<>();
         itemDefinitionByIdMap = new HashMap<>();
-        itemPropertyDefinitionByNameMap = new HashMap<>();
-        itemTypePropertyNameToIdMap = new HashMap<>();
-        itemTypePropertyDefinitionByIdMap = new HashMap<>();
-
-        linkDefinitionByNameMap = new HashMap<>();
-        linkDefinitionByIdMap = new HashMap<>();
-        linkTypePropertyNameToIdMap = new HashMap<>();
-        linkPropertyDefinitionByNameMap = new HashMap<>();
-        linkTypePropertyDefinitionByIdMap = new HashMap<>();
 
         GraphTraversal<Vertex, Vertex> start = traversalSource.V().hasLabel(ITEM_DEFINITION_LABEL);
         var definitions = retrieveItemDefinitions(start);
@@ -172,35 +152,8 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
         for (ItemDefinition def : definitions) {
             itemDefinitionByNameMap.put(def.getName(), def);
             itemDefinitionByIdMap.put(def.getUid(), def);
-            Set<PropertyDefinition> propertyDefinitions = def.getProperties();
-            if (propertyDefinitions != null) {
-                for (PropertyDefinition propertyDefinition : propertyDefinitions) {
-                    itemPropertyDefinitionByNameMap.put(Tuple.of(def.getName(), propertyDefinition.getName()), propertyDefinition);
-                }
-
-                Map<String, String> propertyNameToIdMap = propertyDefinitions.stream().collect(Collectors.toMap(PropertyDefinition::getName, PropertyDefinition::getUid));
-                itemTypePropertyNameToIdMap.put(def.getUid(), propertyNameToIdMap);
-
-                Map<String, PropertyDefinition> propertyIdToPropertyMap = propertyDefinitions.stream().collect(Collectors.toMap(PropertyDefinition::getUid, p -> p));
-                itemTypePropertyDefinitionByIdMap.put(def.getUid(), propertyIdToPropertyMap);
-            }
         }
-        for (LinkDefinition def : retrieveLinkDefinitions()) {
-            linkDefinitionByNameMap.put(def.getName(), def);
-            linkDefinitionByIdMap.put(def.getUid(), def);
-            Set<PropertyDefinition> propertyDefinitions = def.getProperties();
-            if (propertyDefinitions != null) {
-                for (PropertyDefinition propertyDefinition : propertyDefinitions) {
-                    linkPropertyDefinitionByNameMap.put(Tuple.of(def.getName(), propertyDefinition.getName()), propertyDefinition);
-                }
 
-                Map<String, String> propertyNameToIdMap = propertyDefinitions.stream().collect(Collectors.toMap(PropertyDefinition::getName, PropertyDefinition::getUid));
-                linkTypePropertyNameToIdMap.put(def.getUid(), propertyNameToIdMap);
-
-                Map<String, PropertyDefinition> propertyIdToPropertyMap = propertyDefinitions.stream().collect(Collectors.toMap(PropertyDefinition::getUid, p -> p));
-                linkTypePropertyDefinitionByIdMap.put(def.getUid(), propertyIdToPropertyMap);
-            }
-        }
         cachesInitialized = true;
     }
 
@@ -495,11 +448,14 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
     @Override
     public void createLinkDefinition(LinkDefinition definition) {
         var tx = traversalSource.tx();
-        boolean foundVertex = traversalSource.V().hasLabel(LINK_DEFINITION_LABEL).has("name", definition.getName()).hasNext();
+        boolean foundVertex = traversalSource.V().hasLabel(LINK_DEFINITION_LABEL)
+                .has("sourceLabel", definition.getSourceLabel())
+                .has("targetLabel", definition.getTargetLabel()).hasNext();
+
         tx.close();
 
         if (foundVertex) {
-            throw new DuplicateException(String.format("Schema for relationship %s already exists", definition.getName()));
+            throw new DuplicateException(String.format("Schema for relationship %s already exists", definition));
         }
 
         String linkTypeUid = createNewUniqueId(); // TODO guarantee this is unique
@@ -508,7 +464,6 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
         // create the schema vertices and edges
         tx = traversalSource.tx();
         GraphTraversal<Vertex, ?> traversal = traversalSource.addV(LINK_DEFINITION_LABEL)
-                .property("name", definition.getName())
                 .property(UNIQUE_ID_PROPERTY, linkTypeUid)
                 .property("description", definition.getDescription())
                 .property("sourceLabel", definition.getSourceLabel())
@@ -629,7 +584,6 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
         return iter.toStream().map(v -> {
             LinkDefinition schema = new LinkDefinition();
             var propertyMap = (HashMap) v.get(elementProjectionName);
-            schema.setName((String) propertyMap.get("name"));
             schema.setUid((String) propertyMap.get(UNIQUE_ID_PROPERTY));
             schema.setDescription((String) propertyMap.get("description"));
             schema.setSourceItemType((String) v.get(sourceProjectionName));
@@ -657,8 +611,8 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
     }
 
     @Override
-    public Optional<LinkDefinition> retrieveLinkDefinition(String name) {
-        GraphTraversal<Vertex, Vertex> start = traversalSource.V().hasLabel(LINK_DEFINITION_LABEL).has("name", name);
+    public Optional<LinkDefinition> retrieveLinkDefinition(String linkId) {
+        GraphTraversal<Vertex, Vertex> start = traversalSource.V().hasLabel(LINK_DEFINITION_LABEL).has(UNIQUE_ID_PROPERTY, linkId);
         Set<LinkDefinition> defs = retrieveRelationshipDefinitions(start);
         if (defs.isEmpty()) {
             return Optional.empty();
@@ -710,53 +664,4 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
         entryChanged(entryEvent);
     }
 
-    @Override
-    public String getItemTypeName(String itemTypeId) {
-        return itemDefinitionByIdMap.get(itemTypeId).getName();
-    }
-
-    @Override
-    public String getItemTypeId(String itemTypeName) {
-        return itemDefinitionByNameMap.get(itemTypeName).getUid();
-    }
-
-    @Override
-    public String getItemPropertyId(String itemType, String propertyName) {
-        return itemPropertyDefinitionByNameMap.get(Tuple.of(itemType, propertyName)).getUid();
-    }
-
-    @Override
-    public String getLinkPropertyId(String linkType, String propertyName) {
-        return linkPropertyDefinitionByNameMap.get(Tuple.of(linkType, propertyName)).getUid();
-    }
-
-    @Override
-    public String getLinkTypeName(String linkTypeId) {
-        return linkDefinitionByIdMap.get(linkTypeId).getName();
-    }
-
-    @Override
-    public String getLinkTypeId(String linkTypeName) {
-        return linkDefinitionByNameMap.get(linkTypeName).getUid();
-    }
-
-    @Override
-    public Map<String, PropertyDefinition> getItemPropertyDefinitionsById(String itemTypeID) {
-        return itemTypePropertyDefinitionByIdMap.get(itemTypeID);
-    }
-
-    @Override
-    public Map<String, String> getItemPropertyNameToIdMap(String itemTypeID) {
-        return itemTypePropertyNameToIdMap.get(itemTypeID);
-    }
-
-    @Override
-    public Map<String, String> getLinkPropertyNameToIdMap(String itemTypeID) {
-        return linkTypePropertyNameToIdMap.get(itemTypeID);
-    }
-
-    @Override
-    public Map<String, PropertyDefinition> getLinkPropertyDefinitionsById(String linkTypeID) {
-        return linkTypePropertyDefinitionByIdMap.get(linkTypeID);
-    }
 }

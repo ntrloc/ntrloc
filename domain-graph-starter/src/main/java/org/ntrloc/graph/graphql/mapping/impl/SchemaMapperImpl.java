@@ -6,6 +6,7 @@ import graphql.language.ObjectTypeDefinition;
 import graphql.language.ObjectTypeExtensionDefinition;
 import graphql.language.ScalarTypeDefinition;
 import org.ntrloc.graph.db.language.mutation.ItemMutation;
+import org.ntrloc.graph.db.language.projection.ItemProjection;
 import org.ntrloc.graph.db.language.projection.SelectableItemProjectionSpec;
 import org.ntrloc.graph.db.schema.ItemDefinition;
 import org.ntrloc.graph.db.schema.LinkDefinition;
@@ -89,9 +90,13 @@ public class SchemaMapperImpl implements SchemaMapper {
     }
 
     @Override
-    public SelectableItemProjectionSpec parseProjection(Field queryField) {
-        LOG.info("Parsing query field {}", queryField);
+    public SelectableItemProjectionSpec parseProjectionSpec(Field queryField) {
+        LOG.debug("Parsing query field {}", queryField);
         return queryObjectTypeMapping.parseQueryField(queryField);
     }
 
+    @Override
+    public ItemProjection translateItemProjection(ItemProjection itemProjection) {
+        return queryObjectTypeMapping.translateItemProjection(itemProjection);
+    }
 }

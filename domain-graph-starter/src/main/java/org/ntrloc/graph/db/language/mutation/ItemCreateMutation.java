@@ -2,26 +2,26 @@ package org.ntrloc.graph.db.language.mutation;
 
 import org.ntrloc.graph.db.language.Property;
 
+import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.stream.Collectors;
 
-public class ItemCreateMutation extends ItemMutation implements ReferenceableItemMutation {
+public class ItemCreateMutation extends ItemMutation implements ReferenceableItemMutation, ItemMutationWithItemType, ItemMutationWithLinks<LinkCreateMutation>, MutationWithProperties {
 
-    private String entityType;
+    // TODO: entity type should be "item type"
+    private String itemType;
     private Map<String, Property> properties = new HashMap<>();
     private String refId;
     private List<LinkCreateMutation> links;
 
-    public void setEntityType(String entityType) {
-        this.entityType = entityType;
+    public void setItemType(String itemType) {
+        this.itemType = itemType;
     }
 
-    public String getEntityType() {
-        return entityType;
+    public String getItemType() {
+        return itemType;
     }
 
     public void setRefId(String refId) {
@@ -36,8 +36,8 @@ public class ItemCreateMutation extends ItemMutation implements ReferenceableIte
         this.properties = properties.stream().collect(Collectors.toMap(Property::getName, p -> p));
     }
 
-    public Set<Property> getProperties() {
-        return new HashSet<>(properties.values());
+    public List<Property> getProperties() {
+        return new ArrayList<>(properties.values());
     }
 
     public List<LinkCreateMutation> getLinks() {
@@ -47,5 +47,7 @@ public class ItemCreateMutation extends ItemMutation implements ReferenceableIte
     public void setLinks(List<LinkCreateMutation> links) {
         this.links = links;
     }
+
+
 
 }

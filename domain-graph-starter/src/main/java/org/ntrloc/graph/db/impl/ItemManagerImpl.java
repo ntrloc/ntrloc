@@ -5,33 +5,19 @@ import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversalSo
 import org.apache.tinkerpop.gremlin.structure.Vertex;
 import org.ntrloc.graph.db.ItemManager;
 import org.ntrloc.graph.db.MutationException;
-import org.ntrloc.graph.db.PropertyConstants;
-import org.ntrloc.graph.db.language.Property;
 import org.ntrloc.graph.db.language.mutation.ItemCreateMutation;
 import org.ntrloc.graph.db.language.mutation.ItemDeleteMutation;
 import org.ntrloc.graph.db.language.mutation.ItemMutation;
 import org.ntrloc.graph.db.language.mutation.ItemMutationResponse;
 import org.ntrloc.graph.db.language.mutation.LinkCreateMutation;
-import org.ntrloc.graph.db.language.mutation.LinkMutation;
 import org.ntrloc.graph.db.language.mutation.LinkMutationResponse;
 import org.ntrloc.graph.db.language.mutation.MutationRequest;
 import org.ntrloc.graph.db.language.mutation.MutationResponse;
 import org.ntrloc.graph.db.language.mutation.MutationType;
 import org.ntrloc.graph.db.language.mutation.ReferenceableItemMutation;
-import org.ntrloc.graph.db.language.projection.AllLinksProjectionSpec;
-import org.ntrloc.graph.db.language.projection.IncomingLinkProjection;
 import org.ntrloc.graph.db.language.projection.ItemProjection;
-import org.ntrloc.graph.db.language.projection.LinkProjection;
-import org.ntrloc.graph.db.language.projection.LinkProjectionSpec;
-import org.ntrloc.graph.db.language.projection.OutgoingLinkProjection;
 import org.ntrloc.graph.db.language.projection.SelectableItemProjectionSpec;
-import org.ntrloc.graph.db.language.projection.SpecificLinksProjectionSpec;
 import org.ntrloc.graph.db.language.selectors.IdSelector;
-import org.ntrloc.graph.db.language.selectors.ItemSelector;
-import org.ntrloc.graph.db.language.selectors.LabelSelector;
-import org.ntrloc.graph.db.schema.PropertyDefinition;
-import org.ntrloc.graph.db.schema.PropertyType;
-import org.ntrloc.graph.db.schema.SchemaManager;
 import org.ntrloc.graph.db.storage.BinaryContentInfo;
 import org.ntrloc.graph.db.storage.BinaryContentInfoWithStream;
 import org.ntrloc.graph.db.storage.BinaryStorageAdapter;
@@ -63,18 +49,17 @@ public class ItemManagerImpl implements ItemManager {
 
     private GraphTraversalSource traversalSource;
     private BinaryStorageAdapter binaryStorageAdapter;
-
-    private SchemaManager schemaManager;
+    private ItemManagerSchemaNameIdTranslator schemaTypeDefinitionIdCache;
 
     private Mutator mutator;
     private Projector projector;
 
-    public ItemManagerImpl(GraphTraversalSource traversalSource, BinaryStorageAdapter binaryStorageAdapter, SchemaManager schemaManager, Mutator mutator, Projector projector) {
+    public ItemManagerImpl(GraphTraversalSource traversalSource, BinaryStorageAdapter binaryStorageAdapter, ItemManagerSchemaNameIdTranslator cache, Mutator mutator, Projector projector) {
         this.traversalSource = traversalSource;
         this.binaryStorageAdapter = binaryStorageAdapter;
         this.mutator = mutator;
         this.projector = projector;
-        this.schemaManager = schemaManager;
+        this.schemaTypeDefinitionIdCache = cache;
     }
 
     @Override
@@ -170,25 +155,22 @@ public class ItemManagerImpl implements ItemManager {
     public MutationResponse executeMutation(MutationRequest mutationRequest) {
         LOG.info("Executing mutation {}", mutationRequest);
 
+        var response = new MutationResponse();
         mutator.begin();
 
-        MutationResponse response = new MutationResponse();
-
-        List<ItemMutation> itemMutations = mutationRequest.getItemMutations().stream().map(this::translateItemMutationToInternalRepresentation).toList();
+        List<ItemMutation> itemMutations = mutationRequest.getItemMutations().stream().map(schemaTypeDefinitionIdCache::convertPublicIdentifiersIoPrivate).toList();
 
         Set<ItemCreateMutation> createMutations = itemMutations.stream().filter(ItemCreateMutation.class::isInstance)
                 .map(ItemCreateMutation.class::cast).collect(Collectors.toSet());
         Set<ItemDeleteMutation> deleteMutations = itemMutations.stream().filter(ItemDeleteMutation.class::isInstance)
                 .map(ItemDeleteMutation.class::cast).collect(Collectors.toSet());
 
-        /* Used to map item mutations to the ID of the items they mutated */
         Map<String, ReferenceableItemMutation> mutationIdMap = new HashMap<>();
 
         for (ItemCreateMutation createMutation: createMutations) {
-            String createdId = mutator.createNode(createMutation.getEntityType(), createMutation.getProperties());
+            String createdId = mutator.createNode(createMutation.getItemType(), createMutation.getProperties());
             mutationIdMap.put(createdId, createMutation);
-            var publicItemType = schemaManager.getItemTypeName(createMutation.getEntityType());
-            ItemMutationResponse item = new ItemMutationResponse(MutationType.CREATE, publicItemType, createdId);
+            ItemMutationResponse item = new ItemMutationResponse(MutationType.CREATE, createMutation.getItemType(), createdId);
             response.addItemMutationResponse(item);
         }
 
@@ -199,6 +181,8 @@ public class ItemManagerImpl implements ItemManager {
             response.addItemMutationResponse(item);
         }
 
+        // -------------------------- start link section
+
         for (ItemCreateMutation createMutation: createMutations) {
             String fromId = null;
             Optional<Map.Entry<String, ReferenceableItemMutation>> createdEntryOpt = mutationIdMap.entrySet().stream().filter(entry -> entry.getValue() == createMutation).findAny();
@@ -208,13 +192,10 @@ public class ItemManagerImpl implements ItemManager {
                 throw new MutationException("Item mutation " + createMutation + " not found");
             }
 
-            for (LinkCreateMutation create: createMutation.getLinks()) {
-                LinkCreateMutation linkCreate = translateLinkMutationToInternalRepresentation(create);
-                var linkType = linkCreate.getLinkType();
-
-                var selector = linkCreate.getSelector();
+            for (LinkCreateMutation linkCreateMutation: createMutation.getLinks()) {
+                var selector = linkCreateMutation.getSelector();
                 if (!(selector instanceof IdSelector)) {
-                    throw new MutationException("Selector for link type " + linkType + " must be an ID selector");
+                    throw new MutationException("Selector must be an ID selector");
                 }
                 var idSelector = (IdSelector)selector;
                 String toId = switch(idSelector.getType()) {
@@ -236,50 +217,23 @@ public class ItemManagerImpl implements ItemManager {
                     throw new MutationException("Linked item " + idSelector.getId() + " not found");
                 } else {
                     LOG.info("Linking item to item {}", toId);
-                    String linkId = mutator.createLink(fromId, toId, linkType, linkCreate.getProperties());
+                    String linkId = mutator.createLink(fromId, toId, linkCreateMutation.getLinkType(), linkCreateMutation.getProperties());
 
-                    String publicLinkType = schemaManager.getLinkTypeName(linkType);
-                    LinkMutationResponse link = new LinkMutationResponse(MutationType.CREATE, linkId, fromId, toId, publicLinkType);
+                    LinkMutationResponse link = new LinkMutationResponse(MutationType.CREATE, linkCreateMutation.getLinkType(), linkId, fromId, toId);
+                    link = schemaTypeDefinitionIdCache.convertPrivateIdentifiersIoPublic(createMutation.getItemType(), link);
                     response.addLinkMutationResponse(link);
                 }
             }
         }
 
+        // -------------------------- end link section
+
         mutator.prepare();
         mutator.commit();
 
+        response.getItemMutationResponses().forEach(schemaTypeDefinitionIdCache::convertPrivateIdentifiersIoPublic);
+
         return response;
-    }
-
-    private <M extends ItemMutation> M translateItemMutationToInternalRepresentation(M mutation) {
-        if (mutation instanceof ItemCreateMutation createMutation) {
-            ItemCreateMutation translatedMutation = new ItemCreateMutation();
-            String itemTypeId = schemaManager.getItemTypeId(createMutation.getEntityType());
-            translatedMutation.setEntityType(itemTypeId);
-            Map<String, String> propertyIds = schemaManager.getItemPropertyNameToIdMap(itemTypeId);
-            List<Property> renamedProperties = createMutation.getProperties().stream().map(p -> p.renamedTo(propertyIds.get(p.getName()))).toList();
-            translatedMutation.setProperties(renamedProperties);
-            translatedMutation.setRefId(createMutation.getRefId());
-            translatedMutation.setLinks(createMutation.getLinks());
-            return (M)translatedMutation;
-        } else {
-            return mutation;
-        }
-    }
-
-    private <L extends LinkMutation> L translateLinkMutationToInternalRepresentation(L mutation) {
-        if (mutation instanceof LinkCreateMutation createMutation) {
-            LinkCreateMutation translatedMutation = new LinkCreateMutation();
-            String linkTypeId = schemaManager.getLinkTypeId(createMutation.getLinkType());
-            translatedMutation.setLinkType(linkTypeId);
-            translatedMutation.setSelector(createMutation.getSelector());
-            Map<String, String> propertyIds = schemaManager.getLinkPropertyNameToIdMap(linkTypeId);
-            List<Property> renamedProperties = createMutation.getProperties().stream().map(p -> p.renamedTo(propertyIds.get(p.getName()))).toList();
-            translatedMutation.setProperties(renamedProperties);
-            return (L)translatedMutation;
-        } else {
-            return mutation;
-        }
     }
 
     /* -------------------------------- Projection methods -------------------------------- */
@@ -291,112 +245,9 @@ public class ItemManagerImpl implements ItemManager {
 
     @Override
     public List<ItemProjection> executeProjection(SelectableItemProjectionSpec spec, URI binaryDownloadUri) {
-        SelectableItemProjectionSpec transformedSpec = transformExternalItemProjectionToInternal(spec);
+        SelectableItemProjectionSpec transformedSpec = schemaTypeDefinitionIdCache.convertPublicIdentifiersIoPrivate(spec);
         List<ItemProjection> projections = projector.project(transformedSpec, binaryDownloadUri);
-        return projections.stream().map(this::transformInternalItemProjectionToExternal).toList();
-    }
-
-    private SelectableItemProjectionSpec transformExternalItemProjectionToInternal(SelectableItemProjectionSpec itemProjectionSpec) {
-        ItemSelector selector = itemProjectionSpec.getItemSelector();
-        if (selector instanceof LabelSelector labelSelector) {
-            String label = labelSelector.getLabel();
-            String itemTypeId = schemaManager.getItemTypeId(label);
-            LabelSelector newLabelSelector = new LabelSelector(itemTypeId);
-            itemProjectionSpec.setItemSelector(newLabelSelector);
-        }
-        switch (itemProjectionSpec.getLinks()) {
-            case null -> { }
-            case SpecificLinksProjectionSpec specificLinks -> {
-                for (Map.Entry<String, LinkProjectionSpec> entry : specificLinks.getLinks().entrySet()) {
-                    LinkProjectionSpec linkProjectionSpec = entry.getValue();
-                    String externalLinkName = linkProjectionSpec.getLinkName();
-                    String internalLinkID = schemaManager.getLinkTypeId(externalLinkName);
-                    linkProjectionSpec.setLinkName(internalLinkID);
-                    String externalRelatedType = linkProjectionSpec.getRelatedItemType();
-                    String internalItemId = schemaManager.getItemTypeId(externalRelatedType);
-                    linkProjectionSpec.setRelatedItemType(internalItemId);
-                }
-            }
-            case AllLinksProjectionSpec allLinksSpec -> {
-                LOG.info("Using all-links projection spec");
-            }
-            default -> {
-                // don't retrieve links if none were requested
-            }
-        }
-        return itemProjectionSpec;
-    }
-
-    private ItemProjection transformInternalItemProjectionToExternal(ItemProjection itemProjection) {
-        String itemTypeName = schemaManager.getItemTypeName(itemProjection.getItemType());
-        var propertyMap = schemaManager.getItemPropertyDefinitionsById(itemProjection.getItemType());
-        itemProjection.setItemType(itemTypeName);
-        if (itemProjection.getProperties() != null) {
-            Map<String, Object> currentProperties = itemProjection.getProperties();
-            Map<String, Object> transformedProperties = new HashMap<>();
-            for (Map.Entry<String, Object> entry : currentProperties.entrySet()) {
-
-                String externalPropertyName;
-                PropertyType propertyType;
-
-                PropertyDefinition propertyDefinition = propertyMap.get(entry.getKey());
-                Object value = entry.getValue();
-
-                if (propertyDefinition == null) {
-                    externalPropertyName = entry.getKey();
-                    propertyType = PropertyConstants.IMPLICIT_PROPERTY_TYPES.get(entry.getKey());
-                } else {
-                    externalPropertyName = propertyDefinition.getName();
-                    propertyType = propertyDefinition.getType();
-                }
-                Object transformedValue = switch (propertyType) {
-                    case BOOLEAN, DATE, DATETIME, DOUBLE, INT, STRING -> ((List)value).get(0);
-                    default -> value;
-                };
-                transformedProperties.put(externalPropertyName, transformedValue);
-            }
-            itemProjection.setProperties(transformedProperties);
-        }
-
-        if (itemProjection.getLinks() != null) {
-            Map<String, List<LinkProjection>> transformedLinks = new HashMap<>();
-            for (Map.Entry<String, List<LinkProjection>> entry: itemProjection.getLinks().entrySet()) {
-                String linkName = entry.getKey();
-                List<LinkProjection> transformedProjections = entry.getValue().stream().map(this::transformInternalLinkProjectionToExternal).toList();
-                transformedLinks.put(linkName, transformedProjections);
-            }
-            itemProjection.setLinks(transformedLinks);
-        }
-
-        return itemProjection;
-    }
-
-    private LinkProjection transformInternalLinkProjectionToExternal(LinkProjection linkProjection) {
-        String linkTypeName = schemaManager.getLinkTypeName(linkProjection.getLinkType());
-        var propertyMap = schemaManager.getLinkPropertyDefinitionsById(linkProjection.getLinkType());
-        linkProjection.setLinkType(linkTypeName);
-        if (linkProjection.getProperties() != null) {
-            Map<String, Object> currentProperties = linkProjection.getProperties();
-            Map<String, Object> transformedProperties = new HashMap<>();
-            for (Map.Entry<String, Object> entry : currentProperties.entrySet()) {
-                PropertyDefinition propertyDefinition = propertyMap.get(entry.getKey());
-                List<Object> value = (List) entry.getValue();
-                Object transformedValue = switch (propertyDefinition.getType()) {
-                    case BOOLEAN, DATE, DOUBLE, INT, STRING -> value.get(0);
-                    default -> value;
-                };
-                transformedProperties.put(propertyDefinition.getName(), transformedValue);
-            }
-            linkProjection.setProperties(transformedProperties);
-        }
-
-        if (linkProjection instanceof IncomingLinkProjection incomingLinkProjection) {
-            incomingLinkProjection.setSource(transformInternalItemProjectionToExternal(incomingLinkProjection.getSource()));
-        } else if (linkProjection instanceof OutgoingLinkProjection outgoingLinkProjection) {
-            outgoingLinkProjection.setTarget(transformInternalItemProjectionToExternal(outgoingLinkProjection.getTarget()));
-        }
-
-        return linkProjection;
+        return projections.stream().map(schemaTypeDefinitionIdCache::convertPrivateIdentifiersIoPublic).toList();
     }
 
 }

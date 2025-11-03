@@ -3,6 +3,7 @@ package org.ntrloc.graph.db;
 import com.hazelcast.map.IMap;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversalSource;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.__;
+import org.apache.tinkerpop.gremlin.structure.Direction;
 import org.janusgraph.core.JanusGraph;
 import org.janusgraph.core.JanusGraphFactory;
 import org.junit.jupiter.api.BeforeEach;
@@ -10,13 +11,21 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.cluster.ClusterService;
 import org.ntrloc.graph.db.impl.ItemManagerImpl;
-import org.ntrloc.graph.db.language.DateTimeProperty;
+import org.ntrloc.graph.db.impl.ItemManagerSchemaNameIdTranslator;
+import org.ntrloc.graph.db.language.DateProperty;
 import org.ntrloc.graph.db.language.StringProperty;
 import org.ntrloc.graph.db.language.mutation.ItemCreateMutation;
 import org.ntrloc.graph.db.language.mutation.ItemDeleteMutation;
 import org.ntrloc.graph.db.language.mutation.LinkCreateMutation;
 import org.ntrloc.graph.db.language.mutation.MutationRequest;
+import org.ntrloc.graph.db.language.projection.ItemProjection;
+import org.ntrloc.graph.db.language.projection.ItemProjectionSpec;
+import org.ntrloc.graph.db.language.projection.LinkProjectionSpec;
+import org.ntrloc.graph.db.language.projection.OutgoingLinkProjection;
+import org.ntrloc.graph.db.language.projection.SelectableItemProjectionSpec;
+import org.ntrloc.graph.db.language.projection.SpecificLinksProjectionSpec;
 import org.ntrloc.graph.db.language.selectors.IdSelector;
+import org.ntrloc.graph.db.language.selectors.LabelSelector;
 import org.ntrloc.graph.db.schema.Cardinality;
 import org.ntrloc.graph.db.schema.ItemDefinition;
 import org.ntrloc.graph.db.schema.LinkDefinition;
@@ -30,16 +39,15 @@ import org.ntrloc.graph.db.storage.impl.BlockDeviceBinaryStorageAdapter;
 import org.ntrloc.graph.db.traversal.mutator.Mutator;
 import org.ntrloc.graph.db.traversal.mutator.impl.MutatorImpl;
 import org.ntrloc.graph.db.traversal.projector.Projector;
-import org.opentest4j.AssertionFailedError;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
@@ -50,14 +58,12 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.ntrloc.graph.db.PropertyConstants.ITEM_TYPE_PROPERTY;
-import static org.ntrloc.graph.db.PropertyConstants.LINK_TYPE_PROPERTY;
-import static org.ntrloc.graph.db.PropertyConstants.STATUS_PROPERTY;
 import static org.ntrloc.graph.db.PropertyConstants.UNIQUE_ID_PROPERTY;
 
 @DisplayName("An item manager")
-class ItemManagerMutationTest {
+class ItemManagerTest {
 
-    private static final Logger LOG = LoggerFactory.getLogger(ItemManagerMutationTest.class);
+    private static final Logger LOG = LoggerFactory.getLogger(ItemManagerTest.class);
 
     private GraphTraversalSource traversalSource;
     private JanusGraph janusGraph;
@@ -113,7 +119,8 @@ class ItemManagerMutationTest {
         schemaManager = new SchemaManagerImpl(janusGraph, traversalSource, clusterService);
         Projector projector = new Projector(traversalSource);
         Mutator mutator = new MutatorImpl(traversalSource);
-        itemManager = new ItemManagerImpl(traversalSource, adapter, schemaManager, mutator, projector);
+        ItemManagerSchemaNameIdTranslator idCache = new ItemManagerSchemaNameIdTranslator(schemaManager);
+        itemManager = new ItemManagerImpl(traversalSource, adapter, idCache, mutator, projector);
         setUpSchema();
     }
 
@@ -138,7 +145,6 @@ class ItemManagerMutationTest {
         schemaManager.createItemDefinition(photographerDefinition);
 
         LinkDefinition linkDefinition = new LinkDefinition();
-        linkDefinition.setName("CREATED");
         linkDefinition.setSourceLabel("created");
         linkDefinition.setTargetLabel("createdBy");
         linkDefinition.setSourceItemType(photographerDefinition.getName());
@@ -176,7 +182,7 @@ class ItemManagerMutationTest {
     @DisplayName("should create an item with properties")
     void testCreateItem() {
         ItemCreateMutation photoCreate = new ItemCreateMutation();
-        photoCreate.setEntityType("Photo");
+        photoCreate.setItemType("Photo");
         photoCreate.setProperties(List.of(
                 new StringProperty("name", "photo1")
         ));
@@ -194,19 +200,30 @@ class ItemManagerMutationTest {
         var item = iter.next();
         var props = (Map<String, Object>) item.get("props");
 
-        String nameId = schemaManager.getItemPropertyId("Photo", "name");
+        Optional<ItemDefinition> defOpt = schemaManager.retrieveItemDefinition("Photo");
+        assertTrue(defOpt.isPresent());
+        ItemDefinition photoDef = defOpt.get();
+        Optional<PropertyDefinition> nameOpt = photoDef.getProperties().stream().filter(p -> p.getName().equals("name")).findFirst();
+        assertTrue(nameOpt.isPresent());
+        PropertyDefinition nameDefinition = nameOpt.get();
 
-        assertTrue(props.containsKey(nameId), "name not set");
+        assertTrue(props.containsKey(nameDefinition.getUid()), "name not set");
         assertTrue(props.containsKey(UNIQUE_ID_PROPERTY), "uid not set");
         assertTrue(props.containsKey(ITEM_TYPE_PROPERTY), "type not set");
-        assertEquals(ItemStatus.NORMAL.toString(), ((List)props.get(STATUS_PROPERTY)).get(0));
+
+        SelectableItemProjectionSpec itemProjectionSpec = new SelectableItemProjectionSpec(new LabelSelector("Photo"));
+        List<ItemProjection> projections = itemManager.executeProjection(itemProjectionSpec);
+        assertEquals(1, projections.size());
+        ItemProjection projection = projections.get(0);
+        assertEquals("Photo", projection.getItemType());
+        assertEquals("photo1", projection.getProperties().get("name"));
     }
 
     @Test
     @DisplayName("should delete an item")
     void testDeleteItem() {
         ItemCreateMutation photoCreate = new ItemCreateMutation();
-        photoCreate.setEntityType("Photo");
+        photoCreate.setItemType("Photo");
         photoCreate.setProperties(List.of(
                 new StringProperty("name", "photo1")
         ));
@@ -226,19 +243,20 @@ class ItemManagerMutationTest {
     @DisplayName("should create two items and link them")
     void testCreateAndLinkItems() {
         ItemCreateMutation photoCreate = new ItemCreateMutation();
-        photoCreate.setEntityType("Photo");
+        photoCreate.setItemType("Photo");
         photoCreate.setRefId("photoRef");
         photoCreate.setProperties(List.of(
                 new StringProperty("name", "photo1")
         ));
         ItemCreateMutation photographerCreate = new ItemCreateMutation();
-        photographerCreate.setEntityType("Photographer");
+        photographerCreate.setItemType("Photographer");
         photographerCreate.setProperties(List.of(
                 new StringProperty("name", "photographer1")
         ));
         LinkCreateMutation linkCreate = new LinkCreateMutation();
-        linkCreate.setLinkType("CREATED");
         IdSelector selector = new IdSelector(photoCreate.getRefId(), IdSelector.Type.LOCAL);
+        linkCreate.setLinkType("created");
+        linkCreate.setProperties(List.of(new DateProperty("createdDate", "2022-01-01")));
         linkCreate.setSelector(selector);
         photographerCreate.setLinks(List.of(linkCreate));
 
@@ -247,89 +265,18 @@ class ItemManagerMutationTest {
         assertEquals(2, res.getItemMutationResponses().size());
         assertEquals(1, res.getLinkMutationResponses().size());
 
-    }
-
-    @Test
-    @DisplayName("should label items and properties by ID")
-    void testLabelItemsWithId() {
-        ItemCreateMutation photoCreate = new ItemCreateMutation();
-        photoCreate.setEntityType("Photo");
-        photoCreate.setRefId("photoRef");
-        photoCreate.setProperties(List.of(
-                new StringProperty("name", "photo1")
-        ));
-        MutationRequest req = new MutationRequest(List.of(photoCreate));
-        var res = itemManager.executeMutation(req);
-        var createdPhoto = res.getItemMutationResponses().get(0);
-        var createdPhotoType = createdPhoto.getItemType();
-        assertEquals("Photo", createdPhotoType, "mutation item type mismatch");
-        var photoUid = createdPhoto.getId();
-
-        var photoTypeId = schemaManager.getItemTypeId("Photo");
-        var photoNameId = schemaManager.getItemPropertyId("Photo", "name");
-
-        var photoData = traversalSource.V().has(UNIQUE_ID_PROPERTY, photoUid).project("label", "props").by(__.label()).by(__.valueMap()).next();
-        var photoLabel = (String) photoData.get("label");
-        var photoProps = (Map<String, Object>) photoData.get("props");
-        var itemType = ((List) photoProps.get(ITEM_TYPE_PROPERTY)).get(0);
-
-        assertEquals(photoTypeId, photoLabel, "label mismatch");
-        assertEquals(photoTypeId, itemType, "item type mismatch");
-        try {
-            assertTrue(photoProps.containsKey(photoNameId), "name not set");
-        } catch (AssertionFailedError afe) {
-            LOG.error("photo props: {}", photoProps);
-            throw afe;
-        }
-
-    }
-
-    @Test
-    @DisplayName("should label links and properties by ID")
-    void testLabelLinksWithId() {
-        ItemCreateMutation photoCreate = new ItemCreateMutation();
-        photoCreate.setEntityType("Photo");
-        photoCreate.setRefId("photoRef");
-        photoCreate.setProperties(List.of(
-                new StringProperty("name", "photo1")
-        ));
-        ItemCreateMutation photographerCreate = new ItemCreateMutation();
-        photographerCreate.setEntityType("Photographer");
-        photographerCreate.setProperties(List.of(
-                new StringProperty("name", "photographer1")
-        ));
-        LinkCreateMutation linkCreate = new LinkCreateMutation();
-        linkCreate.setLinkType("CREATED");
-        linkCreate.setProperties(List.of(new DateTimeProperty("createdDate", new Date())));
-        IdSelector selector = new IdSelector(photoCreate.getRefId(), IdSelector.Type.LOCAL);
-        linkCreate.setSelector(selector);
-        photographerCreate.setLinks(List.of(linkCreate));
-
-        MutationRequest req = new MutationRequest(List.of(photoCreate, photographerCreate));
-        var res = itemManager.executeMutation(req);
-
-        var linkTypeId = schemaManager.getLinkTypeId("CREATED");
-        var linkCreatedId = schemaManager.getLinkPropertyId("CREATED", "createdDate");
-
-        var createdLinkMutation = res.getLinkMutationResponses().get(0);
-        var createdLinkId = createdLinkMutation.getLinkId();
-        var createdLinkType = createdLinkMutation.getLinkType();
-        assertEquals("CREATED", createdLinkType, "mutation link type mismatch");
-        var linkData = traversalSource.V().has(UNIQUE_ID_PROPERTY, createdLinkId).project("label", "props").by(__.label()).by(__.valueMap()).next();
-
-        var linkLabel = (String) linkData.get("label");
-        var linkProps = (Map<String, Object>) linkData.get("props");
-        var linkType = ((List) linkProps.get(LINK_TYPE_PROPERTY)).get(0);
-
-        assertEquals(linkTypeId, linkLabel, "label mismatch");
-        assertEquals(linkTypeId, linkType, "item type mismatch");
-        try {
-            assertTrue(linkProps.containsKey(linkCreatedId), "created date not set");
-        } catch (AssertionFailedError afe) {
-            LOG.error("photo props: {}", linkProps);
-            throw afe;
-        }
-
+        SelectableItemProjectionSpec itemProjectionSpec = new SelectableItemProjectionSpec(new LabelSelector("Photographer"));
+        itemProjectionSpec.setLinks(new SpecificLinksProjectionSpec(Set.of(new LinkProjectionSpec("created", Direction.OUT, new ItemProjectionSpec().properties(List.of("name"))))));
+        List<ItemProjection> projections = itemManager.executeProjection(itemProjectionSpec);
+        assertEquals(1, projections.size());
+        ItemProjection projection = projections.get(0);
+        assertEquals("Photographer", projection.getItemType());
+        assertEquals("photographer1", projection.getProperties().get("name"));
+        OutgoingLinkProjection createdLink = (OutgoingLinkProjection) projection.getLinks().get("created").get(0);
+        assertEquals("2022-01-01", createdLink.getProperties().get("createdDate"));
+        ItemProjection photoProjection = createdLink.getTarget();
+        assertEquals("Photo", photoProjection.getItemType());
+        assertEquals("photo1", photoProjection.getProperties().get("name"));
     }
 
 }

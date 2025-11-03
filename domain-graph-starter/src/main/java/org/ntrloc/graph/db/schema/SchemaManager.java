@@ -1,6 +1,5 @@
 package org.ntrloc.graph.db.schema;
 
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -18,24 +17,12 @@ public interface SchemaManager {
     Set<LinkDefinition> retrieveLinkDefinitions();
     void createLinkDefinition(LinkDefinition definition);
     void updateLinkDefinition(LinkDefinition definition);
-    Optional<LinkDefinition> retrieveLinkDefinition(String name);
+    Optional<LinkDefinition> retrieveLinkDefinition(String linkDefinitionId);
     void deleteLinkDefinition(LinkDefinition definition);
 
     PropertyDefinition updatePropertyDefinition(String propertyUid, String name, String description);
 
     /* ------- Various other methods -------- */
     void addSchemaChangeReaction(SchemaChangeReaction reaction);
-
-    String getItemTypeName(String itemTypeId);
-    String getItemTypeId(String itemTypeName);
-    String getItemPropertyId(String itemTypeName, String propertyName);
-    Map<String, String> getItemPropertyNameToIdMap(String itemTypeID);
-    Map<String, PropertyDefinition> getItemPropertyDefinitionsById(String itemTypeID);
-
-    String getLinkTypeName(String linkTypeId);
-    String getLinkTypeId(String linkTypeName);
-    String getLinkPropertyId(String linkTypeName, String propertyName);
-    Map<String, String> getLinkPropertyNameToIdMap(String itemTypeID);
-    Map<String, PropertyDefinition> getLinkPropertyDefinitionsById(String linkTypeID);
 
 }

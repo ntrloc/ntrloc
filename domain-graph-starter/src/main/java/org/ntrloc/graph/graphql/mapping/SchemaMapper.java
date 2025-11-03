@@ -6,6 +6,7 @@ import graphql.language.ObjectTypeDefinition;
 import graphql.language.ObjectTypeExtensionDefinition;
 import graphql.language.ScalarTypeDefinition;
 import org.ntrloc.graph.db.language.mutation.ItemMutation;
+import org.ntrloc.graph.db.language.projection.ItemProjection;
 import org.ntrloc.graph.db.language.projection.SelectableItemProjectionSpec;
 import org.ntrloc.graph.db.schema.ItemDefinition;
 import org.ntrloc.graph.db.schema.LinkDefinition;
@@ -32,6 +33,9 @@ public interface SchemaMapper {
 
     Map<String, List<ItemMutation>> parseEntityMutations(Map<String, Object> mutationFields);
 
-    SelectableItemProjectionSpec parseProjection(Field projectionField);
+    SelectableItemProjectionSpec parseProjectionSpec(Field projectionField);
+
+    /** Translates a projection with schema-defined property names into a projection that uses GraphQL property names. */
+    ItemProjection translateItemProjection(ItemProjection itemProjectionSpec);
 
 }

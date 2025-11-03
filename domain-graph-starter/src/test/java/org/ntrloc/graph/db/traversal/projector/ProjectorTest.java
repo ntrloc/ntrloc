@@ -24,9 +24,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
-import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Optional;
+import java.util.Set;
 import java.util.stream.StreamSupport;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -108,31 +108,36 @@ class ProjectorTest {
                     .as("a3")
 
                 // link node
-                .addV("CREATED")
+                .addV("photoCreatedId")
                     .property("date", "2020-01-01")
                     .property(PropertyConstants.UNIQUE_ID_PROPERTY, "created1")
+                    .property(PropertyConstants.LINK_TYPE_PROPERTY, "photoCreatedId")
                     .as("createdProp1")
-                .addV("CREATED")
+                .addV("photoCreatedId")
                     .property("date", "2025-01-01")
                     .property(PropertyConstants.UNIQUE_ID_PROPERTY, "created2")
+                    .property(PropertyConstants.LINK_TYPE_PROPERTY, "photoCreatedId")
                     .as("createdProp2")
-                .addV("CREATED")
+                .addV("photoCreatedId")
                     .property("date", "2025-09-01")
                     .property(PropertyConstants.UNIQUE_ID_PROPERTY, "created3")
+                    .property(PropertyConstants.LINK_TYPE_PROPERTY, "photoCreatedId")
                     .as("createdProp3")
-                .addV("EMPLOYS")
+                .addV("agencyEmploysId")
+                    .property("hireDate", "April 2023")
                     .property(PropertyConstants.UNIQUE_ID_PROPERTY, "employs1")
+                    .property(PropertyConstants.LINK_TYPE_PROPERTY, "agencyEmploysId")
                     .as("employsProp1")
 
                 // connection from entity->link->entity
-                .addE("CREATED-in").from("photographer1").to("createdProp1")
-                .addE("CREATED-out").from("createdProp1").to("photo1")
-                .addE("CREATED-in").from("photographer1").to("createdProp2")
-                .addE("CREATED-out").from("createdProp2").to("photo2")
-                .addE("CREATED-in").from("photographer1").to("createdProp3")
-                .addE("CREATED-out").from("createdProp3").to("lb1")
-                .addE("EMPLOYS-in").from("a3").to("employsProp1")
-                .addE("EMPLOYS-out").from("employsProp1").to("photographer1")
+                .addE("photoCreatedId-in").from("photographer1").to("createdProp1")
+                .addE("photoCreatedId-out").from("createdProp1").to("photo1")
+                .addE("photoCreatedId-in").from("photographer2").to("createdProp2")
+                .addE("photoCreatedId-out").from("createdProp2").to("photo2")
+                .addE("photoCreatedId-in").from("photographer1").to("createdProp3")
+                .addE("photoCreatedId-out").from("createdProp3").to("lb1")
+                .addE("agencyEmploysId-in").from("a3").to("employsProp1")
+                .addE("agencyEmploysId-out").from("employsProp1").to("photographer1")
 
                 .iterate();
         traversalSource.tx().commit();
@@ -159,17 +164,17 @@ class ProjectorTest {
     @DisplayName("should project links by a specific item type")
     void testProjectLinksByNodeType() {
         Projector projector = new Projector(traversalSource);
-        SpecificLinksProjectionSpec linksSpec = new SpecificLinksProjectionSpec(Map.of(
-                "created", new LinkProjectionSpec("CREATED", Direction.OUT, "Photo").properties(List.of("date")),
-                "worksFor", new LinkProjectionSpec("EMPLOYS", Direction.IN, "Agency")
+        SpecificLinksProjectionSpec linksSpec = new SpecificLinksProjectionSpec(Set.of(
+                new LinkProjectionSpec("photoCreatedId", Direction.OUT).properties(List.of("date")),
+                new LinkProjectionSpec("agencyEmploysId", Direction.IN)
         ));
         SelectableItemProjectionSpec spec = new SelectableItemProjectionSpec(new LabelSelector("Photographer"))
-                .properties(List.of("name"))
+                .properties(List.of("photographerName"))
                 .link(linksSpec);
         Iterable<ItemProjection> projections = projector.project(spec);
         List<ItemProjection> list = StreamSupport.stream(projections.spliterator(), false).toList();
         assertEquals(2, list.size());
-        Optional<ItemProjection> photographer = list.stream().filter(p -> !p.getLinks().get("created").isEmpty() && !p.getLinks().get("worksFor").isEmpty()).findFirst();
+        Optional<ItemProjection> photographer = list.stream().filter(p -> p.getLinks().get("photoCreatedId") != null && !p.getLinks().get("photoCreatedId").isEmpty() && p.getLinks().get("agencyEmploysId") != null && !p.getLinks().get("agencyEmploysId").isEmpty()).findFirst();
         assertTrue(photographer.isPresent());
     }
 

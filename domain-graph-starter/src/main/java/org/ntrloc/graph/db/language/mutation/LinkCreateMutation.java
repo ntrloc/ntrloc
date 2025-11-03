@@ -3,14 +3,13 @@ package org.ntrloc.graph.db.language.mutation;
 import org.ntrloc.graph.db.language.Property;
 import org.ntrloc.graph.db.language.selectors.Selector;
 
+import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.stream.Collectors;
 
-public class LinkCreateMutation extends LinkMutation {
+public class LinkCreateMutation extends LinkMutation implements LinkMutationWithLinkType, LinkMutationWithProperties {
 
     private String linkType;
     private Selector selector;
@@ -36,12 +35,12 @@ public class LinkCreateMutation extends LinkMutation {
         this.properties = properties;
     }
 
-    public void setProperties(List<? extends Property> properties) {
+    public void setProperties(List<Property> properties) {
         this.properties = properties.stream().collect(Collectors.toMap(Property::getName, p -> p));
     }
 
-    public Set<Property> getProperties() {
-        return new HashSet<>(properties.values());
+    public List<Property> getProperties() {
+        return new ArrayList<>(properties.values());
     }
 
 }

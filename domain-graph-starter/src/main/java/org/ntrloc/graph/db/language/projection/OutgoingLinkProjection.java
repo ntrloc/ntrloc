@@ -21,6 +21,8 @@ public class OutgoingLinkProjection extends LinkProjection {
     @Override
     public String toString() {
         return new StringJoiner(", ", OutgoingLinkProjection.class.getSimpleName() + "[", "]")
+                .add("id=" + id)
+                .add("linkType=" + linkType)
                 .add("properties=" + properties)
                 .add("target=" + target)
                 .toString();

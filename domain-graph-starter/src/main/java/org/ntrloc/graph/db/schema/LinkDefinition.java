@@ -164,7 +164,6 @@ public class LinkDefinition extends SchemaDefinition implements DefinitionWithPr
                 .add("sourceFollowLatest=" + sourceVersionAction)
                 .add("targetFollowLatest=" + targetVersionAction)
                 .add("instanceCardinality=" + instanceMaxCardinality)
-                .add("name='" + name + "'")
                 .add("description='" + description + "'")
                 .add("uid='" + uid + "'")
                 .toString();

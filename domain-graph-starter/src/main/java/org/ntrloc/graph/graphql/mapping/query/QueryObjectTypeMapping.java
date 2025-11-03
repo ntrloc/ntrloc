@@ -6,6 +6,7 @@ import graphql.language.ListType;
 import graphql.language.NonNullType;
 import graphql.language.ObjectTypeDefinition;
 import graphql.language.TypeName;
+import org.ntrloc.graph.db.language.projection.ItemProjection;
 import org.ntrloc.graph.db.language.projection.SelectableItemProjectionSpec;
 import org.ntrloc.graph.db.schema.ItemDefinition;
 import org.ntrloc.graph.db.schema.LinkDefinition;
@@ -70,10 +71,16 @@ public class QueryObjectTypeMapping implements ObjectTypeProducer {
     }
 
     public SelectableItemProjectionSpec parseQueryField(Field field) {
-        LOG.info("parsing query field {}", field);
+        LOG.debug("parsing query field {}", field);
         String itemName = field.getName();
         ItemObjectTypeMapping itemTypeMapping = itemTypeMappings.get(itemName);
         return itemTypeMapping.parseSelectableQueryField(field);
+    }
+
+    public ItemProjection translateItemProjection(ItemProjection itemProjection) {
+        String itemType = itemProjection.getItemType();
+        ItemObjectTypeMapping itemTypeMapping = itemTypeMappings.get(itemType);
+        return itemTypeMapping.translateItemProjection(itemProjection);
     }
 
 }

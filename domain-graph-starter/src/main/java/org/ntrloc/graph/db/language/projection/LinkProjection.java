@@ -4,15 +4,15 @@ import java.util.Map;
 
 public abstract class LinkProjection {
 
-    private String id;
+    protected String id;
 
-    private String linkType;
+    protected String linkType;
+
+    protected Map<String, Object> properties;
 
     LinkProjection() {
         // no-op
     }
-
-    protected Map<String, Object> properties;
 
     public String getId() {
         return id;

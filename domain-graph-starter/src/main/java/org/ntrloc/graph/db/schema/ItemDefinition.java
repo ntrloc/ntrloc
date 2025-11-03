@@ -8,6 +8,7 @@ import java.util.stream.Collectors;
 
 public class ItemDefinition extends SchemaDefinition implements DefinitionWithPropertyGroups {
 
+    private String name;
     private Set<PropertyDefinition> properties;
     private Map<String, PropertyDefinition> propertyDefinitionMap;
 
@@ -19,6 +20,14 @@ public class ItemDefinition extends SchemaDefinition implements DefinitionWithPr
 
     public PropertyDefinition getPropertyDefinition(String name) {
         return propertyDefinitionMap.get(name);
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
     }
 
     public void setProperties(Set<PropertyDefinition> properties) {

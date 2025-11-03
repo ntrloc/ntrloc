@@ -6,6 +6,7 @@ import graphql.language.ObjectTypeDefinition;
 import graphql.language.Selection;
 import graphql.language.TypeName;
 import org.apache.commons.text.CaseUtils;
+import org.ntrloc.graph.db.language.projection.ItemProjection;
 import org.ntrloc.graph.db.language.projection.ItemProjectionSpec;
 import org.ntrloc.graph.db.language.projection.SelectableItemProjectionSpec;
 import org.ntrloc.graph.db.language.selectors.LabelSelector;
@@ -141,7 +142,7 @@ public class ItemObjectTypeMapping implements ObjectTypeProducer {
 
     private void populateSpec(ItemProjectionSpec spec, Field field) {
         List<Selection> selections = field.getSelectionSet().getSelections();
-        LOG.info("Parsing selections {}", selections);
+        LOG.debug("Parsing selections {}", selections);
 
         selections.stream()
                 .filter(s -> s instanceof Field)
@@ -162,6 +163,17 @@ public class ItemObjectTypeMapping implements ObjectTypeProducer {
                         }
                     }
                 });
+    }
+
+    ItemProjection translateItemProjection(ItemProjection itemProjection) {
+        itemProjection.setItemType(this.graphQlTypeName);
+        if (itemProjection.getProperties() != null) {
+            propertyObjectTypeMapping.translateItemProjection(itemProjection);
+        }
+        if (itemProjection.getLinks() != null) {
+            linksObjectTypeMapping.translateItemProjection(itemProjection);
+        }
+        return itemProjection;
     }
 
 }

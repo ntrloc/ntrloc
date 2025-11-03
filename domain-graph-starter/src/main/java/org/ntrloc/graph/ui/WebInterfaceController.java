@@ -48,7 +48,7 @@ public class WebInterfaceController {
         if (path.substring(1).isEmpty()) {
             var headers = new HttpHeaders();
             headers.add("Location", "/search");
-            return new ResponseEntity<>(headers, HttpStatus.MOVED_TEMPORARILY);
+            return new ResponseEntity<>(headers, HttpStatus.TEMPORARY_REDIRECT);
         }
 
         try {

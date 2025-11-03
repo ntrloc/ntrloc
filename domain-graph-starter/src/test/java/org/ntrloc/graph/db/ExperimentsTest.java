@@ -199,4 +199,44 @@ public class ExperimentsTest {
         LOG.info("Got test result {}", testResult);
     }
 
+    @Test
+    void testGroupedLinkSubprojection() {
+        var newGraph = JanusGraphFactory.build()
+                .set("storage.backend", "inmemory")
+                .open();
+
+        var traversal = newGraph.traversal();
+        var tx = traversal.tx();
+        tx.begin();
+
+        traversal
+                .addV("product").as("product").property("name", "Test product")
+                .addV("abc123").as("link1").property("number", 1)
+                .addV("abc123").as("link2").property("number", 2)
+                .addV("abc123").as("link3").property("number", 3)
+                .addV("cover").as("cover1").property("name", "cover1")
+                .addV("cover").as("cover2").property("name", "cover2")
+                .addV("cover").as("cover3").property("name", "cover3")
+
+                .addE("abc123-in").from("product").to("link1")
+                .addE("abc123-in").from("product").to("link2")
+                .addE("abc123-in").from("product").to("link3")
+                .addE("abc123-out").from("link1").to("cover1")
+                .addE("abc123-out").from("link2").to("cover2")
+                .addE("abc123-out").from("link3").to("cover3")
+
+                .iterate();
+
+        tx.commit();
+        tx.close();
+
+        var testResult = traversal.V().hasLabel("product")
+                .project("id", "properties", "links")
+                .by(__.id())
+                .by(__.valueMap())
+                .by(__.out().group().by(__.label()).by(__.project("linkProps", "targetProps").by(__.valueMap()).by(__.out().valueMap()).fold()))
+                .toList();
+        LOG.info("Got test result {}", testResult);
+    }
+
 }

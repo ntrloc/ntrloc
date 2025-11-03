@@ -42,7 +42,6 @@ class SchemaMapperTest {
         photoRelationship.setTargetCardinality(new Cardinality(0, 1) );
         photoRelationship.setSourceVersionAction(LinkDefinition.VersionAction.NONE);
         photoRelationship.setTargetVersionAction(LinkDefinition.VersionAction.NONE);
-        photoRelationship.setName("CREATED");
         photoRelationship.setSourceLabel("created");
         photoRelationship.setTargetLabel("created by");
 

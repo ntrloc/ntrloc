@@ -6,11 +6,13 @@ import graphql.language.ObjectTypeDefinition;
 import graphql.language.Selection;
 import graphql.language.TypeName;
 import org.apache.commons.text.CaseUtils;
+import org.ntrloc.graph.db.language.projection.ItemProjection;
 import org.ntrloc.graph.db.schema.ItemDefinition;
 import org.ntrloc.graph.db.schema.PropertyDefinition;
 import org.ntrloc.graph.graphql.mapping.ObjectTypeProducer;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -23,8 +25,11 @@ public class ItemPropertiesObjectTypeMapping implements ObjectTypeProducer, Prop
     private final ItemDefinition itemDefinition;
     private final Map<String, PropertyDefinition> itemPropertyTypeDefinitions;
 
+    /** Maps the original schema property names to the field definitions used by GraphQL. */
+    private final Map<String, FieldDefinition> propertyFieldsBySchemaPropertyName = new HashMap<>();
+
     /** Maps the graphQL name of properties to the field definition of those properties. */
-    private final Map<String, FieldDefinition> propertyFieldMappings;
+    private final Map<String, FieldDefinition> propertyFieldMappings = new HashMap<>();
 
     /** Maps the graphQL name of property groups to the mapping for those groups. */
     private final Map<String, ItemPropertyGroupObjectTypeMapping> groupMappings;
@@ -35,7 +40,11 @@ public class ItemPropertiesObjectTypeMapping implements ObjectTypeProducer, Prop
         String typeName = "%s Properties".formatted(itemDefinition.getName());
         this.graphQlTypeName = CaseUtils.toCamelCase(typeName, true, '_', '-');
 
-        propertyFieldMappings = itemDefinition.getProperties().stream().map(this::getPropertyFieldDefinition).collect(Collectors.toMap(FieldDefinition::getName, p -> p));
+        for (PropertyDefinition propertyDefinition : itemDefinition.getProperties()) {
+            FieldDefinition fieldDefinition = getPropertyFieldDefinition(propertyDefinition);
+            propertyFieldMappings.put(fieldDefinition.getName(), fieldDefinition);
+            propertyFieldsBySchemaPropertyName.put(propertyDefinition.getName(), fieldDefinition);
+        }
 
         groupMappings = itemDefinition.getPropertyGroups() == null ?
                 Map.of() :
@@ -81,12 +90,14 @@ public class ItemPropertiesObjectTypeMapping implements ObjectTypeProducer, Prop
         List<Selection> propertySelections = field.getSelectionSet().getSelections();
         List<Field> propertyFields = propertySelections.stream().map(s -> (Field) s).collect(Collectors.toList());
 
-        return propertyFields.stream().map(f -> {
-            String originalFieldName = propertyFieldMappings.get(f.getName()).getAdditionalData().get(ORIGINAL_PROPERTY_NAME_FIELD);
-            PropertyDefinition pd = itemPropertyTypeDefinitions.get(originalFieldName);
-            return pd.getUid();
-        }).collect(Collectors.toList());
+        return propertyFields.stream().map(f -> propertyFieldMappings.get(f.getName()).getAdditionalData().get(ORIGINAL_PROPERTY_NAME_FIELD)).toList();
+    }
 
+    ItemProjection translateItemProjection(ItemProjection itemProjection) {
+        Map<String, Object> properties = itemProjection.getProperties();
+        Map<String, Object> translatedProperties = properties.entrySet().stream().collect(Collectors.toMap(entry -> propertyFieldsBySchemaPropertyName.get(entry.getKey()).getName(), e -> e.getValue()));
+        itemProjection.setProperties(translatedProperties);
+        return itemProjection;
     }
 
 }

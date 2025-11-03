@@ -179,7 +179,6 @@ class SchemaManagerTest {
         linkDefinition.setTargetCardinality(new Cardinality(0, null));
         linkDefinition.setSourceVersionAction(LinkDefinition.VersionAction.COPY);
         linkDefinition.setTargetVersionAction(LinkDefinition.VersionAction.MOVE);
-        linkDefinition.setName("has-cover");
 
         PropertyDefinition propDef1 = new PropertyDefinition();
         propDef1.setName("prop1");
@@ -200,7 +199,7 @@ class SchemaManagerTest {
         Set<LinkDefinition> definitions = schemaManager.retrieveLinkDefinitions();
         assertEquals(1, definitions.size(), "Incorrect number of relationship definitions");
 
-        Optional<LinkDefinition> schemaOpt = schemaManager.retrieveLinkDefinition(linkDefinition.getName());
+        Optional<LinkDefinition> schemaOpt = schemaManager.retrieveLinkDefinition(linkDefinition.getUid());
         assertTrue(schemaOpt.isPresent(), "Schema not returned");
         assertEquals(linkDefinition, schemaOpt.get());
     }

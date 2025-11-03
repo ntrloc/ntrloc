@@ -18,7 +18,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
-import java.util.Set;
 import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -65,7 +64,7 @@ class MutatorTest {
         Mutator mutator = new MutatorImpl(traversalSource);
 
         var label = "Photo";
-        var props = Set.of(new StringProperty("name", "photo1.jpg"));
+        var props = List.of(new StringProperty("name", "photo1.jpg"));
         mutator.createNode(label, props);
 
         // we've created the node, but we haven't committed the mutation, so the new node should be uncommitted and have the correct transaction ID
@@ -117,7 +116,7 @@ class MutatorTest {
         Mutator mutator = new MutatorImpl(traversalSource);
 
         var label = "Photo";
-        var props = Set.of(
+        var props = List.of(
                 new StringProperty("name", "photo1.jpg"),
                 new StringProperty("cspace", "RGB")
         );
@@ -125,7 +124,7 @@ class MutatorTest {
         mutator.commit();
 
         // add, remove, and modify properties
-        var updatedProps = Set.of(
+        var updatedProps = List.of(
                 new StringProperty("name", "photo2.jpg"),
                 new StringProperty("cspace", null),
                 new StringProperty("author", "Bill")
@@ -182,14 +181,14 @@ class MutatorTest {
         Mutator mutator = new MutatorImpl(traversalSource);
 
         var photoLabel = "Photo";
-        var photoProps = Set.of(new StringProperty("name", "photo1.jpg"));
+        var photoProps = List.of(new StringProperty("name", "photo1.jpg"));
         var photoId = mutator.createNode(photoLabel, photoProps);
 
         var photographerLabel = "Photographer";
-        var photographerProps = Set.of(new StringProperty("name", "bill"));
+        var photographerProps = List.of(new StringProperty("name", "bill"));
         var photographerId = mutator.createNode(photographerLabel, photographerProps);
 
-        mutator.createLink(photographerId, photoId, "CREATED", Set.of());
+        mutator.createLink(photographerId, photoId, "CREATED", List.of());
         mutator.checkpoint();
         mutator.prepare();
         mutator.commit();

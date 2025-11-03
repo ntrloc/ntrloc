@@ -33,11 +33,11 @@ public class OutgoingLinkCreateInputObjectTypeMapping extends OutgoingLinkAbstra
             } else {
                 Selector selector = selectorChoiceInputObjectTypeMapping.parseSelector(targetObject);
                 LinkCreateMutation mutation = new LinkCreateMutation();
-                mutation.setLinkType(targetLinkDefinition.getName());
+                mutation.setLinkType(targetLinkDefinition.getSourceLabel());
                 mutation.setSelector(selector);
 
                 if (mutationMap.containsKey(PROPERTIES_FIELD_NAME)) {
-                    List<? extends Property> properties = propertiesMapping.mapProperties((Map<String, Object>) mutationMap.get(PROPERTIES_FIELD_NAME));
+                    List<Property> properties = propertiesMapping.mapProperties((Map<String, Object>) mutationMap.get(PROPERTIES_FIELD_NAME));
                     mutation.setProperties(properties);
                 }
 

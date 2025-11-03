@@ -3,21 +3,22 @@ package org.ntrloc.graph.db.language.mutation;
 public class LinkMutationResponse {
 
     MutationType type;
-    String linkId;
+    String linkType;
+    String linkid;
     String fromId;
     String toId;
-    String linkType;
+
 
     public LinkMutationResponse() {
         // no-op
     }
 
-    public LinkMutationResponse(MutationType type, String linkId, String fromId, String toId, String linkType) {
+    public LinkMutationResponse(MutationType type, String linkType, String linkId, String fromId, String toId) {
         this.type = type;
-        this.linkId = linkId;
+        this.linkType = linkType;
+        this.linkid = linkId;
         this.fromId = fromId;
         this.toId = toId;
-        this.linkType = linkType;
     }
 
     public MutationType getType() {
@@ -28,12 +29,20 @@ public class LinkMutationResponse {
         this.type = type;
     }
 
-    public String getLinkId() {
-        return linkId;
+    public String getLinkType() {
+        return linkType;
     }
 
-    public void setLinkId(String linkId) {
-        this.linkId = linkId;
+    public void setLinkType(String linkType) {
+        this.linkType = linkType;
+    }
+
+    public String getLinkid() {
+        return linkid;
+    }
+
+    public void setLinkid(String linkid) {
+        this.linkid = linkid;
     }
 
     public String getFromId() {
@@ -50,13 +59,5 @@ public class LinkMutationResponse {
 
     public void setToId(String toId) {
         this.toId = toId;
-    }
-
-    public String getLinkType() {
-        return linkType;
-    }
-
-    public void setLinkType(String linkType) {
-        this.linkType = linkType;
     }
 }

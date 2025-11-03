@@ -7,6 +7,8 @@ import graphql.language.Selection;
 import graphql.language.TypeName;
 import org.apache.commons.text.CaseUtils;
 import org.apache.tinkerpop.gremlin.structure.Direction;
+import org.ntrloc.graph.db.language.projection.IncomingLinkProjection;
+import org.ntrloc.graph.db.language.projection.LinkProjection;
 import org.ntrloc.graph.db.language.projection.LinkProjectionSpec;
 import org.ntrloc.graph.db.schema.LinkDefinition;
 import org.ntrloc.graph.graphql.mapping.ObjectTypeProducer;
@@ -39,6 +41,10 @@ public class ItemIncomingLinkObjectTypeMapping extends ItemLinkObjectTypeMapping
     @Override
     void registerRelatedItemType(Map<String, ItemObjectTypeMapping> mappings) {
         this.relatedItemObjectTypeMapping = mappings.get(linkDefinition.getSourceItemType());
+    }
+
+    public String getTargetLabel() {
+        return linkDefinition.getTargetLabel();
     }
 
     @Override
@@ -82,7 +88,7 @@ public class ItemIncomingLinkObjectTypeMapping extends ItemLinkObjectTypeMapping
     LinkProjectionSpec parseLinkProjectionSpec(Field field) {
         List<Selection> selections = field.getSelectionSet().getSelections();
         List<Field> selectionFields = selections.stream().filter(s -> s instanceof Field).map(s -> (Field) s).toList();
-        LinkProjectionSpec spec = new LinkProjectionSpec(linkDefinition.getName(), Direction.IN, linkDefinition.getSourceItemType());
+        LinkProjectionSpec spec = new LinkProjectionSpec(linkDefinition.getTargetLabel(), Direction.IN);
 
         Optional<Field> propertiesField = selectionFields.stream().filter(f -> f.getName().equals(propertiesFieldName)).findFirst();
         if (propertiesField.isPresent()) {
@@ -97,5 +103,19 @@ public class ItemIncomingLinkObjectTypeMapping extends ItemLinkObjectTypeMapping
         }
 
         return spec;
+    }
+
+    @Override
+    List<LinkProjection> translateLinkProjections(List<LinkProjection> projections) {
+        return projections.stream().map(projection -> {
+            if (projection instanceof IncomingLinkProjection incoming) {
+                projection.setLinkType(linkDefinition.getTargetLabel());
+                incoming.setSource(relatedItemObjectTypeMapping.translateItemProjection(incoming.getSource()));
+                propertiesObjectTypeMapping.translateLinkProjectionProperties(projection);
+                return projection;
+            } else {
+                throw new IllegalArgumentException("Unsupported projection type: " + projection.getClass());
+            }
+        }).toList();
     }
 }

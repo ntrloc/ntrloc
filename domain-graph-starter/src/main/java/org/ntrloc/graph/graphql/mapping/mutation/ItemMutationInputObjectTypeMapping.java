@@ -89,10 +89,10 @@ public class ItemMutationInputObjectTypeMapping implements InputObjectTypeProduc
 
             // link properties type (PhotographerCreatedPhotoLinkProperties)
 
-            LOG.info("Mapping outgoing relationship {} from {} to {}", relationshipDefinition.getName(), graphQlTypeName, targetMapping.getGraphQlTypeName());
+            LOG.info("Mapping outgoing relationship {} from {} to {}", relationshipDefinition.getUid(), graphQlTypeName, targetMapping.getGraphQlTypeName());
             LinkPropertiesInputObjectTypeMapping relationshipPropertiesInputTypeMapping = new LinkPropertiesInputObjectTypeMapping(relationshipDefinition);
 
-            LOG.info("Got properties mapping {} for relationship {}", relationshipPropertiesInputTypeMapping.getGraphQlTypeName(), relationshipDefinition.getName());
+            LOG.info("Got properties mapping {} for relationship {}", relationshipPropertiesInputTypeMapping.getGraphQlTypeName(), relationshipDefinition.getUid());
 
             // link create type (PhotographerCreatedPhotoLinkCreateInput)
             OutgoingLinkCreateInputObjectTypeMapping relationshipCreateType = new OutgoingLinkCreateInputObjectTypeMapping(relationshipDefinition, relationshipPropertiesInputTypeMapping, matcherChoiceInputTypeMapping);
@@ -126,10 +126,10 @@ public class ItemMutationInputObjectTypeMapping implements InputObjectTypeProduc
 
             // link properties type (PhotographerCreatedPhotoLinkProperties)
 
-            LOG.info("Mapping incomgin relationship {} from {} to {}", relationshipDefinition.getName(), graphQlTypeName, targetMapping.getGraphQlTypeName());
+            LOG.info("Mapping incomgin relationship {} from {} to {}", relationshipDefinition.getUid(), graphQlTypeName, targetMapping.getGraphQlTypeName());
             LinkPropertiesInputObjectTypeMapping relationshipPropertiesInputTypeMapping = new LinkPropertiesInputObjectTypeMapping(relationshipDefinition);
 
-            LOG.info("Got properties mapping {} for relationship {}", relationshipPropertiesInputTypeMapping.getGraphQlTypeName(), relationshipDefinition.getName());
+            LOG.info("Got properties mapping {} for relationship {}", relationshipPropertiesInputTypeMapping.getGraphQlTypeName(), relationshipDefinition.getUid());
 
             // link create type (PhotographerCreatedPhotoLinkCreateInput)
             IncomingLinkCreateInputObjectTypeMapping relationshipCreateType = new IncomingLinkCreateInputObjectTypeMapping(relationshipDefinition, relationshipPropertiesInputTypeMapping, matcherChoiceInputTypeMapping);
@@ -192,7 +192,7 @@ public class ItemMutationInputObjectTypeMapping implements InputObjectTypeProduc
             ItemMutation mutation;
             if (objectValue.containsKey(CREATE_MAPPING_KEY)) {
                 var create = createInputTypeMapping.parseCreateMutation(objectValue.get(CREATE_MAPPING_KEY));
-                create.setEntityType(itemDefinition.getName());
+                create.setItemType(itemDefinition.getName());
                 mutation = create;
             } else {
                 throw new IllegalArgumentException("Cannot update an entity-level mutation");

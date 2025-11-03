@@ -6,8 +6,6 @@ public abstract class SchemaDefinition {
 
     String uid;
 
-    String name;
-
     String description;
 
     public String getUid() {
@@ -18,13 +16,7 @@ public abstract class SchemaDefinition {
         this.uid = uid;
     }
 
-    public String getName() {
-        return name;
-    }
 
-    public void setName(String name) {
-        this.name = name;
-    }
 
     public String getDescription() {
         return description;
@@ -36,13 +28,12 @@ public abstract class SchemaDefinition {
 
     @Override
     public boolean equals(Object o) {
-        if (this == o) return true;
-        if (!(o instanceof SchemaDefinition schema)) return false;
-        return Objects.equals(name, schema.name);
+        if (!(o instanceof SchemaDefinition that)) return false;
+        return Objects.equals(uid, that.uid);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hashCode(name);
+        return Objects.hashCode(uid);
     }
 }

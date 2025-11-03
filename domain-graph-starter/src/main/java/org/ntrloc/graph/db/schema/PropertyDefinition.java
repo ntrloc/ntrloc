@@ -5,6 +5,8 @@ import java.util.StringJoiner;
 
 public class PropertyDefinition extends SchemaDefinition {
 
+    String name;
+
     PropertyType type;
 
     /**
@@ -26,6 +28,14 @@ public class PropertyDefinition extends SchemaDefinition {
         this.type = type;
         this.description = description;
         this.versionOnChange = versionOnChange;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
     }
 
     public PropertyType getType() {

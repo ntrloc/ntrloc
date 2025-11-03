@@ -14,6 +14,7 @@ import org.ntrloc.graph.db.language.projection.ItemProjection;
 import org.ntrloc.graph.db.language.projection.ItemProjectionSpec;
 import org.ntrloc.graph.db.language.projection.LinkProjection;
 import org.ntrloc.graph.db.language.projection.LinkProjectionSpec;
+import org.ntrloc.graph.db.language.projection.LinksProjectionSpec;
 import org.ntrloc.graph.db.language.projection.OutgoingLinkProjection;
 import org.ntrloc.graph.db.language.projection.SelectableItemProjectionSpec;
 import org.ntrloc.graph.db.language.projection.SpecificLinksProjectionSpec;
@@ -34,11 +35,10 @@ import org.springframework.stereotype.Component;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.TreeMap;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import static org.ntrloc.graph.db.LabelConstants.NODE_PROPERTY_EDGE_LABEL;
@@ -63,8 +63,9 @@ public class Projector {
         this.traversalSource = traversalSource;
     }
 
-
     public List<ItemProjection> project(SelectableItemProjectionSpec spec) {
+        traversalSource.tx().close();
+        traversalSource.tx().begin();
         return project(spec, null);
     }
 
@@ -124,29 +125,8 @@ public class Projector {
             projectionTraversals.put("nodeProperties", __.outE(NODE_PROPERTY_EDGE_LABEL).has(NODE_PROPERTY_NAME_PROPERTY, P.within(props)).group().by(__.values(NODE_PROPERTY_NAME_PROPERTY)).by(__.inV().elementMap()));
         }
 
-        switch (spec.getLinks()) {
-            case null -> {
-                // don't retrieve links if none were requested
-            }
-            case SpecificLinksProjectionSpec specificLinks -> {
-                for (Map.Entry<String, LinkProjectionSpec> entry : specificLinks.getLinks().entrySet()) {
-                    String linkAlias = entry.getKey();
-                    LinkProjectionSpec linkSpec = entry.getValue();
-                    String otherNodeName = linkSpec.getRelatedItemType();
-                    var linkTraversal = linkSpec.getDirection().equals(Direction.IN) ?
-                            __.in(getLinkPropertyOutEdgeName(linkSpec.getLinkName()))
-                                    .where(__.in(getLinkPropertyInEdgeName(linkSpec.getLinkName())).has(PropertyConstants.ITEM_TYPE_PROPERTY, otherNodeName))
-                            :
-                            __.out(getLinkPropertyInEdgeName(linkSpec.getLinkName()))
-                                    .where(__.out(getLinkPropertyOutEdgeName(linkSpec.getLinkName())).has(PropertyConstants.ITEM_TYPE_PROPERTY, otherNodeName));
-                    projectionTraversals.put(linkAlias, projectLinks(linkTraversal, linkSpec, binaryDownloadUri));
-                }
-            }
-            case AllLinksProjectionSpec allLinksSpec -> {
-                projectionTraversals.put("allOutNodes", projectLinks(__.out(), new LinkProjectionSpec(null, Direction.OUT, null), binaryDownloadUri));
-                projectionTraversals.put("allInNodes", projectLinks(__.in(), new LinkProjectionSpec(null, Direction.IN, null), binaryDownloadUri));
-            }
-            default -> { throw new RuntimeException("Unrecognized links spec: " + spec.getLinks()); }
+        if (spec.getLinks() != null) {
+            projectionTraversals.put("links", projectLinks(spec.getLinks(), binaryDownloadUri));
         }
 
         List<String> projectionKeys = projectionTraversals.keySet().stream().toList();
@@ -192,111 +172,99 @@ public class Projector {
             properties.keySet().removeAll(SUPPRESSED_PROPERTIES);
             projection.setProperties(properties);
 
-            switch (spec.getLinks()) {
-                case null -> { }
-                case SpecificLinksProjectionSpec specificLinksSpec -> {
-                    Map<String, List<LinkProjection>> links = new HashMap<>();
-                    for (var entry: specificLinksSpec.getLinks().keySet()) {
-                        links.put(entry, (List<LinkProjection>) value.get(entry));
-                    }
-                    projection.setLinks(links);
-                }
-                case AllLinksProjectionSpec allLinksSpec -> {
-                    Map<String, List<LinkProjection>> links = new HashMap<>();
-                    if (value.containsKey("allOutNodes")) {
-                        List<LinkProjection> outLinks = (List<LinkProjection>) value.get("allOutNodes");
-                        Map<String, List<LinkProjection>> linksByUid = outLinks.stream().collect(Collectors.groupingBy(LinkProjection::getLinkType));
-                        links.putAll(linksByUid);
-                    }
-                    if (value.containsKey("allInNodes")) {
-                        List<LinkProjection> inLinks = (List<LinkProjection>) value.get("allInNodes");
-                        Map<String, List<LinkProjection>> linksByUid = inLinks.stream().collect(Collectors.groupingBy(LinkProjection::getLinkType));
-                        links.putAll(linksByUid);
-                    }
-                    if (!links.isEmpty()) {
-                        projection.setLinks(links);
-                    }
-                }
-                default -> { throw new  RuntimeException("Unrecognized links spec: " + spec.getLinks()); }
+            if (value.get("links") != null) {
+                List<LinkProjection> links = (List<LinkProjection>) value.get("links");
+                Map<String, List<LinkProjection>> linksMap = links.stream().collect(Collectors.groupingBy(LinkProjection::getLinkType));
+                projection.setLinks(linksMap);
             }
 
             return projection;
         });
     }
 
-    private GraphTraversal<?, List<LinkProjection>> projectLinks(GraphTraversal<?, Vertex> traversal, LinkProjectionSpec spec, URI binaryDownloadUri) {
-        Map<String, GraphTraversal<?, ?>> projectionTraversals = new TreeMap<>();
-        projectionTraversals.put(PropertyConstants.UNIQUE_ID_PROPERTY, __.values(PropertyConstants.UNIQUE_ID_PROPERTY));
-        projectionTraversals.put(PropertyConstants.LINK_TYPE_PROPERTY, __.values(PropertyConstants.LINK_TYPE_PROPERTY));
-        if (spec.getProperties() == null) {
-            projectionTraversals.put("properties", __.valueMap());
-        } else {
-            projectionTraversals.put("properties", __.valueMap(spec.getProperties().toArray(new String[0])));
-        }
+    /** Creates a traversal that will use a links projection spec to produce a */
+    private GraphTraversal<?, ArrayList<LinkProjection>> projectLinks(LinksProjectionSpec spec, URI binaryDownloadUri) {
+        // here we want to create a projection either on all links, with a default node projection,
+        // or specific links with a given node projection.
 
-        ItemProjectionSpec itemProjectionSpec = spec.getItemProjectionSpec();
-        if (itemProjectionSpec == null) {
-            itemProjectionSpec = new ItemProjectionSpec();
-        }
+        List<GraphTraversal<Vertex, Map<String, Object>>> linkTraversals = new ArrayList<>();
 
-        // add the node on the other side of the link to the projection
-        if (spec.getDirection().equals(Direction.IN)) {
-            GraphTraversal<Vertex, Vertex> sourceTraversal;
-            if (spec.getLinkName() == null) {
-                sourceTraversal = __.inE().outV();
-            } else {
-                sourceTraversal = __.inE(getLinkPropertyInEdgeName(spec.getLinkName())).outV();
-            }
-            var projectedNodes = projectItems(sourceTraversal, itemProjectionSpec, binaryDownloadUri);
-            projectionTraversals.put("source", projectedNodes);
-        } else {
-            GraphTraversal<Vertex, Vertex> targetTraversal;
-            if (spec.getLinkName() == null) {
-                targetTraversal = __.outE().inV();
-            } else {
-                targetTraversal = __.outE(getLinkPropertyOutEdgeName(spec.getLinkName())).inV();
-            }
-            var projectedNodes = projectItems(targetTraversal, itemProjectionSpec, binaryDownloadUri);
-            projectionTraversals.put("target", projectedNodes);
-        }
+        if (spec instanceof AllLinksProjectionSpec) {
+            var genericOutboundTraversal = __.out().has(LINK_TYPE_PROPERTY)
+                    .project(PropertyConstants.UNIQUE_ID_PROPERTY, "direction", "properties", "target", "linkType")
+                    .by(__.values(PropertyConstants.UNIQUE_ID_PROPERTY))
+                    .by(__.constant(Direction.OUT))
+                    .by(__.valueMap())
+                    .by(projectItems(__.out(), new ItemProjectionSpec(), binaryDownloadUri))
+                    .by(__.values(PropertyConstants.LINK_TYPE_PROPERTY));
+            var genericInboundTraversal = __.in().has(LINK_TYPE_PROPERTY)
+                    .project(PropertyConstants.UNIQUE_ID_PROPERTY, "direction", "properties", "source", "linkType")
+                    .by(__.values(PropertyConstants.UNIQUE_ID_PROPERTY))
+                    .by(__.constant(Direction.IN))
+                    .by(__.valueMap())
+                    .by(projectItems(__.in(), new ItemProjectionSpec(), binaryDownloadUri))
+                    .by(__.values(PropertyConstants.LINK_TYPE_PROPERTY));
+            linkTraversals.add(genericOutboundTraversal);
+            linkTraversals.add(genericInboundTraversal);
+        } else if (spec instanceof SpecificLinksProjectionSpec specificLinksSpec) {
+            Set<LinkProjectionSpec> linkProjectionSpecs = specificLinksSpec.getLinks();
+            List<GraphTraversal<Vertex, Map<String, Object>>> travs = linkProjectionSpecs.stream().map(linkSpec -> {
+                String linkType = linkSpec.getLinkLabel();
+                Direction direction = linkSpec.getDirection();
+                String otherNodeLabel = direction.equals(Direction.IN) ? "source" : "target";
 
-        List<String> projectionKeys = projectionTraversals.keySet().stream().toList();
-        var projectionTraversal = traversal.project(projectionKeys.get(0), projectionKeys.subList(1, projectionKeys.size()).toArray(new String[0]));
-        for (var trav: projectionTraversals.values()) {
-            projectionTraversal = projectionTraversal.by(trav);
-        }
-        var foldTraversal = projectionTraversal.fold();
-        return foldTraversal.map(inputs -> {
-            List<Map<String, Object>> inputList = inputs.get();
-            return inputList.stream().map(value -> {
-                LinkProjection linkProjection = null;
-                if (value.containsKey("source")) {
-                    IncomingLinkProjection in = new IncomingLinkProjection();
-                    in.setSource((ItemProjection) value.get("source"));
-                    linkProjection = in;
-                } else if (value.containsKey("target")) {
-                    OutgoingLinkProjection out = new OutgoingLinkProjection();
-                    out.setTarget((ItemProjection) value.get("target"));
-                    linkProjection = out;
-                } else {
-                    LOG.warn("mapped link contains no source or target node");
-                }
-                linkProjection.setLinkType((String) value.get(PropertyConstants.LINK_TYPE_PROPERTY));
-                Map<String, Object> linkProperties = (Map<String, Object>) value.get("properties");
-                linkProperties.keySet().removeAll(SUPPRESSED_PROPERTIES);
-                linkProjection.setProperties(linkProperties);
-
-                return linkProjection;
+                GraphTraversal<Vertex, Vertex> baseTraversal = direction.equals(Direction.IN) ? __.in() : __.out();
+                baseTraversal = baseTraversal.has(LINK_TYPE_PROPERTY, linkType);
+                return baseTraversal.project(PropertyConstants.UNIQUE_ID_PROPERTY, "direction", "properties", otherNodeLabel, "linkType")
+                        .by(__.values(PropertyConstants.UNIQUE_ID_PROPERTY))
+                        .by(__.constant(linkSpec.getDirection()))
+                        .by(__.valueMap())
+                        .by(projectItems(direction.equals(Direction.IN) ? __.in() : __.out(), linkSpec.getItemProjectionSpec(), binaryDownloadUri))
+                        .by(__.values(PropertyConstants.LINK_TYPE_PROPERTY));
             }).toList();
-        });
-    }
+            linkTraversals.addAll(travs);
+        } else {
+            throw new IllegalArgumentException("Unknown links spec type: " + spec);
+        }
 
-    private String getLinkPropertyInEdgeName(String linkName) {
-        return linkName + "-in";
-    }
+        GraphTraversal<Vertex, Map<String, Object>>[] travArray = linkTraversals.toArray(GraphTraversal[]::new);
+        return __.union(travArray)
+                .group()
+                .by(__.select("linkType"))
+                .by(__.fold())
+                .map(linkMapTraversal -> {
+                    Map<Object, Object> props = linkMapTraversal.get();
+                    var retList = new ArrayList<LinkProjection>();
+                    for (var entry : props.entrySet()) {
+                        String linkType = (String) entry.getKey();
+                        List<Map<String, Object>> values = (List<Map<String, Object>>) entry.getValue();
 
-    private String getLinkPropertyOutEdgeName(String linkName) {
-        return linkName + "-out";
+                        for (Map<String, Object> valueMap : values) {
+                            Direction direction = (Direction) valueMap.get("direction");
+                            if (direction == Direction.OUT) {
+                                OutgoingLinkProjection linkProjection = new OutgoingLinkProjection();
+                                linkProjection.setId((String) valueMap.get(UNIQUE_ID_PROPERTY));
+                                linkProjection.setLinkType(linkType);
+                                Map<String, Object> linkProperties = (Map<String, Object>) valueMap.get("properties");
+                                linkProperties.keySet().removeAll(SUPPRESSED_PROPERTIES);
+                                linkProjection.setProperties(linkProperties);
+                                linkProjection.setTarget((ItemProjection)  valueMap.get("target"));
+                                retList.add(linkProjection);
+                            } else {
+                                IncomingLinkProjection linkProjection = new IncomingLinkProjection();
+                                linkProjection.setId((String) valueMap.get(UNIQUE_ID_PROPERTY));
+                                linkProjection.setLinkType(linkType);
+                                Map<String, Object> linkProperties = (Map<String, Object>) valueMap.get("properties");
+                                linkProperties.keySet().removeAll(SUPPRESSED_PROPERTIES);
+                                linkProjection.setProperties(linkProperties);
+                                linkProjection.setSource((ItemProjection)  valueMap.get("source"));
+                                retList.add(linkProjection);
+                            }
+
+                        }
+                    }
+                    return retList;
+                });
     }
 
     private P<?> getPredicate(Predicate predicate) {

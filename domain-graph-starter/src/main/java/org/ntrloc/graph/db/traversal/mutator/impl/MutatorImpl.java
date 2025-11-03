@@ -52,7 +52,7 @@ public class MutatorImpl implements Mutator {
     }
 
     @Override
-    public String createNode(String label, Set<? extends Property> properties) {
+    public String createNode(String label, List<? extends Property> properties) {
 
         var uniqueId = UUID.randomUUID().toString();
 
@@ -104,7 +104,7 @@ public class MutatorImpl implements Mutator {
     }
 
     @Override
-    public void updateNode(String uniqueId, Set<? extends Property> properties) {
+    public void updateNode(String uniqueId, List<? extends Property> properties) {
 
         String label = null;
 
@@ -182,7 +182,7 @@ public class MutatorImpl implements Mutator {
     }
 
     @Override
-    public String createLink(String fromItemId, String toItemId, String relationshipName, Set<? extends Property> properties) {
+    public String createLink(String fromItemId, String toItemId, String relationshipName, List<? extends Property> properties) {
         var uniqueId = UUID.randomUUID().toString();
 
         var traversal = traversalSource

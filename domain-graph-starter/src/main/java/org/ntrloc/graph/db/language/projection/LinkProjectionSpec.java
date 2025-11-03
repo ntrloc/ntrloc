@@ -3,46 +3,41 @@ package org.ntrloc.graph.db.language.projection;
 import org.apache.tinkerpop.gremlin.structure.Direction;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.StringJoiner;
 
 public class LinkProjectionSpec {
 
-    private String linkName;
+    private String linkLabel;
     private Direction direction;
-    private String relatedItemType;
     private List<String> properties;
     private ItemProjectionSpec itemProjectionSpec;
 
     /**
      * Specifies the information to return for a link between items in the graph.
-     * @param linkName the name of the link
+     * @param linkLabel the label of the link
      * @param direction the direction of the link
-     * @param relatedItemType the label of the item on the "other side" of the link
      */
-    public LinkProjectionSpec(String linkName, Direction direction, String relatedItemType) {
-        this.linkName = linkName;
+    public LinkProjectionSpec(String linkLabel, Direction direction) {
+        this.linkLabel = linkLabel;
         this.direction = direction;
-        this.relatedItemType = relatedItemType;
     }
 
-    public String getLinkName() {
-        return linkName;
+    public LinkProjectionSpec(String linkLabel, Direction direction, ItemProjectionSpec itemProjectionSpec) {
+        this(linkLabel, direction);
+        this.itemProjectionSpec = itemProjectionSpec;
     }
 
-    public void setLinkName(String linkName) {
-        this.linkName = linkName;
+    public String getLinkLabel() {
+        return linkLabel;
+    }
+
+    public void setLinkLabel(String linkLabel) {
+        this.linkLabel = linkLabel;
     }
 
     public Direction getDirection() {
         return direction;
-    }
-
-    public void setRelatedItemType(String relatedItemType) {
-        this.relatedItemType = relatedItemType;
-    }
-
-    public String getRelatedItemType() {
-        return relatedItemType;
     }
 
     public LinkProjectionSpec properties(List<String> properties) {
@@ -68,15 +63,29 @@ public class LinkProjectionSpec {
     }
 
     public ItemProjectionSpec getItemProjectionSpec() {
-        return itemProjectionSpec;
+        if (itemProjectionSpec == null) {
+            return new ItemProjectionSpec();
+        } else {
+            return itemProjectionSpec;
+        }
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (!(o instanceof LinkProjectionSpec that)) return false;
+        return Objects.equals(linkLabel, that.linkLabel) && direction == that.direction;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(linkLabel, direction);
     }
 
     @Override
     public String toString() {
         return new StringJoiner(", ", LinkProjectionSpec.class.getSimpleName() + "[", "]")
-                .add("linkName='" + linkName + "'")
+                .add("linkLabel='" + linkLabel + "'")
                 .add("direction=" + direction)
-                .add("relatedItemType='" + relatedItemType + "'")
                 .add("properties=" + properties)
                 .add("itemProjectionSpec=" + itemProjectionSpec)
                 .toString();
