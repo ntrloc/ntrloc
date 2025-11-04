@@ -9,7 +9,7 @@ import org.apache.commons.text.CaseUtils;
 import org.ntrloc.graph.db.language.projection.ItemProjection;
 import org.ntrloc.graph.db.language.projection.ItemProjectionSpec;
 import org.ntrloc.graph.db.language.projection.SelectableItemProjectionSpec;
-import org.ntrloc.graph.db.language.selectors.LabelSelector;
+import org.ntrloc.graph.db.language.selectors.ItemTypeSelector;
 import org.ntrloc.graph.db.schema.ItemDefinition;
 import org.ntrloc.graph.db.schema.LinkDefinition;
 import org.ntrloc.graph.graphql.mapping.ObjectTypeProducer;
@@ -129,7 +129,7 @@ public class ItemObjectTypeMapping implements ObjectTypeProducer {
     }
 
     SelectableItemProjectionSpec parseSelectableQueryField(Field field) {
-        var spec = new SelectableItemProjectionSpec(new LabelSelector(itemDefinition.getName()));
+        var spec = new SelectableItemProjectionSpec(new ItemTypeSelector(itemDefinition.getName()));
         populateSpec(spec, field);
         return spec;
     }

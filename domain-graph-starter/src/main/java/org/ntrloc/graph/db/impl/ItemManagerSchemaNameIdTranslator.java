@@ -22,7 +22,7 @@ import org.ntrloc.graph.db.language.projection.OutgoingLinkProjection;
 import org.ntrloc.graph.db.language.projection.SelectableItemProjectionSpec;
 import org.ntrloc.graph.db.language.projection.SpecificLinksProjectionSpec;
 import org.ntrloc.graph.db.language.selectors.ItemSelector;
-import org.ntrloc.graph.db.language.selectors.LabelSelector;
+import org.ntrloc.graph.db.language.selectors.ItemTypeSelector;
 import org.ntrloc.graph.db.schema.ItemDefinition;
 import org.ntrloc.graph.db.schema.LinkDefinition;
 import org.ntrloc.graph.db.schema.PropertyDefinition;
@@ -103,8 +103,8 @@ public class ItemManagerSchemaNameIdTranslator {
     /** Converts the type identifiers and properties of an item projection spec to private type IDs. */
     public SelectableItemProjectionSpec convertPublicIdentifiersIoPrivate(SelectableItemProjectionSpec itemProjectionSpec) {
         ItemSelector selector = itemProjectionSpec.getItemSelector();
-        if (selector instanceof LabelSelector labelSelector) {
-            String itemType = labelSelector.getLabel();
+        if (selector instanceof ItemTypeSelector itemTypeSelector) {
+            String itemType = itemTypeSelector.getItemType();
             ItemDefinitionPublicToPrivateMapping mapping = itemDefinitionPublicToPrivateMapping.get(itemType);
             mapping.convertProjection(itemProjectionSpec, itemTypeName -> itemDefinitionPublicToPrivateMapping.get(itemTypeName));
         } else {
@@ -216,8 +216,8 @@ public class ItemManagerSchemaNameIdTranslator {
 
         void convertProjection(SelectableItemProjectionSpec itemProjectionSpec, Function<String, ItemDefinitionPublicToPrivateMapping> mappingLookupFunction) {
             String itemType = itemDefinition.getName();
-            LabelSelector newLabelSelector = new LabelSelector(itemDefinition.getUid());
-            itemProjectionSpec.setItemSelector(newLabelSelector);
+            ItemTypeSelector newItemTypeSelector = new ItemTypeSelector(itemDefinition.getUid());
+            itemProjectionSpec.setItemSelector(newItemTypeSelector);
 
             convertItemProjection(itemProjectionSpec, itemType, mappingLookupFunction);
         }

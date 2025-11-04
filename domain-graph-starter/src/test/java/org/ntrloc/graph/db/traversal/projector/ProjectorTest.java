@@ -13,7 +13,7 @@ import org.ntrloc.graph.db.language.projection.LinkProjectionSpec;
 import org.ntrloc.graph.db.language.projection.SelectableItemProjectionSpec;
 import org.ntrloc.graph.db.language.projection.SpecificLinksProjectionSpec;
 import org.ntrloc.graph.db.language.selectors.HasPropertyValueSelector;
-import org.ntrloc.graph.db.language.selectors.LabelSelector;
+import org.ntrloc.graph.db.language.selectors.ItemTypeSelector;
 import org.ntrloc.graph.db.language.selectors.predicate.EqualsPredicate;
 import org.ntrloc.graph.db.language.selectors.predicate.GreaterThanPredicate;
 import org.ntrloc.graph.db.language.selectors.predicate.LessThanPredicate;
@@ -147,7 +147,7 @@ class ProjectorTest {
     @DisplayName("should execute a simple item projection")
     void testSimpleItemProjection() {
         Projector projector = new Projector(traversalSource);
-        SelectableItemProjectionSpec spec = new SelectableItemProjectionSpec(new LabelSelector("Photo"))
+        SelectableItemProjectionSpec spec = new SelectableItemProjectionSpec(new ItemTypeSelector("Photo"))
                 .properties(List.of("photoName", "photoColorspace"));
         Iterable<ItemProjection> projections = projector.project(spec);
         List<ItemProjection> list = StreamSupport.stream(projections.spliterator(), false).toList();
@@ -168,7 +168,7 @@ class ProjectorTest {
                 new LinkProjectionSpec("photoCreatedId", Direction.OUT).properties(List.of("date")),
                 new LinkProjectionSpec("agencyEmploysId", Direction.IN)
         ));
-        SelectableItemProjectionSpec spec = new SelectableItemProjectionSpec(new LabelSelector("Photographer"))
+        SelectableItemProjectionSpec spec = new SelectableItemProjectionSpec(new ItemTypeSelector("Photographer"))
                 .properties(List.of("photographerName"))
                 .link(linksSpec);
         Iterable<ItemProjection> projections = projector.project(spec);
@@ -182,7 +182,7 @@ class ProjectorTest {
     @DisplayName("should project nodes that have a property value (equals)")
     void testProjectNodesByEquals() {
         Projector projector = new Projector(traversalSource);
-        SelectableItemProjectionSpec spec = new SelectableItemProjectionSpec(new LabelSelector("Photographer"))
+        SelectableItemProjectionSpec spec = new SelectableItemProjectionSpec(new ItemTypeSelector("Photographer"))
                 .filter(HasPropertyValueSelector.of("photographerName", EqualsPredicate.of("Jack")))
                 .properties(List.of("photographerName"));
         Iterable<ItemProjection> projections = projector.project(spec);
@@ -196,7 +196,7 @@ class ProjectorTest {
     @DisplayName("should project nodes that have a property value (not equals)")
     void testProjectNodesByNotEquals() {
         Projector projector = new Projector(traversalSource);
-        SelectableItemProjectionSpec spec = new SelectableItemProjectionSpec(new LabelSelector("Photographer"))
+        SelectableItemProjectionSpec spec = new SelectableItemProjectionSpec(new ItemTypeSelector("Photographer"))
                 .filter(HasPropertyValueSelector.of("photographerName", NotEqualsPredicate.of("Jack")))
                 .properties(List.of("photographerName"));
         Iterable<ItemProjection> projections = projector.project(spec);
@@ -210,7 +210,7 @@ class ProjectorTest {
     @DisplayName("should project nodes that have a property value (less than)")
     void testProjectNodesByLessThan() {
         Projector projector = new Projector(traversalSource);
-        SelectableItemProjectionSpec spec = new SelectableItemProjectionSpec(new LabelSelector("Photographer"))
+        SelectableItemProjectionSpec spec = new SelectableItemProjectionSpec(new ItemTypeSelector("Photographer"))
                 .filter(HasPropertyValueSelector.of("photographerAge", LessThanPredicate.of(50)))
                 .properties(List.of("photographerName"));
         Iterable<ItemProjection> projections = projector.project(spec);
@@ -224,7 +224,7 @@ class ProjectorTest {
     @DisplayName("should project nodes that have a property value (greater than)")
     void testProjectNodesByGreaterThan() {
         Projector projector = new Projector(traversalSource);
-        SelectableItemProjectionSpec spec = new SelectableItemProjectionSpec(new LabelSelector("Photographer"))
+        SelectableItemProjectionSpec spec = new SelectableItemProjectionSpec(new ItemTypeSelector("Photographer"))
                 .filter(HasPropertyValueSelector.of("photographerAge", GreaterThanPredicate.of(50)))
                 .properties(List.of("photographerName"));
         Iterable<ItemProjection> projections = projector.project(spec);
@@ -238,7 +238,7 @@ class ProjectorTest {
     @DisplayName("should project nodes that have a property value (string within)")
     void testProjectNodesByStringWithin() {
         Projector projector = new Projector(traversalSource);
-        SelectableItemProjectionSpec spec = new SelectableItemProjectionSpec(new LabelSelector("Photographer"))
+        SelectableItemProjectionSpec spec = new SelectableItemProjectionSpec(new ItemTypeSelector("Photographer"))
                 .filter(HasPropertyValueSelector.of("photographerName", WithinPredicate.on(List.of("Bob", "Bill"))))
                 .properties(List.of("photographerName"));
         Iterable<ItemProjection> projections = projector.project(spec);
@@ -252,7 +252,7 @@ class ProjectorTest {
     @DisplayName("should project nodes that have a property value (number within)")
     void testProjectNodesByNumberWithin() {
         Projector projector = new Projector(traversalSource);
-        SelectableItemProjectionSpec spec = new SelectableItemProjectionSpec(new LabelSelector("Photographer"))
+        SelectableItemProjectionSpec spec = new SelectableItemProjectionSpec(new ItemTypeSelector("Photographer"))
                 .filter(HasPropertyValueSelector.of("photographerAge", WithinPredicate.on(List.of(55, 22))))
                 .properties(List.of("photographerName", "photographerAge"));
         Iterable<ItemProjection> projections = projector.project(spec);
@@ -266,7 +266,7 @@ class ProjectorTest {
     @DisplayName("should project nodes that have a property value (string without)")
     void testProjectNodesByStringWithout() {
         Projector projector = new Projector(traversalSource);
-        SelectableItemProjectionSpec spec = new SelectableItemProjectionSpec(new LabelSelector("Photographer"))
+        SelectableItemProjectionSpec spec = new SelectableItemProjectionSpec(new ItemTypeSelector("Photographer"))
                 .filter(HasPropertyValueSelector.of("photographerName", WithoutPredicate.on(List.of("Bob", "Bill"))))
                 .properties(List.of("photographerName"));
         Iterable<ItemProjection> projections = projector.project(spec);
@@ -280,7 +280,7 @@ class ProjectorTest {
     @DisplayName("should project nodes that have a property value (number without)")
     void testProjectNodesByNumberWithout() {
         Projector projector = new Projector(traversalSource);
-        SelectableItemProjectionSpec spec = new SelectableItemProjectionSpec(new LabelSelector("Photographer"))
+        SelectableItemProjectionSpec spec = new SelectableItemProjectionSpec(new ItemTypeSelector("Photographer"))
                 .filter(HasPropertyValueSelector.of("photographerAge", WithoutPredicate.on(List.of(55, 22))))
                 .properties(List.of("photographerName", "photographerAge"));
         Iterable<ItemProjection> projections = projector.project(spec);

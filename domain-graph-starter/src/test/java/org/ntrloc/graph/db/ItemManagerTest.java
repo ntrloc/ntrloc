@@ -25,7 +25,7 @@ import org.ntrloc.graph.db.language.projection.OutgoingLinkProjection;
 import org.ntrloc.graph.db.language.projection.SelectableItemProjectionSpec;
 import org.ntrloc.graph.db.language.projection.SpecificLinksProjectionSpec;
 import org.ntrloc.graph.db.language.selectors.IdSelector;
-import org.ntrloc.graph.db.language.selectors.LabelSelector;
+import org.ntrloc.graph.db.language.selectors.ItemTypeSelector;
 import org.ntrloc.graph.db.schema.Cardinality;
 import org.ntrloc.graph.db.schema.ItemDefinition;
 import org.ntrloc.graph.db.schema.LinkDefinition;
@@ -211,7 +211,7 @@ class ItemManagerTest {
         assertTrue(props.containsKey(UNIQUE_ID_PROPERTY), "uid not set");
         assertTrue(props.containsKey(ITEM_TYPE_PROPERTY), "type not set");
 
-        SelectableItemProjectionSpec itemProjectionSpec = new SelectableItemProjectionSpec(new LabelSelector("Photo"));
+        SelectableItemProjectionSpec itemProjectionSpec = new SelectableItemProjectionSpec(new ItemTypeSelector("Photo"));
         List<ItemProjection> projections = itemManager.executeProjection(itemProjectionSpec);
         assertEquals(1, projections.size());
         ItemProjection projection = projections.get(0);
@@ -265,7 +265,7 @@ class ItemManagerTest {
         assertEquals(2, res.getItemMutationResponses().size());
         assertEquals(1, res.getLinkMutationResponses().size());
 
-        SelectableItemProjectionSpec itemProjectionSpec = new SelectableItemProjectionSpec(new LabelSelector("Photographer"));
+        SelectableItemProjectionSpec itemProjectionSpec = new SelectableItemProjectionSpec(new ItemTypeSelector("Photographer"));
         itemProjectionSpec.setLinks(new SpecificLinksProjectionSpec(Set.of(new LinkProjectionSpec("created", Direction.OUT, new ItemProjectionSpec().properties(List.of("name"))))));
         List<ItemProjection> projections = itemManager.executeProjection(itemProjectionSpec);
         assertEquals(1, projections.size());

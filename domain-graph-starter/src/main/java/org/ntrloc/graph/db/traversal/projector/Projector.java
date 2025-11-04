@@ -20,7 +20,7 @@ import org.ntrloc.graph.db.language.projection.SelectableItemProjectionSpec;
 import org.ntrloc.graph.db.language.projection.SpecificLinksProjectionSpec;
 import org.ntrloc.graph.db.language.selectors.HasPropertyValueSelector;
 import org.ntrloc.graph.db.language.selectors.IdSelector;
-import org.ntrloc.graph.db.language.selectors.LabelSelector;
+import org.ntrloc.graph.db.language.selectors.ItemTypeSelector;
 import org.ntrloc.graph.db.language.selectors.predicate.EqualsPredicate;
 import org.ntrloc.graph.db.language.selectors.predicate.GreaterThanPredicate;
 import org.ntrloc.graph.db.language.selectors.predicate.LessThanPredicate;
@@ -86,7 +86,7 @@ public class Projector {
     /** Returns a new traverser that adds a node selection to the given traversal. */
     private GraphTraversal<?, Vertex> select(GraphTraversal<?, Vertex> traversal, SelectableItemProjectionSpec spec) {
         var retTraversal = switch (spec.getItemSelector()) {
-            case LabelSelector labelSelector -> traversal.has(PropertyConstants.ITEM_TYPE_PROPERTY, labelSelector.getLabel());
+            case ItemTypeSelector labelSelector -> traversal.has(PropertyConstants.ITEM_TYPE_PROPERTY, labelSelector.getItemType());
             case IdSelector idSelector -> traversal.has(PropertyConstants.UNIQUE_ID_PROPERTY, idSelector.getId());
             default -> throw new IllegalArgumentException("Invalid item selector " + spec.getItemSelector());
         };
