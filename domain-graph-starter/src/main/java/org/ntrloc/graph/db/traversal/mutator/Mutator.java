@@ -7,7 +7,7 @@ import java.util.List;
 public interface Mutator {
 
     String createNode(String label, List<? extends Property> properties);
-    void updateNode(String uniqueId, List<? extends Property> properties);
+    String updateNode(String uniqueId, List<? extends Property> properties);
     String deleteNode(String uniqueId);
 
     String createLink(String fromItemId, String toItemId, String relationshipName, List<? extends Property> properties);

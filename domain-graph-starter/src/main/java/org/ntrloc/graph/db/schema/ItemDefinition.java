@@ -56,8 +56,8 @@ public class ItemDefinition extends SchemaDefinition implements DefinitionWithPr
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
-        if (!(o instanceof ItemDefinition schema)) return false;
-        return Objects.equals(properties, schema.properties) && Objects.equals(propertyGroupDefinitions, schema.propertyGroupDefinitions);
+        if (!(o instanceof ItemDefinition otherDefinition)) return false;
+        return Objects.equals(name, otherDefinition.getName()) && Objects.equals(properties, otherDefinition.properties) && Objects.equals(propertyGroupDefinitions, otherDefinition.propertyGroupDefinitions);
     }
 
     @Override

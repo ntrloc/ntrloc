@@ -41,7 +41,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
- * Provides methods for fast translations between "public" representations of schema definitions to their internal IDs and back.
+ * Provides translations between public representations of schema definitions and their internal IDs.
  */
 @Component
 public class ItemManagerSchemaNameIdTranslator {
@@ -79,7 +79,7 @@ public class ItemManagerSchemaNameIdTranslator {
         return mutation;
     }
 
-    /** Converts the type private type IDs of a mutation response to public labels.  */
+    /** Converts the type private type IDs of a mutation response to public labels. */
     public ItemMutationResponse convertPrivateIdentifiersIoPublic(ItemMutationResponse response) {
         ItemDefinitionPrivateToPublicMapping mapping = itemDefinitionPrivateToPublicMapping.get(response.getItemType());
         if (mapping == null) {

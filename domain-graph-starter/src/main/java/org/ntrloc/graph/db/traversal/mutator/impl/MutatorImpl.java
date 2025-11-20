@@ -2,6 +2,7 @@ package org.ntrloc.graph.db.traversal.mutator.impl;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.tinkerpop.gremlin.process.traversal.P;
+import org.apache.tinkerpop.gremlin.process.traversal.TextP;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversal;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversalSource;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.__;
@@ -104,7 +105,7 @@ public class MutatorImpl implements Mutator {
     }
 
     @Override
-    public void updateNode(String uniqueId, List<? extends Property> properties) {
+    public String updateNode(String uniqueId, List<? extends Property> properties) {
 
         String label = null;
 
@@ -152,7 +153,8 @@ public class MutatorImpl implements Mutator {
         }
 
         traversal = traversal.addE(LabelConstants.IS_REVISION_OF_LABEL).from(revisionAlias).to(updateNodeAlias).outV();
-        traversal.iterate();
+        var retTraversal = traversal.select(updateNodeAlias).elementMap(ITEM_TYPE_PROPERTY).map(trav -> (String)trav.get().get(ITEM_TYPE_PROPERTY));
+        return retTraversal.next();
     }
 
     @Override
@@ -305,13 +307,51 @@ public class MutatorImpl implements Mutator {
                         }
                     }
 
-                    traversal = traversal.addV(currentNode.getLabel()).as(newLabel)
+                    appliedProperties.remove(PropertyConstants.REVISION_TYPE_PROPERTY);
+
+                    var newNodeTraversal = traversal.addV(currentNode.getLabel()).as(newLabel)
                             .property(appliedProperties)
                             .property(PropertyConstants.VERSION_PROPERTY, (int) currentNode.getProperties().getOrDefault(PropertyConstants.VERSION_PROPERTY, 1) + 1)
                             .property(PropertyConstants.STATUS_PROPERTY, ItemStatus.UNCOMMITTED_UPDATE.toString())
                             .addE(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).from(newLabel).to(currentLabel).outV()
-                            .V(revision.getId()).drop()
-                            .V(revision.getRevisionOf().getId());
+                            //.V(revision.getId()).drop()
+                            .select(newLabel)
+                            .id();
+                    Object newNodeId = newNodeTraversal.next();
+
+                    // propagate the edges from the prior version to the new version, excluding edges that are named "system:*".
+                    // we don't want to copy links like system:has-previous-version from the old version of the item to the new version
+                    // since that would basically link the new version to itself.
+
+                    var currentNodeId = currentNode.getId();
+
+                    traversalSource.V(revision.getId()).drop().iterate();
+
+                    var outEdgeIterator = traversalSource.V(currentNodeId).outE()
+                            .not(__.hasLabel(TextP.startingWith("system")))
+                            .project("edgeLabel", "target")
+                            .by(__.label())
+                            .by(__.inV().id());
+                    while (outEdgeIterator.hasNext()) {
+                        Map<String, Object> edgeProj = outEdgeIterator.next();
+                        String edgeLabel = (String)edgeProj.get("edgeLabel");
+                        long targetId = (long)edgeProj.get("target");
+                        traversalSource.addE(edgeLabel).from(__.V(newNodeId)).to(__.V(targetId)).iterate();
+                    }
+
+                    var inEdgeIterator = traversalSource.V(currentNodeId).inE()
+                            .not(__.hasLabel(TextP.startingWith("system")))
+                            .project("edgeLabel", "source")
+                            .by(__.label())
+                            .by(__.outV().id());
+                    while (inEdgeIterator.hasNext()) {
+                        Map<String, Object> edgeProj = inEdgeIterator.next();
+                        String edgeLabel = (String)edgeProj.get("edgeLabel");
+                        long sourceId = (long)edgeProj.get("source");
+                        traversalSource.addE(edgeLabel).from(__.V(sourceId)).to(__.V(newNodeId)).iterate();
+                    }
+
+
                 } else if (revision.getType() == Revision.RevisionType.DELETE) {
                     traversal = traversal.addV(currentNode.getLabel()).as(newLabel)
                             .property(UNIQUE_ID_PROPERTY, currentNode.getProperties().get(UNIQUE_ID_PROPERTY))
@@ -321,10 +361,9 @@ public class MutatorImpl implements Mutator {
                             .addE(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).from(newLabel).to(currentLabel).outV()
                             .V(revision.getId()).drop()
                             .V(revision.getRevisionOf().getId());
+                    traversal.iterate();
                 }
             }
-
-            traversal.iterate();
 
             LOG.info("Applied {} node revisions to uncommitted nodes", revisions.size());
         }

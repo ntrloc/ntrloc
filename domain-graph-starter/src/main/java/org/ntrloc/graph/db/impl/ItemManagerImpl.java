@@ -9,6 +9,7 @@ import org.ntrloc.graph.db.language.mutation.ItemCreateMutation;
 import org.ntrloc.graph.db.language.mutation.ItemDeleteMutation;
 import org.ntrloc.graph.db.language.mutation.ItemMutation;
 import org.ntrloc.graph.db.language.mutation.ItemMutationResponse;
+import org.ntrloc.graph.db.language.mutation.ItemUpdateMutation;
 import org.ntrloc.graph.db.language.mutation.LinkCreateMutation;
 import org.ntrloc.graph.db.language.mutation.LinkMutationResponse;
 import org.ntrloc.graph.db.language.mutation.MutationRequest;
@@ -49,17 +50,17 @@ public class ItemManagerImpl implements ItemManager {
 
     private GraphTraversalSource traversalSource;
     private BinaryStorageAdapter binaryStorageAdapter;
-    private ItemManagerSchemaNameIdTranslator schemaTypeDefinitionIdCache;
+    private ItemManagerSchemaNameIdTranslator schemaNameIdTranslator;
 
     private Mutator mutator;
     private Projector projector;
 
-    public ItemManagerImpl(GraphTraversalSource traversalSource, BinaryStorageAdapter binaryStorageAdapter, ItemManagerSchemaNameIdTranslator cache, Mutator mutator, Projector projector) {
+    public ItemManagerImpl(GraphTraversalSource traversalSource, BinaryStorageAdapter binaryStorageAdapter, ItemManagerSchemaNameIdTranslator translator, Mutator mutator, Projector projector) {
         this.traversalSource = traversalSource;
         this.binaryStorageAdapter = binaryStorageAdapter;
         this.mutator = mutator;
         this.projector = projector;
-        this.schemaTypeDefinitionIdCache = cache;
+        this.schemaNameIdTranslator = translator;
     }
 
     @Override
@@ -158,10 +159,12 @@ public class ItemManagerImpl implements ItemManager {
         var response = new MutationResponse();
         mutator.begin();
 
-        List<ItemMutation> itemMutations = mutationRequest.getItemMutations().stream().map(schemaTypeDefinitionIdCache::convertPublicIdentifiersIoPrivate).toList();
+        List<ItemMutation> itemMutations = mutationRequest.getItemMutations().stream().map(schemaNameIdTranslator::convertPublicIdentifiersIoPrivate).toList();
 
         Set<ItemCreateMutation> createMutations = itemMutations.stream().filter(ItemCreateMutation.class::isInstance)
                 .map(ItemCreateMutation.class::cast).collect(Collectors.toSet());
+        Set<ItemUpdateMutation> updateMutations = itemMutations.stream().filter(ItemUpdateMutation.class::isInstance)
+                .map(ItemUpdateMutation.class::cast).collect(Collectors.toSet());
         Set<ItemDeleteMutation> deleteMutations = itemMutations.stream().filter(ItemDeleteMutation.class::isInstance)
                 .map(ItemDeleteMutation.class::cast).collect(Collectors.toSet());
 
@@ -171,6 +174,12 @@ public class ItemManagerImpl implements ItemManager {
             String createdId = mutator.createNode(createMutation.getItemType(), createMutation.getProperties());
             mutationIdMap.put(createdId, createMutation);
             ItemMutationResponse item = new ItemMutationResponse(MutationType.CREATE, createMutation.getItemType(), createdId);
+            response.addItemMutationResponse(item);
+        }
+
+        for (ItemUpdateMutation updateMutation: updateMutations) {
+            String itemType = mutator.updateNode(updateMutation.getId(), updateMutation.getProperties());
+            ItemMutationResponse item = new ItemMutationResponse(MutationType.UPDATE, itemType, updateMutation.getId());
             response.addItemMutationResponse(item);
         }
 
@@ -220,7 +229,7 @@ public class ItemManagerImpl implements ItemManager {
                     String linkId = mutator.createLink(fromId, toId, linkCreateMutation.getLinkType(), linkCreateMutation.getProperties());
 
                     LinkMutationResponse link = new LinkMutationResponse(MutationType.CREATE, linkCreateMutation.getLinkType(), linkId, fromId, toId);
-                    link = schemaTypeDefinitionIdCache.convertPrivateIdentifiersIoPublic(createMutation.getItemType(), link);
+                    link = schemaNameIdTranslator.convertPrivateIdentifiersIoPublic(createMutation.getItemType(), link);
                     response.addLinkMutationResponse(link);
                 }
             }
@@ -231,7 +240,7 @@ public class ItemManagerImpl implements ItemManager {
         mutator.prepare();
         mutator.commit();
 
-        response.getItemMutationResponses().forEach(schemaTypeDefinitionIdCache::convertPrivateIdentifiersIoPublic);
+        response.getItemMutationResponses().forEach(schemaNameIdTranslator::convertPrivateIdentifiersIoPublic);
 
         return response;
     }
@@ -245,9 +254,9 @@ public class ItemManagerImpl implements ItemManager {
 
     @Override
     public List<ItemProjection> executeProjection(SelectableItemProjectionSpec spec, URI binaryDownloadUri) {
-        SelectableItemProjectionSpec transformedSpec = schemaTypeDefinitionIdCache.convertPublicIdentifiersIoPrivate(spec);
+        SelectableItemProjectionSpec transformedSpec = schemaNameIdTranslator.convertPublicIdentifiersIoPrivate(spec);
         List<ItemProjection> projections = projector.project(transformedSpec, binaryDownloadUri);
-        return projections.stream().map(schemaTypeDefinitionIdCache::convertPrivateIdentifiersIoPublic).toList();
+        return projections.stream().map(schemaNameIdTranslator::convertPrivateIdentifiersIoPublic).toList();
     }
 
 }

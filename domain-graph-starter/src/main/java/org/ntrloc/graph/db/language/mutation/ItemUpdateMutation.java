@@ -2,18 +2,28 @@ package org.ntrloc.graph.db.language.mutation;
 
 import org.ntrloc.graph.db.language.Property;
 
+import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.stream.Collectors;
 
-public class ItemUpdateMutation extends ItemMutation implements ReferenceableItemMutation {
+public class ItemUpdateMutation extends ItemMutation implements ReferenceableItemMutation, ItemMutationWithItemType, MutationWithProperties {
 
+    private String itemType;
     private String id;
     private Map<String, Property> properties = new HashMap<>();
     private String refId;
+
+    @Override
+    public String getItemType() {
+        return itemType;
+    }
+
+    @Override
+    public void setItemType(String itemType) {
+        this.itemType = itemType;
+    }
 
     public String getId() {
         return id;
@@ -32,8 +42,8 @@ public class ItemUpdateMutation extends ItemMutation implements ReferenceableIte
         this.refId = refId;
     }
 
-    public Set<Property> getProperties() {
-        return new HashSet<>(properties.values());
+    public List<Property> getProperties() {
+        return new ArrayList<>(properties.values());
     }
 
     public void setProperties(List<? extends Property> properties) {

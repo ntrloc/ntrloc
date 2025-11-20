@@ -12,14 +12,19 @@ import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.cluster.ClusterService;
 import org.ntrloc.graph.db.impl.ItemManagerImpl;
 import org.ntrloc.graph.db.impl.ItemManagerSchemaNameIdTranslator;
+import org.ntrloc.graph.db.language.BooleanProperty;
 import org.ntrloc.graph.db.language.DateProperty;
+import org.ntrloc.graph.db.language.IntProperty;
 import org.ntrloc.graph.db.language.StringProperty;
 import org.ntrloc.graph.db.language.mutation.ItemCreateMutation;
 import org.ntrloc.graph.db.language.mutation.ItemDeleteMutation;
+import org.ntrloc.graph.db.language.mutation.ItemUpdateMutation;
 import org.ntrloc.graph.db.language.mutation.LinkCreateMutation;
 import org.ntrloc.graph.db.language.mutation.MutationRequest;
+import org.ntrloc.graph.db.language.projection.AllLinksProjectionSpec;
 import org.ntrloc.graph.db.language.projection.ItemProjection;
 import org.ntrloc.graph.db.language.projection.ItemProjectionSpec;
+import org.ntrloc.graph.db.language.projection.LinkProjection;
 import org.ntrloc.graph.db.language.projection.LinkProjectionSpec;
 import org.ntrloc.graph.db.language.projection.OutgoingLinkProjection;
 import org.ntrloc.graph.db.language.projection.SelectableItemProjectionSpec;
@@ -53,6 +58,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doReturn;
@@ -144,19 +150,37 @@ class ItemManagerTest {
         photographerDefinition.setProperties(Set.of(photographerNameDefinition));
         schemaManager.createItemDefinition(photographerDefinition);
 
-        LinkDefinition linkDefinition = new LinkDefinition();
-        linkDefinition.setSourceLabel("created");
-        linkDefinition.setTargetLabel("createdBy");
-        linkDefinition.setSourceItemType(photographerDefinition.getName());
-        linkDefinition.setTargetItemType(photoDefinition.getName());
-        linkDefinition.setSourceCardinality(new Cardinality(1, 1));
-        linkDefinition.setSourceVersionAction(LinkDefinition.VersionAction.COPY);
-        linkDefinition.setTargetCardinality(new Cardinality(0, null));
-        linkDefinition.setTargetVersionAction(LinkDefinition.VersionAction.MOVE);
-        PropertyDefinition createdDateDefinition = new PropertyDefinition("createdDate", PropertyType.DATE, "Photo date created");
-        linkDefinition.setProperties(Set.of(createdDateDefinition));
+        ItemDefinition agencyDefinition = new ItemDefinition();
+        agencyDefinition.setName("Agency");
+        PropertyDefinition agencyNameDefinition = new PropertyDefinition("name", PropertyType.STRING, "");
+        agencyDefinition.setProperties(Set.of(agencyNameDefinition));
+        schemaManager.createItemDefinition(agencyDefinition);
 
-        schemaManager.createLinkDefinition(linkDefinition);
+        LinkDefinition photographerCreatedPhotoLink = new LinkDefinition();
+        photographerCreatedPhotoLink.setSourceLabel("created");
+        photographerCreatedPhotoLink.setTargetLabel("createdBy");
+        photographerCreatedPhotoLink.setSourceItemType(photographerDefinition.getName());
+        photographerCreatedPhotoLink.setTargetItemType(photoDefinition.getName());
+        photographerCreatedPhotoLink.setSourceCardinality(new Cardinality(1, 1));
+        photographerCreatedPhotoLink.setSourceVersionAction(LinkDefinition.VersionAction.COPY);
+        photographerCreatedPhotoLink.setTargetCardinality(new Cardinality(0, null));
+        photographerCreatedPhotoLink.setTargetVersionAction(LinkDefinition.VersionAction.MOVE);
+        PropertyDefinition createdDateDefinition = new PropertyDefinition("createdDate", PropertyType.DATE, "Photo date created");
+        photographerCreatedPhotoLink.setProperties(Set.of(createdDateDefinition));
+        schemaManager.createLinkDefinition(photographerCreatedPhotoLink);
+
+        LinkDefinition agencyEmploysPhotographerLink = new LinkDefinition();
+        agencyEmploysPhotographerLink.setSourceLabel("employs");
+        agencyEmploysPhotographerLink.setTargetLabel("worksFor");
+        agencyEmploysPhotographerLink.setSourceItemType(agencyDefinition.getName());
+        agencyEmploysPhotographerLink.setTargetItemType(photographerDefinition.getName());
+        agencyEmploysPhotographerLink.setSourceCardinality(new Cardinality(1, 1));
+        agencyEmploysPhotographerLink.setSourceVersionAction(LinkDefinition.VersionAction.COPY);
+        agencyEmploysPhotographerLink.setTargetCardinality(new Cardinality(0, null));
+        agencyEmploysPhotographerLink.setTargetVersionAction(LinkDefinition.VersionAction.MOVE);
+        PropertyDefinition hiredDateDefinition = new PropertyDefinition("hireDate", PropertyType.DATE, "Photographer hire date");
+        agencyEmploysPhotographerLink.setProperties(Set.of(hiredDateDefinition));
+        schemaManager.createLinkDefinition(agencyEmploysPhotographerLink);
     }
 
     @Test
@@ -277,6 +301,118 @@ class ItemManagerTest {
         ItemProjection photoProjection = createdLink.getTarget();
         assertEquals("Photo", photoProjection.getItemType());
         assertEquals("photo1", photoProjection.getProperties().get("name"));
+    }
+
+    @Test
+    @DisplayName("should update an item")
+    void testUpdateItem() {
+        ItemCreateMutation photoCreate = new ItemCreateMutation();
+        photoCreate.setItemType("Photo");
+        photoCreate.setProperties(List.of(
+                new StringProperty("name", "photo1"),
+                new IntProperty("number", 3)
+        ));
+
+        MutationRequest req = new MutationRequest(List.of(photoCreate));
+        var res = itemManager.executeMutation(req);
+        assertEquals(1, res.getItemMutationResponses().size());
+        var id = res.getItemMutationResponses().get(0).getId();
+
+        ItemUpdateMutation photoUpdate = new ItemUpdateMutation();
+        photoUpdate.setItemType("Photo");
+        photoUpdate.setId(id);
+        photoUpdate.setProperties(List.of(
+                new StringProperty("name", "photo1b"), // change name
+                new IntProperty("number", null), // remove number
+                new BooleanProperty("boolean", false) // add boolean
+        ));
+        MutationRequest updateReq = new MutationRequest(List.of(photoUpdate));
+        var res2 = itemManager.executeMutation(updateReq);
+        assertEquals(1, res2.getItemMutationResponses().size());
+
+        SelectableItemProjectionSpec itemProjectionSpec = new SelectableItemProjectionSpec(new ItemTypeSelector("Photo"));
+        List<ItemProjection> projections = itemManager.executeProjection(itemProjectionSpec);
+        assertEquals(1, projections.size());
+        ItemProjection projection = projections.get(0);
+        Map<String, Object> props = projection.getProperties();
+        assertEquals("photo1b", props.get("name"));
+        assertEquals(false, props.get("boolean"));
+        assertNull(props.get("number"));
+    }
+
+    @Test
+    @DisplayName("should preserve links when updating an item")
+    void testPreserveLinksForUpdatedItem() {
+        ItemCreateMutation photoCreate = new ItemCreateMutation();
+        photoCreate.setRefId("photoRef");
+        photoCreate.setItemType("Photo");
+        photoCreate.setProperties(List.of(
+                new StringProperty("name", "photo1"),
+                new IntProperty("number", 3)
+        ));
+
+        ItemCreateMutation photographerCreate = new ItemCreateMutation();
+        photographerCreate.setRefId("photographerRef");
+        photographerCreate.setItemType("Photographer");
+        photographerCreate.setProperties(List.of(
+                new StringProperty("name", "photographer1")
+        ));
+
+        ItemCreateMutation agencyCreate = new ItemCreateMutation();
+        agencyCreate.setItemType("Agency");
+        agencyCreate.setProperties(List.of(
+                new StringProperty("name", "agency a")
+        ));
+
+        LinkCreateMutation photographerPhotoLinkCreate = new LinkCreateMutation();
+        IdSelector photoIdSelector = new IdSelector(photoCreate.getRefId(), IdSelector.Type.LOCAL);
+        photographerPhotoLinkCreate.setLinkType("created");
+        photographerPhotoLinkCreate.setProperties(List.of(new DateProperty("createdDate", "2022-01-01")));
+        photographerPhotoLinkCreate.setSelector(photoIdSelector);
+        photographerCreate.setLinks(List.of(photographerPhotoLinkCreate));
+
+        LinkCreateMutation agencyEmploysPhotographerLink = new LinkCreateMutation();
+        IdSelector photographerSelector = new IdSelector(photographerCreate.getRefId(), IdSelector.Type.LOCAL);
+        agencyEmploysPhotographerLink.setLinkType("employs");
+        agencyEmploysPhotographerLink.setProperties(List.of(new DateProperty("hireDate", "2022-01-01")));
+        agencyEmploysPhotographerLink.setSelector(photographerSelector);
+        agencyCreate.setLinks(List.of(agencyEmploysPhotographerLink));
+
+        MutationRequest req = new MutationRequest(List.of(photoCreate, photographerCreate, agencyCreate));
+        var res = itemManager.executeMutation(req);
+        assertEquals(3, res.getItemMutationResponses().size());
+        var photographerOpt = res.getItemMutationResponses().stream().filter(r -> r.getItemType().equals("Photographer")).findFirst();
+        assertTrue(photographerOpt.isPresent());
+        var photographerId = photographerOpt.get().getId();
+
+        SelectableItemProjectionSpec photographerSpec = new SelectableItemProjectionSpec(new ItemTypeSelector("Photographer"));
+        photographerSpec.setLinks(new AllLinksProjectionSpec());
+        List<ItemProjection> photographers = itemManager.executeProjection(photographerSpec);
+        ItemProjection photographer = photographers.get(0);
+        Map<String, List<LinkProjection>> links = photographer.getLinks();
+        assertTrue(links.containsKey("created"));
+        assertTrue(links.containsKey("worksFor"));
+
+        ItemUpdateMutation photographerUpdate = new ItemUpdateMutation();
+        photographerUpdate.setItemType("Photographer");
+        photographerUpdate.setId(photographerId);
+        photographerUpdate.setProperties(List.of(
+                new StringProperty("name", "John Smith")
+        ));
+        MutationRequest updateReq = new MutationRequest(List.of(photographerUpdate));
+        var res2 = itemManager.executeMutation(updateReq);
+        assertEquals(1, res2.getItemMutationResponses().size());
+
+        SelectableItemProjectionSpec itemProjectionSpec = new SelectableItemProjectionSpec(new ItemTypeSelector("Photographer"));
+        itemProjectionSpec.setLinks(new AllLinksProjectionSpec());
+
+        List<ItemProjection> projections = itemManager.executeProjection(itemProjectionSpec);
+        assertEquals(1, projections.size());
+        ItemProjection projection = projections.get(0);
+        Map<String, Object> props = projection.getProperties();
+        assertEquals("John Smith", props.get("name"));
+        assertTrue(links.containsKey("created"));
+        assertTrue(links.containsKey("worksFor"));
     }
 
 }

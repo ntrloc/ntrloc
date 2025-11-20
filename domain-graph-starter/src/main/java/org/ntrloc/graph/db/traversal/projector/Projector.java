@@ -64,13 +64,14 @@ public class Projector {
     }
 
     public List<ItemProjection> project(SelectableItemProjectionSpec spec) {
-        traversalSource.tx().close();
-        traversalSource.tx().begin();
         return project(spec, null);
     }
 
     public List<ItemProjection> project(SelectableItemProjectionSpec spec, URI binaryDownloadUri) {
-        GraphTraversal<?, Vertex> traversal = traversalSource.V();
+        traversalSource.tx().close();
+        traversalSource.tx().begin();
+
+        GraphTraversal<?, Vertex> traversal = traversalSource.V().not(__.in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL));
         traversal = select(traversal, spec);
 
         var projectionTraversal = projectItems(traversal, spec, binaryDownloadUri);

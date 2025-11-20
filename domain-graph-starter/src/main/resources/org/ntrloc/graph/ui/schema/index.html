@@ -160,7 +160,7 @@
                             <button class="ui-priority-primary">New link type</button>
                             <hr/>
 
-                            <div class="item" th:each="def: ${schemaManager.retrieveLinkDefinitions()}" th:text="| ${def.sourceItemType} &#8594; ${def.name} &#8594; ${def.targetItemType} |"></div>
+                            <div class="item" th:each="def: ${schemaManager.retrieveLinkDefinitions()}" th:utext="| ${def.sourceItemType} &#8594; ${def.sourceLabel} &#8594; ${def.targetItemType} |"></div>
                         </div>
                         <div class="vertical-rule"></div>
                         <div id="links-editor"></div>

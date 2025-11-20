@@ -376,23 +376,23 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
                 );
 
         Set<ItemDefinition> defs = iter.toStream().map(v -> {
-            ItemDefinition schema = new ItemDefinition();
+            ItemDefinition itemDefinition = new ItemDefinition();
             var propertyMap = (HashMap) v.get(elementProjectionName);
-            schema.setName((String) propertyMap.get("name"));
-            schema.setDescription((String) propertyMap.get("description"));
-            schema.setUid((String) propertyMap.get(UNIQUE_ID_PROPERTY));
+            itemDefinition.setName((String) propertyMap.get("name"));
+            itemDefinition.setDescription((String) propertyMap.get("description"));
+            itemDefinition.setUid((String) propertyMap.get(UNIQUE_ID_PROPERTY));
 
             ArrayList<Map<String, Object>> properties = (ArrayList) v.get(propertyNodeProjectionName);
             Set<PropertyDefinition> schemaProps = properties.stream()
                     .map(this::mapToPropertyDefinition).collect(Collectors.toSet());
-            schema.setProperties(schemaProps);
+            itemDefinition.setProperties(schemaProps);
 
             ArrayList<Map<String, Object>> propertyGroups = (ArrayList) v.get(propertyGroupProjectionName);
             Set<PropertyGroupDefinition> groups = propertyGroups.stream()
                     .map(this::mapToPropertyGroupDefinition)
                     .collect(Collectors.toSet());
-            schema.setPropertyGroups(groups);
-            return schema;
+            itemDefinition.setPropertyGroups(groups);
+            return itemDefinition;
         }).collect(Collectors.toSet());
 
         TreeSet<ItemDefinition> retSet = new TreeSet<>(Comparator.comparing(ItemDefinition::getName));

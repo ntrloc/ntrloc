@@ -10,7 +10,6 @@ import java.util.stream.Collectors;
 
 public class ItemCreateMutation extends ItemMutation implements ReferenceableItemMutation, ItemMutationWithItemType, ItemMutationWithLinks<LinkCreateMutation>, MutationWithProperties {
 
-    // TODO: entity type should be "item type"
     private String itemType;
     private Map<String, Property> properties = new HashMap<>();
     private String refId;

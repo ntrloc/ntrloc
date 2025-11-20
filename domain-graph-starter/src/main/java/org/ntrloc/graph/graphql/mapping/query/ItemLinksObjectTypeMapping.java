@@ -94,7 +94,6 @@ public class ItemLinksObjectTypeMapping implements ObjectTypeProducer {
         List<Field> selectionFields = selections.stream().filter(s -> s instanceof Field).map(s -> (Field) s).toList();
         for (Field selectionField : selectionFields) {
             ItemLinkObjectTypeMapping linkMapping = linkObjectTypeMappings.get(selectionField.getName());
-            LOG.info("found link mapping {}", linkMapping);
             LinkProjectionSpec lps = linkMapping.parseLinkProjectionSpec(selectionField);
             linkProjectionSpecs.add(lps);
         }
