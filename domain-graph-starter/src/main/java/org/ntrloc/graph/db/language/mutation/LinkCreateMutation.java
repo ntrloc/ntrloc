@@ -43,4 +43,21 @@ public class LinkCreateMutation extends LinkMutation implements LinkMutationWith
         return new ArrayList<>(properties.values());
     }
 
+    // fluent methods
+    public LinkCreateMutation selector(Selector selector) {
+        this.selector = selector;
+        return this;
+    }
+
+    public LinkCreateMutation linkType(String linkType) {
+        this.linkType = linkType;
+        return this;
+    }
+
+    public LinkCreateMutation properties(List<Property> properties) {
+        setProperties(properties);
+        return this;
+    }
+
+
 }

@@ -41,8 +41,6 @@ import org.ntrloc.graph.db.schema.impl.SchemaManagerImpl;
 import org.ntrloc.graph.db.storage.BinaryStorageAdapter;
 import org.ntrloc.graph.db.storage.BinaryStorageAdapterConfiguration;
 import org.ntrloc.graph.db.storage.impl.BlockDeviceBinaryStorageAdapter;
-import org.ntrloc.graph.db.traversal.mutator.Mutator;
-import org.ntrloc.graph.db.traversal.mutator.impl.MutatorImpl;
 import org.ntrloc.graph.db.traversal.projector.Projector;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -124,9 +122,8 @@ class ItemManagerTest {
         doReturn(mock(IMap.class)).when(clusterService).getMap(anyString());
         schemaManager = new SchemaManagerImpl(janusGraph, traversalSource, clusterService);
         Projector projector = new Projector(traversalSource);
-        Mutator mutator = new MutatorImpl(traversalSource);
         ItemManagerSchemaNameIdTranslator idCache = new ItemManagerSchemaNameIdTranslator(schemaManager);
-        itemManager = new ItemManagerImpl(traversalSource, adapter, idCache, mutator, projector);
+        itemManager = new ItemManagerImpl(traversalSource, adapter, idCache, projector);
         setUpSchema();
     }
 
@@ -205,11 +202,10 @@ class ItemManagerTest {
     @Test
     @DisplayName("should create an item with properties")
     void testCreateItem() {
-        ItemCreateMutation photoCreate = new ItemCreateMutation();
-        photoCreate.setItemType("Photo");
-        photoCreate.setProperties(List.of(
-                new StringProperty("name", "photo1")
-        ));
+        ItemCreateMutation photoCreate = new ItemCreateMutation()
+                .itemType("Photo")
+                .properties(List.of(new StringProperty("name", "photo1")));
+
         MutationRequest req = new MutationRequest(List.of(photoCreate));
         var res = itemManager.executeMutation(req);
         assertEquals(1, res.getItemMutationResponses().size());
@@ -246,11 +242,10 @@ class ItemManagerTest {
     @Test
     @DisplayName("should delete an item")
     void testDeleteItem() {
-        ItemCreateMutation photoCreate = new ItemCreateMutation();
-        photoCreate.setItemType("Photo");
-        photoCreate.setProperties(List.of(
-                new StringProperty("name", "photo1")
-        ));
+        ItemCreateMutation photoCreate = new ItemCreateMutation()
+                .itemType("Photo")
+                .properties(List.of(new StringProperty("name", "photo1")));
+
         MutationRequest req = new MutationRequest(List.of(photoCreate));
         var res = itemManager.executeMutation(req);
         assertEquals(1, res.getItemMutationResponses().size());
@@ -266,22 +261,20 @@ class ItemManagerTest {
     @Test
     @DisplayName("should create two items and link them")
     void testCreateAndLinkItems() {
-        ItemCreateMutation photoCreate = new ItemCreateMutation();
-        photoCreate.setItemType("Photo");
-        photoCreate.setRefId("photoRef");
-        photoCreate.setProperties(List.of(
-                new StringProperty("name", "photo1")
-        ));
-        ItemCreateMutation photographerCreate = new ItemCreateMutation();
-        photographerCreate.setItemType("Photographer");
-        photographerCreate.setProperties(List.of(
-                new StringProperty("name", "photographer1")
-        ));
-        LinkCreateMutation linkCreate = new LinkCreateMutation();
-        IdSelector selector = new IdSelector(photoCreate.getRefId(), IdSelector.Type.LOCAL);
-        linkCreate.setLinkType("created");
-        linkCreate.setProperties(List.of(new DateProperty("createdDate", "2022-01-01")));
-        linkCreate.setSelector(selector);
+        ItemCreateMutation photoCreate = new ItemCreateMutation()
+                .itemType("Photo")
+                .refId("photoRef")
+                .properties(List.of(new StringProperty("name", "photo1")));
+
+        ItemCreateMutation photographerCreate = new ItemCreateMutation()
+                .itemType("Photographer")
+                .properties(List.of( new StringProperty("name", "photographer1")));
+
+        LinkCreateMutation linkCreate = new LinkCreateMutation()
+                .selector(new IdSelector(photoCreate.getRefId(), IdSelector.Type.LOCAL))
+                .linkType("created")
+                .properties(List.of(new DateProperty("createdDate", "2022-01-01")));
+
         photographerCreate.setLinks(List.of(linkCreate));
 
         MutationRequest req = new MutationRequest(List.of(photoCreate, photographerCreate));
@@ -306,26 +299,26 @@ class ItemManagerTest {
     @Test
     @DisplayName("should update an item")
     void testUpdateItem() {
-        ItemCreateMutation photoCreate = new ItemCreateMutation();
-        photoCreate.setItemType("Photo");
-        photoCreate.setProperties(List.of(
+        ItemCreateMutation photoCreate = new ItemCreateMutation()
+                .itemType("Photo")
+                .properties(List.of(
                 new StringProperty("name", "photo1"),
                 new IntProperty("number", 3)
-        ));
+                ));
 
         MutationRequest req = new MutationRequest(List.of(photoCreate));
         var res = itemManager.executeMutation(req);
         assertEquals(1, res.getItemMutationResponses().size());
         var id = res.getItemMutationResponses().get(0).getId();
 
-        ItemUpdateMutation photoUpdate = new ItemUpdateMutation();
-        photoUpdate.setItemType("Photo");
-        photoUpdate.setId(id);
-        photoUpdate.setProperties(List.of(
-                new StringProperty("name", "photo1b"), // change name
-                new IntProperty("number", null), // remove number
-                new BooleanProperty("boolean", false) // add boolean
-        ));
+        ItemUpdateMutation photoUpdate = new ItemUpdateMutation()
+        .itemType("Photo")
+                .id(id)
+                .properties(List.of(
+                    new StringProperty("name", "photo1b"), // change name
+                    new IntProperty("number", null), // remove number
+                    new BooleanProperty("boolean", false) // add boolean
+                ));
         MutationRequest updateReq = new MutationRequest(List.of(photoUpdate));
         var res2 = itemManager.executeMutation(updateReq);
         assertEquals(1, res2.getItemMutationResponses().size());
@@ -343,39 +336,31 @@ class ItemManagerTest {
     @Test
     @DisplayName("should preserve links when updating an item")
     void testPreserveLinksForUpdatedItem() {
-        ItemCreateMutation photoCreate = new ItemCreateMutation();
-        photoCreate.setRefId("photoRef");
-        photoCreate.setItemType("Photo");
-        photoCreate.setProperties(List.of(
-                new StringProperty("name", "photo1"),
-                new IntProperty("number", 3)
-        ));
+        ItemCreateMutation photoCreate = new ItemCreateMutation()
+                .itemType("Photo")
+                .properties(List.of( new StringProperty("name", "photo1"), new IntProperty("number", 3)))
+                .refId("photoRef");
 
-        ItemCreateMutation photographerCreate = new ItemCreateMutation();
-        photographerCreate.setRefId("photographerRef");
-        photographerCreate.setItemType("Photographer");
-        photographerCreate.setProperties(List.of(
-                new StringProperty("name", "photographer1")
-        ));
+        ItemCreateMutation photographerCreate = new ItemCreateMutation()
+                .itemType("Photographer")
+                .properties(List.of(new StringProperty("name", "photographer1")))
+                .refId("photographerRef");
 
-        ItemCreateMutation agencyCreate = new ItemCreateMutation();
-        agencyCreate.setItemType("Agency");
-        agencyCreate.setProperties(List.of(
-                new StringProperty("name", "agency a")
-        ));
+        ItemCreateMutation agencyCreate = new ItemCreateMutation()
+                .itemType("Agency")
+                .properties(List.of(new StringProperty("name", "agency a")));
 
-        LinkCreateMutation photographerPhotoLinkCreate = new LinkCreateMutation();
-        IdSelector photoIdSelector = new IdSelector(photoCreate.getRefId(), IdSelector.Type.LOCAL);
-        photographerPhotoLinkCreate.setLinkType("created");
-        photographerPhotoLinkCreate.setProperties(List.of(new DateProperty("createdDate", "2022-01-01")));
-        photographerPhotoLinkCreate.setSelector(photoIdSelector);
+        LinkCreateMutation photographerPhotoLinkCreate = new LinkCreateMutation()
+                .selector(new IdSelector(photoCreate.getRefId(), IdSelector.Type.LOCAL))
+                .linkType("created")
+                .properties(List.of(new DateProperty("createdDate", "2022-01-01")));
+
         photographerCreate.setLinks(List.of(photographerPhotoLinkCreate));
 
-        LinkCreateMutation agencyEmploysPhotographerLink = new LinkCreateMutation();
-        IdSelector photographerSelector = new IdSelector(photographerCreate.getRefId(), IdSelector.Type.LOCAL);
-        agencyEmploysPhotographerLink.setLinkType("employs");
-        agencyEmploysPhotographerLink.setProperties(List.of(new DateProperty("hireDate", "2022-01-01")));
-        agencyEmploysPhotographerLink.setSelector(photographerSelector);
+        LinkCreateMutation agencyEmploysPhotographerLink = new LinkCreateMutation()
+                .selector(new IdSelector(photographerCreate.getRefId(), IdSelector.Type.LOCAL))
+                .linkType("employs")
+                .properties(List.of(new DateProperty("hireDate", "2022-01-01")));
         agencyCreate.setLinks(List.of(agencyEmploysPhotographerLink));
 
         MutationRequest req = new MutationRequest(List.of(photoCreate, photographerCreate, agencyCreate));
@@ -393,12 +378,11 @@ class ItemManagerTest {
         assertTrue(links.containsKey("created"));
         assertTrue(links.containsKey("worksFor"));
 
-        ItemUpdateMutation photographerUpdate = new ItemUpdateMutation();
-        photographerUpdate.setItemType("Photographer");
-        photographerUpdate.setId(photographerId);
-        photographerUpdate.setProperties(List.of(
-                new StringProperty("name", "John Smith")
-        ));
+        ItemUpdateMutation photographerUpdate = new ItemUpdateMutation()
+            .itemType("Photographer")
+            .id(photographerId)
+            .properties(List.of( new StringProperty("name", "John Smith")));
+
         MutationRequest updateReq = new MutationRequest(List.of(photographerUpdate));
         var res2 = itemManager.executeMutation(updateReq);
         assertEquals(1, res2.getItemMutationResponses().size());
@@ -411,8 +395,8 @@ class ItemManagerTest {
         ItemProjection projection = projections.get(0);
         Map<String, Object> props = projection.getProperties();
         assertEquals("John Smith", props.get("name"));
-        assertTrue(links.containsKey("created"));
-        assertTrue(links.containsKey("worksFor"));
+        assertTrue(links.containsKey("created") && links.get("created").size() == 1);
+        assertTrue(links.containsKey("worksFor") && links.get("worksFor").size() == 1);
     }
 
 }

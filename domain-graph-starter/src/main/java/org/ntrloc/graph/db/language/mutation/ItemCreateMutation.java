@@ -47,6 +47,21 @@ public class ItemCreateMutation extends ItemMutation implements ReferenceableIte
         this.links = links;
     }
 
+    // fluent methods
 
+    public ItemCreateMutation itemType(String itemType) {
+        setItemType(itemType);
+        return this;
+    }
+
+    public ItemCreateMutation properties(List<Property> properties) {
+        setProperties(properties);
+        return this;
+    }
+
+    public ItemCreateMutation refId(String refId) {
+        setRefId(refId);
+        return this;
+    }
 
 }

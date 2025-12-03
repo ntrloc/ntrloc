@@ -50,4 +50,26 @@ public class ItemUpdateMutation extends ItemMutation implements ReferenceableIte
         this.properties = properties.stream().collect(Collectors.toMap(Property::getName, p -> p));
     }
 
+    // fluent methods
+
+    public ItemUpdateMutation itemType(String itemType) {
+        setItemType(itemType);
+        return this;
+    }
+
+    public ItemUpdateMutation properties(List<Property> properties) {
+        setProperties(properties);
+        return this;
+    }
+
+    public ItemUpdateMutation id(String id) {
+        setId(id);
+        return this;
+    }
+
+    public ItemUpdateMutation refId(String refId) {
+        setRefId(refId);
+        return this;
+    }
+
 }

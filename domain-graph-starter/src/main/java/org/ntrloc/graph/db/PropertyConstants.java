@@ -11,6 +11,10 @@ public class PropertyConstants {
     public static final String UNIQUE_ID_PROPERTY = "uid";
     public static final String ITEM_TYPE_PROPERTY = "itemType";
     public static final String LINK_TYPE_PROPERTY = "linkType";
+
+    /** A property that marks links that can be copied to an item when a new version is created. */
+    public static final String COPYABLE_LINK_PROPERTY = "copyableLink";
+
     public static final String VERSION_PROPERTY = "version";
     public static final String IS_LATEST_VERSION_PROPERTY = "isLatestVersion";
     public static final String STATUS_PROPERTY = "status";

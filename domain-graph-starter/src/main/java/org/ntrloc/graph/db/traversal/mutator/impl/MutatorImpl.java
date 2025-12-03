@@ -2,7 +2,6 @@ package org.ntrloc.graph.db.traversal.mutator.impl;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.tinkerpop.gremlin.process.traversal.P;
-import org.apache.tinkerpop.gremlin.process.traversal.TextP;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversal;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversalSource;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.__;
@@ -22,7 +21,6 @@ import org.ntrloc.graph.db.traversal.mutator.Node;
 import org.ntrloc.graph.db.traversal.mutator.Revision;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.Date;
@@ -39,7 +37,6 @@ import static org.ntrloc.graph.db.PropertyConstants.NODE_PROPERTY_NAME_PROPERTY;
 import static org.ntrloc.graph.db.PropertyConstants.STATUS_PROPERTY;
 import static org.ntrloc.graph.db.PropertyConstants.UNIQUE_ID_PROPERTY;
 
-@Component
 public class MutatorImpl implements Mutator {
 
     private static final Logger LOG = LoggerFactory.getLogger(Mutator.class);
@@ -91,6 +88,7 @@ public class MutatorImpl implements Mutator {
                 traversal = traversal
                         .addE(LabelConstants.NODE_PROPERTY_EDGE_LABEL)
                         .property(NODE_PROPERTY_NAME_PROPERTY, propertyName)
+                        .property(PropertyConstants.COPYABLE_LINK_PROPERTY, true)
                         .from(uniqueId).to(__.V(nodePropertiesToNodeIdMap.get(nodeProperty.getName())))
                         .select(uniqueId);
             } else {
@@ -209,8 +207,8 @@ public class MutatorImpl implements Mutator {
                 .property(PropertyConstants.STATUS_PROPERTY, ItemStatus.UNCOMMITTED_CREATE.toString())
                 .property(PropertyConstants.VERSION_PROPERTY, 1);
         var edgeTraversal = traversal
-                        .addE(String.format("%s-in", relationshipName)).from("fromNode").to("relationship")
-                        .addE(String.format("%s-out", relationshipName)).from("relationship").to("toNode");
+                        .addE(String.format("%s-in", relationshipName)).property(PropertyConstants.COPYABLE_LINK_PROPERTY, true).from("fromNode").to("relationship")
+                        .addE(String.format("%s-out", relationshipName)).property(PropertyConstants.COPYABLE_LINK_PROPERTY, true).from("relationship").to("toNode");
         edgeTraversal.iterate();
 
         return uniqueId;
@@ -328,7 +326,7 @@ public class MutatorImpl implements Mutator {
                     traversalSource.V(revision.getId()).drop().iterate();
 
                     var outEdgeIterator = traversalSource.V(currentNodeId).outE()
-                            .not(__.hasLabel(TextP.startingWith("system")))
+                            .has(PropertyConstants.COPYABLE_LINK_PROPERTY, true)
                             .project("edgeLabel", "target")
                             .by(__.label())
                             .by(__.inV().id());
@@ -340,7 +338,7 @@ public class MutatorImpl implements Mutator {
                     }
 
                     var inEdgeIterator = traversalSource.V(currentNodeId).inE()
-                            .not(__.hasLabel(TextP.startingWith("system")))
+                            .has(PropertyConstants.COPYABLE_LINK_PROPERTY, true)
                             .project("edgeLabel", "source")
                             .by(__.label())
                             .by(__.outV().id());

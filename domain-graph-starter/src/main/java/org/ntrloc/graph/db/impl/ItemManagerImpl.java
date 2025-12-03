@@ -22,7 +22,7 @@ import org.ntrloc.graph.db.language.selectors.IdSelector;
 import org.ntrloc.graph.db.storage.BinaryContentInfo;
 import org.ntrloc.graph.db.storage.BinaryContentInfoWithStream;
 import org.ntrloc.graph.db.storage.BinaryStorageAdapter;
-import org.ntrloc.graph.db.traversal.mutator.Mutator;
+import org.ntrloc.graph.db.traversal.mutator.impl.MutatorImpl;
 import org.ntrloc.graph.db.traversal.projector.Projector;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -52,13 +52,11 @@ public class ItemManagerImpl implements ItemManager {
     private BinaryStorageAdapter binaryStorageAdapter;
     private ItemManagerSchemaNameIdTranslator schemaNameIdTranslator;
 
-    private Mutator mutator;
     private Projector projector;
 
-    public ItemManagerImpl(GraphTraversalSource traversalSource, BinaryStorageAdapter binaryStorageAdapter, ItemManagerSchemaNameIdTranslator translator, Mutator mutator, Projector projector) {
+    public ItemManagerImpl(GraphTraversalSource traversalSource, BinaryStorageAdapter binaryStorageAdapter, ItemManagerSchemaNameIdTranslator translator, Projector projector) {
         this.traversalSource = traversalSource;
         this.binaryStorageAdapter = binaryStorageAdapter;
-        this.mutator = mutator;
         this.projector = projector;
         this.schemaNameIdTranslator = translator;
     }
@@ -155,6 +153,8 @@ public class ItemManagerImpl implements ItemManager {
     @Override
     public MutationResponse executeMutation(MutationRequest mutationRequest) {
         LOG.info("Executing mutation {}", mutationRequest);
+
+        var mutator = new MutatorImpl(traversalSource);
 
         var response = new MutationResponse();
         mutator.begin();
