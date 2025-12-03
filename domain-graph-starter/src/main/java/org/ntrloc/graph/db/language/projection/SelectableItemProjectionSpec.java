@@ -14,7 +14,11 @@ public class SelectableItemProjectionSpec extends ItemProjectionSpec {
     }
 
     public void setItemSelector(ItemSelector itemSelector) {
-        this.itemSelector = itemSelector;
+        if (this.itemSelector == null) {
+            this.itemSelector = itemSelector;
+        } else {
+            throw new IllegalStateException("Item type selector is immutable");
+        }
     }
 
     public ItemSelector getItemSelector() {

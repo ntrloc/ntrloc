@@ -22,6 +22,7 @@ import org.ntrloc.graph.db.language.mutation.ItemUpdateMutation;
 import org.ntrloc.graph.db.language.mutation.LinkCreateMutation;
 import org.ntrloc.graph.db.language.mutation.MutationRequest;
 import org.ntrloc.graph.db.language.projection.AllLinksProjectionSpec;
+import org.ntrloc.graph.db.language.projection.IncomingLinkProjection;
 import org.ntrloc.graph.db.language.projection.ItemProjection;
 import org.ntrloc.graph.db.language.projection.ItemProjectionSpec;
 import org.ntrloc.graph.db.language.projection.LinkProjection;
@@ -334,13 +335,8 @@ class ItemManagerTest {
     }
 
     @Test
-    @DisplayName("should preserve links when updating an item")
-    void testPreserveLinksForUpdatedItem() {
-        ItemCreateMutation photoCreate = new ItemCreateMutation()
-                .itemType("Photo")
-                .properties(List.of( new StringProperty("name", "photo1"), new IntProperty("number", 3)))
-                .refId("photoRef");
-
+    @DisplayName("should maintain links from a source item when it is versioned")
+    void testMaintainOutboundLinks() {
         ItemCreateMutation photographerCreate = new ItemCreateMutation()
                 .itemType("Photographer")
                 .properties(List.of(new StringProperty("name", "photographer1")))
@@ -350,53 +346,107 @@ class ItemManagerTest {
                 .itemType("Agency")
                 .properties(List.of(new StringProperty("name", "agency a")));
 
-        LinkCreateMutation photographerPhotoLinkCreate = new LinkCreateMutation()
-                .selector(new IdSelector(photoCreate.getRefId(), IdSelector.Type.LOCAL))
-                .linkType("created")
-                .properties(List.of(new DateProperty("createdDate", "2022-01-01")));
+        LinkCreateMutation agencyEmploysPhotographerLink = new LinkCreateMutation()
+                .selector(new IdSelector(photographerCreate.getRefId(), IdSelector.Type.LOCAL))
+                .linkType("employs")
+                .properties(List.of(new DateProperty("hireDate", "2022-01-01")));
 
-        photographerCreate.setLinks(List.of(photographerPhotoLinkCreate));
+        agencyCreate.setLinks(List.of(agencyEmploysPhotographerLink));
+
+        MutationRequest req = new MutationRequest(List.of(photographerCreate, agencyCreate));
+        itemManager.executeMutation(req);
+
+        SelectableItemProjectionSpec apencySpec = new SelectableItemProjectionSpec(new ItemTypeSelector("Agency"));
+        apencySpec.setLinks(new AllLinksProjectionSpec());
+        List<ItemProjection> agencies = itemManager.executeProjection(apencySpec);
+        ItemProjection agency = agencies.get(0);
+        Map<String, List<LinkProjection>> links = agency.getLinks();
+        assertTrue(links.containsKey("employs"));
+
+        // update the agency (the source item)
+        ItemUpdateMutation agencyUpdate = new ItemUpdateMutation()
+                .itemType("Agency")
+                .id(agency.getId())
+                .properties(List.of( new StringProperty("name", "agency b")));
+
+        MutationRequest updateReq = new MutationRequest(List.of(agencyUpdate));
+        itemManager.executeMutation(updateReq);
+
+        // check that the agency is still linked to the photographer
+        agencies = itemManager.executeProjection(apencySpec);
+        agency = agencies.get(0);
+        assertEquals(2, agency.getVersion());
+        links = agency.getLinks();
+        assertTrue(links.containsKey("employs"));
+
+        // check that the photographer is only linked to the new version of the agency
+        SelectableItemProjectionSpec photographerSpec = new SelectableItemProjectionSpec(new ItemTypeSelector("Photographer"));
+        photographerSpec.setLinks(new AllLinksProjectionSpec());
+        List<ItemProjection> photographers = itemManager.executeProjection(photographerSpec);
+        ItemProjection photographer = photographers.get(0);
+        Map<String, List<LinkProjection>> photographerLinks = photographer.getLinks();
+        assertTrue(photographerLinks.containsKey("worksFor"));
+        assertEquals(1, photographerLinks.get("worksFor").size());
+        IncomingLinkProjection agencyProj = (IncomingLinkProjection) photographerLinks.get("worksFor").get(0);
+        assertEquals(2, agencyProj.getSource().getVersion());
+    }
+
+    @Test
+    @DisplayName("should maintain links to a target item when it is versioned")
+    void testMaintainInboundLinks() {
+        ItemCreateMutation photographerCreate = new ItemCreateMutation()
+                .itemType("Photographer")
+                .properties(List.of(new StringProperty("name", "photographer1")))
+                .refId("photographerRef");
+
+        ItemCreateMutation agencyCreate = new ItemCreateMutation()
+                .itemType("Agency")
+                .properties(List.of(new StringProperty("name", "agency a")));
 
         LinkCreateMutation agencyEmploysPhotographerLink = new LinkCreateMutation()
                 .selector(new IdSelector(photographerCreate.getRefId(), IdSelector.Type.LOCAL))
                 .linkType("employs")
                 .properties(List.of(new DateProperty("hireDate", "2022-01-01")));
+
         agencyCreate.setLinks(List.of(agencyEmploysPhotographerLink));
 
-        MutationRequest req = new MutationRequest(List.of(photoCreate, photographerCreate, agencyCreate));
-        var res = itemManager.executeMutation(req);
-        assertEquals(3, res.getItemMutationResponses().size());
-        var photographerOpt = res.getItemMutationResponses().stream().filter(r -> r.getItemType().equals("Photographer")).findFirst();
-        assertTrue(photographerOpt.isPresent());
-        var photographerId = photographerOpt.get().getId();
+        MutationRequest req = new MutationRequest(List.of(photographerCreate, agencyCreate));
+        itemManager.executeMutation(req);
 
         SelectableItemProjectionSpec photographerSpec = new SelectableItemProjectionSpec(new ItemTypeSelector("Photographer"));
         photographerSpec.setLinks(new AllLinksProjectionSpec());
         List<ItemProjection> photographers = itemManager.executeProjection(photographerSpec);
         ItemProjection photographer = photographers.get(0);
-        Map<String, List<LinkProjection>> links = photographer.getLinks();
-        assertTrue(links.containsKey("created"));
-        assertTrue(links.containsKey("worksFor"));
+        Map<String, List<LinkProjection>> photographerLinks = photographer.getLinks();
+        assertTrue(photographerLinks.containsKey("worksFor"));
 
+        // update the photographer (the target item)
         ItemUpdateMutation photographerUpdate = new ItemUpdateMutation()
-            .itemType("Photographer")
-            .id(photographerId)
-            .properties(List.of( new StringProperty("name", "John Smith")));
+                .itemType("Photographer")
+                .id(photographer.getId())
+                .properties(List.of( new StringProperty("name", "photographer 2")));
 
         MutationRequest updateReq = new MutationRequest(List.of(photographerUpdate));
-        var res2 = itemManager.executeMutation(updateReq);
-        assertEquals(1, res2.getItemMutationResponses().size());
+        itemManager.executeMutation(updateReq);
 
-        SelectableItemProjectionSpec itemProjectionSpec = new SelectableItemProjectionSpec(new ItemTypeSelector("Photographer"));
-        itemProjectionSpec.setLinks(new AllLinksProjectionSpec());
+        // check that the photographer is still linked to the agency
+        photographers = itemManager.executeProjection(photographerSpec);
+        photographer = photographers.get(0);
+        assertEquals(2, photographer.getVersion());
+        Map<String, List<LinkProjection>> links = photographer.getLinks();
+        assertTrue(links.containsKey("worksFor"));
 
-        List<ItemProjection> projections = itemManager.executeProjection(itemProjectionSpec);
-        assertEquals(1, projections.size());
-        ItemProjection projection = projections.get(0);
-        Map<String, Object> props = projection.getProperties();
-        assertEquals("John Smith", props.get("name"));
-        assertTrue(links.containsKey("created") && links.get("created").size() == 1);
-        assertTrue(links.containsKey("worksFor") && links.get("worksFor").size() == 1);
+        // check that the agency is only linked to the new version of the photographer
+
+        SelectableItemProjectionSpec apencySpec = new SelectableItemProjectionSpec(new ItemTypeSelector("Agency"));
+        apencySpec.setLinks(new AllLinksProjectionSpec());
+        List<ItemProjection> agencies = itemManager.executeProjection(apencySpec);
+        ItemProjection agency = agencies.get(0);
+        links = agency.getLinks();
+        assertTrue(links.containsKey("employs"));
+        assertEquals(1, links.get("employs").size());
+        OutgoingLinkProjection photographerProj = (OutgoingLinkProjection) links.get("employs").get(0);
+        assertEquals(2, photographerProj.getTarget().getVersion());
     }
 
 }

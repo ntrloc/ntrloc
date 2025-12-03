@@ -102,21 +102,16 @@ public class ItemManagerSchemaNameIdTranslator {
 
     /** Converts the type identifiers and properties of an item projection spec to private type IDs. */
     public SelectableItemProjectionSpec convertPublicIdentifiersIoPrivate(SelectableItemProjectionSpec itemProjectionSpec) {
+        SelectableItemProjectionSpec retSpec;
         ItemSelector selector = itemProjectionSpec.getItemSelector();
         if (selector instanceof ItemTypeSelector itemTypeSelector) {
             String itemType = itemTypeSelector.getItemType();
             ItemDefinitionPublicToPrivateMapping mapping = itemDefinitionPublicToPrivateMapping.get(itemType);
-            mapping.convertProjection(itemProjectionSpec, itemTypeName -> itemDefinitionPublicToPrivateMapping.get(itemTypeName));
+            retSpec = mapping.convertProjection(itemProjectionSpec, itemTypeName -> itemDefinitionPublicToPrivateMapping.get(itemTypeName));
         } else {
-            if (itemProjectionSpec.getLinks() instanceof SpecificLinksProjectionSpec) {
-                throw new IllegalArgumentException("Specific links cannot be retrieved without using a LabelSelector");
-            }
-            if (itemProjectionSpec.getProperties() != null && !itemProjectionSpec.getProperties().isEmpty()) {
-                throw new IllegalArgumentException("Specific properties cannot be retrieved without using a LabelSelector");
-            }
+            throw new IllegalArgumentException("Unknown selector " + selector);
         }
-        return itemProjectionSpec;
-
+        return retSpec;
     }
 
     /** Converts the type private type IDs of an item projection to public labels.  */
@@ -214,61 +209,80 @@ public class ItemManagerSchemaNameIdTranslator {
             }
         }
 
-        void convertProjection(SelectableItemProjectionSpec itemProjectionSpec, Function<String, ItemDefinitionPublicToPrivateMapping> mappingLookupFunction) {
+        SelectableItemProjectionSpec convertProjection(SelectableItemProjectionSpec itemProjectionSpec, Function<String, ItemDefinitionPublicToPrivateMapping> mappingLookupFunction) {
             String itemType = itemDefinition.getName();
             ItemTypeSelector newItemTypeSelector = new ItemTypeSelector(itemDefinition.getUid());
-            itemProjectionSpec.setItemSelector(newItemTypeSelector);
-
-            convertItemProjection(itemProjectionSpec, itemType, mappingLookupFunction);
+            SelectableItemProjectionSpec newSpec = convertItemProjection(itemProjectionSpec, itemType, mappingLookupFunction);
+            SelectableItemProjectionSpec retSpec = new SelectableItemProjectionSpec(newItemTypeSelector);
+            retSpec.setLinks(newSpec.getLinks());
+            retSpec.setProperties(newSpec.getProperties());
+            retSpec.setFilter(newSpec.getFilter());
+            return retSpec;
         }
 
-        private void convertItemProjection(ItemProjectionSpec itemProjectionSpec, String itemType, Function<String, ItemDefinitionPublicToPrivateMapping> mappingLookupFunction) {
+        private <T extends ItemProjectionSpec> T convertItemProjection(T itemProjectionSpec, String itemType, Function<String, ItemDefinitionPublicToPrivateMapping> mappingLookupFunction) {
             ItemDefinitionPublicToPrivateMapping mapping = itemType.equals(itemDefinition.getName()) ? this : mappingLookupFunction.apply(itemType);
+            List<String> translatedProperties = null;
             if (itemProjectionSpec.getProperties() != null) {
-                List<String> translatedProperties = new ArrayList<>();
+                translatedProperties = new ArrayList<>();
                 for (String property : itemProjectionSpec.getProperties()) {
                     String propertyId = mapping.getPropertyId(property);
                     translatedProperties.add(propertyId);
                 }
-                itemProjectionSpec.setProperties(translatedProperties);
             }
-            convertLinkProjections(itemProjectionSpec.getLinks(), mappingLookupFunction);
+            LinksProjectionSpec linksProjectionSpec = convertLinkProjections(itemProjectionSpec.getLinks(), mappingLookupFunction);
+            ItemProjectionSpec retSpec;
+            if (itemProjectionSpec instanceof SelectableItemProjectionSpec selectableItemProjectionSpec) {
+                retSpec = new SelectableItemProjectionSpec(selectableItemProjectionSpec.getItemSelector());
+            } else {
+                retSpec = new ItemProjectionSpec();
+            }
+            retSpec.setProperties(translatedProperties);
+            retSpec.setLinks(linksProjectionSpec);
+            return (T) retSpec;
         }
 
-        private void convertLinkProjections(LinksProjectionSpec linksProjectionSpec, Function<String, ItemDefinitionPublicToPrivateMapping> mappingLookupFunction) {
+        private LinksProjectionSpec convertLinkProjections(LinksProjectionSpec linksProjectionSpec, Function<String, ItemDefinitionPublicToPrivateMapping> mappingLookupFunction) {
+            LinksProjectionSpec retSpec;
             switch (linksProjectionSpec) {
-                case null -> { }
+                case null -> { retSpec = null; }
                 case SpecificLinksProjectionSpec specificLinks -> {
-                    for (LinkProjectionSpec linkProjectionSpec : specificLinks.getLinks()) {
-                        String linkLabel = linkProjectionSpec.getLinkLabel();
+                    Set<LinkProjectionSpec> retSpecs = specificLinks.getLinks().stream().map(linkSpec -> {
+                        String linkLabel = linkSpec.getLinkLabel();
                         String linkId = getLinkId(linkLabel);
                         if (linkId == null) {
-                            throw new IllegalArgumentException("Unknown link " + linkProjectionSpec.getLinkLabel() + " for item type ID " + itemDefinition.getUid());
-                        } else {
-                            linkProjectionSpec.setLinkLabel(linkId);
+                            throw new IllegalArgumentException("Unknown link " + linkSpec.getLinkLabel() + " for item type ID " + itemDefinition.getUid());
                         }
 
-                        List<String> linkProperties = linkProjectionSpec.getProperties();
+                        LinkProjectionSpec newSpec = new LinkProjectionSpec(linkId, linkSpec.getDirection());
+
+                        List<String> linkProperties = linkSpec.getProperties();
                         if (linkProperties != null) {
                             List<String> translatedProperties = new ArrayList<>();
                             for (String property : linkProperties) {
                                 String propertyId = getLinkPropertyId(linkLabel, property);
                                 translatedProperties.add(propertyId);
                             }
-                            linkProjectionSpec.setProperties(translatedProperties);
+                            newSpec.setProperties(translatedProperties);
                         }
 
                         LinkDefinitionPublicToPrivateMapping linkDefMapping = linkMapping.get(linkLabel);
-                        convertItemProjection(linkProjectionSpec.getItemProjectionSpec(), linkDefMapping.getRelatedItemType(), mappingLookupFunction);
-                    }
+                        ItemProjectionSpec linkItemSpec = convertItemProjection(linkSpec.getItemProjectionSpec(), linkDefMapping.getRelatedItemType(), mappingLookupFunction);
+                        newSpec.setItemProjectionSpec(linkItemSpec);
+                        return newSpec;
+                    }).collect(Collectors.toSet());
+                    retSpec = new SpecificLinksProjectionSpec(retSpecs);
                 }
                 case AllLinksProjectionSpec allLinksSpec -> {
                     LOG.info("Using all-links projection spec");
+                    retSpec = allLinksSpec;
                 }
                 default -> {
                     // don't retrieve links if none were requested
+                    retSpec = null;
                 }
             }
+            return retSpec;
         }
 
         private class LinkDefinitionPublicToPrivateMapping {

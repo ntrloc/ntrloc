@@ -191,36 +191,57 @@ public class Projector {
         List<GraphTraversal<Vertex, Map<String, Object>>> linkTraversals = new ArrayList<>();
 
         if (spec instanceof AllLinksProjectionSpec) {
-            var genericOutboundTraversal = __.out().has(LINK_TYPE_PROPERTY)
+            var genericOutboundTraversal = __.out()
+                    .where( // only traverse links that are the latest version
+                            __.and(
+                                    __.has(LINK_TYPE_PROPERTY),
+                                    __.not(__.in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL))
+                            )
+                    )
                     .project(PropertyConstants.UNIQUE_ID_PROPERTY, "direction", "properties", "target", "linkType")
                     .by(__.values(PropertyConstants.UNIQUE_ID_PROPERTY))
                     .by(__.constant(Direction.OUT))
                     .by(__.valueMap())
-                    .by(projectItems(__.out(), new ItemProjectionSpec(), binaryDownloadUri))
+                    .by(projectItems(__.out().where(__.not(__.in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL))), new ItemProjectionSpec(), binaryDownloadUri))
                     .by(__.values(PropertyConstants.LINK_TYPE_PROPERTY));
-            var genericInboundTraversal = __.in().has(LINK_TYPE_PROPERTY)
+            var genericInboundTraversal = __.in()
+                    .where( // only traverse links that are the latest version
+                            __.and(
+                                    __.has(LINK_TYPE_PROPERTY),
+                                    __.not(__.in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL))
+                            )
+                    )
                     .project(PropertyConstants.UNIQUE_ID_PROPERTY, "direction", "properties", "source", "linkType")
                     .by(__.values(PropertyConstants.UNIQUE_ID_PROPERTY))
                     .by(__.constant(Direction.IN))
                     .by(__.valueMap())
-                    .by(projectItems(__.in(), new ItemProjectionSpec(), binaryDownloadUri))
+                    .by(projectItems(__.in().where(__.not(__.in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL))), new ItemProjectionSpec(), binaryDownloadUri))
                     .by(__.values(PropertyConstants.LINK_TYPE_PROPERTY));
             linkTraversals.add(genericOutboundTraversal);
             linkTraversals.add(genericInboundTraversal);
         } else if (spec instanceof SpecificLinksProjectionSpec specificLinksSpec) {
             Set<LinkProjectionSpec> linkProjectionSpecs = specificLinksSpec.getLinks();
             List<GraphTraversal<Vertex, Map<String, Object>>> travs = linkProjectionSpecs.stream().map(linkSpec -> {
-                String linkType = linkSpec.getLinkLabel();
                 Direction direction = linkSpec.getDirection();
                 String otherNodeLabel = direction.equals(Direction.IN) ? "source" : "target";
 
                 GraphTraversal<Vertex, Vertex> baseTraversal = direction.equals(Direction.IN) ? __.in() : __.out();
-                baseTraversal = baseTraversal.has(LINK_TYPE_PROPERTY, linkType);
+                baseTraversal = baseTraversal
+                        .where( // only traverse links that are the latest version
+                                __.and(
+                                        __.has(LINK_TYPE_PROPERTY),
+                                        __.not(__.in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL))
+                                )
+                        );
+
+                var otherNodeTraversal = direction.equals(Direction.IN) ? __.in() : __.out();
+                otherNodeTraversal = otherNodeTraversal.where(__.not(__.in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL)));
+
                 return baseTraversal.project(PropertyConstants.UNIQUE_ID_PROPERTY, "direction", "properties", otherNodeLabel, "linkType")
                         .by(__.values(PropertyConstants.UNIQUE_ID_PROPERTY))
                         .by(__.constant(linkSpec.getDirection()))
                         .by(__.valueMap())
-                        .by(projectItems(direction.equals(Direction.IN) ? __.in() : __.out(), linkSpec.getItemProjectionSpec(), binaryDownloadUri))
+                        .by(projectItems(otherNodeTraversal, linkSpec.getItemProjectionSpec(), binaryDownloadUri))
                         .by(__.values(PropertyConstants.LINK_TYPE_PROPERTY));
             }).toList();
             linkTraversals.addAll(travs);
@@ -261,7 +282,6 @@ public class Projector {
                                 linkProjection.setSource((ItemProjection)  valueMap.get("source"));
                                 retList.add(linkProjection);
                             }
-
                         }
                     }
                     return retList;
