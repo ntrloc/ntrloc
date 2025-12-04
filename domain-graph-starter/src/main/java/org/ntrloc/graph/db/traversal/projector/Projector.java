@@ -6,6 +6,7 @@ import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversal;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversalSource;
 import org.apache.tinkerpop.gremlin.structure.Direction;
 import org.apache.tinkerpop.gremlin.structure.Vertex;
+import org.ntrloc.graph.db.ItemStatus;
 import org.ntrloc.graph.db.LabelConstants;
 import org.ntrloc.graph.db.PropertyConstants;
 import org.ntrloc.graph.db.language.projection.AllLinksProjectionSpec;
@@ -71,7 +72,7 @@ public class Projector {
         traversalSource.tx().close();
         traversalSource.tx().begin();
 
-        GraphTraversal<?, Vertex> traversal = traversalSource.V().not(__.in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL));
+        GraphTraversal<?, Vertex> traversal = traversalSource.V().not(__.in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).has(STATUS_PROPERTY, ItemStatus.NORMAL.toString()));
         traversal = select(traversal, spec);
 
         var projectionTraversal = projectItems(traversal, spec, binaryDownloadUri);
@@ -145,7 +146,7 @@ public class Projector {
 
             Map<String, Object> properties = (Map<String, Object>) value.get("properties");
             Map<String, Map<String, Object>> nodePropsMap = (Map) value.get("nodeProperties");
-            Map<String, BinaryProjection> binaryPropsMap = nodePropsMap.entrySet().stream().collect(Collectors.toMap(entry -> entry.getKey(), entry -> {
+            Map<String, BinaryProjection> binaryPropsMap = nodePropsMap.entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey, entry -> {
                         Map<String, Object> props = entry.getValue();
                         BinaryProjection binaryProp = new BinaryProjection();
                         binaryProp.setMd5((String) props.get("md5"));
@@ -183,7 +184,7 @@ public class Projector {
         });
     }
 
-    /** Creates a traversal that will use a links projection spec to produce a */
+    /** Creates a traversal that will use a links projection spec to produce a list of link projections.*/
     private GraphTraversal<?, ArrayList<LinkProjection>> projectLinks(LinksProjectionSpec spec, URI binaryDownloadUri) {
         // here we want to create a projection either on all links, with a default node projection,
         // or specific links with a given node projection.
@@ -192,30 +193,32 @@ public class Projector {
 
         if (spec instanceof AllLinksProjectionSpec) {
             var genericOutboundTraversal = __.out()
-                    .where( // only traverse links that are the latest version
+                    .where( // only traverse links that are the latest version, pointing at another node that is also the latest version
                             __.and(
                                     __.has(LINK_TYPE_PROPERTY),
-                                    __.not(__.in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL))
+                                    __.not(__.in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).has(LINK_TYPE_PROPERTY).has(STATUS_PROPERTY, ItemStatus.NORMAL.toString())),
+                                    __.filter(__.out().not(__.in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).has(STATUS_PROPERTY, ItemStatus.NORMAL.toString())))
                             )
                     )
                     .project(PropertyConstants.UNIQUE_ID_PROPERTY, "direction", "properties", "target", "linkType")
                     .by(__.values(PropertyConstants.UNIQUE_ID_PROPERTY))
                     .by(__.constant(Direction.OUT))
                     .by(__.valueMap())
-                    .by(projectItems(__.out().where(__.not(__.in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL))), new ItemProjectionSpec(), binaryDownloadUri))
+                    .by(projectItems(__.out().not(__.in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).has(STATUS_PROPERTY, ItemStatus.NORMAL.toString())), new ItemProjectionSpec(), binaryDownloadUri))
                     .by(__.values(PropertyConstants.LINK_TYPE_PROPERTY));
             var genericInboundTraversal = __.in()
-                    .where( // only traverse links that are the latest version
+                    .where( // only traverse links that are the latest version, pointing at another node that is also the latest version
                             __.and(
                                     __.has(LINK_TYPE_PROPERTY),
-                                    __.not(__.in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL))
+                                    __.not(__.in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).has(LINK_TYPE_PROPERTY).has(STATUS_PROPERTY, ItemStatus.NORMAL.toString())),
+                                    __.filter(__.in().not(__.in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).has(STATUS_PROPERTY, ItemStatus.NORMAL.toString())))
                             )
                     )
                     .project(PropertyConstants.UNIQUE_ID_PROPERTY, "direction", "properties", "source", "linkType")
                     .by(__.values(PropertyConstants.UNIQUE_ID_PROPERTY))
                     .by(__.constant(Direction.IN))
                     .by(__.valueMap())
-                    .by(projectItems(__.in().where(__.not(__.in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL))), new ItemProjectionSpec(), binaryDownloadUri))
+                    .by(projectItems(__.in().not(__.in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).has(STATUS_PROPERTY, ItemStatus.NORMAL.toString())), new ItemProjectionSpec(), binaryDownloadUri))
                     .by(__.values(PropertyConstants.LINK_TYPE_PROPERTY));
             linkTraversals.add(genericOutboundTraversal);
             linkTraversals.add(genericInboundTraversal);
@@ -225,18 +228,28 @@ public class Projector {
                 Direction direction = linkSpec.getDirection();
                 String otherNodeLabel = direction.equals(Direction.IN) ? "source" : "target";
 
-                GraphTraversal<Vertex, Vertex> baseTraversal = direction.equals(Direction.IN) ? __.in() : __.out();
-                baseTraversal = baseTraversal
-                        .where( // only traverse links that are the latest version
-                                __.and(
-                                        __.has(LINK_TYPE_PROPERTY),
-                                        __.not(__.in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL))
-                                )
-                        );
+                GraphTraversal<Vertex, Vertex> baseTraversal = switch (direction) {
+                    case OUT -> __.out()
+                            .where( // only traverse links that are the latest version, pointing at another node that is also the latest version
+                            __.and(
+                                    __.has(LINK_TYPE_PROPERTY),
+                                    __.not(__.in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).has(LINK_TYPE_PROPERTY).has(STATUS_PROPERTY, ItemStatus.NORMAL.toString())),
+                                    __.filter(__.out().not(__.in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).has(STATUS_PROPERTY, ItemStatus.NORMAL.toString())))
+                            )
+                    );
+                    case IN -> __.in()
+                            .where( // only traverse links that are the latest version, pointing at another node that is also the latest version
+                            __.and(
+                                    __.has(LINK_TYPE_PROPERTY),
+                                    __.not(__.in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).has(LINK_TYPE_PROPERTY).has(STATUS_PROPERTY, ItemStatus.NORMAL.toString())),
+                                    __.filter(__.in().not(__.in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).has(STATUS_PROPERTY, ItemStatus.NORMAL.toString())))
+                            )
+                    );
+                    case null, default -> throw new IllegalArgumentException("Direction must be specified for link projection spec");
+                };
 
                 var otherNodeTraversal = direction.equals(Direction.IN) ? __.in() : __.out();
-                otherNodeTraversal = otherNodeTraversal.where(__.not(__.in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL)));
-
+                otherNodeTraversal = otherNodeTraversal.not(__.in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).has(STATUS_PROPERTY, ItemStatus.NORMAL.toString()));
                 return baseTraversal.project(PropertyConstants.UNIQUE_ID_PROPERTY, "direction", "properties", otherNodeLabel, "linkType")
                         .by(__.values(PropertyConstants.UNIQUE_ID_PROPERTY))
                         .by(__.constant(linkSpec.getDirection()))

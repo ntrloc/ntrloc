@@ -1,14 +1,19 @@
 package org.ntrloc.graph.db.traversal.projector;
 
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversalSource;
+import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.__;
 import org.apache.tinkerpop.gremlin.structure.Direction;
 import org.janusgraph.core.JanusGraph;
 import org.janusgraph.core.JanusGraphFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.ntrloc.graph.db.ItemStatus;
+import org.ntrloc.graph.db.LabelConstants;
 import org.ntrloc.graph.db.PropertyConstants;
+import org.ntrloc.graph.db.language.projection.AllLinksProjectionSpec;
 import org.ntrloc.graph.db.language.projection.ItemProjection;
+import org.ntrloc.graph.db.language.projection.LinkProjection;
 import org.ntrloc.graph.db.language.projection.LinkProjectionSpec;
 import org.ntrloc.graph.db.language.projection.SelectableItemProjectionSpec;
 import org.ntrloc.graph.db.language.projection.SpecificLinksProjectionSpec;
@@ -31,6 +36,7 @@ import java.util.stream.StreamSupport;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @DisplayName("A projector")
@@ -288,6 +294,145 @@ class ProjectorTest {
         assertEquals(1, list.size());
         ItemProjection photographer = list.get(0);
         assertEquals(List.of("Bill"), photographer.getProperties().get("photographerName"));
+    }
+
+    @Test
+    @DisplayName("should project nodes that have an uncommitted replacement version")
+    void testProjectNodesByUncommittedVersion() {
+        var photo1Id = traversalSource.V()
+                .hasLabel("Photo")
+                .has(PropertyConstants.UNIQUE_ID_PROPERTY, "p1").id().next();
+        traversalSource.tx().begin();
+        traversalSource.addV("Photo")
+                .property(PropertyConstants.STATUS_PROPERTY, ItemStatus.UNCOMMITTED_CREATE.toString()).as("new")
+                .addE(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).from("new").to(__.V(photo1Id)).iterate();
+        traversalSource.tx().commit();
+        Projector projector = new Projector(traversalSource);
+        SelectableItemProjectionSpec spec = new SelectableItemProjectionSpec(new ItemTypeSelector("Photo"));
+        List<ItemProjection> photos = projector.project(spec);
+        assertEquals(2, photos.size());
+    }
+
+    @Test
+    @DisplayName("should not project nodes that have a committed replacement version")
+    void testDoNotProjectNodesWithReplacementVersion() {
+        var photo1Id = traversalSource.V()
+                .hasLabel("Photo")
+                .has(PropertyConstants.UNIQUE_ID_PROPERTY, "p1").id().next();
+        traversalSource.tx().begin();
+        traversalSource.addV("Photo")
+                .property(PropertyConstants.STATUS_PROPERTY, ItemStatus.NORMAL.toString()).as("new")
+                .addE(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).from("new").to(__.V(photo1Id)).iterate();
+        traversalSource.tx().commit();
+        Projector projector = new Projector(traversalSource);
+        SelectableItemProjectionSpec spec = new SelectableItemProjectionSpec(new ItemTypeSelector("Photo"));
+        List<ItemProjection> photos = projector.project(spec);
+        assertEquals(1, photos.size());
+    }
+
+    @Test
+    @DisplayName("should project links that have an uncommitted replacement version")
+    void testProjectLinksByUncommittedVersion() {
+        var employsLinkId = traversalSource.V()
+                .hasLabel("agencyEmploysId").id().next();
+        traversalSource.tx().begin();
+        traversalSource.addV("agencyEmploysId")
+                .property(PropertyConstants.STATUS_PROPERTY, ItemStatus.UNCOMMITTED_UPDATE.toString()).as("new")
+                .addE(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).from("new").to(__.V(employsLinkId)).iterate();
+        traversalSource.tx().commit();
+        Projector projector = new Projector(traversalSource);
+        SelectableItemProjectionSpec spec = new SelectableItemProjectionSpec(new ItemTypeSelector("Agency"));
+        spec.setLinks(new AllLinksProjectionSpec());
+        List<ItemProjection> agencies = projector.project(spec);
+        ItemProjection agency = agencies.get(0);
+        List<LinkProjection> photographerLinks = agency.getLinks().get("agencyEmploysId");
+        assertNotNull(photographerLinks);
+        assertEquals(1, photographerLinks.size());
+    }
+
+    @Test
+    @DisplayName("should not project links that have a committed replacement version")
+    void testProjectLinksByCommittedVersion() {
+        var employsLinkId = traversalSource.V().hasLabel("agencyEmploysId").id().next();
+        traversalSource.tx().begin();
+        traversalSource.addV("agencyEmploysId")
+                .property(PropertyConstants.STATUS_PROPERTY, ItemStatus.NORMAL.toString())
+                .property(PropertyConstants.LINK_TYPE_PROPERTY, "agencyEmploysId")
+                .as("new")
+                .addE(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).from("new").to(__.V(employsLinkId)).iterate();
+        traversalSource.tx().commit();
+        Projector projector = new Projector(traversalSource);
+        SelectableItemProjectionSpec spec = new SelectableItemProjectionSpec(new ItemTypeSelector("Agency"));
+        spec.setLinks(new AllLinksProjectionSpec());
+        List<ItemProjection> agencies = projector.project(spec);
+        ItemProjection agency = agencies.get(0);
+        List<LinkProjection> photographerLinks = agency.getLinks().get("agencyEmploysId");
+        assertNull(photographerLinks);
+    }
+
+    @Test
+    @DisplayName("should project links to target nodes that have an uncommitted replacement version")
+    void testProjectLinksToTargetsByUncommittedVersion() {
+        var photographerId = traversalSource.V()
+                .hasLabel("Photographer").has(PropertyConstants.UNIQUE_ID_PROPERTY, "ph3").id().next();
+        traversalSource.tx().begin();
+        traversalSource.addV("Photographer")
+                .property(PropertyConstants.STATUS_PROPERTY, ItemStatus.UNCOMMITTED_UPDATE.toString()).as("new")
+                .addE(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).from("new").to(__.V(photographerId)).iterate();
+        traversalSource.tx().commit();
+        Projector projector = new Projector(traversalSource);
+        SelectableItemProjectionSpec spec = new SelectableItemProjectionSpec(new ItemTypeSelector("Agency"));
+        spec.setLinks(new AllLinksProjectionSpec());
+        List<ItemProjection> agencies = projector.project(spec);
+        ItemProjection agency = agencies.get(0);
+        List<LinkProjection> photographerLinks = agency.getLinks().get("agencyEmploysId");
+        assertNotNull(photographerLinks);
+        assertEquals(1, photographerLinks.size());
+    }
+
+    @Test
+    @DisplayName("should not project links to target nodes that have a committed, unlinked replacement version")
+    void testNoProjectLinksOnUncommittedUnlinkedNodes() {
+        var photographerId = traversalSource.V()
+                .hasLabel("Photographer").has(PropertyConstants.UNIQUE_ID_PROPERTY, "ph3").id().next();
+        traversalSource.tx().begin();
+        // update the photographer but don't link it to the agency
+        traversalSource.addV("Photographer")
+                .property(PropertyConstants.STATUS_PROPERTY, ItemStatus.NORMAL.toString()).as("new")
+                .addE(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).from("new").to(__.V(photographerId)).iterate();
+        traversalSource.tx().commit();
+        Projector projector = new Projector(traversalSource);
+        SelectableItemProjectionSpec spec = new SelectableItemProjectionSpec(new ItemTypeSelector("Agency"));
+        spec.setLinks(new AllLinksProjectionSpec());
+        List<ItemProjection> agencies = projector.project(spec);
+        ItemProjection agency = agencies.get(0);
+        List<LinkProjection> photographerLinks = agency.getLinks().get("agencyEmploysId");
+        assertNull(photographerLinks);
+    }
+
+    @Test
+    @DisplayName("should project links to target nodes that have a committed, linked replacement version")
+    void testProjectLinksToTargetsByCommittedLinkedVersion() {
+        var photographerId = traversalSource.V()
+                .hasLabel("Photographer").has(PropertyConstants.UNIQUE_ID_PROPERTY, "ph3").id().next();
+        var agencyLinkId = traversalSource.V().hasLabel("agencyEmploysId").id().next();
+
+        traversalSource.tx().begin();
+        traversalSource.addV("Photographer")
+                .property(PropertyConstants.STATUS_PROPERTY, ItemStatus.NORMAL.toString()).as("new")
+                .property(PropertyConstants.VERSION_PROPERTY, 2)
+                .addE(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).from("new").to(__.V(photographerId))
+                .addE("agencyEmploysId-out").from(__.V(agencyLinkId)).to("new")
+                .iterate();
+        traversalSource.tx().commit();
+        Projector projector = new Projector(traversalSource);
+        SelectableItemProjectionSpec spec = new SelectableItemProjectionSpec(new ItemTypeSelector("Agency"));
+        spec.setLinks(new AllLinksProjectionSpec());
+        List<ItemProjection> agencies = projector.project(spec);
+        ItemProjection agency = agencies.get(0);
+        List<LinkProjection> photographerLinks = agency.getLinks().get("agencyEmploysId");
+        assertNotNull(photographerLinks);
+        assertEquals(1, photographerLinks.size());
     }
 
 }
