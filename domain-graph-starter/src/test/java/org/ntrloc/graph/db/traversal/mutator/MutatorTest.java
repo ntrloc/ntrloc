@@ -1,5 +1,6 @@
 package org.ntrloc.graph.db.traversal.mutator;
 
+import org.apache.tinkerpop.gremlin.process.traversal.TextP;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversal;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversalSource;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.__;
@@ -25,6 +26,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.ntrloc.graph.db.PropertyConstants.COMMIT_ID_PROPERTY;
 import static org.ntrloc.graph.db.PropertyConstants.STATUS_PROPERTY;
 import static org.ntrloc.graph.db.PropertyConstants.TRANSACTION_ID_PROPERTY;
 import static org.ntrloc.graph.db.PropertyConstants.VERSION_PROPERTY;
@@ -85,7 +87,8 @@ class MutatorTest {
         assertEquals(1, status.size());
         assertEquals(ItemStatus.NORMAL.toString(), status.get(0));
 
-        assertNotNull(valueMap.get(TRANSACTION_ID_PROPERTY));
+        assertNull(valueMap.get(TRANSACTION_ID_PROPERTY));
+        assertNotNull(valueMap.get(COMMIT_ID_PROPERTY));
     }
 
     private void assertProperties(Map<String, Object> props, Object... keysAndValues) {
@@ -195,7 +198,7 @@ class MutatorTest {
 
         traversalSource.tx().commit();
 
-        var nodes = traversalSource.V().toList();
+        var nodes = traversalSource.V().not(__.hasLabel(TextP.startingWith("system"))).elementMap().toList();
         var edges = traversalSource.E().toList();
 
         assertEquals(3, nodes.size());

@@ -25,11 +25,18 @@ public class PropertyConstants {
     /** This property is set on system:nodeProperty edges to identify the name of the property they represent */
     public static final String NODE_PROPERTY_NAME_PROPERTY = "nodePropertyName";
 
+    /** This property is set on the global ID catalog node to keep track of the next commit ID to use */
+    public static final String GLOBAL_COMMIT_ID_PROPERTY = "globalCommitId";
+
+    /** This property is set on individual items and links to record the ID of the commit that created/modified them. */
+    public static final String COMMIT_ID_PROPERTY = "commitId";
+
     public static final Map<String, PropertyType> IMPLICIT_PROPERTY_TYPES = Map.of(
             IS_LATEST_VERSION_PROPERTY, PropertyType.BOOLEAN,
             ITEM_TYPE_PROPERTY, PropertyType.STRING,
             STATUS_PROPERTY, PropertyType.STRING,
             TRANSACTION_ID_PROPERTY, PropertyType.STRING,
+            COMMIT_ID_PROPERTY, PropertyType.STRING,
             UNIQUE_ID_PROPERTY, PropertyType.STRING,
             DESCRIPTION_PROPERTY, PropertyType.STRING,
             VERSION_PROPERTY, PropertyType.INT

@@ -10,6 +10,7 @@ public class ItemProjection {
     private Integer version;
     private boolean isLatestVersion;
     private String itemType;
+    private String commitId;
 
     private Map<String, Object> properties;
     private Map<String, List<LinkProjection>> links;
@@ -48,6 +49,14 @@ public class ItemProjection {
 
     public void setItemType(String nodeType) {
         this.itemType = nodeType;
+    }
+
+    public String getCommitId() {
+        return commitId;
+    }
+
+    public void setCommitId(String commitId) {
+        this.commitId = commitId;
     }
 
     public Map<String, Object> getProperties() {

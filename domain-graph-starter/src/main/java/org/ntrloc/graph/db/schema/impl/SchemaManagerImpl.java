@@ -56,6 +56,7 @@ import static org.ntrloc.graph.db.LabelConstants.LINK_DEFINITION_LABEL;
 import static org.ntrloc.graph.db.LabelConstants.LINK_SOURCE_LABEL;
 import static org.ntrloc.graph.db.LabelConstants.LINK_TARGET_LABEL;
 import static org.ntrloc.graph.db.LabelConstants.PROPERTY_DEFINITION_LABEL;
+import static org.ntrloc.graph.db.PropertyConstants.COMMIT_ID_PROPERTY;
 import static org.ntrloc.graph.db.PropertyConstants.DESCRIPTION_PROPERTY;
 import static org.ntrloc.graph.db.PropertyConstants.NAME_PROPERTY;
 import static org.ntrloc.graph.db.PropertyConstants.UNIQUE_ID_PROPERTY;
@@ -121,6 +122,10 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
         if (uidKey == null) {
             uidKey = management.makePropertyKey(UNIQUE_ID_PROPERTY).dataType(String.class).make();
         }
+        PropertyKey commitIdKey = management.getPropertyKey(COMMIT_ID_PROPERTY);
+        if (commitIdKey == null) {
+            commitIdKey = management.makePropertyKey(COMMIT_ID_PROPERTY).dataType(String.class).make();
+        }
 
         String globalIndexName = "GLOBAL";
         if (management.getGraphIndex(globalIndexName) == null) {
@@ -129,6 +134,7 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
             builder.addKey(transactionKey, Mapping.STRING.asParameter());
             builder.addKey(itemTypeKey, Mapping.STRING.asParameter());
             builder.addKey(uidKey, Mapping.STRING.asParameter());
+            builder.addKey(commitIdKey, Mapping.STRING.asParameter());
             builder.buildMixedIndex("search");
             management.commit();
 

@@ -5,6 +5,7 @@ public class LabelConstants {
     public static final String IS_REVISION_OF_LABEL = "system:is-revision-of";
     public static final String HAS_PREVIOUS_VERSION_LABEL = "system:has-previous-version";
 
+    public static final String ID_CATALOG_LABEL = "system:idCatalog";
     public static final String REVISION_LABEL = "system:revision";
     public static final String DATA_LABEL = "system:data";
     public static final String NODE_PROPERTY_EDGE_LABEL = "system:nodeProperty";

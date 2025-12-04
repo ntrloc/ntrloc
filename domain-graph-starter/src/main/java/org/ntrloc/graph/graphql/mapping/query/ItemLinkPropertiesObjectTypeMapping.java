@@ -71,6 +71,7 @@ public class ItemLinkPropertiesObjectTypeMapping implements PropertyFieldValueDe
             FieldDefinition fieldDefinition = propertyFieldsBySchemaPropertyName.get(propertyName);
             return fieldDefinition.getName();
         }, Map.Entry::getValue, (existing, replacement) -> existing));
+        linkProjection.setProperties(translatedProperties);
     }
 
 }

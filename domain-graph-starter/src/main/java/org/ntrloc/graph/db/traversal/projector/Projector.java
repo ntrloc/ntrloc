@@ -43,6 +43,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 import static org.ntrloc.graph.db.LabelConstants.NODE_PROPERTY_EDGE_LABEL;
+import static org.ntrloc.graph.db.PropertyConstants.COMMIT_ID_PROPERTY;
 import static org.ntrloc.graph.db.PropertyConstants.ITEM_TYPE_PROPERTY;
 import static org.ntrloc.graph.db.PropertyConstants.LINK_TYPE_PROPERTY;
 import static org.ntrloc.graph.db.PropertyConstants.NODE_PROPERTY_NAME_PROPERTY;
@@ -56,7 +57,8 @@ public class Projector {
 
     private static final Logger LOG = LoggerFactory.getLogger(Projector.class);
 
-    private static final List<String> SUPPRESSED_PROPERTIES = List.of(VERSION_PROPERTY, UNIQUE_ID_PROPERTY, STATUS_PROPERTY, TRANSACTION_ID_PROPERTY, ITEM_TYPE_PROPERTY, LINK_TYPE_PROPERTY);
+    // TODO shouldn't this derive from PropertyConstant implicit properties?
+    private static final List<String> SUPPRESSED_PROPERTIES = List.of(VERSION_PROPERTY, COMMIT_ID_PROPERTY, UNIQUE_ID_PROPERTY, STATUS_PROPERTY, TRANSACTION_ID_PROPERTY, ITEM_TYPE_PROPERTY, LINK_TYPE_PROPERTY);
 
     private GraphTraversalSource traversalSource;
 
@@ -109,6 +111,7 @@ public class Projector {
         projectionTraversals.put("label", __.label());
         projectionTraversals.put(PropertyConstants.UNIQUE_ID_PROPERTY, __.values(PropertyConstants.UNIQUE_ID_PROPERTY));
         projectionTraversals.put(PropertyConstants.VERSION_PROPERTY, __.values(PropertyConstants.VERSION_PROPERTY));
+        projectionTraversals.put(PropertyConstants.COMMIT_ID_PROPERTY, __.values(PropertyConstants.COMMIT_ID_PROPERTY));
         projectionTraversals.put(PropertyConstants.IS_LATEST_VERSION_PROPERTY,  __.choose(
                 __.inE(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).limit(1),
                 __.constant(false),
@@ -143,6 +146,7 @@ public class Projector {
             int version = (int) value.get(PropertyConstants.VERSION_PROPERTY);
             boolean isLatestVersion = (boolean) value.get(PropertyConstants.IS_LATEST_VERSION_PROPERTY);
             String iType = (String) value.get(PropertyConstants.ITEM_TYPE_PROPERTY);
+            String commitId = (String) value.get(PropertyConstants.COMMIT_ID_PROPERTY);
 
             Map<String, Object> properties = (Map<String, Object>) value.get("properties");
             Map<String, Map<String, Object>> nodePropsMap = (Map) value.get("nodeProperties");
@@ -168,6 +172,7 @@ public class Projector {
 
             ItemProjection projection = new ItemProjection();
             projection.setId(uid);
+            projection.setCommitId(commitId);
             projection.setVersion(version);
             projection.setLatestVersion(isLatestVersion);
             projection.setItemType(iType);
@@ -200,8 +205,9 @@ public class Projector {
                                     __.filter(__.out().not(__.in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).has(STATUS_PROPERTY, ItemStatus.NORMAL.toString())))
                             )
                     )
-                    .project(PropertyConstants.UNIQUE_ID_PROPERTY, "direction", "properties", "target", "linkType")
+                    .project(PropertyConstants.UNIQUE_ID_PROPERTY, COMMIT_ID_PROPERTY, "direction", "properties", "target", "linkType")
                     .by(__.values(PropertyConstants.UNIQUE_ID_PROPERTY))
+                    .by(__.values(COMMIT_ID_PROPERTY))
                     .by(__.constant(Direction.OUT))
                     .by(__.valueMap())
                     .by(projectItems(__.out().not(__.in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).has(STATUS_PROPERTY, ItemStatus.NORMAL.toString())), new ItemProjectionSpec(), binaryDownloadUri))
@@ -214,8 +220,9 @@ public class Projector {
                                     __.filter(__.in().not(__.in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).has(STATUS_PROPERTY, ItemStatus.NORMAL.toString())))
                             )
                     )
-                    .project(PropertyConstants.UNIQUE_ID_PROPERTY, "direction", "properties", "source", "linkType")
+                    .project(PropertyConstants.UNIQUE_ID_PROPERTY, COMMIT_ID_PROPERTY, "direction", "properties", "source", "linkType")
                     .by(__.values(PropertyConstants.UNIQUE_ID_PROPERTY))
+                    .by(__.values(COMMIT_ID_PROPERTY))
                     .by(__.constant(Direction.IN))
                     .by(__.valueMap())
                     .by(projectItems(__.in().not(__.in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).has(STATUS_PROPERTY, ItemStatus.NORMAL.toString())), new ItemProjectionSpec(), binaryDownloadUri))
@@ -250,8 +257,9 @@ public class Projector {
 
                 var otherNodeTraversal = direction.equals(Direction.IN) ? __.in() : __.out();
                 otherNodeTraversal = otherNodeTraversal.not(__.in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).has(STATUS_PROPERTY, ItemStatus.NORMAL.toString()));
-                return baseTraversal.project(PropertyConstants.UNIQUE_ID_PROPERTY, "direction", "properties", otherNodeLabel, "linkType")
+                return baseTraversal.project(PropertyConstants.UNIQUE_ID_PROPERTY, COMMIT_ID_PROPERTY, "direction", "properties", otherNodeLabel, "linkType")
                         .by(__.values(PropertyConstants.UNIQUE_ID_PROPERTY))
+                        .by(__.values(COMMIT_ID_PROPERTY))
                         .by(__.constant(linkSpec.getDirection()))
                         .by(__.valueMap())
                         .by(projectItems(otherNodeTraversal, linkSpec.getItemProjectionSpec(), binaryDownloadUri))
@@ -279,6 +287,7 @@ public class Projector {
                             if (direction == Direction.OUT) {
                                 OutgoingLinkProjection linkProjection = new OutgoingLinkProjection();
                                 linkProjection.setId((String) valueMap.get(UNIQUE_ID_PROPERTY));
+                                linkProjection.setCommitId((String) valueMap.get(COMMIT_ID_PROPERTY));
                                 linkProjection.setLinkType(linkType);
                                 Map<String, Object> linkProperties = (Map<String, Object>) valueMap.get("properties");
                                 linkProperties.keySet().removeAll(SUPPRESSED_PROPERTIES);
@@ -288,6 +297,7 @@ public class Projector {
                             } else {
                                 IncomingLinkProjection linkProjection = new IncomingLinkProjection();
                                 linkProjection.setId((String) valueMap.get(UNIQUE_ID_PROPERTY));
+                                linkProjection.setCommitId((String) valueMap.get(COMMIT_ID_PROPERTY));
                                 linkProjection.setLinkType(linkType);
                                 Map<String, Object> linkProperties = (Map<String, Object>) valueMap.get("properties");
                                 linkProperties.keySet().removeAll(SUPPRESSED_PROPERTIES);

@@ -31,10 +31,13 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
+import static org.ntrloc.graph.db.PropertyConstants.COMMIT_ID_PROPERTY;
+import static org.ntrloc.graph.db.PropertyConstants.GLOBAL_COMMIT_ID_PROPERTY;
 import static org.ntrloc.graph.db.PropertyConstants.ITEM_TYPE_PROPERTY;
 import static org.ntrloc.graph.db.PropertyConstants.LINK_TYPE_PROPERTY;
 import static org.ntrloc.graph.db.PropertyConstants.NODE_PROPERTY_NAME_PROPERTY;
 import static org.ntrloc.graph.db.PropertyConstants.STATUS_PROPERTY;
+import static org.ntrloc.graph.db.PropertyConstants.TRANSACTION_ID_PROPERTY;
 import static org.ntrloc.graph.db.PropertyConstants.UNIQUE_ID_PROPERTY;
 
 public class MutatorImpl implements Mutator {
@@ -104,15 +107,6 @@ public class MutatorImpl implements Mutator {
 
     @Override
     public String updateNode(String uniqueId, List<? extends Property> properties) {
-
-        String label = null;
-
-        var labelTraversal = traversalSource.V().has(UNIQUE_ID_PROPERTY, uniqueId).project("label").by(__.label());
-        if (!labelTraversal.hasNext()) {
-            throw new IllegalArgumentException("No node with unique ID " + uniqueId + " found");
-        } else {
-            label = labelTraversal.next().get("label").toString();
-        }
 
         var updateNodeAlias = "updateNode";
         var revisionAlias = "nodeRevision";
@@ -212,6 +206,21 @@ public class MutatorImpl implements Mutator {
         edgeTraversal.iterate();
 
         return uniqueId;
+    }
+
+    /** Generates the next commit ID to apply during a transaction commit. */
+    private String getCommitId() {
+        // TODO establish a cluster-wide lock before you do this!
+        Long retId;
+        var idCatalogTraversal = traversalSource.V().hasLabel(LabelConstants.ID_CATALOG_LABEL).values(GLOBAL_COMMIT_ID_PROPERTY);
+        if (idCatalogTraversal.hasNext()) {
+            retId = (Long)idCatalogTraversal.next();
+            traversalSource.V().hasLabel(LabelConstants.ID_CATALOG_LABEL).property(GLOBAL_COMMIT_ID_PROPERTY, retId + 1).iterate();
+        } else {
+            retId = 0L;
+            traversalSource.addV(LabelConstants.ID_CATALOG_LABEL).property(GLOBAL_COMMIT_ID_PROPERTY, retId + 1).iterate();
+        }
+        return Long.toHexString(retId);
     }
 
     /* --------------------- Transaction methods --------------------- */
@@ -385,12 +394,16 @@ public class MutatorImpl implements Mutator {
         String priorStatusLabel = "priorStatus";
         String newStatusLabel = "newStatus";
 
+        String commitId = getCommitId();
+
         var iterator = traversalSource.V()
                 .has(STATUS_PROPERTY, P.within(ItemStatus.UNCOMMITTED_CREATE.toString(), ItemStatus.UNCOMMITTED_UPDATE.toString(), ItemStatus.UNCOMMITTED_DELETE.toString()))
                 .has(PropertyConstants.TRANSACTION_ID_PROPERTY, transaction.getId())
                 .as(nodeLabel)
                 .values(STATUS_PROPERTY).as(priorStatusLabel)
                 .select(nodeLabel)
+                .property(COMMIT_ID_PROPERTY, commitId)
+                .property(TRANSACTION_ID_PROPERTY, null)
                 .property(STATUS_PROPERTY, __.values(STATUS_PROPERTY).map(v -> {
                     var value = (String)v.get();
                     if (value.equals(ItemStatus.UNCOMMITTED_CREATE.toString())) {

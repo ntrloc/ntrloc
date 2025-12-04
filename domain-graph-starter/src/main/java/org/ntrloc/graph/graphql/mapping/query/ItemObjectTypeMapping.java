@@ -25,14 +25,16 @@ public class ItemObjectTypeMapping implements ObjectTypeProducer {
 
     private static final Logger LOG = LoggerFactory.getLogger(ItemObjectTypeMapping.class);
 
+    // TODO the implicit properties should be derived from PropertyConstants!
     private static final String ID_FIELD_NAME = "id";
     private static final String IS_LATEST_VERSION_FIELD_NAME = "isLatestVersion";
     private static final String ITEM_TYPE_FIELD_NAME = "itemType";
     private static final String LINKS_FIELD_NAME = "links";
     private static final String PROPERTIES_FIELD_NAME = "properties";
     private static final String VERSION_FIELD_NAME = "version";
+    private static final String COMMIT_ID_FIELD_NAME = "commitId";
 
-    private static final List<String> IMPLICIT_PROPERTIES = List.of(ID_FIELD_NAME, ITEM_TYPE_FIELD_NAME, VERSION_FIELD_NAME, IS_LATEST_VERSION_FIELD_NAME);
+    private static final List<String> IMPLICIT_PROPERTIES = List.of(COMMIT_ID_FIELD_NAME, ITEM_TYPE_FIELD_NAME, VERSION_FIELD_NAME, IS_LATEST_VERSION_FIELD_NAME);
 
     private final String graphQlTypeName;
     private final ItemDefinition itemDefinition;
@@ -82,6 +84,14 @@ public class ItemObjectTypeMapping implements ObjectTypeProducer {
                     .build();
             fieldDefinitions.add(propertiesDef);
         });
+
+        // TODO the implicit field definitions should be derived from PropertyConstants, not hardcoded like this!
+
+        FieldDefinition commitIdField = FieldDefinition.newFieldDefinition()
+                .name(COMMIT_ID_FIELD_NAME)
+                .type(new TypeName("String"))
+                .build();
+        fieldDefinitions.add(commitIdField);
 
         FieldDefinition idField = FieldDefinition.newFieldDefinition()
                 .name(ID_FIELD_NAME)
