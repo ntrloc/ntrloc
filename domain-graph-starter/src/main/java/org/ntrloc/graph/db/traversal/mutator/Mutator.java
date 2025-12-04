@@ -11,6 +11,7 @@ public interface Mutator {
     String deleteNode(String uniqueId);
 
     String createLink(String fromItemId, String toItemId, String relationshipName, List<? extends Property> properties);
+    void updateLink(String linkId, List<Property> properties);
 
     /* Transaction methods */
     String getTransactionId();

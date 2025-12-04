@@ -8,12 +8,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-public class ItemUpdateMutation extends ItemMutation implements ReferenceableItemMutation, ItemMutationWithItemType, MutationWithProperties {
+public class ItemUpdateMutation extends ItemMutation implements ReferenceableItemMutation, ItemMutationWithItemType, MutationWithProperties, ItemMutationWithLinks<LinkMutation> {
 
     private String itemType;
     private String id;
     private Map<String, Property> properties = new HashMap<>();
     private String refId;
+    private List<LinkMutation> links;
 
     @Override
     public String getItemType() {
@@ -50,6 +51,14 @@ public class ItemUpdateMutation extends ItemMutation implements ReferenceableIte
         this.properties = properties.stream().collect(Collectors.toMap(Property::getName, p -> p));
     }
 
+    public List<LinkMutation> getLinks() {
+        return links;
+    }
+
+    public void setLinks(List<LinkMutation> links) {
+        this.links = links;
+    }
+
     // fluent methods
 
     public ItemUpdateMutation itemType(String itemType) {
@@ -72,4 +81,8 @@ public class ItemUpdateMutation extends ItemMutation implements ReferenceableIte
         return this;
     }
 
+    public ItemUpdateMutation links(List<LinkMutation> links) {
+        setLinks(links);
+        return this;
+    }
 }

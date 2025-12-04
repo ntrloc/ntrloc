@@ -107,46 +107,7 @@ public class MutatorImpl implements Mutator {
 
     @Override
     public String updateNode(String uniqueId, List<? extends Property> properties) {
-
-        var updateNodeAlias = "updateNode";
-        var revisionAlias = "nodeRevision";
-
-        var traversal = traversalSource.V().has(UNIQUE_ID_PROPERTY, uniqueId).as(updateNodeAlias)
-                .addV(LabelConstants.REVISION_LABEL).as(revisionAlias)
-                .property(PropertyConstants.TRANSACTION_ID_PROPERTY, transaction.getId())
-                .property(UNIQUE_ID_PROPERTY, uniqueId)
-                .property(PropertyConstants.REVISION_TYPE_PROPERTY, Revision.RevisionType.UPDATE.toString());
-
-        Set<String> deletedProperties = new HashSet<>();
-        for (Property property : properties) {
-            String propertyName = property.getName();
-            if (property instanceof ScalarProperty<?, ?> scalarProperty) {
-                LOG.info("Applying scalar property {}", propertyName);
-                if (scalarProperty.getValue() == null) {
-                    deletedProperties.add(propertyName);
-                } else {
-                    traversal = traversal.property(propertyName, scalarProperty.getValue());
-                }
-            } else if (property instanceof ListProperty<?> listProperty) {
-                LOG.info("Applying list property {}", propertyName);
-                if (listProperty.getValues() == null || listProperty.getValues().isEmpty()) {
-                    deletedProperties.add(propertyName);
-                } else {
-                    for (Object value : listProperty.getValues()) {
-                        traversal = traversal.property(VertexProperty.Cardinality.list, propertyName, value);
-                    }
-                }
-            } else {
-                throw new IllegalArgumentException("Unsupported property type: " + property.getClass());
-            }
-        }
-        for (String deletedProperty : deletedProperties) {
-            traversal = traversal.property(PropertyConstants.DELETED_PROPERTY_NAME, deletedProperty);
-        }
-
-        traversal = traversal.addE(LabelConstants.IS_REVISION_OF_LABEL).from(revisionAlias).to(updateNodeAlias).outV();
-        var retTraversal = traversal.select(updateNodeAlias).elementMap(ITEM_TYPE_PROPERTY).map(trav -> (String)trav.get().get(ITEM_TYPE_PROPERTY));
-        return retTraversal.next();
+        return updateNodeInternal(uniqueId, properties, ITEM_TYPE_PROPERTY);
     }
 
     @Override
@@ -206,6 +167,54 @@ public class MutatorImpl implements Mutator {
         edgeTraversal.iterate();
 
         return uniqueId;
+    }
+
+    @Override
+    public void updateLink(String linkId, List<Property> properties) {
+        var linkType = updateNodeInternal(linkId, properties, LINK_TYPE_PROPERTY);
+        LOG.info("Updated link {} with properties {}", linkId, properties);
+    }
+
+    private String updateNodeInternal(String uniqueId, List<? extends Property> properties, String returnProperty) {
+        var updateNodeAlias = "updateNode";
+        var revisionAlias = "nodeRevision";
+
+        var traversal = traversalSource.V().has(UNIQUE_ID_PROPERTY, uniqueId).as(updateNodeAlias)
+                .addV(LabelConstants.REVISION_LABEL).as(revisionAlias)
+                .property(PropertyConstants.TRANSACTION_ID_PROPERTY, transaction.getId())
+                .property(UNIQUE_ID_PROPERTY, uniqueId)
+                .property(PropertyConstants.REVISION_TYPE_PROPERTY, Revision.RevisionType.UPDATE.toString());
+
+        Set<String> deletedProperties = new HashSet<>();
+        for (Property property : properties) {
+            String propertyName = property.getName();
+            if (property instanceof ScalarProperty<?, ?> scalarProperty) {
+                LOG.info("Applying scalar property {}", propertyName);
+                if (scalarProperty.getValue() == null) {
+                    deletedProperties.add(propertyName);
+                } else {
+                    traversal = traversal.property(propertyName, scalarProperty.getValue());
+                }
+            } else if (property instanceof ListProperty<?> listProperty) {
+                LOG.info("Applying list property {}", propertyName);
+                if (listProperty.getValues() == null || listProperty.getValues().isEmpty()) {
+                    deletedProperties.add(propertyName);
+                } else {
+                    for (Object value : listProperty.getValues()) {
+                        traversal = traversal.property(VertexProperty.Cardinality.list, propertyName, value);
+                    }
+                }
+            } else {
+                throw new IllegalArgumentException("Unsupported property type: " + property.getClass());
+            }
+        }
+        for (String deletedProperty : deletedProperties) {
+            traversal = traversal.property(PropertyConstants.DELETED_PROPERTY_NAME, deletedProperty);
+        }
+
+        traversal = traversal.addE(LabelConstants.IS_REVISION_OF_LABEL).from(revisionAlias).to(updateNodeAlias).outV();
+        var retTraversal = traversal.select(updateNodeAlias).elementMap(returnProperty).map(trav -> (String)trav.get().get(returnProperty));
+        return retTraversal.next();
     }
 
     /** Generates the next commit ID to apply during a transaction commit. */

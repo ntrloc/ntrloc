@@ -182,9 +182,9 @@ public class ItemManagerSchemaNameIdTranslator {
                 }).toList();
                 mutationWithProperties.setProperties(translatedProperties);
             }
-            if (itemMutation instanceof ItemMutationWithLinks<?> mutationWithLinks) {
+            if (itemMutation instanceof ItemMutationWithLinks<?> mutationWithLinks && mutationWithLinks.getLinks() != null) {
                 List<? extends LinkMutation> linkMutations = mutationWithLinks.getLinks();
-                for  (LinkMutation linkMutation : linkMutations) {
+                for (LinkMutation linkMutation : linkMutations) {
                     if (linkMutation instanceof LinkMutationWithLinkType linkWithType) {
                         String linkType = linkWithType.getLinkType();
                         String linkId = linkMapping.get(linkType).getLinkId();

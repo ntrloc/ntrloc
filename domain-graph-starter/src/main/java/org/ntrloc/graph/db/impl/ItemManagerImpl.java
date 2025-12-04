@@ -11,7 +11,9 @@ import org.ntrloc.graph.db.language.mutation.ItemMutation;
 import org.ntrloc.graph.db.language.mutation.ItemMutationResponse;
 import org.ntrloc.graph.db.language.mutation.ItemUpdateMutation;
 import org.ntrloc.graph.db.language.mutation.LinkCreateMutation;
+import org.ntrloc.graph.db.language.mutation.LinkMutation;
 import org.ntrloc.graph.db.language.mutation.LinkMutationResponse;
+import org.ntrloc.graph.db.language.mutation.LinkUpdateMutation;
 import org.ntrloc.graph.db.language.mutation.MutationRequest;
 import org.ntrloc.graph.db.language.mutation.MutationResponse;
 import org.ntrloc.graph.db.language.mutation.MutationType;
@@ -178,9 +180,11 @@ public class ItemManagerImpl implements ItemManager {
         }
 
         for (ItemUpdateMutation updateMutation: updateMutations) {
-            String itemType = mutator.updateNode(updateMutation.getId(), updateMutation.getProperties());
-            ItemMutationResponse item = new ItemMutationResponse(MutationType.UPDATE, itemType, updateMutation.getId());
-            response.addItemMutationResponse(item);
+            if (!updateMutation.getProperties().isEmpty()) {
+                String itemType = mutator.updateNode(updateMutation.getId(), updateMutation.getProperties());
+                ItemMutationResponse item = new ItemMutationResponse(MutationType.UPDATE, itemType, updateMutation.getId());
+                response.addItemMutationResponse(item);
+            }
         }
 
         for (ItemDeleteMutation deleteMutation: deleteMutations) {
@@ -231,6 +235,17 @@ public class ItemManagerImpl implements ItemManager {
                     LinkMutationResponse link = new LinkMutationResponse(MutationType.CREATE, linkCreateMutation.getLinkType(), linkId, fromId, toId);
                     link = schemaNameIdTranslator.convertPrivateIdentifiersIoPublic(createMutation.getItemType(), link);
                     response.addLinkMutationResponse(link);
+                }
+            }
+        }
+
+        for (ItemUpdateMutation itemUpdate: updateMutations) {
+            List<LinkMutation> linkMutations = itemUpdate.getLinks();
+            if (linkMutations != null) {
+                for (LinkMutation linkMutation: linkMutations) {
+                   if (linkMutation instanceof LinkUpdateMutation linkUpdate) {
+                       mutator.updateLink(linkUpdate.getId(), linkUpdate.getProperties());
+                   }
                 }
             }
         }
