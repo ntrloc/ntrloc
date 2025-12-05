@@ -2,7 +2,6 @@ package org.ntrloc.graph.db.traversal.mutator.impl;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.tinkerpop.gremlin.process.traversal.P;
-import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversal;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversalSource;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.__;
 import org.apache.tinkerpop.gremlin.structure.VertexProperty;
@@ -258,7 +257,6 @@ public class MutatorImpl implements Mutator {
         LOG.info("Preparing transaction {}", transaction.getId());
         long now = new Date().getTime();
 
-        GraphTraversal<?, ?> traversal = null;
         var objectMapper = new ObjectMapper();
 
         var revisionIter = traversalSource.V()
@@ -289,11 +287,7 @@ public class MutatorImpl implements Mutator {
 
                 Node currentNode = revision.getRevisionOf();
 
-                if (traversal == null) {
-                    traversal = traversalSource.V(revision.getId()).as(revisionLabel);
-                } else {
-                    traversal = traversal.V(revision.getId()).as(revisionLabel);
-                }
+                var traversal = traversalSource.V(revision.getId()).as(revisionLabel);
 
                 traversal = traversal.V(currentNode.getId()).as(currentLabel);
 
