@@ -278,6 +278,10 @@ public class MutatorImpl implements Mutator {
         if (revisions.isEmpty()) {
             LOG.info("No revisions found for transaction {}", transaction.getId());
         } else {
+
+            // maps the ID of a node to the ID of its new version node
+            Map<Object, Object> nodeReplacementIdMap = new HashMap<>();
+
             for (Revision revision : revisions) {
                 LOG.info("Applying revision {}", revision);
 
@@ -324,51 +328,10 @@ public class MutatorImpl implements Mutator {
                             .property(PropertyConstants.VERSION_PROPERTY, (int) currentNode.getProperties().getOrDefault(PropertyConstants.VERSION_PROPERTY, 1) + 1)
                             .property(PropertyConstants.STATUS_PROPERTY, ItemStatus.UNCOMMITTED_UPDATE.toString())
                             .addE(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).from(newLabel).to(currentLabel).outV()
-                            //.V(revision.getId()).drop()
                             .select(newLabel)
                             .id();
                     Object newNodeId = newNodeTraversal.next();
-
-                    // propagate the edges from the prior version to the new version, excluding edges that are named "system:*".
-                    // we don't want to copy links like system:has-previous-version from the old version of the item to the new version
-                    // since that would basically link the new version to itself.
-
-                    var currentNodeId = currentNode.getId();
-
-                    traversalSource.V(revision.getId()).drop().iterate();
-
-                    var outEdgeIterator = traversalSource.V(currentNodeId).outE()
-                            .has(PropertyConstants.COPYABLE_LINK_PROPERTY, true)
-                            .project("edgeLabel", "target")
-                            .by(__.label())
-                            .by(__.choose(
-                                    __.inV().in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL),
-                                    __.inV().in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).id(),
-                                    __.inV().id()
-                            ));
-                    while (outEdgeIterator.hasNext()) {
-                        Map<String, Object> edgeProj = outEdgeIterator.next();
-                        String edgeLabel = (String)edgeProj.get("edgeLabel");
-                        long targetId = (long)edgeProj.get("target");
-                        traversalSource.addE(edgeLabel).from(__.V(newNodeId)).to(__.V(targetId)).iterate();
-                    }
-
-                    var inEdgeIterator = traversalSource.V(currentNodeId).inE()
-                            .has(PropertyConstants.COPYABLE_LINK_PROPERTY, true)
-                            .project("edgeLabel", "source")
-                            .by(__.label())
-                            .by(__.choose(
-                                    __.outV().in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL),
-                                    __.outV().in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).id(),
-                                    __.outV().id()
-                            ));
-                    while (inEdgeIterator.hasNext()) {
-                        Map<String, Object> edgeProj = inEdgeIterator.next();
-                        String edgeLabel = (String)edgeProj.get("edgeLabel");
-                        long sourceId = (long)edgeProj.get("source");
-                        traversalSource.addE(edgeLabel).from(__.V(sourceId)).to(__.V(newNodeId)).iterate();
-                    }
-
+                    nodeReplacementIdMap.put(currentNode.getId(), newNodeId);
 
                 } else if (revision.getType() == Revision.RevisionType.DELETE) {
                     traversal = traversal.addV(currentNode.getLabel()).as(newLabel)
@@ -380,6 +343,65 @@ public class MutatorImpl implements Mutator {
                             .V(revision.getId()).drop()
                             .V(revision.getRevisionOf().getId());
                     traversal.iterate();
+                }
+
+                traversalSource.V(revision.getId()).drop().iterate();
+            }
+
+            // now that the revisions have been applied, we need to copy links
+            // from the old version of the node to the new version
+            Set<Object> copiedEdgeIds = new HashSet<>();
+            for (Revision revision : revisions) {
+                Node oldNode = revision.getRevisionOf();
+                var oldNodeId = oldNode.getId();
+                var newNodeId = nodeReplacementIdMap.get(oldNodeId);
+
+                var outEdgeIterator = traversalSource.V(oldNodeId).outE()
+                        .has(PropertyConstants.COPYABLE_LINK_PROPERTY, true)
+                        .project("id", "edgeLabel", "target")
+                        .by(__.id())
+                        .by(__.label())
+                        .by(__.choose(
+                                __.inV().in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL),
+                                __.inV().in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).id(),
+                                __.inV().id()
+                        ));
+                while (outEdgeIterator.hasNext()) {
+                    Map<String, Object> edgeProj = outEdgeIterator.next();
+                    Object edgeId = edgeProj.get("id");
+                    String edgeLabel = (String)edgeProj.get("edgeLabel");
+                    long targetId = (long)edgeProj.get("target");
+                    if (copiedEdgeIds.contains(edgeId)) {
+                        LOG.info("Already copied outbound edge {} from {} to {} for transaction {}", edgeId, newNodeId, targetId, transaction.getId());
+                    } else {
+                        copiedEdgeIds.add(edgeId);
+                        LOG.info("Copying outbound edge {} from {} to {} for transaction {}", edgeId, newNodeId, targetId, transaction.getId());
+                        traversalSource.addE(edgeLabel).from(__.V(newNodeId)).to(__.V(targetId)).iterate();
+                    }
+                }
+
+                var inEdgeIterator = traversalSource.V(oldNodeId).inE()
+                        .has(PropertyConstants.COPYABLE_LINK_PROPERTY, true)
+                        .project("id", "edgeLabel", "source")
+                        .by(__.id())
+                        .by(__.label())
+                        .by(__.choose(
+                                __.outV().in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL),
+                                __.outV().in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).id(),
+                                __.outV().id()
+                        ));
+                while (inEdgeIterator.hasNext()) {
+                    Map<String, Object> edgeProj = inEdgeIterator.next();
+                    Object edgeId = edgeProj.get("id");
+                    String edgeLabel = (String)edgeProj.get("edgeLabel");
+                    long sourceId = (long)edgeProj.get("source");
+                    if (copiedEdgeIds.contains(edgeId)) {
+                        LOG.info("Already copied inbound edge {} to {} from {} for transaction {}", edgeId, newNodeId, sourceId, transaction.getId());
+                    } else {
+                        copiedEdgeIds.add(edgeId);
+                        LOG.info("Copying inbound edge {} to {} from {} for transaction {}", edgeId, newNodeId, sourceId, transaction.getId());
+                        traversalSource.addE(edgeLabel).from(__.V(sourceId)).to(__.V(newNodeId)).iterate();
+                    }
                 }
             }
 
