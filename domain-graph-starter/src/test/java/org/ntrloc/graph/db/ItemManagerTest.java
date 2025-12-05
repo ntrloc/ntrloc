@@ -7,7 +7,6 @@ import org.apache.tinkerpop.gremlin.structure.Direction;
 import org.janusgraph.core.JanusGraph;
 import org.janusgraph.core.JanusGraphFactory;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.cluster.ClusterService;
@@ -451,9 +450,8 @@ class ItemManagerTest {
         assertEquals(2, photographerProj.getTarget().getVersion());
     }
 
-    @Disabled("working on this")
     @Test
-    @DisplayName("should update a link ")
+    @DisplayName("should update a link")
     void testUpdateLink() {
         ItemCreateMutation photoCreate = new ItemCreateMutation()
                 .itemType("Photo")

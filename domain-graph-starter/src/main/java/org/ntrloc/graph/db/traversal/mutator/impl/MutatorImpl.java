@@ -347,7 +347,11 @@ public class MutatorImpl implements Mutator {
                             .has(PropertyConstants.COPYABLE_LINK_PROPERTY, true)
                             .project("edgeLabel", "target")
                             .by(__.label())
-                            .by(__.inV().id());
+                            .by(__.choose(
+                                    __.inV().in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL),
+                                    __.inV().in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).id(),
+                                    __.inV().id()
+                            ));
                     while (outEdgeIterator.hasNext()) {
                         Map<String, Object> edgeProj = outEdgeIterator.next();
                         String edgeLabel = (String)edgeProj.get("edgeLabel");
@@ -359,7 +363,11 @@ public class MutatorImpl implements Mutator {
                             .has(PropertyConstants.COPYABLE_LINK_PROPERTY, true)
                             .project("edgeLabel", "source")
                             .by(__.label())
-                            .by(__.outV().id());
+                            .by(__.choose(
+                                    __.outV().in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL),
+                                    __.outV().in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).id(),
+                                    __.outV().id()
+                            ));
                     while (inEdgeIterator.hasNext()) {
                         Map<String, Object> edgeProj = inEdgeIterator.next();
                         String edgeLabel = (String)edgeProj.get("edgeLabel");
