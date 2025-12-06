@@ -6,6 +6,7 @@ import org.apache.tinkerpop.gremlin.process.traversal.TextP;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversalSource;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.__;
 import org.apache.tinkerpop.gremlin.structure.VertexProperty;
+import org.ntrloc.graph.Tuple;
 import org.ntrloc.graph.db.ItemStatus;
 import org.ntrloc.graph.db.LabelConstants;
 import org.ntrloc.graph.db.MutationException;
@@ -15,6 +16,8 @@ import org.ntrloc.graph.db.language.ListProperty;
 import org.ntrloc.graph.db.language.NodeProperty;
 import org.ntrloc.graph.db.language.Property;
 import org.ntrloc.graph.db.language.ScalarProperty;
+import org.ntrloc.graph.db.language.selectors.IdSelector;
+import org.ntrloc.graph.db.language.selectors.Selector;
 import org.ntrloc.graph.db.traversal.mutator.MutationResult;
 import org.ntrloc.graph.db.traversal.mutator.Mutator;
 import org.ntrloc.graph.db.traversal.mutator.Node;
@@ -106,8 +109,12 @@ public class MutatorImpl implements Mutator {
     }
 
     @Override
-    public String updateNode(String uniqueId, List<? extends Property> properties) {
-        return updateNodeInternal(uniqueId, properties, ITEM_TYPE_PROPERTY);
+    public Tuple<String, String> updateNode(Selector selector, List<? extends Property> properties) {
+        if (selector instanceof IdSelector idSelector) {
+            return updateNodeInternal(idSelector.getId(), properties, ITEM_TYPE_PROPERTY);
+        } else {
+            throw new IllegalArgumentException("Unsupported selector type: " + selector.getClass());
+        }
     }
 
     @Override
@@ -175,7 +182,7 @@ public class MutatorImpl implements Mutator {
         LOG.info("Updated link {} with properties {}", linkId, properties);
     }
 
-    private String updateNodeInternal(String uniqueId, List<? extends Property> properties, String returnProperty) {
+    private Tuple<String, String> updateNodeInternal(String uniqueId, List<? extends Property> properties, String returnProperty) {
         var updateNodeAlias = "updateNode";
         var revisionAlias = "nodeRevision";
 
@@ -213,7 +220,7 @@ public class MutatorImpl implements Mutator {
         }
 
         traversal = traversal.addE(LabelConstants.IS_REVISION_OF_LABEL).from(revisionAlias).to(updateNodeAlias).outV();
-        var retTraversal = traversal.select(updateNodeAlias).elementMap(returnProperty).map(trav -> (String)trav.get().get(returnProperty));
+        var retTraversal = traversal.select(updateNodeAlias).elementMap(returnProperty, UNIQUE_ID_PROPERTY).map(trav -> Tuple.of((String)trav.get().get(returnProperty), (String)trav.get().get(UNIQUE_ID_PROPERTY)));
         return retTraversal.next();
     }
 

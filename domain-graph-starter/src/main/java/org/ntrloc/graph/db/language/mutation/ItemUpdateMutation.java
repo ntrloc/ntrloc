@@ -1,6 +1,8 @@
 package org.ntrloc.graph.db.language.mutation;
 
 import org.ntrloc.graph.db.language.Property;
+import org.ntrloc.graph.db.language.selectors.IdSelector;
+import org.ntrloc.graph.db.language.selectors.Selector;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -11,7 +13,7 @@ import java.util.stream.Collectors;
 public class ItemUpdateMutation extends ItemMutation implements ReferenceableItemMutation, ItemMutationWithItemType, MutationWithProperties, ItemMutationWithLinks<LinkMutation> {
 
     private String itemType;
-    private String id;
+    private Selector selector;
     private Map<String, Property> properties = new HashMap<>();
     private String refId;
     private List<LinkMutation> links;
@@ -26,12 +28,12 @@ public class ItemUpdateMutation extends ItemMutation implements ReferenceableIte
         this.itemType = itemType;
     }
 
-    public String getId() {
-        return id;
+    public Selector getSelector() {
+        return selector;
     }
 
-    public void setId(String id) {
-        this.id = id;
+    public void setSelector(Selector selector) {
+        this.selector = selector;
     }
 
     @Override
@@ -72,7 +74,7 @@ public class ItemUpdateMutation extends ItemMutation implements ReferenceableIte
     }
 
     public ItemUpdateMutation id(String id) {
-        setId(id);
+        this.selector = new IdSelector(id, IdSelector.Type.GLOBAL);
         return this;
     }
 

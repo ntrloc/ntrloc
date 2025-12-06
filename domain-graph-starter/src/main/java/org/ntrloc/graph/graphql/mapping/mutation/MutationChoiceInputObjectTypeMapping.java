@@ -123,7 +123,7 @@ public class MutationChoiceInputObjectTypeMapping implements InputObjectTypeProd
         Map<String, List<ItemMutation>> ret = mutationsByEntity.entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey, entry -> {
             ItemMutationInputObjectTypeMapping mapping = entityInputTypes.get(entry.getKey());
             List<Map<String, Map<String, Object>>> mutationMaps = (List) entry.getValue();
-            return mapping.parseEntityMutations(mutationMaps);
+            return mapping.parseItemMutations(mutationMaps);
         }));
 
         return ret;

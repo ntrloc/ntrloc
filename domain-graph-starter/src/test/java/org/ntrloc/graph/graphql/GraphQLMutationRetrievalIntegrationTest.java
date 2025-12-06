@@ -1,4 +1,4 @@
-package org.ntrloc.graph.db;
+package org.ntrloc.graph.graphql;
 
 import com.netflix.graphql.dgs.client.GraphQLClient;
 import com.netflix.graphql.dgs.client.GraphQLError;
@@ -8,11 +8,13 @@ import net.javacrumbs.jsonunit.core.Option;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversalSource;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.__;
 import org.janusgraph.core.JanusGraph;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.GraphQLAutoConfiguration;
 import org.ntrloc.graph.JanusAutoConfiguration;
 import org.ntrloc.graph.cluster.config.StandaloneClusterConfigurationFactory;
 import org.ntrloc.graph.cluster.impl.ClusterServiceImpl;
+import org.ntrloc.graph.db.ItemManager;
 import org.ntrloc.graph.db.impl.ItemManagerImpl;
 import org.ntrloc.graph.db.schema.Cardinality;
 import org.ntrloc.graph.db.schema.ItemDefinition;
@@ -57,9 +59,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
         BlockDeviceBinaryStorageAdapter.class, StandaloneClusterConfigurationFactory.class, ClusterServiceImpl.class,
         GraphQLAutoConfiguration.class
 })
-class MutationRetrievalIntegrationTest {
+class GraphQLMutationRetrievalIntegrationTest {
 
-    private static final Logger LOG = LoggerFactory.getLogger(MutationRetrievalIntegrationTest.class);
+    private static final Logger LOG = LoggerFactory.getLogger(GraphQLMutationRetrievalIntegrationTest.class);
 
     @Autowired
     private SchemaManager schemaManager;
@@ -114,7 +116,7 @@ class MutationRetrievalIntegrationTest {
         });
     }
 
-    MutationRetrievalIntegrationTest(@LocalServerPort Integer port) {
+    GraphQLMutationRetrievalIntegrationTest(@LocalServerPort Integer port) {
         this.port = port;
         LOG.info("Running on port {}", port);
         RestClient restClient = RestClient.create("http://localhost:" + port.toString() + "/graphql");
@@ -201,7 +203,7 @@ class MutationRetrievalIntegrationTest {
     }
 
     @Test
-    void testCreateEntityWithAllDataTypes() throws IOException {
+    void testCreateItemWithAllDataTypes() throws IOException {
         initSchema();
 
         var writer = itemManager.openWriter();
@@ -282,7 +284,7 @@ class MutationRetrievalIntegrationTest {
     }
 
     @Test
-    void testCreateEntity() {
+    void testCreateAndLinkItems() {
         initSchema();
 
         var mutation = """
@@ -323,18 +325,9 @@ class MutationRetrievalIntegrationTest {
                     "data": {
                         "execute": {
                             "created": [
-                                {
-                                    "itemType": "Photo",
-                                    "id": "${json-unit.any-string}"
-                                },
-                                {
-                                    "itemType": "Photographer",
-                                    "id": "${json-unit.any-string}"
-                                },
-                                {
-                                    "itemType": "Photo",
-                                    "id": "${json-unit.any-string}"
-                                }
+                                { "itemType": "Photo", "id": "${json-unit.any-string}" },
+                                { "itemType": "Photographer", "id": "${json-unit.any-string}" },
+                                { "itemType": "Photo", "id": "${json-unit.any-string}" }
                             ]
                         }
                     }
@@ -395,31 +388,19 @@ class MutationRetrievalIntegrationTest {
                 {
                     "data": {
                         "Photo": [
-                            {
-                                "properties": {
-                                    "name": "photo1",
-                                    "number": 23
-                                },
+                            { 
+                                "properties": { "name": "photo1", "number": 23 },
                                 "links": {
                                     "createdby": [
-                                        {
-                                            "properties": { "count": 2 },
-                                            "source": { "properties": { "name": "Bill" } }
-                                        }
+                                        { "properties": { "count": 2 }, "source": { "properties": { "name": "Bill" } } }
                                     ]
                                 }
                             },
                             {
-                                "properties": {
-                                    "name": "photo2",
-                                    "number": 34
-                                },
+                                "properties": { "name": "photo2", "number": 34 },
                                 "links": {
                                     "createdby": [
-                                        {
-                                            "properties": { "count": 5 },
-                                            "source": { "properties": { "name": "Bill" } }
-                                        }
+                                        { "properties": { "count": 5 }, "source": { "properties": { "name": "Bill" } } }
                                     ]
                                 }
                             }
@@ -429,14 +410,8 @@ class MutationRetrievalIntegrationTest {
                                 "properties": { "name": "Bill" },
                                 "links": {
                                     "created": [
-                                        {
-                                            "properties": { "count": 5 },
-                                            "target": { "properties": { "name": "photo2" } }
-                                        },
-                                        {
-                                            "properties": { "count": 2 },
-                                            "target": { "properties": { "name": "photo1" } }
-                                        }
+                                        { "properties": { "count": 5 }, "target": { "properties": { "name": "photo2" } } },
+                                        { "properties": { "count": 2 }, "target": { "properties": { "name": "photo1" } } }
                                     ]
                                 }
                             }
@@ -450,7 +425,107 @@ class MutationRetrievalIntegrationTest {
                 .isEqualTo(expectedQueryResult);
 
         LOG.info("Query took {} ms", end - start);
+    }
 
+    @Test
+    void testUpdateItem() {
+        initSchema();
+
+        var create = """
+                mutation Mutation {
+                     execute(inputs: [
+                         { Photo: { create: { properties: { name: "photo1" number: 23 } } } }
+                     ]) {
+                        created {
+                            itemType
+                            id
+                        }
+                     }
+                }
+                """;
+        LOG.info("Running mutation");
+        GraphQLResponse response = graphQlClient.executeQuery(create);
+        List<String> ids = response.extractValueAsObject("execute.created[*].id", List.class);
+        String photoId = ids.get(0);
+
+        var update = """
+                mutation Mutation {
+                     execute(inputs: [
+                         {
+                            Photo: {
+                                update: {
+                                    where: { id: "%s" }
+                                    properties: { name: "photo2" number: null }
+                                }
+                            }
+                         }
+                     ]) {
+                        updated {
+                            itemType
+                            id
+                        }
+                     }
+                }
+                """.formatted(photoId);
+        LOG.info("Running mutation");
+        response = graphQlClient.executeQuery(update);
+        assertFalse(response.getData().isEmpty());
+        var query = """
+                {
+                    Photo {
+                        properties {
+                            name
+                            number
+                        }
+                    }
+                }
+                """;
+        response = graphQlClient.executeQuery(query);
+        assertFalse(response.getData().isEmpty());
+
+        var expectedQueryResult = """
+                {
+                    "data": {
+                        "Photo": [
+                            { "properties": { "name": "photo2", "number": null } }
+                        ]
+                    }
+                }
+                """;
+        assertThatJson(response.getJson())
+                .when(Option.IGNORING_ARRAY_ORDER)
+                .when(Option.IGNORING_EXTRA_ARRAY_ITEMS)
+                .isEqualTo(expectedQueryResult);
+    }
+
+    @Disabled("Not implemented yet")
+    @Test
+    void testDeleteItem() {
+        throw new RuntimeException("Not implemented yet");
+    }
+
+    @Disabled("Not implemented yet")
+    @Test
+    void testLinkExistingItems() {
+        throw new RuntimeException("Not implemented yet");
+    }
+
+    @Disabled("Not implemented yet")
+    @Test
+    void testLinkNewAndExistingItems() {
+        throw new RuntimeException("Not implemented yet");
+    }
+
+    @Disabled("Not implemented yet")
+    @Test
+    void testUpdateLink() {
+        throw new RuntimeException("Not implemented yet");
+    }
+
+    @Disabled("Not implemented yet")
+    @Test
+    void testDeleteLink() {
+        throw new RuntimeException("Not implemented yet");
     }
 
 }

@@ -13,6 +13,7 @@ import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.db.ItemStatus;
 import org.ntrloc.graph.db.LabelConstants;
 import org.ntrloc.graph.db.language.StringProperty;
+import org.ntrloc.graph.db.language.selectors.IdSelector;
 import org.ntrloc.graph.db.traversal.mutator.impl.MutatorImpl;
 
 import java.util.Arrays;
@@ -133,7 +134,7 @@ class MutatorTest {
                 new StringProperty("author", "Bill")
         );
 
-        mutator.updateNode(newId, updatedProps);
+        mutator.updateNode(new IdSelector(newId, IdSelector.Type.GLOBAL), updatedProps);
         mutator.checkpoint();
 
         Function<GraphTraversal<Vertex, Vertex>, GraphTraversal<?, NodeMutationResult>> nodeWithUpdates = (t) -> {

@@ -185,7 +185,7 @@ public class ItemMutationInputObjectTypeMapping implements InputObjectTypeProduc
         return retList;
     }
 
-    public List<ItemMutation> parseEntityMutations(List<Map<String, Map<String, Object>>> objectValues) {
+    public List<ItemMutation> parseItemMutations(List<Map<String, Map<String, Object>>> objectValues) {
         List<ItemMutation> mutations = new ArrayList<>();
 
         for (Map<String, Map<String, Object>> objectValue: objectValues) {
@@ -194,8 +194,12 @@ public class ItemMutationInputObjectTypeMapping implements InputObjectTypeProduc
                 var create = createInputTypeMapping.parseCreateMutation(objectValue.get(CREATE_MAPPING_KEY));
                 create.setItemType(itemDefinition.getName());
                 mutation = create;
+            } else if (objectValue.containsKey(UPDATE_MAPPING_KEY)) {
+                var update = updateInputTypeMapping.parseUpdateMutation(objectValue.get(UPDATE_MAPPING_KEY));
+                update.setItemType(itemDefinition.getName());
+                mutation = update;
             } else {
-                throw new IllegalArgumentException("Cannot update an entity-level mutation");
+                throw new IllegalArgumentException("Cannot parse item mutation");
             }
             mutations.add(mutation);
         }

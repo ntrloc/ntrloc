@@ -6,28 +6,39 @@ import graphql.language.ListType;
 import graphql.language.NonNullType;
 import graphql.language.TypeName;
 import org.apache.commons.text.CaseUtils;
+import org.ntrloc.graph.db.language.Property;
+import org.ntrloc.graph.db.language.mutation.ItemUpdateMutation;
+import org.ntrloc.graph.db.language.selectors.Selector;
 import org.ntrloc.graph.db.schema.ItemDefinition;
 import org.ntrloc.graph.graphql.mapping.InputObjectTypeProducer;
 import org.ntrloc.graph.graphql.mapping.selector.SelectorChoiceInputObjectTypeMapping;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /* Maps an entity to a GraphQL input object that represents an update instruction. */
 public class ItemUpdateInputObjectTypeMapping implements InputObjectTypeProducer {
+
+    private static final Logger LOG = LoggerFactory.getLogger(ItemUpdateInputObjectTypeMapping.class);
+    private static final String WHERE_FIELD_NAME = "where";
+    private static final String PROPERTIES_FIELD_NAME = "properties";
+    private static final String LINKS_FIELD_NAME = "links";
 
     private String graphQlTypeName;
     private ItemDefinition itemDefinition;
     private ItemPropertiesInputObjectTypeMapping propertiesMapping;
     private ItemUpdateLinksInputObjectTypeMapping updateLinksInputTypeMapping;
-    private SelectorChoiceInputObjectTypeMapping matcherChoiceMapping;
+    private SelectorChoiceInputObjectTypeMapping selectorChoiceInputObjectTypeMapping;
 
-    public ItemUpdateInputObjectTypeMapping(ItemDefinition itemDefinition, ItemPropertiesInputObjectTypeMapping propertiesMapping, SelectorChoiceInputObjectTypeMapping matcherChoiceMapping) {
+    public ItemUpdateInputObjectTypeMapping(ItemDefinition itemDefinition, ItemPropertiesInputObjectTypeMapping propertiesMapping, SelectorChoiceInputObjectTypeMapping selectorChoiceInputObjectTypeMapping) {
         String typeName = String.format("%s Update Input", itemDefinition.getName());
         this.graphQlTypeName = CaseUtils.toCamelCase(typeName, true, '_', '-');
         this.itemDefinition = itemDefinition;
         this.propertiesMapping = propertiesMapping;
-        this.matcherChoiceMapping = matcherChoiceMapping;
+        this.selectorChoiceInputObjectTypeMapping = selectorChoiceInputObjectTypeMapping;
     }
 
     public String getGraphQlTypeName() {
@@ -46,12 +57,12 @@ public class ItemUpdateInputObjectTypeMapping implements InputObjectTypeProducer
     public List<InputObjectTypeDefinition> getInputObjectTypeDefinitions() {
         List<InputValueDefinition> entityUpdateInputValues = new ArrayList<>();
         InputValueDefinition referenceValueDefinition = InputValueDefinition.newInputValueDefinition()
-                .name("where")
-                .type(new NonNullType(new TypeName(matcherChoiceMapping.getGraphQlTypeName())))
+                .name(WHERE_FIELD_NAME)
+                .type(new NonNullType(new TypeName(selectorChoiceInputObjectTypeMapping.getGraphQlTypeName())))
                 .build();
 
         InputValueDefinition entityPropertiesInputValueDefinition = InputValueDefinition.newInputValueDefinition()
-                .name("properties")
+                .name(PROPERTIES_FIELD_NAME)
                 .type(new TypeName(propertiesMapping.getGraphQlTypeName()))
                 .build();
 
@@ -59,7 +70,7 @@ public class ItemUpdateInputObjectTypeMapping implements InputObjectTypeProducer
 
         if (updateLinksInputTypeMapping != null) {
             entityUpdateInputValues.add(InputValueDefinition.newInputValueDefinition()
-                    .name("links")
+                    .name(LINKS_FIELD_NAME)
                     .type(new ListType(new NonNullType(new TypeName(updateLinksInputTypeMapping.getGraphQlTypeName()))))
                     .build());
         }
@@ -76,5 +87,33 @@ public class ItemUpdateInputObjectTypeMapping implements InputObjectTypeProducer
             retList.addAll(updateLinksInputTypeMapping.getInputObjectTypeDefinitions());
         }
         return retList;
+    }
+
+    public ItemUpdateMutation parseUpdateMutation(Map<String, Object> inputMap) {
+        ItemUpdateMutation mutation = new ItemUpdateMutation();
+
+        if (inputMap.containsKey(WHERE_FIELD_NAME)) {
+            Selector selector = selectorChoiceInputObjectTypeMapping.parseSelector((Map<String, Object>) inputMap.get(WHERE_FIELD_NAME));
+            mutation.setSelector(selector);
+        } else {
+            throw new IllegalArgumentException("Update mutation must contain a field named " + WHERE_FIELD_NAME);
+        }
+
+        if (inputMap.containsKey(PROPERTIES_FIELD_NAME)) {
+            List<? extends Property> properties = propertiesMapping.mapProperties((Map<String, Object>) inputMap.get(PROPERTIES_FIELD_NAME));
+            mutation.setProperties(properties);
+        }
+
+        if (inputMap.containsKey(LINKS_FIELD_NAME)) {
+            throw new IllegalArgumentException("Update mutation does not support links");
+            /*
+            LOG.info("Mapping links");
+            Map<String, List<Map<String, Object>>> linksField = (Map)inputMap.get(LINKS_FIELD_NAME);
+            List<LinkMutation> updateMutations = updateLinksInputTypeMapping.parseLinkMutattions(linksField);
+            mutation.setLinks(updateMutations);
+
+             */
+        }
+        return mutation;
     }
 }

@@ -3,6 +3,7 @@ package org.ntrloc.graph.db.impl;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversal;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversalSource;
 import org.apache.tinkerpop.gremlin.structure.Vertex;
+import org.ntrloc.graph.Tuple;
 import org.ntrloc.graph.db.ItemManager;
 import org.ntrloc.graph.db.MutationException;
 import org.ntrloc.graph.db.language.mutation.ItemCreateMutation;
@@ -184,8 +185,8 @@ public class ItemManagerImpl implements ItemManager {
 
         for (ItemUpdateMutation updateMutation: updateMutations) {
             if (!updateMutation.getProperties().isEmpty()) {
-                String itemType = mutator.updateNode(updateMutation.getId(), updateMutation.getProperties());
-                ItemMutationResponse item = new ItemMutationResponse(MutationType.UPDATE, itemType, updateMutation.getId());
+                Tuple<String, String> updateTuple = mutator.updateNode(updateMutation.getSelector(), updateMutation.getProperties());
+                ItemMutationResponse item = new ItemMutationResponse(MutationType.UPDATE, updateTuple.first(), updateTuple.second());
                 response.addItemMutationResponse(item);
             }
         }
