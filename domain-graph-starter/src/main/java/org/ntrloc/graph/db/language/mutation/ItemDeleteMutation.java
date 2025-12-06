@@ -1,15 +1,17 @@
 package org.ntrloc.graph.db.language.mutation;
 
+import org.ntrloc.graph.db.language.selectors.Selector;
+
 public class ItemDeleteMutation extends ItemMutation {
 
-    private final String id;
+    private final Selector selector;
 
-    public ItemDeleteMutation(String id) {
-        this.id = id;
+    public ItemDeleteMutation(Selector selector) {
+        this.selector = selector;
     }
 
-    public String getId() {
-        return id;
+    public Selector getSelector() {
+        return selector;
     }
 
 }

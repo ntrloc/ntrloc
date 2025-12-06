@@ -22,6 +22,7 @@ import org.ntrloc.graph.db.language.mutation.ReferenceableItemMutation;
 import org.ntrloc.graph.db.language.projection.ItemProjection;
 import org.ntrloc.graph.db.language.projection.SelectableItemProjectionSpec;
 import org.ntrloc.graph.db.language.selectors.IdSelector;
+import org.ntrloc.graph.db.language.selectors.Selector;
 import org.ntrloc.graph.db.storage.BinaryContentInfo;
 import org.ntrloc.graph.db.storage.BinaryContentInfoWithStream;
 import org.ntrloc.graph.db.storage.BinaryStorageAdapter;
@@ -192,9 +193,9 @@ public class ItemManagerImpl implements ItemManager {
         }
 
         for (ItemDeleteMutation deleteMutation: deleteMutations) {
-            String deleteId = deleteMutation.getId();
-            String itemType = mutator.deleteNode(deleteId);
-            ItemMutationResponse item = new ItemMutationResponse(MutationType.DELETE, itemType, deleteId);
+            Selector selector = deleteMutation.getSelector();
+            Tuple<String, String> deleteTuple = mutator.deleteNode(selector);
+            ItemMutationResponse item = new ItemMutationResponse(MutationType.DELETE, deleteTuple.first(), deleteTuple.second());
             response.addItemMutationResponse(item);
         }
 

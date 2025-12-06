@@ -252,7 +252,7 @@ class ItemManagerTest {
         assertEquals(1, res.getItemMutationResponses().size());
         var id = res.getItemMutationResponses().get(0).getId();
         assertNotNull(id, "null id returned");
-        ItemDeleteMutation delete = new ItemDeleteMutation(id);
+        ItemDeleteMutation delete = new ItemDeleteMutation(new IdSelector(id));
         MutationRequest deleteReq = new MutationRequest(List.of(delete));
         var deleteRes = itemManager.executeMutation(deleteReq);
         assertEquals(1, deleteRes.getItemMutationResponses().size(), "delete item count mismatch");

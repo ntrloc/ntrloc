@@ -10,6 +10,10 @@ public class IdSelector implements ItemSelector, LinkSelector {
     private String id;
     private Type type;
 
+    public IdSelector(String id) {
+        this(id, Type.GLOBAL);
+    }
+
     public IdSelector(String id, Type type) {
         this.id = id;
         this.type = type;

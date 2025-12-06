@@ -498,10 +498,70 @@ class GraphQLMutationRetrievalIntegrationTest {
                 .isEqualTo(expectedQueryResult);
     }
 
-    @Disabled("Not implemented yet")
     @Test
     void testDeleteItem() {
-        throw new RuntimeException("Not implemented yet");
+        initSchema();
+
+        var create = """
+                mutation Mutation {
+                     execute(inputs: [
+                         { Photo: { create: { properties: { name: "photo1" number: 23 } } } }
+                     ]) {
+                        created {
+                            itemType
+                            id
+                        }
+                     }
+                }
+                """;
+        LOG.info("Running mutation");
+        GraphQLResponse response = graphQlClient.executeQuery(create);
+        List<String> ids = response.extractValueAsObject("execute.created[*].id", List.class);
+        String photoId = ids.get(0);
+
+        var delete = """
+                mutation Mutation {
+                     execute(inputs: [
+                         {
+                            Photo: {
+                                delete: { where: { id: "%s" } }
+                            }
+                         }
+                     ]) {
+                        deleted {
+                            itemType
+                            id
+                        }
+                     }
+                }
+                """.formatted(photoId);
+        LOG.info("Running mutation");
+        response = graphQlClient.executeQuery(delete);
+        assertFalse(response.getData().isEmpty());
+        var query = """
+                {
+                    Photo {
+                        properties {
+                            name
+                            number
+                        }
+                    }
+                }
+                """;
+        response = graphQlClient.executeQuery(query);
+        assertFalse(response.getData().isEmpty());
+
+        var expectedQueryResult = """
+                {
+                    "data": {
+                        "Photo": [ ]
+                    }
+                }
+                """;
+        assertThatJson(response.getJson())
+                .when(Option.IGNORING_ARRAY_ORDER)
+                .when(Option.IGNORING_EXTRA_ARRAY_ITEMS)
+                .isEqualTo(expectedQueryResult);
     }
 
     @Disabled("Not implemented yet")

@@ -118,29 +118,34 @@ public class MutatorImpl implements Mutator {
     }
 
     @Override
-    public String deleteNode(String uniqueId) {
+    public Tuple<String, String> deleteNode(Selector selector) {
 
-        String label = null;
-        var labelTraversal = traversalSource.V().has(UNIQUE_ID_PROPERTY, uniqueId).project("label").by(__.label());
-        if (!labelTraversal.hasNext()) {
-            throw new IllegalArgumentException("No node with unique ID " + uniqueId + " found");
+        if (selector instanceof IdSelector idSelector) {
+            String label;
+            String uniqueId = idSelector.getId();
+            var labelTraversal = traversalSource.V().has(UNIQUE_ID_PROPERTY, uniqueId).project("label").by(__.label());
+            if (!labelTraversal.hasNext()) {
+                throw new IllegalArgumentException("No node with unique ID " + uniqueId + " found");
+            } else {
+                label = labelTraversal.next().get("label").toString();
+            }
+
+            var updateNodeAlias = "updateNode";
+            var revisionAlias = "nodeRevision";
+
+            var traversal = traversalSource.V().has(UNIQUE_ID_PROPERTY, uniqueId).as(updateNodeAlias)
+                    .addV(LabelConstants.REVISION_LABEL).as(revisionAlias)
+                    .property(PropertyConstants.TRANSACTION_ID_PROPERTY, transaction.getId())
+                    .property(UNIQUE_ID_PROPERTY, uniqueId)
+                    .property(PropertyConstants.REVISION_TYPE_PROPERTY, Revision.RevisionType.DELETE.toString());
+
+            traversal = traversal.addE(LabelConstants.IS_REVISION_OF_LABEL).from(revisionAlias).to(updateNodeAlias).outV();
+            traversal.iterate();
+
+            return Tuple.of(label, uniqueId);
         } else {
-            label = labelTraversal.next().get("label").toString();
+            throw new IllegalArgumentException("Unsupported selector type: " + selector.getClass());
         }
-
-        var updateNodeAlias = "updateNode";
-        var revisionAlias = "nodeRevision";
-
-        var traversal = traversalSource.V().has(UNIQUE_ID_PROPERTY, uniqueId).as(updateNodeAlias)
-                .addV(LabelConstants.REVISION_LABEL).as(revisionAlias)
-                .property(PropertyConstants.TRANSACTION_ID_PROPERTY, transaction.getId())
-                .property(UNIQUE_ID_PROPERTY, uniqueId)
-                .property(PropertyConstants.REVISION_TYPE_PROPERTY, Revision.RevisionType.DELETE.toString());
-
-        traversal = traversal.addE(LabelConstants.IS_REVISION_OF_LABEL).from(revisionAlias).to(updateNodeAlias).outV();
-        traversal.iterate();
-
-        return label;
     }
 
     @Override

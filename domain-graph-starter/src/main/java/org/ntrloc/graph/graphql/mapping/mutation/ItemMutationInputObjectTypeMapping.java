@@ -198,6 +198,9 @@ public class ItemMutationInputObjectTypeMapping implements InputObjectTypeProduc
                 var update = updateInputTypeMapping.parseUpdateMutation(objectValue.get(UPDATE_MAPPING_KEY));
                 update.setItemType(itemDefinition.getName());
                 mutation = update;
+            } else if (objectValue.containsKey(DELETE_MAPPING_KEY)) {
+                var update = deleteInputTypeMapping.parseDeleteMutation(objectValue.get(DELETE_MAPPING_KEY));
+                mutation = update;
             } else {
                 throw new IllegalArgumentException("Cannot parse item mutation");
             }
