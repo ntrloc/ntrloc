@@ -50,6 +50,9 @@ public class ItemManagerImpl implements ItemManager {
 
     private static final Logger LOG = LoggerFactory.getLogger(ItemManagerImpl.class);
 
+    private static final String SHA_256 = "sha256";
+    private static final String MD5 = "md5";
+
     private GraphTraversalSource traversalSource;
     private BinaryStorageAdapter binaryStorageAdapter;
     private ItemManagerSchemaNameIdTranslator schemaNameIdTranslator;
@@ -87,8 +90,8 @@ public class ItemManagerImpl implements ItemManager {
     public String commitBinary(HashingBinaryDataWriter writer) throws IOException {
         BinaryContentInfo hash = binaryStorageAdapter.close(writer);
         var iterator = traversalSource.V().hasLabel(DATA_LABEL)
-                .has("sha256", hash.getSha256Hash())
-                .has("md5", hash.getMd5Hash())
+                .has(SHA_256, hash.getSha256Hash())
+                .has(MD5, hash.getMd5Hash())
                 .elementMap();
         if (iterator.hasNext()) {
             return (String) iterator.next().get(UNIQUE_ID_PROPERTY);
@@ -104,8 +107,8 @@ public class ItemManagerImpl implements ItemManager {
             Map<Object, Object> dataProps = Map.of(
                     UNIQUE_ID_PROPERTY, uid,
                     ITEM_TYPE_PROPERTY, DATA_LABEL,
-                    "sha256", hash.getSha256Hash(),
-                    "md5", hash.getMd5Hash(),
+                    SHA_256, hash.getSha256Hash(),
+                    MD5, hash.getMd5Hash(),
                     "mimeType", hash.getMimeType(),
                     "length", hash.getLength()
 
@@ -130,8 +133,8 @@ public class ItemManagerImpl implements ItemManager {
         var iterator = traversalSource.V().hasLabel(DATA_LABEL).has(UNIQUE_ID_PROPERTY, uuid).elementMap();
         if (iterator.hasNext()) {
             Map<Object, Object> elements = iterator.next();
-            String sha256 = (String) elements.get("sha256");
-            String md5Hash = (String) elements.get("md5");
+            String sha256 = (String) elements.get(SHA_256);
+            String md5Hash = (String) elements.get(MD5);
             String mimeType = (String) elements.get("mimeType");
             Long length = (Long) elements.get("length");
             InputStream stream = binaryStorageAdapter.openReader(sha256, md5Hash);
