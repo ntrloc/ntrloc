@@ -74,7 +74,7 @@ public class Projector {
         traversalSource.tx().close();
         traversalSource.tx().begin();
 
-        GraphTraversal<?, Vertex> traversal = traversalSource.V().not(__.in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).has(STATUS_PROPERTY, ItemStatus.NORMAL.toString()));
+        GraphTraversal<?, Vertex> traversal = doesNotHaveCommittedPreviousVersion(traversalSource.V());
         traversal = select(traversal, spec);
 
         var projectionTraversal = projectItems(traversal, spec, binaryDownloadUri);
@@ -85,6 +85,20 @@ public class Projector {
             itemProjections.add(next);
         }
         return itemProjections;
+    }
+
+    /** Appends a filter to a vertex traversal that removes vertices with an incoming has-previous-version link that is committed (NORMAL or DELETED).*/
+    private GraphTraversal<Vertex, Vertex> doesNotHaveCommittedPreviousVersion(GraphTraversal<Vertex, Vertex> traversal) {
+        return traversal.not(__.in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).has(STATUS_PROPERTY, committedNodeStates()));
+    }
+
+    /** Creates an anonymous vertex traversal that removes vertices with an incoming has-previous-version link that is committed (NORMAL or DELETED).*/
+    private GraphTraversal<Vertex, Vertex> doesNotHaveCommittedPreviousVersion() {
+        return __.not(__.in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).has(STATUS_PROPERTY, committedNodeStates()));
+    }
+
+    private P<String> committedNodeStates() {
+        return P.within(ItemStatus.NORMAL.toString(), ItemStatus.DELETED.toString());
     }
 
     /** Returns a new traverser that adds a node selection to the given traversal. */
@@ -201,8 +215,8 @@ public class Projector {
                     .where( // only traverse links that are the latest version, pointing at another node that is also the latest version
                             __.and(
                                     __.has(LINK_TYPE_PROPERTY),
-                                    __.not(__.in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).has(LINK_TYPE_PROPERTY).has(STATUS_PROPERTY, ItemStatus.NORMAL.toString())),
-                                    __.filter(__.out().not(__.in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).has(STATUS_PROPERTY, ItemStatus.NORMAL.toString())))
+                                    doesNotHaveCommittedPreviousVersion(),
+                                    __.filter(doesNotHaveCommittedPreviousVersion(__.out()))
                             )
                     )
                     .project(PropertyConstants.UNIQUE_ID_PROPERTY, COMMIT_ID_PROPERTY, "direction", "properties", "target", "linkType")
@@ -210,14 +224,14 @@ public class Projector {
                     .by(__.values(COMMIT_ID_PROPERTY))
                     .by(__.constant(Direction.OUT))
                     .by(__.valueMap())
-                    .by(projectItems(__.out().not(__.in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).has(STATUS_PROPERTY, ItemStatus.NORMAL.toString())), new ItemProjectionSpec(), binaryDownloadUri))
+                    .by(projectItems(__.out().not(__.in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).has(STATUS_PROPERTY, committedNodeStates())), new ItemProjectionSpec(), binaryDownloadUri))
                     .by(__.values(PropertyConstants.LINK_TYPE_PROPERTY));
             var genericInboundTraversal = __.in()
                     .where( // only traverse links that are the latest version, pointing at another node that is also the latest version
                             __.and(
                                     __.has(LINK_TYPE_PROPERTY),
-                                    __.not(__.in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).has(LINK_TYPE_PROPERTY).has(STATUS_PROPERTY, ItemStatus.NORMAL.toString())),
-                                    __.filter(__.in().not(__.in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).has(STATUS_PROPERTY, ItemStatus.NORMAL.toString())))
+                                    doesNotHaveCommittedPreviousVersion(),
+                                    __.filter(doesNotHaveCommittedPreviousVersion(__.in()))
                             )
                     )
                     .project(PropertyConstants.UNIQUE_ID_PROPERTY, COMMIT_ID_PROPERTY, "direction", "properties", "source", "linkType")
@@ -225,7 +239,7 @@ public class Projector {
                     .by(__.values(COMMIT_ID_PROPERTY))
                     .by(__.constant(Direction.IN))
                     .by(__.valueMap())
-                    .by(projectItems(__.in().not(__.in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).has(STATUS_PROPERTY, ItemStatus.NORMAL.toString())), new ItemProjectionSpec(), binaryDownloadUri))
+                    .by(projectItems(__.in().not(__.in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).has(STATUS_PROPERTY, committedNodeStates())), new ItemProjectionSpec(), binaryDownloadUri))
                     .by(__.values(PropertyConstants.LINK_TYPE_PROPERTY));
             linkTraversals.add(genericOutboundTraversal);
             linkTraversals.add(genericInboundTraversal);
@@ -240,23 +254,22 @@ public class Projector {
                             .where( // only traverse links that are the latest version, pointing at another node that is also the latest version
                             __.and(
                                     __.has(LINK_TYPE_PROPERTY),
-                                    __.not(__.in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).has(LINK_TYPE_PROPERTY).has(STATUS_PROPERTY, ItemStatus.NORMAL.toString())),
-                                    __.filter(__.out().not(__.in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).has(STATUS_PROPERTY, ItemStatus.NORMAL.toString())))
+                                    doesNotHaveCommittedPreviousVersion(),
+                                    __.filter(doesNotHaveCommittedPreviousVersion(__.out()))
                             )
                     );
                     case IN -> __.in()
                             .where( // only traverse links that are the latest version, pointing at another node that is also the latest version
                             __.and(
                                     __.has(LINK_TYPE_PROPERTY),
-                                    __.not(__.in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).has(LINK_TYPE_PROPERTY).has(STATUS_PROPERTY, ItemStatus.NORMAL.toString())),
-                                    __.filter(__.in().not(__.in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).has(STATUS_PROPERTY, ItemStatus.NORMAL.toString())))
+                                    doesNotHaveCommittedPreviousVersion(),
+                                    __.filter(doesNotHaveCommittedPreviousVersion(__.in()))
                             )
                     );
                     case null, default -> throw new IllegalArgumentException("Direction must be specified for link projection spec");
                 };
 
-                var otherNodeTraversal = direction.equals(Direction.IN) ? __.in() : __.out();
-                otherNodeTraversal = otherNodeTraversal.not(__.in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).has(STATUS_PROPERTY, ItemStatus.NORMAL.toString()));
+                var otherNodeTraversal = direction.equals(Direction.IN) ? doesNotHaveCommittedPreviousVersion(__.in()) : doesNotHaveCommittedPreviousVersion(__.out());
                 return baseTraversal.project(PropertyConstants.UNIQUE_ID_PROPERTY, COMMIT_ID_PROPERTY, "direction", "properties", otherNodeLabel, "linkType")
                         .by(__.values(PropertyConstants.UNIQUE_ID_PROPERTY))
                         .by(__.values(COMMIT_ID_PROPERTY))

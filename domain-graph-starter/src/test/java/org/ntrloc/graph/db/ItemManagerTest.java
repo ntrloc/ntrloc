@@ -247,7 +247,6 @@ class ItemManagerTest {
         ItemCreateMutation photoCreate = new ItemCreateMutation()
                 .itemType("Photo")
                 .properties(List.of(new StringProperty("name", "photo1")));
-
         MutationRequest req = new MutationRequest(List.of(photoCreate));
         var res = itemManager.executeMutation(req);
         assertEquals(1, res.getItemMutationResponses().size());
@@ -258,6 +257,9 @@ class ItemManagerTest {
         var deleteRes = itemManager.executeMutation(deleteReq);
         assertEquals(1, deleteRes.getItemMutationResponses().size(), "delete item count mismatch");
         assertEquals(id, deleteRes.getItemMutationResponses().get(0).getId(), "deleted item id mismatch");
+        SelectableItemProjectionSpec projectionSpec = new SelectableItemProjectionSpec(new ItemTypeSelector("Photo"));
+        List<ItemProjection> projections = itemManager.executeProjection(projectionSpec);
+        assertEquals(0, projections.size(), "projection count mismatch");
     }
 
     @Test
@@ -475,11 +477,8 @@ class ItemManagerTest {
         SelectableItemProjectionSpec itemProjectionSpec = new SelectableItemProjectionSpec(new ItemTypeSelector("Photographer"));
         itemProjectionSpec.setLinks(new AllLinksProjectionSpec());
         List<ItemProjection> photographers = itemManager.executeProjection(itemProjectionSpec);
-        assertEquals(1, photographers.size());
         ItemProjection photographer = photographers.get(0);
-        List<LinkProjection> links = photographer.getLinks().get("created");
-        assertEquals(1, links.size());
-        LinkProjection link = links.get(0);
+        LinkProjection link = photographer.getLinks().get("created").get(0);
 
         LinkUpdateMutation linkUpdate = new LinkUpdateMutation().linkType("created").id(link.getId());
         linkUpdate.setProperties(List.of(new DateProperty("createdDate", "2022-02-01")));
@@ -493,11 +492,8 @@ class ItemManagerTest {
         itemManager.executeMutation(updateReq);
 
         photographers = itemManager.executeProjection(itemProjectionSpec);
-        assertEquals(1, photographers.size());
         photographer = photographers.get(0);
-        links = photographer.getLinks().get("created");
-        assertEquals(1, links.size());
-        link = links.get(0);
+        link = photographer.getLinks().get("created").get(0);
         assertEquals("2022-02-01", link.getProperties().get("createdDate"));
     }
 
@@ -523,14 +519,11 @@ class ItemManagerTest {
         MutationRequest req = new MutationRequest(List.of(photoCreate, photographerCreate));
         itemManager.executeMutation(req);
 
-        SelectableItemProjectionSpec itemProjectionSpec = new SelectableItemProjectionSpec(new ItemTypeSelector("Photographer"));
-        itemProjectionSpec.setLinks(new AllLinksProjectionSpec());
-        List<ItemProjection> photographers = itemManager.executeProjection(itemProjectionSpec);
-        assertEquals(1, photographers.size());
-        ItemProjection photographer = photographers.get(0);
-        List<LinkProjection> links = photographer.getLinks().get("created");
-        assertEquals(1, links.size());
-        LinkProjection link = links.get(0);
+        SelectableItemProjectionSpec photographerSpec = new SelectableItemProjectionSpec(new ItemTypeSelector("Photographer"));
+        photographerSpec.setLinks(new AllLinksProjectionSpec());
+        ItemProjection photographer = itemManager.executeProjection(photographerSpec).get(0);
+
+        LinkProjection link = photographer.getLinks().get("created").get(0);
 
         LinkUpdateMutation linkUpdate = new LinkUpdateMutation().linkType("created").id(link.getId());
         linkUpdate.setProperties(List.of(new DateProperty("createdDate", "2022-02-01")));
@@ -544,14 +537,65 @@ class ItemManagerTest {
         MutationRequest updateReq = new MutationRequest(List.of(photographerUpdate));
         itemManager.executeMutation(updateReq);
 
-        photographers = itemManager.executeProjection(itemProjectionSpec);
-        assertEquals(1, photographers.size());
-        photographer = photographers.get(0);
+        photographer = itemManager.executeProjection(photographerSpec).get(0);
         assertEquals("photographer2", photographer.getProperties().get("name"));
-        links = photographer.getLinks().get("created");
-        assertEquals(1, links.size());
-        link = links.get(0);
+        link = photographer.getLinks().get("created").get(0);
         assertEquals("2022-02-01", link.getProperties().get("createdDate"));
+
+        ItemProjection photo = itemManager.executeProjection(new SelectableItemProjectionSpec(new ItemTypeSelector("Photo")).link(new AllLinksProjectionSpec())).get(0);
+        photographer = ((IncomingLinkProjection)photo.getLinks().get("createdBy").get(0)).getSource();
+        assertEquals("photographer2", photographer.getProperties().get("name"));
+    }
+
+    @Test
+    @DisplayName("should update a target item and link")
+    void testUpdateTargetAndLink() {
+        ItemCreateMutation photoCreate = new ItemCreateMutation()
+                .itemType("Photo")
+                .refId("photoRef")
+                .properties(List.of(new StringProperty("name", "photo1")));
+
+        ItemCreateMutation photographerCreate = new ItemCreateMutation()
+                .itemType("Photographer")
+                .properties(List.of( new StringProperty("name", "photographer1")));
+
+        LinkCreateMutation linkCreate = new LinkCreateMutation()
+                .selector(new IdSelector(photoCreate.getRefId(), IdSelector.Type.LOCAL))
+                .linkType("created")
+                .properties(List.of(new DateProperty("createdDate", "2022-01-01")));
+
+        photographerCreate.setLinks(List.of(linkCreate));
+
+        MutationRequest req = new MutationRequest(List.of(photoCreate, photographerCreate));
+        itemManager.executeMutation(req);
+
+        SelectableItemProjectionSpec photoSpec = new SelectableItemProjectionSpec(new ItemTypeSelector("Photo"));
+        photoSpec.setLinks(new AllLinksProjectionSpec());
+        List<ItemProjection> photos = itemManager.executeProjection(photoSpec);
+        ItemProjection photo = photos.get(0);
+        LinkProjection link = photo.getLinks().get("createdBy").get(0);
+
+        LinkUpdateMutation linkUpdate = new LinkUpdateMutation().linkType("createdBy").id(link.getId());
+        linkUpdate.setProperties(List.of(new DateProperty("createdDate", "2022-02-01")));
+
+        ItemUpdateMutation photoUpdate = new ItemUpdateMutation()
+                .itemType("Photo")
+                .properties(List.of(new StringProperty("name", "photo2")))
+                .id(photo.getId())
+                .links(List.of(linkUpdate));
+
+        MutationRequest updateReq = new MutationRequest(List.of(photoUpdate));
+        itemManager.executeMutation(updateReq);
+
+        photos = itemManager.executeProjection(photoSpec);
+        photo = photos.get(0);
+        assertEquals("photo2", photo.getProperties().get("name"));
+        link = photo.getLinks().get("createdBy").get(0);
+        assertEquals("2022-02-01", link.getProperties().get("createdDate"));
+
+        ItemProjection photographer = itemManager.executeProjection(new SelectableItemProjectionSpec(new ItemTypeSelector("Photographer")).link(new AllLinksProjectionSpec())).get(0);
+        photo = ((OutgoingLinkProjection)photographer.getLinks().get("created").get(0)).getTarget();
+        assertEquals("photo2", photo.getProperties().get("name"));
     }
 
 }

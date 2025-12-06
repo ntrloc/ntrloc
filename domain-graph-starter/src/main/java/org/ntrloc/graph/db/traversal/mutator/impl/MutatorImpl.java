@@ -2,6 +2,7 @@ package org.ntrloc.graph.db.traversal.mutator.impl;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.tinkerpop.gremlin.process.traversal.P;
+import org.apache.tinkerpop.gremlin.process.traversal.TextP;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversalSource;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.__;
 import org.apache.tinkerpop.gremlin.structure.VertexProperty;
@@ -340,7 +341,6 @@ public class MutatorImpl implements Mutator {
                             .property(PropertyConstants.STATUS_PROPERTY, ItemStatus.UNCOMMITTED_DELETE.toString())
                             .property(PropertyConstants.TRANSACTION_ID_PROPERTY, transaction.getId())
                             .addE(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).from(newLabel).to(currentLabel).outV()
-                            .V(revision.getId()).drop()
                             .V(revision.getRevisionOf().getId());
                     traversal.iterate();
                 }
@@ -411,6 +411,20 @@ public class MutatorImpl implements Mutator {
         LOG.info("Prepared transaction {} in {} ms", transaction.getId(), (new Date().getTime() - now) / 1000);
 
         checkpoint();
+
+        printNodeReport();
+    }
+
+    private void printNodeReport() {
+        var nodeInfo = traversalSource.V()
+                .not(__.hasLabel(TextP.startingWith("system")))
+                .project("label", "id", "elements", "inE", "outE")
+                .by(__.label())
+                .by(__.id())
+                .by(__.elementMap())
+                .by(__.inE().project("label", "source").by(__.label()).by(__.outV()).fold())
+                .by(__.outE().project("label", "target").by(__.label()).by(__.inV()).fold()).toList();
+        LOG.info("Nodes: {}", nodeInfo);
     }
 
     /**
