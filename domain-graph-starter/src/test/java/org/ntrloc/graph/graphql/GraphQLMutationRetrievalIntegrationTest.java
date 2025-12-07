@@ -659,10 +659,92 @@ class GraphQLMutationRetrievalIntegrationTest {
 
     }
 
-    @Disabled("Not implemented yet")
     @Test
     void testLinkNewAndExistingItems() {
-        throw new RuntimeException("Not implemented yet");
+        initSchema();
+
+        var mutation = """
+                mutation Mutation {
+                     execute(inputs: [
+                         { Photo: { create: { properties: { name: "photo1" number: 23 } } } },
+                     ]) {
+                        created {
+                            itemType
+                            id
+                        }
+                     }
+                }
+                """;
+        GraphQLResponse response = graphQlClient.executeQuery(mutation);
+
+        List<Map<String, Object>> responses = response.extractValueAsObject("execute.created", List.class);
+        Optional<Map<String, Object>> photoMap = responses.stream().filter(r -> r.get("itemType").equals("Photo")).findFirst();
+
+        assertTrue(photoMap.isPresent());
+
+        String photoId = photoMap.get().get("id").toString();
+
+        var create = """
+                mutation Mutation {
+                     execute(inputs: [
+                         {
+                            Photographer: {
+                                create: {
+                                    properties: { name: "Bill" }
+                                    links: {
+                                        created: [
+                                            { properties: { count: 2 } target: { id: "%s" } },
+                                        ]
+                                    }
+                                }
+                            }
+                         }
+                     ]) {
+                        updated {
+                            itemType
+                            id
+                        }
+                     }
+                }
+                """.formatted(photoId);
+        LOG.info("Running mutation");
+        response = graphQlClient.executeQuery(create);
+        assertTrue(response.getErrors().isEmpty());
+
+        var query = """
+                {
+                    Photographer {
+                        properties {
+                            name
+                        } links {
+                            created {
+                                target { properties { name } }
+                            }
+                        }
+                    }
+                }
+                """;
+        response = graphQlClient.executeQuery(query);
+        assertFalse(response.getData().isEmpty());
+
+        var expectedQueryResult = """
+                {
+                    "data": {
+                        "Photographer": [
+                            {
+                                "properties": { "name": "Bill" },
+                                "links": {
+                                    "created": [ { "target": { "properties": { "name": "photo1" } } } ]
+                                }
+                            }
+                        ]
+                    }
+                }
+                """;
+        assertThatJson(response.getJson())
+                .when(Option.IGNORING_ARRAY_ORDER)
+                .when(Option.IGNORING_EXTRA_ARRAY_ITEMS)
+                .isEqualTo(expectedQueryResult);
     }
 
     @Disabled("Not implemented yet")
