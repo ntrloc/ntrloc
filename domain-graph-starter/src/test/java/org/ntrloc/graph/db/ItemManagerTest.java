@@ -480,7 +480,7 @@ class ItemManagerTest {
         ItemProjection photographer = photographers.get(0);
         LinkProjection link = photographer.getLinks().get("created").get(0);
 
-        LinkUpdateMutation linkUpdate = new LinkUpdateMutation().linkType("created").id(link.getId());
+        LinkUpdateMutation linkUpdate = new LinkUpdateMutation().linkType("created").selector(new IdSelector(link.getId()));
         linkUpdate.setProperties(List.of(new DateProperty("createdDate", "2022-02-01")));
 
         ItemUpdateMutation photographerUpdate = new ItemUpdateMutation()
@@ -525,7 +525,7 @@ class ItemManagerTest {
 
         LinkProjection link = photographer.getLinks().get("created").get(0);
 
-        LinkUpdateMutation linkUpdate = new LinkUpdateMutation().linkType("created").id(link.getId());
+        LinkUpdateMutation linkUpdate = new LinkUpdateMutation().linkType("created").selector(new IdSelector(link.getId()));
         linkUpdate.setProperties(List.of(new DateProperty("createdDate", "2022-02-01")));
 
         ItemUpdateMutation photographerUpdate = new ItemUpdateMutation()
@@ -575,7 +575,7 @@ class ItemManagerTest {
         ItemProjection photo = photos.get(0);
         LinkProjection link = photo.getLinks().get("createdBy").get(0);
 
-        LinkUpdateMutation linkUpdate = new LinkUpdateMutation().linkType("createdBy").id(link.getId());
+        LinkUpdateMutation linkUpdate = new LinkUpdateMutation().linkType("createdBy").selector(new IdSelector(link.getId()));
         linkUpdate.setProperties(List.of(new DateProperty("createdDate", "2022-02-01")));
 
         ItemUpdateMutation photoUpdate = new ItemUpdateMutation()

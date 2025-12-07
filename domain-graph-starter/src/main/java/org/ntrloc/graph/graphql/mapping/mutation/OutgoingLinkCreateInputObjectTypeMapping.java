@@ -48,5 +48,4 @@ public class OutgoingLinkCreateInputObjectTypeMapping extends OutgoingLinkAbstra
         return retList;
     }
 
-
 }

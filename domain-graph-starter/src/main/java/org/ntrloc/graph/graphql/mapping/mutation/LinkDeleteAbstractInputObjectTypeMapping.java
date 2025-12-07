@@ -6,6 +6,7 @@ import org.ntrloc.graph.graphql.mapping.selector.SelectorChoiceInputObjectTypeMa
 
 public class LinkDeleteAbstractInputObjectTypeMapping {
 
+    protected String targetFieldName = "target";
     protected String graphQlTypeName;
     protected LinkDefinition linkDefinition;
     protected SelectorChoiceInputObjectTypeMapping matcherChoiceMapping;

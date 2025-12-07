@@ -1,6 +1,7 @@
 package org.ntrloc.graph.db.language.mutation;
 
 import org.ntrloc.graph.db.language.Property;
+import org.ntrloc.graph.db.language.selectors.Selector;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -10,17 +11,17 @@ import java.util.stream.Collectors;
 
 public class LinkUpdateMutation extends LinkMutation implements LinkMutationWithLinkType, LinkMutationWithProperties {
 
-    private String id;
+    private Selector selector;
     private Map<String, Property> properties = new HashMap<>();
     private String linkType;
 
-    public LinkUpdateMutation id(String id) {
-        this.id = id;
+    public LinkUpdateMutation selector(Selector selector) {
+        this.selector = selector;
         return this;
     }
 
-    public void setId(String id) {
-        this.id = id;
+    public void setSelector(Selector selector) {
+        this.selector = selector;
     }
 
     public LinkUpdateMutation linkType(String linkType) {
@@ -38,8 +39,8 @@ public class LinkUpdateMutation extends LinkMutation implements LinkMutationWith
         this.linkType = linkType;
     }
 
-    public String getId() {
-        return id;
+    public Selector getSelector() {
+        return selector;
     }
 
     public void setProperties(List<Property> properties) {

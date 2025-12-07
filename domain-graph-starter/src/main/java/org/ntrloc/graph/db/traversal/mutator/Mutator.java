@@ -16,8 +16,10 @@ public interface Mutator {
     /** Deletes a node and returns the type and unique id of the updated node.*/
     Tuple<String, String> deleteNode(Selector selector);
 
-    String createLink(String fromItemId, String toItemId, String relationshipName, List<? extends Property> properties);
-    void updateLink(String linkId, List<Property> properties);
+    /** Creates a link between the given items and return the item type of the source item and the unique id of the link.*/
+    Tuple<String, String> createLink(String fromItemId, String toItemId, String relationshipName, List<? extends Property> properties);
+
+    void updateLink(Selector selector, List<Property> properties);
 
     /* Transaction methods */
     String getTransactionId();

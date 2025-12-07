@@ -8,6 +8,7 @@ import graphql.language.TypeName;
 import org.apache.commons.text.CaseUtils;
 import org.ntrloc.graph.db.language.Property;
 import org.ntrloc.graph.db.language.mutation.ItemUpdateMutation;
+import org.ntrloc.graph.db.language.mutation.LinkMutation;
 import org.ntrloc.graph.db.language.selectors.Selector;
 import org.ntrloc.graph.db.schema.ItemDefinition;
 import org.ntrloc.graph.graphql.mapping.InputObjectTypeProducer;
@@ -105,14 +106,9 @@ public class ItemUpdateInputObjectTypeMapping implements InputObjectTypeProducer
         }
 
         if (inputMap.containsKey(LINKS_FIELD_NAME)) {
-            throw new IllegalArgumentException("Update mutation does not support links");
-            /*
-            LOG.info("Mapping links");
-            Map<String, List<Map<String, Object>>> linksField = (Map)inputMap.get(LINKS_FIELD_NAME);
-            List<LinkMutation> updateMutations = updateLinksInputTypeMapping.parseLinkMutattions(linksField);
+            List<Map<String, List<Map<String, Map<String, Object>>>>> linksField = (List)inputMap.get(LINKS_FIELD_NAME);
+            List<LinkMutation> updateMutations = updateLinksInputTypeMapping.parseLinkMutations(linksField);
             mutation.setLinks(updateMutations);
-
-             */
         }
         return mutation;
     }

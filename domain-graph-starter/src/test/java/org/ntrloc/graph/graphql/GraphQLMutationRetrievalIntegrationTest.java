@@ -43,6 +43,7 @@ import org.yaml.snakeyaml.Yaml;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -564,10 +565,98 @@ class GraphQLMutationRetrievalIntegrationTest {
                 .isEqualTo(expectedQueryResult);
     }
 
-    @Disabled("Not implemented yet")
     @Test
     void testLinkExistingItems() {
-        throw new RuntimeException("Not implemented yet");
+        initSchema();
+
+        var mutation = """
+                mutation Mutation {
+                     execute(inputs: [
+                         { Photo: { create: { ref: "photo1" properties: { name: "photo1" number: 23 } } } },
+                         { Photographer: { create: { properties: { name: "Bill" } } } }
+                     ]) {
+                        created {
+                            itemType
+                            id
+                        }
+                     }
+                }
+                """;
+        GraphQLResponse response = graphQlClient.executeQuery(mutation);
+
+        List<Map<String, Object>> responses = response.extractValueAsObject("execute.created", List.class);
+
+        Optional<Map<String, Object>> photographerMap = responses.stream().filter(r -> r.get("itemType").equals("Photographer")).findFirst();
+        Optional<Map<String, Object>> photoMap = responses.stream().filter(r -> r.get("itemType").equals("Photo")).findFirst();
+
+        assertTrue(photographerMap.isPresent());
+        assertTrue(photoMap.isPresent());
+
+        String photographerId = photographerMap.get().get("id").toString();
+        String photoId = photoMap.get().get("id").toString();
+
+        var update = """
+                mutation Mutation {
+                     execute(inputs: [
+                         {
+                            Photographer: {
+                                update: {
+                                    where: { id: "%s" }
+                                    links: {
+                                        created: [
+                                            { create: { target: { id: "%s" } } }
+                                        ]
+                                    }
+                                }
+                            }
+                         }
+                     ]) {
+                        updated {
+                            itemType
+                            id
+                        }
+                     }
+                }
+                """.formatted(photographerId, photoId);
+        LOG.info("Running mutation");
+        response = graphQlClient.executeQuery(update);
+        assertTrue(response.getErrors().isEmpty());
+
+        var query = """
+                {
+                    Photographer {
+                        properties {
+                            name
+                        } links {
+                            created {
+                                target { properties { name } }
+                            }
+                        }
+                    }
+                }
+                """;
+        response = graphQlClient.executeQuery(query);
+        assertFalse(response.getData().isEmpty());
+
+        var expectedQueryResult = """
+                {
+                    "data": {
+                        "Photographer": [
+                            {
+                                "properties": { "name": "Bill" },
+                                "links": {
+                                    "created": [ { "target": { "properties": { "name": "photo1" } } } ]
+                                }
+                            }
+                        ]
+                    }
+                }
+                """;
+        assertThatJson(response.getJson())
+                .when(Option.IGNORING_ARRAY_ORDER)
+                .when(Option.IGNORING_EXTRA_ARRAY_ITEMS)
+                .isEqualTo(expectedQueryResult);
+
     }
 
     @Disabled("Not implemented yet")

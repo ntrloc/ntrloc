@@ -149,7 +149,7 @@ public class MutatorImpl implements Mutator {
     }
 
     @Override
-    public String createLink(String fromItemId, String toItemId, String relationshipName, List<? extends Property> properties) {
+    public Tuple<String, String> createLink(String fromItemId, String toItemId, String relationshipName, List<? extends Property> properties) {
         var uniqueId = UUID.randomUUID().toString();
 
         var traversal = traversalSource
@@ -178,13 +178,19 @@ public class MutatorImpl implements Mutator {
                         .addE(String.format("%s-out", relationshipName)).property(PropertyConstants.COPYABLE_LINK_PROPERTY, true).from("relationship").to("toNode");
         edgeTraversal.iterate();
 
-        return uniqueId;
+        var sourceType = traversalSource.V().has(UNIQUE_ID_PROPERTY, fromItemId).project("label").by(__.label()).next().get("label").toString();
+
+        return Tuple.of(sourceType, uniqueId);
     }
 
     @Override
-    public void updateLink(String linkId, List<Property> properties) {
-        var linkType = updateNodeInternal(linkId, properties, LINK_TYPE_PROPERTY);
-        LOG.info("Updated link {} with properties {}", linkId, properties);
+    public void updateLink(Selector selector, List<Property> properties) {
+        if (selector instanceof IdSelector idSelector) {
+            var linkType = updateNodeInternal(idSelector.getId(), properties, LINK_TYPE_PROPERTY);
+            LOG.info("Updated link {} with properties {}", idSelector.getId(), properties);
+        } else {
+            throw new IllegalArgumentException("Unsupported selector type: " + selector.getClass());
+        }
     }
 
     private Tuple<String, String> updateNodeInternal(String uniqueId, List<? extends Property> properties, String returnProperty) {

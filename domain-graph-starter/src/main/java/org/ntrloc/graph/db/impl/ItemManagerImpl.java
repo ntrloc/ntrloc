@@ -235,9 +235,9 @@ public class ItemManagerImpl implements ItemManager {
                     throw new MutationException("Linked item " + idSelector.getId() + " not found");
                 } else {
                     LOG.info("Linking item to item {}", toId);
-                    String linkId = mutator.createLink(fromId, toId, linkCreateMutation.getLinkType(), linkCreateMutation.getProperties());
+                    Tuple<String, String> itemTypeLinkIdTuple = mutator.createLink(fromId, toId, linkCreateMutation.getLinkType(), linkCreateMutation.getProperties());
 
-                    LinkMutationResponse link = new LinkMutationResponse(MutationType.CREATE, linkCreateMutation.getLinkType(), linkId, fromId, toId);
+                    LinkMutationResponse link = new LinkMutationResponse(MutationType.CREATE, linkCreateMutation.getLinkType(), itemTypeLinkIdTuple.second(), fromId, toId);
                     link = schemaNameIdTranslator.convertPrivateIdentifiersIoPublic(createMutation.getItemType(), link);
                     response.addLinkMutationResponse(link);
                 }
@@ -245,13 +245,32 @@ public class ItemManagerImpl implements ItemManager {
         }
 
         for (ItemUpdateMutation itemUpdate: updateMutations) {
-            List<LinkMutation> linkMutations = itemUpdate.getLinks();
-            if (linkMutations != null) {
-                for (LinkMutation linkMutation: linkMutations) {
-                   if (linkMutation instanceof LinkUpdateMutation linkUpdate) {
-                       mutator.updateLink(linkUpdate.getId(), linkUpdate.getProperties());
-                   }
+            if (itemUpdate.getSelector() instanceof IdSelector idSelector) {
+                String itemId = idSelector.getId();
+                List<LinkMutation> linkMutations = itemUpdate.getLinks();
+                if (linkMutations != null) {
+                    for (LinkMutation linkMutation : linkMutations) {
+                        if (linkMutation instanceof LinkCreateMutation linkCreate) {
+                            if (linkCreate.getSelector() instanceof IdSelector targetSelector) {
+                                String targetId = targetSelector.getId();
+                                Tuple<String, String> itemTypeLinkIdTuple = mutator.createLink(itemId, targetId, linkCreate.getLinkType(), linkCreate.getProperties());
+                                response.addLinkMutationResponse(new LinkMutationResponse(MutationType.CREATE, linkCreate.getLinkType(), itemTypeLinkIdTuple.second(), itemId, targetId));
+
+                                Optional<ItemMutationResponse> updateResponse = response.getItemMutationResponses().stream().filter(r -> r.getItemType().equals(MutationType.UPDATE.toString()) && r.getId().equals(itemId)).findAny();
+                                if (updateResponse.isEmpty()) {
+                                    response.addItemMutationResponse(new ItemMutationResponse(MutationType.UPDATE, itemTypeLinkIdTuple.first(), itemId));
+                                }
+
+                            } else {
+                                throw new IllegalArgumentException("Unsupported link selector type " + linkCreate.getSelector().getClass());
+                            }
+                        } else if (linkMutation instanceof LinkUpdateMutation linkUpdate) {
+                            mutator.updateLink(linkUpdate.getSelector(), linkUpdate.getProperties());
+                        }
+                    }
                 }
+            } else {
+                throw new IllegalArgumentException("Unsupported update selector type " + itemUpdate.getSelector().getClass());
             }
         }
 

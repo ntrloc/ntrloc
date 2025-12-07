@@ -1,16 +1,26 @@
 package org.ntrloc.graph.db.language.mutation;
 
+import org.ntrloc.graph.db.language.selectors.Selector;
+
 public class LinkDeleteMutation extends LinkMutation {
 
-    private String id;
+    private Selector selector;
+    private String linkType;
 
-    public LinkDeleteMutation id(String id) {
-        this.id = id;
+    public LinkDeleteMutation selector(Selector selector) {
+        this.selector = selector;
         return this;
     }
 
-    public String getId() {
-        return id;
+    public Selector getSelector() {
+        return selector;
     }
 
+    public String getLinkType() {
+        return linkType;
+    }
+
+    public void setLinkType(String linkType) {
+        this.linkType = linkType;
+    }
 }

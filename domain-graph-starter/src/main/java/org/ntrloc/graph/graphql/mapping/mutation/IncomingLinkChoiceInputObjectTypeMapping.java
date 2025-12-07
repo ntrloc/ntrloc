@@ -4,6 +4,7 @@ import graphql.language.InputObjectTypeDefinition;
 import graphql.language.InputValueDefinition;
 import graphql.language.TypeName;
 import org.apache.commons.text.CaseUtils;
+import org.ntrloc.graph.db.language.mutation.LinkMutation;
 import org.ntrloc.graph.db.schema.LinkDefinition;
 import org.ntrloc.graph.graphql.mapping.InputObjectTypeProducer;
 
@@ -83,5 +84,9 @@ public class IncomingLinkChoiceInputObjectTypeMapping implements IncomingLinkInp
                 .build());
 
         return allDefs;
+    }
+
+    public List<LinkMutation> parseLinkMutations(List<Map<String, Map<String, Object>>> mutationObject) {
+        throw new IllegalArgumentException("not implemented");
     }
 }

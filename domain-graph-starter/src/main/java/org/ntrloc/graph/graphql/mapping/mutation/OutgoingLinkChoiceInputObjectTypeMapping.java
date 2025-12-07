@@ -4,12 +4,14 @@ import graphql.language.InputObjectTypeDefinition;
 import graphql.language.InputValueDefinition;
 import graphql.language.TypeName;
 import org.apache.commons.text.CaseUtils;
+import org.ntrloc.graph.db.language.mutation.LinkMutation;
 import org.ntrloc.graph.db.schema.LinkDefinition;
 import org.ntrloc.graph.graphql.mapping.InputObjectTypeProducer;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /** An input type that allows the choice of link create, update, or delete during entity updates. */
@@ -82,5 +84,40 @@ public class OutgoingLinkChoiceInputObjectTypeMapping implements OutgoingLinkInp
                 .build());
 
         return allDefs;
+    }
+
+    public List<LinkMutation> parseLinkMutations(List<Map<String, Map<String, Object>>> mutationObjects) {
+        List<LinkMutation> retMutations = new ArrayList<>();
+        List<Map<String, Map<String, Object>>> createMutations = new ArrayList<>();
+        List<Map<String, Map<String, Object>>> updateMutations = new ArrayList<>();
+        List<Map<String, Map<String, Object>>> deleteMutations = new ArrayList<>();
+        for (Map<String, Map<String, Object>> mutationObject: mutationObjects) {
+            if (mutationObject.containsKey(CREATE_MAPPING_KEY)) {
+                Map<String, Object> obj = mutationObject.get(CREATE_MAPPING_KEY);
+                Map<String, Map<String, Object>> linkMap = obj.entrySet().stream()
+                        .collect(Collectors.toMap(Map.Entry::getKey, entry -> (Map<String, Object>)entry.getValue()));
+                createMutations.add(linkMap);
+            } else if (mutationObject.containsKey(UPDATE_MAPPING_KEY)) {
+                Map<String, Object> obj = mutationObject.get(UPDATE_MAPPING_KEY);
+                Map<String, Map<String, Object>> linkMap = obj.entrySet().stream()
+                        .collect(Collectors.toMap(Map.Entry::getKey, entry -> (Map<String, Object>)entry.getValue()));
+                updateMutations.add(linkMap);
+            } else if (mutationObject.containsKey(DELETE_MAPPING_KEY)) {
+                Map<String, Object> obj = mutationObject.get(DELETE_MAPPING_KEY);
+                Map<String, Map<String, Object>> linkMap = obj.entrySet().stream()
+                        .collect(Collectors.toMap(Map.Entry::getKey, entry -> (Map<String, Object>)entry.getValue()));
+                deleteMutations.add(linkMap);
+            }
+        }
+        if (!createMutations.isEmpty()) {
+            retMutations.addAll(getCreateMapping().parseLinkCreateMutations(createMutations));
+        }
+        if (!updateMutations.isEmpty()) {
+            retMutations.addAll(getUpdateMapping().parseLinkUpdateMutations(updateMutations));
+        }
+        if (!deleteMutations.isEmpty()) {
+            retMutations.addAll(getDeleteMapping().parseLinkDeleteMutations(deleteMutations));
+        }
+        return retMutations;
     }
 }
