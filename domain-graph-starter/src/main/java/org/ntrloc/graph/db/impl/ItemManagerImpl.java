@@ -12,6 +12,7 @@ import org.ntrloc.graph.db.language.mutation.ItemMutation;
 import org.ntrloc.graph.db.language.mutation.ItemMutationResponse;
 import org.ntrloc.graph.db.language.mutation.ItemUpdateMutation;
 import org.ntrloc.graph.db.language.mutation.LinkCreateMutation;
+import org.ntrloc.graph.db.language.mutation.LinkDeleteMutation;
 import org.ntrloc.graph.db.language.mutation.LinkMutation;
 import org.ntrloc.graph.db.language.mutation.LinkMutationResponse;
 import org.ntrloc.graph.db.language.mutation.LinkUpdateMutation;
@@ -266,6 +267,8 @@ public class ItemManagerImpl implements ItemManager {
                             }
                         } else if (linkMutation instanceof LinkUpdateMutation linkUpdate) {
                             mutator.updateLink(linkUpdate.getSelector(), linkUpdate.getProperties());
+                        } else if (linkMutation instanceof LinkDeleteMutation linkDelete) {
+                            mutator.deleteLink(linkDelete.getSelector());
                         }
                     }
                 }

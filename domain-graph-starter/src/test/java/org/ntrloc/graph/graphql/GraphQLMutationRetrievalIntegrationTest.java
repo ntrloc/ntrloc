@@ -1,6 +1,5 @@
 package org.ntrloc.graph.graphql;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.netflix.graphql.dgs.client.GraphQLClient;
 import com.netflix.graphql.dgs.client.GraphQLError;
 import com.netflix.graphql.dgs.client.GraphQLResponse;
@@ -9,7 +8,6 @@ import net.javacrumbs.jsonunit.core.Option;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversalSource;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.__;
 import org.janusgraph.core.JanusGraph;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.GraphQLAutoConfiguration;
 import org.ntrloc.graph.JanusAutoConfiguration;
@@ -829,12 +827,133 @@ class GraphQLMutationRetrievalIntegrationTest {
 
         response = graphQlClient.executeQuery(query);
         assertFalse(response.getData().isEmpty());
+
+        var expectedQueryResult = """
+                {
+                    "data": {
+                        "Photographer": [
+                            {
+                                "id": "${json-unit.any-string}",
+                                "properties": { "name": "Bill" },
+                                "links": {
+                                    "created": [
+                                        {
+                                            "id": "${json-unit.any-string}",
+                                            "properties": { "count": 3 },
+                                            "target": { "properties": { "name": "photo1" } }
+                                         }
+                                     ]
+                                }
+                            }
+                        ]
+                    }
+                }
+                """;
+        assertThatJson(response.getJson())
+                .when(Option.IGNORING_ARRAY_ORDER)
+                .isEqualTo(expectedQueryResult);
     }
 
-    @Disabled("Not implemented yet")
     @Test
     void testDeleteLink() {
-        throw new RuntimeException("Not implemented yet");
+        initSchema();
+
+        var mutation = """
+                mutation Mutation {
+                     execute(inputs: [
+                         { Photo: { create: { ref: "photo1" properties: { name: "photo1" number: 23 } } } }
+                         {
+                            Photographer: {
+                                create: {
+                                    properties: { name: "Bill" }
+                                    links: {
+                                        created: [
+                                            { properties: { count: 2 } target: { ref: "photo1" } }
+                                        ]
+                                    }
+                                }
+                            }
+                         }
+                     ]) {
+                        created {
+                            itemType
+                            id
+                        }
+                     }
+                }
+                """;
+        GraphQLResponse response = graphQlClient.executeQuery(mutation);
+        assertTrue(response.getErrors().isEmpty());
+
+        var query = """
+                {
+                    Photographer {
+                        id
+                        properties {
+                            name
+                        } links {
+                            created {
+                                id
+                                properties { count }
+                                target { properties { name } }
+                            }
+                        }
+                    }
+                }
+                """;
+        response = graphQlClient.executeQuery(query);
+        assertFalse(response.getData().isEmpty());
+
+        String photographerId = response.extractValueAsObject("data.Photographer[0].id", String.class);
+        String linkId = response.extractValueAsObject("data.Photographer[0].links.created[0].id", String.class);
+
+        var linkDelete = """
+                mutation Mutation {
+                     execute(inputs: [
+                         {
+                            Photographer: {
+                                update: {
+                                    where: { id: "%s" }
+                                    links: {
+                                        created: [
+                                            { delete: { where: { id: "%s" } } }
+                                        ]
+                                    }
+                                }
+                            }
+                         }
+                     ]) {
+                        updated {
+                            itemType
+                            id
+                        }
+                     }
+                }
+                """.formatted(photographerId, linkId);
+        response = graphQlClient.executeQuery(linkDelete);
+        assertTrue(response.getErrors().isEmpty());
+
+        response = graphQlClient.executeQuery(query);
+        assertFalse(response.getData().isEmpty());
+
+        var expectedQueryResult = """
+                {
+                    "data": {
+                        "Photographer": [
+                            {
+                                "id": "${json-unit.any-string}",
+                                "properties": { "name": "Bill" },
+                                "links": {
+                                    "created": null
+                                }
+                            }
+                        ]
+                    }
+                }
+                """;
+        assertThatJson(response.getJson())
+                .when(Option.IGNORING_ARRAY_ORDER)
+                .isEqualTo(expectedQueryResult);
     }
 
 }

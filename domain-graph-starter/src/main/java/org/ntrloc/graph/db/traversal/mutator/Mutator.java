@@ -21,6 +21,8 @@ public interface Mutator {
 
     void updateLink(Selector selector, List<Property> properties);
 
+    void deleteLink(Selector selector);
+
     /* Transaction methods */
     String getTransactionId();
     void begin();

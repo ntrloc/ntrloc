@@ -193,6 +193,16 @@ public class MutatorImpl implements Mutator {
         }
     }
 
+    @Override
+    public void deleteLink(Selector selector) {
+        if (selector instanceof IdSelector idSelector) {
+            var linkId = idSelector.getId();
+            traversalSource.V().has(UNIQUE_ID_PROPERTY, linkId).drop().iterate();
+        } else {
+            throw new IllegalArgumentException("Unsupported selector type: " + selector.getClass());
+        }
+    }
+
     private Tuple<String, String> updateNodeInternal(String uniqueId, List<? extends Property> properties, String returnProperty) {
         var updateNodeAlias = "updateNode";
         var revisionAlias = "nodeRevision";
