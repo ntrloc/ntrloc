@@ -54,6 +54,12 @@ public class ItemIncomingLinkObjectTypeMapping extends ItemLinkObjectTypeMapping
 
         List<FieldDefinition> fieldDefinitions = new ArrayList<>();
 
+        FieldDefinition idField = FieldDefinition.newFieldDefinition()
+                .name(idFieldName)
+                .type(new TypeName("String"))
+                .build();
+        fieldDefinitions.add(idField);
+
         Optional<ObjectTypeDefinition> propertyTypeDefOpt = retList.stream()
                 .filter(def -> Boolean.parseBoolean(def.getAdditionalData().getOrDefault(ItemLinkPropertiesObjectTypeMapping.IS_LINK_PROPERTIES_TYPE, Boolean.toString(false))))
                 .findFirst();

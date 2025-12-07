@@ -1,5 +1,8 @@
 package org.ntrloc.graph.graphql.mapping.mutation;
 
+import graphql.language.InputObjectTypeDefinition;
+import graphql.language.InputValueDefinition;
+import graphql.language.TypeName;
 import org.ntrloc.graph.db.language.Property;
 import org.ntrloc.graph.db.language.mutation.LinkCreateMutation;
 import org.ntrloc.graph.db.language.selectors.Selector;
@@ -18,18 +21,40 @@ public class OutgoingLinkCreateInputObjectTypeMapping extends OutgoingLinkAbstra
     private static final Logger LOG = LoggerFactory.getLogger(OutgoingLinkCreateInputObjectTypeMapping.class);
 
     private static final String PROPERTIES_FIELD_NAME = "properties";
+    private static final String TARGET_FIELD_NAME = "target";
 
     public OutgoingLinkCreateInputObjectTypeMapping(LinkDefinition targetLinkDefinition, LinkPropertiesInputObjectTypeMapping propertiesMapping, SelectorChoiceInputObjectTypeMapping matcherChoiceMapping) {
         super("%s %s %s Link Create Input", targetLinkDefinition, propertiesMapping, matcherChoiceMapping);
+    }
+
+    @Override
+    public List<InputObjectTypeDefinition> getInputObjectTypeDefinitions() {
+        InputValueDefinition propertiesValue = InputValueDefinition.newInputValueDefinition()
+                .name(PROPERTIES_FIELD_NAME)
+                .type(new TypeName(propertiesMapping.getGraphQlTypeName()))
+                .build();
+        InputValueDefinition matcherValue = InputValueDefinition.newInputValueDefinition()
+                .name(TARGET_FIELD_NAME)
+                .type(new TypeName(selectorChoiceInputObjectTypeMapping.getGraphQlTypeName()))
+                .build();
+        var thisDef = InputObjectTypeDefinition.newInputObjectDefinition()
+                .name(graphQlTypeName)
+                .inputValueDefinitions(List.of(propertiesValue, matcherValue))
+                .build();
+
+        List<InputObjectTypeDefinition> retTypes = new ArrayList<>(selectorChoiceInputObjectTypeMapping.getInputObjectTypeDefinitions());
+        retTypes.addAll(propertiesMapping.getInputObjectTypeDefinitions());
+        retTypes.add(thisDef);
+        return retTypes;
     }
 
     List<LinkCreateMutation> parseLinkCreateMutations(List<Map<String, Map<String, Object>>> mutationObjects) {
         List<LinkCreateMutation> retList = new ArrayList<>();
 
         for (var mutationMap : mutationObjects) {
-            var targetObject = mutationMap.get(targetFieldName);
+            var targetObject = mutationMap.get(TARGET_FIELD_NAME);
             if (targetObject == null) {
-                throw new IllegalArgumentException("Outgoing link create must contain a field named " + targetFieldName);
+                throw new IllegalArgumentException("Outgoing link create must contain a field named " + TARGET_FIELD_NAME);
             } else {
                 Selector selector = selectorChoiceInputObjectTypeMapping.parseSelector(targetObject);
                 LinkCreateMutation mutation = new LinkCreateMutation();

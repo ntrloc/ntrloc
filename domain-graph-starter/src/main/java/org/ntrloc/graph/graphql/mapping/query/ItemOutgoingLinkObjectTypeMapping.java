@@ -66,6 +66,12 @@ public class ItemOutgoingLinkObjectTypeMapping extends ItemLinkObjectTypeMapping
             fieldDefinitions.add(fd);
         }
 
+        FieldDefinition idField = FieldDefinition.newFieldDefinition()
+                .name(idFieldName)
+                .type(new TypeName("String"))
+                .build();
+        fieldDefinitions.add(idField);
+
         FieldDefinition targetField = FieldDefinition.newFieldDefinition()
                 .name(targetFieldName)
                 .type(new TypeName(ItemObjectTypeMapping.getItemGraphQlTypeName(linkDefinition.getTargetItemType())))

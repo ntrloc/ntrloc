@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 
 public abstract class ItemLinkObjectTypeMapping implements ObjectTypeProducer {
+    protected String idFieldName = "id";
     protected String propertiesFieldName = "properties";
     protected ItemObjectTypeMapping relatedItemObjectTypeMapping;
     abstract String getGraphQlTypeName();

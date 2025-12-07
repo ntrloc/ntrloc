@@ -32,7 +32,7 @@ public class OutgoingLinkDeleteInputObjectTypeMapping extends LinkDeleteAbstract
     @Override
     public List<InputObjectTypeDefinition> getInputObjectTypeDefinitions() {
         InputValueDefinition matcherValue = InputValueDefinition.newInputValueDefinition()
-                .name(targetFieldName)
+                .name(WHERE_FIELD_NAME)
                 .type(new TypeName(matcherChoiceMapping.getGraphQlTypeName()))
                 .build();
         InputObjectTypeDefinition definition = InputObjectTypeDefinition.newInputObjectDefinition()
@@ -46,11 +46,11 @@ public class OutgoingLinkDeleteInputObjectTypeMapping extends LinkDeleteAbstract
         List<LinkDeleteMutation> retList = new ArrayList<>();
 
         for (var mutationMap : mutationObjects) {
-            var targetObject = mutationMap.get(targetFieldName);
-            if (targetObject == null) {
-                throw new IllegalArgumentException("Outgoing link create must contain a field named " + targetFieldName);
+            var whereObject = mutationMap.get(WHERE_FIELD_NAME);
+            if (whereObject == null) {
+                throw new IllegalArgumentException("Outgoing link create must contain a field named " + WHERE_FIELD_NAME);
             } else {
-                Selector selector = matcherChoiceMapping.parseSelector(targetObject);
+                Selector selector = matcherChoiceMapping.parseSelector(whereObject);
                 LinkDeleteMutation mutation = new LinkDeleteMutation().selector(selector);
                 mutation.setLinkType(linkDefinition.getSourceLabel());
 

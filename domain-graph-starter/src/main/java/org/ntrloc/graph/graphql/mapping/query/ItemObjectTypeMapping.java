@@ -34,7 +34,7 @@ public class ItemObjectTypeMapping implements ObjectTypeProducer {
     private static final String VERSION_FIELD_NAME = "version";
     private static final String COMMIT_ID_FIELD_NAME = "commitId";
 
-    private static final List<String> IMPLICIT_PROPERTIES = List.of(COMMIT_ID_FIELD_NAME, ITEM_TYPE_FIELD_NAME, VERSION_FIELD_NAME, IS_LATEST_VERSION_FIELD_NAME);
+    private static final List<String> IMPLICIT_PROPERTIES = List.of(ID_FIELD_NAME, COMMIT_ID_FIELD_NAME, ITEM_TYPE_FIELD_NAME, VERSION_FIELD_NAME, IS_LATEST_VERSION_FIELD_NAME);
 
     private final String graphQlTypeName;
     private final ItemDefinition itemDefinition;

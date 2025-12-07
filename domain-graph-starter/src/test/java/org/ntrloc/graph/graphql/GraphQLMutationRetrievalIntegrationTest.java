@@ -1,5 +1,6 @@
 package org.ntrloc.graph.graphql;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.netflix.graphql.dgs.client.GraphQLClient;
 import com.netflix.graphql.dgs.client.GraphQLError;
 import com.netflix.graphql.dgs.client.GraphQLResponse;
@@ -747,10 +748,87 @@ class GraphQLMutationRetrievalIntegrationTest {
                 .isEqualTo(expectedQueryResult);
     }
 
-    @Disabled("Not implemented yet")
     @Test
     void testUpdateLink() {
-        throw new RuntimeException("Not implemented yet");
+        initSchema();
+
+        var mutation = """
+                mutation Mutation {
+                     execute(inputs: [
+                         { Photo: { create: { ref: "photo1" properties: { name: "photo1" number: 23 } } } }
+                         {
+                            Photographer: {
+                                create: {
+                                    properties: { name: "Bill" }
+                                    links: {
+                                        created: [
+                                            { properties: { count: 2 } target: { ref: "photo1" } }
+                                        ]
+                                    }
+                                }
+                            }
+                         }
+                     ]) {
+                        created {
+                            itemType
+                            id
+                        }
+                     }
+                }
+                """;
+        GraphQLResponse response = graphQlClient.executeQuery(mutation);
+        assertTrue(response.getErrors().isEmpty());
+
+        var query = """
+                {
+                    Photographer {
+                        id
+                        properties {
+                            name
+                        } links {
+                            created {
+                                id
+                                properties { count }
+                                target { properties { name } }
+                            }
+                        }
+                    }
+                }
+                """;
+        response = graphQlClient.executeQuery(query);
+        assertFalse(response.getData().isEmpty());
+
+        String photographerId = response.extractValueAsObject("data.Photographer[0].id", String.class);
+        String linkId = response.extractValueAsObject("data.Photographer[0].links.created[0].id", String.class);
+
+        var linkUpdate = """
+                mutation Mutation {
+                     execute(inputs: [
+                         {
+                            Photographer: {
+                                update: {
+                                    where: { id: "%s" }
+                                    links: {
+                                        created: [
+                                            { update: { where: { id: "%s" } properties: { count: 3 } } }
+                                        ]
+                                    }
+                                }
+                            }
+                         }
+                     ]) {
+                        updated {
+                            itemType
+                            id
+                        }
+                     }
+                }
+                """.formatted(photographerId, linkId);
+        response = graphQlClient.executeQuery(linkUpdate);
+        assertTrue(response.getErrors().isEmpty());
+
+        response = graphQlClient.executeQuery(query);
+        assertFalse(response.getData().isEmpty());
     }
 
     @Disabled("Not implemented yet")
