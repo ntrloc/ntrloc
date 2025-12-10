@@ -2,27 +2,39 @@
     <head>
         <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
         <style>
+            body {
+                font-family: sans-serif;
+            }
             form {
                 background-color: black;
                 padding: 1px;
                 display: grid;
                 grid-template-columns: repeat(4, 1fr);
-                grid-auto-rows: minmax(50px, auto);
                 align-items: center;
                 grid-gap: 1px;
 
                 .grid-item {
                     background-color: white;
+                    padding: 10px;
+                    box-sizing: border-box;
+                    display: flex;
+                    align-items: center;
                     width: 100%;
                     height: 100%;
+
+                    > * {
+                        flex: 1;
+                    }
                 }
 
                 .form-header {
                     display: contents;
                     background-color: #ccc;
+                    font-weight: bold;
 
                     .grid-item {
                         background-color: inherit;
+                        justify-content: center;
                     }
                 }
 
@@ -31,30 +43,34 @@
                     vertical-align: middle;
                 }
 
-                input[type=text], select {
-                    border: none;
+                input[type=text] {
+                    border: solid 1px #ccc;
+                    padding: 5px;
+                }
+
+                select {
+                    border: solid 1px #ccc;
+                    padding: 5px;
                 }
 
                 button {
-                    border: none;
+                    padding: 5px;
+                    border-radius: 3px;
+                    border: 1px solid #666666;
                 }
 
             }
 
             input[type=text], select {
-                padding: 12px;
                 display: inline;
             }
             input[type=submit] {
-                padding: 12px;
                 display: inline;
             }
             input[type=button] {
-                padding: 12px;
                 display: inline;
             }
             button {
-                padding: 12px;
                 display: inline;
             }
 
@@ -85,24 +101,30 @@
     <body>
         <div x-data="{form}">
 
-
             <form @submit.prevent="handleSubmit">
                 <div class="form-header">
                     <div class="grid-item">Name</div> <div class="grid-item">Type</div>  <div class="grid-item">Description</div> <div class="grid-item"></div>
                 </div>
 
-
                 <!-- Dynamic Fields -->
                 <template x-for="(field, index) in form.fields" :key="index">
                     <div style="display:contents">
-                        <input class="grid-item input" type="text" x-model="field.name" :placeholder="`Field ${index}`">
-                        <select class="grid-item type-select">
-                            <template x-for="fieldType in form.fieldTypes" :key="fieldType">
-                                <option :value="fieldType" x-text="fieldType"></option>
-                            </template>
-                        </select>
-                        <input class="grid-item input"  type="text" x-model="field.description" :placeholder="`Description`">
-                        <button class="grid-item" type="button" @click="form.removeField(index)" class="remove-btn" x-show="form.fields.length > 1"> Remove</button>
+                        <div class="grid-item">
+                            <input type="text" x-model="field.name" :placeholder="`Field ${index}`">
+                        </div>
+                        <div class="grid-item">
+                            <select>
+                                <template x-for="fieldType in form.fieldTypes" :key="fieldType">
+                                    <option :value="fieldType" x-text="fieldType"></option>
+                                </template>
+                            </select>
+                        </div>
+                        <div class="grid-item">
+                            <input type="text" x-model="field.description" :placeholder="`Description`">
+                        </div>
+                        <div class="grid-item" >
+                            <button @click="form.removeField(index)" class="remove-btn" x-show="form.fields.length > 1"> Remove</button>
+                        </div>
                     </div>
                 </template>
             </form>
