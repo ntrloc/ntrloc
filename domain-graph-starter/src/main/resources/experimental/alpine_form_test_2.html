@@ -1,0 +1,148 @@
+<html>
+    <head>
+        <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+        <style>
+            form {
+                background-color: black;
+                padding: 1px;
+                display: grid;
+                grid-template-columns: repeat(4, 1fr);
+                grid-auto-rows: minmax(50px, auto);
+                align-items: center;
+                grid-gap: 1px;
+
+                .grid-item {
+                    background-color: white;
+                    width: 100%;
+                    height: 100%;
+                }
+
+                .form-header {
+                    display: contents;
+                    background-color: #ccc;
+
+                    .grid-item {
+                        background-color: inherit;
+                    }
+                }
+
+                label {
+                    display: inline-block;
+                    vertical-align: middle;
+                }
+
+                input[type=text], select {
+                    border: none;
+                }
+
+                button {
+                    border: none;
+                }
+
+            }
+
+            input[type=text], select {
+                padding: 12px;
+                display: inline;
+            }
+            input[type=submit] {
+                padding: 12px;
+                display: inline;
+            }
+            input[type=button] {
+                padding: 12px;
+                display: inline;
+            }
+            button {
+                padding: 12px;
+                display: inline;
+            }
+
+        </style>
+        <script>
+            const form = {
+                isAdding: false,
+                newName: '',
+                fieldTypes: [
+                  'INTEGER', 'FLOAT', 'STRING', 'BOOLEAN', 'DATE', 'DATETIME'
+                ],
+                fields: [
+                    { name: 'photoName', type: 'text', fieldType: 'STRING', description: 'Some description' }
+                ],
+                addField() {
+                    this.fields.push({ name: this.newName, value: '' })
+                    this.newName = '';
+                    this.isAdding = false;
+                },
+                removeField(index) {
+                    this.fields.splice(index, 1)
+                }
+            }
+
+        </script>
+
+    </head>
+    <body>
+        <div x-data="{form}">
+
+
+            <form @submit.prevent="handleSubmit">
+                <div class="form-header">
+                    <div class="grid-item">Name</div> <div class="grid-item">Type</div>  <div class="grid-item">Description</div> <div class="grid-item"></div>
+                </div>
+
+
+                <!-- Dynamic Fields -->
+                <template x-for="(field, index) in form.fields" :key="index">
+                    <div style="display:contents">
+                        <input class="grid-item input" type="text" x-model="field.name" :placeholder="`Field ${index}`">
+                        <select class="grid-item type-select">
+                            <template x-for="fieldType in form.fieldTypes" :key="fieldType">
+                                <option :value="fieldType" x-text="fieldType"></option>
+                            </template>
+                        </select>
+                        <input class="grid-item input"  type="text" x-model="field.description" :placeholder="`Description`">
+                        <button class="grid-item" type="button" @click="form.removeField(index)" class="remove-btn" x-show="form.fields.length > 1"> Remove</button>
+                    </div>
+                </template>
+            </form>
+
+            <!-- Add Field Prompt -->
+            <div id="fieldPrompt" x-show="form.isAdding" class="mt-4 p-4 border-2 border-dashed border-blue-200 rounded-lg bg-blue-50">
+                <div class="flex gap-2">
+                    <input
+                            type="text"
+                            x-model="form.newName"
+                            @keydown.enter="addField()"
+                            @keydown.escape="form.isAdding = false; form.newName = ''"
+                            placeholder="Enter field name"
+                            class="flex-1 border rounded px-3 py-2"
+                            autofocus
+                    >
+                    <button
+                            type="button"
+                            @click="form.addField()"
+                            :disabled="!form.newName.trim()"
+                            class="px-4 py-2 bg-blue-500 text-white rounded"
+                    >
+                        Add
+                    </button>
+                    <button
+                            type="button"
+                            @click="form.isAdding = false; form.newName = ''"
+                            class="px-4 py-2 text-gray-600"
+                    >
+                        Cancel
+                    </button>
+                </div>
+            </div>
+
+
+            <!-- Add Field Button -->
+            <button type="button" @click="form.isAdding = true" x-show="!form.isAdding" class="add-btn">Add Field</button>
+
+            <!-- Submit Button -->
+            <button type="submit" class="submit-btn">Submit</button>
+        </div>
+    </body>
+</html>
