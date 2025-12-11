@@ -1,0 +1,16 @@
+Schema dynamic form
+
+The form holds several bits of data:
+
+1. The items and fields in the schema we're looking at
+2. The current editing state of the form
+
+The form will make PROVISIONAL changes to the schema, but any change can be undone
+before submitting them.
+
+ANY property can be deleted.
+A property that has been changed can be reverted.
+New properties are in green.
+Changed properties are in yellow.
+Deleted properties are in red.... unless they were newly created, in which case
+    the property is just removed from the list.

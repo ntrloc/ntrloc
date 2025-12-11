@@ -6,12 +6,15 @@
             const testData = {
                 fields: [
                     { label: 'Name', itemField: 'name', type: 'String' },
-                    { label: 'Type', itemField: 'type', type: 'String', options: ['STRING', 'INTEGER', 'BOOLEAN'] },
-                    { label: 'Description', itemField: 'description', type: 'String' },
-                    { label: '' }
+                    { label: 'Type', itemField: 'type', type: 'String', options: [
+                            'BINARY', 'BOOLEAN', 'DATE', 'DATETIME', 'FLOAT', 'INTEGER', 'STRING'
+                        ] },
+                    { label: 'Description', itemField: 'description', type: 'String' }
                 ],
                 items: [
-                    { name: 'photoName2', type:'INTEGER', description: 'Some description?' }
+                    { name: 'colorspace', type:'STRING', description: 'The colorspace of a photo' },
+                    { name: 'createdDate', type:'DATETIME', description: 'The date/time a photo was taken' },
+                    { name: 'photoName', type:'STRING', description: 'The name of a photo' }
                 ]
             };
         </script>

@@ -38,6 +38,42 @@ const DynamicFormComponent = (userOptions = {}) => {
                         justify-content: center;
                     }
                 }
+                
+                label {
+                    display: inline-block;
+                    vertical-align: middle;
+                }
+
+                input[type=text] {
+                    border: solid 1px #ccc;
+                    padding: 5px;
+                    border: none;
+                    
+                    &:hover {
+                       border: solid 1px #ccc;
+                    }
+                }
+
+                select {
+                    padding: 5px;
+                    appearance: none;
+                    border: none;
+                   
+                    &:hover {
+                        appearance: auto;
+                        border: solid 1px #ccc;
+                    }
+                }
+
+                button {
+                    padding: 5px;
+                    border-radius: 3px;
+                    border: 1px solid #666666;
+                }
+            }
+            
+            .add-field-form {
+                background-color: yellow;
             }
         }
     `;
@@ -46,12 +82,13 @@ const DynamicFormComponent = (userOptions = {}) => {
     const template = `
         <div class="dynamic-form-contents" style="display:contents" x-data="{form}">
             <div class="dynamic-form" :class="form.theme">
-                <form @submit.prevent="handleSubmit">
+                <form @submit.prevent="form.handleSubmit">
                     <!-- Form header -->    
                     <div class="form-header">
                         <template x-for="field in form.data.fields">
                             <div class="grid-item" x-text="field.label"></div>
                         </template>
+                        <div class="grid-item">Actions</div>
                     </div>
                     
                     <!-- Form rows -->
@@ -71,37 +108,50 @@ const DynamicFormComponent = (userOptions = {}) => {
                                     </template>
                                 </div>
                             </template>
+                            <div class="grid-item">
+                                <button @click="form.removeField(item)">Remove</button>
+                            </div>
                         </div>
                     </template>
-                    
                 </form>
                 
+                <div class="add-field-form" x-show="form.state.isAdding">
+                 hi
+                </div>
                 
+               
             </div>
             
-            <!-- Add Field Prompt -->
-            <!--
-            <div id="fieldPrompt">
-                <button @click="form.addField()" :disabled="{!form.newName.trim()}">Add</button>
-                <div>
-                    <input type="text" x-model="form.newName" @keydown.enter="addField()"
-                            @keydown.escape="form.isAdding = false; form.newName = ''" 
-                            placeholder="Enter field name" autofocus>
-                    
-                    <button @click="form.isAdding = false; form.newName = ''" >Cancel</button>
-                </div>
-            </div>
-            -->
         </div>
     `;
 
     // ========== JAVASCRIPT LOGIC ==========
+
     return {
         // Configuration
         form: {
             data: userOptions.data,
-            isAdding: false,
-            newName: ''
+            state: {
+                isAdding: false,
+                startAdding() {
+                    this.isAdding = true;
+                },
+                commitAdding() {
+                    this.isAdding = false;
+                },
+                cancelAdding() {
+                    this.isAdding = false;
+                }
+            },
+            removeField(field) {
+                console.info("Remove field", field);
+                let fieldIndex = this.data.items.indexOf(field);
+                console.info("Remove field index", fieldIndex);
+                this.data.items.splice(fieldIndex, 1);
+            },
+            handleSubmit(evt) {
+                evt.preventDefault();
+            }
         },
 
         // Lifecycle hooks
