@@ -1,0 +1,24 @@
+<html>
+    <head>
+        <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+        <script src="dynamic-form.js"></script>
+        <script>
+            const testData = {
+                fields: [
+                    { label: 'Name', itemField: 'name', type: 'String' },
+                    { label: 'Type', itemField: 'type', type: 'String', options: ['STRING', 'INTEGER', 'BOOLEAN'] },
+                    { label: 'Description', itemField: 'description', type: 'String' },
+                    { label: '' }
+                ],
+                items: [
+                    { name: 'photoName2', type:'INTEGER', description: 'Some description?' }
+                ]
+            };
+        </script>
+    </head>
+    <body>
+        <div x-data="DynamicFormComponent({ data: testData })">
+            <!-- Component renders automatically -->
+        </div>
+    </body>
+</html>
