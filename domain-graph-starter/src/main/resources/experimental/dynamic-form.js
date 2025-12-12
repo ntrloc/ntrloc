@@ -4,7 +4,7 @@ const DynamicFormComponent = (userOptions = {}) => {
     const styles = `
         .dynamic-form {
             font-family: sans-serif;
-            font-weight: bold;
+            position: relative;
             
             form {
                 background-color: black;
@@ -23,8 +23,16 @@ const DynamicFormComponent = (userOptions = {}) => {
                     width: 100%;
                     height: 100%;
                     
+                    &.new {
+                        background-color: #d4ffcc;
+                    }
+                    
                     &.modified {
                         background-color: #fff8b0;
+                    }
+                    
+                    &.deleted {
+                        background-color: #fac3cd;
                     }
 
                     > * {
@@ -49,6 +57,7 @@ const DynamicFormComponent = (userOptions = {}) => {
                 }
 
                 input[type=text] {
+                    font-size: inherit;
                     border: solid 1px #ccc;
                     padding: 5px;
                     border: none;
@@ -61,6 +70,7 @@ const DynamicFormComponent = (userOptions = {}) => {
                 }
 
                 select {
+                    font-size: inherit;
                     padding: 5px;
                     appearance: none;
                     border: none;
@@ -74,14 +84,15 @@ const DynamicFormComponent = (userOptions = {}) => {
                 }
 
                 button {
+                    font-size: inherit;
                     padding: 5px;
                     border-radius: 3px;
                     border: 1px solid #666666;
                 }
             }
             
-            .add-field-form {
-                background-color: yellow;
+            button {
+                cursor: pointer;
             }
         }
     `;
@@ -89,7 +100,9 @@ const DynamicFormComponent = (userOptions = {}) => {
     // ========== HTML TEMPLATE ==========
     const template = `
         <div class="dynamic-form-contents" style="display:contents" x-data="{form}">
+           
             <div class="dynamic-form">
+                
                 <form @submit.prevent="form.handleSubmit">
                     <!-- Form header -->    
                     <div class="form-header">
@@ -99,32 +112,44 @@ const DynamicFormComponent = (userOptions = {}) => {
                     </div>
                     
                     <!-- Form rows -->
-                    <template x-for="property in form.data.properties">
+                    <template x-for="(property, index) in form.data.properties">
                         <div style="display:contents">
-                            <div class="grid-item" :class="{modified: property.name.modified}">
-                                <input type="text" x-model.lazy="property.name.value">
+                            <div class="grid-item" :class="{new: form.isNew(property), modified: form.isNormal(property) && property.name.modified, deleted: form.isDeleted(property)}">
+                                <input type="text" class="name-input" x-model.lazy="property.name.value">
                             </div>
-                            <div class="grid-item" :class="{modified: property.type.modified}">
-                                <select x-model.lazy="property.type.value">
-                                    <template x-for="type in form.data.propertyTypes">
-                                        <option :value="type" x-text="type" :selected="type == property.type.value"></option>
-                                    </template>
-                                </select>        
+                            <div class="grid-item" :class="{new: form.isNew(property), modified: form.isNormal(property) && property.type.modified, deleted: form.isDeleted(property)}">
+                                <template x-if="property.id == null">
+                                    <select x-model.lazy="property.type.value">
+                                        <template x-for="type in form.data.propertyTypes">
+                                            <option :value="type" x-text="type" :selected="type == property.type.value"></option>
+                                        </template>
+                                    </select>
+                                </template>
+                                <template x-if="property.id != null">
+                                    <div x-text="property.type.value"></div>
+                                </template>        
                             </div>
-                            <div class="grid-item" :class="{modified: property.description.modified}">
+                            <div class="grid-item" :class="{new: form.isNew(property), modified: form.isNormal(property) && property.description.modified, deleted: form.isDeleted(property)}">
                                 <input type="text" x-model.lazy="property.description.value">
                             </div>
-                            <div class="grid-item">
-                                <button @click="form.removeField(property)">Remove</button>
+                            <div class="grid-item" :class="{new: form.isNew(property), deleted: form.isDeleted(property)}">
+                                <template x-if="form.isDeleted(property)">
+                                    <button @click="form.unremoveProperty(property)">Restore</button>
+                                </template>
+                                <template x-if="form.isNormal(property) && property.modified">
+                                    <button @click="property.clearChanges()">Clear changes</button>
+                                </template>
+                                <template x-if="!form.isDeleted(property)">
+                                    <button @click="form.removeProperty(property)">Remove</button>
+                                </template>
                             </div>
                         </div>
                     </template>
+                    
+                    <div class="grid-item" style="grid-column: 1 / span 4">
+                        <button class="addPropertyButton" @click="addProperty()">New property</button>
+                    </div>
                 </form>
-                
-                <div class="add-field-form" x-show="form.state.isAdding">
-                 hi
-                </div>
-                
                
             </div>
             
@@ -166,22 +191,41 @@ const DynamicFormComponent = (userOptions = {}) => {
         get value() {
             return this._newValue ? this._newValue : this._originalValue;
         }
+
+        clearChanges() {
+            this._newValue = null;
+            this.modified = false;
+        }
     }
 
     class Property {
+        id;
         name;
         type;
         description;
 
-        constructor(name, type, description) {
+        constructor(id, name, type, description) {
+            this.id = id;
             this.name = new EditableProperty(name, name);
             this.type = new EditableProperty(name, type);
             this.description = new EditableProperty(name, description);
+            console.info("Created property", this);
         }
+
+        get modified() {
+            return this.name.modified || this.type.modified || this.description.modified;
+        }
+
+        clearChanges() {
+            this.name.clearChanges();
+            this.type.clearChanges();
+            this.description.clearChanges();
+        }
+
     }
 
     let properties = userOptions.data.items.map((field, index, array) => {
-        return new Property(field.name, field.type, field.description);
+        return new Property(field.id, field.name, field.type, field.description);
     });
     console.info("Got properties", properties);
 
@@ -191,23 +235,35 @@ const DynamicFormComponent = (userOptions = {}) => {
         // Configuration
         form: {
             data: userOptions.data,
+            deletedProperties: [],
             state: {
-                isAdding: false,
-                startAdding() {
-                    this.isAdding = true;
-                },
-                commitAdding() {
-                    this.isAdding = false;
-                },
-                cancelAdding() {
-                    this.isAdding = false;
+                isAdding: false
+            },
+            addProperty() {
+                let newProperty = new Property(null, null, null, null);
+                this.data.properties.push(newProperty);
+            },
+            removeProperty(prop) {
+                if (this.isNew(prop)) {
+                    this.data.properties.splice(this.data.properties.indexOf(prop), 1);
+                } else {
+                    this.deletedProperties.push(prop);
                 }
             },
-            removeField(field) {
-                console.info("Remove field", field);
-                let fieldIndex = this.data.items.indexOf(field);
-                console.info("Remove field index", fieldIndex);
-                this.data.items.splice(fieldIndex, 1);
+            unremoveProperty(prop) {
+                let idx = this.deletedProperties.indexOf(prop);
+                if (idx >= 0) {
+                    this.deletedProperties.splice(idx, 1);
+                }
+            },
+            isNew(property) {
+                return property.id == null;
+            },
+            isNormal(property) {
+                return !this.isNew(property) && !this.isDeleted(property);
+            },
+            isDeleted(property) {
+              return this.deletedProperties.includes(property);
             },
             handleSubmit(evt) {
                 evt.preventDefault();
@@ -242,6 +298,24 @@ const DynamicFormComponent = (userOptions = {}) => {
             if (this.$el) {
                 this.$el.innerHTML = template;
             }
+        },
+
+        addProperty() {
+            this.form.addProperty();
+            let newIndex = this.form.data.properties.length - 1;
+            this.$nextTick(() => {
+                console.info("tock", this);
+                const nameInputs = document.querySelectorAll('.dynamic-form .name-input');
+
+                if (nameInputs.length > 0) {
+                    const lastInput = nameInputs[nameInputs.length - 1];
+                    lastInput.focus();
+                    lastInput.select();
+
+                    // Optional: Scroll into view
+                    lastInput.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }
+            });
         },
 
         destroy() {
