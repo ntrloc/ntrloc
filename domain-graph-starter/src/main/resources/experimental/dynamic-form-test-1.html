@@ -4,12 +4,16 @@
         <script src="dynamic-form.js"></script>
         <script>
             const testData = {
-                fields: [
-                    { label: 'Name', itemField: 'name', type: 'String' },
-                    { label: 'Type', itemField: 'type', type: 'String', options: [
-                            'BINARY', 'BOOLEAN', 'DATE', 'DATETIME', 'FLOAT', 'INTEGER', 'STRING'
-                        ] },
-                    { label: 'Description', itemField: 'description', type: 'String' }
+                propertyTypes: [
+                    'BOOLEAN',
+                    'DATETIME',
+                    'STRING'
+                ],
+                columns: [
+                    'Name',
+                    'Type',
+                    'Description',
+                    'Actions'
                 ],
                 items: [
                     { name: 'colorspace', type:'STRING', description: 'The colorspace of a photo' },
