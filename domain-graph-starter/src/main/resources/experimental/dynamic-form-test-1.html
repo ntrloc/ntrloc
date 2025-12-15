@@ -1,7 +1,7 @@
 <html>
     <head>
         <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
-        <script src="dynamic-form.js"></script>
+        <script src="schema-editor.js"></script>
         <script>
             const testData = {
                 propertyTypes: [
@@ -19,13 +19,25 @@
                     { id: 'abc1', name: 'colorspace', type:'STRING', description: 'The colorspace of a photo' },
                     { id: 'abc2', name: 'createdDate', type:'DATETIME', description: 'The date/time a photo was taken' },
                     { id: 'abc3', name: 'photoName', type:'STRING', description: 'The name of a photo' }
+                ],
+                propertyGroups: [
+                    {
+                        id: 'group1',
+                        name: 'Basic properties',
+                        properties: [
+                            { id: 'asdf', name: 'title1', type:'STRING', description: 'title 1' },
+                            { id: 'asdf', name: 'title1', type:'STRING', description: 'title 2' }
+                        ]
+                    }
                 ]
+
             };
         </script>
+
     </head>
     <body>
-        <div x-data="DynamicFormComponent({ data: testData })">
-            <!-- Component renders automatically -->
-        </div>
+
+        <div x-data="new SchemaEditor(testData)" x-html="getTemplate()"></div>
+
     </body>
 </html>

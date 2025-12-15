@@ -47,7 +47,7 @@ public class ItemService {
             target label.
             
             """)
-    public List<ItemProjection> retrieveItems(@ToolParam(description = """
+    public List<ItemProjection> projectItems(@ToolParam(description = """
             A selectable item projection specification.
             """) SelectableItemProjectionSpec spec) {
         try {
