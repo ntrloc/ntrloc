@@ -1,11 +1,12 @@
 package org.ntrloc;
 
+import org.janusgraph.core.JanusGraph;
 import org.ntrloc.graph.db.schema.Cardinality;
 import org.ntrloc.graph.db.schema.ItemDefinition;
+import org.ntrloc.graph.db.schema.LinkDefinition;
 import org.ntrloc.graph.db.schema.PropertyDefinition;
 import org.ntrloc.graph.db.schema.PropertyGroupDefinition;
 import org.ntrloc.graph.db.schema.PropertyType;
-import org.ntrloc.graph.db.schema.LinkDefinition;
 import org.ntrloc.graph.db.schema.SchemaManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,6 +24,11 @@ public class SchemaInitializer {
 
     @Autowired
     private SchemaManager schemaManager;
+
+    @Autowired
+    private JanusGraph graph;
+    @Autowired
+    private JanusGraph janusGraph;
 
     @EventListener(ApplicationReadyEvent.class)
     void initSchema() {
@@ -74,5 +80,7 @@ public class SchemaInitializer {
             LOG.info("Found {} entities", entityDefs.size());
         }
     }
+
+
 
 }

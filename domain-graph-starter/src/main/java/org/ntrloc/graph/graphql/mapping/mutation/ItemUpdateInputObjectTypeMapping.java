@@ -9,6 +9,7 @@ import org.apache.commons.text.CaseUtils;
 import org.ntrloc.graph.db.language.Property;
 import org.ntrloc.graph.db.language.mutation.ItemUpdateMutation;
 import org.ntrloc.graph.db.language.mutation.LinkMutation;
+import org.ntrloc.graph.db.language.selectors.ItemSelector;
 import org.ntrloc.graph.db.language.selectors.Selector;
 import org.ntrloc.graph.db.schema.ItemDefinition;
 import org.ntrloc.graph.graphql.mapping.InputObjectTypeProducer;
@@ -95,13 +96,17 @@ public class ItemUpdateInputObjectTypeMapping implements InputObjectTypeProducer
 
         if (inputMap.containsKey(WHERE_FIELD_NAME)) {
             Selector selector = selectorChoiceInputObjectTypeMapping.parseSelector((Map<String, Object>) inputMap.get(WHERE_FIELD_NAME));
-            mutation.setSelector(selector);
+            if (selector instanceof ItemSelector itemSelector) {
+                mutation.setSelector(itemSelector);
+            } else {
+                throw new IllegalArgumentException("Not an ItemSelector: " + selector);
+            }
         } else {
             throw new IllegalArgumentException("Update mutation must contain a field named " + WHERE_FIELD_NAME);
         }
 
         if (inputMap.containsKey(PROPERTIES_FIELD_NAME)) {
-            List<? extends Property> properties = propertiesMapping.mapProperties((Map<String, Object>) inputMap.get(PROPERTIES_FIELD_NAME));
+            List<Property> properties = propertiesMapping.mapProperties((Map<String, Object>) inputMap.get(PROPERTIES_FIELD_NAME));
             mutation.setProperties(properties);
         }
 

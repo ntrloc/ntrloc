@@ -92,7 +92,7 @@ public class ItemCreateInputObjectTypeMapping implements InputObjectTypeProducer
             mutation.setRefId((String)inputMap.get(REF_FIELD_NAME));
         }
         if (inputMap.containsKey(PROPERTIES_FIELD_NAME)) {
-            List<? extends Property> properties = propertiesMapping.mapProperties((Map<String, Object>) inputMap.get(PROPERTIES_FIELD_NAME));
+            List<Property> properties = propertiesMapping.mapProperties((Map<String, Object>) inputMap.get(PROPERTIES_FIELD_NAME));
             mutation.setProperties(properties);
         }
         if (inputMap.containsKey(LINKS_FIELD_NAME)) {

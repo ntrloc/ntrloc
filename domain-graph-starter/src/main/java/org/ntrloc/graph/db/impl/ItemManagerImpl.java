@@ -217,8 +217,8 @@ public class ItemManagerImpl implements ItemManager {
                     throw new MutationException("Selector must be an ID selector");
                 }
                 var idSelector = (IdSelector)selector;
-                String toId = switch(idSelector.getType()) {
-                    case IdSelector.Type.LOCAL -> {
+                String toId = switch(idSelector.getScope()) {
+                    case IdSelector.Scope.LOCAL -> {
                         // find the ID of the item whose reference matches this reference ID
                         Optional<Map.Entry<String, ReferenceableItemMutation>> mutationEntryOpt = mutationIdMap.entrySet()
                                 .stream()
@@ -230,7 +230,7 @@ public class ItemManagerImpl implements ItemManager {
                             throw new MutationException("Linked item " + idSelector.getId() + " not found");
                         }
                     }
-                    case IdSelector.Type.GLOBAL -> idSelector.getId();
+                    case IdSelector.Scope.GLOBAL -> idSelector.getId();
                 };
                 if (toId == null) {
                     throw new MutationException("Linked item " + idSelector.getId() + " not found");

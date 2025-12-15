@@ -4,15 +4,12 @@ import org.ntrloc.graph.db.language.Property;
 import org.ntrloc.graph.db.language.selectors.Selector;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
 
 public class LinkUpdateMutation extends LinkMutation implements LinkMutationWithLinkType, LinkMutationWithProperties {
 
     private Selector selector;
-    private Map<String, Property> properties = new HashMap<>();
+    private List<Property> properties = new ArrayList<>();
     private String linkType;
 
     public LinkUpdateMutation selector(Selector selector) {
@@ -44,11 +41,11 @@ public class LinkUpdateMutation extends LinkMutation implements LinkMutationWith
     }
 
     public void setProperties(List<Property> properties) {
-        this.properties = properties.stream().collect(Collectors.toMap(Property::getName, p -> p));
+        this.properties = properties;
     }
 
     public List<Property> getProperties() {
-        return new ArrayList<>(properties.values());
+        return properties;
     }
 
 }

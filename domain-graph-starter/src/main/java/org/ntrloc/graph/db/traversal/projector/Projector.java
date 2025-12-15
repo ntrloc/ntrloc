@@ -74,17 +74,19 @@ public class Projector {
         traversalSource.tx().close();
         traversalSource.tx().begin();
 
-        GraphTraversal<?, Vertex> traversal = doesNotHaveCommittedPreviousVersion(traversalSource.V());
-        traversal = select(traversal, spec);
+        try (var tx = traversalSource.tx()) {
+            GraphTraversal<?, Vertex> traversal = doesNotHaveCommittedPreviousVersion(traversalSource.V());
+            traversal = select(traversal, spec);
 
-        var projectionTraversal = projectItems(traversal, spec, binaryDownloadUri);
+            var projectionTraversal = projectItems(traversal, spec, binaryDownloadUri);
 
-        List<ItemProjection> itemProjections = new ArrayList<>();
-        while (projectionTraversal.hasNext()) {
-            var next =  projectionTraversal.next();
-            itemProjections.add(next);
+            List<ItemProjection> itemProjections = new ArrayList<>();
+            while (projectionTraversal.hasNext()) {
+                var next = projectionTraversal.next();
+                itemProjections.add(next);
+            }
+            return itemProjections;
         }
-        return itemProjections;
     }
 
     /** Appends a filter to a vertex traversal that removes vertices with an incoming has-previous-version link that is committed (NORMAL or DELETED).*/
@@ -137,7 +139,7 @@ public class Projector {
             // this will map any "actual" properties to the "properties" projection field
             projectionTraversals.put("properties", __.valueMap());
             projectionTraversals.put("nodeProperties", __.outE(NODE_PROPERTY_EDGE_LABEL).group().by(__.values(NODE_PROPERTY_NAME_PROPERTY)).by(__.inV().elementMap()));
-        } else {
+        } else if (!spec.getProperties().isEmpty()) {
             String[] props = spec.getProperties().toArray(new String[0]);
             // this will map any "actual" properties to the "properties" projection field
             projectionTraversals.put("properties", __.valueMap(props));
@@ -164,7 +166,9 @@ public class Projector {
 
             Map<String, Object> properties = (Map<String, Object>) value.get("properties");
             Map<String, Map<String, Object>> nodePropsMap = (Map) value.get("nodeProperties");
-            Map<String, BinaryProjection> binaryPropsMap = nodePropsMap.entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey, entry -> {
+            if (properties != null) {
+                if (nodePropsMap != null) {
+                    Map<String, BinaryProjection> binaryPropsMap = nodePropsMap.entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey, entry -> {
                         Map<String, Object> props = entry.getValue();
                         BinaryProjection binaryProp = new BinaryProjection();
                         binaryProp.setMd5((String) props.get("md5"));
@@ -181,8 +185,11 @@ public class Projector {
                             }
                         }
                         return binaryProp;
-            }));
-            properties.putAll(binaryPropsMap);
+                    }));
+                    properties.putAll(binaryPropsMap);
+                }
+                properties.keySet().removeAll(SUPPRESSED_PROPERTIES);
+            }
 
             ItemProjection projection = new ItemProjection();
             projection.setId(uid);
@@ -190,7 +197,6 @@ public class Projector {
             projection.setVersion(version);
             projection.setLatestVersion(isLatestVersion);
             projection.setItemType(iType);
-            properties.keySet().removeAll(SUPPRESSED_PROPERTIES);
             projection.setProperties(properties);
 
             if (value.get("links") != null) {

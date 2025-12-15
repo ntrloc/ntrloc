@@ -275,7 +275,7 @@ class ItemManagerTest {
                 .properties(List.of( new StringProperty("name", "photographer1")));
 
         LinkCreateMutation linkCreate = new LinkCreateMutation()
-                .selector(new IdSelector(photoCreate.getRefId(), IdSelector.Type.LOCAL))
+                .selector(new IdSelector(photoCreate.getRefId(), IdSelector.Scope.LOCAL))
                 .linkType("created")
                 .properties(List.of(new DateProperty("createdDate", "2022-01-01")));
 
@@ -350,7 +350,7 @@ class ItemManagerTest {
                 .properties(List.of(new StringProperty("name", "agency a")));
 
         LinkCreateMutation agencyEmploysPhotographerLink = new LinkCreateMutation()
-                .selector(new IdSelector(photographerCreate.getRefId(), IdSelector.Type.LOCAL))
+                .selector(new IdSelector(photographerCreate.getRefId(), IdSelector.Scope.LOCAL))
                 .linkType("employs")
                 .properties(List.of(new DateProperty("hireDate", "2022-01-01")));
 
@@ -407,7 +407,7 @@ class ItemManagerTest {
                 .properties(List.of(new StringProperty("name", "agency a")));
 
         LinkCreateMutation agencyEmploysPhotographerLink = new LinkCreateMutation()
-                .selector(new IdSelector(photographerCreate.getRefId(), IdSelector.Type.LOCAL))
+                .selector(new IdSelector(photographerCreate.getRefId(), IdSelector.Scope.LOCAL))
                 .linkType("employs")
                 .properties(List.of(new DateProperty("hireDate", "2022-01-01")));
 
@@ -465,7 +465,7 @@ class ItemManagerTest {
                 .properties(List.of( new StringProperty("name", "photographer1")));
 
         LinkCreateMutation linkCreate = new LinkCreateMutation()
-                .selector(new IdSelector(photoCreate.getRefId(), IdSelector.Type.LOCAL))
+                .selector(new IdSelector(photoCreate.getRefId(), IdSelector.Scope.LOCAL))
                 .linkType("created")
                 .properties(List.of(new DateProperty("createdDate", "2022-01-01")));
 
@@ -510,7 +510,7 @@ class ItemManagerTest {
                 .properties(List.of( new StringProperty("name", "photographer1")));
 
         LinkCreateMutation linkCreate = new LinkCreateMutation()
-                .selector(new IdSelector(photoCreate.getRefId(), IdSelector.Type.LOCAL))
+                .selector(new IdSelector(photoCreate.getRefId(), IdSelector.Scope.LOCAL))
                 .linkType("created")
                 .properties(List.of(new DateProperty("createdDate", "2022-01-01")));
 
@@ -560,7 +560,7 @@ class ItemManagerTest {
                 .properties(List.of( new StringProperty("name", "photographer1")));
 
         LinkCreateMutation linkCreate = new LinkCreateMutation()
-                .selector(new IdSelector(photoCreate.getRefId(), IdSelector.Type.LOCAL))
+                .selector(new IdSelector(photoCreate.getRefId(), IdSelector.Scope.LOCAL))
                 .linkType("created")
                 .properties(List.of(new DateProperty("createdDate", "2022-01-01")));
 

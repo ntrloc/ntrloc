@@ -6,3 +6,4 @@ org.ntrloc.graph.UiAutoConfiguration
 org.ntrloc.graph.RegistryAutoConfiguration
 org.ntrloc.graph.StorageAutoConfiguration
 org.ntrloc.graph.DBAutoConfiguration
+org.ntrloc.graph.ModelContextProtocolAutoConfiguration

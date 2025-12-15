@@ -43,6 +43,7 @@ public class JanusAutoConfiguration {
             LOG.warn("No storage backend configured, using in-memory storage");
             builder = builder.set("storage.backend", "inmemory");
         }
+        builder.set("log.transactions", true);
 
         if (indexConfiguration.getLucene() != null) {
             LuceneIndexConfiguration lucene = indexConfiguration.getLucene();
@@ -51,7 +52,9 @@ public class JanusAutoConfiguration {
         } else {
             throw new RuntimeException("No index backend configured");
         }
-        return builder.open();
+        JanusGraph graph = builder.open();
+        LOG.info("Graph opened: {}", graph);
+        return graph;
     }
 
     @Bean

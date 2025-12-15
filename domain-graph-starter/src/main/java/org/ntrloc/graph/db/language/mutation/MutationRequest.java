@@ -6,6 +6,10 @@ public class MutationRequest {
 
     private List<ItemMutation> itemMutations;
 
+    public MutationRequest() {
+        // no op for Jackson
+    }
+
     public MutationRequest(List<ItemMutation> itemMutations) {
         this.itemMutations = itemMutations;
     }

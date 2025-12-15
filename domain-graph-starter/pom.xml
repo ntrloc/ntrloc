@@ -20,6 +20,7 @@
         <hazelcast.version>5.5.0</hazelcast.version>
         <janusgraph.version>1.2.0-20250219-143145.6c030f7</janusgraph.version>
         <netty-macos-resolver.version>4.1.119.Final</netty-macos-resolver.version>
+        <spring-ai.version>1.1.2</spring-ai.version>
         <thymeleaf.version>3.5.3</thymeleaf.version>
         <thymeleaf-layout-dialect.version>3.4.0</thymeleaf-layout-dialect.version>
         <tinkerpop.version>3.7.3</tinkerpop.version>
@@ -51,10 +52,18 @@
                 </exclusion>
             </exclusions>
         </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
             <version>${spring.boot.version}</version>
+        </dependency>
+
+
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-mcp-server-webflux</artifactId>
+            <version>${spring-ai.version}</version>
         </dependency>
 
         <!-- Graph stuff -->

@@ -48,7 +48,7 @@ public class ItemController extends AbstractController {
 
     @GetMapping("/{id}")
     public ResponseEntity<Resource> getItem(@PathVariable("id") String id, ServerWebExchange exchange) {
-        var selector = new IdSelector(id, IdSelector.Type.GLOBAL);
+        var selector = new IdSelector(id, IdSelector.Scope.GLOBAL);
         SelectableItemProjectionSpec query = new SelectableItemProjectionSpec(selector);
         AllLinksProjectionSpec allLinksSpec = new AllLinksProjectionSpec();
         query.setLinks(allLinksSpec);

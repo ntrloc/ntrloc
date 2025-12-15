@@ -13,6 +13,10 @@ public class LinkProjectionSpec {
     private List<String> properties;
     private ItemProjectionSpec itemProjectionSpec;
 
+    LinkProjectionSpec() {
+        // no op for Jackson
+    }
+
     /**
      * Specifies the information to return for a link between items in the graph.
      * @param linkLabel the label of the link
@@ -34,6 +38,10 @@ public class LinkProjectionSpec {
 
     public void setLinkLabel(String linkLabel) {
         this.linkLabel = linkLabel;
+    }
+
+    public void setDirection(Direction direction) {
+        this.direction = direction;
     }
 
     public Direction getDirection() {

@@ -9,6 +9,10 @@ public class SelectableItemProjectionSpec extends ItemProjectionSpec {
 
     private ItemSelector itemSelector;
 
+    public SelectableItemProjectionSpec() {
+        // no-op for Jackson
+    }
+
     public SelectableItemProjectionSpec(ItemSelector itemSelector) {
         this.itemSelector = itemSelector;
     }

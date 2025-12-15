@@ -1,6 +1,7 @@
 package org.ntrloc.graph.db.language.mutation;
 
 import org.ntrloc.graph.db.language.Property;
+import scala.sys.Prop;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -11,7 +12,7 @@ import java.util.stream.Collectors;
 public class ItemCreateMutation extends ItemMutation implements ReferenceableItemMutation, ItemMutationWithItemType, ItemMutationWithLinks<LinkCreateMutation>, MutationWithProperties {
 
     private String itemType;
-    private Map<String, Property> properties = new HashMap<>();
+    private List<Property> properties = new ArrayList<>();
     private String refId;
     private List<LinkCreateMutation> links;
 
@@ -31,12 +32,12 @@ public class ItemCreateMutation extends ItemMutation implements ReferenceableIte
         return refId;
     }
 
-    public void setProperties(List<? extends Property> properties) {
-        this.properties = properties.stream().collect(Collectors.toMap(Property::getName, p -> p));
+    public void setProperties(List<Property> properties) {
+        this.properties = properties;
     }
 
     public List<Property> getProperties() {
-        return new ArrayList<>(properties.values());
+        return properties;
     }
 
     public List<LinkCreateMutation> getLinks() {

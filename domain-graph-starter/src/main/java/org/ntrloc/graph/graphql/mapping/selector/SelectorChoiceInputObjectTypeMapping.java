@@ -73,9 +73,9 @@ public class SelectorChoiceInputObjectTypeMapping implements SelectorInputObject
         LOG.info("wait");
 
         if (selectorObject.containsKey("ref")) {
-            return new IdSelector((String) selectorObject.get("ref"), IdSelector.Type.LOCAL);
+            return new IdSelector((String) selectorObject.get("ref"), IdSelector.Scope.LOCAL);
         } else if (selectorObject.containsKey("id")) {
-            return new IdSelector((String) selectorObject.get("id"), IdSelector.Type.GLOBAL);
+            return new IdSelector((String) selectorObject.get("id"), IdSelector.Scope.GLOBAL);
         } else {
             throw new IllegalArgumentException("Unknown selector choice");
         }

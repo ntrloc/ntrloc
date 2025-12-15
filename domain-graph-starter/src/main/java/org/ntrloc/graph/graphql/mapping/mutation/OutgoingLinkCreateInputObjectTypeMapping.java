@@ -5,6 +5,7 @@ import graphql.language.InputValueDefinition;
 import graphql.language.TypeName;
 import org.ntrloc.graph.db.language.Property;
 import org.ntrloc.graph.db.language.mutation.LinkCreateMutation;
+import org.ntrloc.graph.db.language.selectors.ItemSelector;
 import org.ntrloc.graph.db.language.selectors.Selector;
 import org.ntrloc.graph.db.schema.LinkDefinition;
 import org.ntrloc.graph.graphql.mapping.selector.SelectorChoiceInputObjectTypeMapping;
@@ -59,7 +60,12 @@ public class OutgoingLinkCreateInputObjectTypeMapping extends OutgoingLinkAbstra
                 Selector selector = selectorChoiceInputObjectTypeMapping.parseSelector(targetObject);
                 LinkCreateMutation mutation = new LinkCreateMutation();
                 mutation.setLinkType(targetLinkDefinition.getSourceLabel());
-                mutation.setSelector(selector);
+                if (selector instanceof ItemSelector itemSelector) {
+                    mutation.setSelector(itemSelector);
+                } else {
+                    // TODO: rethink how we define selectors in GraphQL.  If a link needs an item selector, use an item selector in GraphQL
+                    throw new IllegalArgumentException("Not an ItemSelector: " + selector);
+                }
 
                 if (mutationMap.containsKey(PROPERTIES_FIELD_NAME)) {
                     List<Property> properties = propertiesMapping.mapProperties((Map<String, Object>) mutationMap.get(PROPERTIES_FIELD_NAME));

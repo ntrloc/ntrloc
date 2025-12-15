@@ -134,7 +134,7 @@ class MutatorTest {
                 new StringProperty("author", "Bill")
         );
 
-        mutator.updateNode(new IdSelector(newId, IdSelector.Type.GLOBAL), updatedProps);
+        mutator.updateNode(new IdSelector(newId, IdSelector.Scope.GLOBAL), updatedProps);
         mutator.checkpoint();
 
         Function<GraphTraversal<Vertex, Vertex>, GraphTraversal<?, NodeMutationResult>> nodeWithUpdates = (t) -> {

@@ -34,11 +34,13 @@ public class Transaction {
     public void commit() {
         LOG.info("Committing transaction {}", id);
         gremlinTransaction.commit();
+        gremlinTransaction.close();
     }
 
     public void rollback() {
         LOG.info("Rolling back transaction {}", id);
         gremlinTransaction.rollback();
+        gremlinTransaction.close();
     }
 
     public void close() {

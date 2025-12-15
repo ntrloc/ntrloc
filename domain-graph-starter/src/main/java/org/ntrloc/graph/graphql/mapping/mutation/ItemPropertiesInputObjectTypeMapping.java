@@ -74,13 +74,13 @@ public class ItemPropertiesInputObjectTypeMapping implements InputObjectTypeProd
                 .build());
     }
 
-    List<? extends Property> mapProperties(Map<String, Object> propertiesValue) {
+    List<Property> mapProperties(Map<String, Object> propertiesValue) {
         return propertiesValue.entrySet().stream().map(entry -> {
             String propertyName = entry.getKey();
             PropertyDefinition propertyDefinition = propertyDefinitions.get(propertyName);
             PropertyType propertyType = propertyDefinition.getType();
             Object propertyValue = entry.getValue();
-            return switch (propertyType) {
+            return (Property) switch (propertyType) {
                 case PropertyType.BOOLEAN -> new BooleanProperty(propertyName, (Boolean)propertyValue);
                 case PropertyType.BOOLEAN_LIST -> new BooleanListProperty(propertyName, (List<Boolean>)propertyValue);
                 case PropertyType.INT -> new IntProperty(propertyName, (Integer)propertyValue);

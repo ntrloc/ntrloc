@@ -7,6 +7,6 @@ import java.util.List;
 public interface MutationWithProperties {
 
     List<Property> getProperties();
-    void setProperties(List<? extends Property> properties);
+    void setProperties(List<Property> properties);
 
 }

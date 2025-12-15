@@ -91,6 +91,7 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
         this.traversalSource = traversalSource;
         this.schemaMap = clusterService.getMap(SCHEMA_MAP_NAME);
         this.schemaMap.addEntryListener(this, true);
+        /*
         try {
             this.verifyGlobalPropertiesAndIndexes();
         } catch (InterruptedException ie) {
@@ -98,6 +99,8 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
             LOG.error("Interrupted", ie);
             throw new RuntimeException(ie);
         }
+
+         */
         this.clusterService = clusterService;
 
         cacheSchemaDefinitions();
@@ -152,15 +155,19 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
         itemDefinitionByNameMap = new HashMap<>();
         itemDefinitionByIdMap = new HashMap<>();
 
-        GraphTraversal<Vertex, Vertex> start = traversalSource.V().hasLabel(ITEM_DEFINITION_LABEL);
-        var definitions = retrieveItemDefinitions(start);
+        try (var tx = traversalSource.tx()) {
+            GraphTraversal<Vertex, Vertex> start = traversalSource.V().hasLabel(ITEM_DEFINITION_LABEL);
+            var definitions = retrieveItemDefinitions(start);
 
-        for (ItemDefinition def : definitions) {
-            itemDefinitionByNameMap.put(def.getName(), def);
-            itemDefinitionByIdMap.put(def.getUid(), def);
+            for (ItemDefinition def : definitions) {
+                itemDefinitionByNameMap.put(def.getName(), def);
+                itemDefinitionByIdMap.put(def.getUid(), def);
+            }
+
+            cachesInitialized = true;
+            tx.commit();
         }
 
-        cachesInitialized = true;
     }
 
     private String createNewUniqueId() {
@@ -362,48 +369,53 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
     }
 
     private Set<ItemDefinition> retrieveItemDefinitions(GraphTraversal<Vertex, Vertex> startingTraversal) {
-        var elementProjectionName = "elements";
-        var propertyNodeProjectionName = "propertyNodes";
-        var propertyGroupProjectionName = "propertyGroups";
+        var tx = traversalSource.tx();
+        try {
+            var elementProjectionName = "elements";
+            var propertyNodeProjectionName = "propertyNodes";
+            var propertyGroupProjectionName = "propertyGroups";
 
-        GraphTraversal<Vertex, Map<String, Object>> iter = startingTraversal
-                .project(elementProjectionName, propertyNodeProjectionName, propertyGroupProjectionName)
-                // elements of the schema node
-                .by(__.elementMap())
-                // a list of the property nodes tied to the schema node
-                .by(__.out(HAS_PROPERTY).elementMap().fold())
-                // a map of the property groups tied to the schema and the properties in them
-                .by(
-                        __.out(HAS_PROPERTY_GROUP)
-                                .project(elementProjectionName, propertyNodeProjectionName)
-                                .by(__.elementMap())
-                                .by(__.out(HAS_PROPERTY).elementMap().fold())
-                                .fold()
-                );
+            GraphTraversal<Vertex, Map<String, Object>> iter = startingTraversal
+                    .project(elementProjectionName, propertyNodeProjectionName, propertyGroupProjectionName)
+                    // elements of the schema node
+                    .by(__.elementMap())
+                    // a list of the property nodes tied to the schema node
+                    .by(__.out(HAS_PROPERTY).elementMap().fold())
+                    // a map of the property groups tied to the schema and the properties in them
+                    .by(
+                            __.out(HAS_PROPERTY_GROUP)
+                                    .project(elementProjectionName, propertyNodeProjectionName)
+                                    .by(__.elementMap())
+                                    .by(__.out(HAS_PROPERTY).elementMap().fold())
+                                    .fold()
+                    );
 
-        Set<ItemDefinition> defs = iter.toStream().map(v -> {
-            ItemDefinition itemDefinition = new ItemDefinition();
-            var propertyMap = (HashMap) v.get(elementProjectionName);
-            itemDefinition.setName((String) propertyMap.get("name"));
-            itemDefinition.setDescription((String) propertyMap.get("description"));
-            itemDefinition.setUid((String) propertyMap.get(UNIQUE_ID_PROPERTY));
+            Set<ItemDefinition> defs = iter.toStream().map(v -> {
+                ItemDefinition itemDefinition = new ItemDefinition();
+                var propertyMap = (HashMap) v.get(elementProjectionName);
+                itemDefinition.setName((String) propertyMap.get("name"));
+                itemDefinition.setDescription((String) propertyMap.get("description"));
+                itemDefinition.setUid((String) propertyMap.get(UNIQUE_ID_PROPERTY));
 
-            ArrayList<Map<String, Object>> properties = (ArrayList) v.get(propertyNodeProjectionName);
-            Set<PropertyDefinition> schemaProps = properties.stream()
-                    .map(this::mapToPropertyDefinition).collect(Collectors.toSet());
-            itemDefinition.setProperties(schemaProps);
+                ArrayList<Map<String, Object>> properties = (ArrayList) v.get(propertyNodeProjectionName);
+                Set<PropertyDefinition> schemaProps = properties.stream()
+                        .map(this::mapToPropertyDefinition).collect(Collectors.toSet());
+                itemDefinition.setProperties(schemaProps);
 
-            ArrayList<Map<String, Object>> propertyGroups = (ArrayList) v.get(propertyGroupProjectionName);
-            Set<PropertyGroupDefinition> groups = propertyGroups.stream()
-                    .map(this::mapToPropertyGroupDefinition)
-                    .collect(Collectors.toSet());
-            itemDefinition.setPropertyGroups(groups);
-            return itemDefinition;
-        }).collect(Collectors.toSet());
+                ArrayList<Map<String, Object>> propertyGroups = (ArrayList) v.get(propertyGroupProjectionName);
+                Set<PropertyGroupDefinition> groups = propertyGroups.stream()
+                        .map(this::mapToPropertyGroupDefinition)
+                        .collect(Collectors.toSet());
+                itemDefinition.setPropertyGroups(groups);
+                return itemDefinition;
+            }).collect(Collectors.toSet());
 
-        TreeSet<ItemDefinition> retSet = new TreeSet<>(Comparator.comparing(ItemDefinition::getName));
-        retSet.addAll(defs);
-        return retSet;
+            TreeSet<ItemDefinition> retSet = new TreeSet<>(Comparator.comparing(ItemDefinition::getName));
+            retSet.addAll(defs);
+            return retSet;
+        } finally {
+            tx.close();
+        }
     }
 
     private PropertyDefinition mapToPropertyDefinition(Map<String, Object> map) {
@@ -564,56 +576,58 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
     }
 
     private Set<LinkDefinition> retrieveRelationshipDefinitions(GraphTraversal<Vertex, Vertex> startingTraversal) {
-        var elementProjectionName = "elements";
-        var propertyNodeProjectionName = "propertyNodes";
-        var propertyGroupProjectionName = "propertyGroups";
-        var sourceProjectionName = "source";
-        var targetProjectionName = "target";
+        try (var tx = traversalSource.tx()) {
+            var elementProjectionName = "elements";
+            var propertyNodeProjectionName = "propertyNodes";
+            var propertyGroupProjectionName = "propertyGroups";
+            var sourceProjectionName = "source";
+            var targetProjectionName = "target";
 
-        GraphTraversal<Vertex, Map<String, Object>> iter = startingTraversal
-                .project(elementProjectionName, propertyNodeProjectionName, propertyGroupProjectionName, sourceProjectionName, targetProjectionName)
-                // elements of the schema node
-                .by(__.elementMap())
-                // a list of the property nodes tied to the schema node
-                .by(__.out(HAS_PROPERTY).elementMap().fold())
-                // a map of the property groups tied to the schema and the properties in them
-                .by(
-                        __.out(HAS_PROPERTY_GROUP)
-                                .project(elementProjectionName, propertyNodeProjectionName)
-                                .by(__.elementMap())
-                                .by(__.out(HAS_PROPERTY).elementMap().fold())
-                                .fold()
-                )
-                .by(__.out(LINK_SOURCE_LABEL).values("name"))
-                .by(__.out(LINK_TARGET_LABEL).values("name"));
+            GraphTraversal<Vertex, Map<String, Object>> iter = startingTraversal
+                    .project(elementProjectionName, propertyNodeProjectionName, propertyGroupProjectionName, sourceProjectionName, targetProjectionName)
+                    // elements of the schema node
+                    .by(__.elementMap())
+                    // a list of the property nodes tied to the schema node
+                    .by(__.out(HAS_PROPERTY).elementMap().fold())
+                    // a map of the property groups tied to the schema and the properties in them
+                    .by(
+                            __.out(HAS_PROPERTY_GROUP)
+                                    .project(elementProjectionName, propertyNodeProjectionName)
+                                    .by(__.elementMap())
+                                    .by(__.out(HAS_PROPERTY).elementMap().fold())
+                                    .fold()
+                    )
+                    .by(__.out(LINK_SOURCE_LABEL).values("name"))
+                    .by(__.out(LINK_TARGET_LABEL).values("name"));
 
-        return iter.toStream().map(v -> {
-            LinkDefinition schema = new LinkDefinition();
-            var propertyMap = (HashMap) v.get(elementProjectionName);
-            schema.setUid((String) propertyMap.get(UNIQUE_ID_PROPERTY));
-            schema.setDescription((String) propertyMap.get("description"));
-            schema.setSourceItemType((String) v.get(sourceProjectionName));
-            schema.setTargetItemType((String) v.get(targetProjectionName));
-            schema.setSourceLabel((String) propertyMap.get("sourceLabel"));
-            schema.setTargetLabel((String) propertyMap.get("targetLabel"));
-            schema.setSourceCardinality(new org.ntrloc.graph.db.schema.Cardinality((Integer) propertyMap.get("sourceCardinalityMin"), (Integer) propertyMap.get("sourceCardinalityMax")));
-            schema.setTargetCardinality(new org.ntrloc.graph.db.schema.Cardinality((Integer) propertyMap.get("targetCardinalityMin"), (Integer) propertyMap.get("targetCardinalityMax")));
-            schema.setInstanceMaxCardinality((Integer) propertyMap.get("instanceMaxCardinality"));
-            schema.setSourceVersionAction(LinkDefinition.VersionAction.valueOf((String) propertyMap.get("sourceVersionAction")));
-            schema.setTargetVersionAction(LinkDefinition.VersionAction.valueOf((String) propertyMap.get("targetVersionAction")));
+            return iter.toStream().map(v -> {
+                LinkDefinition schema = new LinkDefinition();
+                var propertyMap = (HashMap) v.get(elementProjectionName);
+                schema.setUid((String) propertyMap.get(UNIQUE_ID_PROPERTY));
+                schema.setDescription((String) propertyMap.get("description"));
+                schema.setSourceItemType((String) v.get(sourceProjectionName));
+                schema.setTargetItemType((String) v.get(targetProjectionName));
+                schema.setSourceLabel((String) propertyMap.get("sourceLabel"));
+                schema.setTargetLabel((String) propertyMap.get("targetLabel"));
+                schema.setSourceCardinality(new org.ntrloc.graph.db.schema.Cardinality((Integer) propertyMap.get("sourceCardinalityMin"), (Integer) propertyMap.get("sourceCardinalityMax")));
+                schema.setTargetCardinality(new org.ntrloc.graph.db.schema.Cardinality((Integer) propertyMap.get("targetCardinalityMin"), (Integer) propertyMap.get("targetCardinalityMax")));
+                schema.setInstanceMaxCardinality((Integer) propertyMap.get("instanceMaxCardinality"));
+                schema.setSourceVersionAction(LinkDefinition.VersionAction.valueOf((String) propertyMap.get("sourceVersionAction")));
+                schema.setTargetVersionAction(LinkDefinition.VersionAction.valueOf((String) propertyMap.get("targetVersionAction")));
 
-            ArrayList<Map<String, Object>> properties = (ArrayList) v.get(propertyNodeProjectionName);
-            Set<PropertyDefinition> schemaProps = properties.stream()
-                    .map(this::mapToPropertyDefinition).collect(Collectors.toSet());
-            schema.setProperties(schemaProps);
+                ArrayList<Map<String, Object>> properties = (ArrayList) v.get(propertyNodeProjectionName);
+                Set<PropertyDefinition> schemaProps = properties.stream()
+                        .map(this::mapToPropertyDefinition).collect(Collectors.toSet());
+                schema.setProperties(schemaProps);
 
-            ArrayList<Map<String, Object>> propertyGroups = (ArrayList) v.get(propertyGroupProjectionName);
-            Set<PropertyGroupDefinition> groups = propertyGroups.stream()
-                    .map(this::mapToPropertyGroupDefinition)
-                    .collect(Collectors.toSet());
-            schema.setPropertyGroups(groups);
-            return schema;
-        }).collect(Collectors.toSet());
+                ArrayList<Map<String, Object>> propertyGroups = (ArrayList) v.get(propertyGroupProjectionName);
+                Set<PropertyGroupDefinition> groups = propertyGroups.stream()
+                        .map(this::mapToPropertyGroupDefinition)
+                        .collect(Collectors.toSet());
+                schema.setPropertyGroups(groups);
+                return schema;
+            }).collect(Collectors.toSet());
+        }
     }
 
     @Override

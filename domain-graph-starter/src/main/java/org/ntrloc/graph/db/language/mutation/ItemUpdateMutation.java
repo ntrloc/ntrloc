@@ -2,19 +2,17 @@ package org.ntrloc.graph.db.language.mutation;
 
 import org.ntrloc.graph.db.language.Property;
 import org.ntrloc.graph.db.language.selectors.IdSelector;
+import org.ntrloc.graph.db.language.selectors.ItemSelector;
 import org.ntrloc.graph.db.language.selectors.Selector;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
 
 public class ItemUpdateMutation extends ItemMutation implements ReferenceableItemMutation, ItemMutationWithItemType, MutationWithProperties, ItemMutationWithLinks<LinkMutation> {
 
     private String itemType;
-    private Selector selector;
-    private Map<String, Property> properties = new HashMap<>();
+    private ItemSelector selector;
+    private List<Property> properties = new ArrayList<>();
     private String refId;
     private List<LinkMutation> links;
 
@@ -32,7 +30,7 @@ public class ItemUpdateMutation extends ItemMutation implements ReferenceableIte
         return selector;
     }
 
-    public void setSelector(Selector selector) {
+    public void setSelector(ItemSelector selector) {
         this.selector = selector;
     }
 
@@ -46,11 +44,11 @@ public class ItemUpdateMutation extends ItemMutation implements ReferenceableIte
     }
 
     public List<Property> getProperties() {
-        return new ArrayList<>(properties.values());
+        return properties;
     }
 
-    public void setProperties(List<? extends Property> properties) {
-        this.properties = properties.stream().collect(Collectors.toMap(Property::getName, p -> p));
+    public void setProperties(List<Property> properties) {
+        this.properties = properties;
     }
 
     public List<LinkMutation> getLinks() {
@@ -74,7 +72,7 @@ public class ItemUpdateMutation extends ItemMutation implements ReferenceableIte
     }
 
     public ItemUpdateMutation id(String id) {
-        this.selector = new IdSelector(id, IdSelector.Type.GLOBAL);
+        this.selector = new IdSelector(id, IdSelector.Scope.GLOBAL);
         return this;
     }
 

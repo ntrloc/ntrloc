@@ -6,6 +6,10 @@ public class StringProperty implements ScalarProperty<String, String> {
 
     private String name;
 
+    public StringProperty() {
+        // no-op for Jackson
+    }
+
     public StringProperty(String name, String value) {
         this.name = name;
         this.value = value;
@@ -16,9 +20,17 @@ public class StringProperty implements ScalarProperty<String, String> {
         return name;
     }
 
+    public void setName(String name) {
+        this.name = name;
+    }
+
     @Override
     public String getValue() {
         return value;
+    }
+
+    public void setValue(String value) {
+        this.value = value;
     }
 
     @Override
