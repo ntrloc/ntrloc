@@ -91,7 +91,7 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
         this.traversalSource = traversalSource;
         this.schemaMap = clusterService.getMap(SCHEMA_MAP_NAME);
         this.schemaMap.addEntryListener(this, true);
-        /*
+
         try {
             this.verifyGlobalPropertiesAndIndexes();
         } catch (InterruptedException ie) {
@@ -99,8 +99,6 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
             LOG.error("Interrupted", ie);
             throw new RuntimeException(ie);
         }
-
-         */
         this.clusterService = clusterService;
 
         cacheSchemaDefinitions();
@@ -167,7 +165,6 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
             cachesInitialized = true;
             tx.commit();
         }
-
     }
 
     private String createNewUniqueId() {
@@ -478,6 +475,9 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
 
         String linkTypeUid = createNewUniqueId(); // TODO guarantee this is unique
         definition.setUid(linkTypeUid);
+
+        // TODO: we need to create an EDGE from the link definition node to the item definition nodes! the item definition names may change...
+        // that will change the creation of the link node, and also the projection when retrieving the link definition
 
         // create the schema vertices and edges
         tx = traversalSource.tx();

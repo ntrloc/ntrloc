@@ -232,6 +232,10 @@ public class ItemManagerImpl implements ItemManager {
                     }
                     case IdSelector.Scope.GLOBAL -> idSelector.getId();
                 };
+
+                // TODO: NOTE that the "to" and "from" nodes depends on the type of the item being mutated and the link type.
+                // you can't assume the item is "from" and the link item is "to"; the link definition will give you the direction of the link.
+
                 if (toId == null) {
                     throw new MutationException("Linked item " + idSelector.getId() + " not found");
                 } else {
