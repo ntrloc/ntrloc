@@ -1,6 +1,6 @@
 class SchemaEditor {
 
-    constructor(data) {
+    constructor() {
         this.loadFontAwesomeIcons();
 
         this.stylesId = 'schema-editor-styles';
@@ -9,13 +9,8 @@ class SchemaEditor {
             this.injectStyles();
         }
 
-        let propertyGroups = data.propertyGroups.map((group, index, array) => {
-           return new PropertyGroup(group);
-        });
-        console.info("Got property groups", propertyGroups);
-
-        this.data = {
-            propertyGroups: propertyGroups,
+        this.data = Alpine.reactive({
+            propertyGroups: [],
             propertyTypes: [
                 'BINARY',
                 'BOOLEAN',
@@ -35,8 +30,19 @@ class SchemaEditor {
                 'Description',
                 'Actions'
             ]
-        };
+        });
 
+        console.info("Created schema editor", this.data);
+    }
+
+    load(newData) {
+        console.info("Loading data", this.data);
+        let propertyGroups = newData.propertyGroups.map((group, index, array) => {
+            return new PropertyGroup(group);
+        });
+
+        this.data.propertyGroups = propertyGroups;
+        console.info("Loaded data", this.data);
     }
 
     injectStyles() {
