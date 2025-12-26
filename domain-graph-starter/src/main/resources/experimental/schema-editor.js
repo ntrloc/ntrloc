@@ -1,16 +1,13 @@
 class SchemaEditor {
 
     constructor(data) {
+        this.loadFontAwesomeIcons();
+
         this.stylesId = 'schema-editor-styles';
 
         if (!document.getElementById(this.stylesId)) {
             this.injectStyles();
         }
-
-        let properties = data.items.map((field, index, array) => {
-            return new Property(field.id, field.name, field.type, field.description);
-        });
-        console.info("Got properties", properties);
 
         let propertyGroups = data.propertyGroups.map((group, index, array) => {
            return new PropertyGroup(group);
@@ -18,12 +15,19 @@ class SchemaEditor {
         console.info("Got property groups", propertyGroups);
 
         this.data = {
-            properties: properties,
             propertyGroups: propertyGroups,
             propertyTypes: [
+                'BINARY',
                 'BOOLEAN',
+                'BOOLEAN LIST',
+                'DATE',
+                'DATE LIST',
                 'DATETIME',
-                'STRING'
+                'DATETIME LIST',
+                'INTEGER',
+                'INTEGER LIST',
+                'STRING',
+                'STRING LIST'
             ],
             columns: [
                 'Name',
@@ -32,10 +36,7 @@ class SchemaEditor {
                 'Actions'
             ]
         };
-        this.deletedProperties = [];
-        this.state = {
-            isAdding: false
-        };
+
     }
 
     injectStyles() {
@@ -47,7 +48,7 @@ class SchemaEditor {
                 background-color: black;
                 padding: 1px;
                 display: grid;
-                grid-template-columns: repeat(4, 1fr);
+                grid-template-columns: 1fr 1fr 2fr 2fr;
                 align-items: center;
                 grid-gap: 1px;
                 
@@ -100,7 +101,14 @@ class SchemaEditor {
                     
                     input {
                         font-weight: bold;
+                        flex: 3;
                     }
+                    
+                    .group-delete-button {
+                        cursor: pointer;
+                        flex: 0;
+                    }
+                    
                 }
                 
                 label {
@@ -110,14 +118,18 @@ class SchemaEditor {
     
                 input[type=text] {
                     font-size: inherit;
-                    border: solid 1px #ccc;
                     padding: 5px;
-                    border: none;
+                    border: transparent;
                     background-color: transparent;
                     
                     &:hover {
-                       background-color: white;
-                       border: solid 1px #ccc;
+                        background-color: white;
+                        border: solid 1px #ccc;
+                    }
+                    
+                    &:focus {
+                        background-color: white;
+                        border: solid 1px #ccc;
                     }
                 }
     
@@ -125,7 +137,7 @@ class SchemaEditor {
                     font-size: inherit;
                     padding: 5px;
                     appearance: none;
-                    border: none;
+                    border: transparent;
                     background-color: transparent;
                    
                     &:hover {
@@ -140,10 +152,18 @@ class SchemaEditor {
                     padding: 5px;
                     border-radius: 3px;
                     border: 1px solid #666666;
+                    cursor: pointer;
                 }
                 
-                button {
-                    cursor: pointer;
+                .add-group-button {
+                    margin-top: 30px;
+                }
+                
+                .add-property-button {
+                    flex: 0; 
+                    text-wrap: nowrap;
+                    padding-left: 10px;
+                    padding-right: 10px;
                 }
             }
         `;
@@ -153,123 +173,93 @@ class SchemaEditor {
     getTemplate() {
         return `
             <div class="schema-editor-contents" style="display:contents" x-data="{data}">
-                <div class="schema-editor">
-                    <!-- Form header -->    
+                <template x-for="group in data.propertyGroups">
+                    <div class="schema-editor">
+                        <template x-if="group.isNamedGroup">
+                            <div class="grid-item property-group">
+                                <i class="fa-regular fa-circle-xmark group-delete-button" @click="deleteGroup(group)"></i>
+                                <input type="text" class="group-name-input" x-model.lazy="group.name">
+                            </div>
+                        </template>
+                    
+                    
+                        <!-- Form header -->    
                         <div class="form-header">
                             <template x-for="column in data.columns">
                                 <div class="grid-item" x-text="column"></div>
                             </template>
                         </div>
-                        <!-- Form rows -->
-                        <template x-for="(property, index) in data.properties">
-                            <div style="display:contents">
-                                <div class="grid-item" :class="{new: isNew(property), modified: isNormal(property) && property.name.modified, deleted: isDeleted(property)}">
-                                    <input type="text" class="name-input" :data-ref="property.referenceId" x-model.lazy="property.name.value">
-                                </div>
-                                <div class="grid-item" :class="{new: isNew(property), modified: isNormal(property) && property.type.modified, deleted: isDeleted(property)}">
-                                    <template x-if="property.id == null">
-                                        <select x-model.lazy="property.type.value">
-                                            <template x-for="type in data.propertyTypes">
-                                                <option :value="type" x-text="type" :selected="type == property.type.value"></option>
+                        
+                       
+                        <div style="display:contents">
+                            
+                            <template x-for="(property, index) in group.properties">
+                                <div style="display:contents">
+                                    <div class="grid-item" :class="{new: group.isNew(property), modified: group.isNormal(property) && property.name.modified, deleted: group.isDeleted(property)}">
+                                        <input type="text" class="name-input" :data-ref="property.referenceId" x-model.lazy="property.name.value">
+                                    </div>
+                                    <div class="grid-item" :class="{new: group.isNew(property), modified: group.isNormal(property) && property.type.modified, deleted: group.isDeleted(property)}">
+                                        <template x-if="property.id == null">
+                                            <select x-model.lazy="property.type.value">
+                                                <template x-for="type in data.propertyTypes">
+                                                    <option :value="type" x-text="type" :selected="type == property.type.value"></option>
+                                                </template>
+                                            </select>
+                                        </template>
+                                        <template x-if="property.id != null">
+                                            <div x-text="property.type.value"></div>
+                                        </template>        
+                                    </div>
+                                    <div class="grid-item" :class="{new: group.isNew(property), modified: group.isNormal(property) && property.description.modified, deleted: group.isDeleted(property)}">
+                                        <input type="text" x-model.lazy="property.description.value">
+                                    </div>
+                                    <div class="grid-item" :class="{new: group.isNew(property), deleted: group.isDeleted(property)}">
+                                        <template x-if="group.isDeleted(property)">
+                                            <button @click="group.unremoveProperty(property)">Restore</button>
+                                        </template>
+                                        <template x-if="!group.isDeleted(property)">
+                                            <button @click="group.removeProperty(property)">Remove</button>
+                                        </template>
+                                        <template x-if="group.isNormal(property) && property.modified">
+                                            <button @click="property.clearChanges()">Clear changes</button>
+                                        </template>
+                                        <select>
+                                            <template x-for="targetGroup in data.propertyGroups">
+                                                <option :value="targetGroup.name" x-text="targetGroup.name"></option>
                                             </template>
                                         </select>
-                                    </template>
-                                    <template x-if="property.id != null">
-                                        <div x-text="property.type.value"></div>
-                                    </template>        
+                                    </div>
                                 </div>
-                                <div class="grid-item" :class="{new: isNew(property), modified: isNormal(property) && property.description.modified, deleted: isDeleted(property)}">
-                                    <input type="text" x-model.lazy="property.description.value">
-                                </div>
-                                <div class="grid-item" :class="{new: isNew(property), deleted: isDeleted(property)}">
-                                    <template x-if="isDeleted(property)">
-                                        <button @click="unremoveProperty(property)">Restore</button>
-                                    </template>
-                                    <template x-if="isNormal(property) && property.modified">
-                                        <button @click="property.clearChanges()">Clear changes</button>
-                                    </template>
-                                    <template x-if="!isDeleted(property)">
-                                        <input 
-                                                :list="'group-list-' + (property.id || index)" 
-                                                placeholder="Move to group..."
-                                                @change="movePropertyToGroup(property, $event.target.value); $event.target.value = ''"
-                                                class="move-group-input">
-                                    </template>
-                                    <template x-if="!isDeleted(property)">
-                                        <button @click="removeProperty(property)">Remove</button>
-                                    </template>
-                                    <datalist :id="'group-list-' + (property.id || index)">
-                                        <option value="(No group)">No group</option>
-                                        <template x-for="group in data.propertyGroups">
-                                            <option :value="group.name" x-text="group.name"></option>
-                                        </template>
-                                    </datalist>
-                                </div>
+                            </template>
+                            
+                            <div class="grid-item" style="grid-column: 1 / span 4">
+                                <button class="add-property-button" @click="addProperty(group)">New property</button>
                             </div>
-                        </template>
-                        
-                        <div class="grid-item" style="grid-column: 1 / span 4">
-                            <button class="addPropertyButton" @click="addProperty()">New property</button>
                         </div>
                         
-                        <!-- Property groups -->
-                        <template x-for="group in data.propertyGroups">
-                            <div style="display:contents">
-                                <div class="grid-item property-group">
-                                    <input type="text" class="group-name-input" x-model.lazy="group.name">
-                                </div>
-                                
-                                <!-- Group properties -->
-                                <template x-for="(property, index) in group.properties">
-                                    <div style="display:contents">
-                                        <div class="grid-item" :class="{new: isNew(property), modified: isNormal(property) && property.name.modified, deleted: isDeleted(property)}">
-                                            <input type="text" class="name-input" :data-ref="property.referenceId" x-model.lazy="property.name.value">
-                                        </div>
-                                        <div class="grid-item" :class="{new: isNew(property), modified: isNormal(property) && property.type.modified, deleted: isDeleted(property)}">
-                                            <template x-if="property.id == null">
-                                                <select x-model.lazy="property.type.value">
-                                                    <template x-for="type in data.propertyTypes">
-                                                        <option :value="type" x-text="type" :selected="type == property.type.value"></option>
-                                                    </template>
-                                                </select>
-                                            </template>
-                                            <template x-if="property.id != null">
-                                                <div x-text="property.type.value"></div>
-                                            </template>        
-                                        </div>
-                                        <div class="grid-item" :class="{new: isNew(property), modified: isNormal(property) && property.description.modified, deleted: isDeleted(property)}">
-                                            <input type="text" x-model.lazy="property.description.value">
-                                        </div>
-                                        <div class="grid-item" :class="{new: isNew(property), deleted: isDeleted(property)}">
-                                            <template x-if="isDeleted(property)">
-                                                <button @click="unremoveProperty(property)">Restore</button>
-                                            </template>
-                                            <template x-if="isNormal(property) && property.modified">
-                                                <button @click="property.clearChanges()">Clear changes</button>
-                                            </template>
-                                            <template x-if="!isDeleted(property)">
-                                                <button @click="removeProperty(property)">Remove</button>
-                                            </template>
-                                        </div>
-                                    </div>
-                                </template>
-                                
-                                <div class="grid-item" style="grid-column: 1 / span 4">
-                                    <button class="addPropertyButton" @click="addPropertyToGroup(group)">New property</button>
-                                </div>
-                            </div>
-                            
-                        </template>
                         
-                        
+                    </div>
+                </template>
+                
+                <div class="grid-item" style="grid-column: 1 / span 4">
+                    <button class="add-group-button" @click="addPropertyGroup()">New property group</button>
                 </div>
+                
             </div>
         `;
     }
 
-    addProperty() {
-        let newProperty = new Property(null, null, null, null);
-        this.data.properties.push(newProperty);
+    loadFontAwesomeIcons() {
+        if (!document.querySelector('link[href*="fontawesome"]')) {
+            const link = document.createElement('link');
+            link.rel = 'stylesheet';
+            link.href = 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css';
+            document.head.appendChild(link);
+        }
+    }
+
+    addProperty(group) {
+        let newProperty = group.addProperty();
         this.focusProperty(newProperty);
     }
 
@@ -289,39 +279,15 @@ class SchemaEditor {
         });
     }
 
-    addPropertyToGroup(propertyGroup) {
-        let newProperty = new Property(null, null, null, null);
-        propertyGroup.properties.push(newProperty);
-        this.focusProperty(newProperty);
+    addPropertyGroup() {
+        this.data.propertyGroups.push(new PropertyGroup({id: null, name: null, properties: []}));
     }
 
-    removeProperty(prop) {
-        if (this.isNew(prop)) {
-            this.data.properties.splice(this.data.properties.indexOf(prop), 1);
-        } else {
-            this.deletedProperties.push(prop);
-        }
-    }
-
-    // TODO: add removePropertyFromGroup
-
-    unremoveProperty(prop) {
-        let idx = this.deletedProperties.indexOf(prop);
-        if (idx >= 0) {
-            this.deletedProperties.splice(idx, 1);
-        }
-    }
-
-    isNew(property) {
-        return property.id == null;
-    }
-
-    isNormal(property) {
-        return !this.isNew(property) && !this.isDeleted(property);
-    }
-
-    isDeleted(property) {
-        return this.deletedProperties.includes(property);
+    deleteGroup(group) {
+        let properties = group.properties;
+        let emptyGroup = this.data.propertyGroups.find(g => !g.isNamedGroup);
+        emptyGroup.properties.push(...properties);
+        this.data.propertyGroups.splice(this.data.propertyGroups.indexOf(group), 1);
     }
 
 }
@@ -397,12 +363,47 @@ class Property {
 class PropertyGroup {
     id;
     name;
+    isNamedGroup = true;
     properties;
+    deletedProperties = [];
 
     constructor(obj) {
         Object.assign(this, obj);
         this.properties = this.properties.map((field, index, array) => {
             return new Property(field.id, field.name, field.type, field.description);
         });
+    }
+
+    addProperty() {
+        let newProperty = new Property(null, null, null, null);
+        this.properties.push(newProperty);
+        return newProperty;
+    }
+
+    removeProperty(prop) {
+        if (this.isNew(prop)) {
+            this.properties.splice(this.properties.indexOf(prop), 1);
+        } else {
+            this.deletedProperties.push(prop);
+        }
+    }
+
+    unremoveProperty(prop) {
+        let idx = this.deletedProperties.indexOf(prop);
+        if (idx >= 0) {
+            this.deletedProperties.splice(idx, 1);
+        }
+    }
+
+    isNew(property) {
+        return property.id == null;
+    }
+
+    isNormal(property) {
+        return !this.isNew(property) && !this.isDeleted(property);
+    }
+
+    isDeleted(property) {
+        return this.deletedProperties.includes(property);
     }
 }

@@ -4,23 +4,17 @@
         <script src="schema-editor.js"></script>
         <script>
             const testData = {
-                propertyTypes: [
-                    'BOOLEAN',
-                    'DATETIME',
-                    'STRING'
-                ],
-                columns: [
-                    'Name',
-                    'Type',
-                    'Description',
-                    'Actions'
-                ],
-                items: [
-                    { id: 'abc1', name: 'colorspace', type:'STRING', description: 'The colorspace of a photo' },
-                    { id: 'abc2', name: 'createdDate', type:'DATETIME', description: 'The date/time a photo was taken' },
-                    { id: 'abc3', name: 'photoName', type:'STRING', description: 'The name of a photo' }
-                ],
                 propertyGroups: [
+                    {
+                        id: null,
+                        name: null,
+                        isNamedGroup: false,
+                        properties: [
+                            { id: 'abc1', name: 'colorspace', type:'STRING', description: 'The colorspace of a photo' },
+                            { id: 'abc2', name: 'createdDate', type:'DATETIME', description: 'The date/time a photo was taken' },
+                            { id: 'abc3', name: 'photoName', type:'STRING', description: 'The name of a photo' }
+                        ]
+                    },
                     {
                         id: 'group1',
                         name: 'Titles',
@@ -33,19 +27,32 @@
                         id: 'group2',
                         name: 'Ages',
                         properties: [
-                            { id: 'asdf', name: 'age1', type:'STRING', description: 'title 1' },
-                            { id: 'asdf', name: 'age2', type:'STRING', description: 'title 2' }
+                            { id: 'asdf', name: 'age1', type:'STRING', description: 'age 1' },
+                            { id: 'asdf', name: 'age2', type:'STRING', description: 'age 2' }
                         ]
                     }
                 ]
-
             };
+
+            let editor = new SchemaEditor(testData);
+
         </script>
 
     </head>
     <body>
 
-        <div x-data="new SchemaEditor(testData)" x-html="getTemplate()"></div>
+        <div x-data="editor" x-html="getTemplate()"></div>
+
+        <div style="margin-top: 20px; font-size: 1.2em;">
+            Things to do:
+            <ol>
+                <li>Create an empty editor and load data separately.</li>
+                <li>Create a button to load data set 1 and data set 2, swapping between them</li>
+                <li>Move property from one group to another</li>
+                <li>Mark a group as deleted without deleting it (like properties)</li>
+                <li>Save editor changes</li>
+            </ol>
+        </div>
 
     </body>
 </html>
