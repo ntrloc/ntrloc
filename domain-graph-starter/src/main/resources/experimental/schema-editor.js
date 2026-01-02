@@ -54,7 +54,7 @@ class SchemaEditor {
                 background-color: black;
                 padding: 1px;
                 display: grid;
-                grid-template-columns: 1fr 1fr 2fr 2fr;
+                grid-template-columns: min-content min-content 2fr min-content;
                 align-items: center;
                 grid-gap: 1px;
                 
@@ -125,7 +125,7 @@ class SchemaEditor {
                 input[type=text] {
                     font-size: inherit;
                     padding: 5px;
-                    border: transparent;
+                    border: solid 1px transparent;
                     background-color: transparent;
                     
                     &:hover {
@@ -142,8 +142,8 @@ class SchemaEditor {
                 select {
                     font-size: inherit;
                     padding: 5px;
-                    appearance: none;
-                    border: transparent;
+                    
+                    border: solid 1px transparent;
                     background-color: transparent;
                    
                     &:hover {
@@ -171,6 +171,15 @@ class SchemaEditor {
                     padding-left: 10px;
                     padding-right: 10px;
                 }
+                
+                .propertyControl {
+                    visibility: hidden;
+                    
+                    &.display {
+                        visibility: visible;
+                    }
+                }
+                
             }
         `;
         document.head.appendChild(styleEl);
@@ -220,6 +229,18 @@ class SchemaEditor {
                                         <input type="text" x-model.lazy="property.description.value">
                                     </div>
                                     <div class="grid-item" :class="{new: group.isNew(property), deleted: group.isDeleted(property)}">
+                                        <button class="propertyControl" :class="{display: group.isDeleted(property)}" @click="group.unremoveProperty(property)">Restore</button>
+                                        <button class="propertyControl" :class="{display: !group.isDeleted(property)}" @click="group.removeProperty(property)">Remove</button>
+                                        <button class="propertyControl" :class="{display: group.isNormal(property) && property.modified}"  @click="property.clearChanges()">Clear changes</button>
+                                        <select @change="moveProperty(group, property, $event.target)">
+                                            <option disabled selected value="">Move to group</option>
+                                            <template x-for="targetGroup in data.propertyGroups.filter(g => g.name != group.name)">
+                                                <option :value="targetGroup.name" x-text="targetGroup.displayName"></option>
+                                            </template>
+                                        </select>
+                                    
+                                    
+                                        <!--
                                         <template x-if="group.isDeleted(property)">
                                             <button @click="group.unremoveProperty(property)">Restore</button>
                                         </template>
@@ -229,11 +250,13 @@ class SchemaEditor {
                                         <template x-if="group.isNormal(property) && property.modified">
                                             <button @click="property.clearChanges()">Clear changes</button>
                                         </template>
-                                        <select>
-                                            <template x-for="targetGroup in data.propertyGroups">
-                                                <option :value="targetGroup.name" x-text="targetGroup.name"></option>
+                                        <select @change="moveProperty(group, property, $event.target)">
+                                            <option disabled selected value="">Move to group</option>
+                                            <template x-for="targetGroup in data.propertyGroups.filter(g => g.name != group.name)">
+                                                <option :value="targetGroup.name" x-text="targetGroup.displayName"></option>
                                             </template>
                                         </select>
+                                        -->
                                     </div>
                                 </div>
                             </template>
@@ -267,6 +290,15 @@ class SchemaEditor {
     addProperty(group) {
         let newProperty = group.addProperty();
         this.focusProperty(newProperty);
+    }
+
+    moveProperty(group, property, targetGroupEl) {
+        // window.alert("Move property " + property.name.value + " from group " + group.name + " to group " + targetGroupEl.value);
+
+        let targetGroup = this.data.propertyGroups.find(g => g.name === targetGroupEl.value);
+        targetGroup.properties.push(property);
+        group.removeProperty(property);
+
     }
 
     focusProperty(property) {
@@ -384,6 +416,10 @@ class PropertyGroup {
         let newProperty = new Property(null, null, null, null);
         this.properties.push(newProperty);
         return newProperty;
+    }
+
+    get displayName() {
+        return this.name || '(No property group)';
     }
 
     removeProperty(prop) {
