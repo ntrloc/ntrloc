@@ -65,6 +65,7 @@ class SchemaEditor {
                     padding: 10px;
                     box-sizing: border-box;
                     display: flex;
+                    gap: 10px;
                     align-items: center;
                     
                     height: 100%;
@@ -105,21 +106,18 @@ class SchemaEditor {
                 .property-group {
                     grid-column: 1 / span 4;
                     padding-top: 30px;
+                    padding-left: 0px;
                     font-weight: bold;
                     font-size: 1.2em;
                     margin-left: -1px;
                     margin-right: -1px;
+                    color: #9198a1;
                     
                     input {
                         font-weight: bold;
                         flex: 3;
                     }
-                    
-                    .group-delete-button {
-                        cursor: pointer;
-                        flex: 0;
-                    }
-                    
+                   
                 }
                 
                 label {
@@ -160,7 +158,13 @@ class SchemaEditor {
                     
                     &.fixedSelect {
                         appearance: none;
+                        
+                        &:hover {
+                            border: solid 1px transparent;
+                        }
                     }
+                    
+                    
                 }
                 
                 .add-group-section {
@@ -170,18 +174,26 @@ class SchemaEditor {
                     margin-right: -1px;
                     margin-bottom: -1px;
                 }
-    
+                
+
                 .add-group-button {
                     margin-top: 30px;
                     text-wrap: nowrap;
                     flex: 0;
                 }
                 
-                .add-property-button {
-                    flex: 0; 
-                    text-wrap: nowrap;
-                    padding-left: 10px;
-                    padding-right: 10px;
+                .group-actions {
+                    * {
+                        flex: 0;
+                    }
+                    .add-property-button {
+                        text-wrap: nowrap;
+                        padding-left: 10px;
+                        padding-right: 10px;
+                    }
+                    .group-delete-button {
+                        margin-left: auto;
+                    }
                 }
                 
                 .propertyControl {
@@ -204,13 +216,18 @@ class SchemaEditor {
             
             button {
                 font-size: inherit;
-                padding: 5px;
+                padding: 5px 10px;
                 border-radius: 3px;
                 background-color: #1d2025;
                 color: #e6edf3;
-                border: 1px solid #6e7681;
+                border: 1px solid #404852;
                 cursor: pointer;
                 text-wrap: nowrap;
+                
+                i {
+                    margin-right: 5px;
+                    margin-left: 5px;
+                }
             }
         `;
         document.head.appendChild(styleEl);
@@ -223,7 +240,6 @@ class SchemaEditor {
                     <div style="display:contents">
                         <template x-if="group.isNamedGroup">
                             <div class="grid-item property-group">
-                                <i class="fa-regular fa-circle-xmark group-delete-button" @click="deleteGroup(group)"></i>
                                 <input type="text" class="group-name-input" x-model.lazy="group.name">
                             </div>
                         </template>
@@ -252,7 +268,7 @@ class SchemaEditor {
                                         </template>
                                         <template x-if="property.id != null">
                                             <select class="fixedSelect" disabled>
-                                                <option :value="propery.type.value" x-text="property.type.value" selected></option>
+                                                <option :value="property.type.value" x-text="property.type.value" selected></option>
                                             </select>
                                         </template>        
                                     </div>
@@ -260,22 +276,36 @@ class SchemaEditor {
                                         <input type="text" x-model.lazy="property.description.value">
                                     </div>
                                     <div class="grid-item" :class="{new: group.isNew(property), deleted: group.isDeleted(property)}">
-                                        <button class="fixed propertyControl" :class="{visible: group.isDeleted(property)}" @click="group.unremoveProperty(property)"><i class="fas fa-trash-restore"></i> Restore</button>
-                                        <button class="fixed propertyControl" :class="{visible: !group.isDeleted(property)}" @click="group.removeProperty(property)"><i class="fas fa-trash"></i> Remove</button>
-                                        <button class="fixed propertyControl" :class="{visible: group.isNormal(property) && property.modified}"  @click="property.clearChanges()"><i class="fas fa-undo"></i> Revert</button>
                                         <select class="propertyControl" :class="{omitted: data.propertyGroups.length == 1, visible: !group.isDeleted(property)}" @change="moveProperty(group, property, $event.target)">
                                             <option disabled selected value="">Move</option>
                                             <template x-for="targetGroup in data.propertyGroups.filter(g => g.name != group.name)">
                                                 <option :value="targetGroup.name" x-text="targetGroup.displayName"></option>
                                             </template>
                                         </select>
+                                        <button title="Undo changes" class="fixed propertyControl" :class="{visible: group.isNormal(property) && property.modified}"  @click="property.clearChanges()"><i class="fas fa-undo"></i></button>
+                                        <button title="Restore property" class="fixed propertyControl" :class="{visible: group.isDeleted(property)}" @click="group.unremoveProperty(property)"><i class="fas fa-trash-restore"></i></button>
+                                        <button title="Remove property" class="fixed propertyControl" :class="{visible: !group.isDeleted(property)}" @click="group.removeProperty(property)"><i class="fas fa-trash"></i></button>
                                     </div>
                                 </div>
                             </template>
                         
-                        <!-- Add property -->    
-                        <div class="grid-item" style="grid-column: 1 / span 4">
+                        <!-- Group actions-->    
+                        <div class="grid-item group-actions" style="grid-column: 1 / span 4">
                             <button class="add-property-button" @click="addProperty(group)"><i class="fas fa-plus"></i> New property</button>
+                            <template x-if="group.properties.length > 0">
+                                <select @change="moveProperties(group, $event.target)">
+                                    <option disabled selected value="">Move all properties</option>
+                                    <template x-for="targetGroup in data.propertyGroups.filter(g => g.name != group.name)">
+                                        <option :value="targetGroup.name" x-text="targetGroup.displayName"></option>
+                                    </template>
+                                </select>
+                            </template>
+                            <template x-if="group.properties.length > 0">
+                                <button class="delete-properties-button" @click="group.removeProperties()"><i class="fas fa-trash"></i>Delete all properties</button>
+                            </template>
+                            <template x-if="group.name != null">
+                                <button class="group-delete-button" @click="deleteGroup(group)"><i class="fas fa-trash"></i>Delete group</button>
+                            </template>    
                         </div>
 
                     </div>
@@ -316,6 +346,22 @@ class SchemaEditor {
         } else {
             group.properties.splice(group.properties.indexOf(property), 1);
             targetGroup.properties.push(property);
+            targetGroupEl.selectedIndex = 0;
+        }
+    }
+
+    moveProperties(group, targetGroupEl) {
+        let groupName = targetGroupEl.value;
+        if (groupName === "null") {
+            groupName = null;
+        }
+
+        let targetGroup = this.data.propertyGroups.find(g => g.name === groupName);
+        if (targetGroup == null) {
+            console.error("Could not find target group with name", groupName);
+        } else {
+            targetGroup.properties.push(...group.properties);
+            group.properties.splice(0);
             targetGroupEl.selectedIndex = 0;
         }
     }
@@ -446,6 +492,12 @@ class PropertyGroup {
             this.properties.splice(this.properties.indexOf(prop), 1);
         } else {
             this.deletedProperties.push(prop);
+        }
+    }
+
+    removeProperties() {
+        for (const property of this.properties) {
+            this.removeProperty(property);
         }
     }
 
