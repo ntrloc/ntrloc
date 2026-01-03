@@ -12,6 +12,8 @@
         <script src="schema-editor.js"></script>
         <script>
             const testData1 = {
+                name: "Photo",
+                description: "A photograph",
                 propertyGroups: [
                     {
                         id: null,
@@ -35,6 +37,8 @@
             };
 
             const testData2 = {
+                name: "Photographer",
+                description: "A person who takes photos",
                 propertyGroups: [
                     {
                         id: null,
@@ -77,7 +81,6 @@
         <div style="margin-top: 20px; font-size: 1.2em;">
             Things to do:
             <ol>
-                <li>Display item/link name and description</li>
                 <li>Mark a group as deleted without deleting it (like properties)</li>
                 <li>Revert group delete</li>
                 <li>Save editor changes</li>

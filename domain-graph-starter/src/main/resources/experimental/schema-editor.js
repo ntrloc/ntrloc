@@ -9,8 +9,8 @@ class SchemaEditor {
             this.injectStyles();
         }
 
-        this.data = Alpine.reactive({
-            propertyGroups: [],
+        this.model = Alpine.reactive({
+            typeDefinition: null,
             propertyTypes: [
                 'BINARY',
                 'BOOLEAN',
@@ -32,17 +32,11 @@ class SchemaEditor {
             ]
         });
 
-        console.info("Created schema editor", this.data);
+        console.info("Created schema editor", this.model);
     }
 
-    load(newData) {
-        console.info("Loading data", this.data);
-        let propertyGroups = newData.propertyGroups.map((group, index, array) => {
-            return new PropertyGroup(group);
-        });
-
-        this.data.propertyGroups = propertyGroups;
-        console.info("Loaded data", this.data);
+    load(typeDefinition) {
+        this.model.typeDefinition= new TypeDefinition(typeDefinition);
     }
 
     injectStyles() {
@@ -304,125 +298,127 @@ class SchemaEditor {
 
     getTemplate() {
         return `
-            <div class="schema-editor" x-data="{data}">
-                <div class="schema-header">
-                    <input type="text" class="schema-type-name" value="Photo">
-                    <input type="text" class="schema-type-description" value="A photograph (either analog or digital); conceptually different from a generic image">
-                </div>
-                    
-                <template x-for="group in data.propertyGroups">
-                    <div style="display:contents">
+            <template x-if="model.typeDefinition">
+                <div class="schema-editor" x-data="{model}">
+                    <div class="schema-header">
+                        <input type="text" class="schema-type-name" x-model.lazy="model.typeDefinition.name.value">
+                        <input type="text" class="schema-type-description" x-model.lazy="model.typeDefinition.description.value">
+                    </div>
                         
-                        <template x-if="group.isNamedGroup">
-                            <div class="grid-item property-group">
-                                <input placeholder="Enter a property group name" type="text" class="group-name-input" :class="{pending: group.name == null}" x-model.lazy="group.name">
-                            </div>
-                        </template>
-                    
-                    
-                        <!-- Column header -->    
-                        <template x-if="group.expanded">
-                            <div class="form-header">
-                                <template x-for="column in data.columns">
-                                    <div class="grid-item" x-text="column"></div>
-                                </template>
-                            </div>
-                        </template>
-                        
-                       
-                        <!-- Properties -->
-                        <template x-if="group.expanded">
-                            <template x-for="(property, index) in group.properties">
-                                <div style="display:contents">
-                                    <div class="grid-item" :class="{new: group.isNew(property), modified: group.isNormal(property) && property.name.modified, deleted: group.isDeleted(property)}">
-                                        <input type="text" class="name-input" :data-ref="property.referenceId" x-model.lazy="property.name.value">
-                                    </div>
-                                    <div class="grid-item" :class="{new: group.isNew(property), modified: group.isNormal(property) && property.type.modified, deleted: group.isDeleted(property)}">
-                                        <template x-if="property.id == null">
-                                            <select x-model.lazy="property.type.value">
-                                                <template x-for="type in data.propertyTypes">
-                                                    <option :value="type" x-text="type" :selected="type == property.type.value"></option>
-                                                </template>
-                                            </select>
-                                        </template>
-                                        <template x-if="property.id != null">
-                                            <select class="displaySelect" disabled>
-                                                <option :value="property.type.value" x-text="property.type.value" selected></option>
-                                            </select>
-                                        </template>        
-                                    </div>
-                                    <div class="grid-item" :class="{new: group.isNew(property), modified: group.isNormal(property) && property.description.modified, deleted: group.isDeleted(property)}">
-                                        <input type="text" x-model.lazy="property.description.value">
-                                    </div>
-                                    <div class="grid-item" :class="{new: group.isNew(property), deleted: group.isDeleted(property)}">
-                                        <select class="propertyControl leftArrow" :class="{omitted: data.propertyGroups.length == 1, visible: !group.isDeleted(property)}" @change="moveProperty(group, property, $event.target)">
-                                            <option disabled selected value="">Move</option>
-                                            <template x-for="targetGroup in data.propertyGroups.filter(g => g.name != group.name)">
-                                                <option :value="targetGroup.name" x-text="targetGroup.displayName"></option>
-                                            </template>
-                                        </select>
-                                        <button title="Undo changes" class="fixed propertyControl imageOnly" :class="{visible: group.isNormal(property) && property.modified}"  @click="property.clearChanges()"><i class="fas fa-undo"></i></button>
-                                        
-                                        <template x-if="group.isDeleted(property)">
-                                            <button title="Restore property" class="fixed propertyControl imageOnly" :class="{visible: group.isDeleted(property)}" @click="group.unremoveProperty(property)"><i class="fas fa-trash-restore"></i></button>
-                                        </template>
-                                        <template x-if="!group.isDeleted(property)">
-                                            <button title="Remove property" class="fixed propertyControl imageOnly" :class="{visible: !group.isDeleted(property)}" @click="group.removeProperty(property)"><i class="fas fa-trash"></i></button>
-                                        </template>
-                                    </div>
+                    <template x-for="group in model.typeDefinition.propertyGroups">
+                        <div style="display:contents">
+                            
+                            <template x-if="group.isNamedGroup">
+                                <div class="grid-item property-group">
+                                    <input placeholder="Enter a property group name" type="text" class="group-name-input" :class="{pending: group.name == null}" x-model.lazy="group.name">
                                 </div>
                             </template>
-                        </template>
                         
                         
-                        <!-- Group actions-->    
-                        <div class="grid-item group-actions" style="grid-column: 1 / span 4">
+                            <!-- Column header -->    
                             <template x-if="group.expanded">
-                                <button title="Collapse" class="imageOnly" @click="group.collapse()"><i class="fas fa-caret-up"></i></button>
-                            </template>
-                            <template x-if="!group.expanded">
-                                <button title="Expand" class="imageOnly" @click="group.expand()"><i class="fas fa-caret-down"></i></button>
-                            </template>
-                        
-                            <template x-if="group.expanded">
-                                <button class="add-property-button" @click="addProperty(group)"><i class="fas fa-plus"></i> New property</button>
-                            </template>
-                            
-                            <template x-if="group.expanded && group.properties.length > 0 && data.propertyGroups.length > 1">
-                                <select class="leftArrow" @change="moveProperties(group, $event.target)">
-                                    <option disabled selected value="">Move all properties</option>
-                                    <template x-for="targetGroup in data.propertyGroups.filter(g => g.name != group.name)">
-                                        <option :value="targetGroup.name" x-text="targetGroup.displayName"></option>
+                                <div class="form-header">
+                                    <template x-for="column in model.columns">
+                                        <div class="grid-item" x-text="column"></div>
                                     </template>
-                                </select>
+                                </div>
                             </template>
                             
-                            <template x-if="group.expanded && group.properties.length > 0">
-                                <button class="delete-properties-button" @click="group.removeProperties()"><i class="fas fa-trash"></i>Delete all properties</button>
+                           
+                            <!-- Properties -->
+                            <template x-if="group.expanded">
+                                <template x-for="(property, index) in group.properties">
+                                    <div style="display:contents">
+                                        <div class="grid-item" :class="{new: group.isNew(property), modified: group.isNormal(property) && property.name.modified, deleted: group.isDeleted(property)}">
+                                            <input type="text" class="name-input" :data-ref="property.referenceId" x-model.lazy="property.name.value">
+                                        </div>
+                                        <div class="grid-item" :class="{new: group.isNew(property), modified: group.isNormal(property) && property.type.modified, deleted: group.isDeleted(property)}">
+                                            <template x-if="property.id == null">
+                                                <select x-model.lazy="property.type.value">
+                                                    <template x-for="type in model.propertyTypes">
+                                                        <option :value="type" x-text="type" :selected="type == property.type.value"></option>
+                                                    </template>
+                                                </select>
+                                            </template>
+                                            <template x-if="property.id != null">
+                                                <select class="displaySelect" disabled>
+                                                    <option :value="property.type.value" x-text="property.type.value" selected></option>
+                                                </select>
+                                            </template>        
+                                        </div>
+                                        <div class="grid-item" :class="{new: group.isNew(property), modified: group.isNormal(property) && property.description.modified, deleted: group.isDeleted(property)}">
+                                            <input type="text" x-model.lazy="property.description.value">
+                                        </div>
+                                        <div class="grid-item" :class="{new: group.isNew(property), deleted: group.isDeleted(property)}">
+                                            <select class="propertyControl leftArrow" :class="{omitted: model.typeDefinition.propertyGroups.length == 1, visible: !group.isDeleted(property)}" @change="moveProperty(group, property, $event.target)">
+                                                <option disabled selected value="">Move</option>
+                                                <template x-for="targetGroup in model.typeDefinition.propertyGroups.filter(g => g.name != group.name)">
+                                                    <option :value="targetGroup.name" x-text="targetGroup.displayName"></option>
+                                                </template>
+                                            </select>
+                                            <button title="Undo changes" class="fixed propertyControl imageOnly" :class="{visible: group.isNormal(property) && property.modified}"  @click="property.clearChanges()"><i class="fas fa-undo"></i></button>
+                                            
+                                            <template x-if="group.isDeleted(property)">
+                                                <button title="Restore property" class="fixed propertyControl imageOnly" :class="{visible: group.isDeleted(property)}" @click="group.unremoveProperty(property)"><i class="fas fa-trash-restore"></i></button>
+                                            </template>
+                                            <template x-if="!group.isDeleted(property)">
+                                                <button title="Remove property" class="fixed propertyControl imageOnly" :class="{visible: !group.isDeleted(property)}" @click="group.removeProperty(property)"><i class="fas fa-trash"></i></button>
+                                            </template>
+                                        </div>
+                                    </div>
+                                </template>
                             </template>
                             
-                            <template x-if="group.expanded && group.name != null && group.properties.length == 0">
-                                <button class="group-delete-button" @click="deleteGroup(group)"><i class="fas fa-trash"></i>Delete group</button>
-                            </template>    
-                        </div>
-
-                    </div>
-                </template>
-                
-                <div class="grid-item bottom-controls-section open-section">
-                    <template x-if="data.propertyGroups.length > 0">
-                        <div class="add-group-section">
-                            <button class="add-group-button" @click="addPropertyGroup()"><i class="fas fa-plus"></i> New property group</button>
+                            
+                            <!-- Group actions-->    
+                            <div class="grid-item group-actions" style="grid-column: 1 / span 4">
+                                <template x-if="group.expanded">
+                                    <button title="Collapse" class="imageOnly" @click="group.collapse()"><i class="fas fa-caret-up"></i></button>
+                                </template>
+                                <template x-if="!group.expanded">
+                                    <button title="Expand" class="imageOnly" @click="group.expand()"><i class="fas fa-caret-down"></i></button>
+                                </template>
+                            
+                                <template x-if="group.expanded">
+                                    <button class="add-property-button" @click="addProperty(group)"><i class="fas fa-plus"></i> New property</button>
+                                </template>
+                                
+                                <template x-if="group.expanded && group.properties.length > 0 && model.typeDefinition.propertyGroups.length > 1">
+                                    <select class="leftArrow" @change="moveProperties(group, $event.target)">
+                                        <option disabled selected value="">Move all properties</option>
+                                        <template x-for="targetGroup in model.typeDefinition.propertyGroups.filter(g => g.name != group.name)">
+                                            <option :value="targetGroup.name" x-text="targetGroup.displayName"></option>
+                                        </template>
+                                    </select>
+                                </template>
+                                
+                                <template x-if="group.expanded && group.properties.length > 0">
+                                    <button class="delete-properties-button" @click="group.removeProperties()"><i class="fas fa-trash"></i>Delete all properties</button>
+                                </template>
+                                
+                                <template x-if="group.expanded && group.name != null && group.properties.length == 0">
+                                    <button class="group-delete-button" @click="deleteGroup(group)"><i class="fas fa-trash"></i>Delete group</button>
+                                </template>    
+                            </div>
+    
                         </div>
                     </template>
                     
-                    <div class="grid-item form-action-section open-section">
-                        <button class="save-changes-button"><i class="fas fa-save"></i> Save</button>
-                        <button class="cancel-changes-button"><i class="fas fa-ban"></i> Cancel</button>
-                    </div>                   
+                    <div class="grid-item bottom-controls-section open-section">
+                        <template x-if="model.typeDefinition.propertyGroups.length > 0">
+                            <div class="add-group-section">
+                                <button class="add-group-button" @click="addPropertyGroup()"><i class="fas fa-plus"></i> New property group</button>
+                            </div>
+                        </template>
+                        
+                        <div class="grid-item form-action-section open-section">
+                            <button class="save-changes-button"><i class="fas fa-save"></i> Save</button>
+                            <button class="cancel-changes-button"><i class="fas fa-ban"></i> Cancel</button>
+                        </div>                   
+                    </div>
+                    
                 </div>
-                
-            </div>
+            </template>
         `;
     }
 
@@ -446,7 +442,7 @@ class SchemaEditor {
             groupName = null;
         }
 
-        let targetGroup = this.data.propertyGroups.find(g => g.name === groupName);
+        let targetGroup = this.model.typeDefinition.propertyGroups.find(g => g.name === groupName);
         if (targetGroup == null) {
             console.error("Could not find target group with name", groupName);
         } else {
@@ -462,7 +458,7 @@ class SchemaEditor {
             groupName = null;
         }
 
-        let targetGroup = this.data.propertyGroups.find(g => g.name === groupName);
+        let targetGroup = this.model.typeDefinition.propertyGroups.find(g => g.name === groupName);
         if (targetGroup == null) {
             console.error("Could not find target group with name", groupName);
         } else {
@@ -489,16 +485,15 @@ class SchemaEditor {
     }
 
     addPropertyGroup() {
-        this.data.propertyGroups.push(new PropertyGroup({id: null, name: null, properties: []}));
+        this.model.typeDefinition.propertyGroups.push(new PropertyGroup({id: null, name: null, properties: []}));
     }
 
     deleteGroup(group) {
         let properties = group.properties;
-        let emptyGroup = this.data.propertyGroups.find(g => !g.isNamedGroup);
+        let emptyGroup = this.model.typeDefinition.propertyGroups.find(g => !g.isNamedGroup);
         emptyGroup.properties.push(...properties);
-        this.data.propertyGroups.splice(this.data.propertyGroups.indexOf(group), 1);
+        this.model.typeDefinition.propertyGroups.splice(this.model.typeDefinition.propertyGroups.indexOf(group), 1);
     }
-
 }
 
 class EditableProperty {
@@ -635,4 +630,19 @@ class PropertyGroup {
         this.expanded = true;
     }
 
+}
+
+class TypeDefinition {
+    name;
+    description;
+    propertyGroups;
+
+    constructor(obj) {
+        this.name = new EditableProperty(obj.name, obj.name);
+        this.description = new EditableProperty(obj.description, obj.description);
+        this.propertyGroups = obj.propertyGroups.map((group, index, array) => {
+            return new PropertyGroup(group);
+        });
+        console.info("Created type definition", this);
+    }
 }
