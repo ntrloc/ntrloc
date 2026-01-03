@@ -50,8 +50,15 @@ class SchemaEditor {
         styleEl.id = this.stylesId;
         styleEl.textContent = `
             .schema-editor {
+                --background-color: #0f1419;  /* Background color */
+                --grid-border-color: #30363d; /* Grid border color */
+                --grid-header-background-color: #1d2025; /* Grid header color */
+                --button-background-color: #1a222b; /* Button background color */
+                --grid-header-text-color: #657082; /* Grid header text color */
+                --property-group-text-color: #95a6bf;
+            
                 font-family: sans-serif;
-                background-color: #30363d;
+                background-color: var(--grid-border-color);
                 margin: 40px;
                 color: #e6edf3;
                 padding: 1px;
@@ -61,7 +68,7 @@ class SchemaEditor {
                 grid-gap: 1px;
                 
                 .grid-item {
-                    background-color: #0f1419;
+                    background-color: var(--background-color);
                     padding: 10px;
                     box-sizing: border-box;
                     display: flex;
@@ -93,8 +100,8 @@ class SchemaEditor {
                 
                 .form-header {
                     display: contents;
-                    background-color: #1d2025;
-                    color: #e6edf3;
+                    background-color: var(--grid-header-background-color);
+                    color: var(--grid-header-text-color);
                     font-weight: bold;
     
                     .grid-item {
@@ -111,11 +118,19 @@ class SchemaEditor {
                     font-size: 1.2em;
                     margin-left: -1px;
                     margin-right: -1px;
-                    color: #9198a1;
+                    color: var(--property-group-text-color);
                     
                     input {
                         font-weight: bold;
                         flex: 3;
+                        
+                        &.pending {
+                            color: #7f8da3;
+                            
+                            &::placeholder {
+                                color: #f7b931;
+                            }
+                        }
                     }
                    
                 }
@@ -133,13 +148,13 @@ class SchemaEditor {
                     background-color: transparent;
                     
                     &:hover {
-                        background-color: #1d2025;
-                        border: solid 1px #ccc;
+                        background-color: var(--background-color);
+                        border: solid 1px var(--grid-border-color);
                     }
                     
                     &:focus {
-                        background-color: #1d2025;
-                        border: solid 1px #ccc;
+                        background-color: var(--background-color);
+                        border: solid 1px var(--grid-border-color);
                     }
                 }
     
@@ -151,9 +166,9 @@ class SchemaEditor {
                     color: inherit;
                    
                     &:hover {
-                        background-color: #1d2025;
+                        background-color: var(--background-color);
                         appearance: auto;
-                        border: solid 1px #ccc;
+                        border: solid 1px var(--grid-border-color);
                     }
                     
                     &.fixedSelect {
@@ -164,22 +179,26 @@ class SchemaEditor {
                         }
                     }
                     
-                    
-                }
-                
-                .add-group-section {
-                    padding: 0px;
-                    grid-column: 1 / span 4;
-                    margin-left: -1px; 
-                    margin-right: -1px;
-                    margin-bottom: -1px;
-                }
-                
-
-                .add-group-button {
-                    margin-top: 30px;
-                    text-wrap: nowrap;
-                    flex: 0;
+                    &.leftArrow {
+                        padding: 10px 14px 10px 40px;
+                        background-color: var(--background-color);
+                        border: 1px solid transparent;
+                        border-radius: 6px;
+                        
+                        font-family: inherit;
+                        cursor: pointer;
+                        
+                        /* Remove native arrow */
+                        appearance: none;
+                        -webkit-appearance: none;
+                        -moz-appearance: none;
+                        
+                        /* Chevron-style arrow */
+                        background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><path fill="none" stroke="%239198a1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M4 6l4 4 4-4"/></svg>');
+                        background-repeat: no-repeat;
+                        background-position: left 12px center;
+                        background-size: 16px 16px;  
+                    }
                 }
                 
                 .group-actions {
@@ -194,6 +213,15 @@ class SchemaEditor {
                     .group-delete-button {
                         margin-left: auto;
                     }
+                }
+                
+                .open-section {
+                    padding: 20px 0px;
+                    grid-column: 1 / span 4;  
+                    
+                    margin-left: -1px; 
+                    margin-right: -1px;
+                    margin-bottom: -1px;
                 }
                 
                 .propertyControl {
@@ -212,21 +240,43 @@ class SchemaEditor {
                     }
                 }
                 
+                .bottom-controls-section {
+                    display: flex;
+                    flex-direction: column;
+                    align-items: stretch;
+                   
+                    .add-group-section {
+                        .add-group-button {
+                            text-wrap: nowrap;
+                            flex: 0;
+                        }
+                    }
+                    
+                    .form-action-section {
+                        
+                    }
+                }
             }
             
             button {
                 font-size: inherit;
                 padding: 5px 10px;
                 border-radius: 3px;
-                background-color: #1d2025;
+                background-color: var(--button-background-color);
                 color: #e6edf3;
-                border: 1px solid #404852;
+                border: solid 1px var(--grid-border-color);
                 cursor: pointer;
                 text-wrap: nowrap;
                 
                 i {
-                    margin-right: 5px;
-                    margin-left: 5px;
+                    margin-right: 10px;
+                }
+                
+                &.imageOnly {
+                    i {
+                        margin-left: 5px;
+                        margin-right: 5px;
+                    }
                 }
             }
         `;
@@ -240,20 +290,24 @@ class SchemaEditor {
                     <div style="display:contents">
                         <template x-if="group.isNamedGroup">
                             <div class="grid-item property-group">
-                                <input type="text" class="group-name-input" x-model.lazy="group.name">
+                                <input placeholder="Enter a property group name" type="text" class="group-name-input" :class="{pending: group.name == null}" x-model.lazy="group.name">
                             </div>
                         </template>
                     
                     
                         <!-- Column header -->    
-                        <div class="form-header">
-                            <template x-for="column in data.columns">
-                                <div class="grid-item" x-text="column"></div>
-                            </template>
-                        </div>
+                        <template x-if="group.expanded">
+                            <div class="form-header">
+                                <template x-for="column in data.columns">
+                                    <div class="grid-item" x-text="column"></div>
+                                </template>
+                            </div>
+                        </template>
                         
+                       
                         <!-- Properties -->
-                        <template x-for="(property, index) in group.properties">
+                        <template x-if="group.expanded">
+                            <template x-for="(property, index) in group.properties">
                                 <div style="display:contents">
                                     <div class="grid-item" :class="{new: group.isNew(property), modified: group.isNormal(property) && property.name.modified, deleted: group.isDeleted(property)}">
                                         <input type="text" class="name-input" :data-ref="property.referenceId" x-model.lazy="property.name.value">
@@ -276,34 +330,53 @@ class SchemaEditor {
                                         <input type="text" x-model.lazy="property.description.value">
                                     </div>
                                     <div class="grid-item" :class="{new: group.isNew(property), deleted: group.isDeleted(property)}">
-                                        <select class="propertyControl" :class="{omitted: data.propertyGroups.length == 1, visible: !group.isDeleted(property)}" @change="moveProperty(group, property, $event.target)">
+                                        <select class="propertyControl leftArrow" :class="{omitted: data.propertyGroups.length == 1, visible: !group.isDeleted(property)}" @change="moveProperty(group, property, $event.target)">
                                             <option disabled selected value="">Move</option>
                                             <template x-for="targetGroup in data.propertyGroups.filter(g => g.name != group.name)">
                                                 <option :value="targetGroup.name" x-text="targetGroup.displayName"></option>
                                             </template>
                                         </select>
-                                        <button title="Undo changes" class="fixed propertyControl" :class="{visible: group.isNormal(property) && property.modified}"  @click="property.clearChanges()"><i class="fas fa-undo"></i></button>
-                                        <button title="Restore property" class="fixed propertyControl" :class="{visible: group.isDeleted(property)}" @click="group.unremoveProperty(property)"><i class="fas fa-trash-restore"></i></button>
-                                        <button title="Remove property" class="fixed propertyControl" :class="{visible: !group.isDeleted(property)}" @click="group.removeProperty(property)"><i class="fas fa-trash"></i></button>
+                                        <button title="Undo changes" class="fixed propertyControl imageOnly" :class="{visible: group.isNormal(property) && property.modified}"  @click="property.clearChanges()"><i class="fas fa-undo"></i></button>
+                                        
+                                        <template x-if="group.isDeleted(property)">
+                                            <button title="Restore property" class="fixed propertyControl imageOnly" :class="{visible: group.isDeleted(property)}" @click="group.unremoveProperty(property)"><i class="fas fa-trash-restore"></i></button>
+                                        </template>
+                                        <template x-if="!group.isDeleted(property)">
+                                            <button title="Remove property" class="fixed propertyControl imageOnly" :class="{visible: !group.isDeleted(property)}" @click="group.removeProperty(property)"><i class="fas fa-trash"></i></button>
+                                        </template>
                                     </div>
                                 </div>
                             </template>
+                        </template>
+                        
                         
                         <!-- Group actions-->    
                         <div class="grid-item group-actions" style="grid-column: 1 / span 4">
-                            <button class="add-property-button" @click="addProperty(group)"><i class="fas fa-plus"></i> New property</button>
-                            <template x-if="group.properties.length > 0">
-                                <select @change="moveProperties(group, $event.target)">
+                            <template x-if="group.expanded">
+                                <button title="Collapse" class="imageOnly" @click="group.collapse()"><i class="fas fa-caret-up"></i></button>
+                            </template>
+                            <template x-if="!group.expanded">
+                                <button title="Expand" class="imageOnly" @click="group.expand()"><i class="fas fa-caret-down"></i></button>
+                            </template>
+                        
+                            <template x-if="group.expanded">
+                                <button class="add-property-button" @click="addProperty(group)"><i class="fas fa-plus"></i> New property</button>
+                            </template>
+                            
+                            <template x-if="group.expanded && group.properties.length > 0">
+                                <select class="leftArrow" @change="moveProperties(group, $event.target)">
                                     <option disabled selected value="">Move all properties</option>
                                     <template x-for="targetGroup in data.propertyGroups.filter(g => g.name != group.name)">
                                         <option :value="targetGroup.name" x-text="targetGroup.displayName"></option>
                                     </template>
                                 </select>
                             </template>
-                            <template x-if="group.properties.length > 0">
+                            
+                            <template x-if="group.expanded && group.properties.length > 0">
                                 <button class="delete-properties-button" @click="group.removeProperties()"><i class="fas fa-trash"></i>Delete all properties</button>
                             </template>
-                            <template x-if="group.name != null">
+                            
+                            <template x-if="group.expanded && group.name != null && group.properties.length == 0">
                                 <button class="group-delete-button" @click="deleteGroup(group)"><i class="fas fa-trash"></i>Delete group</button>
                             </template>    
                         </div>
@@ -311,11 +384,19 @@ class SchemaEditor {
                     </div>
                 </template>
                 
-                <template x-if="data.propertyGroups.length > 0">
-                    <div class="grid-item add-group-section">
-                        <button class="add-group-button" @click="addPropertyGroup()"><i class="fas fa-plus"></i> New property group</button>
-                    </div>
-                </template>
+                <div class="grid-item bottom-controls-section open-section">
+                    <template x-if="data.propertyGroups.length > 0">
+                        <div class="add-group-section">
+                            <button class="add-group-button" @click="addPropertyGroup()"><i class="fas fa-plus"></i> New property group</button>
+                        </div>
+                    </template>
+                    
+                    <div class="grid-item form-action-section open-section">
+                        <button class="save-changes-button"><i class="fas fa-save"></i> Save</button>
+                        <button class="cancel-changes-button"><i class="fas fa-ban"></i> Cancel</button>
+                    </div>                   
+                </div>
+                
             </div>
         `;
     }
@@ -469,6 +550,7 @@ class PropertyGroup {
     isNamedGroup = true;
     properties;
     deletedProperties = [];
+    expanded = true;
 
     constructor(obj) {
         Object.assign(this, obj);
@@ -519,4 +601,13 @@ class PropertyGroup {
     isDeleted(property) {
         return this.deletedProperties.includes(property);
     }
+
+    collapse() {
+        this.expanded = false;
+    }
+
+    expand() {
+        this.expanded = true;
+    }
+
 }
