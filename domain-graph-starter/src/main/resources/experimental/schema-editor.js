@@ -55,7 +55,7 @@ class SchemaEditor {
                 --grid-header-background-color: #1d2025; /* Grid header color */
                 --button-background-color: #1a222b; /* Button background color */
                 --grid-header-text-color: #657082; /* Grid header text color */
-                --property-group-text-color: #95a6bf;
+                --highlight-color: #95a6bf;
             
                 font-family: sans-serif;
                 background-color: var(--grid-border-color);
@@ -66,6 +66,25 @@ class SchemaEditor {
                 grid-template-columns: min-content min-content 2fr min-content;
                 align-items: center;
                 grid-gap: 1px;
+                
+                .schema-header {
+                    grid-column: 1 / span 4;
+                    display: flex;
+                    flex-direction: column;
+                    background-color: var(--background-color);
+                    margin-top: -1px;
+                    margin-left: -1px;
+                    margin-right: -1px;
+                    padding-bottom: 20px;
+                    
+                    .schema-type-name {
+                        font-size: 1.5em;
+                        font-weight: bold;
+                    }
+                    
+                    .schema-type-description {
+                    }
+                }
                 
                 .grid-item {
                     background-color: var(--background-color);
@@ -118,7 +137,7 @@ class SchemaEditor {
                     font-size: 1.2em;
                     margin-left: -1px;
                     margin-right: -1px;
-                    color: var(--property-group-text-color);
+                    color: var(--highlight-color);
                     
                     input {
                         font-weight: bold;
@@ -149,12 +168,12 @@ class SchemaEditor {
                     
                     &:hover {
                         background-color: var(--background-color);
-                        border: solid 1px var(--grid-border-color);
+                        border: solid 1px var(--highlight-color);
                     }
                     
                     &:focus {
                         background-color: var(--background-color);
-                        border: solid 1px var(--grid-border-color);
+                        border: solid 1px var(--highlight-color);
                     }
                 }
     
@@ -171,7 +190,7 @@ class SchemaEditor {
                         border: solid 1px var(--grid-border-color);
                     }
                     
-                    &.fixedSelect {
+                    &.displaySelect {
                         appearance: none;
                         
                         &:hover {
@@ -286,8 +305,14 @@ class SchemaEditor {
     getTemplate() {
         return `
             <div class="schema-editor" x-data="{data}">
+                <div class="schema-header">
+                    <input type="text" class="schema-type-name" value="Photo">
+                    <input type="text" class="schema-type-description" value="A photograph (either analog or digital); conceptually different from a generic image">
+                </div>
+                    
                 <template x-for="group in data.propertyGroups">
                     <div style="display:contents">
+                        
                         <template x-if="group.isNamedGroup">
                             <div class="grid-item property-group">
                                 <input placeholder="Enter a property group name" type="text" class="group-name-input" :class="{pending: group.name == null}" x-model.lazy="group.name">
@@ -321,7 +346,7 @@ class SchemaEditor {
                                             </select>
                                         </template>
                                         <template x-if="property.id != null">
-                                            <select class="fixedSelect" disabled>
+                                            <select class="displaySelect" disabled>
                                                 <option :value="property.type.value" x-text="property.type.value" selected></option>
                                             </select>
                                         </template>        
@@ -363,7 +388,7 @@ class SchemaEditor {
                                 <button class="add-property-button" @click="addProperty(group)"><i class="fas fa-plus"></i> New property</button>
                             </template>
                             
-                            <template x-if="group.expanded && group.properties.length > 0">
+                            <template x-if="group.expanded && group.properties.length > 0 && data.propertyGroups.length > 1">
                                 <select class="leftArrow" @change="moveProperties(group, $event.target)">
                                     <option disabled selected value="">Move all properties</option>
                                     <template x-for="targetGroup in data.propertyGroups.filter(g => g.name != group.name)">
