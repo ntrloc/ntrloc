@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Draggable SVG Rectangles with Arrow</title>
+</head>
+<body>
+<svg id="canvas" width="600" height="400" style="border: 1px solid #ccc;">
+    <defs>
+        <marker id="arrowhead" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+            <polygon points="0 0, 10 3, 0 6" fill="black" />
+        </marker>
+    </defs>
+</svg>
+
+<script>
+    class Rectangle {
+        constructor(centerX, centerY, width, height, color) {
+            this.centerX = centerX;
+            this.centerY = centerY;
+            this.width = width;
+            this.height = height;
+            this.color = color;
+        }
+
+        getX() {
+            return this.centerX - this.width / 2;
+        }
+
+        getY() {
+            return this.centerY - this.height / 2;
+        }
+
+        setPosition(x, y) {
+            this.centerX = x + this.width / 2;
+            this.centerY = y + this.height / 2;
+        }
+
+        // Find intersection point of line from center to target point with rectangle edge
+        getEdgePoint(targetX, targetY) {
+            const dx = targetX - this.centerX;
+            const dy = targetY - this.centerY;
+
+            // Handle case where centers are at same point
+            if (dx === 0 && dy === 0) {
+                return { x: this.centerX, y: this.centerY };
+            }
+
+            const halfWidth = this.width / 2;
+            const halfHeight = this.height / 2;
+
+            // Calculate intersection with all four edges
+            let t = Infinity;
+
+            // Right edge (x = centerX + halfWidth)
+            if (dx > 0) {
+                t = Math.min(t, halfWidth / dx);
+            }
+            // Left edge (x = centerX - halfWidth)
+            if (dx < 0) {
+                t = Math.min(t, -halfWidth / dx);
+            }
+            // Bottom edge (y = centerY + halfHeight)
+            if (dy > 0) {
+                t = Math.min(t, halfHeight / dy);
+            }
+            // Top edge (y = centerY - halfHeight)
+            if (dy < 0) {
+                t = Math.min(t, -halfHeight / dy);
+            }
+
+            return {
+                x: this.centerX + t * dx,
+                y: this.centerY + t * dy
+            };
+        }
+    }
+
+    // Create two Rectangle objects (rect1 is SOURCE, rect2 is TARGET)
+    const rect1 = new Rectangle(100, 90, 100, 80, "coral");
+    const rect2 = new Rectangle(260, 200, 120, 100, "skyblue");
+
+    const svg = document.getElementById('canvas');
+    let selectedRect = null;
+    let selectedRectObj = null;
+    let offset = { x: 0, y: 0 };
+
+    // Create SVG elements
+    const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    line.setAttribute("stroke", "black");
+    line.setAttribute("stroke-width", "2");
+    line.setAttribute("marker-end", "url(#arrowhead)");
+    svg.appendChild(line);
+
+    const svgRect1 = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    svgRect1.setAttribute("fill", "transparent");
+    svgRect1.setAttribute("stroke-width", "3");
+    svgRect1.setAttribute("cursor", "move");
+    svg.appendChild(svgRect1);
+
+    const svgRect2 = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    svgRect2.setAttribute("fill", "transparent");
+    svgRect2.setAttribute("stroke-width", "3");
+    svgRect2.setAttribute("cursor", "move");
+    svg.appendChild(svgRect2);
+
+    // Map SVG elements to Rectangle objects
+    const rectMap = new Map([
+        [svgRect1, rect1],
+        [svgRect2, rect2]
+    ]);
+
+    function drawRectangles() {
+        svgRect1.setAttribute("x", rect1.getX());
+        svgRect1.setAttribute("y", rect1.getY());
+        svgRect1.setAttribute("width", rect1.width);
+        svgRect1.setAttribute("height", rect1.height);
+        svgRect1.setAttribute("stroke", rect1.color);
+
+        svgRect2.setAttribute("x", rect2.getX());
+        svgRect2.setAttribute("y", rect2.getY());
+        svgRect2.setAttribute("width", rect2.width);
+        svgRect2.setAttribute("height", rect2.height);
+        svgRect2.setAttribute("stroke", rect2.color);
+
+        updateLine();
+    }
+
+    function updateLine() {
+        // Get edge points from SOURCE (rect1) to TARGET (rect2)
+        const edge1 = rect1.getEdgePoint(rect2.centerX, rect2.centerY);
+        const edge2 = rect2.getEdgePoint(rect1.centerX, rect1.centerY);
+
+        line.setAttribute("x1", edge1.x);
+        line.setAttribute("y1", edge1.y);
+        line.setAttribute("x2", edge2.x);
+        line.setAttribute("y2", edge2.y);
+    }
+
+    svgRect1.addEventListener('mousedown', startDrag);
+    svgRect2.addEventListener('mousedown', startDrag);
+    document.addEventListener('mousemove', drag);
+    document.addEventListener('mouseup', endDrag);
+
+    function startDrag(e) {
+        selectedRect = e.target;
+        selectedRectObj = rectMap.get(selectedRect);
+        offset.x = e.clientX - selectedRectObj.getX();
+        offset.y = e.clientY - selectedRectObj.getY();
+    }
+
+    function drag(e) {
+        if (selectedRect && selectedRectObj) {
+            selectedRectObj.setPosition(e.clientX - offset.x, e.clientY - offset.y);
+            drawRectangles();
+        }
+    }
+
+    function endDrag() {
+        selectedRect = null;
+        selectedRectObj = null;
+    }
+
+    // Initial draw
+    drawRectangles();
+</script>
+</body>
+</html>

@@ -2,6 +2,7 @@ package org.ntrloc.graph.db.impl;
 
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversal;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversalSource;
+import org.apache.tinkerpop.gremlin.structure.Direction;
 import org.apache.tinkerpop.gremlin.structure.Vertex;
 import org.ntrloc.graph.Tuple;
 import org.ntrloc.graph.db.ItemManager;
@@ -203,10 +204,10 @@ public class ItemManagerImpl implements ItemManager {
         // -------------------------- start link section
 
         for (ItemCreateMutation createMutation: createMutations) {
-            String fromId = null;
+            String thisItemId = null;
             Optional<Map.Entry<String, ReferenceableItemMutation>> createdEntryOpt = mutationIdMap.entrySet().stream().filter(entry -> entry.getValue() == createMutation).findAny();
             if (createdEntryOpt.isPresent()) {
-                fromId = createdEntryOpt.get().getKey();
+                thisItemId = createdEntryOpt.get().getKey();
             } else {
                 throw new MutationException("Item mutation " + createMutation + " not found");
             }
@@ -217,7 +218,7 @@ public class ItemManagerImpl implements ItemManager {
                     throw new MutationException("Selector must be an ID selector");
                 }
                 var idSelector = (IdSelector)selector;
-                String toId = switch(idSelector.getScope()) {
+                String otherId = switch(idSelector.getScope()) {
                     case IdSelector.Scope.LOCAL -> {
                         // find the ID of the item whose reference matches this reference ID
                         Optional<Map.Entry<String, ReferenceableItemMutation>> mutationEntryOpt = mutationIdMap.entrySet()
@@ -233,16 +234,24 @@ public class ItemManagerImpl implements ItemManager {
                     case IdSelector.Scope.GLOBAL -> idSelector.getId();
                 };
 
-                // TODO: NOTE that the "to" and "from" nodes depends on the type of the item being mutated and the link type.
-                // you can't assume the item is "from" and the link item is "to"; the link definition will give you the direction of the link.
-
-                if (toId == null) {
+                if (otherId == null) {
                     throw new MutationException("Linked item " + idSelector.getId() + " not found");
                 } else {
-                    LOG.info("Linking item to item {}", toId);
+                    LOG.info("Linking item {} to item {}", thisItemId, otherId);
+
+                    Direction direction = ((DirectedLinkCreateMutation)linkCreateMutation).getDirection();
+                    String fromId, toId;
+                    if (direction == Direction.OUT) {
+                        fromId = thisItemId;
+                        toId = otherId;
+                    } else {
+                        fromId = otherId;
+                        toId = thisItemId;
+                    }
+
                     Tuple<String, String> itemTypeLinkIdTuple = mutator.createLink(fromId, toId, linkCreateMutation.getLinkType(), linkCreateMutation.getProperties());
 
-                    LinkMutationResponse link = new LinkMutationResponse(MutationType.CREATE, linkCreateMutation.getLinkType(), itemTypeLinkIdTuple.second(), fromId, toId);
+                    LinkMutationResponse link = new LinkMutationResponse(MutationType.CREATE, linkCreateMutation.getLinkType(), itemTypeLinkIdTuple.second(), thisItemId, otherId);
                     link = schemaNameIdTranslator.convertPrivateIdentifiersIoPublic(createMutation.getItemType(), link);
                     response.addLinkMutationResponse(link);
                 }

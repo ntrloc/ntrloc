@@ -2,7 +2,6 @@ package org.ntrloc.graph.db.language.mutation;
 
 import org.ntrloc.graph.db.language.Property;
 import org.ntrloc.graph.db.language.selectors.ItemSelector;
-import org.ntrloc.graph.db.language.selectors.Selector;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -21,7 +20,7 @@ public class LinkCreateMutation extends LinkMutation implements LinkMutationWith
         this.linkType = linkType;
     }
 
-    public Selector getSelector() {
+    public ItemSelector getSelector() {
         return selector;
     }
 

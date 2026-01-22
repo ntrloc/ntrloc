@@ -263,8 +263,8 @@ class ItemManagerTest {
     }
 
     @Test
-    @DisplayName("should create two items and link them")
-    void testCreateAndLinkItems() {
+    @DisplayName("should create two items and link them from the source")
+    void testCreateAndLinkItemsFromSource() {
         ItemCreateMutation photoCreate = new ItemCreateMutation()
                 .itemType("Photo")
                 .refId("photoRef")
@@ -298,6 +298,41 @@ class ItemManagerTest {
         ItemProjection photoProjection = createdLink.getTarget();
         assertEquals("Photo", photoProjection.getItemType());
         assertEquals("photo1", photoProjection.getProperties().get("name"));
+    }
+
+    @Test
+    @DisplayName("should create two items and link them from the target")
+    void testCreateAndLinkItemsFromTarget() {
+        ItemCreateMutation photoCreate = new ItemCreateMutation()
+                .itemType("Photo")
+                .refId("photoRef")
+                .properties(List.of(new StringProperty("name", "photo1")));
+
+        ItemCreateMutation photographerCreate = new ItemCreateMutation()
+                .itemType("Photographer")
+                .refId("photographerRef")
+                .properties(List.of( new StringProperty("name", "photographer1")));
+
+        LinkCreateMutation linkCreate = new LinkCreateMutation()
+                .selector(new IdSelector(photographerCreate.getRefId(), IdSelector.Scope.LOCAL))
+                .linkType("createdBy")
+                .properties(List.of(new DateProperty("createdDate", "2022-01-01")));
+
+        photoCreate.setLinks(List.of(linkCreate));
+
+        MutationRequest req = new MutationRequest(List.of(photoCreate, photographerCreate));
+        var res = itemManager.executeMutation(req);
+        assertEquals(2, res.getItemMutationResponses().size());
+        assertEquals(1, res.getLinkMutationResponses().size());
+
+        SelectableItemProjectionSpec itemProjectionSpec = new SelectableItemProjectionSpec(new ItemTypeSelector("Photo"));
+        itemProjectionSpec.setLinks(new AllLinksProjectionSpec());
+        List<ItemProjection> projections = itemManager.executeProjection(itemProjectionSpec);
+        assertEquals(1, projections.size());
+        ItemProjection projection = projections.get(0);
+        assertEquals("Photo", projection.getItemType());
+        IncomingLinkProjection creatorLink = (IncomingLinkProjection) projection.getLinks().get("createdBy").get(0);
+        assertEquals("2022-01-01", creatorLink.getProperties().get("createdDate"));
     }
 
     @Test

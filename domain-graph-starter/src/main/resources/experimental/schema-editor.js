@@ -77,6 +77,7 @@ class SchemaEditor {
                     }
                     
                     .schema-type-description {
+                        color: var(--highlight-color);
                     }
                 }
                 
@@ -411,10 +412,12 @@ class SchemaEditor {
                             </div>
                         </template>
                         
-                        <div class="grid-item form-action-section open-section">
-                            <button class="save-changes-button"><i class="fas fa-save"></i> Save</button>
-                            <button class="cancel-changes-button"><i class="fas fa-ban"></i> Cancel</button>
-                        </div>                   
+                        <template x-if="model.typeDefinition.modified">
+                            <div class="grid-item form-action-section open-section">
+                                <button class="save-changes-button"><i class="fas fa-save"></i> Save</button>
+                                <button class="cancel-changes-button"><i class="fas fa-ban"></i> Cancel</button>
+                            </div>
+                        </template>                   
                     </div>
                     
                 </div>
@@ -446,8 +449,8 @@ class SchemaEditor {
         if (targetGroup == null) {
             console.error("Could not find target group with name", groupName);
         } else {
-            group.properties.splice(group.properties.indexOf(property), 1);
-            targetGroup.properties.push(property);
+            group.pullProperty(property);
+            targetGroup.pushProperty(property);
             targetGroupEl.selectedIndex = 0;
         }
     }
@@ -569,6 +572,8 @@ class PropertyGroup {
     name;
     isNamedGroup = true;
     properties;
+    addedProperties = [];
+    removedProperties = [];
     deletedProperties = [];
     expanded = true;
 
@@ -583,6 +588,16 @@ class PropertyGroup {
         let newProperty = new Property(null, null, null, null);
         this.properties.push(newProperty);
         return newProperty;
+    }
+
+    pullProperty(property) {
+        this.properties.splice(this.properties.indexOf(property), 1);
+        this.removedProperties.push(property);
+    }
+
+    pushProperty(property) {
+        this.properties.push(property);
+        this.addedProperties.push(property);
     }
 
     get displayName() {
@@ -630,6 +645,13 @@ class PropertyGroup {
         this.expanded = true;
     }
 
+    get modified() {
+        let propsDeleted = this.deletedProperties.length > 0;
+        let propsAdded = this.addedProperties.length > 0;
+        let propModified = this.properties.some(p => p.modified);
+        return propsDeleted | propsAdded || propModified;
+    }
+
 }
 
 class TypeDefinition {
@@ -644,5 +666,11 @@ class TypeDefinition {
             return new PropertyGroup(group);
         });
         console.info("Created type definition", this);
+    }
+
+    get modified() {
+        let definitionModified = this.name.modified || this.description.modified;
+        let groupModified = this.propertyGroups.some(g => g.modified);
+        return definitionModified || groupModified;
     }
 }

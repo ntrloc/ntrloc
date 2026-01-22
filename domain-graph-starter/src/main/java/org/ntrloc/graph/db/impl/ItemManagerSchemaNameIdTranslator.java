@@ -1,11 +1,14 @@
 package org.ntrloc.graph.db.impl;
 
+import org.apache.tinkerpop.gremlin.structure.Direction;
 import org.ntrloc.graph.db.PropertyConstants;
 import org.ntrloc.graph.db.language.Property;
+import org.ntrloc.graph.db.language.mutation.ItemCreateMutation;
 import org.ntrloc.graph.db.language.mutation.ItemMutation;
 import org.ntrloc.graph.db.language.mutation.ItemMutationResponse;
 import org.ntrloc.graph.db.language.mutation.ItemMutationWithItemType;
 import org.ntrloc.graph.db.language.mutation.ItemMutationWithLinks;
+import org.ntrloc.graph.db.language.mutation.LinkCreateMutation;
 import org.ntrloc.graph.db.language.mutation.LinkMutation;
 import org.ntrloc.graph.db.language.mutation.LinkMutationResponse;
 import org.ntrloc.graph.db.language.mutation.LinkMutationWithLinkType;
@@ -142,13 +145,13 @@ public class ItemManagerSchemaNameIdTranslator {
                     .filter(linkDefinition -> linkDefinition.getSourceItemType().equals(itemDefinition.getName()))
                     .collect(Collectors.toSet());
             for (LinkDefinition linkDefinition : outItemLinkDefinitions) {
-                linkMapping.put(linkDefinition.getSourceLabel(), new LinkDefinitionPublicToPrivateMapping(linkDefinition, linkDefinition.getTargetItemType()));
+                linkMapping.put(linkDefinition.getSourceLabel(), new LinkDefinitionPublicToPrivateMapping(linkDefinition, Direction.OUT, linkDefinition.getTargetItemType()));
             }
             Set<LinkDefinition> inItemLinkDefinitions = linkDefinitions.stream()
                     .filter(linkDefinition -> linkDefinition.getTargetItemType().equals(itemDefinition.getName()))
                     .collect(Collectors.toSet());
             for (LinkDefinition linkDefinition : inItemLinkDefinitions) {
-                linkMapping.put(linkDefinition.getTargetLabel(), new LinkDefinitionPublicToPrivateMapping(linkDefinition, linkDefinition.getSourceItemType()));
+                linkMapping.put(linkDefinition.getTargetLabel(), new LinkDefinitionPublicToPrivateMapping(linkDefinition, Direction.IN, linkDefinition.getSourceItemType()));
             }
         }
 
@@ -183,28 +186,50 @@ public class ItemManagerSchemaNameIdTranslator {
                 mutationWithProperties.setProperties(translatedProperties);
             }
             if (itemMutation instanceof ItemMutationWithLinks<?> mutationWithLinks && mutationWithLinks.getLinks() != null) {
-                List<? extends LinkMutation> linkMutations = mutationWithLinks.getLinks();
-                for (LinkMutation linkMutation : linkMutations) {
-                    if (linkMutation instanceof LinkMutationWithLinkType linkWithType) {
-                        String linkType = linkWithType.getLinkType();
-                        String linkId = linkMapping.get(linkType).getLinkId();
-                        if (linkId == null) {
-                            throw new IllegalArgumentException("Unknown link type " + linkType);
-                        } else {
-                            linkWithType.setLinkType(linkId);
-                        }
+                if (itemMutation instanceof ItemCreateMutation createMutation) {
+                    List<LinkCreateMutation> linkMutations = createMutation.getLinks();
+                    List<LinkCreateMutation> translatedLinkMutations = linkMutations.stream().map(this::convertLinkMutation).toList();
+                    createMutation.setLinks(translatedLinkMutations);
+                } else {
+                    List<? extends LinkMutation> linkMutations = mutationWithLinks.getLinks();
+                    linkMutations.forEach(this::convertIds);
+                }
+            }
+        }
 
-                        if (linkMutation instanceof LinkMutationWithProperties linkWithProperties) {
-                            List<Property> properties = linkWithProperties.getProperties();
-                            List<Property> translatedProperties = properties.stream().map(p -> {
-                                String linkPropertyName = p.getName();
-                                Map<String, String> linkPropertyMapping = linkMapping.get(linkType).getProperties();
-                                String linkPropertyId = linkPropertyMapping.get(linkPropertyName);
-                                return p.renamedTo(linkPropertyId);
-                            }).toList();
-                            linkWithProperties.setProperties(translatedProperties);
-                        }
-                    }
+        private LinkCreateMutation convertLinkMutation(LinkCreateMutation linkMutation) {
+            if (linkMutation instanceof LinkMutationWithLinkType linkWithType) {
+                String linkType = linkWithType.getLinkType();
+                LinkDefinitionPublicToPrivateMapping mapping = this.linkMapping.get(linkType);
+                DirectedLinkCreateMutation directedLinkCreateMutation = new DirectedLinkCreateMutation(linkMutation, mapping.getDirection());
+                convertIds(directedLinkCreateMutation);
+                return directedLinkCreateMutation;
+            } else {
+                return linkMutation;
+            }
+        }
+
+        private void convertIds(LinkMutation linkMutation) {
+            if (linkMutation instanceof LinkMutationWithLinkType linkWithType) {
+                String linkType = linkWithType.getLinkType();
+                LinkDefinitionPublicToPrivateMapping mapping = this.linkMapping.get(linkType);
+
+                if (mapping == null) {
+                    throw new IllegalArgumentException("Unknown link type " + linkType);
+                } else {
+                    String linkId = mapping.getLinkId();
+                    linkWithType.setLinkType(linkId);
+                }
+
+                if (linkMutation instanceof LinkMutationWithProperties linkWithProperties) {
+                    List<Property> properties = linkWithProperties.getProperties();
+                    List<Property> translatedProperties = properties.stream().map(p -> {
+                        String linkPropertyName = p.getName();
+                        Map<String, String> linkPropertyMapping = linkMapping.get(linkType).getProperties();
+                        String linkPropertyId = linkPropertyMapping.get(linkPropertyName);
+                        return p.renamedTo(linkPropertyId);
+                    }).toList();
+                    linkWithProperties.setProperties(translatedProperties);
                 }
             }
         }
@@ -288,11 +313,13 @@ public class ItemManagerSchemaNameIdTranslator {
         private class LinkDefinitionPublicToPrivateMapping {
             private LinkDefinition linkDefinition;
             private String linkId;
+            private Direction direction;
             private String relatedItemType;
             private Map<String, String> linkPropertyNameToIdMapping;
 
-            LinkDefinitionPublicToPrivateMapping(LinkDefinition linkDefinition, String relatedItemType) {
+            LinkDefinitionPublicToPrivateMapping(LinkDefinition linkDefinition, Direction direction, String relatedItemType) {
                 this.linkDefinition = linkDefinition;
+                this.direction = direction;
                 this.linkId = linkDefinition.getUid();
                 this.relatedItemType = relatedItemType;
                 linkPropertyNameToIdMapping = linkDefinition.getProperties().stream().collect(Collectors.toMap(PropertyDefinition::getName, PropertyDefinition::getUid));
@@ -300,6 +327,10 @@ public class ItemManagerSchemaNameIdTranslator {
 
             String getLinkId() {
                 return linkId;
+            }
+
+            Direction getDirection() {
+                return direction;
             }
 
             Map<String, String> getProperties() {
