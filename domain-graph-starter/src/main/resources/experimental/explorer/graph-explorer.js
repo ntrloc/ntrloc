@@ -10,14 +10,20 @@ export class GraphExplorer {
     }
 
     async init() {
-        const nodes = [
-            { id: 'Node 1', x: 100, y: 100 },
-            { id: 'Node 2', x: 300, y: 300 }
-        ];
+        const node1 = new Node('Node 1');
+        const node2 = new Node('Node 2');
+        const node3 = new Node("Node 3");
+        const link1 = new Link(node1, node2);
+        const link2 = new Link(node1, node3);
 
-        const links = [
-            { source: nodes[0], target: nodes[1] }
-        ];
+        const nodeView1 = new NodeView(node1);
+        const nodeView2 = new NodeView(node2);
+        const nodeView3 = new NodeView(node3);
+        const linkView1 = new LinkView(link1, nodeView1, nodeView2);
+        const linkView2 = new LinkView(link2, nodeView1, nodeView3);
+
+        const nodeViews = [nodeView1, nodeView2, nodeView3];
+        const linkViews = [linkView1, linkView2];
 
         const d3 = await this.d3Ready;
 
@@ -32,33 +38,27 @@ export class GraphExplorer {
             const svg = d3.select(sel);
 
             // Create the force simulation
-            const simulation = d3.forceSimulation(nodes)
-                .force("link", d3.forceLink(links).id(d => d.id).distance(200))
+            const simulation = d3.forceSimulation(nodeViews)
+                .force("link", d3.forceLink(linkViews).id(d => d.id).distance(200))
                 .force("charge", d3.forceManyBody().strength(-300))
                 .force("center", d3.forceCenter(200, 200));
 
-            simulation.on("tick", () => {
-                link
-                    .attr("x1", d => d.source.x)
-                    .attr("y1", d => d.source.y)
-                    .attr("x2", d => d.target.x)
-                    .attr("y2", d => d.target.y);
-                nodeGroup
-                    .attr("transform", d => `translate(${d.x},${d.y})`);
-            });
+            svg.append("defs").append("marker")
+                .attr("id", "arrowhead")
+                .attr("viewBox", "0 0 10 10")
+                .attr("refX", 9)  // Position at the end of the line
+                .attr("refY", 5)
+                .attr("markerWidth", 6)
+                .attr("markerHeight", 6)
+                .attr("orient", "auto")
+                .append("path")
+                .attr("d", "M 0 0 L 10 5 L 0 10 z")  // Triangle shape
+                .attr("fill", "red");
 
             // draw links and boxes
-            const link = svg.selectAll("line")
-                .data(links)
-                .join("line")
-                .attr("stroke", "red")
-                .attr("stroke-width", 2);
-
             const nodeGroup = svg.selectAll("g.node")
-                .data(nodes)
+                .data(nodeViews)
                 .join("g")
-                .attr("x", d => d.x)
-                .attr("y", d => d.y)
                 .attr("class", "node")
                 .attr("cursor", "pointer")
                 .call(drag(simulation));
@@ -66,18 +66,44 @@ export class GraphExplorer {
             nodeGroup.append("rect")
                 .attr("width", 80)
                 .attr("height", 40)
-                .attr("x", -40)  // Center the rect
-                .attr("y", -20)
+                .attr("x", 0)  // Center the rect
+                .attr("y", 0)
                 .attr("stroke", "#95a6bf")
                 .attr("stroke-width", 2)
                 .attr("fill", "white");
 
             nodeGroup.append("text")
+                .attr("x", d => d.width / 2)        // Center horizontally
+                .attr("y", d => d.height / 2)       // Center vertically
                 .attr("text-anchor", "middle")
-                .attr("dy", 5)
                 .attr("fill", "black")
                 .attr("pointer-events", "none")
                 .text(d => d.id);
+
+            const link = svg.selectAll("line")
+                .data(linkViews)
+                .join("line")
+                .attr("stroke", "red")
+                .attr("stroke-width", 2)
+                .attr("marker-end", "url(#arrowhead)");
+
+            simulation.on("tick", () => {
+
+                link.each(function(d) {
+                    const sourceEdge = d.sourceView.getEdgePoint(d.targetView.centerX, d.targetView.centerY);
+                    const targetEdge = d.targetView.getEdgePoint(d.sourceView.centerX, d.sourceView.centerY);
+
+                    d3.select(this)
+                        .attr("x1", sourceEdge.x)
+                        .attr("y1", sourceEdge.y)
+                        .attr("x2", targetEdge.x)
+                        .attr("y2", targetEdge.y);
+                });
+
+                nodeGroup
+                    .attr("transform", d => `translate(${d.x},${d.y})`);
+
+            });
 
             function drag(simulation) {
                 function dragstarted(event, d) {
@@ -172,4 +198,109 @@ export class GraphExplorer {
         `;
     }
 
+}
+
+// node.js
+class Node {
+    constructor(name) {
+        this.name = name;
+    }
+}
+
+// node-view.js
+class NodeView {
+    constructor(node, x = 0, y = 0, width = 80, height = 40) {
+        this.node = node;
+        this.x = x;
+        this.y = y;
+        this.width = width;
+        this.height = height;
+    }
+
+    get id() {
+        return this.node.name;
+    }
+
+    get centerX() {
+        return this.x + (this.width / 2);
+    }
+
+    get centerY() {
+        return this.y + (this.height / 2);
+    }
+
+    // given a line drawn from the center of this rectangle to the given x/y coordinates,
+    // returns the x/y coordinates where that line intersects the boundary of this rectangle.
+    getEdgePoint(targetX, targetY) {
+        const dx = targetX - this.centerX;
+        const dy = targetY - this.centerY;
+
+        if (dx === 0 && dy === 0) {
+            return { x: this.centerX, y: this.centerY };
+        }
+
+        const halfWidth = this.width / 2;
+        const halfHeight = this.height / 2;
+
+        let t = Infinity;
+
+        if (dx > 0) {
+            t = Math.min(t, halfWidth / dx);
+        }
+        if (dx < 0) {
+            t = Math.min(t, -halfWidth / dx);
+        }
+        if (dy > 0) {
+            t = Math.min(t, halfHeight / dy);
+        }
+        if (dy < 0) {
+            t = Math.min(t, -halfHeight / dy);
+        }
+
+        return {
+            x: this.centerX + t * dx,
+            y: this.centerY + t * dy
+        };
+    }
+}
+
+// link.js
+class Link {
+    constructor(sourceNode, targetNode) {
+        this.sourceNode = sourceNode;
+        this.targetNode = targetNode;
+    }
+}
+
+// link-view.js
+class LinkView {
+    constructor(link, sourceView, targetView) {
+        this.link = link;
+        this.sourceView = sourceView;
+        this.targetView = targetView;
+    }
+
+    get x1() {
+        return this.sourceView.x;
+    }
+
+    get y1() {
+        return this.sourceView.y;
+    }
+
+    get x2() {
+        return this.targetView.x;
+    }
+
+    get y2() {
+        return this.targetView.y;
+    }
+
+    get source() {
+        return this.sourceView;
+    }
+
+    get target() {
+        return this.targetView;
+    }
 }
