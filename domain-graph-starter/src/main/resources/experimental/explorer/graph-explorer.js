@@ -37,38 +37,47 @@ export class GraphExplorer {
                 .force("charge", d3.forceManyBody().strength(-300))
                 .force("center", d3.forceCenter(200, 200));
 
-            const link = svg.selectAll("line")
-                .data(links)
-                .join("line")
-                .attr("stroke", "red")
-                .attr("stroke-width", 2);
-
-            const node = svg.selectAll("rect")
-                .data(nodes)
-                .join("rect")
-                .attr("x", d => d.x)
-                .attr("y", d => d.y)
-                .attr("width", 100)
-                .attr("height", 100)
-                .attr("stroke", "#95a6bf")
-                .attr("stroke-width", 2)
-                .attr("fill", "white")
-                .attr("r", 50)
-                .attr("cursor", "pointer")
-                .call(drag(simulation));
-
-
-
             simulation.on("tick", () => {
                 link
                     .attr("x1", d => d.source.x)
                     .attr("y1", d => d.source.y)
                     .attr("x2", d => d.target.x)
                     .attr("y2", d => d.target.y);
-                node
-                    .attr("x", d => d.x)
-                    .attr("y", d => d.y);
+                nodeGroup
+                    .attr("transform", d => `translate(${d.x},${d.y})`);
             });
+
+            // draw links and boxes
+            const link = svg.selectAll("line")
+                .data(links)
+                .join("line")
+                .attr("stroke", "red")
+                .attr("stroke-width", 2);
+
+            const nodeGroup = svg.selectAll("g.node")
+                .data(nodes)
+                .join("g")
+                .attr("x", d => d.x)
+                .attr("y", d => d.y)
+                .attr("class", "node")
+                .attr("cursor", "pointer")
+                .call(drag(simulation));
+
+            nodeGroup.append("rect")
+                .attr("width", 80)
+                .attr("height", 40)
+                .attr("x", -40)  // Center the rect
+                .attr("y", -20)
+                .attr("stroke", "#95a6bf")
+                .attr("stroke-width", 2)
+                .attr("fill", "white");
+
+            nodeGroup.append("text")
+                .attr("text-anchor", "middle")
+                .attr("dy", 5)
+                .attr("fill", "black")
+                .attr("pointer-events", "none")
+                .text(d => d.id);
 
             function drag(simulation) {
                 function dragstarted(event, d) {
