@@ -11,9 +11,9 @@ export class GraphExplorer {
     }
 
     async init() {
-        const node1 = new Node('Node 1');
-        const node2 = new Node('Node 2');
-        const node3 = new Node("Node 3");
+        const node1 = new Node("Photographer", 'Bill Jones');
+        const node2 = new Node("Photo", "photo1.jpg");
+        const node3 = new Node("Photo", "photo2.jpg");
         const link1 = new Link(node1, node2);
         const link2 = new Link(node1, node3);
 
@@ -65,21 +65,48 @@ export class GraphExplorer {
                 .call(drag(this.simulation));
 
             nodeGroup.append("rect")
-                .attr("width", 80)
-                .attr("height", 40)
-                .attr("x", 0)  // Center the rect
+                .attr("class", "node-type-rect")
+                .attr("width", d => d.width)
+                .attr("height", 20)  // Height for the type section
+                .attr("x", 0)
                 .attr("y", 0)
+                .attr("fill", "#4a90e2")  // Colored background
                 .attr("stroke", "#95a6bf")
-                .attr("stroke-width", 2)
-                .attr("fill", "white");
+                .attr("stroke-width", 2);
 
+            // Add the node type text
             nodeGroup.append("text")
-                .attr("x", d => d.width / 2)        // Center horizontally
-                .attr("y", d => d.height / 2)       // Center vertically
+                .attr("class", "node-type-text")
+                .attr("x", d => d.width / 2)
+                .attr("y", 10)  // Center in the 20px high rectangle
                 .attr("text-anchor", "middle")
+                .attr("dominant-baseline", "middle")
+                .attr("fill", "white")
+                .attr("font-weight", "bold")
+                .attr("pointer-events", "none")
+                .text(d => d.node.nodeType);
+
+            // Add the name rectangle (white, below)
+            nodeGroup.append("rect")
+                .attr("class", "node-name-rect")
+                .attr("width", d => d.width)
+                .attr("height", d => d.height - 20)  // Remaining height
+                .attr("x", 0)
+                .attr("y", 20)  // Start below the type rectangle
+                .attr("fill", "white")
+                .attr("stroke", "#95a6bf")
+                .attr("stroke-width", 2);
+
+            // Add the name text
+            nodeGroup.append("text")
+                .attr("class", "node-name-text")
+                .attr("x", d => d.width / 2)
+                .attr("y", d => 20 + (d.height - 20) / 2)  // Center in remaining space
+                .attr("text-anchor", "middle")
+                .attr("dominant-baseline", "middle")
                 .attr("fill", "black")
                 .attr("pointer-events", "none")
-                .text(d => d.id);
+                .text(d => d.node.name);
 
             const link = svg.selectAll("line")
                 .data(linkViews)
@@ -213,7 +240,8 @@ export class GraphExplorer {
 
 // node.js
 class Node {
-    constructor(name) {
+    constructor(nodeType, name) {
+        this.nodeType = nodeType;
         this.name = name;
     }
 }
