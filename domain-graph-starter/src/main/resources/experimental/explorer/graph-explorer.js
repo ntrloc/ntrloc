@@ -3,6 +3,7 @@ export class GraphExplorer {
     constructor() {
         this.stylesId = 'graph-explorer-styles';
         this.d3Ready = this.loadD3();
+        this.simulation = null;
 
         if (!document.getElementById(this.stylesId)) {
             this.injectStyles();
@@ -38,10 +39,10 @@ export class GraphExplorer {
             const svg = d3.select(sel);
 
             // Create the force simulation
-            const simulation = d3.forceSimulation(nodeViews)
-                .force("link", d3.forceLink(linkViews).id(d => d.id).distance(200))
-                .force("charge", d3.forceManyBody().strength(-300))
-                .force("center", d3.forceCenter(200, 200));
+            this.simulation = d3.forceSimulation(nodeViews)
+                .force("link", d3.forceLink(linkViews).id(d => d.id).strength(2).distance(200))
+                .force("charge", d3.forceManyBody().strength(-300));
+            this.centerSimulation();
 
             svg.append("defs").append("marker")
                 .attr("id", "arrowhead")
@@ -61,7 +62,7 @@ export class GraphExplorer {
                 .join("g")
                 .attr("class", "node")
                 .attr("cursor", "pointer")
-                .call(drag(simulation));
+                .call(drag(this.simulation));
 
             nodeGroup.append("rect")
                 .attr("width", 80)
@@ -87,8 +88,7 @@ export class GraphExplorer {
                 .attr("stroke-width", 2)
                 .attr("marker-end", "url(#arrowhead)");
 
-            simulation.on("tick", () => {
-
+            this.simulation.on("tick", () => {
                 link.each(function(d) {
                     const sourceEdge = d.sourceView.getEdgePoint(d.targetView.centerX, d.targetView.centerY);
                     const targetEdge = d.targetView.getEdgePoint(d.sourceView.centerX, d.sourceView.centerY);
@@ -99,10 +99,7 @@ export class GraphExplorer {
                         .attr("x2", targetEdge.x)
                         .attr("y2", targetEdge.y);
                 });
-
-                nodeGroup
-                    .attr("transform", d => `translate(${d.x},${d.y})`);
-
+                nodeGroup.attr("transform", d => `translate(${d.x},${d.y})`);
             });
 
             function drag(simulation) {
@@ -129,7 +126,21 @@ export class GraphExplorer {
                     .on("end", dragended);
             }
 
+            window.addEventListener('resize', () => this.centerSimulation());
+
         });
+    }
+
+    centerSimulation() {
+        const thisElement = this.$el;
+        const sel = thisElement.querySelector("svg");
+        const svgRect = sel.getBoundingClientRect();
+        const centerX = svgRect.width / 2;
+        const centerY = svgRect.height / 2;
+
+        this.simulation.force("center", d3.forceCenter(centerX, centerY));
+        this.simulation.alpha(0.3).restart();
+        this.simulation.force("center", d3.forceCenter(centerX, centerY));
     }
 
     loadD3() {
