@@ -32,7 +32,7 @@ export class GraphExplorer {
 
     startAddingNodes() {
         let count = 0;
-        const maxCount = 5; // Add 5 nodes over 10 seconds
+        const maxCount = 20; // Add 5 nodes over 10 seconds
 
         const interval = setInterval(() => {
             count++;

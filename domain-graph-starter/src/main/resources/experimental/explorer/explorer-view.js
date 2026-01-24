@@ -107,8 +107,6 @@ export class GraphView {
         this.nodeViews = [];
         this.linkViews = [];
 
-        this.createViews();
-
         this.graph.addChangeListener(() => this.onModelChanged());
     }
 
@@ -117,6 +115,7 @@ export class GraphView {
 
         this.svgElement = svgElement;
         this.svg = this.d3.select(svgElement);
+        this.container = this.svg.append("g");
 
         const rect = svgElement.getBoundingClientRect();
         const centerX = rect.width / 2;
@@ -124,7 +123,16 @@ export class GraphView {
 
         this.setupArrowMarker();
         this.setupSimulation(centerX, centerY);
+        this.createViews();
         this.render();
+
+        const zoom = this.d3.zoom()
+            .scaleExtent([0.1, 4])  // Allow zoom from 10% to 400%
+            .on("zoom", (event) => {
+                this.container.attr("transform", event.transform);
+            });
+        this.zoom = zoom;
+        this.svg.call(zoom);
     }
 
     loadD3() {
@@ -202,7 +210,9 @@ export class GraphView {
 
         });
 
-        window.addEventListener('resize', () => this.centerSimulation());
+        this.simulation.on("end", () => { this.fitToView() });
+
+        window.addEventListener('resize', () => this.onWindowResized());
 
         this.centerSimulation();
     }
@@ -293,13 +303,18 @@ export class GraphView {
         }
     }
 
+    onWindowResized() {
+        this.centerSimulation();
+        this.fitToView();
+    }
+
     render() {
-        this.svg.selectAll("g.node").remove();
-        this.svg.selectAll("line").remove();
+        this.container.selectAll("g.node").remove();
+        this.container.selectAll("line").remove();
 
 
         // Create node groups
-        const nodeGroup = this.svg.selectAll("g.node")
+        const nodeGroup = this.container.selectAll("g.node")
             .data(this.nodeViews)
             .join("g")
             .attr("class", "node")
@@ -384,7 +399,7 @@ export class GraphView {
 
         this.d3Nodes = nodeGroup;
 
-        const links = this.svg.selectAll("line")
+        const links = this.container.selectAll("line")
             .data(this.linkViews)
             .join("line")
             .attr("stroke", "red")
@@ -439,6 +454,60 @@ export class GraphView {
             .force("x", this.d3.forceX(centerX).strength(0.1))  // Pull each node toward center X
             .force("y", this.d3.forceY(centerY).strength(0.1));
         this.simulation.alpha(0.3).restart();
+    }
+
+    fitToView() {
+        if (!this.nodeViews || this.nodeViews.length === 0) return;
+
+        // Calculate bounding box of all nodes
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
+        this.nodeViews.forEach(nv => {
+            const left = nv.x;
+            const top = nv.y;
+            const right = nv.x + nv.width;
+            const bottom = nv.y + nv.height;
+
+            minX = Math.min(minX, left);
+            minY = Math.min(minY, top);
+            maxX = Math.max(maxX, right);
+            maxY = Math.max(maxY, bottom);
+        });
+
+        // Get SVG dimensions
+        const svgRect = this.svgElement.getBoundingClientRect();
+        const svgWidth = svgRect.width;
+        const svgHeight = svgRect.height;
+
+        // Calculate content dimensions with padding
+        const padding = 50;
+        const contentWidth = maxX - minX;
+        const contentHeight = maxY - minY;
+
+        // Calculate scale to fit (don't zoom in, only zoom out)
+        const scale = Math.min(
+            (svgWidth - padding * 2) / contentWidth,
+            (svgHeight - padding * 2) / contentHeight,
+            1  // Maximum scale of 1 (100%)
+        );
+
+        // Calculate the center of the content
+        const contentCenterX = (minX + maxX) / 2;
+        const contentCenterY = (minY + maxY) / 2;
+
+        // Calculate translation to center the content in the SVG
+        const translateX = svgWidth / 2 - contentCenterX * scale;
+        const translateY = svgHeight / 2 - contentCenterY * scale;
+
+        // Create transform and apply it
+        const transform = this.d3.zoomIdentity
+            .translate(translateX, translateY)
+            .scale(scale);
+
+        // Animate the zoom
+        this.svg.transition()
+            .duration(750)
+            .call(this.zoom.transform, transform);
     }
 
 }
