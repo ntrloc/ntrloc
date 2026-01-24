@@ -1,5 +1,5 @@
-import {Node, Link, Graph} from "./explorer-model.js"
-import { NodeView, LinkView, GraphView } from "./explorer-view.js"
+import { Graph } from "./explorer-model.js"
+import { GraphView } from "./explorer-view.js"
 
 export class GraphExplorer {
 

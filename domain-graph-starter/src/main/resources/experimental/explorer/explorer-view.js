@@ -5,6 +5,9 @@ export class NodeView {
         this.y = y;
         this.width = width;
         this.height = height;
+
+        this.headerPadding = 5;
+        this.bodyPadding = 5;
     }
 
     get id() {
@@ -199,7 +202,7 @@ export class GraphView {
     }
 
     render() {
-        // draw links and boxes
+        // Create node groups
         const nodeGroup = this.svg.selectAll("g.node")
             .data(this.nodeViews)
             .join("g")
@@ -207,49 +210,75 @@ export class GraphView {
             .attr("cursor", "pointer")
             .call(drag(this.simulation));
 
-        nodeGroup.append("rect")
-            .attr("class", "node-type-rect")
-            .attr("width", d => d.width)
-            .attr("height", 20)  // Height for the type section
-            .attr("x", 0)
-            .attr("y", 0)
-            .attr("fill", "#4a90e2")  // Colored background
-            .attr("stroke", "#95a6bf")
-            .attr("stroke-width", 2);
+        // Step 1: Add text elements first (so we can measure them)
 
-        // Add the node type text
+        // Add node type text
         nodeGroup.append("text")
             .attr("class", "node-type-text")
-            .attr("x", d => d.width / 2)
-            .attr("y", 10)  // Center in the 20px high rectangle
-            .attr("text-anchor", "middle")
+            .attr("x", d => d.headerPadding)
+            .attr("y", d => d.headerPadding + 7.5)
+            .attr("text-anchor", "start")
             .attr("dominant-baseline", "middle")
             .attr("fill", "white")
             .attr("font-weight", "bold")
             .attr("pointer-events", "none")
             .text(d => d.node.nodeType);
 
-        // Add the name rectangle (white, below)
-        nodeGroup.append("rect")
-            .attr("class", "node-name-rect")
-            .attr("width", d => d.width)
-            .attr("height", d => d.height - 20)  // Remaining height
-            .attr("x", 0)
-            .attr("y", 20)  // Start below the type rectangle
-            .attr("fill", "white")
-            .attr("stroke", "#95a6bf")
-            .attr("stroke-width", 2);
-
-        // Add the name text
+        // Add name text
         nodeGroup.append("text")
             .attr("class", "node-name-text")
-            .attr("x", d => d.width / 2)
-            .attr("y", d => 20 + (d.height - 20) / 2)  // Center in remaining space
-            .attr("text-anchor", "middle")
+            .attr("text-anchor", "start")
             .attr("dominant-baseline", "middle")
             .attr("fill", "black")
             .attr("pointer-events", "none")
             .text(d => d.node.name);
+
+        // Step 2: Measure text and update NodeView dimensions
+        nodeGroup.each(function(d) {
+            const typeText = d3.select(this).select(".node-type-text");
+            const nameText = d3.select(this).select(".node-name-text");
+
+            const typeBBox = typeText.node().getBBox();
+            const nameBBox = nameText.node().getBBox();
+
+            // Calculate dimensions with padding (2x for left and right)
+            const headerWidth = typeBBox.width + (d.headerPadding * 2);
+            const bodyWidth = nameBBox.width + (d.bodyPadding * 2);
+            d.width = Math.max(headerWidth, bodyWidth, 80);
+
+            d.headerHeight = typeBBox.height + (d.headerPadding * 2);
+            d.bodyHeight = nameBBox.height + (d.bodyPadding * 2);
+            d.height = d.headerHeight + d.bodyHeight;
+
+            // Now position the name text correctly
+            nameText
+                .attr("x", d.bodyPadding)
+                .attr("y", d.headerHeight + d.bodyPadding + nameBBox.height / 2);
+        });
+
+        // Step 3: Add rectangles (insert before text so they appear behind)
+
+        // Header rectangle
+        nodeGroup.insert("rect", ".node-type-text")
+            .attr("class", "node-type-rect")
+            .attr("width", d => d.width)
+            .attr("height", d => d.headerHeight)
+            .attr("x", 0)
+            .attr("y", 0)
+            .attr("fill", "#4a90e2")
+            .attr("stroke", "#95a6bf")
+            .attr("stroke-width", 2);
+
+        // Body rectangle
+        nodeGroup.insert("rect", ".node-name-text")
+            .attr("class", "node-name-rect")
+            .attr("width", d => d.width)
+            .attr("height", d => d.bodyHeight)
+            .attr("x", 0)
+            .attr("y", d => d.headerHeight)
+            .attr("fill", "white")
+            .attr("stroke", "#95a6bf")
+            .attr("stroke-width", 2);
 
         this.d3Nodes = nodeGroup;
 
