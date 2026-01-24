@@ -1,4 +1,4 @@
-import { Graph } from "./explorer-model.js"
+import { Graph, Node } from "./explorer-model.js"
 import { GraphView } from "./explorer-view.js"
 
 export class GraphExplorer {
@@ -13,6 +13,7 @@ export class GraphExplorer {
     async init() {
         this.$nextTick(() => {
             this.setupView();
+            this.startAddingNodes();
         });
     }
 
@@ -24,8 +25,33 @@ export class GraphExplorer {
 
         const svgElement = thisElement.querySelector("svg");
         const graph = new Graph();
+        this.graph = graph;
         this.graphView = new GraphView(graph);
         this.graphView.init(svgElement);
+    }
+
+    startAddingNodes() {
+        let count = 0;
+        const maxCount = 5; // Add 5 nodes over 10 seconds
+
+        const interval = setInterval(() => {
+            count++;
+
+            // Generate random photographer name
+            const names = ["Alice Smith", "Bob Wilson", "Carol Davis", "Dave Martinez", "Eve Brown"];
+            const randomName = names[Math.floor(Math.random() * names.length)] + " " + count;
+
+            const newNode = new Node("Photographer", randomName);
+            this.graph.addNode(newNode);
+
+            console.log(`Added photographer: ${randomName}`);
+
+            // Stop after 10 seconds (5 nodes)
+            if (count >= maxCount) {
+                clearInterval(interval);
+                console.log("Stopped adding nodes");
+            }
+        }, 2000); // Every 2 seconds
     }
 
     injectStyles() {
