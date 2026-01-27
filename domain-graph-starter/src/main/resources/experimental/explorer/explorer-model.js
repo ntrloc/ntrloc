@@ -18,15 +18,19 @@ export class Graph {
     constructor() {
         this.listeners = [];
 
-        const node1 = new Node("Photographer", 'Bill Jones');
-        const node2 = new Node("Photo", "photo1.jpg");
-        const node3 = new Node("Photo", "photo2.jpg");
+        const photographer1 = new Node("Photographer", 'Bill Jones');
+        const photo1 = new Node("Photo", "photo1.jpg");
+        const photo2 = new Node("Photo", "photo2.jpg");
+        const photo3 = new Node("Photo", "photo3.jpg");
+        const photo4 = new Node("Photo", "photo4.jpg");
 
-        const link1 = new Link(node1, node2);
-        const link2 = new Link(node1, node3);
+        const link1 = new Link(photographer1, photo1);
+        const link2 = new Link(photographer1, photo2);
+        const link3 = new Link(photographer1, photo3);
+        const link4 = new Link(photographer1, photo4);
 
-        this.nodes = [node1, node2, node3];
-        this.links = [link1, link2];
+        this.nodes = [photographer1, photo1, photo2, photo3, photo4];
+        this.links = [link1, link2, link3, link4];
     }
 
     // Add a change listener

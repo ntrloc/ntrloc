@@ -117,14 +117,15 @@ export class GraphView {
         this.svg = this.d3.select(svgElement);
         this.container = this.svg.append("g");
 
+        this.setupArrowMarker();
+        this.createViews();
+        this.render();
+
         const rect = svgElement.getBoundingClientRect();
         const centerX = rect.width / 2;
         const centerY = rect.height / 2;
 
-        this.setupArrowMarker();
         this.setupSimulation(centerX, centerY);
-        this.createViews();
-        this.render();
 
         const zoom = this.d3.zoom()
             .scaleExtent([0.1, 4])  // Allow zoom from 10% to 400%
@@ -185,11 +186,18 @@ export class GraphView {
         const centerY = rect.height / 2;
 
         this.simulation = this.d3.forceSimulation(this.nodeViews)
-            .force("link", this.d3.forceLink(this.linkViews).id(d => d.id).strength(2).distance(200))
+            .force("collide", d3.forceCollide()
+                .radius(d => {
+                    const radius = Math.max(d.width, d.height) * 0.7;
+                    console.info(`Node group width: ${d.width}, height: ${d.height}, radius: ${radius}`);
+                    return radius;
+                })
+                .strength(1).iterations(5))
+            .force("link", this.d3.forceLink(this.linkViews).id(d => d.id).strength(0.5).distance(250))
+            .force("x", this.d3.forceX(centerX).strength(0.05))  // Pull each node toward center X
+            .force("y", this.d3.forceY(centerY).strength(0.05))
             .force("charge", this.d3.forceManyBody().strength(-50))
-            .force("x", this.d3.forceX(centerX).strength(0.1))  // Pull each node toward center X
-            .force("y", this.d3.forceY(centerY).strength(0.1))
-            .force("collide", d3.forceCollide().radius(d => Math.max(d.width, d.height) / 2 + 30).strength(1));
+            ;
 
         this.simulation.on("tick", () => {
             if (this.d3Links) {
@@ -319,7 +327,7 @@ export class GraphView {
             .join("g")
             .attr("class", "node")
             .attr("cursor", "pointer")
-            .call(drag(this.simulation));
+            .call(this.createDragBehavior());
 
         // Step 1: Add text elements first (so we can measure them)
 
@@ -371,6 +379,8 @@ export class GraphView {
             nameText
                 .attr("x", d.bodyPadding.horizontal)
                 .attr("y", d.headerHeight + d.bodyPadding.vertical + nameBBox.height / 2);
+
+            console.info(`Node group width: ${d.width}, height: ${d.height}`);
         });
 
         // Step 3: Add rectangles (insert before text so they appear behind)
@@ -406,42 +416,38 @@ export class GraphView {
             .attr("stroke-width", 2)
             .attr("marker-end", "url(#arrowhead)");
         this.d3Links = links;
+    }
 
-        function drag(simulation) {
-            const centerForce = simulation.force("center");
-            const originalStrength = centerForce.strength();
+    createDragBehavior() {
+        const self = this;  // Capture reference to GraphView
 
-            function dragstarted(event, d) {
-                if (!event.active) simulation.alphaTarget(0.3).restart();
-                d.fx = d.x;
-                d.fy = d.y;
-            }
-
-            function dragged(event, d) {
-                d.fx = event.x;
-                d.fy = event.y;
-            }
-
-            function dragended(event, d) {
-                if (!event.active) simulation.alphaTarget(0);
-                d.fx = null;
-                d.fy = null;
-
-                // Temporarily boost center force
-                centerForce.strength(0.5);
-                simulation.alpha(0.8).restart();
-
-                // Reset center force strength after a delay
-                setTimeout(() => {
-                    centerForce.strength(originalStrength);
-                }, 1000);
-            }
-
-            return d3.drag()
-                .on("start", dragstarted)
-                .on("drag", dragged)
-                .on("end", dragended);
+        function dragstarted(event, d) {
+            if (!self.simulation) return;  // Guard against undefined
+            if (!event.active) self.simulation.alphaTarget(0.3).restart();
+            d.fx = d.x;
+            d.fy = d.y;
         }
+
+        function dragged(event, d) {
+            d.fx = event.x;
+            d.fy = event.y;
+        }
+
+        function dragended(event, d) {
+            if (!self.simulation) return;  // Guard against undefined
+            if (!event.active) self.simulation.alphaTarget(0);
+            d.fx = null;
+            d.fy = null;
+
+            if (self.simulation) {
+                self.simulation.alpha(0.5).restart();
+            }
+        }
+
+        return this.d3.drag()
+            .on("start", dragstarted)
+            .on("drag", dragged)
+            .on("end", dragended);
     }
 
     centerSimulation() {
@@ -450,9 +456,9 @@ export class GraphView {
         const centerY = rect.height / 2;
 
         this.simulation
-            .force("center", this.d3.forceCenter(centerX, centerY).strength(0.6))
-            .force("x", this.d3.forceX(centerX).strength(0.1))  // Pull each node toward center X
-            .force("y", this.d3.forceY(centerY).strength(0.1));
+            //.force("center", this.d3.forceCenter(centerX, centerY).strength(0.6))
+            .force("x", this.d3.forceX(centerX).strength(0.05))  // Pull each node toward center X
+            .force("y", this.d3.forceY(centerY).strength(0.05));
         this.simulation.alpha(0.3).restart();
     }
 
