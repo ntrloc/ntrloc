@@ -188,7 +188,7 @@ export class GraphView {
         this.simulation = this.d3.forceSimulation(this.nodeViews)
             .force("collide", d3.forceCollide()
                 .radius(d => {
-                    const radius = Math.max(d.width, d.height) * 0.7;
+                    const radius = Math.max(d.width, d.height) * 0.8;
                     console.info(`Node group width: ${d.width}, height: ${d.height}, radius: ${radius}`);
                     return radius;
                 })
