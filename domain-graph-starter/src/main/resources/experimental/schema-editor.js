@@ -36,7 +36,8 @@ class SchemaEditor {
     }
 
     load(typeDefinition) {
-        this.model.typeDefinition= new TypeDefinition(typeDefinition);
+        this.model.typeDefinition = new TypeDefinition(typeDefinition);
+        console.info(this.model.typeDefinition);
     }
 
     injectStyles() {
@@ -78,6 +79,21 @@ class SchemaEditor {
                     
                     .schema-type-description {
                         color: var(--highlight-color);
+                    }
+                }
+                
+                .sectionHeader {
+                    grid-column: 1 / span 4;
+                    display: flex;
+                    background-color: var(--background-color);
+                    margin-top: -1px;
+                    margin-left: -1px;
+                    margin-right: -1px;
+                    padding-bottom: 20px;
+                    
+                    .sectionName {
+                        font-size: 1.5em;
+                        font-weight: bold;
                     }
                 }
                 
@@ -305,6 +321,11 @@ class SchemaEditor {
                         <input type="text" class="schema-type-name" x-model.lazy="model.typeDefinition.name.value">
                         <input type="text" class="schema-type-description" x-model.lazy="model.typeDefinition.description.value">
                     </div>
+                    
+                    <div class="sectionHeader">
+                        <button title="Collapse" class="imageOnly"><i class="fas fa-caret-up"></i></button>
+                        <div class="sectionName">Properties</div>
+                    </div>
                         
                     <template x-for="group in model.typeDefinition.propertyGroups">
                         <div style="display:contents">
@@ -315,7 +336,6 @@ class SchemaEditor {
                                 </div>
                             </template>
                         
-                        
                             <!-- Column header -->    
                             <template x-if="group.expanded">
                                 <div class="form-header">
@@ -324,7 +344,6 @@ class SchemaEditor {
                                     </template>
                                 </div>
                             </template>
-                            
                            
                             <!-- Properties -->
                             <template x-if="group.expanded">
@@ -410,14 +429,21 @@ class SchemaEditor {
                             <div class="add-group-section">
                                 <button class="add-group-button" @click="addPropertyGroup()"><i class="fas fa-plus"></i> New property group</button>
                             </div>
-                        </template>
-                        
+                        </template>             
+                    </div>
+                    
+                    <div class="sectionHeader">
+                        <button title="Collapse" class="imageOnly"><i class="fas fa-caret-up"></i></button>
+                        <div class="sectionName">Links</div>
+                    </div>
+                    
+                    <div class="grid-item bottom-controls-section open-section">
                         <template x-if="model.typeDefinition.modified">
                             <div class="grid-item form-action-section open-section">
                                 <button class="save-changes-button"><i class="fas fa-save"></i> Save</button>
                                 <button class="cancel-changes-button"><i class="fas fa-ban"></i> Cancel</button>
                             </div>
-                        </template>                   
+                        </template> 
                     </div>
                     
                 </div>
@@ -651,13 +677,33 @@ class PropertyGroup {
         let propModified = this.properties.some(p => p.modified);
         return propsDeleted | propsAdded || propModified;
     }
+}
 
+class Links {
+    incoming;
+    outgoing;
+
+    constructor(obj) {
+        this.incoming = obj.incoming.map(link => new Link(link));
+        this.outgoing = obj.outgoing.map(link => new Link(link));
+    }
+}
+
+class Link {
+    name;
+    relatedType;
+    reverseName;
+
+    constructor(obj) {
+        Object.assign(this, obj);
+    }
 }
 
 class TypeDefinition {
     name;
     description;
     propertyGroups;
+    linkx;
 
     constructor(obj) {
         this.name = new EditableProperty(obj.name, obj.name);
@@ -665,6 +711,7 @@ class TypeDefinition {
         this.propertyGroups = obj.propertyGroups.map((group, index, array) => {
             return new PropertyGroup(group);
         });
+        this.linkx = new Links(obj.links);
         console.info("Created type definition", this);
     }
 

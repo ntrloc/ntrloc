@@ -9,7 +9,7 @@
         </style>
 
         <script src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
-        <script src="schema-editor.js"></script>
+        <script src="schema-editor-2.js"></script>
         <script>
             const testData1 = {
                 name: "Photo",
@@ -33,7 +33,23 @@
                             { id: 'asdf', name: 'title2', type:'STRING', description: 'title 2' }
                         ]
                     }
-                ]
+                ],
+                links: {
+                    outgoing: [
+                        {
+                            "name": "has derivative",
+                            "relatedType": "Photo",
+                            "reverseName": "is derivative of"
+                        }
+                    ],
+                    incoming: [
+                        {
+                            "name": "created by",
+                            "relatedType": "Photographer",
+                            "reverseName": "created"
+                        }
+                    ]
+                }
             };
 
             const testData2 = {
@@ -57,7 +73,23 @@
                             { id: 'asdf', name: 'age1', type:'STRING', description: 'age 1' }
                         ]
                     }
-                ]
+                ],
+                links: {
+                    outgoing: [
+                        {
+                            "name": "created",
+                            "relatedType": "Photo",
+                            "reverseName": "created by"
+                        }
+                    ],
+                    incoming: [
+                        {
+                            "name": "works for",
+                            "relatedType": "Agency",
+                            "reverseName": "employs"
+                        }
+                    ]
+                }
             };
 
             document.addEventListener('alpine:init', () => {
