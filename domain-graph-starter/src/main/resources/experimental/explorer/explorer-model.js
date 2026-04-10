@@ -19,6 +19,7 @@ export class Graph {
         this.listeners = [];
 
         const photographer1 = new Node("Photographer", 'Bill Jones');
+        const photographer2 = new Node("Photographer", 'Steve Jobs');
         const photo1 = new Node("Photo", "photo1.jpg");
         const photo2 = new Node("Photo", "photo2.jpg");
         const photo3 = new Node("Photo", "photo3.jpg");
@@ -29,8 +30,10 @@ export class Graph {
         const link3 = new Link(photographer1, photo3);
         const link4 = new Link(photographer1, photo4);
 
-        this.nodes = [photographer1, photo1, photo2, photo3, photo4];
-        this.links = [link1, link2, link3, link4];
+        const link5 = new Link(photographer2, photo1);
+
+        this.nodes = [photographer1, photographer2, photo1, photo2, photo3, photo4];
+        this.links = [link1, link2, link3, link4, link5];
     }
 
     // Add a change listener
