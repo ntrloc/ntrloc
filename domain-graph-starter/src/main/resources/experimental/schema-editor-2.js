@@ -100,7 +100,7 @@ class SchemaEditor {
                 align-items: center;
                 grid-gap: 1px;
                 
-                .property-group {
+                .property-group-header {
                     grid-column: 1 / span 4;
                    
                     font-weight: bold;
@@ -122,6 +122,10 @@ class SchemaEditor {
                                 color: #f7b931;
                             }
                         }
+                    }
+                    
+                    button {
+                        flex: 0;
                     }
                 }
                 
@@ -216,6 +220,20 @@ class SchemaEditor {
                     background-color: var(--background-color);
                     border: solid 1px var(--highlight-color);
                 }
+                
+                &.readonly {
+                    &:hover {
+                        border: solid 1px transparent;
+                        background-color: transparent;
+                    }
+                    
+                    &:focus {
+                        border: solid 1px transparent;
+                        background-color: transparent;
+                    }
+                        
+                }
+                
             }
             
             button {
@@ -312,14 +330,14 @@ class SchemaEditor {
                                 <div style="display:contents">
                                
                                     <!-- Property group header --> 
-                                    <div class="grid-item property-group">
+                                    <div class="grid-item property-group-header">
                                         <button :title="group.expanded ? 'Collapse' : 'Expand'" 
                                                 class="imageOnly" 
                                                 @click="group.toggle()">
                                             <i :class="group.expanded ? 'fas fa-caret-up' : 'fas fa-caret-down'"></i>
                                         </button>
                                     
-                                        <input placeholder="Enter a property group name" type="text" class="group-name-input" :class="{pending: group.name == null}" x-model.lazy="group.name">
+                                        <input placeholder="Enter a property group name" type="text" class="group-name-input" :inert="!group.isNameEditable()" :class="{pending: group.name == null, readonly: !group.isNameEditable()}" x-model.lazy="group.name">
                                     
                                         <template x-if="!group.isDeleted() && group.isDeletable()">
                                             <button class="group-delete-button" @click="group.delete()"><i class="fas fa-trash"></i>Delete group</button>
@@ -364,7 +382,7 @@ class SchemaEditor {
                                                 <div class="grid-item" :class="{new: group.isNewProperty(property), deleted: group.isDeletedProperty(property)}">
                                                     <select class="propertyControl leftArrow" :class="{omitted: td.propertiesSection.propertyGroups.length == 1, visible: !group.isDeleted(property)}" @change="moveProperty(group, property, $event.target)">
                                                         <option disabled selected value="">Move</option>
-                                                        <template x-for="targetGroup in td.propertiesSection.propertyGroups.filter(g => g.name != group.name)">
+                                                        <template x-for="targetGroup in td.propertiesSection.propertyGroups.filter(g => g.name != group.name && !g.isDeleted())">
                                                             <option :value="targetGroup.name" x-text="targetGroup.name"></option>
                                                         </template>
                                                     </select>
@@ -677,6 +695,9 @@ class PropertyGroupViewModel {
         return this._propertyGroup.isNamedGroup ? this._propertyGroup.name : "(No group)";
     }
 
+    isNameEditable() {
+        return this._propertyGroup.isNamedGroup;
+    }
 
     get properties() {
         return this._propertyViewModels;
