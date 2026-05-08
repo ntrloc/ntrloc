@@ -128,7 +128,8 @@ class AdminUserInterfaceTest {
 
     @Test
     void testAdminHomePage() throws IOException {
-        var url = "http://host.docker.internal:" + port;
+       // var url = "http://host.docker.internal:" + port;
+        var url = "http://host.testcontainers.internal:" + port;
         driver.get(url);
     }
 
