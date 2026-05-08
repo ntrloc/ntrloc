@@ -11,6 +11,7 @@ import org.openqa.selenium.OutputType;
 import org.openqa.selenium.TakesScreenshot;
 import org.openqa.selenium.chrome.ChromeOptions;
 import org.openqa.selenium.remote.RemoteWebDriver;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.SpringBootConfiguration;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.autoconfigure.cassandra.CassandraAutoConfiguration;
@@ -41,6 +42,9 @@ import java.util.Map;
 class AdminUserInterfaceTest {
 
     private CapturingRecordingFileFactory recordingFactory = new CapturingRecordingFileFactory();
+
+    @Value("${test.container.host:host.docker.internal}")
+    private String testContainerHost;
 
     @SpringBootConfiguration
     @EnableAutoConfiguration(exclude = {CassandraAutoConfiguration.class})
@@ -128,8 +132,7 @@ class AdminUserInterfaceTest {
 
     @Test
     void testAdminHomePage() throws IOException {
-       // var url = "http://host.docker.internal:" + port;
-        var url = "http://172.17.0.1:" + port;
+        var url = "http://%s:%d".formatted(testContainerHost, port);
         driver.get(url);
     }
 
