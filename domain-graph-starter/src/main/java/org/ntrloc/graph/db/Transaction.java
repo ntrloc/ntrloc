@@ -9,10 +9,12 @@ public class Transaction {
     private static final Logger LOG = LoggerFactory.getLogger(Transaction.class);
 
     private String id;
+    private final GraphTraversalSource source;
     private org.apache.tinkerpop.gremlin.structure.Transaction gremlinTransaction;
 
     public Transaction(GraphTraversalSource source, String id) {
         this.id = id;
+        this.source = source;
         this.gremlinTransaction = source.tx();
     }
 
@@ -25,9 +27,9 @@ public class Transaction {
     }
 
     public void begin() {
-        if (gremlinTransaction.isOpen()) {
-           gremlinTransaction.rollback();
-           gremlinTransaction.begin();
+        if (!gremlinTransaction.isOpen()) {
+            gremlinTransaction = source.tx();
+            gremlinTransaction.begin();
         }
     }
 

@@ -8,10 +8,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.db.traversal.pathfinder.Pathfinder;
 
-import java.io.File;
-import java.util.NoSuchElementException;
-import java.util.UUID;
-
 class PathfinderTest {
 
     private JanusGraph janusGraph;
@@ -22,28 +18,11 @@ class PathfinderTest {
         if (janusGraph != null && janusGraph.isOpen()) {
             janusGraph.close();
         }
-
-        String indexPath;
-        do {
-            String tmpId = UUID.randomUUID().toString().substring(0, 8);
-            indexPath = "target/db/lucene-test-" + tmpId;
-        } while (new File(indexPath).exists());
-
-
-        File indexDir = new File(indexPath);
         janusGraph = JanusGraphFactory.build()
                 .set("storage.backend", "inmemory")
-                .set("index.search.backend", "lucene")
-                .set("index.search.directory", indexPath)
                 .set("cache.tx-cache-size", 0)
                 .open();
         traversalSource = janusGraph.traversal();
-        try {
-            traversalSource.V().drop().next();
-        } catch (NoSuchElementException nee) { }
-
-        janusGraph.tx().close();
-
         traversalSource.tx().begin();
         traversalSource
                 // create groups

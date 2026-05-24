@@ -9,12 +9,13 @@
     <packaging>pom</packaging>
 
     <modules>
+        <module>domain-graph-spi</module>
         <module>domain-graph-starter</module>
         <module>api-gateway-model</module>
         <module>api-gateway</module>
         <module>runtimes</module>
         <module>runtimes/domain-1</module>
-        <module>graph-spi-aws-neptune</module>
+        <module>domain-graph-spi-parent</module>
     </modules>
 
     <properties>
@@ -37,6 +38,7 @@
         <log4j.version>2.20.0</log4j.version>
         <slf4j.version>2.0.17</slf4j.version>
         <log4j.slf4j.version>2.25.1</log4j.slf4j.version>
+        <tinkerpop.version>3.7.3</tinkerpop.version>
         <netflix.dgs.version>10.3.0</netflix.dgs.version>
         <spring.boot.version>3.4.4</spring.boot.version>
         <junit.version>5.11.4</junit.version>
@@ -114,6 +116,18 @@
                 <groupId>com.fasterxml.jackson.module</groupId>
                 <artifactId>jackson-module-scala_2.12</artifactId>
                 <version>${jackson.version}</version>
+            </dependency>
+            <!-- ZooKeeper (via JanusGraph) pulls logback-core:1.2.x which is incompatible with logback-classic:1.5.x -->
+            <dependency>
+                <groupId>ch.qos.logback</groupId>
+                <artifactId>logback-core</artifactId>
+                <version>1.5.18</version>
+            </dependency>
+            <!-- JanusGraph Hadoop transitive deps pull slf4j-api:1.7.x which is incompatible with logback-classic:1.5.x -->
+            <dependency>
+                <groupId>org.slf4j</groupId>
+                <artifactId>slf4j-api</artifactId>
+                <version>${slf4j.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

@@ -45,7 +45,7 @@ import static org.ntrloc.graph.db.PropertyConstants.UNIQUE_ID_PROPERTY;
 
 public class MutatorImpl implements Mutator {
 
-    private static final Logger LOG = LoggerFactory.getLogger(Mutator.class);
+    private static final Logger LOG = LoggerFactory.getLogger(MutatorImpl.class);
 
     private GraphTraversalSource traversalSource;
     private Transaction transaction;
@@ -276,6 +276,7 @@ public class MutatorImpl implements Mutator {
     public void checkpoint() {
         LOG.info("Checkpointing transaction {}", transaction.getId());
         transaction.commit();
+        transaction.begin();
     }
 
     /**
@@ -288,7 +289,7 @@ public class MutatorImpl implements Mutator {
 
         var objectMapper = new ObjectMapper();
 
-        var revisionIter = traversalSource.V()
+        List<Map<String, Object>> rawRevisions = traversalSource.V()
                 .has(PropertyConstants.TRANSACTION_ID_PROPERTY)
                 .hasLabel(LabelConstants.REVISION_LABEL)
                 .project("id", "label", "revisionOf", "properties")
@@ -296,13 +297,11 @@ public class MutatorImpl implements Mutator {
                 .by(__.label())
                 .by(__.out(LabelConstants.IS_REVISION_OF_LABEL).project("id", "label", "properties").by(__.id()).by(__.label()).by(__.valueMap()))
                 .by(__.valueMap())
-                .map(traverser -> {
-                    Map<String, Object> proj = traverser.get();
-                    Revision revision = objectMapper.convertValue(proj, Revision.class);
-                    return revision;
-                });
+                .toList();
 
-        List<Revision> revisions = revisionIter.toList();
+        List<Revision> revisions = rawRevisions.stream()
+                .map(proj -> objectMapper.convertValue(proj, Revision.class))
+                .toList();
 
         if (revisions.isEmpty()) {
             LOG.info("No revisions found for transaction {}", transaction.getId());
@@ -479,18 +478,10 @@ public class MutatorImpl implements Mutator {
                 .select(nodeLabel)
                 .property(COMMIT_ID_PROPERTY, commitId)
                 .property(TRANSACTION_ID_PROPERTY, null)
-                .property(STATUS_PROPERTY, __.values(STATUS_PROPERTY).map(v -> {
-                    var value = (String)v.get();
-                    if (value.equals(ItemStatus.UNCOMMITTED_CREATE.toString())) {
-                        return ItemStatus.NORMAL.toString();
-                    } else if (value.equals(ItemStatus.UNCOMMITTED_UPDATE.toString())) {
-                        return ItemStatus.NORMAL.toString();
-                    } else if (value.equals(ItemStatus.UNCOMMITTED_DELETE.toString())) {
-                        return ItemStatus.DELETED.toString();
-                    } else {
-                        throw new IllegalArgumentException("Unexpected status value: " + value);
-                    }
-                }))
+                .property(STATUS_PROPERTY, __.values(STATUS_PROPERTY)
+                        .choose(P.eq(ItemStatus.UNCOMMITTED_DELETE.toString()),
+                                __.constant(ItemStatus.DELETED.toString()),
+                                __.constant(ItemStatus.NORMAL.toString())))
                 .project( "uid", priorStatusLabel, newStatusLabel)
                 .by(__.values(UNIQUE_ID_PROPERTY))
                 .by(__.select(priorStatusLabel))

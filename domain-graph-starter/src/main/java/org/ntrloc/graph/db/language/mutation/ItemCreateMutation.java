@@ -1,7 +1,6 @@
 package org.ntrloc.graph.db.language.mutation;
 
 import org.ntrloc.graph.db.language.Property;
-import scala.sys.Prop;
 
 import java.util.ArrayList;
 import java.util.HashMap;

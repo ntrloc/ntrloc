@@ -6,6 +6,7 @@ import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.__;
 import org.apache.tinkerpop.gremlin.structure.Direction;
 import org.janusgraph.core.JanusGraph;
 import org.janusgraph.core.JanusGraphFactory;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -39,6 +40,7 @@ import org.ntrloc.graph.db.schema.LinkDefinition;
 import org.ntrloc.graph.db.schema.PropertyDefinition;
 import org.ntrloc.graph.db.schema.PropertyType;
 import org.ntrloc.graph.db.schema.SchemaManager;
+import org.ntrloc.graph.db.schema.GraphSchemaBackend;
 import org.ntrloc.graph.db.schema.impl.SchemaManagerImpl;
 import org.ntrloc.graph.db.storage.BinaryStorageAdapter;
 import org.ntrloc.graph.db.storage.BinaryStorageAdapterConfiguration;
@@ -47,14 +49,11 @@ import org.ntrloc.graph.db.traversal.projector.Projector;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.File;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
-import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.Set;
-import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -71,49 +70,26 @@ class ItemManagerTest {
 
     private static final Logger LOG = LoggerFactory.getLogger(ItemManagerTest.class);
 
-    private GraphTraversalSource traversalSource;
     private JanusGraph janusGraph;
+    private GraphTraversalSource traversalSource;
 
     private SchemaManager schemaManager;
     private ItemManager itemManager;
 
-    @BeforeEach
-    void init() throws IOException {
+    @AfterEach
+    void tearDown() {
         if (janusGraph != null && janusGraph.isOpen()) {
-            try {
-                traversalSource.V().drop().next();
-            } catch (NoSuchElementException nee) {
-            }
-
-            try {
-                traversalSource.E().drop().next();
-            } catch (NoSuchElementException nee) {
-
-            }
-
             janusGraph.close();
         }
+    }
 
-        String indexPath;
-        do {
-            String tmpId = UUID.randomUUID().toString().substring(0, 8);
-            indexPath = "target/db/lucene-test-" + tmpId;
-        } while (new File(indexPath).exists());
-
-
-        File indexDir = new File(indexPath);
+    @BeforeEach
+    void init() throws IOException {
         janusGraph = JanusGraphFactory.build()
                 .set("storage.backend", "inmemory")
-                .set("index.search.backend", "lucene")
-                .set("index.search.directory", indexPath)
                 .set("cache.tx-cache-size", 0)
                 .open();
         traversalSource = janusGraph.traversal();
-        try {
-            traversalSource.V().drop().next();
-        } catch (NoSuchElementException nee) { }
-
-        janusGraph.tx().close();
 
         BinaryStorageAdapterConfiguration storageAdapterConfiguration = new BinaryStorageAdapterConfiguration();
         storageAdapterConfiguration.setAutocreate(true);
@@ -122,7 +98,10 @@ class ItemManagerTest {
         ClusterService clusterService = mock(ClusterService.class);
 
         doReturn(mock(IMap.class)).when(clusterService).getMap(anyString());
-        schemaManager = new SchemaManagerImpl(janusGraph, traversalSource, clusterService);
+        schemaManager = new SchemaManagerImpl(new GraphSchemaBackend() {
+            @Override public void ensureGlobalSchema() {}
+            @Override public void createItemTypeSchema(String itemTypeUid, Map<String, PropertyType> propertiesByUid) {}
+        }, traversalSource, clusterService);
         Projector projector = new Projector(traversalSource);
         ItemManagerSchemaNameIdTranslator idCache = new ItemManagerSchemaNameIdTranslator(schemaManager);
         itemManager = new ItemManagerImpl(traversalSource, adapter, idCache, projector);

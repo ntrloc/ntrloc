@@ -34,13 +34,11 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.net.URI;
-import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 import static org.ntrloc.graph.db.LabelConstants.NODE_PROPERTY_EDGE_LABEL;
 import static org.ntrloc.graph.db.PropertyConstants.COMMIT_ID_PROPERTY;
@@ -75,27 +73,23 @@ public class Projector {
         traversalSource.tx().begin();
 
         try (var tx = traversalSource.tx()) {
-            GraphTraversal<?, Vertex> traversal = doesNotHaveCommittedPreviousVersion(traversalSource.V());
+            GraphTraversal<?, Vertex> traversal = doesNotHaveNewerCommittedVersion(traversalSource.V());
             traversal = select(traversal, spec);
-
-            var projectionTraversal = projectItems(traversal, spec, binaryDownloadUri);
-
-            List<ItemProjection> itemProjections = new ArrayList<>();
-            while (projectionTraversal.hasNext()) {
-                var next = projectionTraversal.next();
-                itemProjections.add(next);
-            }
-            return itemProjections;
+            List<Map<String, Object>> rawItems = projectItems(traversal, spec, binaryDownloadUri).toList();
+            tx.commit();
+            return rawItems.stream()
+                    .map(raw -> convertToItemProjection(raw, binaryDownloadUri))
+                    .toList();
         }
     }
 
     /** Appends a filter to a vertex traversal that removes vertices with an incoming has-previous-version link that is committed (NORMAL or DELETED).*/
-    private GraphTraversal<Vertex, Vertex> doesNotHaveCommittedPreviousVersion(GraphTraversal<Vertex, Vertex> traversal) {
+    private GraphTraversal<Vertex, Vertex> doesNotHaveNewerCommittedVersion(GraphTraversal<Vertex, Vertex> traversal) {
         return traversal.not(__.in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).has(STATUS_PROPERTY, committedNodeStates()));
     }
 
     /** Creates an anonymous vertex traversal that removes vertices with an incoming has-previous-version link that is committed (NORMAL or DELETED).*/
-    private GraphTraversal<Vertex, Vertex> doesNotHaveCommittedPreviousVersion() {
+    private GraphTraversal<Vertex, Vertex> doesNotHaveNewerCommittedVersion() {
         return __.not(__.in(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).has(STATUS_PROPERTY, committedNodeStates()));
     }
 
@@ -120,7 +114,7 @@ public class Projector {
     }
 
     /** Returns a traverser that adds a property projection to the given traverser. */
-    private GraphTraversal<?, ItemProjection> projectItems(GraphTraversal<?, Vertex> traversal, ItemProjectionSpec spec, URI binaryDownloadUri) {
+    private GraphTraversal<?, Map<String, Object>> projectItems(GraphTraversal<?, Vertex> traversal, ItemProjectionSpec spec, URI binaryDownloadUri) {
 
         Map<String, GraphTraversal<?, ?>> projectionTraversals = new LinkedHashMap<>();
         projectionTraversals.put("id", __.id());
@@ -156,61 +150,11 @@ public class Projector {
             projectionTraversal = projectionTraversal.by(trav);
         }
 
-        return projectionTraversal.map(input -> {
-            Map<String, Object> value = input.get();
-            String uid = (String) value.get(PropertyConstants.UNIQUE_ID_PROPERTY);
-            int version = (int) value.get(PropertyConstants.VERSION_PROPERTY);
-            boolean isLatestVersion = (boolean) value.get(PropertyConstants.IS_LATEST_VERSION_PROPERTY);
-            String iType = (String) value.get(PropertyConstants.ITEM_TYPE_PROPERTY);
-            String commitId = (String) value.get(PropertyConstants.COMMIT_ID_PROPERTY);
-
-            Map<String, Object> properties = (Map<String, Object>) value.get("properties");
-            Map<String, Map<String, Object>> nodePropsMap = (Map) value.get("nodeProperties");
-            if (properties != null) {
-                if (nodePropsMap != null) {
-                    Map<String, BinaryProjection> binaryPropsMap = nodePropsMap.entrySet().stream().collect(Collectors.toMap(Map.Entry::getKey, entry -> {
-                        Map<String, Object> props = entry.getValue();
-                        BinaryProjection binaryProp = new BinaryProjection();
-                        binaryProp.setMd5((String) props.get("md5"));
-                        binaryProp.setSha256((String) props.get("sha256"));
-                        binaryProp.setMimeType((String) props.get("mimeType"));
-                        binaryProp.setLength((Long) props.get("length"));
-                        binaryProp.setId((String) props.get(UNIQUE_ID_PROPERTY));
-                        if (binaryDownloadUri != null) {
-                            try {
-                                var downloadUri = binaryDownloadUri.resolve(new URI(binaryProp.getId())).toString();
-                                binaryProp.setUrl(downloadUri);
-                            } catch (URISyntaxException mue) {
-                                LOG.error("Error setting binary download URI", mue);
-                            }
-                        }
-                        return binaryProp;
-                    }));
-                    properties.putAll(binaryPropsMap);
-                }
-                properties.keySet().removeAll(SUPPRESSED_PROPERTIES);
-            }
-
-            ItemProjection projection = new ItemProjection();
-            projection.setId(uid);
-            projection.setCommitId(commitId);
-            projection.setVersion(version);
-            projection.setLatestVersion(isLatestVersion);
-            projection.setItemType(iType);
-            projection.setProperties(properties);
-
-            if (value.get("links") != null) {
-                List<LinkProjection> links = (List<LinkProjection>) value.get("links");
-                Map<String, List<LinkProjection>> linksMap = links.stream().collect(Collectors.groupingBy(LinkProjection::getLinkType));
-                projection.setLinks(linksMap);
-            }
-
-            return projection;
-        });
+        return projectionTraversal;
     }
 
-    /** Creates a traversal that will use a links projection spec to produce a list of link projections.*/
-    private GraphTraversal<?, ArrayList<LinkProjection>> projectLinks(LinksProjectionSpec spec, URI binaryDownloadUri) {
+    /** Creates a traversal that will use a links projection spec to produce a grouped raw link map. */
+    private GraphTraversal<?, Map<Object, Object>> projectLinks(LinksProjectionSpec spec, URI binaryDownloadUri) {
         // here we want to create a projection either on all links, with a default node projection,
         // or specific links with a given node projection.
 
@@ -221,8 +165,8 @@ public class Projector {
                     .where( // only traverse links that are the latest version, pointing at another node that is also the latest version
                             __.and(
                                     __.has(LINK_TYPE_PROPERTY),
-                                    doesNotHaveCommittedPreviousVersion(),
-                                    __.filter(doesNotHaveCommittedPreviousVersion(__.out()))
+                                    doesNotHaveNewerCommittedVersion(),
+                                    __.filter(doesNotHaveNewerCommittedVersion(__.out()))
                             )
                     )
                     .project(PropertyConstants.UNIQUE_ID_PROPERTY, COMMIT_ID_PROPERTY, "direction", "properties", "target", "linkType")
@@ -236,8 +180,8 @@ public class Projector {
                     .where( // only traverse links that are the latest version, pointing at another node that is also the latest version
                             __.and(
                                     __.has(LINK_TYPE_PROPERTY),
-                                    doesNotHaveCommittedPreviousVersion(),
-                                    __.filter(doesNotHaveCommittedPreviousVersion(__.in()))
+                                    doesNotHaveNewerCommittedVersion(),
+                                    __.filter(doesNotHaveNewerCommittedVersion(__.in()))
                             )
                     )
                     .project(PropertyConstants.UNIQUE_ID_PROPERTY, COMMIT_ID_PROPERTY, "direction", "properties", "source", "linkType")
@@ -260,22 +204,22 @@ public class Projector {
                             .where( // only traverse links that are the latest version, pointing at another node that is also the latest version
                             __.and(
                                     __.has(LINK_TYPE_PROPERTY),
-                                    doesNotHaveCommittedPreviousVersion(),
-                                    __.filter(doesNotHaveCommittedPreviousVersion(__.out()))
+                                    doesNotHaveNewerCommittedVersion(),
+                                    __.filter(doesNotHaveNewerCommittedVersion(__.out()))
                             )
                     );
                     case IN -> __.in()
                             .where( // only traverse links that are the latest version, pointing at another node that is also the latest version
                             __.and(
                                     __.has(LINK_TYPE_PROPERTY),
-                                    doesNotHaveCommittedPreviousVersion(),
-                                    __.filter(doesNotHaveCommittedPreviousVersion(__.in()))
+                                    doesNotHaveNewerCommittedVersion(),
+                                    __.filter(doesNotHaveNewerCommittedVersion(__.in()))
                             )
                     );
                     case null, default -> throw new IllegalArgumentException("Direction must be specified for link projection spec");
                 };
 
-                var otherNodeTraversal = direction.equals(Direction.IN) ? doesNotHaveCommittedPreviousVersion(__.in()) : doesNotHaveCommittedPreviousVersion(__.out());
+                var otherNodeTraversal = direction.equals(Direction.IN) ? doesNotHaveNewerCommittedVersion(__.in()) : doesNotHaveNewerCommittedVersion(__.out());
                 return baseTraversal.project(PropertyConstants.UNIQUE_ID_PROPERTY, COMMIT_ID_PROPERTY, "direction", "properties", otherNodeLabel, "linkType")
                         .by(__.values(PropertyConstants.UNIQUE_ID_PROPERTY))
                         .by(__.values(COMMIT_ID_PROPERTY))
@@ -293,41 +237,61 @@ public class Projector {
         return __.union(travArray)
                 .group()
                 .by(__.select("linkType"))
-                .by(__.fold())
-                .map(linkMapTraversal -> {
-                    Map<Object, Object> props = linkMapTraversal.get();
-                    var retList = new ArrayList<LinkProjection>();
-                    for (var entry : props.entrySet()) {
-                        String linkType = (String) entry.getKey();
-                        List<Map<String, Object>> values = (List<Map<String, Object>>) entry.getValue();
+                .by(__.fold());
+    }
 
-                        for (Map<String, Object> valueMap : values) {
-                            Direction direction = (Direction) valueMap.get("direction");
-                            if (direction == Direction.OUT) {
-                                OutgoingLinkProjection linkProjection = new OutgoingLinkProjection();
-                                linkProjection.setId((String) valueMap.get(UNIQUE_ID_PROPERTY));
-                                linkProjection.setCommitId((String) valueMap.get(COMMIT_ID_PROPERTY));
-                                linkProjection.setLinkType(linkType);
-                                Map<String, Object> linkProperties = (Map<String, Object>) valueMap.get("properties");
-                                linkProperties.keySet().removeAll(SUPPRESSED_PROPERTIES);
-                                linkProjection.setProperties(linkProperties);
-                                linkProjection.setTarget((ItemProjection)  valueMap.get("target"));
-                                retList.add(linkProjection);
-                            } else {
-                                IncomingLinkProjection linkProjection = new IncomingLinkProjection();
-                                linkProjection.setId((String) valueMap.get(UNIQUE_ID_PROPERTY));
-                                linkProjection.setCommitId((String) valueMap.get(COMMIT_ID_PROPERTY));
-                                linkProjection.setLinkType(linkType);
-                                Map<String, Object> linkProperties = (Map<String, Object>) valueMap.get("properties");
-                                linkProperties.keySet().removeAll(SUPPRESSED_PROPERTIES);
-                                linkProjection.setProperties(linkProperties);
-                                linkProjection.setSource((ItemProjection)  valueMap.get("source"));
-                                retList.add(linkProjection);
-                            }
-                        }
-                    }
-                    return retList;
-                });
+    @SuppressWarnings("unchecked")
+    private Map<String, List<LinkProjection>> convertToLinkProjections(Map<?, ?> rawLinksMap, URI binaryDownloadUri) {
+        Map<String, List<LinkProjection>> result = new LinkedHashMap<>();
+        for (var entry : rawLinksMap.entrySet()) {
+            String linkType = (String) entry.getKey();
+            List<Map<String, Object>> values = (List<Map<String, Object>>) entry.getValue();
+            List<LinkProjection> linkList = new ArrayList<>();
+            for (Map<String, Object> valueMap : values) {
+                Direction direction = (Direction) valueMap.get("direction");
+                Map<String, Object> linkProperties = new LinkedHashMap<>((Map<String, Object>) valueMap.get("properties"));
+                linkProperties.keySet().removeAll(SUPPRESSED_PROPERTIES);
+                if (direction == Direction.OUT) {
+                    OutgoingLinkProjection linkProjection = new OutgoingLinkProjection();
+                    linkProjection.setId((String) valueMap.get(UNIQUE_ID_PROPERTY));
+                    linkProjection.setCommitId((String) valueMap.get(COMMIT_ID_PROPERTY));
+                    linkProjection.setLinkType(linkType);
+                    linkProjection.setProperties(linkProperties);
+                    linkProjection.setTarget(convertToItemProjection((Map<String, Object>) valueMap.get("target"), binaryDownloadUri));
+                    linkList.add(linkProjection);
+                } else {
+                    IncomingLinkProjection linkProjection = new IncomingLinkProjection();
+                    linkProjection.setId((String) valueMap.get(UNIQUE_ID_PROPERTY));
+                    linkProjection.setCommitId((String) valueMap.get(COMMIT_ID_PROPERTY));
+                    linkProjection.setLinkType(linkType);
+                    linkProjection.setProperties(linkProperties);
+                    linkProjection.setSource(convertToItemProjection((Map<String, Object>) valueMap.get("source"), binaryDownloadUri));
+                    linkList.add(linkProjection);
+                }
+            }
+            result.put(linkType, linkList);
+        }
+        return result;
+    }
+
+    @SuppressWarnings("unchecked")
+    private ItemProjection convertToItemProjection(Map<String, Object> raw, URI binaryDownloadUri) {
+        ItemProjection projection = new ItemProjection();
+        projection.setId((String) raw.get(PropertyConstants.UNIQUE_ID_PROPERTY));
+        projection.setVersion((Integer) raw.get(PropertyConstants.VERSION_PROPERTY));
+        projection.setCommitId((String) raw.get(PropertyConstants.COMMIT_ID_PROPERTY));
+        projection.setLatestVersion((Boolean) raw.get(PropertyConstants.IS_LATEST_VERSION_PROPERTY));
+        projection.setItemType((String) raw.get(PropertyConstants.ITEM_TYPE_PROPERTY));
+
+        if (raw.containsKey("properties")) {
+            Map<String, Object> properties = new LinkedHashMap<>((Map<String, Object>) raw.get("properties"));
+            properties.keySet().removeAll(SUPPRESSED_PROPERTIES);
+            projection.setProperties(properties);
+        }
+        if (raw.containsKey("links")) {
+            projection.setLinks(convertToLinkProjections((Map<?, ?>) raw.get("links"), binaryDownloadUri));
+        }
+        return projection;
     }
 
     private P<?> getPredicate(Predicate predicate) {

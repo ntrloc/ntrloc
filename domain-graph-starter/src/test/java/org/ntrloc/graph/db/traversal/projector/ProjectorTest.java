@@ -29,7 +29,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
-import java.util.NoSuchElementException;
 import java.util.Optional;
 import java.util.Set;
 import java.util.stream.StreamSupport;
@@ -52,18 +51,11 @@ class ProjectorTest {
         if (janusGraph != null && janusGraph.isOpen()) {
             janusGraph.close();
         }
-
         janusGraph = JanusGraphFactory.build()
                 .set("storage.backend", "inmemory")
                 .set("cache.tx-cache-size", 0)
                 .open();
         traversalSource = janusGraph.traversal();
-        try {
-            traversalSource.V().drop().next();
-        } catch (NoSuchElementException nee) { }
-
-        janusGraph.tx().close();
-
         traversalSource.tx().begin();
         traversalSource
                 // entity nodes

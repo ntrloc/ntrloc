@@ -50,7 +50,6 @@ class AdminUserInterfaceTest {
     @EnableAutoConfiguration(exclude = {CassandraAutoConfiguration.class})
     @ComponentScan("org.ntrloc.graph")
     static class TestConfiguration {
-
     }
 
     @DynamicPropertySource

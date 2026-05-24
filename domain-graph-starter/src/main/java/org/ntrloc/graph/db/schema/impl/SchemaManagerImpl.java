@@ -8,22 +8,11 @@ import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversal;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversalSource;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.__;
 import org.apache.tinkerpop.gremlin.structure.Vertex;
-import org.janusgraph.core.Cardinality;
-import org.janusgraph.core.JanusGraph;
-import org.janusgraph.core.JanusGraphTransaction;
-import org.janusgraph.core.PropertyKey;
-import org.janusgraph.core.VertexLabel;
-import org.janusgraph.core.schema.JanusGraphManagement;
-import org.janusgraph.core.schema.Mapping;
-import org.janusgraph.core.schema.SchemaStatus;
-import org.janusgraph.graphdb.database.StandardJanusGraph;
-import org.janusgraph.graphdb.database.management.GraphIndexStatusReport;
-import org.janusgraph.graphdb.database.management.ManagementSystem;
 import org.ntrloc.graph.DuplicateException;
 import org.ntrloc.graph.cluster.ClusterService;
 import org.ntrloc.graph.db.LabelConstants;
-import org.ntrloc.graph.db.PropertyConstants;
 import org.ntrloc.graph.db.schema.DefinitionWithPropertyGroups;
+import org.ntrloc.graph.db.schema.GraphSchemaBackend;
 import org.ntrloc.graph.db.schema.ItemDefinition;
 import org.ntrloc.graph.db.schema.LinkDefinition;
 import org.ntrloc.graph.db.schema.PropertyDefinition;
@@ -38,7 +27,6 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -56,7 +44,6 @@ import static org.ntrloc.graph.db.LabelConstants.LINK_DEFINITION_LABEL;
 import static org.ntrloc.graph.db.LabelConstants.LINK_SOURCE_LABEL;
 import static org.ntrloc.graph.db.LabelConstants.LINK_TARGET_LABEL;
 import static org.ntrloc.graph.db.LabelConstants.PROPERTY_DEFINITION_LABEL;
-import static org.ntrloc.graph.db.PropertyConstants.COMMIT_ID_PROPERTY;
 import static org.ntrloc.graph.db.PropertyConstants.DESCRIPTION_PROPERTY;
 import static org.ntrloc.graph.db.PropertyConstants.NAME_PROPERTY;
 import static org.ntrloc.graph.db.PropertyConstants.UNIQUE_ID_PROPERTY;
@@ -72,28 +59,24 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
     private static final String HAS_PROPERTY = "has-property";
 
     private final ClusterService clusterService;
+    private final GraphSchemaBackend graphSchemaBackend;
+    private final GraphTraversalSource traversalSource;
 
     private IMap<String, Object> schemaMap;
     private List<SchemaChangeReaction> reactions = new ArrayList<>();
-
-    private final JanusGraph janusGraph;
-
-    private final GraphTraversalSource traversalSource;
 
     private boolean cachesInitialized = false;
     private Map<String, ItemDefinition> itemDefinitionByNameMap;
     private Map<String, ItemDefinition> itemDefinitionByIdMap;
 
-
-    // TODO: we don't need the traversal source in the constructor if we're getting the graph
-    public SchemaManagerImpl(JanusGraph graph, GraphTraversalSource traversalSource, ClusterService clusterService) {
-        this.janusGraph = graph;
+    public SchemaManagerImpl(GraphSchemaBackend graphSchemaBackend, GraphTraversalSource traversalSource, ClusterService clusterService) {
+        this.graphSchemaBackend = graphSchemaBackend;
         this.traversalSource = traversalSource;
         this.schemaMap = clusterService.getMap(SCHEMA_MAP_NAME);
         this.schemaMap.addEntryListener(this, true);
 
         try {
-            this.verifyGlobalPropertiesAndIndexes();
+            this.graphSchemaBackend.ensureGlobalSchema();
         } catch (InterruptedException ie) {
             Thread.currentThread().interrupt();
             LOG.error("Interrupted", ie);
@@ -102,51 +85,6 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
         this.clusterService = clusterService;
 
         cacheSchemaDefinitions();
-    }
-
-    public void verifyGlobalPropertiesAndIndexes() throws InterruptedException {
-        JanusGraphManagement management = janusGraph.openManagement();
-
-        PropertyKey statusKey = management.getPropertyKey(PropertyConstants.STATUS_PROPERTY);
-        if (statusKey == null) {
-            statusKey = management.makePropertyKey(PropertyConstants.STATUS_PROPERTY).dataType(String.class).make();
-        }
-        PropertyKey transactionKey = management.getPropertyKey(PropertyConstants.TRANSACTION_ID_PROPERTY);
-        if (transactionKey == null) {
-            transactionKey = management.makePropertyKey(PropertyConstants.TRANSACTION_ID_PROPERTY).dataType(String.class).make();
-        }
-        PropertyKey itemTypeKey = management.getPropertyKey(PropertyConstants.ITEM_TYPE_PROPERTY);
-        if (itemTypeKey == null) {
-            itemTypeKey = management.makePropertyKey(PropertyConstants.ITEM_TYPE_PROPERTY).dataType(String.class).make();
-        }
-        PropertyKey uidKey = management.getPropertyKey(UNIQUE_ID_PROPERTY);
-        if (uidKey == null) {
-            uidKey = management.makePropertyKey(UNIQUE_ID_PROPERTY).dataType(String.class).make();
-        }
-        PropertyKey commitIdKey = management.getPropertyKey(COMMIT_ID_PROPERTY);
-        if (commitIdKey == null) {
-            commitIdKey = management.makePropertyKey(COMMIT_ID_PROPERTY).dataType(String.class).make();
-        }
-
-        String globalIndexName = "GLOBAL";
-        if (management.getGraphIndex(globalIndexName) == null) {
-            JanusGraphManagement.IndexBuilder builder = management.buildIndex(globalIndexName, Vertex.class);
-            builder.addKey(statusKey, Mapping.STRING.asParameter());
-            builder.addKey(transactionKey, Mapping.STRING.asParameter());
-            builder.addKey(itemTypeKey, Mapping.STRING.asParameter());
-            builder.addKey(uidKey, Mapping.STRING.asParameter());
-            builder.addKey(commitIdKey, Mapping.STRING.asParameter());
-            builder.buildMixedIndex("search");
-            management.commit();
-
-            management = janusGraph.openManagement();
-            GraphIndexStatusReport report = ManagementSystem.awaitGraphIndexStatus(janusGraph, globalIndexName).status(SchemaStatus.ENABLED).call();
-            LOG.info("Initial index status: {}", report);
-        } else {
-            LOG.info("Global index already exists");
-        }
-
-        management.commit();
     }
 
     private void cacheSchemaDefinitions() {
@@ -173,15 +111,6 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
 
     @Override
     public ItemDefinition createItemDefinition(ItemDefinition definition) {
-
-        StandardJanusGraph standard = (StandardJanusGraph) janusGraph;
-        Set<? extends JanusGraphTransaction> transactions = standard.getOpenTransactions();
-        LOG.info("Got open transactions: {}", transactions);
-        for (JanusGraphTransaction transaction : transactions) {
-            transaction.rollback();
-            transaction.close();
-        }
-
         var tx = traversalSource.tx();
         boolean foundVertex = traversalSource.V().hasLabel(ITEM_DEFINITION_LABEL).has("name", definition.getName()).hasNext();
         tx.close();
@@ -190,77 +119,26 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
             throw new DuplicateException(String.format("Schema for entity %s already exists", definition.getName()));
         }
 
-        // create the vertex label
-        janusGraph.tx().begin();
-        String itemTypeUid = createNewUniqueId(); // TODO guarantee this is unique
+        String itemTypeUid = createNewUniqueId();
         definition.setUid(itemTypeUid);
-        VertexLabel typeLabel = janusGraph.getVertexLabel(itemTypeUid);
-        if (typeLabel == null) {
-            typeLabel = janusGraph.makeVertexLabel(itemTypeUid).make();
-            LOG.info("Created new vertex label {} for type {}", typeLabel, definition.getName());
-            janusGraph.tx().commit();
-        } else {
-            janusGraph.tx().rollback();
-            throw new DuplicateException(String.format("Vertex label for entity %s already exists", itemTypeUid));
-        }
 
         Set<PropertyDefinition> propertyDefinitions = definition.getProperties() == null ? Set.of() : definition.getProperties();
-        Set<PropertyDefinition> groupedPropertyDefinitions = definition.getPropertyGroups() == null ? Set.of() : definition.getPropertyGroups().stream().map(PropertyGroupDefinition::getProperties).flatMap(Set::stream).collect(Collectors.toSet());
+        Set<PropertyDefinition> groupedPropertyDefinitions = definition.getPropertyGroups() == null ? Set.of() :
+                definition.getPropertyGroups().stream().map(PropertyGroupDefinition::getProperties).flatMap(Set::stream).collect(Collectors.toSet());
         Set<PropertyDefinition> allProperties = Stream.concat(propertyDefinitions.stream(), groupedPropertyDefinitions.stream()).collect(Collectors.toSet());
 
-        // create the property keys
-        JanusGraphManagement management = janusGraph.openManagement();
-        Set<String> propertyKeyNames = new HashSet<>();
         for (PropertyDefinition propertyDefinition : allProperties) {
-            String propertyUid = createNewUniqueId(); // TODO guarantee this is unique
-            propertyDefinition.setUid(propertyUid);
-            Class keyClass = switch (propertyDefinition.getType()) {
-                case STRING, STRING_LIST -> String.class;
-                case INT, INT_LIST -> Integer.class;
-                case DATE, DATE_LIST -> String.class;
-                case DATETIME, DATETIME_LIST -> Date.class;
-                case BOOLEAN, BOOLEAN_LIST -> Boolean.class;
-                case DOUBLE, DOUBLE_LIST -> Double.class;
-                case BINARY -> null;
-            };
-
-            Cardinality cardinality = switch (propertyDefinition.getType()) {
-                case STRING, INT, DATE, DATETIME, BOOLEAN, DOUBLE -> Cardinality.SINGLE;
-                case STRING_LIST, INT_LIST, DATE_LIST, DATETIME_LIST, BOOLEAN_LIST, DOUBLE_LIST -> Cardinality.LIST;
-                case BINARY -> null;
-            };
-
-            if (keyClass != null || cardinality != null) {
-                management.makePropertyKey(propertyUid).dataType(keyClass).cardinality(cardinality).make();
-                propertyKeyNames.add(propertyUid);
-            }
+            propertyDefinition.setUid(createNewUniqueId());
         }
 
-        // create the item index
-        VertexLabel entityTypeLabel = management.getVertexLabel(itemTypeUid);
-        Set<PropertyKey> keys = propertyKeyNames.stream().map(management::getPropertyKey).collect(Collectors.toSet());
-        JanusGraphManagement.IndexBuilder builder = management.buildIndex(itemTypeUid, Vertex.class);
-        for (PropertyKey propertyKey : keys) {
-            if (propertyKey.dataType() == String.class) {
-                builder = builder.addKey(propertyKey, Mapping.STRING.asParameter());
-            } else {
-                builder = builder.addKey(propertyKey);
-            }
-            LOG.info("Added key {} to index {}", propertyKey, itemTypeUid);
-        }
-        builder.indexOnly(entityTypeLabel).buildMixedIndex("search");
-
-        management.commit();
-        management = janusGraph.openManagement();
+        Map<String, PropertyType> propertiesByUid = allProperties.stream()
+                .collect(Collectors.toMap(PropertyDefinition::getUid, PropertyDefinition::getType));
 
         try {
-            GraphIndexStatusReport report = ManagementSystem.awaitGraphIndexStatus(janusGraph, itemTypeUid).status(SchemaStatus.ENABLED).call();
-            LOG.info("Index status: {}", report);
+            graphSchemaBackend.createItemTypeSchema(itemTypeUid, propertiesByUid);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new RuntimeException(e);
-        } finally {
-            management.commit();
         }
 
         // create the schema vertices and edges
@@ -273,7 +151,6 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
 
         AtomicInteger vertexCount = new AtomicInteger(0);
 
-        // add direct properties
         if (definition.getProperties() != null) {
             for (PropertyDefinition p : definition.getProperties()) {
                 String ref = String.valueOf(vertexCount.getAndIncrement());
@@ -289,7 +166,6 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
             }
         }
 
-        // add property groups
         traversal = appendPropertyGroupTraversal(traversal, definition, vertexCount);
 
         traversal.iterate();
@@ -304,7 +180,6 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
         } else {
             throw new SchemaException("Definition " + definition.getName() + " not found");
         }
-
     }
 
     private GraphTraversal<Vertex, ?> appendPropertyGroupTraversal(GraphTraversal<Vertex, ?> traversal, DefinitionWithPropertyGroups definition, AtomicInteger vertexCount) {
@@ -374,11 +249,8 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
 
             GraphTraversal<Vertex, Map<String, Object>> iter = startingTraversal
                     .project(elementProjectionName, propertyNodeProjectionName, propertyGroupProjectionName)
-                    // elements of the schema node
                     .by(__.elementMap())
-                    // a list of the property nodes tied to the schema node
                     .by(__.out(HAS_PROPERTY).elementMap().fold())
-                    // a map of the property groups tied to the schema and the properties in them
                     .by(
                             __.out(HAS_PROPERTY_GROUP)
                                     .project(elementProjectionName, propertyNodeProjectionName)
@@ -473,13 +345,9 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
             throw new DuplicateException(String.format("Schema for relationship %s already exists", definition));
         }
 
-        String linkTypeUid = createNewUniqueId(); // TODO guarantee this is unique
+        String linkTypeUid = createNewUniqueId();
         definition.setUid(linkTypeUid);
 
-        // TODO: we need to create an EDGE from the link definition node to the item definition nodes! the item definition names may change...
-        // that will change the creation of the link node, and also the projection when retrieving the link definition
-
-        // create the schema vertices and edges
         tx = traversalSource.tx();
         GraphTraversal<Vertex, ?> traversal = traversalSource.addV(LINK_DEFINITION_LABEL)
                 .property(UNIQUE_ID_PROPERTY, linkTypeUid)
@@ -497,7 +365,6 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
 
         AtomicInteger vertexCount = new AtomicInteger(0);
 
-        // add direct properties
         if (definition.getProperties() != null) {
             for (PropertyDefinition p : definition.getProperties()) {
                 String ref = String.valueOf(vertexCount.getAndIncrement());
@@ -514,7 +381,6 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
             }
         }
 
-        // add property groups
         traversal = appendPropertyGroupTraversal(traversal, definition, vertexCount);
 
         traversal = traversal.V().hasLabel(ITEM_DEFINITION_LABEL).has(NAME_PROPERTY, definition.getSourceItemType()).as("source")
@@ -528,7 +394,6 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
 
         LOG.info("Created definition {}", definition);
         signalSchemaChange();
-
     }
 
     @Override
@@ -538,7 +403,7 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
 
     @Override
     public PropertyDefinition updatePropertyDefinition(String propertyUid, String name, String description) {
-        var updateTrav =traversalSource.V().hasLabel(PROPERTY_DEFINITION_LABEL).has(UNIQUE_ID_PROPERTY, propertyUid)
+        var updateTrav = traversalSource.V().hasLabel(PROPERTY_DEFINITION_LABEL).has(UNIQUE_ID_PROPERTY, propertyUid)
                 .property(NAME_PROPERTY, name)
                 .property(DESCRIPTION_PROPERTY, description);
         if (updateTrav.hasNext()) {
@@ -559,7 +424,7 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
                 .elementMap()
                 .map(elem -> {
                     var elementMap = elem.get();
-                    var transMap = elementMap.keySet().stream().filter(String.class::isInstance).collect(Collectors.toMap(k -> (String)k, k -> elementMap.get(k)));
+                    var transMap = elementMap.keySet().stream().filter(String.class::isInstance).collect(Collectors.toMap(k -> (String) k, k -> elementMap.get(k)));
                     return mapToPropertyDefinition(transMap);
                 });
         if (propTraversal.hasNext()) {
@@ -585,11 +450,8 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
 
             GraphTraversal<Vertex, Map<String, Object>> iter = startingTraversal
                     .project(elementProjectionName, propertyNodeProjectionName, propertyGroupProjectionName, sourceProjectionName, targetProjectionName)
-                    // elements of the schema node
                     .by(__.elementMap())
-                    // a list of the property nodes tied to the schema node
                     .by(__.out(HAS_PROPERTY).elementMap().fold())
-                    // a map of the property groups tied to the schema and the properties in them
                     .by(
                             __.out(HAS_PROPERTY_GROUP)
                                     .project(elementProjectionName, propertyNodeProjectionName)
@@ -672,8 +534,6 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
         }
     }
 
-    /* Map listener methods */
-
     @Override
     public void entryAdded(EntryEvent<String, Object> entryEvent) {
         entryChanged(entryEvent);
@@ -683,5 +543,4 @@ public class SchemaManagerImpl implements SchemaManager, EntryAddedListener<Stri
     public void entryUpdated(EntryEvent<String, Object> entryEvent) {
         entryChanged(entryEvent);
     }
-
 }

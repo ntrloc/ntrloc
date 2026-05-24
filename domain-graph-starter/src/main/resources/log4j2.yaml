@@ -20,9 +20,5 @@ Configuration:
     logger:
       - name: org.ntrloc
         level: DEBUG
-      - name: org.janusgraph.graphdb.database.management
-        level: WARN
-      - name: org.janusgraph.diskstorage.lucene
-        level: DEBUG
       - name: org.apache.lucene
         level: DEBUG

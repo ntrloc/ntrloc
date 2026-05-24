@@ -7,10 +7,8 @@ import com.netflix.graphql.dgs.client.RestClientGraphQLClient;
 import net.javacrumbs.jsonunit.core.Option;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversalSource;
 import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.__;
-import org.janusgraph.core.JanusGraph;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.GraphQLAutoConfiguration;
-import org.ntrloc.graph.JanusAutoConfiguration;
 import org.ntrloc.graph.cluster.config.StandaloneClusterConfigurationFactory;
 import org.ntrloc.graph.cluster.impl.ClusterServiceImpl;
 import org.ntrloc.graph.db.ItemManager;
@@ -55,7 +53,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @EnableAutoConfiguration(exclude = {CassandraAutoConfiguration.class})
 @EnableConfigurationProperties(BinaryStorageAdapterConfiguration.class)
-@ContextConfiguration(classes = {ItemManagerImpl.class, SchemaManagerImpl.class, JanusAutoConfiguration.class,
+@ContextConfiguration(classes = {ItemManagerImpl.class, SchemaManagerImpl.class,
         BlockDeviceBinaryStorageAdapter.class, StandaloneClusterConfigurationFactory.class, ClusterServiceImpl.class,
         GraphQLAutoConfiguration.class
 })
@@ -72,12 +70,16 @@ class GraphQLMutationRetrievalIntegrationTest {
     @Autowired
     private GraphTraversalSource traversalSource;
 
-    @Autowired
-    private JanusGraph janusGraph;
-
+    @LocalServerPort
     private Integer port;
 
-    final GraphQLClient graphQlClient;
+    private GraphQLClient graphQlClient;
+
+    @org.junit.jupiter.api.BeforeEach
+    void setupClient() {
+        RestClient restClient = RestClient.create("http://localhost:" + port + "/graphql");
+        graphQlClient = new RestClientGraphQLClient(restClient);
+    }
 
     @DynamicPropertySource
     static void yamlProperties(DynamicPropertyRegistry registry) {
@@ -116,12 +118,6 @@ class GraphQLMutationRetrievalIntegrationTest {
         });
     }
 
-    GraphQLMutationRetrievalIntegrationTest(@LocalServerPort Integer port) {
-        this.port = port;
-        LOG.info("Running on port {}", port);
-        RestClient restClient = RestClient.create("http://localhost:" + port.toString() + "/graphql");
-        graphQlClient = new RestClientGraphQLClient(restClient);
-    }
 
     private void initSchema() {
 
