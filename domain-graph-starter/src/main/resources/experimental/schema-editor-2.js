@@ -203,6 +203,13 @@ class SchemaEditor {
                 }
             }
             
+            .group-actions {
+                justify-content: space-between;
+                > * {
+                    flex: 0;
+                }
+            }
+            
             /* Generic element styles that apply throughout the editor */
             input[type=text] {
                 font-size: inherit;
@@ -324,6 +331,7 @@ class SchemaEditor {
                         <div class="sectionName">Properties</div>
                     </div>
                     
+                    <!-- Properties section -->
                     <template x-if="td.propertiesSection.expanded">
                         <div class="propertyEditorSection">
                             <template x-for="group in td.propertiesSection.propertyGroups">
@@ -403,11 +411,11 @@ class SchemaEditor {
                                     <div x-show="group.expanded" class="grid-item open-section group-actions">
                                         <button class="add-property-button" @click="addProperty(group)"><i class="fas fa-plus"></i> New property</button>
                                         
-                                        <template x-if="group.properties.length > 0 && model.typeDefinition.propertyGroups.length > 1">
+                                        <template x-if="group.properties.length > 0 && td.propertiesSection.propertyGroups.length > 1">
                                             <select class="leftArrow" @change="moveProperties(group, $event.target)">
                                                 <option disabled selected value="">Move all properties</option>
-                                                <template x-for="targetGroup in model.typeDefinition.propertyGroups.filter(g => g.name != group.name)">
-                                                    <option :value="targetGroup.name" x-text="targetGroup.displayName"></option>
+                                                <template x-for="targetGroup in td.propertiesSection.propertyGroups.filter(g => g.name != group.name)">
+                                                    <option :value="targetGroup.name" x-text="targetGroup.name"></option>
                                                 </template>
                                             </select>
                                         </template>
@@ -415,7 +423,6 @@ class SchemaEditor {
                                         <template x-if="group.properties.length > 0">
                                             <button class="delete-properties-button" @click="group.removeProperties()"><i class="fas fa-trash"></i>Delete all properties</button>
                                         </template>
-                                         
                                     </div>
                                     
                                     <div class="open-section property-group-spacer"></div>
@@ -433,7 +440,6 @@ class SchemaEditor {
                         </div>
                     </template>
                    
-                    
                     <!-- Links header -->
                     <div class="sectionHeader">
                         <button :title="td.linksSection.expanded ? 'Collapse' : 'Expand'" 
@@ -444,8 +450,13 @@ class SchemaEditor {
                         <div class="sectionName">Links</div>
                     </div>
                     
+                    <!-- Links section -->
                     <template x-if="td.linksSection.expanded">
-                        <div class="editorSection">HI THERE I'M LINKS</div>
+                         <div class="linkEditorSection">
+                            <template x-for="link in td.linksSection.links">
+                               <div x-text="link.name"></div>
+                            </template>
+                         </div>
                     </template>
                     
                 </div>
@@ -554,20 +565,10 @@ class PropertyGroup {
     }
 }
 
-class Links {
-    incoming;
-    outgoing;
-
-    constructor(obj) {
-        this.incoming = obj.incoming.map(link => new Link(link));
-        this.outgoing = obj.outgoing.map(link => new Link(link));
-    }
-}
-
 class Link {
     name;
     relatedType;
-    reverseName;
+    inverseName;
 
     constructor(obj) {
         Object.assign(this, obj);
@@ -586,7 +587,7 @@ class TypeDefinition {
         this.propertyGroups = obj.propertyGroups.map((group, index, array) => {
             return new PropertyGroup(group);
         });
-        this.links = new Links(obj.links);
+        this.links = obj.links.map((link, index, array) => { return new Link(link); });
         console.info("Created type definition", this);
     }
 
@@ -653,8 +654,30 @@ class TypeDefinitionPropertiesSectionViewModel extends AbstractTypeDefinitionSec
 
 class TypeDefinitionLinksSectionViewModel extends AbstractTypeDefinitionSectionViewModel {
     _links;
+
     constructor(links) {
         super();
+        this._links = links.map((link, index, array) => {
+            return new TypeDefinitionLinkViewModel(link);
+        });
+        console.info("Set links", links, this._links);
+    }
+
+    get links() {
+        return this._links;
+    }
+
+}
+
+class TypeDefinitionLinkViewModel {
+    _link;
+    constructor(link) {
+        this._link = link;
+        console.info("Created link", this._link);
+    }
+
+    get name() {
+        return this._link.name;
     }
 }
 

@@ -37,22 +37,18 @@
                         ]
                     }
                 ],
-                links: {
-                    outgoing: [
-                        {
-                            "name": "has derivative",
-                            "relatedType": "Photo",
-                            "reverseName": "is derivative of"
-                        }
-                    ],
-                    incoming: [
-                        {
-                            "name": "created by",
-                            "relatedType": "Photographer",
-                            "reverseName": "created"
-                        }
-                    ]
-                }
+                links: [
+                    {
+                        name: "creator",
+                        relatedType: "Photographer",
+                        inverseName: "createdPhoto"
+                    },
+                    {
+                        name: "relatedPhotos",
+                        relatedType: "Photo",
+                        inverseName: "relatedPhotos"
+                    }
+                ]
             };
 
             const testData2 = {
@@ -76,22 +72,22 @@
                         ]
                     }
                 ],
-                links: {
-                    outgoing: [
-                        {
-                            "name": "created",
-                            "relatedType": "Photo",
-                            "reverseName": "created by"
-                        }
-                    ],
-                    incoming: [
-                        {
-                            "name": "works for",
-                            "relatedType": "Agency",
-                            "reverseName": "employs"
-                        }
-                    ]
-                }
+                links: [
+                    {
+                        name: "createdPhoto",
+                        relatedType: "Photo",
+                        inverseName: "creator"
+                    },
+                    {
+                        name: "employer",
+                        relatedType: "Agency",
+                        inverseName: "employs"
+                    }
+                ]
+            };
+
+            const testData3 = {
+
             };
 
             document.addEventListener('alpine:init', () => {
@@ -103,6 +99,9 @@
             }
             function loadTestData2() {
                 editor.load(testData2);
+            }
+            function loadTestData3() {
+                editor.load(testData3);
             }
 
         </script>
@@ -125,8 +124,9 @@
             </ol>
         </div>
 
-        <button x-data @click="loadTestData1()">Test data 1</button>
-        <button x-data @click="loadTestData2()">Test data 2</button>
+        <button x-data @click="loadTestData1()">Load Photo</button>
+        <button x-data @click="loadTestData2()">Load Photographer</button>
+        <button x-data @click="loadTestData2()">Load Photographer->Photo link</button>
 
     </body>
 </html>

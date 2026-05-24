@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Schema Editor</title>
+    <style>
+        :root {
+            --color-background-primary: #ffffff;
+            --color-background-secondary: #f5f4f0;
+            --color-background-tertiary: #eeedea;
+            --color-text-primary: #1a1a18;
+            --color-text-secondary: #5f5e5a;
+            --color-text-tertiary: #888780;
+            --color-border-primary: rgba(0,0,0,0.4);
+            --color-border-secondary: rgba(0,0,0,0.3);
+            --color-border-tertiary: rgba(0,0,0,0.15);
+            --font-sans: system-ui, -apple-system, sans-serif;
+            --border-radius-sm: 4px;
+            --border-radius-md: 8px;
+            --border-radius-lg: 12px;
+            --border-radius-xl: 16px;
+        }
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --color-background-primary: #1a1a18;
+                --color-background-secondary: #222220;
+                --color-background-tertiary: #2c2c2a;
+                --color-text-primary: #f0efe8;
+                --color-text-secondary: #b4b2a9;
+                --color-text-tertiary: #888780;
+                --color-border-primary: rgba(255,255,255,0.4);
+                --color-border-secondary: rgba(255,255,255,0.3);
+                --color-border-tertiary: rgba(255,255,255,0.15);
+            }
+        }
+
+        /* Tabler Icons */
+        @import url('https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css');
+
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: var(--font-sans);
+            background: var(--color-background-tertiary);
+            color: var(--color-text-primary);
+            font-size: 14px;
+            line-height: 1.5;
+            min-height: 100vh;
+        }
+
+        .screen {
+            display: grid;
+            grid-template-columns: 260px 1fr;
+            min-height: 100vh;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            border-right: 0.5px solid var(--color-border-tertiary);
+            padding: 1.5rem 0;
+            background: var(--color-background-secondary);
+            position: sticky;
+            top: 0;
+            height: 100vh;
+            overflow-y: auto;
+        }
+        .sidebar-heading {
+            padding: 0 1.25rem 1.5rem;
+            margin-bottom: 1rem;
+            border-bottom: 0.5px solid var(--color-border-tertiary);
+            font-size: 15px;
+            font-weight: 500;
+            color: var(--color-text-primary);
+        }
+        .sidebar-label {
+            font-size: 11px;
+            font-weight: 500;
+            letter-spacing: 0.07em;
+            text-transform: uppercase;
+            color: var(--color-text-tertiary);
+            padding: 0 1.25rem;
+            margin-bottom: 8px;
+            display: block;
+        }
+        .sidebar-item {
+            display: flex;
+            align-items: center;
+            gap: 9px;
+            padding: 8px 1.25rem;
+            font-size: 14px;
+            color: var(--color-text-secondary);
+            cursor: pointer;
+            border-left: 2px solid transparent;
+        }
+        .sidebar-item:hover {
+            background: var(--color-background-primary);
+            color: var(--color-text-primary);
+        }
+        .sidebar-item.active {
+            background: var(--color-background-primary);
+            color: var(--color-text-primary);
+            font-weight: 500;
+            border-left-color: #6B5B7B;
+        }
+        .sidebar-add {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 1.25rem;
+            font-size: 13px;
+            color: var(--color-text-tertiary);
+            cursor: pointer;
+            margin-top: 4px;
+            border-left: 2px solid transparent;
+        }
+        .sidebar-add:hover { color: var(--color-text-secondary); }
+
+        /* Main */
+        .main {
+            padding: 2.5rem 3rem;
+            background: var(--color-background-primary);
+        }
+
+        .item-header {
+            margin-bottom: 2.5rem;
+            padding-bottom: 1.5rem;
+            border-bottom: 0.5px solid var(--color-border-tertiary);
+        }
+        .item-name {
+            font-size: 24px;
+            font-weight: 500;
+            color: var(--color-text-primary);
+            background: none;
+            border: none;
+            border-bottom: 0.5px solid transparent;
+            padding: 2px 0;
+            outline: none;
+            width: 100%;
+            margin-bottom: 6px;
+            font-family: var(--font-sans);
+        }
+        .item-name:hover { border-bottom-color: var(--color-border-secondary); }
+        .item-name:focus { border-bottom-color: var(--color-border-primary); }
+        .item-desc {
+            font-size: 14px;
+            color: var(--color-text-secondary);
+            background: none;
+            border: none;
+            border-bottom: 0.5px solid transparent;
+            padding: 2px 0;
+            outline: none;
+            width: 100%;
+            font-family: var(--font-sans);
+        }
+        .item-desc:hover { border-bottom-color: var(--color-border-secondary); }
+        .item-desc:focus { border-bottom-color: var(--color-border-primary); }
+
+        /* Sections */
+        .section-block { margin-bottom: 2.5rem; }
+        .section-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 12px;
+            cursor: pointer;
+            user-select: none;
+        }
+        .section-title { font-size: 14px; font-weight: 500; color: var(--color-text-primary); }
+
+        /* Card */
+        .card {
+            background: var(--color-background-primary);
+            border: 0.5px solid var(--color-border-tertiary);
+            border-radius: var(--border-radius-lg);
+            overflow: hidden;
+        }
+        .card-footer {
+            padding: 10px 16px;
+            border-top: 0.5px solid var(--color-border-tertiary);
+            display: flex;
+            gap: 8px;
+            background: var(--color-background-primary);
+        }
+
+        /* Property groups */
+        .group-block { border-bottom: 0.5px solid var(--color-border-tertiary); }
+        .group-block:last-child { border-bottom: none; }
+        .group-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 9px 16px;
+            cursor: pointer;
+            background: var(--color-background-secondary);
+            user-select: none;
+        }
+        .group-name-label { font-size: 13px; font-weight: 500; color: var(--color-text-secondary); }
+
+        /* Property rows */
+        .prop-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 16px;
+            border-bottom: 0.5px solid var(--color-border-tertiary);
+        }
+        .prop-row:last-of-type { border-bottom: none; }
+        .prop-row:hover { background: var(--color-background-secondary); }
+
+        .add-row { padding: 8px 16px; display: flex; gap: 8px; }
+
+        /* Fields */
+        .field {
+            background: var(--color-background-secondary);
+            border: 0.5px solid var(--color-border-tertiary);
+            border-radius: var(--border-radius-md);
+            padding: 5px 10px;
+            font-size: 13px;
+            color: var(--color-text-primary);
+            outline: none;
+            font-family: var(--font-sans);
+        }
+        .field:focus { border-color: var(--color-border-secondary); }
+
+        /* Type pills */
+        .pill {
+            font-size: 12px;
+            padding: 3px 9px;
+            border-radius: 99px;
+            white-space: nowrap;
+            display: inline-block;
+        }
+        .pill-blue  { background: #E6F1FB; color: #0C447C; border: 0.5px solid #B5D4F4; }
+        .pill-amber { background: #FAEEDA; color: #633806; border: 0.5px solid #FAC775; }
+        @media (prefers-color-scheme: dark) {
+            .pill-blue  { background: #0C447C; color: #B5D4F4; border-color: #185FA5; }
+            .pill-amber { background: #633806; color: #FAC775; border-color: #854F0B; }
+        }
+
+        /* Buttons */
+        button {
+            font-family: var(--font-sans);
+            font-size: 13px;
+            background: var(--color-background-primary);
+            color: var(--color-text-secondary);
+            border: 0.5px solid var(--color-border-secondary);
+            border-radius: var(--border-radius-md);
+            padding: 5px 10px;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+        button:hover {
+            background: var(--color-background-secondary);
+            color: var(--color-text-primary);
+        }
+        .icon-btn {
+            background: none;
+            border: none;
+            padding: 5px;
+            cursor: pointer;
+            color: var(--color-text-tertiary);
+            border-radius: var(--border-radius-md);
+            display: flex;
+            align-items: center;
+        }
+        .icon-btn:hover {
+            color: var(--color-text-primary);
+            background: var(--color-background-secondary);
+        }
+
+        /* Link rows */
+        .link-row {
+            display: flex;
+            align-items: center;
+            padding: 12px 16px;
+            border-bottom: 0.5px solid var(--color-border-tertiary);
+            gap: 0;
+        }
+        .type-box {
+            border-radius: var(--border-radius-md);
+            padding: 8px 16px;
+            font-size: 13px;
+            font-weight: 500;
+            color: #fff;
+            width: 130px;
+            text-align: center;
+            flex-shrink: 0;
+        }
+        .type-self  { background: #6B5B7B; }
+        .type-other { background: #4A6B6B; }
+
+        .connector {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            margin: 0 16px;
+        }
+        .name-row { display: flex; align-items: center; gap: 8px; }
+        .name-label {
+            font-size: 13px;
+            color: var(--color-text-primary);
+            background: var(--color-background-primary);
+            border: 0.5px solid var(--color-border-secondary);
+            border-radius: var(--border-radius-md);
+            padding: 4px 10px;
+            white-space: nowrap;
+            cursor: text;
+            outline: none;
+            font-family: var(--font-sans);
+        }
+        .name-label:focus { border-color: var(--color-border-primary); }
+        .line-track { display: flex; align-items: center; height: 14px; flex: 1; }
+        .line { flex: 1; height: 1px; background: var(--color-border-secondary); }
+        .arr-r { width:0; height:0; border-top:4px solid transparent; border-bottom:4px solid transparent; border-left:7px solid var(--color-border-secondary); flex-shrink:0; }
+        .arr-l { width:0; height:0; border-top:4px solid transparent; border-bottom:4px solid transparent; border-right:7px solid var(--color-border-secondary); flex-shrink:0; }
+        .link-actions { display: flex; gap: 4px; margin-left: 12px; flex-shrink: 0; }
+
+        /* Link property editor */
+        .link-props {
+            border-top: 0.5px solid var(--color-border-tertiary);
+            background: var(--color-background-secondary);
+        }
+        .link-props-inner {
+            margin-left: 162px;
+            border-left: 2px solid var(--color-border-tertiary);
+        }
+        .link-props-inner .group-header { background: var(--color-background-primary); }
+        .link-props-inner .prop-row:hover { background: var(--color-background-primary); }
+        .link-props-inner .card-footer {
+            background: var(--color-background-secondary);
+            border-top-color: var(--color-border-tertiary);
+        }
+
+        /* Icons sizing */
+        .ti { font-size: inherit; }
+    </style>
+</head>
+<body>
+
+<div class="screen">
+
+    <div class="sidebar">
+        <div class="sidebar-heading">Schema editor</div>
+        <span class="sidebar-label">Item types</span>
+        <div class="sidebar-item"><i class="ti ti-box" style="font-size:15px" aria-hidden="true"></i> Agency</div>
+        <div class="sidebar-item"><i class="ti ti-box" style="font-size:15px" aria-hidden="true"></i> Album</div>
+        <div class="sidebar-item"><i class="ti ti-box" style="font-size:15px" aria-hidden="true"></i> Event</div>
+        <div class="sidebar-item active"><i class="ti ti-box" style="font-size:15px" aria-hidden="true"></i> Photographer</div>
+        <div class="sidebar-item"><i class="ti ti-box" style="font-size:15px" aria-hidden="true"></i> Photo</div>
+        <div class="sidebar-add"><i class="ti ti-plus" style="font-size:14px" aria-hidden="true"></i> Add item type</div>
+    </div>
+
+    <div class="main">
+
+        <div class="item-header">
+            <input class="item-name" value="Photographer" aria-label="Item type name" />
+            <input class="item-desc" value="A person who takes photographs" aria-label="Item type description" />
+        </div>
+
+        <!-- Properties section -->
+        <div class="section-block">
+            <div class="section-header">
+                <i class="ti ti-chevron-down" style="font-size:15px;color:var(--color-text-tertiary)" aria-hidden="true"></i>
+                <span class="section-title">Properties</span>
+            </div>
+            <div class="card">
+
+                <div class="group-block">
+                    <div class="group-header">
+                        <i class="ti ti-chevron-down" style="font-size:13px;color:var(--color-text-tertiary)" aria-hidden="true"></i>
+                        <span class="group-name-label">(No group)</span>
+                    </div>
+                    <div class="prop-row">
+                        <input class="field" value="colorspace" style="width:180px" aria-label="Property name" />
+                        <span class="pill pill-blue">STRING</span>
+                        <input class="field" value="The colorspace of a photo" style="flex:1" aria-label="Property description" />
+                        <button class="icon-btn" aria-label="Drag to reorder"><i class="ti ti-grip-vertical" style="font-size:15px"></i></button>
+                        <button class="icon-btn" aria-label="Delete property"><i class="ti ti-trash" style="font-size:15px"></i></button>
+                    </div>
+                    <div class="prop-row">
+                        <input class="field" value="birthDate" style="width:180px" aria-label="Property name" />
+                        <span class="pill pill-amber">DATETIME</span>
+                        <input class="field" value="Date of birth" style="flex:1" aria-label="Property description" />
+                        <button class="icon-btn" aria-label="Drag to reorder"><i class="ti ti-grip-vertical" style="font-size:15px"></i></button>
+                        <button class="icon-btn" aria-label="Delete property"><i class="ti ti-trash" style="font-size:15px"></i></button>
+                    </div>
+                    <div class="add-row">
+                        <button><i class="ti ti-plus" style="font-size:13px" aria-hidden="true"></i> Add property</button>
+                    </div>
+                </div>
+
+                <div class="group-block">
+                    <div class="group-header">
+                        <i class="ti ti-chevron-down" style="font-size:13px;color:var(--color-text-tertiary)" aria-hidden="true"></i>
+                        <span class="group-name-label">Contact</span>
+                    </div>
+                    <div class="prop-row">
+                        <input class="field" value="email" style="width:180px" aria-label="Property name" />
+                        <span class="pill pill-blue">STRING</span>
+                        <input class="field" value="Email address" style="flex:1" aria-label="Property description" />
+                        <button class="icon-btn" aria-label="Drag to reorder"><i class="ti ti-grip-vertical" style="font-size:15px"></i></button>
+                        <button class="icon-btn" aria-label="Delete property"><i class="ti ti-trash" style="font-size:15px"></i></button>
+                    </div>
+                    <div class="prop-row">
+                        <input class="field" value="phone" style="width:180px" aria-label="Property name" />
+                        <span class="pill pill-blue">STRING</span>
+                        <input class="field" value="Phone number" style="flex:1" aria-label="Property description" />
+                        <button class="icon-btn" aria-label="Drag to reorder"><i class="ti ti-grip-vertical" style="font-size:15px"></i></button>
+                        <button class="icon-btn" aria-label="Delete property"><i class="ti ti-trash" style="font-size:15px"></i></button>
+                    </div>
+                    <div class="add-row">
+                        <button><i class="ti ti-plus" style="font-size:13px" aria-hidden="true"></i> Add property</button>
+                    </div>
+                </div>
+
+                <div class="card-footer">
+                    <button><i class="ti ti-folder-plus" style="font-size:13px" aria-hidden="true"></i> Add property group</button>
+                </div>
+
+            </div>
+        </div>
+
+        <!-- Links section -->
+        <div class="section-block">
+            <div class="section-header">
+                <i class="ti ti-chevron-down" style="font-size:15px;color:var(--color-text-tertiary)" aria-hidden="true"></i>
+                <span class="section-title">Links</span>
+            </div>
+            <div class="card">
+
+                <!-- created / creator — collapsed -->
+                <div class="link-row">
+                    <div class="type-box type-self">Photographer</div>
+                    <div class="connector">
+                        <div class="name-row">
+                            <input class="name-label" value="created" aria-label="Outgoing link name" />
+                            <div class="line-track"><div class="line"></div><div class="arr-r"></div></div>
+                        </div>
+                        <div class="name-row">
+                            <div class="line-track"><div class="arr-l"></div><div class="line"></div></div>
+                            <input class="name-label" value="creator" style="text-align:right" aria-label="Incoming link name" />
+                        </div>
+                    </div>
+                    <div class="type-box type-other">Photo</div>
+                    <div class="link-actions">
+                        <button class="icon-btn" aria-label="Expand link properties"><i class="ti ti-chevron-down" style="font-size:15px"></i></button>
+                        <button class="icon-btn" aria-label="Delete link"><i class="ti ti-trash" style="font-size:15px"></i></button>
+                    </div>
+                </div>
+
+                <!-- shot / coveredBy — expanded -->
+                <div class="link-row" style="border-bottom:none">
+                    <div class="type-box type-self">Photographer</div>
+                    <div class="connector">
+                        <div class="name-row">
+                            <input class="name-label" value="shot" aria-label="Outgoing link name" />
+                            <div class="line-track"><div class="line"></div><div class="arr-r"></div></div>
+                        </div>
+                        <div class="name-row">
+                            <div class="line-track"><div class="arr-l"></div><div class="line"></div></div>
+                            <input class="name-label" value="coveredBy" style="text-align:right" aria-label="Incoming link name" />
+                        </div>
+                    </div>
+                    <div class="type-box type-other">Event</div>
+                    <div class="link-actions">
+                        <button class="icon-btn" aria-label="Collapse link properties"><i class="ti ti-chevron-up" style="font-size:15px"></i></button>
+                        <button class="icon-btn" aria-label="Delete link"><i class="ti ti-trash" style="font-size:15px"></i></button>
+                    </div>
+                </div>
+
+                <!-- Expanded link property editor -->
+                <div class="link-props">
+                    <div class="link-props-inner">
+
+                        <div class="group-block">
+                            <div class="group-header">
+                                <i class="ti ti-chevron-down" style="font-size:13px;color:var(--color-text-tertiary)" aria-hidden="true"></i>
+                                <span class="group-name-label">(No group)</span>
+                            </div>
+                            <div class="prop-row">
+                                <input class="field" value="captureDate" style="width:180px" aria-label="Property name" />
+                                <span class="pill pill-amber">DATETIME</span>
+                                <input class="field" value="When the photo was taken" style="flex:1" aria-label="Property description" />
+                                <button class="icon-btn" aria-label="Drag to reorder"><i class="ti ti-grip-vertical" style="font-size:15px"></i></button>
+                                <button class="icon-btn" aria-label="Delete property"><i class="ti ti-trash" style="font-size:15px"></i></button>
+                            </div>
+                            <div class="prop-row">
+                                <input class="field" value="role" style="width:180px" aria-label="Property name" />
+                                <span class="pill pill-blue">STRING</span>
+                                <input class="field" value="Photographer's role for this event" style="flex:1" aria-label="Property description" />
+                                <button class="icon-btn" aria-label="Drag to reorder"><i class="ti ti-grip-vertical" style="font-size:15px"></i></button>
+                                <button class="icon-btn" aria-label="Delete property"><i class="ti ti-trash" style="font-size:15px"></i></button>
+                            </div>
+                            <div class="add-row">
+                                <button><i class="ti ti-plus" style="font-size:13px" aria-hidden="true"></i> Add property</button>
+                            </div>
+                        </div>
+
+                        <div class="group-block" style="border-bottom:none">
+                            <div class="group-header">
+                                <i class="ti ti-chevron-down" style="font-size:13px;color:var(--color-text-tertiary)" aria-hidden="true"></i>
+                                <span class="group-name-label">Licensing</span>
+                            </div>
+                            <div class="prop-row">
+                                <input class="field" value="licenseType" style="width:180px" aria-label="Property name" />
+                                <span class="pill pill-blue">STRING</span>
+                                <input class="field" value="Type of license granted" style="flex:1" aria-label="Property description" />
+                                <button class="icon-btn" aria-label="Drag to reorder"><i class="ti ti-grip-vertical" style="font-size:15px"></i></button>
+                                <button class="icon-btn" aria-label="Delete property"><i class="ti ti-trash" style="font-size:15px"></i></button>
+                            </div>
+                            <div class="add-row">
+                                <button><i class="ti ti-plus" style="font-size:13px" aria-hidden="true"></i> Add property</button>
+                            </div>
+                        </div>
+
+                        <div class="card-footer" style="background:var(--color-background-secondary)">
+                            <button><i class="ti ti-folder-plus" style="font-size:13px" aria-hidden="true"></i> Add property group</button>
+                        </div>
+
+                    </div>
+                </div>
+
+                <!-- employer / employs -->
+                <div class="link-row" style="border-top:0.5px solid var(--color-border-tertiary);border-bottom:none">
+                    <div class="type-box type-self">Photographer</div>
+                    <div class="connector">
+                        <div class="name-row">
+                            <input class="name-label" value="employer" aria-label="Outgoing link name" />
+                            <div class="line-track"><div class="line"></div><div class="arr-r"></div></div>
+                        </div>
+                        <div class="name-row">
+                            <div class="line-track"><div class="arr-l"></div><div class="line"></div></div>
+                            <input class="name-label" value="employs" style="text-align:right" aria-label="Incoming link name" />
+                        </div>
+                    </div>
+                    <div class="type-box type-other">Agency</div>
+                    <div class="link-actions">
+                        <button class="icon-btn" aria-label="Expand link properties"><i class="ti ti-chevron-down" style="font-size:15px"></i></button>
+                        <button class="icon-btn" aria-label="Delete link"><i class="ti ti-trash" style="font-size:15px"></i></button>
+                    </div>
+                </div>
+
+                <div class="card-footer">
+                    <button><i class="ti ti-plus" style="font-size:13px" aria-hidden="true"></i> Add link</button>
+                </div>
+
+            </div>
+        </div>
+
+    </div>
+</div>
+
+</body>
+</html>
