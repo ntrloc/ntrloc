@@ -36,6 +36,7 @@ import java.util.UUID;
 
 import static org.ntrloc.graph.db.PropertyConstants.COMMIT_ID_PROPERTY;
 import static org.ntrloc.graph.db.PropertyConstants.GLOBAL_COMMIT_ID_PROPERTY;
+import static org.ntrloc.graph.db.PropertyConstants.IS_LATEST_VERSION_PROPERTY;
 import static org.ntrloc.graph.db.PropertyConstants.ITEM_TYPE_PROPERTY;
 import static org.ntrloc.graph.db.PropertyConstants.LINK_TYPE_PROPERTY;
 import static org.ntrloc.graph.db.PropertyConstants.NODE_PROPERTY_NAME_PROPERTY;
@@ -78,6 +79,7 @@ public class MutatorImpl implements Mutator {
                 .property(ITEM_TYPE_PROPERTY, label)
                 .property(PropertyConstants.VERSION_PROPERTY, 1)
                 .property(PropertyConstants.STATUS_PROPERTY, ItemStatus.UNCOMMITTED_CREATE.toString())
+                .property(IS_LATEST_VERSION_PROPERTY, true)
                 .property(PropertyConstants.TRANSACTION_ID_PROPERTY, transaction.getId());
         for (Property property : properties) {
             String propertyName = property.getName();
@@ -172,6 +174,7 @@ public class MutatorImpl implements Mutator {
                 .property(LINK_TYPE_PROPERTY, relationshipName)
                 .property(PropertyConstants.TRANSACTION_ID_PROPERTY, transaction.getId())
                 .property(PropertyConstants.STATUS_PROPERTY, ItemStatus.UNCOMMITTED_CREATE.toString())
+                .property(IS_LATEST_VERSION_PROPERTY, true)
                 .property(PropertyConstants.VERSION_PROPERTY, 1);
         var edgeTraversal = traversal
                         .addE(String.format("%s-in", relationshipName)).property(PropertyConstants.COPYABLE_LINK_PROPERTY, true).from("fromNode").to("relationship")
@@ -355,6 +358,7 @@ public class MutatorImpl implements Mutator {
                             .property(appliedProperties)
                             .property(PropertyConstants.VERSION_PROPERTY, (int) currentNode.getProperties().getOrDefault(PropertyConstants.VERSION_PROPERTY, 1) + 1)
                             .property(PropertyConstants.STATUS_PROPERTY, ItemStatus.UNCOMMITTED_UPDATE.toString())
+                            .property(IS_LATEST_VERSION_PROPERTY, true)
                             .addE(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).from(newLabel).to(currentLabel).outV()
                             .select(newLabel)
                             .id();
@@ -366,6 +370,7 @@ public class MutatorImpl implements Mutator {
                             .property(UNIQUE_ID_PROPERTY, currentNode.getProperties().get(UNIQUE_ID_PROPERTY))
                             .property(PropertyConstants.VERSION_PROPERTY, (int) currentNode.getProperties().getOrDefault(PropertyConstants.VERSION_PROPERTY, 1) + 1)
                             .property(PropertyConstants.STATUS_PROPERTY, ItemStatus.UNCOMMITTED_DELETE.toString())
+                            .property(IS_LATEST_VERSION_PROPERTY, true)
                             .property(PropertyConstants.TRANSACTION_ID_PROPERTY, transaction.getId())
                             .addE(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).from(newLabel).to(currentLabel).outV()
                             .V(revision.getRevisionOf().getId());
@@ -469,6 +474,13 @@ public class MutatorImpl implements Mutator {
         String newStatusLabel = "newStatus";
 
         String commitId = getCommitId();
+
+        traversalSource.V()
+                .has(STATUS_PROPERTY, P.within(ItemStatus.UNCOMMITTED_UPDATE.toString(), ItemStatus.UNCOMMITTED_DELETE.toString()))
+                .has(TRANSACTION_ID_PROPERTY, transaction.getId())
+                .out(LabelConstants.HAS_PREVIOUS_VERSION_LABEL)
+                .property(IS_LATEST_VERSION_PROPERTY, false)
+                .iterate();
 
         var iterator = traversalSource.V()
                 .has(STATUS_PROPERTY, P.within(ItemStatus.UNCOMMITTED_CREATE.toString(), ItemStatus.UNCOMMITTED_UPDATE.toString(), ItemStatus.UNCOMMITTED_DELETE.toString()))

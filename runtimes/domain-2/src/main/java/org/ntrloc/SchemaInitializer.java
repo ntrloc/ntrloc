@@ -1,8 +1,10 @@
 package org.ntrloc;
 
+import org.apache.tinkerpop.gremlin.process.traversal.dsl.graph.GraphTraversalSource;
 import org.ntrloc.graph.db.ItemManager;
 import org.ntrloc.graph.db.language.StringProperty;
 import org.ntrloc.graph.db.language.mutation.ItemCreateMutation;
+import org.ntrloc.graph.db.language.mutation.ItemMutation;
 import org.ntrloc.graph.db.language.mutation.MutationRequest;
 import org.ntrloc.graph.db.schema.Cardinality;
 import org.ntrloc.graph.db.schema.ItemDefinition;
@@ -18,7 +20,9 @@ import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.NoSuchElementException;
 import java.util.Set;
 
 @Component
@@ -28,11 +32,21 @@ public class SchemaInitializer {
 
     @Autowired
     private SchemaManager schemaManager;
+
     @Autowired
     private ItemManager itemManager;
 
+    @Autowired
+    private GraphTraversalSource traversalSource;
+
     @EventListener(ApplicationReadyEvent.class)
     void initSchema() {
+
+        try {
+            traversalSource.V().drop().iterate();
+        } catch (NoSuchElementException nsee) {
+            // do nothing
+        }
 
         var entityDefs = schemaManager.retrieveItemDefinitions();
         if (entityDefs.isEmpty()) {
@@ -81,12 +95,18 @@ public class SchemaInitializer {
             LOG.info("Found {} entities", entityDefs.size());
         }
 
-        var photoCreate = new ItemCreateMutation()
-                .itemType("Photo")
-                .properties(List.of(new StringProperty("name", "photo1")));
+        var photoCount = 50;
+        var list = new ArrayList<ItemMutation>();
+        for (int i = 0; i < photoCount; i++) {
+            var photoCreate = new ItemCreateMutation()
+                    .itemType("Photo")
+                    .properties(List.of(new StringProperty("name", "photo-%d".formatted(i))));
+            list.add(photoCreate);
+        }
 
-        var req = new MutationRequest(List.of(photoCreate));
-        var res = itemManager.executeMutation(req);
+
+        var req = new MutationRequest(list);
+        itemManager.executeMutation(req);
     }
 
 

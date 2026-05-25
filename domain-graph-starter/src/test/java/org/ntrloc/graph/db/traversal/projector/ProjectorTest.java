@@ -63,6 +63,7 @@ class ProjectorTest {
                     .property(PropertyConstants.UNIQUE_ID_PROPERTY, "p1")
                     .property(PropertyConstants.ITEM_TYPE_PROPERTY, "Photo")
                     .property(PropertyConstants.VERSION_PROPERTY, 1)
+                    .property(PropertyConstants.IS_LATEST_VERSION_PROPERTY, true)
                     .property("photoName", "photo1")
                     .property("photoColorspace", "B&W")
                     .as("photo1")
@@ -71,6 +72,7 @@ class ProjectorTest {
                     .property(PropertyConstants.UNIQUE_ID_PROPERTY, "p2")
                     .property(PropertyConstants.ITEM_TYPE_PROPERTY, "Photo")
                     .property(PropertyConstants.VERSION_PROPERTY, 1)
+                    .property(PropertyConstants.IS_LATEST_VERSION_PROPERTY, true)
                     .property("photoName", "photo2")
                     .property("photoColorspace", "RGB")
                     .as("photo2")
@@ -79,6 +81,7 @@ class ProjectorTest {
                     .property(PropertyConstants.UNIQUE_ID_PROPERTY, "ph3")
                     .property(PropertyConstants.ITEM_TYPE_PROPERTY, "Photographer")
                     .property(PropertyConstants.VERSION_PROPERTY, 1)
+                    .property(PropertyConstants.IS_LATEST_VERSION_PROPERTY, true)
                     .property("photographerName", "Bill")
                     .property("photographerAge", 30)
                     .as("photographer1")
@@ -87,6 +90,7 @@ class ProjectorTest {
                     .property(PropertyConstants.UNIQUE_ID_PROPERTY, "ph4")
                     .property(PropertyConstants.ITEM_TYPE_PROPERTY, "Photographer")
                     .property(PropertyConstants.VERSION_PROPERTY, 1)
+                    .property(PropertyConstants.IS_LATEST_VERSION_PROPERTY, true)
                     .property("photographerName", "Jack")
                     .property("photographerAge", 55)
                     .as("photographer2")
@@ -95,6 +99,7 @@ class ProjectorTest {
                     .property(PropertyConstants.UNIQUE_ID_PROPERTY, "lb1")
                     .property(PropertyConstants.ITEM_TYPE_PROPERTY, "Lightbox")
                     .property(PropertyConstants.VERSION_PROPERTY, 1)
+                    .property(PropertyConstants.IS_LATEST_VERSION_PROPERTY, true)
                     .property("lightboxName", "lightbox1")
                     .as("lb1")
 
@@ -102,6 +107,7 @@ class ProjectorTest {
                     .property(PropertyConstants.UNIQUE_ID_PROPERTY, "a3")
                     .property(PropertyConstants.ITEM_TYPE_PROPERTY, "Agency")
                     .property(PropertyConstants.VERSION_PROPERTY, 1)
+                    .property(PropertyConstants.IS_LATEST_VERSION_PROPERTY, true)
                     .property("agencyName", "Some Agency")
                     .as("a3")
 
@@ -110,21 +116,25 @@ class ProjectorTest {
                     .property("date", "2020-01-01")
                     .property(PropertyConstants.UNIQUE_ID_PROPERTY, "created1")
                     .property(PropertyConstants.LINK_TYPE_PROPERTY, "photoCreatedId")
+                    .property(PropertyConstants.IS_LATEST_VERSION_PROPERTY, true)
                     .as("createdProp1")
                 .addV("photoCreatedId")
                     .property("date", "2025-01-01")
                     .property(PropertyConstants.UNIQUE_ID_PROPERTY, "created2")
                     .property(PropertyConstants.LINK_TYPE_PROPERTY, "photoCreatedId")
+                    .property(PropertyConstants.IS_LATEST_VERSION_PROPERTY, true)
                     .as("createdProp2")
                 .addV("photoCreatedId")
                     .property("date", "2025-09-01")
                     .property(PropertyConstants.UNIQUE_ID_PROPERTY, "created3")
                     .property(PropertyConstants.LINK_TYPE_PROPERTY, "photoCreatedId")
+                    .property(PropertyConstants.IS_LATEST_VERSION_PROPERTY, true)
                     .as("createdProp3")
                 .addV("agencyEmploysId")
                     .property("hireDate", "April 2023")
                     .property(PropertyConstants.UNIQUE_ID_PROPERTY, "employs1")
                     .property(PropertyConstants.LINK_TYPE_PROPERTY, "agencyEmploysId")
+                    .property(PropertyConstants.IS_LATEST_VERSION_PROPERTY, true)
                     .as("employsProp1")
 
                 // connection from entity->link->entity
@@ -315,6 +325,7 @@ class ProjectorTest {
         traversalSource.addV("Photo")
                 .property(PropertyConstants.STATUS_PROPERTY, ItemStatus.NORMAL.toString()).as("new")
                 .addE(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).from("new").to(__.V(photo1Id)).iterate();
+        traversalSource.V(photo1Id).property(PropertyConstants.IS_LATEST_VERSION_PROPERTY, false).iterate();
         traversalSource.tx().commit();
         Projector projector = new Projector(traversalSource);
         SelectableItemProjectionSpec spec = new SelectableItemProjectionSpec(new ItemTypeSelector("Photo"));
@@ -352,6 +363,7 @@ class ProjectorTest {
                 .property(PropertyConstants.LINK_TYPE_PROPERTY, "agencyEmploysId")
                 .as("new")
                 .addE(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).from("new").to(__.V(employsLinkId)).iterate();
+        traversalSource.V(employsLinkId).property(PropertyConstants.IS_LATEST_VERSION_PROPERTY, false).iterate();
         traversalSource.tx().commit();
         Projector projector = new Projector(traversalSource);
         SelectableItemProjectionSpec spec = new SelectableItemProjectionSpec(new ItemTypeSelector("Agency"));
@@ -392,6 +404,7 @@ class ProjectorTest {
         traversalSource.addV("Photographer")
                 .property(PropertyConstants.STATUS_PROPERTY, ItemStatus.NORMAL.toString()).as("new")
                 .addE(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).from("new").to(__.V(photographerId)).iterate();
+        traversalSource.V(photographerId).property(PropertyConstants.IS_LATEST_VERSION_PROPERTY, false).iterate();
         traversalSource.tx().commit();
         Projector projector = new Projector(traversalSource);
         SelectableItemProjectionSpec spec = new SelectableItemProjectionSpec(new ItemTypeSelector("Agency"));
@@ -413,9 +426,11 @@ class ProjectorTest {
         traversalSource.addV("Photographer")
                 .property(PropertyConstants.STATUS_PROPERTY, ItemStatus.NORMAL.toString()).as("new")
                 .property(PropertyConstants.VERSION_PROPERTY, 2)
+                .property(PropertyConstants.IS_LATEST_VERSION_PROPERTY, true)
                 .addE(LabelConstants.HAS_PREVIOUS_VERSION_LABEL).from("new").to(__.V(photographerId))
                 .addE("agencyEmploysId-out").from(__.V(agencyLinkId)).to("new")
                 .iterate();
+        traversalSource.V(photographerId).property(PropertyConstants.IS_LATEST_VERSION_PROPERTY, false).iterate();
         traversalSource.tx().commit();
         Projector projector = new Projector(traversalSource);
         SelectableItemProjectionSpec spec = new SelectableItemProjectionSpec(new ItemTypeSelector("Agency"));

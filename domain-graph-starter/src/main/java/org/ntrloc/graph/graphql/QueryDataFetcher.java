@@ -45,7 +45,7 @@ public class QueryDataFetcher implements DataFetcher<Object> {
 
         List<ItemProjection> projections = itemManager.executeProjection(projectionSpec, downloadEndpoint);
         List<ItemProjection> translatedProjections = projections.stream().map(schemaMapper::translateItemProjection).toList();
-        LOG.info("Executed query {} with projections {}", projectionSpec, translatedProjections);
+        LOG.debug("Executed query {} with projections {}", projectionSpec, translatedProjections);
 
         return translatedProjections;
     }
