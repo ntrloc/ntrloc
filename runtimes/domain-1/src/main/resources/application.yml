@@ -7,6 +7,11 @@ spring:
   threads:
     virtual:
       enabled: true
+  datasource:
+    url: jdbc:postgresql://localhost:5432/ntrloc
+    username: ntrloc
+    password: ntrloc
+    driver-class-name: org.postgresql.Driver
   ai:
     mcp:
       server:

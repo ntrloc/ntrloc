@@ -1,0 +1,33 @@
+server:
+  port: 9090
+
+spring:
+  application:
+    name: domain-1
+  threads:
+    virtual:
+      enabled: true
+
+  security.oauth2.client:
+    registration.keycloak:
+      client-id: ntrloc-client
+      scope: openid,profile,email
+      authorization-grant-type: authorization_code
+    provider.keycloak.issuer-uri: http://localhost:8080/realms/ntrloc
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/ntrloc
+    username: ntrloc
+    password: ntrloc
+    driver-class-name: org.postgresql.Driver
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include:
+          - health
+          - info
+logging:
+  level:
+    root: info
