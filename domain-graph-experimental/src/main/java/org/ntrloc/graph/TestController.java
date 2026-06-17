@@ -2,6 +2,7 @@ package org.ntrloc.graph;
 
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.ldap.userdetails.LdapUserDetails;
 import org.springframework.security.oauth2.core.oidc.user.OidcUser;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -25,6 +26,12 @@ public class TestController {
                     "subject",  user.getSubject(),
                     "email",    user.getEmail(),
                     "username", user.getPreferredUsername()
+            ));
+        } else if (principal instanceof LdapUserDetails user) {
+            return Mono.just(Map.of(
+                    "type",     "ldap",
+                    "username", user.getUsername(),
+                    "dn",       user.getDn()
             ));
         } else if (principal instanceof UserDetails user) {
             return Mono.just(Map.of(

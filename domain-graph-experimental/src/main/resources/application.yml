@@ -15,6 +15,12 @@ spring:
       authorization-grant-type: authorization_code
     provider.keycloak.issuer-uri: http://localhost:8080/realms/ntrloc
 
+  ldap:
+    urls: ldap://localhost:389
+    base: dc=ntrloc,dc=com
+    username: cn=admin,dc=ntrloc,dc=com
+    password: admin
+
   datasource:
     url: jdbc:postgresql://localhost:5432/ntrloc
     username: ntrloc
