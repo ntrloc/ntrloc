@@ -10,10 +10,10 @@ spring:
 
   security.oauth2.client:
     registration.keycloak:
-      client-id: ntrloc-client
+      client-id: ${ntrloc.auth.oauth.client-id}
       scope: openid,profile,email
       authorization-grant-type: authorization_code
-    provider.keycloak.issuer-uri: http://localhost:8080/realms/ntrloc
+    provider.keycloak.issuer-uri: ${ntrloc.auth.oauth.issuer-uri}
 
   ldap:
     urls: ldap://localhost:389
@@ -27,6 +27,24 @@ spring:
     password: ntrloc
     driver-class-name: org.postgresql.Driver
 
+ntrloc:
+  auth:
+    local:
+      enabled: true
+    oauth:
+      enabled: true
+      issuer-uri: http://localhost:8080/realms/ntrloc
+      client-id: ntrloc-client
+      client-secret: your-secret
+      provider: keycloak
+    ldap:
+      enabled: true
+      url: ldap://localhost:389
+      base: dc=ntrloc,dc=com
+      username: cn=admin,dc=ntrloc,dc=com
+      password: admin
+      user-dn-pattern: uid={0},ou=people
+
 management:
   endpoints:
     web:
@@ -37,3 +55,4 @@ management:
 logging:
   level:
     root: info
+    org.springframework.security: DEBUG

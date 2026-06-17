@@ -1,8 +1,10 @@
 package org.ntrloc.graph.security;
 
+import jakarta.annotation.PostConstruct;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.ldap.core.support.LdapContextSource;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.DelegatingReactiveAuthenticationManager;
 import org.springframework.security.authentication.ReactiveAuthenticationManager;
 import org.springframework.security.authentication.UserDetailsRepositoryReactiveAuthenticationManager;
@@ -19,66 +21,137 @@ import org.springframework.security.ldap.authentication.BindAuthenticator;
 import org.springframework.security.ldap.authentication.LdapAuthenticationProvider;
 import org.springframework.security.ldap.userdetails.DefaultLdapAuthoritiesPopulator;
 import org.springframework.security.web.server.SecurityWebFilterChain;
+import org.springframework.security.web.server.ServerAuthenticationEntryPoint;
+import org.springframework.security.web.server.authentication.RedirectServerAuthenticationEntryPoint;
+import org.springframework.security.web.server.authentication.logout.RedirectServerLogoutSuccessHandler;
+import org.springframework.security.web.server.authentication.logout.ServerLogoutSuccessHandler;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
+
+import java.net.URI;
+import java.util.ArrayList;
+import java.util.List;
 
 @Configuration
 @EnableWebFluxSecurity
 public class SecurityConfig {
 
+    private final AuthProperties authProperties;
+
+    public SecurityConfig(AuthProperties authProperties) {
+        this.authProperties = authProperties;
+    }
+
+    @PostConstruct
+    public void validateAuthConfig() {
+        boolean anyEnabled = authProperties.getLocal().isEnabled()
+                || authProperties.getOauth().isEnabled()
+                || authProperties.getLdap().isEnabled();
+        if (!anyEnabled) {
+            throw new IllegalStateException(
+                    "At least one authentication method must be enabled");
+        }
+    }
+
     @Bean
-    public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
+    public SecurityWebFilterChain springSecurityFilterChain(
+            ServerHttpSecurity http,
+            ServerAuthenticationEntryPoint entryPoint) {
         http
                 .csrf(csrf -> csrf.disable())
                 .authorizeExchange(auth -> auth
-                        .pathMatchers("/public", "/login", "/csrf").permitAll()
+                        .pathMatchers("/public", "/login").permitAll()
                         .anyExchange().authenticated()
                 )
-                .oauth2Login(oauth -> oauth
-                        .loginPage("/login")
+                .exceptionHandling(exceptions -> exceptions
+                        .authenticationEntryPoint(entryPoint)
                 )
-                .formLogin(form -> form
-                        .loginPage("/login")
-                        .authenticationManager(compositeAuthenticationManager())
-                )
-                .httpBasic(Customizer.withDefaults());
+                .logout(logout -> logout
+                        .logoutUrl("/logout")
+                        .logoutSuccessHandler(logoutSuccessHandler())
+                );
+
+        if (authProperties.getOauth().isEnabled()) {
+            http.oauth2Login(oauth -> oauth.loginPage("/login"));
+        }
+
+        if (authProperties.getLocal().isEnabled() ||
+                authProperties.getLdap().isEnabled()) {
+            http.formLogin(form -> form
+                    .loginPage("/login")
+                    .authenticationManager(compositeAuthenticationManager())
+            );
+        }
+
+        http.httpBasic(Customizer.withDefaults());
         return http.build();
     }
 
     @Bean
-    public ReactiveAuthenticationManager compositeAuthenticationManager() {
-        return new DelegatingReactiveAuthenticationManager(
-                ldapAuthenticationManager(),
-                new UserDetailsRepositoryReactiveAuthenticationManager(userDetailsService())
-        );
+    public ServerAuthenticationEntryPoint authenticationEntryPoint() {
+        return new RedirectServerAuthenticationEntryPoint("/login");
     }
 
-    public ReactiveAuthenticationManager ldapAuthenticationManager() {
+    @Bean
+    public ServerLogoutSuccessHandler logoutSuccessHandler() {
+        RedirectServerLogoutSuccessHandler handler =
+                new RedirectServerLogoutSuccessHandler();
+        handler.setLogoutSuccessUrl(URI.create("/login"));
+        return handler;
+    }
+
+    @Bean
+    public ReactiveAuthenticationManager compositeAuthenticationManager() {
+        List<ReactiveAuthenticationManager> managers = new ArrayList<>();
+
+        if (authProperties.getLdap().isEnabled()) {
+            managers.add(ldapAuthenticationManager());
+        }
+        if (authProperties.getLocal().isEnabled()) {
+            managers.add(new UserDetailsRepositoryReactiveAuthenticationManager(
+                    userDetailsService()));
+        }
+
+        return new DelegatingReactiveAuthenticationManager(managers);
+    }
+
+    private ReactiveAuthenticationManager ldapAuthenticationManager() {
         return authentication -> Mono.fromCallable(() -> {
-            LdapContextSource contextSource = new LdapContextSource();
-            contextSource.setUrl("ldap://localhost:389");
-            contextSource.setBase("dc=ntrloc,dc=com");
-            contextSource.setUserDn("cn=admin,dc=ntrloc,dc=com");
-            contextSource.setPassword("admin");
-            contextSource.afterPropertiesSet();
+                    LdapContextSource contextSource = new LdapContextSource();
+                    contextSource.setUrl(authProperties.getLdap().getUrl());
+                    contextSource.setBase(authProperties.getLdap().getBase());
+                    contextSource.setUserDn(authProperties.getLdap().getUsername());
+                    contextSource.setPassword(authProperties.getLdap().getPassword());
+                    contextSource.afterPropertiesSet();
 
-            LdapAuthenticationProvider provider = new LdapAuthenticationProvider(
-                    new BindAuthenticator(contextSource) {{
-                        setUserDnPatterns(new String[]{"uid={0},ou=people"});
-                    }},
-                    new DefaultLdapAuthoritiesPopulator(contextSource, "ou=people") {{
-                        setDefaultRole("USER");
-                        setIgnorePartialResultException(true);
-                    }}
-            );
+                    LdapAuthenticationProvider provider = new LdapAuthenticationProvider(
+                            new BindAuthenticator(contextSource) {{
+                                setUserDnPatterns(new String[]{
+                                        authProperties.getLdap().getUserDnPattern()
+                                });
+                            }},
+                            new DefaultLdapAuthoritiesPopulator(contextSource, "ou=people") {{
+                                setDefaultRole("USER");
+                                setIgnorePartialResultException(true);
+                            }}
+                    );
 
-            return provider.authenticate(
-                    new UsernamePasswordAuthenticationToken(
-                            authentication.getPrincipal(),
-                            authentication.getCredentials()
-                    )
-            );
-        }).subscribeOn(Schedulers.boundedElastic());
+                    try {
+                        return provider.authenticate(
+                                new UsernamePasswordAuthenticationToken(
+                                        authentication.getPrincipal(),
+                                        authentication.getCredentials()
+                                )
+                        );
+                    } catch (BadCredentialsException e) {
+                        return null;  // signal empty to fall through
+                    }
+                })
+                .subscribeOn(Schedulers.boundedElastic())
+                .flatMap(auth -> auth != null
+                        ? Mono.just(auth)
+                        : Mono.empty()  // empty Mono causes DelegatingReactiveAuthenticationManager to try next
+                );
     }
 
     @Bean
@@ -90,5 +163,4 @@ public class SecurityConfig {
                 .build();
         return new MapReactiveUserDetailsService(user);
     }
-
 }
