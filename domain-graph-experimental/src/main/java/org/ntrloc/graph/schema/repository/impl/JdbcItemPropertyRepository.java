@@ -90,6 +90,7 @@ public class JdbcItemPropertyRepository implements ItemPropertyRepository {
                 UUID.fromString(rs.getString("id")),
                 new PropertyDefinition(
                     rs.getString("name"),
+                    rs.getString("description"),
                     PropertyType.valueOf(rs.getString("type")),
                     PropertyCardinality.valueOf(rs.getString("cardinality"))
                 )

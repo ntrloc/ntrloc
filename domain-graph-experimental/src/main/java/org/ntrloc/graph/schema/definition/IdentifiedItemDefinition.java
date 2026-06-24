@@ -8,4 +8,8 @@ public record IdentifiedItemDefinition(UUID id, ItemDefinition definition) {
         return definition.name();
     }
 
+    public String description() {
+        return definition.description();
+    }
+
 }

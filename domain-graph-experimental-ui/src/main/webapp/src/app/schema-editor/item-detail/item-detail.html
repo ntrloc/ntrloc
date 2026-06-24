@@ -1,0 +1,34 @@
+<ng-container *ngIf="item; else noSelection">
+  <h2>{{ item.name }}</h2>
+  <p *ngIf="item.description">{{ item.description }}</p>
+
+  <mat-accordion [multi]="true" togglePosition="before">
+
+    <mat-expansion-panel [expanded]="true">
+      <mat-expansion-panel-header>
+        <mat-panel-title>Properties</mat-panel-title>
+      </mat-expansion-panel-header>
+      <app-property-grid [properties]="item.properties ?? []" [propertyTypes]="propertyTypes" [allowAdd]="true"></app-property-grid>
+    </mat-expansion-panel>
+
+    <mat-expansion-panel [expanded]="true">
+      <mat-expansion-panel-header>
+        <mat-panel-title>Links</mat-panel-title>
+      </mat-expansion-panel-header>
+      <ng-container *ngIf="item.links && (item.links | keyvalue).length > 0; else noLinks">
+        <app-link-group
+          *ngFor="let link of item.links | keyvalue"
+          [linkName]="link.key"
+          [perspectives]="link.value"
+          [propertyTypes]="propertyTypes">
+        </app-link-group>
+      </ng-container>
+      <ng-template #noLinks><p>No links defined.</p></ng-template>
+    </mat-expansion-panel>
+
+  </mat-accordion>
+</ng-container>
+
+<ng-template #noSelection>
+  <p>Select an item definition to view its details.</p>
+</ng-template>

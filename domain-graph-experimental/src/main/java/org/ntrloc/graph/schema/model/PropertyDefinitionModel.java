@@ -5,5 +5,5 @@ import org.ntrloc.graph.schema.definition.PropertyType;
 
 import java.util.UUID;
 
-public record PropertyDefinitionModel(UUID id, String name, PropertyType type, PropertyCardinality cardinality) {
+public record PropertyDefinitionModel(UUID id, String name, String description, PropertyType type, PropertyCardinality cardinality) {
 }

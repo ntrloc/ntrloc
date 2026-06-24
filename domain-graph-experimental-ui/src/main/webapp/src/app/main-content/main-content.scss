@@ -1,0 +1,45 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+header {
+  flex-shrink: 0;
+  display: flex;
+  align-items: flex-end;
+  height: 80px;
+
+  .nav-left {
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    height: 100%;
+
+    img {
+      height: 100%;
+      width: auto;
+      padding: 12px 0;
+    }
+  }
+
+  nav {
+    flex: 1;
+    align-self: flex-end;
+  }
+
+  .nav-right {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    width: 150px;
+    padding: 0 16px;
+  }
+}
+
+mat-tab-nav-panel {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}

@@ -1,0 +1,59 @@
+<div class="property-grid" *ngIf="editableProperties.length > 0">
+  <div class="property-grid-header"></div>
+  <div class="property-grid-header">Name</div>
+  <div class="property-grid-header">Description</div>
+  <div class="property-grid-header">Type</div>
+  <div class="property-grid-header">Cardinality</div>
+  <div class="property-grid-header"></div>
+  <ng-container *ngFor="let prop of editableProperties">
+    <div class="property-cell" [class.cell-deleted]="prop.isDeleted">
+      <span class="dirty-dot"
+            [class.is-new]="prop.isNew"
+            [class.is-deleted]="prop.isDeleted"
+            *ngIf="prop.isDirty">●</span>
+    </div>
+    <div class="property-cell" [class.cell-deleted]="prop.isDeleted">
+      <input class="editable-field" [(ngModel)]="prop.name" (ngModelChange)="onPropertyChange(prop)" [disabled]="prop.isDeleted" />
+      <div class="original-value" *ngIf="prop.name !== prop.originalName && prop.originalName">{{ prop.originalName }}</div>
+    </div>
+    <div class="property-cell" [class.cell-deleted]="prop.isDeleted">
+      <input class="editable-field" [(ngModel)]="prop.description" (ngModelChange)="onPropertyChange(prop)" [disabled]="prop.isDeleted" />
+      <div class="original-value" *ngIf="prop.description !== prop.originalDescription && prop.originalDescription">{{ prop.originalDescription }}</div>
+    </div>
+    <div class="property-cell" [class.cell-deleted]="prop.isDeleted">
+      <select *ngIf="prop.isNew; else typeText" class="editable-field" [(ngModel)]="prop.type" (ngModelChange)="onTypeChange(prop)">
+        <option *ngFor="let t of propertyTypes" [value]="t.type">{{ t.type }}</option>
+      </select>
+      <ng-template #typeText>{{ prop.type }}</ng-template>
+    </div>
+    <div class="property-cell" [class.cell-deleted]="prop.isDeleted">
+      <select *ngIf="prop.validCardinalities.length > 1 && !prop.isDeleted; else cardinalityText"
+              class="editable-field"
+              [(ngModel)]="prop.cardinality"
+              (ngModelChange)="onPropertyChange(prop)">
+        <option *ngFor="let c of prop.validCardinalities" [value]="c">{{ c }}</option>
+      </select>
+      <ng-template #cardinalityText>{{ prop.cardinality }}</ng-template>
+      <div class="original-value" *ngIf="prop.cardinality !== prop.originalCardinality && prop.originalCardinality">{{ prop.originalCardinality }}</div>
+    </div>
+    <div class="property-cell actions-cell">
+      <ng-container *ngIf="prop.isDeleted">
+        <button mat-icon-button class="action-btn restore-btn" title="Restore" (click)="restoreProperty(prop)">
+          <mat-icon>undo</mat-icon>
+        </button>
+      </ng-container>
+      <ng-container *ngIf="!prop.isDeleted">
+        <button mat-icon-button class="action-btn revert-btn" title="Revert changes" (click)="revertProperty(prop)" *ngIf="prop.isDirty && !prop.isNew">
+          <mat-icon>restart_alt</mat-icon>
+        </button>
+        <button mat-icon-button class="action-btn delete-btn" title="Delete" (click)="deleteProperty(prop)">
+          <mat-icon>delete</mat-icon>
+        </button>
+      </ng-container>
+    </div>
+  </ng-container>
+</div>
+
+<div class="add-property-row" *ngIf="allowAdd">
+  <button mat-stroked-button (click)="addProperty()">Add Property</button>
+</div>

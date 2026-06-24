@@ -27,11 +27,12 @@ public class JdbcPropertyDefinitionRepository implements PropertyDefinitionRepos
     public IdentifiedPropertyDefinition create(PropertyDefinition definition) {
         return jdbcClient
                 .sql("""
-                    INSERT INTO schema_property (name, type, cardinality)
-                    VALUES (:name, :type, :cardinality)
+                    INSERT INTO schema_property (name, description, type, cardinality)
+                    VALUES (:name, :description, :type, :cardinality)
                     RETURNING *
                  """)
                 .param("name", definition.name())
+                .param("description", definition.description())
                 .param("type", definition.type().name())
                 .param("cardinality", definition.cardinality().name())
                 .query(this::mapRow)
@@ -87,6 +88,7 @@ public class JdbcPropertyDefinitionRepository implements PropertyDefinitionRepos
                 UUID.fromString(rs.getString("id")),
                 new PropertyDefinition(
                     rs.getString("name"),
+                    rs.getString("description"),
                     PropertyType.valueOf(rs.getString("type")),
                     PropertyCardinality.valueOf(rs.getString("cardinality"))
                 )

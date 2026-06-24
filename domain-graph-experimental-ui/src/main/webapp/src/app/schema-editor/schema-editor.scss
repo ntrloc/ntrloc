@@ -1,0 +1,17 @@
+.schema-editor-layout {
+  display: flex;
+  height: 100%;
+
+  .item-list-panel {
+    width: 250px;
+    flex-shrink: 0;
+    overflow-y: auto;
+    border-right: 1px solid rgba(255, 255, 255, 0.12);
+  }
+
+  .item-detail-panel {
+    flex: 1;
+    padding: 24px;
+    overflow-y: auto;
+  }
+}

@@ -20,8 +20,8 @@ public class JdbcItemDefinitionRepository implements ItemDefinitionRepository {
 
     @Override
     public Set<IdentifiedItemDefinition> getItemDefinitions() {
-        return Set.copyOf(jdbcClient.sql("SELECT id, name FROM schema_item")
-                .query((rs, rowNum) -> new IdentifiedItemDefinition(rs.getObject("id", UUID.class), new ItemDefinition(rs.getString("name"))))
+        return Set.copyOf(jdbcClient.sql("SELECT id, name, description FROM schema_item")
+                .query((rs, rowNum) -> new IdentifiedItemDefinition(rs.getObject("id", UUID.class), new ItemDefinition(rs.getString("name"), rs.getString("description"))))
                 .list());
     }
 
@@ -34,11 +34,12 @@ public class JdbcItemDefinitionRepository implements ItemDefinitionRepository {
         if (nameExists) {
             throw new IllegalArgumentException("Item with name '" + itemDefinition.name() + "' already exists");
         }
-        UUID id = jdbcClient.sql("INSERT INTO schema_item (name) VALUES (:name) RETURNING id")
+        UUID id = jdbcClient.sql("INSERT INTO schema_item (name, description) VALUES (:name, :description) RETURNING id")
                 .param("name", itemDefinition.name())
+                .param("description", itemDefinition.description())
                 .query(UUID.class)
                 .single();
-        return new IdentifiedItemDefinition(id, new ItemDefinition(itemDefinition.name()));
+        return new IdentifiedItemDefinition(id, new ItemDefinition(itemDefinition.name(), itemDefinition.description()));
     }
 
     @Override

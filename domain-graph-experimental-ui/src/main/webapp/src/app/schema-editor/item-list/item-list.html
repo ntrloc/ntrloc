@@ -1,0 +1,9 @@
+<div class="item-list">
+  <button
+    *ngFor="let item of items"
+    mat-button
+    [class.selected]="item === selectedItem"
+    (click)="select(item)">
+    {{ item.name }}
+  </button>
+</div>

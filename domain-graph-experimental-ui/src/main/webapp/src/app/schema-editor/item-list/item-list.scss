@@ -1,0 +1,15 @@
+.item-list {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  padding: 8px;
+
+  button {
+    justify-content: flex-start;
+    text-align: left;
+
+    &.selected {
+      background-color: rgba(255, 255, 255, 0.1);
+    }
+  }
+}

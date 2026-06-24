@@ -16,6 +16,10 @@ public record IdentifiedItemLinkPerspectiveDefinition(UUID id, ItemLinkPerspecti
         return definition.name();
     }
 
+    public String description() {
+        return definition.description();
+    }
+
     public Integer minCardinality() {
         return definition.minCardinality();
     }

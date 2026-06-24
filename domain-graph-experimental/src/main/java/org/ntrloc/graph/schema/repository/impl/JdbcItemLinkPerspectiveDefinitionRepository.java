@@ -27,13 +27,14 @@ public class JdbcItemLinkPerspectiveDefinitionRepository implements ItemLinkPers
     public IdentifiedItemLinkPerspectiveDefinition create(ItemLinkPerspectiveDefinition definition) {
         return jdbcClient
                 .sql("""
-                        INSERT INTO schema_item_link_perspective (item_definition_id, link_definition_id, name, minimum_cardinality, maximum_cardinality)
-                        VALUES (:itemDefinitionId, :linkId, :name, :minCardinality, :maxCardinality)
+                        INSERT INTO schema_item_link_perspective (item_definition_id, link_definition_id, name, description, minimum_cardinality, maximum_cardinality)
+                        VALUES (:itemDefinitionId, :linkId, :name, :description, :minCardinality, :maxCardinality)
                         RETURNING *
                         """)
                 .param("itemDefinitionId", definition.itemDefinitionId())
                 .param("linkId", definition.linkId())
                 .param("name", definition.name())
+                .param("description", definition.description())
                 .param("minCardinality", definition.minCardinality())
                 .param("maxCardinality", definition.maxCardinality())
                 .query(this::mapRow)
@@ -116,8 +117,9 @@ public class JdbcItemLinkPerspectiveDefinitionRepository implements ItemLinkPers
                         UUID.fromString(rs.getString("item_definition_id")),
                         UUID.fromString(rs.getString("link_definition_id")),
                         rs.getString("name"),
+                        rs.getString("description"),
                         rs.getInt("minimum_cardinality"),
-                        rs.getInt("maximum_cardinality")
+                        rs.getObject("maximum_cardinality", Integer.class)
                 )
         );
     }

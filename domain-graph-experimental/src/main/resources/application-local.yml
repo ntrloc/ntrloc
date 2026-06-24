@@ -1,0 +1,15 @@
+ntrloc:
+  auth:
+    oauth:
+      enabled: false
+    ldap:
+      enabled: false
+  security:
+    enabled: false
+
+spring:
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.security.oauth2.client.autoconfigure.reactive.ReactiveOAuth2ClientAutoConfiguration
+      - org.springframework.boot.security.oauth2.client.autoconfigure.reactive.ReactiveOAuth2ClientWebSecurityAutoConfiguration
+      - org.springframework.boot.autoconfigure.ldap.LdapAutoConfiguration

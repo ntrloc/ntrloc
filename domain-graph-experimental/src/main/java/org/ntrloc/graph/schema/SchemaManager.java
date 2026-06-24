@@ -54,25 +54,32 @@ public class SchemaManager {
     }
 
     private void init() {
-        if (itemDefinitionRepository.getItemDefinitions().isEmpty()) {
-            IdentifiedItemDefinition productDefinition = itemDefinitionRepository.createItemDefinition(new ItemDefinition("Product"));
-            IdentifiedItemDefinition coverDefinition = itemDefinitionRepository.createItemDefinition(new ItemDefinition("Cover"));
+        // Item types
+        IdentifiedItemDefinition productDefinition       = itemDefinitionRepository.createItemDefinition(new ItemDefinition("Product", null));
+        IdentifiedItemDefinition coverDefinition         = itemDefinitionRepository.createItemDefinition(new ItemDefinition("Cover", null));
+        IdentifiedItemDefinition alternateCoverDefinition = itemDefinitionRepository.createItemDefinition(new ItemDefinition("AlternateCover", null));
+        IdentifiedItemDefinition contributorDefinition   = itemDefinitionRepository.createItemDefinition(new ItemDefinition("Contributor", null));
 
-            IdentifiedPropertyDefinition isbnProperty = propertyDefinitionRepository.create(new PropertyDefinition("ISBN 13", PropertyType.STRING, PropertyCardinality.SINGLE));
-            itemPropertyRepository.associate(productDefinition.id(), isbnProperty.id());
+        // Product properties
+        var isbnProperty = propertyDefinitionRepository.create(new PropertyDefinition("ISBN 13", null, PropertyType.STRING, PropertyCardinality.SINGLE));
+        itemPropertyRepository.associate(productDefinition.id(), isbnProperty.id());
 
-            var productCoverLinkDefinition = linkDefinitionRepository.createLinkDefinition();
+        // Link: Product ↔ Cover
+        var productCoverLink = linkDefinitionRepository.createLinkDefinition();
+        var createDateProperty = propertyDefinitionRepository.create(new PropertyDefinition("createDate", null, PropertyType.DATE, PropertyCardinality.SINGLE));
+        linkPropertyRepository.associate(productCoverLink.id(), createDateProperty.id());
+        linkPerspectiveDefinitionRepository.create(new ItemLinkPerspectiveDefinition(productDefinition.id(), productCoverLink.id(), "cover", null, 0, 1));
+        linkPerspectiveDefinitionRepository.create(new ItemLinkPerspectiveDefinition(coverDefinition.id(), productCoverLink.id(), "product", null, 1, 1));
 
-            var createDatePropertyDefinition = propertyDefinitionRepository.create( new PropertyDefinition("createDate", PropertyType.DATE, PropertyCardinality.SINGLE));
-            linkPropertyRepository.associate(productCoverLinkDefinition.id(), createDatePropertyDefinition.id());
+        // Link: Product ↔ AlternateCover
+        var productAlternateCoverLink = linkDefinitionRepository.createLinkDefinition();
+        linkPerspectiveDefinitionRepository.create(new ItemLinkPerspectiveDefinition(productDefinition.id(), productAlternateCoverLink.id(), "cover", null, 0, 1));
+        linkPerspectiveDefinitionRepository.create(new ItemLinkPerspectiveDefinition(alternateCoverDefinition.id(), productAlternateCoverLink.id(), "product", null, 1, 1));
 
-            var productCoverLinkPerspective = new ItemLinkPerspectiveDefinition(productDefinition.id(), productCoverLinkDefinition.id(),"cover",  0, 1);
-            linkPerspectiveDefinitionRepository.create(productCoverLinkPerspective);
-
-            var coverProductLinkPerspective = new ItemLinkPerspectiveDefinition(coverDefinition.id(), productCoverLinkDefinition.id(), "product", 1, 1);
-            linkPerspectiveDefinitionRepository.create(coverProductLinkPerspective);
-
-        }
+        // Link: Product ↔ Contributor
+        var productContributorLink = linkDefinitionRepository.createLinkDefinition();
+        linkPerspectiveDefinitionRepository.create(new ItemLinkPerspectiveDefinition(productDefinition.id(), productContributorLink.id(), "contributors", null, 0, null));
+        linkPerspectiveDefinitionRepository.create(new ItemLinkPerspectiveDefinition(contributorDefinition.id(), productContributorLink.id(), "product", null, 0, null));
     }
 
     public SchemaModel getSchema() {
@@ -101,21 +108,21 @@ public class SchemaManager {
                                 var linkPropertyModels = linkProperties == null
                                         ? null
                                         : linkProperties.stream().map(this::mapToModel).toList();
-                                return Map.entry(perspective.name(), new ItemLinkPerspectiveModel(inverseItem.name(), perspective.minCardinality(), perspective.maxCardinality(), linkPropertyModels));
+                                return Map.entry(perspective.name(), new ItemLinkPerspectiveModel(inverseItem.name(), perspective.description(), perspective.minCardinality(), perspective.maxCardinality(), linkPropertyModels));
                             })
                             .collect(Collectors.groupingBy(
                                     Map.Entry::getKey,
                                     Collectors.mapping(Map.Entry::getValue, Collectors.toList())
                             ));
 
-            return new ItemDefinitionModel(itemDefinition.id(), itemDefinition.name(), propertyModels, links);
+            return new ItemDefinitionModel(itemDefinition.id(), itemDefinition.name(), itemDefinition.description(), propertyModels, links);
         }).toList();
 
         return new SchemaModel(itemDefinitionDtos);
     }
 
     private PropertyDefinitionModel mapToModel(IdentifiedPropertyDefinition propertyDef) {
-        return new PropertyDefinitionModel(propertyDef.id(), propertyDef.name(), propertyDef.type(), propertyDef.cardinality());
+        return new PropertyDefinitionModel(propertyDef.id(), propertyDef.name(), propertyDef.description(), propertyDef.type(), propertyDef.cardinality());
     }
 
 }

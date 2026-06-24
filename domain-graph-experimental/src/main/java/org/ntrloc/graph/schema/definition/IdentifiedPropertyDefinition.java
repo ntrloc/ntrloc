@@ -8,6 +8,10 @@ public record IdentifiedPropertyDefinition(UUID id, PropertyDefinition definitio
         return definition.name();
     }
 
+    public String description() {
+        return definition.description();
+    }
+
     public PropertyType type() {
         return definition.type();
     }

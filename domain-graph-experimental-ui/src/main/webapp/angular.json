@@ -64,7 +64,8 @@
               "buildTarget": "graph-ui:build:production"
             },
             "development": {
-              "buildTarget": "graph-ui:build:development"
+              "buildTarget": "graph-ui:build:development",
+              "proxyConfig": "proxy.conf.json"
             }
           },
           "defaultConfiguration": "development"
