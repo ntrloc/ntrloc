@@ -7,10 +7,15 @@ import org.ntrloc.graph.schema.definition.ItemLinkPerspectiveDefinition;
 import org.ntrloc.graph.schema.definition.PropertyCardinality;
 import org.ntrloc.graph.schema.definition.PropertyDefinition;
 import org.ntrloc.graph.schema.definition.PropertyType;
-import org.ntrloc.graph.schema.model.ItemDefinitionModel;
-import org.ntrloc.graph.schema.model.ItemLinkPerspectiveModel;
-import org.ntrloc.graph.schema.model.PropertyDefinitionModel;
-import org.ntrloc.graph.schema.model.SchemaModel;
+import org.ntrloc.graph.schema.model.admin.AdminItemDefinitionModel;
+import org.ntrloc.graph.schema.model.admin.PropertyTypeModel;
+import org.ntrloc.graph.schema.model.admin.AdminItemLinkPerspectiveModel;
+import org.ntrloc.graph.schema.model.admin.AdminPropertyDefinitionModel;
+import org.ntrloc.graph.schema.model.admin.AdminSchemaModel;
+import org.ntrloc.graph.schema.model.calculated.ItemDefinitionModel;
+import org.ntrloc.graph.schema.model.calculated.ItemLinkPerspectiveModel;
+import org.ntrloc.graph.schema.model.calculated.PropertyDefinitionModel;
+import org.ntrloc.graph.schema.model.calculated.SchemaModel;
 import org.ntrloc.graph.schema.repository.ItemDefinitionRepository;
 import org.ntrloc.graph.schema.repository.ItemLinkPerspectiveDefinitionRepository;
 import org.ntrloc.graph.schema.repository.ItemPropertyRepository;
@@ -20,6 +25,8 @@ import org.ntrloc.graph.schema.repository.PropertyDefinitionRepository;
 import org.springframework.context.annotation.DependsOn;
 import org.springframework.stereotype.Service;
 
+import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -94,7 +101,7 @@ public class SchemaManager {
             var propertyModels = propertyDefinitions == null
                     ? null
                     : propertyDefinitions.stream()
-                            .map(this::mapToModel)
+                            .map(this::mapToCalculatedModel)
                             .toList();
 
             var linkPerspectives = itemLinkPerspectives.get(itemDefinition.id());
@@ -107,7 +114,7 @@ public class SchemaManager {
                                 var linkProperties = linkPropertiesMap.get(perspective.linkId());
                                 var linkPropertyModels = linkProperties == null
                                         ? null
-                                        : linkProperties.stream().map(this::mapToModel).toList();
+                                        : linkProperties.stream().map(this::mapToCalculatedModel).toList();
                                 return Map.entry(perspective.name(), new ItemLinkPerspectiveModel(inverseItem.name(), perspective.description(), perspective.minCardinality(), perspective.maxCardinality(), linkPropertyModels));
                             })
                             .collect(Collectors.groupingBy(
@@ -121,8 +128,55 @@ public class SchemaManager {
         return new SchemaModel(itemDefinitionDtos);
     }
 
-    private PropertyDefinitionModel mapToModel(IdentifiedPropertyDefinition propertyDef) {
+    public AdminSchemaModel getAdminSchema() {
+        var itemDefinitions = itemDefinitionRepository.getItemDefinitions();
+        var itemDefinitionMap = itemDefinitions.stream().collect(Collectors.toMap(IdentifiedItemDefinition::id, itemDef -> itemDef));
+        var itemPropertiesMap = itemPropertyRepository.mapAllByItemType();
+        var linkPropertiesMap = linkPropertyRepository.mapAllByLinkType();
+        var itemLinkPerspectives = itemLinkPerspectiveDefinitionRepository.mapAllByItemType();
+
+        var itemDefinitionDtos = itemDefinitions.stream().map(itemDefinition -> {
+            var propertyDefinitions = itemPropertiesMap.get(itemDefinition.id());
+            var propertyModels = propertyDefinitions == null
+                    ? null
+                    : propertyDefinitions.stream()
+                            .map(this::mapToAdminModel)
+                            .toList();
+
+            var linkPerspectives = itemLinkPerspectives.get(itemDefinition.id());
+            var links = linkPerspectives == null
+                    ? null
+                    : linkPerspectives.stream()
+                            .map(perspective -> {
+                                var inverseLink = itemLinkPerspectiveDefinitionRepository.findInversePerspective(perspective.linkId(), perspective.id());
+                                var inverseItem = itemDefinitionMap.get(inverseLink.definition().itemDefinitionId());
+                                var linkProperties = linkPropertiesMap.get(perspective.linkId());
+                                var linkPropertyModels = linkProperties == null
+                                        ? null
+                                        : linkProperties.stream().map(this::mapToAdminModel).toList();
+                                return Map.entry(perspective.name(), new AdminItemLinkPerspectiveModel(inverseItem.name(), perspective.description(), perspective.minCardinality(), perspective.maxCardinality(), linkPropertyModels));
+                            })
+                            .collect(Collectors.groupingBy(
+                                    Map.Entry::getKey,
+                                    Collectors.mapping(Map.Entry::getValue, Collectors.toList())
+                            ));
+
+            return new AdminItemDefinitionModel(itemDefinition.id(), itemDefinition.name(), itemDefinition.description(), propertyModels, links);
+        }).toList();
+
+        List<PropertyTypeModel> propertyTypes = Arrays.stream(PropertyType.values())
+                .map(type -> new PropertyTypeModel(type, type.validCardinalities()))
+                .toList();
+
+        return new AdminSchemaModel(itemDefinitionDtos, propertyTypes);
+    }
+
+    private PropertyDefinitionModel mapToCalculatedModel(IdentifiedPropertyDefinition propertyDef) {
         return new PropertyDefinitionModel(propertyDef.id(), propertyDef.name(), propertyDef.description(), propertyDef.type(), propertyDef.cardinality());
+    }
+
+    private AdminPropertyDefinitionModel mapToAdminModel(IdentifiedPropertyDefinition propertyDef) {
+        return new AdminPropertyDefinitionModel(propertyDef.id(), propertyDef.name(), propertyDef.description(), propertyDef.type(), propertyDef.cardinality());
     }
 
 }

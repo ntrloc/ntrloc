@@ -1,4 +1,4 @@
-package org.ntrloc.graph.schema.model;
+package org.ntrloc.graph.schema.model.calculated;
 
 import org.ntrloc.graph.schema.definition.PropertyCardinality;
 import org.ntrloc.graph.schema.definition.PropertyType;

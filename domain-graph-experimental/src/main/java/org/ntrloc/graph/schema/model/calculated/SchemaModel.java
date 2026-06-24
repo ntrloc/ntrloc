@@ -1,4 +1,4 @@
-package org.ntrloc.graph.schema.model;
+package org.ntrloc.graph.schema.model.calculated;
 
 import java.util.List;
 

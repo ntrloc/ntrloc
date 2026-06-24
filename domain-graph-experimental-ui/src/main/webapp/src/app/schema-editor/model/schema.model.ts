@@ -6,6 +6,8 @@ export interface PropertyTypeInfo {
   validCardinalities: PropertyCardinality[];
 }
 
+// --- Calculated (user-facing) schema ---
+
 export interface PropertyDefinition {
   id: string;
   name: string;
@@ -32,4 +34,35 @@ export interface ItemDefinition {
 
 export interface Schema {
   items: ItemDefinition[];
+}
+
+// --- Admin schema ---
+
+export interface AdminPropertyDefinition {
+  id: string;
+  name: string;
+  description: string | null;
+  type: PropertyType;
+  cardinality: PropertyCardinality;
+}
+
+export interface AdminItemLinkPerspective {
+  itemType: string;
+  description: string | null;
+  minCardinality: number;
+  maxCardinality: number | null;
+  properties: AdminPropertyDefinition[] | null;
+}
+
+export interface AdminItemDefinition {
+  id: string;
+  name: string;
+  description: string | null;
+  properties: AdminPropertyDefinition[] | null;
+  links: Record<string, AdminItemLinkPerspective[]> | null;
+}
+
+export interface AdminSchema {
+  items: AdminItemDefinition[];
+  propertyTypes: PropertyTypeInfo[];
 }
