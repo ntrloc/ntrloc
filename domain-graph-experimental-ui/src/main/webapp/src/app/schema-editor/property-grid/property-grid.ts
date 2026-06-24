@@ -1,4 +1,4 @@
-import { Component, Input, OnChanges } from '@angular/core';
+import { Component, ElementRef, Input, OnChanges, QueryList, ViewChildren } from '@angular/core';
 import { NgFor, NgIf } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatButton, MatIconButton } from '@angular/material/button';
@@ -31,6 +31,8 @@ export class PropertyGrid implements OnChanges {
   @Input() propertyTypes: PropertyTypeInfo[] = [];
   @Input() allowAdd = false;
 
+  @ViewChildren('nameInput') nameInputs!: QueryList<ElementRef<HTMLInputElement>>;
+
   editableProperties: EditableProperty[] = [];
 
   ngOnChanges(): void {
@@ -54,6 +56,10 @@ export class PropertyGrid implements OnChanges {
       isNew: true,
       isDeleted: false,
       isDirty: true,
+    });
+    setTimeout(() => {
+      const inputs = this.nameInputs.toArray();
+      if (inputs.length > 0) inputs[inputs.length - 1].nativeElement.focus();
     });
   }
 

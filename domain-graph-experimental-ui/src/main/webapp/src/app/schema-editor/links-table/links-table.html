@@ -1,0 +1,69 @@
+<div class="links-table">
+
+  <!-- Column headers -->
+  <div class="col-header"></div>
+  <div class="col-header">Name</div>
+  <div class="col-header">Item Type</div>
+  <div class="col-header">Cardinality</div>
+  <div class="col-header">Properties</div>
+  <div class="col-header"></div>
+
+  <!-- Perspective rows -->
+  <ng-container *ngFor="let row of visibleRows; trackBy: trackRow">
+
+    <!-- Indicator -->
+    <div class="cell indicator-cell">
+      <span class="dirty-dot"
+            [class.is-deleted]="row.isDeleted"
+            *ngIf="row.isDirty || row.isDeleted">●</span>
+    </div>
+
+    <!-- Name -->
+    <div class="cell name-cell" [class.cell-deleted]="row.isDeleted">
+      <ng-container *ngIf="row.showGroupName">
+        <button *ngIf="row.isCollapsible" mat-icon-button class="collapse-btn" (click)="toggleGroup(row.groupName)">
+          <mat-icon>{{ isGroupCollapsed(row.groupName) ? 'chevron_right' : 'expand_more' }}</mat-icon>
+        </button>
+        <span class="group-name" [class.with-chevron]="!row.isCollapsible">{{ row.groupName }}</span>
+      </ng-container>
+    </div>
+
+    <!-- Item Type -->
+    <div class="cell" [class.cell-deleted]="row.isDeleted">{{ row.perspective.itemType }}</div>
+
+    <!-- Cardinality -->
+    <div class="cell cardinality-cell" [class.cell-deleted]="row.isDeleted">
+      <div class="cardinality-inputs">
+        <input class="cardinality-input" type="number" [(ngModel)]="row.editableMin"
+               (ngModelChange)="onCardinalityChange(row)" min="0" [disabled]="row.isDeleted" />
+        <span class="cardinality-separator">..</span>
+        <input class="cardinality-input" type="number" [(ngModel)]="row.editableMax"
+               (ngModelChange)="onCardinalityChange(row)" min="0" placeholder="∞" [disabled]="row.isDeleted" />
+      </div>
+      <div class="original-value" *ngIf="row.isDirty && !row.isDeleted">
+        {{ row.perspective.minCardinality }}..{{ formatMax(row.perspective.maxCardinality) }}
+      </div>
+    </div>
+
+    <!-- Properties -->
+    <div class="cell properties-cell">
+      <app-property-grid
+        *ngIf="!row.isDeleted"
+        [properties]="row.perspective.properties ?? []"
+        [propertyTypes]="propertyTypes"
+        [allowAdd]="true">
+      </app-property-grid>
+    </div>
+
+    <!-- Actions -->
+    <div class="cell actions-cell">
+      <button mat-icon-button class="action-btn restore-btn" title="Restore" (click)="restoreRow(row)" *ngIf="row.isDeleted">
+        <mat-icon>undo</mat-icon>
+      </button>
+      <button mat-icon-button class="action-btn delete-btn" title="Delete" (click)="deleteRow(row)" *ngIf="!row.isDeleted">
+        <mat-icon>delete</mat-icon>
+      </button>
+    </div>
+
+  </ng-container>
+</div>

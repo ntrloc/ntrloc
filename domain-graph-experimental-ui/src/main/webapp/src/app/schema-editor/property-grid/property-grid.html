@@ -13,7 +13,7 @@
             *ngIf="prop.isDirty">●</span>
     </div>
     <div class="property-cell" [class.cell-deleted]="prop.isDeleted">
-      <input class="editable-field" [(ngModel)]="prop.name" (ngModelChange)="onPropertyChange(prop)" [disabled]="prop.isDeleted" />
+      <input #nameInput class="editable-field" [(ngModel)]="prop.name" (ngModelChange)="onPropertyChange(prop)" [disabled]="prop.isDeleted" />
       <div class="original-value" *ngIf="prop.name !== prop.originalName && prop.originalName">{{ prop.originalName }}</div>
     </div>
     <div class="property-cell" [class.cell-deleted]="prop.isDeleted">

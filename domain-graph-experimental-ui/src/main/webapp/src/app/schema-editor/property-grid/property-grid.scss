@@ -93,8 +93,11 @@
   }
 }
 
-.add-property-row {
+.property-grid + .add-property-row {
   margin-top: 12px;
+}
+
+.add-property-row {
   margin-left: 25px;
 
   button {

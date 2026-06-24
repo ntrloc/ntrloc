@@ -15,13 +15,8 @@
       <mat-expansion-panel-header>
         <mat-panel-title>Links</mat-panel-title>
       </mat-expansion-panel-header>
-      <ng-container *ngIf="item.links && (item.links | keyvalue).length > 0; else noLinks">
-        <app-link-group
-          *ngFor="let link of item.links | keyvalue"
-          [linkName]="link.key"
-          [perspectives]="link.value"
-          [propertyTypes]="propertyTypes">
-        </app-link-group>
+      <ng-container *ngIf="item.links; else noLinks">
+        <app-links-table [links]="item.links" [propertyTypes]="propertyTypes"></app-links-table>
       </ng-container>
       <ng-template #noLinks><p>No links defined.</p></ng-template>
     </mat-expansion-panel>
