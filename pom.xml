@@ -17,6 +17,7 @@
         <module>runtimes/domain-1</module>
         <module>domain-graph-spi-parent</module>
         <module>domain-graph-experimental</module>
+        <module>domain-graph-experimental-ui</module>
     </modules>
 
     <properties>
