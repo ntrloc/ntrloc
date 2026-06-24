@@ -1,0 +1,43 @@
+<div class="search-toolbar">
+  <button mat-stroked-button (click)="addPane()">
+    <mat-icon>add</mat-icon>
+    Add Pane
+  </button>
+</div>
+
+<div class="panes-container"
+     [style.grid-template-columns]="'repeat(' + gridCols + ', 1fr)'"
+     [class.has-maximized]="hasMaximized"
+     cdkDropList
+     cdkDropListOrientation="mixed"
+     [cdkDropListData]="activePanes"
+     (cdkDropListDropped)="onDrop($event)">
+  <div class="pane-wrapper"
+       *ngFor="let pane of activePanes"
+       [class.is-maximized]="pane.windowState === 'maximized'"
+       cdkDrag
+       [cdkDragDisabled]="pane.windowState === 'maximized'">
+    <app-search-pane
+      [paneId]="pane.id"
+      [windowState]="pane.windowState"
+      (closePane)="closePane(pane.id)"
+      (maximizePane)="maximizePane(pane.id)"
+      (minimizePane)="minimizePane(pane.id)"
+      (restorePane)="restorePane(pane.id)">
+    </app-search-pane>
+    <div *cdkDragPlaceholder class="drag-placeholder"></div>
+  </div>
+</div>
+
+<div class="panes-dock" *ngIf="minimizedPanes.length > 0">
+  <div class="dock-item" *ngFor="let pane of minimizedPanes">
+    <app-search-pane
+      [paneId]="pane.id"
+      [windowState]="pane.windowState"
+      (closePane)="closePane(pane.id)"
+      (maximizePane)="maximizePane(pane.id)"
+      (minimizePane)="minimizePane(pane.id)"
+      (restorePane)="restorePane(pane.id)">
+    </app-search-pane>
+  </div>
+</div>

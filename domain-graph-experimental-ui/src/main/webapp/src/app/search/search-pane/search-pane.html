@@ -1,0 +1,22 @@
+<div class="pane" [class.is-minimized]="windowState === 'minimized'">
+  <div class="pane-header" cdkDragHandle>
+    <span class="pane-title">Search {{ paneId }}</span>
+    <div class="pane-controls">
+      <button mat-icon-button class="control-btn" title="Minimize" (click)="minimizePane.emit()" *ngIf="windowState !== 'minimized'">
+        <mat-icon>remove</mat-icon>
+      </button>
+      <button mat-icon-button class="control-btn" title="Maximize" (click)="maximizePane.emit()" *ngIf="windowState === 'normal'">
+        <mat-icon>open_in_full</mat-icon>
+      </button>
+      <button mat-icon-button class="control-btn" title="Restore" (click)="restorePane.emit()" *ngIf="windowState === 'maximized' || windowState === 'minimized'">
+        <mat-icon>close_fullscreen</mat-icon>
+      </button>
+      <button mat-icon-button class="control-btn close-btn" title="Close" (click)="closePane.emit()">
+        <mat-icon>close</mat-icon>
+      </button>
+    </div>
+  </div>
+  <div class="pane-body" *ngIf="windowState !== 'minimized'">
+    <p>Search pane {{ paneId }}</p>
+  </div>
+</div>
