@@ -3,6 +3,7 @@ package org.ntrloc.graph.schema.repository.impl;
 import org.ntrloc.graph.schema.definition.IdentifiedPropertyDefinition;
 import org.ntrloc.graph.schema.definition.PropertyCardinality;
 import org.ntrloc.graph.schema.definition.PropertyDefinition;
+import org.ntrloc.graph.schema.definition.PropertyRequirement;
 import org.ntrloc.graph.schema.definition.PropertyType;
 import org.ntrloc.graph.schema.repository.LinkPropertyRepository;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -92,7 +93,8 @@ public class JdbcLinkPropertyRepository implements LinkPropertyRepository {
                     rs.getString("name"),
                     rs.getString("description"),
                     PropertyType.valueOf(rs.getString("type")),
-                    PropertyCardinality.valueOf(rs.getString("cardinality"))
+                    PropertyCardinality.valueOf(rs.getString("cardinality")),
+                    PropertyRequirement.valueOf(rs.getString("requirement"))
                 )
         );
     }

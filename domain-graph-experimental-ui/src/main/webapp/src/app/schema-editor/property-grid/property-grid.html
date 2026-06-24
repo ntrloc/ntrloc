@@ -4,6 +4,7 @@
   <div class="property-grid-header">Description</div>
   <div class="property-grid-header">Type</div>
   <div class="property-grid-header">Cardinality</div>
+  <div class="property-grid-header">Required</div>
   <div class="property-grid-header"></div>
   <ng-container *ngFor="let prop of editableProperties">
     <div class="property-cell" [class.cell-deleted]="prop.isDeleted">
@@ -35,6 +36,12 @@
       </select>
       <ng-template #cardinalityText>{{ prop.cardinality }}</ng-template>
       <div class="original-value" *ngIf="prop.cardinality !== prop.originalCardinality && prop.originalCardinality">{{ prop.originalCardinality }}</div>
+    </div>
+    <div class="property-cell" [class.cell-deleted]="prop.isDeleted" [class.cell-deprecated]="prop.requirement === 'DEPRECATED'">
+      <select class="editable-field requirement-select" [(ngModel)]="prop.requirement" (ngModelChange)="onPropertyChange(prop)" [disabled]="prop.isDeleted">
+        <option *ngFor="let r of requirements" [value]="r">{{ r }}</option>
+      </select>
+      <div class="original-value" *ngIf="prop.requirement !== prop.originalRequirement && prop.originalRequirement">{{ prop.originalRequirement }}</div>
     </div>
     <div class="property-cell actions-cell">
       <ng-container *ngIf="prop.isDeleted">

@@ -4,7 +4,18 @@
   align-items: stretch;
   padding: 8px;
 
-  button {
+  .item-list-toolbar {
+    padding: 4px 0 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+    margin-bottom: 4px;
+
+    button {
+      width: 100%;
+      --mdc-outlined-button-container-shape: 4px;
+    }
+  }
+
+  > button {
     justify-content: flex-start;
     text-align: left;
 

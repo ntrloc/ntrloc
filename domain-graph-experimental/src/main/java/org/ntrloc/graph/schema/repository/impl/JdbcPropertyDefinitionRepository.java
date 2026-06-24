@@ -3,6 +3,7 @@ package org.ntrloc.graph.schema.repository.impl;
 import org.ntrloc.graph.schema.definition.IdentifiedPropertyDefinition;
 import org.ntrloc.graph.schema.definition.PropertyCardinality;
 import org.ntrloc.graph.schema.definition.PropertyDefinition;
+import org.ntrloc.graph.schema.definition.PropertyRequirement;
 import org.ntrloc.graph.schema.definition.PropertyType;
 import org.ntrloc.graph.schema.repository.PropertyDefinitionRepository;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -27,14 +28,15 @@ public class JdbcPropertyDefinitionRepository implements PropertyDefinitionRepos
     public IdentifiedPropertyDefinition create(PropertyDefinition definition) {
         return jdbcClient
                 .sql("""
-                    INSERT INTO schema_property (name, description, type, cardinality)
-                    VALUES (:name, :description, :type, :cardinality)
+                    INSERT INTO schema_property (name, description, type, cardinality, requirement)
+                    VALUES (:name, :description, :type, :cardinality, :requirement)
                     RETURNING *
                  """)
                 .param("name", definition.name())
                 .param("description", definition.description())
                 .param("type", definition.type().name())
                 .param("cardinality", definition.cardinality().name())
+                .param("requirement", definition.requirement().name())
                 .query(this::mapRow)
                 .single();
     }
@@ -90,7 +92,8 @@ public class JdbcPropertyDefinitionRepository implements PropertyDefinitionRepos
                     rs.getString("name"),
                     rs.getString("description"),
                     PropertyType.valueOf(rs.getString("type")),
-                    PropertyCardinality.valueOf(rs.getString("cardinality"))
+                    PropertyCardinality.valueOf(rs.getString("cardinality")),
+                    PropertyRequirement.valueOf(rs.getString("requirement"))
                 )
         );
     }

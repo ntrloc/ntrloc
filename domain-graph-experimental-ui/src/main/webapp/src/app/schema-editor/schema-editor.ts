@@ -27,4 +27,8 @@ export class SchemaEditor implements OnInit {
   onItemSelected(item: AdminItemDefinition): void {
     this.selectedItem = item;
   }
+
+  onNewItem(): void {
+    // TODO: implement new item creation
+  }
 }

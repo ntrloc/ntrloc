@@ -3,7 +3,8 @@
     <app-item-list
       [items]="schema?.items ?? []"
       [selectedItem]="selectedItem"
-      (itemSelected)="onItemSelected($event)">
+      (itemSelected)="onItemSelected($event)"
+      (newItemRequested)="onNewItem()">
     </app-item-list>
   </aside>
   <main class="item-detail-panel">

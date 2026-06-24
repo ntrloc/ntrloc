@@ -1,4 +1,10 @@
 <div class="item-list">
+  <div class="item-list-toolbar">
+    <button mat-stroked-button (click)="newItemRequested.emit()">
+      <mat-icon>add</mat-icon>
+      New Item
+    </button>
+  </div>
   <button
     *ngFor="let item of items"
     mat-button

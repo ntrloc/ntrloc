@@ -1,6 +1,6 @@
 .property-grid {
   display: grid;
-  grid-template-columns: 12px 1fr 2fr 1fr 1fr auto;
+  grid-template-columns: 12px 1fr 2fr 1fr 1fr auto auto;
   gap: 4px 16px;
   align-items: center;
 
@@ -22,6 +22,14 @@
       opacity: 0.4;
       text-decoration: line-through;
     }
+
+    &.cell-deprecated {
+      opacity: 0.55;
+    }
+  }
+
+  .requirement-select {
+    color: inherit;
   }
 
   .dirty-dot {

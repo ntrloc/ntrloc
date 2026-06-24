@@ -1,5 +1,6 @@
 export type PropertyType = 'STRING' | 'INT' | 'LONG' | 'DATE' | 'DATETIME' | 'BOOLEAN' | 'BINARY' | 'OBJECT';
 export type PropertyCardinality = 'SINGLE' | 'LIST' | 'SET';
+export type PropertyRequirement = 'OPTIONAL' | 'REQUIRED' | 'DEPRECATED';
 
 export interface PropertyTypeInfo {
   type: PropertyType;
@@ -44,6 +45,7 @@ export interface AdminPropertyDefinition {
   description: string | null;
   type: PropertyType;
   cardinality: PropertyCardinality;
+  requirement: PropertyRequirement;
 }
 
 export interface AdminItemLinkPerspective {

@@ -3,7 +3,7 @@ import { NgFor, NgIf } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatButton, MatIconButton } from '@angular/material/button';
 import { MatIcon } from '@angular/material/icon';
-import { PropertyDefinition, PropertyTypeInfo } from '../model/schema.model';
+import { AdminPropertyDefinition, PropertyRequirement, PropertyTypeInfo } from '../model/schema.model';
 
 interface EditableProperty {
   id: string | null;
@@ -14,11 +14,15 @@ interface EditableProperty {
   type: string;
   cardinality: string;
   originalCardinality: string;
+  requirement: PropertyRequirement;
+  originalRequirement: PropertyRequirement;
   validCardinalities: string[];
   isNew: boolean;
   isDeleted: boolean;
   isDirty: boolean;
 }
+
+const REQUIREMENTS: PropertyRequirement[] = ['OPTIONAL', 'REQUIRED', 'DEPRECATED'];
 
 @Component({
   selector: 'app-property-grid',
@@ -27,13 +31,14 @@ interface EditableProperty {
   styleUrl: './property-grid.scss',
 })
 export class PropertyGrid implements OnChanges {
-  @Input() properties: PropertyDefinition[] = [];
+  @Input() properties: AdminPropertyDefinition[] = [];
   @Input() propertyTypes: PropertyTypeInfo[] = [];
   @Input() allowAdd = false;
 
   @ViewChildren('nameInput') nameInputs!: QueryList<ElementRef<HTMLInputElement>>;
 
   editableProperties: EditableProperty[] = [];
+  readonly requirements = REQUIREMENTS;
 
   ngOnChanges(): void {
     this.editableProperties = this.properties.map(p => this.toEditable(p));
@@ -52,6 +57,8 @@ export class PropertyGrid implements OnChanges {
       type: defaultType,
       cardinality: validCardinalities[0],
       originalCardinality: '',
+      requirement: 'OPTIONAL',
+      originalRequirement: 'OPTIONAL',
       validCardinalities,
       isNew: true,
       isDeleted: false,
@@ -76,6 +83,7 @@ export class PropertyGrid implements OnChanges {
     prop.name = prop.originalName;
     prop.description = prop.originalDescription;
     prop.cardinality = prop.originalCardinality;
+    prop.requirement = prop.originalRequirement;
     const typeInfo = this.propertyTypes.find(t => t.type === prop.type);
     prop.validCardinalities = typeInfo?.validCardinalities.map(c => String(c)) ?? [prop.cardinality];
     prop.isDeleted = false;
@@ -86,7 +94,8 @@ export class PropertyGrid implements OnChanges {
     prop.isDeleted = false;
     prop.isDirty = prop.name !== prop.originalName
       || this.coerce(prop.description) !== this.coerce(prop.originalDescription)
-      || prop.cardinality !== prop.originalCardinality;
+      || prop.cardinality !== prop.originalCardinality
+      || prop.requirement !== prop.originalRequirement;
   }
 
   onTypeChange(prop: EditableProperty): void {
@@ -101,10 +110,11 @@ export class PropertyGrid implements OnChanges {
     if (prop.isNew) return;
     prop.isDirty = prop.name !== prop.originalName
       || this.coerce(prop.description) !== this.coerce(prop.originalDescription)
-      || prop.cardinality !== prop.originalCardinality;
+      || prop.cardinality !== prop.originalCardinality
+      || prop.requirement !== prop.originalRequirement;
   }
 
-  private toEditable(p: PropertyDefinition): EditableProperty {
+  private toEditable(p: AdminPropertyDefinition): EditableProperty {
     const typeInfo = this.propertyTypes.find(t => t.type === p.type);
     return {
       id: p.id,
@@ -115,6 +125,8 @@ export class PropertyGrid implements OnChanges {
       type: p.type,
       cardinality: p.cardinality,
       originalCardinality: p.cardinality,
+      requirement: p.requirement,
+      originalRequirement: p.requirement,
       validCardinalities: typeInfo?.validCardinalities.map(c => String(c)) ?? [p.cardinality],
       isNew: false,
       isDeleted: false,

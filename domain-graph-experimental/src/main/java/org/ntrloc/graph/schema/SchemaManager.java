@@ -6,6 +6,7 @@ import org.ntrloc.graph.schema.definition.ItemDefinition;
 import org.ntrloc.graph.schema.definition.ItemLinkPerspectiveDefinition;
 import org.ntrloc.graph.schema.definition.PropertyCardinality;
 import org.ntrloc.graph.schema.definition.PropertyDefinition;
+import org.ntrloc.graph.schema.definition.PropertyRequirement;
 import org.ntrloc.graph.schema.definition.PropertyType;
 import org.ntrloc.graph.schema.model.admin.AdminItemDefinitionModel;
 import org.ntrloc.graph.schema.model.admin.PropertyTypeModel;
@@ -68,12 +69,12 @@ public class SchemaManager {
         IdentifiedItemDefinition contributorDefinition   = itemDefinitionRepository.createItemDefinition(new ItemDefinition("Contributor", null));
 
         // Product properties
-        var isbnProperty = propertyDefinitionRepository.create(new PropertyDefinition("ISBN 13", null, PropertyType.STRING, PropertyCardinality.SINGLE));
+        var isbnProperty = propertyDefinitionRepository.create(new PropertyDefinition("ISBN 13", null, PropertyType.STRING, PropertyCardinality.SINGLE, PropertyRequirement.OPTIONAL));
         itemPropertyRepository.associate(productDefinition.id(), isbnProperty.id());
 
         // Link: Product ↔ Cover
         var productCoverLink = linkDefinitionRepository.createLinkDefinition();
-        var createDateProperty = propertyDefinitionRepository.create(new PropertyDefinition("createDate", null, PropertyType.DATE, PropertyCardinality.SINGLE));
+        var createDateProperty = propertyDefinitionRepository.create(new PropertyDefinition("createDate", null, PropertyType.DATE, PropertyCardinality.SINGLE, PropertyRequirement.OPTIONAL));
         linkPropertyRepository.associate(productCoverLink.id(), createDateProperty.id());
         linkPerspectiveDefinitionRepository.create(new ItemLinkPerspectiveDefinition(productDefinition.id(), productCoverLink.id(), "cover", null, 0, 1));
         linkPerspectiveDefinitionRepository.create(new ItemLinkPerspectiveDefinition(coverDefinition.id(), productCoverLink.id(), "product", null, 1, 1));
@@ -176,7 +177,7 @@ public class SchemaManager {
     }
 
     private AdminPropertyDefinitionModel mapToAdminModel(IdentifiedPropertyDefinition propertyDef) {
-        return new AdminPropertyDefinitionModel(propertyDef.id(), propertyDef.name(), propertyDef.description(), propertyDef.type(), propertyDef.cardinality());
+        return new AdminPropertyDefinitionModel(propertyDef.id(), propertyDef.name(), propertyDef.description(), propertyDef.type(), propertyDef.cardinality(), propertyDef.requirement());
     }
 
 }
