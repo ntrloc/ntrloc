@@ -1,6 +1,7 @@
 package org.ntrloc.graph.security;
 
 import jakarta.annotation.PostConstruct;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.ldap.core.support.LdapContextSource;
@@ -34,6 +35,7 @@ import java.util.List;
 
 @Configuration
 @EnableWebFluxSecurity
+@ConditionalOnProperty(name = "ntrloc.security.enabled", havingValue = "true", matchIfMissing = true)
 public class SecurityConfig {
 
     private final AuthProperties authProperties;

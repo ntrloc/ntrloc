@@ -28,6 +28,7 @@ spring:
     driver-class-name: org.postgresql.Driver
 
 ntrloc:
+  security.enabled: false
   auth:
     local:
       enabled: true
