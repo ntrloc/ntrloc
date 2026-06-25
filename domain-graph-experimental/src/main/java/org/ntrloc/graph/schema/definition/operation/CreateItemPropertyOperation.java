@@ -6,5 +6,5 @@ import org.ntrloc.graph.schema.definition.PropertyUsage;
 
 import java.util.UUID;
 
-public record CreateItemPropertyOperation(UUID itemId, String name, String description, PropertyType type, PropertyCardinality cardinality, PropertyUsage usage) implements SchemaOperation {
+public record CreateItemPropertyOperation(UUID itemId, String name, String description, PropertyType propertyType, PropertyCardinality cardinality, PropertyUsage usage) implements SchemaOperation {
 }

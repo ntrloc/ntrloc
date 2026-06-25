@@ -1,6 +1,6 @@
 package org.ntrloc.graph.schema.definition.view.admin;
 
-import java.util.List;
+import java.util.UUID;
 
-public record AdminItemLinkPerspectiveView(String itemType, String description, Integer minCardinality, Integer maxCardinality, List<AdminPropertyDefinitionView> properties) {
+public record AdminItemLinkPerspectiveView(UUID id, UUID linkId, String itemType, String description, Integer minCardinality, Integer maxCardinality) {
 }

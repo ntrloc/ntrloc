@@ -1,16 +1,23 @@
 <div class="schema-editor-layout">
   <aside class="item-list-panel">
     <app-item-list
-      [items]="schemaViewModel.items"
-      [selectedItem]="schemaViewModel.selectedItem"
+      [items]="schemaViewModel.items()"
+      [selectedItem]="schemaViewModel.selectedItem()"
       (itemSelected)="onItemSelected($event)"
       (newItemRequested)="onNewItem()">
     </app-item-list>
+    <div class="item-list-footer">
+      <button mat-flat-button color="primary"
+              [disabled]="!schemaViewModel.isDirty"
+              (click)="onSave()">
+        Save
+      </button>
+    </div>
   </aside>
   <main class="item-detail-panel">
     <app-item-detail
-      [item]="schemaViewModel.selectedItem"
-      [propertyTypes]="schemaViewModel.propertyTypes">
+      [item]="schemaViewModel.selectedItem()"
+      [propertyTypes]="schemaViewModel.propertyTypes()">
     </app-item-detail>
   </main>
 </div>

@@ -49,10 +49,16 @@ export interface AdminPropertyDefinition {
 }
 
 export interface AdminItemLinkPerspective {
+  id: string;
+  linkId: string;
   itemType: string;
   description: string | null;
   minCardinality: number;
   maxCardinality: number | null;
+}
+
+export interface AdminLink {
+  id: string;
   properties: AdminPropertyDefinition[] | null;
 }
 
@@ -66,5 +72,16 @@ export interface AdminItemDefinition {
 
 export interface AdminSchema {
   items: AdminItemDefinition[];
+  links: AdminLink[];
   propertyTypes: PropertyTypeInfo[];
 }
+
+// --- Schema operations ---
+
+export type SchemaOperation =
+  | { type: 'UPDATE_ITEM'; id: string; name: string; description: string | null }
+  | { type: 'CREATE_ITEM_PROPERTY'; itemId: string; name: string; description: string | null; propertyType: PropertyType; cardinality: PropertyCardinality; usage: PropertyUsage }
+  | { type: 'CREATE_LINK_PROPERTY'; linkId: string; name: string; description: string | null; propertyType: PropertyType; cardinality: PropertyCardinality; usage: PropertyUsage }
+  | { type: 'UPDATE_PROPERTY'; id: string; name: string; description: string | null; propertyType: PropertyType; cardinality: PropertyCardinality; usage: PropertyUsage }
+  | { type: 'DELETE_PROPERTY'; id: string }
+  | { type: 'UPDATE_PERSPECTIVE'; id: string; name: string | null; description: string | null; minCardinality: number; maxCardinality: number | null };

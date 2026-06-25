@@ -3,8 +3,16 @@ package org.ntrloc.graph.schema;
 import org.ntrloc.graph.schema.definition.PropertyCardinality;
 import org.ntrloc.graph.schema.definition.PropertyType;
 import org.ntrloc.graph.schema.definition.PropertyUsage;
+import org.ntrloc.graph.schema.definition.operation.CreateItemPropertyOperation;
+import org.ntrloc.graph.schema.definition.operation.CreateLinkPropertyOperation;
+import org.ntrloc.graph.schema.definition.operation.DeletePropertyOperation;
+import org.ntrloc.graph.schema.definition.operation.SchemaOperation;
+import org.ntrloc.graph.schema.definition.operation.UpdateItemOperation;
+import org.ntrloc.graph.schema.definition.operation.UpdatePerspectiveOperation;
+import org.ntrloc.graph.schema.definition.operation.UpdatePropertyOperation;
 import org.ntrloc.graph.schema.definition.view.admin.AdminItemDefinitionView;
 import org.ntrloc.graph.schema.definition.view.admin.AdminItemLinkPerspectiveView;
+import org.ntrloc.graph.schema.definition.view.admin.AdminLinkView;
 import org.ntrloc.graph.schema.definition.view.admin.AdminSchemaView;
 import org.ntrloc.graph.schema.definition.view.admin.PropertyTypeView;
 import org.ntrloc.graph.schema.definition.view.calculated.ItemDefinitionView;
@@ -18,6 +26,8 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+
+
 
 @Service
 @DependsOn("schemaInitializer")
@@ -52,6 +62,31 @@ public class SchemaManager {
         var productContributorLink = repo.createLink();
         repo.createPerspective(product, productContributorLink, "contributors", null, 0, null);
         repo.createPerspective(contributor, productContributorLink, "product", null, 0, null);
+    }
+
+    public void applyOperations(List<SchemaOperation> operations) {
+        for (SchemaOperation op : operations) {
+            switch (op) {
+                case UpdateItemOperation o ->
+                        repo.updateItem(o.id(), o.name(), o.description());
+                case CreateItemPropertyOperation o -> {
+                    var prop = repo.createProperty(o.name(), o.description(), o.propertyType(), o.cardinality(), o.usage());
+                    repo.associateItemProperty(o.itemId(), prop.id());
+                }
+                case CreateLinkPropertyOperation o -> {
+                    var prop = repo.createProperty(o.name(), o.description(), o.propertyType(), o.cardinality(), o.usage());
+                    repo.associateLinkProperty(o.linkId(), prop.id());
+                }
+                case UpdatePropertyOperation o ->
+                        repo.updateProperty(o.id(), o.name(), o.description(), o.propertyType(), o.cardinality(), o.usage());
+                case DeletePropertyOperation o ->
+                        repo.deleteProperty(o.id());
+                case UpdatePerspectiveOperation o ->
+                        repo.updatePerspective(o.id(), o.name(), o.description(), o.minCardinality(), o.maxCardinality());
+                default ->
+                        throw new IllegalArgumentException("Unsupported operation: " + op.getClass().getSimpleName());
+            }
+        }
     }
 
     public SchemaView getSchema() {
@@ -98,17 +133,20 @@ public class SchemaManager {
             var links = perspectives == null ? null : perspectives.stream().map(p -> {
                 var inverse = repo.findInversePerspective(p.linkId(), p.id());
                 var inverseItem = itemMap.get(inverse.itemId());
-                var linkProps = propertiesByLink.get(p.linkId());
-                return Map.entry(p.name(), new AdminItemLinkPerspectiveView(inverseItem.name(), p.description(), p.minCardinality(), p.maxCardinality(), linkProps));
+                return Map.entry(p.name(), new AdminItemLinkPerspectiveView(p.id(), p.linkId(), inverseItem.name(), p.description(), p.minCardinality(), p.maxCardinality()));
             }).collect(Collectors.groupingBy(Map.Entry::getKey, Collectors.mapping(Map.Entry::getValue, Collectors.toList())));
 
             return new AdminItemDefinitionView(item.id(), item.name(), item.description(), props, links);
         }).toList();
 
+        var linkViews = repo.getAllLinkIds().stream()
+                .map(id -> new AdminLinkView(id, propertiesByLink.getOrDefault(id, List.of())))
+                .toList();
+
         List<PropertyTypeView> propertyTypes = Arrays.stream(PropertyType.values())
                 .map(type -> new PropertyTypeView(type, type.validCardinalities()))
                 .toList();
 
-        return new AdminSchemaView(itemViews, propertyTypes);
+        return new AdminSchemaView(itemViews, linkViews, propertyTypes);
     }
 }

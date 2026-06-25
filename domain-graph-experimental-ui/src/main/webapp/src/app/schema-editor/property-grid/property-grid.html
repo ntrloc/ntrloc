@@ -15,11 +15,11 @@
     </div>
     <div class="property-cell" [class.cell-deleted]="prop.isDeleted">
       <input #nameInput class="editable-field" [(ngModel)]="prop.name" [disabled]="prop.isDeleted" />
-      <div class="original-value" *ngIf="prop.name !== prop.originalName && prop.originalName">{{ prop.originalName }}</div>
+      <div class="original-value" *ngIf="!prop.isNew && prop.name !== prop.originalName && prop.originalName">{{ prop.originalName }}</div>
     </div>
     <div class="property-cell" [class.cell-deleted]="prop.isDeleted">
       <input class="editable-field" [(ngModel)]="prop.description" [disabled]="prop.isDeleted" />
-      <div class="original-value" *ngIf="prop.description !== prop.originalDescription && prop.originalDescription">{{ prop.originalDescription }}</div>
+      <div class="original-value" *ngIf="!prop.isNew && prop.description !== prop.originalDescription && prop.originalDescription">{{ prop.originalDescription }}</div>
     </div>
     <div class="property-cell" [class.cell-deleted]="prop.isDeleted">
       <select *ngIf="prop.isNew; else typeText" class="editable-field" [(ngModel)]="prop.type" (ngModelChange)="onTypeChange(prop)">
@@ -34,13 +34,13 @@
         <option *ngFor="let c of prop.validCardinalities" [value]="c">{{ c }}</option>
       </select>
       <ng-template #cardinalityText>{{ prop.cardinality }}</ng-template>
-      <div class="original-value" *ngIf="prop.cardinality !== prop.originalCardinality && prop.originalCardinality">{{ prop.originalCardinality }}</div>
+      <div class="original-value" *ngIf="!prop.isNew && prop.cardinality !== prop.originalCardinality && prop.originalCardinality">{{ prop.originalCardinality }}</div>
     </div>
     <div class="property-cell" [class.cell-deleted]="prop.isDeleted" [class.cell-deprecated]="prop.usage === 'DEPRECATED'">
       <select class="editable-field usage-select" [(ngModel)]="prop.usage" [disabled]="prop.isDeleted">
         <option *ngFor="let r of requirements" [value]="r">{{ r }}</option>
       </select>
-      <div class="original-value" *ngIf="prop.usage !== prop.originalUsage && prop.originalUsage">{{ prop.originalUsage }}</div>
+      <div class="original-value" *ngIf="!prop.isNew && prop.usage !== prop.originalUsage && prop.originalUsage">{{ prop.originalUsage }}</div>
     </div>
     <div class="property-cell actions-cell">
       <ng-container *ngIf="prop.isDeleted">

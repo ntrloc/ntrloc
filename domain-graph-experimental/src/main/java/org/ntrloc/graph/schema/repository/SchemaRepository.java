@@ -108,6 +108,12 @@ public class SchemaRepository {
                 .param("itemId", itemId).param("propertyId", propertyId).update();
     }
 
+    public Set<UUID> getAllLinkIds() {
+        return Set.copyOf(jdbcClient.sql("SELECT id FROM schema_link")
+                .query((rs, n) -> rs.getObject("id", UUID.class))
+                .list());
+    }
+
     // --- Links ---
 
     public UUID createLink() {

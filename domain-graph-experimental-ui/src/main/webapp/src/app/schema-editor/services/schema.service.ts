@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import { AdminSchema, Schema } from '../model/schema.model';
+import { AdminSchema, Schema, SchemaOperation } from '../model/schema.model';
 
 @Injectable({ providedIn: 'root' })
 export class SchemaService {
@@ -17,6 +17,10 @@ export class SchemaService {
 
   getAdminSchema(): Observable<AdminSchema> {
     return this.http.get<AdminSchema>(this.adminSchemaUrl);
+  }
+
+  applyOperations(operations: SchemaOperation[]): Observable<void> {
+    return this.http.post<void>(`${this.adminSchemaUrl}/operations`, operations);
   }
 
 }

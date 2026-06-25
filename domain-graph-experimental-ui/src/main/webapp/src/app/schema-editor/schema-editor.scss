@@ -3,10 +3,25 @@
   height: 100%;
 
   .item-list-panel {
+    display: flex;
+    flex-direction: column;
     width: 250px;
     flex-shrink: 0;
-    overflow-y: auto;
     border-right: 1px solid rgba(255, 255, 255, 0.12);
+
+    app-item-list {
+      flex: 1;
+      overflow-y: auto;
+    }
+
+    .item-list-footer {
+      padding: 12px;
+      border-top: 1px solid rgba(255, 255, 255, 0.12);
+
+      button {
+        width: 100%;
+      }
+    }
   }
 
   .item-detail-panel {

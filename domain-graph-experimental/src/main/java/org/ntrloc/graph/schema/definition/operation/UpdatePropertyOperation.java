@@ -6,5 +6,5 @@ import org.ntrloc.graph.schema.definition.PropertyUsage;
 
 import java.util.UUID;
 
-public record UpdatePropertyOperation(UUID id, String name, String description, PropertyType type, PropertyCardinality cardinality, PropertyUsage usage) implements SchemaOperation {
+public record UpdatePropertyOperation(UUID id, String name, String description, PropertyType propertyType, PropertyCardinality cardinality, PropertyUsage usage) implements SchemaOperation {
 }

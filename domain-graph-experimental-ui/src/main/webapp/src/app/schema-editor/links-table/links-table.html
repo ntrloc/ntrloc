@@ -49,7 +49,7 @@
     <div class="cell properties-cell">
       <app-property-grid
         *ngIf="!row.vm.isDeleted"
-        [properties]="row.vm.properties"
+        [properties]="row.vm.link.properties"
         [propertyTypes]="propertyTypes"
         [allowAdd]="true">
       </app-property-grid>

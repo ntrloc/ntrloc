@@ -19,4 +19,9 @@ export class SchemaModel {
       tap(schema => this._schema = schema)
     );
   }
+
+  reload(): Observable<AdminSchema> {
+    this._schema = null;
+    return this.load();
+  }
 }
