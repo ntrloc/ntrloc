@@ -1,5 +1,5 @@
 import { Injectable, signal } from '@angular/core';
-import { AdminSchema, PropertyTypeInfo, SchemaOperation } from './model/schema.model';
+import { AdminSchema, DefinitionMutation, PropertyTypeInfo } from './model/schema.model';
 import { ItemDefinitionViewModel, LinkViewModel } from './model/schema.viewmodel';
 import { SchemaModel } from './schema-model';
 
@@ -34,8 +34,8 @@ export class SchemaViewModel {
     this.schemaModel.reload().subscribe(schema => this._applySchema(schema, selectedId));
   }
 
-  collectOperations(): SchemaOperation[] {
-    const ops: SchemaOperation[] = [];
+  collectMutations(): DefinitionMutation[] {
+    const ops: DefinitionMutation[] = [];
     const processedLinkIds = new Set<string>();
 
     for (const item of this.items()) {

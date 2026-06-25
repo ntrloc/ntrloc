@@ -3,13 +3,13 @@ package org.ntrloc.graph.schema;
 import org.ntrloc.graph.schema.definition.PropertyCardinality;
 import org.ntrloc.graph.schema.definition.PropertyType;
 import org.ntrloc.graph.schema.definition.PropertyUsage;
-import org.ntrloc.graph.schema.definition.operation.CreateItemPropertyOperation;
-import org.ntrloc.graph.schema.definition.operation.CreateLinkPropertyOperation;
-import org.ntrloc.graph.schema.definition.operation.DeletePropertyOperation;
-import org.ntrloc.graph.schema.definition.operation.SchemaOperation;
-import org.ntrloc.graph.schema.definition.operation.UpdateItemOperation;
-import org.ntrloc.graph.schema.definition.operation.UpdatePerspectiveOperation;
-import org.ntrloc.graph.schema.definition.operation.UpdatePropertyOperation;
+import org.ntrloc.graph.schema.definition.mutation.CreateItemPropertyDefinitionMutation;
+import org.ntrloc.graph.schema.definition.mutation.CreateLinkPropertyDefinitionMutation;
+import org.ntrloc.graph.schema.definition.mutation.DeletePropertyDefinitionMutation;
+import org.ntrloc.graph.schema.definition.mutation.DefinitionMutation;
+import org.ntrloc.graph.schema.definition.mutation.UpdateItemDefinitionMutation;
+import org.ntrloc.graph.schema.definition.mutation.UpdatePerspectiveDefinitionMutation;
+import org.ntrloc.graph.schema.definition.mutation.UpdatePropertyDefinitionMutation;
 import org.ntrloc.graph.schema.definition.view.admin.AdminItemDefinitionView;
 import org.ntrloc.graph.schema.definition.view.admin.AdminItemLinkPerspectiveView;
 import org.ntrloc.graph.schema.definition.view.admin.AdminLinkView;
@@ -64,27 +64,27 @@ public class SchemaManager {
         repo.createPerspective(contributor, productContributorLink, "product", null, 0, null);
     }
 
-    public void applyOperations(List<SchemaOperation> operations) {
-        for (SchemaOperation op : operations) {
-            switch (op) {
-                case UpdateItemOperation o ->
-                        repo.updateItem(o.id(), o.name(), o.description());
-                case CreateItemPropertyOperation o -> {
-                    var prop = repo.createProperty(o.name(), o.description(), o.propertyType(), o.cardinality(), o.usage());
-                    repo.associateItemProperty(o.itemId(), prop.id());
+    public void applyMutations(List<DefinitionMutation> mutations) {
+        for (DefinitionMutation mutation : mutations) {
+            switch (mutation) {
+                case UpdateItemDefinitionMutation m ->
+                        repo.updateItem(m.id(), m.name(), m.description());
+                case CreateItemPropertyDefinitionMutation m -> {
+                    var prop = repo.createProperty(m.name(), m.description(), m.propertyType(), m.cardinality(), m.usage());
+                    repo.associateItemProperty(m.itemId(), prop.id());
                 }
-                case CreateLinkPropertyOperation o -> {
-                    var prop = repo.createProperty(o.name(), o.description(), o.propertyType(), o.cardinality(), o.usage());
-                    repo.associateLinkProperty(o.linkId(), prop.id());
+                case CreateLinkPropertyDefinitionMutation m -> {
+                    var prop = repo.createProperty(m.name(), m.description(), m.propertyType(), m.cardinality(), m.usage());
+                    repo.associateLinkProperty(m.linkId(), prop.id());
                 }
-                case UpdatePropertyOperation o ->
-                        repo.updateProperty(o.id(), o.name(), o.description(), o.propertyType(), o.cardinality(), o.usage());
-                case DeletePropertyOperation o ->
-                        repo.deleteProperty(o.id());
-                case UpdatePerspectiveOperation o ->
-                        repo.updatePerspective(o.id(), o.name(), o.description(), o.minCardinality(), o.maxCardinality());
+                case UpdatePropertyDefinitionMutation m ->
+                        repo.updateProperty(m.id(), m.name(), m.description(), m.propertyType(), m.cardinality(), m.usage());
+                case DeletePropertyDefinitionMutation m ->
+                        repo.deleteProperty(m.id());
+                case UpdatePerspectiveDefinitionMutation m ->
+                        repo.updatePerspective(m.id(), m.name(), m.description(), m.minCardinality(), m.maxCardinality());
                 default ->
-                        throw new IllegalArgumentException("Unsupported operation: " + op.getClass().getSimpleName());
+                        throw new IllegalArgumentException("Unsupported mutation: " + mutation.getClass().getSimpleName());
             }
         }
     }

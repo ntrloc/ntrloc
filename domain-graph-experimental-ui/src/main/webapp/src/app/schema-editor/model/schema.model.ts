@@ -76,9 +76,9 @@ export interface AdminSchema {
   propertyTypes: PropertyTypeInfo[];
 }
 
-// --- Schema operations ---
+// --- Definition mutations ---
 
-export type SchemaOperation =
+export type DefinitionMutation =
   | { type: 'UPDATE_ITEM'; id: string; name: string; description: string | null }
   | { type: 'CREATE_ITEM_PROPERTY'; itemId: string; name: string; description: string | null; propertyType: PropertyType; cardinality: PropertyCardinality; usage: PropertyUsage }
   | { type: 'CREATE_LINK_PROPERTY'; linkId: string; name: string; description: string | null; propertyType: PropertyType; cardinality: PropertyCardinality; usage: PropertyUsage }

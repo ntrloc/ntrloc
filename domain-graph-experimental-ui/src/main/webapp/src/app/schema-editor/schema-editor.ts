@@ -35,14 +35,14 @@ export class SchemaEditor implements OnInit {
 
   onSave(): void {
     const summary = this.schemaViewModel.describePendingChanges();
-    const operations = this.schemaViewModel.collectOperations();
+    const mutations = this.schemaViewModel.collectMutations();
     const ref = this.dialog.open(SaveConfirmDialog, {
       data: { summary },
       width: '480px',
     });
     ref.afterClosed().subscribe(confirmed => {
       if (confirmed) {
-        this.schemaService.applyOperations(operations).subscribe({
+        this.schemaService.applyMutations(mutations).subscribe({
           next: () => this.schemaViewModel.reload(),
           error: (err) => console.error('[save] error:', err),
         });

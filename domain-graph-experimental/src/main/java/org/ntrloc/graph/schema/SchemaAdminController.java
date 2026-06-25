@@ -1,6 +1,6 @@
 package org.ntrloc.graph.schema;
 
-import org.ntrloc.graph.schema.definition.operation.SchemaOperation;
+import org.ntrloc.graph.schema.definition.mutation.DefinitionMutation;
 import org.ntrloc.graph.schema.definition.view.admin.AdminSchemaView;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -26,9 +26,9 @@ public class SchemaAdminController {
         return ResponseEntity.ok(schemaManager.getAdminSchema());
     }
 
-    @PostMapping("/operations")
-    ResponseEntity<Void> applyOperations(@RequestBody List<SchemaOperation> operations) {
-        schemaManager.applyOperations(operations);
+    @PostMapping("/mutations")
+    ResponseEntity<Void> applyMutations(@RequestBody List<DefinitionMutation> mutations) {
+        schemaManager.applyMutations(mutations);
         return ResponseEntity.noContent().build();
     }
 
