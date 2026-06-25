@@ -61,7 +61,7 @@ public class JdbcSchemaInitializer {
                     description TEXT,
                     type        TEXT NOT NULL,
                     cardinality TEXT NOT NULL,
-                    requirement TEXT NOT NULL
+                    usage TEXT NOT NULL
                 )
                 """)
                 .update();

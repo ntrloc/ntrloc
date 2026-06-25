@@ -1,13 +1,16 @@
 <div class="schema-editor-layout">
   <aside class="item-list-panel">
     <app-item-list
-      [items]="schema?.items ?? []"
-      [selectedItem]="selectedItem"
+      [items]="schemaViewModel.items"
+      [selectedItem]="schemaViewModel.selectedItem"
       (itemSelected)="onItemSelected($event)"
       (newItemRequested)="onNewItem()">
     </app-item-list>
   </aside>
   <main class="item-detail-panel">
-    <app-item-detail [item]="selectedItem" [propertyTypes]="propertyTypes"></app-item-detail>
+    <app-item-detail
+      [item]="schemaViewModel.selectedItem"
+      [propertyTypes]="schemaViewModel.propertyTypes">
+    </app-item-detail>
   </main>
 </div>

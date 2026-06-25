@@ -14,12 +14,12 @@
     <!-- Indicator -->
     <div class="cell indicator-cell">
       <span class="dirty-dot"
-            [class.is-deleted]="row.isDeleted"
-            *ngIf="row.isDirty || row.isDeleted">●</span>
+            [class.is-deleted]="row.vm.isDeleted"
+            *ngIf="row.vm.isDirty">●</span>
     </div>
 
     <!-- Name -->
-    <div class="cell name-cell" [class.cell-deleted]="row.isDeleted">
+    <div class="cell name-cell" [class.cell-deleted]="row.vm.isDeleted">
       <ng-container *ngIf="row.showGroupName">
         <button *ngIf="row.isCollapsible" mat-icon-button class="collapse-btn" (click)="toggleGroup(row.groupName)">
           <mat-icon>{{ isGroupCollapsed(row.groupName) ? 'chevron_right' : 'expand_more' }}</mat-icon>
@@ -29,27 +29,27 @@
     </div>
 
     <!-- Item Type -->
-    <div class="cell" [class.cell-deleted]="row.isDeleted">{{ row.perspective.itemType }}</div>
+    <div class="cell" [class.cell-deleted]="row.vm.isDeleted">{{ row.vm.itemType }}</div>
 
     <!-- Cardinality -->
-    <div class="cell cardinality-cell" [class.cell-deleted]="row.isDeleted">
+    <div class="cell cardinality-cell" [class.cell-deleted]="row.vm.isDeleted">
       <div class="cardinality-inputs">
-        <input class="cardinality-input" type="number" [(ngModel)]="row.editableMin"
-               (ngModelChange)="onCardinalityChange(row)" min="0" [disabled]="row.isDeleted" />
+        <input class="cardinality-input" type="number" [(ngModel)]="row.vm.minCardinality"
+               min="0" [disabled]="row.vm.isDeleted" />
         <span class="cardinality-separator">..</span>
-        <input class="cardinality-input" type="number" [(ngModel)]="row.editableMax"
-               (ngModelChange)="onCardinalityChange(row)" min="0" placeholder="∞" [disabled]="row.isDeleted" />
+        <input class="cardinality-input" type="number" [(ngModel)]="row.vm.maxCardinality"
+               min="0" placeholder="∞" [disabled]="row.vm.isDeleted" />
       </div>
-      <div class="original-value" *ngIf="row.isDirty && !row.isDeleted">
-        {{ row.perspective.minCardinality }}..{{ formatMax(row.perspective.maxCardinality) }}
+      <div class="original-value" *ngIf="row.vm.isDirty && !row.vm.isDeleted">
+        {{ row.vm.originalMinCardinality }}..{{ formatMax(row.vm.originalMaxCardinality) }}
       </div>
     </div>
 
     <!-- Properties -->
     <div class="cell properties-cell">
       <app-property-grid
-        *ngIf="!row.isDeleted"
-        [properties]="row.perspective.properties ?? []"
+        *ngIf="!row.vm.isDeleted"
+        [properties]="row.vm.properties"
         [propertyTypes]="propertyTypes"
         [allowAdd]="true">
       </app-property-grid>
@@ -57,10 +57,10 @@
 
     <!-- Actions -->
     <div class="cell actions-cell">
-      <button mat-icon-button class="action-btn restore-btn" title="Restore" (click)="restoreRow(row)" *ngIf="row.isDeleted">
+      <button mat-icon-button class="action-btn restore-btn" title="Restore" (click)="restoreRow(row)" *ngIf="row.vm.isDeleted">
         <mat-icon>undo</mat-icon>
       </button>
-      <button mat-icon-button class="action-btn delete-btn" title="Delete" (click)="deleteRow(row)" *ngIf="!row.isDeleted">
+      <button mat-icon-button class="action-btn delete-btn" title="Delete" (click)="deleteRow(row)" *ngIf="!row.vm.isDeleted">
         <mat-icon>delete</mat-icon>
       </button>
     </div>

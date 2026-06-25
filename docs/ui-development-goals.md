@@ -9,12 +9,31 @@ The `domain-graph-experimental-ui` module is an administrative web application f
 ### Vertical Slices
 Each feature is developed end-to-end — UI, API contract, service layer, and persistence — rather than completing the back end in isolation before addressing the front end. This surfaces mismatches between the UI's needs and the API's design early, when they are cheap to fix.
 
-### Separation of Concerns (MVVM)
-The front end follows an MVVM-style separation:
-- **Model** — TypeScript interfaces mirroring back-end domain objects, located in `model/` subdirectories within each feature
-- **View** — Component templates (`.html` files), kept thin and driven by bindings
-- **ViewModel (Component)** — Component classes (`.ts` files) that mediate between services and templates; contain no business logic
-- **Service** — Angular services own all HTTP communication and shared state; injected into parent components only, with data passed to child components via `@Input()`
+### Separation of Concerns (MVC / global model)
+
+The front end is structured around a **global model** — a set of singleton domain models that own all application state and operations. Components are transient; the model survives navigation.
+
+#### Naming conventions
+
+- **Model** (`*Model`) — A singleton Angular service (provided at root) that owns state and exposes operations for a domain. It holds the view model for that domain and is the only thing that mutates it. Components interact with the application exclusively through model instances. The Angular DI mechanism is simply how the singleton is delivered — the name and responsibility are what define it as a model, not the Angular term "service".
+- **ViewModel** — Mutable, UI-friendly representation of domain state, held inside the model. Tracks dirty/new/deleted state. Components bind to view model instances directly.
+- **Operation Delegate** (`*OperationDelegate`) — A singleton that handles communication with an external system (e.g. HTTP API calls) on behalf of a model. Stateless by design. The model owns the operation conceptually; the delegate handles the mechanical details. Analogous to the JDBC repositories on the back end.
+- **View** — Component templates (`.html` files), kept thin and driven by bindings. No logic beyond translating user gestures into model operation calls.
+- **Controller** — Component classes (`.ts` files) that translate user gestures into model operation calls. They do not own state, do not call delegates directly, and contain no business logic.
+
+#### Global model structure
+
+An `AppModel` acts as a lightweight umbrella composing the individual domain models. Most components inject only the domain model they need — `SchemaModel` for the schema editor, `SearchModel` for the search view, etc. Cross-domain concerns are handled at the `AppModel` level, but domain models are otherwise independent.
+
+```
+AppModel
+  ├── SchemaModel          ← owns SchemaViewModel + schema operations
+  │     └── SchemaOperationDelegate   ← HTTP calls for schema API
+  ├── SearchModel          ← owns search pane state
+  └── (future domain models as slices are added)
+```
+
+State is never owned by components. Navigating away from a view destroys the component but leaves the model — and all unsaved changes — intact.
 
 ### API Reuse
 The back-end REST APIs are designed for multiple clients, not exclusively for this UI. The UI reuses general API endpoints by default. Divergence (e.g. a dedicated BFF endpoint) is only justified when aggregation would otherwise require multiple round-trips, or when a UI-specific interaction pattern has no equivalent in other clients.

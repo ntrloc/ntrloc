@@ -6,7 +6,7 @@ import org.ntrloc.graph.schema.definition.ItemDefinition;
 import org.ntrloc.graph.schema.definition.ItemLinkPerspectiveDefinition;
 import org.ntrloc.graph.schema.definition.PropertyCardinality;
 import org.ntrloc.graph.schema.definition.PropertyDefinition;
-import org.ntrloc.graph.schema.definition.PropertyRequirement;
+import org.ntrloc.graph.schema.definition.PropertyUsage;
 import org.ntrloc.graph.schema.definition.PropertyType;
 import org.ntrloc.graph.schema.model.admin.AdminItemDefinitionModel;
 import org.ntrloc.graph.schema.model.admin.PropertyTypeModel;
@@ -63,18 +63,18 @@ public class SchemaManager {
 
     private void init() {
         // Item types
-        IdentifiedItemDefinition productDefinition       = itemDefinitionRepository.createItemDefinition(new ItemDefinition("Product", null));
-        IdentifiedItemDefinition coverDefinition         = itemDefinitionRepository.createItemDefinition(new ItemDefinition("Cover", null));
-        IdentifiedItemDefinition alternateCoverDefinition = itemDefinitionRepository.createItemDefinition(new ItemDefinition("AlternateCover", null));
-        IdentifiedItemDefinition contributorDefinition   = itemDefinitionRepository.createItemDefinition(new ItemDefinition("Contributor", null));
+        IdentifiedItemDefinition productDefinition       = itemDefinitionRepository.createItemDefinition(new ItemDefinition("Product", "A product (book, DVD, etc.) sold by the company"));
+        IdentifiedItemDefinition coverDefinition         = itemDefinitionRepository.createItemDefinition(new ItemDefinition("Cover", "A cover for a product"));
+        IdentifiedItemDefinition alternateCoverDefinition = itemDefinitionRepository.createItemDefinition(new ItemDefinition("AlternateCover", "An alternate cover for a product"));
+        IdentifiedItemDefinition contributorDefinition   = itemDefinitionRepository.createItemDefinition(new ItemDefinition("Contributor", "A person who contributed to a product in some way (author, illustrator, editor, etc.)"));
 
         // Product properties
-        var isbnProperty = propertyDefinitionRepository.create(new PropertyDefinition("ISBN 13", null, PropertyType.STRING, PropertyCardinality.SINGLE, PropertyRequirement.OPTIONAL));
+        var isbnProperty = propertyDefinitionRepository.create(new PropertyDefinition("ISBN 13", null, PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL));
         itemPropertyRepository.associate(productDefinition.id(), isbnProperty.id());
 
         // Link: Product ↔ Cover
         var productCoverLink = linkDefinitionRepository.createLinkDefinition();
-        var createDateProperty = propertyDefinitionRepository.create(new PropertyDefinition("createDate", null, PropertyType.DATE, PropertyCardinality.SINGLE, PropertyRequirement.OPTIONAL));
+        var createDateProperty = propertyDefinitionRepository.create(new PropertyDefinition("createDate", null, PropertyType.DATE, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL));
         linkPropertyRepository.associate(productCoverLink.id(), createDateProperty.id());
         linkPerspectiveDefinitionRepository.create(new ItemLinkPerspectiveDefinition(productDefinition.id(), productCoverLink.id(), "cover", null, 0, 1));
         linkPerspectiveDefinitionRepository.create(new ItemLinkPerspectiveDefinition(coverDefinition.id(), productCoverLink.id(), "product", null, 1, 1));
@@ -177,7 +177,7 @@ public class SchemaManager {
     }
 
     private AdminPropertyDefinitionModel mapToAdminModel(IdentifiedPropertyDefinition propertyDef) {
-        return new AdminPropertyDefinitionModel(propertyDef.id(), propertyDef.name(), propertyDef.description(), propertyDef.type(), propertyDef.cardinality(), propertyDef.requirement());
+        return new AdminPropertyDefinitionModel(propertyDef.id(), propertyDef.name(), propertyDef.description(), propertyDef.type(), propertyDef.cardinality(), propertyDef.usage());
     }
 
 }

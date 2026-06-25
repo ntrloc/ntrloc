@@ -4,18 +4,15 @@ import { FormsModule } from '@angular/forms';
 import { MatIconButton } from '@angular/material/button';
 import { MatIcon } from '@angular/material/icon';
 import { PropertyGrid } from '../property-grid/property-grid';
-import { ItemLinkPerspective, PropertyTypeInfo } from '../model/schema.model';
+import { PropertyTypeInfo } from '../model/schema.model';
+import { ItemLinkPerspectiveViewModel } from '../model/schema.viewmodel';
 
 interface PerspectiveRow {
   key: string;
   groupName: string;
   showGroupName: boolean;
   isCollapsible: boolean;
-  perspective: ItemLinkPerspective;
-  editableMin: number;
-  editableMax: number | null;
-  isDeleted: boolean;
-  isDirty: boolean;
+  vm: ItemLinkPerspectiveViewModel;
 }
 
 @Component({
@@ -25,7 +22,7 @@ interface PerspectiveRow {
   styleUrl: './links-table.scss',
 })
 export class LinksTable implements OnChanges {
-  @Input() links: Record<string, ItemLinkPerspective[]> | null = null;
+  @Input() links: Record<string, ItemLinkPerspectiveViewModel[]> | null = null;
   @Input() propertyTypes: PropertyTypeInfo[] = [];
 
   rows: PerspectiveRow[] = [];
@@ -41,17 +38,13 @@ export class LinksTable implements OnChanges {
     this.rows = [];
     for (const [groupName, perspectives] of Object.entries(links)) {
       const isCollapsible = perspectives.length > 1;
-      perspectives.forEach((p, i) => {
+      perspectives.forEach((vm, i) => {
         this.rows.push({
           key: `${groupName}::${i}`,
           groupName,
           showGroupName: i === 0,
           isCollapsible,
-          perspective: p,
-          editableMin: p.minCardinality,
-          editableMax: p.maxCardinality,
-          isDeleted: false,
-          isDirty: false,
+          vm,
         });
       });
     }
@@ -90,19 +83,11 @@ export class LinksTable implements OnChanges {
     return max === null ? '∞' : String(max);
   }
 
-  onCardinalityChange(row: PerspectiveRow): void {
-    row.isDirty = row.editableMin !== row.perspective.minCardinality
-      || row.editableMax !== row.perspective.maxCardinality;
-  }
-
   deleteRow(row: PerspectiveRow): void {
-    row.isDeleted = true;
-    row.isDirty = true;
+    row.vm.isDeleted = true;
   }
 
   restoreRow(row: PerspectiveRow): void {
-    row.isDeleted = false;
-    row.isDirty = row.editableMin !== row.perspective.minCardinality
-      || row.editableMax !== row.perspective.maxCardinality;
+    row.vm.isDeleted = false;
   }
 }

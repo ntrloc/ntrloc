@@ -1,6 +1,28 @@
 <ng-container *ngIf="item; else noSelection">
-  <h2>{{ item.name }}</h2>
-  <p *ngIf="item.description">{{ item.description }}</p>
+
+  <div class="item-header">
+    <div class="field-row name-row">
+      <span class="dirty-dot" [class.is-new]="item.isNew" *ngIf="item.isNew || item.name !== item.originalName">●</span>
+      <input class="item-name-input" [(ngModel)]="item.name" placeholder="Item name" />
+      <button mat-icon-button class="revert-btn" title="Revert name"
+              *ngIf="!item.isNew && item.name !== item.originalName"
+              (click)="item.name = item.originalName">
+        <mat-icon>restart_alt</mat-icon>
+      </button>
+    </div>
+    <div class="original-value" *ngIf="!item.isNew && item.name !== item.originalName && item.originalName">{{ item.originalName }}</div>
+
+    <div class="field-row description-row">
+      <span class="dirty-dot" *ngIf="!item.isNew && (item.description ?? '') !== (item.originalDescription ?? '')">●</span>
+      <input class="item-description-input" [(ngModel)]="item.description" placeholder="Description (optional)" />
+      <button mat-icon-button class="revert-btn" title="Revert description"
+              *ngIf="!item.isNew && (item.description ?? '') !== (item.originalDescription ?? '')"
+              (click)="item.description = item.originalDescription">
+        <mat-icon>restart_alt</mat-icon>
+      </button>
+    </div>
+    <div class="original-value" *ngIf="!item.isNew && (item.description ?? '') !== (item.originalDescription ?? '') && item.originalDescription">{{ item.originalDescription }}</div>
+  </div>
 
   <mat-accordion [multi]="true" togglePosition="before">
 
@@ -15,15 +37,15 @@
       <mat-expansion-panel-header>
         <mat-panel-title>Links</mat-panel-title>
       </mat-expansion-panel-header>
-      <ng-container *ngIf="item.links; else noLinks">
+      <ng-container *ngIf="item.links && objectKeys(item.links).length > 0; else noLinks">
         <app-links-table [links]="item.links" [propertyTypes]="propertyTypes"></app-links-table>
       </ng-container>
-      <ng-template #noLinks><p>No links defined.</p></ng-template>
+      <ng-template #noLinks><p class="empty-state">No links defined.</p></ng-template>
     </mat-expansion-panel>
 
   </mat-accordion>
 </ng-container>
 
 <ng-template #noSelection>
-  <p>Select an item definition to view its details.</p>
+  <p class="empty-state">Select an item definition to view its details.</p>
 </ng-template>

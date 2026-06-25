@@ -20,8 +20,8 @@ public record IdentifiedPropertyDefinition(UUID id, PropertyDefinition definitio
         return definition.cardinality();
     }
 
-    public PropertyRequirement requirement() {
-        return definition.requirement();
+    public PropertyUsage usage() {
+        return definition.usage();
     }
 
 }

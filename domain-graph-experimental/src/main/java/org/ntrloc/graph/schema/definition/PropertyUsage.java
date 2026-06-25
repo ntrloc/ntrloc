@@ -1,6 +1,6 @@
 package org.ntrloc.graph.schema.definition;
 
-public enum PropertyRequirement {
+public enum PropertyUsage {
     OPTIONAL,
     REQUIRED,
     DEPRECATED
