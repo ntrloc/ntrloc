@@ -29,6 +29,7 @@ body {
 
   --color-background: #{$color-background};
   --color-text: #{$color-text};
+  --color-surface: color-mix(in srgb, var(--color-background) 95%, white);
 }
 
 app-root {
