@@ -1,6 +1,6 @@
 package org.ntrloc.graph.schema;
 
-import org.ntrloc.graph.schema.model.calculated.SchemaModel;
+import org.ntrloc.graph.schema.definition.view.calculated.SchemaView;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -17,7 +17,7 @@ public class SchemaController {
     }
 
     @GetMapping
-    ResponseEntity<SchemaModel> getSchema() {
+    ResponseEntity<SchemaView> getSchema() {
         return ResponseEntity.ok(schemaManager.getSchema());
     }
 

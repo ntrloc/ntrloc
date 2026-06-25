@@ -1,28 +1,16 @@
 package org.ntrloc.graph.schema;
 
-import org.ntrloc.graph.schema.definition.IdentifiedItemDefinition;
-import org.ntrloc.graph.schema.definition.IdentifiedPropertyDefinition;
-import org.ntrloc.graph.schema.definition.ItemDefinition;
-import org.ntrloc.graph.schema.definition.ItemLinkPerspectiveDefinition;
 import org.ntrloc.graph.schema.definition.PropertyCardinality;
-import org.ntrloc.graph.schema.definition.PropertyDefinition;
-import org.ntrloc.graph.schema.definition.PropertyUsage;
 import org.ntrloc.graph.schema.definition.PropertyType;
-import org.ntrloc.graph.schema.model.admin.AdminItemDefinitionModel;
-import org.ntrloc.graph.schema.model.admin.PropertyTypeModel;
-import org.ntrloc.graph.schema.model.admin.AdminItemLinkPerspectiveModel;
-import org.ntrloc.graph.schema.model.admin.AdminPropertyDefinitionModel;
-import org.ntrloc.graph.schema.model.admin.AdminSchemaModel;
-import org.ntrloc.graph.schema.model.calculated.ItemDefinitionModel;
-import org.ntrloc.graph.schema.model.calculated.ItemLinkPerspectiveModel;
-import org.ntrloc.graph.schema.model.calculated.PropertyDefinitionModel;
-import org.ntrloc.graph.schema.model.calculated.SchemaModel;
-import org.ntrloc.graph.schema.repository.ItemDefinitionRepository;
-import org.ntrloc.graph.schema.repository.ItemLinkPerspectiveDefinitionRepository;
-import org.ntrloc.graph.schema.repository.ItemPropertyRepository;
-import org.ntrloc.graph.schema.repository.LinkDefinitionRepository;
-import org.ntrloc.graph.schema.repository.LinkPropertyRepository;
-import org.ntrloc.graph.schema.repository.PropertyDefinitionRepository;
+import org.ntrloc.graph.schema.definition.PropertyUsage;
+import org.ntrloc.graph.schema.definition.view.admin.AdminItemDefinitionView;
+import org.ntrloc.graph.schema.definition.view.admin.AdminItemLinkPerspectiveView;
+import org.ntrloc.graph.schema.definition.view.admin.AdminSchemaView;
+import org.ntrloc.graph.schema.definition.view.admin.PropertyTypeView;
+import org.ntrloc.graph.schema.definition.view.calculated.ItemDefinitionView;
+import org.ntrloc.graph.schema.definition.view.calculated.ItemLinkPerspectiveView;
+import org.ntrloc.graph.schema.definition.view.calculated.SchemaView;
+import org.ntrloc.graph.schema.repository.SchemaRepository;
 import org.springframework.context.annotation.DependsOn;
 import org.springframework.stereotype.Service;
 
@@ -32,152 +20,95 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
-@DependsOn("jdbcSchemaInitializer")
+@DependsOn("schemaInitializer")
 public class SchemaManager {
 
-    private final LinkPropertyRepository linkPropertyRepository;
-    private final ItemLinkPerspectiveDefinitionRepository itemLinkPerspectiveDefinitionRepository;
-    private ItemDefinitionRepository itemDefinitionRepository;
-    private ItemPropertyRepository itemPropertyRepository;
-    private LinkDefinitionRepository linkDefinitionRepository;
-    private PropertyDefinitionRepository propertyDefinitionRepository;
-    private ItemLinkPerspectiveDefinitionRepository linkPerspectiveDefinitionRepository;
+    private final SchemaRepository repo;
 
-    public SchemaManager(ItemDefinitionRepository itemDefinitionRepository,
-                         LinkDefinitionRepository linkDefinitionRepository,
-                         ItemPropertyRepository itemPropertyRepository,
-                         PropertyDefinitionRepository propertyDefinitionRepository,
-                         ItemLinkPerspectiveDefinitionRepository linkPerspectiveDefinitionRepository,
-                         LinkPropertyRepository linkPropertyRepository,
-                         ItemLinkPerspectiveDefinitionRepository itemLinkPerspectiveDefinitionRepository) {
-        this.itemDefinitionRepository = itemDefinitionRepository;
-        this.linkDefinitionRepository = linkDefinitionRepository;
-        this.itemPropertyRepository = itemPropertyRepository;
-        this.propertyDefinitionRepository = propertyDefinitionRepository;
-        this.linkPerspectiveDefinitionRepository = linkPerspectiveDefinitionRepository;
-        this.linkPropertyRepository = linkPropertyRepository;
-        this.itemLinkPerspectiveDefinitionRepository = itemLinkPerspectiveDefinitionRepository;
-
+    public SchemaManager(SchemaRepository repo) {
+        this.repo = repo;
         init();
     }
 
     private void init() {
-        // Item types
-        IdentifiedItemDefinition productDefinition       = itemDefinitionRepository.createItemDefinition(new ItemDefinition("Product", "A product (book, DVD, etc.) sold by the company"));
-        IdentifiedItemDefinition coverDefinition         = itemDefinitionRepository.createItemDefinition(new ItemDefinition("Cover", "A cover for a product"));
-        IdentifiedItemDefinition alternateCoverDefinition = itemDefinitionRepository.createItemDefinition(new ItemDefinition("AlternateCover", "An alternate cover for a product"));
-        IdentifiedItemDefinition contributorDefinition   = itemDefinitionRepository.createItemDefinition(new ItemDefinition("Contributor", "A person who contributed to a product in some way (author, illustrator, editor, etc.)"));
+        var product     = repo.createItem("Product", "A product (book, DVD, etc.) sold by the company");
+        var cover       = repo.createItem("Cover", "A cover for a product");
+        var altCover    = repo.createItem("AlternateCover", "An alternate cover for a product");
+        var contributor = repo.createItem("Contributor", "A person who contributed to a product in some way (author, illustrator, editor, etc.)");
 
-        // Product properties
-        var isbnProperty = propertyDefinitionRepository.create(new PropertyDefinition("ISBN 13", null, PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL));
-        itemPropertyRepository.associate(productDefinition.id(), isbnProperty.id());
+        var isbn = repo.createProperty("ISBN 13", null, PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL);
+        repo.associateItemProperty(product, isbn.id());
 
-        // Link: Product ↔ Cover
-        var productCoverLink = linkDefinitionRepository.createLinkDefinition();
-        var createDateProperty = propertyDefinitionRepository.create(new PropertyDefinition("createDate", null, PropertyType.DATE, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL));
-        linkPropertyRepository.associate(productCoverLink.id(), createDateProperty.id());
-        linkPerspectiveDefinitionRepository.create(new ItemLinkPerspectiveDefinition(productDefinition.id(), productCoverLink.id(), "cover", null, 0, 1));
-        linkPerspectiveDefinitionRepository.create(new ItemLinkPerspectiveDefinition(coverDefinition.id(), productCoverLink.id(), "product", null, 1, 1));
+        var productCoverLink = repo.createLink();
+        var createDate = repo.createProperty("createDate", null, PropertyType.DATE, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL);
+        repo.associateLinkProperty(productCoverLink, createDate.id());
+        repo.createPerspective(product, productCoverLink, "cover", null, 0, 1);
+        repo.createPerspective(cover, productCoverLink, "product", null, 1, 1);
 
-        // Link: Product ↔ AlternateCover
-        var productAlternateCoverLink = linkDefinitionRepository.createLinkDefinition();
-        linkPerspectiveDefinitionRepository.create(new ItemLinkPerspectiveDefinition(productDefinition.id(), productAlternateCoverLink.id(), "cover", null, 0, 1));
-        linkPerspectiveDefinitionRepository.create(new ItemLinkPerspectiveDefinition(alternateCoverDefinition.id(), productAlternateCoverLink.id(), "product", null, 1, 1));
+        var productAltCoverLink = repo.createLink();
+        repo.createPerspective(product, productAltCoverLink, "cover", null, 0, 1);
+        repo.createPerspective(altCover, productAltCoverLink, "product", null, 1, 1);
 
-        // Link: Product ↔ Contributor
-        var productContributorLink = linkDefinitionRepository.createLinkDefinition();
-        linkPerspectiveDefinitionRepository.create(new ItemLinkPerspectiveDefinition(productDefinition.id(), productContributorLink.id(), "contributors", null, 0, null));
-        linkPerspectiveDefinitionRepository.create(new ItemLinkPerspectiveDefinition(contributorDefinition.id(), productContributorLink.id(), "product", null, 0, null));
+        var productContributorLink = repo.createLink();
+        repo.createPerspective(product, productContributorLink, "contributors", null, 0, null);
+        repo.createPerspective(contributor, productContributorLink, "product", null, 0, null);
     }
 
-    public SchemaModel getSchema() {
-        var itemDefinitions = itemDefinitionRepository.getItemDefinitions();
-        var itemDefinitionMap = itemDefinitions.stream().collect(Collectors.toMap(IdentifiedItemDefinition::id, itemDef -> itemDef));
-        var itemPropertiesMap = itemPropertyRepository.mapAllByItemType();
-        var linkPropertiesMap = linkPropertyRepository.mapAllByLinkType();
-        var itemLinkPerspectives = itemLinkPerspectiveDefinitionRepository.mapAllByItemType();
+    public SchemaView getSchema() {
+        var items = repo.getAllItems();
+        var itemMap = items.stream().collect(Collectors.toMap(SchemaRepository.ItemRow::id, r -> r));
+        var propertiesByItem = repo.getPropertiesByItem();
+        var propertiesByLink = repo.getPropertiesByLink();
+        var perspectivesByItem = repo.getPerspectivesByItem();
 
-        var itemDefinitionDtos = itemDefinitions.stream().map(itemDefinition -> {
-            var propertyDefinitions = itemPropertiesMap.get(itemDefinition.id());
-            var propertyModels = propertyDefinitions == null
-                    ? null
-                    : propertyDefinitions.stream()
-                            .map(this::mapToCalculatedModel)
-                            .toList();
+        var itemViews = items.stream().map(item -> {
+            var props = propertiesByItem.get(item.id());
+            var propViews = props == null ? null : props.stream()
+                    .map(p -> new org.ntrloc.graph.schema.definition.view.calculated.PropertyDefinitionView(p.id(), p.name(), p.description(), p.type(), p.cardinality()))
+                    .toList();
 
-            var linkPerspectives = itemLinkPerspectives.get(itemDefinition.id());
-            var links = linkPerspectives == null
-                    ? null
-                    : linkPerspectives.stream()
-                            .map(perspective -> {
-                                var inverseLink = itemLinkPerspectiveDefinitionRepository.findInversePerspective(perspective.linkId(), perspective.id());
-                                var inverseItem = itemDefinitionMap.get(inverseLink.definition().itemDefinitionId());
-                                var linkProperties = linkPropertiesMap.get(perspective.linkId());
-                                var linkPropertyModels = linkProperties == null
-                                        ? null
-                                        : linkProperties.stream().map(this::mapToCalculatedModel).toList();
-                                return Map.entry(perspective.name(), new ItemLinkPerspectiveModel(inverseItem.name(), perspective.description(), perspective.minCardinality(), perspective.maxCardinality(), linkPropertyModels));
-                            })
-                            .collect(Collectors.groupingBy(
-                                    Map.Entry::getKey,
-                                    Collectors.mapping(Map.Entry::getValue, Collectors.toList())
-                            ));
+            var perspectives = perspectivesByItem.get(item.id());
+            var links = perspectives == null ? null : perspectives.stream().map(p -> {
+                var inverse = repo.findInversePerspective(p.linkId(), p.id());
+                var inverseItem = itemMap.get(inverse.itemId());
+                var linkProps = propertiesByLink.get(p.linkId());
+                var linkPropViews = linkProps == null ? null : linkProps.stream()
+                        .map(lp -> new org.ntrloc.graph.schema.definition.view.calculated.PropertyDefinitionView(lp.id(), lp.name(), lp.description(), lp.type(), lp.cardinality()))
+                        .toList();
+                return Map.entry(p.name(), new ItemLinkPerspectiveView(inverseItem.name(), p.description(), p.minCardinality(), p.maxCardinality(), linkPropViews));
+            }).collect(Collectors.groupingBy(Map.Entry::getKey, Collectors.mapping(Map.Entry::getValue, Collectors.toList())));
 
-            return new ItemDefinitionModel(itemDefinition.id(), itemDefinition.name(), itemDefinition.description(), propertyModels, links);
+            return new ItemDefinitionView(item.id(), item.name(), item.description(), propViews, links);
         }).toList();
 
-        return new SchemaModel(itemDefinitionDtos);
+        return new SchemaView(itemViews);
     }
 
-    public AdminSchemaModel getAdminSchema() {
-        var itemDefinitions = itemDefinitionRepository.getItemDefinitions();
-        var itemDefinitionMap = itemDefinitions.stream().collect(Collectors.toMap(IdentifiedItemDefinition::id, itemDef -> itemDef));
-        var itemPropertiesMap = itemPropertyRepository.mapAllByItemType();
-        var linkPropertiesMap = linkPropertyRepository.mapAllByLinkType();
-        var itemLinkPerspectives = itemLinkPerspectiveDefinitionRepository.mapAllByItemType();
+    public AdminSchemaView getAdminSchema() {
+        var items = repo.getAllItems();
+        var itemMap = items.stream().collect(Collectors.toMap(SchemaRepository.ItemRow::id, r -> r));
+        var propertiesByItem = repo.getPropertiesByItem();
+        var propertiesByLink = repo.getPropertiesByLink();
+        var perspectivesByItem = repo.getPerspectivesByItem();
 
-        var itemDefinitionDtos = itemDefinitions.stream().map(itemDefinition -> {
-            var propertyDefinitions = itemPropertiesMap.get(itemDefinition.id());
-            var propertyModels = propertyDefinitions == null
-                    ? null
-                    : propertyDefinitions.stream()
-                            .map(this::mapToAdminModel)
-                            .toList();
+        var itemViews = items.stream().map(item -> {
+            var props = propertiesByItem.get(item.id());
 
-            var linkPerspectives = itemLinkPerspectives.get(itemDefinition.id());
-            var links = linkPerspectives == null
-                    ? null
-                    : linkPerspectives.stream()
-                            .map(perspective -> {
-                                var inverseLink = itemLinkPerspectiveDefinitionRepository.findInversePerspective(perspective.linkId(), perspective.id());
-                                var inverseItem = itemDefinitionMap.get(inverseLink.definition().itemDefinitionId());
-                                var linkProperties = linkPropertiesMap.get(perspective.linkId());
-                                var linkPropertyModels = linkProperties == null
-                                        ? null
-                                        : linkProperties.stream().map(this::mapToAdminModel).toList();
-                                return Map.entry(perspective.name(), new AdminItemLinkPerspectiveModel(inverseItem.name(), perspective.description(), perspective.minCardinality(), perspective.maxCardinality(), linkPropertyModels));
-                            })
-                            .collect(Collectors.groupingBy(
-                                    Map.Entry::getKey,
-                                    Collectors.mapping(Map.Entry::getValue, Collectors.toList())
-                            ));
+            var perspectives = perspectivesByItem.get(item.id());
+            var links = perspectives == null ? null : perspectives.stream().map(p -> {
+                var inverse = repo.findInversePerspective(p.linkId(), p.id());
+                var inverseItem = itemMap.get(inverse.itemId());
+                var linkProps = propertiesByLink.get(p.linkId());
+                return Map.entry(p.name(), new AdminItemLinkPerspectiveView(inverseItem.name(), p.description(), p.minCardinality(), p.maxCardinality(), linkProps));
+            }).collect(Collectors.groupingBy(Map.Entry::getKey, Collectors.mapping(Map.Entry::getValue, Collectors.toList())));
 
-            return new AdminItemDefinitionModel(itemDefinition.id(), itemDefinition.name(), itemDefinition.description(), propertyModels, links);
+            return new AdminItemDefinitionView(item.id(), item.name(), item.description(), props, links);
         }).toList();
 
-        List<PropertyTypeModel> propertyTypes = Arrays.stream(PropertyType.values())
-                .map(type -> new PropertyTypeModel(type, type.validCardinalities()))
+        List<PropertyTypeView> propertyTypes = Arrays.stream(PropertyType.values())
+                .map(type -> new PropertyTypeView(type, type.validCardinalities()))
                 .toList();
 
-        return new AdminSchemaModel(itemDefinitionDtos, propertyTypes);
+        return new AdminSchemaView(itemViews, propertyTypes);
     }
-
-    private PropertyDefinitionModel mapToCalculatedModel(IdentifiedPropertyDefinition propertyDef) {
-        return new PropertyDefinitionModel(propertyDef.id(), propertyDef.name(), propertyDef.description(), propertyDef.type(), propertyDef.cardinality());
-    }
-
-    private AdminPropertyDefinitionModel mapToAdminModel(IdentifiedPropertyDefinition propertyDef) {
-        return new AdminPropertyDefinitionModel(propertyDef.id(), propertyDef.name(), propertyDef.description(), propertyDef.type(), propertyDef.cardinality(), propertyDef.usage());
-    }
-
 }

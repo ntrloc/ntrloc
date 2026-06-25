@@ -1,15 +1,15 @@
-package org.ntrloc.graph.schema.repository.impl;
+package org.ntrloc.graph.schema.repository;
 
 import jakarta.annotation.PostConstruct;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 
 @Component
-public class JdbcSchemaInitializer {
+public class SchemaInitializer {
 
     private final JdbcClient jdbcClient;
 
-    public JdbcSchemaInitializer(JdbcClient jdbcClient) {
+    public SchemaInitializer(JdbcClient jdbcClient) {
         this.jdbcClient = jdbcClient;
     }
 

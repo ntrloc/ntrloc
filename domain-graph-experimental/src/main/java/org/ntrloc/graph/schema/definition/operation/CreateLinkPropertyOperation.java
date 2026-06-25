@@ -1,0 +1,10 @@
+package org.ntrloc.graph.schema.definition.operation;
+
+import org.ntrloc.graph.schema.definition.PropertyCardinality;
+import org.ntrloc.graph.schema.definition.PropertyType;
+import org.ntrloc.graph.schema.definition.PropertyUsage;
+
+import java.util.UUID;
+
+public record CreateLinkPropertyOperation(UUID linkId, String name, String description, PropertyType type, PropertyCardinality cardinality, PropertyUsage usage) implements SchemaOperation {
+}
