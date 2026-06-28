@@ -8,6 +8,15 @@ ntrloc:
     enabled: false
 
 spring:
+  security:
+    oauth2:
+      client:
+        registration:
+          keycloak:
+            client-id: ~
+        provider:
+          keycloak:
+            issuer-uri: ~
   autoconfigure:
     exclude:
       - org.springframework.boot.security.oauth2.client.autoconfigure.reactive.ReactiveOAuth2ClientAutoConfiguration
