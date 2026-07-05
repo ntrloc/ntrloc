@@ -16,32 +16,72 @@ public class SchemaInitializer {
     @PostConstruct
     void initSchema() {
         dropAllTables();
+        initEntityTable();
         initItemTable();
+        initTraitTable();
         initLinkTable();
+        initControlledListTable();
         initPropertyTable();
+        initPropertyGroupTable();
         initItemPropertyTable();
+        initItemPropertyGroupTable();
+        initTraitPropertyTable();
+        initItemTraitTable();
         initLinkPropertyTable();
-        initItemLinkPerspectiveTable();
+        initEntityLinkPerspectiveTable();
     }
 
     void dropAllTables() {
-        jdbcClient.sql("DROP TABLE IF EXISTS schema_item_link_perspective").update();
-        jdbcClient.sql("DROP TABLE IF EXISTS schema_item_property").update();
-        jdbcClient.sql("DROP TABLE IF EXISTS schema_link_property").update();
-        jdbcClient.sql("DROP TABLE IF EXISTS schema_property").update();
-        jdbcClient.sql("DROP TABLE IF EXISTS schema_link").update();
-        jdbcClient.sql("DROP TABLE IF EXISTS schema_item").update();
+        jdbcClient.sql("DROP TABLE IF EXISTS schema_entity_link_perspective CASCADE").update();
+        jdbcClient.sql("DROP TABLE IF EXISTS schema_item_link_perspective CASCADE").update();
+        jdbcClient.sql("DROP TABLE IF EXISTS schema_item_property_group CASCADE").update();
+        jdbcClient.sql("DROP TABLE IF EXISTS schema_item_property CASCADE").update();
+        jdbcClient.sql("DROP TABLE IF EXISTS schema_trait_property CASCADE").update();
+        jdbcClient.sql("DROP TABLE IF EXISTS schema_item_trait CASCADE").update();
+        jdbcClient.sql("DROP TABLE IF EXISTS schema_link_property CASCADE").update();
+        jdbcClient.sql("DROP TABLE IF EXISTS schema_property CASCADE").update();
+        jdbcClient.sql("DROP TABLE IF EXISTS schema_property_group CASCADE").update();
+        jdbcClient.sql("DROP TABLE IF EXISTS schema_link CASCADE").update();
+        jdbcClient.sql("DROP TABLE IF EXISTS schema_item CASCADE").update();
+        jdbcClient.sql("DROP TABLE IF EXISTS schema_trait CASCADE").update();
+        jdbcClient.sql("DROP TABLE IF EXISTS schema_entity CASCADE").update();
+        jdbcClient.sql("""
+                SELECT table_name FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_name LIKE 'schema_controlled_list_%'
+                """)
+                .query(String.class).list()
+                .forEach(t -> jdbcClient.sql("DROP TABLE IF EXISTS " + t).update());
+        jdbcClient.sql("DROP TABLE IF EXISTS schema_controlled_list CASCADE").update();
+    }
+
+    void initEntityTable() {
+        jdbcClient.sql("""
+                CREATE TABLE IF NOT EXISTS schema_entity (
+                    id UUID PRIMARY KEY DEFAULT uuidv7()
+                )
+                """).update();
     }
 
     void initItemTable() {
         jdbcClient.sql("""
                 CREATE TABLE IF NOT EXISTS schema_item (
                     id          UUID PRIMARY KEY DEFAULT uuidv7(),
+                    entity_id   UUID NOT NULL UNIQUE REFERENCES schema_entity(id) ON DELETE CASCADE,
                     name        TEXT NOT NULL UNIQUE,
                     description TEXT
                 )
-                """)
-                .update();
+                """).update();
+    }
+
+    void initTraitTable() {
+        jdbcClient.sql("""
+                CREATE TABLE IF NOT EXISTS schema_trait (
+                    id          UUID PRIMARY KEY DEFAULT uuidv7(),
+                    entity_id   UUID NOT NULL UNIQUE REFERENCES schema_entity(id) ON DELETE CASCADE,
+                    name        TEXT NOT NULL UNIQUE,
+                    description TEXT
+                )
+                """).update();
     }
 
     void initLinkTable() {
@@ -49,22 +89,42 @@ public class SchemaInitializer {
                 CREATE TABLE IF NOT EXISTS schema_link (
                     id UUID PRIMARY KEY DEFAULT uuidv7()
                 )
-                """)
-                .update();
+                """).update();
+    }
+
+    void initControlledListTable() {
+        jdbcClient.sql("""
+                CREATE TABLE IF NOT EXISTS schema_controlled_list (
+                    id         UUID PRIMARY KEY DEFAULT uuidv7(),
+                    name       TEXT NOT NULL,
+                    value_type TEXT NOT NULL
+                )
+                """).update();
     }
 
     void initPropertyTable() {
         jdbcClient.sql("""
                 CREATE TABLE IF NOT EXISTS schema_property (
-                    id          UUID PRIMARY KEY DEFAULT uuidv7(),
-                    name        TEXT NOT NULL UNIQUE,
-                    description TEXT,
-                    type        TEXT NOT NULL,
-                    cardinality TEXT NOT NULL,
-                    usage TEXT NOT NULL
+                    id                 UUID PRIMARY KEY DEFAULT uuidv7(),
+                    name               TEXT NOT NULL UNIQUE,
+                    description        TEXT,
+                    type               TEXT NOT NULL,
+                    cardinality        TEXT NOT NULL,
+                    usage              TEXT NOT NULL,
+                    controlled_list_id UUID REFERENCES schema_controlled_list(id) ON DELETE SET NULL
                 )
-                """)
-                .update();
+                """).update();
+    }
+
+    void initPropertyGroupTable() {
+        jdbcClient.sql("""
+                CREATE TABLE IF NOT EXISTS schema_property_group (
+                    id        UUID PRIMARY KEY DEFAULT uuidv7(),
+                    entity_id UUID NOT NULL REFERENCES schema_entity(id) ON DELETE CASCADE,
+                    name      TEXT NOT NULL,
+                    UNIQUE (entity_id, name)
+                )
+                """).update();
     }
 
     void initItemPropertyTable() {
@@ -74,8 +134,38 @@ public class SchemaInitializer {
                     property_id        UUID NOT NULL REFERENCES schema_property(id) ON DELETE CASCADE,
                     PRIMARY KEY (item_definition_id, property_id)
                 )
-                """)
-                .update();
+                """).update();
+    }
+
+    void initItemPropertyGroupTable() {
+        jdbcClient.sql("""
+                CREATE TABLE IF NOT EXISTS schema_item_property_group (
+                    item_definition_id UUID NOT NULL REFERENCES schema_item(id) ON DELETE CASCADE,
+                    property_id        UUID NOT NULL REFERENCES schema_property(id) ON DELETE CASCADE,
+                    group_id           UUID NOT NULL REFERENCES schema_property_group(id) ON DELETE CASCADE,
+                    PRIMARY KEY (item_definition_id, property_id)
+                )
+                """).update();
+    }
+
+    void initTraitPropertyTable() {
+        jdbcClient.sql("""
+                CREATE TABLE IF NOT EXISTS schema_trait_property (
+                    trait_id    UUID NOT NULL REFERENCES schema_trait(id) ON DELETE CASCADE,
+                    property_id UUID NOT NULL REFERENCES schema_property(id) ON DELETE CASCADE,
+                    PRIMARY KEY (trait_id, property_id)
+                )
+                """).update();
+    }
+
+    void initItemTraitTable() {
+        jdbcClient.sql("""
+                CREATE TABLE IF NOT EXISTS schema_item_trait (
+                    item_id  UUID NOT NULL REFERENCES schema_item(id) ON DELETE CASCADE,
+                    trait_id UUID NOT NULL REFERENCES schema_trait(id) ON DELETE CASCADE,
+                    PRIMARY KEY (item_id, trait_id)
+                )
+                """).update();
     }
 
     void initLinkPropertyTable() {
@@ -85,24 +175,21 @@ public class SchemaInitializer {
                     property_id        UUID NOT NULL REFERENCES schema_property(id) ON DELETE CASCADE,
                     PRIMARY KEY (link_definition_id, property_id)
                 )
-                """)
-                .update();
+                """).update();
     }
 
-    void initItemLinkPerspectiveTable() {
+    void initEntityLinkPerspectiveTable() {
         jdbcClient.sql("""
-                CREATE TABLE IF NOT EXISTS schema_item_link_perspective (
+                CREATE TABLE IF NOT EXISTS schema_entity_link_perspective (
                     id                  UUID PRIMARY KEY DEFAULT uuidv7(),
-                    item_definition_id  UUID NOT NULL REFERENCES schema_item(id) ON DELETE CASCADE,
+                    entity_id           UUID NOT NULL REFERENCES schema_entity(id) ON DELETE CASCADE,
                     link_definition_id  UUID NOT NULL REFERENCES schema_link(id) ON DELETE CASCADE,
                     name                TEXT NOT NULL,
                     description         TEXT,
                     minimum_cardinality INT NOT NULL CHECK (minimum_cardinality >= 0),
                     maximum_cardinality INT CHECK (maximum_cardinality IS NULL OR maximum_cardinality >= minimum_cardinality),
-                    UNIQUE (item_definition_id, link_definition_id)
+                    UNIQUE (entity_id, link_definition_id)
                 )
-                """)
-                .update();
+                """).update();
     }
-
 }

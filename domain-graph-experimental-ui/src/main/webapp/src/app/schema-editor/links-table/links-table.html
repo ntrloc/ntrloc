@@ -3,7 +3,7 @@
   <!-- Column headers -->
   <div class="col-header"></div>
   <div class="col-header">Name</div>
-  <div class="col-header">Item Type</div>
+  <div class="col-header">Target</div>
   <div class="col-header">Cardinality</div>
   <div class="col-header">Properties</div>
   <div class="col-header"></div>
@@ -28,17 +28,24 @@
       </ng-container>
     </div>
 
-    <!-- Item Type -->
-    <div class="cell" [class.cell-deleted]="row.vm.isDeleted">{{ row.vm.itemType }}</div>
+    <!-- Target -->
+    <div class="cell target-cell" [class.cell-deleted]="row.vm.isDeleted">
+      <ng-container *ngFor="let t of row.vm.targets; let last = last">
+        <span class="target-name">{{ t.name }}</span>
+        <span class="target-kind" [class.target-kind-trait]="t.kind === 'trait'">{{ t.kind }}</span>
+        <span *ngIf="!last" class="target-separator">/</span>
+      </ng-container>
+      <span class="defined-in-badge" *ngIf="row.vm.definedIn">via {{ row.vm.definedIn.entityName }}</span>
+    </div>
 
     <!-- Cardinality -->
     <div class="cell cardinality-cell" [class.cell-deleted]="row.vm.isDeleted">
       <div class="cardinality-inputs">
         <input class="cardinality-input" type="number" [(ngModel)]="row.vm.minCardinality"
-               min="0" [disabled]="row.vm.isDeleted" />
+               min="0" [disabled]="row.vm.isDeleted || row.vm.isReadonly" />
         <span class="cardinality-separator">..</span>
         <input class="cardinality-input" type="number" [(ngModel)]="row.vm.maxCardinality"
-               min="0" placeholder="∞" [disabled]="row.vm.isDeleted" />
+               min="0" placeholder="∞" [disabled]="row.vm.isDeleted || row.vm.isReadonly" />
       </div>
       <div class="original-value" *ngIf="row.vm.isDirty && !row.vm.isDeleted">
         {{ row.vm.originalMinCardinality }}..{{ formatMax(row.vm.originalMaxCardinality) }}
@@ -51,18 +58,20 @@
         *ngIf="!row.vm.isDeleted"
         [properties]="row.vm.link.properties"
         [propertyTypes]="propertyTypes"
-        [allowAdd]="true">
+        [allowAdd]="!row.vm.isReadonly">
       </app-property-grid>
     </div>
 
     <!-- Actions -->
     <div class="cell actions-cell">
-      <button mat-icon-button class="action-btn restore-btn" title="Restore" (click)="restoreRow(row)" *ngIf="row.vm.isDeleted">
-        <mat-icon>undo</mat-icon>
-      </button>
-      <button mat-icon-button class="action-btn delete-btn" title="Delete" (click)="deleteRow(row)" *ngIf="!row.vm.isDeleted">
-        <mat-icon>delete</mat-icon>
-      </button>
+      <ng-container *ngIf="!row.vm.isReadonly">
+        <button mat-icon-button class="action-btn restore-btn" title="Restore" (click)="restoreRow(row)" *ngIf="row.vm.isDeleted">
+          <mat-icon>undo</mat-icon>
+        </button>
+        <button mat-icon-button class="action-btn delete-btn" title="Delete" (click)="deleteRow(row)" *ngIf="!row.vm.isDeleted">
+          <mat-icon>delete</mat-icon>
+        </button>
+      </ng-container>
     </div>
 
   </ng-container>

@@ -1,12 +1,46 @@
 <div class="schema-editor-layout">
-  <aside class="item-list-panel">
-    <app-item-list
-      [items]="schemaViewModel.items()"
-      [selectedItem]="schemaViewModel.selectedItem()"
-      (itemSelected)="onItemSelected($event)"
-      (newItemRequested)="onNewItem()">
-    </app-item-list>
-    <div class="item-list-footer">
+  <aside class="entity-list-panel">
+    <mat-accordion [multi]="true" class="entity-accordion">
+
+      <mat-expansion-panel [expanded]="true">
+        <mat-expansion-panel-header>
+          <mat-panel-title>Item Types</mat-panel-title>
+        </mat-expansion-panel-header>
+        <div class="entity-list">
+          <button mat-stroked-button class="new-entity-btn" (click)="onNewItem()">
+            <mat-icon>add</mat-icon> New Item Type
+          </button>
+          <button
+            *ngFor="let item of schemaViewModel.items()"
+            mat-button
+            [class.selected]="item === schemaViewModel.selectedItem()"
+            (click)="onItemSelected(item)">
+            {{ item.name }}
+          </button>
+        </div>
+      </mat-expansion-panel>
+
+      <mat-expansion-panel [expanded]="true">
+        <mat-expansion-panel-header>
+          <mat-panel-title>Traits</mat-panel-title>
+        </mat-expansion-panel-header>
+        <div class="entity-list">
+          <button mat-stroked-button class="new-entity-btn" (click)="onNewTrait()">
+            <mat-icon>add</mat-icon> New Trait
+          </button>
+          <button
+            *ngFor="let trait of schemaViewModel.traits()"
+            mat-button
+            [class.selected]="trait === schemaViewModel.selectedTrait()"
+            (click)="onTraitSelected(trait)">
+            {{ trait.name }}
+          </button>
+        </div>
+      </mat-expansion-panel>
+
+    </mat-accordion>
+
+    <div class="entity-list-footer">
       <button mat-flat-button color="primary"
               [disabled]="!schemaViewModel.isDirty"
               (click)="onSave()">
@@ -14,10 +48,24 @@
       </button>
     </div>
   </aside>
+
   <main class="item-detail-panel">
     <app-item-detail
+      *ngIf="schemaViewModel.selectedItem()"
       [item]="schemaViewModel.selectedItem()"
-      [propertyTypes]="schemaViewModel.propertyTypes()">
+      [entityKind]="'item'"
+      [propertyTypes]="schemaViewModel.propertyTypes()"
+      [availableTraits]="schemaViewModel.traits()">
     </app-item-detail>
+    <app-item-detail
+      *ngIf="schemaViewModel.selectedTrait()"
+      [item]="schemaViewModel.selectedTrait()"
+      [entityKind]="'trait'"
+      [propertyTypes]="schemaViewModel.propertyTypes()"
+      [allItems]="schemaViewModel.items()">
+    </app-item-detail>
+    <p class="empty-state" *ngIf="!schemaViewModel.selectedItem() && !schemaViewModel.selectedTrait()">
+      Select an item or trait to view its details.
+    </p>
   </main>
 </div>

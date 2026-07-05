@@ -1,0 +1,41 @@
+<h2 mat-dialog-title>Controlled List: {{ listName() }}</h2>
+
+<mat-dialog-content>
+  <div *ngIf="loading()" class="loading">Loading...</div>
+
+  <div *ngIf="!loading()">
+    <table class="values-table" *ngIf="values().length > 0">
+      <thead>
+        <tr>
+          <th>Value</th>
+          <th>Label</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let entry of values(); let i = index">
+          <td><input class="inline-input" [(ngModel)]="entry.value" /></td>
+          <td><input class="inline-input" [(ngModel)]="entry.label" placeholder="(same as value)" /></td>
+          <td>
+            <button mat-icon-button class="remove-btn" (click)="removeValue(i)" title="Remove">
+              <mat-icon>delete</mat-icon>
+            </button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <p class="empty-note" *ngIf="values().length === 0">No values defined.</p>
+
+    <div class="add-row">
+      <input class="add-input" [(ngModel)]="newValue" placeholder="Value" (keydown.enter)="addValue()" />
+      <input class="add-input" [(ngModel)]="newLabel" placeholder="Label (optional)" (keydown.enter)="addValue()" />
+      <button mat-stroked-button (click)="addValue()">Add</button>
+    </div>
+  </div>
+</mat-dialog-content>
+
+<mat-dialog-actions align="end">
+  <button mat-button (click)="cancel()">Cancel</button>
+  <button mat-flat-button color="primary" (click)="save()" [disabled]="loading()">Stage Changes</button>
+</mat-dialog-actions>

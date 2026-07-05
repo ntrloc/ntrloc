@@ -1,10 +1,11 @@
-<div class="property-grid" *ngIf="properties.length > 0">
+<div class="property-grid" [class.has-groups]="hasGroups" *ngIf="properties.length > 0">
   <div class="property-grid-header"></div>
   <div class="property-grid-header">Name</div>
   <div class="property-grid-header">Description</div>
   <div class="property-grid-header">Type</div>
   <div class="property-grid-header">Cardinality</div>
   <div class="property-grid-header">Usage</div>
+  <div class="property-grid-header" *ngIf="hasGroups">Group</div>
   <div class="property-grid-header"></div>
   <ng-container *ngFor="let prop of properties; trackBy: trackProp">
     <div class="property-cell" [class.cell-deleted]="prop.isDeleted">
@@ -14,11 +15,12 @@
             *ngIf="prop.isDirty">●</span>
     </div>
     <div class="property-cell" [class.cell-deleted]="prop.isDeleted">
-      <input #nameInput class="editable-field" [(ngModel)]="prop.name" [disabled]="prop.isDeleted" />
+      <input #nameInput class="editable-field" [(ngModel)]="prop.name" [disabled]="prop.isDeleted || prop.isReadonly" />
       <div class="original-value" *ngIf="!prop.isNew && prop.name !== prop.originalName && prop.originalName">{{ prop.originalName }}</div>
+      <span class="defined-in-badge" *ngIf="prop.definedIn">via {{ prop.definedIn.entityName }}</span>
     </div>
     <div class="property-cell" [class.cell-deleted]="prop.isDeleted">
-      <input class="editable-field" [(ngModel)]="prop.description" [disabled]="prop.isDeleted" />
+      <input class="editable-field" [(ngModel)]="prop.description" [disabled]="prop.isDeleted || prop.isReadonly" />
       <div class="original-value" *ngIf="!prop.isNew && prop.description !== prop.originalDescription && prop.originalDescription">{{ prop.originalDescription }}</div>
     </div>
     <div class="property-cell" [class.cell-deleted]="prop.isDeleted">
@@ -28,7 +30,7 @@
       <ng-template #typeText>{{ prop.type }}</ng-template>
     </div>
     <div class="property-cell" [class.cell-deleted]="prop.isDeleted">
-      <select *ngIf="prop.validCardinalities.length > 1 && !prop.isDeleted; else cardinalityText"
+      <select *ngIf="prop.validCardinalities.length > 1 && !prop.isDeleted && !prop.isReadonly; else cardinalityText"
               class="editable-field"
               [(ngModel)]="prop.cardinality">
         <option *ngFor="let c of prop.validCardinalities" [value]="c">{{ c }}</option>
@@ -37,24 +39,39 @@
       <div class="original-value" *ngIf="!prop.isNew && prop.cardinality !== prop.originalCardinality && prop.originalCardinality">{{ prop.originalCardinality }}</div>
     </div>
     <div class="property-cell" [class.cell-deleted]="prop.isDeleted" [class.cell-deprecated]="prop.usage === 'DEPRECATED'">
-      <select class="editable-field usage-select" [(ngModel)]="prop.usage" [disabled]="prop.isDeleted">
+      <select class="editable-field usage-select" [(ngModel)]="prop.usage" [disabled]="prop.isDeleted || prop.isReadonly">
         <option *ngFor="let r of requirements" [value]="r">{{ r }}</option>
       </select>
       <div class="original-value" *ngIf="!prop.isNew && prop.usage !== prop.originalUsage && prop.originalUsage">{{ prop.originalUsage }}</div>
     </div>
+    <div class="property-cell" [class.cell-deleted]="prop.isDeleted" *ngIf="hasGroups">
+      <select class="editable-field"
+              [ngModel]="prop.groupId ?? ''"
+              (ngModelChange)="onGroupChange(prop, $event)"
+              [disabled]="prop.isDeleted || prop.isReadonly">
+        <option value="">(none)</option>
+        <option *ngFor="let g of groups" [value]="g.id">{{ g.name }}</option>
+      </select>
+      <div class="original-value" *ngIf="!prop.isNew && prop.groupId !== prop.originalGroupId">{{ groupName(prop.originalGroupId) }}</div>
+    </div>
     <div class="property-cell actions-cell">
-      <ng-container *ngIf="prop.isDeleted">
-        <button mat-icon-button class="action-btn restore-btn" title="Restore" (click)="restoreProperty(prop)">
-          <mat-icon>undo</mat-icon>
-        </button>
-      </ng-container>
-      <ng-container *ngIf="!prop.isDeleted">
-        <button mat-icon-button class="action-btn revert-btn" title="Revert changes" (click)="revertProperty(prop)" *ngIf="prop.isDirty && !prop.isNew">
-          <mat-icon>restart_alt</mat-icon>
-        </button>
-        <button mat-icon-button class="action-btn delete-btn" title="Delete" (click)="deleteProperty(prop)">
-          <mat-icon>delete</mat-icon>
-        </button>
+      <button mat-icon-button class="action-btn list-btn" title="Edit controlled list" (click)="openControlledList(prop)" *ngIf="hasControlledList(prop)">
+        <mat-icon>list</mat-icon>
+      </button>
+      <ng-container *ngIf="!prop.isReadonly">
+        <ng-container *ngIf="prop.isDeleted">
+          <button mat-icon-button class="action-btn restore-btn" title="Restore" (click)="restoreProperty(prop)">
+            <mat-icon>undo</mat-icon>
+          </button>
+        </ng-container>
+        <ng-container *ngIf="!prop.isDeleted">
+          <button mat-icon-button class="action-btn revert-btn" title="Revert changes" (click)="revertProperty(prop)" *ngIf="prop.isDirty && !prop.isNew">
+            <mat-icon>restart_alt</mat-icon>
+          </button>
+          <button mat-icon-button class="action-btn delete-btn" title="Delete" (click)="deleteProperty(prop)">
+            <mat-icon>delete</mat-icon>
+          </button>
+        </ng-container>
       </ng-container>
     </div>
   </ng-container>

@@ -1,16 +1,18 @@
 import { Component, OnInit } from '@angular/core';
+import { NgIf, NgFor } from '@angular/common';
 import { MatButtonModule } from '@angular/material/button';
+import { MatExpansionModule } from '@angular/material/expansion';
+import { MatIcon } from '@angular/material/icon';
 import { MatDialog } from '@angular/material/dialog';
-import { ItemDefinitionViewModel } from './model/schema.viewmodel';
+import { ItemDefinitionViewModel, TraitDefinitionViewModel } from './model/schema.viewmodel';
 import { SchemaViewModel } from './schema-view-model';
 import { SchemaService } from './services/schema.service';
-import { ItemList } from './item-list/item-list';
 import { ItemDetail } from './item-detail/item-detail';
 import { SaveConfirmDialog } from './save-confirm-dialog/save-confirm-dialog';
 
 @Component({
   selector: 'app-schema-editor',
-  imports: [ItemList, ItemDetail, MatButtonModule],
+  imports: [NgIf, NgFor, ItemDetail, MatButtonModule, MatExpansionModule, MatIcon],
   templateUrl: './schema-editor.html',
   styleUrl: './schema-editor.scss',
 })
@@ -26,11 +28,19 @@ export class SchemaEditor implements OnInit {
   }
 
   onItemSelected(item: ItemDefinitionViewModel): void {
-    this.schemaViewModel.selectedItem.set(item);
+    this.schemaViewModel.selectItem(item);
+  }
+
+  onTraitSelected(trait: TraitDefinitionViewModel): void {
+    this.schemaViewModel.selectTrait(trait);
   }
 
   onNewItem(): void {
-    // TODO
+    this.schemaViewModel.newItem();
+  }
+
+  onNewTrait(): void {
+    this.schemaViewModel.newTrait();
   }
 
   onSave(): void {

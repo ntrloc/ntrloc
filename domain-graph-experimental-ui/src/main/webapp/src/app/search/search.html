@@ -1,43 +1,48 @@
 <div class="search-toolbar">
-  <button mat-stroked-button (click)="addPane()">
+  <button mat-stroked-button (click)="vm.addPane()">
     <mat-icon>add</mat-icon>
     Add Pane
   </button>
 </div>
 
 <div class="panes-container"
-     [style.grid-template-columns]="'repeat(' + gridCols + ', 1fr)'"
-     [class.has-maximized]="hasMaximized"
+     [style.grid-template-columns]="'repeat(' + vm.gridCols() + ', 1fr)'"
+     [class.has-maximized]="vm.hasMaximized()"
      cdkDropList
      cdkDropListOrientation="mixed"
-     [cdkDropListData]="activePanes"
-     (cdkDropListDropped)="onDrop($event)">
-  <div class="pane-wrapper"
-       *ngFor="let pane of activePanes"
-       [class.is-maximized]="pane.windowState === 'maximized'"
-       cdkDrag
-       [cdkDragDisabled]="pane.windowState === 'maximized'">
-    <app-search-pane
-      [paneId]="pane.id"
-      [windowState]="pane.windowState"
-      (closePane)="closePane(pane.id)"
-      (maximizePane)="maximizePane(pane.id)"
-      (minimizePane)="minimizePane(pane.id)"
-      (restorePane)="restorePane(pane.id)">
-    </app-search-pane>
-    <div *cdkDragPlaceholder class="drag-placeholder"></div>
-  </div>
+     [cdkDropListData]="vm.activePanes()"
+     (cdkDropListDropped)="vm.onDrop($event)">
+  @for (pane of vm.activePanes(); track pane.id) {
+    <div class="pane-wrapper"
+         [class.is-maximized]="pane.windowState === 'maximized'"
+         cdkDrag
+         [cdkDragDisabled]="pane.windowState === 'maximized'">
+      <app-search-pane
+        [paneId]="pane.id"
+        [windowState]="pane.windowState"
+        (closePane)="vm.closePane(pane.id)"
+        (maximizePane)="vm.maximizePane(pane.id)"
+        (minimizePane)="vm.minimizePane(pane.id)"
+        (restorePane)="vm.restorePane(pane.id)">
+      </app-search-pane>
+      <div *cdkDragPlaceholder class="drag-placeholder"></div>
+    </div>
+  }
 </div>
 
-<div class="panes-dock" *ngIf="minimizedPanes.length > 0">
-  <div class="dock-item" *ngFor="let pane of minimizedPanes">
-    <app-search-pane
-      [paneId]="pane.id"
-      [windowState]="pane.windowState"
-      (closePane)="closePane(pane.id)"
-      (maximizePane)="maximizePane(pane.id)"
-      (minimizePane)="minimizePane(pane.id)"
-      (restorePane)="restorePane(pane.id)">
-    </app-search-pane>
+@if (vm.minimizedPanes().length) {
+  <div class="panes-dock">
+    @for (pane of vm.minimizedPanes(); track pane.id) {
+      <div class="dock-item">
+        <app-search-pane
+          [paneId]="pane.id"
+          [windowState]="pane.windowState"
+          (closePane)="vm.closePane(pane.id)"
+          (maximizePane)="vm.maximizePane(pane.id)"
+          (minimizePane)="vm.minimizePane(pane.id)"
+          (restorePane)="vm.restorePane(pane.id)">
+        </app-search-pane>
+      </div>
+    }
   </div>
-</div>
+}

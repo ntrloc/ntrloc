@@ -2,21 +2,84 @@
   <div class="pane-header" cdkDragHandle>
     <span class="pane-title">Search {{ paneId }}</span>
     <div class="pane-controls">
-      <button mat-icon-button class="control-btn" title="Minimize" (click)="minimizePane.emit()" *ngIf="windowState !== 'minimized'">
-        <mat-icon>remove</mat-icon>
-      </button>
-      <button mat-icon-button class="control-btn" title="Maximize" (click)="maximizePane.emit()" *ngIf="windowState === 'normal'">
-        <mat-icon>open_in_full</mat-icon>
-      </button>
-      <button mat-icon-button class="control-btn" title="Restore" (click)="restorePane.emit()" *ngIf="windowState === 'maximized' || windowState === 'minimized'">
-        <mat-icon>close_fullscreen</mat-icon>
-      </button>
+      @if (windowState !== 'minimized') {
+        <button mat-icon-button class="control-btn" title="Minimize" (click)="minimizePane.emit()">
+          <mat-icon>remove</mat-icon>
+        </button>
+      }
+      @if (windowState === 'normal') {
+        <button mat-icon-button class="control-btn" title="Maximize" (click)="maximizePane.emit()">
+          <mat-icon>open_in_full</mat-icon>
+        </button>
+      }
+      @if (windowState === 'maximized' || windowState === 'minimized') {
+        <button mat-icon-button class="control-btn" title="Restore" (click)="restorePane.emit()">
+          <mat-icon>close_fullscreen</mat-icon>
+        </button>
+      }
       <button mat-icon-button class="control-btn close-btn" title="Close" (click)="closePane.emit()">
         <mat-icon>close</mat-icon>
       </button>
     </div>
   </div>
-  <div class="pane-body" *ngIf="windowState !== 'minimized'">
-    <p>Search pane {{ paneId }}</p>
-  </div>
+
+  @if (windowState !== 'minimized') {
+    <div class="pane-body">
+      @if (paneVm) {
+        <div class="query-panel">
+          <div class="query-row">
+            <select class="query-select" (change)="onTypeSelect($event)">
+              <option value="">-- Select item type --</option>
+              @for (type of paneVm.availableTypes(); track type.id) {
+                <option [value]="type.name" [selected]="paneVm.selectedTypeName() === type.name">
+                  {{ type.name }}
+                </option>
+              }
+            </select>
+            <button mat-flat-button
+                    [disabled]="!paneVm.selectedTypeName() || paneVm.isLoading()"
+                    (click)="paneVm.project()">
+              @if (paneVm.isLoading()) { Loading... } @else { Project }
+            </button>
+          </div>
+
+          @if (paneVm.sortableFields().length > 0) {
+            <div class="sort-row">
+              <span class="sort-label">Sort</span>
+              <select class="query-select" (change)="onSortFieldSelect($event)">
+                <option value="">-- None --</option>
+                @for (field of paneVm.sortableFields(); track field.name) {
+                  <option [value]="field.name" [selected]="paneVm.selectedSortField() === field.name">
+                    {{ field.name }}{{ field.system ? ' *' : '' }}
+                  </option>
+                }
+              </select>
+              @if (paneVm.selectedSortField()) {
+                <button mat-stroked-button class="sort-direction-btn"
+                        (click)="paneVm.toggleSortDirection()">
+                  {{ paneVm.selectedSortDirection() }}
+                </button>
+              }
+            </div>
+          }
+        </div>
+
+        @if (paneVm.results().length > 0) {
+          <div class="results-summary">
+            {{ paneVm.results().length }} items
+            @if (paneVm.projectionTimeLabel()) {
+              <span class="timing">· {{ paneVm.projectionTimeLabel() }}</span>
+            }
+          </div>
+          <div class="results-list">
+            @for (item of paneVm.results(); track item.itemId) {
+              <pre class="result-item">{{ item | json }}</pre>
+            }
+          </div>
+        } @else if (!paneVm.isLoading() && paneVm.selectedTypeName()) {
+          <p class="no-results">No items found.</p>
+        }
+      }
+    </div>
+  }
 </div>

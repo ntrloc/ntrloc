@@ -119,6 +119,35 @@
     }
   }
 
+  .target-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding-top: 4px;
+  }
+
+  .target-name {
+    font-weight: 500;
+  }
+
+  .target-kind {
+    font-size: 0.68rem;
+    opacity: 0.5;
+    text-transform: lowercase;
+    letter-spacing: 0.03em;
+
+    &.target-kind-trait {
+      color: #80cbc4;
+      opacity: 0.85;
+    }
+  }
+
+  .defined-in-badge {
+    font-size: 0.68rem;
+    opacity: 0.55;
+    font-style: italic;
+  }
+
   .properties-cell {
     min-width: 0;
   }

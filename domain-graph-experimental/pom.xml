@@ -76,6 +76,19 @@
             <version>42.7.11</version>
         </dependency>
 
+        <!-- Binary storage -->
+        <dependency>
+            <groupId>org.apache.tika</groupId>
+            <artifactId>tika-core</artifactId>
+            <version>3.2.3</version>
+        </dependency>
+
+        <dependency>
+            <groupId>com.google.guava</groupId>
+            <artifactId>guava</artifactId>
+            <version>33.5.0-jre</version>
+        </dependency>
+
         <!-- Scalar -->
         <dependency>
             <groupId>org.springdoc</groupId>
@@ -85,14 +98,5 @@
 
     </dependencies>
 
-    <build>
-        <plugins>
-            <plugin>
-                <groupId>org.springframework.boot</groupId>
-                <artifactId>spring-boot-maven-plugin</artifactId>
-                <version>${spring.boot.version}</version>
-            </plugin>
-        </plugins>
-    </build>
 
 </project>

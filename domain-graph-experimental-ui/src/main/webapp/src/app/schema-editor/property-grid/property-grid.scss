@@ -4,6 +4,10 @@
   gap: 4px 16px;
   align-items: center;
 
+  &.has-groups {
+    grid-template-columns: 12px 1fr 2fr 1fr 1fr auto 1fr auto;
+  }
+
   .property-grid-header {
     font-weight: 600;
     font-size: 0.75rem;
@@ -62,6 +66,15 @@
     &:disabled {
       opacity: 1;
     }
+  }
+
+  .defined-in-badge {
+    font-size: 0.68rem;
+    opacity: 0.55;
+    font-style: italic;
+    color: #80cbc4;
+    display: block;
+    margin-top: 2px;
   }
 
   .original-value {

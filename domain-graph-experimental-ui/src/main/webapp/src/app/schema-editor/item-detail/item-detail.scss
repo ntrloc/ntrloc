@@ -2,6 +2,15 @@
   margin-bottom: 16px;
 }
 
+.entity-kind-label {
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  opacity: 0.4;
+  margin-bottom: 6px;
+}
+
 .field-row {
   display: flex;
   align-items: center;
@@ -85,6 +94,70 @@
   }
 }
 
+.trait-assignments {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 0;
+}
+
+.trait-chip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px 2px 12px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
+
+  &.trait-new {
+    background: rgba(102, 187, 106, 0.15);
+  }
+
+  &.trait-removed {
+    opacity: 0.4;
+    text-decoration: line-through;
+  }
+}
+
+.trait-chip-name {
+  flex: 1;
+  font-size: 0.9rem;
+}
+
+.trait-remove-btn,
+.trait-restore-btn {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  color: rgba(255, 255, 255, 0.4);
+
+  mat-icon {
+    font-size: 14px;
+    width: 14px;
+    height: 14px;
+    line-height: 14px;
+  }
+
+  &:hover { color: rgba(255, 255, 255, 0.8); }
+}
+
+.add-trait-select {
+  margin-top: 4px;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  color: inherit;
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 4px 8px;
+  cursor: pointer;
+  align-self: flex-start;
+
+  option {
+    background: #1e1e2e;
+  }
+}
+
 .empty-state {
   opacity: 0.5;
   margin: 8px 0;
@@ -95,5 +168,89 @@ mat-accordion {
 
   mat-expansion-panel {
     background: var(--color-surface);
+  }
+}
+
+.property-groups-accordion {
+  margin-top: 8px;
+
+  mat-expansion-panel {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 4px !important;
+    margin-bottom: 4px;
+
+    &:last-child { margin-bottom: 0; }
+  }
+}
+
+.group-panel-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.ungrouped-title {
+  opacity: 0.55;
+  font-style: italic;
+}
+
+.group-name-text {
+  font-weight: 500;
+}
+
+.group-name-input {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.4);
+  color: inherit;
+  font: inherit;
+  font-weight: 500;
+  outline: none;
+  padding: 0;
+  min-width: 120px;
+}
+
+.group-panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex: 0 0 auto;
+  margin-right: 0;
+}
+
+.group-action-btn {
+  width: 28px;
+  height: 28px;
+  line-height: 28px;
+  color: rgba(255, 255, 255, 0.3);
+
+  mat-icon {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+    line-height: 16px;
+  }
+
+  &:hover { color: rgba(255, 255, 255, 0.7); }
+  &.delete-btn:hover { color: #ef5350; }
+}
+
+.group-empty-state {
+  margin: 8px 0 4px 0;
+  font-size: 0.8rem;
+}
+
+.add-group-row {
+  margin-top: 12px;
+
+  button {
+    --mdc-outlined-button-container-shape: 4px;
+    padding: 0 10px;
+    height: 28px;
+    font-size: 0.8rem;
+    line-height: 28px;
   }
 }
