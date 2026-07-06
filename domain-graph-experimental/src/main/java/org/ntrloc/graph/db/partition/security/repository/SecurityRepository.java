@@ -14,6 +14,8 @@ public class SecurityRepository {
 
     public record GroupRow(UUID id, String name) {}
 
+    public record LocalCredentialsRow(UUID userId, String email, String passwordHash, String role, boolean active) {}
+
     private final JdbcClient jdbcClient;
 
     public SecurityRepository(JdbcClient jdbcClient) {
@@ -58,5 +60,32 @@ public class SecurityRepository {
     public void addUserToGroup(UUID userId, UUID groupId) {
         jdbcClient.sql("INSERT INTO security_group_member (user_id, group_id) VALUES (:userId, :groupId)")
                 .param("userId", userId).param("groupId", groupId).update();
+    }
+
+    // --- Local credentials ---
+
+    public void createLocalCredentials(UUID userId, String email, String passwordHash, String role) {
+        jdbcClient.sql("""
+                INSERT INTO security_local_credentials (user_id, email, password_hash, role)
+                VALUES (:userId, :email, :passwordHash, :role)
+                """)
+                .param("userId", userId).param("email", email)
+                .param("passwordHash", passwordHash).param("role", role)
+                .update();
+    }
+
+    public Optional<LocalCredentialsRow> findCredentialsByEmail(String email) {
+        return jdbcClient.sql("""
+                SELECT user_id, email, password_hash, role, active
+                FROM security_local_credentials WHERE email = :email
+                """)
+                .param("email", email)
+                .query((rs, n) -> new LocalCredentialsRow(
+                        rs.getObject("user_id", UUID.class),
+                        rs.getString("email"),
+                        rs.getString("password_hash"),
+                        rs.getString("role"),
+                        rs.getBoolean("active")))
+                .optional();
     }
 }

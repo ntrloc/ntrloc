@@ -6,6 +6,25 @@ markers). They record correctness principles and open questions surfaced by walk
 real scenarios (embargoed covers, campaign-based exceptions, regulatory precedent) — none of
 this changes what the first slice builds, but it shapes the slices that follow.
 
+## Principal resolution: real session takes priority over the stand-in
+
+`PrincipalResolver` checks the real authenticated Spring Security session first, falling back
+to the header/query-param stand-in only when no real session exists. This ordering is what
+keeps the stand-in safe rather than a spoofing vector: `SecurityConfig`'s filter chain already
+requires authentication for every request once `ntrloc.security.enabled=true`, so a real
+`Authentication` is guaranteed present by the time `PrincipalResolver` runs in that mode — the
+stand-in header can only ever be reached when security is disabled (permissive/test mode), and
+a real session can never be overridden by a forged header (verified: presenting a valid session
+cookie alongside a spoofed `X-Ntrloc-User` header for a different identity resolves to the real
+session's identity, not the header's).
+
+Implementation note: the `Authentication` must be obtained as a resolved controller method
+parameter (a bare `Authentication` parameter, or `@AuthenticationPrincipal`), not by blocking on
+`ReactiveSecurityContextHolder.getContext()` inside `PrincipalResolver` itself — Reactor's
+non-blocking-thread guard rejects `.block()`/`.blockOptional()` calls made from within the
+Security filter chain's reactive context (unlike the plain blocking JDBC calls elsewhere in this
+module, which aren't Reactor operators and so aren't subject to that guard).
+
 ## Performance model
 
 Item-level visibility filtering is the expensive, large-scale step — it reduces to an indexed

@@ -71,6 +71,18 @@
             <version>${jackson.tools.version}</version>
         </dependency>
 
+        <!-- tools.jackson.core:jackson-databind requires jackson-annotations:2.21, but the root
+             pom's legacy com.fasterxml.jackson.dataformat:jackson-dataformat-yaml (still needed by
+             other, unmigrated modules) transitively drags in jackson-annotations:2.19.0. Maven's
+             depth-based mediation picks whichever one is "nearer" for a given build, which varies
+             by consumer — declaring the correct version directly here pins it for every consumer
+             of this module, not just this module's own build. -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-annotations</artifactId>
+            <version>2.21</version>
+        </dependency>
+
         <dependency>
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>

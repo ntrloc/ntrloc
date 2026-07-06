@@ -4,52 +4,24 @@ server:
 spring:
   application:
     name: domain-1
-  threads:
-    virtual:
-      enabled: true
   datasource:
     url: jdbc:postgresql://localhost:5432/ntrloc
     username: ntrloc
     password: ntrloc
     driver-class-name: org.postgresql.Driver
-  ai:
-    mcp:
-      server:
-        protocol: stateless
-  thymeleaf:
-    prefix: classpath:/sites/admin/templates/
-  web:
-    resources:
-      add-mappings: false
 
-management:
-  health:
-    cassandra:
+ntrloc:
+  auth:
+    local:
+      enabled: true
+    oauth:
       enabled: false
-  endpoints:
-    web:
-      exposure:
-        include:
-          - health
-          - info
-
-graph:
-  domainName: domain-1
-  storage:
-    berkeley:
-      directory: target/domain1/berkeleyje
-  index:
-    lucene:
-      directory: target/domain1/lucene
-  management:
-    resource.location: file:///Users/michaelcoddington/Documents/Projects/ntrloc/domain-graph-starter/src/main/resources/org/ntrloc/graph/ui
-
-storage:
-  berkeleyje:
-    statistics:
-      level: ALL
-    deadlockDetection: true
-    lock.deadlockDetectionDelay: 1000000  # 1 second
+    ldap:
+      enabled: false
+  security:
+    enabled: true
+    seed-local-accounts: true
+    seed-test-data: false
 
 binary:
   storage:

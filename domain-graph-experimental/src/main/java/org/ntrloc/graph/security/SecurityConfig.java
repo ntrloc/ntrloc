@@ -1,6 +1,7 @@
 package org.ntrloc.graph.security;
 
 import jakarta.annotation.PostConstruct;
+import org.ntrloc.graph.db.partition.security.LocalUserDetailsService;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -13,11 +14,6 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;
 import org.springframework.security.config.web.server.ServerHttpSecurity;
-import org.springframework.security.core.userdetails.MapReactiveUserDetailsService;
-import org.springframework.security.core.userdetails.ReactiveUserDetailsService;
-import org.springframework.security.core.userdetails.User;
-import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.ldap.authentication.BindAuthenticator;
 import org.springframework.security.ldap.authentication.LdapAuthenticationProvider;
 import org.springframework.security.ldap.userdetails.DefaultLdapAuthoritiesPopulator;
@@ -39,9 +35,11 @@ import java.util.List;
 public class SecurityConfig {
 
     private final AuthProperties authProperties;
+    private final LocalUserDetailsService localUserDetailsService;
 
-    public SecurityConfig(AuthProperties authProperties) {
+    public SecurityConfig(AuthProperties authProperties, LocalUserDetailsService localUserDetailsService) {
         this.authProperties = authProperties;
+        this.localUserDetailsService = localUserDetailsService;
     }
 
     @PostConstruct
@@ -111,7 +109,7 @@ public class SecurityConfig {
         }
         if (authProperties.getLocal().isEnabled()) {
             managers.add(new UserDetailsRepositoryReactiveAuthenticationManager(
-                    userDetailsService()));
+                    localUserDetailsService));
         }
 
         return new DelegatingReactiveAuthenticationManager(managers);
@@ -154,15 +152,5 @@ public class SecurityConfig {
                         ? Mono.just(auth)
                         : Mono.empty()  // empty Mono causes DelegatingReactiveAuthenticationManager to try next
                 );
-    }
-
-    @Bean
-    public ReactiveUserDetailsService userDetailsService() {
-        UserDetails user = User.builder()
-                .username("localuser")
-                .password("{bcrypt}" + new BCryptPasswordEncoder().encode("password123"))
-                .roles("USER")
-                .build();
-        return new MapReactiveUserDetailsService(user);
     }
 }

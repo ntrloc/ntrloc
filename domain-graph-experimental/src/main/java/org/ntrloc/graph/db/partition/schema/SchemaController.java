@@ -4,6 +4,7 @@ import org.ntrloc.graph.db.partition.security.PrincipalResolver;
 import org.ntrloc.graph.db.partition.schema.definition.view.calculated.SchemaView;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.server.reactive.ServerHttpRequest;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -21,8 +22,8 @@ public class SchemaController {
     }
 
     @GetMapping
-    ResponseEntity<SchemaView> getSchema(ServerHttpRequest request) {
-        var principal = principalResolver.resolve(request);
+    ResponseEntity<SchemaView> getSchema(ServerHttpRequest request, Authentication authentication) {
+        var principal = principalResolver.resolve(request, authentication);
         return ResponseEntity.ok(schemaManager.getSchema(principal));
     }
 }

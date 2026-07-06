@@ -5,6 +5,7 @@ import org.ntrloc.graph.db.projection.CollectionProjectionSpec;
 import org.ntrloc.graph.db.projection.ProjectionResult;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.server.reactive.ServerHttpRequest;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -23,8 +24,8 @@ public class EntityController {
     }
 
     @PostMapping("/projection")
-    ResponseEntity<ProjectionResult> project(@RequestBody CollectionProjectionSpec spec, ServerHttpRequest request) {
-        var principal = principalResolver.resolve(request);
+    ResponseEntity<ProjectionResult> project(@RequestBody CollectionProjectionSpec spec, ServerHttpRequest request, Authentication authentication) {
+        var principal = principalResolver.resolve(request, authentication);
         String binaryBaseUrl = extractBaseUrl(request);
         return ResponseEntity.ok(entityManager.project(spec, binaryBaseUrl, principal));
     }

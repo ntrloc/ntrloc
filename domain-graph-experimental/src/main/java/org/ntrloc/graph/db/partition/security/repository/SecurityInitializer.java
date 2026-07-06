@@ -19,9 +19,11 @@ public class SecurityInitializer {
         initUserTable();
         initGroupTable();
         initGroupMemberTable();
+        initLocalCredentialsTable();
     }
 
     void dropAllTables() {
+        jdbcClient.sql("DROP TABLE IF EXISTS security_local_credentials CASCADE").update();
         jdbcClient.sql("DROP TABLE IF EXISTS security_group_member CASCADE").update();
         jdbcClient.sql("DROP TABLE IF EXISTS security_group CASCADE").update();
         jdbcClient.sql("DROP TABLE IF EXISTS security_user CASCADE").update();
@@ -52,6 +54,19 @@ public class SecurityInitializer {
                     user_id  UUID NOT NULL REFERENCES security_user(id)  ON DELETE CASCADE,
                     group_id UUID NOT NULL REFERENCES security_group(id) ON DELETE CASCADE,
                     PRIMARY KEY (user_id, group_id)
+                )
+                """).update();
+    }
+
+    void initLocalCredentialsTable() {
+        jdbcClient.sql("""
+                CREATE TABLE IF NOT EXISTS security_local_credentials (
+                    user_id       UUID PRIMARY KEY REFERENCES security_user(id) ON DELETE CASCADE,
+                    email         TEXT NOT NULL UNIQUE,
+                    password_hash TEXT NOT NULL,
+                    role          TEXT NOT NULL CHECK (role IN ('ADMIN', 'USER')),
+                    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    active        BOOLEAN NOT NULL DEFAULT TRUE
                 )
                 """).update();
     }
