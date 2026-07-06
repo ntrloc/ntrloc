@@ -1,5 +1,6 @@
 package org.ntrloc.graph.db;
 
+import org.ntrloc.graph.acl.NtrlocPrincipal;
 import org.ntrloc.graph.db.projection.CollectionProjectionSpec;
 import org.ntrloc.graph.db.projection.ProjectedItem;
 import org.ntrloc.graph.db.projection.ProjectionResult;
@@ -9,7 +10,7 @@ import java.util.Optional;
 
 public interface EntityManager {
 
-    Optional<ProjectedItem> project(SingleItemProjectionSpec spec, String binaryBaseUrl);
+    Optional<ProjectedItem> project(SingleItemProjectionSpec spec, String binaryBaseUrl, NtrlocPrincipal principal);
 
-    ProjectionResult project(CollectionProjectionSpec spec, String binaryBaseUrl);
+    ProjectionResult project(CollectionProjectionSpec spec, String binaryBaseUrl, NtrlocPrincipal principal);
 }

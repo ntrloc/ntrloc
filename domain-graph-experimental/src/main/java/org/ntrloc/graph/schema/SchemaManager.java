@@ -1,5 +1,7 @@
 package org.ntrloc.graph.schema;
 
+import org.ntrloc.graph.acl.NtrlocPrincipal;
+import org.ntrloc.graph.acl.PermissionService;
 import org.ntrloc.graph.domain.DomainInitializer;
 import org.ntrloc.graph.schema.AllowedValue;
 import org.ntrloc.graph.schema.ControlledListManager;
@@ -61,13 +63,15 @@ public class SchemaManager {
 
     private final SchemaRepository repo;
     private final ControlledListManager controlledListManager;
+    private final PermissionService permissionService;
 
     private AdminSchemaView cachedAdminSchema;
     private SchemaView cachedSchema;
 
-    public SchemaManager(SchemaRepository repo, ControlledListManager controlledListManager, Optional<DomainInitializer> domainInitializer) {
+    public SchemaManager(SchemaRepository repo, ControlledListManager controlledListManager, Optional<DomainInitializer> domainInitializer, PermissionService permissionService) {
         this.repo = repo;
         this.controlledListManager = controlledListManager;
+        this.permissionService = permissionService;
         domainInitializer.ifPresent(d -> d.initSchema(repo, controlledListManager));
         rebuildCache();
     }
@@ -138,8 +142,16 @@ public class SchemaManager {
         return cachedAdminSchema;
     }
 
-    public SchemaView getSchema() {
-        return cachedSchema;
+    public SchemaView getSchema(NtrlocPrincipal principal) {
+        var markersByType = permissionService.getItemTypeMarkerAssignments();
+        var grantedMarkers = permissionService.effectiveMarkers(principal, PermissionService.ITEM_READ);
+        var visibleItems = cachedSchema.items().stream()
+                .filter(item -> {
+                    var markers = markersByType.getOrDefault(item.id(), List.of());
+                    return !markers.isEmpty() && markers.stream().anyMatch(grantedMarkers::contains);
+                })
+                .toList();
+        return new SchemaView(visibleItems, cachedSchema.traits());
     }
 
     // --- Sort support ---

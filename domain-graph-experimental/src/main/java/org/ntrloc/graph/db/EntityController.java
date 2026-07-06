@@ -1,5 +1,6 @@
 package org.ntrloc.graph.db;
 
+import org.ntrloc.graph.acl.PrincipalResolver;
 import org.ntrloc.graph.db.projection.CollectionProjectionSpec;
 import org.ntrloc.graph.db.projection.ProjectionResult;
 import org.springframework.http.ResponseEntity;
@@ -14,15 +15,18 @@ import org.springframework.web.bind.annotation.RestController;
 public class EntityController {
 
     private final EntityManager entityManager;
+    private final PrincipalResolver principalResolver;
 
-    public EntityController(EntityManager entityManager) {
+    public EntityController(EntityManager entityManager, PrincipalResolver principalResolver) {
         this.entityManager = entityManager;
+        this.principalResolver = principalResolver;
     }
 
     @PostMapping("/projection")
     ResponseEntity<ProjectionResult> project(@RequestBody CollectionProjectionSpec spec, ServerHttpRequest request) {
+        var principal = principalResolver.resolve(request);
         String binaryBaseUrl = extractBaseUrl(request);
-        return ResponseEntity.ok(entityManager.project(spec, binaryBaseUrl));
+        return ResponseEntity.ok(entityManager.project(spec, binaryBaseUrl, principal));
     }
 
     private String extractBaseUrl(ServerHttpRequest request) {
