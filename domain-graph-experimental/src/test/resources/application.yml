@@ -1,7 +1,6 @@
 ntrloc:
   security:
     enabled: false
-  acl:
     seed-test-data: true
 
 binary:

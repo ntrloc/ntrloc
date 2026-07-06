@@ -1,8 +1,8 @@
 package org.ntrloc.graph.domain;
 
 import org.ntrloc.graph.db.partition.binary.BinaryPartitionManager;
-import org.ntrloc.graph.schema.ControlledListManager;
-import org.ntrloc.graph.schema.repository.SchemaRepository;
+import org.ntrloc.graph.db.partition.schema.ControlledListManager;
+import org.ntrloc.graph.db.partition.schema.repository.SchemaRepository;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
 public interface DomainInitializer {

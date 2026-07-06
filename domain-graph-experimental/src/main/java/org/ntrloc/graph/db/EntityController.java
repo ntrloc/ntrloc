@@ -1,6 +1,6 @@
 package org.ntrloc.graph.db;
 
-import org.ntrloc.graph.acl.PrincipalResolver;
+import org.ntrloc.graph.db.partition.security.PrincipalResolver;
 import org.ntrloc.graph.db.projection.CollectionProjectionSpec;
 import org.ntrloc.graph.db.projection.ProjectionResult;
 import org.springframework.http.ResponseEntity;

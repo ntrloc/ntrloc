@@ -1,13 +1,13 @@
 package org.ntrloc.graph.db;
 
-import org.ntrloc.graph.acl.NtrlocPrincipal;
-import org.ntrloc.graph.acl.PermissionService;
+import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
+import org.ntrloc.graph.db.partition.authorization.PermissionService;
 import org.ntrloc.graph.db.partition.register.RegisterPartitionManager;
 import org.ntrloc.graph.db.projection.CollectionProjectionSpec;
 import org.ntrloc.graph.db.projection.ProjectedItem;
 import org.ntrloc.graph.db.projection.ProjectionResult;
 import org.ntrloc.graph.db.projection.SingleItemProjectionSpec;
-import org.ntrloc.graph.schema.SchemaManager;
+import org.ntrloc.graph.db.partition.schema.SchemaManager;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
