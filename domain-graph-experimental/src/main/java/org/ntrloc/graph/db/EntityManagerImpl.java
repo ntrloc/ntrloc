@@ -32,7 +32,7 @@ public class EntityManagerImpl implements EntityManager {
     public Optional<ProjectedItem> project(SingleItemProjectionSpec spec, String binaryBaseUrl, NtrlocPrincipal principal) {
         UUID itemTypeId = resolveItemTypeId(spec.itemTypeName());
         requireReadAccess(principal, itemTypeId, spec.itemTypeName());
-        return registerPartitionManager.projectOne(itemTypeId, spec.itemId(), binaryBaseUrl);
+        return registerPartitionManager.projectOne(itemTypeId, spec.itemId(), binaryBaseUrl, Boolean.TRUE.equals(spec.groupProperties()));
     }
 
     @Override

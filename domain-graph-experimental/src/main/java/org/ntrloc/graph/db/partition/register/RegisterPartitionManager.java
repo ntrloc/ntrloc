@@ -11,7 +11,9 @@ import org.ntrloc.graph.db.projection.Predicate;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
+import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyDefinitionView;
+import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyGroupView;
 import org.ntrloc.graph.db.projection.ProjectedItem;
 import org.ntrloc.graph.db.projection.ProjectedLink;
 import org.ntrloc.graph.db.projection.ProjectionResult;
@@ -26,6 +28,7 @@ import org.springframework.stereotype.Component;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -162,7 +165,9 @@ public class RegisterPartitionManager {
                         parseJsonb(rs.getString("properties"))))
                 .list();
 
-        return new ProjectionResult(assembleProjectedItems(rawItems, binaryBaseUrl), totalCount, facetedCount, facets);
+        return new ProjectionResult(
+                assembleProjectedItems(rawItems, binaryBaseUrl, itemTypeId, Boolean.TRUE.equals(spec.groupProperties())),
+                totalCount, facetedCount, facets);
     }
 
     private long runCount(String tableName, UUID itemTypeId, SqlFragment filter, SqlFragment additionalFilter) {
@@ -255,7 +260,7 @@ public class RegisterPartitionManager {
         return params;
     }
 
-    public Optional<ProjectedItem> projectOne(UUID itemTypeId, UUID itemId, String binaryBaseUrl) {
+    public Optional<ProjectedItem> projectOne(UUID itemTypeId, UUID itemId, String binaryBaseUrl, boolean groupProperties) {
         List<RawItem> rawItems = jdbcClient.sql("""
                 SELECT ri.id AS register_item_id, ri.item_id, si.name AS item_type, rt.properties::text AS properties
                 FROM register_item ri
@@ -277,7 +282,7 @@ public class RegisterPartitionManager {
         if (rawItems.isEmpty()) {
             return Optional.empty();
         }
-        return Optional.of(assembleProjectedItems(rawItems, binaryBaseUrl).getFirst());
+        return Optional.of(assembleProjectedItems(rawItems, binaryBaseUrl, itemTypeId, groupProperties).getFirst());
     }
 
     private record LinkRow(UUID myRegisterItemId, String perspectiveName,
@@ -286,8 +291,11 @@ public class RegisterPartitionManager {
 
     private record BinaryPropertyRow(UUID registerItemId, String propertyName, UUID binaryId) {}
 
-    private List<ProjectedItem> assembleProjectedItems(List<RawItem> rawItems, String binaryBaseUrl) {
+    private List<ProjectedItem> assembleProjectedItems(List<RawItem> rawItems, String binaryBaseUrl,
+                                                        UUID itemTypeId, boolean groupProperties) {
         List<UUID> rawItemIds = rawItems.stream().map(RawItem::registerItemId).toList();
+
+        AdminItemDefinitionView itemView = groupProperties ? adminItemView(itemTypeId) : null;
 
         List<LinkRow> linkRows = jdbcClient.sql("""
                 SELECT
@@ -378,6 +386,7 @@ public class RegisterPartitionManager {
                     Map<String, Object> props = new HashMap<>(raw.properties());
                     Map<String, Object> binProps = binaryPropsByItem.get(raw.registerItemId());
                     if (binProps != null) props.putAll(binProps);
+                    if (itemView != null) props = groupProperties(props, itemView);
                     return new ProjectedItem(
                             raw.itemId(),
                             raw.itemType(),
@@ -385,6 +394,43 @@ public class RegisterPartitionManager {
                             linksByItem.getOrDefault(raw.registerItemId(), Map.of()));
                 })
                 .toList();
+    }
+
+    private AdminItemDefinitionView adminItemView(UUID itemTypeId) {
+        return schemaManager.getAdminSchema().items().stream()
+                .filter(item -> item.id().equals(itemTypeId))
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException("Unknown item type: " + itemTypeId));
+    }
+
+    // Ungrouped properties stay direct children of the properties object; grouped properties nest
+    // under an object named for their group, appended after the ungrouped ones. Any property key
+    // present in the register data but not found on the schema view falls back to ungrouped, so a
+    // schema/data drift never silently drops a value.
+    private Map<String, Object> groupProperties(Map<String, Object> flatProps, AdminItemDefinitionView itemView) {
+        Map<UUID, String> groupNameById = itemView.groups().stream()
+                .collect(Collectors.toMap(AdminPropertyGroupView::id, AdminPropertyGroupView::name));
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        Map<String, Map<String, Object>> groupedProps = new LinkedHashMap<>();
+        Set<String> seen = new HashSet<>();
+
+        for (AdminPropertyDefinitionView p : itemView.properties()) {
+            if (!flatProps.containsKey(p.name())) continue;
+            seen.add(p.name());
+            Object value = flatProps.get(p.name());
+            if (p.groupId() == null) {
+                result.put(p.name(), value);
+            } else {
+                groupedProps.computeIfAbsent(groupNameById.get(p.groupId()), k -> new LinkedHashMap<>())
+                        .put(p.name(), value);
+            }
+        }
+        flatProps.forEach((key, value) -> {
+            if (!seen.contains(key)) result.put(key, value);
+        });
+        groupedProps.forEach(result::put);
+        return result;
     }
 
     private Map<String, Object> assembleBinaryValue(BinaryPropertyObject obj, String binaryBaseUrl) {
