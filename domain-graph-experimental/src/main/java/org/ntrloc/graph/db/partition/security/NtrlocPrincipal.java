@@ -8,4 +8,7 @@ public interface NtrlocPrincipal {
     String externalId();
     String displayName();
     Set<UUID> groupIds();
+
+    /** Superusers bypass marker authorization entirely — not constrained by any policy. */
+    boolean isSuperuser();
 }

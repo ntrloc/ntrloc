@@ -6,6 +6,22 @@ markers). They record correctness principles and open questions surfaced by walk
 real scenarios (embargoed covers, campaign-based exceptions, regulatory precedent) — none of
 this changes what the first slice builds, but it shapes the slices that follow.
 
+## Superuser bypass lives on the identity, not the authentication mechanism
+
+`security_user.is_superuser` is the single source of truth for bypassing marker authorization
+entirely (per the original design doc's "superusers bypass all policy" principle), checked in
+`PermissionService.canReadItemType` and `SchemaManager.getSchema`. It deliberately does not live
+on `security_local_credentials.role` — a superuser should bypass policy the same way regardless
+of whether they authenticated locally, via LDAP, OAuth, or the stand-in header, since "admin" is
+a property of the identity, not of how that identity proved itself in a given request. The local
+credentials `role` column stays as descriptive/display data only; `is_superuser` is what's
+actually checked.
+
+Bypass is applied at each enforcement call site (`canReadItemType`, `getSchema`) rather than
+inside `effectiveMarkers` — that keeps the raw grant-resolution primitive a pure function of
+grants, with superuser semantics as a policy decision made by callers, not baked into the query
+that computes "what markers does this principal hold."
+
 ## Principal resolution: real session takes priority over the stand-in
 
 `PrincipalResolver` checks the real authenticated Spring Security session first, falling back

@@ -2,9 +2,11 @@ package org.ntrloc.graph.security;
 
 import jakarta.annotation.PostConstruct;
 import org.ntrloc.graph.db.partition.security.LocalUserDetailsService;
+import org.ntrloc.graph.db.partition.security.PersonalAccessTokenService;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpHeaders;
 import org.springframework.ldap.core.support.LdapContextSource;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.DelegatingReactiveAuthenticationManager;
@@ -14,12 +16,15 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;
 import org.springframework.security.config.web.server.ServerHttpSecurity;
+import org.springframework.security.config.web.server.SecurityWebFiltersOrder;
 import org.springframework.security.ldap.authentication.BindAuthenticator;
 import org.springframework.security.ldap.authentication.LdapAuthenticationProvider;
 import org.springframework.security.ldap.userdetails.DefaultLdapAuthoritiesPopulator;
 import org.springframework.security.web.server.SecurityWebFilterChain;
 import org.springframework.security.web.server.ServerAuthenticationEntryPoint;
+import org.springframework.security.web.server.authentication.AuthenticationWebFilter;
 import org.springframework.security.web.server.authentication.RedirectServerAuthenticationEntryPoint;
+import org.springframework.security.web.server.authentication.ServerAuthenticationConverter;
 import org.springframework.security.web.server.authentication.logout.RedirectServerLogoutSuccessHandler;
 import org.springframework.security.web.server.authentication.logout.ServerLogoutSuccessHandler;
 import reactor.core.publisher.Mono;
@@ -36,10 +41,13 @@ public class SecurityConfig {
 
     private final AuthProperties authProperties;
     private final LocalUserDetailsService localUserDetailsService;
+    private final PersonalAccessTokenService personalAccessTokenService;
 
-    public SecurityConfig(AuthProperties authProperties, LocalUserDetailsService localUserDetailsService) {
+    public SecurityConfig(AuthProperties authProperties, LocalUserDetailsService localUserDetailsService,
+                           PersonalAccessTokenService personalAccessTokenService) {
         this.authProperties = authProperties;
         this.localUserDetailsService = localUserDetailsService;
+        this.personalAccessTokenService = personalAccessTokenService;
     }
 
     @PostConstruct
@@ -84,6 +92,18 @@ public class SecurityConfig {
         }
 
         http.httpBasic(Customizer.withDefaults());
+
+        // Bearer-token (PAT) auth is checked fresh on every request via the Authorization header,
+        // no session involved — a different shape than form login, so it gets its own filter
+        // rather than folding into compositeAuthenticationManager() (which is specifically for
+        // the POST /login form submission). Unconditional, same as httpBasic() above: PATs are
+        // always available once security is enabled, no AuthProperties toggle. The converter
+        // returns empty when there's no Bearer header, so ordinary session-based requests pass
+        // through untouched.
+        AuthenticationWebFilter patFilter = new AuthenticationWebFilter(personalAccessTokenAuthenticationManager());
+        patFilter.setServerAuthenticationConverter(bearerTokenConverter());
+        http.addFilterAt(patFilter, SecurityWebFiltersOrder.HTTP_BASIC);
+
         return http.build();
     }
 
@@ -152,5 +172,32 @@ public class SecurityConfig {
                         ? Mono.just(auth)
                         : Mono.empty()  // empty Mono causes DelegatingReactiveAuthenticationManager to try next
                 );
+    }
+
+    private ReactiveAuthenticationManager personalAccessTokenAuthenticationManager() {
+        // Unlike ldapAuthenticationManager() above, this manager runs standalone in its own
+        // AuthenticationWebFilter rather than inside a DelegatingReactiveAuthenticationManager —
+        // "empty means try the next manager" doesn't apply here, so failure must be signaled by
+        // erroring, not by completing empty (which AuthenticationWebFilter does not treat as a
+        // normal rejection when used this way).
+        return authentication -> Mono.fromCallable(() ->
+                        personalAccessTokenService.authenticate((String) authentication.getCredentials()))
+                .subscribeOn(Schedulers.boundedElastic())
+                .flatMap(opt -> opt
+                        .<org.springframework.security.core.Authentication>map(user ->
+                                UsernamePasswordAuthenticationToken.authenticated(user.externalId(), null, List.of()))
+                        .map(Mono::just)
+                        .orElseGet(() -> Mono.error(new BadCredentialsException("Invalid or expired personal access token"))));
+    }
+
+    private ServerAuthenticationConverter bearerTokenConverter() {
+        return exchange -> {
+            String header = exchange.getRequest().getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
+            if (header == null || !header.startsWith("Bearer ")) {
+                return Mono.empty();
+            }
+            String token = header.substring("Bearer ".length());
+            return Mono.just(UsernamePasswordAuthenticationToken.unauthenticated(token, token));
+        };
     }
 }

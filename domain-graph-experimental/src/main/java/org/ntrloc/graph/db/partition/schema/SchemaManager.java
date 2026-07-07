@@ -143,6 +143,9 @@ public class SchemaManager {
     }
 
     public SchemaView getSchema(NtrlocPrincipal principal) {
+        if (principal.isSuperuser()) {
+            return cachedSchema;
+        }
         var markersByType = permissionService.getItemTypeMarkerAssignments();
         var grantedMarkers = permissionService.effectiveMarkers(principal, PermissionService.ITEM_READ);
         var visibleItems = cachedSchema.items().stream()

@@ -12,6 +12,8 @@ import org.springframework.test.web.reactive.server.WebTestClient;
  * (Testcontainers) and the fixture seeded by AuthorizationTestDataInitializer:
  *  - alice, bob -> group "viewers" -> item:read on "public-read" marker -> AclTestPublicDoc
  *  - carol -> direct grant -> item:read on "confidential-read" marker -> AclTestConfidentialDoc
+ *  - root -> superuser -> bypasses marker authorization entirely, including AclTestUnmarkedDoc,
+ *    which has no marker assignment at all and is therefore invisible to everyone else
  */
 class AuthorizationEndpointsIntegrationTest extends AbstractIntegrationTest {
 
@@ -118,6 +120,44 @@ class AuthorizationEndpointsIntegrationTest extends AbstractIntegrationTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("""
                         {"itemTypeName":"AclTestPublicDoc"}
+                        """)
+                .exchange()
+                .expectStatus().isNotFound();
+    }
+
+    @Test
+    void schemaViewShowsAllTypesForSuperuser() {
+        webTestClient.get().uri("/schema")
+                .header("X-Ntrloc-User", "root")
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath("$.items[*].name").value(names -> {
+                    var list = (java.util.List<String>) names;
+                    org.assertj.core.api.Assertions.assertThat(list)
+                            .contains("AclTestPublicDoc", "AclTestConfidentialDoc", "AclTestUnmarkedDoc");
+                });
+    }
+
+    @Test
+    void projectionAllowsSuperuserOnUnmarkedType() {
+        webTestClient.post().uri("/entity/projection")
+                .header("X-Ntrloc-User", "root")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue("""
+                        {"itemTypeName":"AclTestUnmarkedDoc"}
+                        """)
+                .exchange()
+                .expectStatus().isOk();
+    }
+
+    @Test
+    void projectionMasksUnmarkedTypeForNonSuperuser() {
+        webTestClient.post().uri("/entity/projection")
+                .header("X-Ntrloc-User", "alice")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue("""
+                        {"itemTypeName":"AclTestUnmarkedDoc"}
                         """)
                 .exchange()
                 .expectStatus().isNotFound();

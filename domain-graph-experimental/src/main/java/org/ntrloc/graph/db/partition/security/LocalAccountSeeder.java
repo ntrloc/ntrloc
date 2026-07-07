@@ -25,7 +25,8 @@ public class LocalAccountSeeder {
     }
 
     private void seedAccount(String externalId, String displayName, String rawPassword, String role) {
-        var user = repo.createUser(externalId, displayName);
+        boolean isSuperuser = "ADMIN".equals(role);
+        var user = repo.createUser(externalId, displayName, isSuperuser);
         String passwordHash = "{bcrypt}" + new BCryptPasswordEncoder().encode(rawPassword);
         repo.createLocalCredentials(user.id(), externalId, passwordHash, role);
     }

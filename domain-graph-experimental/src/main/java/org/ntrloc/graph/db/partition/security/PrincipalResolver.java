@@ -69,6 +69,6 @@ public class PrincipalResolver {
 
     private NtrlocPrincipal toPrincipal(SecurityRepository.UserRow user) {
         Set<UUID> groupIds = repo.getGroupIdsForUser(user.id());
-        return new ResolvedPrincipal(user.id(), user.externalId(), user.displayName(), groupIds);
+        return new ResolvedPrincipal(user.id(), user.externalId(), user.displayName(), groupIds, user.isSuperuser());
     }
 }

@@ -69,7 +69,7 @@
             },
             "development": {
               "buildTarget": "graph-ui:build:development",
-              "proxyConfig": "proxy.conf.json"
+              "proxyConfig": "proxy.conf.js"
             }
           },
           "defaultConfiguration": "development"

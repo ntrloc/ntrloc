@@ -32,9 +32,12 @@ public class PermissionService {
 
     /**
      * Single-item-type read check. Default deny: an item type with zero assigned markers is
-     * invisible to everyone — there is no superuser bypass in this slice.
+     * invisible to everyone — except superusers, who bypass marker authorization entirely.
      */
     public boolean canReadItemType(NtrlocPrincipal principal, UUID itemTypeId) {
+        if (principal.isSuperuser()) {
+            return true;
+        }
         List<UUID> markersOnType = repo.getMarkerIdsByItemType().getOrDefault(itemTypeId, List.of());
         if (markersOnType.isEmpty()) {
             return false;

@@ -33,10 +33,12 @@ public class AuthorizationTestDataInitializer {
     void init() {
         // Test item types are created through the real mutation pipeline (not raw DDL) so
         // SchemaManager's cache stays consistent — it has no external invalidation hook
-        // besides applyMutations.
+        // besides applyMutations. AclTestUnmarkedDoc deliberately gets no marker assignment at
+        // all, to prove superusers bypass the default-deny behavior that blocks everyone else.
         schemaManager.applyMutations(List.of(
                 new CreateItemDefinitionMutation("AclTestPublicDoc", "ACL tracer bullet: group-granted type", List.of()),
-                new CreateItemDefinitionMutation("AclTestConfidentialDoc", "ACL tracer bullet: user-granted type", List.of())
+                new CreateItemDefinitionMutation("AclTestConfidentialDoc", "ACL tracer bullet: user-granted type", List.of()),
+                new CreateItemDefinitionMutation("AclTestUnmarkedDoc", "ACL tracer bullet: no marker assigned, superuser-only", List.of())
         ));
 
         Map<String, UUID> itemsByName = schemaManager.getAdminSchema().items().stream()
@@ -44,9 +46,10 @@ public class AuthorizationTestDataInitializer {
         UUID publicDocId = itemsByName.get("AclTestPublicDoc");
         UUID confidentialDocId = itemsByName.get("AclTestConfidentialDoc");
 
-        var alice = securityRepo.createUser("alice", "Alice (viewer group member)");
-        var bob = securityRepo.createUser("bob", "Bob (viewer group member)");
-        var carol = securityRepo.createUser("carol", "Carol (direct grant, no group)");
+        var alice = securityRepo.createUser("alice", "Alice (viewer group member)", false);
+        var bob = securityRepo.createUser("bob", "Bob (viewer group member)", false);
+        var carol = securityRepo.createUser("carol", "Carol (direct grant, no group)", false);
+        securityRepo.createUser("root", "Root (superuser)", true);
 
         var viewers = securityRepo.createGroup("viewers");
         securityRepo.addUserToGroup(alice.id(), viewers.id());
