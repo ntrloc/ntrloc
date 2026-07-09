@@ -90,77 +90,12 @@
         <mat-panel-title>Properties</mat-panel-title>
       </mat-expansion-panel-header>
 
-      <!-- Item types: grouped accordion -->
-      <ng-container *ngIf="isItem">
-        <mat-accordion [multi]="true" togglePosition="before" class="property-groups-accordion">
-
-          <!-- Ungrouped properties (always first) -->
-          <mat-expansion-panel [expanded]="true">
-            <mat-expansion-panel-header>
-              <mat-panel-title class="group-panel-title ungrouped-title">(Ungrouped)</mat-panel-title>
-            </mat-expansion-panel-header>
-            <app-property-grid
-              [properties]="ungroupedProperties"
-              [propertyTypes]="propertyTypes"
-              [groups]="activeGroups"
-              [allowAdd]="true">
-            </app-property-grid>
-          </mat-expansion-panel>
-
-          <!-- One panel per defined group -->
-          <mat-expansion-panel *ngFor="let group of activeGroups" [expanded]="true">
-            <mat-expansion-panel-header>
-              <mat-panel-title class="group-panel-title">
-                <span class="dirty-dot" [class.is-new]="group.isNew" *ngIf="group.isDirty">●</span>
-                <input *ngIf="renamingGroup === group; else groupNameDisplay"
-                       #groupNameInput
-                       class="group-name-input editable-field"
-                       [(ngModel)]="group.name"
-                       (click)="$event.stopPropagation()"
-                       (keydown.enter)="finishRenameGroup()"
-                       (blur)="finishRenameGroup()" />
-                <ng-template #groupNameDisplay>
-                  <span class="group-name-text">{{ group.name || '(unnamed group)' }}</span>
-                </ng-template>
-              </mat-panel-title>
-              <mat-panel-description class="group-panel-actions">
-                <button mat-icon-button class="group-action-btn" title="Rename group"
-                        (click)="startRenameGroup(group, $event)">
-                  <mat-icon>edit</mat-icon>
-                </button>
-                <button mat-icon-button class="group-action-btn delete-btn" title="Delete group"
-                        (click)="deleteGroup(group, $event)">
-                  <mat-icon>delete</mat-icon>
-                </button>
-              </mat-panel-description>
-            </mat-expansion-panel-header>
-            <app-property-grid
-              [properties]="propertiesForGroup(group.id)"
-              [propertyTypes]="propertyTypes"
-              [groups]="activeGroups"
-              [allowAdd]="false">
-            </app-property-grid>
-            <p class="empty-state group-empty-state" *ngIf="propertiesForGroup(group.id).length === 0">
-              No properties in this group. Use the Group dropdown on a property above to assign it here.
-            </p>
-          </mat-expansion-panel>
-
-        </mat-accordion>
-
-        <div class="add-group-row">
-          <button mat-stroked-button (click)="addGroup()">Add Group</button>
-        </div>
-      </ng-container>
-
-      <!-- Traits: flat property list, no group concept -->
-      <ng-container *ngIf="!isItem">
-        <app-property-grid
-          [properties]="item?.properties ?? []"
-          [propertyTypes]="propertyTypes"
-          [groups]="[]"
-          [allowAdd]="true">
-        </app-property-grid>
-      </ng-container>
+      <!-- Flat property list -->
+      <app-property-grid
+        [properties]="item?.properties ?? []"
+        [propertyTypes]="propertyTypes"
+        [allowAdd]="true">
+      </app-property-grid>
 
     </mat-expansion-panel>
 

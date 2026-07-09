@@ -6,14 +6,11 @@ import org.ntrloc.graph.domain.DomainInitializer;
 import org.ntrloc.graph.db.partition.schema.AllowedValue;
 import org.ntrloc.graph.db.partition.schema.ControlledListManager;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
-import org.ntrloc.graph.db.partition.schema.definition.mutation.AssignItemPropertyGroupMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateItemDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateItemPropertyDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateLinkPropertyDefinitionMutation;
-import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePropertyGroupMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateTraitDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DeletePropertyDefinitionMutation;
-import org.ntrloc.graph.db.partition.schema.definition.mutation.DeletePropertyGroupMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.ImplementTraitMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.RemoveTraitMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DefinitionMutation;
@@ -21,7 +18,6 @@ import org.ntrloc.graph.db.partition.schema.definition.mutation.ReplaceControlle
 import org.ntrloc.graph.db.partition.schema.definition.mutation.UpdateItemDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.UpdatePerspectiveDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.UpdatePropertyDefinitionMutation;
-import org.ntrloc.graph.db.partition.schema.definition.mutation.UpdatePropertyGroupMutation;
 import org.ntrloc.graph.db.partition.schema.definition.view.DefinedInView;
 import org.ntrloc.graph.db.partition.schema.definition.view.SortableFieldView;
 import org.ntrloc.graph.db.partition.schema.definition.view.TargetEntityView;
@@ -29,7 +25,6 @@ import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemDefin
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemLinkPerspectiveView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminLinkView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyDefinitionView;
-import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyGroupView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminSchemaView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminTraitDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.PropertyTypeView;
@@ -123,14 +118,6 @@ public class SchemaManager {
                             .orElseThrow(() -> new IllegalArgumentException("No controlled list for property: " + m.propertyId()));
                     controlledListManager.replaceValues(list.id(), list.valueType(), m.values());
                 }
-                case CreatePropertyGroupMutation m ->
-                        repo.createGroup(m.entityId(), m.name());
-                case UpdatePropertyGroupMutation m ->
-                        repo.updateGroup(m.id(), m.name());
-                case DeletePropertyGroupMutation m ->
-                        repo.deleteGroup(m.id());
-                case AssignItemPropertyGroupMutation m ->
-                        repo.setItemPropertyGroup(m.itemId(), m.propertyId(), m.groupId());
                 default ->
                         throw new IllegalArgumentException("Unsupported mutation: " + mutation.getClass().getSimpleName());
             }
@@ -198,8 +185,6 @@ public class SchemaManager {
         var propertiesByLink     = repo.getPropertiesByLink();
         var perspectivesByEntity = repo.getPerspectivesByEntity();
         var traitIdsByItem       = repo.getTraitIdsByItem();
-        var groupsByEntity       = repo.getGroupsByEntity();
-        var itemPropertyGroups   = repo.getItemPropertyGroupAssignments();
 
         Map<UUID, TraitRow> traitById = traits.stream()
                 .collect(Collectors.toMap(TraitRow::id, t -> t));
@@ -208,22 +193,15 @@ public class SchemaManager {
             var traitIds = traitIdsByItem.getOrDefault(item.id(), List.of());
             var traitRefs = traitIds.stream().map(id -> new TraitRefView(traitById.get(id).id(), traitById.get(id).name())).toList();
 
-            // Group assignments for this item (covers own and trait-inherited properties)
-            var groupAssignments = itemPropertyGroups.getOrDefault(item.id(), Map.of());
-
-            // Own properties (definedIn = null) + trait-inherited properties, both with item-level group assignment applied
-            var ownProps = propertiesByItem.getOrDefault(item.id(), List.of()).stream()
-                    .map(p -> groupAssignments.containsKey(p.id())
-                            ? new AdminPropertyDefinitionView(p.id(), p.name(), p.description(), p.type(), p.cardinality(), p.usage(), null, p.controlledListId(), groupAssignments.get(p.id()))
-                            : p)
-                    .toList();
+            // Own properties (definedIn = null) + trait-inherited properties
+            var ownProps = propertiesByItem.getOrDefault(item.id(), List.of());
             var traitProps = traitIds.stream()
                     .flatMap(traitId -> {
                         var trait = traitById.get(traitId);
                         var definedIn = new DefinedInView("trait", trait.name());
                         return propertiesByTrait.getOrDefault(traitId, List.of()).stream()
                                 .map(p -> new AdminPropertyDefinitionView(
-                                        p.id(), p.name(), p.description(), p.type(), p.cardinality(), p.usage(), definedIn, p.controlledListId(), groupAssignments.get(p.id())));
+                                        p.id(), p.name(), p.description(), p.type(), p.cardinality(), p.usage(), definedIn, p.controlledListId()));
                     })
                     .toList();
             var allProps = Stream.concat(ownProps.stream(), traitProps.stream()).toList();
@@ -240,10 +218,7 @@ public class SchemaManager {
                     .reduce(new LinkedHashMap<>(), (acc, m) -> { acc.putAll(m); return acc; });
 
             var allLinks = mergeLinkAdminMaps(ownLinks, traitLinks);
-            var groups = groupsByEntity.getOrDefault(item.entityId(), List.of()).stream()
-                    .map(g -> new AdminPropertyGroupView(g.id(), g.name()))
-                    .toList();
-            return new AdminItemDefinitionView(item.id(), item.entityId(), item.name(), item.description(), traitRefs, allProps, allLinks, sortableFieldsFor(allProps), groups);
+            return new AdminItemDefinitionView(item.id(), item.entityId(), item.name(), item.description(), traitRefs, allProps, allLinks, sortableFieldsFor(allProps));
         }).toList();
 
         var traitViews = traits.stream().map(trait -> {

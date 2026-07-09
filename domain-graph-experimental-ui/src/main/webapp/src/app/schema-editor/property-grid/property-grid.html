@@ -1,11 +1,10 @@
-<div class="property-grid" [class.has-groups]="hasGroups" *ngIf="properties.length > 0">
+<div class="property-grid" *ngIf="properties.length > 0">
   <div class="property-grid-header"></div>
   <div class="property-grid-header">Name</div>
   <div class="property-grid-header">Description</div>
   <div class="property-grid-header">Type</div>
   <div class="property-grid-header">Cardinality</div>
   <div class="property-grid-header">Usage</div>
-  <div class="property-grid-header" *ngIf="hasGroups">Group</div>
   <div class="property-grid-header"></div>
   <ng-container *ngFor="let prop of properties; trackBy: trackProp">
     <div class="property-cell" [class.cell-deleted]="prop.isDeleted">
@@ -43,16 +42,6 @@
         <option *ngFor="let r of requirements" [value]="r">{{ r }}</option>
       </select>
       <div class="original-value" *ngIf="!prop.isNew && prop.usage !== prop.originalUsage && prop.originalUsage">{{ prop.originalUsage }}</div>
-    </div>
-    <div class="property-cell" [class.cell-deleted]="prop.isDeleted" *ngIf="hasGroups">
-      <select class="editable-field"
-              [ngModel]="prop.groupId ?? ''"
-              (ngModelChange)="onGroupChange(prop, $event)"
-              [disabled]="prop.isDeleted || prop.isReadonly">
-        <option value="">(none)</option>
-        <option *ngFor="let g of groups" [value]="g.id">{{ g.name }}</option>
-      </select>
-      <div class="original-value" *ngIf="!prop.isNew && prop.groupId !== prop.originalGroupId">{{ groupName(prop.originalGroupId) }}</div>
     </div>
     <div class="property-cell actions-cell">
       <button mat-icon-button class="action-btn list-btn" title="Edit controlled list" (click)="openControlledList(prop)" *ngIf="hasControlledList(prop)">

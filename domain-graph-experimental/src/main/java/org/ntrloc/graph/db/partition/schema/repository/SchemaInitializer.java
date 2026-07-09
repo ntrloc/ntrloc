@@ -22,9 +22,7 @@ public class SchemaInitializer {
         initLinkTable();
         initControlledListTable();
         initPropertyTable();
-        initPropertyGroupTable();
         initItemPropertyTable();
-        initItemPropertyGroupTable();
         initTraitPropertyTable();
         initItemTraitTable();
         initLinkPropertyTable();
@@ -34,13 +32,11 @@ public class SchemaInitializer {
     void dropAllTables() {
         jdbcClient.sql("DROP TABLE IF EXISTS schema_entity_link_perspective CASCADE").update();
         jdbcClient.sql("DROP TABLE IF EXISTS schema_item_link_perspective CASCADE").update();
-        jdbcClient.sql("DROP TABLE IF EXISTS schema_item_property_group CASCADE").update();
         jdbcClient.sql("DROP TABLE IF EXISTS schema_item_property CASCADE").update();
         jdbcClient.sql("DROP TABLE IF EXISTS schema_trait_property CASCADE").update();
         jdbcClient.sql("DROP TABLE IF EXISTS schema_item_trait CASCADE").update();
         jdbcClient.sql("DROP TABLE IF EXISTS schema_link_property CASCADE").update();
         jdbcClient.sql("DROP TABLE IF EXISTS schema_property CASCADE").update();
-        jdbcClient.sql("DROP TABLE IF EXISTS schema_property_group CASCADE").update();
         jdbcClient.sql("DROP TABLE IF EXISTS schema_link CASCADE").update();
         jdbcClient.sql("DROP TABLE IF EXISTS schema_item CASCADE").update();
         jdbcClient.sql("DROP TABLE IF EXISTS schema_trait CASCADE").update();
@@ -116,33 +112,11 @@ public class SchemaInitializer {
                 """).update();
     }
 
-    void initPropertyGroupTable() {
-        jdbcClient.sql("""
-                CREATE TABLE IF NOT EXISTS schema_property_group (
-                    id        UUID PRIMARY KEY DEFAULT uuidv7(),
-                    entity_id UUID NOT NULL REFERENCES schema_entity(id) ON DELETE CASCADE,
-                    name      TEXT NOT NULL,
-                    UNIQUE (entity_id, name)
-                )
-                """).update();
-    }
-
     void initItemPropertyTable() {
         jdbcClient.sql("""
                 CREATE TABLE IF NOT EXISTS schema_item_property (
                     item_definition_id UUID NOT NULL REFERENCES schema_item(id) ON DELETE CASCADE,
                     property_id        UUID NOT NULL REFERENCES schema_property(id) ON DELETE CASCADE,
-                    PRIMARY KEY (item_definition_id, property_id)
-                )
-                """).update();
-    }
-
-    void initItemPropertyGroupTable() {
-        jdbcClient.sql("""
-                CREATE TABLE IF NOT EXISTS schema_item_property_group (
-                    item_definition_id UUID NOT NULL REFERENCES schema_item(id) ON DELETE CASCADE,
-                    property_id        UUID NOT NULL REFERENCES schema_property(id) ON DELETE CASCADE,
-                    group_id           UUID NOT NULL REFERENCES schema_property_group(id) ON DELETE CASCADE,
                     PRIMARY KEY (item_definition_id, property_id)
                 )
                 """).update();

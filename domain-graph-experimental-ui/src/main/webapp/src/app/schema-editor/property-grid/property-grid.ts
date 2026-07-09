@@ -5,7 +5,7 @@ import { MatButton, MatIconButton } from '@angular/material/button';
 import { MatDialog } from '@angular/material/dialog';
 import { MatIcon } from '@angular/material/icon';
 import { PropertyTypeInfo } from '../model/schema.model';
-import { PropertyDefinitionViewModel, PropertyGroupViewModel } from '../model/schema.viewmodel';
+import { PropertyDefinitionViewModel } from '../model/schema.viewmodel';
 import { SchemaViewModel } from '../schema-view-model';
 import { ControlledListDialog, ControlledListDialogData } from '../controlled-list-dialog/controlled-list-dialog';
 
@@ -20,10 +20,7 @@ const CONTROLLED_LIST_TYPES = new Set(['STRING', 'INT', 'LONG']);
 export class PropertyGrid {
   @Input() properties: PropertyDefinitionViewModel[] = [];
   @Input() propertyTypes: PropertyTypeInfo[] = [];
-  @Input() groups: PropertyGroupViewModel[] = [];
   @Input() allowAdd = false;
-
-  get hasGroups(): boolean { return this.groups.length > 0; }
 
   @ViewChildren('nameInput') nameInputs!: QueryList<ElementRef<HTMLInputElement>>;
 
@@ -74,15 +71,6 @@ export class PropertyGrid {
 
   onTypeChange(prop: PropertyDefinitionViewModel): void {
     prop.updateType(prop.type, this.propertyTypes);
-  }
-
-  onGroupChange(prop: PropertyDefinitionViewModel, value: string): void {
-    prop.groupId = value === '' ? null : value;
-  }
-
-  groupName(id: string | null): string {
-    if (!id) return '(none)';
-    return this.groups.find(g => g.id === id)?.name ?? '(none)';
   }
 
   trackProp(_: number, prop: PropertyDefinitionViewModel): string | null {

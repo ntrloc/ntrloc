@@ -24,8 +24,6 @@ public class SchemaRepository {
 
     public record PerspectiveRow(UUID id, UUID entityId, UUID linkId, String name, String description, Integer minCardinality, Integer maxCardinality) {}
 
-    public record GroupRow(UUID id, UUID entityId, String name) {}
-
     private final JdbcClient jdbcClient;
 
     public SchemaRepository(JdbcClient jdbcClient) {
@@ -109,7 +107,7 @@ public class SchemaRepository {
         return jdbcClient.sql("INSERT INTO schema_property (name, description, type, cardinality, usage) VALUES (:name, :description, :type, :cardinality, :usage) RETURNING *")
                 .param("name", name).param("description", description)
                 .param("type", type.name()).param("cardinality", cardinality.name()).param("usage", usage.name())
-                .query((rs, n) -> mapProperty(rs, n, null))
+                .query(this::mapProperty)
                 .single();
     }
 
@@ -117,7 +115,7 @@ public class SchemaRepository {
         return jdbcClient.sql("UPDATE schema_property SET name = :name, description = :description, type = :type, cardinality = :cardinality, usage = :usage WHERE id = :id RETURNING *")
                 .param("id", id).param("name", name).param("description", description)
                 .param("type", type.name()).param("cardinality", cardinality.name()).param("usage", usage.name())
-                .query((rs, n) -> mapProperty(rs, n, null))
+                .query(this::mapProperty)
                 .single();
     }
 
@@ -133,7 +131,7 @@ public class SchemaRepository {
                 """)
                 .query((rs, n) -> Map.entry(
                         rs.getObject("item_definition_id", UUID.class),
-                        mapProperty(rs, n, null)))
+                        mapProperty(rs, n)))
                 .list().stream()
                 .collect(Collectors.groupingBy(Map.Entry::getKey, Collectors.mapping(Map.Entry::getValue, Collectors.toList())));
     }
@@ -146,23 +144,9 @@ public class SchemaRepository {
                 """)
                 .query((rs, n) -> Map.entry(
                         rs.getObject("trait_id", UUID.class),
-                        mapProperty(rs, n, null)))
+                        mapProperty(rs, n)))
                 .list().stream()
                 .collect(Collectors.groupingBy(Map.Entry::getKey, Collectors.mapping(Map.Entry::getValue, Collectors.toList())));
-    }
-
-    private record ItemPropertyGroupRow(UUID itemId, UUID propertyId, UUID groupId) {}
-
-    public Map<UUID, Map<UUID, UUID>> getItemPropertyGroupAssignments() {
-        return jdbcClient.sql("SELECT item_definition_id, property_id, group_id FROM schema_item_property_group")
-                .query((rs, n) -> new ItemPropertyGroupRow(
-                        rs.getObject("item_definition_id", UUID.class),
-                        rs.getObject("property_id", UUID.class),
-                        rs.getObject("group_id", UUID.class)))
-                .list().stream()
-                .collect(Collectors.groupingBy(
-                        ItemPropertyGroupRow::itemId,
-                        Collectors.toMap(ItemPropertyGroupRow::propertyId, ItemPropertyGroupRow::groupId)));
     }
 
     public Map<UUID, List<AdminPropertyDefinitionView>> getPropertiesByLink() {
@@ -173,51 +157,9 @@ public class SchemaRepository {
                 """)
                 .query((rs, n) -> Map.entry(
                         rs.getObject("link_definition_id", UUID.class),
-                        mapProperty(rs, n, null)))
+                        mapProperty(rs, n)))
                 .list().stream()
                 .collect(Collectors.groupingBy(Map.Entry::getKey, Collectors.mapping(Map.Entry::getValue, Collectors.toList())));
-    }
-
-    // --- Property groups ---
-
-    public GroupRow createGroup(UUID entityId, String name) {
-        UUID id = jdbcClient.sql("INSERT INTO schema_property_group (entity_id, name) VALUES (:entityId, :name) RETURNING id")
-                .param("entityId", entityId).param("name", name)
-                .query(UUID.class).single();
-        return new GroupRow(id, entityId, name);
-    }
-
-    public void updateGroup(UUID id, String name) {
-        jdbcClient.sql("UPDATE schema_property_group SET name = :name WHERE id = :id")
-                .param("id", id).param("name", name).update();
-    }
-
-    public void deleteGroup(UUID id) {
-        jdbcClient.sql("DELETE FROM schema_property_group WHERE id = :id").param("id", id).update();
-    }
-
-    public Map<UUID, List<GroupRow>> getGroupsByEntity() {
-        return jdbcClient.sql("SELECT id, entity_id, name FROM schema_property_group ORDER BY name")
-                .query((rs, n) -> new GroupRow(
-                        rs.getObject("id", UUID.class),
-                        rs.getObject("entity_id", UUID.class),
-                        rs.getString("name")))
-                .list().stream()
-                .collect(Collectors.groupingBy(GroupRow::entityId));
-    }
-
-    public void setItemPropertyGroup(UUID itemId, UUID propertyId, UUID groupId) {
-        if (groupId == null) {
-            jdbcClient.sql("DELETE FROM schema_item_property_group WHERE item_definition_id = :itemId AND property_id = :propertyId")
-                    .param("itemId", itemId).param("propertyId", propertyId).update();
-        } else {
-            jdbcClient.sql("""
-                    INSERT INTO schema_item_property_group (item_definition_id, property_id, group_id)
-                    VALUES (:itemId, :propertyId, :groupId)
-                    ON CONFLICT (item_definition_id, property_id) DO UPDATE SET group_id = EXCLUDED.group_id
-                    """)
-                    .param("itemId", itemId).param("propertyId", propertyId).param("groupId", groupId).update();
-        }
     }
 
     public void associateItemProperty(UUID itemId, UUID propertyId) {
@@ -301,7 +243,7 @@ public class SchemaRepository {
 
     // --- Row mappers ---
 
-    private AdminPropertyDefinitionView mapProperty(ResultSet rs, int n, UUID groupId) throws SQLException {
+    private AdminPropertyDefinitionView mapProperty(ResultSet rs, int n) throws SQLException {
         return new AdminPropertyDefinitionView(
                 rs.getObject("id", UUID.class),
                 rs.getString("name"),
@@ -310,8 +252,7 @@ public class SchemaRepository {
                 PropertyCardinality.valueOf(rs.getString("cardinality")),
                 PropertyUsage.valueOf(rs.getString("usage")),
                 null,
-                rs.getObject("controlled_list_id", UUID.class),
-                groupId
+                rs.getObject("controlled_list_id", UUID.class)
         );
     }
 

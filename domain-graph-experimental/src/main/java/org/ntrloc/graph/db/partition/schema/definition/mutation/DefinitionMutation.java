@@ -18,18 +18,12 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
         @JsonSubTypes.Type(value = CreateLinkDefinitionMutation.class,           name = "CREATE_LINK"),
         @JsonSubTypes.Type(value = DeleteLinkDefinitionMutation.class,           name = "DELETE_LINK"),
         @JsonSubTypes.Type(value = UpdatePerspectiveDefinitionMutation.class,    name = "UPDATE_PERSPECTIVE"),
-        @JsonSubTypes.Type(value = ReplaceControlledListMutation.class,          name = "REPLACE_CONTROLLED_LIST"),
-        @JsonSubTypes.Type(value = CreatePropertyGroupMutation.class,            name = "CREATE_PROPERTY_GROUP"),
-        @JsonSubTypes.Type(value = UpdatePropertyGroupMutation.class,            name = "UPDATE_PROPERTY_GROUP"),
-        @JsonSubTypes.Type(value = DeletePropertyGroupMutation.class,            name = "DELETE_PROPERTY_GROUP"),
-        @JsonSubTypes.Type(value = AssignItemPropertyGroupMutation.class,        name = "ASSIGN_ITEM_PROPERTY_GROUP")
+        @JsonSubTypes.Type(value = ReplaceControlledListMutation.class,          name = "REPLACE_CONTROLLED_LIST")
 })
 public sealed interface DefinitionMutation
         permits CreateItemDefinitionMutation, UpdateItemDefinitionMutation, DeleteItemDefinitionMutation,
                 CreateTraitDefinitionMutation, ImplementTraitMutation, RemoveTraitMutation,
                 CreateItemPropertyDefinitionMutation, CreateLinkPropertyDefinitionMutation, UpdatePropertyDefinitionMutation, DeletePropertyDefinitionMutation,
                 CreateLinkDefinitionMutation, DeleteLinkDefinitionMutation, UpdatePerspectiveDefinitionMutation,
-                ReplaceControlledListMutation,
-                CreatePropertyGroupMutation, UpdatePropertyGroupMutation, DeletePropertyGroupMutation,
-                AssignItemPropertyGroupMutation {
+                ReplaceControlledListMutation {
 }

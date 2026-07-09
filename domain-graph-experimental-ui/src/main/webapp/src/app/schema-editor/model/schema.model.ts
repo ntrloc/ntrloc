@@ -56,11 +56,6 @@ export interface ControlledListEntry {
   label: string | null;
 }
 
-export interface PropertyGroup {
-  id: string;
-  name: string;
-}
-
 export interface AdminPropertyDefinition {
   id: string;
   name: string;
@@ -70,7 +65,6 @@ export interface AdminPropertyDefinition {
   usage: PropertyUsage;
   definedIn: DefinedIn | null;
   controlledListId: string | null;
-  groupId: string | null;
 }
 
 export interface AdminItemLinkPerspective {
@@ -107,7 +101,6 @@ export interface AdminItemDefinition {
   properties: AdminPropertyDefinition[] | null;
   links: Record<string, AdminItemLinkPerspective[]> | null;
   sortableFields: SortableField[];
-  groups: PropertyGroup[];
 }
 
 export interface AdminTraitDefinition {
@@ -147,8 +140,4 @@ export type DefinitionMutation =
   | { type: 'UPDATE_PROPERTY'; id: string; name: string; description: string | null; propertyType: PropertyType; cardinality: PropertyCardinality; usage: PropertyUsage }
   | { type: 'DELETE_PROPERTY'; id: string }
   | { type: 'UPDATE_PERSPECTIVE'; id: string; name: string | null; description: string | null; minCardinality: number; maxCardinality: number | null }
-  | { type: 'REPLACE_CONTROLLED_LIST'; propertyId: string; values: ControlledListEntry[] }
-  | { type: 'CREATE_PROPERTY_GROUP'; entityId: string; name: string }
-  | { type: 'UPDATE_PROPERTY_GROUP'; id: string; name: string }
-  | { type: 'DELETE_PROPERTY_GROUP'; id: string }
-  | { type: 'ASSIGN_ITEM_PROPERTY_GROUP'; itemId: string; propertyId: string; groupId: string | null };
+  | { type: 'REPLACE_CONTROLLED_LIST'; propertyId: string; values: ControlledListEntry[] };

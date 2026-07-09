@@ -6,42 +6,12 @@ import {
   AdminTraitDefinition,
   DefinedIn,
   PropertyCardinality,
-  PropertyGroup,
   PropertyUsage,
   PropertyType,
   PropertyTypeInfo,
   TargetEntity,
   TraitRef,
 } from './schema.model';
-
-export class PropertyGroupViewModel {
-  id: string | null;
-  name: string;
-  readonly originalName: string;
-  readonly isNew: boolean;
-  isDeleted: boolean;
-
-  constructor(group: PropertyGroup | null, isNew = false) {
-    this.id = group?.id ?? null;
-    this.name = group?.name ?? '';
-    this.originalName = this.name;
-    this.isNew = isNew;
-    this.isDeleted = false;
-  }
-
-  get isDirty(): boolean {
-    return this.isNew || this.isDeleted || this.name !== this.originalName;
-  }
-
-  revert(): void {
-    this.name = this.originalName;
-    this.isDeleted = false;
-  }
-
-  static create(): PropertyGroupViewModel {
-    return new PropertyGroupViewModel(null, true);
-  }
-}
 
 export class PropertyDefinitionViewModel {
   id: string | null;
@@ -53,14 +23,12 @@ export class PropertyDefinitionViewModel {
   validCardinalities: PropertyCardinality[];
   readonly definedIn: DefinedIn | null;
   readonly controlledListId: string | null;
-  groupId: string | null;
 
   readonly originalName: string;
   readonly originalDescription: string | null;
   readonly originalType: PropertyType;
   readonly originalCardinality: PropertyCardinality;
   readonly originalUsage: PropertyUsage;
-  readonly originalGroupId: string | null;
   readonly isNew: boolean;
   isDeleted: boolean;
 
@@ -74,7 +42,6 @@ export class PropertyDefinitionViewModel {
     validCardinalities: PropertyCardinality[];
     definedIn: DefinedIn | null;
     controlledListId: string | null;
-    groupId: string | null;
     isNew: boolean;
   }) {
     this.id = args.id;
@@ -91,8 +58,6 @@ export class PropertyDefinitionViewModel {
     this.validCardinalities = args.validCardinalities;
     this.definedIn = args.definedIn;
     this.controlledListId = args.controlledListId;
-    this.groupId = args.groupId;
-    this.originalGroupId = args.groupId;
     this.isNew = args.isNew;
     this.isDeleted = false;
   }
@@ -102,15 +67,14 @@ export class PropertyDefinitionViewModel {
   }
 
   get isDirty(): boolean {
-    if (this.isReadonly) return this.groupId !== this.originalGroupId;
+    if (this.isReadonly) return false;
     return this.isNew
       || this.isDeleted
       || this.name !== this.originalName
       || (this.description ?? '') !== (this.originalDescription ?? '')
       || this.type !== this.originalType
       || this.cardinality !== this.originalCardinality
-      || this.usage !== this.originalUsage
-      || this.groupId !== this.originalGroupId;
+      || this.usage !== this.originalUsage;
   }
 
   revert(): void {
@@ -119,7 +83,6 @@ export class PropertyDefinitionViewModel {
     this.type = this.originalType;
     this.cardinality = this.originalCardinality;
     this.usage = this.originalUsage;
-    this.groupId = this.originalGroupId;
     this.isDeleted = false;
   }
 
@@ -144,7 +107,6 @@ export class PropertyDefinitionViewModel {
       validCardinalities: (typeInfo?.validCardinalities ?? [p.cardinality]) as PropertyCardinality[],
       definedIn: p.definedIn ?? null,
       controlledListId: p.controlledListId ?? null,
-      groupId: p.groupId ?? null,
       isNew: false,
     });
   }
@@ -161,7 +123,6 @@ export class PropertyDefinitionViewModel {
       validCardinalities: (defaultType?.validCardinalities ?? ['SINGLE']) as PropertyCardinality[],
       definedIn: null,
       controlledListId: null,
-      groupId: null,
       isNew: true,
     });
   }
@@ -284,7 +245,6 @@ export class ItemDefinitionViewModel {
   properties: PropertyDefinitionViewModel[];
   links: Record<string, ItemLinkPerspectiveViewModel[]>;
   traitAssignments: TraitAssignmentViewModel[];
-  groups: PropertyGroupViewModel[];
 
   readonly originalName: string;
   readonly originalDescription: string | null;
@@ -298,7 +258,6 @@ export class ItemDefinitionViewModel {
     properties: PropertyDefinitionViewModel[];
     links: Record<string, ItemLinkPerspectiveViewModel[]>;
     traitAssignments: TraitAssignmentViewModel[];
-    groups: PropertyGroupViewModel[];
     isNew: boolean;
   }) {
     this.id = args.id;
@@ -310,7 +269,6 @@ export class ItemDefinitionViewModel {
     this.properties = args.properties;
     this.links = args.links;
     this.traitAssignments = args.traitAssignments;
-    this.groups = args.groups;
     this.isNew = args.isNew;
   }
 
@@ -320,7 +278,6 @@ export class ItemDefinitionViewModel {
       || (this.description ?? '') !== (this.originalDescription ?? '')
       || this.properties.some(p => p.isDirty)
       || this.traitAssignments.some(t => t.isDirty)
-      || this.groups.some(g => g.isDirty)
       || Object.values(this.links).some(perspectives => perspectives.some(p => p.isDirty));
   }
 
@@ -351,7 +308,6 @@ export class ItemDefinitionViewModel {
       properties: (item.properties ?? []).map(p => PropertyDefinitionViewModel.fromAdmin(p, propertyTypes)),
       links,
       traitAssignments: (item.traits ?? []).map(t => new TraitAssignmentViewModel(t)),
-      groups: (item.groups ?? []).map(g => new PropertyGroupViewModel(g)),
       isNew: false,
     });
   }
@@ -365,7 +321,6 @@ export class ItemDefinitionViewModel {
       properties: [],
       links: {},
       traitAssignments: [],
-      groups: [],
       isNew: true,
     });
   }

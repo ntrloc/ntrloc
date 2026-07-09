@@ -7,5 +7,5 @@ import org.ntrloc.graph.db.partition.schema.definition.view.DefinedInView;
 
 import java.util.UUID;
 
-public record AdminPropertyDefinitionView(UUID id, String name, String description, PropertyType type, PropertyCardinality cardinality, PropertyUsage usage, DefinedInView definedIn, UUID controlledListId, UUID groupId) {
+public record AdminPropertyDefinitionView(UUID id, String name, String description, PropertyType type, PropertyCardinality cardinality, PropertyUsage usage, DefinedInView definedIn, UUID controlledListId) {
 }

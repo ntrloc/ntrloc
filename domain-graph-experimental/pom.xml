@@ -20,6 +20,7 @@
         <jackson.tools.version>3.1.4</jackson.tools.version>
         <scalar.version>2.8.13</scalar.version>
         <testcontainers.version>2.0.5</testcontainers.version>
+        <opentelemetry.instrumentation.version>2.16.0</opentelemetry.instrumentation.version>
     </properties>
 
     <dependencies>
@@ -69,6 +70,13 @@
             <groupId>tools.jackson.dataformat</groupId>
             <artifactId>jackson-dataformat-yaml</artifactId>
             <version>${jackson.tools.version}</version>
+        </dependency>
+
+        <!-- Observability -->
+        <dependency>
+            <groupId>io.opentelemetry.instrumentation</groupId>
+            <artifactId>opentelemetry-spring-boot-starter</artifactId>
+            <version>${opentelemetry.instrumentation.version}</version>
         </dependency>
 
         <!-- tools.jackson.core:jackson-databind requires jackson-annotations:2.21, but the root

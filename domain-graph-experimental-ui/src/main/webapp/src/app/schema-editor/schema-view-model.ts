@@ -102,30 +102,13 @@ export class SchemaViewModel {
       }
 
       for (const prop of item.properties) {
-        if (!prop.isReadonly) {
-          if (prop.isNew) {
-            ops.push({ type: 'CREATE_ITEM_PROPERTY', itemId: item.id!, name: prop.name, description: prop.description, propertyType: prop.type, cardinality: prop.cardinality, usage: prop.usage });
-            continue;
-          } else if (prop.isDeleted) {
-            ops.push({ type: 'DELETE_PROPERTY', id: prop.id! });
-            continue;
-          } else if (prop.isDirty) {
-            ops.push({ type: 'UPDATE_PROPERTY', id: prop.id!, name: prop.name, description: prop.description, propertyType: prop.type, cardinality: prop.cardinality, usage: prop.usage });
-          }
-        }
-        // Group assignment applies to all existing properties (own and trait-inherited)
-        if (prop.id && prop.groupId !== prop.originalGroupId) {
-          ops.push({ type: 'ASSIGN_ITEM_PROPERTY_GROUP', itemId: item.id!, propertyId: prop.id!, groupId: prop.groupId });
-        }
-      }
-
-      for (const group of item.groups) {
-        if (group.isNew && !group.isDeleted) {
-          ops.push({ type: 'CREATE_PROPERTY_GROUP', entityId: item.entityId!, name: group.name });
-        } else if (group.isDeleted && !group.isNew) {
-          ops.push({ type: 'DELETE_PROPERTY_GROUP', id: group.id! });
-        } else if (group.isDirty) {
-          ops.push({ type: 'UPDATE_PROPERTY_GROUP', id: group.id!, name: group.name });
+        if (prop.isReadonly) continue;
+        if (prop.isNew) {
+          ops.push({ type: 'CREATE_ITEM_PROPERTY', itemId: item.id!, name: prop.name, description: prop.description, propertyType: prop.type, cardinality: prop.cardinality, usage: prop.usage });
+        } else if (prop.isDeleted) {
+          ops.push({ type: 'DELETE_PROPERTY', id: prop.id! });
+        } else if (prop.isDirty) {
+          ops.push({ type: 'UPDATE_PROPERTY', id: prop.id!, name: prop.name, description: prop.description, propertyType: prop.type, cardinality: prop.cardinality, usage: prop.usage });
         }
       }
 
@@ -206,12 +189,6 @@ export class SchemaViewModel {
         if (prop.isNew) changes.push(`+ Property "${prop.name}"`);
         else if (prop.isDeleted) changes.push(`- Property "${prop.originalName}"`);
         else if (prop.isDirty) changes.push(`Property "${prop.originalName}": updated`);
-      }
-
-      for (const group of item.groups) {
-        if (group.isNew && !group.isDeleted) changes.push(`+ Group "${group.name}"`);
-        else if (group.isDeleted) changes.push(`- Group "${group.originalName}"`);
-        else if (group.isDirty) changes.push(`Group "${group.originalName}" → "${group.name}"`);
       }
 
       for (const [perspName, perspectives] of Object.entries(item.links)) {

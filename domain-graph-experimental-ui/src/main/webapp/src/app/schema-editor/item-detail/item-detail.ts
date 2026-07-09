@@ -1,17 +1,17 @@
-import { Component, ElementRef, Input, QueryList, ViewChildren } from '@angular/core';
+import { Component, Input } from '@angular/core';
 import { NgIf, NgFor } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MatExpansionModule } from '@angular/material/expansion';
-import { MatButton, MatIconButton } from '@angular/material/button';
+import { MatIconButton } from '@angular/material/button';
 import { MatIcon } from '@angular/material/icon';
 import { PropertyTypeInfo } from '../model/schema.model';
-import { ItemDefinitionViewModel, PropertyDefinitionViewModel, PropertyGroupViewModel, TraitAssignmentViewModel, TraitDefinitionViewModel } from '../model/schema.viewmodel';
+import { ItemDefinitionViewModel, TraitAssignmentViewModel, TraitDefinitionViewModel } from '../model/schema.viewmodel';
 import { PropertyGrid } from '../property-grid/property-grid';
 import { LinksTable } from '../links-table/links-table';
 
 @Component({
   selector: 'app-item-detail',
-  imports: [NgIf, NgFor, FormsModule, MatExpansionModule, MatButton, MatIconButton, MatIcon, PropertyGrid, LinksTable],
+  imports: [NgIf, NgFor, FormsModule, MatExpansionModule, MatIconButton, MatIcon, PropertyGrid, LinksTable],
   templateUrl: './item-detail.html',
   styleUrl: './item-detail.scss',
 })
@@ -22,67 +22,11 @@ export class ItemDetail {
   @Input() availableTraits: TraitDefinitionViewModel[] = [];
   @Input() allItems: ItemDefinitionViewModel[] = [];
 
-  @ViewChildren('groupNameInput') groupNameInputs!: QueryList<ElementRef<HTMLInputElement>>;
-
-  renamingGroup: PropertyGroupViewModel | null = null;
-
   readonly objectKeys = Object.keys;
 
   get isItem(): boolean { return this.entityKind === 'item'; }
 
   get asItem(): ItemDefinitionViewModel { return this.item as ItemDefinitionViewModel; }
-
-  // --- Property group helpers (item types only) ---
-
-  get activeGroups(): PropertyGroupViewModel[] {
-    if (!this.isItem) return [];
-    return this.asItem.groups.filter(g => !g.isDeleted);
-  }
-
-  get ungroupedProperties(): PropertyDefinitionViewModel[] {
-    return (this.item?.properties ?? []).filter(p => !p.groupId);
-  }
-
-  propertiesForGroup(groupId: string | null): PropertyDefinitionViewModel[] {
-    return (this.item?.properties ?? []).filter(p => p.groupId === groupId);
-  }
-
-  addGroup(): void {
-    if (!this.isItem) return;
-    const group = PropertyGroupViewModel.create();
-    this.asItem.groups.push(group);
-    this.renamingGroup = group;
-    setTimeout(() => {
-      const inputs = this.groupNameInputs.toArray();
-      if (inputs.length > 0) inputs[0].nativeElement.select();
-    });
-  }
-
-  deleteGroup(group: PropertyGroupViewModel, event: Event): void {
-    event.stopPropagation();
-    if (!this.isItem) return;
-    this.asItem.properties.forEach(p => { if (p.groupId === group.id) p.groupId = null; });
-    if (group.isNew) {
-      const idx = this.asItem.groups.indexOf(group);
-      if (idx !== -1) this.asItem.groups.splice(idx, 1);
-    } else {
-      group.isDeleted = true;
-    }
-    if (this.renamingGroup === group) this.renamingGroup = null;
-  }
-
-  startRenameGroup(group: PropertyGroupViewModel, event: Event): void {
-    event.stopPropagation();
-    this.renamingGroup = group;
-    setTimeout(() => {
-      const inputs = this.groupNameInputs.toArray();
-      if (inputs.length > 0) inputs[0].nativeElement.select();
-    });
-  }
-
-  finishRenameGroup(): void {
-    this.renamingGroup = null;
-  }
 
   // --- Item editor: trait assignment ---
 
