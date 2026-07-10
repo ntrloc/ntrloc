@@ -18,9 +18,9 @@
 
         <spring.boot.version>4.1.0</spring.boot.version>
         <jackson.tools.version>3.1.4</jackson.tools.version>
-        <scalar.version>2.8.13</scalar.version>
+        <scalar.version>3.0.3</scalar.version>
         <testcontainers.version>2.0.5</testcontainers.version>
-        <opentelemetry.instrumentation.version>2.16.0</opentelemetry.instrumentation.version>
+        <opentelemetry.instrumentation.version>2.29.0</opentelemetry.instrumentation.version>
     </properties>
 
     <dependencies>
@@ -77,6 +77,26 @@
             <groupId>io.opentelemetry.instrumentation</groupId>
             <artifactId>opentelemetry-spring-boot-starter</artifactId>
             <version>${opentelemetry.instrumentation.version}</version>
+        </dependency>
+
+        <!-- opentelemetry-spring-boot-starter's Boot-4-targeted instrumentation autoconfiguration
+             classes (RestClientInstrumentationSpringBoot4AutoConfiguration and friends) are guarded
+             by @ConditionalOnClass(RestClientCustomizer.class), referencing Spring Boot 4's own
+             split-module package. Without this dependency present, that condition can't be
+             evaluated cleanly. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-restclient</artifactId>
+            <version>${spring.boot.version}</version>
+        </dependency>
+
+        <!-- Bridges Log4j2 log events into the OTel logs pipeline via the appender declared in
+             log4j2-spring.xml. opentelemetry-spring-boot-starter's OpenTelemetryAppenderAutoConfiguration
+             wires it to the initialized OpenTelemetry SDK instance at startup. -->
+        <dependency>
+            <groupId>io.opentelemetry.instrumentation</groupId>
+            <artifactId>opentelemetry-log4j-appender-2.17</artifactId>
+            <version>2.29.0-alpha</version>
         </dependency>
 
         <!-- tools.jackson.core:jackson-databind requires jackson-annotations:2.21, but the root
