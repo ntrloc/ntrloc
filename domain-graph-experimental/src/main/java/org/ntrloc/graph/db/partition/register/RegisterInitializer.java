@@ -86,6 +86,7 @@ public class RegisterInitializer {
         jdbcClient.sql("""
                 CREATE TABLE register_link (
                     id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    link_id             UUID NOT NULL,
                     link_definition_id  UUID NOT NULL REFERENCES schema_link(id),
                     state               TEXT NOT NULL,
                     transaction_id      UUID,
@@ -94,6 +95,7 @@ public class RegisterInitializer {
                     updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
                 )
                 """).update();
+        jdbcClient.sql("CREATE INDEX ON register_link (link_id)").update();
     }
 
     private void createItemLinkPerspectiveTable() {

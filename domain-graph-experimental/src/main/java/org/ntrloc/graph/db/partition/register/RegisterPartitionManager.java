@@ -280,8 +280,227 @@ public class RegisterPartitionManager {
         return Optional.of(assembleProjectedItems(rawItems, binaryBaseUrl).getFirst());
     }
 
+    // --- Write side: staged at prepare (UNCOMMITTED), flipped/cleaned up at commit/abort ---
+    // Updates are never in-place: prepare stages a whole new row: commit deletes the old
+    // committed row for the same business id and flips the new one to COMMITTED.
+
+    public UUID stageItemCreate(UUID itemId, UUID itemTypeId, Map<String, Object> properties, UUID transactionId) {
+        UUID registerItemId = jdbcClient.sql("""
+                INSERT INTO register_item (item_id, item_type_id, state, transaction_id)
+                VALUES (:itemId, :itemTypeId, 'UNCOMMITTED', :transactionId)
+                RETURNING id
+                """)
+                .param("itemId", itemId)
+                .param("itemTypeId", itemTypeId)
+                .param("transactionId", transactionId)
+                .query(UUID.class)
+                .single();
+
+        jdbcClient.sql("INSERT INTO %s (register_item_id, properties) VALUES (:registerItemId, :properties::jsonb)"
+                .formatted(tableNameFor(itemTypeId)))
+                .param("registerItemId", registerItemId)
+                .param("properties", writeProperties(properties))
+                .update();
+
+        return registerItemId;
+    }
+
+    public UUID stageItemUpdate(UUID itemId, Map<String, Object> propertiesDiff, UUID transactionId) {
+        UUID itemTypeId = jdbcClient.sql("SELECT item_type_id FROM register_item WHERE item_id = :itemId AND state = 'COMMITTED'")
+                .param("itemId", itemId)
+                .query(UUID.class)
+                .single();
+
+        Map<String, Object> currentProperties = jdbcClient.sql("""
+                SELECT rt.properties::text AS properties
+                FROM register_item ri
+                JOIN %s rt ON rt.register_item_id = ri.id
+                WHERE ri.item_id = :itemId AND ri.state = 'COMMITTED'
+                """.formatted(tableNameFor(itemTypeId)))
+                .param("itemId", itemId)
+                .query((rs, n) -> parseJsonb(rs.getString("properties")))
+                .single();
+
+        Map<String, Object> merged = mergeProperties(currentProperties, propertiesDiff);
+        return stageItemCreate(itemId, itemTypeId, merged, transactionId);
+    }
+
+    public void commitItem(UUID itemId, UUID transactionId, UUID commitId) {
+        UUID stagedRegisterItemId = jdbcClient.sql("""
+                SELECT id FROM register_item WHERE item_id = :itemId AND transaction_id = :transactionId AND state = 'UNCOMMITTED'
+                """)
+                .param("itemId", itemId)
+                .param("transactionId", transactionId)
+                .query(UUID.class)
+                .single();
+
+        jdbcClient.sql("DELETE FROM register_item WHERE item_id = :itemId AND state = 'COMMITTED' AND id != :stagedRegisterItemId")
+                .param("itemId", itemId)
+                .param("stagedRegisterItemId", stagedRegisterItemId)
+                .update();
+
+        jdbcClient.sql("UPDATE register_item SET state = 'COMMITTED', commit_id = :commitId, updated_at = NOW() WHERE id = :stagedRegisterItemId")
+                .param("commitId", commitId)
+                .param("stagedRegisterItemId", stagedRegisterItemId)
+                .update();
+    }
+
+    public void deleteItem(UUID itemId) {
+        jdbcClient.sql("DELETE FROM register_item WHERE item_id = :itemId AND state = 'COMMITTED'")
+                .param("itemId", itemId)
+                .update();
+    }
+
+    public UUID stageLinkCreate(UUID linkId, UUID linkTypeId, List<RegisterLinkEndpoint> endpoints,
+                                 Map<String, Object> properties, UUID transactionId) {
+        UUID registerLinkId = insertLinkRow(linkId, linkTypeId, properties, transactionId);
+        insertPerspectiveRows(registerLinkId, endpoints, transactionId);
+        return registerLinkId;
+    }
+
+    public UUID stageLinkUpdate(UUID linkId, Map<String, Object> propertiesDiff, UUID transactionId) {
+        UUID currentRegisterLinkId = jdbcClient.sql("SELECT id FROM register_link WHERE link_id = :linkId AND state = 'COMMITTED'")
+                .param("linkId", linkId)
+                .query(UUID.class)
+                .single();
+
+        UUID linkTypeId = jdbcClient.sql("SELECT link_definition_id FROM register_link WHERE id = :id")
+                .param("id", currentRegisterLinkId)
+                .query(UUID.class)
+                .single();
+
+        Map<String, Object> currentProperties = jdbcClient.sql("SELECT properties::text AS properties FROM %s WHERE register_link_id = :id"
+                .formatted(linkTableNameFor(linkTypeId)))
+                .param("id", currentRegisterLinkId)
+                .query((rs, n) -> parseJsonb(rs.getString("properties")))
+                .single();
+
+        Map<String, Object> merged = mergeProperties(currentProperties, propertiesDiff);
+        UUID registerLinkId = insertLinkRow(linkId, linkTypeId, merged, transactionId);
+
+        // Endpoints don't change on an update (Section 8): re-resolve each one to whichever
+        // register_item row currently represents it in this transaction, since an endpoint's
+        // own item may itself be concurrently staged for update in the same transaction.
+        List<RegisterLinkEndpoint> endpoints = jdbcClient.sql("""
+                SELECT rilp.perspective_id, ri.item_id
+                FROM register_item_link_perspective rilp
+                JOIN register_item ri ON ri.id = rilp.register_item_id
+                WHERE rilp.register_link_id = :oldLinkId
+                """)
+                .param("oldLinkId", currentRegisterLinkId)
+                .query((rs, n) -> new RegisterLinkEndpoint(
+                        rs.getObject("perspective_id", UUID.class),
+                        rs.getObject("item_id", UUID.class)))
+                .list();
+        insertPerspectiveRows(registerLinkId, endpoints, transactionId);
+
+        return registerLinkId;
+    }
+
+    private UUID insertLinkRow(UUID linkId, UUID linkTypeId, Map<String, Object> properties, UUID transactionId) {
+        UUID registerLinkId = jdbcClient.sql("""
+                INSERT INTO register_link (link_id, link_definition_id, state, transaction_id)
+                VALUES (:linkId, :linkTypeId, 'UNCOMMITTED', :transactionId)
+                RETURNING id
+                """)
+                .param("linkId", linkId)
+                .param("linkTypeId", linkTypeId)
+                .param("transactionId", transactionId)
+                .query(UUID.class)
+                .single();
+
+        jdbcClient.sql("INSERT INTO %s (register_link_id, properties) VALUES (:registerLinkId, :properties::jsonb)"
+                .formatted(linkTableNameFor(linkTypeId)))
+                .param("registerLinkId", registerLinkId)
+                .param("properties", writeProperties(properties))
+                .update();
+
+        return registerLinkId;
+    }
+
+    private void insertPerspectiveRows(UUID registerLinkId, List<RegisterLinkEndpoint> endpoints, UUID transactionId) {
+        for (RegisterLinkEndpoint endpoint : endpoints) {
+            UUID registerItemId = resolveRegisterItemId(endpoint.itemId(), transactionId);
+            jdbcClient.sql("""
+                    INSERT INTO register_item_link_perspective (register_link_id, perspective_id, register_item_id)
+                    VALUES (:registerLinkId, :perspectiveId, :registerItemId)
+                    """)
+                    .param("registerLinkId", registerLinkId)
+                    .param("perspectiveId", endpoint.perspectiveId())
+                    .param("registerItemId", registerItemId)
+                    .update();
+        }
+    }
+
+    public void commitLink(UUID linkId, UUID transactionId, UUID commitId) {
+        UUID stagedRegisterLinkId = jdbcClient.sql("""
+                SELECT id FROM register_link WHERE link_id = :linkId AND transaction_id = :transactionId AND state = 'UNCOMMITTED'
+                """)
+                .param("linkId", linkId)
+                .param("transactionId", transactionId)
+                .query(UUID.class)
+                .single();
+
+        jdbcClient.sql("DELETE FROM register_link WHERE link_id = :linkId AND state = 'COMMITTED' AND id != :stagedRegisterLinkId")
+                .param("linkId", linkId)
+                .param("stagedRegisterLinkId", stagedRegisterLinkId)
+                .update();
+
+        jdbcClient.sql("UPDATE register_link SET state = 'COMMITTED', commit_id = :commitId, updated_at = NOW() WHERE id = :stagedRegisterLinkId")
+                .param("commitId", commitId)
+                .param("stagedRegisterLinkId", stagedRegisterLinkId)
+                .update();
+    }
+
+    public void deleteLink(UUID linkId) {
+        jdbcClient.sql("DELETE FROM register_link WHERE link_id = :linkId AND state = 'COMMITTED'")
+                .param("linkId", linkId)
+                .update();
+    }
+
+    // Prefers this transaction's own staged (UNCOMMITTED) row for itemId over the existing
+    // committed one, so a link create/update referencing an item concurrently staged in the
+    // same transaction resolves to the row that will actually still exist after commit.
+    private UUID resolveRegisterItemId(UUID itemId, UUID transactionId) {
+        Optional<UUID> staged = jdbcClient.sql("""
+                SELECT id FROM register_item WHERE item_id = :itemId AND transaction_id = :transactionId AND state = 'UNCOMMITTED'
+                """)
+                .param("itemId", itemId)
+                .param("transactionId", transactionId)
+                .query(UUID.class)
+                .optional();
+        if (staged.isPresent()) return staged.get();
+
+        return jdbcClient.sql("SELECT id FROM register_item WHERE item_id = :itemId AND state = 'COMMITTED'")
+                .param("itemId", itemId)
+                .query(UUID.class)
+                .single();
+    }
+
+    public void discardStaged(UUID transactionId) {
+        jdbcClient.sql("DELETE FROM register_item WHERE transaction_id = :transactionId AND state = 'UNCOMMITTED'")
+                .param("transactionId", transactionId)
+                .update();
+        jdbcClient.sql("DELETE FROM register_link WHERE transaction_id = :transactionId AND state = 'UNCOMMITTED'")
+                .param("transactionId", transactionId)
+                .update();
+    }
+
+    private Map<String, Object> mergeProperties(Map<String, Object> current, Map<String, Object> diff) {
+        Map<String, Object> merged = new HashMap<>(current);
+        diff.forEach((key, value) -> {
+            if (value == null) merged.remove(key);
+            else merged.put(key, value);
+        });
+        return merged;
+    }
+
+    private String writeProperties(Map<String, Object> properties) {
+        return objectMapper.writeValueAsString(properties);
+    }
+
     private record LinkRow(UUID myRegisterItemId, String perspectiveName,
-                           UUID linkId, UUID linkDefinitionId,
+                           UUID registerLinkId, UUID linkId, UUID linkDefinitionId,
                            UUID linkedRegisterItemId, UUID linkedItemId, UUID linkedItemTypeId, String linkedItemType) {}
 
     private record BinaryPropertyRow(UUID registerItemId, String propertyName, UUID binaryId) {}
@@ -293,7 +512,8 @@ public class RegisterPartitionManager {
                 SELECT
                     rilp_mine.register_item_id  AS my_register_item_id,
                     silp_mine.name              AS perspective_name,
-                    rl.id                       AS link_id,
+                    rl.id                       AS register_link_id,
+                    rl.link_id                  AS link_id,
                     rl.link_definition_id       AS link_definition_id,
                     ri_other.id                 AS linked_register_item_id,
                     ri_other.item_id            AS linked_item_id,
@@ -313,6 +533,7 @@ public class RegisterPartitionManager {
                 .query((rs, n) -> new LinkRow(
                         rs.getObject("my_register_item_id", UUID.class),
                         rs.getString("perspective_name"),
+                        rs.getObject("register_link_id", UUID.class),
                         rs.getObject("link_id", UUID.class),
                         rs.getObject("link_definition_id", UUID.class),
                         rs.getObject("linked_register_item_id", UUID.class),
@@ -330,7 +551,7 @@ public class RegisterPartitionManager {
         Map<UUID, Map<String, Object>> linkProperties = fetchPropertiesByRegisterItemId(
                 linkRows.stream().collect(Collectors.groupingBy(
                         LinkRow::linkDefinitionId,
-                        Collectors.mapping(LinkRow::linkId, Collectors.toList()))),
+                        Collectors.mapping(LinkRow::registerLinkId, Collectors.toList()))),
                 "register_link_id");
 
         Map<UUID, Map<String, List<ProjectedLink>>> linksByItem = linkRows.stream()
@@ -340,7 +561,7 @@ public class RegisterPartitionManager {
                                 LinkRow::perspectiveName,
                                 Collectors.mapping(row -> new ProjectedLink(
                                         row.linkId(),
-                                        linkProperties.getOrDefault(row.linkId(), Map.of()),
+                                        linkProperties.getOrDefault(row.registerLinkId(), Map.of()),
                                         new ProjectedItem(
                                                 row.linkedItemId(),
                                                 row.linkedItemType(),
