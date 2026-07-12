@@ -134,30 +134,68 @@ class MutationControllerIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void unknownRefId_returnsBadRequest() {
+    void unknownRefId_returnsBadRequestWithBothErrorsInOneResponse() {
+        UUID unknownExistingItemId = UUID.randomUUID();
         MutationRequest request = new MutationRequest(List.of(), List.of(
                 new LinkCreateMutation(
                         new LinkEndpointReference(PRODUCT_PERSPECTIVE, new NewItemReference("does-not-exist")),
-                        new LinkEndpointReference(CONTRIBUTOR_PERSPECTIVE, new ExistingItemReference(UUID.randomUUID())),
+                        new LinkEndpointReference(CONTRIBUTOR_PERSPECTIVE, new ExistingItemReference(unknownExistingItemId)),
                         Map.of())
         ));
 
-        webTestClient.post().uri("/mutation")
+        // Both endpoints are independently invalid (unknown refId, unknown existing item) --
+        // both errors must come back together in one response, not just the first one found.
+        MutationErrorResponse errorResponse = webTestClient.post().uri("/mutation")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(request)
                 .exchange()
-                .expectStatus().isBadRequest();
+                .expectStatus().isBadRequest()
+                .expectBody(MutationErrorResponse.class)
+                .returnResult().getResponseBody();
+
+        assertThat(errorResponse.errors()).hasSize(2);
+        assertThat(errorResponse.errors()).anyMatch(e -> e.path().equals("links[0].firstItem.item.refId"));
+        assertThat(errorResponse.errors()).anyMatch(e -> e.path().equals("links[0].secondItem.item.itemId"));
     }
 
     @Test
-    void unknownItemTypeName_returnsNotFound() {
+    void unknownItemTypeName_returnsBadRequest() {
         MutationRequest request = new MutationRequest(
                 List.of(new ItemCreateMutation(null, "NoSuchItemType", Map.of())), List.of());
 
-        webTestClient.post().uri("/mutation")
+        MutationErrorResponse errorResponse = webTestClient.post().uri("/mutation")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(request)
                 .exchange()
-                .expectStatus().isNotFound();
+                .expectStatus().isBadRequest()
+                .expectBody(MutationErrorResponse.class)
+                .returnResult().getResponseBody();
+
+        assertThat(errorResponse.errors()).hasSize(1);
+        assertThat(errorResponse.errors().get(0).path()).isEqualTo("items[0].itemTypeName");
+    }
+
+    @Test
+    void multipleUnrelatedValidationErrors_areAllReportedTogether() {
+        MutationRequest request = new MutationRequest(
+                List.of(
+                        new ItemCreateMutation(null, "NoSuchItemType", Map.of()),
+                        new ItemCreateMutation(null, PRODUCT_TYPE, Map.of("noSuchProperty", "x")),
+                        new ItemUpdateMutation(UUID.randomUUID(), Map.of())
+                ),
+                List.of());
+
+        MutationErrorResponse errorResponse = webTestClient.post().uri("/mutation")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(request)
+                .exchange()
+                .expectStatus().isBadRequest()
+                .expectBody(MutationErrorResponse.class)
+                .returnResult().getResponseBody();
+
+        assertThat(errorResponse.errors()).hasSize(3);
+        assertThat(errorResponse.errors()).anyMatch(e -> e.path().equals("items[0].itemTypeName"));
+        assertThat(errorResponse.errors()).anyMatch(e -> e.path().equals("items[1].properties.noSuchProperty"));
+        assertThat(errorResponse.errors()).anyMatch(e -> e.path().equals("items[2].itemId"));
     }
 }

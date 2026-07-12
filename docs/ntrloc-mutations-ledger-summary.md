@@ -85,18 +85,22 @@ genuinely useful, discard the rest, adapt nothing wholesale.
 
 ---
 
-## 3. Decision: Selectors Collapse Into `Predicate`
+## 3. Decision: No Predicate-Based Mutation Targeting At All
 
-Direct precedent: selectors were originally used in the *old* projection/query language too, and
-were collapsed into the new `Predicate` sealed interface (`AndPredicate`/
+Superseded by implementation: the original plan below (reuse `Predicate` for mutation targeting)
+was reconsidered once the mutation envelope was actually built. **Decided, and decided broadly**:
+item/link update/delete always target a single, already-known id (Section 7) — never a predicate
+matching a set of items/links, not even the existing `AndPredicate`. This isn't just "`Or`/`Not`
+are missing" — no `Predicate` variant is wanted for mutation targeting, full stop. Bulk/predicate-
+based update or delete is not a planned feature; `Predicate` remains exactly what it already is
+(a read-side/projection filtering construct) and gains no new mutation-facing role.
+
+Original reasoning, kept for context: selectors were used in the *old* projection/query language
+too, and were collapsed into the new `Predicate` sealed interface (`AndPredicate`/
 `PropertyExistencePredicate`/`PropertyValuePredicate`) when `domain-graph-experimental` was built.
-Same move applies here — mutation targeting should reuse `Predicate`, not revive the old
-Selector/ItemSelector/LinkSelector hierarchy as a parallel structure.
-
-**Concrete gap this creates**: `Predicate` today only has `AndPredicate` — no `Or`/`Not`. The old
-selectors had explicit `Or`/`Not` variants for both items and links. Collapsing into `Predicate`
-for mutation targeting isn't free — it requires actually adding `OrPredicate`/`NotPredicate` to
-close the expressiveness gap, not just pointing at `Predicate` as-is. **Not yet done.**
+The thinking was that mutation targeting should reuse `Predicate` the same way, rather than
+reviving the old Selector/ItemSelector/LinkSelector hierarchy as a parallel structure — but this
+was overtaken by the simpler direct-id decision above before it was ever implemented.
 
 ---
 
@@ -184,11 +188,10 @@ Applied across the mutation kinds from Section 5:
 
 - **Item create** — always new. No reference at all; it introduces a new entity, optionally
   tagging itself with a `refId` so later mutations in the batch can point at it.
-- **Item update / delete** — always existing, referenced directly by id. (As implemented: a
-  simplification from this section's original framing, which envisioned selector/predicate-based
-  targeting — deferred along with `OrPredicate`/`NotPredicate`, Section 14. Update additionally
-  carries new *data* (the new property values), but the entity being modified is existing; only
-  the payload of changes is freshly submitted.)
+- **Item update / delete** — always existing, referenced directly by id. (As implemented and now
+  explicitly decided, not just simplified: no predicate-based targeting at all, ever — see
+  Section 3. Update additionally carries new *data* (the new property values), but the entity
+  being modified is existing; only the payload of changes is freshly submitted.)
 - **Link create** — this is where new/existing stops being fixed by the mutation type and becomes
   a genuine **per-endpoint choice** (`LinkEndpointReference` pairs a perspective id with an
   `ItemReference`). Each of the two peer endpoints can independently be new (`refId`, an item
@@ -419,9 +422,15 @@ file in the codebase that imports both packages.
 
 ## 14. Explicitly Open / Deferred
 
-- Whether `Predicate` needs `OrPredicate`/`NotPredicate` added now (required if mutation targeting
-  is to fully replace what selectors offered) — identified, not built.
-- Typed property values (Section 4) vs. plain JSON validated against schema — undecided.
+- ~~Whether `Predicate` needs `OrPredicate`/`NotPredicate`~~ — **moot**: no `Predicate` variant is
+  used for mutation targeting at all (Section 3, decided explicitly and broadly, not just the
+  `Or`/`Not` gap).
+- ~~Typed property values (Section 4) vs. plain JSON~~ — **settled as plain values**, keyed by
+  property id rather than name (ids are stable, names are renameable via
+  `UpdatePropertyDefinitionMutation`). `LedgerEntry`'s property maps are `Map<UUID, Object>`;
+  `RegisterPartitionManager` translates id→name internally when writing JSONB. Schema-level
+  type-checking of the *values* themselves is still unbuilt (part of the deferred validation
+  component, not this decision).
 - Whether "the ledger" and "posting" (from prior-session memory) are the right mental model has
   now been substantially confirmed by Section 11's discovery — but the exact terms "ledger" and
   "posting" themselves are still informal, not confirmed as final naming.

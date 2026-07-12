@@ -289,7 +289,7 @@ public class RegisterPartitionManager {
     }
 
     public UUID stageItemUpdate(UUID itemId, Map<UUID, Object> propertiesDiff, UUID transactionId) {
-        UUID itemTypeId = findItemTypeId(itemId);
+        UUID itemTypeId = findItemTypeId(itemId).orElseThrow();
 
         Map<String, Object> currentProperties = jdbcClient.sql("""
                 SELECT rt.properties::text AS properties
@@ -326,11 +326,11 @@ public class RegisterPartitionManager {
         return registerItemId;
     }
 
-    public UUID findItemTypeId(UUID itemId) {
+    public Optional<UUID> findItemTypeId(UUID itemId) {
         return jdbcClient.sql("SELECT item_type_id FROM register_item WHERE item_id = :itemId AND state = 'COMMITTED'")
                 .param("itemId", itemId)
                 .query(UUID.class)
-                .single();
+                .optional();
     }
 
     public void commitItem(UUID itemId, UUID transactionId, UUID commitId) {
@@ -383,11 +383,11 @@ public class RegisterPartitionManager {
         return registerLinkId;
     }
 
-    public UUID findLinkTypeId(UUID linkId) {
+    public Optional<UUID> findLinkTypeId(UUID linkId) {
         return jdbcClient.sql("SELECT link_definition_id FROM register_link WHERE link_id = :linkId AND state = 'COMMITTED'")
                 .param("linkId", linkId)
                 .query(UUID.class)
-                .single();
+                .optional();
     }
 
     public UUID stageLinkUpdate(UUID linkId, Map<UUID, Object> propertiesDiff, UUID transactionId) {
@@ -396,7 +396,7 @@ public class RegisterPartitionManager {
                 .query(UUID.class)
                 .single();
 
-        UUID linkTypeId = findLinkTypeId(linkId);
+        UUID linkTypeId = findLinkTypeId(linkId).orElseThrow();
 
         Map<String, Object> currentProperties = jdbcClient.sql("SELECT properties::text AS properties FROM %s WHERE register_link_id = :id"
                 .formatted(linkTableNameFor(linkTypeId)))

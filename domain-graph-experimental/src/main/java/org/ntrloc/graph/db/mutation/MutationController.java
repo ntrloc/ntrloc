@@ -17,7 +17,11 @@ public class MutationController {
     }
 
     @PostMapping
-    ResponseEntity<MutationResponse> mutate(@RequestBody MutationRequest request) {
-        return ResponseEntity.ok(processor.process(request));
+    ResponseEntity<?> mutate(@RequestBody MutationRequest request) {
+        try {
+            return ResponseEntity.ok(processor.process(request));
+        } catch (MutationValidationException e) {
+            return ResponseEntity.badRequest().body(new MutationErrorResponse(e.errors()));
+        }
     }
 }
