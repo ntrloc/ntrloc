@@ -22,28 +22,35 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
 
     private final LedgerPartitionManager ledgerPartitionManager;
     private final RegisterPartitionManager registerPartitionManager;
+    private final ItemDeleteCascadeExpander cascadeExpander;
 
     public LedgerRegisterCoordinatorImpl(LedgerPartitionManager ledgerPartitionManager,
-                                          RegisterPartitionManager registerPartitionManager) {
+                                          RegisterPartitionManager registerPartitionManager,
+                                          ItemDeleteCascadeExpander cascadeExpander) {
         this.ledgerPartitionManager = ledgerPartitionManager;
         this.registerPartitionManager = registerPartitionManager;
+        this.cascadeExpander = cascadeExpander;
     }
 
     @Override
     @Transactional
     public void prepare(List<LedgerEntry> entries, UUID transactionId) {
-        ledgerPartitionManager.append(entries, transactionId);
+        List<LedgerEntry> expanded = cascadeExpander.expand(entries);
+        ledgerPartitionManager.append(expanded, transactionId);
 
         // Items before links: link endpoint resolution needs same-transaction item staging
         // to already exist so it can prefer the fresh row over the old committed one.
-        for (LedgerEntry entry : entries) {
+        for (LedgerEntry entry : expanded) {
             switch (entry) {
                 case ItemCreateEntry e -> registerPartitionManager.stageItemCreate(e.itemId(), e.itemTypeId(), e.properties(), transactionId);
-                case ItemUpdateEntry e -> registerPartitionManager.stageItemUpdate(e.itemId(), e.properties(), transactionId);
+                // An empty diff (the cascade's ripple entries) means nothing about the item's
+                // own properties changed -- skip the register write entirely rather than
+                // versioning the row (and repointing its perspectives) for no actual content.
+                case ItemUpdateEntry e when !e.properties().isEmpty() -> registerPartitionManager.stageItemUpdate(e.itemId(), e.properties(), transactionId);
                 default -> { }
             }
         }
-        for (LedgerEntry entry : entries) {
+        for (LedgerEntry entry : expanded) {
             switch (entry) {
                 case LinkCreateEntry e -> registerPartitionManager.stageLinkCreate(e.linkId(), e.linkTypeId(), toRegisterEndpoints(e.endpoints()), e.properties(), transactionId);
                 case LinkUpdateEntry e -> registerPartitionManager.stageLinkUpdate(e.linkId(), e.properties(), transactionId);
@@ -60,7 +67,7 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
         for (LedgerEntry entry : entries) {
             switch (entry) {
                 case ItemCreateEntry e -> registerPartitionManager.commitItem(e.itemId(), transactionId, commitId);
-                case ItemUpdateEntry e -> registerPartitionManager.commitItem(e.itemId(), transactionId, commitId);
+                case ItemUpdateEntry e when !e.properties().isEmpty() -> registerPartitionManager.commitItem(e.itemId(), transactionId, commitId);
                 default -> { }
             }
         }

@@ -6,7 +6,6 @@ import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
 import org.ntrloc.graph.db.partition.ledger.ItemDeleteEntry;
 import org.ntrloc.graph.db.partition.ledger.ItemUpdateEntry;
 import org.ntrloc.graph.db.partition.ledger.LinkCreateEntry;
-import org.ntrloc.graph.db.partition.ledger.LinkDeleteEntry;
 import org.ntrloc.graph.db.partition.ledger.LinkEndpoint;
 import org.ntrloc.graph.db.partition.ledger.LinkUpdateEntry;
 import org.ntrloc.graph.db.partition.register.RegisterPartitionManager;
@@ -141,7 +140,7 @@ class LedgerRegisterCoordinatorIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void itemDeleteCascadedWithLinkDelete_inSameTransaction_succeeds() {
+    void deletingLinkedItem_autoCascadesLinkDeleteWithoutCallerHavingToAskForIt() {
         UUID productId = UUID.randomUUID();
         UUID contributorId = UUID.randomUUID();
         UUID linkId = UUID.randomUUID();
@@ -161,15 +160,84 @@ class LedgerRegisterCoordinatorIntegrationTest extends AbstractIntegrationTest {
                 Map.of())), linkTxn);
         coordinator.commit(linkTxn, UUID.randomUUID());
 
-        // Deleting productId while it's still linked -- the link must be deleted in the same
-        // transaction, and the coordinator must apply the link delete before the item delete so
-        // the FK from register_item_link_perspective to register_item isn't violated.
-        coordinator.prepare(List.of(new ItemDeleteEntry(productId), new LinkDeleteEntry(linkId)), cascadeTxn);
+        // Only the ItemDeleteEntry is submitted -- the coordinator must discover productId's
+        // existing link itself, delete it (before deleting productId, since the FK from
+        // register_item_link_perspective to register_item has no cascade), and leave
+        // contributorId as a normal surviving item with no dangling link.
+        coordinator.prepare(List.of(new ItemDeleteEntry(productId)), cascadeTxn);
         coordinator.commit(cascadeTxn, UUID.randomUUID());
 
         assertThat(registerPartitionManager.projectOne(fixture.productTypeId(), productId, "http://binary")).isEmpty();
         var contributor = registerPartitionManager.projectOne(fixture.contributorTypeId(), contributorId, "http://binary").orElseThrow();
         assertThat(contributor.links().values().stream().flatMap(List::stream)).isEmpty();
+    }
+
+    @Test
+    void deletingBothLinkedItemsTogether_removesSharedLinkExactlyOnceWithNoRippleEitherSide() {
+        UUID productId = UUID.randomUUID();
+        UUID contributorId = UUID.randomUUID();
+        UUID linkId = UUID.randomUUID();
+        UUID itemsTxn = UUID.randomUUID();
+        UUID linkTxn = UUID.randomUUID();
+        UUID cascadeTxn = UUID.randomUUID();
+
+        coordinator.prepare(List.of(
+                new ItemCreateEntry(productId, fixture.productTypeId(), Map.of("name", "Widget")),
+                new ItemCreateEntry(contributorId, fixture.contributorTypeId(), Map.of("name", "Ada"))
+        ), itemsTxn);
+        coordinator.commit(itemsTxn, UUID.randomUUID());
+
+        coordinator.prepare(List.of(new LinkCreateEntry(linkId, fixture.linkTypeId(),
+                List.of(new LinkEndpoint(fixture.productPerspectiveId(), productId),
+                        new LinkEndpoint(fixture.contributorPerspectiveId(), contributorId)),
+                Map.of())), linkTxn);
+        coordinator.commit(linkTxn, UUID.randomUUID());
+
+        // Both sides of the shared link are deleted in the same batch -- expansion must dedupe
+        // the link (not attempt to delete it twice) and must not add a ripple ItemUpdateEntry
+        // for either side, since both are themselves being deleted.
+        coordinator.prepare(List.of(new ItemDeleteEntry(productId), new ItemDeleteEntry(contributorId)), cascadeTxn);
+        coordinator.commit(cascadeTxn, UUID.randomUUID());
+
+        assertThat(registerPartitionManager.projectOne(fixture.productTypeId(), productId, "http://binary")).isEmpty();
+        assertThat(registerPartitionManager.projectOne(fixture.contributorTypeId(), contributorId, "http://binary")).isEmpty();
+    }
+
+    @Test
+    void updatingAnItemThatAlreadyHasALink_repointsThePerspectiveAndKeepsTheLinkIntact() {
+        UUID productId = UUID.randomUUID();
+        UUID contributorId = UUID.randomUUID();
+        UUID linkId = UUID.randomUUID();
+        UUID itemsTxn = UUID.randomUUID();
+        UUID linkTxn = UUID.randomUUID();
+        UUID updateTxn = UUID.randomUUID();
+
+        coordinator.prepare(List.of(
+                new ItemCreateEntry(productId, fixture.productTypeId(), Map.of("name", "Widget")),
+                new ItemCreateEntry(contributorId, fixture.contributorTypeId(), Map.of("name", "Ada"))
+        ), itemsTxn);
+        coordinator.commit(itemsTxn, UUID.randomUUID());
+
+        coordinator.prepare(List.of(new LinkCreateEntry(linkId, fixture.linkTypeId(),
+                List.of(new LinkEndpoint(fixture.productPerspectiveId(), productId),
+                        new LinkEndpoint(fixture.contributorPerspectiveId(), contributorId)),
+                Map.of())), linkTxn);
+        coordinator.commit(linkTxn, UUID.randomUUID());
+
+        // productId's register_item row gets swapped out for a new one on update -- the
+        // existing perspective row from the link created above must be repointed at the new
+        // row, or this delete-old-committed-row step would hit an FK violation.
+        coordinator.prepare(List.of(new ItemUpdateEntry(productId, Map.of("name", "Widget Pro"))), updateTxn);
+        coordinator.commit(updateTxn, UUID.randomUUID());
+
+        var product = registerPartitionManager.projectOne(fixture.productTypeId(), productId, "http://binary").orElseThrow();
+        assertThat(product.properties()).containsEntry("name", "Widget Pro");
+        assertThat(product.links().values().stream().flatMap(List::stream))
+                .anyMatch(link -> link.item().itemId().equals(contributorId));
+
+        var contributor = registerPartitionManager.projectOne(fixture.contributorTypeId(), contributorId, "http://binary").orElseThrow();
+        assertThat(contributor.links().values().stream().flatMap(List::stream))
+                .anyMatch(link -> link.item().itemId().equals(productId));
     }
 
     @Test

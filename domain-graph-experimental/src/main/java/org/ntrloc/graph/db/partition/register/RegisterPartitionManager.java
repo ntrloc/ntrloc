@@ -334,10 +334,27 @@ public class RegisterPartitionManager {
                 .query(UUID.class)
                 .single();
 
-        jdbcClient.sql("DELETE FROM register_item WHERE item_id = :itemId AND state = 'COMMITTED' AND id != :stagedRegisterItemId")
+        Optional<UUID> oldRegisterItemId = jdbcClient.sql("""
+                SELECT id FROM register_item WHERE item_id = :itemId AND state = 'COMMITTED' AND id != :stagedRegisterItemId
+                """)
                 .param("itemId", itemId)
                 .param("stagedRegisterItemId", stagedRegisterItemId)
-                .update();
+                .query(UUID.class)
+                .optional();
+
+        // An update replaces the row wholesale (new surrogate id), but existing perspective rows
+        // still point at the old one -- move them forward before deleting it, or the FK from
+        // register_item_link_perspective (no cascade on that side) blocks the delete.
+        if (oldRegisterItemId.isPresent()) {
+            jdbcClient.sql("UPDATE register_item_link_perspective SET register_item_id = :newId WHERE register_item_id = :oldId")
+                    .param("newId", stagedRegisterItemId)
+                    .param("oldId", oldRegisterItemId.get())
+                    .update();
+
+            jdbcClient.sql("DELETE FROM register_item WHERE id = :oldId")
+                    .param("oldId", oldRegisterItemId.get())
+                    .update();
+        }
 
         jdbcClient.sql("UPDATE register_item SET state = 'COMMITTED', commit_id = :commitId, updated_at = NOW() WHERE id = :stagedRegisterItemId")
                 .param("commitId", commitId)
@@ -456,6 +473,26 @@ public class RegisterPartitionManager {
         jdbcClient.sql("DELETE FROM register_link WHERE link_id = :linkId AND state = 'COMMITTED'")
                 .param("linkId", linkId)
                 .update();
+    }
+
+    public record RegisterLinkedItem(UUID linkId, UUID connectedItemId) {
+    }
+
+    public List<RegisterLinkedItem> findLinksForItem(UUID itemId) {
+        return jdbcClient.sql("""
+                SELECT rl.link_id AS link_id, ri_other.item_id AS connected_item_id
+                FROM register_item ri_mine
+                JOIN register_item_link_perspective rilp_mine  ON rilp_mine.register_item_id = ri_mine.id
+                JOIN register_link                 rl          ON rl.id = rilp_mine.register_link_id AND rl.state = 'COMMITTED'
+                JOIN register_item_link_perspective rilp_other ON rilp_other.register_link_id = rl.id AND rilp_other.id != rilp_mine.id
+                JOIN register_item                 ri_other    ON ri_other.id = rilp_other.register_item_id
+                WHERE ri_mine.item_id = :itemId AND ri_mine.state = 'COMMITTED'
+                """)
+                .param("itemId", itemId)
+                .query((rs, n) -> new RegisterLinkedItem(
+                        rs.getObject("link_id", UUID.class),
+                        rs.getObject("connected_item_id", UUID.class)))
+                .list();
     }
 
     // Prefers this transaction's own staged (UNCOMMITTED) row for itemId over the existing
