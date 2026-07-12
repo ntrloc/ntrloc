@@ -1,4 +1,4 @@
-package org.ntrloc.graph.db.partition.coordinator;
+package org.ntrloc.graph.db.coordinator;
 
 import org.ntrloc.graph.db.partition.ledger.LedgerEntry;
 
