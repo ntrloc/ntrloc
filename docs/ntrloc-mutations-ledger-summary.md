@@ -163,36 +163,42 @@ link itself — there is no "host" to privilege.
 
 ---
 
-## 7. The Local/Remote Reference Duality
+## 7. The New/Existing Reference Duality
 
-**Terminology explicitly provisional** — "local," "remote," and `refId` itself are working
-vocabulary for this conversation, not settled naming. Revisit before finalizing anything.
+**Terminology settled**: "new" and "existing" (implemented as `NewItemReference`/
+`ExistingItemReference`, the `ItemReference` sealed interface in `org.ntrloc.graph.db.mutation`).
+Originally drafted as "local"/"remote," but those read backwards from what they mean here —
+"remote" usually connotes "a different system," not "already persisted right here" — and were
+replaced once implementation made the confusion concrete. `refId` itself keeps its name.
 
 `refId`'s original purpose (Section 2): a client-assigned, request-scoped placeholder letting
 later mutations in the same batch reference an item created earlier in that same batch, before it
 has a real persisted ID. Generalizing that:
 
-- **Local reference** — points at something introduced *within this same request* (via `refId`),
+- **New reference** — points at something introduced *within this same request* (via `refId`),
   not yet persisted.
-- **Remote reference** — points at something that *already exists* in the persisted store (via a
-  selector/predicate).
+- **Existing reference** — points at something that *already exists* in the persisted store, by
+  its real id.
 
 Applied across the mutation kinds from Section 5:
 
-- **Item create** — always local. No reference at all; it introduces a new entity, optionally
+- **Item create** — always new. No reference at all; it introduces a new entity, optionally
   tagging itself with a `refId` so later mutations in the batch can point at it.
-- **Item update / delete** — always remote. Must reference an existing item via selector/predicate
-  — can't update or delete something that doesn't exist in the persisted store yet. Update
-  additionally carries local *data* (the new property values), but the entity being modified is
-  remote; only the payload of changes is freshly submitted.
-- **Link create** — this is where local/remote stops being fixed by the mutation type and becomes
-  a genuine **per-endpoint choice**. Each of the two peer endpoints can independently be local
-  (`refId`, an item created earlier in this same batch) or remote (selector/predicate, an
-  already-persisted item). All three combinations are legitimate: both remote (link two existing
-  items), one local/one remote (create a new item and link it to an existing one), both local
-  (create two new items in the same batch and link them together).
-- **Link update / delete** — presumably always remote-referenced to an existing link, same
-  reasoning as item update/delete. Not yet explicitly confirmed.
+- **Item update / delete** — always existing, referenced directly by id. (As implemented: a
+  simplification from this section's original framing, which envisioned selector/predicate-based
+  targeting — deferred along with `OrPredicate`/`NotPredicate`, Section 14. Update additionally
+  carries new *data* (the new property values), but the entity being modified is existing; only
+  the payload of changes is freshly submitted.)
+- **Link create** — this is where new/existing stops being fixed by the mutation type and becomes
+  a genuine **per-endpoint choice** (`LinkEndpointReference` pairs a perspective id with an
+  `ItemReference`). Each of the two peer endpoints can independently be new (`refId`, an item
+  created earlier in this same batch) or existing (direct id, an already-persisted item). All
+  three combinations are legitimate: both existing (link two existing items), one new/one existing
+  (create a new item and link it to an existing one), both new (create two new items in the same
+  batch and link them together).
+- **Link update / delete** — always existing, referenced directly by id, same reasoning as item
+  update/delete. (As implemented; matches what this section originally assumed but left
+  unconfirmed.)
 
 All of the above confirmed as correct in substance ("correct on all counts"); only the naming is
 still open.
@@ -390,9 +396,10 @@ file in the codebase that imports both packages.
 - **Link create/delete are standalone, symmetric, peer-endpoint mutations** — not nested under
   either connected item. Permission checking for them must be holistic across both endpoints and
   the link itself.
-- **The local/remote reference duality** (terminology provisional): item create is always local;
-  item update/delete is always remote; link create is a per-endpoint choice of local or remote;
-  link update/delete is presumably always remote (not yet explicitly confirmed).
+- **The new/existing reference duality** (terminology settled, Section 7): item create is always
+  new; item update/delete is always existing; link create is a per-endpoint choice of new or
+  existing; link update/delete is always existing. Implemented as `ItemReference`
+  (`NewItemReference`/`ExistingItemReference`) in `org.ntrloc.graph.db.mutation`.
 - **Ledger entry pattern per mutation kind** — confirmed table in Section 8; item delete's cascade
   resolved in Section 9 (A: delete only; link: cascaded delete; B: update, same as an ordinary
   link delete).
@@ -418,15 +425,12 @@ file in the codebase that imports both packages.
 - Whether "the ledger" and "posting" (from prior-session memory) are the right mental model has
   now been substantially confirmed by Section 11's discovery — but the exact terms "ledger" and
   "posting" themselves are still informal, not confirmed as final naming.
-- The mutation request/response envelope itself — the old shape's nested-links-under-items
-  structure is now explicitly rejected (Section 6), but the concrete replacement shape (top-level
-  lists for both item and link mutations? something else?) hasn't been designed yet. `refId`
-  cross-referencing and the create/update/delete-as-polymorphic-subtype idiom are both likely
-  keeps, but not formally confirmed.
-- Finalizing terminology for "local"/"remote" and `refId` — explicitly flagged as unsettled
-  (Section 7).
-- Whether link update/delete ever needs a local-reference option, or is always remote as assumed
-  — not yet explicitly confirmed.
+- ~~The mutation request/response envelope itself~~ — **built**: top-level `items`/`links` lists
+  (Section 6), `refId` cross-referencing via `ItemReference`, create/update/delete as polymorphic
+  subtypes throughout (`ItemMutation`, `LinkMutation`), a `MutationRequestProcessor` resolving
+  references and driving the coordinator, and a `POST /mutation` endpoint
+  (`org.ntrloc.graph.db.mutation`).
+- ~~Finalizing terminology for "local"/"remote"~~ — **settled as "new"/"existing"** (Section 7).
 - Validation itself — explicitly deferred to its own conversation from the very start of this
   execution-focused thread.
 - Whether marker-assignment-rule and cascading-rule evaluation happen during prepare, during
