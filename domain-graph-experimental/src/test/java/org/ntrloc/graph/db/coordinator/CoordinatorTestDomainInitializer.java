@@ -2,6 +2,9 @@ package org.ntrloc.graph.db.coordinator;
 
 import org.ntrloc.graph.db.partition.binary.BinaryPartitionManager;
 import org.ntrloc.graph.db.partition.schema.ControlledListManager;
+import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
+import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
+import org.ntrloc.graph.db.partition.schema.definition.PropertyUsage;
 import org.ntrloc.graph.db.partition.schema.repository.SchemaRepository;
 import org.ntrloc.graph.domain.DomainInitializer;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -19,6 +22,9 @@ public class CoordinatorTestDomainInitializer implements DomainInitializer {
     private UUID linkTypeId;
     private UUID productPerspectiveId;
     private UUID contributorPerspectiveId;
+    private UUID namePropertyId;
+    private UUID colorPropertyId;
+    private UUID rolePropertyId;
 
     @Override
     public void initSchema(SchemaRepository repo, ControlledListManager controlledListManager) {
@@ -27,9 +33,22 @@ public class CoordinatorTestDomainInitializer implements DomainInitializer {
         productTypeId = product.id();
         contributorTypeId = contributor.id();
 
+        namePropertyId = repo.createProperty("name", "Coordinator integration test fixture",
+                PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL).id();
+        repo.associateItemProperty(productTypeId, namePropertyId);
+        repo.associateItemProperty(contributorTypeId, namePropertyId);
+
+        colorPropertyId = repo.createProperty("color", "Coordinator integration test fixture",
+                PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL).id();
+        repo.associateItemProperty(productTypeId, colorPropertyId);
+
         linkTypeId = repo.createLink();
         productPerspectiveId = repo.createPerspective(product.entityId(), linkTypeId, "products", "desc", 0, null).id();
         contributorPerspectiveId = repo.createPerspective(contributor.entityId(), linkTypeId, "contributors", "desc", 0, null).id();
+
+        rolePropertyId = repo.createProperty("role", "Coordinator integration test fixture",
+                PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL).id();
+        repo.associateLinkProperty(linkTypeId, rolePropertyId);
     }
 
     @Override
@@ -55,5 +74,17 @@ public class CoordinatorTestDomainInitializer implements DomainInitializer {
 
     public UUID contributorPerspectiveId() {
         return contributorPerspectiveId;
+    }
+
+    public UUID namePropertyId() {
+        return namePropertyId;
+    }
+
+    public UUID colorPropertyId() {
+        return colorPropertyId;
+    }
+
+    public UUID rolePropertyId() {
+        return rolePropertyId;
     }
 }

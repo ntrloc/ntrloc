@@ -16,6 +16,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 class MutationControllerIntegrationTest extends AbstractIntegrationTest {
 
+    private static final String PRODUCT_TYPE = "CoordinatorTestProduct";
+    private static final String CONTRIBUTOR_TYPE = "CoordinatorTestContributor";
+    private static final String PRODUCT_PERSPECTIVE = "products";
+    private static final String CONTRIBUTOR_PERSPECTIVE = "contributors";
+
     @Autowired
     private WebTestClient webTestClient;
 
@@ -26,16 +31,16 @@ class MutationControllerIntegrationTest extends AbstractIntegrationTest {
     private CoordinatorTestDomainInitializer fixture;
 
     @Test
-    void createTwoItemsAndLinkThemInOneRequest_usingRefIdLocalReferences() {
+    void createTwoItemsAndLinkThemInOneRequest_usingRefIdNewReferences() {
         MutationRequest request = new MutationRequest(
                 List.of(
-                        new ItemCreateMutation("product-1", fixture.productTypeId(), Map.of("name", "Widget")),
-                        new ItemCreateMutation("contributor-1", fixture.contributorTypeId(), Map.of("name", "Ada"))
+                        new ItemCreateMutation("product-1", PRODUCT_TYPE, Map.of("name", "Widget")),
+                        new ItemCreateMutation("contributor-1", CONTRIBUTOR_TYPE, Map.of("name", "Ada"))
                 ),
                 List.of(
-                        new LinkCreateMutation(fixture.linkTypeId(),
-                                List.of(new LinkEndpointReference(fixture.productPerspectiveId(), new NewItemReference("product-1")),
-                                        new LinkEndpointReference(fixture.contributorPerspectiveId(), new NewItemReference("contributor-1"))),
+                        new LinkCreateMutation(
+                                new LinkEndpointReference(PRODUCT_PERSPECTIVE, new NewItemReference("product-1")),
+                                new LinkEndpointReference(CONTRIBUTOR_PERSPECTIVE, new NewItemReference("contributor-1")),
                                 Map.of("role", "author"))
                 ));
 
@@ -64,11 +69,11 @@ class MutationControllerIntegrationTest extends AbstractIntegrationTest {
         String rawJson = """
                 {
                   "items": [
-                    { "type": "CREATE", "refId": null, "itemTypeId": "%s", "properties": { "name": "Raw Widget" } }
+                    { "type": "CREATE", "refId": null, "itemTypeName": "%s", "properties": { "name": "Raw Widget" } }
                   ],
                   "links": []
                 }
-                """.formatted(fixture.productTypeId());
+                """.formatted(PRODUCT_TYPE);
 
         webTestClient.post().uri("/mutation")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -85,8 +90,8 @@ class MutationControllerIntegrationTest extends AbstractIntegrationTest {
         MutationResponse createResponse = webTestClient.post().uri("/mutation")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(new MutationRequest(
-                        List.of(new ItemCreateMutation("p", fixture.productTypeId(), Map.of("name", "Widget")),
-                                new ItemCreateMutation("c", fixture.contributorTypeId(), Map.of("name", "Ada"))),
+                        List.of(new ItemCreateMutation("p", PRODUCT_TYPE, Map.of("name", "Widget")),
+                                new ItemCreateMutation("c", CONTRIBUTOR_TYPE, Map.of("name", "Ada"))),
                         List.of()))
                 .exchange()
                 .expectStatus().isOk()
@@ -99,9 +104,9 @@ class MutationControllerIntegrationTest extends AbstractIntegrationTest {
         webTestClient.post().uri("/mutation")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(new MutationRequest(List.of(), List.of(
-                        new LinkCreateMutation(fixture.linkTypeId(),
-                                List.of(new LinkEndpointReference(fixture.productPerspectiveId(), new ExistingItemReference(realProductId)),
-                                        new LinkEndpointReference(fixture.contributorPerspectiveId(), new ExistingItemReference(realContributorId))),
+                        new LinkCreateMutation(
+                                new LinkEndpointReference(PRODUCT_PERSPECTIVE, new ExistingItemReference(realProductId)),
+                                new LinkEndpointReference(CONTRIBUTOR_PERSPECTIVE, new ExistingItemReference(realContributorId)),
                                 Map.of())
                 )))
                 .exchange()
@@ -131,9 +136,9 @@ class MutationControllerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void unknownRefId_returnsBadRequest() {
         MutationRequest request = new MutationRequest(List.of(), List.of(
-                new LinkCreateMutation(fixture.linkTypeId(),
-                        List.of(new LinkEndpointReference(fixture.productPerspectiveId(), new NewItemReference("does-not-exist")),
-                                new LinkEndpointReference(fixture.contributorPerspectiveId(), new ExistingItemReference(UUID.randomUUID()))),
+                new LinkCreateMutation(
+                        new LinkEndpointReference(PRODUCT_PERSPECTIVE, new NewItemReference("does-not-exist")),
+                        new LinkEndpointReference(CONTRIBUTOR_PERSPECTIVE, new ExistingItemReference(UUID.randomUUID())),
                         Map.of())
         ));
 
@@ -142,5 +147,17 @@ class MutationControllerIntegrationTest extends AbstractIntegrationTest {
                 .bodyValue(request)
                 .exchange()
                 .expectStatus().isBadRequest();
+    }
+
+    @Test
+    void unknownItemTypeName_returnsNotFound() {
+        MutationRequest request = new MutationRequest(
+                List.of(new ItemCreateMutation(null, "NoSuchItemType", Map.of())), List.of());
+
+        webTestClient.post().uri("/mutation")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(request)
+                .exchange()
+                .expectStatus().isNotFound();
     }
 }

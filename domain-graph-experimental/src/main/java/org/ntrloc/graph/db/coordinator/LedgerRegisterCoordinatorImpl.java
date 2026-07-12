@@ -52,7 +52,8 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
         }
         for (LedgerEntry entry : expanded) {
             switch (entry) {
-                case LinkCreateEntry e -> registerPartitionManager.stageLinkCreate(e.linkId(), e.linkTypeId(), toRegisterEndpoints(e.endpoints()), e.properties(), transactionId);
+                case LinkCreateEntry e -> registerPartitionManager.stageLinkCreate(e.linkId(), e.linkTypeId(),
+                        toRegisterEndpoint(e.endpointA()), toRegisterEndpoint(e.endpointB()), e.properties(), transactionId);
                 case LinkUpdateEntry e -> registerPartitionManager.stageLinkUpdate(e.linkId(), e.properties(), transactionId);
                 default -> { }
             }
@@ -97,7 +98,7 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
         ledgerPartitionManager.abort(transactionId);
     }
 
-    private List<RegisterLinkEndpoint> toRegisterEndpoints(List<LinkEndpoint> endpoints) {
-        return endpoints.stream().map(e -> new RegisterLinkEndpoint(e.perspectiveId(), e.itemId())).toList();
+    private RegisterLinkEndpoint toRegisterEndpoint(LinkEndpoint endpoint) {
+        return new RegisterLinkEndpoint(endpoint.perspectiveId(), endpoint.itemId());
     }
 }

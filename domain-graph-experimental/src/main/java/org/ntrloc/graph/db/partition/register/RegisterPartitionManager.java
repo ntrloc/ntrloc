@@ -284,7 +284,28 @@ public class RegisterPartitionManager {
     // Updates are never in-place: prepare stages a whole new row: commit deletes the old
     // committed row for the same business id and flips the new one to COMMITTED.
 
-    public UUID stageItemCreate(UUID itemId, UUID itemTypeId, Map<String, Object> properties, UUID transactionId) {
+    public UUID stageItemCreate(UUID itemId, UUID itemTypeId, Map<UUID, Object> properties, UUID transactionId) {
+        return insertItemRow(itemId, itemTypeId, resolveItemPropertyNames(itemTypeId, properties), transactionId);
+    }
+
+    public UUID stageItemUpdate(UUID itemId, Map<UUID, Object> propertiesDiff, UUID transactionId) {
+        UUID itemTypeId = findItemTypeId(itemId);
+
+        Map<String, Object> currentProperties = jdbcClient.sql("""
+                SELECT rt.properties::text AS properties
+                FROM register_item ri
+                JOIN %s rt ON rt.register_item_id = ri.id
+                WHERE ri.item_id = :itemId AND ri.state = 'COMMITTED'
+                """.formatted(tableNameFor(itemTypeId)))
+                .param("itemId", itemId)
+                .query((rs, n) -> parseJsonb(rs.getString("properties")))
+                .single();
+
+        Map<String, Object> merged = mergeProperties(currentProperties, resolveItemPropertyNames(itemTypeId, propertiesDiff));
+        return insertItemRow(itemId, itemTypeId, merged, transactionId);
+    }
+
+    private UUID insertItemRow(UUID itemId, UUID itemTypeId, Map<String, Object> properties, UUID transactionId) {
         UUID registerItemId = jdbcClient.sql("""
                 INSERT INTO register_item (item_id, item_type_id, state, transaction_id)
                 VALUES (:itemId, :itemTypeId, 'UNCOMMITTED', :transactionId)
@@ -305,24 +326,11 @@ public class RegisterPartitionManager {
         return registerItemId;
     }
 
-    public UUID stageItemUpdate(UUID itemId, Map<String, Object> propertiesDiff, UUID transactionId) {
-        UUID itemTypeId = jdbcClient.sql("SELECT item_type_id FROM register_item WHERE item_id = :itemId AND state = 'COMMITTED'")
+    public UUID findItemTypeId(UUID itemId) {
+        return jdbcClient.sql("SELECT item_type_id FROM register_item WHERE item_id = :itemId AND state = 'COMMITTED'")
                 .param("itemId", itemId)
                 .query(UUID.class)
                 .single();
-
-        Map<String, Object> currentProperties = jdbcClient.sql("""
-                SELECT rt.properties::text AS properties
-                FROM register_item ri
-                JOIN %s rt ON rt.register_item_id = ri.id
-                WHERE ri.item_id = :itemId AND ri.state = 'COMMITTED'
-                """.formatted(tableNameFor(itemTypeId)))
-                .param("itemId", itemId)
-                .query((rs, n) -> parseJsonb(rs.getString("properties")))
-                .single();
-
-        Map<String, Object> merged = mergeProperties(currentProperties, propertiesDiff);
-        return stageItemCreate(itemId, itemTypeId, merged, transactionId);
     }
 
     public void commitItem(UUID itemId, UUID transactionId, UUID commitId) {
@@ -368,23 +376,27 @@ public class RegisterPartitionManager {
                 .update();
     }
 
-    public UUID stageLinkCreate(UUID linkId, UUID linkTypeId, List<RegisterLinkEndpoint> endpoints,
-                                 Map<String, Object> properties, UUID transactionId) {
-        UUID registerLinkId = insertLinkRow(linkId, linkTypeId, properties, transactionId);
-        insertPerspectiveRows(registerLinkId, endpoints, transactionId);
+    public UUID stageLinkCreate(UUID linkId, UUID linkTypeId, RegisterLinkEndpoint endpointA, RegisterLinkEndpoint endpointB,
+                                 Map<UUID, Object> properties, UUID transactionId) {
+        UUID registerLinkId = insertLinkRow(linkId, linkTypeId, resolveLinkPropertyNames(linkTypeId, properties), transactionId);
+        insertPerspectiveRows(registerLinkId, List.of(endpointA, endpointB), transactionId);
         return registerLinkId;
     }
 
-    public UUID stageLinkUpdate(UUID linkId, Map<String, Object> propertiesDiff, UUID transactionId) {
+    public UUID findLinkTypeId(UUID linkId) {
+        return jdbcClient.sql("SELECT link_definition_id FROM register_link WHERE link_id = :linkId AND state = 'COMMITTED'")
+                .param("linkId", linkId)
+                .query(UUID.class)
+                .single();
+    }
+
+    public UUID stageLinkUpdate(UUID linkId, Map<UUID, Object> propertiesDiff, UUID transactionId) {
         UUID currentRegisterLinkId = jdbcClient.sql("SELECT id FROM register_link WHERE link_id = :linkId AND state = 'COMMITTED'")
                 .param("linkId", linkId)
                 .query(UUID.class)
                 .single();
 
-        UUID linkTypeId = jdbcClient.sql("SELECT link_definition_id FROM register_link WHERE id = :id")
-                .param("id", currentRegisterLinkId)
-                .query(UUID.class)
-                .single();
+        UUID linkTypeId = findLinkTypeId(linkId);
 
         Map<String, Object> currentProperties = jdbcClient.sql("SELECT properties::text AS properties FROM %s WHERE register_link_id = :id"
                 .formatted(linkTableNameFor(linkTypeId)))
@@ -392,7 +404,7 @@ public class RegisterPartitionManager {
                 .query((rs, n) -> parseJsonb(rs.getString("properties")))
                 .single();
 
-        Map<String, Object> merged = mergeProperties(currentProperties, propertiesDiff);
+        Map<String, Object> merged = mergeProperties(currentProperties, resolveLinkPropertyNames(linkTypeId, propertiesDiff));
         UUID registerLinkId = insertLinkRow(linkId, linkTypeId, merged, transactionId);
 
         // Endpoints don't change on an update (Section 8): re-resolve each one to whichever
@@ -534,6 +546,41 @@ public class RegisterPartitionManager {
 
     private String writeProperties(Map<String, Object> properties) {
         return objectMapper.writeValueAsString(properties);
+    }
+
+    // Translates property-id-keyed input (what LedgerEntry carries) into the name-keyed map the
+    // JSONB columns actually store -- property ids are stable, names are mutable (renameable via
+    // UpdatePropertyDefinitionMutation), so this is where that gap gets bridged.
+    private Map<String, Object> resolveItemPropertyNames(UUID itemTypeId, Map<UUID, Object> propertiesById) {
+        Map<UUID, String> idToName = schemaManager.getAdminSchema().items().stream()
+                .filter(item -> item.id().equals(itemTypeId))
+                .findFirst()
+                .map(item -> item.properties().stream()
+                        .collect(Collectors.toMap(AdminPropertyDefinitionView::id, AdminPropertyDefinitionView::name)))
+                .orElse(Map.of());
+        return resolvePropertyNames(propertiesById, idToName);
+    }
+
+    private Map<String, Object> resolveLinkPropertyNames(UUID linkTypeId, Map<UUID, Object> propertiesById) {
+        Map<UUID, String> idToName = schemaManager.getAdminSchema().links().stream()
+                .filter(link -> link.id().equals(linkTypeId))
+                .findFirst()
+                .map(link -> link.properties().stream()
+                        .collect(Collectors.toMap(AdminPropertyDefinitionView::id, AdminPropertyDefinitionView::name)))
+                .orElse(Map.of());
+        return resolvePropertyNames(propertiesById, idToName);
+    }
+
+    private Map<String, Object> resolvePropertyNames(Map<UUID, Object> propertiesById, Map<UUID, String> idToName) {
+        Map<String, Object> byName = new HashMap<>();
+        propertiesById.forEach((propertyId, value) -> {
+            String name = idToName.get(propertyId);
+            if (name == null) {
+                throw new IllegalArgumentException("Unknown property id: " + propertyId);
+            }
+            byName.put(name, value);
+        });
+        return byName;
     }
 
     private record LinkRow(UUID myRegisterItemId, String perspectiveName,
