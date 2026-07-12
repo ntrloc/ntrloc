@@ -42,6 +42,14 @@ public class CoordinatorTestDomainInitializer implements DomainInitializer {
                 PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL).id();
         repo.associateItemProperty(productTypeId, colorPropertyId);
 
+        UUID tagsPropertyId = repo.createProperty("tags", "Coordinator integration test fixture",
+                PropertyType.STRING, PropertyCardinality.SET, PropertyUsage.OPTIONAL).id();
+        repo.associateItemProperty(productTypeId, tagsPropertyId);
+
+        UUID releaseDatePropertyId = repo.createProperty("releaseDate", "Coordinator integration test fixture",
+                PropertyType.DATE, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL).id();
+        repo.associateItemProperty(productTypeId, releaseDatePropertyId);
+
         linkTypeId = repo.createLink();
         productPerspectiveId = repo.createPerspective(product.entityId(), linkTypeId, "products", "desc", 0, null).id();
         contributorPerspectiveId = repo.createPerspective(contributor.entityId(), linkTypeId, "contributors", "desc", 0, null).id();

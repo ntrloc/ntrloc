@@ -198,4 +198,89 @@ class MutationControllerIntegrationTest extends AbstractIntegrationTest {
         assertThat(errorResponse.errors()).anyMatch(e -> e.path().equals("items[1].properties.noSuchProperty"));
         assertThat(errorResponse.errors()).anyMatch(e -> e.path().equals("items[2].itemId"));
     }
+
+    @Test
+    void wrongScalarType_isRejected() {
+        MutationRequest request = new MutationRequest(
+                List.of(new ItemCreateMutation(null, PRODUCT_TYPE, Map.of("name", 42))), List.of());
+
+        MutationErrorResponse errorResponse = webTestClient.post().uri("/mutation")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(request)
+                .exchange()
+                .expectStatus().isBadRequest()
+                .expectBody(MutationErrorResponse.class)
+                .returnResult().getResponseBody();
+
+        assertThat(errorResponse.errors()).hasSize(1);
+        assertThat(errorResponse.errors().get(0).path()).isEqualTo("items[0].properties.name");
+    }
+
+    @Test
+    void validValuesAcrossTypesAndCardinalities_areAccepted() {
+        MutationRequest request = new MutationRequest(
+                List.of(new ItemCreateMutation("p", PRODUCT_TYPE, Map.of(
+                        "name", "Widget",
+                        "tags", List.of("blue", "small"),
+                        "releaseDate", "2026-01-15"
+                ))),
+                List.of());
+
+        webTestClient.post().uri("/mutation")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(request)
+                .exchange()
+                .expectStatus().isOk();
+    }
+
+    @Test
+    void nonListValueForSetCardinalityProperty_isRejected() {
+        MutationRequest request = new MutationRequest(
+                List.of(new ItemCreateMutation(null, PRODUCT_TYPE, Map.of("tags", "not-a-list"))), List.of());
+
+        MutationErrorResponse errorResponse = webTestClient.post().uri("/mutation")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(request)
+                .exchange()
+                .expectStatus().isBadRequest()
+                .expectBody(MutationErrorResponse.class)
+                .returnResult().getResponseBody();
+
+        assertThat(errorResponse.errors()).hasSize(1);
+        assertThat(errorResponse.errors().get(0).path()).isEqualTo("items[0].properties.tags");
+    }
+
+    @Test
+    void duplicateValuesInSetProperty_areRejected() {
+        MutationRequest request = new MutationRequest(
+                List.of(new ItemCreateMutation(null, PRODUCT_TYPE, Map.of("tags", List.of("blue", "blue")))), List.of());
+
+        MutationErrorResponse errorResponse = webTestClient.post().uri("/mutation")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(request)
+                .exchange()
+                .expectStatus().isBadRequest()
+                .expectBody(MutationErrorResponse.class)
+                .returnResult().getResponseBody();
+
+        assertThat(errorResponse.errors()).hasSize(1);
+        assertThat(errorResponse.errors().get(0).path()).isEqualTo("items[0].properties.tags");
+    }
+
+    @Test
+    void invalidDateString_isRejected() {
+        MutationRequest request = new MutationRequest(
+                List.of(new ItemCreateMutation(null, PRODUCT_TYPE, Map.of("releaseDate", "not-a-date"))), List.of());
+
+        MutationErrorResponse errorResponse = webTestClient.post().uri("/mutation")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(request)
+                .exchange()
+                .expectStatus().isBadRequest()
+                .expectBody(MutationErrorResponse.class)
+                .returnResult().getResponseBody();
+
+        assertThat(errorResponse.errors()).hasSize(1);
+        assertThat(errorResponse.errors().get(0).path()).isEqualTo("items[0].properties.releaseDate");
+    }
 }

@@ -11,11 +11,16 @@ import org.ntrloc.graph.db.partition.ledger.LinkEndpoint;
 import org.ntrloc.graph.db.partition.ledger.LinkUpdateEntry;
 import org.ntrloc.graph.db.partition.register.RegisterPartitionManager;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
+import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
+import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemLinkPerspectiveView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyDefinitionView;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -240,36 +245,116 @@ public class MutationRequestProcessor {
     }
 
     private Map<UUID, Object> resolveItemPropertyIds(UUID itemTypeId, Map<String, Object> propertiesByName, String path, List<ValidationError> errors) {
-        Map<String, UUID> nameToId = schemaManager.getAdminSchema().items().stream()
+        Map<String, AdminPropertyDefinitionView> nameToProperty = schemaManager.getAdminSchema().items().stream()
                 .filter(item -> item.id().equals(itemTypeId))
                 .findFirst()
                 .map(item -> item.properties().stream()
-                        .collect(Collectors.toMap(AdminPropertyDefinitionView::name, AdminPropertyDefinitionView::id)))
+                        .collect(Collectors.toMap(AdminPropertyDefinitionView::name, p -> p)))
                 .orElse(Map.of());
-        return resolvePropertyIds(propertiesByName, nameToId, path, errors);
+        return resolvePropertyIds(propertiesByName, nameToProperty, path, errors);
     }
 
     private Map<UUID, Object> resolveLinkPropertyIds(UUID linkTypeId, Map<String, Object> propertiesByName, String path, List<ValidationError> errors) {
-        Map<String, UUID> nameToId = schemaManager.getAdminSchema().links().stream()
+        Map<String, AdminPropertyDefinitionView> nameToProperty = schemaManager.getAdminSchema().links().stream()
                 .filter(link -> link.id().equals(linkTypeId))
                 .findFirst()
                 .map(link -> link.properties().stream()
-                        .collect(Collectors.toMap(AdminPropertyDefinitionView::name, AdminPropertyDefinitionView::id)))
+                        .collect(Collectors.toMap(AdminPropertyDefinitionView::name, p -> p)))
                 .orElse(Map.of());
-        return resolvePropertyIds(propertiesByName, nameToId, path, errors);
+        return resolvePropertyIds(propertiesByName, nameToProperty, path, errors);
     }
 
-    private Map<UUID, Object> resolvePropertyIds(Map<String, Object> propertiesByName, Map<String, UUID> nameToId, String path, List<ValidationError> errors) {
+    private Map<UUID, Object> resolvePropertyIds(Map<String, Object> propertiesByName, Map<String, AdminPropertyDefinitionView> nameToProperty,
+                                                  String path, List<ValidationError> errors) {
         Map<UUID, Object> byId = new HashMap<>();
         if (propertiesByName == null) return byId;
         propertiesByName.forEach((name, value) -> {
-            UUID id = nameToId.get(name);
-            if (id == null) {
+            AdminPropertyDefinitionView property = nameToProperty.get(name);
+            if (property == null) {
                 errors.add(new ValidationError(path + "." + name, "Unknown property: " + name));
-            } else {
-                byId.put(id, value);
+                return;
+            }
+            // null is the update-diff "clear this property" sentinel -- never type-checked.
+            if (value == null) {
+                byId.put(property.id(), null);
+                return;
+            }
+            int before = errors.size();
+            validatePropertyValue(path + "." + name, property, value, errors);
+            if (errors.size() == before) {
+                byId.put(property.id(), value);
             }
         });
         return byId;
+    }
+
+    private void validatePropertyValue(String path, AdminPropertyDefinitionView property, Object value, List<ValidationError> errors) {
+        if (property.type() == PropertyType.BINARY) {
+            errors.add(new ValidationError(path, "Property '" + property.name() + "' is binary-typed; binary properties cannot be set via mutation"));
+            return;
+        }
+        if (property.cardinality() == PropertyCardinality.SINGLE) {
+            validateScalar(path, property, value, errors);
+            return;
+        }
+        if (!(value instanceof List<?> list)) {
+            errors.add(new ValidationError(path, "Property '" + property.name() + "' expects a list of values"));
+            return;
+        }
+        if (property.cardinality() == PropertyCardinality.SET) {
+            Set<Object> seen = new HashSet<>();
+            for (Object element : list) {
+                if (!seen.add(element)) {
+                    errors.add(new ValidationError(path, "Property '" + property.name() + "' contains a duplicate value: " + element));
+                }
+            }
+        }
+        for (int i = 0; i < list.size(); i++) {
+            validateScalar(path + "[" + i + "]", property, list.get(i), errors);
+        }
+    }
+
+    private void validateScalar(String path, AdminPropertyDefinitionView property, Object value, List<ValidationError> errors) {
+        boolean valid = switch (property.type()) {
+            case STRING -> value instanceof String;
+            case INT -> value instanceof Integer;
+            case LONG -> value instanceof Integer || value instanceof Long;
+            case BOOLEAN -> value instanceof Boolean;
+            case OBJECT -> value instanceof Map;
+            case DATE -> value instanceof String s && isValidDate(s);
+            case DATETIME -> value instanceof String s && isValidDateTime(s);
+            case BINARY -> false; // handled by the caller before reaching here
+        };
+        if (!valid) {
+            errors.add(new ValidationError(path,
+                    "Property '" + property.name() + "' expects a " + property.type() + " value but got: " + describeValue(value)));
+        }
+    }
+
+    private boolean isValidDate(String s) {
+        try {
+            LocalDate.parse(s);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    private boolean isValidDateTime(String s) {
+        try {
+            OffsetDateTime.parse(s);
+            return true;
+        } catch (Exception e) {
+            try {
+                Instant.parse(s);
+                return true;
+            } catch (Exception e2) {
+                return false;
+            }
+        }
+    }
+
+    private String describeValue(Object value) {
+        return value.getClass().getSimpleName() + " (" + value + ")";
     }
 }
