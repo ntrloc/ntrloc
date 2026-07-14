@@ -1,0 +1,249 @@
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Platform — ntrloc</title>
+<meta name="description" content="How ntrloc models data as a graph, evolves schema without migration drama, and ships schema, security, and UI changes without downtime." />
+<link rel="icon" href="assets/img/ntrloc-mark.png" />
+<link rel="stylesheet" href="assets/css/style.css" />
+
+<header class="site-nav">
+  <div class="wrap">
+    <a href="index.html" class="logo"><img src="assets/img/ntrloc-horizontal.png" alt="ntrloc" /></a>
+    <input type="checkbox" id="nav-toggle" class="nav-toggle" />
+    <label for="nav-toggle" class="nav-toggle-label" aria-label="Menu"><span></span><span></span><span></span></label>
+    <nav>
+      <a href="index.html">Home</a>
+      <a href="platform.html" class="active">Platform</a>
+      <a href="security.html">Security</a>
+      <a href="roadmap.html">Roadmap</a>
+      <a href="https://github.com/ntrloc/ntrloc" class="cta">View on GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section class="hero" style="padding-bottom: 40px;">
+    <div class="wrap">
+      <span class="status-note"><span class="status-dot"></span> Architecture</span>
+      <h1 style="font-size:2.6rem;">A graph underneath, <span class="accent">built to keep running</span></h1>
+      <p class="lead">
+        ntrloc's data model, how its schema evolves without migration drama, and the
+        mechanism that lets you change schema, data, or UI — without ever going down or
+        exposing a half-finished state.
+      </p>
+    </div>
+  </section>
+
+  <section class="prose" id="model">
+    <div class="wrap">
+      <div class="block">
+        <p class="eyebrow">The data model</p>
+        <h2>Items, links, and traits</h2>
+        <p class="subhead">A graph model that's fast to read and precise to reason about.</p>
+
+        <div class="two-col">
+          <div>
+            <h3>Items live in per-type tables</h3>
+            <p>
+              Rather than one unified table for every kind of item, each item type gets its own
+              table, sharing a common <code>item_registry</code> identity anchor that every link
+              references. Read performance is the priority ntrloc optimizes for first, and
+              per-type storage serves it directly — no filtering a single giant table by
+              discriminator column.
+            </p>
+            <p>
+              Properties are stored as JSONB, keyed by immutable property IDs rather than
+              human-readable labels — so renaming a label is a metadata change, not a data
+              migration.
+            </p>
+          </div>
+          <div>
+            <h3>Traits keep schema DRY</h3>
+            <p>
+              A trait is a named, reusable group of property definitions. Item and link types
+              declare which traits they implement; a type's full property set is the union of
+              its traits plus any type-local properties.
+            </p>
+            <p>
+              Adding a trait to a type is non-destructive — existing items simply return
+              <code>null</code> for the new properties until populated. Removing one is handled
+              by read tolerance: orphaned values are silently ignored on read, while writes
+              reject deprecated properties immediately.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="block">
+        <h3 style="margin-top:0;">Links are undirected, with per-participant visibility</h3>
+        <p>
+          A link has two participant slots — A and B — with no implied direction and no owner.
+          Each slot optionally carries a label describing what that participant calls the link.
+          A Photographer might see a "created" link to a Photo, while the Photo sees the same
+          link as "creator" — and an unrelated item type linked with no label simply doesn't see
+          the relationship at all. Multiple link types can share a label from a given
+          participant's perspective, so renaming a label regroups everything that shares it, all
+          at once.
+        </p>
+        <p>
+          Traversal up to roughly five hops runs efficiently via recursive queries — covering the
+          practical depth of real ntrloc queries without requiring a dedicated graph-traversal
+          engine underneath.
+        </p>
+      </div>
+
+      <div class="block">
+        <h3 style="margin-top:0;">Binary data, deduplicated by content</h3>
+        <p>
+          Binary properties don't store bytes or URLs in JSONB. On upload, ntrloc streams the
+          binary while computing MD5 and SHA-256 digests; if the combination of hash and length
+          already exists in the binary store, the upload is discarded and the existing record is
+          referenced instead. Identical content — a re-uploaded image, a duplicate asset — is
+          stored exactly once, however many items reference it. ntrloc is always the pass-through
+          for downloads, so callers never see a raw storage path, and every download is
+          permission-checked and audited.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section class="alt prose" id="schema-evolution">
+    <div class="wrap">
+      <div class="block" style="border-top:none; padding-top:0;">
+        <p class="eyebrow">Schema evolution</p>
+        <h2>Most schema changes aren't events</h2>
+        <p class="subhead">Versioning is a punctuation mark, not continuous overhead.</p>
+        <p>
+          Because traits are reusable and non-destructive, most of what teams think of as
+          "schema migrations" — adding a property, renaming a label, giving a type a new trait —
+          are just metadata edits in ntrloc. There's no data to rewrite and no version to bump.
+        </p>
+      </div>
+      <div class="card-grid">
+        <div class="card">
+          <h3>No version bump needed</h3>
+          <p>Adding properties, renaming labels, adding or removing traits from a type — all routine, none of it requires a schema version change.</p>
+        </div>
+        <div class="card">
+          <h3>Version bump when it matters</h3>
+          <p>Only explicit data migrations — property consolidation, trait extraction — advance the schema version, with items tagged by the version they were written under.</p>
+        </div>
+        <div class="card">
+          <h3>DDL is never manual</h3>
+          <p>Table, index, and view creation are handled automatically as types and properties are registered — including expression indexes per queryable property, plus a GIN catch-all.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="uptime">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="eyebrow">Uptime</p>
+        <h2>Nothing goes live until you flip the switch — and nothing needs a restart</h2>
+        <p>
+          The same principle applies at every level: item writes, bulk data transformations,
+          schema changes, and security policy changes are all staged, then committed as one
+          atomic switch. A <strong>changeset</strong> is how you scope a change too large to
+          verify by eye in real time.
+        </p>
+      </div>
+
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div>
+            <h3>Define</h3>
+            <p>
+              An admin defines the schema changes, security changes, and data transformations
+              that make up the changeset. ntrloc calculates scope and impact up front and
+              presents a pre-commit report before anything is built.
+            </p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div>
+            <h3>Build</h3>
+            <p>
+              The cluster builds a staged overlay in parallel. Every declared transformation
+              begins running as a continuous process against the live write stream, not a
+              one-time batch job — and sanity checks run throughout.
+            </p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div>
+            <h3>Stage</h3>
+            <p>
+              The staged overlay is queryable like any other view. Admins and testers browse it,
+              diff before/after per item, review marker changes, and simulate permissions —
+              while new live writes keep propagating into the overlay automatically. This phase
+              can last indefinitely.
+            </p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">4</div>
+          <div>
+            <h3>Commit — or discard</h3>
+            <p>
+              A single atomic switch makes the staged schema, policies, and data live, and
+              retires the old state. Because the overlay was already current, the commit is a
+              true switch flip, not a re-migration. Discarding costs nothing — live data is
+              never touched until commit.
+            </p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">5</div>
+          <div>
+            <h3>Clean up</h3>
+            <p>
+              The old staged overlay is physically removed in the background, and deprecated
+              property values are stripped if desired — asynchronously, off the critical path.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <p style="color:var(--text-dim); margin-top: 32px;">
+        The overlay itself is <strong>sparse</strong> — only items actually affected by the
+        changeset's transformations exist in it. Unaffected items are read straight from live
+        data, so storage cost scales with the size of the change, not the size of the dataset.
+        And by design, ntrloc supports at most two versions at once — live and staged — trading
+        away concurrent multi-changeset workflows for a model with no rebasing and no conflict
+        resolution to design around.
+      </p>
+
+      <h3 style="margin-top:48px;">Hot by default, not just at commit time</h3>
+      <p style="color:var(--text-dim);">
+        Staging covers schema, security, and data — but ntrloc treats UI and logic changes the
+        same way. Hosted UI content is served straight from whatever's currently at its resource
+        location, no compile step involved at request time. Server-rendered templates resolve
+        without caching when their source lives outside the classpath, so an edit takes effect
+        on the next request. Nothing in ntrloc requires a restart to ship a change — the
+        changeset commit and the hot-reloaded template are the same underlying idea applied at
+        different layers.
+      </p>
+    </div>
+  </section>
+
+  <div class="cta-banner">
+    <div class="wrap">
+      <h2>See how the security model works</h2>
+      <p>Policy markers, permission grants, and rule-based assignment built on the same graph.</p>
+      <div class="button-row">
+        <a href="security.html" class="btn btn-primary">Security</a>
+        <a href="https://github.com/ntrloc/ntrloc" class="btn btn-secondary">View source</a>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>© 2026 ntrloc. Licensed under Apache 2.0.</span>
+    <span><a href="https://github.com/ntrloc/ntrloc">GitHub</a></span>
+  </div>
+</footer>

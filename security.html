@@ -1,0 +1,161 @@
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Security — ntrloc</title>
+<meta name="description" content="ntrloc's permission model — policy markers, rule-based assignment, temporary overrides, and a schema that only shows callers what they're permitted to touch." />
+<link rel="icon" href="assets/img/ntrloc-mark.png" />
+<link rel="stylesheet" href="assets/css/style.css" />
+
+<header class="site-nav">
+  <div class="wrap">
+    <a href="index.html" class="logo"><img src="assets/img/ntrloc-horizontal.png" alt="ntrloc" /></a>
+    <input type="checkbox" id="nav-toggle" class="nav-toggle" />
+    <label for="nav-toggle" class="nav-toggle-label" aria-label="Menu"><span></span><span></span><span></span></label>
+    <nav>
+      <a href="index.html">Home</a>
+      <a href="platform.html">Platform</a>
+      <a href="security.html" class="active">Security</a>
+      <a href="roadmap.html">Roadmap</a>
+      <a href="https://github.com/ntrloc/ntrloc" class="cta">View on GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section class="hero" style="padding-bottom: 40px;">
+    <div class="wrap">
+      <span class="status-note"><span class="status-dot"></span> Security model</span>
+      <h1 style="font-size:2.6rem;">Default deny. <span class="accent">Always audited.</span></h1>
+      <p class="lead">
+        Permissions aren't a layer bolted onto ntrloc's data model — they're evaluated as part
+        of the same commit pipeline that writes the data itself.
+      </p>
+    </div>
+  </section>
+
+  <section class="prose" id="permissions">
+    <div class="wrap">
+      <div class="block">
+        <p class="eyebrow">Permission model</p>
+        <h2>Markers, grants, and rules</h2>
+        <p class="subhead">Three primitives compose into everything ntrloc's access control needs to express.</p>
+
+        <div class="two-col">
+          <div>
+            <h3>Policy markers</h3>
+            <p>
+              Simple identifier tags applied to items and links. A marker carries no logic of
+              its own — it's the attachment point for permission grants.
+            </p>
+            <h3>Permission grants</h3>
+            <p>
+              A user or group is granted specific operation primitives on a marker — item
+              create/read/delete, property read/write, link create/read/delete, binary
+              download, and more. Effective permissions are the <strong>union</strong> across
+              every marker applied to an item.
+            </p>
+          </div>
+          <div>
+            <h3>Marker assignment rules</h3>
+            <p>
+              Declarative rules that automatically apply or remove markers based on an item's
+              own properties, or properties of related items reached via a declared, bounded
+              traversal path — never open-ended graph exploration. Rules fire as part of the
+              commit pipeline, so a marker change is never asynchronously lagged behind the
+              property change that triggered it.
+            </p>
+            <h3>Temporary overrides</h3>
+            <p>
+              A privileged user can grant specific permissions to specific users on a specific
+              item, time-bounded by a mandatory expiry and a mandatory reason. Nothing about
+              ntrloc's override model allows a permanent, unaudited exception.
+            </p>
+          </div>
+        </div>
+
+        <h3>Five rules the model never breaks</h3>
+        <ul>
+          <li><strong>Default deny</strong> — no permission exists unless explicitly granted.</li>
+          <li><strong>Union across markers</strong> — every marker on an item contributes its grants.</li>
+          <li><strong>Write implies read</strong> — there is no such thing as a write-only property.</li>
+          <li><strong>All-or-nothing proposals</strong> — one disallowed property in a mutation rejects the whole proposal.</li>
+          <li><strong>Superusers bypass policy, never audit</strong> — every action is still fully logged.</li>
+        </ul>
+      </div>
+
+      <div class="block">
+        <h3 style="margin-top:0;">A schema that only shows you what you can touch</h3>
+        <p>
+          The schema endpoint returns a caller-scoped projection: item types you can't see are
+          omitted entirely, properties appear only if you have read or write access to them
+          (and the response says which), and link types appear only when both participant types
+          are visible to you. There's no trial and error — the schema you're handed is a
+          complete, accurate contract for what you're actually permitted to do.
+        </p>
+        <p>
+          The same discipline applies to creation. A create request passes two gates before
+          anything is persisted: does the principal have create permission on the item type at
+          all, and — given the properties and links the new item would actually have — would
+          the markers it's assigned grant that principal create permission on this specific
+          instance? If the creator wouldn't be able to <em>see</em> the item they're about to
+          create, the create is rejected outright rather than silently producing an item its
+          own author can't read back.
+        </p>
+      </div>
+
+      <div class="block">
+        <h3 style="margin-top:0;">Explain, simulate, and preview — before anything changes</h3>
+        <p>
+          Three administrative tools turn "what does this permission change actually do" from a
+          guess into an answer:
+        </p>
+        <ul>
+          <li><strong>Current-state explanation</strong> — for any item, who can do what, and exactly which markers grant it.</li>
+          <li><strong>Rule simulation</strong> — preview what markers would be assigned if an item's properties changed, without changing anything.</li>
+          <li><strong>Change impact analysis</strong> — for a proposed security model change, how many items are affected and which users gain or lose access, with warnings for the implications you'd want flagged (like a contractor gaining access to restricted items).</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="alt">
+    <div class="wrap">
+      <div class="section-head center">
+        <p class="eyebrow">Audit</p>
+        <h2>Security posture has a history, not just a current state</h2>
+        <p>Policy changes — rule-assigned or ad-hoc — are first-class events in the write layer, versioned the same way property changes are.</p>
+      </div>
+      <div class="card-grid">
+        <div class="card">
+          <h3>Ad-hoc markers</h3>
+          <p>Applied manually by privileged users, persistent against rule precedence, but never permanent — a TTL is mandatory, and both creation and expiry are audited.</p>
+        </div>
+        <div class="card">
+          <h3>Full item history</h3>
+          <p>An item's history includes not just when its properties changed, but when its security posture changed, and — via the reason field — why.</p>
+        </div>
+        <div class="card">
+          <h3>Nothing lingers unaudited</h3>
+          <p>Expired overrides cease to exist rather than sitting inactive; every creation, modification, and expiry is a write-layer event.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="cta-banner">
+    <div class="wrap">
+      <h2>See the graph model underneath</h2>
+      <p>Items, links, traits, and the staging mechanism that makes every change reversible until it isn't.</p>
+      <div class="button-row">
+        <a href="platform.html" class="btn btn-primary">Explore the platform</a>
+        <a href="https://github.com/ntrloc/ntrloc" class="btn btn-secondary">View source</a>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>© 2026 ntrloc. Licensed under Apache 2.0.</span>
+    <span><a href="https://github.com/ntrloc/ntrloc">GitHub</a></span>
+  </div>
+</footer>

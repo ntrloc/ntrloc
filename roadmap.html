@@ -1,0 +1,151 @@
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Roadmap — ntrloc</title>
+<meta name="description" content="What's designed but not yet built in ntrloc — compliance frameworks, scripted extensibility, admin UI, and graph query work." />
+<link rel="icon" href="assets/img/ntrloc-mark.png" />
+<link rel="stylesheet" href="assets/css/style.css" />
+
+<header class="site-nav">
+  <div class="wrap">
+    <a href="index.html" class="logo"><img src="assets/img/ntrloc-horizontal.png" alt="ntrloc" /></a>
+    <input type="checkbox" id="nav-toggle" class="nav-toggle" />
+    <label for="nav-toggle" class="nav-toggle-label" aria-label="Menu"><span></span><span></span><span></span></label>
+    <nav>
+      <a href="index.html">Home</a>
+      <a href="platform.html">Platform</a>
+      <a href="security.html">Security</a>
+      <a href="roadmap.html" class="active">Roadmap</a>
+      <a href="https://github.com/ntrloc/ntrloc" class="cta">View on GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section class="hero" style="padding-bottom: 40px;">
+    <div class="wrap">
+      <span class="status-note"><span class="status-dot"></span> Roadmap</span>
+      <h1 style="font-size:2.6rem;">What's designed, <span class="accent">not yet built</span></h1>
+      <p class="lead">
+        ntrloc is under active development. Some of what's below is fully designed and next in
+        line; some is a conceptual direction that hasn't been scoped in detail yet. Nothing here
+        should be treated as a current capability.
+      </p>
+    </div>
+  </section>
+
+  <section class="prose">
+    <div class="wrap">
+      <div class="block" style="border-top:none; padding-top:0;">
+        <p class="eyebrow">Compliance &amp; data governance</p>
+        <h2>Regulatory frameworks</h2>
+        <p class="subhead">Designed, not yet built. This is the largest planned body of work outside the current core.</p>
+      </div>
+      <div class="card-grid">
+        <div class="card">
+          <h3>Data classification tags</h3>
+          <p>Property- and type-level classification (GDPR personal/sensitive, HIPAA PHI, CCPA, COPPA, and general proprietary/public tags) as the foundation for framework enforcement.</p>
+        </div>
+        <div class="card">
+          <h3>Named framework presets</h3>
+          <p>Per-domain activation of regulatory presets — cross-domain exposure limits, retention limits, and deletion semantics enforced automatically once activated.</p>
+        </div>
+        <div class="card">
+          <h3>Consent as a record</h3>
+          <p>Structured, versioned, auditable consent and legal-basis records linked to the items and properties they cover, with automatic re-evaluation on expiry or revocation.</p>
+        </div>
+        <div class="card">
+          <h3>Provable deletion</h3>
+          <p>Purge, anonymization, redaction, and suppression as distinct deletion modes, each producing a signed deletion certificate.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="alt prose">
+    <div class="wrap">
+      <div class="block" style="border-top:none; padding-top:0;">
+        <p class="eyebrow">Extensibility</p>
+        <h2>Scripted, dynamic controllers</h2>
+        <p class="subhead">Conceptual design only — not yet built.</p>
+        <p>
+          Domain admins would define custom server-side endpoint logic as scripts via the
+          standard Java Scripting API, with no compile-and-deploy cycle to add or change one.
+          Groovy and GraalVM JavaScript are the planned bundled defaults, chosen for native
+          Java interop and because the JS engine landscape has moved to GraalVM since Nashorn's
+          removal from the JDK. Scripts would go through the same validated, permission-checked
+          pathway any other client uses — never a backdoor into raw internals — and would run on
+          a dedicated, bounded executor so a runaway script can't stall the platform's request
+          handling.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section class="prose">
+    <div class="wrap">
+      <div class="block" style="border-top:none; padding-top:0;">
+        <p class="eyebrow">Admin UI</p>
+        <h2>Filling in the current gaps</h2>
+      </div>
+      <div class="card-grid">
+        <div class="card">
+          <h3>Editable property values</h3>
+          <p>The schema editor currently displays properties read-only; live-editable inputs are planned.</p>
+        </div>
+        <div class="card">
+          <h3>Users &amp; groups screen</h3>
+          <p>Currently a stub. Real user and group management is a planned development slice.</p>
+        </div>
+        <div class="card">
+          <h3>Delete-row and live dropdowns</h3>
+          <p>Delete-row affordances and live cardinality/usage dropdowns in the schema editor's tables, replacing today's static text.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="alt prose">
+    <div class="wrap">
+      <div class="block" style="border-top:none; padding-top:0;">
+        <p class="eyebrow">Graph, query &amp; process</p>
+        <h2>Aggregate queries and workflow</h2>
+      </div>
+      <div class="card-grid">
+        <div class="card">
+          <h3>Pagination for aggregates</h3>
+          <p>Faceted/aggregate query results are not yet paginated.</p>
+        </div>
+        <div class="card">
+          <h3>BPMN workflow — in progress</h3>
+          <p>An embedded BPMN process engine (Flowable) with custom persistence integrated into ntrloc's own ledger and permission model, event-triggered process start, and a working visual editor for viewing, editing, and deploying new process versions live.</p>
+        </div>
+        <div class="card">
+          <h3>DMN &amp; CMMN — not started</h3>
+          <p>Declarative decision tables (DMN) and ad hoc, non-linear case management (CMMN) are planned to sit alongside BPMN, but integration specifics haven't been designed yet.</p>
+        </div>
+        <div class="card">
+          <h3>Server-rendered module hosting</h3>
+          <p>A path-prefix convention for multiple hosted, server-rendered apps to coexist within one domain without template/controller collisions — named as a direction, not designed in detail.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="cta-banner">
+    <div class="wrap">
+      <h2>Follow along</h2>
+      <p>ntrloc is open source under Apache 2.0. Track progress or dig into the code directly.</p>
+      <div class="button-row">
+        <a href="https://github.com/ntrloc/ntrloc" class="btn btn-primary">View on GitHub</a>
+        <a href="platform.html" class="btn btn-secondary">Explore the platform</a>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>© 2026 ntrloc. Licensed under Apache 2.0.</span>
+    <span><a href="https://github.com/ntrloc/ntrloc">GitHub</a></span>
+  </div>
+</footer>
