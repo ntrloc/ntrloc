@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://ntrloc.github.io/ntrloc/sitemap.xml

@@ -155,6 +155,7 @@ img {
 
 .hero h1 .accent {
   color: var(--blue-light);
+  white-space: nowrap;
 }
 
 .hero p.lead {
