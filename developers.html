@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>For Developers — ntrloc</title>
+<meta name="description" content="A caller-scoped, self-describing schema and a staged overlay you can query and test against before anything is committed." />
+<link rel="canonical" href="https://ntrloc.github.io/ntrloc/developers.html" />
+<link rel="icon" href="assets/img/ntrloc-mark.png" />
+<link rel="stylesheet" href="assets/css/style.css" />
+
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="ntrloc" />
+<meta property="og:title" content="For Developers — ntrloc" />
+<meta property="og:description" content="A caller-scoped, self-describing schema and a staged overlay you can query and test against before anything is committed." />
+<meta property="og:url" content="https://ntrloc.github.io/ntrloc/developers.html" />
+<meta property="og:image" content="https://ntrloc.github.io/ntrloc/assets/img/ntrloc-horizontal.png" />
+
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="For Developers — ntrloc" />
+<meta name="twitter:description" content="A caller-scoped, self-describing schema and a staged overlay you can query and test against before anything is committed." />
+<meta name="twitter:image" content="https://ntrloc.github.io/ntrloc/assets/img/ntrloc-horizontal.png" />
+</head>
+<body>
+
+<header class="site-nav">
+  <div class="wrap">
+    <a href="index.html" class="logo"><img src="assets/img/ntrloc-horizontal.png" alt="ntrloc" /></a>
+    <input type="checkbox" id="nav-toggle" class="nav-toggle" />
+    <label for="nav-toggle" class="nav-toggle-label" aria-label="Menu"><span></span><span></span><span></span></label>
+    <nav>
+      <a href="index.html">Home</a>
+      <a href="platform.html">Platform</a>
+      <a href="security.html">Security</a>
+      <a href="roadmap.html">Roadmap</a>
+      <a href="https://github.com/ntrloc/ntrloc" class="cta">View on GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section class="hero" style="padding-bottom: 40px;">
+    <div class="wrap">
+      <span class="status-note"><span class="status-dot"></span> For developers</span>
+      <h1 style="font-size:2.6rem;">A schema you can trust, <span class="accent">not one you have to guess at</span></h1>
+      <p class="lead">
+        A typed, self-describing API and a staging model you can query and test against
+        before anything touches live data — no local mocks standing in for the real thing.
+      </p>
+    </div>
+  </section>
+
+  <section class="prose">
+    <div class="wrap">
+      <div class="block" style="border-top:none; padding-top:0;">
+        <p class="eyebrow">Local development</p>
+        <h2>Runs on your laptop, not just in a shared cluster</h2>
+        <p>
+          The same binary that scales out to a Kubernetes cluster runs as a single
+          instance on a laptop. There's no separate "local mode" that drifts from what you
+          deploy — you get a real schema, real permissions, and a real staged overlay to
+          iterate against from the very first run, not a stripped-down emulator standing
+          in for the real thing.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section class="alt prose">
+    <div class="wrap">
+      <div class="block" style="border-top:none; padding-top:0;">
+        <p class="eyebrow">API &amp; schema</p>
+        <h2>No trial and error</h2>
+        <p class="subhead">The schema you're handed is a complete, accurate contract for what you can actually do.</p>
+
+        <div class="two-col">
+          <div>
+            <h3>Caller-scoped by default</h3>
+            <p>
+              The schema endpoint returns a projection scoped to the caller: item types you
+              can't see are omitted entirely, properties appear only if you have read or
+              write access to them (and the response says which), and link types appear
+              only when both participant types are visible to you.
+            </p>
+          </div>
+          <div>
+            <h3>Typed items, links, and traits</h3>
+            <p>
+              Items, links, and reusable traits, with per-type storage for read
+              performance. Properties are stored keyed by immutable property IDs rather
+              than human-readable labels, so a rename on the backend is a metadata change
+              — never a breaking change in your integration.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="block">
+        <h3 style="margin-top:0;">Build and test against the real overlay, not a local mock</h3>
+        <p>
+          Any schema, security, or bulk data change stages as a live overlay before it's
+          committed. That overlay is queryable like any other view — you can diff
+          before/after per item and exercise a pending change against real data shapes
+          without ever writing to live state, and discarding it costs nothing.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <div class="section-head center">
+        <p class="eyebrow">What you get</p>
+        <h2>Built to keep the API stable while the schema underneath moves</h2>
+      </div>
+      <div class="card-grid">
+        <div class="card">
+          <h3>Relationships you can query</h3>
+          <p>Undirected links with independently labeled participant slots, and multi-hop traversal up to roughly five hops via recursive queries — no dedicated graph-traversal engine required.</p>
+        </div>
+        <div class="card">
+          <h3>Binary data, handled for you</h3>
+          <p>Binary properties are deduplicated by content hash on upload. ntrloc is always the pass-through for downloads, so you never handle a raw storage path, and every download is permission-checked and audited.</p>
+        </div>
+        <div class="card">
+          <h3>Non-destructive schema changes</h3>
+          <p>Adding a trait to a type is non-destructive — existing items simply return null for the new properties until populated. Most schema changes don't even bump the schema version.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="alt prose">
+    <div class="wrap">
+      <div class="block" style="border-top:none; padding-top:0;">
+        <p class="eyebrow">On the roadmap</p>
+        <h2>Scripted, dynamic controllers</h2>
+        <p>
+          Custom server-side endpoint logic as scripts — via the standard Java Scripting
+          API, with Groovy and GraalVM JavaScript as the planned bundled defaults — and no
+          compile-and-deploy cycle to add or change one. Conceptual design only; not yet
+          built. See the <a href="roadmap.html">roadmap</a> for details.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <div class="cta-banner">
+    <div class="wrap">
+      <h2>See the full data model</h2>
+      <p>Items, links, traits, and the staging mechanism that makes every change reversible until it isn't.</p>
+      <div class="button-row">
+        <a href="platform.html" class="btn btn-primary">Explore the platform</a>
+        <a href="https://github.com/ntrloc/ntrloc" class="btn btn-secondary">View source</a>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>© 2026 ntrloc. Licensed under Apache 2.0.</span>
+    <span><a href="https://github.com/ntrloc/ntrloc">GitHub</a></span>
+  </div>
+</footer>
+</body>
+</html>

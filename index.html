@@ -41,8 +41,7 @@
 <main>
   <section class="hero">
     <div class="wrap">
-      <span class="status-note"><span class="status-dot"></span> In active development — Apache 2.0, open source</span>
-      <h1>Think naturally. Execute quickly. <span class="accent">Change safely.</span></h1>
+      <h1><span class="accent">Think naturally.</span> Execute quickly. <span class="accent">Change safely.</span></h1>
       <p class="lead">
         ntrloc lets you model your data as a graph of typed items and links — each with a variety of property types,
         each versioned and auditable — then evolve your
@@ -56,11 +55,19 @@
     </div>
   </section>
 
+  <div class="stats-strip">
+    <div class="wrap" style="display:flex; align-items:center; justify-content:center; min-height:36px; text-align:center;">
+      <span class="status-note" style="font-size:1.4rem; padding:8px 20px; margin-bottom:0;">
+        <span class="status-dot"></span> Open source under Apache 2.0 — actively developed, nothing behind a demo
+      </span>
+    </div>
+  </div>
+
   <section>
     <div class="wrap">
       <div class="section-head center">
         <p class="eyebrow">Why ntrloc</p>
-        <h2>Four things most data platforms treat as your problem</h2>
+        <h2>Four things other data platforms treat as your problem</h2>
         <p>ntrloc treats them as its own.</p>
       </div>
       <div class="card-grid">
@@ -68,11 +75,16 @@
           <div class="icon">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.4"/><circle cx="18" cy="6" r="2.4"/><circle cx="12" cy="18" r="2.4"/><path d="M8.1 7.1 10.8 15.8M15.9 7.1 13.2 15.8M8.6 6h6.8"/></svg>
           </div>
-          <h3>Graph-native modeling</h3>
+          <h3>Schema and relationships are bolted on</h3>
           <p>
-            Items, links, and reusable traits — with per-type storage for read performance
-            and undirected links with per-participant visibility. No shoehorning a graph into
-            rows and foreign keys.
+            <strong>Elsewhere:</strong> schema changes touch the underlying storage
+            directly, relationships are navigation-only, and items and relationships often
+            version and audit differently.
+          </p>
+          <p>
+            <strong>In ntrloc:</strong> tables, indexes, and views register automatically.
+            Links support indexed, multi-hop traversal as first-class retrieval. Items and
+            links share the same versioning and audit mechanics.
           </p>
           <a class="card-link" href="platform.html#model">See the model →</a>
         </div>
@@ -80,11 +92,16 @@
           <div class="icon">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 0 0-14.9-3.5"/><path d="M4 13a8 8 0 0 0 14.9 3.5"/><path d="M5 4v4h4"/><path d="M19 20v-4h-4"/></svg>
           </div>
-          <h3>Built for uptime</h3>
+          <h3>Every change risks downtime</h3>
           <p>
-            Schema, security, and bulk data changes stage as a live overlay, diffed and
-            reviewed, then flip to live in a single atomic switch. UI, templates, and scripts
-            resolve hot — nothing requires a restart to ship.
+            <strong>Elsewhere:</strong> schema, security, and bulk data changes ship
+            through a migration window, a restart, or a change that's half-applied if
+            something fails midway.
+          </p>
+          <p>
+            <strong>In ntrloc:</strong> all three stage as a live overlay, diffed and
+            reviewed, then flip to live in a single atomic switch — UI, templates, and
+            scripts resolve hot.
           </p>
           <a class="card-link" href="platform.html#uptime">See how it works →</a>
         </div>
@@ -92,11 +109,16 @@
           <div class="icon">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 21 8 12 13 3 8Z"/><path d="M3 13l9 5 9-5"/><path d="M3 17.5 12 22.5 21 17.5"/></svg>
           </div>
-          <h3>Schema evolution without the drama</h3>
+          <h3>Schema changes are migrations</h3>
           <p>
-            Traits let you add or remove capability from a type non-destructively. Most
-            schema changes — new properties, renamed labels, added traits — don't even bump
-            the schema version.
+            <strong>Elsewhere:</strong> adding a field means a manual schema change
+            against live data, or dumping untyped values into a blob no one can query
+            safely.
+          </p>
+          <p>
+            <strong>In ntrloc:</strong> traits are reusable, typed property groups — add
+            one to a type non-destructively, and most changes don't even bump the schema
+            version.
           </p>
           <a class="card-link" href="platform.html#schema-evolution">See schema evolution →</a>
         </div>
@@ -104,10 +126,15 @@
           <div class="icon">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 19 6v6c0 4.4-3 7.9-7 9-4-1.1-7-4.6-7-9V6Z"/><path d="M9 12l2.2 2.2L15.5 9.5"/></svg>
           </div>
-          <h3>Security as a primitive</h3>
+          <h3>Security is bolted on after the fact</h3>
           <p>
-            Policy markers, declarative rule-based assignment, and time-bounded overrides.
-            Callers only ever see the schema and data they're actually permitted to touch.
+            <strong>Elsewhere:</strong> permissions live in app-layer checks that get
+            re-implemented per service and drift out of sync as the app grows.
+          </p>
+          <p>
+            <strong>In ntrloc:</strong> policy markers, declarative rule-based assignment,
+            and time-bounded overrides are built into the model itself, so callers only
+            ever see the schema and data they're actually permitted to touch.
           </p>
           <a class="card-link" href="security.html#permissions">See the security model →</a>
         </div>
@@ -125,17 +152,6 @@
       <div class="card-grid">
         <div class="card">
           <div class="icon-outline">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5.5" rx="7" ry="2.5"/><path d="M5 5.5v6c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5v-6"/><path d="M5 11.5v6c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5v-6"/></svg>
-          </div>
-          <h3>Master data management</h3>
-          <p>
-            Canonical, governed records for the entities your business runs on — customers,
-            products, vendors — with security markers and a staged changeset model for safe
-            bulk cleanup instead of a risky one-off migration.
-          </p>
-        </div>
-        <div class="card">
-          <div class="icon-outline">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.6"/><path d="M21 16 15.5 10.5a2 2 0 0 0-2.8 0L4 19"/></svg>
           </div>
           <h3>Digital asset management</h3>
@@ -143,6 +159,17 @@
             Binary properties are deduplicated by content hash, and the security model was
             shaped around exactly this kind of catalog — cover images, embargoed campaigns,
             per-participant visibility on every relationship.
+          </p>
+        </div>
+        <div class="card">
+          <div class="icon-outline">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5.5" rx="7" ry="2.5"/><path d="M5 5.5v6c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5v-6"/><path d="M5 11.5v6c0 1.4 3.1 2.5 7 2.5s7-1.1 7-2.5v-6"/></svg>
+          </div>
+          <h3>Master data management</h3>
+          <p>
+            Canonical, governed records for the entities your business runs on — customers,
+            products, vendors — with security markers and a staged changeset model for safe
+            bulk cleanup instead of a risky one-off migration.
           </p>
         </div>
         <div class="card">
@@ -160,12 +187,73 @@
           <div class="icon-outline">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><circle cx="9" cy="14" r="1.3"/><circle cx="15" cy="12.3" r="1.3"/><circle cx="15" cy="16" r="1.3"/><path d="M10.2 13.4 13.8 12.5M10.2 14.6 13.8 15.8"/></svg>
           </div>
-          <h3>Case management</h3>
+          <h3>Service desk</h3>
           <p>
-            A case is just an item with a rich web of related items and links, governed by the
-            same markers and audit trail as everything else — with ad hoc, non-linear process
-            support (CMMN) planned alongside today's BPMN engine.
+            A support case is just an item with a rich web of related tickets, assets, and
+            customers, governed by the same markers and audit trail as everything else —
+            with ad hoc, non-linear process support (CMMN) planned alongside today's BPMN
+            engine for escalations that don't follow a script.
           </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="alt">
+    <div class="wrap">
+      <div class="section-head center">
+        <p class="eyebrow">Who it's for</p>
+        <h2>Built for how you actually work with it</h2>
+        <p>Same graph, trait, and security model underneath — a different vantage point for each role.</p>
+      </div>
+      <div class="card-grid">
+        <div class="card">
+          <div class="icon-outline">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6 3 12l5 6"/><path d="M16 6l5 6-5 6"/></svg>
+          </div>
+          <h3>Developers</h3>
+          <p>
+            A caller-scoped, self-describing schema and a staged overlay you can query and
+            test against before anything is committed — no local mocks, no guessing what a
+            change will actually do.
+          </p>
+          <a class="card-link" href="developers.html">See the developer view →</a>
+        </div>
+        <div class="card">
+          <div class="icon-outline">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.2a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.2a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.2a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.2a1.7 1.7 0 0 0-1.5 1Z"/></svg>
+          </div>
+          <h3>Admins</h3>
+          <p>
+            Every schema, security, and bulk data change is staged, diffed, and reviewed
+            before one atomic switch makes it live — with explain, simulate, and
+            impact-preview tools so nothing ships as a guess.
+          </p>
+          <a class="card-link" href="admins.html">See the admin view →</a>
+        </div>
+        <div class="card">
+          <div class="icon-outline">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h7l-1 8 11-14h-7l1-8Z"/></svg>
+          </div>
+          <h3>Power users</h3>
+          <p>
+            Bulk cleanup stages and reverses like any other change, traits let you reshape a
+            type without an engineering ticket, and multi-hop link traversal means exploring
+            relationships doesn't require a separate BI tool.
+          </p>
+          <a class="card-link" href="power-users.html">See the power user view →</a>
+        </div>
+        <div class="card">
+          <div class="icon-outline">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 13v-1a8 8 0 0 1 16 0v1"/><rect x="2" y="13" width="4" height="6" rx="1.5"/><rect x="18" y="13" width="4" height="6" rx="1.5"/><path d="M20 19v1a3 3 0 0 1-3 3h-3"/></svg>
+          </div>
+          <h3>Operations support</h3>
+          <p>
+            Every override has a mandatory reason and expiry, every action is logged, and
+            support cases live on the same graph as the tickets, assets, and customers they
+            touch.
+          </p>
+          <a class="card-link" href="operations.html">See the ops view →</a>
         </div>
       </div>
     </div>
@@ -175,8 +263,8 @@
     <div class="wrap">
       <div class="section-head center">
         <p class="eyebrow">And more</p>
-        <h2>Also in the platform</h2>
-        <p>Not headline features on their own, but part of what makes ntrloc a platform rather than just a database.</p>
+        <h2>Features? Here you go.</h2>
+        <p>Things that make ntrloc a platform, not just a database.</p>
       </div>
       <div class="mini-grid">
         <div class="mini-card">
@@ -219,6 +307,16 @@
           <h3>Append-only audit ledger</h3>
           <p>Every mutation — data, schema, or security — is recorded in an append-only ledger, giving you a verifiable history of who changed what, when, and why.</p>
         </div>
+        <div class="mini-card">
+          <div class="mini-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="7" width="12" height="12" rx="1.5"/><path d="M5 15V6a1.5 1.5 0 0 1 1.5-1.5H15"/></svg></div>
+          <h3>Binary deduplication</h3>
+          <p>Binary properties live in a content-addressable store, keyed by MD5, SHA-256, and length. Identical content — a re-uploaded image, a duplicate asset — is stored exactly once, however many items reference it.</p>
+        </div>
+        <div class="mini-card">
+          <div class="mini-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4M16 2v4"/><rect x="5" y="6" width="14" height="8" rx="2"/><path d="M9 14v2a3 3 0 0 0 6 0v-2"/><path d="M12 18v3"/></svg></div>
+          <h3>MCP support</h3>
+          <p>The same caller-scoped schema that powers ntrloc's API is exposed as MCP tools, so an AI agent sees exactly what it's permitted to do — no separate integration layer to keep in sync.</p>
+        </div>
       </div>
     </div>
   </section>
@@ -227,9 +325,9 @@
     <div class="wrap">
       <div class="two-col">
         <div>
-          <p class="eyebrow">Built for real constraints</p>
+          <p class="eyebrow">Built for the real world</p>
           <h2 style="font-size:1.9rem;font-weight:800;margin:0 0 16px;">
-            For teams who can't afford a bad migration
+            Life is too short for a bad migration
           </h2>
           <p style="color:var(--text-dim);font-size:1.05rem;">
             Bulk schema and security changes are exactly the moments platforms fail loudest —

@@ -47,7 +47,7 @@ img {
 .wrap {
   max-width: var(--max-width);
   margin: 0 auto;
-  padding: 0 24px;
+  padding: 0 10px;
 }
 
 /* Nav */
@@ -286,6 +286,14 @@ section.alt {
   gap: 20px;
 }
 
+/* auto-fit lands on 3 columns in this range, splitting even-numbered
+   grids into an orphaned last row — force 2 columns instead */
+@media (min-width: 700px) and (max-width: 1050px) {
+  .card-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
 .card {
   background: var(--bg-card);
   border: 1px solid var(--border);
@@ -325,6 +333,10 @@ section.alt {
   margin: 0;
   color: var(--text-dim);
   font-size: 0.95rem;
+}
+
+.card p + p {
+  margin-top: 14px;
 }
 
 /* Secondary feature grid (denser, no icon boxes) */

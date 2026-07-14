@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>For Admins — ntrloc</title>
+<meta name="description" content="Every schema, security, and bulk data change is staged, diffed, and reviewed before one atomic switch makes it live." />
+<link rel="canonical" href="https://ntrloc.github.io/ntrloc/admins.html" />
+<link rel="icon" href="assets/img/ntrloc-mark.png" />
+<link rel="stylesheet" href="assets/css/style.css" />
+
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="ntrloc" />
+<meta property="og:title" content="For Admins — ntrloc" />
+<meta property="og:description" content="Every schema, security, and bulk data change is staged, diffed, and reviewed before one atomic switch makes it live." />
+<meta property="og:url" content="https://ntrloc.github.io/ntrloc/admins.html" />
+<meta property="og:image" content="https://ntrloc.github.io/ntrloc/assets/img/ntrloc-horizontal.png" />
+
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="For Admins — ntrloc" />
+<meta name="twitter:description" content="Every schema, security, and bulk data change is staged, diffed, and reviewed before one atomic switch makes it live." />
+<meta name="twitter:image" content="https://ntrloc.github.io/ntrloc/assets/img/ntrloc-horizontal.png" />
+</head>
+<body>
+
+<header class="site-nav">
+  <div class="wrap">
+    <a href="index.html" class="logo"><img src="assets/img/ntrloc-horizontal.png" alt="ntrloc" /></a>
+    <input type="checkbox" id="nav-toggle" class="nav-toggle" />
+    <label for="nav-toggle" class="nav-toggle-label" aria-label="Menu"><span></span><span></span><span></span></label>
+    <nav>
+      <a href="index.html">Home</a>
+      <a href="platform.html">Platform</a>
+      <a href="security.html">Security</a>
+      <a href="roadmap.html">Roadmap</a>
+      <a href="https://github.com/ntrloc/ntrloc" class="cta">View on GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section class="hero" style="padding-bottom: 40px;">
+    <div class="wrap">
+      <span class="status-note"><span class="status-dot"></span> For admins</span>
+      <h1 style="font-size:2.6rem;">Ship changes <span class="accent">without a maintenance window</span></h1>
+      <p class="lead">
+        Every change you make — to schema, security policy, or bulk data — stages as a
+        live, reviewable overlay before it ever goes live.
+      </p>
+    </div>
+  </section>
+
+  <section class="prose">
+    <div class="wrap">
+      <div class="block" style="border-top:none; padding-top:0;">
+        <p class="eyebrow">The changeset lifecycle</p>
+        <h2>Define, review, then flip one switch</h2>
+
+        <div class="two-col">
+          <div>
+            <h3>Define, then build</h3>
+            <p>
+              You define the schema changes, security changes, and data transformations
+              that make up a changeset. ntrloc calculates scope and impact up front and
+              presents a pre-commit report before anything is built, then stages an
+              overlay in parallel — every declared transformation runs as a continuous
+              process against the live write stream, not a one-time batch job.
+            </p>
+          </div>
+          <div>
+            <h3>Stage, then commit or discard</h3>
+            <p>
+              The staged overlay is queryable like any other view, so you and your testers
+              can diff before/after per item and review marker changes for as long as you
+              need. A single atomic switch makes it live — because the overlay was already
+              current, the commit is a true switch flip, not a re-migration. Discarding
+              costs nothing; live data is never touched until commit.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="alt">
+    <div class="wrap">
+      <div class="section-head center">
+        <p class="eyebrow">Permission tooling</p>
+        <h2>Explain, simulate, and preview — before anything changes</h2>
+        <p>Three tools turn "what does this permission change actually do" from a guess into an answer.</p>
+      </div>
+      <div class="card-grid">
+        <div class="card">
+          <h3>Current-state explanation</h3>
+          <p>For any item, who can do what, and exactly which markers grant it.</p>
+        </div>
+        <div class="card">
+          <h3>Rule simulation</h3>
+          <p>Preview what markers would be assigned if an item's properties changed, without changing anything.</p>
+        </div>
+        <div class="card">
+          <h3>Change impact analysis</h3>
+          <p>For a proposed security model change, how many items are affected and which users gain or lose access — flagged when the implications matter, like a contractor gaining access to restricted items.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="prose">
+    <div class="wrap">
+      <div class="block" style="border-top:none; padding-top:0;">
+        <p class="eyebrow">Schema evolution</p>
+        <h2>Most schema changes aren't events</h2>
+        <p>
+          Traits are reusable and non-destructive, so most of what teams think of as
+          "schema migrations" — adding a property, renaming a label, giving a type a new
+          trait — are just metadata edits. There's no data to rewrite and no version to
+          bump; only explicit data migrations advance the schema version.
+        </p>
+        <p style="color:var(--text-dim);">
+          The admin UI is still filling in some surfaces — a live users &amp; groups
+          screen and editable property values are next in line. See the
+          <a href="roadmap.html">roadmap</a> for what's designed but not yet built.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <div class="cta-banner">
+    <div class="wrap">
+      <h2>See the security model</h2>
+      <p>Policy markers, permission grants, and rule-based assignment built on the same graph.</p>
+      <div class="button-row">
+        <a href="security.html" class="btn btn-primary">Security</a>
+        <a href="https://github.com/ntrloc/ntrloc" class="btn btn-secondary">View source</a>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>© 2026 ntrloc. Licensed under Apache 2.0.</span>
+    <span><a href="https://github.com/ntrloc/ntrloc">GitHub</a></span>
+  </div>
+</footer>
+</body>
+</html>

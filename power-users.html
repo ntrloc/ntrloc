@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>For Power Users — ntrloc</title>
+<meta name="description" content="Bulk cleanup stages and reverses like any other change, and traits let you reshape a type without an engineering ticket." />
+<link rel="canonical" href="https://ntrloc.github.io/ntrloc/power-users.html" />
+<link rel="icon" href="assets/img/ntrloc-mark.png" />
+<link rel="stylesheet" href="assets/css/style.css" />
+
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="ntrloc" />
+<meta property="og:title" content="For Power Users — ntrloc" />
+<meta property="og:description" content="Bulk cleanup stages and reverses like any other change, and traits let you reshape a type without an engineering ticket." />
+<meta property="og:url" content="https://ntrloc.github.io/ntrloc/power-users.html" />
+<meta property="og:image" content="https://ntrloc.github.io/ntrloc/assets/img/ntrloc-horizontal.png" />
+
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="For Power Users — ntrloc" />
+<meta name="twitter:description" content="Bulk cleanup stages and reverses like any other change, and traits let you reshape a type without an engineering ticket." />
+<meta name="twitter:image" content="https://ntrloc.github.io/ntrloc/assets/img/ntrloc-horizontal.png" />
+</head>
+<body>
+
+<header class="site-nav">
+  <div class="wrap">
+    <a href="index.html" class="logo"><img src="assets/img/ntrloc-horizontal.png" alt="ntrloc" /></a>
+    <input type="checkbox" id="nav-toggle" class="nav-toggle" />
+    <label for="nav-toggle" class="nav-toggle-label" aria-label="Menu"><span></span><span></span><span></span></label>
+    <nav>
+      <a href="index.html">Home</a>
+      <a href="platform.html">Platform</a>
+      <a href="security.html">Security</a>
+      <a href="roadmap.html">Roadmap</a>
+      <a href="https://github.com/ntrloc/ntrloc" class="cta">View on GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section class="hero" style="padding-bottom: 40px;">
+    <div class="wrap">
+      <span class="status-note"><span class="status-dot"></span> For power users</span>
+      <h1 style="font-size:2.6rem;">Clean up data at scale, <span class="accent">without a migration project</span></h1>
+      <p class="lead">
+        Bulk changes stage the same way schema and security changes do — reviewed and
+        diffed before they touch a single live record.
+      </p>
+    </div>
+  </section>
+
+  <section class="prose">
+    <div class="wrap">
+      <div class="block" style="border-top:none; padding-top:0;">
+        <p class="eyebrow">Bulk data changes</p>
+        <h2>Staged and reversible, not a one-off script</h2>
+
+        <div class="two-col">
+          <div>
+            <h3>Cleanup that runs against live writes</h3>
+            <p>
+              A bulk transformation runs as a continuous process against the live write
+              stream, not a one-time batch job, and stages into an overlay you can browse
+              and diff before/after per item. Discarding it costs nothing — live data is
+              never touched until you commit.
+            </p>
+          </div>
+          <div>
+            <h3>Traits without a ticket to engineering</h3>
+            <p>
+              Traits let you add or remove capability from a type non-destructively.
+              Existing items simply return null for new properties until populated, and
+              most changes — new properties, renamed labels, added traits — don't even
+              bump the schema version.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="alt">
+    <div class="wrap">
+      <div class="section-head center">
+        <p class="eyebrow">Exploring your data</p>
+        <h2>Relationships you can actually query</h2>
+        <p>Not navigation-only edges — links are indexed, labeled, and built for retrieval.</p>
+      </div>
+      <div class="card-grid">
+        <div class="card">
+          <h3>Independently labeled links</h3>
+          <p>A Photographer might see a "created" link to a Photo, while the Photo sees the same link as "creator" — each participant's own view of the relationship.</p>
+        </div>
+        <div class="card">
+          <h3>Multi-hop traversal</h3>
+          <p>Traversal up to roughly five hops runs efficiently via recursive queries — covering the practical depth of real queries without a separate graph-traversal tool.</p>
+        </div>
+        <div class="card">
+          <h3>Canonical records, governed</h3>
+          <p>Master data management for the entities your business runs on — customers, products, vendors — with security markers and the same staged changeset model for safe bulk cleanup.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="cta-banner">
+    <div class="wrap">
+      <h2>See what else you can build</h2>
+      <p>The same graph, trait, and security primitives underneath master data management, asset catalogs, ticketing, and more.</p>
+      <div class="button-row">
+        <a href="index.html" class="btn btn-primary">Back to overview</a>
+        <a href="platform.html" class="btn btn-secondary">Explore the platform</a>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>© 2026 ntrloc. Licensed under Apache 2.0.</span>
+    <span><a href="https://github.com/ntrloc/ntrloc">GitHub</a></span>
+  </div>
+</footer>
+</body>
+</html>
