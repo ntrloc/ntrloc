@@ -1,14 +1,16 @@
 package org.ntrloc.graph.db.projection;
 
+import org.springframework.lang.Nullable;
+
 import java.util.List;
 
 public record CollectionProjectionSpec(
         String itemTypeName,
-        String sortField,
-        String sortDirection,
-        Predicate filter,
-        List<String> facets,
-        List<FacetFilter> facetFilters
+        @Nullable String sortField,
+        @Nullable String sortDirection,
+        @Nullable Predicate filter,
+        @Nullable List<String> facets,
+        @Nullable List<FacetFilter> facetFilters
 ) implements ProjectionSpec {
 
     public CollectionProjectionSpec(String itemTypeName, String sortField, String sortDirection, Predicate filter) {

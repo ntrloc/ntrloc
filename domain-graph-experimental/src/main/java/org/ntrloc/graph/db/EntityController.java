@@ -12,7 +12,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/entity")
+@RequestMapping("/api/entity")
 public class EntityController {
 
     private final EntityManager entityManager;

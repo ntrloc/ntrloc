@@ -18,9 +18,9 @@ import java.util.stream.Collectors;
 @Component
 public class SchemaRepository {
 
-    public record ItemRow(UUID id, UUID entityId, String name, String description) {}
+    public record ItemRow(UUID id, String name, String description) {}
 
-    public record TraitRow(UUID id, UUID entityId, String name, String description) {}
+    public record TraitRow(UUID id, String name, String description) {}
 
     public record PerspectiveRow(UUID id, UUID entityId, UUID linkId, String name, String description, Integer minCardinality, Integer maxCardinality) {}
 
@@ -33,22 +33,19 @@ public class SchemaRepository {
     // --- Items ---
 
     public Set<ItemRow> getAllItems() {
-        return Set.copyOf(jdbcClient.sql("SELECT id, entity_id, name, description FROM schema_item")
+        return Set.copyOf(jdbcClient.sql("SELECT id, name, description FROM schema_item")
                 .query((rs, n) -> new ItemRow(
                         rs.getObject("id", UUID.class),
-                        rs.getObject("entity_id", UUID.class),
                         rs.getString("name"),
                         rs.getString("description")))
                 .list());
     }
 
     public ItemRow createItem(String name, String description) {
-        UUID entityId = jdbcClient.sql("INSERT INTO schema_entity DEFAULT VALUES RETURNING id")
+        UUID itemId = jdbcClient.sql("INSERT INTO schema_item (name, description) VALUES (:name, :description) RETURNING id")
+                .param("name", name).param("description", description)
                 .query(UUID.class).single();
-        UUID itemId = jdbcClient.sql("INSERT INTO schema_item (entity_id, name, description) VALUES (:entityId, :name, :description) RETURNING id")
-                .param("entityId", entityId).param("name", name).param("description", description)
-                .query(UUID.class).single();
-        return new ItemRow(itemId, entityId, name, description);
+        return new ItemRow(itemId, name, description);
     }
 
     public void updateItem(UUID id, String name, String description) {
@@ -64,22 +61,23 @@ public class SchemaRepository {
     // --- Traits ---
 
     public Set<TraitRow> getAllTraits() {
-        return Set.copyOf(jdbcClient.sql("SELECT id, entity_id, name, description FROM schema_trait")
+        return Set.copyOf(jdbcClient.sql("SELECT id, name, description FROM schema_trait")
                 .query((rs, n) -> new TraitRow(
                         rs.getObject("id", UUID.class),
-                        rs.getObject("entity_id", UUID.class),
                         rs.getString("name"),
                         rs.getString("description")))
                 .list());
     }
 
     public TraitRow createTrait(String name, String description) {
-        UUID entityId = jdbcClient.sql("INSERT INTO schema_entity DEFAULT VALUES RETURNING id")
+        UUID traitId = jdbcClient.sql("INSERT INTO schema_trait (name, description) VALUES (:name, :description) RETURNING id")
+                .param("name", name).param("description", description)
                 .query(UUID.class).single();
-        UUID traitId = jdbcClient.sql("INSERT INTO schema_trait (entity_id, name, description) VALUES (:entityId, :name, :description) RETURNING id")
-                .param("entityId", entityId).param("name", name).param("description", description)
-                .query(UUID.class).single();
-        return new TraitRow(traitId, entityId, name, description);
+        return new TraitRow(traitId, name, description);
+    }
+
+    public void deleteTrait(UUID id) {
+        jdbcClient.sql("DELETE FROM schema_trait WHERE id = :id").param("id", id).update();
     }
 
     public void implementTrait(UUID itemId, UUID traitId) {

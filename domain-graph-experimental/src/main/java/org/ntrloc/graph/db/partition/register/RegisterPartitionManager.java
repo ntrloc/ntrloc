@@ -12,8 +12,12 @@ import org.ntrloc.graph.db.partition.schema.SchemaManager;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyDefinitionView;
+import org.ntrloc.graph.db.partition.schema.event.SchemaChangeEvent;
+import org.ntrloc.graph.db.partition.schema.event.SchemaChangeListener;
+import org.springframework.context.event.EventListener;
 import org.ntrloc.graph.db.projection.ProjectedItem;
 import org.ntrloc.graph.db.projection.ProjectedLink;
+import org.ntrloc.graph.db.projection.OrPredicate;
 import org.ntrloc.graph.db.projection.ProjectionResult;
 import org.ntrloc.graph.db.projection.PropertyExistencePredicate;
 import org.ntrloc.graph.db.projection.PropertyValuePredicate;
@@ -37,7 +41,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @Component
-public class RegisterPartitionManager {
+public class RegisterPartitionManager implements SchemaChangeListener {
 
     private final JdbcClient jdbcClient;
     private final ObjectMapper objectMapper;
@@ -699,7 +703,7 @@ public class RegisterPartitionManager {
         value.put("md5", obj.md5());
         value.put("mimeType", obj.mimeType());
         value.put("length", obj.length());
-        value.put("url", binaryBaseUrl + "/binary/" + obj.id());
+        value.put("url", binaryBaseUrl + "/api/binary/" + obj.id());
         if (obj.metadata() != null) value.put("metadata", obj.metadata());
         return value;
     }
@@ -723,6 +727,17 @@ public class RegisterPartitionManager {
                 String sql = children.stream()
                         .map(SqlFragment::sql)
                         .collect(Collectors.joining(" AND ", "(", ")"));
+                Map<String, Object> params = new HashMap<>();
+                children.forEach(c -> params.putAll(c.params()));
+                yield new SqlFragment(sql, params);
+            }
+            case OrPredicate or -> {
+                List<SqlFragment> children = or.predicates().stream()
+                        .map(p -> translatePredicate(p, counter))
+                        .toList();
+                String sql = children.stream()
+                        .map(SqlFragment::sql)
+                        .collect(Collectors.joining(" OR ", "(", ")"));
                 Map<String, Object> params = new HashMap<>();
                 children.forEach(c -> params.putAll(c.params()));
                 yield new SqlFragment(sql, params);
@@ -781,5 +796,58 @@ public class RegisterPartitionManager {
 
     public static String linkTableNameFor(UUID linkTypeId) {
         return "register_link_" + linkTypeId.toString().replace("-", "_");
+    }
+
+    // --- Schema change reactions ---
+    //
+    // Each item/link type gets its own physical properties table (see tableNameFor/
+    // linkTableNameFor), so that table has to be created the moment the type is defined and
+    // dropped the moment it's deleted -- otherwise projection queries against a type created
+    // after boot fail with "relation does not exist", since RegisterInitializer only creates
+    // these tables once, at startup, for whatever types already existed then. Traits have no
+    // register-side table of their own (their properties live in the owning item type's JSONB
+    // blob), so trait events are intentionally ignored here.
+
+    @Override
+    @EventListener
+    public void onSchemaChange(SchemaChangeEvent event) {
+        switch (event) {
+            case SchemaChangeEvent.ItemTypeCreated e -> createItemTypeTable(e.itemTypeId());
+            case SchemaChangeEvent.ItemTypeDeleted e -> dropItemTypeTable(e.itemTypeId());
+            case SchemaChangeEvent.LinkTypeCreated e -> createLinkTypeTable(e.linkTypeId());
+            case SchemaChangeEvent.LinkTypeDeleted e -> dropLinkTypeTable(e.linkTypeId());
+            case SchemaChangeEvent.TraitCreated ignored -> {}
+            case SchemaChangeEvent.TraitDeleted ignored -> {}
+        }
+    }
+
+    public void createItemTypeTable(UUID itemTypeId) {
+        String tableName = tableNameFor(itemTypeId);
+        jdbcClient.sql("""
+                CREATE TABLE %s (
+                    register_item_id UUID PRIMARY KEY REFERENCES register_item(id) ON DELETE CASCADE,
+                    properties       JSONB
+                )
+                """.formatted(tableName)).update();
+        jdbcClient.sql("CREATE INDEX ON %s USING GIN (properties)".formatted(tableName)).update();
+    }
+
+    public void dropItemTypeTable(UUID itemTypeId) {
+        jdbcClient.sql("DROP TABLE IF EXISTS " + tableNameFor(itemTypeId)).update();
+    }
+
+    public void createLinkTypeTable(UUID linkTypeId) {
+        String tableName = linkTableNameFor(linkTypeId);
+        jdbcClient.sql("""
+                CREATE TABLE %s (
+                    register_link_id UUID PRIMARY KEY REFERENCES register_link(id) ON DELETE CASCADE,
+                    properties       JSONB
+                )
+                """.formatted(tableName)).update();
+        jdbcClient.sql("CREATE INDEX ON %s USING GIN (properties)".formatted(tableName)).update();
+    }
+
+    public void dropLinkTypeTable(UUID linkTypeId) {
+        jdbcClient.sql("DROP TABLE IF EXISTS " + linkTableNameFor(linkTypeId)).update();
     }
 }

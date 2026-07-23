@@ -1,28 +1,25 @@
 package org.ntrloc.graph.db.partition.register;
 
 import jakarta.annotation.PostConstruct;
-import org.ntrloc.graph.db.partition.binary.BinaryPartitionManager;
-import org.ntrloc.graph.domain.DomainInitializer;
 import org.springframework.context.annotation.DependsOn;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
 
+// Foundational register tables only -- no per-item-type/per-link-type tables here, and no
+// awareness of DomainInitializer. RegisterPartitionManager creates/drops those reactively off
+// SchemaChangeEvent (published by SchemaManager.applyMutations()) regardless of whether the type
+// was created by a live admin-UI edit or by a DomainInitializer seeding the system at startup --
+// same event, same listener, one code path either way.
 @Component
 @DependsOn("schemaManager")
 public class RegisterInitializer {
 
     private final JdbcClient jdbcClient;
-    private final BinaryPartitionManager binaryPartitionManager;
-    private final Optional<DomainInitializer> domainInitializer;
 
-    public RegisterInitializer(JdbcClient jdbcClient, BinaryPartitionManager binaryPartitionManager, Optional<DomainInitializer> domainInitializer) {
+    public RegisterInitializer(JdbcClient jdbcClient) {
         this.jdbcClient = jdbcClient;
-        this.binaryPartitionManager = binaryPartitionManager;
-        this.domainInitializer = domainInitializer;
     }
 
     @PostConstruct
@@ -30,11 +27,8 @@ public class RegisterInitializer {
         dropAllRegisterTables();
         createRegisterItemTable();
         createRegisterLinkTable();
-        createPerItemTypeTables();
-        createPerLinkTypeTables();
         createItemLinkPerspectiveTable();
         createBinaryPropertyTable();
-        domainInitializer.ifPresent(d -> d.initData(jdbcClient, binaryPartitionManager));
     }
 
     // --- Drop ---
@@ -109,32 +103,6 @@ public class RegisterInitializer {
                 """).update();
     }
 
-    private void createPerItemTypeTables() {
-        getItemTypeIds().forEach(typeId -> {
-            String tableName = RegisterPartitionManager.tableNameFor(typeId);
-            jdbcClient.sql("""
-                    CREATE TABLE %s (
-                        register_item_id UUID PRIMARY KEY REFERENCES register_item(id) ON DELETE CASCADE,
-                        properties       JSONB
-                    )
-                    """.formatted(tableName)).update();
-            jdbcClient.sql("CREATE INDEX ON %s USING GIN (properties)".formatted(tableName)).update();
-        });
-    }
-
-    private void createPerLinkTypeTables() {
-        getLinkTypeIds().forEach(linkTypeId -> {
-            String tableName = RegisterPartitionManager.linkTableNameFor(linkTypeId);
-            jdbcClient.sql("""
-                    CREATE TABLE %s (
-                        register_link_id UUID PRIMARY KEY REFERENCES register_link(id) ON DELETE CASCADE,
-                        properties       JSONB
-                    )
-                    """.formatted(tableName)).update();
-            jdbcClient.sql("CREATE INDEX ON %s USING GIN (properties)".formatted(tableName)).update();
-        });
-    }
-
     private void createBinaryPropertyTable() {
         jdbcClient.sql("""
                 CREATE TABLE register_binary_property (
@@ -145,17 +113,5 @@ public class RegisterInitializer {
                 )
                 """).update();
         jdbcClient.sql("CREATE INDEX ON register_binary_property (register_item_id)").update();
-    }
-
-    private List<UUID> getItemTypeIds() {
-        return jdbcClient.sql("SELECT id FROM schema_item")
-                .query((rs, n) -> rs.getObject("id", UUID.class))
-                .list();
-    }
-
-    private List<UUID> getLinkTypeIds() {
-        return jdbcClient.sql("SELECT id FROM schema_link")
-                .query((rs, n) -> rs.getObject("id", UUID.class))
-                .list();
     }
 }

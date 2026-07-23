@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:flowable="http://flowable.org/bpmn"
+             targetNamespace="org.ntrloc.workflow">
+  <process id="helloWorld" name="Hello World" isExecutable="true">
+    <startEvent id="start"/>
+    <sequenceFlow id="flow1" sourceRef="start" targetRef="sayHello"/>
+    <serviceTask id="sayHello" name="Say Hello" flowable:delegateExpression="${helloWorldDelegate}"/>
+    <sequenceFlow id="flow2" sourceRef="sayHello" targetRef="logGreeting"/>
+    <scriptTask id="logGreeting" name="Log Greeting" scriptFormat="groovy">
+      <script>println "Groovy script task saw greeting: " + greeting
+execution.setVariable("greetingLength", greeting.length())</script>
+    </scriptTask>
+    <sequenceFlow id="flow3" sourceRef="logGreeting" targetRef="logGreetingLength"/>
+    <scriptTask id="logGreetingLength" name="Log Greeting Length" scriptFormat="javascript">
+      <script>print("JavaScript script task saw greeting: " + greeting + " (" + greetingLength + " chars)");
+execution.setVariable("greetingUpper", greeting.toUpperCase());</script>
+    </scriptTask>
+    <sequenceFlow id="flow4" sourceRef="logGreetingLength" targetRef="reviewGreeting"/>
+    <userTask id="reviewGreeting" name="Review Greeting" flowable:candidateGroups="reviewers"/>
+    <sequenceFlow id="flow5" sourceRef="reviewGreeting" targetRef="end"/>
+    <endEvent id="end"/>
+  </process>
+</definitions>

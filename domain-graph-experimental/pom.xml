@@ -21,6 +21,8 @@
         <scalar.version>3.0.3</scalar.version>
         <testcontainers.version>2.0.5</testcontainers.version>
         <opentelemetry.instrumentation.version>2.29.0</opentelemetry.instrumentation.version>
+        <spring-ai.version>2.0.0</spring-ai.version>
+        <hazelcast.version>5.5.0</hazelcast.version>
     </properties>
 
     <dependencies>
@@ -40,6 +42,17 @@
                     <artifactId>log4j-to-slf4j</artifactId>
                 </exclusion>
             </exclusions>
+        </dependency>
+
+        <!-- UI hosting (org.ntrloc.ui.hosting): configurable multi-mount static-file serving,
+             absorbed from the former standalone ui-hosting module: every ntrloc-based app
+             extends domain-graph-experimental, so there was no separate consumer left to justify
+             keeping it out. See docs/ntrloc-ui-hosting-summary.md. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-configuration-processor</artifactId>
+            <version>${spring.boot.version}</version>
+            <optional>true</optional>
         </dependency>
 
         <dependency>
@@ -117,6 +130,44 @@
             <version>42.7.11</version>
         </dependency>
 
+        <!-- Workflow (BPMN/DMN/CMMN): walking-skeleton step, embedded with Flowable's own
+             default persistence for now. See docs/ntrloc-workflow-summary.md. -->
+        <dependency>
+            <groupId>org.flowable</groupId>
+            <artifactId>flowable-engine</artifactId>
+            <version>8.0.0</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.flowable</groupId>
+            <artifactId>flowable-spring</artifactId>
+            <version>8.0.0</version>
+        </dependency>
+
+        <!-- DMN engine, for decision-table evaluation from a <serviceTask flowable:type="dmn">
+             (NOT businessRuleTask, which is legacy Drools/KIE, unrelated to DMN). Pulls in
+             flowable-dmn-engine/-spring/-engine-configurator/-model/-xml-converter transitively. -->
+        <dependency>
+            <groupId>org.flowable</groupId>
+            <artifactId>flowable-dmn-spring-configurator</artifactId>
+            <version>8.0.0</version>
+        </dependency>
+
+        <!-- JSR-223 script engines pulled in to back Flowable Script Task execution
+             (scriptFormat="javascript" / "groovy"). Neither ships with the JDK or with
+             flowable-engine itself. -->
+        <dependency>
+            <groupId>org.openjdk.nashorn</groupId>
+            <artifactId>nashorn-core</artifactId>
+            <version>15.7</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.apache.groovy</groupId>
+            <artifactId>groovy-jsr223</artifactId>
+            <version>5.0.2</version>
+        </dependency>
+
         <!-- Binary storage -->
         <dependency>
             <groupId>org.apache.tika</groupId>
@@ -130,11 +181,34 @@
             <version>33.5.0-jre</version>
         </dependency>
 
+        <!-- Clustering (org.ntrloc.graph.cluster): lifted from domain-graph-starter, which is no
+             longer the owner, per the process-execution clustering design (docs/
+             ntrloc-workflow-summary.md Section 6). -->
+        <dependency>
+            <groupId>com.hazelcast</groupId>
+            <artifactId>hazelcast</artifactId>
+            <version>${hazelcast.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.hazelcast</groupId>
+            <artifactId>hazelcast-spring</artifactId>
+            <version>${hazelcast.version}</version>
+        </dependency>
+
         <!-- Scalar -->
         <dependency>
             <groupId>org.springdoc</groupId>
             <artifactId>springdoc-openapi-starter-webflux-scalar</artifactId>
             <version>${scalar.version}</version>
+        </dependency>
+
+        <!-- MCP (org.ntrloc.graph.ai): same starter domain-graph-starter already uses; auto-
+             configures an MCP server over WebFlux and exposes any @McpTool-annotated bean method
+             as a tool, no further config needed. -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-mcp-server-webflux</artifactId>
+            <version>${spring-ai.version}</version>
         </dependency>
 
         <!-- Test -->

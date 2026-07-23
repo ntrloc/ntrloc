@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions id="definitions_isbnStatus" name="ISBN Status" namespace="http://flowable.org/dmn"
+             xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/"
+             xmlns:dmndi="https://www.omg.org/spec/DMN/20191111/DMNDI/"
+             xmlns:dc="http://www.omg.org/spec/DMN/20180521/DC/"
+             xmlns:di="http://www.omg.org/spec/DMN/20180521/DI/"
+             xmlns:flowable="http://flowable.org/dmn">
+
+  <!--
+    Evaluates the current ISBN state of a product for routing in the WIP state.
+    Derived from two STEP conditions that both delegate to pCreateLib.isISBN13Final(node):
+      - isISBNBlankOrDummy (ID="isISBNBlankOrDummy"): returns error msg if ISBN is final
+      - isISBNFinal (ID="isISBNFinal"): returns error msg if ISBN is NOT final
+    Two outputs cover both directions of that single underlying check.
+  -->
+
+  <decision id="isbnStatusTable" name="ISBN Status">
+    <decisionTable id="decisionTable_isbnStatus" hitPolicy="UNIQUE">
+
+      <input id="input_isIsbn13Final" label="ISBN 13 Is Final">
+        <inputExpression id="inputExpr_isIsbn13Final" typeRef="boolean">
+          <text>isIsbn13Final</text>
+        </inputExpression>
+      </input>
+
+      <output id="output_isBlankOrDummy" label="Is Blank or Dummy ISBN" name="isBlankOrDummy" typeRef="boolean"/>
+      <output id="output_isFinal" label="Is Final ISBN" name="isFinal" typeRef="boolean"/>
+
+      <!-- Rule 1: ISBN is not final → it is blank/dummy, not final -->
+      <rule id="rule_notFinal">
+        <inputEntry id="ie1_r1"><text>false</text></inputEntry>
+        <outputEntry id="oe1_r1"><text>true</text></outputEntry>
+        <outputEntry id="oe2_r1"><text>false</text></outputEntry>
+      </rule>
+
+      <!-- Rule 2: ISBN is final → it is not blank/dummy, it is final -->
+      <rule id="rule_isFinal">
+        <inputEntry id="ie1_r2"><text>true</text></inputEntry>
+        <outputEntry id="oe1_r2"><text>false</text></outputEntry>
+        <outputEntry id="oe2_r2"><text>true</text></outputEntry>
+      </rule>
+
+    </decisionTable>
+  </decision>
+
+  <decisionService id="isbnStatus" name="ISBN Status">
+    <outputDecision href="#isbnStatusTable"/>
+  </decisionService>
+
+  <dmndi:DMNDI>
+    <dmndi:DMNDiagram id="DMNDiagram_isbnStatus">
+      <dmndi:DMNShape id="DMNShape_isbnStatus" dmnElementRef="isbnStatus">
+        <dc:Bounds x="30" y="30" width="240" height="140"/>
+        <dmndi:DMNDecisionServiceDividerLine>
+          <di:waypoint x="30" y="100"/>
+          <di:waypoint x="270" y="100"/>
+        </dmndi:DMNDecisionServiceDividerLine>
+      </dmndi:DMNShape>
+      <dmndi:DMNShape id="DMNShape_isbnStatusTable" dmnElementRef="isbnStatusTable">
+        <dc:Bounds x="60" y="60" width="180" height="80"/>
+      </dmndi:DMNShape>
+    </dmndi:DMNDiagram>
+  </dmndi:DMNDI>
+
+</definitions>

@@ -1,0 +1,292 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI" xmlns:dc="http://www.omg.org/spec/DD/20100524/DC" xmlns:di="http://www.omg.org/spec/DD/20100524/DI" xmlns:flowable="http://flowable.org/bpmn" targetNamespace="org.ntrloc.workflow" exporter="Camunda Modeler" exporterVersion="5.49.0" xsi:schemaLocation="http://www.omg.org/spec/BPMN/20100524/MODEL http://www.omg.org/spec/BPMN/20100524/BPMN20.xsd">
+  <process id="productCreate" name="Product Create" isExecutable="true">
+    <startEvent id="start" name="Product Submitted" />
+    <sequenceFlow id="flow_start_init" sourceRef="start" targetRef="initializeProduct" />
+    <callActivity id="initializeProduct" name="Initialize Product" calledElement="productInitialize" />
+    <sequenceFlow id="flow_init_split" sourceRef="initializeProduct" targetRef="editSplit" />
+    <parallelGateway id="editSplit" name="Launch Parallel Edit" />
+    <sequenceFlow id="flow_split_wip" sourceRef="editSplit" targetRef="wipTask" />
+    <userTask id="wipTask" name="WIP / Initiate">
+      <documentation>Product is being edited. Task assigned to requestingUser / ownerRequestorgroup.</documentation>
+    </userTask>
+    <sequenceFlow id="flow_wip_isbnStatus" sourceRef="wipTask" targetRef="isbnStatusDecision" />
+    <serviceTask id="isbnStatusDecision" name="Evaluate ISBN Status" flowable:type="dmn">
+      <extensionElements>
+        <flowable:field name="decisionTableReferenceKey">
+          <flowable:string>isbnStatus</flowable:string>
+        </flowable:field>
+      </extensionElements>
+    </serviceTask>
+    <sequenceFlow id="flow_isbnStatus_isbnGateway" sourceRef="isbnStatusDecision" targetRef="isbnGateway" />
+    <exclusiveGateway id="isbnGateway" name="ISBN Already Final?" />
+    <sequenceFlow id="flow_isbn_final_back" name="Yes" sourceRef="isbnGateway" targetRef="wipTask">
+      <conditionExpression>${isFinal == true}</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="flow_isbn_notfinal_request" name="No" sourceRef="isbnGateway" targetRef="canRequestDecision">
+      <conditionExpression>${isFinal == false}</conditionExpression>
+    </sequenceFlow>
+    <serviceTask id="canRequestDecision" name="Can Request ISBN?" flowable:type="dmn">
+      <extensionElements>
+        <flowable:field name="decisionTableReferenceKey">
+          <flowable:string>canRequest</flowable:string>
+        </flowable:field>
+      </extensionElements>
+    </serviceTask>
+    <sequenceFlow id="flow_canRequest_gateway" sourceRef="canRequestDecision" targetRef="requestGateway" />
+    <exclusiveGateway id="requestGateway" name="Can Request?" />
+    <sequenceFlow id="flow_request_no" name="No" sourceRef="requestGateway" targetRef="wipTask">
+      <conditionExpression>${canRequest == false}</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="flow_request_yes" name="Yes" sourceRef="requestGateway" targetRef="requestIsbn">
+      <conditionExpression>${canRequest == true}</conditionExpression>
+    </sequenceFlow>
+    <callActivity id="requestIsbn" name="Request ISBN" calledElement="productRequestIsbn" />
+    <sequenceFlow id="flow_request_approve" sourceRef="requestIsbn" targetRef="approveTask" />
+    <userTask id="approveTask" name="Pending ISBN Approval">
+      <documentation>Awaiting approver sign-off. Task assigned to finalizeUser if set.</documentation>
+    </userTask>
+    <sequenceFlow id="flow_approve_canFinalize" sourceRef="approveTask" targetRef="canFinalizeDecision" />
+    <serviceTask id="canFinalizeDecision" name="Can Finalize?" flowable:type="dmn">
+      <extensionElements>
+        <flowable:field name="decisionTableReferenceKey">
+          <flowable:string>canFinalize</flowable:string>
+        </flowable:field>
+      </extensionElements>
+    </serviceTask>
+    <sequenceFlow id="flow_canFinalize_gateway" sourceRef="canFinalizeDecision" targetRef="finalizeGateway" />
+    <exclusiveGateway id="finalizeGateway" name="Can Finalize?" />
+    <sequenceFlow id="flow_finalize_no" name="No" sourceRef="finalizeGateway" targetRef="approveTask">
+      <conditionExpression>${canFinalize == false}</conditionExpression>
+    </sequenceFlow>
+    <sequenceFlow id="flow_finalize_yes" name="Yes" sourceRef="finalizeGateway" targetRef="finalizeProduct">
+      <conditionExpression>${canFinalize == true}</conditionExpression>
+    </sequenceFlow>
+    <callActivity id="finalizeProduct" name="Finalize Product" calledElement="productFinalize" />
+    <sequenceFlow id="flow_finalize_confirm" sourceRef="finalizeProduct" targetRef="confirmTask" />
+    <userTask id="confirmTask" name="Recently Finalized">
+      <documentation>Finalization confirmed. Product removed from Edit Product workflow on entry.</documentation>
+    </userTask>
+    <sequenceFlow id="flow_confirm_join" sourceRef="confirmTask" targetRef="editJoin" />
+    <sequenceFlow id="flow_split_edit" sourceRef="editSplit" targetRef="editProduct" />
+    <subProcess id="editProduct" name="Edit Product">
+      <startEvent id="editProduct_start">
+        <outgoing>Flow_0ww4y3h</outgoing>
+      </startEvent>
+      <sequenceFlow id="flow_editProduct_start_task" sourceRef="editProduct_start" targetRef="editProduct_editTask" />
+      <userTask id="editProduct_editTask" name="Edit Product">
+        <incoming>Flow_0ww4y3h</incoming>
+        <outgoing>Flow_1b47s1s</outgoing>
+      </userTask>
+      <sequenceFlow id="flow_editProduct_task_end" sourceRef="editProduct_editTask" targetRef="editProduct_end" />
+      <endEvent id="editProduct_end">
+        <incoming>Flow_1b47s1s</incoming>
+      </endEvent>
+      <sequenceFlow id="Flow_0ww4y3h" sourceRef="editProduct_start" targetRef="editProduct_editTask" />
+      <sequenceFlow id="Flow_1b47s1s" sourceRef="editProduct_editTask" targetRef="editProduct_end" />
+    </subProcess>
+    <sequenceFlow id="flow_edit_join" sourceRef="editProduct" targetRef="editJoin" />
+    <parallelGateway id="editJoin" name="Edit Track Complete" />
+    <sequenceFlow id="flow_join_end" sourceRef="editJoin" targetRef="end" />
+    <endEvent id="end" name="Product Create Complete" />
+  </process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_productCreate">
+    <bpmndi:BPMNPlane id="BPMNPlane_productCreate" bpmnElement="productCreate">
+      <bpmndi:BPMNShape id="shape_start" bpmnElement="start">
+        <dc:Bounds x="160" y="132" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="153" y="168" width="50" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_initializeProduct" bpmnElement="initializeProduct">
+        <dc:Bounds x="226" y="110" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_editSplit" bpmnElement="editSplit" isMarkerVisible="true">
+        <dc:Bounds x="356" y="125" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="343" y="87.5" width="76" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_wipTask" bpmnElement="wipTask">
+        <dc:Bounds x="436" y="110" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_isbnStatusDecision" bpmnElement="isbnStatusDecision">
+        <dc:Bounds x="566" y="110" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_isbnGateway" bpmnElement="isbnGateway" isMarkerVisible="true">
+        <dc:Bounds x="696" y="125" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="688" y="175" width="67" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_canRequestDecision" bpmnElement="canRequestDecision">
+        <dc:Bounds x="776" y="110" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_requestGateway" bpmnElement="requestGateway" isMarkerVisible="true">
+        <dc:Bounds x="906" y="125" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="896" y="175" width="71" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_requestIsbn" bpmnElement="requestIsbn">
+        <dc:Bounds x="986" y="110" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_approveTask" bpmnElement="approveTask">
+        <dc:Bounds x="1116" y="110" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_canFinalizeDecision" bpmnElement="canFinalizeDecision">
+        <dc:Bounds x="1246" y="110" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_finalizeGateway" bpmnElement="finalizeGateway" isMarkerVisible="true">
+        <dc:Bounds x="1376" y="125" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1367" y="175" width="68" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_finalizeProduct" bpmnElement="finalizeProduct">
+        <dc:Bounds x="1456" y="110" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_confirmTask" bpmnElement="confirmTask">
+        <dc:Bounds x="1586" y="110" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_editJoin" bpmnElement="editJoin" isMarkerVisible="true">
+        <dc:Bounds x="1716" y="125" width="50" height="50" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1716" y="87.5" width="50" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_end" bpmnElement="end">
+        <dc:Bounds x="1796" y="132" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1777" y="168" width="74" height="27" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_editProduct" bpmnElement="editProduct" isExpanded="true">
+        <dc:Bounds x="490" y="300" width="320" height="120" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_editProduct_start" bpmnElement="editProduct_start">
+        <dc:Bounds x="520" y="342" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_editProduct_editTask" bpmnElement="editProduct_editTask">
+        <dc:Bounds x="590" y="320" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_editProduct_end" bpmnElement="editProduct_end">
+        <dc:Bounds x="734" y="342" width="36" height="36" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_0ww4y3h_di" bpmnElement="Flow_0ww4y3h">
+        <di:waypoint x="556" y="360" />
+        <di:waypoint x="590" y="360" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_1b47s1s_di" bpmnElement="Flow_1b47s1s">
+        <di:waypoint x="690" y="360" />
+        <di:waypoint x="734" y="360" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_start_init" bpmnElement="flow_start_init">
+        <di:waypoint x="196" y="150" />
+        <di:waypoint x="226" y="150" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_init_split" bpmnElement="flow_init_split">
+        <di:waypoint x="326" y="150" />
+        <di:waypoint x="356" y="150" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_split_wip" bpmnElement="flow_split_wip">
+        <di:waypoint x="406" y="150" />
+        <di:waypoint x="436" y="150" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_wip_isbnStatus" bpmnElement="flow_wip_isbnStatus">
+        <di:waypoint x="536" y="150" />
+        <di:waypoint x="566" y="150" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_isbnStatus_isbnGateway" bpmnElement="flow_isbnStatus_isbnGateway">
+        <di:waypoint x="666" y="150" />
+        <di:waypoint x="696" y="150" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_isbn_final_back" bpmnElement="flow_isbn_final_back">
+        <di:waypoint x="721" y="175" />
+        <di:waypoint x="721" y="220" />
+        <di:waypoint x="486" y="220" />
+        <di:waypoint x="486" y="190" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="595" y="195" width="18" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_isbn_notfinal_request" bpmnElement="flow_isbn_notfinal_request">
+        <di:waypoint x="746" y="150" />
+        <di:waypoint x="776" y="150" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="754" y="125" width="15" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_canRequest_gateway" bpmnElement="flow_canRequest_gateway">
+        <di:waypoint x="876" y="150" />
+        <di:waypoint x="906" y="150" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_request_no" bpmnElement="flow_request_no">
+        <di:waypoint x="931" y="175" />
+        <di:waypoint x="931" y="240" />
+        <di:waypoint x="486" y="240" />
+        <di:waypoint x="486" y="190" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="701" y="215" width="15" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_request_yes" bpmnElement="flow_request_yes">
+        <di:waypoint x="956" y="150" />
+        <di:waypoint x="986" y="150" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="962" y="125" width="18" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_request_approve" bpmnElement="flow_request_approve">
+        <di:waypoint x="1086" y="150" />
+        <di:waypoint x="1116" y="150" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_approve_canFinalize" bpmnElement="flow_approve_canFinalize">
+        <di:waypoint x="1216" y="150" />
+        <di:waypoint x="1246" y="150" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_canFinalize_gateway" bpmnElement="flow_canFinalize_gateway">
+        <di:waypoint x="1346" y="150" />
+        <di:waypoint x="1376" y="150" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_finalize_no" bpmnElement="flow_finalize_no">
+        <di:waypoint x="1401" y="175" />
+        <di:waypoint x="1401" y="260" />
+        <di:waypoint x="1166" y="260" />
+        <di:waypoint x="1166" y="190" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1276" y="235" width="15" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_finalize_yes" bpmnElement="flow_finalize_yes">
+        <di:waypoint x="1426" y="150" />
+        <di:waypoint x="1456" y="150" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="1432" y="125" width="18" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_finalize_confirm" bpmnElement="flow_finalize_confirm">
+        <di:waypoint x="1556" y="150" />
+        <di:waypoint x="1586" y="150" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_confirm_join" bpmnElement="flow_confirm_join">
+        <di:waypoint x="1686" y="150" />
+        <di:waypoint x="1716" y="150" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_split_edit" bpmnElement="flow_split_edit">
+        <di:waypoint x="381" y="175" />
+        <di:waypoint x="381" y="360" />
+        <di:waypoint x="490" y="360" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_edit_join" bpmnElement="flow_edit_join">
+        <di:waypoint x="814" y="360" />
+        <di:waypoint x="1741" y="360" />
+        <di:waypoint x="1741" y="175" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_join_end" bpmnElement="flow_join_end">
+        <di:waypoint x="1766" y="150" />
+        <di:waypoint x="1796" y="150" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</definitions>

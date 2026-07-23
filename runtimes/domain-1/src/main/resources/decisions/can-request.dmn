@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions id="definitions_canRequest" name="Can Request ISBN" namespace="http://flowable.org/dmn"
+             xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/"
+             xmlns:dmndi="https://www.omg.org/spec/DMN/20191111/DMNDI/"
+             xmlns:dc="http://www.omg.org/spec/DMN/20180521/DC/"
+             xmlns:di="http://www.omg.org/spec/DMN/20180521/DI/"
+             xmlns:flowable="http://flowable.org/dmn">
+
+  <!--
+    Guards the "Request ISBN" transition from the WIP state.
+    All six sub-conditions must pass.
+    Corresponds to STEP condition: wfc_pCreateISBN_Can_Request
+    Each input maps to a named STEP condition rule (ReferenceOtherBCBusinessCondition).
+  -->
+
+  <decision id="canRequestTable" name="Can Request ISBN?">
+    <decisionTable id="decisionTable_canRequest" hitPolicy="UNIQUE">
+
+      <input id="input_validateProduct" label="Product Valid">
+        <inputExpression id="inputExpr_validateProduct" typeRef="boolean">
+          <text>validateProductCondition</text>
+        </inputExpression>
+      </input>
+
+      <input id="input_mandatoryAttrs" label="Mandatory Attributes Present">
+        <inputExpression id="inputExpr_mandatoryAttrs" typeRef="boolean">
+          <text>validateMandatoryRequestAttributes</text>
+        </inputExpression>
+      </input>
+
+      <input id="input_suggestedIsbn" label="Suggested ISBN Valid">
+        <inputExpression id="inputExpr_suggestedIsbn" typeRef="boolean">
+          <text>validateSuggestedIsbnCondition</text>
+        </inputExpression>
+      </input>
+
+      <input id="input_isbnNotExist" label="ISBN Does Not Already Exist">
+        <inputExpression id="inputExpr_isbnNotExist" typeRef="boolean">
+          <text>validateISBNDoesNotExist</text>
+        </inputExpression>
+      </input>
+
+      <input id="input_requestType" label="Request Type Valid">
+        <inputExpression id="inputExpr_requestType" typeRef="boolean">
+          <text>validateRequestType</text>
+        </inputExpression>
+      </input>
+
+      <input id="input_identifierNonBook" label="Identifier Valid (Non-Book)">
+        <inputExpression id="inputExpr_identifierNonBook" typeRef="boolean">
+          <text>validateIdentifierNonBook</text>
+        </inputExpression>
+      </input>
+
+      <output id="output_canRequest" label="Can Request ISBN" name="canRequest" typeRef="boolean"/>
+
+      <!-- Rule 1: all conditions pass → can request -->
+      <rule id="rule_allPass">
+        <inputEntry id="ie1_r1"><text>true</text></inputEntry>
+        <inputEntry id="ie2_r1"><text>true</text></inputEntry>
+        <inputEntry id="ie3_r1"><text>true</text></inputEntry>
+        <inputEntry id="ie4_r1"><text>true</text></inputEntry>
+        <inputEntry id="ie5_r1"><text>true</text></inputEntry>
+        <inputEntry id="ie6_r1"><text>true</text></inputEntry>
+        <outputEntry id="oe_r1"><text>true</text></outputEntry>
+      </rule>
+
+      <!-- Rule 2: catch-all — any condition fails → cannot request -->
+      <rule id="rule_anyFail">
+        <inputEntry id="ie1_r2"><text></text></inputEntry>
+        <inputEntry id="ie2_r2"><text></text></inputEntry>
+        <inputEntry id="ie3_r2"><text></text></inputEntry>
+        <inputEntry id="ie4_r2"><text></text></inputEntry>
+        <inputEntry id="ie5_r2"><text></text></inputEntry>
+        <inputEntry id="ie6_r2"><text></text></inputEntry>
+        <outputEntry id="oe_r2"><text>false</text></outputEntry>
+      </rule>
+
+    </decisionTable>
+  </decision>
+
+  <decisionService id="canRequest" name="Can Request ISBN?">
+    <outputDecision href="#canRequestTable"/>
+  </decisionService>
+
+  <dmndi:DMNDI>
+    <dmndi:DMNDiagram id="DMNDiagram_canRequest">
+      <dmndi:DMNShape id="DMNShape_canRequest" dmnElementRef="canRequest">
+        <dc:Bounds x="30" y="30" width="240" height="140"/>
+        <dmndi:DMNDecisionServiceDividerLine>
+          <di:waypoint x="30" y="100"/>
+          <di:waypoint x="270" y="100"/>
+        </dmndi:DMNDecisionServiceDividerLine>
+      </dmndi:DMNShape>
+      <dmndi:DMNShape id="DMNShape_canRequestTable" dmnElementRef="canRequestTable">
+        <dc:Bounds x="60" y="60" width="180" height="80"/>
+      </dmndi:DMNShape>
+    </dmndi:DMNDiagram>
+  </dmndi:DMNDI>
+
+</definitions>

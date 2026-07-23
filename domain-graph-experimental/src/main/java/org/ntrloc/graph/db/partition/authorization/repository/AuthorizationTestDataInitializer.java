@@ -1,10 +1,11 @@
 package org.ntrloc.graph.db.partition.authorization.repository;
 
-import jakarta.annotation.PostConstruct;
 import org.ntrloc.graph.db.partition.authorization.PermissionService;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateItemDefinitionMutation;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.springframework.boot.ApplicationArguments;
+import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.DependsOn;
 import org.springframework.stereotype.Component;
@@ -17,7 +18,7 @@ import java.util.stream.Collectors;
 @Component
 @ConditionalOnProperty(prefix = "ntrloc.security", name = "seed-test-data", havingValue = "true")
 @DependsOn({"schemaManager", "securityInitializer", "authorizationInitializer"})
-public class AuthorizationTestDataInitializer {
+public class AuthorizationTestDataInitializer implements ApplicationRunner {
 
     private final SchemaManager schemaManager;
     private final SecurityRepository securityRepo;
@@ -29,8 +30,12 @@ public class AuthorizationTestDataInitializer {
         this.authorizationRepo = authorizationRepo;
     }
 
-    @PostConstruct
-    void init() {
+    // Not @PostConstruct: applyMutations() below publishes SchemaChangeEvent, and
+    // RegisterPartitionManager's @EventListener reaction to it (creating this type's register
+    // table) isn't wired up until every singleton has finished construction. ApplicationRunner
+    // guarantees this runs after the whole context -- including that listener -- is ready.
+    @Override
+    public void run(ApplicationArguments args) {
         // Test item types are created through the real mutation pipeline (not raw DDL) so
         // SchemaManager's cache stays consistent — it has no external invalidation hook
         // besides applyMutations. AclTestUnmarkedDoc deliberately gets no marker assignment at

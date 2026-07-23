@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:flowable="http://flowable.org/bpmn"
+             xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+             xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+             xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+             targetNamespace="org.ntrloc.workflow"
+             xsi:schemaLocation="http://www.omg.org/spec/BPMN/20100524/MODEL http://www.omg.org/spec/BPMN/20100524/BPMN20.xsd">
+
+  <process id="productFinalize" name="Product Finalize" isExecutable="true">
+    <documentation>
+      Action sequence fired when the approver submits the "Finalize" event from Pending ISBN Approval.
+      Corresponds to STEP business rule: wfa_pCreateISBN_Event_OnFinalize.
+    </documentation>
+
+    <startEvent id="start"                  name="Finalize Triggered"/>
+    <sequenceFlow id="flow1" sourceRef="start"                 targetRef="saveFinalizationInfo"/>
+    <scriptTask  id="saveFinalizationInfo"  name="Save Product Finalization Info" scriptFormat="groovy"><script>// placeholder</script></scriptTask>
+    <sequenceFlow id="flow2" sourceRef="saveFinalizationInfo"  targetRef="clearAssignmentError"/>
+    <scriptTask  id="clearAssignmentError"  name="Clear Assignment Error Flag" scriptFormat="groovy"><script>// placeholder</script></scriptTask>
+    <sequenceFlow id="flow3" sourceRef="clearAssignmentError"  targetRef="assignGeneratedId"/>
+    <scriptTask  id="assignGeneratedId"     name="Assign Generated Identifier" scriptFormat="groovy"><script>// placeholder</script></scriptTask>
+    <sequenceFlow id="flow4" sourceRef="assignGeneratedId"     targetRef="assignFinalIsbn"/>
+    <scriptTask  id="assignFinalIsbn"       name="Assign Final ISBN" scriptFormat="groovy"><script>// placeholder</script></scriptTask>
+    <sequenceFlow id="flow5" sourceRef="assignFinalIsbn"       targetRef="assignBorderId"/>
+    <scriptTask  id="assignBorderId"        name="Assign Border ID" scriptFormat="groovy"><script>// placeholder</script></scriptTask>
+    <sequenceFlow id="flow6" sourceRef="assignBorderId"        targetRef="postFinalizationActions"/>
+    <scriptTask  id="postFinalizationActions" name="Product Post-Finalization Actions" scriptFormat="groovy"><script>// placeholder</script></scriptTask>
+    <sequenceFlow id="flow7" sourceRef="postFinalizationActions" targetRef="captureFinalizeUser"/>
+    <scriptTask  id="captureFinalizeUser"   name="Capture Finalizing User" scriptFormat="groovy">
+      <documentation>Sets workflow variable finalizeUser to the current user's ID.</documentation>
+      <script>// placeholder</script>
+    </scriptTask>
+    <sequenceFlow id="flow8" sourceRef="captureFinalizeUser"   targetRef="end"/>
+    <endEvent     id="end"                   name="Finalization Complete"/>
+
+  </process>
+
+  <bpmndi:BPMNDiagram id="BPMNDiagram_productFinalize">
+    <bpmndi:BPMNPlane id="BPMNPlane_productFinalize" bpmnElement="productFinalize">
+
+      <bpmndi:BPMNShape id="shape_start" bpmnElement="start">
+        <dc:Bounds x="100" y="62" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_saveFinalizationInfo" bpmnElement="saveFinalizationInfo">
+        <dc:Bounds x="166" y="40" width="100" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_clearAssignmentError" bpmnElement="clearAssignmentError">
+        <dc:Bounds x="296" y="40" width="100" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_assignGeneratedId" bpmnElement="assignGeneratedId">
+        <dc:Bounds x="426" y="40" width="100" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_assignFinalIsbn" bpmnElement="assignFinalIsbn">
+        <dc:Bounds x="556" y="40" width="100" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_assignBorderId" bpmnElement="assignBorderId">
+        <dc:Bounds x="686" y="40" width="100" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_postFinalizationActions" bpmnElement="postFinalizationActions">
+        <dc:Bounds x="816" y="40" width="100" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_captureFinalizeUser" bpmnElement="captureFinalizeUser">
+        <dc:Bounds x="946" y="40" width="100" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_end" bpmnElement="end">
+        <dc:Bounds x="1076" y="62" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNEdge id="edge_flow1" bpmnElement="flow1"> <di:waypoint x="136"  y="80"/> <di:waypoint x="166"  y="80"/> </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_flow2" bpmnElement="flow2"> <di:waypoint x="266"  y="80"/> <di:waypoint x="296"  y="80"/> </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_flow3" bpmnElement="flow3"> <di:waypoint x="396"  y="80"/> <di:waypoint x="426"  y="80"/> </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_flow4" bpmnElement="flow4"> <di:waypoint x="526"  y="80"/> <di:waypoint x="556"  y="80"/> </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_flow5" bpmnElement="flow5"> <di:waypoint x="656"  y="80"/> <di:waypoint x="686"  y="80"/> </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_flow6" bpmnElement="flow6"> <di:waypoint x="786"  y="80"/> <di:waypoint x="816"  y="80"/> </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_flow7" bpmnElement="flow7"> <di:waypoint x="916"  y="80"/> <di:waypoint x="946"  y="80"/> </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_flow8" bpmnElement="flow8"> <di:waypoint x="1046" y="80"/> <di:waypoint x="1076" y="80"/> </bpmndi:BPMNEdge>
+
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+
+</definitions>

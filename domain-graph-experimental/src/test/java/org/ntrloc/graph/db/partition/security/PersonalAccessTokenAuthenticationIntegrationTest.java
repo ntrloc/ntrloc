@@ -72,7 +72,7 @@ class PersonalAccessTokenAuthenticationIntegrationTest {
         var principal = new ResolvedPrincipal(user.id(), user.externalId(), user.displayName(), Set.of(), false);
         var issued = tokenService.issue(principal, "test-token", null);
 
-        webTestClient.get().uri("/schema")
+        webTestClient.get().uri("/api/schema")
                 .header("Authorization", "Bearer " + issued.rawToken())
                 .exchange()
                 .expectStatus().isOk();
@@ -80,7 +80,7 @@ class PersonalAccessTokenAuthenticationIntegrationTest {
 
     @Test
     void unknownTokenIsRejected() {
-        webTestClient.get().uri("/schema")
+        webTestClient.get().uri("/api/schema")
                 .header("Authorization", "Bearer ntrloc_pat_" + "not-a-real-token")
                 .exchange()
                 .expectStatus().is4xxClientError();
@@ -94,7 +94,7 @@ class PersonalAccessTokenAuthenticationIntegrationTest {
 
         tokenService.revoke(principal, issued.id());
 
-        webTestClient.get().uri("/schema")
+        webTestClient.get().uri("/api/schema")
                 .header("Authorization", "Bearer " + issued.rawToken())
                 .exchange()
                 .expectStatus().is4xxClientError();
@@ -106,7 +106,7 @@ class PersonalAccessTokenAuthenticationIntegrationTest {
         var principal = new ResolvedPrincipal(user.id(), user.externalId(), user.displayName(), Set.of(), false);
         var issued = tokenService.issue(principal, "already-expired", -1);
 
-        webTestClient.get().uri("/schema")
+        webTestClient.get().uri("/api/schema")
                 .header("Authorization", "Bearer " + issued.rawToken())
                 .exchange()
                 .expectStatus().is4xxClientError();
@@ -114,7 +114,7 @@ class PersonalAccessTokenAuthenticationIntegrationTest {
 
     @Test
     void noCredentialsAtAllIsRejected() {
-        webTestClient.get().uri("/schema")
+        webTestClient.get().uri("/api/schema")
                 .exchange()
                 .expectStatus().is3xxRedirection();
     }

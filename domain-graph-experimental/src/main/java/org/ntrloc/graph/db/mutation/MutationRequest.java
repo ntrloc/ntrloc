@@ -1,6 +1,8 @@
 package org.ntrloc.graph.db.mutation;
 
+import org.springframework.lang.Nullable;
+
 import java.util.List;
 
-public record MutationRequest(List<ItemMutation> items, List<LinkMutation> links) {
+public record MutationRequest(@Nullable List<ItemMutation> items, @Nullable List<LinkMutation> links) {
 }

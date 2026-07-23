@@ -15,7 +15,7 @@ import java.util.List;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/admin/schema")
+@RequestMapping("/api/admin/schema")
 public class SchemaAdminController {
 
     public record ControlledListResponse(UUID listId, String name, PropertyType valueType, List<AllowedValue> values) {}

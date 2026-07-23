@@ -17,7 +17,7 @@ import java.util.List;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/pat")
+@RequestMapping("/api/pat")
 public class PersonalAccessTokenController {
 
     public record CreateTokenRequest(String name, Integer expiresInDays) {}

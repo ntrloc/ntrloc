@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions id="definitions_approvalDecision" name="Approval Decision" namespace="http://flowable.org/dmn"
+             xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/"
+             xmlns:dmndi="https://www.omg.org/spec/DMN/20191111/DMNDI/"
+             xmlns:dc="http://www.omg.org/spec/DMN/20180521/DC/"
+             xmlns:di="http://www.omg.org/spec/DMN/20180521/DI/"
+             xmlns:flowable="http://flowable.org/dmn">
+  <decision id="approvalDecisionTable" name="Approval Decision">
+    <decisionTable id="decisionTable1" hitPolicy="UNIQUE">
+      <input id="input1" label="Amount">
+        <inputExpression id="inputExpression1" typeRef="number"><text>amount</text></inputExpression>
+      </input>
+      <output id="output1" label="Approved" name="approved" typeRef="boolean"/>
+      <rule id="rule1">
+        <inputEntry id="inputEntry1"><text>&lt;= 1000</text></inputEntry>
+        <outputEntry id="outputEntry1"><text>true</text></outputEntry>
+      </rule>
+      <rule id="rule2">
+        <inputEntry id="inputEntry2"><text>&gt; 1000</text></inputEntry>
+        <outputEntry id="outputEntry2"><text>false</text></outputEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+  <decisionService id="approvalDecision" name="Approval Decision">
+    <outputDecision href="#approvalDecisionTable"/>
+  </decisionService>
+  <dmndi:DMNDI>
+    <dmndi:DMNDiagram id="DMNDiagram_approvalDecision">
+      <dmndi:DMNShape id="DMNShape_approvalDecision" dmnElementRef="approvalDecision">
+        <dc:Bounds x="30" y="30" width="240" height="140"/>
+        <dmndi:DMNDecisionServiceDividerLine>
+          <di:waypoint x="30" y="100"/>
+          <di:waypoint x="270" y="100"/>
+        </dmndi:DMNDecisionServiceDividerLine>
+      </dmndi:DMNShape>
+      <dmndi:DMNShape id="DMNShape_approvalDecisionTable" dmnElementRef="approvalDecisionTable">
+        <dc:Bounds x="60" y="60" width="180" height="80"/>
+      </dmndi:DMNShape>
+    </dmndi:DMNDiagram>
+  </dmndi:DMNDI>
+</definitions>

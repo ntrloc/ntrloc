@@ -16,7 +16,7 @@ import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 @RestController
-@RequestMapping("/binary")
+@RequestMapping("/api/binary")
 public class BinaryController {
 
     private final BinaryPartitionManager binaryPartitionManager;
