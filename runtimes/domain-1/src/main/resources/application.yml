@@ -11,6 +11,8 @@ spring:
     driver-class-name: org.postgresql.Driver
 
 ntrloc:
+  branding:
+    display-name: domain-1
   auth:
     local:
       enabled: true
@@ -22,6 +24,20 @@ ntrloc:
     enabled: true
     seed-local-accounts: true
     seed-test-data: false
+  ui:
+    mounts:
+      - path: /admin
+        location: "file:///Users/michaelcoddington/Documents/Projects/ntrloc/domain-graph-experimental/src/main/resources/static/admin-ui/"
+  process:
+    script:
+      # Packages a process script (Groovy or JavaScript) can reference a class from by simple
+      # name, e.g. "new SingleItemProjectionSpec(...)" instead of the fully-qualified name.
+      import-packages:
+        - org.ntrloc.graph.db.projection
+        - org.ntrloc.graph.db.mutation
+  telemetry:
+    # Set true to actually transmit OTel traces/metrics/logs (e.g. to a local Grafana stack).
+    enabled: false
 
 binary:
   storage:

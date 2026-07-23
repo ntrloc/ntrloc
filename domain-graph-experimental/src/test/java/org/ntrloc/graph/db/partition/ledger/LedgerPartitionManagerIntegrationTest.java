@@ -23,10 +23,10 @@ class LedgerPartitionManagerIntegrationTest extends AbstractIntegrationTest {
         UUID txn1 = UUID.randomUUID();
         UUID txn2 = UUID.randomUUID();
 
-        ledgerPartitionManager.append(List.of(new ItemCreateEntry(itemId, itemTypeId, Map.of(namePropertyId, "Widget"))), txn1);
+        ledgerPartitionManager.append(List.of(new ItemCreateEntry(itemId, itemTypeId, Map.of(namePropertyId, "Widget"))), txn1, null);
         ledgerPartitionManager.commit(txn1, UUID.randomUUID());
 
-        ledgerPartitionManager.append(List.of(new ItemUpdateEntry(itemId, Map.of(namePropertyId, "Widget Pro"))), txn2);
+        ledgerPartitionManager.append(List.of(new ItemUpdateEntry(itemId, Map.of(namePropertyId, "Widget Pro"))), txn2, null);
         ledgerPartitionManager.commit(txn2, UUID.randomUUID());
 
         assertThat(ledgerPartitionManager.readItemStream(itemId)).containsExactly(
@@ -40,7 +40,7 @@ class LedgerPartitionManagerIntegrationTest extends AbstractIntegrationTest {
         UUID itemId = UUID.randomUUID();
         UUID txn = UUID.randomUUID();
 
-        ledgerPartitionManager.append(List.of(new ItemCreateEntry(itemId, UUID.randomUUID(), Map.of(UUID.randomUUID(), "Ghost"))), txn);
+        ledgerPartitionManager.append(List.of(new ItemCreateEntry(itemId, UUID.randomUUID(), Map.of(UUID.randomUUID(), "Ghost"))), txn, null);
 
         assertThat(ledgerPartitionManager.readItemStream(itemId)).isEmpty();
     }
@@ -50,7 +50,7 @@ class LedgerPartitionManagerIntegrationTest extends AbstractIntegrationTest {
         UUID itemId = UUID.randomUUID();
         UUID txn = UUID.randomUUID();
 
-        ledgerPartitionManager.append(List.of(new ItemCreateEntry(itemId, UUID.randomUUID(), Map.of(UUID.randomUUID(), "Ghost"))), txn);
+        ledgerPartitionManager.append(List.of(new ItemCreateEntry(itemId, UUID.randomUUID(), Map.of(UUID.randomUUID(), "Ghost"))), txn, null);
         ledgerPartitionManager.abort(txn);
         ledgerPartitionManager.commit(txn, UUID.randomUUID());
 
@@ -66,7 +66,7 @@ class LedgerPartitionManagerIntegrationTest extends AbstractIntegrationTest {
         ledgerPartitionManager.append(List.of(
                 new ItemCreateEntry(itemId, UUID.randomUUID(), Map.of()),
                 new LinkDeleteEntry(linkId)
-        ), txn);
+        ), txn, null);
         ledgerPartitionManager.commit(txn, UUID.randomUUID());
 
         assertThat(ledgerPartitionManager.readItemStream(itemId)).hasSize(1);
@@ -83,7 +83,7 @@ class LedgerPartitionManagerIntegrationTest extends AbstractIntegrationTest {
                 new LinkEndpoint(UUID.randomUUID(), UUID.randomUUID()),
                 Map.of(UUID.randomUUID(), "2026"));
 
-        ledgerPartitionManager.append(List.of(entry), txn);
+        ledgerPartitionManager.append(List.of(entry), txn, null);
         ledgerPartitionManager.commit(txn, UUID.randomUUID());
 
         assertThat(ledgerPartitionManager.readLinkStream(linkId)).containsExactly(entry);
@@ -94,7 +94,7 @@ class LedgerPartitionManagerIntegrationTest extends AbstractIntegrationTest {
         UUID itemId = UUID.randomUUID();
         UUID txn = UUID.randomUUID();
 
-        ledgerPartitionManager.append(List.of(new ItemDeleteEntry(itemId)), txn);
+        ledgerPartitionManager.append(List.of(new ItemDeleteEntry(itemId)), txn, null);
         ledgerPartitionManager.commit(txn, UUID.randomUUID());
 
         assertThat(ledgerPartitionManager.readItemStream(itemId)).containsExactly(new ItemDeleteEntry(itemId));

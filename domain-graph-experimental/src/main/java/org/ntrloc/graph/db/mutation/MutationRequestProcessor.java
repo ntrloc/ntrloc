@@ -10,11 +10,13 @@ import org.ntrloc.graph.db.partition.ledger.LinkDeleteEntry;
 import org.ntrloc.graph.db.partition.ledger.LinkEndpoint;
 import org.ntrloc.graph.db.partition.ledger.LinkUpdateEntry;
 import org.ntrloc.graph.db.partition.register.RegisterPartitionManager;
+import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemLinkPerspectiveView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyDefinitionView;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -58,7 +60,7 @@ public class MutationRequestProcessor {
     }
 
     @Transactional
-    public MutationResponse process(MutationRequest request) {
+    public MutationResponse process(MutationRequest request, @Nullable NtrlocPrincipal principal) {
         List<ValidationError> errors = new ArrayList<>();
         Map<String, UUID> refIdToItemId = new HashMap<>();
         Map<String, UUID> refIdToItemTypeId = new HashMap<>();
@@ -101,7 +103,12 @@ public class MutationRequestProcessor {
 
         UUID transactionId = UUID.randomUUID();
         UUID commitId = UUID.randomUUID();
-        coordinator.prepare(entries, transactionId);
+        // principal is @Nullable, same as it is on EntityManager.mutate() -- unlike project()'s
+        // principal (a hard permission-check requirement), this one is attribution-only
+        // (LedgerInitializer's own note on actor_external_id): an unresolvable/absent principal
+        // is a real, displayable state ("Edited by" blank), not a reason to refuse the mutation.
+        String actorExternalId = principal == null ? null : principal.externalId();
+        coordinator.prepare(entries, transactionId, actorExternalId);
         coordinator.commit(transactionId, commitId);
 
         return new MutationResponse(itemResults, linkResults);

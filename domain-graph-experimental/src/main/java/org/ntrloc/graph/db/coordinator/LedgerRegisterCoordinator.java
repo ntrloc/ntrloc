@@ -11,8 +11,9 @@ public interface LedgerRegisterCoordinator {
 
     // Ledger-only: appends entries as UNCOMMITTED, plus stages the corresponding new register
     // rows (also UNCOMMITTED) for any create/update entry. Deletes stage nothing here -- they
-    // have no new state to hold, so they're applied directly at commit.
-    void prepare(List<LedgerEntry> entries, UUID transactionId);
+    // have no new state to hold, so they're applied directly at commit. actorExternalId may be
+    // null (see LedgerPartitionManager.append's own note).
+    void prepare(List<LedgerEntry> entries, UUID transactionId, String actorExternalId);
 
     // Flips the transaction's ledger entries and staged register rows to COMMITTED, deletes the
     // superseded old register row for any update, and applies deletes directly. Resumable from

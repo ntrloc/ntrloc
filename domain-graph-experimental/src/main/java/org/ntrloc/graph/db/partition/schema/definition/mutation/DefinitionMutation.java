@@ -9,6 +9,7 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
         @JsonSubTypes.Type(value = UpdateItemDefinitionMutation.class,           name = "UPDATE_ITEM"),
         @JsonSubTypes.Type(value = DeleteItemDefinitionMutation.class,           name = "DELETE_ITEM"),
         @JsonSubTypes.Type(value = CreateTraitDefinitionMutation.class,          name = "CREATE_TRAIT"),
+        @JsonSubTypes.Type(value = DeleteTraitDefinitionMutation.class,          name = "DELETE_TRAIT"),
         @JsonSubTypes.Type(value = ImplementTraitMutation.class,                 name = "IMPLEMENT_TRAIT"),
         @JsonSubTypes.Type(value = RemoveTraitMutation.class,                    name = "REMOVE_TRAIT"),
         @JsonSubTypes.Type(value = CreateItemPropertyDefinitionMutation.class,   name = "CREATE_ITEM_PROPERTY"),
@@ -22,7 +23,7 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
 })
 public sealed interface DefinitionMutation
         permits CreateItemDefinitionMutation, UpdateItemDefinitionMutation, DeleteItemDefinitionMutation,
-                CreateTraitDefinitionMutation, ImplementTraitMutation, RemoveTraitMutation,
+                CreateTraitDefinitionMutation, DeleteTraitDefinitionMutation, ImplementTraitMutation, RemoveTraitMutation,
                 CreateItemPropertyDefinitionMutation, CreateLinkPropertyDefinitionMutation, UpdatePropertyDefinitionMutation, DeletePropertyDefinitionMutation,
                 CreateLinkDefinitionMutation, DeleteLinkDefinitionMutation, UpdatePerspectiveDefinitionMutation,
                 ReplaceControlledListMutation {

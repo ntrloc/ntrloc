@@ -13,6 +13,14 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
+// Not @ProcessAccessible: nothing in this class needs to be called from a process script/
+// delegateExpression. ProcessAdminController.startProcessInstance resolves the caller's principal
+// once, up front, and stores the whole NtrlocPrincipal as a process variable (see
+// NtrlocPrincipalVariableType) -- a script recovers it via a plain
+// execution.getVariable("principal"), not by asking this bean to look anything up again.
+// resolveByExternalId below is for a different, still-internal caller: ProcessRunAsUserListener,
+// resolving a process's declared flowable:runAsUser (an externalId, from BPMN XML, not a live
+// Authentication) when a process starts with no HTTP caller to take a principal from at all.
 @Component
 public class PrincipalResolver {
 
@@ -46,6 +54,14 @@ public class PrincipalResolver {
         if (auth == null || !auth.isAuthenticated() || auth instanceof AnonymousAuthenticationToken) {
             return Optional.empty();
         }
+        // Local-credential and PAT logins already carry a real NtrlocPrincipal as the
+        // Authentication's own principal object (NtrlocUserDetails / PersonalAccessTokenService,
+        // respectively) -- no need to re-query SecurityRepository for what's already known. LDAP
+        // logins don't (Spring LDAP's own UserDetails shape, not one of ours), so those still fall
+        // through to the lookup below; correct, just not the fast path.
+        if (auth.getPrincipal() instanceof NtrlocPrincipal principal) {
+            return Optional.of(principal);
+        }
         return repo.findUserByExternalId(auth.getName()).map(this::toPrincipal);
     }
 
@@ -65,6 +81,13 @@ public class PrincipalResolver {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED,
                         "Unknown stand-in principal: " + resolvedId));
         return toPrincipal(user);
+    }
+
+    // No HTTP-flavored exception here (unlike resolveFromStandIn) -- there's no request to attach
+    // a 401 to when this runs from an engine event listener at process-start time. Returns empty
+    // for "unknown", leaving the caller to decide what an unresolvable declared user means for it.
+    public Optional<NtrlocPrincipal> resolveByExternalId(String externalId) {
+        return repo.findUserByExternalId(externalId).map(this::toPrincipal);
     }
 
     private NtrlocPrincipal toPrincipal(SecurityRepository.UserRow user) {

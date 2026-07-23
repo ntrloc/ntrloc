@@ -30,7 +30,11 @@ public class LedgerInitializer {
                     transaction_id   UUID NOT NULL,
                     state            TEXT NOT NULL,
                     commit_id        UUID,
-                    created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                    created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    -- Nullable: not every caller has a resolvable principal today (an MCP
+                    -- request bearing no/invalid PAT, e.g.) -- an unknown actor is a real,
+                    -- displayable state ("Edited by" blank), not an error.
+                    actor_external_id TEXT
                 )
                 """).update();
 

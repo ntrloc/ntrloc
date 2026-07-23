@@ -34,9 +34,9 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
 
     @Override
     @Transactional
-    public void prepare(List<LedgerEntry> entries, UUID transactionId) {
+    public void prepare(List<LedgerEntry> entries, UUID transactionId, String actorExternalId) {
         List<LedgerEntry> expanded = cascadeExpander.expand(entries);
-        ledgerPartitionManager.append(expanded, transactionId);
+        ledgerPartitionManager.append(expanded, transactionId, actorExternalId);
 
         // Items before links: link endpoint resolution needs same-transaction item staging
         // to already exist so it can prefer the fresh row over the old committed one.

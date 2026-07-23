@@ -39,6 +39,18 @@ public class SecurityRepository {
                 .optional();
     }
 
+    // Used by UserAdminController to populate assignee pickers (e.g. a User Task's assignee
+    // select in the process editor) -- not part of principal resolution, just a plain listing.
+    public List<UserRow> listUsers() {
+        return jdbcClient.sql("SELECT id, external_id, display_name, is_superuser FROM security_user ORDER BY display_name")
+                .query((rs, n) -> new UserRow(
+                        rs.getObject("id", UUID.class),
+                        rs.getString("external_id"),
+                        rs.getString("display_name"),
+                        rs.getBoolean("is_superuser")))
+                .list();
+    }
+
     public Set<UUID> getGroupIdsForUser(UUID userId) {
         return Set.copyOf(jdbcClient.sql("SELECT group_id FROM security_group_member WHERE user_id = :userId")
                 .param("userId", userId)

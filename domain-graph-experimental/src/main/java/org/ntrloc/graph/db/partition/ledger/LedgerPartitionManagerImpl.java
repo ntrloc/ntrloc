@@ -5,6 +5,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -21,21 +22,22 @@ public class LedgerPartitionManagerImpl implements LedgerPartitionManager {
     }
 
     @Override
-    public void append(List<LedgerEntry> entries, UUID transactionId) {
-        entries.forEach(entry -> insert(entry, transactionId));
+    public void append(List<LedgerEntry> entries, UUID transactionId, String actorExternalId) {
+        entries.forEach(entry -> insert(entry, transactionId, actorExternalId));
     }
 
-    private void insert(LedgerEntry entry, UUID transactionId) {
+    private void insert(LedgerEntry entry, UUID transactionId, String actorExternalId) {
         TargetRef target = targetOf(entry);
         jdbcClient.sql("""
-                INSERT INTO ledger_entry (target_type, target_id, entry_type, payload, transaction_id, state)
-                VALUES (:targetType, :targetId, :entryType, :payload::jsonb, :transactionId, 'UNCOMMITTED')
+                INSERT INTO ledger_entry (target_type, target_id, entry_type, payload, transaction_id, state, actor_external_id)
+                VALUES (:targetType, :targetId, :entryType, :payload::jsonb, :transactionId, 'UNCOMMITTED', :actorExternalId)
                 """)
                 .param("targetType", target.type())
                 .param("targetId", target.id())
                 .param("entryType", entryTypeOf(entry))
                 .param("payload", writeEntry(entry))
                 .param("transactionId", transactionId)
+                .param("actorExternalId", actorExternalId)
                 .update();
     }
 
@@ -65,6 +67,21 @@ public class LedgerPartitionManagerImpl implements LedgerPartitionManager {
     @Override
     public List<LedgerEntry> readLinkStream(UUID linkId) {
         return readStream("LINK", linkId);
+    }
+
+    @Override
+    public List<LedgerEntryRecord> readItemStreamWithMetadata(UUID itemId) {
+        return jdbcClient.sql("""
+                SELECT payload::text AS payload, created_at, actor_external_id FROM ledger_entry
+                WHERE target_type = 'ITEM' AND target_id = :itemId AND state = 'COMMITTED'
+                ORDER BY sequence_number
+                """)
+                .param("itemId", itemId)
+                .query((rs, n) -> new LedgerEntryRecord(
+                        readEntry(rs.getString("payload")),
+                        rs.getObject("created_at", OffsetDateTime.class),
+                        rs.getString("actor_external_id")))
+                .list();
     }
 
     private List<LedgerEntry> readStream(String targetType, UUID targetId) {

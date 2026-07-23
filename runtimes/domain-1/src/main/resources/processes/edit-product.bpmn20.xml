@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xmlns:flowable="http://flowable.org/bpmn"
+             xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+             xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+             xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+             targetNamespace="org.ntrloc.workflow"
+             xsi:schemaLocation="http://www.omg.org/spec/BPMN/20100524/MODEL http://www.omg.org/spec/BPMN/20100524/BPMN20.xsd">
+
+  <process id="editProduct" name="Edit Product" isExecutable="true">
+    <documentation>
+      Placeholder for the Edit Product workflow (editProductWF in STEP).
+      Runs in parallel with the main Product Create flow from initialization.
+      Full modeling of this workflow is out of scope for this demo.
+    </documentation>
+
+    <startEvent id="start"    name="Edit Track Started"/>
+    <sequenceFlow id="flow1"  sourceRef="start"    targetRef="editTask"/>
+    <userTask     id="editTask" name="Edit Product"/>
+    <sequenceFlow id="flow2"  sourceRef="editTask" targetRef="end"/>
+    <endEvent     id="end"    name="Edit Track Complete"/>
+
+  </process>
+
+  <bpmndi:BPMNDiagram id="BPMNDiagram_editProduct">
+    <bpmndi:BPMNPlane id="BPMNPlane_editProduct" bpmnElement="editProduct">
+
+      <bpmndi:BPMNShape id="shape_start" bpmnElement="start">
+        <dc:Bounds x="100" y="62" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_editTask" bpmnElement="editTask">
+        <dc:Bounds x="166" y="40" width="100" height="80"/>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="shape_end" bpmnElement="end">
+        <dc:Bounds x="296" y="62" width="36" height="36"/>
+      </bpmndi:BPMNShape>
+
+      <bpmndi:BPMNEdge id="edge_flow1" bpmnElement="flow1"> <di:waypoint x="136" y="80"/> <di:waypoint x="166" y="80"/> </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="edge_flow2" bpmnElement="flow2"> <di:waypoint x="266" y="80"/> <di:waypoint x="296" y="80"/> </bpmndi:BPMNEdge>
+
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+
+</definitions>

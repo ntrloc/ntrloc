@@ -22,7 +22,7 @@ class AuthorizationEndpointsIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void schemaViewShowsOnlyMarkerGrantedTypes_forGroupMember() {
-        webTestClient.get().uri("/schema")
+        webTestClient.get().uri("/api/schema")
                 .header("X-Ntrloc-User", "alice")
                 .exchange()
                 .expectStatus().isOk()
@@ -37,7 +37,7 @@ class AuthorizationEndpointsIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void schemaViewShowsOnlyMarkerGrantedTypes_forDirectUserGrant() {
-        webTestClient.get().uri("/schema")
+        webTestClient.get().uri("/api/schema")
                 .header("X-Ntrloc-User", "carol")
                 .exchange()
                 .expectStatus().isOk()
@@ -52,7 +52,7 @@ class AuthorizationEndpointsIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void schemaViewSupportsQueryParamFallback() {
-        webTestClient.get().uri("/schema?asUser=bob")
+        webTestClient.get().uri("/api/schema?asUser=bob")
                 .exchange()
                 .expectStatus().isOk()
                 .expectBody()
@@ -64,14 +64,14 @@ class AuthorizationEndpointsIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void schemaViewRejectsMissingPrincipal() {
-        webTestClient.get().uri("/schema")
+        webTestClient.get().uri("/api/schema")
                 .exchange()
                 .expectStatus().isEqualTo(HttpStatus.UNAUTHORIZED);
     }
 
     @Test
     void schemaViewRejectsUnknownPrincipal() {
-        webTestClient.get().uri("/schema")
+        webTestClient.get().uri("/api/schema")
                 .header("X-Ntrloc-User", "nobody")
                 .exchange()
                 .expectStatus().isEqualTo(HttpStatus.UNAUTHORIZED);
@@ -79,7 +79,7 @@ class AuthorizationEndpointsIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void projectionAllowsQueryingGroupGrantedType() {
-        webTestClient.post().uri("/entity/projection")
+        webTestClient.post().uri("/api/entity/projection")
                 .header("X-Ntrloc-User", "alice")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("""
@@ -91,7 +91,7 @@ class AuthorizationEndpointsIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void projectionMasksInaccessibleTypeAsNotFound() {
-        webTestClient.post().uri("/entity/projection")
+        webTestClient.post().uri("/api/entity/projection")
                 .header("X-Ntrloc-User", "alice")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("""
@@ -103,7 +103,7 @@ class AuthorizationEndpointsIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void projectionAllowsDirectUserGrantedType() {
-        webTestClient.post().uri("/entity/projection")
+        webTestClient.post().uri("/api/entity/projection")
                 .header("X-Ntrloc-User", "carol")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("""
@@ -115,7 +115,7 @@ class AuthorizationEndpointsIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void projectionMasksTypeNotGrantedToDirectUser() {
-        webTestClient.post().uri("/entity/projection")
+        webTestClient.post().uri("/api/entity/projection")
                 .header("X-Ntrloc-User", "carol")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("""
@@ -127,7 +127,7 @@ class AuthorizationEndpointsIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void schemaViewShowsAllTypesForSuperuser() {
-        webTestClient.get().uri("/schema")
+        webTestClient.get().uri("/api/schema")
                 .header("X-Ntrloc-User", "root")
                 .exchange()
                 .expectStatus().isOk()
@@ -141,7 +141,7 @@ class AuthorizationEndpointsIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void projectionAllowsSuperuserOnUnmarkedType() {
-        webTestClient.post().uri("/entity/projection")
+        webTestClient.post().uri("/api/entity/projection")
                 .header("X-Ntrloc-User", "root")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("""
@@ -153,7 +153,7 @@ class AuthorizationEndpointsIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void projectionMasksUnmarkedTypeForNonSuperuser() {
-        webTestClient.post().uri("/entity/projection")
+        webTestClient.post().uri("/api/entity/projection")
                 .header("X-Ntrloc-User", "alice")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("""

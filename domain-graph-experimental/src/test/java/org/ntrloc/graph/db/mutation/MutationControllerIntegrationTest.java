@@ -1,5 +1,6 @@
 package org.ntrloc.graph.db.mutation;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.coordinator.CoordinatorTestDomainInitializer;
@@ -30,6 +31,17 @@ class MutationControllerIntegrationTest extends AbstractIntegrationTest {
     @Autowired
     private CoordinatorTestDomainInitializer fixture;
 
+    // MutationController now resolves a principal for ledger attribution (EntityManager.mutate's
+    // own note) -- with ntrloc.security.enabled=false in test config, PrincipalResolver falls
+    // through to the header/query-param stand-in (its own javadoc: only reachable when security
+    // is disabled). "root" is AuthorizationTestDataInitializer's globally-seeded superuser
+    // (ProcessEngineIntegrationTest already relies on the same one), not a value invented for
+    // this file specifically.
+    @BeforeEach
+    void authenticateAsStandInUser() {
+        webTestClient = webTestClient.mutate().defaultHeader("X-Ntrloc-User", "root").build();
+    }
+
     @Test
     void createTwoItemsAndLinkThemInOneRequest_usingRefIdNewReferences() {
         MutationRequest request = new MutationRequest(
@@ -44,7 +56,7 @@ class MutationControllerIntegrationTest extends AbstractIntegrationTest {
                                 Map.of("role", "author"))
                 ));
 
-        MutationResponse response = webTestClient.post().uri("/mutation")
+        MutationResponse response = webTestClient.post().uri("/api/mutation")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(request)
                 .exchange()
@@ -75,7 +87,7 @@ class MutationControllerIntegrationTest extends AbstractIntegrationTest {
                 }
                 """.formatted(PRODUCT_TYPE);
 
-        webTestClient.post().uri("/mutation")
+        webTestClient.post().uri("/api/mutation")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(rawJson)
                 .exchange()
@@ -87,7 +99,7 @@ class MutationControllerIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void updateThenDeleteThroughEndpoint_appliesAndCascades() {
-        MutationResponse createResponse = webTestClient.post().uri("/mutation")
+        MutationResponse createResponse = webTestClient.post().uri("/api/mutation")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(new MutationRequest(
                         List.of(new ItemCreateMutation("p", PRODUCT_TYPE, Map.of("name", "Widget")),
@@ -101,7 +113,7 @@ class MutationControllerIntegrationTest extends AbstractIntegrationTest {
         UUID realProductId = createResponse.items().stream().filter(r -> "p".equals(r.refId())).findFirst().orElseThrow().itemId();
         UUID realContributorId = createResponse.items().stream().filter(r -> "c".equals(r.refId())).findFirst().orElseThrow().itemId();
 
-        webTestClient.post().uri("/mutation")
+        webTestClient.post().uri("/api/mutation")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(new MutationRequest(List.of(), List.of(
                         new LinkCreateMutation(
@@ -112,7 +124,7 @@ class MutationControllerIntegrationTest extends AbstractIntegrationTest {
                 .exchange()
                 .expectStatus().isOk();
 
-        webTestClient.post().uri("/mutation")
+        webTestClient.post().uri("/api/mutation")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(new MutationRequest(List.of(new ItemUpdateMutation(realProductId, Map.of("name", "Widget Pro"))), List.of()))
                 .exchange()
@@ -122,7 +134,7 @@ class MutationControllerIntegrationTest extends AbstractIntegrationTest {
         assertThat(updated.properties()).containsEntry("name", "Widget Pro");
 
         // Deleting the product alone should auto-cascade the link, per ItemDeleteCascadeExpander.
-        webTestClient.post().uri("/mutation")
+        webTestClient.post().uri("/api/mutation")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(new MutationRequest(List.of(new ItemDeleteMutation(realProductId)), List.of()))
                 .exchange()
@@ -145,7 +157,7 @@ class MutationControllerIntegrationTest extends AbstractIntegrationTest {
 
         // Both endpoints are independently invalid (unknown refId, unknown existing item) --
         // both errors must come back together in one response, not just the first one found.
-        MutationErrorResponse errorResponse = webTestClient.post().uri("/mutation")
+        MutationErrorResponse errorResponse = webTestClient.post().uri("/api/mutation")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(request)
                 .exchange()
@@ -163,7 +175,7 @@ class MutationControllerIntegrationTest extends AbstractIntegrationTest {
         MutationRequest request = new MutationRequest(
                 List.of(new ItemCreateMutation(null, "NoSuchItemType", Map.of())), List.of());
 
-        MutationErrorResponse errorResponse = webTestClient.post().uri("/mutation")
+        MutationErrorResponse errorResponse = webTestClient.post().uri("/api/mutation")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(request)
                 .exchange()
@@ -185,7 +197,7 @@ class MutationControllerIntegrationTest extends AbstractIntegrationTest {
                 ),
                 List.of());
 
-        MutationErrorResponse errorResponse = webTestClient.post().uri("/mutation")
+        MutationErrorResponse errorResponse = webTestClient.post().uri("/api/mutation")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(request)
                 .exchange()
@@ -204,7 +216,7 @@ class MutationControllerIntegrationTest extends AbstractIntegrationTest {
         MutationRequest request = new MutationRequest(
                 List.of(new ItemCreateMutation(null, PRODUCT_TYPE, Map.of("name", 42))), List.of());
 
-        MutationErrorResponse errorResponse = webTestClient.post().uri("/mutation")
+        MutationErrorResponse errorResponse = webTestClient.post().uri("/api/mutation")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(request)
                 .exchange()
@@ -226,7 +238,7 @@ class MutationControllerIntegrationTest extends AbstractIntegrationTest {
                 ))),
                 List.of());
 
-        webTestClient.post().uri("/mutation")
+        webTestClient.post().uri("/api/mutation")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(request)
                 .exchange()
@@ -238,7 +250,7 @@ class MutationControllerIntegrationTest extends AbstractIntegrationTest {
         MutationRequest request = new MutationRequest(
                 List.of(new ItemCreateMutation(null, PRODUCT_TYPE, Map.of("tags", "not-a-list"))), List.of());
 
-        MutationErrorResponse errorResponse = webTestClient.post().uri("/mutation")
+        MutationErrorResponse errorResponse = webTestClient.post().uri("/api/mutation")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(request)
                 .exchange()
@@ -255,7 +267,7 @@ class MutationControllerIntegrationTest extends AbstractIntegrationTest {
         MutationRequest request = new MutationRequest(
                 List.of(new ItemCreateMutation(null, PRODUCT_TYPE, Map.of("tags", List.of("blue", "blue")))), List.of());
 
-        MutationErrorResponse errorResponse = webTestClient.post().uri("/mutation")
+        MutationErrorResponse errorResponse = webTestClient.post().uri("/api/mutation")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(request)
                 .exchange()
@@ -272,7 +284,7 @@ class MutationControllerIntegrationTest extends AbstractIntegrationTest {
         MutationRequest request = new MutationRequest(
                 List.of(new ItemCreateMutation(null, PRODUCT_TYPE, Map.of("releaseDate", "not-a-date"))), List.of());
 
-        MutationErrorResponse errorResponse = webTestClient.post().uri("/mutation")
+        MutationErrorResponse errorResponse = webTestClient.post().uri("/api/mutation")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(request)
                 .exchange()

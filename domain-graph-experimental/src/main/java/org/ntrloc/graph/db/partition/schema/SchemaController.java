@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/schema")
+@RequestMapping("/api/schema")
 public class SchemaController {
 
     private final SchemaManager schemaManager;

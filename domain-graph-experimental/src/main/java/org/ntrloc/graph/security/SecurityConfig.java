@@ -180,12 +180,17 @@ public class SecurityConfig {
         // "empty means try the next manager" doesn't apply here, so failure must be signaled by
         // erroring, not by completing empty (which AuthenticationWebFilter does not treat as a
         // normal rejection when used this way).
+        // The principal set here is the full NtrlocPrincipal PersonalAccessTokenService.authenticate
+        // already resolved (id, groupIds, isSuperuser, displayName included) -- not just the
+        // externalId string this used to pass. Same "already-resolved, no second SecurityRepository
+        // round-trip" shape as NtrlocUserDetails gives local-credential logins; PrincipalResolver's
+        // fast path picks either up identically via instanceof NtrlocPrincipal.
         return authentication -> Mono.fromCallable(() ->
                         personalAccessTokenService.authenticate((String) authentication.getCredentials()))
                 .subscribeOn(Schedulers.boundedElastic())
                 .flatMap(opt -> opt
-                        .<org.springframework.security.core.Authentication>map(user ->
-                                UsernamePasswordAuthenticationToken.authenticated(user.externalId(), null, List.of()))
+                        .<org.springframework.security.core.Authentication>map(principal ->
+                                UsernamePasswordAuthenticationToken.authenticated(principal, null, List.of()))
                         .map(Mono::just)
                         .orElseGet(() -> Mono.error(new BadCredentialsException("Invalid or expired personal access token"))));
     }

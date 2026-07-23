@@ -11,7 +11,7 @@ import java.util.Map;
 @RestController
 public class CsrfController {
 
-    @GetMapping("/csrf")
+    @GetMapping("/api/csrf")
     public Mono<Map<String, String>> csrf(ServerWebExchange exchange) {
         try {
             return exchange.getAttributeOrDefault(

@@ -1,19 +1,21 @@
 package org.ntrloc.graph.db.partition.schema;
 
-import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
+import com.hazelcast.topic.ITopic;
+import org.ntrloc.graph.cluster.ClusterService;
 import org.ntrloc.graph.db.partition.authorization.PermissionService;
-import org.ntrloc.graph.domain.DomainInitializer;
-import org.ntrloc.graph.db.partition.schema.AllowedValue;
-import org.ntrloc.graph.db.partition.schema.ControlledListManager;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateItemDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateItemPropertyDefinitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateLinkDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateLinkPropertyDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateTraitDefinitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.DefinitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.DeleteItemDefinitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.DeleteLinkDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DeletePropertyDefinitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.DeleteTraitDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.ImplementTraitMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.RemoveTraitMutation;
-import org.ntrloc.graph.db.partition.schema.definition.mutation.DefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.ReplaceControlledListMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.UpdateItemDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.UpdatePerspectiveDefinitionMutation;
@@ -34,19 +36,22 @@ import org.ntrloc.graph.db.partition.schema.definition.view.calculated.ItemLinkP
 import org.ntrloc.graph.db.partition.schema.definition.view.calculated.PropertyDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.calculated.SchemaView;
 import org.ntrloc.graph.db.partition.schema.definition.view.calculated.TraitDefinitionView;
+import org.ntrloc.graph.db.partition.schema.event.SchemaChangeEvent;
 import org.ntrloc.graph.db.partition.schema.repository.SchemaRepository;
 import org.ntrloc.graph.db.partition.schema.repository.SchemaRepository.ItemRow;
 import org.ntrloc.graph.db.partition.schema.repository.SchemaRepository.TraitRow;
+import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.DependsOn;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -56,19 +61,42 @@ import java.util.stream.Stream;
 @DependsOn("schemaInitializer")
 public class SchemaManager {
 
+    // Cluster-wide "the schema changed, refresh your own copy" signal -- an ITopic, not the
+    // IMap.put()-as-a-side-channel trick the old domain-graph-starter SchemaManagerImpl used
+    // (its own comment flagged that as a hack). Every node's own SchemaManager, including the one
+    // that made the change, subscribes; the publishing node's rebuild already happened locally
+    // (see applyMutations), so its own message is filtered out by publishing-member comparison
+    // rather than skipped some other way.
+    private static final String SCHEMA_CHANGED_TOPIC = "schemaChanged";
+
     private final SchemaRepository repo;
     private final ControlledListManager controlledListManager;
     private final PermissionService permissionService;
+    private final ApplicationEventPublisher eventPublisher;
+    private final ClusterService clusterService;
+    private final ITopic<String> schemaChangedTopic;
 
-    private AdminSchemaView cachedAdminSchema;
-    private SchemaView cachedSchema;
+    // volatile: rebuildCache() can now run on the Hazelcast message-listener thread (a remote
+    // node's change arriving) as well as on whatever thread called applyMutations() -- readers of
+    // getAdminSchema()/getSchema() need to see a completed rebuild from either thread promptly,
+    // not just eventually.
+    private volatile AdminSchemaView cachedAdminSchema;
+    private volatile SchemaView cachedSchema;
 
-    public SchemaManager(SchemaRepository repo, ControlledListManager controlledListManager, Optional<DomainInitializer> domainInitializer, PermissionService permissionService) {
+    public SchemaManager(SchemaRepository repo, ControlledListManager controlledListManager, PermissionService permissionService, ApplicationEventPublisher eventPublisher, ClusterService clusterService) {
         this.repo = repo;
         this.controlledListManager = controlledListManager;
         this.permissionService = permissionService;
-        domainInitializer.ifPresent(d -> d.initSchema(repo, controlledListManager));
+        this.eventPublisher = eventPublisher;
+        this.clusterService = clusterService;
         rebuildCache();
+
+        this.schemaChangedTopic = clusterService.getTopic(SCHEMA_CHANGED_TOPIC);
+        schemaChangedTopic.addMessageListener(message -> {
+            if (!message.getPublishingMember().equals(clusterService.getLocalMember())) {
+                rebuildCache();
+            }
+        });
     }
 
     private void rebuildCache() {
@@ -81,17 +109,31 @@ public class SchemaManager {
             switch (mutation) {
                 case CreateItemDefinitionMutation m -> {
                     var item = repo.createItem(m.name(), m.description());
+                    Set<String> usedNames = new HashSet<>();
                     for (var p : m.properties()) {
+                        requireUniqueName(usedNames, p.name(), "item type '" + m.name() + "'");
                         var prop = repo.createProperty(p.name(), p.description(), p.propertyType(), p.cardinality(), p.usage());
                         repo.associateItemProperty(item.id(), prop.id());
                     }
+                    eventPublisher.publishEvent(new SchemaChangeEvent.ItemTypeCreated(item.id()));
+                }
+                case DeleteItemDefinitionMutation m -> {
+                    repo.deleteItem(m.id());
+                    eventPublisher.publishEvent(new SchemaChangeEvent.ItemTypeDeleted(m.id()));
                 }
                 case CreateTraitDefinitionMutation m -> {
                     var trait = repo.createTrait(m.name(), m.description());
+                    Set<String> usedNames = new HashSet<>();
                     for (var p : m.properties()) {
+                        requireUniqueName(usedNames, p.name(), "trait '" + m.name() + "'");
                         var prop = repo.createProperty(p.name(), p.description(), p.propertyType(), p.cardinality(), p.usage());
                         repo.associateTraitProperty(trait.id(), prop.id());
                     }
+                    eventPublisher.publishEvent(new SchemaChangeEvent.TraitCreated(trait.id()));
+                }
+                case DeleteTraitDefinitionMutation m -> {
+                    repo.deleteTrait(m.id());
+                    eventPublisher.publishEvent(new SchemaChangeEvent.TraitDeleted(m.id()));
                 }
                 case ImplementTraitMutation m ->
                         repo.implementTrait(m.itemId(), m.traitId());
@@ -100,10 +142,12 @@ public class SchemaManager {
                 case UpdateItemDefinitionMutation m ->
                         repo.updateItem(m.id(), m.name(), m.description());
                 case CreateItemPropertyDefinitionMutation m -> {
+                    requireNameNotAssociated(repo.getPropertiesByItem(), m.itemId(), m.name(), "this item type");
                     var prop = repo.createProperty(m.name(), m.description(), m.propertyType(), m.cardinality(), m.usage());
                     repo.associateItemProperty(m.itemId(), prop.id());
                 }
                 case CreateLinkPropertyDefinitionMutation m -> {
+                    requireNameNotAssociated(repo.getPropertiesByLink(), m.linkId(), m.name(), "this link type");
                     var prop = repo.createProperty(m.name(), m.description(), m.propertyType(), m.cardinality(), m.usage());
                     repo.associateLinkProperty(m.linkId(), prop.id());
                 }
@@ -111,6 +155,25 @@ public class SchemaManager {
                         repo.updateProperty(m.id(), m.name(), m.description(), m.propertyType(), m.cardinality(), m.usage());
                 case DeletePropertyDefinitionMutation m ->
                         repo.deleteProperty(m.id());
+                case CreateLinkDefinitionMutation m -> {
+                    UUID linkId = repo.createLink();
+                    Set<String> usedNames = new HashSet<>();
+                    for (var p : m.properties()) {
+                        requireUniqueName(usedNames, p.name(), "this link type");
+                        var prop = repo.createProperty(p.name(), p.description(), p.propertyType(), p.cardinality(), p.usage());
+                        repo.associateLinkProperty(linkId, prop.id());
+                    }
+                    for (var perspective : m.perspectives()) {
+                        requireKnownItemOrTrait(perspective.itemId());
+                        repo.createPerspective(perspective.itemId(), linkId, perspective.name(), perspective.description(),
+                                perspective.minCardinality(), perspective.maxCardinality());
+                    }
+                    eventPublisher.publishEvent(new SchemaChangeEvent.LinkTypeCreated(linkId));
+                }
+                case DeleteLinkDefinitionMutation m -> {
+                    repo.deleteLink(m.id());
+                    eventPublisher.publishEvent(new SchemaChangeEvent.LinkTypeDeleted(m.id()));
+                }
                 case UpdatePerspectiveDefinitionMutation m ->
                         repo.updatePerspective(m.id(), m.name(), m.description(), m.minCardinality(), m.maxCardinality());
                 case ReplaceControlledListMutation m -> {
@@ -123,6 +186,43 @@ public class SchemaManager {
             }
         }
         rebuildCache();
+        schemaChangedTopic.publish(UUID.randomUUID().toString());
+    }
+
+    // A property's name only needs to be unique within whichever single item/trait/link type
+    // it's associated with -- different types legitimately have their own distinct property
+    // row (different id) sharing the same name. These two checks enforce that at the type
+    // level, since the DB's schema_property table itself no longer enforces uniqueness (the
+    // association is a separate join table, not a column here).
+    private void requireUniqueName(Set<String> namesSeenSoFar, String name, String context) {
+        if (!namesSeenSoFar.add(name)) {
+            throw new IllegalArgumentException("Property '" + name + "' is defined more than once for " + context);
+        }
+    }
+
+    private void requireNameNotAssociated(Map<UUID, List<AdminPropertyDefinitionView>> propertiesByOwner, UUID ownerId, String name, String context) {
+        boolean collision = propertiesByOwner.getOrDefault(ownerId, List.of()).stream()
+                .anyMatch(p -> p.name().equals(name));
+        if (collision) {
+            throw new IllegalArgumentException("Property '" + name + "' already exists on " + context);
+        }
+    }
+
+    // Despite the parameter name (CreatePerspectiveDefinitionMutation.itemId(), inherited here),
+    // a perspective can target either an item type or a trait -- schema_item.id and
+    // schema_trait.id are both valid values for schema_entity_link_perspective.entity_id (see
+    // that column's own comment in SchemaInitializer -- it's deliberately polymorphic and has no
+    // FK constraint of its own, so this is the only place a bad id gets caught at all). Checking
+    // only getAllItems() meant any perspective whose target was actually a trait (e.g. Pack ->
+    // PackComponent, where PackComponent is a trait implemented by several item types, not an
+    // item type itself) threw "Unknown item" here even though the id was perfectly valid -- just
+    // valid for a trait.
+    private void requireKnownItemOrTrait(UUID id) {
+        boolean known = repo.getAllItems().stream().anyMatch(item -> item.id().equals(id))
+                || repo.getAllTraits().stream().anyMatch(trait -> trait.id().equals(id));
+        if (!known) {
+            throw new IllegalArgumentException("Unknown item or trait: " + id);
+        }
     }
 
     public AdminSchemaView getAdminSchema() {
@@ -170,14 +270,14 @@ public class SchemaManager {
         var items  = repo.getAllItems();
         var traits = repo.getAllTraits();
 
-        // entity_id → name (for resolving perspective targets)
+        // id → name (for resolving perspective targets, which are keyed by item-or-trait id)
         Map<UUID, String> entityNameMap = new HashMap<>();
-        items.forEach(i -> entityNameMap.put(i.entityId(), i.name()));
-        traits.forEach(t -> entityNameMap.put(t.entityId(), t.name()));
+        items.forEach(i -> entityNameMap.put(i.id(), i.name()));
+        traits.forEach(t -> entityNameMap.put(t.id(), t.name()));
 
-        // item entity IDs — used to determine targetKind on link perspectives
+        // item ids — used to determine targetKind on link perspectives
         Set<UUID> itemEntityIds = items.stream()
-                .map(ItemRow::entityId)
+                .map(ItemRow::id)
                 .collect(Collectors.toSet());
 
         var propertiesByItem     = repo.getPropertiesByItem();
@@ -207,23 +307,23 @@ public class SchemaManager {
             var allProps = Stream.concat(ownProps.stream(), traitProps.stream()).toList();
 
             // Own link perspectives (definedIn = null) + trait-inherited perspectives
-            var ownLinks = buildPerspectiveAdminViews(item.entityId(), perspectivesByEntity, entityNameMap, itemEntityIds, null);
+            var ownLinks = buildPerspectiveAdminViews(item.id(), perspectivesByEntity, entityNameMap, itemEntityIds, null);
             var traitLinks = traitIds.stream()
                     .map(traitId -> {
                         var trait = traitById.get(traitId);
                         var definedIn = new DefinedInView("trait", trait.name());
-                        return buildPerspectiveAdminViews(trait.entityId(), perspectivesByEntity, entityNameMap, itemEntityIds, definedIn);
+                        return buildPerspectiveAdminViews(trait.id(), perspectivesByEntity, entityNameMap, itemEntityIds, definedIn);
                     })
                     .filter(m -> m != null && !m.isEmpty())
                     .reduce(new LinkedHashMap<>(), (acc, m) -> { acc.putAll(m); return acc; });
 
             var allLinks = mergeLinkAdminMaps(ownLinks, traitLinks);
-            return new AdminItemDefinitionView(item.id(), item.entityId(), item.name(), item.description(), traitRefs, allProps, allLinks, sortableFieldsFor(allProps));
+            return new AdminItemDefinitionView(item.id(), item.name(), item.description(), traitRefs, allProps, allLinks, sortableFieldsFor(allProps));
         }).toList();
 
         var traitViews = traits.stream().map(trait -> {
             var props = propertiesByTrait.getOrDefault(trait.id(), List.of());
-            var links = buildPerspectiveAdminViews(trait.entityId(), perspectivesByEntity, entityNameMap, itemEntityIds, null);
+            var links = buildPerspectiveAdminViews(trait.id(), perspectivesByEntity, entityNameMap, itemEntityIds, null);
             return new AdminTraitDefinitionView(trait.id(), trait.name(), trait.description(), props, links, sortableFieldsFor(props));
         }).toList();
 
@@ -273,11 +373,11 @@ public class SchemaManager {
         var traits = repo.getAllTraits();
 
         Map<UUID, String> entityNameMap = new HashMap<>();
-        items.forEach(i -> entityNameMap.put(i.entityId(), i.name()));
-        traits.forEach(t -> entityNameMap.put(t.entityId(), t.name()));
+        items.forEach(i -> entityNameMap.put(i.id(), i.name()));
+        traits.forEach(t -> entityNameMap.put(t.id(), t.name()));
 
         Set<UUID> itemEntityIds = items.stream()
-                .map(ItemRow::entityId)
+                .map(ItemRow::id)
                 .collect(Collectors.toSet());
 
         var propertiesByItem  = repo.getPropertiesByItem();
@@ -305,12 +405,12 @@ public class SchemaManager {
                     .toList();
             var allProps = Stream.concat(ownProps.stream(), traitProps.stream()).toList();
 
-            var ownLinks = buildPerspectiveViews(item.entityId(), perspectivesByEntity, entityNameMap, itemEntityIds, propertiesByLink, null);
+            var ownLinks = buildPerspectiveViews(item.id(), perspectivesByEntity, entityNameMap, itemEntityIds, propertiesByLink, null);
             var traitLinks = traitIds.stream()
                     .map(traitId -> {
                         var trait = traitById.get(traitId);
                         var definedIn = new DefinedInView("trait", trait.name());
-                        return buildPerspectiveViews(trait.entityId(), perspectivesByEntity, entityNameMap, itemEntityIds, propertiesByLink, definedIn);
+                        return buildPerspectiveViews(trait.id(), perspectivesByEntity, entityNameMap, itemEntityIds, propertiesByLink, definedIn);
                     })
                     .filter(m -> m != null && !m.isEmpty())
                     .reduce(new LinkedHashMap<>(), (acc, m) -> { acc.putAll(m); return acc; });
@@ -331,7 +431,7 @@ public class SchemaManager {
             var props = adminProps.stream()
                     .map(p -> new PropertyDefinitionView(p.id(), p.name(), p.description(), p.type(), p.cardinality(), null, allowedValuesFor(p)))
                     .toList();
-            var links = buildPerspectiveViews(trait.entityId(), perspectivesByEntity, entityNameMap, itemEntityIds, propertiesByLink, null);
+            var links = buildPerspectiveViews(trait.id(), perspectivesByEntity, entityNameMap, itemEntityIds, propertiesByLink, null);
             return new TraitDefinitionView(trait.id(), trait.name(), trait.description(), props, links, sortableFieldsFor(adminProps));
         }).toList();
 

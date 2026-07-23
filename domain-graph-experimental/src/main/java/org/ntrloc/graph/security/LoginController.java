@@ -1,5 +1,6 @@
 package org.ntrloc.graph.security;
 
+import org.ntrloc.graph.branding.BrandingProperties;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -10,21 +11,25 @@ import reactor.core.publisher.Mono;
 public class LoginController {
 
     private final AuthProperties authProperties;
+    private final BrandingProperties brandingProperties;
 
-    public LoginController(AuthProperties authProperties) {
+    public LoginController(AuthProperties authProperties, BrandingProperties brandingProperties) {
         this.authProperties = authProperties;
+        this.brandingProperties = brandingProperties;
     }
 
     @GetMapping(value = "/login", produces = MediaType.TEXT_HTML_VALUE)
     public Mono<String> loginPage(
             @RequestParam(required = false) String error) {
 
+        String displayName = brandingProperties.displayName();
         StringBuilder html = new StringBuilder();
         html.append("""
             <!DOCTYPE html>
             <html>
             <head>
-                <title>ntrloc Login</title>
+                <title>%s Login</title>""".formatted(displayName));
+        html.append("""
                 <style>
                     body { font-family: sans-serif; display: flex; justify-content: center;
                            align-items: center; height: 100vh; margin: 0; background: #f5f5f5; }
@@ -51,8 +56,8 @@ public class LoginController {
             </head>
             <body>
             <div class="login-container">
-                <h2>ntrloc</h2>
             """);
+        html.append("<h2>%s</h2>".formatted(displayName));
 
         if (error != null) {
             html.append("""

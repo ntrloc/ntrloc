@@ -2,7 +2,6 @@ package org.ntrloc.graph.db.partition.security;
 
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository.PersonalAccessTokenRow;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository.UserRow;
 import org.springframework.stereotype.Service;
 
 import java.nio.charset.StandardCharsets;
@@ -46,9 +45,17 @@ public class PersonalAccessTokenService {
         repo.revokeToken(tokenId, principal.id());
     }
 
-    /** Resolves a presented raw token to its owning user, if it exists and hasn't expired. */
-    public Optional<UserRow> authenticate(String rawToken) {
-        return repo.findUserByValidTokenHash(hash(rawToken));
+    // Returns the full NtrlocPrincipal, not just the UserRow -- SecurityConfig's PAT
+    // authentication manager sets this directly as the resulting Authentication's principal
+    // object, the same "already-resolved, no second SecurityRepository round-trip needed" shape
+    // NtrlocUserDetails gives local-credential logins (see that class's own comment, and
+    // PrincipalResolver.resolveFromAuthenticatedSession's fast path).
+    /** Resolves a presented raw token to its owning user's full principal, if the token is valid and hasn't expired. */
+    public Optional<NtrlocPrincipal> authenticate(String rawToken) {
+        return repo.findUserByValidTokenHash(hash(rawToken))
+                .map(user -> new ResolvedPrincipal(
+                        user.id(), user.externalId(), user.displayName(),
+                        repo.getGroupIdsForUser(user.id()), user.isSuperuser()));
     }
 
     private static String generateToken() {

@@ -16,7 +16,6 @@ public class SchemaInitializer {
     @PostConstruct
     void initSchema() {
         dropAllTables();
-        initEntityTable();
         initItemTable();
         initTraitTable();
         initLinkTable();
@@ -50,19 +49,10 @@ public class SchemaInitializer {
         jdbcClient.sql("DROP TABLE IF EXISTS schema_controlled_list CASCADE").update();
     }
 
-    void initEntityTable() {
-        jdbcClient.sql("""
-                CREATE TABLE IF NOT EXISTS schema_entity (
-                    id UUID PRIMARY KEY DEFAULT uuidv7()
-                )
-                """).update();
-    }
-
     void initItemTable() {
         jdbcClient.sql("""
                 CREATE TABLE IF NOT EXISTS schema_item (
                     id          UUID PRIMARY KEY DEFAULT uuidv7(),
-                    entity_id   UUID NOT NULL UNIQUE REFERENCES schema_entity(id) ON DELETE CASCADE,
                     name        TEXT NOT NULL UNIQUE,
                     description TEXT
                 )
@@ -73,7 +63,6 @@ public class SchemaInitializer {
         jdbcClient.sql("""
                 CREATE TABLE IF NOT EXISTS schema_trait (
                     id          UUID PRIMARY KEY DEFAULT uuidv7(),
-                    entity_id   UUID NOT NULL UNIQUE REFERENCES schema_entity(id) ON DELETE CASCADE,
                     name        TEXT NOT NULL UNIQUE,
                     description TEXT
                 )
@@ -99,10 +88,15 @@ public class SchemaInitializer {
     }
 
     void initPropertyTable() {
+        // name is intentionally not unique here -- a property's name only needs to be unique
+        // within whichever single item/trait/link type it's associated with (enforced in
+        // SchemaManager, since the association is a separate join table, not a column here).
+        // Two different types legitimately have their own distinct property row (different id)
+        // that happens to share a name, e.g. Product.name and Contributor.name.
         jdbcClient.sql("""
                 CREATE TABLE IF NOT EXISTS schema_property (
                     id                 UUID PRIMARY KEY DEFAULT uuidv7(),
-                    name               TEXT NOT NULL UNIQUE,
+                    name               TEXT NOT NULL,
                     description        TEXT,
                     type               TEXT NOT NULL,
                     cardinality        TEXT NOT NULL,
@@ -152,11 +146,15 @@ public class SchemaInitializer {
                 """).update();
     }
 
+    // entity_id has no FK constraint here -- it's deliberately polymorphic, holding either a
+    // schema_item.id or a schema_trait.id (the two tables share no common parent to reference
+    // now that schema_entity is gone; see SchemaManager.applyMutations' validation of this value
+    // against both tables at write time, the only place that constraint can be enforced).
     void initEntityLinkPerspectiveTable() {
         jdbcClient.sql("""
                 CREATE TABLE IF NOT EXISTS schema_entity_link_perspective (
                     id                  UUID PRIMARY KEY DEFAULT uuidv7(),
-                    entity_id           UUID NOT NULL REFERENCES schema_entity(id) ON DELETE CASCADE,
+                    entity_id           UUID NOT NULL,
                     link_definition_id  UUID NOT NULL REFERENCES schema_link(id) ON DELETE CASCADE,
                     name                TEXT NOT NULL,
                     description         TEXT,
