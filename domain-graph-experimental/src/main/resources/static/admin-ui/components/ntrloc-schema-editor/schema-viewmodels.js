@@ -172,6 +172,145 @@ class TraitAssignmentViewModel {
   }
 }
 
+// A transition is always owned by exactly one StateViewModel (its "from" state) -- fromStateId
+// isn't tracked on the instance itself (unlike toStateId) because it's never edited in place; it's
+// implicit in whichever state.transitions array the instance lives in, the same way a
+// PropertyDefinitionViewModel doesn't carry its own owning item/trait/link id.
+//
+// toStateId is set once at creation and never revised after that: UpdateTransitionMutation has no
+// toStateId field at all (id/name/description/processId/guardCondition only), so the states editor
+// only lets it be picked while the row is still new -- matching how ntrloc-property-table.js
+// likewise locks a property's type down as soon as it's saved.
+class TransitionViewModel {
+  constructor(args) {
+    this.id = args.id;
+    this.toStateId = args.toStateId;
+    this.toStateName = args.toStateName;
+    this.name = args.name;
+    this.originalName = args.name;
+    this.description = args.description;
+    this.originalDescription = args.description;
+    this.processId = args.processId;
+    this.originalProcessId = args.processId;
+    this.guardCondition = args.guardCondition;
+    this.originalGuardCondition = args.guardCondition;
+    this.isNew = args.isNew;
+    this.isDeleted = false;
+  }
+
+  get isDirty() {
+    return this.isNew
+      || this.isDeleted
+      || this.name !== this.originalName
+      || (this.description ?? '') !== (this.originalDescription ?? '')
+      || (this.processId ?? '') !== (this.originalProcessId ?? '')
+      || JSON.stringify(this.guardCondition ?? null) !== JSON.stringify(this.originalGuardCondition ?? null);
+  }
+
+  revert() {
+    this.name = this.originalName;
+    this.description = this.originalDescription;
+    this.processId = this.originalProcessId;
+    this.guardCondition = this.originalGuardCondition;
+    this.isDeleted = false;
+  }
+
+  static fromAdmin(t) {
+    return new TransitionViewModel({
+      id: t.id,
+      toStateId: t.toStateId,
+      toStateName: t.toStateName,
+      name: t.name,
+      description: t.description,
+      processId: t.processId,
+      guardCondition: t.guardCondition ?? null,
+      isNew: false,
+    });
+  }
+
+  static create(toStateId = null) {
+    return new TransitionViewModel({
+      id: null,
+      toStateId,
+      toStateName: null,
+      name: '',
+      description: null,
+      processId: null,
+      guardCondition: null,
+      isNew: true,
+    });
+  }
+}
+
+// A state's own fields plus its outgoing transitions. Like ItemLinkPerspectiveViewModel, a
+// not-yet-saved (isNew) state has no real id yet -- CREATE_TRANSITION needs a real fromStateId, so
+// the states editor only allows adding transitions to a state once it's been saved (matching the
+// established "save the item first before adding links" restriction for CREATE_LINK's itemId).
+class StateViewModel {
+  constructor(args) {
+    this.id = args.id;
+    this.name = args.name;
+    this.originalName = args.name;
+    this.description = args.description;
+    this.originalDescription = args.description;
+    this.isInitial = args.isInitial;
+    this.originalIsInitial = args.isInitial;
+    this.entryProcessId = args.entryProcessId;
+    this.originalEntryProcessId = args.entryProcessId;
+    this.exitProcessId = args.exitProcessId;
+    this.originalExitProcessId = args.exitProcessId;
+    this.transitions = args.transitions;
+    this.isNew = args.isNew;
+    this.isDeleted = false;
+  }
+
+  get isDirty() {
+    if (this.isNew) return true;
+    if (this.isDeleted) return true;
+    return this.name !== this.originalName
+      || (this.description ?? '') !== (this.originalDescription ?? '')
+      || this.isInitial !== this.originalIsInitial
+      || (this.entryProcessId ?? '') !== (this.originalEntryProcessId ?? '')
+      || (this.exitProcessId ?? '') !== (this.originalExitProcessId ?? '')
+      || this.transitions.some((t) => t.isDirty);
+  }
+
+  revert() {
+    this.name = this.originalName;
+    this.description = this.originalDescription;
+    this.isInitial = this.originalIsInitial;
+    this.entryProcessId = this.originalEntryProcessId;
+    this.exitProcessId = this.originalExitProcessId;
+    this.isDeleted = false;
+  }
+
+  static fromAdmin(s) {
+    return new StateViewModel({
+      id: s.id,
+      name: s.name,
+      description: s.description,
+      isInitial: s.isInitial,
+      entryProcessId: s.entryProcessId,
+      exitProcessId: s.exitProcessId,
+      transitions: (s.transitions ?? []).map((t) => TransitionViewModel.fromAdmin(t)),
+      isNew: false,
+    });
+  }
+
+  static create() {
+    return new StateViewModel({
+      id: null,
+      name: '',
+      description: null,
+      isInitial: false,
+      entryProcessId: null,
+      exitProcessId: null,
+      transitions: [],
+      isNew: true,
+    });
+  }
+}
+
 class ItemDefinitionViewModel {
   constructor(args) {
     this.id = args.id;
@@ -182,6 +321,9 @@ class ItemDefinitionViewModel {
     this.properties = args.properties;
     this.links = args.links;
     this.traitAssignments = args.traitAssignments;
+    this.states = args.states;
+    this.initProcessId = args.initProcessId;
+    this.originalInitProcessId = args.initProcessId;
     this.isNew = args.isNew;
   }
 
@@ -191,7 +333,9 @@ class ItemDefinitionViewModel {
       || (this.description ?? '') !== (this.originalDescription ?? '')
       || this.properties.some((p) => p.isDirty)
       || this.traitAssignments.some((t) => t.isDirty)
-      || Object.values(this.links).some((perspectives) => perspectives.some((p) => p.isDirty));
+      || Object.values(this.links).some((perspectives) => perspectives.some((p) => p.isDirty))
+      || this.states.some((s) => s.isDirty)
+      || (this.initProcessId ?? '') !== (this.originalInitProcessId ?? '');
   }
 
   addTrait(ref) {
@@ -220,6 +364,8 @@ class ItemDefinitionViewModel {
       properties: (item.properties ?? []).map((p) => PropertyDefinitionViewModel.fromAdmin(p, propertyTypes)),
       links,
       traitAssignments: (item.traits ?? []).map((t) => new TraitAssignmentViewModel(t)),
+      states: (item.states ?? []).map((s) => StateViewModel.fromAdmin(s)),
+      initProcessId: item.initProcessId ?? null,
       isNew: false,
     });
   }
@@ -232,6 +378,8 @@ class ItemDefinitionViewModel {
       properties: [],
       links: {},
       traitAssignments: [],
+      states: [],
+      initProcessId: null,
       isNew: true,
     });
   }

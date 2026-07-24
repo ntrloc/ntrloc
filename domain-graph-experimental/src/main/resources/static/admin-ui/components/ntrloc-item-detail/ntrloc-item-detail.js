@@ -217,12 +217,13 @@ injectStyles('ntrloc-item-detail-styles', `
 // not on this instance, since this element is destroyed and recreated on every edit anywhere in
 // the tree.
 class NtrlocItemDetail extends HTMLElement {
-  configure({ item, entityKind, propertyTypes, availableTraits, allItems }) {
+  configure({ item, entityKind, propertyTypes, availableTraits, allItems, processOptions }) {
     this._item = item;
     this._entityKind = entityKind;
     this._propertyTypes = propertyTypes || [];
     this._availableTraits = availableTraits || [];
     this._allItems = allItems || [];
+    this._processOptions = processOptions || [];
     this.render();
   }
 
@@ -415,6 +416,8 @@ class NtrlocItemDetail extends HTMLElement {
       ${this.panel('properties', 'Properties', '<ntrloc-property-table class="properties-table"></ntrloc-property-table>')}
 
       ${this.panel('links', 'Links', this.linksBody())}
+
+      ${this.isItem ? this.panel('states', 'States', '<ntrloc-states-editor class="states-editor-el"></ntrloc-states-editor>') : ''}
     `;
 
     this.wireUp();
@@ -527,6 +530,11 @@ class NtrlocItemDetail extends HTMLElement {
     const linksTable = this.querySelector('.links-table-el');
     if (linksTable) {
       linksTable.data = { links: item.links, propertyTypes: this._propertyTypes };
+    }
+
+    const statesEditor = this.querySelector('.states-editor-el');
+    if (statesEditor) {
+      statesEditor.data = { item, processOptions: this._processOptions };
     }
 
     const addLinkButton = this.querySelector('.add-link-button');

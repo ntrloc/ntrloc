@@ -7,7 +7,8 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
 @JsonSubTypes({
     @JsonSubTypes.Type(value = AndPredicate.class,                name = "AND"),
     @JsonSubTypes.Type(value = OrPredicate.class,                 name = "OR"),
+    @JsonSubTypes.Type(value = NotPredicate.class,                name = "NOT"),
     @JsonSubTypes.Type(value = PropertyExistencePredicate.class,  name = "PROPERTY_EXISTS"),
     @JsonSubTypes.Type(value = PropertyValuePredicate.class,      name = "PROPERTY_VALUE")
 })
-public sealed interface Predicate permits AndPredicate, OrPredicate, PropertyExistencePredicate, PropertyValuePredicate {}
+public sealed interface Predicate permits AndPredicate, OrPredicate, NotPredicate, PropertyExistencePredicate, PropertyValuePredicate {}

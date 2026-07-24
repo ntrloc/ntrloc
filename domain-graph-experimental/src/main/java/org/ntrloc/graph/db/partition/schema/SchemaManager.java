@@ -8,18 +8,25 @@ import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateItemDefini
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateItemPropertyDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateLinkDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateLinkPropertyDefinitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateStateMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateTraitDefinitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateTransitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DeleteItemDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DeleteLinkDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DeletePropertyDefinitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.DeleteStateMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DeleteTraitDefinitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.DeleteTransitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.ImplementTraitMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.RemoveTraitMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.ReplaceControlledListMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.SetItemInitProcessMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.UpdateItemDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.UpdatePerspectiveDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.UpdatePropertyDefinitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.UpdateStateMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.UpdateTransitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.view.DefinedInView;
 import org.ntrloc.graph.db.partition.schema.definition.view.SortableFieldView;
 import org.ntrloc.graph.db.partition.schema.definition.view.TargetEntityView;
@@ -28,9 +35,12 @@ import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemLinkP
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminLinkView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminSchemaView;
+import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminStateView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminTraitDefinitionView;
+import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminTransitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.PropertyTypeView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.TraitRefView;
+import org.ntrloc.graph.db.partition.schema.repository.SchemaRepository.StateRow;
 import org.ntrloc.graph.db.partition.schema.definition.view.calculated.ItemDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.calculated.ItemLinkPerspectiveView;
 import org.ntrloc.graph.db.partition.schema.definition.view.calculated.PropertyDefinitionView;
@@ -181,6 +191,20 @@ public class SchemaManager {
                             .orElseThrow(() -> new IllegalArgumentException("No controlled list for property: " + m.propertyId()));
                     controlledListManager.replaceValues(list.id(), list.valueType(), m.values());
                 }
+                case CreateStateMutation m ->
+                        repo.createState(m.itemDefinitionId(), m.name(), m.description(), m.isInitial(), m.entryProcessId(), m.exitProcessId());
+                case UpdateStateMutation m ->
+                        repo.updateState(m.id(), m.name(), m.description(), m.isInitial(), m.entryProcessId(), m.exitProcessId());
+                case DeleteStateMutation m ->
+                        repo.deleteState(m.id());
+                case CreateTransitionMutation m ->
+                        repo.createTransition(m.fromStateId(), m.toStateId(), m.name(), m.description(), m.processId(), repo.serializeGuardCondition(m.guardCondition()));
+                case UpdateTransitionMutation m ->
+                        repo.updateTransition(m.id(), m.name(), m.description(), m.processId(), repo.serializeGuardCondition(m.guardCondition()));
+                case DeleteTransitionMutation m ->
+                        repo.deleteTransition(m.id());
+                case SetItemInitProcessMutation m ->
+                        repo.setItemInitProcess(m.itemId(), m.initProcessId());
                 default ->
                         throw new IllegalArgumentException("Unsupported mutation: " + mutation.getClass().getSimpleName());
             }
@@ -285,6 +309,8 @@ public class SchemaManager {
         var propertiesByLink     = repo.getPropertiesByLink();
         var perspectivesByEntity = repo.getPerspectivesByEntity();
         var traitIdsByItem       = repo.getTraitIdsByItem();
+        var statesByItem         = repo.getStatesByItem();
+        var transitionsByFromState = repo.getTransitionsByFromState();
 
         Map<UUID, TraitRow> traitById = traits.stream()
                 .collect(Collectors.toMap(TraitRow::id, t -> t));
@@ -318,7 +344,25 @@ public class SchemaManager {
                     .reduce(new LinkedHashMap<>(), (acc, m) -> { acc.putAll(m); return acc; });
 
             var allLinks = mergeLinkAdminMaps(ownLinks, traitLinks);
-            return new AdminItemDefinitionView(item.id(), item.name(), item.description(), traitRefs, allProps, allLinks, sortableFieldsFor(allProps));
+
+            var rawStates = statesByItem.get(item.id());
+            List<AdminStateView> stateViews = null;
+            if (rawStates != null && !rawStates.isEmpty()) {
+                Map<UUID, String> stateNameById = rawStates.stream()
+                        .collect(Collectors.toMap(StateRow::id, StateRow::name));
+                stateViews = rawStates.stream().map(state -> {
+                    var transitions = transitionsByFromState.getOrDefault(state.id(), List.of()).stream()
+                            .map(t -> new AdminTransitionView(
+                                    t.id(), t.toStateId(), stateNameById.get(t.toStateId()),
+                                    t.name(), t.description(), t.processId(),
+                                    repo.parseGuardCondition(t.guardCondition())))
+                            .toList();
+                    return new AdminStateView(state.id(), state.name(), state.description(),
+                            state.isInitial(), state.entryProcessId(), state.exitProcessId(), transitions);
+                }).toList();
+            }
+
+            return new AdminItemDefinitionView(item.id(), item.name(), item.description(), traitRefs, allProps, allLinks, sortableFieldsFor(allProps), item.initProcessId(), stateViews);
         }).toList();
 
         var traitViews = traits.stream().map(trait -> {
