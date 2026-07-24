@@ -1,0 +1,58 @@
+ntrloc needs to support state machines for items.
+
+This is especially useful for certain types of applications built on it
+    issue tracking (like JIRA) needs it for subtask state: open / in progress / closed / etc.
+    helpdesk (like ServiceNow) needs it for ticket resolution: optn / in progress / closed unneeded / closed complete / etc.
+
+The state machine mechanism need not be very complicated:
+    1) Define a set of states at the schema level (item definition, possibly trait definition).
+    2) Define the valid state transitions there, too.
+    3) Stete would need to be tracked in the ledger, like everything else.
+    4) State would need to be reflected in the register, like everything else.
+
+It's possible that this would lead to a new type of mutation: ItemStateMutation (move from one state to another)
+
+We would need a way to express (optional) guard conditions for state transitions.
+
+It's an open question if a guard condition would need to be checked *prior* to letting a user attempt
+the transition, or only checked when the attempt is made.  Being *able* to check in advance would lead
+to a better user experience.
+
+Guard conditions (predicates) could be a few things, for example (1) an item has a link,
+(2) an item has a property, (3) an item has a property value, (4) an item has a link with property,
+(5) item has a link with property value, (6) item has a "linked item" with a property/property value,
+and so on and so on.  This is almost identical to our projection filters.
+
+It is crucial that state transitions are executed using the process system. This gives admins an extremely
+clear way to express what happens during any given transition.  It brings the full power of BPMN/DMN to
+the state transitions, and means that a transition may involve external system calls, user taks (e.g.
+approvals of some kind, etc.).
+
+It's possible a state transition is not *required* to use a process.  If the transition is simply
+"change the status" then a process would be overkill. But if it's anything more than that, you need to use
+a process, which will be the case for anything but the most trivial examples.
+
+It's also possible we may need to support the idea that not all users/groups are able to execute a state
+transition on all items. For example: in a ServiceNow-type system, the person who created a trouble
+ticket should be able to transition to/from some states (e.g. move the ticket from OPEN to CLOSED/UNNEEDED)
+but not others (only a person on the help desk team should be able to move it from OPEN to IN PROGRESS).
+
+Given that a state transition might involve a user task, it may be ncessary to record, in the ledger/register,
+that an item is in-flight between state A and state B. I'm not sure about that, though. The item is only ever
+in one state at any given time, after all.  But there might be value in it, so 2 people aren't trying to
+change state on the same item at the same time.  It could be as simple as a "state claim" on the item, who knows.
+
+It's probably also worth considering what a "state transition process" would look like / what it should
+be capable of doing.  In fact, there might need to be separate actions tied to the transition itself vs.
+a state entry / state exit.  At the very least, a state exit / transition / state entry should be capable
+of adding / changing / removing properties on the item.  But there may be more "actions" required -- again,
+I'm not sure.
+
+It's probably worth deciding, if not yet implementing, how a state transition on one item might lead to
+a state transition on another.  A classic example would be a state transition on a Jira subtask where it
+is ending up in the CLOSED state.  If this is happening, and we look at its parent story, and the other
+subtasks in the story are CLOSED, the story is at least a *candidate* to be closed, whether or not the
+user chooses to execute that transition at that time.
+
+On transactions: properties that are being changed by way of state entry / exit / transition *must*
+be atomic, just like any other ledger/register interaction.

@@ -35,4 +35,16 @@ const schemaService = {
     }
     return response.json();
   },
+
+  // Used to populate the entry/exit/transition/init process pickers in the states editor. Not
+  // schema data itself (it's Flowable's own deployed-definitions list), but fetched alongside the
+  // schema since that's the only place these ids are referenced from.
+  async getProcessDefinitions() {
+    const response = await fetch('/api/admin/process/definitions', { credentials: 'include' });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: 'Request failed: ' + response.status }));
+      throw new Error(error.message || 'Request failed: ' + response.status);
+    }
+    return response.json();
+  },
 };

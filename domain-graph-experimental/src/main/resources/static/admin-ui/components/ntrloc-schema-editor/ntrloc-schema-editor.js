@@ -103,7 +103,7 @@ class NtrlocSchemaEditor extends HTMLElement {
                       data-index="${index}">${escapeHtml(trait.name || '(unnamed)')}</button>
             `).join('')}
           `}
-          <md-filled-button class="save-button" ${schemaViewModel.isDirty && !schemaViewModel.hasInvalidPendingLinks ? '' : 'disabled'}>Save</md-filled-button>
+          <md-filled-button class="save-button" ${schemaViewModel.isDirty && !schemaViewModel.hasInvalidPendingLinks && !schemaViewModel.hasInvalidPendingStates ? '' : 'disabled'}>Save</md-filled-button>
         </aside>
 
         <main>
@@ -142,6 +142,7 @@ class NtrlocSchemaEditor extends HTMLElement {
       propertyTypes: schemaViewModel.propertyTypes,
       availableTraits: schemaViewModel.traits,
       allItems: schemaViewModel.items,
+      processOptions: schemaViewModel.processOptions,
     });
   }
 

@@ -19,12 +19,22 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
         @JsonSubTypes.Type(value = CreateLinkDefinitionMutation.class,           name = "CREATE_LINK"),
         @JsonSubTypes.Type(value = DeleteLinkDefinitionMutation.class,           name = "DELETE_LINK"),
         @JsonSubTypes.Type(value = UpdatePerspectiveDefinitionMutation.class,    name = "UPDATE_PERSPECTIVE"),
-        @JsonSubTypes.Type(value = ReplaceControlledListMutation.class,          name = "REPLACE_CONTROLLED_LIST")
+        @JsonSubTypes.Type(value = ReplaceControlledListMutation.class,          name = "REPLACE_CONTROLLED_LIST"),
+        @JsonSubTypes.Type(value = CreateStateMutation.class,                    name = "CREATE_STATE"),
+        @JsonSubTypes.Type(value = UpdateStateMutation.class,                    name = "UPDATE_STATE"),
+        @JsonSubTypes.Type(value = DeleteStateMutation.class,                    name = "DELETE_STATE"),
+        @JsonSubTypes.Type(value = CreateTransitionMutation.class,               name = "CREATE_TRANSITION"),
+        @JsonSubTypes.Type(value = UpdateTransitionMutation.class,               name = "UPDATE_TRANSITION"),
+        @JsonSubTypes.Type(value = DeleteTransitionMutation.class,               name = "DELETE_TRANSITION"),
+        @JsonSubTypes.Type(value = SetItemInitProcessMutation.class,             name = "SET_INIT_PROCESS")
 })
 public sealed interface DefinitionMutation
         permits CreateItemDefinitionMutation, UpdateItemDefinitionMutation, DeleteItemDefinitionMutation,
                 CreateTraitDefinitionMutation, DeleteTraitDefinitionMutation, ImplementTraitMutation, RemoveTraitMutation,
                 CreateItemPropertyDefinitionMutation, CreateLinkPropertyDefinitionMutation, UpdatePropertyDefinitionMutation, DeletePropertyDefinitionMutation,
                 CreateLinkDefinitionMutation, DeleteLinkDefinitionMutation, UpdatePerspectiveDefinitionMutation,
-                ReplaceControlledListMutation {
+                ReplaceControlledListMutation,
+                CreateStateMutation, UpdateStateMutation, DeleteStateMutation,
+                CreateTransitionMutation, UpdateTransitionMutation, DeleteTransitionMutation,
+                SetItemInitProcessMutation {
 }

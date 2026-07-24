@@ -26,9 +26,13 @@ public class SchemaInitializer {
         initItemTraitTable();
         initLinkPropertyTable();
         initEntityLinkPerspectiveTable();
+        initStateTable();
+        initStateTransitionTable();
     }
 
     void dropAllTables() {
+        jdbcClient.sql("DROP TABLE IF EXISTS schema_state_transition CASCADE").update();
+        jdbcClient.sql("DROP TABLE IF EXISTS schema_state CASCADE").update();
         jdbcClient.sql("DROP TABLE IF EXISTS schema_entity_link_perspective CASCADE").update();
         jdbcClient.sql("DROP TABLE IF EXISTS schema_item_link_perspective CASCADE").update();
         jdbcClient.sql("DROP TABLE IF EXISTS schema_item_property CASCADE").update();
@@ -52,9 +56,10 @@ public class SchemaInitializer {
     void initItemTable() {
         jdbcClient.sql("""
                 CREATE TABLE IF NOT EXISTS schema_item (
-                    id          UUID PRIMARY KEY DEFAULT uuidv7(),
-                    name        TEXT NOT NULL UNIQUE,
-                    description TEXT
+                    id              UUID PRIMARY KEY DEFAULT uuidv7(),
+                    name            TEXT NOT NULL UNIQUE,
+                    description     TEXT,
+                    init_process_id TEXT
                 )
                 """).update();
     }
@@ -142,6 +147,36 @@ public class SchemaInitializer {
                     link_definition_id UUID NOT NULL REFERENCES schema_link(id) ON DELETE CASCADE,
                     property_id        UUID NOT NULL REFERENCES schema_property(id) ON DELETE CASCADE,
                     PRIMARY KEY (link_definition_id, property_id)
+                )
+                """).update();
+    }
+
+    void initStateTable() {
+        jdbcClient.sql("""
+                CREATE TABLE IF NOT EXISTS schema_state (
+                    id                 UUID PRIMARY KEY DEFAULT uuidv7(),
+                    item_definition_id UUID NOT NULL REFERENCES schema_item(id) ON DELETE CASCADE,
+                    name               TEXT NOT NULL,
+                    description        TEXT,
+                    is_initial         BOOLEAN NOT NULL DEFAULT FALSE,
+                    entry_process_id   TEXT,
+                    exit_process_id    TEXT,
+                    UNIQUE (item_definition_id, name)
+                )
+                """).update();
+    }
+
+    void initStateTransitionTable() {
+        jdbcClient.sql("""
+                CREATE TABLE IF NOT EXISTS schema_state_transition (
+                    id             UUID PRIMARY KEY DEFAULT uuidv7(),
+                    from_state_id  UUID NOT NULL REFERENCES schema_state(id) ON DELETE CASCADE,
+                    to_state_id    UUID NOT NULL REFERENCES schema_state(id) ON DELETE CASCADE,
+                    name           TEXT NOT NULL,
+                    description    TEXT,
+                    process_id     TEXT,
+                    guard_condition JSONB,
+                    UNIQUE (from_state_id, to_state_id)
                 )
                 """).update();
     }

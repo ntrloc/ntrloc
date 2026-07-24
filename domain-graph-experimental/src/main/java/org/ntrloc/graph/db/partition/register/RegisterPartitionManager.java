@@ -7,6 +7,7 @@ import org.ntrloc.graph.db.projection.AndPredicate;
 import org.ntrloc.graph.db.projection.CollectionProjectionSpec;
 import org.ntrloc.graph.db.projection.FacetBucket;
 import org.ntrloc.graph.db.projection.FacetFilter;
+import org.ntrloc.graph.db.projection.NotPredicate;
 import org.ntrloc.graph.db.projection.Predicate;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
@@ -741,6 +742,10 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                 Map<String, Object> params = new HashMap<>();
                 children.forEach(c -> params.putAll(c.params()));
                 yield new SqlFragment(sql, params);
+            }
+            case NotPredicate not -> {
+                var child = translatePredicate(not.predicate(), counter);
+                yield new SqlFragment("NOT (" + child.sql() + ")", child.params());
             }
             case PropertyExistencePredicate p ->
                 new SqlFragment("jsonb_exists(rt.properties::jsonb, '" + p.propertyName() + "')", Map.of());

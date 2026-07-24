@@ -20,6 +20,10 @@ const schemaViewModel = {
   items: [],
   traits: [],
   propertyTypes: [],
+  // Flowable's deployed process definitions -- fetched alongside the schema purely to populate
+  // the entry/exit/transition/init process pickers in the states editor. Best-effort: a failure
+  // here (see _loadProcessDefinitions) never blocks the schema itself from loading.
+  processDefinitions: [],
   selectedItem: null,
   selectedTrait: null,
   pendingControlledListReplacements: new Map(),
@@ -37,7 +41,7 @@ const schemaViewModel = {
   // persistent singleton instead is what makes a panel stay collapsed while the user keeps
   // editing, matching the Angular reference's mat-expansion-panel (whose own open/closed state
   // is intrinsic to the long-lived component instance, not reset by unrelated input changes).
-  sectionsExpanded: { traits: true, properties: true, links: true },
+  sectionsExpanded: { traits: true, properties: true, links: true, states: true },
 
   get isDirty() {
     return this.items.some((i) => i.isDirty)
@@ -52,6 +56,36 @@ const schemaViewModel = {
   // actually be submitted; the UI surfaces why instead of letting the request 500.
   get hasInvalidPendingLinks() {
     return this.pendingNewLinks.some((link) => !link.isValid);
+  },
+
+  // Same "last line of defense before a request 500s" role as hasInvalidPendingLinks: an empty
+  // state/transition name hits schema_state/schema_state_transition's NOT NULL name column, a
+  // transition with no toStateId can't be serialized into a real CREATE_TRANSITION mutation, and
+  // an incomplete guard-condition predicate (e.g. a leaf with no property picked yet) isn't a
+  // well-formed org.ntrloc.graph.db.projection.Predicate the backend could ever evaluate.
+  // predicateHasErrors is defined in ntrloc-predicate-builder.js (loaded later, alongside the
+  // other components) -- safe to reference here since this getter is only ever evaluated at
+  // render/save time, long after every script on the page has finished loading.
+  get hasInvalidPendingStates() {
+    return this.items.some((item) =>
+      item.states.some((state) =>
+        !state.isDeleted && (
+          state.name.trim() === ''
+          || state.transitions.some((t) => !t.isDeleted && (t.name.trim() === '' || !t.toStateId || predicateHasErrors(t.guardCondition)))
+        )));
+  },
+
+  // De-duplicated, latest-version-per-key view of processDefinitions -- a schema-level process
+  // reference (entry/exit/transition/init process id) is stored as the process *key*, not a
+  // specific "<key>:<version>:<generatedId>" definition id, so it keeps resolving correctly after
+  // a process is redeployed at a new version.
+  get processOptions() {
+    const latestByKey = new Map();
+    for (const def of this.processDefinitions) {
+      const existing = latestByKey.get(def.key);
+      if (!existing || def.version > existing.version) latestByKey.set(def.key, def);
+    }
+    return [...latestByKey.values()].sort((a, b) => (a.name ?? a.key).localeCompare(b.name ?? b.key));
   },
 
   setPendingControlledList(propertyId, values) {
@@ -71,7 +105,8 @@ const schemaViewModel = {
 
   load() {
     if (this._loaded) return Promise.resolve();
-    return schemaModel.load().then((schema) => this._applySchema(schema, null, null, null, null));
+    return Promise.all([schemaModel.load(), this._loadProcessDefinitions()])
+      .then(([schema]) => this._applySchema(schema, null, null, null, null));
   },
 
   reload() {
@@ -84,8 +119,20 @@ const schemaViewModel = {
     this.selectedTrait = null;
     this.pendingControlledListReplacements.clear();
     this.pendingNewLinks = [];
-    return schemaModel.reload().then((schema) =>
-      this._applySchema(schema, selectedItemId, selectedItemName, selectedTraitId, selectedTraitName));
+    return Promise.all([schemaModel.reload(), this._loadProcessDefinitions()])
+      .then(([schema]) => this._applySchema(schema, selectedItemId, selectedItemName, selectedTraitId, selectedTraitName));
+  },
+
+  // Best-effort: a failure loading process definitions (Flowable down, etc.) shouldn't block the
+  // schema editor itself from opening -- the process pickers just render as text inputs fed by an
+  // empty list until this succeeds on a later reload.
+  _loadProcessDefinitions() {
+    return schemaService.getProcessDefinitions()
+      .then((defs) => { this.processDefinitions = defs; })
+      .catch((e) => {
+        console.error('[schema] failed to load process definitions:', e);
+        this.processDefinitions = [];
+      });
   },
 
   selectItem(item) {
@@ -179,6 +226,61 @@ const schemaViewModel = {
           }
         }
       }
+
+      for (const state of item.states) {
+        if (!state.isDirty) continue;
+
+        if (state.isNew) {
+          ops.push({
+            type: 'CREATE_STATE', itemDefinitionId: item.id, name: state.name, description: state.description,
+            isInitial: state.isInitial, entryProcessId: state.entryProcessId, exitProcessId: state.exitProcessId,
+          });
+          // A brand-new state has no real id yet, so its transitions (which need a real
+          // fromStateId) can't be created in this same batch -- the states editor only allows
+          // adding transitions once a state has been saved, matching CREATE_LINK's itemId
+          // restriction on brand-new item types.
+          continue;
+        }
+
+        if (state.isDeleted) {
+          // schema_state_transition rows FK to schema_state ON DELETE CASCADE, so this state's
+          // own outgoing transitions don't need their own DELETE_TRANSITION ops.
+          ops.push({ type: 'DELETE_STATE', id: state.id });
+          continue;
+        }
+
+        if (state.name !== state.originalName
+          || (state.description ?? '') !== (state.originalDescription ?? '')
+          || state.isInitial !== state.originalIsInitial
+          || (state.entryProcessId ?? '') !== (state.originalEntryProcessId ?? '')
+          || (state.exitProcessId ?? '') !== (state.originalExitProcessId ?? '')) {
+          ops.push({
+            type: 'UPDATE_STATE', id: state.id, name: state.name, description: state.description,
+            isInitial: state.isInitial, entryProcessId: state.entryProcessId, exitProcessId: state.exitProcessId,
+          });
+        }
+
+        for (const transition of state.transitions) {
+          if (transition.isNew) {
+            ops.push({
+              type: 'CREATE_TRANSITION', fromStateId: state.id, toStateId: transition.toStateId,
+              name: transition.name, description: transition.description,
+              processId: transition.processId, guardCondition: transition.guardCondition,
+            });
+          } else if (transition.isDeleted) {
+            ops.push({ type: 'DELETE_TRANSITION', id: transition.id });
+          } else if (transition.isDirty) {
+            ops.push({
+              type: 'UPDATE_TRANSITION', id: transition.id, name: transition.name, description: transition.description,
+              processId: transition.processId, guardCondition: transition.guardCondition,
+            });
+          }
+        }
+      }
+
+      if ((item.initProcessId ?? '') !== (item.originalInitProcessId ?? '')) {
+        ops.push({ type: 'SET_INIT_PROCESS', itemId: item.id, initProcessId: item.initProcessId });
+      }
     }
 
     for (const trait of this.traits) {
@@ -245,6 +347,9 @@ const schemaViewModel = {
       const changes = [];
       if (item.name !== item.originalName) changes.push(`Name: "${item.originalName}" → "${item.name}"`);
       if ((item.description ?? '') !== (item.originalDescription ?? '')) changes.push('Description updated');
+      if ((item.initProcessId ?? '') !== (item.originalInitProcessId ?? '')) {
+        changes.push(`Init process: "${item.originalInitProcessId ?? '(none)'}" → "${item.initProcessId ?? '(none)'}"`);
+      }
 
       for (const t of item.traitAssignments) {
         if (t.isNew && !t.isRemoved) changes.push(`+ Trait "${t.name}"`);
@@ -284,6 +389,38 @@ const schemaViewModel = {
           }
           if (linkChanges.length > 0) summaries.push({ label: this._linkLabel(p.linkId), changes: linkChanges });
         }
+      }
+
+      for (const state of item.states) {
+        if (!state.isDirty) continue;
+
+        if (state.isNew) {
+          const transitionSummary = state.transitions.length > 0
+            ? [`${state.transitions.length} transition${state.transitions.length === 1 ? '' : 's'}`]
+            : [];
+          summaries.push({ label: `+ State "${state.name || '(unnamed)'}"`, changes: transitionSummary });
+          continue;
+        }
+
+        if (state.isDeleted) {
+          summaries.push({ label: `- State "${state.name}"`, changes: [] });
+          continue;
+        }
+
+        const stateChanges = [];
+        if (state.name !== state.originalName) stateChanges.push(`Name: "${state.originalName}" → "${state.name}"`);
+        if ((state.description ?? '') !== (state.originalDescription ?? '')) stateChanges.push('Description updated');
+        if (state.isInitial !== state.originalIsInitial) stateChanges.push(`Initial: ${state.originalIsInitial} → ${state.isInitial}`);
+        if ((state.entryProcessId ?? '') !== (state.originalEntryProcessId ?? '')) stateChanges.push(`Entry process: "${state.originalEntryProcessId ?? '(none)'}" → "${state.entryProcessId ?? '(none)'}"`);
+        if ((state.exitProcessId ?? '') !== (state.originalExitProcessId ?? '')) stateChanges.push(`Exit process: "${state.originalExitProcessId ?? '(none)'}" → "${state.exitProcessId ?? '(none)'}"`);
+
+        for (const transition of state.transitions) {
+          if (transition.isNew) stateChanges.push(`+ Transition "${transition.name || '(unnamed)'}"`);
+          else if (transition.isDeleted) stateChanges.push(`- Transition "${transition.originalName}"`);
+          else if (transition.isDirty) stateChanges.push(`Transition "${transition.originalName}": updated`);
+        }
+
+        if (stateChanges.length > 0) summaries.push({ label: `State "${state.name}"`, changes: stateChanges });
       }
     }
 

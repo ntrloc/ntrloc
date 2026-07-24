@@ -1,5 +1,9 @@
 package org.ntrloc.graph.db.partition.schema.repository;
 
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyUsage;
@@ -18,11 +22,17 @@ import java.util.stream.Collectors;
 @Component
 public class SchemaRepository {
 
-    public record ItemRow(UUID id, String name, String description) {}
+    public record ItemRow(UUID id, String name, String description, String initProcessId) {}
 
     public record TraitRow(UUID id, String name, String description) {}
 
     public record PerspectiveRow(UUID id, UUID entityId, UUID linkId, String name, String description, Integer minCardinality, Integer maxCardinality) {}
+
+    public record StateRow(UUID id, UUID itemDefinitionId, String name, String description, boolean isInitial, String entryProcessId, String exitProcessId) {}
+
+    public record TransitionRow(UUID id, UUID fromStateId, UUID toStateId, String name, String description, String processId, String guardCondition) {}
+
+    private static final ObjectMapper MAPPER = JsonMapper.builder().build();
 
     private final JdbcClient jdbcClient;
 
@@ -33,11 +43,12 @@ public class SchemaRepository {
     // --- Items ---
 
     public Set<ItemRow> getAllItems() {
-        return Set.copyOf(jdbcClient.sql("SELECT id, name, description FROM schema_item")
+        return Set.copyOf(jdbcClient.sql("SELECT id, name, description, init_process_id FROM schema_item")
                 .query((rs, n) -> new ItemRow(
                         rs.getObject("id", UUID.class),
                         rs.getString("name"),
-                        rs.getString("description")))
+                        rs.getString("description"),
+                        rs.getString("init_process_id")))
                 .list());
     }
 
@@ -45,7 +56,12 @@ public class SchemaRepository {
         UUID itemId = jdbcClient.sql("INSERT INTO schema_item (name, description) VALUES (:name, :description) RETURNING id")
                 .param("name", name).param("description", description)
                 .query(UUID.class).single();
-        return new ItemRow(itemId, name, description);
+        return new ItemRow(itemId, name, description, null);
+    }
+
+    public void setItemInitProcess(UUID itemId, String initProcessId) {
+        jdbcClient.sql("UPDATE schema_item SET init_process_id = :initProcessId WHERE id = :id")
+                .param("id", itemId).param("initProcessId", initProcessId).update();
     }
 
     public void updateItem(UUID id, String name, String description) {
@@ -239,6 +255,75 @@ public class SchemaRepository {
                 .list();
     }
 
+    // --- States ---
+
+    public StateRow createState(UUID itemDefinitionId, String name, String description, boolean isInitial, String entryProcessId, String exitProcessId) {
+        UUID id = jdbcClient.sql("""
+                INSERT INTO schema_state (item_definition_id, name, description, is_initial, entry_process_id, exit_process_id)
+                VALUES (:itemDefinitionId, :name, :description, :isInitial, :entryProcessId, :exitProcessId) RETURNING id
+                """)
+                .param("itemDefinitionId", itemDefinitionId).param("name", name).param("description", description)
+                .param("isInitial", isInitial).param("entryProcessId", entryProcessId).param("exitProcessId", exitProcessId)
+                .query(UUID.class).single();
+        return new StateRow(id, itemDefinitionId, name, description, isInitial, entryProcessId, exitProcessId);
+    }
+
+    public void updateState(UUID id, String name, String description, boolean isInitial, String entryProcessId, String exitProcessId) {
+        jdbcClient.sql("""
+                UPDATE schema_state SET name = :name, description = :description, is_initial = :isInitial,
+                    entry_process_id = :entryProcessId, exit_process_id = :exitProcessId WHERE id = :id
+                """)
+                .param("id", id).param("name", name).param("description", description)
+                .param("isInitial", isInitial).param("entryProcessId", entryProcessId).param("exitProcessId", exitProcessId)
+                .update();
+    }
+
+    public void deleteState(UUID id) {
+        jdbcClient.sql("DELETE FROM schema_state WHERE id = :id").param("id", id).update();
+    }
+
+    public Map<UUID, List<StateRow>> getStatesByItem() {
+        return jdbcClient.sql("SELECT * FROM schema_state ORDER BY item_definition_id, name")
+                .query((rs, n) -> Map.entry(rs.getObject("item_definition_id", UUID.class), mapState(rs, n)))
+                .list().stream()
+                .collect(Collectors.groupingBy(Map.Entry::getKey, Collectors.mapping(Map.Entry::getValue, Collectors.toList())));
+    }
+
+    // --- Transitions ---
+
+    public TransitionRow createTransition(UUID fromStateId, UUID toStateId, String name, String description, String processId, String guardCondition) {
+        UUID id = jdbcClient.sql("""
+                INSERT INTO schema_state_transition (from_state_id, to_state_id, name, description, process_id, guard_condition)
+                VALUES (:fromStateId, :toStateId, :name, :description, :processId, :guardCondition::jsonb) RETURNING id
+                """)
+                .param("fromStateId", fromStateId).param("toStateId", toStateId)
+                .param("name", name).param("description", description)
+                .param("processId", processId).param("guardCondition", guardCondition)
+                .query(UUID.class).single();
+        return new TransitionRow(id, fromStateId, toStateId, name, description, processId, guardCondition);
+    }
+
+    public void updateTransition(UUID id, String name, String description, String processId, String guardCondition) {
+        jdbcClient.sql("""
+                UPDATE schema_state_transition SET name = :name, description = :description,
+                    process_id = :processId, guard_condition = :guardCondition::jsonb WHERE id = :id
+                """)
+                .param("id", id).param("name", name).param("description", description)
+                .param("processId", processId).param("guardCondition", guardCondition)
+                .update();
+    }
+
+    public void deleteTransition(UUID id) {
+        jdbcClient.sql("DELETE FROM schema_state_transition WHERE id = :id").param("id", id).update();
+    }
+
+    public Map<UUID, List<TransitionRow>> getTransitionsByFromState() {
+        return jdbcClient.sql("SELECT * FROM schema_state_transition ORDER BY from_state_id, name")
+                .query((rs, n) -> Map.entry(rs.getObject("from_state_id", UUID.class), mapTransition(rs, n)))
+                .list().stream()
+                .collect(Collectors.groupingBy(Map.Entry::getKey, Collectors.mapping(Map.Entry::getValue, Collectors.toList())));
+    }
+
     // --- Row mappers ---
 
     private AdminPropertyDefinitionView mapProperty(ResultSet rs, int n) throws SQLException {
@@ -264,5 +349,43 @@ public class SchemaRepository {
                 rs.getInt("minimum_cardinality"),
                 rs.getObject("maximum_cardinality", Integer.class)
         );
+    }
+
+    private StateRow mapState(ResultSet rs, int n) throws SQLException {
+        return new StateRow(
+                rs.getObject("id", UUID.class),
+                rs.getObject("item_definition_id", UUID.class),
+                rs.getString("name"),
+                rs.getString("description"),
+                rs.getBoolean("is_initial"),
+                rs.getString("entry_process_id"),
+                rs.getString("exit_process_id")
+        );
+    }
+
+    private TransitionRow mapTransition(ResultSet rs, int n) throws SQLException {
+        return new TransitionRow(
+                rs.getObject("id", UUID.class),
+                rs.getObject("from_state_id", UUID.class),
+                rs.getObject("to_state_id", UUID.class),
+                rs.getString("name"),
+                rs.getString("description"),
+                rs.getString("process_id"),
+                rs.getString("guard_condition")
+        );
+    }
+
+    public JsonNode parseGuardCondition(String json) {
+        if (json == null) return null;
+        try {
+            return MAPPER.readTree(json);
+        } catch (JacksonException e) {
+            throw new IllegalStateException("Failed to parse guard condition JSON: " + json, e);
+        }
+    }
+
+    public String serializeGuardCondition(JsonNode node) {
+        if (node == null) return null;
+        return node.toString();
     }
 }
