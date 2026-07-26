@@ -128,9 +128,10 @@ const PREDICATE_OPERATOR_LABELS = {
 };
 
 // Pure validity check, exported as a plain global function (matching this app's no-module-system
-// convention) so hosts embedding this component -- ntrloc-states-editor.js today, a future search
-// filter pane -- can gate their own Save affordance on it, the same way hasInvalidPendingLinks
-// gates schema-editor Save. Independent of any specific host's dirty-tracking scheme.
+// convention) so any future host embedding this component -- a state-machine transition-guard
+// editor, a search filter pane -- can gate its own Save affordance on it, the same way
+// hasInvalidPendingLinks gates schema-editor Save. Independent of any specific host's
+// dirty-tracking scheme.
 function predicateHasErrors(predicate) {
   if (predicate == null) return false;
   switch (predicate.type) {
@@ -155,8 +156,8 @@ function predicateHasErrors(predicate) {
 // global store on purpose: it's driven purely by `.data = { predicate, properties, onChange }` and
 // mutates/replaces its own `predicate` value, calling `onChange(newPredicateOrNull)` on every edit
 // instead of reaching for a global notify function, so the exact same element can be dropped into
-// the guard-condition editor (backed by a TransitionViewModel field) and, later, a search filter
-// pane (backed by whatever local state that pane uses) without modification.
+// a future state-machine transition-guard editor and, later, a search filter pane -- each backed
+// by whatever local state that host uses -- without modification.
 //
 // Renders as nested "pills" per the visual direction given for this component: each predicate node
 // is a persistently-visible chip labeled with its type, with its own fields editable inline inside

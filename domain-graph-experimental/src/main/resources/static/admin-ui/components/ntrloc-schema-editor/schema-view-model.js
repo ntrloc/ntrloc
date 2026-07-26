@@ -58,21 +58,14 @@ const schemaViewModel = {
     return this.pendingNewLinks.some((link) => !link.isValid);
   },
 
-  // Same "last line of defense before a request 500s" role as hasInvalidPendingLinks: an empty
-  // state/transition name hits schema_state/schema_state_transition's NOT NULL name column, a
-  // transition with no toStateId can't be serialized into a real CREATE_TRANSITION mutation, and
-  // an incomplete guard-condition predicate (e.g. a leaf with no property picked yet) isn't a
-  // well-formed org.ntrloc.graph.db.projection.Predicate the backend could ever evaluate.
-  // predicateHasErrors is defined in ntrloc-predicate-builder.js (loaded later, alongside the
-  // other components) -- safe to reference here since this getter is only ever evaluated at
-  // render/save time, long after every script on the page has finished loading.
-  get hasInvalidPendingStates() {
-    return this.items.some((item) =>
-      item.states.some((state) =>
-        !state.isDeleted && (
-          state.name.trim() === ''
-          || state.transitions.some((t) => !t.isDeleted && (t.name.trim() === '' || !t.toStateId || predicateHasErrors(t.guardCondition)))
-        )));
+  // Same "gate Save, don't invent a fixup" approach as hasInvalidPendingLinks -- predicateHasErrors
+  // is exported by ntrloc-predicate-builder.js specifically so a host embedding it (here:
+  // ntrloc-state-machine-editor.js's transition guard field) can check this without duplicating
+  // its validity rules. A transition with no guard at all is always valid (predicateHasErrors(null)
+  // is false) -- only a started-but-incomplete guard blocks Save.
+  get hasInvalidPendingGuardConditions() {
+    return this.items.some((item) => item.states.some((state) => !state.isDeleted
+      && state.transitions.some((t) => !t.isDeleted && predicateHasErrors(t.guardCondition))));
   },
 
   // De-duplicated, latest-version-per-key view of processDefinitions -- a schema-level process
@@ -227,59 +220,36 @@ const schemaViewModel = {
         }
       }
 
+      // New states/transitions on a still-new item are unreachable here (item.isNew short-circuits
+      // above before this loop runs) -- matches the pendingNewLinks precedent (see newLink's own
+      // comment): a not-yet-saved item type has no real id yet for CREATE_STATE's itemDefinitionId
+      // to reference.
       for (const state of item.states) {
-        if (!state.isDirty) continue;
-
         if (state.isNew) {
-          ops.push({
-            type: 'CREATE_STATE', itemDefinitionId: item.id, name: state.name, description: state.description,
-            isInitial: state.isInitial, entryProcessId: state.entryProcessId, exitProcessId: state.exitProcessId,
-          });
-          // A brand-new state has no real id yet, so its transitions (which need a real
-          // fromStateId) can't be created in this same batch -- the states editor only allows
-          // adding transitions once a state has been saved, matching CREATE_LINK's itemId
-          // restriction on brand-new item types.
-          continue;
+          ops.push({ type: 'CREATE_STATE', itemDefinitionId: item.id, name: state.name, description: state.description, isInitial: state.isInitial, entryProcessId: state.entryProcessId, exitProcessId: state.exitProcessId });
+          continue; // a brand-new state's transitions are unreachable too -- same "no real id yet" problem, one level down
         }
-
         if (state.isDeleted) {
-          // schema_state_transition rows FK to schema_state ON DELETE CASCADE, so this state's
-          // own outgoing transitions don't need their own DELETE_TRANSITION ops.
           ops.push({ type: 'DELETE_STATE', id: state.id });
           continue;
         }
-
         if (state.name !== state.originalName
           || (state.description ?? '') !== (state.originalDescription ?? '')
           || state.isInitial !== state.originalIsInitial
-          || (state.entryProcessId ?? '') !== (state.originalEntryProcessId ?? '')
-          || (state.exitProcessId ?? '') !== (state.originalExitProcessId ?? '')) {
-          ops.push({
-            type: 'UPDATE_STATE', id: state.id, name: state.name, description: state.description,
-            isInitial: state.isInitial, entryProcessId: state.entryProcessId, exitProcessId: state.exitProcessId,
-          });
+          || state.entryProcessId !== state.originalEntryProcessId
+          || state.exitProcessId !== state.originalExitProcessId) {
+          ops.push({ type: 'UPDATE_STATE', id: state.id, name: state.name, description: state.description, isInitial: state.isInitial, entryProcessId: state.entryProcessId, exitProcessId: state.exitProcessId });
         }
 
         for (const transition of state.transitions) {
           if (transition.isNew) {
-            ops.push({
-              type: 'CREATE_TRANSITION', fromStateId: state.id, toStateId: transition.toStateId,
-              name: transition.name, description: transition.description,
-              processId: transition.processId, guardCondition: transition.guardCondition,
-            });
+            ops.push({ type: 'CREATE_TRANSITION', fromStateId: state.id, toStateId: transition.toStateId, name: transition.name, description: transition.description, processId: transition.processId, guardCondition: transition.guardCondition });
           } else if (transition.isDeleted) {
             ops.push({ type: 'DELETE_TRANSITION', id: transition.id });
           } else if (transition.isDirty) {
-            ops.push({
-              type: 'UPDATE_TRANSITION', id: transition.id, name: transition.name, description: transition.description,
-              processId: transition.processId, guardCondition: transition.guardCondition,
-            });
+            ops.push({ type: 'UPDATE_TRANSITION', id: transition.id, name: transition.name, description: transition.description, processId: transition.processId, guardCondition: transition.guardCondition });
           }
         }
-      }
-
-      if ((item.initProcessId ?? '') !== (item.originalInitProcessId ?? '')) {
-        ops.push({ type: 'SET_INIT_PROCESS', itemId: item.id, initProcessId: item.initProcessId });
       }
     }
 
@@ -347,9 +317,6 @@ const schemaViewModel = {
       const changes = [];
       if (item.name !== item.originalName) changes.push(`Name: "${item.originalName}" → "${item.name}"`);
       if ((item.description ?? '') !== (item.originalDescription ?? '')) changes.push('Description updated');
-      if ((item.initProcessId ?? '') !== (item.originalInitProcessId ?? '')) {
-        changes.push(`Init process: "${item.originalInitProcessId ?? '(none)'}" → "${item.initProcessId ?? '(none)'}"`);
-      }
 
       for (const t of item.traitAssignments) {
         if (t.isNew && !t.isRemoved) changes.push(`+ Trait "${t.name}"`);
@@ -375,6 +342,18 @@ const schemaViewModel = {
         }
       }
 
+      for (const state of item.states) {
+        if (!state.isDirty) continue;
+        if (state.isNew) { changes.push(`+ State "${state.name || '(unnamed)'}"`); continue; }
+        if (state.isDeleted) { changes.push(`- State "${state.originalName}"`); continue; }
+        changes.push(`State "${state.originalName}": updated`);
+        for (const transition of state.transitions) {
+          if (transition.isNew) changes.push(`+ Transition "${transition.name || '(unnamed)'}" (${state.originalName} → ${transition.toStateName})`);
+          else if (transition.isDeleted) changes.push(`- Transition "${transition.originalName}"`);
+          else if (transition.isDirty) changes.push(`Transition "${transition.originalName}": updated`);
+        }
+      }
+
       if (changes.length > 0) summaries.push({ label: item.name, changes });
 
       for (const perspectives of Object.values(item.links)) {
@@ -389,38 +368,6 @@ const schemaViewModel = {
           }
           if (linkChanges.length > 0) summaries.push({ label: this._linkLabel(p.linkId), changes: linkChanges });
         }
-      }
-
-      for (const state of item.states) {
-        if (!state.isDirty) continue;
-
-        if (state.isNew) {
-          const transitionSummary = state.transitions.length > 0
-            ? [`${state.transitions.length} transition${state.transitions.length === 1 ? '' : 's'}`]
-            : [];
-          summaries.push({ label: `+ State "${state.name || '(unnamed)'}"`, changes: transitionSummary });
-          continue;
-        }
-
-        if (state.isDeleted) {
-          summaries.push({ label: `- State "${state.name}"`, changes: [] });
-          continue;
-        }
-
-        const stateChanges = [];
-        if (state.name !== state.originalName) stateChanges.push(`Name: "${state.originalName}" → "${state.name}"`);
-        if ((state.description ?? '') !== (state.originalDescription ?? '')) stateChanges.push('Description updated');
-        if (state.isInitial !== state.originalIsInitial) stateChanges.push(`Initial: ${state.originalIsInitial} → ${state.isInitial}`);
-        if ((state.entryProcessId ?? '') !== (state.originalEntryProcessId ?? '')) stateChanges.push(`Entry process: "${state.originalEntryProcessId ?? '(none)'}" → "${state.entryProcessId ?? '(none)'}"`);
-        if ((state.exitProcessId ?? '') !== (state.originalExitProcessId ?? '')) stateChanges.push(`Exit process: "${state.originalExitProcessId ?? '(none)'}" → "${state.exitProcessId ?? '(none)'}"`);
-
-        for (const transition of state.transitions) {
-          if (transition.isNew) stateChanges.push(`+ Transition "${transition.name || '(unnamed)'}"`);
-          else if (transition.isDeleted) stateChanges.push(`- Transition "${transition.originalName}"`);
-          else if (transition.isDirty) stateChanges.push(`Transition "${transition.originalName}": updated`);
-        }
-
-        if (stateChanges.length > 0) summaries.push({ label: `State "${state.name}"`, changes: stateChanges });
       }
     }
 
