@@ -233,3 +233,68 @@ This concept will likely warrant its own design document as more process categor
 - Whether state machines can be defined on **traits** as well as item types, and how that
   interacts with an item that implements multiple traits each with their own state machine.
 - What "actions" beyond property changes entry/exit/transition processes need to support.
+
+---
+
+## 11. Editor UI Design (July 2026)
+
+Mockup screenshots captured during this design pass live in `docs/state-machine-mockups/`
+(`schema-editor.png`, `state-machine-editor.png`, `-2`, `-3`) — kept for reference since the
+conversation that produced them iterated through a couple of wrong turns before landing here.
+
+### Driving principle
+
+States/transitions are fundamentally a **graph** — their meaning is their topology (what branches
+where) plus, per edge, a guard condition and potentially a process. Unlike properties/links, which
+are independent facts a table conveys losslessly, reconstructing a state machine's shape from a
+list of cards costs real cognitive effort. Properties/links stay table-based; states/transitions
+get a diagram. This only matters once a machine has real branching (a single self-loop state is
+perfectly readable as a card) — but branching is exactly the shape of the driving use cases
+(Section 1).
+
+### Agreed design (schema/editing side only — see caveat below)
+
+1. **Read-only state machine diagram in the schema editor** — states as boxes, transitions as
+   labeled arrows, shape only. No guard conditions or process detail inline; drill into the editor
+   (below) for that. **This is the first increment to build.**
+2. **A state/transition editor** — the same diagram on the left (selected element highlighted),
+   with a detail panel on the right for whatever's selected. Presentation surface (modal overlay
+   vs. something else) not yet decided.
+3. **State entry/exit processes are edited by embedding the real process editor** (BPMN, possibly
+   DMN) directly in the detail panel — not a process-name picker. Lets an admin verify a process
+   is actually fit for its context (no disallowed task types, expects the right variables) without
+   leaving the state machine editor; directly motivated by Section 9's process-contracts concept.
+4. **Transition guard is a single predicate tree per transition** — matching Section 5 exactly. An
+   "entry guard"/"exit guard" split was explored and explicitly rejected (twice — it kept leaking
+   in as a copy-mocking artifact from the state panel's entry/exit layout; a transition doesn't
+   have the two distinct boundaries a state node does). Editing interaction is trending toward a
+   drag-based palette (`And`/`Or`/`Has`/`=`), mirroring the diagram-editor interaction language
+   already used for BPMN/DMN, rather than the current predicate builder's `+ Condition`/`+ Group`
+   buttons.
+5. **A transition's own process** ("transition action") gets the same embedded-editor treatment as
+   state entry/exit.
+6. **The predicate builder must stay usable outside state-machine editing** (for a future
+   projection-filter UI). Already true structurally — `ntrloc-predicate-builder.js`'s own class
+   comment already commits to this decoupling (`.data = { predicate, properties, onChange }`, no
+   reach into schemaViewModel or any other global store) — the read-only mode and palette-based
+   interaction from (1)/(4) need to preserve that, not just the current button-driven form.
+
+### Explicit scope boundary
+
+Everything above is the **schema/editing** side only. The runtime half of this document — Section
+3's `_state` property actually being tracked in the ledger/register, Section 4's transition
+execution (exit → transition → entry) — is untouched by this design pass; nothing here makes a
+state machine *do* anything to a real item yet.
+
+Also not addressed by this pass, flagged so they don't quietly fall out of scope:
+- Transition authorization / `candidates` (Section 6).
+- Process contract *enforcement* (Section 9) — more pressing now that real process editors are
+  being embedded directly, since nothing currently stops an admin from wiring in a process that
+  violates its category's contract.
+- The diagram-editing interaction itself beyond "Add state" — e.g., how a new transition actually
+  gets drawn between two states (presumably BPMN-style connection-dragging, but not yet designed).
+
+### Sequencing
+
+Approaching implementation incrementally, starting with (1) — the read-only diagram in the schema
+editor — and working forward through the list above from there.

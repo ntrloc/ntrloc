@@ -94,9 +94,19 @@ ConnectionLayouter.prototype.layoutConnection = function(connection, hints) {
   const source = hints.source || connection.source;
   const target = hints.target || connection.target;
 
-  if (hints.waypoints) {
+  if (hints.waypoints && hints.waypoints.length) {
     // An explicit route, e.g. ReconnectConnectionHandler forwarding BendpointMove's reversed-
-    // reconnect case -- honor it outright rather than either branch below.
+    // reconnect case -- honor it outright rather than either branch below. Checking .length, not
+    // just truthiness, matters: ConnectionPreview.js's drawPreview passes
+    // `hints.waypoints || connection.waypoints`, and during a live connect-drag (before any route
+    // exists) that's `[]` -- truthy, but not an explicit route -- so a bare `if (hints.waypoints)`
+    // took this branch anyway and set connection.waypoints to that same empty array. Everything
+    // downstream (getCroppedWaypoints -> getDockingPoint -> _getIntersection ->
+    // graphicsFactory.getConnectionPath) then built a path from zero waypoints, which the
+    // path-intersection library's pathToCurve can't parse -- confirmed live as the exact
+    // "Cannot read properties of null (reading 'length')" thrown from isPathCurve the moment the
+    // mouse entered a valid drop target (the only point cropping actually runs the malformed path
+    // through real intersection math instead of short-circuiting on a missing target).
     connection.waypoints = hints.waypoints;
   } else if (connection.manualRoute) {
     // Only a route a user actually shaped by hand (ConnectionRouteOriginBehavior sets this the

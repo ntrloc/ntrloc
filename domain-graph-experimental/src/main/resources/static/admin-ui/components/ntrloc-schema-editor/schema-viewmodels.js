@@ -172,15 +172,10 @@ class TraitAssignmentViewModel {
   }
 }
 
-// A transition is always owned by exactly one StateViewModel (its "from" state) -- fromStateId
-// isn't tracked on the instance itself (unlike toStateId) because it's never edited in place; it's
-// implicit in whichever state.transitions array the instance lives in, the same way a
-// PropertyDefinitionViewModel doesn't carry its own owning item/trait/link id.
-//
-// toStateId is set once at creation and never revised after that: UpdateTransitionMutation has no
-// toStateId field at all (id/name/description/processId/guardCondition only), so the states editor
-// only lets it be picked while the row is still new -- matching how ntrloc-property-table.js
-// likewise locks a property's type down as soon as it's saved.
+// A transition's target state (toStateId) is fixed at creation time -- UpdateTransitionMutation
+// has no toStateId field, so the backend has no way to retarget an existing transition. The
+// state-machine editor respects this by never offering to change it after creation; retargeting
+// means delete-and-recreate, same as the user would have to do themselves.
 class TransitionViewModel {
   constructor(args) {
     this.id = args.id;
@@ -203,16 +198,8 @@ class TransitionViewModel {
       || this.isDeleted
       || this.name !== this.originalName
       || (this.description ?? '') !== (this.originalDescription ?? '')
-      || (this.processId ?? '') !== (this.originalProcessId ?? '')
+      || this.processId !== this.originalProcessId
       || JSON.stringify(this.guardCondition ?? null) !== JSON.stringify(this.originalGuardCondition ?? null);
-  }
-
-  revert() {
-    this.name = this.originalName;
-    this.description = this.originalDescription;
-    this.processId = this.originalProcessId;
-    this.guardCondition = this.originalGuardCondition;
-    this.isDeleted = false;
   }
 
   static fromAdmin(t) {
@@ -228,11 +215,16 @@ class TransitionViewModel {
     });
   }
 
-  static create(toStateId = null) {
+  static create(toStateId, toStateName) {
     return new TransitionViewModel({
-      id: null,
+      // A real (non-null) id here, unlike every other *ViewModel.create() in this file -- unlike
+      // properties/traits/links, transitions are rendered into ntrloc-state-machine-diagram.js,
+      // which keys its layout Map by id. Multiple new transitions with id:null would collapse
+      // onto the same Map key. isNew is still what collectMutations() actually checks; this id is
+      // purely a client-side rendering handle and is never sent in a CREATE_TRANSITION mutation.
+      id: crypto.randomUUID(),
       toStateId,
-      toStateName: null,
+      toStateName,
       name: '',
       description: null,
       processId: null,
@@ -242,10 +234,6 @@ class TransitionViewModel {
   }
 }
 
-// A state's own fields plus its outgoing transitions. Like ItemLinkPerspectiveViewModel, a
-// not-yet-saved (isNew) state has no real id yet -- CREATE_TRANSITION needs a real fromStateId, so
-// the states editor only allows adding transitions to a state once it's been saved (matching the
-// established "save the item first before adding links" restriction for CREATE_LINK's itemId).
 class StateViewModel {
   constructor(args) {
     this.id = args.id;
@@ -265,23 +253,28 @@ class StateViewModel {
   }
 
   get isDirty() {
-    if (this.isNew) return true;
-    if (this.isDeleted) return true;
-    return this.name !== this.originalName
+    return this.isNew
+      || this.isDeleted
+      || this.name !== this.originalName
       || (this.description ?? '') !== (this.originalDescription ?? '')
       || this.isInitial !== this.originalIsInitial
-      || (this.entryProcessId ?? '') !== (this.originalEntryProcessId ?? '')
-      || (this.exitProcessId ?? '') !== (this.originalExitProcessId ?? '')
+      || this.entryProcessId !== this.originalEntryProcessId
+      || this.exitProcessId !== this.originalExitProcessId
       || this.transitions.some((t) => t.isDirty);
   }
 
-  revert() {
-    this.name = this.originalName;
-    this.description = this.originalDescription;
-    this.isInitial = this.originalIsInitial;
-    this.entryProcessId = this.originalEntryProcessId;
-    this.exitProcessId = this.originalExitProcessId;
-    this.isDeleted = false;
+  addTransition(toStateId, toStateName) {
+    const vm = TransitionViewModel.create(toStateId, toStateName);
+    this.transitions = [...this.transitions, vm];
+    return vm;
+  }
+
+  removeTransition(transition) {
+    if (transition.isNew) {
+      this.transitions = this.transitions.filter((t) => t !== transition);
+    } else {
+      transition.isDeleted = true;
+    }
   }
 
   static fromAdmin(s) {
@@ -299,7 +292,9 @@ class StateViewModel {
 
   static create() {
     return new StateViewModel({
-      id: null,
+      // See TransitionViewModel.create()'s comment -- same reasoning: the diagram keys its layout
+      // by id, so multiple new states need distinguishable ids even before any is saved.
+      id: crypto.randomUUID(),
       name: '',
       description: null,
       isInitial: false,
@@ -322,8 +317,6 @@ class ItemDefinitionViewModel {
     this.links = args.links;
     this.traitAssignments = args.traitAssignments;
     this.states = args.states;
-    this.initProcessId = args.initProcessId;
-    this.originalInitProcessId = args.initProcessId;
     this.isNew = args.isNew;
   }
 
@@ -334,8 +327,25 @@ class ItemDefinitionViewModel {
       || this.properties.some((p) => p.isDirty)
       || this.traitAssignments.some((t) => t.isDirty)
       || Object.values(this.links).some((perspectives) => perspectives.some((p) => p.isDirty))
-      || this.states.some((s) => s.isDirty)
-      || (this.initProcessId ?? '') !== (this.originalInitProcessId ?? '');
+      || this.states.some((s) => s.isDirty);
+  }
+
+  // Mirrors newLink()'s own "save this first" guard -- a not-yet-saved item type has no real id
+  // for a state to point back to via itemDefinitionId, so states can't be added until it's saved.
+  // Callers are expected to check !this.isNew before offering this (see ntrloc-item-detail.js's
+  // States panel, matching its existing Links-panel affordance).
+  addState() {
+    const vm = StateViewModel.create();
+    this.states = [...this.states, vm];
+    return vm;
+  }
+
+  removeState(state) {
+    if (state.isNew) {
+      this.states = this.states.filter((s) => s !== state);
+    } else {
+      state.isDeleted = true;
+    }
   }
 
   addTrait(ref) {
@@ -365,7 +375,6 @@ class ItemDefinitionViewModel {
       links,
       traitAssignments: (item.traits ?? []).map((t) => new TraitAssignmentViewModel(t)),
       states: (item.states ?? []).map((s) => StateViewModel.fromAdmin(s)),
-      initProcessId: item.initProcessId ?? null,
       isNew: false,
     });
   }
@@ -379,7 +388,6 @@ class ItemDefinitionViewModel {
       links: {},
       traitAssignments: [],
       states: [],
-      initProcessId: null,
       isNew: true,
     });
   }

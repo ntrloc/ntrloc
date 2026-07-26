@@ -11,6 +11,31 @@ injectStyles('ntrloc-item-detail-styles', `
     letter-spacing: 0.05em;
     color: var(--muted);
   }
+  .states-edit-row {
+    margin-top: 12px;
+  }
+  /* Without this, the diagram's own box wraps tightly to whatever height the states/transitions
+     happen to need -- which, for anything short of a wide multi-branch machine, leaves the box
+     barely taller than the diagram itself, with no slack for ntrloc-state-machine-diagram.js's own
+     vertical centering (added per schema-editor.png) to actually be visible. A fixed floor gives
+     it real room to center within, matching that mockup's own proportions -- content that's taller
+     than this still just grows the box as before (min-height, not height).
+     display:flex (overriding the shared component's own tag-level "display:block", via this more
+     specific class selector) is what actually makes that floor usable, not just present: a plain
+     block parent's min-height doesn't count as an "explicit height" for a percentage-height child
+     to resolve against (confirmed live -- height:100% on .state-machine-diagram-scroll silently
+     did nothing while the parent only had min-height), but a flex child's flex-basis is computed
+     from the parent's actual used height regardless of *how* that height came about, min-height
+     included -- the same reason .editor-diagram-pane/.editor-diagram-el are flex further down in
+     ntrloc-state-machine-editor.js. */
+  .states-diagram-el {
+    display: flex;
+    flex-direction: column;
+    min-height: 320px;
+  }
+  .states-diagram-el .state-machine-diagram-scroll {
+    flex: 1;
+  }
   .field-row {
     display: flex;
     align-items: center;
@@ -217,13 +242,12 @@ injectStyles('ntrloc-item-detail-styles', `
 // not on this instance, since this element is destroyed and recreated on every edit anywhere in
 // the tree.
 class NtrlocItemDetail extends HTMLElement {
-  configure({ item, entityKind, propertyTypes, availableTraits, allItems, processOptions }) {
+  configure({ item, entityKind, propertyTypes, availableTraits, allItems }) {
     this._item = item;
     this._entityKind = entityKind;
     this._propertyTypes = propertyTypes || [];
     this._availableTraits = availableTraits || [];
     this._allItems = allItems || [];
-    this._processOptions = processOptions || [];
     this.render();
   }
 
@@ -325,6 +349,23 @@ class NtrlocItemDetail extends HTMLElement {
     return `${existingLinksHtml}${pendingLinksHtml}${addLinkAffordance}`;
   }
 
+  statesBody() {
+    const item = this._item;
+    const visibleStates = item.states.filter((s) => !s.isDeleted).length;
+
+    const diagramOrEmpty = visibleStates > 0
+      ? '<ntrloc-state-machine-diagram class="states-diagram-el"></ntrloc-state-machine-diagram>'
+      : '<p class="status">No states defined.</p>';
+
+    // Mirrors the Links panel's own "save this first" guard -- CreateStateMutation needs a real
+    // itemDefinitionId, which a not-yet-saved item type doesn't have yet.
+    const editAffordance = item.isNew
+      ? '<p class="status">Save this item type before defining states.</p>'
+      : '<md-outlined-button class="edit-states-button">Edit States</md-outlined-button>';
+
+    return `${diagramOrEmpty}<div class="states-edit-row">${editAffordance}</div>`;
+  }
+
   panel(key, title, bodyHtml) {
     const expanded = schemaViewModel.sectionsExpanded[key];
     // An inline SVG rather than mat-icon's "expand_more" glyph -- this app deliberately doesn't
@@ -417,7 +458,7 @@ class NtrlocItemDetail extends HTMLElement {
 
       ${this.panel('links', 'Links', this.linksBody())}
 
-      ${this.isItem ? this.panel('states', 'States', '<ntrloc-states-editor class="states-editor-el"></ntrloc-states-editor>') : ''}
+      ${this.isItem ? this.panel('states', 'States', this.statesBody()) : ''}
     `;
 
     this.wireUp();
@@ -532,10 +573,21 @@ class NtrlocItemDetail extends HTMLElement {
       linksTable.data = { links: item.links, propertyTypes: this._propertyTypes };
     }
 
-    const statesEditor = this.querySelector('.states-editor-el');
-    if (statesEditor) {
-      statesEditor.data = { item, processOptions: this._processOptions };
+    const statesDiagram = this.querySelector('.states-diagram-el');
+    if (statesDiagram) {
+      statesDiagram.data = {
+        states: item.states.filter((s) => !s.isDeleted).map((s) => ({
+          ...s,
+          transitions: s.transitions.filter((t) => !t.isDeleted),
+        })),
+      };
     }
+
+    const editStatesButton = this.querySelector('.edit-states-button');
+    if (editStatesButton) editStatesButton.addEventListener('click', async () => {
+      await openStateMachineEditorDialog(item);
+      this.render();
+    });
 
     const addLinkButton = this.querySelector('.add-link-button');
     if (addLinkButton) addLinkButton.addEventListener('click', () => schemaViewModel.newLink(item));

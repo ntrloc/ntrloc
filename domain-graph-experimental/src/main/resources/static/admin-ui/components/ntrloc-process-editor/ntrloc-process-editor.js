@@ -327,10 +327,32 @@ injectStyles('ntrloc-process-editor-styles', `
   /* Create module (dragging a new element from the palette) swaps these two in as the canvas
      <svg>'s background via .new-parent/.drop-not-ok classes -- both default to near-white/
      near-red, meant for a light canvas. Set equal to the canvas's own --bg (not just a lighter
-     tint of it) so the canvas doesn't visibly change color at all during a palette drag. */
+     tint of it) so the canvas doesn't visibly change color at all during a palette drag.
+     --shape-connect-allowed-fill-color (Connect module: hovering a valid target while dragging out
+     a new sequence flow) belongs in this same rule for the same reason, not up in the :root-style
+     block above where every other themed color in this file lives -- diagram-js.css's own default
+     for all three of these is declared directly on .djs-parent (not :root), and a custom property
+     resolves from the *nearest* ancestor that declares it, not the most specific selector that
+     matches the same element -- a :root-level override is simply never reached by anything inside
+     an element that redeclares the property on itself. Confirmed live: querying
+     getComputedStyle(document.documentElement) showed the :root override taking effect exactly as
+     written, while the actual target rect's computed fill still resolved to vendor's near-white
+     default the whole time. --panel-bg (not --bg, unlike the two drop-* properties above) since
+     connect *should* read as "lit up", not "unchanged" -- the accent-colored border below is the
+     actual "valid target" signal; this is just what keeps the forced fill change from being
+     jarring on top of it. */
   .editor-canvas .djs-parent {
     --shape-drop-allowed-fill-color: var(--bg);
     --shape-drop-not-allowed-fill-color: var(--bg);
+    --shape-connect-allowed-fill-color: var(--panel-bg);
+  }
+  /* The vendor stylesheet only ever changes a valid connect target's *fill* (see
+     --shape-connect-allowed-fill-color above) -- no border/stroke of its own signals "drop here"
+     the way .attach-ok's stroke does for attaching. Added directly, since there's no existing
+     --shape-connect-allowed-stroke-color variable to hook for it. */
+  .editor-canvas .djs-shape.connect-ok .djs-visual > :nth-child(1) {
+    stroke: var(--accent) !important;
+    stroke-width: 2px !important;
   }
   .ntrloc-palette-icon, .ntrloc-context-pad-icon {
     display: flex;
@@ -724,6 +746,10 @@ class NtrlocProcessEditor extends HTMLElement {
       this.renderPanel();
       this.reportDirty(false);
       this.setStatus(`Saved as version ${deployed.version}.`, false);
+      // Same bubbling-event contract as dirty-changed -- lets a host that references a process by
+      // key (ntrloc-state-machine-editor.js's entry/exit/transition process fields) learn what key
+      // to store without reaching into this editor's private fields.
+      this.dispatchEvent(new CustomEvent('process-saved', { bubbles: true, detail: { key: this._processId, id: deployed.id, version: deployed.version } }));
     } catch (e) {
       this.setStatus('Failed to save: ' + e.message, true);
     }

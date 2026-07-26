@@ -73,6 +73,17 @@ export class ScriptEditor {
 
     this.view = new EditorView({
       parent: container,
+      // CodeMirror's own root-detection (used to decide where to inject its theme/highlight
+      // stylesheet) walks up via node.assignedSlot before node.parentNode -- fine normally, but
+      // once that walk reaches an actually-slotted ancestor (e.g. ntrloc-state-machine-editor.js's
+      // <div slot="content">, projected into <md-dialog>'s shadow root), assignedSlot redirects it
+      // into that shadow tree instead of continuing up the light DOM, landing the stylesheet in
+      // the dialog's shadow root's adoptedStyleSheets instead of the document -- which is where
+      // this container's OWN (unshadowed) styling actually needs it. Found live: a Script Task's
+      // editor rendered as bare unstyled text (just the gutter's "1" and the raw content, no
+      // .cm-editor box/gutter/syntax-color styling) the first time one was ever constructed while
+      // nested this way; forcing `root: document` here bypasses that walk entirely.
+      root: document,
       state: EditorState.create({
         doc,
         extensions: [

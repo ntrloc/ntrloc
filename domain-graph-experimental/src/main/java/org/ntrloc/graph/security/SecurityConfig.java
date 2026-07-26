@@ -68,7 +68,7 @@ public class SecurityConfig {
         http
                 .csrf(csrf -> csrf.disable())
                 .authorizeExchange(auth -> auth
-                        .pathMatchers("/public", "/login").permitAll()
+                        .pathMatchers(openPathPatterns()).permitAll()
                         .anyExchange().authenticated()
                 )
                 .exceptionHandling(exceptions -> exceptions
@@ -105,6 +105,18 @@ public class SecurityConfig {
         http.addFilterAt(patFilter, SecurityWebFiltersOrder.HTTP_BASIC);
 
         return http.build();
+    }
+
+    // "/public" and "/login" are appended unconditionally, never sourced from
+    // authProperties.getOpenPaths() itself -- an application's own list is additive only, never a
+    // replacement for these two, regardless of what it does or doesn't contain (including leaving
+    // openPaths null, the default when it's not configured at all).
+    private String[] openPathPatterns() {
+        List<String> patterns = new ArrayList<>(List.of("/public", "/login"));
+        if (authProperties.getOpenPaths() != null) {
+            patterns.addAll(authProperties.getOpenPaths());
+        }
+        return patterns.toArray(new String[0]);
     }
 
     @Bean
