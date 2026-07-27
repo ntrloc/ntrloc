@@ -61,7 +61,7 @@ public class Domain1Initializer implements DomainInitializer, ApplicationRunner 
                 .findFirst()
                 .orElseThrow();
 
-        initStateMachine(schemaManager, itemType.id(),
+        initStateMachine(schemaManager, itemType.id(), "ISBN Approval",
                 List.of(
                         new StateDefinition("Work in Progress", true),
                         new StateDefinition("Pending ISBN Finalization", false),

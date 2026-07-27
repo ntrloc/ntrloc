@@ -69,6 +69,11 @@ public class EntityManagerImpl implements EntityManager {
         return mutationRequestProcessor.process(request, principal);
     }
 
+    @Override
+    public void setItemState(UUID itemId, String stateMachineName, String stateName) {
+        registerPartitionManager.setItemState(itemId, stateMachineName, stateName);
+    }
+
     private void requireReadAccess(NtrlocPrincipal principal, UUID itemTypeId, String itemTypeName) {
         if (!permissionService.canReadItemType(principal, itemTypeId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown item type: " + itemTypeName);

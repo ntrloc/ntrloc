@@ -10,6 +10,7 @@ import org.ntrloc.graph.db.projection.SingleItemProjectionSpec;
 import org.springframework.lang.Nullable;
 
 import java.util.Optional;
+import java.util.UUID;
 
 // The single entry point for both directions of the entity system: reads (project) and writes
 // (mutate). mutate() is a pure passthrough to MutationRequestProcessor today (see
@@ -28,4 +29,9 @@ public interface EntityManager {
     // above). An unresolvable/absent principal is a real, displayable state, not a reason to
     // refuse the mutation.
     MutationResponse mutate(MutationRequest request, @Nullable NtrlocPrincipal principal);
+
+    // Minimal, direct register write, deliberately outside the ledger-backed mutate() above -- see
+    // RegisterPartitionManager.setItemState's own comment for why. Exists only so current-state
+    // querying/faceting has real data to test against before real transition execution is built.
+    void setItemState(UUID itemId, String stateMachineName, String stateName);
 }

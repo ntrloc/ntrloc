@@ -132,6 +132,35 @@ injectStyles('ntrloc-state-machine-editor-styles', `
     align-items: center;
     align-items: safe center;
   }
+  /* One tab per state machine on the item, so multiple machines (e.g. "ISBN Approval" and
+     "Fulfillment" on the same item type) share this one dialog instead of needing a separate
+     picker -- same visual idiom as .detail-tabs below, just switching which machine's diagram/
+     states populate the rest of the dialog instead of which field populates the detail pane. */
+  .state-machine-editor-dialog .editor-machine-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 8px;
+  }
+  .state-machine-editor-dialog .machine-tab-button {
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: bold;
+    padding: 6px 10px;
+    cursor: pointer;
+  }
+  .state-machine-editor-dialog .machine-tab-button:hover {
+    color: var(--text);
+  }
+  .state-machine-editor-dialog .machine-tab-button.active {
+    color: var(--text);
+    border-bottom-color: var(--accent);
+  }
   .state-machine-editor-dialog .editor-diagram-toolbar {
     display: flex;
     justify-content: space-between;
@@ -309,7 +338,8 @@ injectStyles('ntrloc-state-machine-editor-styles', `
 
 // Promise-based wrapper around a transient <md-dialog>, structurally similar to
 // ntrloc-item-mutation-dialog.js/ntrloc-controlled-list-dialog.js -- but unlike either, edits here
-// apply directly to the live StateViewModel/TransitionViewModel objects on `item.states` as they
+// apply directly to the live StateMachineViewModel/StateViewModel/TransitionViewModel objects on
+// `item.stateMachines` as they
 // happen (same idiom as ntrloc-item-detail.js's own inline name/description fields), not a
 // separate staged copy resolved on close. There's nothing to "stage" or "cancel": the objects
 // being edited are already the ones schemaViewModel.collectMutations() reads from, and the outer
@@ -326,13 +356,14 @@ injectStyles('ntrloc-state-machine-editor-styles', `
 // separate, larger follow-up -- this still uses ntrloc-predicate-builder.js's existing
 // button-driven pills, just given a full tab's worth of room.
 //
-// A state/transition needs a real (saved) id before transitions can be added to/from it -- see
-// ItemDefinitionViewModel.addState()'s own comment. This mirrors the existing Links-panel
+// A machine/state/transition needs a real (saved) id before the next level down can be added to
+// it -- see StateMachineViewModel.addState()'s own comment. This mirrors the existing Links-panel
 // precedent (openItemMutationDialog is never reached for a new item either); the caller
 // (ntrloc-item-detail.js) is expected to only offer this dialog once item.id is real.
 function openStateMachineEditorDialog(item) {
   return new Promise((resolve) => {
     const local = {
+      selectedMachine: item.stateMachines.find((m) => !m.isDeleted) ?? null,
       selectedState: null,
       selectedTransition: null,
       connectingFrom: null,
@@ -365,7 +396,17 @@ function openStateMachineEditorDialog(item) {
     }
 
     function visibleStates() {
-      return item.states.filter((s) => !s.isDeleted);
+      return local.selectedMachine ? local.selectedMachine.states.filter((s) => !s.isDeleted) : [];
+    }
+
+    function selectMachine(vm) {
+      local.selectedMachine = vm;
+      local.selectedState = null;
+      local.selectedTransition = null;
+      local.connectingFrom = null;
+      local.connectError = null;
+      local.activeTab = null;
+      renderContent();
     }
 
     function diagramStates() {
@@ -429,7 +470,21 @@ function openStateMachineEditorDialog(item) {
       }
       if (local.selectedState) return stateDetailHtml(local.selectedState);
       if (local.selectedTransition) return transitionDetailHtml(local.selectedTransition);
-      return '<p class="status">Select a state or transition to edit it, or add a new state.</p>';
+      if (local.selectedMachine) return machineDetailHtml(local.selectedMachine);
+      return '<p class="status">Add a state machine to get started.</p>';
+    }
+
+    function machineDetailHtml(vm) {
+      return `
+        <div class="detail-header">
+          <input class="detail-input machine-name-input" value="${escapeHtml(vm.name)}" placeholder="State machine name" />
+          <input class="detail-input machine-description-input" value="${escapeHtml(vm.description ?? '')}" placeholder="Description (optional)" />
+        </div>
+        <p class="status">Select a state or transition to edit it, or add a new state.</p>
+        <div class="detail-footer">
+          <md-text-button class="delete-machine-button">Delete State Machine</md-text-button>
+        </div>
+      `;
     }
 
     // The definition id has to be baked into the markup string itself (as a data-definition-id
@@ -522,9 +577,22 @@ function openStateMachineEditorDialog(item) {
       `;
     }
 
+    function machineTabsHtml() {
+      const machines = item.stateMachines.filter((m) => !m.isDeleted);
+      return `
+        <div class="editor-machine-tabs">
+          ${machines.map((m) => `
+            <button class="machine-tab-button ${local.selectedMachine === m ? 'active' : ''}" data-machine-id="${escapeHtml(m.id)}">${escapeHtml(m.name || '(unnamed)')}</button>
+          `).join('')}
+          <button class="machine-tab-button add-machine-tab-button" title="Add state machine">+ Add Machine</button>
+        </div>
+      `;
+    }
+
     function deletedListHtml() {
-      const deletedStates = item.states.filter((s) => s.isDeleted);
-      const deletedTransitions = item.states.flatMap((s) => s.transitions.filter((t) => t.isDeleted));
+      if (!local.selectedMachine) return '';
+      const deletedStates = local.selectedMachine.states.filter((s) => s.isDeleted);
+      const deletedTransitions = local.selectedMachine.states.flatMap((s) => s.transitions.filter((t) => t.isDeleted));
       if (deletedStates.length === 0 && deletedTransitions.length === 0) return '';
       return `
         <div class="editor-deleted-list">
@@ -566,8 +634,10 @@ function openStateMachineEditorDialog(item) {
       dialog.querySelector('[slot=content]').innerHTML = `
         <div class="editor-body">
           <div class="editor-diagram-pane" style="${diagramPaneStyle()}">
+            ${machineTabsHtml()}
             <div class="editor-diagram-toolbar">
-              <md-outlined-button class="add-state-button">+ Add State</md-outlined-button>
+              ${local.selectedMachine && !local.selectedMachine.isNew ? '<md-outlined-button class="add-state-button">+ Add State</md-outlined-button>' : ''}
+              ${local.selectedMachine && local.selectedMachine.isNew ? '<p class="status">Save this item type before adding states to this new state machine.</p>' : ''}
             </div>
             ${local.connectingFrom ? `
               <div class="editor-connecting-banner">
@@ -607,8 +677,21 @@ function openStateMachineEditorDialog(item) {
         orientation: 'vertical',
       };
 
-      dialog.querySelector('.add-state-button').addEventListener('click', () => {
-        const vm = item.addState();
+      dialog.querySelectorAll('.machine-tab-button:not(.add-machine-tab-button)').forEach((button) => {
+        button.addEventListener('click', () => {
+          const machine = item.stateMachines.find((m) => m.id === button.dataset.machineId);
+          if (machine) selectMachine(machine);
+        });
+      });
+      dialog.querySelector('.add-machine-tab-button').addEventListener('click', () => {
+        const vm = item.addStateMachine();
+        selectMachine(vm);
+        notifySchemaViewModelChange();
+      });
+
+      const addStateButton = dialog.querySelector('.add-state-button');
+      if (addStateButton) addStateButton.addEventListener('click', () => {
+        const vm = local.selectedMachine.addState();
         selectState(vm);
         notifySchemaViewModelChange();
       });
@@ -626,10 +709,10 @@ function openStateMachineEditorDialog(item) {
         button.addEventListener('click', () => {
           const { kind, id } = button.dataset;
           if (kind === 'state') {
-            const vm = item.states.find((s) => s.id === id);
+            const vm = local.selectedMachine.states.find((s) => s.id === id);
             if (vm) vm.isDeleted = false;
           } else {
-            for (const s of item.states) {
+            for (const s of local.selectedMachine.states) {
               const vm = s.transitions.find((t) => t.id === id);
               if (vm) { vm.isDeleted = false; break; }
             }
@@ -637,6 +720,27 @@ function openStateMachineEditorDialog(item) {
           renderContent();
           notifySchemaViewModelChange();
         });
+      });
+
+      const machineNameInput = dialog.querySelector('.machine-name-input');
+      if (machineNameInput) machineNameInput.addEventListener('change', (event) => {
+        local.selectedMachine.name = event.target.value;
+        renderContent();
+        notifySchemaViewModelChange();
+      });
+      const machineDescriptionInput = dialog.querySelector('.machine-description-input');
+      if (machineDescriptionInput) machineDescriptionInput.addEventListener('change', (event) => {
+        local.selectedMachine.description = event.target.value || null;
+        notifySchemaViewModelChange();
+      });
+      const deleteMachineButton = dialog.querySelector('.delete-machine-button');
+      if (deleteMachineButton) deleteMachineButton.addEventListener('click', () => {
+        item.removeStateMachine(local.selectedMachine);
+        local.selectedMachine = item.stateMachines.find((m) => !m.isDeleted) ?? null;
+        local.selectedState = null;
+        local.selectedTransition = null;
+        renderContent();
+        notifySchemaViewModelChange();
       });
 
       dialog.querySelectorAll('.detail-tab-button').forEach((button) => {
@@ -708,7 +812,7 @@ function openStateMachineEditorDialog(item) {
       });
       const deleteStateButton = dialog.querySelector('.delete-state-button');
       if (deleteStateButton) deleteStateButton.addEventListener('click', () => {
-        item.removeState(local.selectedState);
+        local.selectedMachine.removeState(local.selectedState);
         local.selectedState = null;
         renderContent();
         notifySchemaViewModelChange();
@@ -733,7 +837,7 @@ function openStateMachineEditorDialog(item) {
       });
       const deleteTransitionButton = dialog.querySelector('.delete-transition-button');
       if (deleteTransitionButton) deleteTransitionButton.addEventListener('click', () => {
-        const owner = item.states.find((s) => s.transitions.includes(local.selectedTransition));
+        const owner = local.selectedMachine.states.find((s) => s.transitions.includes(local.selectedTransition));
         if (owner) owner.removeTransition(local.selectedTransition);
         local.selectedTransition = null;
         renderContent();
