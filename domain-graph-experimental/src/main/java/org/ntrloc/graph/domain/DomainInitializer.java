@@ -5,7 +5,20 @@ import org.flowable.engine.RepositoryService;
 import org.ntrloc.graph.db.partition.binary.BinaryPartitionManager;
 import org.ntrloc.graph.db.partition.schema.ControlledListManager;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateStateMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateTransitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.DefinitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminStateView;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.lang.Nullable;
+import tools.jackson.databind.JsonNode;
+
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 // The one and only thing that seeds a domain -- schema, data, processes, everything. Nothing else
 // in the system (SchemaManager, RegisterInitializer, ProcessEngineConfig, DmnEngineConfig) has any
@@ -60,5 +73,70 @@ public interface DomainInitializer {
             builder.addClasspathResource(resource);
         }
         builder.deploy();
+    }
+
+    /**
+     * Creates a full state machine for an existing item type in one call: every state first,
+     * then every transition, resolving each transition's from/to state by name against what the
+     * states batch just persisted. Two applyMutations batches are unavoidable -- state ids don't
+     * exist until CreateStateMutation actually runs, and transitions need real ids, not names, so
+     * transitions must be a second batch. See StateDefinition/TransitionDefinition below.
+     */
+    default void initStateMachine(SchemaManager schemaManager, UUID itemDefinitionId,
+                                   List<StateDefinition> states, List<TransitionDefinition> transitions) {
+        schemaManager.applyMutations(states.stream()
+                .<DefinitionMutation>map(s -> new CreateStateMutation(
+                        itemDefinitionId, s.name(), s.description(), s.isInitial(), s.entryProcessId(), s.exitProcessId()))
+                .toList());
+
+        List<AdminStateView> createdStates = schemaManager.getAdminSchema().items().stream()
+                .filter(item -> item.id().equals(itemDefinitionId))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("No item type with id: " + itemDefinitionId))
+                .states();
+        Map<String, UUID> resolved = Optional.ofNullable(createdStates)
+                .map(List::stream)
+                .orElseGet(Stream::empty)
+                .collect(Collectors.toMap(AdminStateView::name, AdminStateView::id));
+
+        schemaManager.applyMutations(transitions.stream()
+                .<DefinitionMutation>map(t -> new CreateTransitionMutation(
+                        requireStateId(resolved, t.fromStateName()),
+                        requireStateId(resolved, t.toStateName()),
+                        t.name(), t.description(), t.processId(), t.guardCondition()))
+                .toList());
+    }
+
+    private static UUID requireStateId(Map<String, UUID> stateIdsByName, String name) {
+        UUID id = stateIdsByName.get(name);
+        if (id == null) {
+            throw new IllegalArgumentException(
+                    "No state named '" + name + "' -- check it's included in the states passed to initStateMachine");
+        }
+        return id;
+    }
+
+    /**
+     * A state to create via initStateMachine. Mirrors CreateStateMutation's fields exactly, minus
+     * itemDefinitionId (initStateMachine already takes that once for the whole batch).
+     */
+    record StateDefinition(String name, @Nullable String description, boolean isInitial,
+                            @Nullable String entryProcessId, @Nullable String exitProcessId) {
+        public StateDefinition(String name, boolean isInitial) {
+            this(name, null, isInitial, null, null);
+        }
+    }
+
+    /**
+     * A transition to create via initStateMachine. fromStateName/toStateName are plain names, not
+     * ids -- see initStateMachine's own comment on why the ids can't exist yet when this record is
+     * built.
+     */
+    record TransitionDefinition(String fromStateName, String toStateName, String name,
+                                 @Nullable String description, @Nullable String processId,
+                                 @Nullable JsonNode guardCondition) {
+        public TransitionDefinition(String fromStateName, String toStateName, String name) {
+            this(fromStateName, toStateName, name, null, null, null);
+        }
     }
 }

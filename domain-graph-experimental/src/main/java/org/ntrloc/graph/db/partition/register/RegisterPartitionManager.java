@@ -65,6 +65,22 @@ public class RegisterPartitionManager implements SchemaChangeListener {
             "visibilityState", "ri.state"
     );
 
+    // Applied when CollectionProjectionSpec.limit()/offset() are null or out of range, rather than
+    // ever running the main SELECT unbounded -- a projection with no filter narrow enough (or an
+    // MCP tool call from an LLM that never thinks to set one) would otherwise return every
+    // COMMITTED row of the item type in one response.
+    private static final int DEFAULT_LIMIT = 50;
+    private static final int MAX_LIMIT = 500;
+
+    private int effectiveOffset(CollectionProjectionSpec spec) {
+        return spec.offset() != null && spec.offset() > 0 ? spec.offset() : 0;
+    }
+
+    private int effectiveLimit(CollectionProjectionSpec spec) {
+        if (spec.limit() == null || spec.limit() <= 0) return DEFAULT_LIMIT;
+        return Math.min(spec.limit(), MAX_LIMIT);
+    }
+
     private List<String> facetableFieldsFor(UUID itemTypeId) {
         return schemaManager.getAdminSchema().items().stream()
                 .filter(item -> item.id().equals(itemTypeId))
@@ -157,9 +173,12 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                   %s
                   %s
                 %s
+                LIMIT :limit OFFSET :offset
                 """.formatted(tableName, filterFragment.sql(), allFacetFilters.sql(), orderByClause(spec)))
                 .param("itemTypeId", itemTypeId)
                 .params(mergeParams(filterFragment, allFacetFilters))
+                .param("limit", effectiveLimit(spec))
+                .param("offset", effectiveOffset(spec))
                 .query((rs, n) -> new RawItem(
                         rs.getObject("register_item_id", UUID.class),
                         rs.getObject("item_id", UUID.class),

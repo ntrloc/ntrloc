@@ -43,10 +43,14 @@ public class ProjectionService {
             name from the schema, and any sort field or filtered property must be one of that
             item type's own properties or one of the system fields (itemId, itemType, createdAt,
             updatedAt, visibilityState).
+
+            Results are paginated: at most 50 items are returned per call unless a larger limit is
+            requested (capped at 500 regardless), and totalCount in the response is the count of
+            all matching items, not just the ones returned -- use offset to page through the rest.
             """)
     public ProjectionResult projectItems(@ToolParam(description = """
             The collection projection specification: item type name, optional sort field/
-            direction, optional filter/facets.
+            direction, optional filter/facets, optional offset/limit (default limit 50, max 500).
             """) CollectionProjectionSpec spec) {
         try {
             LOG.info("Projecting items with spec {}", spec);
