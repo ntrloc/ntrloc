@@ -40,7 +40,11 @@ injectStyles('ntrloc-state-machine-editor-styles', `
     flex: 1;
     min-height: 0;
     display: flex;
-    gap: 16px;
+    /* Was 16px each side of the splitter (32px total dead space) -- the splitter itself is now
+       wide enough (see .editor-splitter/.splitter-collapse-button below) to read as a real
+       divider on its own, so it doesn't need nearly as much surrounding buffer to not look
+       cramped against the panes on either side. */
+    gap: 4px;
   }
   /* Per the state-machine-mockups/ layout (state-machine-editor.png etc.): the diagram stays a
      narrow, always-visible strip on the left -- it's not replaced by anything, including the
@@ -60,7 +64,10 @@ injectStyles('ntrloc-state-machine-editor-styles', `
      string every time, which would tear down (and lose) a live, possibly-mid-edit
      <ntrloc-process-editor> for what's supposed to be a pure layout change. */
   .state-machine-editor-dialog .editor-splitter {
-    flex: 0 0 16px;
+    /* Widened to fit the collapse buttons below (32px, 2x their original size) -- they're
+       stacked in this column, not side by side, so the splitter only needs to be as wide as one
+       button, not two. */
+    flex: 0 0 32px;
     position: relative;
     display: flex;
     flex-direction: column;
@@ -80,18 +87,19 @@ injectStyles('ntrloc-state-machine-editor-styles', `
     transform: translateX(-50%);
   }
   .state-machine-editor-dialog .splitter-collapse-button {
+    /* 2x the original 16px/10px -- 4x (64px) read as too big live. */
     position: relative;
-    width: 16px;
-    height: 16px;
+    width: 32px;
+    height: 32px;
     padding: 0;
     display: flex;
     align-items: center;
     justify-content: center;
     background: var(--panel-bg);
-    border: 1px solid var(--border);
-    border-radius: 3px;
+    border: 1.5px solid var(--border);
+    border-radius: 6px;
     color: var(--muted);
-    font-size: 10px;
+    font-size: 20px;
     line-height: 1;
     cursor: pointer;
   }
@@ -110,19 +118,19 @@ injectStyles('ntrloc-state-machine-editor-styles', `
   }
   .state-machine-editor-dialog .editor-diagram-el .state-machine-diagram-scroll {
     height: 100%;
-    /* Per state-machine-editor.png: horizontally centered (this pane's vertical-orientation
-       diagram), unlike the read-only horizontal view's own 2D centering -- align-items overridden
-       back to flex-start here so a short diagram sits at the top of the pane rather than centered
-       top-to-bottom (the mockup shows the initial state hugging the top, with empty space left
-       below the last rank, not centered in the middle of the available height).
-       "safe center" (see ntrloc-state-machine-diagram.js's own base rule for the full story) is
-       what keeps this from actively hiding a leading self-loop -- confirmed live: plain "center"
-       left a self-loop permanently unreachable (not just scrolled-away-by-default) the moment the
-       diagram's width exceeded this narrow pane's, since a centered overflow's leading half sits
-       in negative-scroll space no scrollLeft can ever reach. */
+    /* Centered on both axes -- superseded the original state-machine-editor.png-driven choice of
+       top-aligning this pane's vertical-orientation diagram (leaving empty space below a short
+       chart); explicit direction was to center the whole chart vertically within the pane instead.
+       "safe center" (see ntrloc-state-machine-diagram.js's own base rule for the full story) on
+       both axes, not plain "center", for the same reason it already mattered horizontally here:
+       confirmed live that plain "center" leaves a leading self-loop permanently unreachable (not
+       just scrolled-away-by-default) the moment the diagram exceeds this narrow pane's size on
+       that axis, since a centered overflow's leading half sits in negative-scroll space no
+       scrollLeft/scrollTop can ever reach. */
     justify-content: center;
     justify-content: safe center;
-    align-items: flex-start;
+    align-items: center;
+    align-items: safe center;
   }
   .state-machine-editor-dialog .editor-diagram-toolbar {
     display: flex;
@@ -545,6 +553,15 @@ function openStateMachineEditorDialog(item) {
     }
 
     function renderContent() {
+      // renderContent() rebuilds the whole dialog body from an HTML string below, which tears
+      // down and reconstructs <ntrloc-state-machine-diagram> as a brand new element instance every
+      // single time (including on every state/transition selection, via selectState/
+      // selectTransition) -- its zoom/pan state lives only on that instance (see its own
+      // constructor comment), so it has to be captured before the rebuild and fed into the
+      // replacement below, or every click would silently reset the user's zoom/pan (found live).
+      const previousDiagram = dialog.querySelector('.editor-diagram-el');
+      const savedViewState = previousDiagram ? previousDiagram.viewState : null;
+
       dialog.querySelector('[slot=headline]').textContent = `States: ${item.name}`;
       dialog.querySelector('[slot=content]').innerHTML = `
         <div class="editor-body">
@@ -569,11 +586,15 @@ function openStateMachineEditorDialog(item) {
           <div class="editor-detail-pane" style="${detailPaneStyle()}">${detailPaneHtml()}</div>
         </div>
       `;
-      wireContent();
+      wireContent(savedViewState);
     }
 
-    function wireContent() {
+    function wireContent(savedViewState) {
       const diagram = dialog.querySelector('.editor-diagram-el');
+      // Set before `.data` below (whose setter triggers the new instance's first render) so that
+      // first render already bakes the restored zoom into the SVG it builds, rather than rendering
+      // once at 1x and needing a second pass.
+      if (savedViewState) diagram.viewState = savedViewState;
       diagram.data = {
         states: diagramStates(),
         selectedStateId: local.selectedState?.id ?? null,
