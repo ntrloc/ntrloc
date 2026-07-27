@@ -28,7 +28,9 @@ public class SchemaRepository {
 
     public record PerspectiveRow(UUID id, UUID entityId, UUID linkId, String name, String description, Integer minCardinality, Integer maxCardinality) {}
 
-    public record StateRow(UUID id, UUID itemDefinitionId, String name, String description, boolean isInitial, String entryProcessId, String exitProcessId) {}
+    public record StateMachineRow(UUID id, UUID itemDefinitionId, String name, String description) {}
+
+    public record StateRow(UUID id, UUID stateMachineId, String name, String description, boolean isInitial, String entryProcessId, String exitProcessId) {}
 
     public record TransitionRow(UUID id, UUID fromStateId, UUID toStateId, String name, String description, String processId, String guardCondition) {}
 
@@ -255,17 +257,46 @@ public class SchemaRepository {
                 .list();
     }
 
-    // --- States ---
+    // --- State machines ---
 
-    public StateRow createState(UUID itemDefinitionId, String name, String description, boolean isInitial, String entryProcessId, String exitProcessId) {
+    public StateMachineRow createStateMachine(UUID itemDefinitionId, String name, String description) {
         UUID id = jdbcClient.sql("""
-                INSERT INTO schema_state (item_definition_id, name, description, is_initial, entry_process_id, exit_process_id)
-                VALUES (:itemDefinitionId, :name, :description, :isInitial, :entryProcessId, :exitProcessId) RETURNING id
+                INSERT INTO schema_state_machine (item_definition_id, name, description)
+                VALUES (:itemDefinitionId, :name, :description) RETURNING id
                 """)
                 .param("itemDefinitionId", itemDefinitionId).param("name", name).param("description", description)
+                .query(UUID.class).single();
+        return new StateMachineRow(id, itemDefinitionId, name, description);
+    }
+
+    public void updateStateMachine(UUID id, String name, String description) {
+        jdbcClient.sql("UPDATE schema_state_machine SET name = :name, description = :description WHERE id = :id")
+                .param("id", id).param("name", name).param("description", description)
+                .update();
+    }
+
+    public void deleteStateMachine(UUID id) {
+        jdbcClient.sql("DELETE FROM schema_state_machine WHERE id = :id").param("id", id).update();
+    }
+
+    public Map<UUID, List<StateMachineRow>> getStateMachinesByItem() {
+        return jdbcClient.sql("SELECT * FROM schema_state_machine ORDER BY item_definition_id, name")
+                .query((rs, n) -> Map.entry(rs.getObject("item_definition_id", UUID.class), mapStateMachine(rs, n)))
+                .list().stream()
+                .collect(Collectors.groupingBy(Map.Entry::getKey, Collectors.mapping(Map.Entry::getValue, Collectors.toList())));
+    }
+
+    // --- States ---
+
+    public StateRow createState(UUID stateMachineId, String name, String description, boolean isInitial, String entryProcessId, String exitProcessId) {
+        UUID id = jdbcClient.sql("""
+                INSERT INTO schema_state (state_machine_id, name, description, is_initial, entry_process_id, exit_process_id)
+                VALUES (:stateMachineId, :name, :description, :isInitial, :entryProcessId, :exitProcessId) RETURNING id
+                """)
+                .param("stateMachineId", stateMachineId).param("name", name).param("description", description)
                 .param("isInitial", isInitial).param("entryProcessId", entryProcessId).param("exitProcessId", exitProcessId)
                 .query(UUID.class).single();
-        return new StateRow(id, itemDefinitionId, name, description, isInitial, entryProcessId, exitProcessId);
+        return new StateRow(id, stateMachineId, name, description, isInitial, entryProcessId, exitProcessId);
     }
 
     public void updateState(UUID id, String name, String description, boolean isInitial, String entryProcessId, String exitProcessId) {
@@ -282,9 +313,9 @@ public class SchemaRepository {
         jdbcClient.sql("DELETE FROM schema_state WHERE id = :id").param("id", id).update();
     }
 
-    public Map<UUID, List<StateRow>> getStatesByItem() {
-        return jdbcClient.sql("SELECT * FROM schema_state ORDER BY item_definition_id, name")
-                .query((rs, n) -> Map.entry(rs.getObject("item_definition_id", UUID.class), mapState(rs, n)))
+    public Map<UUID, List<StateRow>> getStatesByStateMachine() {
+        return jdbcClient.sql("SELECT * FROM schema_state ORDER BY state_machine_id, name")
+                .query((rs, n) -> Map.entry(rs.getObject("state_machine_id", UUID.class), mapState(rs, n)))
                 .list().stream()
                 .collect(Collectors.groupingBy(Map.Entry::getKey, Collectors.mapping(Map.Entry::getValue, Collectors.toList())));
     }
@@ -351,10 +382,19 @@ public class SchemaRepository {
         );
     }
 
+    private StateMachineRow mapStateMachine(ResultSet rs, int n) throws SQLException {
+        return new StateMachineRow(
+                rs.getObject("id", UUID.class),
+                rs.getObject("item_definition_id", UUID.class),
+                rs.getString("name"),
+                rs.getString("description")
+        );
+    }
+
     private StateRow mapState(ResultSet rs, int n) throws SQLException {
         return new StateRow(
                 rs.getObject("id", UUID.class),
-                rs.getObject("item_definition_id", UUID.class),
+                rs.getObject("state_machine_id", UUID.class),
                 rs.getString("name"),
                 rs.getString("description"),
                 rs.getBoolean("is_initial"),

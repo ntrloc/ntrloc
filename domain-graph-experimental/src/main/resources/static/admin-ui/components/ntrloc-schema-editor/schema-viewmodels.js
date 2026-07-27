@@ -306,34 +306,28 @@ class StateViewModel {
   }
 }
 
-class ItemDefinitionViewModel {
+class StateMachineViewModel {
   constructor(args) {
     this.id = args.id;
     this.name = args.name;
     this.originalName = args.name;
     this.description = args.description;
     this.originalDescription = args.description;
-    this.properties = args.properties;
-    this.links = args.links;
-    this.traitAssignments = args.traitAssignments;
     this.states = args.states;
     this.isNew = args.isNew;
+    this.isDeleted = false;
   }
 
   get isDirty() {
     return this.isNew
+      || this.isDeleted
       || this.name !== this.originalName
       || (this.description ?? '') !== (this.originalDescription ?? '')
-      || this.properties.some((p) => p.isDirty)
-      || this.traitAssignments.some((t) => t.isDirty)
-      || Object.values(this.links).some((perspectives) => perspectives.some((p) => p.isDirty))
       || this.states.some((s) => s.isDirty);
   }
 
-  // Mirrors newLink()'s own "save this first" guard -- a not-yet-saved item type has no real id
-  // for a state to point back to via itemDefinitionId, so states can't be added until it's saved.
-  // Callers are expected to check !this.isNew before offering this (see ntrloc-item-detail.js's
-  // States panel, matching its existing Links-panel affordance).
+  // Mirrors StateViewModel's own "save this first" guard, one level down -- a not-yet-saved state
+  // machine has no real id for CREATE_STATE's stateMachineId to point at yet.
   addState() {
     const vm = StateViewModel.create();
     this.states = [...this.states, vm];
@@ -345,6 +339,72 @@ class ItemDefinitionViewModel {
       this.states = this.states.filter((s) => s !== state);
     } else {
       state.isDeleted = true;
+    }
+  }
+
+  static fromAdmin(m) {
+    return new StateMachineViewModel({
+      id: m.id,
+      name: m.name,
+      description: m.description,
+      states: (m.states ?? []).map((s) => StateViewModel.fromAdmin(s)),
+      isNew: false,
+    });
+  }
+
+  static create() {
+    return new StateMachineViewModel({
+      // Same reasoning as StateViewModel.create()/TransitionViewModel.create() -- a real client-side
+      // id purely for list-keying (e.g. the state-machine-editor's tab row), never sent as-is in a
+      // CREATE_STATE_MACHINE mutation.
+      id: crypto.randomUUID(),
+      name: '',
+      description: null,
+      states: [],
+      isNew: true,
+    });
+  }
+}
+
+class ItemDefinitionViewModel {
+  constructor(args) {
+    this.id = args.id;
+    this.name = args.name;
+    this.originalName = args.name;
+    this.description = args.description;
+    this.originalDescription = args.description;
+    this.properties = args.properties;
+    this.links = args.links;
+    this.traitAssignments = args.traitAssignments;
+    this.stateMachines = args.stateMachines;
+    this.isNew = args.isNew;
+  }
+
+  get isDirty() {
+    return this.isNew
+      || this.name !== this.originalName
+      || (this.description ?? '') !== (this.originalDescription ?? '')
+      || this.properties.some((p) => p.isDirty)
+      || this.traitAssignments.some((t) => t.isDirty)
+      || Object.values(this.links).some((perspectives) => perspectives.some((p) => p.isDirty))
+      || this.stateMachines.some((m) => m.isDirty);
+  }
+
+  // Mirrors newLink()'s own "save this first" guard -- a not-yet-saved item type has no real id
+  // for a state machine to point back to via itemDefinitionId, so state machines can't be added
+  // until it's saved. Callers are expected to check !this.isNew before offering this (see
+  // ntrloc-item-detail.js's States panel, matching its existing Links-panel affordance).
+  addStateMachine() {
+    const vm = StateMachineViewModel.create();
+    this.stateMachines = [...this.stateMachines, vm];
+    return vm;
+  }
+
+  removeStateMachine(machine) {
+    if (machine.isNew) {
+      this.stateMachines = this.stateMachines.filter((m) => m !== machine);
+    } else {
+      machine.isDeleted = true;
     }
   }
 
@@ -374,7 +434,7 @@ class ItemDefinitionViewModel {
       properties: (item.properties ?? []).map((p) => PropertyDefinitionViewModel.fromAdmin(p, propertyTypes)),
       links,
       traitAssignments: (item.traits ?? []).map((t) => new TraitAssignmentViewModel(t)),
-      states: (item.states ?? []).map((s) => StateViewModel.fromAdmin(s)),
+      stateMachines: (item.stateMachines ?? []).map((m) => StateMachineViewModel.fromAdmin(m)),
       isNew: false,
     });
   }
@@ -387,7 +447,7 @@ class ItemDefinitionViewModel {
       properties: [],
       links: {},
       traitAssignments: [],
-      states: [],
+      stateMachines: [],
       isNew: true,
     });
   }

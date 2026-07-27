@@ -64,8 +64,9 @@ const schemaViewModel = {
   // its validity rules. A transition with no guard at all is always valid (predicateHasErrors(null)
   // is false) -- only a started-but-incomplete guard blocks Save.
   get hasInvalidPendingGuardConditions() {
-    return this.items.some((item) => item.states.some((state) => !state.isDeleted
-      && state.transitions.some((t) => !t.isDeleted && predicateHasErrors(t.guardCondition))));
+    return this.items.some((item) => item.stateMachines.some((machine) => !machine.isDeleted
+      && machine.states.some((state) => !state.isDeleted
+        && state.transitions.some((t) => !t.isDeleted && predicateHasErrors(t.guardCondition)))));
   },
 
   // De-duplicated, latest-version-per-key view of processDefinitions -- a schema-level process
@@ -220,34 +221,48 @@ const schemaViewModel = {
         }
       }
 
-      // New states/transitions on a still-new item are unreachable here (item.isNew short-circuits
-      // above before this loop runs) -- matches the pendingNewLinks precedent (see newLink's own
-      // comment): a not-yet-saved item type has no real id yet for CREATE_STATE's itemDefinitionId
-      // to reference.
-      for (const state of item.states) {
-        if (state.isNew) {
-          ops.push({ type: 'CREATE_STATE', itemDefinitionId: item.id, name: state.name, description: state.description, isInitial: state.isInitial, entryProcessId: state.entryProcessId, exitProcessId: state.exitProcessId });
-          continue; // a brand-new state's transitions are unreachable too -- same "no real id yet" problem, one level down
+      // New state machines/states/transitions on a still-new item are unreachable here (item.isNew
+      // short-circuits above before this loop runs) -- matches the pendingNewLinks precedent (see
+      // newLink's own comment): a not-yet-saved item type has no real id yet for
+      // CREATE_STATE_MACHINE's itemDefinitionId to reference.
+      for (const machine of item.stateMachines) {
+        if (machine.isNew) {
+          ops.push({ type: 'CREATE_STATE_MACHINE', itemDefinitionId: item.id, name: machine.name, description: machine.description });
+          continue; // a brand-new machine's states are unreachable too -- same "no real id yet" problem, one level down
         }
-        if (state.isDeleted) {
-          ops.push({ type: 'DELETE_STATE', id: state.id });
+        if (machine.isDeleted) {
+          ops.push({ type: 'DELETE_STATE_MACHINE', id: machine.id });
           continue;
         }
-        if (state.name !== state.originalName
-          || (state.description ?? '') !== (state.originalDescription ?? '')
-          || state.isInitial !== state.originalIsInitial
-          || state.entryProcessId !== state.originalEntryProcessId
-          || state.exitProcessId !== state.originalExitProcessId) {
-          ops.push({ type: 'UPDATE_STATE', id: state.id, name: state.name, description: state.description, isInitial: state.isInitial, entryProcessId: state.entryProcessId, exitProcessId: state.exitProcessId });
+        if (machine.name !== machine.originalName || (machine.description ?? '') !== (machine.originalDescription ?? '')) {
+          ops.push({ type: 'UPDATE_STATE_MACHINE', id: machine.id, name: machine.name, description: machine.description });
         }
 
-        for (const transition of state.transitions) {
-          if (transition.isNew) {
-            ops.push({ type: 'CREATE_TRANSITION', fromStateId: state.id, toStateId: transition.toStateId, name: transition.name, description: transition.description, processId: transition.processId, guardCondition: transition.guardCondition });
-          } else if (transition.isDeleted) {
-            ops.push({ type: 'DELETE_TRANSITION', id: transition.id });
-          } else if (transition.isDirty) {
-            ops.push({ type: 'UPDATE_TRANSITION', id: transition.id, name: transition.name, description: transition.description, processId: transition.processId, guardCondition: transition.guardCondition });
+        for (const state of machine.states) {
+          if (state.isNew) {
+            ops.push({ type: 'CREATE_STATE', stateMachineId: machine.id, name: state.name, description: state.description, isInitial: state.isInitial, entryProcessId: state.entryProcessId, exitProcessId: state.exitProcessId });
+            continue; // a brand-new state's transitions are unreachable too -- same "no real id yet" problem, one level down
+          }
+          if (state.isDeleted) {
+            ops.push({ type: 'DELETE_STATE', id: state.id });
+            continue;
+          }
+          if (state.name !== state.originalName
+            || (state.description ?? '') !== (state.originalDescription ?? '')
+            || state.isInitial !== state.originalIsInitial
+            || state.entryProcessId !== state.originalEntryProcessId
+            || state.exitProcessId !== state.originalExitProcessId) {
+            ops.push({ type: 'UPDATE_STATE', id: state.id, name: state.name, description: state.description, isInitial: state.isInitial, entryProcessId: state.entryProcessId, exitProcessId: state.exitProcessId });
+          }
+
+          for (const transition of state.transitions) {
+            if (transition.isNew) {
+              ops.push({ type: 'CREATE_TRANSITION', fromStateId: state.id, toStateId: transition.toStateId, name: transition.name, description: transition.description, processId: transition.processId, guardCondition: transition.guardCondition });
+            } else if (transition.isDeleted) {
+              ops.push({ type: 'DELETE_TRANSITION', id: transition.id });
+            } else if (transition.isDirty) {
+              ops.push({ type: 'UPDATE_TRANSITION', id: transition.id, name: transition.name, description: transition.description, processId: transition.processId, guardCondition: transition.guardCondition });
+            }
           }
         }
       }
@@ -342,15 +357,23 @@ const schemaViewModel = {
         }
       }
 
-      for (const state of item.states) {
-        if (!state.isDirty) continue;
-        if (state.isNew) { changes.push(`+ State "${state.name || '(unnamed)'}"`); continue; }
-        if (state.isDeleted) { changes.push(`- State "${state.originalName}"`); continue; }
-        changes.push(`State "${state.originalName}": updated`);
-        for (const transition of state.transitions) {
-          if (transition.isNew) changes.push(`+ Transition "${transition.name || '(unnamed)'}" (${state.originalName} → ${transition.toStateName})`);
-          else if (transition.isDeleted) changes.push(`- Transition "${transition.originalName}"`);
-          else if (transition.isDirty) changes.push(`Transition "${transition.originalName}": updated`);
+      for (const machine of item.stateMachines) {
+        if (!machine.isDirty) continue;
+        if (machine.isNew) { changes.push(`+ State machine "${machine.name || '(unnamed)'}"`); continue; }
+        if (machine.isDeleted) { changes.push(`- State machine "${machine.originalName}"`); continue; }
+        if (machine.name !== machine.originalName || (machine.description ?? '') !== (machine.originalDescription ?? '')) {
+          changes.push(`State machine "${machine.originalName}": updated`);
+        }
+        for (const state of machine.states) {
+          if (!state.isDirty) continue;
+          if (state.isNew) { changes.push(`+ State "${state.name || '(unnamed)'}" (${machine.originalName})`); continue; }
+          if (state.isDeleted) { changes.push(`- State "${state.originalName}" (${machine.originalName})`); continue; }
+          changes.push(`State "${state.originalName}" (${machine.originalName}): updated`);
+          for (const transition of state.transitions) {
+            if (transition.isNew) changes.push(`+ Transition "${transition.name || '(unnamed)'}" (${state.originalName} → ${transition.toStateName})`);
+            else if (transition.isDeleted) changes.push(`- Transition "${transition.originalName}"`);
+            else if (transition.isDirty) changes.push(`Transition "${transition.originalName}": updated`);
+          }
         }
       }
 

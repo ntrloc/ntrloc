@@ -5,9 +5,11 @@ import org.flowable.engine.RepositoryService;
 import org.ntrloc.graph.db.partition.binary.BinaryPartitionManager;
 import org.ntrloc.graph.db.partition.schema.ControlledListManager;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateStateMachineMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateStateMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateTransitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DefinitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminStateMachineView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminStateView;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.lang.Nullable;
@@ -76,24 +78,41 @@ public interface DomainInitializer {
     }
 
     /**
-     * Creates a full state machine for an existing item type in one call: every state first,
-     * then every transition, resolving each transition's from/to state by name against what the
-     * states batch just persisted. Two applyMutations batches are unavoidable -- state ids don't
-     * exist until CreateStateMutation actually runs, and transitions need real ids, not names, so
-     * transitions must be a second batch. See StateDefinition/TransitionDefinition below.
+     * Creates a full, named state machine for an existing item type in one call: the machine
+     * itself, then every state, then every transition, resolving each transition's from/to state
+     * by name against what the states batch just persisted. Three applyMutations batches are
+     * unavoidable -- the machine id doesn't exist until CreateStateMachineMutation runs (states
+     * need it), and state ids don't exist until CreateStateMutation runs (transitions need real
+     * ids, not names). See StateDefinition/TransitionDefinition below.
      */
-    default void initStateMachine(SchemaManager schemaManager, UUID itemDefinitionId,
+    default void initStateMachine(SchemaManager schemaManager, UUID itemDefinitionId, String machineName,
                                    List<StateDefinition> states, List<TransitionDefinition> transitions) {
+        schemaManager.applyMutations(List.of(new CreateStateMachineMutation(itemDefinitionId, machineName, null)));
+
+        UUID stateMachineId = schemaManager.getAdminSchema().items().stream()
+                .filter(item -> item.id().equals(itemDefinitionId))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("No item type with id: " + itemDefinitionId))
+                .stateMachines().stream()
+                .filter(m -> m.name().equals(machineName))
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException("State machine '" + machineName + "' was not created"))
+                .id();
+
         schemaManager.applyMutations(states.stream()
                 .<DefinitionMutation>map(s -> new CreateStateMutation(
-                        itemDefinitionId, s.name(), s.description(), s.isInitial(), s.entryProcessId(), s.exitProcessId()))
+                        stateMachineId, s.name(), s.description(), s.isInitial(), s.entryProcessId(), s.exitProcessId()))
                 .toList());
 
         List<AdminStateView> createdStates = schemaManager.getAdminSchema().items().stream()
                 .filter(item -> item.id().equals(itemDefinitionId))
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("No item type with id: " + itemDefinitionId))
-                .states();
+                .stateMachines().stream()
+                .filter(m -> m.id().equals(stateMachineId))
+                .findFirst()
+                .map(AdminStateMachineView::states)
+                .orElse(null);
         Map<String, UUID> resolved = Optional.ofNullable(createdStates)
                 .map(List::stream)
                 .orElseGet(Stream::empty)

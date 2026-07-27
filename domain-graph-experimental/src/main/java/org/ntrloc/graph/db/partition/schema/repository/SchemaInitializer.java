@@ -26,6 +26,7 @@ public class SchemaInitializer {
         initItemTraitTable();
         initLinkPropertyTable();
         initEntityLinkPerspectiveTable();
+        initStateMachineTable();
         initStateTable();
         initStateTransitionTable();
     }
@@ -33,6 +34,7 @@ public class SchemaInitializer {
     void dropAllTables() {
         jdbcClient.sql("DROP TABLE IF EXISTS schema_state_transition CASCADE").update();
         jdbcClient.sql("DROP TABLE IF EXISTS schema_state CASCADE").update();
+        jdbcClient.sql("DROP TABLE IF EXISTS schema_state_machine CASCADE").update();
         jdbcClient.sql("DROP TABLE IF EXISTS schema_entity_link_perspective CASCADE").update();
         jdbcClient.sql("DROP TABLE IF EXISTS schema_item_link_perspective CASCADE").update();
         jdbcClient.sql("DROP TABLE IF EXISTS schema_item_property CASCADE").update();
@@ -151,17 +153,32 @@ public class SchemaInitializer {
                 """).update();
     }
 
-    void initStateTable() {
+    // A state machine is a named, independently-identified entity so multiple can exist per item
+    // type (e.g. a Product might have both an "ISBN Approval" and a "Fulfillment" machine) --
+    // states/transitions hang off the machine, not directly off the item.
+    void initStateMachineTable() {
         jdbcClient.sql("""
-                CREATE TABLE IF NOT EXISTS schema_state (
+                CREATE TABLE IF NOT EXISTS schema_state_machine (
                     id                 UUID PRIMARY KEY DEFAULT uuidv7(),
                     item_definition_id UUID NOT NULL REFERENCES schema_item(id) ON DELETE CASCADE,
                     name               TEXT NOT NULL,
                     description        TEXT,
-                    is_initial         BOOLEAN NOT NULL DEFAULT FALSE,
-                    entry_process_id   TEXT,
-                    exit_process_id    TEXT,
                     UNIQUE (item_definition_id, name)
+                )
+                """).update();
+    }
+
+    void initStateTable() {
+        jdbcClient.sql("""
+                CREATE TABLE IF NOT EXISTS schema_state (
+                    id               UUID PRIMARY KEY DEFAULT uuidv7(),
+                    state_machine_id UUID NOT NULL REFERENCES schema_state_machine(id) ON DELETE CASCADE,
+                    name             TEXT NOT NULL,
+                    description      TEXT,
+                    is_initial       BOOLEAN NOT NULL DEFAULT FALSE,
+                    entry_process_id TEXT,
+                    exit_process_id  TEXT,
+                    UNIQUE (state_machine_id, name)
                 )
                 """).update();
     }

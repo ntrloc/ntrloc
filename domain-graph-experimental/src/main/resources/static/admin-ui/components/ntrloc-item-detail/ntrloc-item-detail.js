@@ -36,6 +36,16 @@ injectStyles('ntrloc-item-detail-styles', `
   .states-diagram-el .state-machine-diagram-scroll {
     flex: 1;
   }
+  .state-machines-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .state-machines-list li {
+    padding: 4px 0;
+    font-size: 13px;
+    border-bottom: 1px solid var(--border);
+  }
   .field-row {
     display: flex;
     align-items: center;
@@ -351,19 +361,33 @@ class NtrlocItemDetail extends HTMLElement {
 
   statesBody() {
     const item = this._item;
-    const visibleStates = item.states.filter((s) => !s.isDeleted).length;
+    const machines = item.stateMachines.filter((m) => !m.isDeleted);
 
-    const diagramOrEmpty = visibleStates > 0
-      ? '<ntrloc-state-machine-diagram class="states-diagram-el"></ntrloc-state-machine-diagram>'
-      : '<p class="status">No states defined.</p>';
+    // A single machine keeps the existing full diagram preview -- still the common case. Multiple
+    // machines fall back to a compact list (a compact multi-diagram preview isn't warranted here;
+    // the full diagram for any one machine is one click away via the editor's own tab selector).
+    let previewHtml;
+    if (machines.length === 0) {
+      previewHtml = '<p class="status">No state machines defined.</p>';
+    } else if (machines.length === 1) {
+      previewHtml = machines[0].states.filter((s) => !s.isDeleted).length > 0
+        ? '<ntrloc-state-machine-diagram class="states-diagram-el"></ntrloc-state-machine-diagram>'
+        : '<p class="status">No states defined.</p>';
+    } else {
+      previewHtml = `
+        <ul class="state-machines-list">
+          ${machines.map((m) => `<li>${escapeHtml(m.name || '(unnamed)')} <span class="status">(${m.states.filter((s) => !s.isDeleted).length} states)</span></li>`).join('')}
+        </ul>
+      `;
+    }
 
-    // Mirrors the Links panel's own "save this first" guard -- CreateStateMutation needs a real
-    // itemDefinitionId, which a not-yet-saved item type doesn't have yet.
+    // Mirrors the Links panel's own "save this first" guard -- CreateStateMachineMutation needs a
+    // real itemDefinitionId, which a not-yet-saved item type doesn't have yet.
     const editAffordance = item.isNew
-      ? '<p class="status">Save this item type before defining states.</p>'
-      : '<md-outlined-button class="edit-states-button">Edit States</md-outlined-button>';
+      ? '<p class="status">Save this item type before defining state machines.</p>'
+      : '<md-outlined-button class="edit-states-button">Edit State Machines</md-outlined-button>';
 
-    return `${diagramOrEmpty}<div class="states-edit-row">${editAffordance}</div>`;
+    return `${previewHtml}<div class="states-edit-row">${editAffordance}</div>`;
   }
 
   panel(key, title, bodyHtml) {
@@ -575,8 +599,10 @@ class NtrlocItemDetail extends HTMLElement {
 
     const statesDiagram = this.querySelector('.states-diagram-el');
     if (statesDiagram) {
+      // Only rendered when exactly one (non-deleted) state machine exists -- see statesBody().
+      const machine = item.stateMachines.filter((m) => !m.isDeleted)[0];
       statesDiagram.data = {
-        states: item.states.filter((s) => !s.isDeleted).map((s) => ({
+        states: machine.states.filter((s) => !s.isDeleted).map((s) => ({
           ...s,
           transitions: s.transitions.filter((t) => !t.isDeleted),
         })),
