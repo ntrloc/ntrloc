@@ -59,8 +59,22 @@ public class ProcessSession implements Session {
         return byId == null ? null : (T) byId.get(id);
     }
 
+    // Every DataManager's update(entity) calls this right after a successful write, same as
+    // registerFlush()'s two callers (insert() and the cacheOrMap()-style finders). That makes this
+    // the right place to re-baseline a flush snapshot too: if this id already has a flush
+    // registered -- meaning it was found earlier in this same command, before this write -- that
+    // snapshot is now stale. Left alone, flush() at command-end would still see "current state !=
+    // original find-time snapshot" and rerun the registered writeBack, silently re-applying the
+    // same update() a second time and over-incrementing the revision column (observed live: an
+    // explicit update() following a same-command findById() bumped revision by 2 instead of 1).
+    // Re-snapshotting here to the just-written state means flush() only fires for mutations that
+    // happen *after* the last real write, which is what "dirty since last persisted" should mean.
     public <T> void cache(Class<T> type, String id, T entity) {
         entityCache.computeIfAbsent(type, t -> new HashMap<>()).put(id, entity);
+        String key = type.getName() + ":" + id;
+        if (entity instanceof Entity flowableEntity && flushSnapshots.containsKey(key)) {
+            flushSnapshots.put(key, flowableEntity.getPersistentState());
+        }
     }
 
     public void evict(Class<?> type, String id) {
@@ -90,7 +104,8 @@ public class ProcessSession implements Session {
     // using whatever the entity's current in-memory field values are then -- not just whatever
     // they were when this was registered. See the class comment for why this exists. `entity` must
     // be the same object flush() will re-read state from -- flush() only actually calls `writeBack`
-    // if its persistent state has changed since this registration (see flush()).
+    // if its persistent state has changed since this registration, or since the last write-back
+    // (see flush() and cache()'s own snapshot-refresh).
     public void registerFlush(Class<?> type, String id, Entity entity, Runnable writeBack) {
         String key = type.getName() + ":" + id;
         flushCallbacks.put(key, writeBack);
