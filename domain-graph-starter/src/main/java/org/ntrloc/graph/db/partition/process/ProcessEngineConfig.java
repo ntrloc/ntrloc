@@ -2,6 +2,7 @@ package org.ntrloc.graph.db.partition.process;
 
 import org.flowable.dmn.spring.configurator.SpringDmnEngineConfigurator;
 import org.flowable.engine.HistoryService;
+import org.flowable.engine.ManagementService;
 import org.flowable.engine.ProcessEngine;
 import org.flowable.engine.RepositoryService;
 import org.flowable.engine.RuntimeService;
@@ -205,5 +206,10 @@ public class ProcessEngineConfig {
     @Bean
     public HistoryService historyService(ProcessEngine processEngine) {
         return processEngine.getHistoryService();
+    }
+
+    @Bean
+    public ManagementService managementService(ProcessEngine processEngine) {
+        return processEngine.getManagementService();
     }
 }
