@@ -36,7 +36,7 @@ public class PrincipalResolver {
      * Resolves the real authenticated session first, falling back to the header/query-param
      * stand-in only when no real session exists. This order is what keeps the stand-in safe:
      * SecurityConfig's filter chain already requires authentication for every request once
-     * ntrloc.security.enabled=true, so a real Authentication is guaranteed present by the time
+     * graph.security.enabled=true, so a real Authentication is guaranteed present by the time
      * this runs in that mode — the stand-in can only ever be reached when security is disabled
      * (permissive/test mode), never as a way to spoof a principal past real authentication.
      *
@@ -92,6 +92,6 @@ public class PrincipalResolver {
 
     private NtrlocPrincipal toPrincipal(SecurityRepository.UserRow user) {
         Set<UUID> groupIds = repo.getGroupIdsForUser(user.id());
-        return new ResolvedPrincipal(user.id(), user.externalId(), user.displayName(), groupIds, user.isSuperuser());
+        return new ResolvedPrincipal(user.id(), user.externalId(), user.displayName(), user.email(), groupIds, user.isSuperuser());
     }
 }

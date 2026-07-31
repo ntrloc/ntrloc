@@ -44,7 +44,7 @@ public class LocalUserDetailsService implements ReactiveUserDetailsService {
             return Optional.empty();
         }
         NtrlocPrincipal principal = new ResolvedPrincipal(
-                user.get().id(), user.get().externalId(), user.get().displayName(),
+                user.get().id(), user.get().externalId(), user.get().displayName(), user.get().email(),
                 repo.getGroupIdsForUser(user.get().id()), user.get().isSuperuser());
         SecurityRepository.LocalCredentialsRow c = credentials.get();
         return Optional.of(new NtrlocUserDetails(principal, c.passwordHash(), c.role(), c.active()));

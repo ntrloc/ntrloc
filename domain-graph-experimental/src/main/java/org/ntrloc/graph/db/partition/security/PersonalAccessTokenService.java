@@ -18,7 +18,7 @@ import java.util.UUID;
 @Service
 public class PersonalAccessTokenService {
 
-    private static final String TOKEN_PREFIX = "ntrloc_pat_";
+    private static final String TOKEN_PREFIX = "";
     private static final SecureRandom RANDOM = new SecureRandom();
 
     private final SecurityRepository repo;
@@ -41,6 +41,21 @@ public class PersonalAccessTokenService {
         return repo.listTokensForUser(principal.id());
     }
 
+    public List<PersonalAccessTokenRow> listForUser(UUID userId) {
+        return repo.listTokensForUser(userId);
+    }
+
+    public IssuedToken issueForUser(UUID userId, String name, Integer expiresInDays) {
+        String rawToken = generateToken();
+        OffsetDateTime expiresAt = expiresInDays == null ? null : OffsetDateTime.now().plusDays(expiresInDays);
+        UUID id = repo.createPersonalAccessToken(userId, hash(rawToken), name, expiresAt);
+        return new IssuedToken(id, name, rawToken, expiresAt);
+    }
+
+    public void revokeForUser(UUID userId, UUID tokenId) {
+        repo.revokeToken(tokenId, userId);
+    }
+
     public void revoke(NtrlocPrincipal principal, UUID tokenId) {
         repo.revokeToken(tokenId, principal.id());
     }
@@ -54,7 +69,7 @@ public class PersonalAccessTokenService {
     public Optional<NtrlocPrincipal> authenticate(String rawToken) {
         return repo.findUserByValidTokenHash(hash(rawToken))
                 .map(user -> new ResolvedPrincipal(
-                        user.id(), user.externalId(), user.displayName(),
+                        user.id(), user.externalId(), user.displayName(), user.email(),
                         repo.getGroupIdsForUser(user.id()), user.isSuperuser()));
     }
 

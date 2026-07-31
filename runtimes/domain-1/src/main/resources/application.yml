@@ -10,7 +10,10 @@ spring:
     password: ntrloc
     driver-class-name: org.postgresql.Driver
 
-ntrloc:
+cluster:
+  name: domain-1
+
+graph:
   branding:
     display-name: domain-1
   auth:

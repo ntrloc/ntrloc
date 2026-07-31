@@ -13,7 +13,7 @@ import java.util.List;
 // (as opposed to plain-class, like SecurityProperties) properties type. A record has no default
 // constructor for ordinary component-scan instantiation to call before the binding
 // post-processor gets a turn, so it needs the explicit constructor-binding registration path.
-@ConfigurationProperties(prefix = "ntrloc.process.script")
+@ConfigurationProperties(prefix = "graph.process.script")
 public record ProcessScriptProperties(List<String> importPackages) {
 
     public ProcessScriptProperties {

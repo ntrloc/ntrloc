@@ -12,7 +12,7 @@ import java.util.List;
 import java.util.Map;
 
 // Backs org.flowable.dmn.api.DmnDeployment with our own decision_deployment table. Query-
-// criteria/native-query finder methods are stubbed with empty results -- nothing in ntrloc lists
+// criteria/native-query finder methods are stubbed with empty results -- nothing in this app lists
 // DMN deployments directly, matching DeploymentDataManagerImpl's same stubbing for the process
 // engine side.
 public class DecisionDeploymentDataManagerImpl extends AbstractDecisionDataManager implements DmnDeploymentDataManager {

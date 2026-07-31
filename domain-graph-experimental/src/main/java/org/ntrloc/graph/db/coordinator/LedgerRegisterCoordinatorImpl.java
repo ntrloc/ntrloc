@@ -41,21 +41,18 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
         // Items before links: link endpoint resolution needs same-transaction item staging
         // to already exist so it can prefer the fresh row over the old committed one.
         for (LedgerEntry entry : expanded) {
-            switch (entry) {
-                case ItemCreateEntry e -> registerPartitionManager.stageItemCreate(e.itemId(), e.itemTypeId(), e.properties(), transactionId);
-                // An empty diff (the cascade's ripple entries) means nothing about the item's
-                // own properties changed -- skip the register write entirely rather than
-                // versioning the row (and repointing its perspectives) for no actual content.
-                case ItemUpdateEntry e when !e.properties().isEmpty() -> registerPartitionManager.stageItemUpdate(e.itemId(), e.properties(), transactionId);
-                default -> { }
+            if (entry instanceof ItemCreateEntry e) {
+                registerPartitionManager.stageItemCreate(e.itemId(), e.itemTypeId(), e.properties(), transactionId);
+            } else if (entry instanceof ItemUpdateEntry e && !e.properties().isEmpty()) {
+                registerPartitionManager.stageItemUpdate(e.itemId(), e.properties(), transactionId);
             }
         }
         for (LedgerEntry entry : expanded) {
-            switch (entry) {
-                case LinkCreateEntry e -> registerPartitionManager.stageLinkCreate(e.linkId(), e.linkTypeId(),
+            if (entry instanceof LinkCreateEntry e) {
+                registerPartitionManager.stageLinkCreate(e.linkId(), e.linkTypeId(),
                         toRegisterEndpoint(e.endpointA()), toRegisterEndpoint(e.endpointB()), e.properties(), transactionId);
-                case LinkUpdateEntry e -> registerPartitionManager.stageLinkUpdate(e.linkId(), e.properties(), transactionId);
-                default -> { }
+            } else if (entry instanceof LinkUpdateEntry e) {
+                registerPartitionManager.stageLinkUpdate(e.linkId(), e.properties(), transactionId);
             }
         }
     }
@@ -66,17 +63,17 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
         List<LedgerEntry> entries = ledgerPartitionManager.readTransaction(transactionId);
 
         for (LedgerEntry entry : entries) {
-            switch (entry) {
-                case ItemCreateEntry e -> registerPartitionManager.commitItem(e.itemId(), transactionId, commitId);
-                case ItemUpdateEntry e when !e.properties().isEmpty() -> registerPartitionManager.commitItem(e.itemId(), transactionId, commitId);
-                default -> { }
+            if (entry instanceof ItemCreateEntry e) {
+                registerPartitionManager.commitItem(e.itemId(), transactionId, commitId);
+            } else if (entry instanceof ItemUpdateEntry e && !e.properties().isEmpty()) {
+                registerPartitionManager.commitItem(e.itemId(), transactionId, commitId);
             }
         }
         for (LedgerEntry entry : entries) {
-            switch (entry) {
-                case LinkCreateEntry e -> registerPartitionManager.commitLink(e.linkId(), transactionId, commitId);
-                case LinkUpdateEntry e -> registerPartitionManager.commitLink(e.linkId(), transactionId, commitId);
-                default -> { }
+            if (entry instanceof LinkCreateEntry e) {
+                registerPartitionManager.commitLink(e.linkId(), transactionId, commitId);
+            } else if (entry instanceof LinkUpdateEntry e) {
+                registerPartitionManager.commitLink(e.linkId(), transactionId, commitId);
             }
         }
         // Link deletes before item deletes: a perspective row's FK to register_item has no

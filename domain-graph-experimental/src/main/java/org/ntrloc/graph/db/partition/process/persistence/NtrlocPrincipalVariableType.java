@@ -8,7 +8,7 @@ import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
 import org.ntrloc.graph.db.partition.security.ResolvedPrincipal;
 
 // Lets a whole NtrlocPrincipal round-trip as a single process variable (registered as a
-// customPreVariableType in ProcessEngineConfig, typeName "ntrlocPrincipal") -- serialized as JSON
+// customPreVariableType in ProcessEngineConfig, typeName "ntrlocPrincipal") -- serialized as JSON,
 // into the same text_value TEXT column VariableInstanceDataManagerImpl already persists for every
 // other variable type, no schema change needed. This is what lets a script task read
 // execution.getVariable("principal") and get a real object straight back, rather than being handed
@@ -67,7 +67,7 @@ public class NtrlocPrincipalVariableType implements VariableType {
         // added later.
         NtrlocPrincipal principal = (NtrlocPrincipal) value;
         ResolvedPrincipal safe = new ResolvedPrincipal(
-                principal.id(), principal.externalId(), principal.displayName(),
+                principal.id(), principal.externalId(), principal.displayName(), principal.email(),
                 principal.groupIds(), principal.isSuperuser());
         try {
             valueFields.setTextValue(MAPPER.writeValueAsString(safe));

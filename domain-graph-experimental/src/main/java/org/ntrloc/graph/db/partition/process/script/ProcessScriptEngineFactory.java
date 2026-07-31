@@ -40,7 +40,7 @@ public final class ProcessScriptEngineFactory {
     // on a tie-break if two packages both declare the same simple name (confirmed via
     // NativeJavaImporter.createProperty: Nashorn favors the *last*-listed package; Groovy's
     // import-resolution order wasn't even checked, deliberately, because relying on either engine
-    // picking "the same one" the other would is exactly the kind of silent guess ntrloc prefers
+    // picking "the same one" the other would is exactly the kind of silent guess we prefer
     // to refuse outright -- see ProcessAccessible's own class comment for the same positive-
     // assertion preference applied elsewhere in this package). Failing at startup, once, forces
     // the collision to be resolved in config instead.
@@ -56,7 +56,7 @@ public final class ProcessScriptEngineFactory {
                 String existingPackage = packageBySimpleName.putIfAbsent(simpleName, importPackage);
                 if (existingPackage != null && !existingPackage.equals(importPackage)) {
                     throw new IllegalStateException(
-                            "ntrloc.process.script.import-packages: '" + simpleName + "' exists in both '"
+                            "graph.process.script.import-packages: '" + simpleName + "' exists in both '"
                                     + existingPackage + "' and '" + importPackage
                                     + "' -- unqualified process-script resolution would be ambiguous. "
                                     + "Rename one of the classes, or remove one of the two packages from the list.");

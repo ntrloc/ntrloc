@@ -112,25 +112,23 @@ public class LedgerPartitionManagerImpl implements LedgerPartitionManager {
     }
 
     private TargetRef targetOf(LedgerEntry entry) {
-        return switch (entry) {
-            case ItemCreateEntry e -> new TargetRef("ITEM", e.itemId());
-            case ItemUpdateEntry e -> new TargetRef("ITEM", e.itemId());
-            case ItemDeleteEntry e -> new TargetRef("ITEM", e.itemId());
-            case LinkCreateEntry e -> new TargetRef("LINK", e.linkId());
-            case LinkUpdateEntry e -> new TargetRef("LINK", e.linkId());
-            case LinkDeleteEntry e -> new TargetRef("LINK", e.linkId());
-        };
+        if (entry instanceof ItemCreateEntry e) return new TargetRef("ITEM", e.itemId());
+        if (entry instanceof ItemUpdateEntry e) return new TargetRef("ITEM", e.itemId());
+        if (entry instanceof ItemDeleteEntry e) return new TargetRef("ITEM", e.itemId());
+        if (entry instanceof LinkCreateEntry e) return new TargetRef("LINK", e.linkId());
+        if (entry instanceof LinkUpdateEntry e) return new TargetRef("LINK", e.linkId());
+        if (entry instanceof LinkDeleteEntry e) return new TargetRef("LINK", e.linkId());
+        throw new IllegalArgumentException("Unsupported entry: " + entry.getClass().getSimpleName());
     }
 
     private String entryTypeOf(LedgerEntry entry) {
-        return switch (entry) {
-            case ItemCreateEntry e -> "ITEM_CREATE";
-            case ItemUpdateEntry e -> "ITEM_UPDATE";
-            case ItemDeleteEntry e -> "ITEM_DELETE";
-            case LinkCreateEntry e -> "LINK_CREATE";
-            case LinkUpdateEntry e -> "LINK_UPDATE";
-            case LinkDeleteEntry e -> "LINK_DELETE";
-        };
+        if (entry instanceof ItemCreateEntry) return "ITEM_CREATE";
+        if (entry instanceof ItemUpdateEntry) return "ITEM_UPDATE";
+        if (entry instanceof ItemDeleteEntry) return "ITEM_DELETE";
+        if (entry instanceof LinkCreateEntry) return "LINK_CREATE";
+        if (entry instanceof LinkUpdateEntry) return "LINK_UPDATE";
+        if (entry instanceof LinkDeleteEntry) return "LINK_DELETE";
+        throw new IllegalArgumentException("Unsupported entry: " + entry.getClass().getSimpleName());
     }
 
     private String writeEntry(LedgerEntry entry) {

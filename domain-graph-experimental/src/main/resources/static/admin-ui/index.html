@@ -68,6 +68,9 @@
   <script src="components/ntrloc-tasks/ntrloc-tasks.js"></script>
   <!-- Real ES modules (diagram-js/bpmn-moddle are vendored as genuine import/export source, not
        globals), unlike this app's other plain-script components. -->
+  <script src="components/ntrloc-users/ntrloc-users.js"></script>
+  <script src="components/ntrloc-groups/ntrloc-groups.js"></script>
+  <script src="components/ntrloc-access/ntrloc-access.js"></script>
   <script type="module" src="components/ntrloc-process-editor/ntrloc-process-editor.js"></script>
   <script type="module" src="components/ntrloc-decision-table-editor/ntrloc-decision-table-editor.js"></script>
   <style>
@@ -193,6 +196,9 @@
       display: flex;
       flex-direction: column;
     }
+    ntrloc-access[data-route].current {
+      flex-direction: row;
+    }
   </style>
 </head>
 <body>
@@ -202,7 +208,9 @@
     <ntrloc-search data-route="/search"></ntrloc-search>
     <ntrloc-processes data-route="/processes"></ntrloc-processes>
     <ntrloc-tasks data-route="/tasks"></ntrloc-tasks>
-    <div data-route="/users" class="status" style="padding: 24px 32px;">Users screen coming soon.</div>
+    <ntrloc-users data-route="/users"></ntrloc-users>
+    <ntrloc-groups data-route="/groups"></ntrloc-groups>
+    <ntrloc-access data-route="/access"></ntrloc-access>
   </div>
 
   <script>

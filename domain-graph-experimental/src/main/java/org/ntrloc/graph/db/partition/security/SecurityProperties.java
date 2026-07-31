@@ -4,7 +4,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
 @Component
-@ConfigurationProperties(prefix = "ntrloc.security")
+@ConfigurationProperties(prefix = "graph.security")
 public class SecurityProperties {
 
     private String headerName = "X-Ntrloc-User";

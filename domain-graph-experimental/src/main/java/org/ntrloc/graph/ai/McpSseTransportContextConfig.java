@@ -22,9 +22,9 @@ import tools.jackson.databind.json.JsonMapper;
 // shared extraction logic. SSE, not Streamable, is what's actually active by default in this app
 // today: confirmed by reading EnabledSseServerCondition/EnabledStreamableServerCondition
 // directly -- SSE's own protocol check is matchIfMissing=true, Streamable's is
-// matchIfMissing=false, and ntrloc's application.yml never sets spring.ai.mcp.server.protocol.
+// matchIfMissing=false, and the application.yml never sets spring.ai.mcp.server.protocol.
 // (McpServerSseWebFluxAutoConfiguration is itself @Deprecated(forRemoval=true) upstream, but
-// still the one actually wired up until that default changes or ntrloc opts into STREAMABLE
+// still the one actually wired up until that default changes or the app opts into STREAMABLE
 // explicitly -- this class needs to keep working for whichever one actually is active.)
 //
 // Also defines the router-function bean the original autoconfiguration would otherwise have

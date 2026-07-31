@@ -35,16 +35,13 @@ import org.springframework.transaction.PlatformTransactionManager;
 import javax.sql.DataSource;
 import java.util.List;
 
-// Zero-MyBatis (docs/ntrloc-workflow-summary.md Sections 3/6): every Flowable entity this engine
-// can actually touch during normal execution -- deployments/resources/process-definitions/
-// executions/activity-instances/variables/tasks/task-identity-links/jobs/event-subscriptions --
-// flows entirely through our own JDBC-backed DataManagers and process_* tables (see the
-// persistence sub-package), never Flowable's MyBatis-managed ACT_*/FLW_* tables. IDM and the Event
-// Registry are disabled outright rather than given custom persistence (confirmed zero usage
-// anywhere in ntrloc). History stays off -- nothing reads/writes it, so its tables simply never
-// get created (see the schema-management override below). The handful of remaining Flowable
-// entities (Model, EventLogEntry, ProcessDefinitionInfo, EntityLink, Batch) are each gated behind
-// a config flag this class never sets, so they're genuinely unreachable, not just unused.
+// Zero-MyBatis: every Flowable entity this engine can actually touch during normal execution --
+// deployments/resources/process-definitions/executions/activity-instances/variables/tasks/
+// task-identity-links/jobs/event-subscriptions -- flows entirely through our own JDBC-backed
+// DataManagers and process_* tables (see the persistence sub-package), never Flowable's
+// MyBatis-managed ACT_*/FLW_* tables. IDM and the Event Registry are disabled outright rather
+// than given custom persistence. History stays off -- nothing reads/writes it, so its tables
+// simply never get created (see the schema-management override below).
 @Configuration
 @DependsOn({"processPersistenceInitializer", "decisionPersistenceInitializer"})
 @EnableConfigurationProperties(ProcessScriptProperties.class)
@@ -95,7 +92,7 @@ public class ProcessEngineConfig {
         // "if (beans == null)" guard never fires -- otherwise it builds SpringBeanFactoryProxyMap,
         // exposing every bean in the whole ApplicationContext, unrestricted, to ${...} in a script
         // task or delegateExpression. ProcessAccessibleBeansMap closes that off to only beans
-        // explicitly marked @ProcessAccessible (ntrloc's positive-assertion convention: existing
+        // explicitly marked @ProcessAccessible (positive-assertion convention: existing
         // as a bean never implies being safe/intended for a process author to call directly) --
         // see that class's own comment for the full reasoning, including why this also covers the
         // DMN engine's own expression resolution with no separate wiring there.
@@ -114,23 +111,20 @@ public class ProcessEngineConfig {
         // scriptBindingsFactory (the @ProcessAccessible bean resolver chain, execution variables,
         // etc., built independently at initScriptBindingsFactory(), unrelated to this) still gets
         // composed in normally around whatever engine is set here. See ProcessScriptEngineFactory
-        // for what this buys: ntrloc.process.script.import-packages-configured classes usable by
+        // for what this buys: graph.process.script.import-packages-configured classes usable by
         // simple name (`new SingleItemProjectionSpec(...)`) from both Groovy and JavaScript
         // process scripts, no fully-qualified name or per-script import needed.
         config.setScriptEngine(ProcessScriptEngineFactory.build(processScriptProperties));
         config.setHistory("none");
-        // Activated (July 2026, docs/ntrloc-workflow-summary.md "Job control: AsyncExecutor" section)
-        // -- the plain default form (a node polls, claims, and executes its own due jobs), not yet the
+        // Activated -- the plain default form (a node polls, claims, and executes its own due jobs), not yet the
         // acquisition-disabled/targeted-push scheme that section designs for real multi-node routing.
         // Correct for today's single-node deployment; needs that follow-on work, not just re-enabling,
         // before this is trusted for genuine multi-node -- see this session's addition to that section
         // for exactly what's verified vs. still open about the custom Job DataManagers' claim safety.
         config.setAsyncExecutorActivate(true);
-        // Zero-MyBatis (docs/ntrloc-workflow-summary.md Section 6): neither sub-engine is used
-        // anywhere in ntrloc (confirmed via repo-wide grep) -- ntrloc has its own identity/
-        // authorization partition, and no process triggers on external Kafka/HTTP/JMS channels.
-        // Disabling means the sub-engine (and its own schema management) never gets built at all,
-        // not just "unused" -- stronger than giving it custom persistence would achieve.
+        // Neither sub-engine is used -- this app has its own identity/authorization partition,
+        // and no process triggers on external Kafka/HTTP/JMS channels. Disabling means the
+        // sub-engine (and its own schema management) never gets built at all.
         config.setDisableIdmEngine(true);
         config.setDisableEventRegistry(true);
         // Deliberately no deploymentResources here -- this engine wires up the process engine and
@@ -182,7 +176,7 @@ public class ProcessEngineConfig {
         // so this is now in active use, not just built for zero-MyBatis completeness (Section 6).
         config.addJobServiceConfigurator(new JobServiceConfigurator());
         // Load-bearing, not cleanup -- message/signal start-event dispatch depends on this
-        // (docs/ntrloc-workflow-summary.md Sections 4/5).
+        // -- message/signal start-event dispatch depends on this.
         config.addEventSubscriptionServiceConfigurator(new EventSubscriptionServiceConfigurator());
 
         return config;

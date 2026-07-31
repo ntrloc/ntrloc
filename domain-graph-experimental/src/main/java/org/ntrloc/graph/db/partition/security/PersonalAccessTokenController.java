@@ -50,10 +50,10 @@ public class PersonalAccessTokenController {
                 .toList();
     }
 
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Void> revoke(@PathVariable UUID id, ServerHttpRequest request, Authentication authentication) {
+    @DeleteMapping("/{tokenId}")
+    public ResponseEntity<Void> revoke(@PathVariable("tokenId") UUID tokenId, ServerHttpRequest request, Authentication authentication) {
         var principal = principalResolver.resolve(request, authentication);
-        tokenService.revoke(principal, id);
+        tokenService.revoke(principal, tokenId);
         return ResponseEntity.noContent().build();
     }
 }

@@ -10,8 +10,7 @@ import java.sql.SQLException;
 import java.util.List;
 
 // Backs Flowable's generic config-property bookkeeping (ACT_GE_PROPERTY) with our own
-// process_property table -- discovered live, not anticipated (docs/ntrloc-workflow-summary.md
-// Section 6): ValidateExecutionRelatedEntityCountCfgCmd looks up
+// process_property table -- discovered live: ValidateExecutionRelatedEntityCountCfgCmd looks up
 // "cfg.execution-related-entities-count" unconditionally during every buildEngine() call, entirely
 // independent of schema management or the id generator. A PropertyEntity's own id *is* its name --
 // PropertyEntityImpl.setId() throws ("only provided id generation allowed for properties"),

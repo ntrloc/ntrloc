@@ -12,8 +12,8 @@ import java.util.Date;
 import java.util.List;
 
 // Backs Flowable's "due, waiting to be claimed" job (ACT_RU_JOB) with job_kind = 'JOB' rows in
-// process_job. Claim safety needs no bespoke logic: AcquireJobsCmd (bytecode-verified, docs/
-// ntrloc-workflow-summary.md Section 6) just loads via findJobsToExecute, mutates lockOwner/
+// process_job. Claim safety needs no bespoke logic: AcquireJobsCmd just loads via
+// findJobsToExecute, mutates lockOwner/
 // lockExpirationTime in memory, and lets the normal flush-time update() do the revision-checked
 // write -- that already works correctly via AbstractJobDataManager's cache/registerFlush pattern.
 // The async executor is never activated (see ProcessEngineConfig), so findJobsToExecute has no
@@ -107,7 +107,7 @@ public class JobDataManagerImpl extends AbstractJobDataManager<JobEntity> implem
     }
 
     // Query-object/native-query surfaces: stubbed to empty, matching this package's convention
-    // (e.g. ExecutionDataManagerImpl) -- nothing in ntrloc calls ManagementService.createJobQuery().
+    // (e.g. ExecutionDataManagerImpl) -- nothing in this app calls ManagementService.createJobQuery().
     @Override
     public List<Job> findJobsByQueryCriteria(JobQueryImpl jobQuery) {
         return new ArrayList<>();

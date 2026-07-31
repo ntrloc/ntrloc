@@ -138,6 +138,221 @@ injectStyles('ntrloc-search-styles', `
     white-space: pre-wrap;
     word-break: break-all;
   }
+  .view-toggle {
+    display: flex;
+    align-items: center;
+    margin-left: auto;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .view-toggle button {
+    padding: 5px 12px;
+    background: transparent;
+    color: var(--muted);
+    border: none;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+  .view-toggle button.active {
+    background: var(--accent);
+    color: #fff;
+  }
+  .view-toggle button:not(.active):hover {
+    background: rgba(74, 158, 255, 0.1);
+    color: var(--text);
+  }
+  .item-card {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .item-card + .item-card {
+    margin-top: 12px;
+    border-top: 2px solid rgba(74, 158, 255, 0.5);
+  }
+  .item-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.02);
+  }
+  .item-card-title {
+    font-weight: 600;
+    font-size: 13px;
+  }
+  .item-card-id {
+    font-size: 11px;
+    color: var(--muted);
+    font-family: monospace;
+    margin-left: 8px;
+  }
+  .item-card-actions button {
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 11px;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted);
+    transition: all 0.15s;
+  }
+  .item-card-actions button:hover {
+    color: var(--text);
+    border-color: var(--accent);
+  }
+  .item-card-actions button.editing {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+  .prop-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    font-size: 13px;
+    padding: 4px 0;
+  }
+  .prop-row {
+    display: flex;
+    align-items: baseline;
+    padding: 4px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .prop-row:hover {
+    background: rgba(74, 158, 255, 0.04);
+  }
+  .prop-key {
+    color: var(--muted);
+    font-weight: 500;
+    min-width: 140px;
+    flex-shrink: 0;
+    padding-right: 12px;
+  }
+  .prop-value {
+    flex: 1;
+    word-break: break-word;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .prop-value .value-text {
+    flex: 1;
+  }
+  .prop-value .value-null {
+    color: var(--muted);
+    font-style: italic;
+  }
+  .prop-value .prop-image {
+    max-width: 100%;
+    max-height: 120px;
+    object-fit: contain;
+    border-radius: 3px;
+  }
+  .prop-value input,
+  .prop-value textarea,
+  .prop-value select {
+    flex: 1;
+    padding: 4px 8px;
+    background: transparent;
+    color: var(--text);
+    border: none;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    font-size: 13px;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .prop-value input:focus,
+  .prop-value textarea:focus,
+  .prop-value select:focus {
+    border-bottom-color: var(--accent);
+  }
+  .prop-actions {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+  .prop-actions button {
+    width: 22px;
+    height: 22px;
+    border: none;
+    background: none;
+    cursor: pointer;
+    color: var(--muted);
+    border-radius: 3px;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .prop-actions button:hover {
+    background: rgba(74, 158, 255, 0.1);
+    color: var(--accent);
+  }
+  .prop-actions button.delete-btn:hover {
+    background: rgba(248, 81, 73, 0.1);
+    color: #ef5350;
+  }
+  .prop-key.removed {
+    color: #ef5350;
+    text-decoration: line-through;
+  }
+  .prop-value.removed {
+    color: var(--muted);
+    font-style: italic;
+    text-decoration: line-through;
+  }
+  .add-prop-row {
+    padding: 8px 14px;
+  }
+  .add-prop-row button {
+    padding: 4px 10px;
+    border: 1px dashed var(--border);
+    background: transparent;
+    color: var(--muted);
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .add-prop-row button:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .save-bar {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 8px 14px;
+    border-top: 1px solid var(--border);
+    background: rgba(74, 158, 255, 0.04);
+  }
+  .save-bar .change-count {
+    font-size: 12px;
+    color: #d29922;
+    margin-right: auto;
+  }
+  .save-bar button {
+    padding: 5px 14px;
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+    border: none;
+  }
+  .save-bar .cancel-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+  }
+  .save-bar .save-btn {
+    background: #3fb950;
+    color: #fff;
+  }
   .no-results {
     text-align: center;
     padding: 32px 0;
@@ -191,6 +406,9 @@ class NtrlocSearch extends HTMLElement {
       results: [],
       isLoading: false,
       lastProjectionMs: null,
+      viewMode: 'formatted',
+      propertyDefs: [],
+      editingItems: {},
     });
     this.render();
     this.loadItemTypes(id);
@@ -229,6 +447,7 @@ class NtrlocSearch extends HTMLElement {
         id: item.id,
         name: item.name,
         sortableFields: item.sortableFields || [],
+        properties: (item.properties || []).map(p => ({ name: p.name, type: p.type, cardinality: p.cardinality })),
       }));
       this.render();
     } catch (e) {
@@ -243,8 +462,10 @@ class NtrlocSearch extends HTMLElement {
     pane.lastProjectionMs = null;
     pane.selectedSortField = null;
     pane.selectedSortDirection = 'ASC';
+    pane.editingItems = {};
     const type = pane.availableTypes.find(t => t.name === typeName);
     pane.sortableFields = type?.sortableFields ?? [];
+    pane.propertyDefs = type?.properties ?? [];
     this.render();
   }
 
@@ -288,6 +509,106 @@ class NtrlocSearch extends HTMLElement {
       this.render();
     }
   }
+
+  setViewMode(id, mode) {
+    this.pane(id).viewMode = mode;
+    this.render();
+  }
+
+  toggleEdit(id, itemId) {
+    const pane = this.pane(id);
+    if (pane.editingItems[itemId]) {
+      delete pane.editingItems[itemId];
+    } else {
+      const item = pane.results.find(r => r.itemId === itemId);
+      if (!item) return;
+      pane.editingItems[itemId] = {
+        values: { ...item.properties },
+        removed: new Set(),
+        added: [],
+      };
+    }
+    this.render();
+  }
+
+  cancelEdit(id, itemId) {
+    delete this.pane(id).editingItems[itemId];
+    this.render();
+  }
+
+  updateEditValue(id, itemId, propName, value) {
+    const edit = this.pane(id).editingItems[itemId];
+    if (edit) edit.values[propName] = value;
+  }
+
+  removeProperty(id, itemId, propName) {
+    const edit = this.pane(id).editingItems[itemId];
+    if (edit) {
+      edit.removed.add(propName);
+      this.render();
+    }
+  }
+
+  undoRemoveProperty(id, itemId, propName) {
+    const edit = this.pane(id).editingItems[itemId];
+    if (edit) {
+      edit.removed.delete(propName);
+      this.render();
+    }
+  }
+
+  addProperty(id, itemId) {
+    const edit = this.pane(id).editingItems[itemId];
+    if (!edit) return;
+    const pane = this.pane(id);
+    const existingKeys = new Set(Object.keys(edit.values));
+    const available = pane.propertyDefs.filter(p => !existingKeys.has(p.name) || edit.removed.has(p.name));
+    if (available.length === 0) return;
+    const name = prompt('Property name to add:\n\nAvailable: ' + available.map(p => p.name).join(', '));
+    if (!name) return;
+    const def = pane.propertyDefs.find(p => p.name === name);
+    if (!def && !name.trim()) return;
+    edit.values[name] = '';
+    edit.removed.delete(name);
+    this.render();
+  }
+
+  async saveEdit(id, itemId) {
+    const pane = this.pane(id);
+    const edit = pane.editingItems[itemId];
+    if (!edit) return;
+    const mutations = [];
+    const item = pane.results.find(r => r.itemId === itemId);
+    if (!item) return;
+    for (const [key, val] of Object.entries(edit.values)) {
+      if (edit.removed.has(key)) continue;
+      if (item.properties[key] !== val) {
+        mutations.push({ property: key, value: val === '' ? null : val });
+      }
+    }
+    for (const key of edit.removed) {
+      mutations.push({ property: key, value: null });
+    }
+    if (mutations.length === 0) {
+      delete pane.editingItems[itemId];
+      this.render();
+      return;
+    }
+    try {
+      const response = await fetch(`/api/entity/${itemId}/properties`, {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mutations }),
+      });
+      if (!response.ok) throw new Error('Save failed: ' + response.status);
+      delete pane.editingItems[itemId];
+      this.project(id);
+    } catch (e) {
+      alert('Save failed: ' + e.message);
+    }
+  }
+
 
   activePanes() {
     return this.panes.filter(p => p.windowState !== 'minimized');
@@ -410,13 +731,23 @@ class NtrlocSearch extends HTMLElement {
               ` : ''}
             </div>
             ${pane.results.length > 0 ? `
-              <div class="results-summary">
-                ${pane.results.length} items
-                ${pane.lastProjectionMs !== null ? `<span class="timing"> &middot; ${(pane.lastProjectionMs / 1000).toFixed(3)}s</span>` : ''}
+              <div class="results-summary" style="display: flex; align-items: center;">
+                <span>${pane.results.length} items
+                ${pane.lastProjectionMs !== null ? `<span class="timing"> &middot; ${(pane.lastProjectionMs / 1000).toFixed(3)}s</span>` : ''}</span>
+                <div class="view-toggle">
+                  <button class="${pane.viewMode === 'formatted' ? 'active' : ''}" data-action="view-formatted">Formatted</button>
+                  <button class="${pane.viewMode === 'raw' ? 'active' : ''}" data-action="view-raw">Raw</button>
+                </div>
               </div>
-              <div class="results-list">
-                ${pane.results.map(item => `<pre class="result-item">${escapeHtml(JSON.stringify(item, null, 2))}</pre>`).join('')}
-              </div>
+              ${pane.viewMode === 'raw' ? `
+                <div class="results-list">
+                  ${pane.results.map(item => `<pre class="result-item">${escapeHtml(JSON.stringify(item, null, 2))}</pre>`).join('')}
+                </div>
+              ` : `
+                <div class="results-list">
+                  ${pane.results.map(item => this.renderItemCard(pane, item)).join('')}
+                </div>
+              `}
             ` : (!pane.isLoading && pane.selectedTypeName ? '<p class="no-results">No items found.</p>' : '')}
           </div>
         ` : ''}
@@ -424,10 +755,109 @@ class NtrlocSearch extends HTMLElement {
     `;
   }
 
+  renderItemCard(pane, item) {
+    const edit = pane.editingItems[item.itemId];
+    const isEditing = !!edit;
+    const title = item.properties.title || item.properties.name || item.itemType;
+    const shortId = item.itemId.substring(0, 8) + '...';
+    const canEdit = item.permissions && (item.permissions.edit?.length > 0 || item.permissions.delete);
+
+    const propEntries = Object.entries(item.properties).sort((a, b) => a[0].localeCompare(b[0]));
+    let rows;
+    if (isEditing) {
+      const allKeys = Array.from(new Set([...Object.keys(edit.values)])).sort();
+      rows = allKeys.map(key => {
+        const removed = edit.removed.has(key);
+        const val = edit.values[key];
+        const def = pane.propertyDefs.find(p => p.name === key);
+        const inputType = this.inputTypeFor(def?.type);
+        if (removed) {
+          return `<div class="prop-row is-editing">
+            <div class="prop-key removed">${escapeHtml(key)}</div>
+            <div class="prop-value removed">
+              <span class="value-null">(marked for removal)</span>
+              <div class="prop-actions">
+                <button title="Undo remove" data-action="undo-remove" data-prop="${escapeHtml(key)}">&#x21b6;</button>
+              </div>
+            </div>
+          </div>`;
+        }
+        return `<div class="prop-row is-editing">
+          <div class="prop-key">${escapeHtml(key)}</div>
+          <div class="prop-value">
+            <input type="${inputType}" value="${escapeHtml(val == null ? '' : String(val))}" data-action="edit-value" data-prop="${escapeHtml(key)}">
+            <div class="prop-actions">
+              <button class="delete-btn" title="Remove property" data-action="remove-prop" data-prop="${escapeHtml(key)}">&times;</button>
+            </div>
+          </div>
+        </div>`;
+      }).join('');
+    } else {
+      rows = propEntries.map(([key, val]) => `
+        <div class="prop-row">
+          <div class="prop-key">${escapeHtml(key)}</div>
+          <div class="prop-value">
+            ${this.renderPropertyValue(val)}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    const editCount = isEditing ? edit.removed.size + Object.entries(edit.values).filter(([k, v]) => !edit.removed.has(k) && v !== item.properties[k]).length : 0;
+
+    return `
+      <div class="item-card" data-item-id="${item.itemId}">
+        <div class="item-card-header">
+          <div>
+            <span class="item-card-title">${escapeHtml(title)}</span>
+            <span class="item-card-id">${shortId}</span>
+          </div>
+          ${canEdit ? `<div class="item-card-actions">
+            <button class="${isEditing ? 'editing' : ''}" data-action="toggle-edit">${isEditing ? 'Editing' : 'Edit'}</button>
+          </div>` : ''}
+        </div>
+        <div class="prop-grid ${isEditing ? 'is-editing' : ''}">${rows}</div>
+        ${isEditing ? `
+          <div class="add-prop-row">
+            <button data-action="add-prop">+ Add property</button>
+          </div>
+          <div class="save-bar">
+            ${editCount > 0 ? `<span class="change-count">${editCount} change${editCount !== 1 ? 's' : ''}</span>` : ''}
+            <button class="cancel-btn" data-action="cancel-edit">Cancel</button>
+            <button class="save-btn" data-action="save-edit">Save</button>
+          </div>
+        ` : ''}
+      </div>
+    `;
+  }
+
+  renderPropertyValue(val) {
+    if (val == null || val === '') return '<span class="value-null">(empty)</span>';
+    if (val && typeof val === 'object' && val.mimeType && val.url) {
+      if (val.mimeType.startsWith('image/')) {
+        return `<img class="prop-image" src="${escapeHtml(val.url)}" alt="image">`;
+      }
+      return `<span class="value-text">${escapeHtml(val.mimeType)} (${Math.round((val.length || 0) / 1024)}KB)</span>`;
+    }
+    if (val && typeof val === 'object') {
+      return `<span class="value-text">${escapeHtml(JSON.stringify(val))}</span>`;
+    }
+    return `<span class="value-text">${escapeHtml(String(val))}</span>`;
+  }
+
+  inputTypeFor(schemaType) {
+    switch (schemaType) {
+      case 'INTEGER': case 'LONG': case 'DOUBLE': case 'FLOAT': return 'number';
+      case 'DATE': return 'date';
+      case 'BOOLEAN': return 'checkbox';
+      default: return 'text';
+    }
+  }
+
   wireUp() {
     this.querySelectorAll('[data-pane-id]').forEach(paneEl => {
       const id = Number(paneEl.dataset.paneId);
-      paneEl.querySelectorAll('[data-action]').forEach(el => {
+      paneEl.querySelectorAll('[data-action]:not(.item-card [data-action])').forEach(el => {
         const action = el.dataset.action;
         if (action === 'minimize') el.addEventListener('click', () => this.minimizePane(id));
         if (action === 'maximize') el.addEventListener('click', () => this.maximizePane(id));
@@ -437,6 +867,22 @@ class NtrlocSearch extends HTMLElement {
         if (action === 'toggle-sort-direction') el.addEventListener('click', () => this.toggleSortDirection(id));
         if (action === 'select-type') el.addEventListener('change', e => this.selectType(id, e.target.value));
         if (action === 'select-sort-field') el.addEventListener('change', e => this.selectSortField(id, e.target.value));
+        if (action === 'view-formatted') el.addEventListener('click', () => this.setViewMode(id, 'formatted'));
+        if (action === 'view-raw') el.addEventListener('click', () => this.setViewMode(id, 'raw'));
+      });
+
+      paneEl.querySelectorAll('.item-card[data-item-id]').forEach(cardEl => {
+        const itemId = cardEl.dataset.itemId;
+        cardEl.querySelectorAll('[data-action]').forEach(el => {
+          const action = el.dataset.action;
+          if (action === 'toggle-edit') el.addEventListener('click', () => this.toggleEdit(id, itemId));
+          if (action === 'cancel-edit') el.addEventListener('click', () => this.cancelEdit(id, itemId));
+          if (action === 'save-edit') el.addEventListener('click', () => this.saveEdit(id, itemId));
+          if (action === 'add-prop') el.addEventListener('click', () => this.addProperty(id, itemId));
+          if (action === 'remove-prop') el.addEventListener('click', () => this.removeProperty(id, itemId, el.dataset.prop));
+          if (action === 'undo-remove') el.addEventListener('click', () => this.undoRemoveProperty(id, itemId, el.dataset.prop));
+          if (action === 'edit-value') el.addEventListener('input', e => this.updateEditValue(id, itemId, el.dataset.prop, e.target.value));
+        });
       });
 
       // draggable="true" lives on .pane-header, not the whole pane -- an ancestor-wide draggable

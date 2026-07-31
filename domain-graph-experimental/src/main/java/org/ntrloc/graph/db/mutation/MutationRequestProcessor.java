@@ -75,25 +75,27 @@ public class MutationRequestProcessor {
         // assigned real ids and known types.
         for (int i = 0; i < items.size(); i++) {
             String path = "items[%d]".formatted(i);
-            switch (items.get(i)) {
-                case ItemCreateMutation m -> processItemCreate(m, path, refIdToItemId, refIdToItemTypeId, entries, itemResults, errors);
-                case ItemUpdateMutation m -> processItemUpdate(m, path, entries, itemResults, errors);
-                case ItemDeleteMutation m -> {
-                    entries.add(new ItemDeleteEntry(m.itemId()));
-                    itemResults.add(new ItemMutationResult(null, m.itemId(), MutationOperation.DELETE));
-                }
+            ItemMutation item = items.get(i);
+            if (item instanceof ItemCreateMutation m) {
+                processItemCreate(m, path, refIdToItemId, refIdToItemTypeId, entries, itemResults, errors);
+            } else if (item instanceof ItemUpdateMutation m) {
+                processItemUpdate(m, path, entries, itemResults, errors);
+            } else if (item instanceof ItemDeleteMutation m) {
+                entries.add(new ItemDeleteEntry(m.itemId()));
+                itemResults.add(new ItemMutationResult(null, m.itemId(), MutationOperation.DELETE));
             }
         }
 
         for (int i = 0; i < links.size(); i++) {
             String path = "links[%d]".formatted(i);
-            switch (links.get(i)) {
-                case LinkCreateMutation m -> processLinkCreate(m, path, refIdToItemId, refIdToItemTypeId, entries, linkResults, errors);
-                case LinkUpdateMutation m -> processLinkUpdate(m, path, entries, linkResults, errors);
-                case LinkDeleteMutation m -> {
-                    entries.add(new LinkDeleteEntry(m.linkId()));
-                    linkResults.add(new LinkMutationResult(m.linkId(), MutationOperation.DELETE));
-                }
+            LinkMutation link = links.get(i);
+            if (link instanceof LinkCreateMutation m) {
+                processLinkCreate(m, path, refIdToItemId, refIdToItemTypeId, entries, linkResults, errors);
+            } else if (link instanceof LinkUpdateMutation m) {
+                processLinkUpdate(m, path, entries, linkResults, errors);
+            } else if (link instanceof LinkDeleteMutation m) {
+                entries.add(new LinkDeleteEntry(m.linkId()));
+                linkResults.add(new LinkMutationResult(m.linkId(), MutationOperation.DELETE));
             }
         }
 
@@ -200,24 +202,23 @@ public class MutationRequestProcessor {
                                                          List<ValidationError> errors) {
         UUID itemId;
         UUID itemTypeId;
-        switch (ref.item()) {
-            case NewItemReference r -> {
-                itemId = refIdToItemId.get(r.refId());
-                itemTypeId = refIdToItemTypeId.get(r.refId());
-                if (itemId == null) {
-                    errors.add(new ValidationError(path + ".item.refId", "Unknown refId: " + r.refId()));
-                    return Optional.empty();
-                }
+        if (ref.item() instanceof NewItemReference r) {
+            itemId = refIdToItemId.get(r.refId());
+            itemTypeId = refIdToItemTypeId.get(r.refId());
+            if (itemId == null) {
+                errors.add(new ValidationError(path + ".item.refId", "Unknown refId: " + r.refId()));
+                return Optional.empty();
             }
-            case ExistingItemReference r -> {
-                Optional<UUID> resolved = registerPartitionManager.findItemTypeId(r.itemId());
-                if (resolved.isEmpty()) {
-                    errors.add(new ValidationError(path + ".item.itemId", "Unknown item: " + r.itemId()));
-                    return Optional.empty();
-                }
-                itemId = r.itemId();
-                itemTypeId = resolved.get();
+        } else if (ref.item() instanceof ExistingItemReference r) {
+            Optional<UUID> resolved = registerPartitionManager.findItemTypeId(r.itemId());
+            if (resolved.isEmpty()) {
+                errors.add(new ValidationError(path + ".item.itemId", "Unknown item: " + r.itemId()));
+                return Optional.empty();
             }
+            itemId = r.itemId();
+            itemTypeId = resolved.get();
+        } else {
+            throw new IllegalArgumentException("Unsupported item reference: " + ref.item().getClass().getSimpleName());
         }
 
         List<AdminItemLinkPerspectiveView> candidates = schemaManager.getAdminSchema().items().stream()

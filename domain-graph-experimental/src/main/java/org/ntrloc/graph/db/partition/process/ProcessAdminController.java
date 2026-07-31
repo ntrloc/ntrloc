@@ -149,11 +149,10 @@ public class ProcessAdminController {
     // separately-addressable element in the spec, but this parsed model collapses straight to a
     // List<String> of required DataSpec ids directly on IOSpecification itself (confirmed against
     // IOSpecification.java: no InputSet class exists in this model at all), matching this
-    // codebase's one-inputSet-means-"the required ones" usage (bpmn-io.js, ntrloc-process-editor.js)
-    // rather than the spec's fuller multi-inputSet "alternative valid combinations" machinery.
-    // Presence-only: a required variable's *value* isn't type-checked against its declared
-    // itemSubjectRef here -- the declared type drives the admin UI's Run-dialog input widgets, not
-    // a server-side type gate (see ntrloc-process-editor.js's own comment on that scoping choice).
+    // codebase's one-inputSet-means-"the required ones" usage rather than the spec's fuller
+    // multi-inputSet "alternative valid combinations" machinery. Presence-only: a required
+    // variable's *value* isn't type-checked against its declared itemSubjectRef here -- the
+    // declared type drives the admin UI's Run-dialog input widgets, not a server-side type gate.
     private List<String> missingRequiredVariables(String processDefinitionId, Map<String, Object> variables) {
         BpmnModel model = repositoryService.getBpmnModel(processDefinitionId);
         IOSpecification ioSpecification = model.getMainProcess().getIoSpecification();

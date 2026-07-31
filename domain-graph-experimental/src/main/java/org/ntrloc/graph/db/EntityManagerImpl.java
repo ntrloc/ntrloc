@@ -9,6 +9,7 @@ import org.ntrloc.graph.db.partition.register.RegisterPartitionManager;
 import org.ntrloc.graph.db.partition.process.ProcessAccessible;
 import org.ntrloc.graph.db.projection.CollectionProjectionSpec;
 import org.ntrloc.graph.db.projection.ProjectedItem;
+import org.ntrloc.graph.db.projection.ProjectedItemPermissions;
 import org.ntrloc.graph.db.projection.ProjectionResult;
 import org.ntrloc.graph.db.projection.SingleItemProjectionSpec;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
@@ -16,6 +17,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -47,14 +49,21 @@ public class EntityManagerImpl implements EntityManager {
     public Optional<ProjectedItem> project(SingleItemProjectionSpec spec, String binaryBaseUrl, NtrlocPrincipal principal) {
         UUID itemTypeId = resolveItemTypeId(spec.itemTypeName());
         requireReadAccess(principal, itemTypeId, spec.itemTypeName());
-        return registerPartitionManager.projectOne(itemTypeId, spec.itemId(), binaryBaseUrl);
+        var permissions = computePermissions(principal);
+        return registerPartitionManager.projectOne(itemTypeId, spec.itemId(), binaryBaseUrl)
+                .map(item -> item.withPermissions(permissions));
     }
 
     @Override
     public ProjectionResult project(CollectionProjectionSpec spec, String binaryBaseUrl, NtrlocPrincipal principal) {
         UUID itemTypeId = resolveItemTypeId(spec.itemTypeName());
         requireReadAccess(principal, itemTypeId, spec.itemTypeName());
-        return registerPartitionManager.project(itemTypeId, spec, binaryBaseUrl);
+        var permissions = computePermissions(principal);
+        var result = registerPartitionManager.project(itemTypeId, spec, binaryBaseUrl);
+        var itemsWithPermissions = result.items().stream()
+                .map(item -> item.withPermissions(permissions))
+                .toList();
+        return new ProjectionResult(itemsWithPermissions, result.totalCount(), result.facetedCount(), result.facets(), result.stateMachineFacets());
     }
 
     // Pure passthrough -- no permission check, matching MutationRequestProcessor's own documented
@@ -72,6 +81,13 @@ public class EntityManagerImpl implements EntityManager {
     @Override
     public void setItemState(UUID itemId, String stateMachineName, String stateName) {
         registerPartitionManager.setItemState(itemId, stateMachineName, stateName);
+    }
+
+    private ProjectedItemPermissions computePermissions(NtrlocPrincipal principal) {
+        if (principal.isSuperuser()) {
+            return new ProjectedItemPermissions(List.of("*"), true);
+        }
+        return new ProjectedItemPermissions(null, false);
     }
 
     private void requireReadAccess(NtrlocPrincipal principal, UUID itemTypeId, String itemTypeName) {

@@ -17,16 +17,9 @@ public class AuthorizationInitializer {
 
     @PostConstruct
     void init() {
-        dropAllTables();
         initMarkerTable();
         initItemTypeMarkerTable();
         initGrantTable();
-    }
-
-    void dropAllTables() {
-        jdbcClient.sql("DROP TABLE IF EXISTS authorization_grant CASCADE").update();
-        jdbcClient.sql("DROP TABLE IF EXISTS authorization_item_type_marker CASCADE").update();
-        jdbcClient.sql("DROP TABLE IF EXISTS authorization_marker CASCADE").update();
     }
 
     void initMarkerTable() {

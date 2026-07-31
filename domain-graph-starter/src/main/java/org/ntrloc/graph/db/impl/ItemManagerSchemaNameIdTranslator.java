@@ -269,43 +269,40 @@ public class ItemManagerSchemaNameIdTranslator {
 
         private LinksProjectionSpec convertLinkProjections(LinksProjectionSpec linksProjectionSpec, Function<String, ItemDefinitionPublicToPrivateMapping> mappingLookupFunction) {
             LinksProjectionSpec retSpec;
-            switch (linksProjectionSpec) {
-                case null -> { retSpec = null; }
-                case SpecificLinksProjectionSpec specificLinks -> {
-                    Set<LinkProjectionSpec> retSpecs = specificLinks.getLinks().stream().map(linkSpec -> {
-                        String linkLabel = linkSpec.getLinkLabel();
-                        String linkId = getLinkId(linkLabel);
-                        if (linkId == null) {
-                            throw new IllegalArgumentException("Unknown link " + linkSpec.getLinkLabel() + " for item type ID " + itemDefinition.getUid());
+            if (linksProjectionSpec == null) {
+                retSpec = null;
+            } else if (linksProjectionSpec instanceof SpecificLinksProjectionSpec specificLinks) {
+                Set<LinkProjectionSpec> retSpecs = specificLinks.getLinks().stream().map(linkSpec -> {
+                    String linkLabel = linkSpec.getLinkLabel();
+                    String linkId = getLinkId(linkLabel);
+                    if (linkId == null) {
+                        throw new IllegalArgumentException("Unknown link " + linkSpec.getLinkLabel() + " for item type ID " + itemDefinition.getUid());
+                    }
+
+                    LinkProjectionSpec newSpec = new LinkProjectionSpec(linkId, linkSpec.getDirection());
+
+                    List<String> linkProperties = linkSpec.getProperties();
+                    if (linkProperties != null) {
+                        List<String> translatedProperties = new ArrayList<>();
+                        for (String property : linkProperties) {
+                            String propertyId = getLinkPropertyId(linkLabel, property);
+                            translatedProperties.add(propertyId);
                         }
+                        newSpec.setProperties(translatedProperties);
+                    }
 
-                        LinkProjectionSpec newSpec = new LinkProjectionSpec(linkId, linkSpec.getDirection());
-
-                        List<String> linkProperties = linkSpec.getProperties();
-                        if (linkProperties != null) {
-                            List<String> translatedProperties = new ArrayList<>();
-                            for (String property : linkProperties) {
-                                String propertyId = getLinkPropertyId(linkLabel, property);
-                                translatedProperties.add(propertyId);
-                            }
-                            newSpec.setProperties(translatedProperties);
-                        }
-
-                        LinkDefinitionPublicToPrivateMapping linkDefMapping = linkMapping.get(linkLabel);
-                        ItemProjectionSpec linkItemSpec = convertItemProjection(linkSpec.getItemProjectionSpec(), linkDefMapping.getRelatedItemType(), mappingLookupFunction);
-                        newSpec.setItemProjectionSpec(linkItemSpec);
-                        return newSpec;
-                    }).collect(Collectors.toSet());
-                    retSpec = new SpecificLinksProjectionSpec(retSpecs);
-                }
-                case AllLinksProjectionSpec allLinksSpec -> {
-                    LOG.info("Using all-links projection spec");
-                    retSpec = allLinksSpec;
-                }
-                default -> {
-                    // don't retrieve links if none were requested
-                    retSpec = null;
-                }
+                    LinkDefinitionPublicToPrivateMapping linkDefMapping = linkMapping.get(linkLabel);
+                    ItemProjectionSpec linkItemSpec = convertItemProjection(linkSpec.getItemProjectionSpec(), linkDefMapping.getRelatedItemType(), mappingLookupFunction);
+                    newSpec.setItemProjectionSpec(linkItemSpec);
+                    return newSpec;
+                }).collect(Collectors.toSet());
+                retSpec = new SpecificLinksProjectionSpec(retSpecs);
+            } else if (linksProjectionSpec instanceof AllLinksProjectionSpec allLinksSpec) {
+                LOG.info("Using all-links projection spec");
+                retSpec = allLinksSpec;
+            } else {
+                // don't retrieve links if none were requested
+                retSpec = null;
             }
             return retSpec;
         }

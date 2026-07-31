@@ -9,7 +9,7 @@ import org.springframework.security.web.server.SecurityWebFilterChain;
 
 @Configuration
 @EnableWebFluxSecurity
-@ConditionalOnProperty(name = "ntrloc.security.enabled", havingValue = "false")
+@ConditionalOnProperty(name = "graph.security.enabled", havingValue = "false")
 public class PermissiveSecurityConfig {
 
     @Bean

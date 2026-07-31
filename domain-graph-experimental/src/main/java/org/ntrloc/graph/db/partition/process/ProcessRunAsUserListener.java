@@ -23,8 +23,7 @@ import java.util.EnumSet;
 //
 // Closes a real gap: a timer/signal/message start event never goes through
 // ProcessAdminController.startProcessInstance, so nothing ever sets the "principal" variable a
-// script might need for entityManager.project(...) -- see docs/ntrloc-workflow-summary.md's
-// "Principal propagation" section for why that variable exists at all.
+// script might need for entityManager.project(...).
 //
 // PROCESS_STARTED, not PROCESS_CREATED, is what makes this safe to layer on top of a real HTTP
 // caller without a race: confirmed by reading ProcessInstanceHelper directly --
@@ -34,7 +33,7 @@ import java.util.EnumSet;
 // HTTP-triggered run) -- checking for that first is what keeps a declared run-as-user from ever
 // overriding a real caller, no explicit "was this HTTP-triggered" tracking needed.
 //
-// No implicit "system" user fallback if a process declares nothing -- ntrloc prefers admins state
+// No implicit "system" user fallback if a process declares nothing -- prefer admins state
 // this explicitly, per process (in the process editor's Run As User field), over an engine-wide
 // default nobody chose.
 @Component

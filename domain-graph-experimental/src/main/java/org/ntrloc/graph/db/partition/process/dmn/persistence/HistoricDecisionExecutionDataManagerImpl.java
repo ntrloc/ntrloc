@@ -15,7 +15,7 @@ import java.util.Map;
 // Backs the audit-trail row DmnActivityBehavior.executeWithAuditTrail() writes on every decision
 // evaluation with our own decision_historic_execution table. insert()/findById() must be real --
 // this is unconditionally written by every live DMN Task evaluation, not optional cleanup -- but
-// nothing in ntrloc's admin UI surfaces this history yet, so query-criteria/native-query finders
+// nothing in this app's admin UI surfaces this history yet, so query-criteria/native-query finders
 // are stubbed empty, matching this package's convention for not-yet-exercised query surfaces.
 public class HistoricDecisionExecutionDataManagerImpl extends AbstractDecisionDataManager implements HistoricDecisionExecutionDataManager {
 
@@ -133,7 +133,7 @@ public class HistoricDecisionExecutionDataManagerImpl extends AbstractDecisionDa
 
     @Override
     public void delete(HistoricDecisionExecutionQueryImpl query) {
-        // no-op: nothing in ntrloc issues a bulk-delete-by-query against this history yet.
+        // no-op: nothing in this app issues a bulk-delete-by-query against this history yet.
     }
 
     @Override

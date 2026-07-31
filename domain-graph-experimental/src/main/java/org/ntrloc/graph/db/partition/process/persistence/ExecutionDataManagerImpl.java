@@ -88,7 +88,7 @@ public class ExecutionDataManagerImpl extends AbstractProcessDataManager impleme
         session().registerFlush(ExecutionEntity.class, entity.getId(), entity, () -> update(entity));
     }
 
-    // Real optimistic locking (docs/ntrloc-workflow-summary.md Section 6): Flowable's own
+    // Real optimistic locking (the workflow persistence layer): Flowable's own
     // parallel-gateway join safety and async-job-claim safety both depend entirely on this
     // REV_-column convention (bytecode-verified against flowable-engine/flowable-job-service) --
     // without it, two concurrently-arriving branches (or two nodes racing to claim the same job)

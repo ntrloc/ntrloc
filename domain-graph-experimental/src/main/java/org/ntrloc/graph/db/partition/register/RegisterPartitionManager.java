@@ -289,11 +289,10 @@ public class RegisterPartitionManager implements SchemaChangeListener {
     }
 
     private SqlFragment buildFacetFilterFragment(FacetFilter facetFilter, UUID itemTypeId, AtomicInteger counter) {
-        return switch (facetFilter) {
-            case TermsFacetFilter f    -> buildTermsFacetFilterFragment(f, itemTypeId, counter);
-            case RangeFacetFilter f    -> throw new UnsupportedOperationException("Range facet filters not yet supported");
-            case DateRangeFacetFilter f -> throw new UnsupportedOperationException("Date range facet filters not yet supported");
-        };
+        if (facetFilter instanceof TermsFacetFilter f) return buildTermsFacetFilterFragment(f, itemTypeId, counter);
+        if (facetFilter instanceof RangeFacetFilter) throw new UnsupportedOperationException("Range facet filters not yet supported");
+        if (facetFilter instanceof DateRangeFacetFilter) throw new UnsupportedOperationException("Date range facet filters not yet supported");
+        throw new IllegalArgumentException("Unsupported facet filter: " + facetFilter.getClass().getSimpleName());
     }
 
     private SqlFragment buildTermsFacetFilterFragment(TermsFacetFilter f, UUID itemTypeId, AtomicInteger counter) {
@@ -361,7 +360,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
         if (rawItems.isEmpty()) {
             return Optional.empty();
         }
-        return Optional.of(assembleProjectedItems(rawItems, itemTypeId, binaryBaseUrl).getFirst());
+        return Optional.of(assembleProjectedItems(rawItems, itemTypeId, binaryBaseUrl).get(0));
     }
 
     // --- Write side: staged at prepare (UNCOMMITTED), flipped/cleaned up at commit/abort ---
@@ -707,8 +706,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                 .orElseThrow(() -> new IllegalArgumentException("Unknown state: " + stateName));
     }
 
-    // Minimal, direct register write -- deliberately bypasses the ledger (states isn't ledger-
-    // backed; see docs/ntrloc-state-machine-summary.md Section 3/4's own explicit scope boundary)
+    // Minimal, direct register write -- deliberately bypasses the ledger (states isn't ledger-backed)
     // and any guard/process execution. Exists solely so current-state querying/faceting (below,
     // and the facet query in runTermsFacetQuery's sibling) has real data to run against before
     // real transition execution is built; a proper "perform transition" mutation replaces this.
@@ -819,6 +817,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                                                 row.linkedItemType(),
                                                 linkedItemProperties.getOrDefault(row.linkedRegisterItemId(), Map.of()),
                                                 Map.of(),
+                                                null,
                                                 null)),
                                         Collectors.toList()))));
 
@@ -857,7 +856,8 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                             raw.itemType(),
                             props,
                             linksByItem.getOrDefault(raw.registerItemId(), Map.of()),
-                            buildProjectedItemStates(raw.states(), stateMachines));
+                            buildProjectedItemStates(raw.states(), stateMachines),
+                            null);
                 })
                 .toList();
     }
@@ -910,65 +910,52 @@ public class RegisterPartitionManager implements SchemaChangeListener {
     }
 
     private SqlFragment translatePredicate(Predicate predicate, UUID itemTypeId, AtomicInteger counter) {
-        return switch (predicate) {
-            case AndPredicate and -> {
-                List<SqlFragment> children = and.predicates().stream()
-                        .map(p -> translatePredicate(p, itemTypeId, counter))
-                        .toList();
-                String sql = children.stream()
-                        .map(SqlFragment::sql)
-                        .collect(Collectors.joining(" AND ", "(", ")"));
-                Map<String, Object> params = new HashMap<>();
-                children.forEach(c -> params.putAll(c.params()));
-                yield new SqlFragment(sql, params);
-            }
-            case OrPredicate or -> {
-                List<SqlFragment> children = or.predicates().stream()
-                        .map(p -> translatePredicate(p, itemTypeId, counter))
-                        .toList();
-                String sql = children.stream()
-                        .map(SqlFragment::sql)
-                        .collect(Collectors.joining(" OR ", "(", ")"));
-                Map<String, Object> params = new HashMap<>();
-                children.forEach(c -> params.putAll(c.params()));
-                yield new SqlFragment(sql, params);
-            }
-            case NotPredicate not -> {
-                var child = translatePredicate(not.predicate(), itemTypeId, counter);
-                yield new SqlFragment("NOT (" + child.sql() + ")", child.params());
-            }
-            // Both branches resolve the client-supplied property *name* to its id before touching
-            // SQL -- see resolvePropertyId's own comment. The id is a real UUID, not client input,
-            // so interpolating its .toString() directly is safe the same way a bind parameter
-            // would be; the alternative (jsonb_extract_path_text(..., :idParam, ...)) would avoid
-            // string-building entirely but isn't needed for a value this narrowly shaped.
-            case PropertyExistencePredicate p ->
-                new SqlFragment("jsonb_exists(rt.properties::jsonb, '" + resolvePropertyId(itemTypeId, p.propertyName()) + "')", Map.of());
-            case PropertyValuePredicate p -> {
-                String paramName = "pred_" + counter.getAndIncrement();
-                String sqlOp = switch (p.operator()) {
-                    case EQUALS              -> "=";
-                    case NOT_EQUALS          -> "!=";
-                    case LESS_THAN           -> "<";
-                    case LESS_THAN_OR_EQUAL  -> "<=";
-                    case GREATER_THAN        -> ">";
-                    case GREATER_THAN_OR_EQUAL -> ">=";
-                    case LIKE                -> "ILIKE";
-                };
-                yield new SqlFragment(
-                        "(rt.properties::jsonb)->>'" + resolvePropertyId(itemTypeId, p.propertyName()) + "' " + sqlOp + " :" + paramName,
-                        Map.of(paramName, p.value()));
-            }
-            // Both names resolve through the same "translate to id before touching SQL" rule as
-            // above -- resolveStateMachineId/resolveStateId also validate the names are real,
-            // rather than silently generating a condition that matches nothing.
-            case StateValuePredicate p -> {
-                UUID stateMachineId = resolveStateMachineId(itemTypeId, p.stateMachineName());
-                UUID stateId = resolveStateId(stateMachineId, p.stateName());
-                yield new SqlFragment(
-                        "(rt.states::jsonb)->'" + stateMachineId + "'->>'currentStateId' = '" + stateId + "'", Map.of());
-            }
-        };
+        if (predicate instanceof AndPredicate and) {
+            List<SqlFragment> children = and.predicates().stream()
+                    .map(p -> translatePredicate(p, itemTypeId, counter))
+                    .toList();
+            String sql = children.stream()
+                    .map(SqlFragment::sql)
+                    .collect(Collectors.joining(" AND ", "(", ")"));
+            Map<String, Object> params = new HashMap<>();
+            children.forEach(c -> params.putAll(c.params()));
+            return new SqlFragment(sql, params);
+        } else if (predicate instanceof OrPredicate or) {
+            List<SqlFragment> children = or.predicates().stream()
+                    .map(p -> translatePredicate(p, itemTypeId, counter))
+                    .toList();
+            String sql = children.stream()
+                    .map(SqlFragment::sql)
+                    .collect(Collectors.joining(" OR ", "(", ")"));
+            Map<String, Object> params = new HashMap<>();
+            children.forEach(c -> params.putAll(c.params()));
+            return new SqlFragment(sql, params);
+        } else if (predicate instanceof NotPredicate not) {
+            var child = translatePredicate(not.predicate(), itemTypeId, counter);
+            return new SqlFragment("NOT (" + child.sql() + ")", child.params());
+        } else if (predicate instanceof PropertyExistencePredicate p) {
+            return new SqlFragment("jsonb_exists(rt.properties::jsonb, '" + resolvePropertyId(itemTypeId, p.propertyName()) + "')", Map.of());
+        } else if (predicate instanceof PropertyValuePredicate p) {
+            String paramName = "pred_" + counter.getAndIncrement();
+            String sqlOp = switch (p.operator()) {
+                case EQUALS              -> "=";
+                case NOT_EQUALS          -> "!=";
+                case LESS_THAN           -> "<";
+                case LESS_THAN_OR_EQUAL  -> "<=";
+                case GREATER_THAN        -> ">";
+                case GREATER_THAN_OR_EQUAL -> ">=";
+                case LIKE                -> "ILIKE";
+            };
+            return new SqlFragment(
+                    "(rt.properties::jsonb)->>'" + resolvePropertyId(itemTypeId, p.propertyName()) + "' " + sqlOp + " :" + paramName,
+                    Map.of(paramName, p.value()));
+        } else if (predicate instanceof StateValuePredicate p) {
+            UUID stateMachineId = resolveStateMachineId(itemTypeId, p.stateMachineName());
+            UUID stateId = resolveStateId(stateMachineId, p.stateName());
+            return new SqlFragment(
+                    "(rt.states::jsonb)->'" + stateMachineId + "'->>'currentStateId' = '" + stateId + "'", Map.of());
+        }
+        throw new IllegalArgumentException("Unsupported predicate: " + predicate.getClass().getSimpleName());
     }
 
     private Map<UUID, Map<String, Object>> fetchPropertiesByRegisterItemId(
@@ -1023,13 +1010,14 @@ public class RegisterPartitionManager implements SchemaChangeListener {
     @Override
     @EventListener
     public void onSchemaChange(SchemaChangeEvent event) {
-        switch (event) {
-            case SchemaChangeEvent.ItemTypeCreated e -> createItemTypeTable(e.itemTypeId());
-            case SchemaChangeEvent.ItemTypeDeleted e -> dropItemTypeTable(e.itemTypeId());
-            case SchemaChangeEvent.LinkTypeCreated e -> createLinkTypeTable(e.linkTypeId());
-            case SchemaChangeEvent.LinkTypeDeleted e -> dropLinkTypeTable(e.linkTypeId());
-            case SchemaChangeEvent.TraitCreated ignored -> {}
-            case SchemaChangeEvent.TraitDeleted ignored -> {}
+        if (event instanceof SchemaChangeEvent.ItemTypeCreated e) {
+            createItemTypeTable(e.itemTypeId());
+        } else if (event instanceof SchemaChangeEvent.ItemTypeDeleted e) {
+            dropItemTypeTable(e.itemTypeId());
+        } else if (event instanceof SchemaChangeEvent.LinkTypeCreated e) {
+            createLinkTypeTable(e.linkTypeId());
+        } else if (event instanceof SchemaChangeEvent.LinkTypeDeleted e) {
+            dropLinkTypeTable(e.linkTypeId());
         }
     }
 

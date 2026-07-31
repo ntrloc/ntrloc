@@ -18,8 +18,8 @@ import java.util.List;
 // process_activity_instance table -- mandatory, not optional cleanup: Flowable's
 // ContinueProcessOperation calls recordActivityStart/recordActivityEnd unconditionally on every
 // activity transition, no history-level gate, so a real implementation is needed the moment
-// Flowable's own default MyBatis table stops existing (docs/ntrloc-workflow-summary.md Section 6).
-// Query-object/native-query variants are stubbed -- nothing in ntrloc queries activity instances
+// Flowable's own default MyBatis table stops existing (the workflow persistence layer).
+// Query-object/native-query variants are stubbed -- nothing in this app queries activity instances
 // yet, only the finders recordActivityStart/recordActivityEnd/recordTaskCreated actually call.
 public class ActivityInstanceDataManagerImpl extends AbstractProcessDataManager implements ActivityInstanceDataManager {
 
@@ -179,7 +179,7 @@ public class ActivityInstanceDataManagerImpl extends AbstractProcessDataManager 
     }
 
     // Query-object/native-query surfaces: stubbed, matching this package's convention -- nothing
-    // in ntrloc calls RuntimeService.createActivityInstanceQuery() yet.
+    // in this app calls RuntimeService.createActivityInstanceQuery() yet.
     @Override
     public long findActivityInstanceCountByQueryCriteria(ActivityInstanceQueryImpl activityInstanceQuery) {
         return 0;

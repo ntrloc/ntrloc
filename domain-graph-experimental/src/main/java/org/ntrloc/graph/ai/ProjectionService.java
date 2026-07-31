@@ -26,7 +26,7 @@ public class ProjectionService {
     // which external caller is invoking the tool and enforcing their actual permissions -- is a
     // deferred follow-up, not yet designed.
     private static final NtrlocPrincipal MCP_PRINCIPAL =
-            new ResolvedPrincipal(UUID.randomUUID(), "mcp-tool-caller", "MCP Tool Caller", Set.of(), true);
+            new ResolvedPrincipal(UUID.randomUUID(), "mcp-tool-caller", "MCP Tool Caller", null, Set.of(), true);
 
     private final EntityManager entityManager;
 
