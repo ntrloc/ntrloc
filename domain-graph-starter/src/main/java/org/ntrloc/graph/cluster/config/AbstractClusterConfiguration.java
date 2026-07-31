@@ -33,7 +33,7 @@ public abstract class AbstractClusterConfiguration {
 
     private List<ScheduledExecutorConfig> scheduledExecutorConfigs;
 
-    AbstractClusterConfiguration(@Value("${cluster.name:ntrloc}") String clusterName,
+    AbstractClusterConfiguration(@Value("${cluster.name}") String clusterName,
                                  List<MapConfig> mapConfigs,
                                  List<ListConfig> listConfigs,
                                  List<TopicConfig> topicConfigs,

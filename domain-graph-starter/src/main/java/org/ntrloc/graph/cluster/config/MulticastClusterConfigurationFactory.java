@@ -30,7 +30,7 @@ public class MulticastClusterConfigurationFactory extends AbstractClusterConfigu
     @Value("${cluster.multicast.init-timeout:5}")
     private int multicastJoinTimeout;
 
-    public MulticastClusterConfigurationFactory(@Value("${cluster.name:ntrloc}") String clusterName,
+    public MulticastClusterConfigurationFactory(@Value("${cluster.name}") String clusterName,
                                                 List<MapConfig> mapConfigs,
                                                 List<ListConfig> listConfigs,
                                                 List<TopicConfig> topicConfigs,

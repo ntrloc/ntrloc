@@ -30,7 +30,7 @@ graph:
   ui:
     mounts:
       - path: /admin
-        location: "file:///Users/michaelcoddington/Documents/Projects/ntrloc/domain-graph-experimental/src/main/resources/static/admin-ui/"
+        location: "file:///Users/michaelcoddington/Documents/Projects/ntrloc/domain-graph-starter/src/main/resources/static/admin-ui/"
   process:
     script:
       # Packages a process script (Groovy or JavaScript) can reference a class from by simple

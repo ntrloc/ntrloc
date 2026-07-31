@@ -6,39 +6,25 @@
     <parent>
         <groupId>org.ntrloc</groupId>
         <artifactId>ntrloc</artifactId>
-        <version>0.0.1-SNAPSHOT</version>
+        <version>1.0.0-SNAPSHOT</version>
     </parent>
 
     <artifactId>domain-graph-starter</artifactId>
 
     <properties>
-        <maven.compiler.source>21</maven.compiler.source>
-        <maven.compiler.target>21</maven.compiler.target>
+        <maven.compiler.release>17</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
-        <commons.lang3.version>3.18.0</commons.lang3.version>
+        <spring.boot.version>4.1.0</spring.boot.version>
+        <jackson.tools.version>3.1.4</jackson.tools.version>
+        <scalar.version>3.0.3</scalar.version>
+        <testcontainers.version>2.0.5</testcontainers.version>
+        <opentelemetry.instrumentation.version>2.29.0</opentelemetry.instrumentation.version>
+        <spring-ai.version>2.0.0</spring-ai.version>
         <hazelcast.version>5.5.0</hazelcast.version>
-        <netty-macos-resolver.version>4.1.119.Final</netty-macos-resolver.version>
-        <spring-ai.version>1.1.2</spring-ai.version>
-        <testcontainers.version>1.21.4</testcontainers.version>
-        <thymeleaf.version>3.5.3</thymeleaf.version>
-        <thymeleaf-layout-dialect.version>3.4.0</thymeleaf-layout-dialect.version>
-        <tika.version>3.2.3</tika.version>
     </properties>
 
     <dependencies>
-
-        <!-- ntrloc -->
-        <dependency>
-            <groupId>org.ntrloc</groupId>
-            <artifactId>domain-graph-spi</artifactId>
-            <version>${project.parent.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.ntrloc</groupId>
-            <artifactId>api-gateway-model</artifactId>
-            <version>${project.parent.version}</version>
-        </dependency>
 
         <!-- Spring -->
         <dependency>
@@ -57,17 +43,135 @@
             </exclusions>
         </dependency>
 
+        <!-- UI hosting (org.ntrloc.ui.hosting): configurable multi-mount static-file serving,
+             absorbed from the former standalone ui-hosting module: every ntrloc-based app
+             extends domain-graph-starter, so there was no separate consumer left to justify
+             keeping it out. See docs/ntrloc-ui-hosting-summary.md. -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-actuator</artifactId>
+            <artifactId>spring-boot-configuration-processor</artifactId>
+            <version>${spring.boot.version}</version>
+            <optional>true</optional>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
             <version>${spring.boot.version}</version>
         </dependency>
 
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-oauth2-client</artifactId>
+            <version>${spring.boot.version}</version>
+        </dependency>
 
         <dependency>
-            <groupId>org.springframework.ai</groupId>
-            <artifactId>spring-ai-starter-mcp-server-webflux</artifactId>
-            <version>${spring-ai.version}</version>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-ldap</artifactId>
+            <version>7.1.0</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-jdbc</artifactId>
+            <version>${spring.boot.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>tools.jackson.dataformat</groupId>
+            <artifactId>jackson-dataformat-yaml</artifactId>
+            <version>${jackson.tools.version}</version>
+        </dependency>
+
+        <!-- Observability -->
+        <dependency>
+            <groupId>io.opentelemetry.instrumentation</groupId>
+            <artifactId>opentelemetry-spring-boot-starter</artifactId>
+            <version>${opentelemetry.instrumentation.version}</version>
+        </dependency>
+
+        <!-- opentelemetry-spring-boot-starter's Boot-4-targeted instrumentation autoconfiguration
+             classes (RestClientInstrumentationSpringBoot4AutoConfiguration and friends) are guarded
+             by @ConditionalOnClass(RestClientCustomizer.class), referencing Spring Boot 4's own
+             split-module package. Without this dependency present, that condition can't be
+             evaluated cleanly. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-restclient</artifactId>
+            <version>${spring.boot.version}</version>
+        </dependency>
+
+        <!-- Bridges Log4j2 log events into the OTel logs pipeline via the appender declared in
+             log4j2-spring.xml. opentelemetry-spring-boot-starter's OpenTelemetryAppenderAutoConfiguration
+             wires it to the initialized OpenTelemetry SDK instance at startup. -->
+        <dependency>
+            <groupId>io.opentelemetry.instrumentation</groupId>
+            <artifactId>opentelemetry-log4j-appender-2.17</artifactId>
+            <version>2.29.0-alpha</version>
+        </dependency>
+
+        <!-- tools.jackson.core:jackson-databind requires jackson-annotations:2.21, but the root
+             pom's legacy com.fasterxml.jackson.dataformat:jackson-dataformat-yaml (still needed by
+             other, unmigrated modules) transitively drags in jackson-annotations:2.19.0. Maven's
+             depth-based mediation picks whichever one is "nearer" for a given build, which varies
+             by consumer — declaring the correct version directly here pins it for every consumer
+             of this module, not just this module's own build. -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-annotations</artifactId>
+            <version>2.21</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <version>42.7.11</version>
+        </dependency>
+
+        <!-- Workflow (BPMN/DMN/CMMN): walking-skeleton step, embedded with Flowable's own
+             default persistence for now. See docs/ntrloc-workflow-summary.md. -->
+        <dependency>
+            <groupId>org.flowable</groupId>
+            <artifactId>flowable-engine</artifactId>
+            <version>8.0.0</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.flowable</groupId>
+            <artifactId>flowable-spring</artifactId>
+            <version>8.0.0</version>
+        </dependency>
+
+        <!-- DMN engine, for decision-table evaluation from a <serviceTask flowable:type="dmn">
+             (NOT businessRuleTask, which is legacy Drools/KIE, unrelated to DMN). Pulls in
+             flowable-dmn-engine/-spring/-engine-configurator/-model/-xml-converter transitively. -->
+        <dependency>
+            <groupId>org.flowable</groupId>
+            <artifactId>flowable-dmn-spring-configurator</artifactId>
+            <version>8.0.0</version>
+        </dependency>
+
+        <!-- JSR-223 script engines pulled in to back Flowable Script Task execution
+             (scriptFormat="javascript" / "groovy"). Neither ships with the JDK or with
+             flowable-engine itself. -->
+        <dependency>
+            <groupId>org.openjdk.nashorn</groupId>
+            <artifactId>nashorn-core</artifactId>
+            <version>15.7</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.apache.groovy</groupId>
+            <artifactId>groovy-jsr223</artifactId>
+            <version>5.0.2</version>
+        </dependency>
+
+        <!-- Binary storage -->
+        <dependency>
+            <groupId>org.apache.tika</groupId>
+            <artifactId>tika-core</artifactId>
+            <version>3.2.3</version>
         </dependency>
 
         <dependency>
@@ -76,53 +180,9 @@
             <version>33.5.0-jre</version>
         </dependency>
 
-        <!-- Graph stuff -->
-        <dependency>
-            <groupId>org.apache.tinkerpop</groupId>
-            <artifactId>gremlin-driver</artifactId>
-            <version>${tinkerpop.version}</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>io.netty</groupId>
-                    <artifactId>*</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>org.apache.commons</groupId>
-                    <artifactId>commons-lang3</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
-
-        <dependency>
-            <groupId>org.apache.tinkerpop</groupId>
-            <artifactId>gremlin-server</artifactId>
-            <version>${tinkerpop.version}</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>io.netty</groupId>
-                    <artifactId>*</artifactId>
-                </exclusion>
-                <exclusion>
-                    <groupId>org.apache.commons</groupId>
-                    <artifactId>commons-lang3</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
-
-        <dependency>
-            <groupId>org.apache.commons</groupId>
-            <artifactId>commons-lang3</artifactId>
-            <version>${commons.lang3.version}</version>
-        </dependency>
-
-        <!-- Netflix Domain Graph Service -->
-        <dependency>
-            <groupId>com.netflix.graphql.dgs</groupId>
-            <artifactId>graphql-dgs-spring-graphql-starter</artifactId>
-            <version>${netflix.dgs.version}</version>
-        </dependency>
-
-        <!-- Hazelcast -->
+        <!-- Clustering (org.ntrloc.graph.cluster): lifted from domain-graph-starter, which is no
+             longer the owner, per the process-execution clustering design (docs/
+             ntrloc-workflow-summary.md Section 6). -->
         <dependency>
             <groupId>com.hazelcast</groupId>
             <artifactId>hazelcast</artifactId>
@@ -134,102 +194,76 @@
             <version>${hazelcast.version}</version>
         </dependency>
 
-        <!-- Thymeleaf -->
+        <!-- Scalar -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webflux-scalar</artifactId>
+            <version>${scalar.version}</version>
+        </dependency>
+
+        <!-- MCP (org.ntrloc.graph.ai): same starter domain-graph-starter already uses; auto-
+             configures an MCP server over WebFlux and exposes any @McpTool-annotated bean method
+             as a tool, no further config needed. -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-mcp-server-webflux</artifactId>
+            <version>${spring-ai.version}</version>
+        </dependency>
+
+        <!-- Test -->
+        <!-- Overrides the root pom's junit-jupiter-engine:5.11.4 for this module only —
+             Spring Boot 4.1's test starter pulls in JUnit 6 (junit-jupiter:6.0.3) transitively,
+             and a split 5.x/6.x classpath fails with NoSuchMethodError on ExtensionContext$Store. -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-engine</artifactId>
+            <version>6.0.3</version>
+            <scope>test</scope>
+        </dependency>
+
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-thymeleaf</artifactId>
-            <version>${thymeleaf.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>nz.net.ultraq.thymeleaf</groupId>
-            <artifactId>thymeleaf-layout-dialect</artifactId>
-            <version>${thymeleaf-layout-dialect.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>ognl</groupId>
-            <artifactId>ognl</artifactId>
-            <version>3.4.7</version> <!-- Use a compatible version -->
-        </dependency>
-
-        <!-- -->
-        <dependency>
-            <groupId>org.apache.tika</groupId>
-            <artifactId>tika-core</artifactId>
-            <version>${tika.version}</version>
-        </dependency>
-
-        <!-- Graph SPI test backend -->
-        <dependency>
-            <groupId>org.ntrloc</groupId>
-            <artifactId>graph-spi-janusgraph</artifactId>
-            <version>${project.parent.version}</version>
+            <artifactId>spring-boot-testcontainers</artifactId>
+            <version>${spring.boot.version}</version>
             <scope>test</scope>
         </dependency>
 
-        <!-- Testcontainers -->
+        <!-- Spring Boot 4 split WebTestClient test-autoconfiguration out of the generic
+             spring-boot-test-autoconfigure jar into its own module. -->
         <dependency>
-            <groupId>org.seleniumhq.selenium</groupId>
-            <artifactId>selenium-remote-driver</artifactId>
-            <version>4.43.0</version>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-webtestclient</artifactId>
+            <version>${spring.boot.version}</version>
             <scope>test</scope>
         </dependency>
-        <dependency>
-            <groupId>org.seleniumhq.selenium</groupId>
-            <artifactId>selenium-chrome-driver</artifactId>
-            <version>4.43.0</version>
-            <scope>test</scope>
-        </dependency>
+
         <dependency>
             <groupId>org.testcontainers</groupId>
-            <artifactId>junit-jupiter</artifactId>
-            <version>${testcontainers.version}</version>
-            <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.testcontainers</groupId>
-            <artifactId>testcontainers</artifactId>
-            <version>${testcontainers.version}</version>
-            <scope>test</scope>
-            <exclusions>
-                <exclusion>
-                    <groupId>com.fasterxml.jackson.core</groupId>
-                    <artifactId>jackson-annotations</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
-        <dependency>
-            <groupId>org.testcontainers</groupId>
-            <artifactId>selenium</artifactId>
+            <artifactId>testcontainers-junit-jupiter</artifactId>
             <version>${testcontainers.version}</version>
             <scope>test</scope>
         </dependency>
 
-        <!-- Reactor testing -->
         <dependency>
-            <groupId>io.projectreactor</groupId>
-            <artifactId>reactor-test</artifactId>
-            <scope>test</scope>
-            <version>3.6.0</version>
-        </dependency>
-
-        <dependency>
-            <groupId>org.mockito</groupId>
-            <artifactId>mockito-subclass</artifactId>
-            <version>5.14.2</version>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers-postgresql</artifactId>
+            <version>${testcontainers.version}</version>
             <scope>test</scope>
         </dependency>
 
     </dependencies>
 
-    <!-- Force anything using SLF4J to use version 2.x-->
-    <dependencyManagement>
-        <dependencies>
-            <dependency>
-                <groupId>org.slf4j</groupId>
-                <artifactId>slf4j-api</artifactId>
-                <version>${slf4j.version}</version>
-            </dependency>
-        </dependencies>
-    </dependencyManagement>
+    <build>
+        <plugins>
+            <!-- Root pom pins surefire 2.22.1 (2019-era), which can't run JUnit Platform 6
+                 tests (NoClassDefFoundError on junit-platform-commons classes). Override for
+                 this module only — other modules stay on JUnit 5.11 + the inherited surefire. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.5.2</version>
+            </plugin>
+        </plugins>
+    </build>
 
 </project>
