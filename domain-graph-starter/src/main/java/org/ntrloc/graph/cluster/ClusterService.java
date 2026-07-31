@@ -2,6 +2,7 @@ package org.ntrloc.graph.cluster;
 
 import com.hazelcast.cluster.Member;
 import com.hazelcast.map.IMap;
+import com.hazelcast.topic.ITopic;
 
 import java.util.Set;
 
@@ -21,5 +22,7 @@ public interface ClusterService {
     void addClusterJoinReaction(ClusterJoinReaction reaction);
 
     <K, V> IMap<K, V> getMap(String name);
+
+    <T> ITopic<T> getTopic(String name);
 
 }

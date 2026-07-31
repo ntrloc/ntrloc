@@ -5,19 +5,12 @@
 
     <groupId>org.ntrloc</groupId>
     <artifactId>ntrloc</artifactId>
-    <version>0.0.1-SNAPSHOT</version>
+    <version>1.0.0-SNAPSHOT</version>
     <packaging>pom</packaging>
 
     <modules>
-        <module>domain-graph-spi</module>
-        <module>domain-graph-starter</module>
-        <module>api-gateway-model</module>
-        <module>api-gateway</module>
-        <module>runtimes</module>
         <module>runtimes/domain-1</module>
-        <module>domain-graph-spi-parent</module>
-        <module>domain-graph-experimental</module>
-        <module>domain-graph-experimental-ui</module>
+        <module>domain-graph-starter</module>
     </modules>
 
     <properties>

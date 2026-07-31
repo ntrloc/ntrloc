@@ -6,7 +6,7 @@
     <parent>
         <groupId>org.ntrloc</groupId>
         <artifactId>ntrloc</artifactId>
-        <version>0.0.1-SNAPSHOT</version>
+        <version>1.0.0-SNAPSHOT</version>
         <relativePath>../../pom.xml</relativePath>
     </parent>
 
@@ -22,7 +22,7 @@
     <dependencies>
         <dependency>
             <groupId>org.ntrloc</groupId>
-            <artifactId>domain-graph-experimental</artifactId>
+            <artifactId>domain-graph-starter</artifactId>
             <version>${project.parent.version}</version>
         </dependency>
     </dependencies>

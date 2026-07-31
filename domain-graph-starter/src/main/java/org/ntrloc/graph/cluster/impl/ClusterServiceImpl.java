@@ -7,6 +7,7 @@ import com.hazelcast.config.Config;
 import com.hazelcast.core.Hazelcast;
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.map.IMap;
+import com.hazelcast.topic.ITopic;
 import jakarta.annotation.PreDestroy;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -77,6 +78,11 @@ public class ClusterServiceImpl implements ClusterService, MembershipListener {
     @Override
     public <K, V> IMap<K, V> getMap(String name) {
         return hazelcast.getMap(name);
+    }
+
+    @Override
+    public <T> ITopic<T> getTopic(String name) {
+        return hazelcast.getTopic(name);
     }
 
     /*

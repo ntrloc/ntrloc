@@ -33,7 +33,7 @@ public class AwsClusterConfigurationFactory extends AbstractClusterConfiguration
     @Value("${cluster.aws.tagValue}")
     private String tagValue;
 
-    public AwsClusterConfigurationFactory(@Value("${cluster.name:ntrloc}") String clusterName,
+    public AwsClusterConfigurationFactory(@Value("${cluster.name}") String clusterName,
                                           List<MapConfig> mapConfigs,
                                           List<ListConfig> listConfigs,
                                           List<TopicConfig> topicConfigs,
