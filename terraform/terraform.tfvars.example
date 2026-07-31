@@ -1,5 +1,0 @@
-# Copy to terraform.tfvars and fill in your values:
-#   cp terraform.tfvars.example terraform.tfvars
-
-aws_region = "us-east-1"
-prefix     = "neptune-lab"
