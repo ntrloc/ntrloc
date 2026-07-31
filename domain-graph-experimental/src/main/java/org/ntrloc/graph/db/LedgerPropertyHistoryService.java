@@ -9,6 +9,8 @@ import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.springframework.stereotype.Service;
 
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -45,7 +47,9 @@ public class LedgerPropertyHistoryService {
                 .filter(record -> touchesProperty(record.entry(), propertyId))
                 .map(record -> toHistoryEntry(record, propertyId, displayNameCache))
                 .toList();
-        return entries.reversed();
+        List<PropertyHistoryEntry> reversed = new ArrayList<>(entries);
+        Collections.reverse(reversed);
+        return reversed;
     }
 
     private boolean touchesProperty(LedgerEntry entry, UUID propertyId) {
@@ -53,11 +57,9 @@ public class LedgerPropertyHistoryService {
     }
 
     private Map<UUID, Object> propertiesOf(LedgerEntry entry) {
-        return switch (entry) {
-            case ItemCreateEntry e -> e.properties();
-            case ItemUpdateEntry e -> e.properties();
-            default -> Map.of();
-        };
+        if (entry instanceof ItemCreateEntry e) return e.properties();
+        if (entry instanceof ItemUpdateEntry e) return e.properties();
+        return Map.of();
     }
 
     private PropertyHistoryEntry toHistoryEntry(LedgerEntryRecord record, UUID propertyId, Map<String, String> displayNameCache) {

@@ -12,7 +12,7 @@ import java.util.UUID;
 @Component
 public class SecurityRepository {
 
-    public record UserRow(UUID id, String externalId, String displayName, boolean isSuperuser) {}
+    public record UserRow(UUID id, String externalId, String displayName, String email, boolean isSuperuser) {}
 
     public record GroupRow(UUID id, String name) {}
 
@@ -29,12 +29,13 @@ public class SecurityRepository {
     // --- Principal resolution reads ---
 
     public Optional<UserRow> findUserByExternalId(String externalId) {
-        return jdbcClient.sql("SELECT id, external_id, display_name, is_superuser FROM security_user WHERE external_id = :externalId")
+        return jdbcClient.sql("SELECT id, external_id, display_name, email, is_superuser FROM security_user WHERE external_id = :externalId")
                 .param("externalId", externalId)
                 .query((rs, n) -> new UserRow(
                         rs.getObject("id", UUID.class),
                         rs.getString("external_id"),
                         rs.getString("display_name"),
+                        rs.getString("email"),
                         rs.getBoolean("is_superuser")))
                 .optional();
     }
@@ -42,11 +43,12 @@ public class SecurityRepository {
     // Used by UserAdminController to populate assignee pickers (e.g. a User Task's assignee
     // select in the process editor) -- not part of principal resolution, just a plain listing.
     public List<UserRow> listUsers() {
-        return jdbcClient.sql("SELECT id, external_id, display_name, is_superuser FROM security_user ORDER BY display_name")
+        return jdbcClient.sql("SELECT id, external_id, display_name, email, is_superuser FROM security_user ORDER BY display_name")
                 .query((rs, n) -> new UserRow(
                         rs.getObject("id", UUID.class),
                         rs.getString("external_id"),
                         rs.getString("display_name"),
+                        rs.getString("email"),
                         rs.getBoolean("is_superuser")))
                 .list();
     }
@@ -58,16 +60,28 @@ public class SecurityRepository {
                 .list());
     }
 
+    public List<GroupRow> getGroupsForUser(UUID userId) {
+        return jdbcClient.sql("""
+                SELECT g.id, g.name FROM security_group g
+                JOIN security_group_member gm ON gm.group_id = g.id
+                WHERE gm.user_id = :userId ORDER BY g.name
+                """)
+                .param("userId", userId)
+                .query((rs, n) -> new GroupRow(rs.getObject("id", UUID.class), rs.getString("name")))
+                .list();
+    }
+
     // --- Test-data seeding writes ---
 
-    public UserRow createUser(String externalId, String displayName, boolean isSuperuser) {
+    public UserRow createUser(String externalId, String displayName, String email, boolean isSuperuser) {
         UUID id = jdbcClient.sql("""
-                INSERT INTO security_user (external_id, display_name, is_superuser)
-                VALUES (:externalId, :displayName, :isSuperuser) RETURNING id
+                INSERT INTO security_user (external_id, display_name, email, is_superuser)
+                VALUES (:externalId, :displayName, :email, :isSuperuser) RETURNING id
                 """)
-                .param("externalId", externalId).param("displayName", displayName).param("isSuperuser", isSuperuser)
+                .param("externalId", externalId).param("displayName", displayName)
+                .param("email", email).param("isSuperuser", isSuperuser)
                 .query(UUID.class).single();
-        return new UserRow(id, externalId, displayName, isSuperuser);
+        return new UserRow(id, externalId, displayName, email, isSuperuser);
     }
 
     public GroupRow createGroup(String name) {
@@ -78,8 +92,62 @@ public class SecurityRepository {
     }
 
     public void addUserToGroup(UUID userId, UUID groupId) {
-        jdbcClient.sql("INSERT INTO security_group_member (user_id, group_id) VALUES (:userId, :groupId)")
+        jdbcClient.sql("INSERT INTO security_group_member (user_id, group_id) VALUES (:userId, :groupId) ON CONFLICT DO NOTHING")
                 .param("userId", userId).param("groupId", groupId).update();
+    }
+
+    public List<GroupRow> listGroups() {
+        return jdbcClient.sql("SELECT id, name FROM security_group ORDER BY name")
+                .query((rs, n) -> new GroupRow(rs.getObject("id", UUID.class), rs.getString("name")))
+                .list();
+    }
+
+    public Optional<GroupRow> findGroupById(UUID groupId) {
+        return jdbcClient.sql("SELECT id, name FROM security_group WHERE id = :id")
+                .param("id", groupId)
+                .query((rs, n) -> new GroupRow(rs.getObject("id", UUID.class), rs.getString("name")))
+                .optional();
+    }
+
+    public GroupRow updateGroup(UUID groupId, String name) {
+        jdbcClient.sql("UPDATE security_group SET name = :name WHERE id = :id")
+                .param("name", name).param("id", groupId).update();
+        return new GroupRow(groupId, name);
+    }
+
+    public void deleteGroup(UUID groupId) {
+        jdbcClient.sql("DELETE FROM security_group WHERE id = :id")
+                .param("id", groupId).update();
+    }
+
+    public List<UserRow> listGroupMembers(UUID groupId) {
+        return jdbcClient.sql("""
+                SELECT u.id, u.external_id, u.display_name, u.email, u.is_superuser
+                FROM security_user u
+                JOIN security_group_member gm ON gm.user_id = u.id
+                WHERE gm.group_id = :groupId
+                ORDER BY u.display_name
+                """)
+                .param("groupId", groupId)
+                .query((rs, n) -> new UserRow(
+                        rs.getObject("id", UUID.class),
+                        rs.getString("external_id"),
+                        rs.getString("display_name"),
+                        rs.getString("email"),
+                        rs.getBoolean("is_superuser")))
+                .list();
+    }
+
+    public void removeUserFromGroup(UUID userId, UUID groupId) {
+        jdbcClient.sql("DELETE FROM security_group_member WHERE user_id = :userId AND group_id = :groupId")
+                .param("userId", userId).param("groupId", groupId).update();
+    }
+
+    public Optional<GroupRow> findGroupByName(String name) {
+        return jdbcClient.sql("SELECT id, name FROM security_group WHERE name = :name")
+                .param("name", name)
+                .query((rs, n) -> new GroupRow(rs.getObject("id", UUID.class), rs.getString("name")))
+                .optional();
     }
 
     // --- Local credentials ---
@@ -91,6 +159,29 @@ public class SecurityRepository {
                 """)
                 .param("userId", userId).param("email", email)
                 .param("passwordHash", passwordHash).param("role", role)
+                .update();
+    }
+
+    public void updatePasswordHash(UUID userId, String newPasswordHash) {
+        jdbcClient.sql("UPDATE security_local_credentials SET password_hash = :hash WHERE user_id = :userId")
+                .param("hash", newPasswordHash)
+                .param("userId", userId)
+                .update();
+    }
+
+    public void updateUser(UUID userId, String displayName, String email, boolean isSuperuser) {
+        jdbcClient.sql("UPDATE security_user SET display_name = :displayName, email = :email, is_superuser = :isSuperuser WHERE id = :userId")
+                .param("displayName", displayName)
+                .param("email", email)
+                .param("isSuperuser", isSuperuser)
+                .param("userId", userId)
+                .update();
+    }
+
+    public void updateLocalCredentialsRole(UUID userId, String role) {
+        jdbcClient.sql("UPDATE security_local_credentials SET role = :role WHERE user_id = :userId")
+                .param("role", role)
+                .param("userId", userId)
                 .update();
     }
 
@@ -123,7 +214,7 @@ public class SecurityRepository {
 
     public Optional<UserRow> findUserByValidTokenHash(String tokenHash) {
         return jdbcClient.sql("""
-                SELECT u.id, u.external_id, u.display_name, u.is_superuser
+                SELECT u.id, u.external_id, u.display_name, u.email, u.is_superuser
                 FROM security_user u
                 JOIN security_personal_access_token t ON t.user_id = u.id
                 WHERE t.token_hash = :tokenHash
@@ -134,6 +225,7 @@ public class SecurityRepository {
                         rs.getObject("id", UUID.class),
                         rs.getString("external_id"),
                         rs.getString("display_name"),
+                        rs.getString("email"),
                         rs.getBoolean("is_superuser")))
                 .optional();
     }

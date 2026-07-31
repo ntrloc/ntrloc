@@ -19,8 +19,8 @@ import java.util.List;
 // AbstractRuntimeJobEntity at all (no execution/process-instance/due-date fields, since a history
 // job isn't tied to one execution the way a runtime job is), so it doesn't share that base class's
 // field surface. Async history is never enabled (see ProcessEngineConfig), so this is unreachable
-// in practice today -- built for zero-MyBatis completeness (docs/ntrloc-workflow-summary.md
-// Section 6), not because anything currently creates a history job.
+// in practice today -- built for zero-MyBatis completeness, not because anything currently
+// creates a history job.
 public class HistoryJobDataManagerImpl extends AbstractProcessDataManager implements HistoryJobDataManager {
 
     @Override

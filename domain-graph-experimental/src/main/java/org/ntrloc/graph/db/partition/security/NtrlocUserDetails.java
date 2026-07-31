@@ -48,6 +48,11 @@ public class NtrlocUserDetails implements UserDetails, NtrlocPrincipal {
     }
 
     @Override
+    public String email() {
+        return principal.email();
+    }
+
+    @Override
     public Set<UUID> groupIds() {
         return principal.groupIds();
     }

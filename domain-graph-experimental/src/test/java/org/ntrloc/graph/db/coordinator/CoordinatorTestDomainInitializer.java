@@ -85,12 +85,12 @@ public class CoordinatorTestDomainInitializer implements DomainInitializer, Appl
                         new CreatePerspectiveDefinitionMutation(contributorTypeId, "contributors", "desc", 0, null)))));
 
         AdminItemDefinitionView productAfterLink = findItem(schemaManager, "CoordinatorTestProduct");
-        AdminItemLinkPerspectiveView productPerspective = productAfterLink.links().get("products").getFirst();
+        AdminItemLinkPerspectiveView productPerspective = productAfterLink.links().get("products").get(0);
         productPerspectiveId = productPerspective.id();
         linkTypeId = productPerspective.linkId();
 
         AdminItemDefinitionView contributorAfterLink = findItem(schemaManager, "CoordinatorTestContributor");
-        contributorPerspectiveId = contributorAfterLink.links().get("contributors").getFirst().id();
+        contributorPerspectiveId = contributorAfterLink.links().get("contributors").get(0).id();
 
         rolePropertyId = schemaManager.getAdminSchema().links().stream()
                 .filter(link -> link.id().equals(linkTypeId))

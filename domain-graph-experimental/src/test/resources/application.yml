@@ -1,4 +1,7 @@
-ntrloc:
+cluster:
+  name: graph-test
+
+graph:
   security:
     enabled: false
     seed-test-data: true

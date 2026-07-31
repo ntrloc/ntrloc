@@ -75,7 +75,7 @@ const ROUTES = [
   { path: '/schema', label: 'Schema' },
   { path: '/processes', label: 'Processes' },
   { path: '/tasks', label: 'Tasks' },
-  { path: '/users', label: 'Users' },
+  { path: '/access', label: 'Access' },
 ];
 
 class NtrlocNav extends HTMLElement {

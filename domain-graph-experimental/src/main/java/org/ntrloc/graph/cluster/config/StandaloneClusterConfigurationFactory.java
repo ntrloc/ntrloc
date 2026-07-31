@@ -21,7 +21,7 @@ public class StandaloneClusterConfigurationFactory extends AbstractClusterConfig
 
     private static final Logger LOG = LogManager.getLogger(StandaloneClusterConfigurationFactory.class);
 
-    public StandaloneClusterConfigurationFactory(@Value("${cluster.name:ntrloc}") String clusterName,
+    public StandaloneClusterConfigurationFactory(@Value("${cluster.name}") String clusterName,
                                                  List<MapConfig> mapConfigs,
                                                  List<ListConfig> listConfigs,
                                                  List<TopicConfig> topicConfigs,

@@ -32,7 +32,7 @@ class MutationControllerIntegrationTest extends AbstractIntegrationTest {
     private CoordinatorTestDomainInitializer fixture;
 
     // MutationController now resolves a principal for ledger attribution (EntityManager.mutate's
-    // own note) -- with ntrloc.security.enabled=false in test config, PrincipalResolver falls
+    // own note) -- with graph.security.enabled=false in test config, PrincipalResolver falls
     // through to the header/query-param stand-in (its own javadoc: only reachable when security
     // is disabled). "root" is AuthorizationTestDataInitializer's globally-seeded superuser
     // (ProcessEngineIntegrationTest already relies on the same one), not a value invented for

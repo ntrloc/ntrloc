@@ -77,16 +77,20 @@ public class Projector {
     private GraphTraversal<?, Vertex> select(GraphTraversal<?, Vertex> traversal, SelectableItemProjectionSpec spec) {
         // ITEM_TYPE_PROPERTY is indexed and more selective than the isLatestVersion bool; apply it first.
         // For IdSelector, unique ID is maximally selective so it goes first.
-        var retTraversal = switch (spec.getItemSelector()) {
-            case ItemTypeSelector labelSelector -> traversal.has(ITEM_TYPE_PROPERTY, labelSelector.getItemType()).has(IS_LATEST_VERSION_PROPERTY, true);
-            case IdSelector idSelector -> traversal.has(PropertyConstants.UNIQUE_ID_PROPERTY, idSelector.getId()).has(IS_LATEST_VERSION_PROPERTY, true);
-            default -> throw new IllegalArgumentException("Invalid item selector " + spec.getItemSelector());
-        };
+        GraphTraversal<?, Vertex> retTraversal;
+        if (spec.getItemSelector() instanceof ItemTypeSelector labelSelector) {
+            retTraversal = traversal.has(ITEM_TYPE_PROPERTY, labelSelector.getItemType()).has(IS_LATEST_VERSION_PROPERTY, true);
+        } else if (spec.getItemSelector() instanceof IdSelector idSelector) {
+            retTraversal = traversal.has(PropertyConstants.UNIQUE_ID_PROPERTY, idSelector.getId()).has(IS_LATEST_VERSION_PROPERTY, true);
+        } else {
+            throw new IllegalArgumentException("Invalid item selector " + spec.getItemSelector());
+        }
         if (spec.getFilter() != null) {
-            retTraversal = switch (spec.getFilter()) {
-                case HasPropertyValueSelector valueSelector -> retTraversal.has(valueSelector.getName(), getPredicate(valueSelector.getPredicate()));
-                default -> throw new RuntimeException("Not implemented yet");
-            };
+            if (spec.getFilter() instanceof HasPropertyValueSelector valueSelector) {
+                retTraversal = retTraversal.has(valueSelector.getName(), getPredicate(valueSelector.getPredicate()));
+            } else {
+                throw new RuntimeException("Not implemented yet");
+            }
         }
         return retTraversal;
     }
@@ -180,7 +184,7 @@ public class Projector {
                                     __.has(IS_LATEST_VERSION_PROPERTY, true),
                                     __.filter(__.in().has(IS_LATEST_VERSION_PROPERTY, true))
                             ));
-                    case null, default -> throw new IllegalArgumentException("Direction must be specified for link projection spec");
+                    default -> throw new IllegalArgumentException("Direction must be specified for link projection spec");
                 };
 
                 var otherNodeTraversal = direction.equals(Direction.IN)
@@ -261,15 +265,13 @@ public class Projector {
     }
 
     private P<?> getPredicate(Predicate predicate) {
-        return switch (predicate) {
-            case EqualsPredicate eq -> P.eq(eq.getValue());
-            case NotEqualsPredicate neq -> P.neq(neq.getValue());
-            case LessThanPredicate lt -> P.lt(lt.getValue());
-            case GreaterThanPredicate gt -> P.gt(gt.getValue());
-            case WithinPredicate within -> P.within(within.getValue());
-            case WithoutPredicate without -> P.without(without.getValue());
-            default -> throw new RuntimeException("Not implemented yet");
-        };
+        if (predicate instanceof EqualsPredicate eq) return P.eq(eq.getValue());
+        if (predicate instanceof NotEqualsPredicate neq) return P.neq(neq.getValue());
+        if (predicate instanceof LessThanPredicate lt) return P.lt(lt.getValue());
+        if (predicate instanceof GreaterThanPredicate gt) return P.gt(gt.getValue());
+        if (predicate instanceof WithinPredicate within) return P.within(within.getValue());
+        if (predicate instanceof WithoutPredicate without) return P.without(without.getValue());
+        throw new RuntimeException("Not implemented yet");
     }
 
 }

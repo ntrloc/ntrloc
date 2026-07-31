@@ -10,8 +10,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 // Backs dead-letter jobs (ACT_RU_DEADLETTER_JOB) with job_kind = 'DEADLETTER' rows in process_job
-// -- where a job lands once JobRetryCmd exhausts its retries (docs/ntrloc-workflow-summary.md
-// Section 6). See SuspendedJobDataManagerImpl's class comment; same shape.
+// -- where a job lands once JobRetryCmd exhausts its retries.
 public class DeadLetterJobDataManagerImpl extends AbstractJobDataManager<DeadLetterJobEntity> implements DeadLetterJobDataManager {
 
     @Override

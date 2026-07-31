@@ -8,7 +8,7 @@ import org.springframework.stereotype.Component;
 // Deliberately separate from security_group (SecurityInitializer): a process-assignment group
 // (who can pick up a User Task) is a different concept from a permission group (what a set of
 // users can do to schema/graph data) even though both are "a group of users" -- coincidentally
-// similar shape, unrelated lifecycle and ownership. See docs/ntrloc-workflow-summary.md.
+// similar shape, unrelated lifecycle and ownership.
 @Component
 @DependsOn("securityInitializer")
 public class ProcessGroupInitializer {
@@ -21,14 +21,8 @@ public class ProcessGroupInitializer {
 
     @PostConstruct
     void init() {
-        dropAllTables();
         initGroupTable();
         initGroupMemberTable();
-    }
-
-    void dropAllTables() {
-        jdbcClient.sql("DROP TABLE IF EXISTS process_group_member CASCADE").update();
-        jdbcClient.sql("DROP TABLE IF EXISTS process_group CASCADE").update();
     }
 
     void initGroupTable() {

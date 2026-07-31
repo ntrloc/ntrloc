@@ -10,4 +10,9 @@ import java.util.UUID;
 // assembly time -- see RegisterPartitionManager's own comments on this), a sibling of properties,
 // not folded into it: state-machine info is a distinct concept from an item's own properties. Null
 // (not an empty map) for the common case of an item type with no state machines at all.
-public record ProjectedItem(UUID itemId, String itemType, Map<String, Object> properties, Map<String, List<ProjectedLink>> links, @Nullable Map<String, ProjectedItemState> states) {}
+public record ProjectedItem(UUID itemId, String itemType, Map<String, Object> properties, Map<String, List<ProjectedLink>> links, @Nullable Map<String, ProjectedItemState> states, @Nullable ProjectedItemPermissions permissions) {
+
+    public ProjectedItem withPermissions(ProjectedItemPermissions permissions) {
+        return new ProjectedItem(itemId, itemType, properties, links, states, permissions);
+    }
+}

@@ -65,8 +65,8 @@ abstract class AbstractJobDataManager<T extends AbstractRuntimeJobEntity> extend
     // meant to be "a plain UPDATE of job_kind"), so a plain INSERT here collided with the still-present
     // old-kind row on the id primary key -- confirmed live: every AcquireTimerJobsRunnable poll cycle
     // threw "duplicate key value violates unique constraint process_job_pkey" and the timer job could
-    // never be promoted to executable, so it never actually ran (docs/ntrloc-workflow-summary.md "Job
-    // control: AsyncExecutor" addendum). ON CONFLICT DO UPDATE turns Flowable's insert call into the
+    // never be promoted to executable, so it never actually ran. ON CONFLICT DO UPDATE turns
+    // Flowable's insert call into the
     // in-place kind-update the table was designed for; delete() below is scoped to this manager's own
     // job_kind so the old-kind manager's follow-up delete() can't then remove the row just upserted here.
     public void insert(T entity) {

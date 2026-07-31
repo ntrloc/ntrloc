@@ -38,7 +38,7 @@ public class KubernetesClusterConfigurationFactory extends AbstractClusterConfig
     @Value("${cluster.label.value:}")
     private Optional<String> serviceLabelValue;
 
-    public KubernetesClusterConfigurationFactory(@Value("${cluster.name:ntrloc}") String clusterName,
+    public KubernetesClusterConfigurationFactory(@Value("${cluster.name}") String clusterName,
                                                  List<MapConfig> mapConfigs,
                                                  List<ListConfig> listConfigs,
                                                  List<TopicConfig> topicConfigs,

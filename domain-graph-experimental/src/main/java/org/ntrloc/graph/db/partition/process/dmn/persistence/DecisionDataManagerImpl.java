@@ -20,7 +20,7 @@ import java.util.Map;
 // via source inspection of flowable-dmn-engine that DmnParse sets it at parse time but nothing in
 // the engine's own evaluation path (ExecuteDecisionBuilder and friends) ever reads it back --
 // dispatch is driven by the parsed/cached DMN model, not this column. Tenant/category filters are
-// likewise ignored, same reasoning as the process-engine side: nothing in ntrloc sets either.
+// likewise ignored, same reasoning as the process-engine side: nothing in this app sets either.
 public class DecisionDataManagerImpl extends AbstractDecisionDataManager implements DecisionDataManager {
 
     private static final String SELECT = """

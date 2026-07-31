@@ -27,6 +27,7 @@ import org.springframework.security.web.server.authentication.RedirectServerAuth
 import org.springframework.security.web.server.authentication.ServerAuthenticationConverter;
 import org.springframework.security.web.server.authentication.logout.RedirectServerLogoutSuccessHandler;
 import org.springframework.security.web.server.authentication.logout.ServerLogoutSuccessHandler;
+import org.springframework.security.web.server.util.matcher.ServerWebExchangeMatchers;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
@@ -36,7 +37,7 @@ import java.util.List;
 
 @Configuration
 @EnableWebFluxSecurity
-@ConditionalOnProperty(name = "ntrloc.security.enabled", havingValue = "true", matchIfMissing = true)
+@ConditionalOnProperty(name = "graph.security.enabled", havingValue = "true", matchIfMissing = true)
 public class SecurityConfig {
 
     private final AuthProperties authProperties;
@@ -69,13 +70,14 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .authorizeExchange(auth -> auth
                         .pathMatchers(openPathPatterns()).permitAll()
+                        .pathMatchers("/admin/**").hasRole("ADMIN")
                         .anyExchange().authenticated()
                 )
                 .exceptionHandling(exceptions -> exceptions
                         .authenticationEntryPoint(entryPoint)
                 )
                 .logout(logout -> logout
-                        .logoutUrl("/logout")
+                        .requiresLogout(ServerWebExchangeMatchers.pathMatchers("/logout"))
                         .logoutSuccessHandler(logoutSuccessHandler())
                 );
 

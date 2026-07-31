@@ -14,8 +14,8 @@ import reactor.core.publisher.Sinks;
 public class TaskEventBroadcaster {
 
     // directBestEffort(), not onBackpressureBuffer(): this is a live tap, not a history replay --
-    // clients always do their own fetch on connect/mount (ntrloc-nav.js's fetchTaskCount(),
-    // ntrloc-tasks.js's load()), so there's nothing to gain from buffering events for a subscriber
+    // clients always do their own fetch on connect/mount, so there's nothing to gain from
+    // buffering events for a subscriber
     // that hasn't connected yet, and real cost to doing so. onBackpressureBuffer() queues events
     // for exactly that "replay to future subscribers" case, with a bounded default capacity --
     // confirmed empirically: after a few hundred published events (this session's own testing)

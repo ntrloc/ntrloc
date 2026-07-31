@@ -15,20 +15,11 @@ public class SecurityInitializer {
 
     @PostConstruct
     void init() {
-        dropAllTables();
         initUserTable();
         initGroupTable();
         initGroupMemberTable();
         initLocalCredentialsTable();
         initPersonalAccessTokenTable();
-    }
-
-    void dropAllTables() {
-        jdbcClient.sql("DROP TABLE IF EXISTS security_personal_access_token CASCADE").update();
-        jdbcClient.sql("DROP TABLE IF EXISTS security_local_credentials CASCADE").update();
-        jdbcClient.sql("DROP TABLE IF EXISTS security_group_member CASCADE").update();
-        jdbcClient.sql("DROP TABLE IF EXISTS security_group CASCADE").update();
-        jdbcClient.sql("DROP TABLE IF EXISTS security_user CASCADE").update();
     }
 
     void initUserTable() {
@@ -41,9 +32,11 @@ public class SecurityInitializer {
                     id           UUID PRIMARY KEY DEFAULT uuidv7(),
                     external_id  TEXT NOT NULL UNIQUE,
                     display_name TEXT NOT NULL,
+                    email        TEXT,
                     is_superuser BOOLEAN NOT NULL DEFAULT FALSE
                 )
                 """).update();
+        jdbcClient.sql("ALTER TABLE security_user ADD COLUMN IF NOT EXISTS email TEXT").update();
     }
 
     void initGroupTable() {

@@ -23,7 +23,7 @@ import java.util.List;
 
 // Backs BPMN message/signal start-event subscriptions (ACT_RU_EVENT_SUBSCR) with our own
 // process_event_subscription table -- load-bearing, not cleanup: RuntimeService.
-// startProcessInstanceByMessage and signal dispatch (docs/ntrloc-workflow-summary.md Sections 4/5)
+// startProcessInstanceByMessage and signal dispatch 
 // depend on this. Only the finder methods actually called by deployment-time subscription
 // management (EventSubscriptionManager) and message/signal dispatch are implemented for real --
 // compensate events, CMMN-scope variants, and lock-time methods are stubbed, matching this
@@ -141,7 +141,7 @@ public class EventSubscriptionDataManagerImpl extends AbstractProcessDataManager
     }
 
     // Deploy-time uniqueness check for message start events, and the general by-name lookup used
-    // when wiring up new subscriptions (docs/ntrloc-workflow-summary.md Section 4's
+    // when wiring up new subscriptions (the workflow persistence layer
     // insertMessageEvent/insertSignalEvent findings).
     @Override
     public List<EventSubscriptionEntity> findEventSubscriptionsByName(String eventType, String eventName, String tenantId) {

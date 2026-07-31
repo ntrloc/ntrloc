@@ -14,6 +14,7 @@ public interface NtrlocPrincipal extends Principal {
     UUID id();
     String externalId();
     String displayName();
+    String email();
     Set<UUID> groupIds();
 
     /** Superusers bypass marker authorization entirely — not constrained by any policy. */

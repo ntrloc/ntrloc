@@ -4,15 +4,6 @@ import jakarta.annotation.PostConstruct;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 
-// Owns the tables backing the custom Flowable DataManagers (docs/ntrloc-workflow-summary.md
-// Section 3) -- deployments, resources (the raw BPMN/DMN/CMMN bytes), process definitions,
-// executions, variables, tasks, and task identity links (candidate/assignee records). Drop-and-
-// recreate on every boot, matching every other partition's dev-mode initializer (schema/register/
-// security/ledger) in this codebase. Deliberately minimal columns: only what this app's processes
-// actually exercise; everything else round-trips as Java defaults for now. No foreign keys between
-// these tables (matching the existing convention here) -- Flowable's own native ACT_* tables are
-// where real FK enforcement lives, and Task/IdentityLink no longer touch those at all now that
-// they're on process_task/process_task_identitylink instead.
 @Component
 public class ProcessPersistenceInitializer {
 
@@ -24,21 +15,8 @@ public class ProcessPersistenceInitializer {
 
     @PostConstruct
     void init() {
-        jdbcClient.sql("DROP TABLE IF EXISTS process_definition_info").update();
-        jdbcClient.sql("DROP TABLE IF EXISTS process_property").update();
-        jdbcClient.sql("DROP TABLE IF EXISTS process_activity_instance").update();
-        jdbcClient.sql("DROP TABLE IF EXISTS process_event_subscription").update();
-        jdbcClient.sql("DROP TABLE IF EXISTS process_job").update();
-        jdbcClient.sql("DROP TABLE IF EXISTS process_task_identitylink").update();
-        jdbcClient.sql("DROP TABLE IF EXISTS process_task").update();
-        jdbcClient.sql("DROP TABLE IF EXISTS process_variable").update();
-        jdbcClient.sql("DROP TABLE IF EXISTS process_execution").update();
-        jdbcClient.sql("DROP TABLE IF EXISTS process_definition").update();
-        jdbcClient.sql("DROP TABLE IF EXISTS process_resource").update();
-        jdbcClient.sql("DROP TABLE IF EXISTS process_deployment").update();
-
         jdbcClient.sql("""
-                CREATE TABLE process_deployment (
+                CREATE TABLE IF NOT EXISTS process_deployment (
                     id              VARCHAR(64) PRIMARY KEY,
                     name            VARCHAR(255),
                     deployment_time TIMESTAMPTZ
@@ -46,7 +24,7 @@ public class ProcessPersistenceInitializer {
                 """).update();
 
         jdbcClient.sql("""
-                CREATE TABLE process_resource (
+                CREATE TABLE IF NOT EXISTS process_resource (
                     id            VARCHAR(64) PRIMARY KEY,
                     deployment_id VARCHAR(64) NOT NULL,
                     name          VARCHAR(255) NOT NULL,
@@ -55,7 +33,7 @@ public class ProcessPersistenceInitializer {
                 """).update();
 
         jdbcClient.sql("""
-                CREATE TABLE process_definition (
+                CREATE TABLE IF NOT EXISTS process_definition (
                     id            VARCHAR(64) PRIMARY KEY,
                     deployment_id VARCHAR(64),
                     process_key   VARCHAR(255) NOT NULL,
@@ -67,7 +45,7 @@ public class ProcessPersistenceInitializer {
                 """).update();
 
         jdbcClient.sql("""
-                CREATE TABLE process_execution (
+                CREATE TABLE IF NOT EXISTS process_execution (
                     id                       VARCHAR(64) PRIMARY KEY,
                     revision                 INT NOT NULL DEFAULT 1,
                     process_instance_id      VARCHAR(64),
@@ -83,11 +61,11 @@ public class ProcessPersistenceInitializer {
                     is_ended                 BOOLEAN NOT NULL DEFAULT FALSE
                 )
                 """).update();
-        jdbcClient.sql("CREATE INDEX ON process_execution (process_instance_id)").update();
-        jdbcClient.sql("CREATE INDEX ON process_execution (parent_id)").update();
+        jdbcClient.sql("CREATE INDEX IF NOT EXISTS process_execution_proc_inst_idx ON process_execution (process_instance_id)").update();
+        jdbcClient.sql("CREATE INDEX IF NOT EXISTS process_execution_parent_idx ON process_execution (parent_id)").update();
 
         jdbcClient.sql("""
-                CREATE TABLE process_variable (
+                CREATE TABLE IF NOT EXISTS process_variable (
                     id                  VARCHAR(64) PRIMARY KEY,
                     execution_id        VARCHAR(64),
                     process_instance_id VARCHAR(64),
@@ -98,10 +76,10 @@ public class ProcessPersistenceInitializer {
                     double_value        DOUBLE PRECISION
                 )
                 """).update();
-        jdbcClient.sql("CREATE INDEX ON process_variable (execution_id)").update();
+        jdbcClient.sql("CREATE INDEX IF NOT EXISTS process_variable_execution_idx ON process_variable (execution_id)").update();
 
         jdbcClient.sql("""
-                CREATE TABLE process_task (
+                CREATE TABLE IF NOT EXISTS process_task (
                     id                     VARCHAR(64) PRIMARY KEY,
                     name                   VARCHAR(255),
                     assignee               VARCHAR(255),
@@ -112,19 +90,11 @@ public class ProcessPersistenceInitializer {
                     task_definition_key    VARCHAR(255)
                 )
                 """).update();
-        jdbcClient.sql("CREATE INDEX ON process_task (execution_id)").update();
-        jdbcClient.sql("CREATE INDEX ON process_task (process_instance_id)").update();
+        jdbcClient.sql("CREATE INDEX IF NOT EXISTS process_task_execution_idx ON process_task (execution_id)").update();
+        jdbcClient.sql("CREATE INDEX IF NOT EXISTS process_task_proc_inst_idx ON process_task (process_instance_id)").update();
 
-        // type distinguishes "candidate" (a task's pool of eligible claimants) from "assignee"/
-        // "owner" (Flowable also records the current assignee as an identity link, in addition to
-        // process_task.assignee itself) -- matches Flowable's own IdentityLinkType convention.
-        // task_id/process_instance_id are both nullable and mutually exclusive in practice:
-        // Flowable also writes process-instance-scoped links here (type "participant", recording
-        // that a user claimed/completed *some* task in the instance, not tied to any one task) --
-        // confirmed empirically when claim/complete started failing with a NOT NULL violation on
-        // task_id for exactly these rows.
         jdbcClient.sql("""
-                CREATE TABLE process_task_identitylink (
+                CREATE TABLE IF NOT EXISTS process_task_identitylink (
                     id                  VARCHAR(64) PRIMARY KEY,
                     task_id             VARCHAR(64),
                     process_instance_id VARCHAR(64),
@@ -133,19 +103,11 @@ public class ProcessPersistenceInitializer {
                     group_id            VARCHAR(255)
                 )
                 """).update();
-        jdbcClient.sql("CREATE INDEX ON process_task_identitylink (task_id)").update();
-        jdbcClient.sql("CREATE INDEX ON process_task_identitylink (process_instance_id)").update();
+        jdbcClient.sql("CREATE INDEX IF NOT EXISTS process_task_identitylink_task_idx ON process_task_identitylink (task_id)").update();
+        jdbcClient.sql("CREATE INDEX IF NOT EXISTS process_task_identitylink_proc_inst_idx ON process_task_identitylink (process_instance_id)").update();
 
-        // Backs all six of Flowable's job kinds (ACT_RU_JOB/_TIMER_JOB/_SUSPENDED_JOB/
-        // _DEADLETTER_JOB/_HISTORY_JOB/_EXTERNAL_JOB) with one discriminated table -- a "move"
-        // between kinds (e.g. a job exhausting its retries and going to dead-letter) is then a
-        // plain UPDATE of job_kind rather than a delete+insert across separate tables, matching
-        // this table's existing process_task_identitylink discriminator convention. The async
-        // executor is never activated (see ProcessEngineConfig), so this table stays empty in
-        // practice today; it exists so a future timer/async-marked process element has somewhere
-        // real to write instead of falling through to Flowable's own ACT_RU_JOB.
         jdbcClient.sql("""
-                CREATE TABLE process_job (
+                CREATE TABLE IF NOT EXISTS process_job (
                     id                          VARCHAR(64) PRIMARY KEY,
                     revision                    INT NOT NULL DEFAULT 1,
                     job_kind                    VARCHAR(32) NOT NULL,
@@ -175,18 +137,13 @@ public class ProcessPersistenceInitializer {
                     create_time                  TIMESTAMPTZ
                 )
                 """).update();
-        jdbcClient.sql("CREATE INDEX ON process_job (job_kind, lock_expiration_time)").update();
-        jdbcClient.sql("CREATE INDEX ON process_job (execution_id)").update();
-        jdbcClient.sql("CREATE INDEX ON process_job (process_instance_id)").update();
-        jdbcClient.sql("CREATE INDEX ON process_job (correlation_id)").update();
+        jdbcClient.sql("CREATE INDEX IF NOT EXISTS process_job_kind_lock_idx ON process_job (job_kind, lock_expiration_time)").update();
+        jdbcClient.sql("CREATE INDEX IF NOT EXISTS process_job_execution_idx ON process_job (execution_id)").update();
+        jdbcClient.sql("CREATE INDEX IF NOT EXISTS process_job_proc_inst_idx ON process_job (process_instance_id)").update();
+        jdbcClient.sql("CREATE INDEX IF NOT EXISTS process_job_correlation_idx ON process_job (correlation_id)").update();
 
-        // Backs message/signal start-event subscriptions (ACT_RU_EVENT_SUBSCR) -- load-bearing for
-        // RuntimeService.startProcessInstanceByMessage and signal dispatch (docs/
-        // ntrloc-workflow-summary.md Sections 4/5), not just cleanup. Only the columns BPMN
-        // message/signal start events actually exercise -- CMMN-scope and lock-time columns
-        // Flowable's own ACT_RU_EVENT_SUBSCR carries are omitted.
         jdbcClient.sql("""
-                CREATE TABLE process_event_subscription (
+                CREATE TABLE IF NOT EXISTS process_event_subscription (
                     id                     VARCHAR(64) PRIMARY KEY,
                     revision               INT NOT NULL DEFAULT 1,
                     event_type             VARCHAR(64) NOT NULL,
@@ -199,16 +156,12 @@ public class ProcessPersistenceInitializer {
                     process_definition_id  VARCHAR(64)
                 )
                 """).update();
-        jdbcClient.sql("CREATE INDEX ON process_event_subscription (event_type, event_name)").update();
-        jdbcClient.sql("CREATE INDEX ON process_event_subscription (execution_id)").update();
-        jdbcClient.sql("CREATE INDEX ON process_event_subscription (process_instance_id)").update();
+        jdbcClient.sql("CREATE INDEX IF NOT EXISTS process_event_sub_type_name_idx ON process_event_subscription (event_type, event_name)").update();
+        jdbcClient.sql("CREATE INDEX IF NOT EXISTS process_event_sub_execution_idx ON process_event_subscription (execution_id)").update();
+        jdbcClient.sql("CREATE INDEX IF NOT EXISTS process_event_sub_proc_inst_idx ON process_event_subscription (process_instance_id)").update();
 
-        // Backs live "currently active activity" tracking (ACT_RU_ACTINST) -- unlike the historic
-        // ACT_HI_ACTINST equivalent (which stays off, history is disabled), this one is written
-        // unconditionally by Flowable's own ContinueProcessOperation on every activity transition,
-        // no history-level gate -- mandatory, not optional cleanup.
         jdbcClient.sql("""
-                CREATE TABLE process_activity_instance (
+                CREATE TABLE IF NOT EXISTS process_activity_instance (
                     id                        VARCHAR(64) PRIMARY KEY,
                     revision                  INT NOT NULL DEFAULT 1,
                     process_instance_id       VARCHAR(64) NOT NULL,
@@ -228,40 +181,25 @@ public class ProcessPersistenceInitializer {
                     called_process_instance_id VARCHAR(64)
                 )
                 """).update();
-        jdbcClient.sql("CREATE INDEX ON process_activity_instance (process_instance_id)").update();
-        jdbcClient.sql("CREATE INDEX ON process_activity_instance (execution_id, activity_id)").update();
+        jdbcClient.sql("CREATE INDEX IF NOT EXISTS process_activity_inst_proc_inst_idx ON process_activity_instance (process_instance_id)").update();
+        jdbcClient.sql("CREATE INDEX IF NOT EXISTS process_activity_inst_exec_act_idx ON process_activity_instance (execution_id, activity_id)").update();
 
-        // Backs Flowable's generic config-property bookkeeping (ACT_GE_PROPERTY) -- discovered
-        // live, not anticipated: ValidateExecutionRelatedEntityCountCfgCmd looks up
-        // "cfg.execution-related-entities-count" unconditionally during every buildEngine() call,
-        // completely independent of schema management or the id generator (both already handled in
-        // ProcessEngineConfig) -- a third, separate path to this table. PropertyEntity's own id IS
-        // its name (PropertyEntityImpl.setId() throws; getId() returns the name field directly), so
-        // name is the primary key, not a generated id.
         jdbcClient.sql("""
-                CREATE TABLE process_property (
+                CREATE TABLE IF NOT EXISTS process_property (
                     name     VARCHAR(255) PRIMARY KEY,
                     revision INT NOT NULL DEFAULT 1,
                     value    TEXT
                 )
                 """).update();
 
-        // Backs process-definition "info cache" overrides (ACT_PROCDEF_INFO) -- also discovered
-        // live: BpmnDeployer.createLocalizationValues() calls
-        // DynamicBpmnServiceImpl.getProcessDefinitionInfo() unconditionally on every deploy
-        // (including our own hello-world.bpmn20.xml resource loaded at boot), not gated behind
-        // isEnableProcessDefinitionInfoCache() the way earlier analysis assumed -- that flag turned
-        // out to control something narrower than the lookup itself. Nothing in ntrloc ever creates
-        // an override, so this table stays empty; it just needs to exist and answer "no override"
-        // (null) correctly.
         jdbcClient.sql("""
-                CREATE TABLE process_definition_info (
+                CREATE TABLE IF NOT EXISTS process_definition_info (
                     id                    VARCHAR(64) PRIMARY KEY,
                     revision              INT NOT NULL DEFAULT 1,
                     process_definition_id VARCHAR(64) NOT NULL,
                     info_json_id          VARCHAR(64)
                 )
                 """).update();
-        jdbcClient.sql("CREATE INDEX ON process_definition_info (process_definition_id)").update();
+        jdbcClient.sql("CREATE INDEX IF NOT EXISTS process_def_info_proc_def_idx ON process_definition_info (process_definition_id)").update();
     }
 }

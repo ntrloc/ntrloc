@@ -9,9 +9,9 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 
 // Backs process-definition "info cache" overrides (ACT_PROCDEF_INFO) with our own
-// process_definition_info table -- discovered live (docs/ntrloc-workflow-summary.md Section 6):
+// process_definition_info table -- discovered live (the workflow persistence layer):
 // BpmnDeployer.createLocalizationValues() looks this up unconditionally on every deploy, not gated
-// behind isEnableProcessDefinitionInfoCache() the way earlier analysis assumed. Nothing in ntrloc
+// behind isEnableProcessDefinitionInfoCache() the way earlier analysis assumed. Nothing in this app
 // ever creates an override, so this stays empty in practice -- it just needs to correctly answer
 // "no override for this process definition" (null), which findById()/the sole finder both do.
 public class ProcessDefinitionInfoDataManagerImpl extends AbstractProcessDataManager implements ProcessDefinitionInfoDataManager {

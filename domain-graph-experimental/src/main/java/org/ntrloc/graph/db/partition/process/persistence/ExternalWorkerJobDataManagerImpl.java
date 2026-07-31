@@ -13,8 +13,8 @@ import java.util.Date;
 import java.util.List;
 
 // Backs external worker jobs (ACT_RU_EXTERNAL_JOB) with job_kind = 'EXTERNAL_WORKER' rows in
-// process_job. Nothing in ntrloc uses external worker tasks today -- built for zero-MyBatis
-// completeness (docs/ntrloc-workflow-summary.md Section 6), acquire/expire shape is real (same as
+// process_job. Nothing in this app uses external worker tasks today -- built for zero-MyBatis
+// completeness (the workflow persistence layer), acquire/expire shape is real (same as
 // JobDataManagerImpl), the worker-specific finder surface is stubbed.
 public class ExternalWorkerJobDataManagerImpl extends AbstractJobDataManager<ExternalWorkerJobEntity> implements ExternalWorkerJobDataManager {
 
@@ -119,7 +119,7 @@ public class ExternalWorkerJobDataManagerImpl extends AbstractJobDataManager<Ext
     }
 
     // Worker-specific / query-object surfaces: stubbed, matching this package's convention --
-    // nothing in ntrloc dispatches external worker tasks yet.
+    // nothing in this app dispatches external worker tasks yet.
     @Override
     public List<ExternalWorkerJobEntity> findExternalJobsToExecute(ExternalWorkerJobAcquireBuilderImpl builder, int numberOfTasks) {
         return new ArrayList<>();

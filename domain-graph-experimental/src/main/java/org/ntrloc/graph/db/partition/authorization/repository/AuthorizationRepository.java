@@ -5,6 +5,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -70,6 +71,112 @@ public class AuthorizationRepository {
         jdbcClient.sql("""
                 INSERT INTO authorization_grant (marker_id, principal_type, principal_id, operation)
                 VALUES (:markerId, :principalType, :principalId, :operation)
+                """)
+                .param("markerId", markerId).param("principalType", principalType)
+                .param("principalId", principalId).param("operation", operation)
+                .update();
+    }
+
+    // --- Admin permission reads ---
+
+    public record GrantRow(UUID grantId, UUID markerId, String markerName, UUID itemTypeId, String itemTypeName, String operation) {}
+
+    /**
+     * Returns all grants for a given principal type + id, joined through marker -> item_type_marker -> schema_item.
+     */
+    public List<GrantRow> getGrantsForPrincipal(String principalType, UUID principalId) {
+        return jdbcClient.sql("""
+                SELECT g.id AS grant_id, g.marker_id, m.name AS marker_name,
+                       itm.item_type_id, si.name AS item_type_name, g.operation
+                FROM authorization_grant g
+                JOIN authorization_marker m ON m.id = g.marker_id
+                JOIN authorization_item_type_marker itm ON itm.marker_id = g.marker_id
+                JOIN schema_item si ON si.id = itm.item_type_id
+                WHERE g.principal_type = :principalType AND g.principal_id = :principalId
+                ORDER BY si.name, g.operation
+                """)
+                .param("principalType", principalType)
+                .param("principalId", principalId)
+                .query((rs, n) -> new GrantRow(
+                        rs.getObject("grant_id", UUID.class),
+                        rs.getObject("marker_id", UUID.class),
+                        rs.getString("marker_name"),
+                        rs.getObject("item_type_id", UUID.class),
+                        rs.getString("item_type_name"),
+                        rs.getString("operation")))
+                .list();
+    }
+
+    /**
+     * Returns all grants for a set of group ids, joined through marker -> item_type_marker -> schema_item.
+     * Used to compute effective user permissions.
+     */
+    public List<GrantRow> getGrantsForGroups(Set<UUID> groupIds) {
+        if (groupIds.isEmpty()) return List.of();
+        return jdbcClient.sql("""
+                SELECT g.id AS grant_id, g.marker_id, m.name AS marker_name,
+                       itm.item_type_id, si.name AS item_type_name, g.operation
+                FROM authorization_grant g
+                JOIN authorization_marker m ON m.id = g.marker_id
+                JOIN authorization_item_type_marker itm ON itm.marker_id = g.marker_id
+                JOIN schema_item si ON si.id = itm.item_type_id
+                WHERE g.principal_type = 'GROUP' AND g.principal_id IN (:groupIds)
+                ORDER BY si.name, g.operation
+                """)
+                .param("groupIds", groupIds)
+                .query((rs, n) -> new GrantRow(
+                        rs.getObject("grant_id", UUID.class),
+                        rs.getObject("marker_id", UUID.class),
+                        rs.getString("marker_name"),
+                        rs.getObject("item_type_id", UUID.class),
+                        rs.getString("item_type_name"),
+                        rs.getString("operation")))
+                .list();
+    }
+
+    /**
+     * Find a marker that is assigned to the given item type (by item_type_id).
+     */
+    public Optional<UUID> findMarkerForItemType(UUID itemTypeId) {
+        return jdbcClient.sql("SELECT marker_id FROM authorization_item_type_marker WHERE item_type_id = :itemTypeId LIMIT 1")
+                .param("itemTypeId", itemTypeId)
+                .query((rs, n) -> rs.getObject("marker_id", UUID.class))
+                .optional();
+    }
+
+    /**
+     * Find a grant matching the exact principal + marker + operation combination.
+     */
+    public Optional<UUID> findGrant(UUID markerId, String principalType, UUID principalId, String operation) {
+        return jdbcClient.sql("""
+                SELECT id FROM authorization_grant
+                WHERE marker_id = :markerId AND principal_type = :principalType
+                  AND principal_id = :principalId AND operation = :operation
+                """)
+                .param("markerId", markerId).param("principalType", principalType)
+                .param("principalId", principalId).param("operation", operation)
+                .query((rs, n) -> rs.getObject("id", UUID.class))
+                .optional();
+    }
+
+    public void deleteGrant(UUID grantId) {
+        jdbcClient.sql("DELETE FROM authorization_grant WHERE id = :id")
+                .param("id", grantId).update();
+    }
+
+    public void assignMarkerToItemTypeIfAbsent(UUID itemTypeId, UUID markerId) {
+        jdbcClient.sql("""
+                INSERT INTO authorization_item_type_marker (item_type_id, marker_id)
+                VALUES (:itemTypeId, :markerId) ON CONFLICT DO NOTHING
+                """)
+                .param("itemTypeId", itemTypeId).param("markerId", markerId).update();
+    }
+
+    public void grantIfAbsent(UUID markerId, String principalType, UUID principalId, String operation) {
+        jdbcClient.sql("""
+                INSERT INTO authorization_grant (id, marker_id, principal_type, principal_id, operation)
+                VALUES (gen_random_uuid(), :markerId, :principalType, :principalId, :operation)
+                ON CONFLICT DO NOTHING
                 """)
                 .param("markerId", markerId).param("principalType", principalType)
                 .param("principalId", principalId).param("operation", operation)

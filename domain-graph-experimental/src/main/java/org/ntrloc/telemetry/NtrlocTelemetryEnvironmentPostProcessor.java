@@ -9,7 +9,7 @@ import java.util.Map;
 
 // opentelemetry-spring-boot-starter's own kill switch is otel.sdk.disabled -- inverted here so the
 // project has one explicit, opt-in flag instead: telemetry is only ever transmitted when
-// ntrloc.telemetry.enabled=true is set somewhere in the environment (a profile's application.yml,
+// graph.telemetry.enabled=true is set somewhere in the environment (a profile's application.yml,
 // an env var, etc.), defaulting to off otherwise. Runs as an EnvironmentPostProcessor rather than a
 // @Bean because it has to win *before* the OTel SDK autoconfiguration reads otel.sdk.disabled while
 // building the SDK -- ordinary @Configuration beans run too late in the startup sequence for that.
@@ -19,7 +19,7 @@ public class NtrlocTelemetryEnvironmentPostProcessor implements EnvironmentPostP
 
     @Override
     public void postProcessEnvironment(ConfigurableEnvironment environment, SpringApplication application) {
-        boolean enabled = environment.getProperty("ntrloc.telemetry.enabled", Boolean.class, false);
+        boolean enabled = environment.getProperty("graph.telemetry.enabled", Boolean.class, false);
         environment.getPropertySources().addFirst(
                 new MapPropertySource("ntrlocTelemetryGate", Map.of("otel.sdk.disabled", !enabled)));
     }

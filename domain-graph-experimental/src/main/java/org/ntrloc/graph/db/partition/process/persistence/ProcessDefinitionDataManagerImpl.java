@@ -13,7 +13,7 @@ import java.util.Map;
 // Backs org.flowable.engine.repository.ProcessDefinition with our own process_definition table.
 // Tenant/derived-process/native-query variants are stubbed (return null/empty) -- this proof
 // deploys exactly one, single-tenant, non-derived process definition. Optimistic locking (the
-// revision column) is enforced in update() -- see docs/ntrloc-workflow-summary.md Section 6.
+// revision column) is enforced in update() -- see the workflow persistence layer.
 public class ProcessDefinitionDataManagerImpl extends AbstractProcessDataManager implements ProcessDefinitionDataManager {
 
     @Override
@@ -124,7 +124,7 @@ public class ProcessDefinitionDataManagerImpl extends AbstractProcessDataManager
     // Supports the filters an admin "list deployed process definitions" screen actually needs
     // (id/ids, deploymentId, key/keyLike, name/nameLike, version comparisons, latest-per-key) --
     // not full RepositoryService query-criteria parity. Category and tenant filters are silently
-    // ignored: nothing in ntrloc sets a category or a non-null tenant on a process definition, so
+    // ignored: nothing in this app sets a category or a non-null tenant on a process definition, so
     // there's no case where honoring them would currently change the result. No ORDER BY support
     // (orderBy*() on the query builder is a no-op here) -- callers get id order; add real ordering
     // if/when a caller needs a specific one.

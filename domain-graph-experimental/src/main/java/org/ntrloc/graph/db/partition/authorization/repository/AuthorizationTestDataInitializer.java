@@ -8,6 +8,7 @@ import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.DependsOn;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -16,18 +17,21 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Component
-@ConditionalOnProperty(prefix = "ntrloc.security", name = "seed-test-data", havingValue = "true")
+@ConditionalOnProperty(prefix = "graph.security", name = "seed-test-data", havingValue = "true")
 @DependsOn({"schemaManager", "securityInitializer", "authorizationInitializer"})
 public class AuthorizationTestDataInitializer implements ApplicationRunner {
 
     private final SchemaManager schemaManager;
     private final SecurityRepository securityRepo;
     private final AuthorizationRepository authorizationRepo;
+    private final JdbcClient jdbcClient;
 
-    public AuthorizationTestDataInitializer(SchemaManager schemaManager, SecurityRepository securityRepo, AuthorizationRepository authorizationRepo) {
+    public AuthorizationTestDataInitializer(SchemaManager schemaManager, SecurityRepository securityRepo,
+                                             AuthorizationRepository authorizationRepo, JdbcClient jdbcClient) {
         this.schemaManager = schemaManager;
         this.securityRepo = securityRepo;
         this.authorizationRepo = authorizationRepo;
+        this.jdbcClient = jdbcClient;
     }
 
     // Not @PostConstruct: applyMutations() below publishes SchemaChangeEvent, and
@@ -50,11 +54,22 @@ public class AuthorizationTestDataInitializer implements ApplicationRunner {
                 .collect(Collectors.toMap(item -> item.name(), item -> item.id()));
         UUID publicDocId = itemsByName.get("AclTestPublicDoc");
         UUID confidentialDocId = itemsByName.get("AclTestConfidentialDoc");
+        UUID unmarkedDocId = itemsByName.get("AclTestUnmarkedDoc");
 
-        var alice = securityRepo.createUser("alice", "Alice (viewer group member)", false);
-        var bob = securityRepo.createUser("bob", "Bob (viewer group member)", false);
-        var carol = securityRepo.createUser("carol", "Carol (direct grant, no group)", false);
-        securityRepo.createUser("root", "Root (superuser)", true);
+        // DefaultGroupInitializer.onItemTypeCreated reacts to the CreateItemDefinitionMutation
+        // above by immediately granting the "everyone" group read on each of these three types
+        // (nothing covers them yet at that instant) -- by design, so newly created item types
+        // are readable by default until something more specific takes over. These three exist
+        // specifically to prove the *opposite* (default-deny, opt-in via marker), so that default
+        // grant has to be stripped for them before it's meaningful to assert anything below.
+        revokeDefaultReadGrant(publicDocId);
+        revokeDefaultReadGrant(confidentialDocId);
+        revokeDefaultReadGrant(unmarkedDocId);
+
+        var alice = securityRepo.createUser("alice", "Alice (viewer group member)", null, false);
+        var bob = securityRepo.createUser("bob", "Bob (viewer group member)", null, false);
+        var carol = securityRepo.createUser("carol", "Carol (direct grant, no group)", null, false);
+        securityRepo.createUser("root", "Root (superuser)", null, true);
 
         var viewers = securityRepo.createGroup("viewers");
         securityRepo.addUserToGroup(alice.id(), viewers.id());
@@ -67,5 +82,15 @@ public class AuthorizationTestDataInitializer implements ApplicationRunner {
 
         authorizationRepo.grant(publicRead.id(), "GROUP", viewers.id(), PermissionService.ITEM_READ);
         authorizationRepo.grant(confidentialRead.id(), "USER", carol.id(), PermissionService.ITEM_READ);
+    }
+
+    private void revokeDefaultReadGrant(UUID itemTypeId) {
+        jdbcClient.sql("""
+                DELETE FROM authorization_grant WHERE marker_id IN (
+                    SELECT id FROM authorization_marker WHERE name = :name
+                )
+                """)
+                .param("name", "default-read-" + itemTypeId)
+                .update();
     }
 }

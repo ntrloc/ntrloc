@@ -8,7 +8,7 @@ import java.util.List;
 // (an Angular/React/etc. build output, or hand-written HTML/JS) at a configurable path prefix,
 // with an index.html fallback for client-side routing. General-purpose -- any domain runtime can
 // register as many mounts as it needs, each independently configured.
-@ConfigurationProperties(prefix = "ntrloc.ui")
+@ConfigurationProperties(prefix = "graph.ui")
 public record UiHostingProperties(List<Mount> mounts) {
 
     public UiHostingProperties {
