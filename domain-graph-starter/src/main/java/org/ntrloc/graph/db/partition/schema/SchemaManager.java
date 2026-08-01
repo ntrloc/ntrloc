@@ -83,6 +83,7 @@ public class SchemaManager {
     // (see applyMutations), so its own message is filtered out by publishing-member comparison
     // rather than skipped some other way.
     private static final String SCHEMA_CHANGED_TOPIC = "schemaChanged";
+    private static final String ENTITY_KIND_TRAIT = "trait";
 
     private final SchemaRepository repo;
     private final ControlledListManager controlledListManager;
@@ -121,97 +122,147 @@ public class SchemaManager {
 
     public void applyMutations(List<DefinitionMutation> mutations) {
         for (DefinitionMutation mutation : mutations) {
-            if (mutation instanceof CreateItemDefinitionMutation m) {
-                var item = repo.createItem(m.name(), m.description());
-                Set<String> usedNames = new HashSet<>();
-                for (var p : m.properties()) {
-                    requireUniqueName(usedNames, p.name(), "item type '" + m.name() + "'");
-                    var prop = repo.createProperty(p.name(), p.description(), p.propertyType(), p.cardinality(), p.usage());
-                    repo.associateItemProperty(item.id(), prop.id());
-                }
-                eventPublisher.publishEvent(new SchemaChangeEvent.ItemTypeCreated(item.id()));
-            } else if (mutation instanceof DeleteItemDefinitionMutation m) {
-                repo.deleteItem(m.id());
-                eventPublisher.publishEvent(new SchemaChangeEvent.ItemTypeDeleted(m.id()));
-            } else if (mutation instanceof CreateTraitDefinitionMutation m) {
-                var trait = repo.createTrait(m.name(), m.description());
-                Set<String> usedNames = new HashSet<>();
-                for (var p : m.properties()) {
-                    requireUniqueName(usedNames, p.name(), "trait '" + m.name() + "'");
-                    var prop = repo.createProperty(p.name(), p.description(), p.propertyType(), p.cardinality(), p.usage());
-                    repo.associateTraitProperty(trait.id(), prop.id());
-                }
-                eventPublisher.publishEvent(new SchemaChangeEvent.TraitCreated(trait.id()));
-            } else if (mutation instanceof DeleteTraitDefinitionMutation m) {
-                repo.deleteTrait(m.id());
-                eventPublisher.publishEvent(new SchemaChangeEvent.TraitDeleted(m.id()));
-            } else if (mutation instanceof ImplementTraitMutation m) {
-                repo.implementTrait(m.itemId(), m.traitId());
-            } else if (mutation instanceof RemoveTraitMutation m) {
-                repo.removeTrait(m.itemId(), m.traitId());
-            } else if (mutation instanceof UpdateItemDefinitionMutation m) {
-                repo.updateItem(m.id(), m.name(), m.description());
-            } else if (mutation instanceof CreateItemPropertyDefinitionMutation m) {
-                requireNameNotAssociated(repo.getPropertiesByItem(), m.itemId(), m.name(), "this item type");
-                var prop = repo.createProperty(m.name(), m.description(), m.propertyType(), m.cardinality(), m.usage());
-                repo.associateItemProperty(m.itemId(), prop.id());
-            } else if (mutation instanceof CreateLinkPropertyDefinitionMutation m) {
-                requireNameNotAssociated(repo.getPropertiesByLink(), m.linkId(), m.name(), "this link type");
-                var prop = repo.createProperty(m.name(), m.description(), m.propertyType(), m.cardinality(), m.usage());
-                repo.associateLinkProperty(m.linkId(), prop.id());
-            } else if (mutation instanceof UpdatePropertyDefinitionMutation m) {
-                repo.updateProperty(m.id(), m.name(), m.description(), m.propertyType(), m.cardinality(), m.usage());
-            } else if (mutation instanceof DeletePropertyDefinitionMutation m) {
-                repo.deleteProperty(m.id());
-            } else if (mutation instanceof CreateLinkDefinitionMutation m) {
-                UUID linkId = repo.createLink();
-                Set<String> usedNames = new HashSet<>();
-                for (var p : m.properties()) {
-                    requireUniqueName(usedNames, p.name(), "this link type");
-                    var prop = repo.createProperty(p.name(), p.description(), p.propertyType(), p.cardinality(), p.usage());
-                    repo.associateLinkProperty(linkId, prop.id());
-                }
-                for (var perspective : m.perspectives()) {
-                    requireKnownItemOrTrait(perspective.itemId());
-                    repo.createPerspective(perspective.itemId(), linkId, perspective.name(), perspective.description(),
-                            perspective.minCardinality(), perspective.maxCardinality());
-                }
-                eventPublisher.publishEvent(new SchemaChangeEvent.LinkTypeCreated(linkId));
-            } else if (mutation instanceof DeleteLinkDefinitionMutation m) {
-                repo.deleteLink(m.id());
-                eventPublisher.publishEvent(new SchemaChangeEvent.LinkTypeDeleted(m.id()));
-            } else if (mutation instanceof UpdatePerspectiveDefinitionMutation m) {
-                repo.updatePerspective(m.id(), m.name(), m.description(), m.minCardinality(), m.maxCardinality());
-            } else if (mutation instanceof ReplaceControlledListMutation m) {
-                var list = controlledListManager.getListForProperty(m.propertyId())
-                        .orElseThrow(() -> new IllegalArgumentException("No controlled list for property: " + m.propertyId()));
-                controlledListManager.replaceValues(list.id(), list.valueType(), m.values());
-            } else if (mutation instanceof CreateStateMachineMutation m) {
-                repo.createStateMachine(m.itemDefinitionId(), m.name(), m.description());
-            } else if (mutation instanceof UpdateStateMachineMutation m) {
-                repo.updateStateMachine(m.id(), m.name(), m.description());
-            } else if (mutation instanceof DeleteStateMachineMutation m) {
-                repo.deleteStateMachine(m.id());
-            } else if (mutation instanceof CreateStateMutation m) {
-                repo.createState(m.stateMachineId(), m.name(), m.description(), m.isInitial(), m.entryProcessId(), m.exitProcessId());
-            } else if (mutation instanceof UpdateStateMutation m) {
-                repo.updateState(m.id(), m.name(), m.description(), m.isInitial(), m.entryProcessId(), m.exitProcessId());
-            } else if (mutation instanceof DeleteStateMutation m) {
-                repo.deleteState(m.id());
-            } else if (mutation instanceof CreateTransitionMutation m) {
-                repo.createTransition(m.fromStateId(), m.toStateId(), m.name(), m.description(), m.processId(), repo.serializeGuardCondition(m.guardCondition()));
-            } else if (mutation instanceof UpdateTransitionMutation m) {
-                repo.updateTransition(m.id(), m.name(), m.description(), m.processId(), repo.serializeGuardCondition(m.guardCondition()));
-            } else if (mutation instanceof DeleteTransitionMutation m) {
-                repo.deleteTransition(m.id());
-            } else if (mutation instanceof SetItemInitProcessMutation m) {
-                repo.setItemInitProcess(m.itemId(), m.initProcessId());
-            } else {
-                throw new IllegalArgumentException("Unsupported mutation: " + mutation.getClass().getSimpleName());
-            }
+            applyMutation(mutation);
         }
         rebuildCache();
         schemaChangedTopic.publish(UUID.randomUUID().toString());
+    }
+
+    // Grouped by mutation family (item, trait, property, link, state machine) rather than one flat
+    // if-instanceof chain over all ~25 DefinitionMutation subtypes -- that chain alone drove this
+    // method's Cognitive Complexity to 40. Each apply*Mutation() below returns whether it recognized
+    // (and applied) the mutation, so this dispatcher stays a short, flat sequence of family checks.
+    private void applyMutation(DefinitionMutation mutation) {
+        if (applyItemMutation(mutation)) return;
+        if (applyTraitMutation(mutation)) return;
+        if (applyPropertyMutation(mutation)) return;
+        if (applyLinkMutation(mutation)) return;
+        if (applyStateMutation(mutation)) return;
+        if (mutation instanceof ReplaceControlledListMutation m) {
+            var list = controlledListManager.getListForProperty(m.propertyId())
+                    .orElseThrow(() -> new IllegalArgumentException("No controlled list for property: " + m.propertyId()));
+            controlledListManager.replaceValues(list.id(), list.valueType(), m.values());
+            return;
+        }
+        if (mutation instanceof SetItemInitProcessMutation m) {
+            repo.setItemInitProcess(m.itemId(), m.initProcessId());
+            return;
+        }
+        throw new IllegalArgumentException("Unsupported mutation: " + mutation.getClass().getSimpleName());
+    }
+
+    private boolean applyItemMutation(DefinitionMutation mutation) {
+        if (mutation instanceof CreateItemDefinitionMutation m) {
+            var item = repo.createItem(m.name(), m.description());
+            Set<String> usedNames = new HashSet<>();
+            for (var p : m.properties()) {
+                requireUniqueName(usedNames, p.name(), "item type '" + m.name() + "'");
+                var prop = repo.createProperty(p.name(), p.description(), p.propertyType(), p.cardinality(), p.usage());
+                repo.associateItemProperty(item.id(), prop.id());
+            }
+            eventPublisher.publishEvent(new SchemaChangeEvent.ItemTypeCreated(item.id()));
+        } else if (mutation instanceof UpdateItemDefinitionMutation m) {
+            repo.updateItem(m.id(), m.name(), m.description());
+        } else if (mutation instanceof DeleteItemDefinitionMutation m) {
+            repo.deleteItem(m.id());
+            eventPublisher.publishEvent(new SchemaChangeEvent.ItemTypeDeleted(m.id()));
+        } else {
+            return false;
+        }
+        return true;
+    }
+
+    private boolean applyTraitMutation(DefinitionMutation mutation) {
+        if (mutation instanceof CreateTraitDefinitionMutation m) {
+            var trait = repo.createTrait(m.name(), m.description());
+            Set<String> usedNames = new HashSet<>();
+            for (var p : m.properties()) {
+                requireUniqueName(usedNames, p.name(), ENTITY_KIND_TRAIT + " '" + m.name() + "'");
+                var prop = repo.createProperty(p.name(), p.description(), p.propertyType(), p.cardinality(), p.usage());
+                repo.associateTraitProperty(trait.id(), prop.id());
+            }
+            eventPublisher.publishEvent(new SchemaChangeEvent.TraitCreated(trait.id()));
+        } else if (mutation instanceof DeleteTraitDefinitionMutation m) {
+            repo.deleteTrait(m.id());
+            eventPublisher.publishEvent(new SchemaChangeEvent.TraitDeleted(m.id()));
+        } else if (mutation instanceof ImplementTraitMutation m) {
+            repo.implementTrait(m.itemId(), m.traitId());
+        } else if (mutation instanceof RemoveTraitMutation m) {
+            repo.removeTrait(m.itemId(), m.traitId());
+        } else {
+            return false;
+        }
+        return true;
+    }
+
+    private boolean applyPropertyMutation(DefinitionMutation mutation) {
+        if (mutation instanceof CreateItemPropertyDefinitionMutation m) {
+            requireNameNotAssociated(repo.getPropertiesByItem(), m.itemId(), m.name(), "this item type");
+            var prop = repo.createProperty(m.name(), m.description(), m.propertyType(), m.cardinality(), m.usage());
+            repo.associateItemProperty(m.itemId(), prop.id());
+        } else if (mutation instanceof CreateLinkPropertyDefinitionMutation m) {
+            requireNameNotAssociated(repo.getPropertiesByLink(), m.linkId(), m.name(), "this link type");
+            var prop = repo.createProperty(m.name(), m.description(), m.propertyType(), m.cardinality(), m.usage());
+            repo.associateLinkProperty(m.linkId(), prop.id());
+        } else if (mutation instanceof UpdatePropertyDefinitionMutation m) {
+            repo.updateProperty(m.id(), m.name(), m.description(), m.propertyType(), m.cardinality(), m.usage());
+        } else if (mutation instanceof DeletePropertyDefinitionMutation m) {
+            repo.deleteProperty(m.id());
+        } else {
+            return false;
+        }
+        return true;
+    }
+
+    private boolean applyLinkMutation(DefinitionMutation mutation) {
+        if (mutation instanceof CreateLinkDefinitionMutation m) {
+            UUID linkId = repo.createLink();
+            Set<String> usedNames = new HashSet<>();
+            for (var p : m.properties()) {
+                requireUniqueName(usedNames, p.name(), "this link type");
+                var prop = repo.createProperty(p.name(), p.description(), p.propertyType(), p.cardinality(), p.usage());
+                repo.associateLinkProperty(linkId, prop.id());
+            }
+            for (var perspective : m.perspectives()) {
+                requireKnownItemOrTrait(perspective.itemId());
+                repo.createPerspective(perspective.itemId(), linkId, perspective.name(), perspective.description(),
+                        perspective.minCardinality(), perspective.maxCardinality());
+            }
+            eventPublisher.publishEvent(new SchemaChangeEvent.LinkTypeCreated(linkId));
+        } else if (mutation instanceof DeleteLinkDefinitionMutation m) {
+            repo.deleteLink(m.id());
+            eventPublisher.publishEvent(new SchemaChangeEvent.LinkTypeDeleted(m.id()));
+        } else if (mutation instanceof UpdatePerspectiveDefinitionMutation m) {
+            repo.updatePerspective(m.id(), m.name(), m.description(), m.minCardinality(), m.maxCardinality());
+        } else {
+            return false;
+        }
+        return true;
+    }
+
+    private boolean applyStateMutation(DefinitionMutation mutation) {
+        if (mutation instanceof CreateStateMachineMutation m) {
+            repo.createStateMachine(m.itemDefinitionId(), m.name(), m.description());
+        } else if (mutation instanceof UpdateStateMachineMutation m) {
+            repo.updateStateMachine(m.id(), m.name(), m.description());
+        } else if (mutation instanceof DeleteStateMachineMutation m) {
+            repo.deleteStateMachine(m.id());
+        } else if (mutation instanceof CreateStateMutation m) {
+            repo.createState(m.stateMachineId(), m.name(), m.description(), m.isInitial(), m.entryProcessId(), m.exitProcessId());
+        } else if (mutation instanceof UpdateStateMutation m) {
+            repo.updateState(m.id(), m.name(), m.description(), m.isInitial(), m.entryProcessId(), m.exitProcessId());
+        } else if (mutation instanceof DeleteStateMutation m) {
+            repo.deleteState(m.id());
+        } else if (mutation instanceof CreateTransitionMutation m) {
+            repo.createTransition(m.fromStateId(), m.toStateId(), m.name(), m.description(), m.processId(), repo.serializeGuardCondition(m.guardCondition()));
+        } else if (mutation instanceof UpdateTransitionMutation m) {
+            repo.updateTransition(m.id(), m.name(), m.description(), m.processId(), repo.serializeGuardCondition(m.guardCondition()));
+        } else if (mutation instanceof DeleteTransitionMutation m) {
+            repo.deleteTransition(m.id());
+        } else {
+            return false;
+        }
+        return true;
     }
 
     // A property's name only needs to be unique within whichever single item/trait/link type
@@ -326,7 +377,7 @@ public class SchemaManager {
             var traitProps = traitIds.stream()
                     .flatMap(traitId -> {
                         var trait = traitById.get(traitId);
-                        var definedIn = new DefinedInView("trait", trait.name());
+                        var definedIn = new DefinedInView(ENTITY_KIND_TRAIT, trait.name());
                         return propertiesByTrait.getOrDefault(traitId, List.of()).stream()
                                 .map(p -> new AdminPropertyDefinitionView(
                                         p.id(), p.name(), p.description(), p.type(), p.cardinality(), p.usage(), definedIn, p.controlledListId()));
@@ -339,7 +390,7 @@ public class SchemaManager {
             var traitLinks = traitIds.stream()
                     .map(traitId -> {
                         var trait = traitById.get(traitId);
-                        var definedIn = new DefinedInView("trait", trait.name());
+                        var definedIn = new DefinedInView(ENTITY_KIND_TRAIT, trait.name());
                         return buildPerspectiveAdminViews(trait.id(), perspectivesByEntity, entityNameMap, itemEntityIds, definedIn);
                     })
                     .filter(m -> m != null && !m.isEmpty())
@@ -399,7 +450,7 @@ public class SchemaManager {
         return perspectives.stream().map(p -> {
             var inverses = repo.findInversePerspectives(p.linkId(), p.id());
             var targets = inverses.stream()
-                    .map(inv -> new TargetEntityView(entityNameMap.get(inv.entityId()), itemEntityIds.contains(inv.entityId()) ? "item" : "trait"))
+                    .map(inv -> new TargetEntityView(entityNameMap.get(inv.entityId()), itemEntityIds.contains(inv.entityId()) ? "item" : ENTITY_KIND_TRAIT))
                     .toList();
             return Map.entry(p.name(), new AdminItemLinkPerspectiveView(
                     p.id(), p.linkId(), targets, p.description(), p.minCardinality(), p.maxCardinality(), definedIn));
@@ -448,7 +499,7 @@ public class SchemaManager {
             var traitProps = traitIds.stream()
                     .flatMap(traitId -> {
                         var trait = traitById.get(traitId);
-                        var definedIn = new DefinedInView("trait", trait.name());
+                        var definedIn = new DefinedInView(ENTITY_KIND_TRAIT, trait.name());
                         return propertiesByTrait.getOrDefault(traitId, List.of()).stream()
                                 .map(p -> new PropertyDefinitionView(p.id(), p.name(), p.description(), p.type(), p.cardinality(), definedIn, allowedValuesFor(p)));
                     })
@@ -459,7 +510,7 @@ public class SchemaManager {
             var traitLinks = traitIds.stream()
                     .map(traitId -> {
                         var trait = traitById.get(traitId);
-                        var definedIn = new DefinedInView("trait", trait.name());
+                        var definedIn = new DefinedInView(ENTITY_KIND_TRAIT, trait.name());
                         return buildPerspectiveViews(trait.id(), perspectivesByEntity, entityNameMap, itemEntityIds, propertiesByLink, definedIn);
                     })
                     .filter(m -> m != null && !m.isEmpty())
@@ -500,7 +551,7 @@ public class SchemaManager {
         return perspectives.stream().map(p -> {
             var inverses = repo.findInversePerspectives(p.linkId(), p.id());
             var targets = inverses.stream()
-                    .map(inv -> new TargetEntityView(entityNameMap.get(inv.entityId()), itemEntityIds.contains(inv.entityId()) ? "item" : "trait"))
+                    .map(inv -> new TargetEntityView(entityNameMap.get(inv.entityId()), itemEntityIds.contains(inv.entityId()) ? "item" : ENTITY_KIND_TRAIT))
                     .toList();
             var linkProps = propertiesByLink.get(p.linkId());
             var linkPropViews = linkProps == null ? null : linkProps.stream()

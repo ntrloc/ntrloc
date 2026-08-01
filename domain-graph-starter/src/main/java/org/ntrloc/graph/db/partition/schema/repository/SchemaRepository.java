@@ -36,6 +36,15 @@ public class SchemaRepository {
 
     private static final ObjectMapper MAPPER = JsonMapper.builder().build();
 
+    private static final String PARAM_DESCRIPTION = "description";
+    private static final String PARAM_TRAIT_ID = "traitId";
+    private static final String PARAM_ITEM_ID = "itemId";
+    private static final String PARAM_USAGE = "usage";
+    private static final String PARAM_CARDINALITY = "cardinality";
+    private static final String COL_ITEM_DEFINITION_ID = "item_definition_id";
+    private static final String PARAM_PROPERTY_ID = "propertyId";
+    private static final String PARAM_LINK_ID = "linkId";
+
     private final JdbcClient jdbcClient;
 
     public SchemaRepository(JdbcClient jdbcClient) {
@@ -49,14 +58,14 @@ public class SchemaRepository {
                 .query((rs, n) -> new ItemRow(
                         rs.getObject("id", UUID.class),
                         rs.getString("name"),
-                        rs.getString("description"),
+                        rs.getString(PARAM_DESCRIPTION),
                         rs.getString("init_process_id")))
                 .list());
     }
 
     public ItemRow createItem(String name, String description) {
         UUID itemId = jdbcClient.sql("INSERT INTO schema_item (name, description) VALUES (:name, :description) RETURNING id")
-                .param("name", name).param("description", description)
+                .param("name", name).param(PARAM_DESCRIPTION, description)
                 .query(UUID.class).single();
         return new ItemRow(itemId, name, description, null);
     }
@@ -68,7 +77,7 @@ public class SchemaRepository {
 
     public void updateItem(UUID id, String name, String description) {
         jdbcClient.sql("UPDATE schema_item SET name = :name, description = :description WHERE id = :id")
-                .param("id", id).param("name", name).param("description", description)
+                .param("id", id).param("name", name).param(PARAM_DESCRIPTION, description)
                 .update();
     }
 
@@ -83,13 +92,13 @@ public class SchemaRepository {
                 .query((rs, n) -> new TraitRow(
                         rs.getObject("id", UUID.class),
                         rs.getString("name"),
-                        rs.getString("description")))
+                        rs.getString(PARAM_DESCRIPTION)))
                 .list());
     }
 
     public TraitRow createTrait(String name, String description) {
         UUID traitId = jdbcClient.sql("INSERT INTO schema_trait (name, description) VALUES (:name, :description) RETURNING id")
-                .param("name", name).param("description", description)
+                .param("name", name).param(PARAM_DESCRIPTION, description)
                 .query(UUID.class).single();
         return new TraitRow(traitId, name, description);
     }
@@ -100,12 +109,12 @@ public class SchemaRepository {
 
     public void implementTrait(UUID itemId, UUID traitId) {
         jdbcClient.sql("INSERT INTO schema_item_trait (item_id, trait_id) VALUES (:itemId, :traitId)")
-                .param("itemId", itemId).param("traitId", traitId).update();
+                .param(PARAM_ITEM_ID, itemId).param(PARAM_TRAIT_ID, traitId).update();
     }
 
     public void removeTrait(UUID itemId, UUID traitId) {
         jdbcClient.sql("DELETE FROM schema_item_trait WHERE item_id = :itemId AND trait_id = :traitId")
-                .param("itemId", itemId).param("traitId", traitId).update();
+                .param(PARAM_ITEM_ID, itemId).param(PARAM_TRAIT_ID, traitId).update();
     }
 
     public Map<UUID, List<UUID>> getTraitIdsByItem() {
@@ -121,16 +130,16 @@ public class SchemaRepository {
 
     public AdminPropertyDefinitionView createProperty(String name, String description, PropertyType type, PropertyCardinality cardinality, PropertyUsage usage) {
         return jdbcClient.sql("INSERT INTO schema_property (name, description, type, cardinality, usage) VALUES (:name, :description, :type, :cardinality, :usage) RETURNING *")
-                .param("name", name).param("description", description)
-                .param("type", type.name()).param("cardinality", cardinality.name()).param("usage", usage.name())
+                .param("name", name).param(PARAM_DESCRIPTION, description)
+                .param("type", type.name()).param(PARAM_CARDINALITY, cardinality.name()).param(PARAM_USAGE, usage.name())
                 .query(this::mapProperty)
                 .single();
     }
 
     public AdminPropertyDefinitionView updateProperty(UUID id, String name, String description, PropertyType type, PropertyCardinality cardinality, PropertyUsage usage) {
         return jdbcClient.sql("UPDATE schema_property SET name = :name, description = :description, type = :type, cardinality = :cardinality, usage = :usage WHERE id = :id RETURNING *")
-                .param("id", id).param("name", name).param("description", description)
-                .param("type", type.name()).param("cardinality", cardinality.name()).param("usage", usage.name())
+                .param("id", id).param("name", name).param(PARAM_DESCRIPTION, description)
+                .param("type", type.name()).param(PARAM_CARDINALITY, cardinality.name()).param(PARAM_USAGE, usage.name())
                 .query(this::mapProperty)
                 .single();
     }
@@ -146,7 +155,7 @@ public class SchemaRepository {
                 JOIN schema_item_property ip ON ip.property_id = p.id
                 """)
                 .query((rs, n) -> Map.entry(
-                        rs.getObject("item_definition_id", UUID.class),
+                        rs.getObject(COL_ITEM_DEFINITION_ID, UUID.class),
                         mapProperty(rs, n)))
                 .list().stream()
                 .collect(Collectors.groupingBy(Map.Entry::getKey, Collectors.mapping(Map.Entry::getValue, Collectors.toList())));
@@ -180,17 +189,17 @@ public class SchemaRepository {
 
     public void associateItemProperty(UUID itemId, UUID propertyId) {
         jdbcClient.sql("INSERT INTO schema_item_property (item_definition_id, property_id) VALUES (:itemId, :propertyId)")
-                .param("itemId", itemId).param("propertyId", propertyId).update();
+                .param(PARAM_ITEM_ID, itemId).param(PARAM_PROPERTY_ID, propertyId).update();
     }
 
     public void associateTraitProperty(UUID traitId, UUID propertyId) {
         jdbcClient.sql("INSERT INTO schema_trait_property (trait_id, property_id) VALUES (:traitId, :propertyId)")
-                .param("traitId", traitId).param("propertyId", propertyId).update();
+                .param(PARAM_TRAIT_ID, traitId).param(PARAM_PROPERTY_ID, propertyId).update();
     }
 
     public void dissociateItemProperty(UUID itemId, UUID propertyId) {
         jdbcClient.sql("DELETE FROM schema_item_property WHERE item_definition_id = :itemId AND property_id = :propertyId")
-                .param("itemId", itemId).param("propertyId", propertyId).update();
+                .param(PARAM_ITEM_ID, itemId).param(PARAM_PROPERTY_ID, propertyId).update();
     }
 
     // --- Links ---
@@ -211,12 +220,12 @@ public class SchemaRepository {
 
     public void associateLinkProperty(UUID linkId, UUID propertyId) {
         jdbcClient.sql("INSERT INTO schema_link_property (link_definition_id, property_id) VALUES (:linkId, :propertyId)")
-                .param("linkId", linkId).param("propertyId", propertyId).update();
+                .param(PARAM_LINK_ID, linkId).param(PARAM_PROPERTY_ID, propertyId).update();
     }
 
     public void dissociateLinkProperty(UUID linkId, UUID propertyId) {
         jdbcClient.sql("DELETE FROM schema_link_property WHERE link_definition_id = :linkId AND property_id = :propertyId")
-                .param("linkId", linkId).param("propertyId", propertyId).update();
+                .param(PARAM_LINK_ID, linkId).param(PARAM_PROPERTY_ID, propertyId).update();
     }
 
     // --- Perspectives ---
@@ -226,7 +235,7 @@ public class SchemaRepository {
                 INSERT INTO schema_entity_link_perspective (entity_id, link_definition_id, name, description, minimum_cardinality, maximum_cardinality)
                 VALUES (:entityId, :linkId, :name, :description, :minCardinality, :maxCardinality) RETURNING *
                 """)
-                .param("entityId", entityId).param("linkId", linkId).param("name", name).param("description", description)
+                .param("entityId", entityId).param(PARAM_LINK_ID, linkId).param("name", name).param(PARAM_DESCRIPTION, description)
                 .param("minCardinality", minCardinality).param("maxCardinality", maxCardinality)
                 .query(this::mapPerspective)
                 .single();
@@ -237,7 +246,7 @@ public class SchemaRepository {
                 UPDATE schema_entity_link_perspective SET name = :name, description = :description, minimum_cardinality = :minCardinality, maximum_cardinality = :maxCardinality
                 WHERE id = :id RETURNING *
                 """)
-                .param("id", id).param("name", name).param("description", description)
+                .param("id", id).param("name", name).param(PARAM_DESCRIPTION, description)
                 .param("minCardinality", minCardinality).param("maxCardinality", maxCardinality)
                 .query(this::mapPerspective)
                 .single();
@@ -252,7 +261,7 @@ public class SchemaRepository {
 
     public List<PerspectiveRow> findInversePerspectives(UUID linkId, UUID perspectiveId) {
         return jdbcClient.sql("SELECT * FROM schema_entity_link_perspective WHERE link_definition_id = :linkId AND id != :perspectiveId")
-                .param("linkId", linkId).param("perspectiveId", perspectiveId)
+                .param(PARAM_LINK_ID, linkId).param("perspectiveId", perspectiveId)
                 .query(this::mapPerspective)
                 .list();
     }
@@ -264,14 +273,14 @@ public class SchemaRepository {
                 INSERT INTO schema_state_machine (item_definition_id, name, description)
                 VALUES (:itemDefinitionId, :name, :description) RETURNING id
                 """)
-                .param("itemDefinitionId", itemDefinitionId).param("name", name).param("description", description)
+                .param("itemDefinitionId", itemDefinitionId).param("name", name).param(PARAM_DESCRIPTION, description)
                 .query(UUID.class).single();
         return new StateMachineRow(id, itemDefinitionId, name, description);
     }
 
     public void updateStateMachine(UUID id, String name, String description) {
         jdbcClient.sql("UPDATE schema_state_machine SET name = :name, description = :description WHERE id = :id")
-                .param("id", id).param("name", name).param("description", description)
+                .param("id", id).param("name", name).param(PARAM_DESCRIPTION, description)
                 .update();
     }
 
@@ -281,7 +290,7 @@ public class SchemaRepository {
 
     public Map<UUID, List<StateMachineRow>> getStateMachinesByItem() {
         return jdbcClient.sql("SELECT * FROM schema_state_machine ORDER BY item_definition_id, name")
-                .query((rs, n) -> Map.entry(rs.getObject("item_definition_id", UUID.class), mapStateMachine(rs, n)))
+                .query((rs, n) -> Map.entry(rs.getObject(COL_ITEM_DEFINITION_ID, UUID.class), mapStateMachine(rs, n)))
                 .list().stream()
                 .collect(Collectors.groupingBy(Map.Entry::getKey, Collectors.mapping(Map.Entry::getValue, Collectors.toList())));
     }
@@ -293,7 +302,7 @@ public class SchemaRepository {
                 INSERT INTO schema_state (state_machine_id, name, description, is_initial, entry_process_id, exit_process_id)
                 VALUES (:stateMachineId, :name, :description, :isInitial, :entryProcessId, :exitProcessId) RETURNING id
                 """)
-                .param("stateMachineId", stateMachineId).param("name", name).param("description", description)
+                .param("stateMachineId", stateMachineId).param("name", name).param(PARAM_DESCRIPTION, description)
                 .param("isInitial", isInitial).param("entryProcessId", entryProcessId).param("exitProcessId", exitProcessId)
                 .query(UUID.class).single();
         return new StateRow(id, stateMachineId, name, description, isInitial, entryProcessId, exitProcessId);
@@ -304,7 +313,7 @@ public class SchemaRepository {
                 UPDATE schema_state SET name = :name, description = :description, is_initial = :isInitial,
                     entry_process_id = :entryProcessId, exit_process_id = :exitProcessId WHERE id = :id
                 """)
-                .param("id", id).param("name", name).param("description", description)
+                .param("id", id).param("name", name).param(PARAM_DESCRIPTION, description)
                 .param("isInitial", isInitial).param("entryProcessId", entryProcessId).param("exitProcessId", exitProcessId)
                 .update();
     }
@@ -328,7 +337,7 @@ public class SchemaRepository {
                 VALUES (:fromStateId, :toStateId, :name, :description, :processId, :guardCondition::jsonb) RETURNING id
                 """)
                 .param("fromStateId", fromStateId).param("toStateId", toStateId)
-                .param("name", name).param("description", description)
+                .param("name", name).param(PARAM_DESCRIPTION, description)
                 .param("processId", processId).param("guardCondition", guardCondition)
                 .query(UUID.class).single();
         return new TransitionRow(id, fromStateId, toStateId, name, description, processId, guardCondition);
@@ -339,7 +348,7 @@ public class SchemaRepository {
                 UPDATE schema_state_transition SET name = :name, description = :description,
                     process_id = :processId, guard_condition = :guardCondition::jsonb WHERE id = :id
                 """)
-                .param("id", id).param("name", name).param("description", description)
+                .param("id", id).param("name", name).param(PARAM_DESCRIPTION, description)
                 .param("processId", processId).param("guardCondition", guardCondition)
                 .update();
     }
@@ -361,10 +370,10 @@ public class SchemaRepository {
         return new AdminPropertyDefinitionView(
                 rs.getObject("id", UUID.class),
                 rs.getString("name"),
-                rs.getString("description"),
+                rs.getString(PARAM_DESCRIPTION),
                 PropertyType.valueOf(rs.getString("type")),
-                PropertyCardinality.valueOf(rs.getString("cardinality")),
-                PropertyUsage.valueOf(rs.getString("usage")),
+                PropertyCardinality.valueOf(rs.getString(PARAM_CARDINALITY)),
+                PropertyUsage.valueOf(rs.getString(PARAM_USAGE)),
                 null,
                 rs.getObject("controlled_list_id", UUID.class)
         );
@@ -376,7 +385,7 @@ public class SchemaRepository {
                 rs.getObject("entity_id", UUID.class),
                 rs.getObject("link_definition_id", UUID.class),
                 rs.getString("name"),
-                rs.getString("description"),
+                rs.getString(PARAM_DESCRIPTION),
                 rs.getInt("minimum_cardinality"),
                 rs.getObject("maximum_cardinality", Integer.class)
         );
@@ -385,9 +394,9 @@ public class SchemaRepository {
     private StateMachineRow mapStateMachine(ResultSet rs, int n) throws SQLException {
         return new StateMachineRow(
                 rs.getObject("id", UUID.class),
-                rs.getObject("item_definition_id", UUID.class),
+                rs.getObject(COL_ITEM_DEFINITION_ID, UUID.class),
                 rs.getString("name"),
-                rs.getString("description")
+                rs.getString(PARAM_DESCRIPTION)
         );
     }
 
@@ -396,7 +405,7 @@ public class SchemaRepository {
                 rs.getObject("id", UUID.class),
                 rs.getObject("state_machine_id", UUID.class),
                 rs.getString("name"),
-                rs.getString("description"),
+                rs.getString(PARAM_DESCRIPTION),
                 rs.getBoolean("is_initial"),
                 rs.getString("entry_process_id"),
                 rs.getString("exit_process_id")
@@ -409,7 +418,7 @@ public class SchemaRepository {
                 rs.getObject("from_state_id", UUID.class),
                 rs.getObject("to_state_id", UUID.class),
                 rs.getString("name"),
-                rs.getString("description"),
+                rs.getString(PARAM_DESCRIPTION),
                 rs.getString("process_id"),
                 rs.getString("guard_condition")
         );

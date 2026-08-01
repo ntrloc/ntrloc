@@ -15,6 +15,9 @@ import java.util.UUID;
 @DependsOn("schemaInitializer")
 public class ControlledListManager {
 
+    private static final String PARAM_VALUE = "value";
+    private static final String PARAM_LABEL = "label";
+
     public static final Set<PropertyType> SUPPORTED_TYPES = Set.of(
             PropertyType.STRING, PropertyType.INT, PropertyType.LONG);
 
@@ -51,8 +54,8 @@ public class ControlledListManager {
     public void addValue(UUID listId, Object value, String label, int sortOrder) {
         jdbcClient.sql("INSERT INTO %s (value, label, sort_order) VALUES (:value, :label, :sortOrder)"
                         .formatted(tableNameFor(listId)))
-                .param("value", value)
-                .param("label", label)
+                .param(PARAM_VALUE, value)
+                .param(PARAM_LABEL, label)
                 .param("sortOrder", sortOrder)
                 .update();
     }
@@ -62,12 +65,12 @@ public class ControlledListManager {
                         .formatted(tableNameFor(listId)))
                 .query((rs, n) -> {
                     Object val = switch (valueType) {
-                        case STRING -> rs.getString("value");
-                        case INT    -> rs.getInt("value");
-                        case LONG   -> rs.getLong("value");
+                        case STRING -> rs.getString(PARAM_VALUE);
+                        case INT    -> rs.getInt(PARAM_VALUE);
+                        case LONG   -> rs.getLong(PARAM_VALUE);
                         default -> throw new IllegalStateException("Unexpected controlled list type: " + valueType);
                     };
-                    return new AllowedValue(val, rs.getString("label"));
+                    return new AllowedValue(val, rs.getString(PARAM_LABEL));
                 })
                 .list();
     }
@@ -99,8 +102,8 @@ public class ControlledListManager {
                 default -> throw new IllegalArgumentException("Unsupported controlled list type: " + valueType);
             };
             jdbcClient.sql("INSERT INTO %s (value, label, sort_order) VALUES (:value, :label, :sortOrder)".formatted(tableName))
-                    .param("value", typed)
-                    .param("label", entry.label())
+                    .param(PARAM_VALUE, typed)
+                    .param(PARAM_LABEL, entry.label())
                     .param("sortOrder", order++)
                     .update();
         }
