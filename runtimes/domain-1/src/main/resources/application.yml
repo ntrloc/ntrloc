@@ -1,50 +1,46 @@
 server:
-  port: 8080
+  port: 9090
 
 spring:
   application:
     name: domain-1
-  threads:
-    virtual:
-      enabled: true
-  ai:
-    mcp:
-      server:
-        protocol: stateless
-  thymeleaf:
-    prefix: classpath:/sites/admin/templates/
-  web:
-    resources:
-      add-mappings: false
+  datasource:
+    url: jdbc:postgresql://localhost:5432/ntrloc
+    username: ntrloc
+    password: ntrloc
+    driver-class-name: org.postgresql.Driver
 
-management:
-  health:
-    cassandra:
-      enabled: false
-  endpoints:
-    web:
-      exposure:
-        include:
-          - health
-          - info
+cluster:
+  name: domain-1
 
 graph:
-  domainName: domain-1
-  storage:
-    berkeley:
-      directory: target/domain1/berkeleyje
-  index:
-    lucene:
-      directory: target/domain1/lucene
-  management:
-    resource.location: file:///Users/michaelcoddington/Documents/Projects/ntrloc/domain-graph-starter/src/main/resources/org/ntrloc/graph/ui
-
-storage:
-  berkeleyje:
-    statistics:
-      level: ALL
-    deadlockDetection: true
-    lock.deadlockDetectionDelay: 1000000  # 1 second
+  branding:
+    display-name: domain-1
+  auth:
+    local:
+      enabled: true
+    oauth:
+      enabled: false
+    ldap:
+      enabled: false
+  security:
+    enabled: true
+    seed-local-accounts: true
+    seed-test-data: false
+  ui:
+    mounts:
+      - path: /admin
+        location: "file:///Users/michaelcoddington/Documents/Projects/ntrloc/domain-graph-starter/src/main/resources/static/admin-ui/"
+  process:
+    script:
+      # Packages a process script (Groovy or JavaScript) can reference a class from by simple
+      # name, e.g. "new SingleItemProjectionSpec(...)" instead of the fully-qualified name.
+      import-packages:
+        - org.ntrloc.graph.db.projection
+        - org.ntrloc.graph.db.mutation
+  telemetry:
+    # Set true to actually transmit OTel traces/metrics/logs (e.g. to a local Grafana stack).
+    enabled: false
 
 binary:
   storage:

@@ -5,26 +5,22 @@
 
     <groupId>org.ntrloc</groupId>
     <artifactId>ntrloc</artifactId>
-    <version>0.0.1-SNAPSHOT</version>
+    <version>1.0.0-SNAPSHOT</version>
     <packaging>pom</packaging>
 
     <modules>
-        <module>domain-graph-starter</module>
-        <module>api-gateway-model</module>
-        <module>api-gateway</module>
-        <module>runtimes</module>
         <module>runtimes/domain-1</module>
+        <module>domain-graph-starter</module>
     </modules>
 
     <properties>
-        <maven.compiler.source>21</maven.compiler.source>
-        <maven.compiler.target>21</maven.compiler.target>
+        <maven.compiler.release>17</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
         <sonar.organization>NTRLOC</sonar.organization>
         <sonar.projectKey>ntrloc_ntrloc</sonar.projectKey>
 
-        <maven-compiler-plugin.version>2.5.1</maven-compiler-plugin.version>
+        <maven-compiler-plugin.version>3.13.0</maven-compiler-plugin.version>
         <maven-source-plugin.version>3.2.1</maven-source-plugin.version>
         <!-- JaCoCo settings -->
         <jacoco.maven.plugin.version>0.8.13</jacoco.maven.plugin.version>
@@ -36,6 +32,7 @@
         <log4j.version>2.20.0</log4j.version>
         <slf4j.version>2.0.17</slf4j.version>
         <log4j.slf4j.version>2.25.1</log4j.slf4j.version>
+        <tinkerpop.version>3.7.3</tinkerpop.version>
         <netflix.dgs.version>10.3.0</netflix.dgs.version>
         <spring.boot.version>3.4.4</spring.boot.version>
         <junit.version>5.11.4</junit.version>
@@ -114,6 +111,18 @@
                 <artifactId>jackson-module-scala_2.12</artifactId>
                 <version>${jackson.version}</version>
             </dependency>
+            <!-- ZooKeeper (via JanusGraph) pulls logback-core:1.2.x which is incompatible with logback-classic:1.5.x -->
+            <dependency>
+                <groupId>ch.qos.logback</groupId>
+                <artifactId>logback-core</artifactId>
+                <version>1.5.18</version>
+            </dependency>
+            <!-- JanusGraph Hadoop transitive deps pull slf4j-api:1.7.x which is incompatible with logback-classic:1.5.x -->
+            <dependency>
+                <groupId>org.slf4j</groupId>
+                <artifactId>slf4j-api</artifactId>
+                <version>${slf4j.version}</version>
+            </dependency>
         </dependencies>
     </dependencyManagement>
 
@@ -124,8 +133,10 @@
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>${maven-compiler-plugin.version}</version>
                 <configuration>
-                    <source>21</source>
-                    <target>21</target>
+                    <release>17</release>
+                    <compilerArgs>
+                        <arg>-parameters</arg>
+                    </compilerArgs>
                 </configuration>
             </plugin>
             <plugin>

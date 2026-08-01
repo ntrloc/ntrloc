@@ -19,3 +19,10 @@ buildNumber.properties
 *.iml
 
 /db
+
+terraform/.terraform
+terraform/.terraform.lock.hcl
+terraform/terraform.tfstate*
+
+.claude
+.mcp.json
