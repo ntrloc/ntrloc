@@ -23,6 +23,12 @@ import java.util.List;
 // yet, only the finders recordActivityStart/recordActivityEnd/recordTaskCreated actually call.
 public class ActivityInstanceDataManagerImpl extends AbstractProcessDataManager implements ActivityInstanceDataManager {
 
+    private static final String COL_REVISION = "revision";
+    private static final String PARAM_EXECUTION_ID = "executionId";
+    private static final String PARAM_ACTIVITY_ID = "activityId";
+    private static final String PARAM_TASK_ID = "taskId";
+    private static final String PARAM_ASSIGNEE = "assignee";
+
     @Override
     public ActivityInstanceEntity create() {
         return new ActivityInstanceEntityImpl();
@@ -51,15 +57,15 @@ public class ActivityInstanceDataManagerImpl extends AbstractProcessDataManager 
                      :durationMillis, :transactionOrder, :deleteReason, :calledProcessInstanceId)
                 """)
                 .param("id", entity.getId())
-                .param("revision", Math.max(entity.getRevision(), 1))
+                .param(COL_REVISION, Math.max(entity.getRevision(), 1))
                 .param("processInstanceId", entity.getProcessInstanceId())
                 .param("processDefinitionId", entity.getProcessDefinitionId())
-                .param("executionId", entity.getExecutionId())
-                .param("activityId", entity.getActivityId())
+                .param(PARAM_EXECUTION_ID, entity.getExecutionId())
+                .param(PARAM_ACTIVITY_ID, entity.getActivityId())
                 .param("activityName", entity.getActivityName())
                 .param("activityType", entity.getActivityType())
-                .param("taskId", entity.getTaskId())
-                .param("assignee", entity.getAssignee())
+                .param(PARAM_TASK_ID, entity.getTaskId())
+                .param(PARAM_ASSIGNEE, entity.getAssignee())
                 .param("completedBy", entity.getCompletedBy())
                 .param("startTime", toTimestamp(entity.getStartTime() == null ? new Date() : entity.getStartTime()))
                 .param("endTime", toTimestamp(entity.getEndTime()))
@@ -86,15 +92,15 @@ public class ActivityInstanceDataManagerImpl extends AbstractProcessDataManager 
                 WHERE id = :id AND revision = :revision
                 """)
                 .param("id", entity.getId())
-                .param("revision", entity.getRevision())
+                .param(COL_REVISION, entity.getRevision())
                 .param("processInstanceId", entity.getProcessInstanceId())
                 .param("processDefinitionId", entity.getProcessDefinitionId())
-                .param("executionId", entity.getExecutionId())
-                .param("activityId", entity.getActivityId())
+                .param(PARAM_EXECUTION_ID, entity.getExecutionId())
+                .param(PARAM_ACTIVITY_ID, entity.getActivityId())
                 .param("activityName", entity.getActivityName())
                 .param("activityType", entity.getActivityType())
-                .param("taskId", entity.getTaskId())
-                .param("assignee", entity.getAssignee())
+                .param(PARAM_TASK_ID, entity.getTaskId())
+                .param(PARAM_ASSIGNEE, entity.getAssignee())
                 .param("completedBy", entity.getCompletedBy())
                 .param("startTime", toTimestamp(entity.getStartTime()))
                 .param("endTime", toTimestamp(entity.getEndTime()))
@@ -127,8 +133,8 @@ public class ActivityInstanceDataManagerImpl extends AbstractProcessDataManager 
     @Override
     public List<ActivityInstanceEntity> findUnfinishedActivityInstancesByExecutionAndActivityId(String executionId, String activityId) {
         return jdbcClient().sql(SELECT + " WHERE execution_id = :executionId AND activity_id = :activityId AND end_time IS NULL")
-                .param("executionId", executionId)
-                .param("activityId", activityId)
+                .param(PARAM_EXECUTION_ID, executionId)
+                .param(PARAM_ACTIVITY_ID, activityId)
                 .query(this::cacheOrMap)
                 .list();
     }
@@ -136,8 +142,8 @@ public class ActivityInstanceDataManagerImpl extends AbstractProcessDataManager 
     @Override
     public List<ActivityInstanceEntity> findActivityInstancesByExecutionIdAndActivityId(String executionId, String activityId) {
         return jdbcClient().sql(SELECT + " WHERE execution_id = :executionId AND activity_id = :activityId")
-                .param("executionId", executionId)
-                .param("activityId", activityId)
+                .param(PARAM_EXECUTION_ID, executionId)
+                .param(PARAM_ACTIVITY_ID, activityId)
                 .query(this::cacheOrMap)
                 .list();
     }
@@ -147,7 +153,7 @@ public class ActivityInstanceDataManagerImpl extends AbstractProcessDataManager 
     @Override
     public ActivityInstanceEntity findActivityInstanceByTaskId(String taskId) {
         return jdbcClient().sql(SELECT + " WHERE task_id = :taskId")
-                .param("taskId", taskId)
+                .param(PARAM_TASK_ID, taskId)
                 .query(this::cacheOrMap)
                 .optional()
                 .orElse(null);
@@ -222,7 +228,7 @@ public class ActivityInstanceDataManagerImpl extends AbstractProcessDataManager 
     private ActivityInstanceEntity mapRow(ResultSet rs) throws SQLException {
         ActivityInstanceEntityImpl entity = new ActivityInstanceEntityImpl();
         entity.setId(rs.getString("id"));
-        entity.setRevision(rs.getInt("revision"));
+        entity.setRevision(rs.getInt(COL_REVISION));
         entity.setProcessInstanceId(rs.getString("process_instance_id"));
         entity.setProcessDefinitionId(rs.getString("process_definition_id"));
         entity.setExecutionId(rs.getString("execution_id"));
@@ -230,7 +236,7 @@ public class ActivityInstanceDataManagerImpl extends AbstractProcessDataManager 
         entity.setActivityName(rs.getString("activity_name"));
         entity.setActivityType(rs.getString("activity_type"));
         entity.setTaskId(rs.getString("task_id"));
-        entity.setAssignee(rs.getString("assignee"));
+        entity.setAssignee(rs.getString(PARAM_ASSIGNEE));
         entity.setCompletedBy(rs.getString("completed_by"));
         entity.setStartTime(fromTimestamp(rs.getTimestamp("start_time")));
         entity.setEndTime(fromTimestamp(rs.getTimestamp("end_time")));
