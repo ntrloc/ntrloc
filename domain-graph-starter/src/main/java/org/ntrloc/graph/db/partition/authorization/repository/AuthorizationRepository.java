@@ -17,6 +17,12 @@ public class AuthorizationRepository {
     // no groups — a real uuidv7()-generated id can never collide with this value.
     private static final UUID NO_GROUPS_SENTINEL = new UUID(0L, 0L);
 
+    private static final String COL_ITEM_TYPE_ID = "item_type_id";
+    private static final String COL_MARKER_ID = "marker_id";
+    private static final String COL_OPERATION = "operation";
+    private static final String PARAM_MARKER_ID = "markerId";
+    private static final String PARAM_ITEM_TYPE_ID = "itemTypeId";
+
     public record MarkerRow(UUID id, String name, String description) {}
 
     private final JdbcClient jdbcClient;
@@ -30,8 +36,8 @@ public class AuthorizationRepository {
     public Map<UUID, List<UUID>> getMarkerIdsByItemType() {
         return jdbcClient.sql("SELECT item_type_id, marker_id FROM authorization_item_type_marker")
                 .query((rs, n) -> Map.entry(
-                        rs.getObject("item_type_id", UUID.class),
-                        rs.getObject("marker_id", UUID.class)))
+                        rs.getObject(COL_ITEM_TYPE_ID, UUID.class),
+                        rs.getObject(COL_MARKER_ID, UUID.class)))
                 .list().stream()
                 .collect(Collectors.groupingBy(Map.Entry::getKey, Collectors.mapping(Map.Entry::getValue, Collectors.toList())));
     }
@@ -46,10 +52,10 @@ public class AuthorizationRepository {
                   AND ((principal_type = 'USER'  AND principal_id = :userId)
                     OR (principal_type = 'GROUP' AND principal_id IN (:groupIds)))
                 """)
-                .param("operation", operation)
+                .param(COL_OPERATION, operation)
                 .param("userId", userId)
                 .param("groupIds", safeGroupIds)
-                .query((rs, n) -> rs.getObject("marker_id", UUID.class))
+                .query((rs, n) -> rs.getObject(COL_MARKER_ID, UUID.class))
                 .list());
     }
 
@@ -64,7 +70,7 @@ public class AuthorizationRepository {
 
     public void assignMarkerToItemType(UUID itemTypeId, UUID markerId) {
         jdbcClient.sql("INSERT INTO authorization_item_type_marker (item_type_id, marker_id) VALUES (:itemTypeId, :markerId)")
-                .param("itemTypeId", itemTypeId).param("markerId", markerId).update();
+                .param(PARAM_ITEM_TYPE_ID, itemTypeId).param(PARAM_MARKER_ID, markerId).update();
     }
 
     public void grant(UUID markerId, String principalType, UUID principalId, String operation) {
@@ -72,8 +78,8 @@ public class AuthorizationRepository {
                 INSERT INTO authorization_grant (marker_id, principal_type, principal_id, operation)
                 VALUES (:markerId, :principalType, :principalId, :operation)
                 """)
-                .param("markerId", markerId).param("principalType", principalType)
-                .param("principalId", principalId).param("operation", operation)
+                .param(PARAM_MARKER_ID, markerId).param("principalType", principalType)
+                .param("principalId", principalId).param(COL_OPERATION, operation)
                 .update();
     }
 
@@ -99,11 +105,11 @@ public class AuthorizationRepository {
                 .param("principalId", principalId)
                 .query((rs, n) -> new GrantRow(
                         rs.getObject("grant_id", UUID.class),
-                        rs.getObject("marker_id", UUID.class),
+                        rs.getObject(COL_MARKER_ID, UUID.class),
                         rs.getString("marker_name"),
-                        rs.getObject("item_type_id", UUID.class),
+                        rs.getObject(COL_ITEM_TYPE_ID, UUID.class),
                         rs.getString("item_type_name"),
-                        rs.getString("operation")))
+                        rs.getString(COL_OPERATION)))
                 .list();
     }
 
@@ -126,11 +132,11 @@ public class AuthorizationRepository {
                 .param("groupIds", groupIds)
                 .query((rs, n) -> new GrantRow(
                         rs.getObject("grant_id", UUID.class),
-                        rs.getObject("marker_id", UUID.class),
+                        rs.getObject(COL_MARKER_ID, UUID.class),
                         rs.getString("marker_name"),
-                        rs.getObject("item_type_id", UUID.class),
+                        rs.getObject(COL_ITEM_TYPE_ID, UUID.class),
                         rs.getString("item_type_name"),
-                        rs.getString("operation")))
+                        rs.getString(COL_OPERATION)))
                 .list();
     }
 
@@ -139,8 +145,8 @@ public class AuthorizationRepository {
      */
     public Optional<UUID> findMarkerForItemType(UUID itemTypeId) {
         return jdbcClient.sql("SELECT marker_id FROM authorization_item_type_marker WHERE item_type_id = :itemTypeId LIMIT 1")
-                .param("itemTypeId", itemTypeId)
-                .query((rs, n) -> rs.getObject("marker_id", UUID.class))
+                .param(PARAM_ITEM_TYPE_ID, itemTypeId)
+                .query((rs, n) -> rs.getObject(COL_MARKER_ID, UUID.class))
                 .optional();
     }
 
@@ -153,8 +159,8 @@ public class AuthorizationRepository {
                 WHERE marker_id = :markerId AND principal_type = :principalType
                   AND principal_id = :principalId AND operation = :operation
                 """)
-                .param("markerId", markerId).param("principalType", principalType)
-                .param("principalId", principalId).param("operation", operation)
+                .param(PARAM_MARKER_ID, markerId).param("principalType", principalType)
+                .param("principalId", principalId).param(COL_OPERATION, operation)
                 .query((rs, n) -> rs.getObject("id", UUID.class))
                 .optional();
     }
@@ -169,7 +175,7 @@ public class AuthorizationRepository {
                 INSERT INTO authorization_item_type_marker (item_type_id, marker_id)
                 VALUES (:itemTypeId, :markerId) ON CONFLICT DO NOTHING
                 """)
-                .param("itemTypeId", itemTypeId).param("markerId", markerId).update();
+                .param(PARAM_ITEM_TYPE_ID, itemTypeId).param(PARAM_MARKER_ID, markerId).update();
     }
 
     public void grantIfAbsent(UUID markerId, String principalType, UUID principalId, String operation) {
@@ -178,8 +184,8 @@ public class AuthorizationRepository {
                 VALUES (gen_random_uuid(), :markerId, :principalType, :principalId, :operation)
                 ON CONFLICT DO NOTHING
                 """)
-                .param("markerId", markerId).param("principalType", principalType)
-                .param("principalId", principalId).param("operation", operation)
+                .param(PARAM_MARKER_ID, markerId).param("principalType", principalType)
+                .param("principalId", principalId).param(COL_OPERATION, operation)
                 .update();
     }
 }
