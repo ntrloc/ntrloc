@@ -93,12 +93,12 @@ public class ResourceDataManagerImpl extends AbstractProcessDataManager implemen
         if (cached != null) {
             return cached;
         }
-        ResourceEntity mapped = mapRow(rs, rowNum);
+        ResourceEntity mapped = mapRow(rs);
         session().cache(ResourceEntity.class, id, mapped);
         return mapped;
     }
 
-    private ResourceEntity mapRow(java.sql.ResultSet rs, int rowNum) throws java.sql.SQLException {
+    private ResourceEntity mapRow(java.sql.ResultSet rs) throws java.sql.SQLException {
         ResourceEntityImpl entity = new ResourceEntityImpl();
         entity.setId(rs.getString("id"));
         entity.setDeploymentId(rs.getString("deployment_id"));

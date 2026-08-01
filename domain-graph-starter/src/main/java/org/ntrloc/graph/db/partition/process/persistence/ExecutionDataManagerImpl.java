@@ -338,7 +338,7 @@ public class ExecutionDataManagerImpl extends AbstractProcessDataManager impleme
         if (cached != null) {
             return cached;
         }
-        ExecutionEntity mapped = mapRow(rs, rowNum);
+        ExecutionEntity mapped = mapRow(rs);
         session().cache(ExecutionEntity.class, id, mapped);
         // Same reasoning as insert()'s registerFlush call -- a freshly-loaded execution can be
         // mutated in place just as easily as one this command itself created.
@@ -346,7 +346,7 @@ public class ExecutionDataManagerImpl extends AbstractProcessDataManager impleme
         return mapped;
     }
 
-    private ExecutionEntity mapRow(java.sql.ResultSet rs, int rowNum) throws java.sql.SQLException {
+    private ExecutionEntity mapRow(java.sql.ResultSet rs) throws java.sql.SQLException {
         ExecutionEntityImpl entity = new ExecutionEntityImpl();
         entity.setId(rs.getString("id"));
         entity.setRevision(rs.getInt(COL_REVISION));

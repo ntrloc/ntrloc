@@ -98,12 +98,12 @@ public class DecisionDeploymentDataManagerImpl extends AbstractDecisionDataManag
         if (cached != null) {
             return cached;
         }
-        DmnDeploymentEntity mapped = mapRow(rs, rowNum);
+        DmnDeploymentEntity mapped = mapRow(rs);
         session().cache(DmnDeploymentEntity.class, id, mapped);
         return mapped;
     }
 
-    private DmnDeploymentEntity mapRow(java.sql.ResultSet rs, int rowNum) throws java.sql.SQLException {
+    private DmnDeploymentEntity mapRow(java.sql.ResultSet rs) throws java.sql.SQLException {
         DmnDeploymentEntityImpl entity = new DmnDeploymentEntityImpl();
         entity.setId(rs.getString("id"));
         entity.setName(rs.getString("name"));

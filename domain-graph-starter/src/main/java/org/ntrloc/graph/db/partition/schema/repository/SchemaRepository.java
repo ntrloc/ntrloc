@@ -290,7 +290,7 @@ public class SchemaRepository {
 
     public Map<UUID, List<StateMachineRow>> getStateMachinesByItem() {
         return jdbcClient.sql("SELECT * FROM schema_state_machine ORDER BY item_definition_id, name")
-                .query((rs, n) -> Map.entry(rs.getObject(COL_ITEM_DEFINITION_ID, UUID.class), mapStateMachine(rs, n)))
+                .query((rs, n) -> Map.entry(rs.getObject(COL_ITEM_DEFINITION_ID, UUID.class), mapStateMachine(rs)))
                 .list().stream()
                 .collect(Collectors.groupingBy(Map.Entry::getKey, Collectors.mapping(Map.Entry::getValue, Collectors.toList())));
     }
@@ -324,7 +324,7 @@ public class SchemaRepository {
 
     public Map<UUID, List<StateRow>> getStatesByStateMachine() {
         return jdbcClient.sql("SELECT * FROM schema_state ORDER BY state_machine_id, name")
-                .query((rs, n) -> Map.entry(rs.getObject("state_machine_id", UUID.class), mapState(rs, n)))
+                .query((rs, n) -> Map.entry(rs.getObject("state_machine_id", UUID.class), mapState(rs)))
                 .list().stream()
                 .collect(Collectors.groupingBy(Map.Entry::getKey, Collectors.mapping(Map.Entry::getValue, Collectors.toList())));
     }
@@ -391,7 +391,7 @@ public class SchemaRepository {
         );
     }
 
-    private StateMachineRow mapStateMachine(ResultSet rs, int n) throws SQLException {
+    private StateMachineRow mapStateMachine(ResultSet rs) throws SQLException {
         return new StateMachineRow(
                 rs.getObject("id", UUID.class),
                 rs.getObject(COL_ITEM_DEFINITION_ID, UUID.class),
@@ -400,7 +400,7 @@ public class SchemaRepository {
         );
     }
 
-    private StateRow mapState(ResultSet rs, int n) throws SQLException {
+    private StateRow mapState(ResultSet rs) throws SQLException {
         return new StateRow(
                 rs.getObject("id", UUID.class),
                 rs.getObject("state_machine_id", UUID.class),

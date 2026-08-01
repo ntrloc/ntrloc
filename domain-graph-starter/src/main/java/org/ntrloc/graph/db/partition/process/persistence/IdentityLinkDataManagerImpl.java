@@ -221,12 +221,12 @@ public class IdentityLinkDataManagerImpl extends AbstractProcessDataManager impl
         if (cached != null) {
             return cached;
         }
-        IdentityLinkEntity mapped = mapRow(rs, rowNum);
+        IdentityLinkEntity mapped = mapRow(rs);
         session().cache(IdentityLinkEntity.class, id, mapped);
         return mapped;
     }
 
-    private IdentityLinkEntity mapRow(ResultSet rs, int rowNum) throws SQLException {
+    private IdentityLinkEntity mapRow(ResultSet rs) throws SQLException {
         IdentityLinkEntityImpl entity = new IdentityLinkEntityImpl();
         entity.setId(rs.getString("id"));
         entity.setTaskId(rs.getString("task_id"));

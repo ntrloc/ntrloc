@@ -150,12 +150,12 @@ public class HistoricDecisionExecutionDataManagerImpl extends AbstractDecisionDa
         if (cached != null) {
             return cached;
         }
-        HistoricDecisionExecutionEntity mapped = mapRow(rs, rowNum);
+        HistoricDecisionExecutionEntity mapped = mapRow(rs);
         session().cache(HistoricDecisionExecutionEntity.class, id, mapped);
         return mapped;
     }
 
-    private HistoricDecisionExecutionEntity mapRow(java.sql.ResultSet rs, int rowNum) throws java.sql.SQLException {
+    private HistoricDecisionExecutionEntity mapRow(java.sql.ResultSet rs) throws java.sql.SQLException {
         HistoricDecisionExecutionEntityImpl entity = new HistoricDecisionExecutionEntityImpl();
         entity.setId(rs.getString("id"));
         entity.setDecisionDefinitionId(rs.getString("decision_definition_id"));

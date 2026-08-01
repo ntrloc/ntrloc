@@ -107,6 +107,12 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                 .orElse(List.of());
     }
 
+    private List<String> resolveRequestedFacets(CollectionProjectionSpec spec, UUID itemTypeId) {
+        if (spec.facets() == null) return List.of();
+        if (spec.facets().isEmpty()) return facetableFieldsFor(itemTypeId);
+        return spec.facets();
+    }
+
     private boolean isTermsFacetable(PropertyType type, PropertyCardinality cardinality, UUID controlledListId) {
         if (cardinality != PropertyCardinality.SINGLE) return false;
         return switch (type) {
@@ -141,9 +147,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
         SqlFragment filterFragment = buildPredicateFragment(spec.filter(), itemTypeId);
 
         List<FacetFilter> activeFacetFilters = spec.facetFilters() != null ? spec.facetFilters() : List.of();
-        List<String> requestedFacets = spec.facets() == null ? List.of()
-                : spec.facets().isEmpty() ? facetableFieldsFor(itemTypeId)
-                : spec.facets();
+        List<String> requestedFacets = resolveRequestedFacets(spec, itemTypeId);
 
         // Build one SQL fragment per active facet filter, keyed by field
         AtomicInteger facetParamCounter = new AtomicInteger();
@@ -872,11 +876,8 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                 .toList();
     }
 
-    // raw.states() is the register's id-keyed storage (machine id -> {currentStateId: ...});
-    // resolves both keys back to names for the client, same "id internally, name at the boundary"
-    // rule as namesForIds. Returns null (not an empty map) when the item type has no state
-    // machines at all, or the item has no recorded state on any of them -- the common case, and
-    // ProjectedItem.states' own doc comment says why null instead of {}.
+    // Resolves the register's id-keyed states storage back to names for the client. Returns null
+    // (not an empty map) when the item type has no state machines, or none is recorded.
     private Map<String, ProjectedItemState> buildProjectedItemStates(Map<String, Object> statesById, List<AdminStateMachineView> stateMachines) {
         if (stateMachines == null || stateMachines.isEmpty() || statesById == null || statesById.isEmpty()) {
             return null;

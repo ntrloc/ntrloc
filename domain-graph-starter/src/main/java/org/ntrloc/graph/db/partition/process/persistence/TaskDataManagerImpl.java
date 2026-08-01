@@ -261,13 +261,13 @@ public class TaskDataManagerImpl extends AbstractProcessDataManager implements T
         if (cached != null) {
             return cached;
         }
-        TaskEntity mapped = mapRow(rs, rowNum);
+        TaskEntity mapped = mapRow(rs);
         session().cache(TaskEntity.class, id, mapped);
         session().registerFlush(TaskEntity.class, id, mapped, () -> update(mapped));
         return mapped;
     }
 
-    private TaskEntity mapRow(ResultSet rs, int rowNum) throws SQLException {
+    private TaskEntity mapRow(ResultSet rs) throws SQLException {
         TaskEntityImpl entity = new TaskEntityImpl();
         entity.setId(rs.getString("id"));
         entity.setName(rs.getString("name"));
