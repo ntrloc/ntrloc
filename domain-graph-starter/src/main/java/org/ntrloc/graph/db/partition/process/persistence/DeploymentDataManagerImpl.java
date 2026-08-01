@@ -15,6 +15,8 @@ import java.util.Map;
 // of Flowable's ACT_RE_DEPLOYMENT. Query-criteria/native-query finder methods are stubbed with
 // empty results -- unused by the trivial single-deployment hello-world process; needed before
 // this supports the RepositoryService query API or multiple concurrent deployments.
+// java.util.Date is unavoidable here: overrides Flowable's own Date-based entity API.
+@SuppressWarnings("java:S2143")
 public class DeploymentDataManagerImpl extends AbstractProcessDataManager implements DeploymentDataManager {
 
     @Override

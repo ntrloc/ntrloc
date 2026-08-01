@@ -1,5 +1,7 @@
 package org.ntrloc.graph.security;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.web.csrf.CsrfToken;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -10,6 +12,8 @@ import java.util.Map;
 
 @RestController
 public class CsrfController {
+
+    private static final Logger LOG = LoggerFactory.getLogger(CsrfController.class);
 
     @GetMapping("/api/csrf")
     public Mono<Map<String, String>> csrf(ServerWebExchange exchange) {
@@ -23,7 +27,7 @@ public class CsrfController {
                             "parameter", token.getParameterName()
                     ));
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.warn("Failed to resolve CSRF token", e);
             return Mono.empty();
         }
     }

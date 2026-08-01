@@ -16,6 +16,8 @@ import java.util.List;
 // process_job. Nothing in this app uses external worker tasks today -- built for zero-MyBatis
 // completeness (the workflow persistence layer), acquire/expire shape is real (same as
 // JobDataManagerImpl), the worker-specific finder surface is stubbed.
+// java.util.Date is unavoidable here: overrides Flowable's own Date-based entity API.
+@SuppressWarnings("java:S2143")
 public class ExternalWorkerJobDataManagerImpl extends AbstractJobDataManager<ExternalWorkerJobEntity> implements ExternalWorkerJobDataManager {
 
     @Override

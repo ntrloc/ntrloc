@@ -359,7 +359,7 @@ public class SchemaRepository {
 
     public Map<UUID, List<TransitionRow>> getTransitionsByFromState() {
         return jdbcClient.sql("SELECT * FROM schema_state_transition ORDER BY from_state_id, name")
-                .query((rs, n) -> Map.entry(rs.getObject("from_state_id", UUID.class), mapTransition(rs, n)))
+                .query((rs, n) -> Map.entry(rs.getObject("from_state_id", UUID.class), mapTransition(rs)))
                 .list().stream()
                 .collect(Collectors.groupingBy(Map.Entry::getKey, Collectors.mapping(Map.Entry::getValue, Collectors.toList())));
     }
@@ -412,7 +412,7 @@ public class SchemaRepository {
         );
     }
 
-    private TransitionRow mapTransition(ResultSet rs, int n) throws SQLException {
+    private TransitionRow mapTransition(ResultSet rs) throws SQLException {
         return new TransitionRow(
                 rs.getObject("id", UUID.class),
                 rs.getObject("from_state_id", UUID.class),

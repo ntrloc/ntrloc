@@ -21,6 +21,8 @@ import java.util.List;
 // field surface. Async history is never enabled (see ProcessEngineConfig), so this is unreachable
 // in practice today -- built for zero-MyBatis completeness, not because anything currently
 // creates a history job.
+// java.util.Date is unavoidable here: overrides Flowable's own Date-based entity API.
+@SuppressWarnings("java:S2143")
 public class HistoryJobDataManagerImpl extends AbstractProcessDataManager implements HistoryJobDataManager {
 
     private static final String COL_REVISION = "revision";

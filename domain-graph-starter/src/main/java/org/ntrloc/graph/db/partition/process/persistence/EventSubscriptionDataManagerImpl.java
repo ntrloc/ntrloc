@@ -29,6 +29,8 @@ import java.util.List;
 // compensate events, CMMN-scope variants, and lock-time methods are stubbed, matching this
 // package's existing convention (e.g. ExecutionDataManagerImpl). Tenants aren't modeled -- no
 // column, tenantId parameters are accepted but ignored, same as every other DataManager here.
+// java.util.Date is unavoidable here: overrides Flowable's own Date-based entity API.
+@SuppressWarnings("java:S2143")
 public class EventSubscriptionDataManagerImpl extends AbstractProcessDataManager implements EventSubscriptionDataManager {
 
     private static final String COL_REVISION = "revision";

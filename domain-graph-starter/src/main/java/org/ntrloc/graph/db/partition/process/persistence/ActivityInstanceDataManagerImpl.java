@@ -21,6 +21,8 @@ import java.util.List;
 // Flowable's own default MyBatis table stops existing (the workflow persistence layer).
 // Query-object/native-query variants are stubbed -- nothing in this app queries activity instances
 // yet, only the finders recordActivityStart/recordActivityEnd/recordTaskCreated actually call.
+// java.util.Date is unavoidable here: overrides Flowable's own Date-based entity API.
+@SuppressWarnings("java:S2143")
 public class ActivityInstanceDataManagerImpl extends AbstractProcessDataManager implements ActivityInstanceDataManager {
 
     private static final String COL_REVISION = "revision";
