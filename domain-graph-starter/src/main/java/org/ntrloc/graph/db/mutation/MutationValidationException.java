@@ -7,7 +7,7 @@ import java.util.List;
 // a client has to round-trip once per error to find them all.
 public class MutationValidationException extends RuntimeException {
 
-    private final List<ValidationError> errors;
+    private final transient List<ValidationError> errors;
 
     public MutationValidationException(List<ValidationError> errors) {
         super("Mutation request failed validation: " + errors.size() + " error(s)");

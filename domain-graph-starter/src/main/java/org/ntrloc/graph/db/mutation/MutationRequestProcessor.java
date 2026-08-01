@@ -47,6 +47,9 @@ import java.util.stream.Collectors;
 @Component
 public class MutationRequestProcessor {
 
+    private static final String PROPERTIES_PATH_SUFFIX = ".properties";
+    private static final String PROPERTY_QUOTE_PREFIX = "Property '";
+
     private final LedgerRegisterCoordinator coordinator;
     private final RegisterPartitionManager registerPartitionManager;
     private final SchemaManager schemaManager;
@@ -128,7 +131,7 @@ public class MutationRequestProcessor {
             refIdToItemId.put(m.refId(), itemId);
             refIdToItemTypeId.put(m.refId(), itemTypeId.get());
         }
-        Map<UUID, Object> properties = resolveItemPropertyIds(itemTypeId.get(), m.properties(), path + ".properties", errors);
+        Map<UUID, Object> properties = resolveItemPropertyIds(itemTypeId.get(), m.properties(), path + PROPERTIES_PATH_SUFFIX, errors);
         entries.add(new ItemCreateEntry(itemId, itemTypeId.get(), properties));
         itemResults.add(new ItemMutationResult(m.refId(), itemId, MutationOperation.CREATE));
     }
@@ -140,7 +143,7 @@ public class MutationRequestProcessor {
             errors.add(new ValidationError(path + ".itemId", "Unknown item: " + m.itemId()));
             return;
         }
-        Map<UUID, Object> properties = resolveItemPropertyIds(itemTypeId.get(), m.properties(), path + ".properties", errors);
+        Map<UUID, Object> properties = resolveItemPropertyIds(itemTypeId.get(), m.properties(), path + PROPERTIES_PATH_SUFFIX, errors);
         entries.add(new ItemUpdateEntry(m.itemId(), properties));
         itemResults.add(new ItemMutationResult(null, m.itemId(), MutationOperation.UPDATE));
     }
@@ -157,7 +160,7 @@ public class MutationRequestProcessor {
         UUID linkId = UUID.randomUUID();
         LinkEndpoint endpointA = new LinkEndpoint(a.get().perspectiveIdFor(linkTypeId.get()), a.get().itemId());
         LinkEndpoint endpointB = new LinkEndpoint(b.get().perspectiveIdFor(linkTypeId.get()), b.get().itemId());
-        Map<UUID, Object> properties = resolveLinkPropertyIds(linkTypeId.get(), m.properties(), path + ".properties", errors);
+        Map<UUID, Object> properties = resolveLinkPropertyIds(linkTypeId.get(), m.properties(), path + PROPERTIES_PATH_SUFFIX, errors);
         entries.add(new LinkCreateEntry(linkId, linkTypeId.get(), endpointA, endpointB, properties));
         linkResults.add(new LinkMutationResult(linkId, MutationOperation.CREATE));
     }
@@ -169,7 +172,7 @@ public class MutationRequestProcessor {
             errors.add(new ValidationError(path + ".linkId", "Unknown link: " + m.linkId()));
             return;
         }
-        Map<UUID, Object> properties = resolveLinkPropertyIds(linkTypeId.get(), m.properties(), path + ".properties", errors);
+        Map<UUID, Object> properties = resolveLinkPropertyIds(linkTypeId.get(), m.properties(), path + PROPERTIES_PATH_SUFFIX, errors);
         entries.add(new LinkUpdateEntry(m.linkId(), properties));
         linkResults.add(new LinkMutationResult(m.linkId(), MutationOperation.UPDATE));
     }
@@ -298,7 +301,7 @@ public class MutationRequestProcessor {
 
     private void validatePropertyValue(String path, AdminPropertyDefinitionView property, Object value, List<ValidationError> errors) {
         if (property.type() == PropertyType.BINARY) {
-            errors.add(new ValidationError(path, "Property '" + property.name() + "' is binary-typed; binary properties cannot be set via mutation"));
+            errors.add(new ValidationError(path, PROPERTY_QUOTE_PREFIX + property.name() + "' is binary-typed; binary properties cannot be set via mutation"));
             return;
         }
         if (property.cardinality() == PropertyCardinality.SINGLE) {
@@ -306,14 +309,14 @@ public class MutationRequestProcessor {
             return;
         }
         if (!(value instanceof List<?> list)) {
-            errors.add(new ValidationError(path, "Property '" + property.name() + "' expects a list of values"));
+            errors.add(new ValidationError(path, PROPERTY_QUOTE_PREFIX + property.name() + "' expects a list of values"));
             return;
         }
         if (property.cardinality() == PropertyCardinality.SET) {
             Set<Object> seen = new HashSet<>();
             for (Object element : list) {
                 if (!seen.add(element)) {
-                    errors.add(new ValidationError(path, "Property '" + property.name() + "' contains a duplicate value: " + element));
+                    errors.add(new ValidationError(path, PROPERTY_QUOTE_PREFIX + property.name() + "' contains a duplicate value: " + element));
                 }
             }
         }
@@ -335,7 +338,7 @@ public class MutationRequestProcessor {
         };
         if (!valid) {
             errors.add(new ValidationError(path,
-                    "Property '" + property.name() + "' expects a " + property.type() + " value but got: " + describeValue(value)));
+                    PROPERTY_QUOTE_PREFIX + property.name() + "' expects a " + property.type() + " value but got: " + describeValue(value)));
         }
     }
 

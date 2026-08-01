@@ -29,6 +29,9 @@ import java.util.stream.Collectors;
 @RequestMapping("/api/admin")
 public class AccessAdminController {
 
+    private static final String GROUP_PRINCIPAL_TYPE = "GROUP";
+    private static final String GROUP_NOT_FOUND = "Group not found";
+
     // --- Request/response records ---
 
     public record GroupPermissionView(String itemTypeName, UUID itemTypeId, List<String> operations) {}
@@ -65,9 +68,9 @@ public class AccessAdminController {
                                                   ServerHttpRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
         securityRepo.findGroupById(groupId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Group not found"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, GROUP_NOT_FOUND));
 
-        var grants = authRepo.getGrantsForPrincipal("GROUP", groupId);
+        var grants = authRepo.getGrantsForPrincipal(GROUP_PRINCIPAL_TYPE, groupId);
 
         // Group by item type, collect operations
         Map<UUID, GroupPermissionView> byItemType = new LinkedHashMap<>();
@@ -92,7 +95,7 @@ public class AccessAdminController {
                                                ServerHttpRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
         securityRepo.findGroupById(groupId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Group not found"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, GROUP_NOT_FOUND));
         if (body.itemTypeId() == null || body.operation() == null || body.operation().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "itemTypeId and operation are required");
         }
@@ -107,7 +110,7 @@ public class AccessAdminController {
                 });
 
         // Create the grant (idempotent)
-        authRepo.grantIfAbsent(markerId, "GROUP", groupId, body.operation());
+        authRepo.grantIfAbsent(markerId, GROUP_PRINCIPAL_TYPE, groupId, body.operation());
         return ResponseEntity.noContent().build();
     }
 
@@ -117,7 +120,7 @@ public class AccessAdminController {
                                                 ServerHttpRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
         securityRepo.findGroupById(groupId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Group not found"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, GROUP_NOT_FOUND));
         if (body.itemTypeId() == null || body.operation() == null || body.operation().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "itemTypeId and operation are required");
         }
@@ -125,7 +128,7 @@ public class AccessAdminController {
         UUID markerId = authRepo.findMarkerForItemType(body.itemTypeId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No marker found for item type"));
 
-        UUID grantId = authRepo.findGrant(markerId, "GROUP", groupId, body.operation())
+        UUID grantId = authRepo.findGrant(markerId, GROUP_PRINCIPAL_TYPE, groupId, body.operation())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Grant not found"));
 
         authRepo.deleteGrant(grantId);
@@ -157,7 +160,7 @@ public class AccessAdminController {
         record GrantWithGroup(UUID itemTypeId, String itemTypeName, String operation, String groupName) {}
         List<GrantWithGroup> grantsWithGroup = new ArrayList<>();
         for (var group : userGroups) {
-            var groupGrants = authRepo.getGrantsForPrincipal("GROUP", group.id());
+            var groupGrants = authRepo.getGrantsForPrincipal(GROUP_PRINCIPAL_TYPE, group.id());
             for (var g : groupGrants) {
                 grantsWithGroup.add(new GrantWithGroup(g.itemTypeId(), g.itemTypeName(), g.operation(), group.name()));
             }
