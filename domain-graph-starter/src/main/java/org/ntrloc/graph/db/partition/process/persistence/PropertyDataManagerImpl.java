@@ -19,6 +19,9 @@ import java.util.List;
 // caller before insert().
 public class PropertyDataManagerImpl extends AbstractProcessDataManager implements PropertyDataManager {
 
+    private static final String COL_REVISION = "revision";
+    private static final String COL_VALUE = "value";
+
     @Override
     public PropertyEntity create() {
         return new PropertyEntityImpl();
@@ -37,8 +40,8 @@ public class PropertyDataManagerImpl extends AbstractProcessDataManager implemen
     public void insert(PropertyEntity entity) {
         jdbcClient().sql("INSERT INTO process_property (name, revision, value) VALUES (:name, :revision, :value)")
                 .param("name", entity.getName())
-                .param("revision", Math.max(entity.getRevision(), 1))
-                .param("value", entity.getValue())
+                .param(COL_REVISION, Math.max(entity.getRevision(), 1))
+                .param(COL_VALUE, entity.getValue())
                 .update();
         session().cache(PropertyEntity.class, entity.getId(), entity);
         session().registerFlush(PropertyEntity.class, entity.getId(), entity, () -> update(entity));
@@ -51,8 +54,8 @@ public class PropertyDataManagerImpl extends AbstractProcessDataManager implemen
                 WHERE name = :name AND revision = :revision
                 """)
                 .param("name", entity.getName())
-                .param("revision", entity.getRevision())
-                .param("value", entity.getValue())
+                .param(COL_REVISION, entity.getRevision())
+                .param(COL_VALUE, entity.getValue())
                 .update();
         if (rowsAffected == 0) {
             throw new FlowableOptimisticLockingException(
@@ -86,7 +89,7 @@ public class PropertyDataManagerImpl extends AbstractProcessDataManager implemen
     public void directInsertProperty(String name, String value) {
         jdbcClient().sql("INSERT INTO process_property (name, value) VALUES (:name, :value)")
                 .param("name", name)
-                .param("value", value)
+                .param(COL_VALUE, value)
                 .update();
     }
 
@@ -107,8 +110,8 @@ public class PropertyDataManagerImpl extends AbstractProcessDataManager implemen
     private PropertyEntity mapRow(ResultSet rs) throws SQLException {
         PropertyEntityImpl entity = new PropertyEntityImpl();
         entity.setName(rs.getString("name"));
-        entity.setRevision(rs.getInt("revision"));
-        entity.setValue(rs.getString("value"));
+        entity.setRevision(rs.getInt(COL_REVISION));
+        entity.setValue(rs.getString(COL_VALUE));
         return entity;
     }
 }

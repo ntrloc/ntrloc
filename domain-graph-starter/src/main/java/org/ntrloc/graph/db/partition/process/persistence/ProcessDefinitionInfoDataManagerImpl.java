@@ -16,6 +16,8 @@ import java.sql.SQLException;
 // "no override for this process definition" (null), which findById()/the sole finder both do.
 public class ProcessDefinitionInfoDataManagerImpl extends AbstractProcessDataManager implements ProcessDefinitionInfoDataManager {
 
+    private static final String COL_REVISION = "revision";
+
     @Override
     public ProcessDefinitionInfoEntity create() {
         return new ProcessDefinitionInfoEntityImpl();
@@ -47,7 +49,7 @@ public class ProcessDefinitionInfoDataManagerImpl extends AbstractProcessDataMan
                 VALUES (:id, :revision, :processDefinitionId, :infoJsonId)
                 """)
                 .param("id", entity.getId())
-                .param("revision", Math.max(entity.getRevision(), 1))
+                .param(COL_REVISION, Math.max(entity.getRevision(), 1))
                 .param("processDefinitionId", entity.getProcessDefinitionId())
                 .param("infoJsonId", entity.getInfoJsonId())
                 .update();
@@ -63,7 +65,7 @@ public class ProcessDefinitionInfoDataManagerImpl extends AbstractProcessDataMan
                 WHERE id = :id AND revision = :revision
                 """)
                 .param("id", entity.getId())
-                .param("revision", entity.getRevision())
+                .param(COL_REVISION, entity.getRevision())
                 .param("processDefinitionId", entity.getProcessDefinitionId())
                 .param("infoJsonId", entity.getInfoJsonId())
                 .update();
@@ -104,7 +106,7 @@ public class ProcessDefinitionInfoDataManagerImpl extends AbstractProcessDataMan
     private ProcessDefinitionInfoEntity mapRow(ResultSet rs) throws SQLException {
         ProcessDefinitionInfoEntityImpl entity = new ProcessDefinitionInfoEntityImpl();
         entity.setId(rs.getString("id"));
-        entity.setRevision(rs.getInt("revision"));
+        entity.setRevision(rs.getInt(COL_REVISION));
         entity.setProcessDefinitionId(rs.getString("process_definition_id"));
         entity.setInfoJsonId(rs.getString("info_json_id"));
         return entity;

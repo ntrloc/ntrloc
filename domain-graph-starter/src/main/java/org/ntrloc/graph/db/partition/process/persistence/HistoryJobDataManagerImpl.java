@@ -23,6 +23,11 @@ import java.util.List;
 // creates a history job.
 public class HistoryJobDataManagerImpl extends AbstractProcessDataManager implements HistoryJobDataManager {
 
+    private static final String COL_REVISION = "revision";
+    private static final String PARAM_LOCK_OWNER = "lockOwner";
+    private static final String PARAM_LOCK_EXPIRATION_TIME = "lockExpirationTime";
+    private static final String COL_RETRIES = "retries";
+
     @Override
     public HistoryJobEntity create() {
         return new HistoryJobEntityImpl();
@@ -49,13 +54,13 @@ public class HistoryJobDataManagerImpl extends AbstractProcessDataManager implem
                      :lockExpirationTime, :scopeType, :retries, :exceptionMessage, :createTime)
                 """)
                 .param("id", entity.getId())
-                .param("revision", Math.max(entity.getRevision(), 1))
+                .param(COL_REVISION, Math.max(entity.getRevision(), 1))
                 .param("jobHandlerType", entity.getJobHandlerType())
                 .param("jobHandlerConfiguration", entity.getJobHandlerConfiguration())
-                .param("lockOwner", entity.getLockOwner())
-                .param("lockExpirationTime", AbstractJobDataManager.toTimestamp(entity.getLockExpirationTime()))
+                .param(PARAM_LOCK_OWNER, entity.getLockOwner())
+                .param(PARAM_LOCK_EXPIRATION_TIME, AbstractJobDataManager.toTimestamp(entity.getLockExpirationTime()))
                 .param("scopeType", entity.getScopeType())
-                .param("retries", entity.getRetries())
+                .param(COL_RETRIES, entity.getRetries())
                 .param("exceptionMessage", entity.getExceptionMessage())
                 .param("createTime", AbstractJobDataManager.toTimestamp(entity.getCreateTime()))
                 .update();
@@ -74,13 +79,13 @@ public class HistoryJobDataManagerImpl extends AbstractProcessDataManager implem
                 WHERE id = :id AND revision = :revision
                 """)
                 .param("id", entity.getId())
-                .param("revision", entity.getRevision())
+                .param(COL_REVISION, entity.getRevision())
                 .param("jobHandlerType", entity.getJobHandlerType())
                 .param("jobHandlerConfiguration", entity.getJobHandlerConfiguration())
-                .param("lockOwner", entity.getLockOwner())
-                .param("lockExpirationTime", AbstractJobDataManager.toTimestamp(entity.getLockExpirationTime()))
+                .param(PARAM_LOCK_OWNER, entity.getLockOwner())
+                .param(PARAM_LOCK_EXPIRATION_TIME, AbstractJobDataManager.toTimestamp(entity.getLockExpirationTime()))
                 .param("scopeType", entity.getScopeType())
-                .param("retries", entity.getRetries())
+                .param(COL_RETRIES, entity.getRetries())
                 .param("exceptionMessage", entity.getExceptionMessage())
                 .param("createTime", AbstractJobDataManager.toTimestamp(entity.getCreateTime()))
                 .update();
@@ -145,8 +150,8 @@ public class HistoryJobDataManagerImpl extends AbstractProcessDataManager implem
         for (HistoryJobEntity job : jobs) {
             jdbcClient().sql("UPDATE process_job SET lock_owner = :lockOwner, lock_expiration_time = :lockExpirationTime WHERE id = :id")
                     .param("id", job.getId())
-                    .param("lockOwner", lockOwner)
-                    .param("lockExpirationTime", AbstractJobDataManager.toTimestamp(lockExpirationTime))
+                    .param(PARAM_LOCK_OWNER, lockOwner)
+                    .param(PARAM_LOCK_EXPIRATION_TIME, AbstractJobDataManager.toTimestamp(lockExpirationTime))
                     .update();
         }
     }
@@ -189,13 +194,13 @@ public class HistoryJobDataManagerImpl extends AbstractProcessDataManager implem
     private HistoryJobEntity mapRow(ResultSet rs) throws SQLException {
         HistoryJobEntityImpl entity = new HistoryJobEntityImpl();
         entity.setId(rs.getString("id"));
-        entity.setRevision(rs.getInt("revision"));
+        entity.setRevision(rs.getInt(COL_REVISION));
         entity.setJobHandlerType(rs.getString("job_handler_type"));
         entity.setJobHandlerConfiguration(rs.getString("job_handler_configuration"));
         entity.setLockOwner(rs.getString("lock_owner"));
         entity.setLockExpirationTime(AbstractJobDataManager.fromTimestamp(rs.getTimestamp("lock_expiration_time")));
         entity.setScopeType(rs.getString("scope_type"));
-        entity.setRetries(rs.getInt("retries"));
+        entity.setRetries(rs.getInt(COL_RETRIES));
         entity.setExceptionMessage(rs.getString("exception_message"));
         entity.setCreateTime(AbstractJobDataManager.fromTimestamp(rs.getTimestamp("create_time")));
         return entity;

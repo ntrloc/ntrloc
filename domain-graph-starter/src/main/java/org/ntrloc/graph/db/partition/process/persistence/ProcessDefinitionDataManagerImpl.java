@@ -16,6 +16,10 @@ import java.util.Map;
 // revision column) is enforced in update() -- see the workflow persistence layer.
 public class ProcessDefinitionDataManagerImpl extends AbstractProcessDataManager implements ProcessDefinitionDataManager {
 
+    private static final String PARAM_DEPLOYMENT_ID = "deploymentId";
+    private static final String PARAM_VERSION = "version";
+    private static final String COL_REVISION = "revision";
+
     @Override
     public ProcessDefinitionEntity create() {
         return new ProcessDefinitionEntityImpl();
@@ -41,12 +45,12 @@ public class ProcessDefinitionDataManagerImpl extends AbstractProcessDataManager
                 VALUES (:id, :deploymentId, :key, :name, :version, :resourceName, :revision)
                 """)
                 .param("id", entity.getId())
-                .param("deploymentId", entity.getDeploymentId())
+                .param(PARAM_DEPLOYMENT_ID, entity.getDeploymentId())
                 .param("key", entity.getKey())
                 .param("name", entity.getName())
-                .param("version", entity.getVersion())
+                .param(PARAM_VERSION, entity.getVersion())
                 .param("resourceName", entity.getResourceName())
-                .param("revision", Math.max(entity.getRevision(), 1))
+                .param(COL_REVISION, Math.max(entity.getRevision(), 1))
                 .update();
         session().cache(ProcessDefinitionEntity.class, entity.getId(), entity);
     }
@@ -60,11 +64,11 @@ public class ProcessDefinitionDataManagerImpl extends AbstractProcessDataManager
                 WHERE id = :id AND revision = :revision
                 """)
                 .param("id", entity.getId())
-                .param("revision", entity.getRevision())
-                .param("deploymentId", entity.getDeploymentId())
+                .param(COL_REVISION, entity.getRevision())
+                .param(PARAM_DEPLOYMENT_ID, entity.getDeploymentId())
                 .param("key", entity.getKey())
                 .param("name", entity.getName())
-                .param("version", entity.getVersion())
+                .param(PARAM_VERSION, entity.getVersion())
                 .param("resourceName", entity.getResourceName())
                 .update();
         if (rowsAffected == 0) {
@@ -117,7 +121,7 @@ public class ProcessDefinitionDataManagerImpl extends AbstractProcessDataManager
     @Override
     public void deleteProcessDefinitionsByDeploymentId(String deploymentId) {
         jdbcClient().sql("DELETE FROM process_definition WHERE deployment_id = :deploymentId")
-                .param("deploymentId", deploymentId)
+                .param(PARAM_DEPLOYMENT_ID, deploymentId)
                 .update();
     }
 
@@ -167,7 +171,7 @@ public class ProcessDefinitionDataManagerImpl extends AbstractProcessDataManager
         }
         if (query.getDeploymentId() != null) {
             conditions.add("deployment_id = :deploymentId");
-            params.put("deploymentId", query.getDeploymentId());
+            params.put(PARAM_DEPLOYMENT_ID, query.getDeploymentId());
         }
         if (query.getKey() != null) {
             conditions.add("process_key = :key");
@@ -187,7 +191,7 @@ public class ProcessDefinitionDataManagerImpl extends AbstractProcessDataManager
         }
         if (query.getVersion() != null) {
             conditions.add("version = :version");
-            params.put("version", query.getVersion());
+            params.put(PARAM_VERSION, query.getVersion());
         }
         if (query.getVersionGt() != null) {
             conditions.add("version > :versionGt");
@@ -221,7 +225,7 @@ public class ProcessDefinitionDataManagerImpl extends AbstractProcessDataManager
                 SELECT id, deployment_id, process_key, name, version, resource_name, revision
                 FROM process_definition WHERE deployment_id = :deploymentId AND process_key = :key
                 """)
-                .param("deploymentId", deploymentId)
+                .param(PARAM_DEPLOYMENT_ID, deploymentId)
                 .param("key", key)
                 .query(this::cacheOrMap)
                 .optional()
@@ -250,7 +254,7 @@ public class ProcessDefinitionDataManagerImpl extends AbstractProcessDataManager
                 FROM process_definition WHERE process_key = :key AND version = :version
                 """)
                 .param("key", key)
-                .param("version", version)
+                .param(PARAM_VERSION, version)
                 .query(this::cacheOrMap)
                 .optional()
                 .orElse(null);
@@ -280,7 +284,7 @@ public class ProcessDefinitionDataManagerImpl extends AbstractProcessDataManager
     public void updateProcessDefinitionVersionForProcessDefinitionId(String processDefinitionId, int version) {
         jdbcClient().sql("UPDATE process_definition SET version = :version WHERE id = :id")
                 .param("id", processDefinitionId)
-                .param("version", version)
+                .param(PARAM_VERSION, version)
                 .update();
     }
 
@@ -301,9 +305,9 @@ public class ProcessDefinitionDataManagerImpl extends AbstractProcessDataManager
         entity.setDeploymentId(rs.getString("deployment_id"));
         entity.setKey(rs.getString("process_key"));
         entity.setName(rs.getString("name"));
-        entity.setVersion(rs.getInt("version"));
+        entity.setVersion(rs.getInt(PARAM_VERSION));
         entity.setResourceName(rs.getString("resource_name"));
-        entity.setRevision(rs.getInt("revision"));
+        entity.setRevision(rs.getInt(COL_REVISION));
         return entity;
     }
 }

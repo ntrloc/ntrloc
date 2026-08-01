@@ -20,6 +20,8 @@ import java.util.Map;
 // bookkeeping) stubs to empty/no-op, matching ProcessDefinitionDataManagerImpl's own precedent.
 public class TaskDataManagerImpl extends AbstractProcessDataManager implements TaskDataManager {
 
+    private static final String PARAM_ASSIGNEE = "assignee";
+
     @Override
     public TaskEntity create() {
         return new TaskEntityImpl();
@@ -47,7 +49,7 @@ public class TaskDataManagerImpl extends AbstractProcessDataManager implements T
                 """)
                 .param("id", entity.getId())
                 .param("name", entity.getName())
-                .param("assignee", entity.getAssignee())
+                .param(PARAM_ASSIGNEE, entity.getAssignee())
                 .param("createTime", entity.getCreateTime())
                 .param("executionId", entity.getExecutionId())
                 .param("processInstanceId", entity.getProcessInstanceId())
@@ -71,7 +73,7 @@ public class TaskDataManagerImpl extends AbstractProcessDataManager implements T
                 """)
                 .param("id", entity.getId())
                 .param("name", entity.getName())
-                .param("assignee", entity.getAssignee())
+                .param(PARAM_ASSIGNEE, entity.getAssignee())
                 .param("createTime", entity.getCreateTime())
                 .param("executionId", entity.getExecutionId())
                 .param("processInstanceId", entity.getProcessInstanceId())
@@ -224,7 +226,7 @@ public class TaskDataManagerImpl extends AbstractProcessDataManager implements T
             conditions.add("id = :" + key);
         }
         if (query.getAssignee() != null) {
-            String key = "assignee" + paramSuffix;
+            String key = PARAM_ASSIGNEE + paramSuffix;
             params.put(key, query.getAssignee());
             conditions.add("assignee = :" + key);
         }
@@ -269,7 +271,7 @@ public class TaskDataManagerImpl extends AbstractProcessDataManager implements T
         TaskEntityImpl entity = new TaskEntityImpl();
         entity.setId(rs.getString("id"));
         entity.setName(rs.getString("name"));
-        entity.setAssignee(rs.getString("assignee"));
+        entity.setAssignee(rs.getString(PARAM_ASSIGNEE));
         entity.setCreateTime(rs.getTimestamp("create_time"));
         entity.setExecutionId(rs.getString("execution_id"));
         entity.setProcessInstanceId(rs.getString("process_instance_id"));

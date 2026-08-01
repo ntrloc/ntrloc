@@ -62,8 +62,11 @@ public class RegisterPartitionManager implements SchemaChangeListener {
         this.schemaManager = schemaManager;
     }
 
+    private static final String PARAM_ITEM_ID = "itemId";
+    private static final String PROPERTIES_JSON_ARROW_PREFIX = "rt.properties->>'";
+
     private static final Map<String, String> SYSTEM_SORT_COLUMNS = Map.of(
-            "itemId",          "ri.item_id",
+            PARAM_ITEM_ID,          "ri.item_id",
             "itemType",        "si.name",
             "createdAt",       "ri.created_at",
             "updatedAt",       "ri.updated_at",
@@ -120,7 +123,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
         String direction = "DESC".equalsIgnoreCase(spec.sortDirection()) ? "DESC" : "ASC";
         String column = SYSTEM_SORT_COLUMNS.containsKey(spec.sortField())
                 ? SYSTEM_SORT_COLUMNS.get(spec.sortField())
-                : "rt.properties->>'" + resolvePropertyId(itemTypeId, spec.sortField()) + "'";
+                : PROPERTIES_JSON_ARROW_PREFIX + resolvePropertyId(itemTypeId, spec.sortField()) + "'";
         return "ORDER BY " + column + " " + direction + " NULLS LAST, ri.item_id ASC";
     }
 
@@ -309,11 +312,11 @@ public class RegisterPartitionManager implements SchemaChangeListener {
 
         if (!values.isEmpty()) {
             String paramName = "facet_" + counter.getAndIncrement();
-            clauses.add("rt.properties->>'" + propertyId + "' IN (:" + paramName + ")");
+            clauses.add(PROPERTIES_JSON_ARROW_PREFIX + propertyId + "' IN (:" + paramName + ")");
             params.put(paramName, values);
         }
         if (includeNull) {
-            clauses.add("rt.properties->>'" + propertyId + "' IS NULL");
+            clauses.add(PROPERTIES_JSON_ARROW_PREFIX + propertyId + "' IS NULL");
         }
 
         String sql = "AND (" + String.join(" OR ", clauses) + ")";
@@ -348,7 +351,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                   AND ri.state = 'COMMITTED'
                 """.formatted(tableNameFor(itemTypeId)))
                 .param("itemTypeId", itemTypeId)
-                .param("itemId", itemId)
+                .param(PARAM_ITEM_ID, itemId)
                 .query((rs, n) -> new RawItem(
                         rs.getObject("register_item_id", UUID.class),
                         rs.getObject("item_id", UUID.class),
@@ -380,7 +383,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                 JOIN %s rt ON rt.register_item_id = ri.id
                 WHERE ri.item_id = :itemId AND ri.state = 'COMMITTED'
                 """.formatted(tableNameFor(itemTypeId)))
-                .param("itemId", itemId)
+                .param(PARAM_ITEM_ID, itemId)
                 .query((rs, n) -> parseJsonb(rs.getString("properties")))
                 .single();
 
@@ -394,7 +397,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                 VALUES (:itemId, :itemTypeId, 'UNCOMMITTED', :transactionId)
                 RETURNING id
                 """)
-                .param("itemId", itemId)
+                .param(PARAM_ITEM_ID, itemId)
                 .param("itemTypeId", itemTypeId)
                 .param("transactionId", transactionId)
                 .query(UUID.class)
@@ -411,7 +414,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
 
     public Optional<UUID> findItemTypeId(UUID itemId) {
         return jdbcClient.sql("SELECT item_type_id FROM register_item WHERE item_id = :itemId AND state = 'COMMITTED'")
-                .param("itemId", itemId)
+                .param(PARAM_ITEM_ID, itemId)
                 .query(UUID.class)
                 .optional();
     }
@@ -420,7 +423,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
         UUID stagedRegisterItemId = jdbcClient.sql("""
                 SELECT id FROM register_item WHERE item_id = :itemId AND transaction_id = :transactionId AND state = 'UNCOMMITTED'
                 """)
-                .param("itemId", itemId)
+                .param(PARAM_ITEM_ID, itemId)
                 .param("transactionId", transactionId)
                 .query(UUID.class)
                 .single();
@@ -428,7 +431,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
         Optional<UUID> oldRegisterItemId = jdbcClient.sql("""
                 SELECT id FROM register_item WHERE item_id = :itemId AND state = 'COMMITTED' AND id != :stagedRegisterItemId
                 """)
-                .param("itemId", itemId)
+                .param(PARAM_ITEM_ID, itemId)
                 .param("stagedRegisterItemId", stagedRegisterItemId)
                 .query(UUID.class)
                 .optional();
@@ -455,7 +458,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
 
     public void deleteItem(UUID itemId) {
         jdbcClient.sql("DELETE FROM register_item WHERE item_id = :itemId AND state = 'COMMITTED'")
-                .param("itemId", itemId)
+                .param(PARAM_ITEM_ID, itemId)
                 .update();
     }
 
@@ -583,7 +586,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                 JOIN register_item                 ri_other    ON ri_other.id = rilp_other.register_item_id
                 WHERE ri_mine.item_id = :itemId AND ri_mine.state = 'COMMITTED'
                 """)
-                .param("itemId", itemId)
+                .param(PARAM_ITEM_ID, itemId)
                 .query((rs, n) -> new RegisterLinkedItem(
                         rs.getObject("link_id", UUID.class),
                         rs.getObject("connected_item_id", UUID.class)))
@@ -597,14 +600,14 @@ public class RegisterPartitionManager implements SchemaChangeListener {
         Optional<UUID> staged = jdbcClient.sql("""
                 SELECT id FROM register_item WHERE item_id = :itemId AND transaction_id = :transactionId AND state = 'UNCOMMITTED'
                 """)
-                .param("itemId", itemId)
+                .param(PARAM_ITEM_ID, itemId)
                 .param("transactionId", transactionId)
                 .query(UUID.class)
                 .optional();
         if (staged.isPresent()) return staged.get();
 
         return jdbcClient.sql("SELECT id FROM register_item WHERE item_id = :itemId AND state = 'COMMITTED'")
-                .param("itemId", itemId)
+                .param(PARAM_ITEM_ID, itemId)
                 .query(UUID.class)
                 .single();
     }
@@ -722,7 +725,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                 """.formatted(tableName))
                 .param("machineId", stateMachineId.toString())
                 .param("stateJson", "{\"currentStateId\": \"" + stateId + "\"}")
-                .param("itemId", itemId)
+                .param(PARAM_ITEM_ID, itemId)
                 .update();
     }
 

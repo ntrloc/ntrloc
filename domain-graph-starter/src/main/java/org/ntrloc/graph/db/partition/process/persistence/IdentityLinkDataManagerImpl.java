@@ -24,6 +24,10 @@ import java.util.List;
 // this app has no CMMN usage or process-definition-level candidate tracking.
 public class IdentityLinkDataManagerImpl extends AbstractProcessDataManager implements IdentityLinkDataManager {
 
+    private static final String PARAM_TASK_ID = "taskId";
+    private static final String PARAM_USER_ID = "userId";
+    private static final String PARAM_GROUP_ID = "groupId";
+
     @Override
     public IdentityLinkEntity create() {
         return new IdentityLinkEntityImpl();
@@ -46,11 +50,11 @@ public class IdentityLinkDataManagerImpl extends AbstractProcessDataManager impl
                 VALUES (:id, :taskId, :processInstanceId, :type, :userId, :groupId)
                 """)
                 .param("id", entity.getId())
-                .param("taskId", entity.getTaskId())
+                .param(PARAM_TASK_ID, entity.getTaskId())
                 .param("processInstanceId", entity.getProcessInstanceId())
                 .param("type", entity.getType())
-                .param("userId", entity.getUserId())
-                .param("groupId", entity.getGroupId())
+                .param(PARAM_USER_ID, entity.getUserId())
+                .param(PARAM_GROUP_ID, entity.getGroupId())
                 .update();
         session().cache(IdentityLinkEntity.class, entity.getId(), entity);
     }
@@ -64,11 +68,11 @@ public class IdentityLinkDataManagerImpl extends AbstractProcessDataManager impl
                 WHERE id = :id
                 """)
                 .param("id", entity.getId())
-                .param("taskId", entity.getTaskId())
+                .param(PARAM_TASK_ID, entity.getTaskId())
                 .param("processInstanceId", entity.getProcessInstanceId())
                 .param("type", entity.getType())
-                .param("userId", entity.getUserId())
-                .param("groupId", entity.getGroupId())
+                .param(PARAM_USER_ID, entity.getUserId())
+                .param(PARAM_GROUP_ID, entity.getGroupId())
                 .update();
         session().cache(IdentityLinkEntity.class, entity.getId(), entity);
         return entity;
@@ -142,9 +146,9 @@ public class IdentityLinkDataManagerImpl extends AbstractProcessDataManager impl
                 + (userId != null ? " AND user_id = :userId" : "")
                 + (groupId != null ? " AND group_id = :groupId" : "")
                 + (type != null ? " AND type = :type" : "");
-        var spec = jdbcClient().sql(sql).param("taskId", taskId);
-        if (userId != null) spec = spec.param("userId", userId);
-        if (groupId != null) spec = spec.param("groupId", groupId);
+        var spec = jdbcClient().sql(sql).param(PARAM_TASK_ID, taskId);
+        if (userId != null) spec = spec.param(PARAM_USER_ID, userId);
+        if (groupId != null) spec = spec.param(PARAM_GROUP_ID, groupId);
         if (type != null) spec = spec.param("type", type);
         return spec.query(this::cacheOrMap).list();
     }
