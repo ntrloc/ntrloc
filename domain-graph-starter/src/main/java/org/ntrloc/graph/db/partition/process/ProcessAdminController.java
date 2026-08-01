@@ -122,7 +122,17 @@ public class ProcessAdminController {
         Map<String, Object> variables = request != null && request.variables() != null
                 ? new HashMap<>(request.variables())
                 : new HashMap<>();
-        List<String> missing = missingRequiredVariables(id, variables);
+        List<String> missing;
+        try {
+            missing = missingRequiredVariables(id, variables);
+        } catch (RuntimeException e) {
+            // Same "clean 400, not a bare 500" contract as the try/catch below -- an unknown or
+            // otherwise bad definition id fails right here (repositoryService.getBpmnModel()),
+            // before ever reaching that block.
+            return ResponseEntity.badRequest()
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(new DeployErrorResponse("Failed to run process: " + e.getMessage()));
+        }
         if (!missing.isEmpty()) {
             return ResponseEntity.badRequest()
                     .contentType(MediaType.APPLICATION_JSON)

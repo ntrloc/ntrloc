@@ -1,5 +1,6 @@
 package org.ntrloc.graph.db.partition.process;
 
+import org.flowable.engine.TaskService;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.partition.process.ProcessAdminController.ProcessDefinitionView;
@@ -9,6 +10,8 @@ import org.springframework.test.web.reactive.server.WebTestClient;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -19,6 +22,9 @@ class ProcessAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private WebTestClient webTestClient;
+
+    @Autowired
+    private TaskService taskService;
 
     @Test
     void listsDeployedDefinitionsIncludingHelloWorld() {
@@ -66,6 +72,114 @@ class ProcessAdminControllerIntegrationTest extends AbstractIntegrationTest {
                 .toList();
         assertThat(versions).hasSize(versionsBefore + 1);
         assertThat(versions).anyMatch(d -> d.id().equals(deployed.id()));
+    }
+
+    // --- Start process instance ---
+
+    @Test
+    void startProcessInstance_runsTheProcessAndReturnsItsInstanceView() {
+        ProcessDefinitionView helloWorld = fetchDefinitions().stream()
+                .filter(d -> d.key().equals("helloWorld"))
+                .findFirst()
+                .orElseThrow();
+
+        // helloWorld has no ioSpecification (missingRequiredVariables short-circuits to
+        // List.of()) and pauses at its own "reviewGreeting" user task, so this exercises the
+        // success path without also completing the process.
+        var instance = webTestClient.post().uri(uriBuilder -> uriBuilder.path("/api/admin/process/definitions/start")
+                        .queryParam("id", helloWorld.id()).build())
+                .header("X-Ntrloc-User", "root")
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(ProcessAdminController.ProcessInstanceView.class)
+                .returnResult().getResponseBody();
+
+        assertThat(instance.id()).isNotBlank();
+        assertThat(instance.ended()).isFalse();
+
+        // The instance this leaves paused at "reviewGreeting" must be completed before this test
+        // ends: an uncompleted candidate-group task here breaks other test classes' own
+        // .taskCandidateGroup()/.singleResult() assumptions (confirmed live -- see
+        // TaskAdminControllerIntegrationTest.completeTask's own comment for the full story).
+        // Filtered by processInstanceId in memory, not on the query itself, for the same reason
+        // as that class's startProcessAndGetReviewTask(): TaskDataManagerImpl's whereClause()
+        // doesn't support that filter.
+        var task = taskService.createTaskQuery().taskCandidateGroup("reviewers").list().stream()
+                .filter(t -> t.getProcessInstanceId().equals(instance.id()))
+                .findFirst()
+                .orElseThrow();
+        taskService.complete(task.getId());
+    }
+
+    private static final String IO_SPEC_TEST_KEY = "adminEditorTestIoSpecProcess";
+
+    private ProcessDefinitionView deployWithRequiredVariable() {
+        String xml = """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                             xmlns:flowable="http://flowable.org/bpmn"
+                             targetNamespace="org.ntrloc.workflow">
+                  <process id="%s" name="Io Spec Test" isExecutable="true">
+                    <ioSpecification>
+                      <dataInput id="input1" name="requiredVar"/>
+                      <inputSet>
+                        <dataInputRefs>input1</dataInputRefs>
+                      </inputSet>
+                      <outputSet/>
+                    </ioSpecification>
+                    <startEvent id="start"/>
+                    <sequenceFlow id="flow1" sourceRef="start" targetRef="end"/>
+                    <endEvent id="end"/>
+                  </process>
+                </definitions>
+                """.formatted(IO_SPEC_TEST_KEY);
+
+        return webTestClient.post().uri("/api/admin/process/definitions/{key}/versions", IO_SPEC_TEST_KEY)
+                .contentType(MediaType.APPLICATION_XML)
+                .bodyValue(xml)
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(ProcessDefinitionView.class)
+                .returnResult().getResponseBody();
+    }
+
+    @Test
+    void startProcessInstance_missingARequiredVariable_returnsBadRequestWithAMessage() {
+        ProcessDefinitionView definition = deployWithRequiredVariable();
+
+        webTestClient.post().uri(uriBuilder -> uriBuilder.path("/api/admin/process/definitions/start")
+                        .queryParam("id", definition.id()).build())
+                .header("X-Ntrloc-User", "root")
+                .exchange()
+                .expectStatus().isBadRequest()
+                .expectBody()
+                .jsonPath("$.message").isEqualTo("Missing required variable(s): requiredVar");
+    }
+
+    @Test
+    void startProcessInstance_withTheRequiredVariableProvided_runsToCompletion() {
+        ProcessDefinitionView definition = deployWithRequiredVariable();
+
+        webTestClient.post().uri(uriBuilder -> uriBuilder.path("/api/admin/process/definitions/start")
+                        .queryParam("id", definition.id()).build())
+                .header("X-Ntrloc-User", "root")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(Map.of("variables", Map.of("requiredVar", "some value")))
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath("$.ended").isEqualTo(true);
+    }
+
+    @Test
+    void startProcessInstance_forAnUnknownDefinitionId_returnsBadRequestWithAMessage() {
+        webTestClient.post().uri(uriBuilder -> uriBuilder.path("/api/admin/process/definitions/start")
+                        .queryParam("id", "no-such-definition:1:" + UUID.randomUUID()).build())
+                .header("X-Ntrloc-User", "root")
+                .exchange()
+                .expectStatus().isBadRequest()
+                .expectBody()
+                .jsonPath("$.message").exists();
     }
 
     @Test
