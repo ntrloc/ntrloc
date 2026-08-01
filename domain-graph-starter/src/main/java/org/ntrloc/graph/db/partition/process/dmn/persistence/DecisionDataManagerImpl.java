@@ -248,12 +248,12 @@ public class DecisionDataManagerImpl extends AbstractDecisionDataManager impleme
         if (cached != null) {
             return cached;
         }
-        DecisionEntity mapped = mapRow(rs, rowNum);
+        DecisionEntity mapped = mapRow(rs);
         session().cache(DecisionEntity.class, id, mapped);
         return mapped;
     }
 
-    private DecisionEntity mapRow(java.sql.ResultSet rs, int rowNum) throws java.sql.SQLException {
+    private DecisionEntity mapRow(java.sql.ResultSet rs) throws java.sql.SQLException {
         DecisionEntityImpl entity = new DecisionEntityImpl();
         entity.setId(rs.getString("id"));
         entity.setDeploymentId(rs.getString("deployment_id"));

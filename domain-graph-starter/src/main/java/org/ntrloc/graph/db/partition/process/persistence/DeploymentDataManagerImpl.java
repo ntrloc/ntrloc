@@ -98,12 +98,12 @@ public class DeploymentDataManagerImpl extends AbstractProcessDataManager implem
         if (cached != null) {
             return cached;
         }
-        DeploymentEntity mapped = mapRow(rs, rowNum);
+        DeploymentEntity mapped = mapRow(rs);
         session().cache(DeploymentEntity.class, id, mapped);
         return mapped;
     }
 
-    private DeploymentEntity mapRow(java.sql.ResultSet rs, int rowNum) throws java.sql.SQLException {
+    private DeploymentEntity mapRow(java.sql.ResultSet rs) throws java.sql.SQLException {
         DeploymentEntityImpl entity = new DeploymentEntityImpl();
         entity.setId(rs.getString("id"));
         entity.setName(rs.getString("name"));

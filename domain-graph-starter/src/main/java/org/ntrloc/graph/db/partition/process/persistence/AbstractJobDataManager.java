@@ -35,6 +35,10 @@ abstract class AbstractJobDataManager<T extends AbstractRuntimeJobEntity> extend
 
     protected abstract Class<T> entityType();
 
+    // entity is unused in these base no-op hooks -- kept to match the override signature that
+    // Job/TimerJob/ExternalWorkerJob use for their real implementations (Suspended/DeadLetter fall
+    // through to these defaults instead).
+    @SuppressWarnings("java:S1172")
     protected String lockOwner(T entity) {
         return null;
     }
@@ -43,6 +47,7 @@ abstract class AbstractJobDataManager<T extends AbstractRuntimeJobEntity> extend
         // no-op: not modeled on this job kind's entity interface.
     }
 
+    @SuppressWarnings("java:S1172")
     protected Date lockExpirationTime(T entity) {
         return null;
     }

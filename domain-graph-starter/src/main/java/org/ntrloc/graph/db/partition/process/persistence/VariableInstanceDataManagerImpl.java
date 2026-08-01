@@ -213,13 +213,13 @@ public class VariableInstanceDataManagerImpl extends AbstractProcessDataManager 
         if (cached != null) {
             return cached;
         }
-        VariableInstanceEntity mapped = mapRow(rs, rowNum);
+        VariableInstanceEntity mapped = mapRow(rs);
         session().cache(VariableInstanceEntity.class, id, mapped);
         session().registerFlush(VariableInstanceEntity.class, id, mapped, () -> update(mapped));
         return mapped;
     }
 
-    private VariableInstanceEntity mapRow(java.sql.ResultSet rs, int rowNum) throws java.sql.SQLException {
+    private VariableInstanceEntity mapRow(java.sql.ResultSet rs) throws java.sql.SQLException {
         VariableInstanceEntityImpl entity = new VariableInstanceEntityImpl();
         entity.setId(rs.getString("id"));
         entity.setExecutionId(rs.getString("execution_id"));

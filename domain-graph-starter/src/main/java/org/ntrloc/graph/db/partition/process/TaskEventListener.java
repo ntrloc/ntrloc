@@ -9,12 +9,8 @@ import org.springframework.stereotype.Component;
 import java.util.Collection;
 import java.util.EnumSet;
 
-// Registered on SpringProcessEngineConfiguration (see ProcessEngineConfig) so the engine calls
-// onEvent() for these three event types as they happen -- independent of this app's custom
-// DataManager persistence layer, since Flowable's event dispatch operates on the in-memory command
-// execution, not the DB. getTypes() is the documented way to scope a listener to specific types;
-// onEvent() also double-checks the type itself so this is correct regardless of exactly how the
-// engine's dispatch honors getTypes() for a given registration path.
+// Registered on SpringProcessEngineConfiguration (see ProcessEngineConfig) for these three event
+// types. getTypes scopes the listener; onEvent double-checks the type as a backstop.
 @Component
 public class TaskEventListener extends AbstractFlowableEventListener {
 

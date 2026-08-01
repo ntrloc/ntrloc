@@ -294,12 +294,12 @@ public class ProcessDefinitionDataManagerImpl extends AbstractProcessDataManager
         if (cached != null) {
             return cached;
         }
-        ProcessDefinitionEntity mapped = mapRow(rs, rowNum);
+        ProcessDefinitionEntity mapped = mapRow(rs);
         session().cache(ProcessDefinitionEntity.class, id, mapped);
         return mapped;
     }
 
-    private ProcessDefinitionEntity mapRow(java.sql.ResultSet rs, int rowNum) throws java.sql.SQLException {
+    private ProcessDefinitionEntity mapRow(java.sql.ResultSet rs) throws java.sql.SQLException {
         ProcessDefinitionEntityImpl entity = new ProcessDefinitionEntityImpl();
         entity.setId(rs.getString("id"));
         entity.setDeploymentId(rs.getString("deployment_id"));

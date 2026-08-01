@@ -87,14 +87,10 @@ public class ProcessEngineConfig {
         // ACT_GE_PROPERTY beyond schema management and the id generator above.
         config.setPropertyDataManager(new PropertyDataManagerImpl());
         config.setApplicationContext(applicationContext);
-        // Pre-set before buildEngine() runs so SpringProcessEngineConfiguration.initBeans()'s own
-        // "if (beans == null)" guard never fires -- otherwise it builds SpringBeanFactoryProxyMap,
-        // exposing every bean in the whole ApplicationContext, unrestricted, to ${...} in a script
-        // task or delegateExpression. ProcessAccessibleBeansMap closes that off to only beans
-        // explicitly marked @ProcessAccessible (positive-assertion convention: existing
-        // as a bean never implies being safe/intended for a process author to call directly) --
-        // see that class's own comment for the full reasoning, including why this also covers the
-        // DMN engine's own expression resolution with no separate wiring there.
+        // Pre-set before buildEngine() runs so Spring's default "if beans == null" guard never
+        // fires -- otherwise every bean in the ApplicationContext is exposed, unrestricted, to
+        // ${...} in a script task. ProcessAccessibleBeansMap closes that off to @ProcessAccessible
+        // beans only, and also covers the DMN engine's own expression resolution.
         config.setBeans(new ProcessAccessibleBeansMap(applicationContext));
         // customPre-, not customPost-: ProcessEngineConfigurationImpl.initVariableTypes() tries
         // types in registration order and uses the first one whose isAbleToStore() matches, so
@@ -103,16 +99,10 @@ public class ProcessEngineConfig {
         // SerializableType wouldn't claim it either -- but pre- is the position that stays correct
         // regardless of what that type happens to be).
         config.setCustomPreVariableTypes(List.of(new NtrlocPrincipalVariableType()));
-        // Pre-set before buildEngine() runs, same reasoning as setBeans() just above --
-        // ProcessEngineConfigurationImpl.initScriptingEngines() only builds a default
-        // JSR223FlowableScriptEngine via its own initScriptEngine() "if (scriptEngine == null)"
-        // guard, called *before* scriptingEngines itself is assembled around it -- so the real
-        // scriptBindingsFactory (the @ProcessAccessible bean resolver chain, execution variables,
-        // etc., built independently at initScriptBindingsFactory(), unrelated to this) still gets
-        // composed in normally around whatever engine is set here. See ProcessScriptEngineFactory
-        // for what this buys: graph.process.script.import-packages-configured classes usable by
-        // simple name (`new SingleItemProjectionSpec(...)`) from both Groovy and JavaScript
-        // process scripts, no fully-qualified name or per-script import needed.
+        // Pre-set before buildEngine() runs, same reasoning as setBeans() above -- Spring's default
+        // script engine build is guarded the same way, and the real bean-resolver/variable bindings
+        // still get composed around whatever engine is set here. See ProcessScriptEngineFactory for
+        // what this buys: configured classes usable by simple name in Groovy/JS process scripts.
         config.setScriptEngine(ProcessScriptEngineFactory.build(processScriptProperties));
         config.setHistory("none");
         // Activated -- the plain default form (a node polls, claims, and executes its own due jobs), not yet the
