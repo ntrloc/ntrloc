@@ -79,10 +79,8 @@ public class ProcessEngineConfig {
         // ACT_*/FLW_* table gets created at all -- ProcessPersistenceInitializer owns process_* table
         // DDL entirely independently.
         config.setSchemaManagementCmd(commandContext -> null);
-        // Flowable's default DbIdGenerator reads/writes ACT_GE_PROPERTY's id-block key at runtime
-        // (not just boot) whenever its in-memory block is exhausted -- a second, independent path to
-        // a table that no longer exists. Every DataManager here already bypasses the configured
-        // IdGenerator via assignIdIfMissing(); this just makes reaching for it structurally impossible.
+        // Flowable's default DbIdGenerator reads ACT_GE_PROPERTY at runtime, not just boot -- bypass
+        // it entirely rather than rely on the per-DataManager workaround alone.
         config.setIdGenerator(new org.flowable.common.engine.impl.persistence.StrongUuidGenerator());
         // Discovered live: ValidateExecutionRelatedEntityCountCfgCmd looks up a config property
         // unconditionally during every buildEngine() call -- a third, independent path to

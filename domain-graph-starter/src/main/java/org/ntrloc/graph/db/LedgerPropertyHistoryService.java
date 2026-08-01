@@ -44,8 +44,8 @@ public class LedgerPropertyHistoryService {
     public List<PropertyHistoryEntry> history(UUID itemId, UUID propertyId) {
         Map<String, String> displayNameCache = new HashMap<>();
         List<PropertyHistoryEntry> entries = ledgerPartitionManager.readItemStreamWithMetadata(itemId).stream()
-                .filter(record -> touchesProperty(record.entry(), propertyId))
-                .map(record -> toHistoryEntry(record, propertyId, displayNameCache))
+                .filter(ledgerRecord -> touchesProperty(ledgerRecord.entry(), propertyId))
+                .map(ledgerRecord -> toHistoryEntry(ledgerRecord, propertyId, displayNameCache))
                 .toList();
         List<PropertyHistoryEntry> reversed = new ArrayList<>(entries);
         Collections.reverse(reversed);
@@ -62,11 +62,11 @@ public class LedgerPropertyHistoryService {
         return Map.of();
     }
 
-    private PropertyHistoryEntry toHistoryEntry(LedgerEntryRecord record, UUID propertyId, Map<String, String> displayNameCache) {
-        Object value = propertiesOf(record.entry()).get(propertyId);
-        String actorExternalId = record.actorExternalId();
+    private PropertyHistoryEntry toHistoryEntry(LedgerEntryRecord ledgerRecord, UUID propertyId, Map<String, String> displayNameCache) {
+        Object value = propertiesOf(ledgerRecord.entry()).get(propertyId);
+        String actorExternalId = ledgerRecord.actorExternalId();
         String displayName = actorExternalId == null ? null : displayNameCache.computeIfAbsent(actorExternalId, this::resolveDisplayName);
-        return new PropertyHistoryEntry(record.createdAt(), actorExternalId, displayName, value);
+        return new PropertyHistoryEntry(ledgerRecord.createdAt(), actorExternalId, displayName, value);
     }
 
     private String resolveDisplayName(String externalId) {

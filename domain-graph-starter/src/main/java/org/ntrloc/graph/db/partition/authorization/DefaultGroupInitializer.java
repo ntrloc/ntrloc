@@ -31,8 +31,9 @@ public class DefaultGroupInitializer {
 
     @PostConstruct
     void ensureGroupExists() {
-        securityRepo.findGroupByName(DEFAULT_GROUP_NAME)
-                .orElseGet(() -> securityRepo.createGroup(DEFAULT_GROUP_NAME));
+        if (securityRepo.findGroupByName(DEFAULT_GROUP_NAME).isEmpty()) {
+            securityRepo.createGroup(DEFAULT_GROUP_NAME);
+        }
     }
 
     @EventListener(ApplicationReadyEvent.class)

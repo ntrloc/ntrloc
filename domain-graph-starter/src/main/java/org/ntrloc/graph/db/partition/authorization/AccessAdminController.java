@@ -148,13 +148,6 @@ public class AccessAdminController {
             return List.of();
         }
 
-        Set<UUID> groupIds = userGroups.stream().map(SecurityRepository.GroupRow::id).collect(Collectors.toSet());
-        Map<UUID, String> groupNameById = userGroups.stream()
-                .collect(Collectors.toMap(SecurityRepository.GroupRow::id, SecurityRepository.GroupRow::name));
-
-        // Get all grants for those groups
-        var allGrants = authRepo.getGrantsForGroups(groupIds);
-
         // We also need to know which group each grant belongs to. Re-query per group to get that mapping.
         // Actually, let's restructure: query grants per group to know which group provides which grant.
         record GrantWithGroup(UUID itemTypeId, String itemTypeName, String operation, String groupName) {}
