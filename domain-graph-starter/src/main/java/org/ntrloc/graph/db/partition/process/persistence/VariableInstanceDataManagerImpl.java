@@ -28,6 +28,9 @@ import java.util.Map;
 // every process variable invisible to a script task running after any wait state.
 public class VariableInstanceDataManagerImpl extends AbstractProcessDataManager implements VariableInstanceDataManager {
 
+    private static final String PARAM_EXECUTION_ID = "executionId";
+    private static final String PARAM_PROCESS_INSTANCE_ID = "processInstanceId";
+
     @Override
     public VariableInstanceEntity create() {
         return new VariableInstanceEntityImpl();
@@ -52,8 +55,8 @@ public class VariableInstanceDataManagerImpl extends AbstractProcessDataManager 
                     (:id, :executionId, :processInstanceId, :name, :typeName, :textValue, :longValue, :doubleValue)
                 """)
                 .param("id", entity.getId())
-                .param("executionId", entity.getExecutionId())
-                .param("processInstanceId", entity.getProcessInstanceId())
+                .param(PARAM_EXECUTION_ID, entity.getExecutionId())
+                .param(PARAM_PROCESS_INSTANCE_ID, entity.getProcessInstanceId())
                 .param("name", entity.getName())
                 .param("typeName", entity.getTypeName())
                 .param("textValue", entity.getTextValue())
@@ -75,8 +78,8 @@ public class VariableInstanceDataManagerImpl extends AbstractProcessDataManager 
                 WHERE id = :id
                 """)
                 .param("id", entity.getId())
-                .param("executionId", entity.getExecutionId())
-                .param("processInstanceId", entity.getProcessInstanceId())
+                .param(PARAM_EXECUTION_ID, entity.getExecutionId())
+                .param(PARAM_PROCESS_INSTANCE_ID, entity.getProcessInstanceId())
                 .param("name", entity.getName())
                 .param("typeName", entity.getTypeName())
                 .param("textValue", entity.getTextValue())
@@ -131,7 +134,7 @@ public class VariableInstanceDataManagerImpl extends AbstractProcessDataManager 
         }
         if (query.getExecutionId() != null) {
             sql.append(" AND execution_id = :executionId");
-            params.put("executionId", query.getExecutionId());
+            params.put(PARAM_EXECUTION_ID, query.getExecutionId());
         }
         if (query.getExecutionIds() != null && !query.getExecutionIds().isEmpty()) {
             sql.append(" AND execution_id IN (:executionIds)");
@@ -139,7 +142,7 @@ public class VariableInstanceDataManagerImpl extends AbstractProcessDataManager 
         }
         if (query.getProcessInstanceId() != null) {
             sql.append(" AND process_instance_id = :processInstanceId");
-            params.put("processInstanceId", query.getProcessInstanceId());
+            params.put(PARAM_PROCESS_INSTANCE_ID, query.getProcessInstanceId());
         }
         if (query.getName() != null) {
             sql.append(" AND name = :name");

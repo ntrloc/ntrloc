@@ -10,6 +10,9 @@ import java.util.List;
 // ties directly into "direct control over how diagrams are stored" from the workflow design doc.
 public class ResourceDataManagerImpl extends AbstractProcessDataManager implements ResourceDataManager {
 
+    private static final String PARAM_DEPLOYMENT_ID = "deploymentId";
+    private static final String PARAM_BYTES = "bytes";
+
     @Override
     public ResourceEntity create() {
         return new ResourceEntityImpl();
@@ -29,9 +32,9 @@ public class ResourceDataManagerImpl extends AbstractProcessDataManager implemen
         assignIdIfMissing(entity);
         jdbcClient().sql("INSERT INTO process_resource (id, deployment_id, name, bytes) VALUES (:id, :deploymentId, :name, :bytes)")
                 .param("id", entity.getId())
-                .param("deploymentId", entity.getDeploymentId())
+                .param(PARAM_DEPLOYMENT_ID, entity.getDeploymentId())
                 .param("name", entity.getName())
-                .param("bytes", entity.getBytes())
+                .param(PARAM_BYTES, entity.getBytes())
                 .update();
         session().cache(ResourceEntity.class, entity.getId(), entity);
     }
@@ -40,9 +43,9 @@ public class ResourceDataManagerImpl extends AbstractProcessDataManager implemen
     public ResourceEntity update(ResourceEntity entity) {
         jdbcClient().sql("UPDATE process_resource SET deployment_id = :deploymentId, name = :name, bytes = :bytes WHERE id = :id")
                 .param("id", entity.getId())
-                .param("deploymentId", entity.getDeploymentId())
+                .param(PARAM_DEPLOYMENT_ID, entity.getDeploymentId())
                 .param("name", entity.getName())
-                .param("bytes", entity.getBytes())
+                .param(PARAM_BYTES, entity.getBytes())
                 .update();
         session().cache(ResourceEntity.class, entity.getId(), entity);
         return entity;
@@ -62,14 +65,14 @@ public class ResourceDataManagerImpl extends AbstractProcessDataManager implemen
     @Override
     public void deleteResourcesByDeploymentId(String deploymentId) {
         jdbcClient().sql("DELETE FROM process_resource WHERE deployment_id = :deploymentId")
-                .param("deploymentId", deploymentId)
+                .param(PARAM_DEPLOYMENT_ID, deploymentId)
                 .update();
     }
 
     @Override
     public ResourceEntity findResourceByDeploymentIdAndResourceName(String deploymentId, String resourceName) {
         return jdbcClient().sql("SELECT id, deployment_id, name, bytes FROM process_resource WHERE deployment_id = :deploymentId AND name = :name")
-                .param("deploymentId", deploymentId)
+                .param(PARAM_DEPLOYMENT_ID, deploymentId)
                 .param("name", resourceName)
                 .query(this::cacheOrMap)
                 .optional()
@@ -79,7 +82,7 @@ public class ResourceDataManagerImpl extends AbstractProcessDataManager implemen
     @Override
     public List<ResourceEntity> findResourcesByDeploymentId(String deploymentId) {
         return jdbcClient().sql("SELECT id, deployment_id, name, bytes FROM process_resource WHERE deployment_id = :deploymentId")
-                .param("deploymentId", deploymentId)
+                .param(PARAM_DEPLOYMENT_ID, deploymentId)
                 .query(this::cacheOrMap)
                 .list();
     }
@@ -100,7 +103,7 @@ public class ResourceDataManagerImpl extends AbstractProcessDataManager implemen
         entity.setId(rs.getString("id"));
         entity.setDeploymentId(rs.getString("deployment_id"));
         entity.setName(rs.getString("name"));
-        entity.setBytes(rs.getBytes("bytes"));
+        entity.setBytes(rs.getBytes(PARAM_BYTES));
         return entity;
     }
 }
