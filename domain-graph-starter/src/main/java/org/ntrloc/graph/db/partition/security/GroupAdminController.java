@@ -23,6 +23,8 @@ import java.util.UUID;
 @RequestMapping("/api/admin/groups")
 public class GroupAdminController {
 
+    private static final String GROUP_NOT_FOUND = "Group not found";
+
     public record GroupView(UUID id, String name, int memberCount) {}
 
     public record CreateGroupRequest(String name) {}
@@ -70,7 +72,7 @@ public class GroupAdminController {
                           ServerHttpRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
         repo.findGroupById(groupId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Group not found"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, GROUP_NOT_FOUND));
         if (body.name() == null || body.name().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Group name is required");
         }
@@ -86,7 +88,7 @@ public class GroupAdminController {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Cannot delete the default group");
         }
         repo.findGroupById(groupId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Group not found"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, GROUP_NOT_FOUND));
         repo.deleteGroup(groupId);
         return ResponseEntity.noContent().build();
     }
@@ -96,7 +98,7 @@ public class GroupAdminController {
                                  ServerHttpRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
         repo.findGroupById(groupId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Group not found"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, GROUP_NOT_FOUND));
         return repo.listGroupMembers(groupId).stream()
                 .map(u -> new MemberView(u.id(), u.externalId(), u.displayName(), u.email()))
                 .toList();
@@ -107,7 +109,7 @@ public class GroupAdminController {
                                    ServerHttpRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
         repo.findGroupById(groupId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Group not found"));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, GROUP_NOT_FOUND));
         repo.addUserToGroup(body.userId(), groupId);
         return ResponseEntity.noContent().build();
     }
