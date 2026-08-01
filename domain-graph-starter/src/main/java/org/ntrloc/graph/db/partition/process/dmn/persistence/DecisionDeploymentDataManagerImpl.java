@@ -15,6 +15,8 @@ import java.util.Map;
 // criteria/native-query finder methods are stubbed with empty results -- nothing in this app lists
 // DMN deployments directly, matching DeploymentDataManagerImpl's same stubbing for the process
 // engine side.
+// java.util.Date is unavoidable here: overrides Flowable's own Date-based entity API.
+@SuppressWarnings("java:S2143")
 public class DecisionDeploymentDataManagerImpl extends AbstractDecisionDataManager implements DmnDeploymentDataManager {
 
     @Override

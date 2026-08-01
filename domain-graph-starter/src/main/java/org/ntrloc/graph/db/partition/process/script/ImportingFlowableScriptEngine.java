@@ -44,10 +44,6 @@ class ImportingFlowableScriptEngine implements FlowableScriptEngine {
         return new ImportingEvaluationRequest(delegate.createEvaluationRequest());
     }
 
-    private boolean isJavaScriptFamily(String language) {
-        return language != null && JAVASCRIPT_LANGUAGES.contains(language.toLowerCase(Locale.ROOT));
-    }
-
     private class ImportingEvaluationRequest implements FlowableScriptEvaluationRequest {
 
         private final FlowableScriptEvaluationRequest delegateRequest;
@@ -76,6 +72,10 @@ class ImportingFlowableScriptEngine implements FlowableScriptEngine {
 
         private String wrap(String script) {
             return "with (" + javaImporterExpression + ") {\n" + script + "\n}";
+        }
+
+        private boolean isJavaScriptFamily(String language) {
+            return language != null && JAVASCRIPT_LANGUAGES.contains(language.toLowerCase(Locale.ROOT));
         }
 
         @Override

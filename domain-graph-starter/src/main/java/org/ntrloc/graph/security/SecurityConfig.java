@@ -160,17 +160,16 @@ public class SecurityConfig {
                     contextSource.setPassword(authProperties.getLdap().getPassword());
                     contextSource.afterPropertiesSet();
 
-                    LdapAuthenticationProvider provider = new LdapAuthenticationProvider(
-                            new BindAuthenticator(contextSource) {{
-                                setUserDnPatterns(new String[]{
-                                        authProperties.getLdap().getUserDnPattern()
-                                });
-                            }},
-                            new DefaultLdapAuthoritiesPopulator(contextSource, "ou=people") {{
-                                setDefaultRole("USER");
-                                setIgnorePartialResultException(true);
-                            }}
-                    );
+                    BindAuthenticator authenticator = new BindAuthenticator(contextSource);
+                    authenticator.setUserDnPatterns(new String[]{authProperties.getLdap().getUserDnPattern()});
+
+                    DefaultLdapAuthoritiesPopulator authoritiesPopulator =
+                            new DefaultLdapAuthoritiesPopulator(contextSource, "ou=people");
+                    authoritiesPopulator.setDefaultRole("USER");
+                    authoritiesPopulator.setIgnorePartialResultException(true);
+
+                    LdapAuthenticationProvider provider =
+                            new LdapAuthenticationProvider(authenticator, authoritiesPopulator);
 
                     try {
                         return provider.authenticate(

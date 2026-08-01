@@ -17,6 +17,8 @@ import java.util.Map;
 // this is unconditionally written by every live DMN Task evaluation, not optional cleanup -- but
 // nothing in this app's admin UI surfaces this history yet, so query-criteria/native-query finders
 // are stubbed empty, matching this package's convention for not-yet-exercised query surfaces.
+// java.util.Date is unavoidable here: overrides Flowable's own Date-based entity API.
+@SuppressWarnings("java:S2143")
 public class HistoricDecisionExecutionDataManagerImpl extends AbstractDecisionDataManager implements HistoricDecisionExecutionDataManager {
 
     private static final String SELECT = """

@@ -9,6 +9,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Base64;
 import java.util.HexFormat;
 import java.util.List;
@@ -32,7 +33,7 @@ public class PersonalAccessTokenService {
 
     public IssuedToken issue(NtrlocPrincipal principal, String name, Integer expiresInDays) {
         String rawToken = generateToken();
-        OffsetDateTime expiresAt = expiresInDays == null ? null : OffsetDateTime.now().plusDays(expiresInDays);
+        OffsetDateTime expiresAt = expiresInDays == null ? null : OffsetDateTime.now(ZoneOffset.UTC).plusDays(expiresInDays);
         UUID id = repo.createPersonalAccessToken(principal.id(), hash(rawToken), name, expiresAt);
         return new IssuedToken(id, name, rawToken, expiresAt);
     }
@@ -47,7 +48,7 @@ public class PersonalAccessTokenService {
 
     public IssuedToken issueForUser(UUID userId, String name, Integer expiresInDays) {
         String rawToken = generateToken();
-        OffsetDateTime expiresAt = expiresInDays == null ? null : OffsetDateTime.now().plusDays(expiresInDays);
+        OffsetDateTime expiresAt = expiresInDays == null ? null : OffsetDateTime.now(ZoneOffset.UTC).plusDays(expiresInDays);
         UUID id = repo.createPersonalAccessToken(userId, hash(rawToken), name, expiresAt);
         return new IssuedToken(id, name, rawToken, expiresAt);
     }

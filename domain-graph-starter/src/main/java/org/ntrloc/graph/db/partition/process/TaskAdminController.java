@@ -24,6 +24,9 @@ import java.util.Set;
 
 @RestController
 @RequestMapping("/api/admin/process")
+// java.util.Date is unavoidable here: TaskView.createTime mirrors Flowable's own Task.getCreateTime(),
+// which predates java.time.
+@SuppressWarnings("java:S2143")
 public class TaskAdminController {
 
     public record TaskView(String id, String name, String processInstanceId, String assignee, Date createTime) {}

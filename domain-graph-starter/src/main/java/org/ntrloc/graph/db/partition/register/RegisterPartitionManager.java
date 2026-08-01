@@ -122,7 +122,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
         };
     }
 
-    private static final Pattern SAFE_FIELD_NAME = Pattern.compile("^[a-zA-Z][a-zA-Z0-9_]*$");
+    private static final Pattern SAFE_FIELD_NAME = Pattern.compile("^[a-zA-Z]\\w*$");
 
     private String sanitizeFieldName(String field) {
         if (field == null || !SAFE_FIELD_NAME.matcher(field).matches()) {
@@ -884,18 +884,22 @@ public class RegisterPartitionManager implements SchemaChangeListener {
         }
         Map<String, ProjectedItemState> result = new LinkedHashMap<>();
         for (AdminStateMachineView machine : stateMachines) {
-            if (!(statesById.get(machine.id().toString()) instanceof Map<?, ?> stateEntry)) continue;
-            Object currentStateId = stateEntry.get("currentStateId");
-            if (currentStateId == null) continue;
-            machine.states().stream()
-                    .filter(s -> s.id().toString().equals(currentStateId.toString()))
-                    .map(AdminStateView::name)
-                    .findFirst()
+            resolveCurrentStateName(machine, statesById.get(machine.id().toString()))
                     // A dangling id (the state was deleted from the schema after this row was
                     // written) is silently dropped, same as namesForIds does for properties.
                     .ifPresent(currentStateName -> result.put(machine.name(), new ProjectedItemState(currentStateName, null)));
         }
         return result.isEmpty() ? null : result;
+    }
+
+    private Optional<String> resolveCurrentStateName(AdminStateMachineView machine, Object rawStateEntry) {
+        if (!(rawStateEntry instanceof Map<?, ?> stateEntry)) return Optional.empty();
+        Object currentStateId = stateEntry.get("currentStateId");
+        if (currentStateId == null) return Optional.empty();
+        return machine.states().stream()
+                .filter(s -> s.id().toString().equals(currentStateId.toString()))
+                .map(AdminStateView::name)
+                .findFirst();
     }
 
     private Map<String, Object> assembleBinaryValue(BinaryPropertyObject obj, String binaryBaseUrl) {

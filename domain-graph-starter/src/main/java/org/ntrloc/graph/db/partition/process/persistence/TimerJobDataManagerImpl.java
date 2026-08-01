@@ -13,6 +13,8 @@ import java.util.List;
 
 // Backs timer jobs (ACT_RU_TIMER_JOB) with job_kind = 'TIMER' rows in process_job -- same
 // due-date-driven acquire/expire shape as JobDataManagerImpl, see its class comment.
+// java.util.Date is unavoidable here: overrides Flowable's own Date-based entity API.
+@SuppressWarnings("java:S2143")
 public class TimerJobDataManagerImpl extends AbstractJobDataManager<TimerJobEntity> implements TimerJobDataManager {
 
     @Override

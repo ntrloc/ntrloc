@@ -19,7 +19,31 @@ import java.util.List;
 // The async executor is never activated (see ProcessEngineConfig), so findJobsToExecute has no
 // caller today -- still implemented for real, since a future timer-start-event's job row needs
 // somewhere correct to land the moment it's inserted, independent of whether anything ever polls it.
+// java.util.Date is unavoidable here: overrides Flowable's own Date-based entity API.
+@SuppressWarnings("java:S2143")
 public class JobDataManagerImpl extends AbstractJobDataManager<JobEntity> implements JobDataManager {
+
+    private static final String SELECT_DUE = """
+            SELECT id, revision, category, job_type, job_handler_type, job_handler_configuration,
+                   lock_owner, lock_expiration_time, is_exclusive, execution_id, process_instance_id,
+                   process_definition_id, element_id, element_name, scope_id, sub_scope_id, scope_type,
+                   scope_definition_id, correlation_id, retries, exception_message, due_date,
+                   repeat_cycle, end_date, max_iterations, create_time
+            FROM process_job
+            WHERE job_kind = :kind AND lock_expiration_time IS NULL
+            ORDER BY id LIMIT :limit OFFSET :offset
+            """;
+
+    private static final String SELECT_EXPIRED = """
+            SELECT id, revision, category, job_type, job_handler_type, job_handler_configuration,
+                   lock_owner, lock_expiration_time, is_exclusive, execution_id, process_instance_id,
+                   process_definition_id, element_id, element_name, scope_id, sub_scope_id, scope_type,
+                   scope_definition_id, correlation_id, retries, exception_message, due_date,
+                   repeat_cycle, end_date, max_iterations, create_time
+            FROM process_job
+            WHERE job_kind = :kind AND lock_expiration_time IS NOT NULL AND lock_expiration_time < :now
+            ORDER BY id LIMIT :limit OFFSET :offset
+            """;
 
     @Override
     protected String jobKind() {
@@ -58,7 +82,7 @@ public class JobDataManagerImpl extends AbstractJobDataManager<JobEntity> implem
 
     @Override
     public List<JobEntity> findJobsToExecute(List<String> enabledCategories, Page page) {
-        return jdbcClient().sql(selectDue())
+        return jdbcClient().sql(SELECT_DUE)
                 .param("kind", jobKind())
                 .param("limit", page.getMaxResults())
                 .param("offset", page.getFirstResult())
@@ -68,7 +92,7 @@ public class JobDataManagerImpl extends AbstractJobDataManager<JobEntity> implem
 
     @Override
     public List<JobEntity> findExpiredJobs(List<String> enabledCategories, Page page) {
-        return jdbcClient().sql(selectExpired())
+        return jdbcClient().sql(SELECT_EXPIRED)
                 .param("kind", jobKind())
                 .param("now", java.sql.Timestamp.from(java.time.Instant.now()))
                 .param("limit", page.getMaxResults())
@@ -116,31 +140,5 @@ public class JobDataManagerImpl extends AbstractJobDataManager<JobEntity> implem
     @Override
     public long findJobCountByQueryCriteria(JobQueryImpl jobQuery) {
         return 0;
-    }
-
-    private String selectDue() {
-        return """
-                SELECT id, revision, category, job_type, job_handler_type, job_handler_configuration,
-                       lock_owner, lock_expiration_time, is_exclusive, execution_id, process_instance_id,
-                       process_definition_id, element_id, element_name, scope_id, sub_scope_id, scope_type,
-                       scope_definition_id, correlation_id, retries, exception_message, due_date,
-                       repeat_cycle, end_date, max_iterations, create_time
-                FROM process_job
-                WHERE job_kind = :kind AND lock_expiration_time IS NULL
-                ORDER BY id LIMIT :limit OFFSET :offset
-                """;
-    }
-
-    private String selectExpired() {
-        return """
-                SELECT id, revision, category, job_type, job_handler_type, job_handler_configuration,
-                       lock_owner, lock_expiration_time, is_exclusive, execution_id, process_instance_id,
-                       process_definition_id, element_id, element_name, scope_id, sub_scope_id, scope_type,
-                       scope_definition_id, correlation_id, retries, exception_message, due_date,
-                       repeat_cycle, end_date, max_iterations, create_time
-                FROM process_job
-                WHERE job_kind = :kind AND lock_expiration_time IS NOT NULL AND lock_expiration_time < :now
-                ORDER BY id LIMIT :limit OFFSET :offset
-                """;
     }
 }

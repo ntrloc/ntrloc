@@ -20,6 +20,8 @@ import java.util.List;
 // moving to Suspended or DeadLetter, so those two override lockOwner()/setLockOwner()/
 // lockExpirationTime()/setLockExpirationTime() as no-ops; the table column just stays NULL for
 // those rows.
+// java.util.Date is unavoidable here: overrides Flowable's own Date-based entity API.
+@SuppressWarnings("java:S2143")
 abstract class AbstractJobDataManager<T extends AbstractRuntimeJobEntity> extends AbstractProcessDataManager {
 
     private static final String COL_REVISION = "revision";
@@ -28,6 +30,15 @@ abstract class AbstractJobDataManager<T extends AbstractRuntimeJobEntity> extend
     private static final String PARAM_PROCESS_INSTANCE_ID = "processInstanceId";
     private static final String PARAM_CORRELATION_ID = "correlationId";
     private static final String COL_RETRIES = "retries";
+
+    private static final String SELECT = """
+            SELECT id, revision, category, job_type, job_handler_type, job_handler_configuration,
+                   lock_owner, lock_expiration_time, is_exclusive, execution_id, process_instance_id,
+                   process_definition_id, element_id, element_name, scope_id, sub_scope_id, scope_type,
+                   scope_definition_id, correlation_id, retries, exception_message, due_date,
+                   repeat_cycle, end_date, max_iterations, create_time
+            FROM process_job WHERE job_kind = :kind
+            """;
 
     protected abstract String jobKind();
 
@@ -61,7 +72,7 @@ abstract class AbstractJobDataManager<T extends AbstractRuntimeJobEntity> extend
     }
 
     public T findById(String id) {
-        return jdbcClient().sql(selectSql() + " AND id = :id")
+        return jdbcClient().sql(SELECT + " AND id = :id")
                 .param("kind", jobKind())
                 .param("id", id)
                 .query(this::cacheOrMap)
@@ -211,7 +222,7 @@ abstract class AbstractJobDataManager<T extends AbstractRuntimeJobEntity> extend
     }
 
     public List<T> findJobsByExecutionId(String executionId) {
-        return jdbcClient().sql(selectSql() + " AND execution_id = :executionId")
+        return jdbcClient().sql(SELECT + " AND execution_id = :executionId")
                 .param("kind", jobKind())
                 .param(PARAM_EXECUTION_ID, executionId)
                 .query(this::cacheOrMap)
@@ -219,7 +230,7 @@ abstract class AbstractJobDataManager<T extends AbstractRuntimeJobEntity> extend
     }
 
     public List<T> findJobsByProcessInstanceId(String processInstanceId) {
-        return jdbcClient().sql(selectSql() + " AND process_instance_id = :processInstanceId")
+        return jdbcClient().sql(SELECT + " AND process_instance_id = :processInstanceId")
                 .param("kind", jobKind())
                 .param(PARAM_PROCESS_INSTANCE_ID, processInstanceId)
                 .query(this::cacheOrMap)
@@ -227,7 +238,7 @@ abstract class AbstractJobDataManager<T extends AbstractRuntimeJobEntity> extend
     }
 
     public T findJobByCorrelationId(String correlationId) {
-        return jdbcClient().sql(selectSql() + " AND correlation_id = :correlationId")
+        return jdbcClient().sql(SELECT + " AND correlation_id = :correlationId")
                 .param("kind", jobKind())
                 .param(PARAM_CORRELATION_ID, correlationId)
                 .query(this::cacheOrMap)
@@ -237,17 +248,6 @@ abstract class AbstractJobDataManager<T extends AbstractRuntimeJobEntity> extend
 
     public void updateJobTenantIdForDeployment(String deploymentId, String newTenantId) {
         // no-op: tenants aren't modeled in this app.
-    }
-
-    private String selectSql() {
-        return """
-                SELECT id, revision, category, job_type, job_handler_type, job_handler_configuration,
-                       lock_owner, lock_expiration_time, is_exclusive, execution_id, process_instance_id,
-                       process_definition_id, element_id, element_name, scope_id, sub_scope_id, scope_type,
-                       scope_definition_id, correlation_id, retries, exception_message, due_date,
-                       repeat_cycle, end_date, max_iterations, create_time
-                FROM process_job WHERE job_kind = :kind
-                """;
     }
 
     // protected, not private: subclasses issuing their own queries beyond this base class's finders
