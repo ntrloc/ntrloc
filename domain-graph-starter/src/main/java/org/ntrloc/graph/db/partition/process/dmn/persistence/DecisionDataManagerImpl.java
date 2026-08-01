@@ -28,6 +28,9 @@ public class DecisionDataManagerImpl extends AbstractDecisionDataManager impleme
             FROM decision_definition
             """;
 
+    private static final String PARAM_DEPLOYMENT_ID = "deploymentId";
+    private static final String PARAM_VERSION = "version";
+
     @Override
     public DecisionEntity create() {
         return new DecisionEntityImpl();
@@ -50,10 +53,10 @@ public class DecisionDataManagerImpl extends AbstractDecisionDataManager impleme
                 VALUES (:id, :deploymentId, :key, :name, :version, :resourceName)
                 """)
                 .param("id", entity.getId())
-                .param("deploymentId", entity.getDeploymentId())
+                .param(PARAM_DEPLOYMENT_ID, entity.getDeploymentId())
                 .param("key", entity.getKey())
                 .param("name", entity.getName())
-                .param("version", entity.getVersion())
+                .param(PARAM_VERSION, entity.getVersion())
                 .param("resourceName", entity.getResourceName())
                 .update();
         session().cache(DecisionEntity.class, entity.getId(), entity);
@@ -72,10 +75,10 @@ public class DecisionDataManagerImpl extends AbstractDecisionDataManager impleme
                 WHERE id = :id
                 """)
                 .param("id", entity.getId())
-                .param("deploymentId", entity.getDeploymentId())
+                .param(PARAM_DEPLOYMENT_ID, entity.getDeploymentId())
                 .param("key", entity.getKey())
                 .param("name", entity.getName())
-                .param("version", entity.getVersion())
+                .param(PARAM_VERSION, entity.getVersion())
                 .param("resourceName", entity.getResourceName())
                 .update();
         session().cache(DecisionEntity.class, entity.getId(), entity);
@@ -120,7 +123,7 @@ public class DecisionDataManagerImpl extends AbstractDecisionDataManager impleme
     @Override
     public void deleteDecisionsByDeploymentId(String deploymentId) {
         jdbcClient().sql("DELETE FROM decision_definition WHERE deployment_id = :deploymentId")
-                .param("deploymentId", deploymentId)
+                .param(PARAM_DEPLOYMENT_ID, deploymentId)
                 .update();
     }
 
@@ -162,7 +165,7 @@ public class DecisionDataManagerImpl extends AbstractDecisionDataManager impleme
         }
         if (query.getDeploymentId() != null) {
             conditions.add("deployment_id = :deploymentId");
-            params.put("deploymentId", query.getDeploymentId());
+            params.put(PARAM_DEPLOYMENT_ID, query.getDeploymentId());
         }
         if (query.getKey() != null) {
             conditions.add("decision_key = :key");
@@ -182,7 +185,7 @@ public class DecisionDataManagerImpl extends AbstractDecisionDataManager impleme
         }
         if (query.getVersion() != null) {
             conditions.add("version = :version");
-            params.put("version", query.getVersion());
+            params.put(PARAM_VERSION, query.getVersion());
         }
         if (query.isLatest()) {
             conditions.add("version = (SELECT MAX(dd2.version) FROM decision_definition dd2 WHERE dd2.decision_key = decision_definition.decision_key)");
@@ -197,7 +200,7 @@ public class DecisionDataManagerImpl extends AbstractDecisionDataManager impleme
     @Override
     public DecisionEntity findDecisionByDeploymentAndKey(String deploymentId, String key) {
         return jdbcClient().sql(SELECT + " WHERE deployment_id = :deploymentId AND decision_key = :key")
-                .param("deploymentId", deploymentId)
+                .param(PARAM_DEPLOYMENT_ID, deploymentId)
                 .param("key", key)
                 .query(this::cacheOrMap)
                 .optional()
@@ -213,7 +216,7 @@ public class DecisionDataManagerImpl extends AbstractDecisionDataManager impleme
     public DecisionEntity findDecisionByKeyAndVersion(String key, Integer version) {
         return jdbcClient().sql(SELECT + " WHERE decision_key = :key AND version = :version")
                 .param("key", key)
-                .param("version", version)
+                .param(PARAM_VERSION, version)
                 .query(this::cacheOrMap)
                 .optional()
                 .orElse(null);
@@ -256,7 +259,7 @@ public class DecisionDataManagerImpl extends AbstractDecisionDataManager impleme
         entity.setDeploymentId(rs.getString("deployment_id"));
         entity.setKey(rs.getString("decision_key"));
         entity.setName(rs.getString("name"));
-        entity.setVersion(rs.getInt("version"));
+        entity.setVersion(rs.getInt(PARAM_VERSION));
         entity.setResourceName(rs.getString("resource_name"));
         return entity;
     }

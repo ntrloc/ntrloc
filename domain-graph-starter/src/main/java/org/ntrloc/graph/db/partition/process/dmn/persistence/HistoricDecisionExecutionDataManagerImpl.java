@@ -25,6 +25,9 @@ public class HistoricDecisionExecutionDataManagerImpl extends AbstractDecisionDa
             FROM decision_historic_execution
             """;
 
+    private static final String PARAM_DEPLOYMENT_ID = "deploymentId";
+    private static final String PARAM_FAILED = "failed";
+
     @Override
     public HistoricDecisionExecutionEntity create() {
         return new HistoricDecisionExecutionEntityImpl();
@@ -52,14 +55,14 @@ public class HistoricDecisionExecutionDataManagerImpl extends AbstractDecisionDa
                 """)
                 .param("id", entity.getId())
                 .param("decisionDefinitionId", entity.getDecisionDefinitionId())
-                .param("deploymentId", entity.getDeploymentId())
+                .param(PARAM_DEPLOYMENT_ID, entity.getDeploymentId())
                 .param("startTime", toTimestamp(entity.getStartTime()))
                 .param("endTime", toTimestamp(entity.getEndTime()))
                 .param("instanceId", entity.getInstanceId())
                 .param("executionId", entity.getExecutionId())
                 .param("activityId", entity.getActivityId())
                 .param("scopeType", entity.getScopeType())
-                .param("failed", entity.isFailed())
+                .param(PARAM_FAILED, entity.isFailed())
                 .param("tenantId", entity.getTenantId())
                 .param("executionJson", entity.getExecutionJson())
                 .update();
@@ -78,14 +81,14 @@ public class HistoricDecisionExecutionDataManagerImpl extends AbstractDecisionDa
                 """)
                 .param("id", entity.getId())
                 .param("decisionDefinitionId", entity.getDecisionDefinitionId())
-                .param("deploymentId", entity.getDeploymentId())
+                .param(PARAM_DEPLOYMENT_ID, entity.getDeploymentId())
                 .param("startTime", toTimestamp(entity.getStartTime()))
                 .param("endTime", toTimestamp(entity.getEndTime()))
                 .param("instanceId", entity.getInstanceId())
                 .param("executionId", entity.getExecutionId())
                 .param("activityId", entity.getActivityId())
                 .param("scopeType", entity.getScopeType())
-                .param("failed", entity.isFailed())
+                .param(PARAM_FAILED, entity.isFailed())
                 .param("tenantId", entity.getTenantId())
                 .param("executionJson", entity.getExecutionJson())
                 .update();
@@ -107,7 +110,7 @@ public class HistoricDecisionExecutionDataManagerImpl extends AbstractDecisionDa
     @Override
     public void deleteHistoricDecisionExecutionsByDeploymentId(String deploymentId) {
         jdbcClient().sql("DELETE FROM decision_historic_execution WHERE deployment_id = :deploymentId")
-                .param("deploymentId", deploymentId)
+                .param(PARAM_DEPLOYMENT_ID, deploymentId)
                 .update();
     }
 
@@ -163,7 +166,7 @@ public class HistoricDecisionExecutionDataManagerImpl extends AbstractDecisionDa
         entity.setExecutionId(rs.getString("execution_id"));
         entity.setActivityId(rs.getString("activity_id"));
         entity.setScopeType(rs.getString("scope_type"));
-        entity.setFailed(rs.getBoolean("failed"));
+        entity.setFailed(rs.getBoolean(PARAM_FAILED));
         entity.setTenantId(rs.getString("tenant_id"));
         entity.setExecutionJson(rs.getString("execution_json"));
         return entity;

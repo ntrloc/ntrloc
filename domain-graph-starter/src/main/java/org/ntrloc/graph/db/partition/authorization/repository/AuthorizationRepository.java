@@ -22,6 +22,8 @@ public class AuthorizationRepository {
     private static final String COL_OPERATION = "operation";
     private static final String PARAM_MARKER_ID = "markerId";
     private static final String PARAM_ITEM_TYPE_ID = "itemTypeId";
+    private static final String PARAM_PRINCIPAL_TYPE = "principalType";
+    private static final String PARAM_PRINCIPAL_ID = "principalId";
 
     public record MarkerRow(UUID id, String name, String description) {}
 
@@ -78,8 +80,8 @@ public class AuthorizationRepository {
                 INSERT INTO authorization_grant (marker_id, principal_type, principal_id, operation)
                 VALUES (:markerId, :principalType, :principalId, :operation)
                 """)
-                .param(PARAM_MARKER_ID, markerId).param("principalType", principalType)
-                .param("principalId", principalId).param(COL_OPERATION, operation)
+                .param(PARAM_MARKER_ID, markerId).param(PARAM_PRINCIPAL_TYPE, principalType)
+                .param(PARAM_PRINCIPAL_ID, principalId).param(COL_OPERATION, operation)
                 .update();
     }
 
@@ -101,8 +103,8 @@ public class AuthorizationRepository {
                 WHERE g.principal_type = :principalType AND g.principal_id = :principalId
                 ORDER BY si.name, g.operation
                 """)
-                .param("principalType", principalType)
-                .param("principalId", principalId)
+                .param(PARAM_PRINCIPAL_TYPE, principalType)
+                .param(PARAM_PRINCIPAL_ID, principalId)
                 .query((rs, n) -> new GrantRow(
                         rs.getObject("grant_id", UUID.class),
                         rs.getObject(COL_MARKER_ID, UUID.class),
@@ -159,8 +161,8 @@ public class AuthorizationRepository {
                 WHERE marker_id = :markerId AND principal_type = :principalType
                   AND principal_id = :principalId AND operation = :operation
                 """)
-                .param(PARAM_MARKER_ID, markerId).param("principalType", principalType)
-                .param("principalId", principalId).param(COL_OPERATION, operation)
+                .param(PARAM_MARKER_ID, markerId).param(PARAM_PRINCIPAL_TYPE, principalType)
+                .param(PARAM_PRINCIPAL_ID, principalId).param(COL_OPERATION, operation)
                 .query((rs, n) -> rs.getObject("id", UUID.class))
                 .optional();
     }
@@ -184,8 +186,8 @@ public class AuthorizationRepository {
                 VALUES (gen_random_uuid(), :markerId, :principalType, :principalId, :operation)
                 ON CONFLICT DO NOTHING
                 """)
-                .param(PARAM_MARKER_ID, markerId).param("principalType", principalType)
-                .param("principalId", principalId).param(COL_OPERATION, operation)
+                .param(PARAM_MARKER_ID, markerId).param(PARAM_PRINCIPAL_TYPE, principalType)
+                .param(PARAM_PRINCIPAL_ID, principalId).param(COL_OPERATION, operation)
                 .update();
     }
 }
