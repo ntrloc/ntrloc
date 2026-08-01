@@ -10,6 +10,9 @@ import java.util.List;
 // ResourceDataManagerImpl on the process-engine side exactly.
 public class DecisionResourceDataManagerImpl extends AbstractDecisionDataManager implements DmnResourceDataManager {
 
+    private static final String PARAM_DEPLOYMENT_ID = "deploymentId";
+    private static final String PARAM_BYTES = "bytes";
+
     @Override
     public DmnResourceEntity create() {
         return new DmnResourceEntityImpl();
@@ -29,9 +32,9 @@ public class DecisionResourceDataManagerImpl extends AbstractDecisionDataManager
         assignIdIfMissing(entity);
         jdbcClient().sql("INSERT INTO decision_resource (id, deployment_id, name, bytes) VALUES (:id, :deploymentId, :name, :bytes)")
                 .param("id", entity.getId())
-                .param("deploymentId", entity.getDeploymentId())
+                .param(PARAM_DEPLOYMENT_ID, entity.getDeploymentId())
                 .param("name", entity.getName())
-                .param("bytes", entity.getBytes())
+                .param(PARAM_BYTES, entity.getBytes())
                 .update();
         session().cache(DmnResourceEntity.class, entity.getId(), entity);
     }
@@ -40,9 +43,9 @@ public class DecisionResourceDataManagerImpl extends AbstractDecisionDataManager
     public DmnResourceEntity update(DmnResourceEntity entity) {
         jdbcClient().sql("UPDATE decision_resource SET deployment_id = :deploymentId, name = :name, bytes = :bytes WHERE id = :id")
                 .param("id", entity.getId())
-                .param("deploymentId", entity.getDeploymentId())
+                .param(PARAM_DEPLOYMENT_ID, entity.getDeploymentId())
                 .param("name", entity.getName())
-                .param("bytes", entity.getBytes())
+                .param(PARAM_BYTES, entity.getBytes())
                 .update();
         session().cache(DmnResourceEntity.class, entity.getId(), entity);
         return entity;
@@ -62,14 +65,14 @@ public class DecisionResourceDataManagerImpl extends AbstractDecisionDataManager
     @Override
     public void deleteResourcesByDeploymentId(String deploymentId) {
         jdbcClient().sql("DELETE FROM decision_resource WHERE deployment_id = :deploymentId")
-                .param("deploymentId", deploymentId)
+                .param(PARAM_DEPLOYMENT_ID, deploymentId)
                 .update();
     }
 
     @Override
     public DmnResourceEntity findResourceByDeploymentIdAndResourceName(String deploymentId, String resourceName) {
         return jdbcClient().sql("SELECT id, deployment_id, name, bytes FROM decision_resource WHERE deployment_id = :deploymentId AND name = :name")
-                .param("deploymentId", deploymentId)
+                .param(PARAM_DEPLOYMENT_ID, deploymentId)
                 .param("name", resourceName)
                 .query(this::cacheOrMap)
                 .optional()
@@ -79,7 +82,7 @@ public class DecisionResourceDataManagerImpl extends AbstractDecisionDataManager
     @Override
     public List<DmnResourceEntity> findResourcesByDeploymentId(String deploymentId) {
         return jdbcClient().sql("SELECT id, deployment_id, name, bytes FROM decision_resource WHERE deployment_id = :deploymentId")
-                .param("deploymentId", deploymentId)
+                .param(PARAM_DEPLOYMENT_ID, deploymentId)
                 .query(this::cacheOrMap)
                 .list();
     }
@@ -100,7 +103,7 @@ public class DecisionResourceDataManagerImpl extends AbstractDecisionDataManager
         entity.setId(rs.getString("id"));
         entity.setDeploymentId(rs.getString("deployment_id"));
         entity.setName(rs.getString("name"));
-        entity.setBytes(rs.getBytes("bytes"));
+        entity.setBytes(rs.getBytes(PARAM_BYTES));
         return entity;
     }
 }

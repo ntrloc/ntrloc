@@ -13,6 +13,9 @@ import java.util.UUID;
 @DependsOn("ledgerInitializer")
 public class LedgerPartitionManagerImpl implements LedgerPartitionManager {
 
+    private static final String COL_PAYLOAD = "payload";
+    private static final String PARAM_TRANSACTION_ID = "transactionId";
+
     private final JdbcClient jdbcClient;
     private final ObjectMapper objectMapper;
 
@@ -35,8 +38,8 @@ public class LedgerPartitionManagerImpl implements LedgerPartitionManager {
                 .param("targetType", target.type())
                 .param("targetId", target.id())
                 .param("entryType", entryTypeOf(entry))
-                .param("payload", writeEntry(entry))
-                .param("transactionId", transactionId)
+                .param(COL_PAYLOAD, writeEntry(entry))
+                .param(PARAM_TRANSACTION_ID, transactionId)
                 .param("actorExternalId", actorExternalId)
                 .update();
     }
@@ -48,14 +51,14 @@ public class LedgerPartitionManagerImpl implements LedgerPartitionManager {
                 WHERE transaction_id = :transactionId AND state = 'UNCOMMITTED'
                 """)
                 .param("commitId", commitId)
-                .param("transactionId", transactionId)
+                .param(PARAM_TRANSACTION_ID, transactionId)
                 .update();
     }
 
     @Override
     public void abort(UUID transactionId) {
         jdbcClient.sql("DELETE FROM ledger_entry WHERE transaction_id = :transactionId AND state = 'UNCOMMITTED'")
-                .param("transactionId", transactionId)
+                .param(PARAM_TRANSACTION_ID, transactionId)
                 .update();
     }
 
@@ -78,7 +81,7 @@ public class LedgerPartitionManagerImpl implements LedgerPartitionManager {
                 """)
                 .param("itemId", itemId)
                 .query((rs, n) -> new LedgerEntryRecord(
-                        readEntry(rs.getString("payload")),
+                        readEntry(rs.getString(COL_PAYLOAD)),
                         rs.getObject("created_at", OffsetDateTime.class),
                         rs.getString("actor_external_id")))
                 .list();
@@ -92,7 +95,7 @@ public class LedgerPartitionManagerImpl implements LedgerPartitionManager {
                 """)
                 .param("targetType", targetType)
                 .param("targetId", targetId)
-                .query((rs, n) -> readEntry(rs.getString("payload")))
+                .query((rs, n) -> readEntry(rs.getString(COL_PAYLOAD)))
                 .list();
     }
 
@@ -103,8 +106,8 @@ public class LedgerPartitionManagerImpl implements LedgerPartitionManager {
                 WHERE transaction_id = :transactionId
                 ORDER BY sequence_number
                 """)
-                .param("transactionId", transactionId)
-                .query((rs, n) -> readEntry(rs.getString("payload")))
+                .param(PARAM_TRANSACTION_ID, transactionId)
+                .query((rs, n) -> readEntry(rs.getString(COL_PAYLOAD)))
                 .list();
     }
 
