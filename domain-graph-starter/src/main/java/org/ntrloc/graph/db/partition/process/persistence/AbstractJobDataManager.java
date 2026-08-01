@@ -22,6 +22,13 @@ import java.util.List;
 // those rows.
 abstract class AbstractJobDataManager<T extends AbstractRuntimeJobEntity> extends AbstractProcessDataManager {
 
+    private static final String COL_REVISION = "revision";
+    private static final String COL_CATEGORY = "category";
+    private static final String PARAM_EXECUTION_ID = "executionId";
+    private static final String PARAM_PROCESS_INSTANCE_ID = "processInstanceId";
+    private static final String PARAM_CORRELATION_ID = "correlationId";
+    private static final String COL_RETRIES = "retries";
+
     protected abstract String jobKind();
 
     protected abstract T newEntity();
@@ -101,17 +108,17 @@ abstract class AbstractJobDataManager<T extends AbstractRuntimeJobEntity> extend
                     create_time = EXCLUDED.create_time
                 """)
                 .param("id", entity.getId())
-                .param("revision", Math.max(entity.getRevision(), 1))
+                .param(COL_REVISION, Math.max(entity.getRevision(), 1))
                 .param("jobKind", jobKind())
-                .param("category", entity.getCategory())
+                .param(COL_CATEGORY, entity.getCategory())
                 .param("jobType", entity.getJobType())
                 .param("jobHandlerType", entity.getJobHandlerType())
                 .param("jobHandlerConfiguration", entity.getJobHandlerConfiguration())
                 .param("lockOwner", lockOwner(entity))
                 .param("lockExpirationTime", toTimestamp(lockExpirationTime(entity)))
                 .param("isExclusive", entity.isExclusive())
-                .param("executionId", entity.getExecutionId())
-                .param("processInstanceId", entity.getProcessInstanceId())
+                .param(PARAM_EXECUTION_ID, entity.getExecutionId())
+                .param(PARAM_PROCESS_INSTANCE_ID, entity.getProcessInstanceId())
                 .param("processDefinitionId", entity.getProcessDefinitionId())
                 .param("elementId", entity.getElementId())
                 .param("elementName", entity.getElementName())
@@ -119,8 +126,8 @@ abstract class AbstractJobDataManager<T extends AbstractRuntimeJobEntity> extend
                 .param("subScopeId", entity.getSubScopeId())
                 .param("scopeType", entity.getScopeType())
                 .param("scopeDefinitionId", entity.getScopeDefinitionId())
-                .param("correlationId", entity.getCorrelationId())
-                .param("retries", entity.getRetries())
+                .param(PARAM_CORRELATION_ID, entity.getCorrelationId())
+                .param(COL_RETRIES, entity.getRetries())
                 .param("exceptionMessage", entity.getExceptionMessage())
                 .param("dueDate", toTimestamp(entity.getDuedate()))
                 .param("repeatCycle", entity.getRepeat())
@@ -148,16 +155,16 @@ abstract class AbstractJobDataManager<T extends AbstractRuntimeJobEntity> extend
                 WHERE id = :id AND revision = :revision
                 """)
                 .param("id", entity.getId())
-                .param("revision", entity.getRevision())
-                .param("category", entity.getCategory())
+                .param(COL_REVISION, entity.getRevision())
+                .param(COL_CATEGORY, entity.getCategory())
                 .param("jobType", entity.getJobType())
                 .param("jobHandlerType", entity.getJobHandlerType())
                 .param("jobHandlerConfiguration", entity.getJobHandlerConfiguration())
                 .param("lockOwner", lockOwner(entity))
                 .param("lockExpirationTime", toTimestamp(lockExpirationTime(entity)))
                 .param("isExclusive", entity.isExclusive())
-                .param("executionId", entity.getExecutionId())
-                .param("processInstanceId", entity.getProcessInstanceId())
+                .param(PARAM_EXECUTION_ID, entity.getExecutionId())
+                .param(PARAM_PROCESS_INSTANCE_ID, entity.getProcessInstanceId())
                 .param("processDefinitionId", entity.getProcessDefinitionId())
                 .param("elementId", entity.getElementId())
                 .param("elementName", entity.getElementName())
@@ -165,8 +172,8 @@ abstract class AbstractJobDataManager<T extends AbstractRuntimeJobEntity> extend
                 .param("subScopeId", entity.getSubScopeId())
                 .param("scopeType", entity.getScopeType())
                 .param("scopeDefinitionId", entity.getScopeDefinitionId())
-                .param("correlationId", entity.getCorrelationId())
-                .param("retries", entity.getRetries())
+                .param(PARAM_CORRELATION_ID, entity.getCorrelationId())
+                .param(COL_RETRIES, entity.getRetries())
                 .param("exceptionMessage", entity.getExceptionMessage())
                 .param("dueDate", toTimestamp(entity.getDuedate()))
                 .param("repeatCycle", entity.getRepeat())
@@ -201,7 +208,7 @@ abstract class AbstractJobDataManager<T extends AbstractRuntimeJobEntity> extend
     public List<T> findJobsByExecutionId(String executionId) {
         return jdbcClient().sql(selectSql() + " AND execution_id = :executionId")
                 .param("kind", jobKind())
-                .param("executionId", executionId)
+                .param(PARAM_EXECUTION_ID, executionId)
                 .query(this::cacheOrMap)
                 .list();
     }
@@ -209,7 +216,7 @@ abstract class AbstractJobDataManager<T extends AbstractRuntimeJobEntity> extend
     public List<T> findJobsByProcessInstanceId(String processInstanceId) {
         return jdbcClient().sql(selectSql() + " AND process_instance_id = :processInstanceId")
                 .param("kind", jobKind())
-                .param("processInstanceId", processInstanceId)
+                .param(PARAM_PROCESS_INSTANCE_ID, processInstanceId)
                 .query(this::cacheOrMap)
                 .list();
     }
@@ -217,7 +224,7 @@ abstract class AbstractJobDataManager<T extends AbstractRuntimeJobEntity> extend
     public T findJobByCorrelationId(String correlationId) {
         return jdbcClient().sql(selectSql() + " AND correlation_id = :correlationId")
                 .param("kind", jobKind())
-                .param("correlationId", correlationId)
+                .param(PARAM_CORRELATION_ID, correlationId)
                 .query(this::cacheOrMap)
                 .optional()
                 .orElse(null);
@@ -255,8 +262,8 @@ abstract class AbstractJobDataManager<T extends AbstractRuntimeJobEntity> extend
     private T mapRow(ResultSet rs) throws SQLException {
         T entity = newEntity();
         entity.setId(rs.getString("id"));
-        entity.setRevision(rs.getInt("revision"));
-        entity.setCategory(rs.getString("category"));
+        entity.setRevision(rs.getInt(COL_REVISION));
+        entity.setCategory(rs.getString(COL_CATEGORY));
         entity.setJobType(rs.getString("job_type"));
         entity.setJobHandlerType(rs.getString("job_handler_type"));
         entity.setJobHandlerConfiguration(rs.getString("job_handler_configuration"));
@@ -273,7 +280,7 @@ abstract class AbstractJobDataManager<T extends AbstractRuntimeJobEntity> extend
         entity.setScopeType(rs.getString("scope_type"));
         entity.setScopeDefinitionId(rs.getString("scope_definition_id"));
         entity.setCorrelationId(rs.getString("correlation_id"));
-        entity.setRetries(rs.getInt("retries"));
+        entity.setRetries(rs.getInt(COL_RETRIES));
         entity.setExceptionMessage(rs.getString("exception_message"));
         entity.setDuedate(fromTimestamp(rs.getTimestamp("due_date")));
         entity.setRepeat(rs.getString("repeat_cycle"));

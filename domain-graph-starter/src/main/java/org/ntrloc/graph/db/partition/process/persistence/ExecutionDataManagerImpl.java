@@ -26,6 +26,9 @@ import java.util.Map;
 // and expects the *same* Java object back each time -- see ProcessSession's cache for why.
 public class ExecutionDataManagerImpl extends AbstractProcessDataManager implements ExecutionDataManager {
 
+    private static final String COL_REVISION = "revision";
+    private static final String PARAM_PARENT_ID = "parentId";
+
     @Override
     public ExecutionEntity create() {
         return new ExecutionEntityImpl();
@@ -67,9 +70,9 @@ public class ExecutionDataManagerImpl extends AbstractProcessDataManager impleme
                      :processDefinitionId, :businessKey, :activityId, :isActive, :isScope, :isConcurrent, :isEnded)
                 """)
                 .param("id", entity.getId())
-                .param("revision", Math.max(entity.getRevision(), 1))
+                .param(COL_REVISION, Math.max(entity.getRevision(), 1))
                 .param("processInstanceId", entity.getProcessInstanceId())
-                .param("parentId", entity.getParentId())
+                .param(PARAM_PARENT_ID, entity.getParentId())
                 .param("rootProcessInstanceId", entity.getRootProcessInstanceId())
                 .param("superExecutionId", entity.getSuperExecutionId())
                 .param("processDefinitionId", entity.getProcessDefinitionId())
@@ -105,9 +108,9 @@ public class ExecutionDataManagerImpl extends AbstractProcessDataManager impleme
                 WHERE id = :id AND revision = :revision
                 """)
                 .param("id", entity.getId())
-                .param("revision", entity.getRevision())
+                .param(COL_REVISION, entity.getRevision())
                 .param("processInstanceId", entity.getProcessInstanceId())
-                .param("parentId", entity.getParentId())
+                .param(PARAM_PARENT_ID, entity.getParentId())
                 .param("rootProcessInstanceId", entity.getRootProcessInstanceId())
                 .param("superExecutionId", entity.getSuperExecutionId())
                 .param("processDefinitionId", entity.getProcessDefinitionId())
@@ -192,7 +195,7 @@ public class ExecutionDataManagerImpl extends AbstractProcessDataManager impleme
     @Override
     public List<ExecutionEntity> findExecutionsByParentExecutionAndActivityIds(String parentExecutionId, Collection<String> activityIds) {
         return jdbcClient().sql(SELECT + " WHERE parent_id = :parentId AND activity_id IN (:activityIds)")
-                .param("parentId", parentExecutionId)
+                .param(PARAM_PARENT_ID, parentExecutionId)
                 .param("activityIds", activityIds)
                 .query(this::cacheOrMap)
                 .list();
@@ -346,7 +349,7 @@ public class ExecutionDataManagerImpl extends AbstractProcessDataManager impleme
     private ExecutionEntity mapRow(java.sql.ResultSet rs, int rowNum) throws java.sql.SQLException {
         ExecutionEntityImpl entity = new ExecutionEntityImpl();
         entity.setId(rs.getString("id"));
-        entity.setRevision(rs.getInt("revision"));
+        entity.setRevision(rs.getInt(COL_REVISION));
         entity.setProcessInstanceId(rs.getString("process_instance_id"));
         entity.setParentId(rs.getString("parent_id"));
         entity.setRootProcessInstanceId(rs.getString("root_process_instance_id"));

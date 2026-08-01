@@ -31,6 +31,14 @@ import java.util.List;
 // column, tenantId parameters are accepted but ignored, same as every other DataManager here.
 public class EventSubscriptionDataManagerImpl extends AbstractProcessDataManager implements EventSubscriptionDataManager {
 
+    private static final String COL_REVISION = "revision";
+    private static final String PARAM_EVENT_TYPE = "eventType";
+    private static final String PARAM_EVENT_NAME = "eventName";
+    private static final String PARAM_EXECUTION_ID = "executionId";
+    private static final String PARAM_ACTIVITY_ID = "activityId";
+    private static final String PARAM_CONFIGURATION = "configuration";
+    private static final String PARAM_PROCESS_DEFINITION_ID = "processDefinitionId";
+
     @Override
     public EventSubscriptionEntity create() {
         return new GenericEventSubscriptionEntityImpl();
@@ -86,15 +94,15 @@ public class EventSubscriptionDataManagerImpl extends AbstractProcessDataManager
                      :configuration, :created, :processDefinitionId)
                 """)
                 .param("id", entity.getId())
-                .param("revision", Math.max(entity.getRevision(), 1))
-                .param("eventType", entity.getEventType())
-                .param("eventName", entity.getEventName())
-                .param("executionId", entity.getExecutionId())
+                .param(COL_REVISION, Math.max(entity.getRevision(), 1))
+                .param(PARAM_EVENT_TYPE, entity.getEventType())
+                .param(PARAM_EVENT_NAME, entity.getEventName())
+                .param(PARAM_EXECUTION_ID, entity.getExecutionId())
                 .param("processInstanceId", entity.getProcessInstanceId())
-                .param("activityId", entity.getActivityId())
-                .param("configuration", entity.getConfiguration())
+                .param(PARAM_ACTIVITY_ID, entity.getActivityId())
+                .param(PARAM_CONFIGURATION, entity.getConfiguration())
                 .param("created", toTimestamp(entity.getCreated() == null ? new Date() : entity.getCreated()))
-                .param("processDefinitionId", entity.getProcessDefinitionId())
+                .param(PARAM_PROCESS_DEFINITION_ID, entity.getProcessDefinitionId())
                 .update();
         session().cache(EventSubscriptionEntity.class, entity.getId(), entity);
         session().registerFlush(EventSubscriptionEntity.class, entity.getId(), entity, () -> update(entity));
@@ -111,14 +119,14 @@ public class EventSubscriptionDataManagerImpl extends AbstractProcessDataManager
                 WHERE id = :id AND revision = :revision
                 """)
                 .param("id", entity.getId())
-                .param("revision", entity.getRevision())
-                .param("eventType", entity.getEventType())
-                .param("eventName", entity.getEventName())
-                .param("executionId", entity.getExecutionId())
+                .param(COL_REVISION, entity.getRevision())
+                .param(PARAM_EVENT_TYPE, entity.getEventType())
+                .param(PARAM_EVENT_NAME, entity.getEventName())
+                .param(PARAM_EXECUTION_ID, entity.getExecutionId())
                 .param("processInstanceId", entity.getProcessInstanceId())
-                .param("activityId", entity.getActivityId())
-                .param("configuration", entity.getConfiguration())
-                .param("processDefinitionId", entity.getProcessDefinitionId())
+                .param(PARAM_ACTIVITY_ID, entity.getActivityId())
+                .param(PARAM_CONFIGURATION, entity.getConfiguration())
+                .param(PARAM_PROCESS_DEFINITION_ID, entity.getProcessDefinitionId())
                 .update();
         if (rowsAffected == 0) {
             throw new FlowableOptimisticLockingException(
@@ -146,8 +154,8 @@ public class EventSubscriptionDataManagerImpl extends AbstractProcessDataManager
     @Override
     public List<EventSubscriptionEntity> findEventSubscriptionsByName(String eventType, String eventName, String tenantId) {
         return jdbcClient().sql(SELECT + " WHERE event_type = :eventType AND event_name = :eventName")
-                .param("eventType", eventType)
-                .param("eventName", eventName)
+                .param(PARAM_EVENT_TYPE, eventType)
+                .param(PARAM_EVENT_NAME, eventName)
                 .query(this::cacheOrMap)
                 .list();
     }
@@ -158,8 +166,8 @@ public class EventSubscriptionDataManagerImpl extends AbstractProcessDataManager
     @Override
     public List<EventSubscriptionEntity> findEventSubscriptionsByTypeAndProcessDefinitionId(String eventType, String processDefinitionId, String tenantId) {
         return jdbcClient().sql(SELECT + " WHERE event_type = :eventType AND process_definition_id = :processDefinitionId")
-                .param("eventType", eventType)
-                .param("processDefinitionId", processDefinitionId)
+                .param(PARAM_EVENT_TYPE, eventType)
+                .param(PARAM_PROCESS_DEFINITION_ID, processDefinitionId)
                 .query(this::cacheOrMap)
                 .list();
     }
@@ -195,7 +203,7 @@ public class EventSubscriptionDataManagerImpl extends AbstractProcessDataManager
     public List<SignalEventSubscriptionEntity> findSignalEventSubscriptionsByNameAndExecution(String eventName, String executionId) {
         return jdbcClient().sql(SELECT + " WHERE event_type = 'signal' AND event_name = :name AND execution_id = :executionId")
                 .param("name", eventName)
-                .param("executionId", executionId)
+                .param(PARAM_EXECUTION_ID, executionId)
                 .query(this::cacheOrMap)
                 .list()
                 .stream()
@@ -215,7 +223,7 @@ public class EventSubscriptionDataManagerImpl extends AbstractProcessDataManager
     public List<EventSubscriptionEntity> findEventSubscriptionsByExecutionAndType(String executionId, String eventType) {
         return jdbcClient().sql(SELECT + " WHERE execution_id = :id AND event_type = :eventType")
                 .param("id", executionId)
-                .param("eventType", eventType)
+                .param(PARAM_EVENT_TYPE, eventType)
                 .query(this::cacheOrMap)
                 .list();
     }
@@ -224,7 +232,7 @@ public class EventSubscriptionDataManagerImpl extends AbstractProcessDataManager
     public List<EventSubscriptionEntity> findEventSubscriptionsByProcessInstanceAndType(String processInstanceId, String eventType) {
         return jdbcClient().sql(SELECT + " WHERE process_instance_id = :id AND event_type = :eventType")
                 .param("id", processInstanceId)
-                .param("eventType", eventType)
+                .param(PARAM_EVENT_TYPE, eventType)
                 .query(this::cacheOrMap)
                 .list();
     }
@@ -233,8 +241,8 @@ public class EventSubscriptionDataManagerImpl extends AbstractProcessDataManager
     public List<EventSubscriptionEntity> findEventSubscriptionsByProcessInstanceAndActivityId(String processInstanceId, String activityId, String eventType) {
         return jdbcClient().sql(SELECT + " WHERE process_instance_id = :id AND activity_id = :activityId AND event_type = :eventType")
                 .param("id", processInstanceId)
-                .param("activityId", activityId)
-                .param("eventType", eventType)
+                .param(PARAM_ACTIVITY_ID, activityId)
+                .param(PARAM_EVENT_TYPE, eventType)
                 .query(this::cacheOrMap)
                 .list();
     }
@@ -242,9 +250,9 @@ public class EventSubscriptionDataManagerImpl extends AbstractProcessDataManager
     @Override
     public List<EventSubscriptionEntity> findEventSubscriptionsByNameAndExecution(String eventType, String eventName, String executionId) {
         return jdbcClient().sql(SELECT + " WHERE event_type = :eventType AND event_name = :eventName AND execution_id = :executionId")
-                .param("eventType", eventType)
-                .param("eventName", eventName)
-                .param("executionId", executionId)
+                .param(PARAM_EVENT_TYPE, eventType)
+                .param(PARAM_EVENT_NAME, eventName)
+                .param(PARAM_EXECUTION_ID, executionId)
                 .query(this::cacheOrMap)
                 .list();
     }
@@ -254,7 +262,7 @@ public class EventSubscriptionDataManagerImpl extends AbstractProcessDataManager
         jdbcClient().sql("UPDATE process_event_subscription SET process_definition_id = :newId WHERE process_definition_id = :oldId AND event_type = :eventType")
                 .param("newId", processDefinitionId)
                 .param("oldId", oldProcessDefinitionId)
-                .param("eventType", eventType)
+                .param(PARAM_EVENT_TYPE, eventType)
                 .update();
     }
 
@@ -338,8 +346,8 @@ public class EventSubscriptionDataManagerImpl extends AbstractProcessDataManager
     public void deleteEventSubscriptionsForProcessDefinitionAndProcessStartEvent(String processDefinitionId, String eventType, String eventName, String activityId) {
         jdbcClient().sql("DELETE FROM process_event_subscription WHERE process_definition_id = :id AND event_type = :eventType AND event_name = :eventName AND process_instance_id IS NULL")
                 .param("id", processDefinitionId)
-                .param("eventType", eventType)
-                .param("eventName", eventName)
+                .param(PARAM_EVENT_TYPE, eventType)
+                .param(PARAM_EVENT_NAME, eventName)
                 .update();
     }
 
@@ -385,13 +393,13 @@ public class EventSubscriptionDataManagerImpl extends AbstractProcessDataManager
             default -> new GenericEventSubscriptionEntityImpl();
         };
         entity.setId(rs.getString("id"));
-        entity.setRevision(rs.getInt("revision"));
+        entity.setRevision(rs.getInt(COL_REVISION));
         entity.setEventType(eventType);
         entity.setEventName(rs.getString("event_name"));
         entity.setExecutionId(rs.getString("execution_id"));
         entity.setProcessInstanceId(rs.getString("process_instance_id"));
         entity.setActivityId(rs.getString("activity_id"));
-        entity.setConfiguration(rs.getString("configuration"));
+        entity.setConfiguration(rs.getString(PARAM_CONFIGURATION));
         entity.setCreated(fromTimestamp(rs.getTimestamp("created")));
         entity.setProcessDefinitionId(rs.getString("process_definition_id"));
         return entity;
