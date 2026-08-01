@@ -40,6 +40,8 @@ import java.util.List;
 @ConditionalOnProperty(name = "graph.security.enabled", havingValue = "true", matchIfMissing = true)
 public class SecurityConfig {
 
+    private static final String LOGIN_PATH = "/login";
+
     private final AuthProperties authProperties;
     private final LocalUserDetailsService localUserDetailsService;
     private final PersonalAccessTokenService personalAccessTokenService;
@@ -82,13 +84,13 @@ public class SecurityConfig {
                 );
 
         if (authProperties.getOauth().isEnabled()) {
-            http.oauth2Login(oauth -> oauth.loginPage("/login"));
+            http.oauth2Login(oauth -> oauth.loginPage(LOGIN_PATH));
         }
 
         if (authProperties.getLocal().isEnabled() ||
                 authProperties.getLdap().isEnabled()) {
             http.formLogin(form -> form
-                    .loginPage("/login")
+                    .loginPage(LOGIN_PATH)
                     .authenticationManager(compositeAuthenticationManager())
             );
         }
@@ -114,7 +116,7 @@ public class SecurityConfig {
     // replacement for these two, regardless of what it does or doesn't contain (including leaving
     // openPaths null, the default when it's not configured at all).
     private String[] openPathPatterns() {
-        List<String> patterns = new ArrayList<>(List.of("/public", "/login"));
+        List<String> patterns = new ArrayList<>(List.of("/public", LOGIN_PATH));
         if (authProperties.getOpenPaths() != null) {
             patterns.addAll(authProperties.getOpenPaths());
         }
@@ -123,14 +125,14 @@ public class SecurityConfig {
 
     @Bean
     public ServerAuthenticationEntryPoint authenticationEntryPoint() {
-        return new RedirectServerAuthenticationEntryPoint("/login");
+        return new RedirectServerAuthenticationEntryPoint(LOGIN_PATH);
     }
 
     @Bean
     public ServerLogoutSuccessHandler logoutSuccessHandler() {
         RedirectServerLogoutSuccessHandler handler =
                 new RedirectServerLogoutSuccessHandler();
-        handler.setLogoutSuccessUrl(URI.create("/login"));
+        handler.setLogoutSuccessUrl(URI.create(LOGIN_PATH));
         return handler;
     }
 

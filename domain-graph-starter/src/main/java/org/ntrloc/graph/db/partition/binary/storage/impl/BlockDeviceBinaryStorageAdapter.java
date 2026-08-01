@@ -39,7 +39,7 @@ public class BlockDeviceBinaryStorageAdapter implements BinaryStorageAdapter {
         File root = new File(configuration.getLocation());
         if (!root.exists()) {
             if (configuration.isAutocreate()) {
-                if (!root.mkdirs()) throw new RuntimeException("Storage location could not be created: " + root);
+                if (!root.mkdirs()) throw new IOException("Storage location could not be created: " + root);
             } else {
                 throw new IllegalArgumentException("Storage location does not exist: " + root);
             }
@@ -88,7 +88,7 @@ public class BlockDeviceBinaryStorageAdapter implements BinaryStorageAdapter {
 
         if (permanentFile.exists()) {
             LOG.debug("Deduplicating binary {}: permanent file already exists", info.getSha256Hash());
-            tempFile.delete();
+            Files.delete(tempFile.toPath());
         } else {
             Files.createDirectories(permanentPath.getParent());
             if (!tempFile.renameTo(permanentFile)) {
@@ -109,7 +109,11 @@ public class BlockDeviceBinaryStorageAdapter implements BinaryStorageAdapter {
     public void abandon(HashingBinaryDataWriter writer) {
         File tempFile = tempFileMap.remove(writer.getId());
         if (tempFile != null && tempFile.exists()) {
-            tempFile.delete();
+            try {
+                Files.delete(tempFile.toPath());
+            } catch (IOException e) {
+                LOG.warn("Failed to delete abandoned temp file {}", tempFile, e);
+            }
         }
     }
 

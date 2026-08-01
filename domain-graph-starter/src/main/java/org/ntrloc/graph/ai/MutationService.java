@@ -73,7 +73,7 @@ public class MutationService {
                     .map(error -> error.path() + ": " + error.message())
                     .collect(Collectors.joining("; "));
             LOG.warn("Mutation request failed validation: {}", detail);
-            throw new RuntimeException("Mutation request failed validation: " + detail);
+            throw e;
         } catch (Exception e) {
             LOG.error("Error while executing mutation", e);
             throw new RuntimeException("Error while executing mutation", e);

@@ -21,13 +21,9 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-// @ProcessAccessible: reachable from process scripts/delegate expressions as ${entityManager}
-// (ProcessAccessibleBeansMap, ProcessEngineConfig) -- the *only* bean opted in for this, now that
-// it fronts both reads and writes. RegisterPartitionManager/LedgerPartitionManagerImpl were
-// briefly annotated directly before this class grew mutate(); now that EntityManager is the one
-// seam for the whole entity system, exposing the partition managers themselves alongside it would
-// just be two doors to the same room -- removed from both (see their own history for why they had
-// it in the first place).
+// @ProcessAccessible: the only bean reachable from process scripts as ${entityManager}, now that
+// it fronts both reads and writes. RegisterPartitionManager and LedgerPartitionManagerImpl lost
+// the annotation for the same reason -- one seam is enough.
 @Service("entityManager")
 @ProcessAccessible
 public class EntityManagerImpl implements EntityManager {
