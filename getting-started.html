@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Getting Started — ntrloc</title>
+<meta name="description" content="Run ntrloc locally in minutes with Docker Compose — install Docker, save the compose file, and start the app and its database with one command." />
+<link rel="canonical" href="https://ntrloc.github.io/ntrloc/getting-started.html" />
+<link rel="icon" href="assets/img/ntrloc-mark.png" />
+<link rel="stylesheet" href="assets/css/style.css" />
+
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="ntrloc" />
+<meta property="og:title" content="Getting Started — ntrloc" />
+<meta property="og:description" content="Run ntrloc locally in minutes with Docker Compose — install Docker, save the compose file, and start the app and its database with one command." />
+<meta property="og:url" content="https://ntrloc.github.io/ntrloc/getting-started.html" />
+<meta property="og:image" content="https://ntrloc.github.io/ntrloc/assets/img/ntrloc-horizontal.png" />
+
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Getting Started — ntrloc" />
+<meta name="twitter:description" content="Run ntrloc locally in minutes with Docker Compose — install Docker, save the compose file, and start the app and its database with one command." />
+<meta name="twitter:image" content="https://ntrloc.github.io/ntrloc/assets/img/ntrloc-horizontal.png" />
+</head>
+<body>
+
+<header class="site-nav">
+  <div class="wrap">
+    <a href="index.html" class="logo"><img src="assets/img/ntrloc-horizontal.png" alt="ntrloc" /></a>
+    <input type="checkbox" id="nav-toggle" class="nav-toggle" />
+    <label for="nav-toggle" class="nav-toggle-label" aria-label="Menu"><span></span><span></span><span></span></label>
+    <nav>
+      <a href="index.html">Home</a>
+      <a href="getting-started.html" class="cta cta-orange">Getting Started</a>
+      <a href="platform.html">Platform</a>
+      <a href="security.html">Security</a>
+      <a href="roadmap.html">Roadmap</a>
+      <a href="https://github.com/ntrloc/ntrloc" class="cta cta-blue">View on GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section class="hero" style="padding-bottom: 40px;">
+    <div class="wrap">
+      <span class="status-note"><span class="status-dot"></span> Getting Started</span>
+      <h1 style="font-size:2.6rem;">Running <span class="accent">in minutes</span>, not hours</h1>
+      <p class="lead">
+        No manual database setup, no build step — one Docker Compose file gets you ntrloc
+        and its Postgres backend running locally.
+      </p>
+    </div>
+  </section>
+
+  <section class="prose">
+    <div class="wrap">
+      <div class="block" style="border-top:none; padding-top:0;">
+        <p class="eyebrow">Prerequisites</p>
+        <h2>What you'll need first</h2>
+        <p class="subhead">If you already have Docker Desktop (or an equivalent), skip ahead.</p>
+      </div>
+
+      <div class="steps">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div>
+            <h3>Install Docker</h3>
+            <p>
+              Get Docker Engine for your platform from the
+              <a href="https://docs.docker.com/get-docker/">official install guide</a>.
+              Docker Desktop (Mac, Windows, Linux) is the easiest path if you don't already
+              have a container runtime set up.
+            </p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div>
+            <h3>Install Docker Compose</h3>
+            <p>
+              Docker Desktop bundles the <code>docker compose</code> CLI plugin, so most
+              users can skip this step. Installing Docker Engine directly on Linux? Follow the
+              <a href="https://docs.docker.com/compose/install/">Compose install guide</a>
+              and confirm it with <code>docker compose version</code>.
+            </p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div>
+            <h3>Save the compose file</h3>
+            <p>
+              Copy the file below into a new directory as <code>docker-compose.yml</code>.
+              It defines two services — the ntrloc app and a Postgres 18 database — with the
+              app waiting on the database's health check before it starts.
+            </p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">4</div>
+          <div>
+            <h3>Start it up</h3>
+            <p>
+              From that directory, run <code>docker compose up -d</code>. Once both containers
+              report healthy, ntrloc is available at
+              <a href="http://localhost:8080">http://localhost:8080</a>. Stop it later with
+              <code>docker compose down</code> (add <code>-v</code> to also drop the database volume).
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="alt prose">
+    <div class="wrap">
+      <div class="block" style="border-top:none; padding-top:0;">
+        <p class="eyebrow">docker-compose.yml</p>
+        <h2>Copy, paste, run</h2>
+      </div>
+      <div class="code-block">
+        <button class="copy-btn" data-copy-target="#compose-yml" aria-label="Copy docker-compose.yml to clipboard">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+          <span class="copy-label">Copy</span>
+        </button>
+        <pre><code id="compose-yml">services:
+  app:
+    image: docker.io/ntrloc/ntrloc:1.0.0
+    ports: ["8080:8080"]
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ntrloc
+      DB_USER: ntrloc
+      DB_PASSWORD: ntrloc
+    depends_on:
+      postgres:
+        condition: service_healthy
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: ntrloc
+      POSTGRES_PASSWORD: ntrloc
+      POSTGRES_DB: ntrloc
+    volumes: ["pgdata:/var/lib/postgresql"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ntrloc -d ntrloc"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+volumes:
+  pgdata:
+</code></pre>
+      </div>
+      <p style="margin-top:16px;color:var(--text-dim);font-size:0.95rem;">
+        This is a starting point for local evaluation — the default credentials here are not
+        meant for a production deployment.
+      </p>
+    </div>
+  </section>
+
+  <div class="cta-banner">
+    <div class="wrap">
+      <h2>Next steps</h2>
+      <p>See how the platform is put together, or explore the code itself.</p>
+      <div class="button-row">
+        <a href="platform.html" class="btn btn-primary">Explore the platform</a>
+        <a href="https://github.com/ntrloc/ntrloc" class="btn btn-secondary">View source</a>
+      </div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>© 2026 ntrloc. Licensed under Apache 2.0.</span>
+    <span><a href="https://github.com/ntrloc/ntrloc">GitHub</a></span>
+  </div>
+</footer>
+<script src="assets/js/main.js" defer></script>
+</body>
+</html>

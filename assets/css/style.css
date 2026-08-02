@@ -99,15 +99,27 @@ img {
 .site-nav .cta {
   border-radius: 999px;
   padding: 9px 20px;
-  background: var(--orange);
   color: #14100a !important;
   font-weight: 700;
   font-size: 0.88rem;
 }
 
-.site-nav .cta:hover {
+.site-nav .cta-orange {
+  background: var(--orange);
+}
+
+.site-nav .cta-orange:hover {
   text-decoration: none;
   background: var(--orange-light);
+}
+
+.site-nav .cta-blue {
+  background: var(--blue);
+}
+
+.site-nav .cta-blue:hover {
+  text-decoration: none;
+  background: var(--blue-light);
 }
 
 .nav-toggle {
@@ -504,6 +516,49 @@ pre {
   padding: 18px 20px;
   overflow-x: auto;
   color: #c9d6e3;
+}
+
+.code-block {
+  position: relative;
+}
+
+.code-block pre {
+  margin: 0;
+  padding-right: 56px;
+}
+
+.copy-btn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-raised);
+  color: var(--text-dim);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.copy-btn:hover {
+  color: var(--text);
+  border-color: var(--text-dimmer);
+}
+
+.copy-btn.copied {
+  color: var(--blue-light);
+  border-color: var(--blue);
+}
+
+.copy-btn svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
 }
 
 .two-col {
