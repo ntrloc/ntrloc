@@ -85,3 +85,21 @@ jobs:
             -t docker.io/ntrloc/ntrloc:${{ needs.guard-version.outputs.version }} \
             docker.io/ntrloc/ntrloc:${{ needs.guard-version.outputs.version }}-amd64 \
             docker.io/ntrloc/ntrloc:${{ needs.guard-version.outputs.version }}-arm64
+
+  publish-release:
+    needs: [guard-version, publish-manifest]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${{ needs.guard-version.outputs.version }}"
+          gh release create "v${VERSION}" \
+            --title "v${VERSION}" \
+            --target "${{ github.sha }}" \
+            --generate-notes
