@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>ntrloc admin</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script>
+    // Applied before any CSS paints -- setting this any later (e.g. from ntrloc-nav.js's
+    // connectedCallback) would flash the default dark theme first on every load where the user
+    // has chosen light, since custom elements upgrade and connect well after initial paint.
+    // No-op (stays dark, the :root default below) when nothing's stored yet.
+    (function() {
+      var stored = localStorage.getItem('ntrloc-theme');
+      if (stored === 'light') document.documentElement.dataset.theme = 'light';
+    })();
+  </script>
+  <script src="vendor/alpinejs.min.js" defer></script>
+  <script src="vendor/htmx.min.js"></script>
+  <script>
+    // Each vendored Material Web button bundle is independently rolled up by jsdelivr and
+    // therefore duplicates shared internal elements (md-focus-ring, md-elevation, md-ripple).
+    // Re-defining an already-registered tag throws and aborts the rest of that module, so make
+    // re-registration a no-op instead -- the duplicate classes are identical for our purposes.
+    const nativeDefine = customElements.define.bind(customElements);
+    customElements.define = (name, ctor, options) => {
+      if (customElements.get(name)) return;
+      nativeDefine(name, ctor, options);
+    };
+  </script>
+  <script type="module" src="vendor/material/md-button-filled-button.js"></script>
+  <script type="module" src="vendor/material/md-button-outlined-button.js"></script>
+  <script type="module" src="vendor/material/md-button-text-button.js"></script>
+  <script type="module" src="vendor/material/md-select-outlined-select.js"></script>
+  <script type="module" src="vendor/material/md-select-select-option.js"></script>
+  <script type="module" src="vendor/material/md-checkbox-checkbox.js"></script>
+  <script type="module" src="vendor/material/md-dialog-dialog.js"></script>
+  <script type="module" src="vendor/material/md-textfield-outlined-text-field.js"></script>
+  <script type="module" src="vendor/material/md-textfield-filled-text-field.js"></script>
+  <script type="module" src="vendor/material/md-select-filled-select.js"></script>
+  <!-- bpmn-moddle's UMD build attaches itself to window.BpmnModdle when loaded as a plain
+       script (not a module) -- ntrloc-process-editor.js reads that global directly. -->
+  <script src="vendor/bpmn-moddle/bpmn-moddle.umd.prod.js"></script>
+  <link rel="stylesheet" href="vendor/diagram-js/diagram-js.css">
+  <script src="components/inject-styles.js"></script>
+  <script src="components/task-events.js"></script>
+  <!-- Schema editor Model/Delegate/ViewModel layer -- loaded before any component that uses
+       them (schema-viewmodels.js's classes are referenced directly by name, not through a
+       module import, matching this app's plain-script convention). -->
+  <script src="components/ntrloc-schema-editor/schema-service.js"></script>
+  <script src="components/ntrloc-schema-editor/schema-model.js"></script>
+  <script src="components/ntrloc-schema-editor/schema-viewmodels.js"></script>
+  <script src="components/ntrloc-schema-editor/schema-view-model.js"></script>
+  <script src="components/ntrloc-save-confirm-dialog/ntrloc-save-confirm-dialog.js"></script>
+  <script src="components/ntrloc-controlled-list-dialog/ntrloc-controlled-list-dialog.js"></script>
+  <script src="components/ntrloc-item-mutation-dialog/ntrloc-item-mutation-dialog.js"></script>
+  <script src="components/ntrloc-property-table/ntrloc-property-table.js"></script>
+  <script src="components/ntrloc-links-table/ntrloc-links-table.js"></script>
+  <script src="components/ntrloc-predicate-builder/ntrloc-predicate-builder.js"></script>
+  <script src="components/ntrloc-state-machine-diagram/ntrloc-state-machine-diagram.js"></script>
+  <script src="components/ntrloc-state-machine-editor/ntrloc-state-machine-editor.js"></script>
+  <script src="components/ntrloc-item-detail/ntrloc-item-detail.js"></script>
+  <script src="components/ntrloc-nav/ntrloc-nav.js"></script>
+  <script src="components/ntrloc-schema-editor/ntrloc-schema-editor.js"></script>
+  <script src="components/ntrloc-search/ntrloc-search.js"></script>
+  <script src="components/ntrloc-tab-workspace/tab-workspace-view-model.js"></script>
+  <script src="components/ntrloc-tab-workspace/ntrloc-tab-workspace.js"></script>
+  <script src="components/ntrloc-processes/ntrloc-processes.js"></script>
+  <script src="components/ntrloc-tasks/ntrloc-tasks.js"></script>
+  <!-- Real ES modules (diagram-js/bpmn-moddle are vendored as genuine import/export source, not
+       globals), unlike this app's other plain-script components. -->
+  <script src="components/ntrloc-users/ntrloc-users.js"></script>
+  <script src="components/ntrloc-groups/ntrloc-groups.js"></script>
+  <script src="components/ntrloc-access/ntrloc-access.js"></script>
+  <script type="module" src="components/ntrloc-process-editor/ntrloc-process-editor.js"></script>
+  <script type="module" src="components/ntrloc-decision-table-editor/ntrloc-decision-table-editor.js"></script>
+  <style>
+    /* Truly global concerns only -- design tokens, page-level reset/layout, the router, and
+       small utility classes shared across more than one component. Everything else lives next
+       to the component that owns it (see each components/*.js file's injectStyles(...) call). */
+    :root {
+      --bg: #0f1419;
+      --panel-bg: #161b22;
+      --text: #e6edf3;
+      --border: #2a3038;
+      --accent: #4a9eff;
+      --muted: #8b949e;
+
+      /* Material Web design tokens -- custom properties pierce shadow DOM, so setting these
+         here re-themes the vendored buttons to match our own dark theme/font instead of the
+         library's light-mode baseline (default primary is Material purple, default typeface
+         is the literal string 'Roboto' with no fallback, and disabled-state colors assume a
+         light surface, which is why the disabled Save button was nearly invisible). */
+      --md-ref-typeface-plain: sans-serif;
+      /* md-dialog's own headline falls back to this token (not -typeface-plain above) when unset
+         -- left at Material's own default elsewhere, which is a serif "brand" display face, not
+         Roboto. Every dialog's title (Save Changes, this one, ...) was rendering in that serif
+         font while the rest of the app is sans-serif; found live via ntrloc-state-machine-editor.js's
+         own headline looking visibly out of place next to it. */
+      --md-ref-typeface-brand: sans-serif;
+      --md-sys-color-primary: var(--accent);
+      --md-sys-color-on-surface: var(--text);
+      --md-sys-color-on-surface-variant: var(--muted);
+      --md-sys-color-outline: var(--border);
+      --md-sys-color-surface-container: var(--panel-bg);
+      --md-sys-color-secondary-container: var(--border);
+      --md-sys-color-on-secondary-container: var(--text);
+      /* md-dialog's container defaults to a light Material surface token with no other override
+         above covering it -- without this, every dialog (Save confirm, controlled list) renders
+         as a bright white card against the rest of this app's dark theme. */
+      --md-sys-color-surface-container-high: var(--panel-bg);
+      --md-sys-color-scrim: #000000;
+
+      /* Angular Material "standard"-style underline look for the schema editor's text fields and
+         selects: no fill, no border/underline at rest, an accent-colored underline only while
+         actively focused. Achieved on md-filled-text-field/md-filled-select (not the outlined
+         variant, which draws its border as a full box with no "underline-only" mode) by making
+         the container transparent and the resting/hover indicator transparent, leaving only the
+         focus indicator visible. Left off md-outlined-select's own tokens on purpose --
+         ntrloc-process-editor.js and ntrloc-search.js still use the boxed outlined style
+         elsewhere in this app; this re-theme is scoped to the filled variant used only by the
+         schema editor.
+
+         Both md-filled-text-field and md-filled-select redefine --md-filled-field-* at their own
+         host level as var(--md-filled-text-field-*, ...) / var(--md-filled-select-text-field-*,
+         ...) -- so overriding only the generic --md-filled-field-* tokens gets shadowed and has
+         no visible effect (confirmed empirically: the fill stayed solid white until the
+         component-specific tokens below were added). Setting all three tiers is what actually
+         works. */
+      --md-filled-field-container-color: transparent;
+      --md-filled-field-active-indicator-color: transparent;
+      --md-filled-field-hover-active-indicator-color: transparent;
+      --md-filled-field-hover-state-layer-opacity: 0;
+      --md-filled-field-focus-active-indicator-color: var(--accent);
+      --md-filled-field-disabled-container-color: transparent;
+      --md-filled-field-disabled-active-indicator-color: transparent;
+      --md-filled-field-disabled-active-indicator-opacity: 0;
+
+      --md-filled-text-field-container-color: transparent;
+      --md-filled-text-field-active-indicator-color: transparent;
+      --md-filled-text-field-hover-active-indicator-color: transparent;
+      --md-filled-text-field-hover-state-layer-opacity: 0;
+      --md-filled-text-field-focus-active-indicator-color: var(--accent);
+      --md-filled-text-field-disabled-container-color: transparent;
+      --md-filled-text-field-disabled-active-indicator-color: transparent;
+      --md-filled-text-field-disabled-active-indicator-opacity: 0;
+
+      --md-filled-select-text-field-container-color: transparent;
+      --md-filled-select-text-field-active-indicator-color: transparent;
+      --md-filled-select-text-field-hover-active-indicator-color: transparent;
+      --md-filled-select-text-field-hover-state-layer-opacity: 0;
+      --md-filled-select-text-field-focus-active-indicator-color: var(--accent);
+      --md-filled-select-text-field-disabled-container-color: transparent;
+      --md-filled-select-text-field-disabled-active-indicator-color: transparent;
+    }
+    /* Light mode: only the base tokens change -- every --md-sys-color- and --md-filled- token
+       above is itself defined as var(--bg)/var(--text)/etc., not a hardcoded color, so redefining
+       just these five here re-themes the vendored Material buttons/fields too, with nothing
+       further to override. Element-type accent colors on the BPMN/DMN canvases (--start-fill,
+       --task-fill, ...) are deliberately NOT touched -- see BpmnRenderer.js's own header comment:
+       those are fixed, saturated hues meant to read the same regardless of app theme, and already
+       have enough contrast against either background. */
+    :root[data-theme="light"] {
+      --bg: #ffffff;
+      --panel-bg: #f1f3f5;
+      --text: #1a1f24;
+      --border: #d0d7de;
+      --accent: #1967d2;
+      --muted: #57606a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 0;
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: sans-serif;
+    }
+    #app {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+    }
+    /* Shared "empty/loading/error" text style -- used by more than one component (and the
+       inline Users stub below), so it stays here rather than being owned by just one of them. */
+    .status {
+      color: var(--muted);
+      font-style: italic;
+    }
+    [data-route] {
+      display: none;
+      flex: 1;
+      min-height: 0;
+    }
+    [data-route].current {
+      display: flex;
+      flex-direction: column;
+    }
+    ntrloc-access[data-route].current {
+      flex-direction: row;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <ntrloc-nav></ntrloc-nav>
+    <ntrloc-schema-editor data-route="/schema"></ntrloc-schema-editor>
+    <ntrloc-search data-route="/search"></ntrloc-search>
+    <ntrloc-processes data-route="/processes"></ntrloc-processes>
+    <ntrloc-tasks data-route="/tasks"></ntrloc-tasks>
+    <ntrloc-users data-route="/users"></ntrloc-users>
+    <ntrloc-groups data-route="/groups"></ntrloc-groups>
+    <ntrloc-access data-route="/access"></ntrloc-access>
+  </div>
+
+  <script>
+    // Minimal hash router: shows whichever [data-route] element matches the current hash,
+    // defaulting to /search. Elements stay mounted once shown so each screen's own fetched
+    // state survives switching tabs, matching the Angular app's behavior.
+    function applyRoute() {
+      const path = location.hash.replace(/^#/, '') || '/search';
+      document.querySelectorAll('[data-route]').forEach(el => {
+        el.classList.toggle('current', el.dataset.route === path);
+      });
+    }
+    window.addEventListener('hashchange', applyRoute);
+    applyRoute();
+  </script>
+</body>
+</html>

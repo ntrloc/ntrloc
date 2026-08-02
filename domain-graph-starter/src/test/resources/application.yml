@@ -1,0 +1,18 @@
+cluster:
+  name: graph-test
+
+graph:
+  security:
+    enabled: false
+    seed-test-data: true
+
+binary:
+  storage:
+    strategy: block
+    block:
+      location: target/test-binary-storage
+      autocreate: true
+
+logging:
+  level:
+    root: warn

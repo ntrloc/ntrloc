@@ -1,0 +1,44 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: ntrloc
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:ntrloc}
+    username: ${DB_USER:ntrloc}
+    password: ${DB_PASSWORD:ntrloc}
+    driver-class-name: org.postgresql.Driver
+
+cluster:
+  name: ${CLUSTER_NAME:ntrloc}
+
+graph:
+  branding:
+    display-name: ntrloc
+  auth:
+    local:
+      enabled: true
+    oauth:
+      enabled: false
+    ldap:
+      enabled: false
+  security:
+    enabled: true
+    seed-local-accounts: true
+    seed-test-data: false
+  ui:
+    mounts:
+      - path: /admin
+        location: "classpath:/static/admin-ui/"
+
+binary:
+  storage:
+    strategy: block
+    block:
+      location: ${BINARY_STORAGE_LOCATION:/tmp/ntrloc-storage}
+      autocreate: true
+
+logging:
+  level:
+    root: info

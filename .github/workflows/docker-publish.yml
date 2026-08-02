@@ -1,0 +1,105 @@
+name: Docker Publish
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  guard-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Resolve project version
+        id: version
+        run: |
+          VERSION=$(mvn -q -pl runtimes/release help:evaluate -Dexpression=project.version -DforceStdout)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      # Fails before any build/push work starts -- main should never carry a SNAPSHOT version,
+      # and a merge that slips through shouldn't get a Docker image built for it at all.
+      - name: Refuse to publish a SNAPSHOT version
+        run: |
+          if [[ "${{ steps.version.outputs.version }}" == *-SNAPSHOT ]]; then
+            echo "::error::Refusing to build/publish SNAPSHOT version '${{ steps.version.outputs.version }}' from main. Bump the version before merging."
+            exit 1
+          fi
+
+  build:
+    needs: guard-version
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Install reactor (domain-graph-starter + release)
+        run: mvn -B install -DskipTests
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push ${{ matrix.arch }} image
+        run: mvn -pl runtimes/release -DskipTests -Pbuild-${{ matrix.arch }} spring-boot:build-image
+
+      - name: Push ${{ matrix.arch }} image
+        run: docker push docker.io/ntrloc/ntrloc:${{ needs.guard-version.outputs.version }}-${{ matrix.arch }}
+
+  publish-manifest:
+    needs: [guard-version, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Publish multi-arch manifest
+        run: |
+          docker buildx imagetools create \
+            -t docker.io/ntrloc/ntrloc:${{ needs.guard-version.outputs.version }} \
+            docker.io/ntrloc/ntrloc:${{ needs.guard-version.outputs.version }}-amd64 \
+            docker.io/ntrloc/ntrloc:${{ needs.guard-version.outputs.version }}-arm64
+
+  publish-release:
+    needs: [guard-version, publish-manifest]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${{ needs.guard-version.outputs.version }}"
+          gh release create "v${VERSION}" \
+            --title "v${VERSION}" \
+            --target "${{ github.sha }}" \
+            --generate-notes

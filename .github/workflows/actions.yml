@@ -1,0 +1,58 @@
+name: Maven CI with Test Report
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      statuses: write
+      checks: write
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Cache Maven packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-    
+
+      - name: Build with Maven
+        run: mvn -B package
+        env:
+          TEST_CONTAINER_HOST: 172.17.0.1
+
+      - name: Official SonarQube Scan
+        uses: SonarSource/sonarqube-scan-action@8c71dc039c2dd71d3821e89a2b58ecc7fee6ced9 # version 5.3.0
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            -Dsonar.projectKey=ntrloc_ntrloc
+            -Dsonar.organization=ntrloc
+            -Dsonar.java.binaries=**/target/classes
+            -Dsonar.coverage.jacoco.xmlReportPaths=**/target/site/jacoco/jacoco.xml
+            -Dsonar.exclusions=.github/**/*,runtimes/**/*,**/*Test.java,**/*Configuration.java,**/*ConfigurationFactory.java,domain-graph-starter/**/*.js,domain-graph-starter/**/*.html,domain-graph-starter/src/test/**/*
+
+      - name: Publish Test Report
+        uses: dorny/test-reporter@dc3a92680fcc15842eef52e8c4606ea7ce6bd3f3 # version 2.1.1
+        if: always()
+        with:
+          name: Maven Surefire Tests
+          path: '**/TEST-*.xml'
+          reporter: java-junit
+          fail-on-error: true

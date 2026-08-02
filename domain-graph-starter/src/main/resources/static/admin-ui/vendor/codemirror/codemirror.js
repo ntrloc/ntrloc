@@ -1,0 +1,8 @@
+/**
+ * Bundled by jsDelivr using Rollup v4.62.2 and esbuild v0.28.1.
+ * Original file: /npm/codemirror@6.0.2/dist/index.js
+ *
+ * Do NOT use SRI with dynamically generated files! More information: https://www.jsdelivr.com/using-sri-with-dynamic-files
+ */
+import{lineNumbers as p,highlightActiveLineGutter as c,highlightSpecialChars as t,drawSelection as e,dropCursor as h,rectangularSelection as n,crosshairCursor as s,highlightActiveLine as f,keymap as i}from"./codemirror-view.js";import{EditorView as j}from"./codemirror-view.js";import{EditorState as u}from"./codemirror-state.js";import{foldGutter as g,indentOnInput as y,syntaxHighlighting as o,defaultHighlightStyle as r,bracketMatching as d,foldKeymap as S}from"./codemirror-language.js";import{history as a,defaultKeymap as l,historyKeymap as m}from"./codemirror-commands.js";import{highlightSelectionMatches as K,searchKeymap as k}from"./codemirror-search.js";import{closeBrackets as b,autocompletion as w,closeBracketsKeymap as x,completionKeymap as C}from"./codemirror-autocomplete.js";import{lintKeymap as M}from"./codemirror-lint.js";const v=[p(),c(),t(),a(),g(),e(),h(),u.allowMultipleSelections.of(!0),y(),o(r,{fallback:!0}),d(),b(),w(),n(),s(),f(),K(),i.of([...x,...l,...k,...m,...S,...C,...M])],A=[t(),a(),e(),o(r,{fallback:!0}),i.of([...l,...m])];export{j as EditorView,v as basicSetup,A as minimalSetup};
+//# sourceMappingURL=/sm/7c124203fca0197318b541915531fd2a39f3cf4ae991d58ffaf0d63745bc8fc2.map
