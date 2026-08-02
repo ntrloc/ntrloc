@@ -6,7 +6,7 @@
     <parent>
         <groupId>org.ntrloc</groupId>
         <artifactId>ntrloc</artifactId>
-        <version>1.0.0-SNAPSHOT</version>
+        <version>1.0.0</version>
     </parent>
 
     <artifactId>domain-graph-starter</artifactId>
