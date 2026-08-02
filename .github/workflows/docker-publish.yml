@@ -1,16 +1,21 @@
 name: Docker Publish
 
 on:
-  push:
+  workflow_run:
+    workflows: ["Maven CI with Test Report"]
+    types: [completed]
     branches: [main]
 
 jobs:
   guard-version:
+    if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Set up JDK 21
         uses: actions/setup-java@v4
@@ -46,6 +51,8 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Set up JDK 21
         uses: actions/setup-java@v4
@@ -93,6 +100,8 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Create GitHub Release
         env:
@@ -101,5 +110,5 @@ jobs:
           VERSION="${{ needs.guard-version.outputs.version }}"
           gh release create "v${VERSION}" \
             --title "v${VERSION}" \
-            --target "${{ github.sha }}" \
+            --target "${{ github.event.workflow_run.head_sha }}" \
             --generate-notes
