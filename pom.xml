@@ -10,6 +10,7 @@
 
     <modules>
         <module>runtimes/domain-1</module>
+        <module>runtimes/release</module>
         <module>domain-graph-starter</module>
     </modules>
 

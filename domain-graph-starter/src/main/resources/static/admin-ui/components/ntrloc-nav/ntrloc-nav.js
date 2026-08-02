@@ -15,14 +15,6 @@ injectStyles('ntrloc-nav-styles', `
     font-weight: bold;
     margin-right: 24px;
   }
-  nav .badge {
-    font-size: 11px;
-    color: var(--muted);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 2px 6px;
-    margin-left: 8px;
-  }
   nav a {
     color: var(--text);
     text-decoration: none;
@@ -32,8 +24,6 @@ injectStyles('ntrloc-nav-styles', `
   nav a.active {
     background: var(--border);
   }
-  /* Distinct from the muted dev-badge above (.badge) -- this one needs to actually draw the eye,
-     it's "you have work to do", not incidental metadata. */
   .nav-task-badge {
     display: inline-block;
     min-width: 16px;
@@ -172,7 +162,6 @@ class NtrlocNav extends HTMLElement {
     this.innerHTML = `
       <nav>
         <span class="brand">${escapeHtml(this.brandName)}</span>
-        <span class="badge">new admin UI -- alpine + htmx</span>
         ${ROUTES.map(route => `
           <a href="#${route.path}" class="${current === route.path ? 'active' : ''}">
             ${route.label}${route.path === '/tasks' && this.taskCount > 0 ? `<span class="nav-task-badge">${this.taskCount}</span>` : ''}
@@ -182,10 +171,18 @@ class NtrlocNav extends HTMLElement {
         <span class="new-item-status">${escapeHtml(this._newItemStatus || '')}</span>
         <md-filled-button class="new-item-button">New Item</md-filled-button>
         <button class="theme-toggle" type="button">${theme === 'light' ? 'Dark mode' : 'Light mode'}</button>
+        <button class="theme-toggle logout-button" type="button">Logout</button>
       </nav>
     `;
     this.querySelector('.theme-toggle').addEventListener('click', () => this.toggleTheme());
     this.querySelector('.new-item-button').addEventListener('click', () => this.openNewItemDialog());
+    this.querySelector('.logout-button').addEventListener('click', () => this.logout());
+  }
+
+  logout() {
+    // CSRF is disabled repo-wide (SecurityConfig), and /logout's requiresLogout matcher isn't
+    // restricted to POST, so a plain navigation is enough -- no form/fetch needed.
+    window.location.href = '/logout';
   }
 
   // openItemMutationDialog (ntrloc-item-mutation-dialog.js) resolves the MutationResponse on a
