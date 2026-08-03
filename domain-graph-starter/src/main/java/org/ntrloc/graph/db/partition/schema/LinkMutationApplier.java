@@ -12,6 +12,7 @@ import org.springframework.stereotype.Component;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 // Applies link-definition mutations -- split out of SchemaManager (see its own history).
 @Component
@@ -34,8 +35,21 @@ class LinkMutationApplier {
                 var prop = repo.createProperty(p.name(), p.description(), p.propertyType(), p.cardinality(), p.usage());
                 repo.associateLinkProperty(linkId, prop.id());
             }
-            for (var perspective : m.perspectives()) {
+            var perspectives = m.perspectives();
+            for (int i = 0; i < perspectives.size(); i++) {
+                var perspective = perspectives.get(i);
                 SchemaMutationValidation.requireKnownItemOrTrait(repo, perspective.itemId());
+                // The other participants in *this* link definition are this perspective's target
+                // by construction -- compared in-memory rather than via a DB round trip, since
+                // none of them exist as rows yet at validation time (they're all inserted below,
+                // together, only once every perspective in the list has passed validation).
+                Set<UUID> targets = new HashSet<>();
+                for (int j = 0; j < perspectives.size(); j++) {
+                    if (j != i) targets.add(perspectives.get(j).itemId());
+                }
+                SchemaMutationValidation.requireConsistentPerspectiveTarget(repo, linkId, perspective.itemId(), perspective.name(), targets);
+            }
+            for (var perspective : perspectives) {
                 repo.createPerspective(perspective.itemId(), linkId, perspective.name(), perspective.description(),
                         perspective.minCardinality(), perspective.maxCardinality());
             }
@@ -44,6 +58,13 @@ class LinkMutationApplier {
             repo.deleteLink(m.id());
             eventPublisher.publishEvent(new SchemaChangeEvent.LinkTypeDeleted(m.id()));
         } else if (mutation instanceof UpdatePerspectiveDefinitionMutation m) {
+            var existing = repo.findPerspectiveById(m.id());
+            if (!existing.name().equals(m.name())) {
+                Set<UUID> targets = repo.findInversePerspectives(existing.linkId(), existing.id()).stream()
+                        .map(SchemaRepository.PerspectiveRow::entityId)
+                        .collect(Collectors.toSet());
+                SchemaMutationValidation.requireConsistentPerspectiveTarget(repo, existing.linkId(), existing.entityId(), m.name(), targets);
+            }
             repo.updatePerspective(m.id(), m.name(), m.description(), m.minCardinality(), m.maxCardinality());
         } else {
             return false;

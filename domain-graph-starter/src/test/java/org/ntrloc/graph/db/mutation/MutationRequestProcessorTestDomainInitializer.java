@@ -85,10 +85,9 @@ public class MutationRequestProcessorTestDomainInitializer implements DomainInit
 
         // link3: connects C and D, sharing no perspective name with A/B's link1/link2 at all --
         // connecting A.toB to C.onlyC has zero candidate link types in common (the opposite
-        // failure mode from link1/link2's ambiguity). Deliberately two distinct item types, not a
-        // self-link on C: schema_entity_link_perspective's own UNIQUE(entity_id, link_definition_id)
-        // constraint means one entity can have at most one perspective per link definition, so a
-        // single link definition can never connect an item type to itself.
+        // failure mode from link1/link2's ambiguity). Deliberately two distinct item types rather
+        // than a self-link on C, purely to keep this fixture's naming simple -- self-links are
+        // supported (see SelfLinkIntegrationTest).
         schemaManager.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
                 new CreatePerspectiveDefinitionMutation(cTypeId, "onlyC", "d", 0, null),
                 new CreatePerspectiveDefinitionMutation(dTypeId, "onlyD", "d", 0, null)))));

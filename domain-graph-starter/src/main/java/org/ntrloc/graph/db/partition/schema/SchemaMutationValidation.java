@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 // Shared validation helpers for the per-family mutation appliers (ItemMutationApplier,
 // TraitMutationApplier, etc.) -- split out alongside them so each applier stays focused on its
@@ -49,6 +50,26 @@ final class SchemaMutationValidation {
                 || repo.getAllTraits().stream().anyMatch(trait -> trait.id().equals(id));
         if (!known) {
             throw new IllegalArgumentException("Unknown item or trait: " + id);
+        }
+    }
+
+    // The one guardrail schema_entity_link_perspective's now-removed UNIQUE(entity_id,
+    // link_definition_id) used to provide as an accidental side effect: a perspective name is
+    // only meaningful if it names a single, consistent target across every link definition that
+    // uses it for a given entity -- e.g. Person "worksFor" must always mean the same thing,
+    // whether it resolves to Company via one link or Department via another, it can't be both.
+    // Same-entity, same-name, same-target is fine (that's how self-links and the deliberately
+    // ambiguous-link-type test fixtures both work), so this compares target *sets*, not row
+    // counts.
+    static void requireConsistentPerspectiveTarget(SchemaRepository repo, UUID newLinkId, UUID entityId, String name, Set<UUID> newTargets) {
+        for (var existing : repo.findPerspectivesByEntityAndName(entityId, name, newLinkId)) {
+            Set<UUID> existingTargets = repo.findInversePerspectives(existing.linkId(), existing.id()).stream()
+                    .map(SchemaRepository.PerspectiveRow::entityId)
+                    .collect(Collectors.toSet());
+            if (!existingTargets.equals(newTargets)) {
+                throw new IllegalArgumentException(
+                        "Perspective '" + name + "' already targets a different type via another link definition");
+            }
         }
     }
 }

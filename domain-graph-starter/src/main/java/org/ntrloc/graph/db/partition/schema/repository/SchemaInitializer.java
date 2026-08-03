@@ -202,6 +202,15 @@ public class SchemaInitializer {
     // schema_item.id or a schema_trait.id (the two tables share no common parent to reference
     // now that schema_entity is gone; see SchemaManager.applyMutations' validation of this value
     // against both tables at write time, the only place that constraint can be enforced).
+    //
+    // Deliberately no UNIQUE(entity_id, link_definition_id) here -- a link's two perspective rows
+    // legitimately share both columns for a same-type/same-trait self-link (e.g. Person "mother"
+    // of Person, or a symmetric Person "sibling" of Person, where both rows even share the same
+    // name). Pairing a perspective with its counterpart is done by SchemaRepository.
+    // findInversePerspectives, which finds "the other side" by excluding the row's own id, not by
+    // entity_id -- so this constraint was never load-bearing. What *is* still enforced (see
+    // SchemaMutationValidation.requireConsistentPerspectiveTarget) is that a given (entity, name)
+    // pair always resolves to the same target entity across every link definition that uses it.
     void initEntityLinkPerspectiveTable() {
         jdbcClient.sql("""
                 CREATE TABLE IF NOT EXISTS schema_entity_link_perspective (
@@ -211,8 +220,7 @@ public class SchemaInitializer {
                     name                TEXT NOT NULL,
                     description         TEXT,
                     minimum_cardinality INT NOT NULL CHECK (minimum_cardinality >= 0),
-                    maximum_cardinality INT CHECK (maximum_cardinality IS NULL OR maximum_cardinality >= minimum_cardinality),
-                    UNIQUE (entity_id, link_definition_id)
+                    maximum_cardinality INT CHECK (maximum_cardinality IS NULL OR maximum_cardinality >= minimum_cardinality)
                 )
                 """).update();
     }

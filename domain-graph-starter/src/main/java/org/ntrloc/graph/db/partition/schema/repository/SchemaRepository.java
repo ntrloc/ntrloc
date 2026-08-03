@@ -241,6 +241,13 @@ public class SchemaRepository {
                 .single();
     }
 
+    public PerspectiveRow findPerspectiveById(UUID id) {
+        return jdbcClient.sql("SELECT * FROM schema_entity_link_perspective WHERE id = :id")
+                .param("id", id)
+                .query(this::mapPerspective)
+                .single();
+    }
+
     public PerspectiveRow updatePerspective(UUID id, String name, String description, Integer minCardinality, Integer maxCardinality) {
         return jdbcClient.sql("""
                 UPDATE schema_entity_link_perspective SET name = :name, description = :description, minimum_cardinality = :minCardinality, maximum_cardinality = :maxCardinality
@@ -262,6 +269,20 @@ public class SchemaRepository {
     public List<PerspectiveRow> findInversePerspectives(UUID linkId, UUID perspectiveId) {
         return jdbcClient.sql("SELECT * FROM schema_entity_link_perspective WHERE link_definition_id = :linkId AND id != :perspectiveId")
                 .param(PARAM_LINK_ID, linkId).param("perspectiveId", perspectiveId)
+                .query(this::mapPerspective)
+                .list();
+    }
+
+    // Used by SchemaMutationValidation.requireConsistentPerspectiveTarget -- excludeLinkId lets
+    // the caller ignore rows belonging to the link definition currently being created, whose own
+    // perspectives are each other's target by construction and shouldn't be compared against
+    // themselves via this lookup.
+    public List<PerspectiveRow> findPerspectivesByEntityAndName(UUID entityId, String name, UUID excludeLinkId) {
+        return jdbcClient.sql("""
+                SELECT * FROM schema_entity_link_perspective
+                WHERE entity_id = :entityId AND name = :name AND link_definition_id != :excludeLinkId
+                """)
+                .param("entityId", entityId).param("name", name).param("excludeLinkId", excludeLinkId)
                 .query(this::mapPerspective)
                 .list();
     }

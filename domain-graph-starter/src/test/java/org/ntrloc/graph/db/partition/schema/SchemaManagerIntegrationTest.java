@@ -278,6 +278,27 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         assertThat(view.maxCardinality()).isEqualTo(5);
     }
 
+    @Test
+    void updatePerspectiveDefinitionMutation_renamingToACollidingName_throws() {
+        UUID itemAId = createItem("Item-" + UUID.randomUUID());
+        UUID itemBId = createItem("Item-" + UUID.randomUUID());
+        UUID itemCId = createItem("Item-" + UUID.randomUUID());
+        schemaManager.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
+                new CreatePerspectiveDefinitionMutation(itemAId, "existingName", "d", 0, 1),
+                new CreatePerspectiveDefinitionMutation(itemBId, "inverse", "d", 0, 1)))));
+        schemaManager.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
+                new CreatePerspectiveDefinitionMutation(itemAId, "renameMe", "d", 0, 1),
+                new CreatePerspectiveDefinitionMutation(itemCId, "inverse2", "d", 0, 1)))));
+        UUID perspectiveToRename = schemaManager.getAdminSchema().items().stream()
+                .filter(i -> i.id().equals(itemAId)).findFirst().orElseThrow()
+                .links().get("renameMe").get(0).id();
+
+        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(
+                new UpdatePerspectiveDefinitionMutation(perspectiveToRename, "existingName", "d", 0, 1))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("already targets a different type");
+    }
+
     // --- Controlled lists ---
 
     @Test
