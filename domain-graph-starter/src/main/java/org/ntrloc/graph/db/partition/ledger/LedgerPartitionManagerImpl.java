@@ -1,6 +1,6 @@
 package org.ntrloc.graph.db.partition.ledger;
 
-import org.springframework.context.annotation.DependsOn;
+import org.springframework.boot.sql.init.dependency.DependsOnDatabaseInitialization;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
@@ -10,7 +10,7 @@ import java.util.List;
 import java.util.UUID;
 
 @Component
-@DependsOn("ledgerInitializer")
+@DependsOnDatabaseInitialization
 public class LedgerPartitionManagerImpl implements LedgerPartitionManager {
 
     private static final String COL_PAYLOAD = "payload";

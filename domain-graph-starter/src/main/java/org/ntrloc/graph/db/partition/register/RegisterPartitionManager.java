@@ -1017,10 +1017,10 @@ public class RegisterPartitionManager implements SchemaChangeListener {
     // Each item/link type gets its own physical properties table (see tableNameFor/
     // linkTableNameFor), so that table has to be created the moment the type is defined and
     // dropped the moment it's deleted -- otherwise projection queries against a type created
-    // after boot fail with "relation does not exist", since RegisterInitializer only creates
-    // these tables once, at startup, for whatever types already existed then. Traits have no
-    // register-side table of their own (their properties live in the owning item type's JSONB
-    // blob), so trait events are intentionally ignored here.
+    // after boot fail with "relation does not exist", since the static V1_0_0_1__baseline.sql Flyway
+    // migration only creates the shared register_* tables once, for whatever types already
+    // existed when it ran. Traits have no register-side table of their own (their properties live
+    // in the owning item type's JSONB blob), so trait events are intentionally ignored here.
 
     @Override
     @EventListener

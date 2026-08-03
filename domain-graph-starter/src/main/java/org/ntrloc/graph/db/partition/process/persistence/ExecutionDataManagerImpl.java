@@ -135,7 +135,7 @@ public class ExecutionDataManagerImpl extends AbstractProcessDataManager impleme
     // explicit-cascade path as the event-subscription cleanup elsewhere in this package
     // (RuntimeService.deleteProcessInstance / deployment-cascade delete) -- never from normal
     // completion. Real Flowable gets away with this because ACT_RU_VARIABLE has a DB-level FK to
-    // ACT_RU_EXECUTION; this app deliberately has no FKs (see ProcessPersistenceInitializer), so a
+    // ACT_RU_EXECUTION; this app deliberately has no FKs (see V1_0_0_1__baseline.sql's process_* tables), so a
     // process's own variables (greeting, greetingLength, ... in hello-world) would otherwise
     // survive every normal completion forever. Confirmed empirically: helloWorldProcessRunsToCompletion
     // left exactly the 3 variables the diagram sets behind until this was added.

@@ -3,7 +3,7 @@ package org.ntrloc.graph.db.partition.binary;
 import org.ntrloc.graph.db.partition.binary.storage.BinaryStorageAdapter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.context.annotation.DependsOn;
+import org.springframework.boot.sql.init.dependency.DependsOnDatabaseInitialization;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
@@ -18,7 +18,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Component
-@DependsOn("binaryInitializer")
+@DependsOnDatabaseInitialization
 public class BinaryPartitionManagerImpl implements BinaryPartitionManager {
 
     private static final Logger LOG = LoggerFactory.getLogger(BinaryPartitionManagerImpl.class);

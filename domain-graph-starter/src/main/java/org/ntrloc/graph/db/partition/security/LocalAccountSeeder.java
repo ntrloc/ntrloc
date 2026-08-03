@@ -3,13 +3,13 @@ package org.ntrloc.graph.db.partition.security;
 import jakarta.annotation.PostConstruct;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.context.annotation.DependsOn;
+import org.springframework.boot.sql.init.dependency.DependsOnDatabaseInitialization;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Component;
 
 @Component
 @ConditionalOnProperty(prefix = "graph.security", name = "seed-local-accounts", havingValue = "true")
-@DependsOn("securityInitializer")
+@DependsOnDatabaseInitialization
 public class LocalAccountSeeder {
 
     private final SecurityRepository repo;

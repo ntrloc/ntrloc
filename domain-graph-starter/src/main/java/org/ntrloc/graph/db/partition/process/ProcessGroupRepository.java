@@ -8,8 +8,8 @@ import java.util.Set;
 import java.util.UUID;
 
 // Process-assignment groups (candidateGroups on a User Task) -- a distinct concept from
-// security_group, see ProcessGroupInitializer's note. Individual user identity still comes from
-// SecurityRepository/security_user; only the grouping is separate.
+// security_group, see V1_0_0_1__baseline.sql's note on process_group. Individual user identity still
+// comes from SecurityRepository/security_user; only the grouping is separate.
 @Component
 public class ProcessGroupRepository {
 

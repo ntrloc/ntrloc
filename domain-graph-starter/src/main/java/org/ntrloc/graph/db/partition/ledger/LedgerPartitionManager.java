@@ -8,8 +8,8 @@ public interface LedgerPartitionManager {
     // Writes entries as UNCOMMITTED under transactionId. Not visible via readItemStream/
     // readLinkStream until commit(transactionId) is called. actorExternalId is a single value for
     // the whole batch, not per-entry -- everything appended together in one call came from one
-    // mutate() request, so it shares one actor; may be null (see LedgerInitializer's own note on
-    // the column).
+    // mutate() request, so it shares one actor; may be null (actor_external_id is nullable by
+    // design).
     void append(List<LedgerEntry> entries, UUID transactionId, String actorExternalId);
 
     void commit(UUID transactionId, UUID commitId);

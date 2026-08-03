@@ -16,6 +16,9 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
         <spring.boot.version>4.1.0</spring.boot.version>
+        <!-- Pinned to exactly what Spring Boot 4.1.0's own BOM (spring-boot-dependencies) manages
+             flyway.version as, since this project has no Boot BOM import to inherit it from. -->
+        <flyway.version>12.4.0</flyway.version>
         <jackson.tools.version>3.1.4</jackson.tools.version>
         <scalar.version>3.0.3</scalar.version>
         <testcontainers.version>2.0.5</testcontainers.version>
@@ -76,6 +79,23 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-jdbc</artifactId>
             <version>${spring.boot.version}</version>
+        </dependency>
+
+        <!-- Boot 4 split Flyway autoconfiguration out of spring-boot-autoconfigure into its own
+             module (spring-boot-flyway); spring-boot-starter-flyway pulls that plus flyway-core
+             (pinned to 12.4.0 by Boot's own dependency management) transitively. Postgres support
+             isn't bundled by Flyway itself past a small set of natively-supported databases, so
+             flyway-database-postgresql still needs its own explicit dependency. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-flyway</artifactId>
+            <version>${spring.boot.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-database-postgresql</artifactId>
+            <version>${flyway.version}</version>
         </dependency>
 
         <dependency>

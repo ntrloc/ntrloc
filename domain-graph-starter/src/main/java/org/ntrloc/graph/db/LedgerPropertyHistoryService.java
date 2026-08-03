@@ -26,7 +26,8 @@ public class LedgerPropertyHistoryService {
     // displayName is resolved best-effort at read time, not stored -- a user's display name can
     // change after the edit it's shown against, and this always reflects the current one, same as
     // any other "who did this" attribution. Blank (not an error) when actorExternalId is null
-    // (LedgerInitializer's own note: a real, displayable state) or no longer resolves to a user.
+    // (ledger_entry.actor_external_id is nullable by design: a real, displayable state) or no
+    // longer resolves to a user.
     public record PropertyHistoryEntry(OffsetDateTime editedOn, String editedByExternalId, String editedByDisplayName, Object value) {
     }
 

@@ -7,6 +7,7 @@ import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.sql.init.dependency.DependsOnDatabaseInitialization;
 import org.springframework.context.annotation.DependsOn;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
@@ -18,7 +19,8 @@ import java.util.stream.Collectors;
 
 @Component
 @ConditionalOnProperty(prefix = "graph.security", name = "seed-test-data", havingValue = "true")
-@DependsOn({"schemaManager", "securityInitializer", "authorizationInitializer"})
+@DependsOn("schemaManager")
+@DependsOnDatabaseInitialization
 public class AuthorizationTestDataInitializer implements ApplicationRunner {
 
     private final SchemaManager schemaManager;

@@ -110,7 +110,7 @@ public class MutationRequestProcessor {
         UUID commitId = UUID.randomUUID();
         // principal is @Nullable, same as it is on EntityManager.mutate() -- unlike project()'s
         // principal (a hard permission-check requirement), this one is attribution-only
-        // (LedgerInitializer's own note on actor_external_id): an unresolvable/absent principal
+        // (ledger_entry.actor_external_id is nullable by design): an unresolvable/absent principal
         // is a real, displayable state ("Edited by" blank), not a reason to refuse the mutation.
         String actorExternalId = principal == null ? null : principal.externalId();
         coordinator.prepare(entries, transactionId, actorExternalId);

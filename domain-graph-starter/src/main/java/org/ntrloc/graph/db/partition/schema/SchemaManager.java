@@ -8,7 +8,7 @@ import org.ntrloc.graph.db.partition.schema.definition.mutation.ReplaceControlle
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminSchemaView;
 import org.ntrloc.graph.db.partition.schema.definition.view.calculated.SchemaView;
 import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
-import org.springframework.context.annotation.DependsOn;
+import org.springframework.boot.sql.init.dependency.DependsOnDatabaseInitialization;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -16,7 +16,7 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 
 @Service
-@DependsOn("schemaInitializer")
+@DependsOnDatabaseInitialization
 public class SchemaManager {
 
     // Cluster-wide "the schema changed, refresh your own copy" signal -- an ITopic, not the

@@ -39,7 +39,7 @@ final class SchemaMutationValidation {
     // Despite the parameter name (CreatePerspectiveDefinitionMutation.itemId(), inherited here),
     // a perspective can target either an item type or a trait -- schema_item.id and
     // schema_trait.id are both valid values for schema_entity_link_perspective.entity_id (see
-    // that column's own comment in SchemaInitializer -- it's deliberately polymorphic and has no
+    // that column's own comment in V1_0_0_1__baseline.sql -- it's deliberately polymorphic and has no
     // FK constraint of its own, so this is the only place a bad id gets caught at all). Checking
     // only getAllItems() meant any perspective whose target was actually a trait (e.g. Pack ->
     // PackComponent, where PackComponent is a trait implemented by several item types, not an

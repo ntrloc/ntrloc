@@ -12,9 +12,9 @@ import org.ntrloc.graph.db.partition.process.dmn.persistence.DecisionDeploymentD
 import org.ntrloc.graph.db.partition.process.dmn.persistence.DecisionResourceDataManagerImpl;
 import org.ntrloc.graph.db.partition.process.dmn.persistence.HistoricDecisionExecutionDataManagerImpl;
 import org.ntrloc.graph.db.partition.process.persistence.ProcessSessionFactory;
+import org.springframework.boot.sql.init.dependency.DependsOnDatabaseInitialization;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.DependsOn;
 
 // Zero-MyBatis DMN engine wiring, mirroring ProcessEngineConfig's own conventions. Registered as
 // a configurator on the process engine (see ProcessEngineConfig.processEngineConfiguration) --
@@ -25,7 +25,7 @@ import org.springframework.context.annotation.DependsOn;
 // same instance registered on both engines resolves correctly per-command regardless of which
 // engine's CommandContext is current.
 @Configuration
-@DependsOn("decisionPersistenceInitializer")
+@DependsOnDatabaseInitialization
 public class DmnEngineConfig {
 
     @Bean
