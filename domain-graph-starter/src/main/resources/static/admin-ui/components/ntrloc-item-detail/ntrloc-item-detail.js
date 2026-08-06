@@ -474,6 +474,12 @@ class NtrlocItemDetail extends HTMLElement {
           ${!item.isNew && (item.description ?? '') !== (item.originalDescription ?? '') ? '<md-text-button class="revert-description-button">Revert</md-text-button>' : ''}
         </div>
         ${!item.isNew && (item.description ?? '') !== (item.originalDescription ?? '') && item.originalDescription ? `<div class="original-value">${escapeHtml(item.originalDescription)}</div>` : ''}
+
+        ${item.isDeleted ? `<p class="status">Marked for deletion -- Save to confirm.</p>` : `
+          <div class="field-row">
+            <md-text-button class="delete-entity-button">Delete ${this._entityKind === 'item' ? 'Item Type' : 'Trait'}</md-text-button>
+          </div>
+        `}
       </div>
 
       ${this.panel('traits', this.isItem ? 'Traits' : 'Implemented By', traitsBody)}
@@ -518,6 +524,21 @@ class NtrlocItemDetail extends HTMLElement {
       item.name = item.originalName;
       this.render();
       notifySchemaViewModelChange();
+    });
+
+    // Immediate, dedicated confirm here -- deliberately not relying solely on the later batch
+    // Save-confirm dialog, unlike every other soft-delete in this editor (states, properties):
+    // deleting a whole item type/trait is categorically more consequential, so it gets its own
+    // explicit prompt naming exactly what's being deleted. Skipped for a still-new, unsaved
+    // entity -- nothing has been persisted yet, so there's nothing to lose by discarding it.
+    const deleteButton = this.querySelector('.delete-entity-button');
+    if (deleteButton) deleteButton.addEventListener('click', () => {
+      if (!item.isNew) {
+        const label = this.isItem ? 'item type' : 'trait';
+        if (!confirm(`Delete ${label} "${item.name}"? This cannot be undone.`)) return;
+      }
+      if (this.isItem) schemaViewModel.deleteItem(item);
+      else schemaViewModel.deleteTrait(item);
     });
 
     const revertDescriptionButton = this.querySelector('.revert-description-button');

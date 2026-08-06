@@ -25,6 +25,11 @@ public class SchemaManager {
     // that made the change, subscribes; the publishing node's rebuild already happened locally
     // (see applyMutations), so its own message is filtered out by publishing-member comparison
     // rather than skipped some other way.
+    //
+    // SchemaChangeBroadcaster independently listens on this same topic (same name, obtained the
+    // same way) to relay every message to the admin UI over SSE -- deliberately without this
+    // class's self-publishing-member filter, since a local admin's own edit should still refresh
+    // their own other browser tabs, not just other cluster nodes.
     private static final String SCHEMA_CHANGED_TOPIC = "schemaChanged";
 
     private final ControlledListManager controlledListManager;

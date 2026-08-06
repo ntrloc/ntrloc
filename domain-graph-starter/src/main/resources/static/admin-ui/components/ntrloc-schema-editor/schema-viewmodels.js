@@ -378,10 +378,12 @@ class ItemDefinitionViewModel {
     this.traitAssignments = args.traitAssignments;
     this.stateMachines = args.stateMachines;
     this.isNew = args.isNew;
+    this.isDeleted = false;
   }
 
   get isDirty() {
     return this.isNew
+      || this.isDeleted
       || this.name !== this.originalName
       || (this.description ?? '') !== (this.originalDescription ?? '')
       || this.properties.some((p) => p.isDirty)
@@ -463,10 +465,12 @@ class TraitDefinitionViewModel {
     this.properties = args.properties;
     this.links = args.links;
     this.isNew = args.isNew;
+    this.isDeleted = false;
   }
 
   get isDirty() {
     return this.isNew
+      || this.isDeleted
       || this.name !== this.originalName
       || (this.description ?? '') !== (this.originalDescription ?? '')
       || this.properties.some((p) => p.isDirty)

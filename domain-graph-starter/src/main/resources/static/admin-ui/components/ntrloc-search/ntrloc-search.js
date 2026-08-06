@@ -298,6 +298,11 @@ injectStyles('ntrloc-search-styles', `
     background: rgba(248, 81, 73, 0.1);
     color: #ef5350;
   }
+  .item-card-actions button.delete-btn:hover {
+    background: rgba(248, 81, 73, 0.1);
+    border-color: #ef5350;
+    color: #ef5350;
+  }
   .prop-key.removed {
     color: #ef5350;
     text-decoration: line-through;
@@ -391,6 +396,13 @@ class NtrlocSearch extends HTMLElement {
 
   connectedCallback() {
     this.addPane();
+    // Keeps every open pane's dropdown live as the schema changes elsewhere -- previously each
+    // pane's availableTypes was fetched once, at creation, and frozen from then on.
+    this._unsubscribeSchema = onGlobalSchemaChange(() => this.refreshAvailableTypesFromGlobalSchema());
+  }
+
+  disconnectedCallback() {
+    if (this._unsubscribeSchema) this._unsubscribeSchema();
   }
 
   addPane() {
@@ -438,21 +450,37 @@ class NtrlocSearch extends HTMLElement {
     return this.panes.find(p => p.id === id);
   }
 
+  mapAvailableTypes(schema) {
+    return (schema.items || []).map(item => ({
+      id: item.id,
+      name: item.name,
+      sortableFields: item.sortableFields || [],
+      properties: (item.properties || []).map(p => ({ name: p.name, type: p.type, cardinality: p.cardinality })),
+    }));
+  }
+
   async loadItemTypes(id) {
     try {
-      const response = await fetch('/api/admin/schema', { credentials: 'include' });
-      if (!response.ok) throw new Error('Request failed: ' + response.status);
-      const data = await response.json();
-      this.pane(id).availableTypes = (data.items || []).map(item => ({
-        id: item.id,
-        name: item.name,
-        sortableFields: item.sortableFields || [],
-        properties: (item.properties || []).map(p => ({ name: p.name, type: p.type, cardinality: p.cardinality })),
-      }));
+      // load(), not reload(): globalSchemaModel is kept current by its own onSchemaEvent
+      // subscription, so this only forces a real fetch the very first time (cold start); every
+      // later pane just reads the already-current cache. Still self-healing against the rare case
+      // of a missed SSE event during a disconnect/reconnect window, same as the New Item dialog's
+      // own fresh-fetch-per-open behavior.
+      const schema = await globalSchemaModel.load();
+      this.pane(id).availableTypes = this.mapAvailableTypes(schema);
       this.render();
     } catch (e) {
       // Left silently empty, mirroring the Angular view model's fetchItemTypes() error handling.
     }
+  }
+
+  refreshAvailableTypesFromGlobalSchema() {
+    if (!globalSchemaModel._schema) return;
+    // Each pane gets its own array (not a shared reference) -- availableTypes is only ever
+    // reassigned wholesale elsewhere in this class, never mutated in place, but there's no reason
+    // to rely on that staying true.
+    this.panes.forEach(p => { p.availableTypes = this.mapAvailableTypes(globalSchemaModel._schema); });
+    this.render();
   }
 
   selectType(id, typeName) {
@@ -577,35 +605,62 @@ class NtrlocSearch extends HTMLElement {
     const pane = this.pane(id);
     const edit = pane.editingItems[itemId];
     if (!edit) return;
-    const mutations = [];
+    const properties = {};
     const item = pane.results.find(r => r.itemId === itemId);
     if (!item) return;
     for (const [key, val] of Object.entries(edit.values)) {
       if (edit.removed.has(key)) continue;
       if (item.properties[key] !== val) {
-        mutations.push({ property: key, value: val === '' ? null : val });
+        properties[key] = val === '' ? null : val;
       }
     }
     for (const key of edit.removed) {
-      mutations.push({ property: key, value: null });
+      properties[key] = null;
     }
-    if (mutations.length === 0) {
+    if (Object.keys(properties).length === 0) {
       delete pane.editingItems[itemId];
       this.render();
       return;
     }
     try {
-      const response = await fetch(`/api/entity/${itemId}/properties`, {
-        method: 'PATCH',
+      const response = await fetch('/api/mutation', {
+        method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mutations }),
+        body: JSON.stringify({ items: [{ type: 'UPDATE', itemId, properties }] }),
       });
-      if (!response.ok) throw new Error('Save failed: ' + response.status);
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        throw new Error(body?.errors?.[0]?.message || 'Save failed: ' + response.status);
+      }
       delete pane.editingItems[itemId];
       this.project(id);
     } catch (e) {
       alert('Save failed: ' + e.message);
+    }
+  }
+
+  async deleteItem(id, itemId) {
+    const pane = this.pane(id);
+    const item = pane.results.find(r => r.itemId === itemId);
+    if (!item) return;
+    const title = item.properties.title || item.properties.name || item.itemType;
+    if (!confirm(`Delete "${title}"? This cannot be undone.`)) return;
+    try {
+      const response = await fetch('/api/mutation', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items: [{ type: 'DELETE', itemId }] }),
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        throw new Error(body?.errors?.[0]?.message || 'Delete failed: ' + response.status);
+      }
+      delete pane.editingItems[itemId];
+      this.project(id);
+    } catch (e) {
+      alert('Delete failed: ' + e.message);
     }
   }
 
@@ -760,7 +815,8 @@ class NtrlocSearch extends HTMLElement {
     const isEditing = !!edit;
     const title = item.properties.title || item.properties.name || item.itemType;
     const shortId = item.itemId.substring(0, 8) + '...';
-    const canEdit = item.permissions && (item.permissions.edit?.length > 0 || item.permissions.delete);
+    const canEditProps = item.permissions?.edit?.length > 0;
+    const canDelete = !!item.permissions?.delete;
 
     const propEntries = Object.entries(item.properties).sort((a, b) => a[0].localeCompare(b[0]));
     let rows;
@@ -812,8 +868,9 @@ class NtrlocSearch extends HTMLElement {
             <span class="item-card-title">${escapeHtml(title)}</span>
             <span class="item-card-id">${shortId}</span>
           </div>
-          ${canEdit ? `<div class="item-card-actions">
-            <button class="${isEditing ? 'editing' : ''}" data-action="toggle-edit">${isEditing ? 'Editing' : 'Edit'}</button>
+          ${canEditProps || canDelete ? `<div class="item-card-actions">
+            ${canEditProps ? `<button class="${isEditing ? 'editing' : ''}" data-action="toggle-edit">${isEditing ? 'Editing' : 'Edit'}</button>` : ''}
+            ${canDelete && !isEditing ? `<button class="delete-btn" data-action="delete-item">Delete</button>` : ''}
           </div>` : ''}
         </div>
         <div class="prop-grid ${isEditing ? 'is-editing' : ''}">${rows}</div>
@@ -878,6 +935,7 @@ class NtrlocSearch extends HTMLElement {
           if (action === 'toggle-edit') el.addEventListener('click', () => this.toggleEdit(id, itemId));
           if (action === 'cancel-edit') el.addEventListener('click', () => this.cancelEdit(id, itemId));
           if (action === 'save-edit') el.addEventListener('click', () => this.saveEdit(id, itemId));
+          if (action === 'delete-item') el.addEventListener('click', () => this.deleteItem(id, itemId));
           if (action === 'add-prop') el.addEventListener('click', () => this.addProperty(id, itemId));
           if (action === 'remove-prop') el.addEventListener('click', () => this.removeProperty(id, itemId, el.dataset.prop));
           if (action === 'undo-remove') el.addEventListener('click', () => this.undoRemoveProperty(id, itemId, el.dataset.prop));

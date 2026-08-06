@@ -85,6 +85,18 @@ public class SchemaRepository {
         jdbcClient.sql("DELETE FROM schema_item WHERE id = :id").param("id", id).update();
     }
 
+    // register_item.item_type_id has no FK cascade (deliberately -- deleting an item type must
+    // never touch already-persisted instance data), so this mirrors that same "in use" boundary
+    // as an explicit, friendly check rather than relying on catching the FK violation it would
+    // otherwise surface.
+    public boolean isItemTypeInUse(UUID itemTypeId) {
+        return Boolean.TRUE.equals(jdbcClient.sql("""
+                SELECT EXISTS(SELECT 1 FROM register_item WHERE item_type_id = :itemTypeId AND state = 'COMMITTED')
+                """)
+                .param("itemTypeId", itemTypeId)
+                .query(Boolean.class).single());
+    }
+
     // --- Traits ---
 
     public Set<TraitRow> getAllTraits() {
@@ -105,6 +117,23 @@ public class SchemaRepository {
 
     public void deleteTrait(UUID id) {
         jdbcClient.sql("DELETE FROM schema_trait WHERE id = :id").param("id", id).update();
+    }
+
+    // Covers both ways a trait can be "in use": implemented by an item type (schema_item_trait),
+    // or the target of a link perspective (schema_entity_link_perspective.entity_id -- deliberately
+    // unconstrained by its own FK, since it's polymorphic across schema_item/schema_trait, so a
+    // deleted trait referenced there would otherwise leave a silently orphaned perspective row
+    // instead of a clean, caught error).
+    public boolean isTraitInUse(UUID traitId) {
+        return Boolean.TRUE.equals(jdbcClient.sql("""
+                SELECT EXISTS(
+                    SELECT 1 FROM schema_item_trait WHERE trait_id = :traitId
+                    UNION ALL
+                    SELECT 1 FROM schema_entity_link_perspective WHERE entity_id = :traitId
+                )
+                """)
+                .param("traitId", traitId)
+                .query(Boolean.class).single());
     }
 
     public void implementTrait(UUID itemId, UUID traitId) {

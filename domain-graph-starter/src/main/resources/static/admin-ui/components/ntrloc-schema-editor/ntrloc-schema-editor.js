@@ -50,8 +50,17 @@ injectStyles('ntrloc-schema-editor-styles', `
     background: var(--border);
     color: var(--text);
   }
+  aside .type-button.pending-delete {
+    color: var(--muted);
+    text-decoration: line-through;
+  }
   aside .save-button {
     margin-top: auto;
+  }
+  aside .save-error {
+    color: #f85149;
+    font-size: 13px;
+    margin: 8px 0 0 0;
   }
   main {
     flex: 1;
@@ -92,18 +101,19 @@ class NtrlocSchemaEditor extends HTMLElement {
             <div class="section-header">ITEM TYPES</div>
             <md-outlined-button class="add-button new-item-button">+ New Item Type</md-outlined-button>
             ${schemaViewModel.items.map((item, index) => `
-              <button class="type-button item-button ${schemaViewModel.selectedItem === item ? 'selected' : ''}"
+              <button class="type-button item-button ${schemaViewModel.selectedItem === item ? 'selected' : ''} ${item.isDeleted ? 'pending-delete' : ''}"
                       data-index="${index}">${escapeHtml(item.name || '(unnamed)')}</button>
             `).join('')}
 
             <div class="section-header" style="margin-top: 16px;">TRAITS</div>
             <md-outlined-button class="add-button new-trait-button">+ New Trait</md-outlined-button>
             ${schemaViewModel.traits.map((trait, index) => `
-              <button class="type-button trait-button ${schemaViewModel.selectedTrait === trait ? 'selected' : ''}"
+              <button class="type-button trait-button ${schemaViewModel.selectedTrait === trait ? 'selected' : ''} ${trait.isDeleted ? 'pending-delete' : ''}"
                       data-index="${index}">${escapeHtml(trait.name || '(unnamed)')}</button>
             `).join('')}
           `}
           <md-filled-button class="save-button" ${schemaViewModel.isDirty && !schemaViewModel.hasInvalidPendingLinks && !schemaViewModel.hasInvalidPendingGuardConditions ? '' : 'disabled'}>Save</md-filled-button>
+          ${this._saveError ? `<p class="save-error">${escapeHtml(this._saveError)}</p>` : ''}
         </aside>
 
         <main>
@@ -150,11 +160,15 @@ class NtrlocSchemaEditor extends HTMLElement {
     const mutations = schemaViewModel.collectMutations();
     const confirmed = await openSaveConfirmDialog(summary);
     if (!confirmed) return;
+    this._saveError = null;
+    this.render();
     try {
       await schemaService.applyMutations(mutations);
       await schemaViewModel.reload();
     } catch (e) {
       console.error('[save] error:', e);
+      this._saveError = e.message || 'Save failed.';
+      this.render();
     }
   }
 }

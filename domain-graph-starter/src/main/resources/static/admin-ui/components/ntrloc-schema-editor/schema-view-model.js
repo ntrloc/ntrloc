@@ -153,6 +153,32 @@ const schemaViewModel = {
     this.selectTrait(vm);
   },
 
+  // Same isNew-vs-not shape as ItemDefinitionViewModel.removeStateMachine, but at this level
+  // (item types/traits are top-level, not nested inside another view-model) rather than on the
+  // view-model class itself, since only schemaViewModel holds the items/traits arrays a brand-new
+  // one needs removing from. A brand-new one has nothing left to show once removed, so selection
+  // clears; an existing one stays selected so ntrloc-item-detail.js can show its "marked for
+  // deletion" state rather than jumping to a blank pane.
+  deleteItem(item) {
+    if (item.isNew) {
+      this.items = this.items.filter((i) => i !== item);
+      if (this.selectedItem === item) this.selectedItem = null;
+    } else {
+      item.isDeleted = true;
+    }
+    notifySchemaViewModelChange();
+  },
+
+  deleteTrait(trait) {
+    if (trait.isNew) {
+      this.traits = this.traits.filter((t) => t !== trait);
+      if (this.selectedTrait === trait) this.selectedTrait = null;
+    } else {
+      trait.isDeleted = true;
+    }
+    notifySchemaViewModelChange();
+  },
+
   // Direct port of Angular's SchemaViewModel.collectMutations() (schema-view-model.ts lines
   // 75-161) -- same iteration order, same processedLinkIds dedup-per-link-not-per-perspective
   // logic, same "new item/trait short-circuits to a single inline CREATE_* and skips further
@@ -177,6 +203,11 @@ const schemaViewModel = {
             propertyType: p.type, cardinality: p.cardinality, usage: p.usage,
           })),
         });
+        continue;
+      }
+
+      if (item.isDeleted) {
+        ops.push({ type: 'DELETE_ITEM', id: item.id });
         continue;
       }
 
@@ -284,6 +315,11 @@ const schemaViewModel = {
         continue;
       }
 
+      if (trait.isDeleted) {
+        ops.push({ type: 'DELETE_TRAIT', id: trait.id });
+        continue;
+      }
+
       // TODO: UPDATE_TRAIT when backend supports it (matches Angular reference)
     }
 
@@ -326,6 +362,11 @@ const schemaViewModel = {
           ? [`${item.properties.length} propert${item.properties.length === 1 ? 'y' : 'ies'}`]
           : [];
         summaries.push({ label: `+ Item Type "${item.name || '(unnamed)'}"`, changes: propSummary });
+        continue;
+      }
+
+      if (item.isDeleted) {
+        summaries.push({ label: `- Item Type "${item.name}"`, changes: [] });
         continue;
       }
 
@@ -401,6 +442,8 @@ const schemaViewModel = {
           ? [`${trait.properties.length} propert${trait.properties.length === 1 ? 'y' : 'ies'}`]
           : [];
         summaries.push({ label: `+ Trait "${trait.name || '(unnamed)'}"`, changes: propSummary });
+      } else if (trait.isDeleted) {
+        summaries.push({ label: `- Trait "${trait.name}"`, changes: [] });
       }
     }
 

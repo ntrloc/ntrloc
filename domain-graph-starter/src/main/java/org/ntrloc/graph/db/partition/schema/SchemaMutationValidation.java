@@ -72,4 +72,33 @@ final class SchemaMutationValidation {
             }
         }
     }
+
+    // Deletion must never be allowed to touch already-persisted instance data, even behind a
+    // confirmation -- ntrloc's data is append-only/immutable by design. "Not in use" is therefore
+    // a hard, symmetric gate for both traits and item types, not a warn-and-proceed check: if
+    // either is in use, the fix is for the admin to remove the in-use references first (unassign
+    // the trait, delete the items), never for the deletion itself to cascade into that data.
+    static void requireTraitNotInUse(SchemaRepository repo, UUID traitId) {
+        if (repo.isTraitInUse(traitId)) {
+            String name = repo.getAllTraits().stream()
+                    .filter(t -> t.id().equals(traitId))
+                    .findFirst()
+                    .map(SchemaRepository.TraitRow::name)
+                    .orElse(traitId.toString());
+            throw new IllegalArgumentException(
+                    "Cannot delete trait '" + name + "' because it is still implemented by an item type or referenced by a link perspective");
+        }
+    }
+
+    static void requireItemTypeNotInUse(SchemaRepository repo, UUID itemTypeId) {
+        if (repo.isItemTypeInUse(itemTypeId)) {
+            String name = repo.getAllItems().stream()
+                    .filter(i -> i.id().equals(itemTypeId))
+                    .findFirst()
+                    .map(SchemaRepository.ItemRow::name)
+                    .orElse(itemTypeId.toString());
+            throw new IllegalArgumentException(
+                    "Cannot delete item type '" + name + "' because items of this type still exist");
+        }
+    }
 }

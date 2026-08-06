@@ -290,11 +290,11 @@ function openItemMutationDialog({ mode = 'create', item } = {}) {
     renderContent();
     dialog.open = true;
 
-    fetch('/api/admin/schema', { credentials: 'include' })
-      .then((response) => {
-        if (!response.ok) throw new Error('Request failed: ' + response.status);
-        return response.json();
-      })
+    // globalSchemaModel.load() (not a direct fetch) -- shares the same cache as every other
+    // schema consumer instead of duplicating this fetch, and is already current thanks to its own
+    // onSchemaEvent subscription (see global-schema-model.js) rather than relying solely on this
+    // being a fresh fetch on every open, as it was before.
+    globalSchemaModel.load()
       .then((data) => {
         state.availableTypes = data.items || [];
         state.loadingTypes = false;

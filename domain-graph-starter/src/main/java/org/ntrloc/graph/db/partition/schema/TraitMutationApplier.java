@@ -38,6 +38,7 @@ class TraitMutationApplier {
             }
             eventPublisher.publishEvent(new SchemaChangeEvent.TraitCreated(trait.id()));
         } else if (mutation instanceof DeleteTraitDefinitionMutation m) {
+            SchemaMutationValidation.requireTraitNotInUse(repo, m.id());
             repo.deleteTrait(m.id());
             eventPublisher.publishEvent(new SchemaChangeEvent.TraitDeleted(m.id()));
         } else if (mutation instanceof ImplementTraitMutation m) {

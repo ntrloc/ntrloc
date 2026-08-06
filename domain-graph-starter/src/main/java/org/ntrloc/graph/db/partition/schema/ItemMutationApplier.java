@@ -39,6 +39,7 @@ class ItemMutationApplier {
         } else if (mutation instanceof UpdateItemDefinitionMutation m) {
             repo.updateItem(m.id(), m.name(), m.description());
         } else if (mutation instanceof DeleteItemDefinitionMutation m) {
+            SchemaMutationValidation.requireItemTypeNotInUse(repo, m.id());
             repo.deleteItem(m.id());
             eventPublisher.publishEvent(new SchemaChangeEvent.ItemTypeDeleted(m.id()));
         } else if (mutation instanceof SetItemInitProcessMutation m) {
