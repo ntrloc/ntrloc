@@ -1,6 +1,10 @@
 package org.ntrloc.graph.db.partition.schema.definition.mutation;
 
-import java.util.List;
+import org.springframework.lang.Nullable;
 
-public record CreateItemDefinitionMutation(String name, String description, List<CreatePropertyDefinitionMutation> properties) implements DefinitionMutation {
+import java.util.List;
+import java.util.UUID;
+
+public record CreateItemDefinitionMutation(String name, String description, List<CreatePropertyDefinitionMutation> properties,
+                                            @Nullable UUID supertypeId, boolean abstractType) implements DefinitionMutation {
 }

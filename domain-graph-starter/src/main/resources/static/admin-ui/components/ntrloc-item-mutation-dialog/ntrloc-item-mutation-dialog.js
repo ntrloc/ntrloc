@@ -296,7 +296,10 @@ function openItemMutationDialog({ mode = 'create', item } = {}) {
     // being a fresh fetch on every open, as it was before.
     globalSchemaModel.load()
       .then((data) => {
-        state.availableTypes = data.items || [];
+        // Abstract types exist only to be extended -- exclude them here, where the picker is for
+        // direct instantiation. Not filtered in ntrloc-search.js's type picker, where searching an
+        // abstract root type is exactly the useful polymorphic case, not a mistake to prevent.
+        state.availableTypes = (data.items || []).filter((t) => !t.abstractType);
         state.loadingTypes = false;
         renderContent();
       })

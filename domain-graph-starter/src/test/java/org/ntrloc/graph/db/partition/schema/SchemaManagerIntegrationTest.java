@@ -64,7 +64,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     private ControlledListManager controlledListManager;
 
     private UUID createItem(String name) {
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(name, "d", List.of())));
+        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(name, "d", List.of(), null, false)));
         return findItem(name).id();
     }
 
@@ -155,6 +155,23 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         assertThat(findItem(itemName).traits()).extracting(t -> t.name()).doesNotContain(traitName);
     }
 
+    // --- requireTraitNotInUse's actually-in-use branch (message-resolution) ---
+
+    @Test
+    void deleteTraitDefinitionMutation_forATraitStillImplementedByAnItemType_throwsWithItsName() {
+        String itemName = "Item-" + UUID.randomUUID();
+        String traitName = "Trait-" + UUID.randomUUID();
+        UUID itemId = createItem(itemName);
+        schemaManager.applyMutations(List.of(new CreateTraitDefinitionMutation(traitName, "d", List.of())));
+        UUID traitId = findTrait(traitName).id();
+        schemaManager.applyMutations(List.of(new ImplementTraitMutation(itemId, traitId)));
+
+        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new DeleteTraitDefinitionMutation(traitId))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("still implemented by an item type")
+                .hasMessageContaining(traitName);
+    }
+
     // --- requireKnownItemOrTrait's unknown-id branch ---
 
     @Test
@@ -172,7 +189,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         UUID itemId = createItem("Item-" + UUID.randomUUID());
         String newName = "Renamed-" + UUID.randomUUID();
 
-        schemaManager.applyMutations(List.of(new UpdateItemDefinitionMutation(itemId, newName, "updated description")));
+        schemaManager.applyMutations(List.of(new UpdateItemDefinitionMutation(itemId, newName, "updated description", null, false)));
 
         var updated = findItem(newName);
         assertThat(updated.id()).isEqualTo(itemId);
@@ -420,6 +437,255 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
                 .stateMachines().get(0).states().stream().filter(s -> s.id().equals(fromId)).findFirst().orElseThrow()
                 .transitions();
         assertThat(afterDelete).isEmpty();
+    }
+
+    // --- Item type inheritance ---
+
+    @Test
+    void itemWithASupertype_inheritsItsProperties_inBothAdminAndCalculatedSchema() {
+        String vehicleName = "Item-" + UUID.randomUUID();
+        String carName = "Item-" + UUID.randomUUID();
+        UUID vehicleId = createItem(vehicleName);
+        schemaManager.applyMutations(List.of(new CreateItemPropertyDefinitionMutation(
+                vehicleId, "wheels", "d", PropertyType.INT, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL)));
+
+        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(
+                new CreatePropertyDefinitionMutation("doors", "d", PropertyType.INT, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL)),
+                vehicleId, false)));
+
+        var car = findItem(carName);
+        assertThat(car.supertypeId()).isEqualTo(vehicleId);
+        assertThat(car.properties()).extracting(p -> p.name()).contains("wheels", "doors");
+        assertThat(car.properties()).filteredOn(p -> p.name().equals("wheels"))
+                .allSatisfy(p -> {
+                    assertThat(p.definedIn()).isNotNull();
+                    assertThat(p.definedIn().entityType()).isEqualTo("supertype");
+                    assertThat(p.definedIn().entityName()).isEqualTo(vehicleName);
+                });
+        assertThat(car.properties()).filteredOn(p -> p.name().equals("doors"))
+                .allSatisfy(p -> assertThat(p.definedIn()).isNull());
+
+        var calculatedCar = schemaManager.getSchema(SUPERUSER).items().stream()
+                .filter(i -> i.name().equals(carName)).findFirst().orElseThrow();
+        assertThat(calculatedCar.properties()).extracting(p -> p.name()).contains("wheels", "doors");
+        assertThat(calculatedCar.supertypeId()).isEqualTo(vehicleId);
+    }
+
+    @Test
+    void multiLevelSupertypeChain_accumulatesPropertiesFromEveryAncestor() {
+        UUID vehicleId = createItem("Item-" + UUID.randomUUID());
+        schemaManager.applyMutations(List.of(new CreateItemPropertyDefinitionMutation(
+                vehicleId, "wheels", "d", PropertyType.INT, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL)));
+
+        String carName = "Item-" + UUID.randomUUID();
+        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(
+                new CreatePropertyDefinitionMutation("doors", "d", PropertyType.INT, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL)),
+                vehicleId, false)));
+        UUID carId = findItem(carName).id();
+
+        String sportsCarName = "Item-" + UUID.randomUUID();
+        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(sportsCarName, "d", List.of(
+                new CreatePropertyDefinitionMutation("topSpeed", "d", PropertyType.INT, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL)),
+                carId, false)));
+
+        var sportsCar = findItem(sportsCarName);
+        assertThat(sportsCar.properties()).extracting(p -> p.name()).contains("wheels", "doors", "topSpeed");
+    }
+
+    @Test
+    void createItemDefinitionMutation_reDeclaringAPropertyNameFromItsSupertype_throws() {
+        UUID vehicleId = createItem("Item-" + UUID.randomUUID());
+        schemaManager.applyMutations(List.of(new CreateItemPropertyDefinitionMutation(
+                vehicleId, "wheels", "d", PropertyType.INT, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL)));
+
+        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(
+                "Item-" + UUID.randomUUID(), "d", List.of(
+                        new CreatePropertyDefinitionMutation("wheels", "d", PropertyType.INT, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL)),
+                vehicleId, false))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("wheels")
+                .hasMessageContaining("already defined");
+    }
+
+    @Test
+    void createItemDefinitionMutation_reDeclaringAPropertyNameFromAMultiHopSupertypeChain_throws() {
+        UUID vehicleId = createItem("Item-" + UUID.randomUUID());
+        schemaManager.applyMutations(List.of(new CreateItemPropertyDefinitionMutation(
+                vehicleId, "wheels", "d", PropertyType.INT, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL)));
+        String carName = "Item-" + UUID.randomUUID();
+        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(), vehicleId, false)));
+        UUID carId = findItem(carName).id();
+
+        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(
+                "Item-" + UUID.randomUUID(), "d", List.of(
+                        new CreatePropertyDefinitionMutation("wheels", "d", PropertyType.INT, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL)),
+                carId, false))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("wheels");
+    }
+
+    @Test
+    void createItemPropertyDefinitionMutation_reDeclaringAPropertyNameFromItsSupertype_throws() {
+        UUID vehicleId = createItem("Item-" + UUID.randomUUID());
+        schemaManager.applyMutations(List.of(new CreateItemPropertyDefinitionMutation(
+                vehicleId, "wheels", "d", PropertyType.INT, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL)));
+        String carName = "Item-" + UUID.randomUUID();
+        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(), vehicleId, false)));
+        UUID carId = findItem(carName).id();
+
+        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new CreateItemPropertyDefinitionMutation(
+                carId, "wheels", "d", PropertyType.INT, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("wheels")
+                .hasMessageContaining("already defined");
+    }
+
+    @Test
+    void updateItemDefinitionMutation_reParentingIntoACollisionWithItsOwnProperty_throws() {
+        UUID vehicleId = createItem("Item-" + UUID.randomUUID());
+        schemaManager.applyMutations(List.of(new CreateItemPropertyDefinitionMutation(
+                vehicleId, "wheels", "d", PropertyType.INT, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL)));
+        String boatName = "Item-" + UUID.randomUUID();
+        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(boatName, "d", List.of(
+                new CreatePropertyDefinitionMutation("wheels", "d", PropertyType.INT, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL)),
+                null, false)));
+        UUID boatId = findItem(boatName).id();
+
+        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(
+                new UpdateItemDefinitionMutation(boatId, boatName, "d", vehicleId, false))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("wheels")
+                .hasMessageContaining("already defined");
+    }
+
+    @Test
+    void itemWithBothATraitAndASupertype_inheritsFromBoth() {
+        UUID vehicleId = createItem("Item-" + UUID.randomUUID());
+        schemaManager.applyMutations(List.of(new CreateItemPropertyDefinitionMutation(
+                vehicleId, "wheels", "d", PropertyType.INT, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL)));
+        String traitName = "Trait-" + UUID.randomUUID();
+        schemaManager.applyMutations(List.of(new CreateTraitDefinitionMutation(traitName, "d", List.of(
+                new CreatePropertyDefinitionMutation("insured", "d", PropertyType.BOOLEAN, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL)))));
+        UUID traitId = findTrait(traitName).id();
+
+        String carName = "Item-" + UUID.randomUUID();
+        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(
+                new CreatePropertyDefinitionMutation("doors", "d", PropertyType.INT, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL)),
+                vehicleId, false)));
+        UUID carId = findItem(carName).id();
+        schemaManager.applyMutations(List.of(new ImplementTraitMutation(carId, traitId)));
+
+        var car = findItem(carName);
+        assertThat(car.properties()).extracting(p -> p.name()).containsExactlyInAnyOrder("doors", "wheels", "insured");
+    }
+
+    @Test
+    void linkPerspectiveDeclaredOnASupertype_isInheritedBySubtype() {
+        UUID vehicleId = createItem("Item-" + UUID.randomUUID());
+        UUID ownerId = createItem("Item-" + UUID.randomUUID());
+        schemaManager.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
+                new CreatePerspectiveDefinitionMutation(vehicleId, "ownedBy", "d", 0, 1),
+                new CreatePerspectiveDefinitionMutation(ownerId, "owns", "d", 0, null)))));
+
+        String carName = "Item-" + UUID.randomUUID();
+        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(), vehicleId, false)));
+
+        var car = findItem(carName);
+        assertThat(car.links()).containsKey("ownedBy");
+        assertThat(car.links().get("ownedBy").get(0).definedIn()).isNotNull();
+        assertThat(car.links().get("ownedBy").get(0).definedIn().entityType()).isEqualTo("supertype");
+    }
+
+    @Test
+    void stateMachineDeclaredOnASupertype_isInheritedBySubtype() {
+        UUID vehicleId = createItem("Item-" + UUID.randomUUID());
+        schemaManager.applyMutations(List.of(new CreateStateMachineMutation(vehicleId, "lifecycle", "d")));
+
+        String carName = "Item-" + UUID.randomUUID();
+        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(), vehicleId, false)));
+
+        var car = findItem(carName);
+        assertThat(car.stateMachines()).extracting(m -> m.name()).contains("lifecycle");
+    }
+
+    @Test
+    void createItemDefinitionMutation_withAnUnknownSupertype_throws() {
+        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(
+                new CreateItemDefinitionMutation("Item-" + UUID.randomUUID(), "d", List.of(), UUID.randomUUID(), false))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Unknown item type");
+    }
+
+    @Test
+    void updateItemDefinitionMutation_withATraitIdAsSupertype_throws() {
+        UUID itemId = createItem("Item-" + UUID.randomUUID());
+        String traitName = "Trait-" + UUID.randomUUID();
+        schemaManager.applyMutations(List.of(new CreateTraitDefinitionMutation(traitName, "d", List.of())));
+        UUID traitId = findTrait(traitName).id();
+
+        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(
+                new UpdateItemDefinitionMutation(itemId, "Item-" + UUID.randomUUID(), "d", traitId, false))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Unknown item type");
+    }
+
+    @Test
+    void updateItemDefinitionMutation_settingSupertypeToItself_throws() {
+        UUID itemId = createItem("Item-" + UUID.randomUUID());
+
+        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(
+                new UpdateItemDefinitionMutation(itemId, "Item-" + UUID.randomUUID(), "d", itemId, false))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("cycle");
+    }
+
+    @Test
+    void updateItemDefinitionMutation_creatingAMultiHopSupertypeCycle_throws() {
+        String aName = "Item-" + UUID.randomUUID();
+        UUID aId = createItem(aName);
+        String bName = "Item-" + UUID.randomUUID();
+        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(bName, "d", List.of(), aId, false)));
+        UUID bId = findItem(bName).id();
+        String cName = "Item-" + UUID.randomUUID();
+        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(cName, "d", List.of(), bId, false)));
+        UUID cId = findItem(cName).id();
+
+        // Chain: C's supertype is B, B's supertype is A. Setting A's supertype to C would close
+        // the loop (A -> C -> B -> A).
+        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(
+                new UpdateItemDefinitionMutation(aId, aName, "d", cId, false))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("cycle");
+    }
+
+    @Test
+    void updateItemDefinitionMutation_changingSupertype_succeedsWithNoInUseGuard() {
+        UUID firstSupertypeId = createItem("Item-" + UUID.randomUUID());
+        UUID secondSupertypeId = createItem("Item-" + UUID.randomUUID());
+        String itemName = "Item-" + UUID.randomUUID();
+        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(itemName, "d", List.of(), firstSupertypeId, false)));
+        UUID itemId = findItem(itemName).id();
+        assertThat(findItem(itemName).supertypeId()).isEqualTo(firstSupertypeId);
+
+        // Unlike deletion (requireItemTypeNotInUse), re-parenting has no "in use" guard at all --
+        // this is intentionally live/forward-only, matching how trait reassignment already works.
+        schemaManager.applyMutations(List.of(new UpdateItemDefinitionMutation(itemId, itemName, "d", secondSupertypeId, false)));
+
+        assertThat(findItem(itemName).supertypeId()).isEqualTo(secondSupertypeId);
+    }
+
+    @Test
+    void abstractFlag_roundTripsThroughCreateAndUpdate_andCanBeToggledFreely() {
+        String itemName = "Item-" + UUID.randomUUID();
+        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(itemName, "d", List.of(), null, true)));
+        UUID itemId = findItem(itemName).id();
+        assertThat(findItem(itemName).abstractType()).isTrue();
+
+        schemaManager.applyMutations(List.of(new UpdateItemDefinitionMutation(itemId, itemName, "d", null, false)));
+        assertThat(findItem(itemName).abstractType()).isFalse();
+
+        schemaManager.applyMutations(List.of(new UpdateItemDefinitionMutation(itemId, itemName, "d", null, true)));
+        assertThat(findItem(itemName).abstractType()).isTrue();
     }
 
     private static final org.ntrloc.graph.db.partition.security.ResolvedPrincipal SUPERUSER =

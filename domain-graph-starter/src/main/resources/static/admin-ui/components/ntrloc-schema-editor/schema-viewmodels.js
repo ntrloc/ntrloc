@@ -377,6 +377,10 @@ class ItemDefinitionViewModel {
     this.links = args.links;
     this.traitAssignments = args.traitAssignments;
     this.stateMachines = args.stateMachines;
+    this.supertypeId = args.supertypeId ?? null;
+    this.originalSupertypeId = args.supertypeId ?? null;
+    this.abstractType = args.abstractType ?? false;
+    this.originalAbstractType = args.abstractType ?? false;
     this.isNew = args.isNew;
     this.isDeleted = false;
   }
@@ -386,6 +390,8 @@ class ItemDefinitionViewModel {
       || this.isDeleted
       || this.name !== this.originalName
       || (this.description ?? '') !== (this.originalDescription ?? '')
+      || this.supertypeId !== this.originalSupertypeId
+      || this.abstractType !== this.originalAbstractType
       || this.properties.some((p) => p.isDirty)
       || this.traitAssignments.some((t) => t.isDirty)
       || Object.values(this.links).some((perspectives) => perspectives.some((p) => p.isDirty))
@@ -437,6 +443,8 @@ class ItemDefinitionViewModel {
       links,
       traitAssignments: (item.traits ?? []).map((t) => new TraitAssignmentViewModel(t)),
       stateMachines: (item.stateMachines ?? []).map((m) => StateMachineViewModel.fromAdmin(m)),
+      supertypeId: item.supertypeId ?? null,
+      abstractType: item.abstractType ?? false,
       isNew: false,
     });
   }
@@ -450,6 +458,8 @@ class ItemDefinitionViewModel {
       links: {},
       traitAssignments: [],
       stateMachines: [],
+      supertypeId: null,
+      abstractType: false,
       isNew: true,
     });
   }

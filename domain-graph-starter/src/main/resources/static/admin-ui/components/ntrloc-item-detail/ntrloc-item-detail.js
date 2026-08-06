@@ -58,6 +58,33 @@ injectStyles('ntrloc-item-detail-styles', `
   .field-row .dirty-dot.is-new {
     color: var(--new-color, #3fb950);
   }
+  /* Parent type / Abstract / Delete in one row, left/center/right. A 3-column grid (not flex with
+     space-between) is what actually keeps the center column truly centered on the row as a whole
+     regardless of how wide the left (variable-width select) and right (button vs. status text)
+     columns end up being -- space-between only centers a middle item when its neighbors are equal
+     width, which these aren't. */
+  .three-col-row {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    margin-top: 4px;
+  }
+  .three-col-row .row-start,
+  .three-col-row .row-center,
+  .three-col-row .row-end {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .three-col-row .row-start {
+    justify-self: start;
+  }
+  .three-col-row .row-center {
+    justify-self: center;
+  }
+  .three-col-row .row-end {
+    justify-self: end;
+  }
   /* Matches the Angular reference's item-detail.scss exactly (plain input + placeholder, not a
      persistent Material label -- md-filled-text-field's floating label doesn't have a mode that
      disappears once you start typing the way a placeholder does, so these two header fields stay
@@ -303,6 +330,36 @@ class NtrlocItemDetail extends HTMLElement {
     return this._allItems.filter((i) => i.id && i.id !== this._item.id);
   }
 
+  // Excludes the current item (an item can't be its own parent type) and every one of its own
+  // current descendants (picking one would close a cycle) -- mirrors SchemaManager.
+  // resolveSupertypeInclusiveItemTypeIds' server-side BFS client-side, so the dropdown itself
+  // never offers a choice the backend would reject. The backend's cycle guard remains the actual
+  // enforcement point regardless; this is a UX nicety, not a correctness requirement.
+  get supertypeCandidates() {
+    if (!this._item.id) return this._allItems.filter((i) => i.id);
+
+    const childrenByParent = new Map();
+    for (const i of this._allItems) {
+      if (!i.supertypeId) continue;
+      if (!childrenByParent.has(i.supertypeId)) childrenByParent.set(i.supertypeId, []);
+      childrenByParent.get(i.supertypeId).push(i.id);
+    }
+
+    const excluded = new Set([this._item.id]);
+    const queue = [this._item.id];
+    while (queue.length > 0) {
+      const current = queue.shift();
+      for (const childId of childrenByParent.get(current) ?? []) {
+        if (!excluded.has(childId)) {
+          excluded.add(childId);
+          queue.push(childId);
+        }
+      }
+    }
+
+    return this._allItems.filter((i) => i.id && !excluded.has(i.id));
+  }
+
   pendingLinkCard(link, index) {
     const targetItem = this._allItems.find((i) => i.id === link.secondItemId);
     return `
@@ -461,6 +518,28 @@ class NtrlocItemDetail extends HTMLElement {
       <div class="item-header">
         <div class="eyebrow">${this._entityKind === 'item' ? 'ITEM' : 'TRAIT'}</div>
 
+        ${this.isItem ? `
+          <div class="three-col-row">
+            <div class="row-start">
+              ${item.supertypeId !== item.originalSupertypeId ? '<span class="dirty-dot">●</span>' : ''}
+              <md-filled-select class="item-supertype-select">
+                <md-select-option value="" ${!item.supertypeId ? 'selected' : ''}><div slot="headline">No parent type</div></md-select-option>
+                ${this.supertypeCandidates.map((i) => `<md-select-option value="${escapeHtml(i.id)}" ${i.id === item.supertypeId ? 'selected' : ''}><div slot="headline">${escapeHtml(i.name)}</div></md-select-option>`).join('')}
+              </md-filled-select>
+            </div>
+            <div class="row-center">
+              ${item.abstractType !== item.originalAbstractType ? '<span class="dirty-dot">●</span>' : ''}
+              <md-checkbox class="item-abstract-checkbox" ${item.abstractType ? 'checked' : ''}></md-checkbox>
+              <label for="item-abstract-checkbox">Abstract</label>
+            </div>
+            <div class="row-end">
+              ${item.isDeleted
+                ? '<span class="status">Marked for deletion -- Save to confirm.</span>'
+                : '<md-text-button class="delete-entity-button">Delete Item Type</md-text-button>'}
+            </div>
+          </div>
+        ` : ''}
+
         <div class="field-row">
           ${item.isNew || item.name !== item.originalName ? `<span class="dirty-dot ${item.isNew ? 'is-new' : ''}">●</span>` : ''}
           <input class="item-name-input" value="${escapeHtml(item.name)}" placeholder="Name" />
@@ -475,11 +554,11 @@ class NtrlocItemDetail extends HTMLElement {
         </div>
         ${!item.isNew && (item.description ?? '') !== (item.originalDescription ?? '') && item.originalDescription ? `<div class="original-value">${escapeHtml(item.originalDescription)}</div>` : ''}
 
-        ${item.isDeleted ? `<p class="status">Marked for deletion -- Save to confirm.</p>` : `
+        ${!this.isItem ? (item.isDeleted ? `<p class="status">Marked for deletion -- Save to confirm.</p>` : `
           <div class="field-row">
-            <md-text-button class="delete-entity-button">Delete ${this._entityKind === 'item' ? 'Item Type' : 'Trait'}</md-text-button>
+            <md-text-button class="delete-entity-button">Delete Trait</md-text-button>
           </div>
-        `}
+        `) : ''}
       </div>
 
       ${this.panel('traits', this.isItem ? 'Traits' : 'Implemented By', traitsBody)}
@@ -515,6 +594,20 @@ class NtrlocItemDetail extends HTMLElement {
     const descriptionInput = this.querySelector('.item-description-input');
     descriptionInput.addEventListener('change', (event) => {
       item.description = event.target.value || null;
+      this.render();
+      notifySchemaViewModelChange();
+    });
+
+    const supertypeSelect = this.querySelector('.item-supertype-select');
+    if (supertypeSelect) supertypeSelect.addEventListener('change', (event) => {
+      item.supertypeId = event.target.value || null;
+      this.render();
+      notifySchemaViewModelChange();
+    });
+
+    const abstractCheckbox = this.querySelector('.item-abstract-checkbox');
+    if (abstractCheckbox) abstractCheckbox.addEventListener('change', (event) => {
+      item.abstractType = event.target.checked;
       this.render();
       notifySchemaViewModelChange();
     });

@@ -21,6 +21,11 @@ class PropertyMutationApplier {
     boolean apply(DefinitionMutation mutation) {
         if (mutation instanceof CreateItemPropertyDefinitionMutation m) {
             SchemaMutationValidation.requireNameNotAssociated(repo.getPropertiesByItem(), m.itemId(), m.name(), "this item type");
+            repo.getAllItems().stream()
+                    .filter(item -> item.id().equals(m.itemId()))
+                    .findFirst()
+                    .map(SchemaRepository.ItemRow::supertypeId)
+                    .ifPresent(supertypeId -> SchemaMutationValidation.requireNameNotInSupertypeChain(repo, supertypeId, m.name()));
             var prop = repo.createProperty(m.name(), m.description(), m.propertyType(), m.cardinality(), m.usage());
             repo.associateItemProperty(m.itemId(), prop.id());
         } else if (mutation instanceof CreateLinkPropertyDefinitionMutation m) {

@@ -96,7 +96,7 @@ class SelfLinkIntegrationTest extends AbstractIntegrationTest {
 
     private UUID createOtherItemType() {
         String name = "SelfLinkOther-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(name, "d", List.of())));
+        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(name, "d", List.of(), null, false)));
         return schemaManager.getAdminSchema().items().stream()
                 .filter(i -> i.name().equals(name)).findFirst().orElseThrow().id();
     }

@@ -34,7 +34,7 @@ class SchemaAdminControllerIntegrationTest extends AbstractIntegrationTest {
     private UUID createProperty() {
         String itemName = "SchemaAdminTest-" + UUID.randomUUID();
         String propName = "prop-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(itemName, "d", List.of())));
+        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(itemName, "d", List.of(), null, false)));
         UUID itemId = schemaManager.getAdminSchema().items().stream()
                 .filter(i -> i.name().equals(itemName)).findFirst().orElseThrow().id();
         schemaManager.applyMutations(List.of(new CreateItemPropertyDefinitionMutation(
@@ -47,7 +47,7 @@ class SchemaAdminControllerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void getAdminSchema_returnsTheCurrentSchema() {
         String itemName = "SchemaAdminTest-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(itemName, "d", List.of())));
+        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(itemName, "d", List.of(), null, false)));
 
         webTestClient.get().uri("/api/admin/schema")
                 .exchange()
@@ -108,11 +108,36 @@ class SchemaAdminControllerIntegrationTest extends AbstractIntegrationTest {
                 .jsonPath("$.values[0].value").isEqualTo("New");
     }
 
+    // Item-type inheritance: a rejected supertype mutation must surface as a friendly 400 with
+    // the message in the body (via ApiExceptionHandler), not a bare 500 -- exercises that wiring
+    // end to end through the real HTTP endpoint, not just SchemaManager directly.
+    @Test
+    void applyMutations_settingASupertypeThatWouldCreateACycle_returnsBadRequestWithMessage() {
+        String itemName = "SchemaAdminTest-" + UUID.randomUUID();
+        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(itemName, "d", List.of(), null, false)));
+        UUID itemId = schemaManager.getAdminSchema().items().stream()
+                .filter(i -> i.name().equals(itemName)).findFirst().orElseThrow().id();
+
+        String rawJson = """
+                [{"type":"UPDATE_ITEM","id":"%s","name":"%s","description":"d","supertypeId":"%s","abstractType":false}]
+                """.formatted(itemId, itemName, itemId);
+
+        var body = webTestClient.post().uri("/api/admin/schema/mutations")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(rawJson)
+                .exchange()
+                .expectStatus().isBadRequest()
+                .expectBody(java.util.Map.class)
+                .returnResult().getResponseBody();
+
+        assertThat((String) body.get("message")).contains("cycle");
+    }
+
     @Test
     void applyMutations_appliesARawJsonMutationList() {
         String itemName = "SchemaAdminTest-" + UUID.randomUUID();
         String rawJson = """
-                [{"type":"CREATE_ITEM","name":"%s","description":"d","properties":[]}]
+                [{"type":"CREATE_ITEM","name":"%s","description":"d","properties":[],"supertypeId":null,"abstractType":false}]
                 """.formatted(itemName);
 
         webTestClient.post().uri("/api/admin/schema/mutations")

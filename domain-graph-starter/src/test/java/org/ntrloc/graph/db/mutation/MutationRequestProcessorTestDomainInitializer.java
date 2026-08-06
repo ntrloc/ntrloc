@@ -58,19 +58,19 @@ public class MutationRequestProcessorTestDomainInitializer implements DomainInit
                         property("attachment", PropertyType.BINARY, PropertyCardinality.SINGLE),
                         property("count", PropertyType.LONG, PropertyCardinality.SINGLE),
                         property("createdAt", PropertyType.DATETIME, PropertyCardinality.SINGLE),
-                        property("extra", PropertyType.OBJECT, PropertyCardinality.SINGLE)))));
+                        property("extra", PropertyType.OBJECT, PropertyCardinality.SINGLE)), null, false)));
         aTypeId = findItem("MutReqProcA").id();
 
         schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(
-                "MutReqProcB", "MutationRequestProcessor test fixture", List.of())));
+                "MutReqProcB", "MutationRequestProcessor test fixture", List.of(), null, false)));
         bTypeId = findItem("MutReqProcB").id();
 
         schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(
-                "MutReqProcC", "MutationRequestProcessor test fixture", List.of())));
+                "MutReqProcC", "MutationRequestProcessor test fixture", List.of(), null, false)));
         cTypeId = findItem("MutReqProcC").id();
 
         schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(
-                "MutReqProcD", "MutationRequestProcessor test fixture", List.of())));
+                "MutReqProcD", "MutationRequestProcessor test fixture", List.of(), null, false)));
         dTypeId = findItem("MutReqProcD").id();
 
         // link1 and link2: two distinct link types both using the perspective-name pair

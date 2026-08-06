@@ -41,7 +41,7 @@ public class SelfLinkTestDomainInitializer implements DomainInitializer, Applica
     @Override
     public void initSchema(SchemaManager schemaManager, ControlledListManager controlledListManager) {
         schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(
-                "SelfLinkPerson", "SelfLinkIntegrationTest fixture", List.of())));
+                "SelfLinkPerson", "SelfLinkIntegrationTest fixture", List.of(), null, false)));
         personTypeId = findItem("SelfLinkPerson").id();
 
         schemaManager.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(

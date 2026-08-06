@@ -5,15 +5,22 @@ import org.ntrloc.graph.cluster.ClusterService;
 import org.ntrloc.graph.db.partition.authorization.PermissionService;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.ReplaceControlledListMutation;
+import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminSchemaView;
 import org.ntrloc.graph.db.partition.schema.definition.view.calculated.SchemaView;
 import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
 import org.springframework.boot.sql.init.dependency.DependsOnDatabaseInitialization;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayDeque;
+import java.util.Deque;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
 
 @Service
 @DependsOnDatabaseInitialization
@@ -124,5 +131,55 @@ public class SchemaManager {
                 })
                 .toList();
         return new SchemaView(visibleItems, schema.traits());
+    }
+
+    // Root plus every transitive descendant -- the "polymorphic by default" resolution a
+    // supertype-rooted cross-type query needs. Cycles can't exist (SchemaMutationValidation.
+    // requireNoSupertypeCycle guards every supertype assignment), but result.add()'s
+    // already-present check is a cheap defensive guard against ever infinite-looping if that
+    // guard were somehow bypassed, rather than trusting it silently.
+    public Set<UUID> resolveSupertypeInclusiveItemTypeIds(UUID rootItemTypeId) {
+        var items = getAdminSchema().items();
+        Map<UUID, List<UUID>> childrenByParent = items.stream()
+                .filter(item -> item.supertypeId() != null)
+                .collect(Collectors.groupingBy(AdminItemDefinitionView::supertypeId,
+                        Collectors.mapping(AdminItemDefinitionView::id, Collectors.toList())));
+
+        Set<UUID> result = new HashSet<>();
+        Deque<UUID> queue = new ArrayDeque<>(List.of(rootItemTypeId));
+        while (!queue.isEmpty()) {
+            UUID current = queue.poll();
+            if (!result.add(current)) continue;
+            queue.addAll(childrenByParent.getOrDefault(current, List.of()));
+        }
+        return result;
+    }
+
+    // Every item type that implements the given trait, directly or via any ancestor in its
+    // supertype chain. AdminItemDefinitionView.traits() only reflects an item's own direct
+    // assignments (it isn't walked up the chain the way properties/links/state machines are), so
+    // a naive itemTraits.contains(traitId) check would miss a subtype whose supertype implements
+    // the trait -- this walks the chain explicitly instead.
+    public Set<UUID> resolveTraitImplementerItemTypeIds(UUID traitId) {
+        var items = getAdminSchema().items();
+        Map<UUID, AdminItemDefinitionView> itemById = items.stream()
+                .collect(Collectors.toMap(AdminItemDefinitionView::id, item -> item));
+
+        Set<UUID> result = new HashSet<>();
+        for (var item : items) {
+            if (implementsTraitInChain(item, traitId, itemById)) {
+                result.add(item.id());
+            }
+        }
+        return result;
+    }
+
+    private boolean implementsTraitInChain(AdminItemDefinitionView item, UUID traitId, Map<UUID, AdminItemDefinitionView> itemById) {
+        var current = item;
+        while (current != null) {
+            if (current.traits().stream().anyMatch(t -> t.id().equals(traitId))) return true;
+            current = current.supertypeId() == null ? null : itemById.get(current.supertypeId());
+        }
+        return false;
     }
 }

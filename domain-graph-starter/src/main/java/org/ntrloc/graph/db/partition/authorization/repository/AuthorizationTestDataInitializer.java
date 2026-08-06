@@ -47,9 +47,9 @@ public class AuthorizationTestDataInitializer implements ApplicationRunner {
         // besides applyMutations. AclTestUnmarkedDoc deliberately gets no marker assignment at
         // all, to prove superusers bypass the default-deny behavior that blocks everyone else.
         schemaManager.applyMutations(List.of(
-                new CreateItemDefinitionMutation("AclTestPublicDoc", "ACL tracer bullet: group-granted type", List.of()),
-                new CreateItemDefinitionMutation("AclTestConfidentialDoc", "ACL tracer bullet: user-granted type", List.of()),
-                new CreateItemDefinitionMutation("AclTestUnmarkedDoc", "ACL tracer bullet: no marker assigned, superuser-only", List.of())
+                new CreateItemDefinitionMutation("AclTestPublicDoc", "ACL tracer bullet: group-granted type", List.of(), null, false),
+                new CreateItemDefinitionMutation("AclTestConfidentialDoc", "ACL tracer bullet: user-granted type", List.of(), null, false),
+                new CreateItemDefinitionMutation("AclTestUnmarkedDoc", "ACL tracer bullet: no marker assigned, superuser-only", List.of(), null, false)
         ));
 
         Map<String, UUID> itemsByName = schemaManager.getAdminSchema().items().stream()

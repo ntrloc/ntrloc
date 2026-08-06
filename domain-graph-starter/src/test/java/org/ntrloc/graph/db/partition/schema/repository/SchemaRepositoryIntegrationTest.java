@@ -37,6 +37,32 @@ class SchemaRepositoryIntegrationTest extends AbstractIntegrationTest {
         assertThat(reloaded.initProcessId()).isEqualTo("some-process-id");
     }
 
+    @Test
+    void createItem_withASupertypeAndAbstractFlag_persistsBoth() {
+        var supertype = schemaRepo.createItem("Item-" + UUID.randomUUID(), "d");
+
+        var item = schemaRepo.createItem("Item-" + UUID.randomUUID(), "d", supertype.id(), true);
+
+        assertThat(item.supertypeId()).isEqualTo(supertype.id());
+        assertThat(item.abstractType()).isTrue();
+        var reloaded = schemaRepo.getAllItems().stream().filter(i -> i.id().equals(item.id())).findFirst().orElseThrow();
+        assertThat(reloaded.supertypeId()).isEqualTo(supertype.id());
+        assertThat(reloaded.abstractType()).isTrue();
+    }
+
+    @Test
+    void updateItem_withASupertypeAndAbstractFlag_persistsBoth() {
+        var firstSupertype = schemaRepo.createItem("Item-" + UUID.randomUUID(), "d");
+        var secondSupertype = schemaRepo.createItem("Item-" + UUID.randomUUID(), "d");
+        var item = schemaRepo.createItem("Item-" + UUID.randomUUID(), "d", firstSupertype.id(), false);
+
+        schemaRepo.updateItem(item.id(), item.name(), item.description(), secondSupertype.id(), true);
+
+        var reloaded = schemaRepo.getAllItems().stream().filter(i -> i.id().equals(item.id())).findFirst().orElseThrow();
+        assertThat(reloaded.supertypeId()).isEqualTo(secondSupertype.id());
+        assertThat(reloaded.abstractType()).isTrue();
+    }
+
     // --- Traits ---
 
     @Test

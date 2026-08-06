@@ -101,4 +101,63 @@ final class SchemaMutationValidation {
                     "Cannot delete item type '" + name + "' because items of this type still exist");
         }
     }
+
+    // A supertype must be a concrete item type -- unlike a link perspective's polymorphic
+    // target (see requireKnownItemOrTrait), "is-a" identity doesn't make sense against a trait,
+    // which is a horizontal capability with no identity claim of its own.
+    static void requireKnownItem(SchemaRepository repo, UUID id) {
+        boolean known = repo.getAllItems().stream().anyMatch(item -> item.id().equals(id));
+        if (!known) {
+            throw new IllegalArgumentException("Unknown item type: " + id);
+        }
+    }
+
+    // Inheritance is strictly additive -- no property override, ever -- so a name already owned
+    // by any ancestor in the supertype chain can never be re-declared lower down; it would just
+    // create a second, distinct property row silently coexisting with the inherited one, not an
+    // override. Walks up from startSupertypeId (the item's own supertype for a property-add, or
+    // the proposed new supertype for a re-parent) checking each ancestor's own directly-associated
+    // properties (repo.getPropertiesByItem() -- trait-contributed names aren't included here; that
+    // own-vs-trait collision is the separate, already-documented pre-existing gap).
+    static void requireNameNotInSupertypeChain(SchemaRepository repo, UUID startSupertypeId, String name) {
+        Map<UUID, UUID> supertypeById = repo.getAllItems().stream()
+                .filter(item -> item.supertypeId() != null)
+                .collect(Collectors.toMap(SchemaRepository.ItemRow::id, SchemaRepository.ItemRow::supertypeId));
+        var propertiesByItem = repo.getPropertiesByItem();
+        UUID current = startSupertypeId;
+        while (current != null) {
+            UUID ancestorId = current;
+            boolean collision = propertiesByItem.getOrDefault(ancestorId, List.of()).stream()
+                    .anyMatch(p -> p.name().equals(name));
+            if (collision) {
+                String ancestorName = repo.getAllItems().stream()
+                        .filter(i -> i.id().equals(ancestorId))
+                        .findFirst()
+                        .map(SchemaRepository.ItemRow::name)
+                        .orElse(ancestorId.toString());
+                throw new IllegalArgumentException(
+                        "Property '" + name + "' is already defined on supertype '" + ancestorName + "'");
+            }
+            current = supertypeById.get(current);
+        }
+    }
+
+    // Item types form a single-parent tree, not a DAG -- walk proposedSupertypeId's own ancestor
+    // chain and reject if itemId would appear in it (including the trivial one-node cycle where
+    // proposedSupertypeId equals itemId itself, an item can't be its own supertype).
+    static void requireNoSupertypeCycle(SchemaRepository repo, UUID itemId, UUID proposedSupertypeId) {
+        // Collectors.toMap uses Map.merge internally and throws on a null value, so items with no
+        // supertype (the common case) are filtered out rather than mapped to null -- an absent key
+        // and a key mapped to null behave identically for this walk (get() returns null either way).
+        Map<UUID, UUID> supertypeById = repo.getAllItems().stream()
+                .filter(item -> item.supertypeId() != null)
+                .collect(Collectors.toMap(SchemaRepository.ItemRow::id, SchemaRepository.ItemRow::supertypeId));
+        UUID current = proposedSupertypeId;
+        while (current != null) {
+            if (current.equals(itemId)) {
+                throw new IllegalArgumentException("Cannot set supertype: would create a cycle");
+            }
+            current = supertypeById.get(current);
+        }
+    }
 }

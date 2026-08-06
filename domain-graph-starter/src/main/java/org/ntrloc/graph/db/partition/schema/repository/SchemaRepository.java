@@ -22,7 +22,7 @@ import java.util.stream.Collectors;
 @Component
 public class SchemaRepository {
 
-    public record ItemRow(UUID id, String name, String description, String initProcessId) {}
+    public record ItemRow(UUID id, String name, String description, String initProcessId, UUID supertypeId, boolean abstractType) {}
 
     public record TraitRow(UUID id, String name, String description) {}
 
@@ -54,20 +54,32 @@ public class SchemaRepository {
     // --- Items ---
 
     public Set<ItemRow> getAllItems() {
-        return Set.copyOf(jdbcClient.sql("SELECT id, name, description, init_process_id FROM schema_item")
+        return Set.copyOf(jdbcClient.sql("SELECT id, name, description, init_process_id, supertype_id, abstract FROM schema_item")
                 .query((rs, n) -> new ItemRow(
                         rs.getObject("id", UUID.class),
                         rs.getString("name"),
                         rs.getString(PARAM_DESCRIPTION),
-                        rs.getString("init_process_id")))
+                        rs.getString("init_process_id"),
+                        rs.getObject("supertype_id", UUID.class),
+                        rs.getBoolean("abstract")))
                 .list());
     }
 
+    // Convenience overload for the common case (no supertype, not abstract) -- keeps every
+    // existing caller that predates inheritance compiling unchanged.
     public ItemRow createItem(String name, String description) {
-        UUID itemId = jdbcClient.sql("INSERT INTO schema_item (name, description) VALUES (:name, :description) RETURNING id")
+        return createItem(name, description, null, false);
+    }
+
+    public ItemRow createItem(String name, String description, UUID supertypeId, boolean abstractType) {
+        UUID itemId = jdbcClient.sql("""
+                INSERT INTO schema_item (name, description, supertype_id, abstract)
+                VALUES (:name, :description, :supertypeId, :abstractType) RETURNING id
+                """)
                 .param("name", name).param(PARAM_DESCRIPTION, description)
+                .param("supertypeId", supertypeId).param("abstractType", abstractType)
                 .query(UUID.class).single();
-        return new ItemRow(itemId, name, description, null);
+        return new ItemRow(itemId, name, description, null, supertypeId, abstractType);
     }
 
     public void setItemInitProcess(UUID itemId, String initProcessId) {
@@ -75,9 +87,19 @@ public class SchemaRepository {
                 .param("id", itemId).param("initProcessId", initProcessId).update();
     }
 
+    // Convenience overload for the common case (no supertype, not abstract) -- keeps every
+    // existing caller that predates inheritance compiling unchanged.
     public void updateItem(UUID id, String name, String description) {
-        jdbcClient.sql("UPDATE schema_item SET name = :name, description = :description WHERE id = :id")
+        updateItem(id, name, description, null, false);
+    }
+
+    public void updateItem(UUID id, String name, String description, UUID supertypeId, boolean abstractType) {
+        jdbcClient.sql("""
+                UPDATE schema_item SET name = :name, description = :description,
+                    supertype_id = :supertypeId, abstract = :abstractType WHERE id = :id
+                """)
                 .param("id", id).param("name", name).param(PARAM_DESCRIPTION, description)
+                .param("supertypeId", supertypeId).param("abstractType", abstractType)
                 .update();
     }
 

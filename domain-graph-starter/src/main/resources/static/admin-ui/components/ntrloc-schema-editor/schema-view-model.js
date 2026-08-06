@@ -202,6 +202,8 @@ const schemaViewModel = {
             name: p.name, description: p.description,
             propertyType: p.type, cardinality: p.cardinality, usage: p.usage,
           })),
+          supertypeId: item.supertypeId,
+          abstractType: item.abstractType,
         });
         continue;
       }
@@ -211,8 +213,12 @@ const schemaViewModel = {
         continue;
       }
 
-      if (item.name !== item.originalName || (item.description ?? '') !== (item.originalDescription ?? '')) {
-        ops.push({ type: 'UPDATE_ITEM', id: item.id, name: item.name, description: item.description });
+      if (item.name !== item.originalName || (item.description ?? '') !== (item.originalDescription ?? '')
+        || item.supertypeId !== item.originalSupertypeId || item.abstractType !== item.originalAbstractType) {
+        ops.push({
+          type: 'UPDATE_ITEM', id: item.id, name: item.name, description: item.description,
+          supertypeId: item.supertypeId, abstractType: item.abstractType,
+        });
       }
 
       for (const t of item.traitAssignments) {
@@ -373,6 +379,11 @@ const schemaViewModel = {
       const changes = [];
       if (item.name !== item.originalName) changes.push(`Name: "${item.originalName}" → "${item.name}"`);
       if ((item.description ?? '') !== (item.originalDescription ?? '')) changes.push('Description updated');
+      if (item.supertypeId !== item.originalSupertypeId) {
+        const supertypeName = (id) => this.items.find((i) => i.id === id)?.name ?? '(none)';
+        changes.push(`Parent type: "${supertypeName(item.originalSupertypeId)}" → "${supertypeName(item.supertypeId)}"`);
+      }
+      if (item.abstractType !== item.originalAbstractType) changes.push(`Abstract: ${item.abstractType ? 'yes' : 'no'}`);
 
       for (const t of item.traitAssignments) {
         if (t.isNew && !t.isRemoved) changes.push(`+ Trait "${t.name}"`);
