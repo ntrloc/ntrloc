@@ -93,6 +93,14 @@ class NtrlocSchemaEditor extends HTMLElement {
 
   render() {
     const loading = !schemaViewModel._loaded;
+    // <main> is the only scrollable region in this panel (ntrloc-item-detail itself has no
+    // overflow of its own) -- but it's rebuilt from scratch by innerHTML = below, along with
+    // every element inside it, on every single field edit anywhere in the detail view (every
+    // edit calls notifySchemaViewModelChange(), whose only subscriber is this render()). A freshly
+    // created element starts at scrollTop 0, so without this the whole panel visibly jumped back
+    // to the top on every keystroke-commit -- most noticeable scrolled down into Links/States.
+    const previousMain = this.querySelector('main');
+    const scrollTop = previousMain ? previousMain.scrollTop : 0;
 
     this.innerHTML = `
       <div class="body-row">
@@ -123,6 +131,22 @@ class NtrlocSchemaEditor extends HTMLElement {
     `;
 
     this.wireUp();
+
+    const newMain = this.querySelector('main');
+    if (newMain) {
+      newMain.scrollTop = scrollTop;
+      // The freshly-inserted Material web components (md-filled-text-field, md-filled-select,
+      // etc.) haven't finished upgrading their shadow DOM yet at this point, so scrollHeight is
+      // still momentarily smaller than its final size -- the assignment above can get silently
+      // clamped short. A frame later, once those components finish upgrading and the browser's
+      // own layout settles, the same scrollTop no longer lines up with the pre-edit position
+      // (confirmed by measuring: e.g. 354 -> clamped to 337 synchronously -> drifts to 359 a
+      // frame later), which read as a small extra jump on top of the fix. Re-applying once more
+      // after a frame corrects for that settling instead of fighting it synchronously.
+      requestAnimationFrame(() => {
+        if (newMain.isConnected) newMain.scrollTop = scrollTop;
+      });
+    }
   }
 
   wireUp() {

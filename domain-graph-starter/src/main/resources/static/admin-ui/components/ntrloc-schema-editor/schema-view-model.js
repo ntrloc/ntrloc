@@ -129,15 +129,41 @@ const schemaViewModel = {
       });
   },
 
+  // Traits/States start collapsed the moment an item/trait is selected if that section would
+  // otherwise be empty -- nothing worth showing open by default. Called only from
+  // selectItem/selectTrait (a real selection change), never from a render cycle -- every field
+  // edit anywhere in the panel re-renders via notifySchemaViewModelChange, and recomputing here
+  // on every one of those would immediately re-collapse a section the user just expanded to
+  // start adding to it. Properties/Links are left alone: both are core to every item type and
+  // stay open by default regardless of content, matching today's behavior.
+  //
+  // hasTraits mirrors ntrloc-item-detail.js's own display logic exactly, not just "any traits
+  // exist": an item's own traitAssignments (unfiltered -- a pending removal or a brand-new
+  // not-yet-saved assignment both still count, same as trait-chip rendering) for isItem, or
+  // (viewing a trait) whether any item's traitAssignments references this trait's id at all,
+  // matching implementingItems' own "any assignment, even isRemoved" check.
+  _applyDefaultSectionsExpanded(entity, isItem) {
+    const hasTraits = isItem
+      ? entity.traitAssignments.length > 0
+      : this.items.some((item) => item.traitAssignments.some((t) => t.id === entity.id));
+    this.sectionsExpanded = {
+      ...this.sectionsExpanded,
+      traits: hasTraits,
+      states: isItem ? entity.stateMachines.some((m) => !m.isDeleted) : this.sectionsExpanded.states,
+    };
+  },
+
   selectItem(item) {
     this.selectedTrait = null;
     this.selectedItem = item;
+    this._applyDefaultSectionsExpanded(item, true);
     notifySchemaViewModelChange();
   },
 
   selectTrait(trait) {
     this.selectedItem = null;
     this.selectedTrait = trait;
+    this._applyDefaultSectionsExpanded(trait, false);
     notifySchemaViewModelChange();
   },
 

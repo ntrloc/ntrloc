@@ -21,6 +21,11 @@ class PropertyDefinitionViewModel {
     this.controlledListId = args.controlledListId;
     this.isNew = args.isNew;
     this.isDeleted = false;
+    // Which row is "open" for editing -- lives here, not as component-instance state, because
+    // notifySchemaViewModelChange() (see schema-view-model.js) rebuilds ntrloc-item-detail and
+    // everything nested inside it (including a fresh ntrloc-property-table) on every field edit
+    // anywhere in the panel. This object is the one thing that survives that churn.
+    this.isEditing = args.isEditing ?? false;
   }
 
   get isReadonly() {
@@ -69,6 +74,7 @@ class PropertyDefinitionViewModel {
       definedIn: p.definedIn ?? null,
       controlledListId: p.controlledListId ?? null,
       isNew: false,
+      isEditing: false,
     });
   }
 
@@ -85,6 +91,9 @@ class PropertyDefinitionViewModel {
       definedIn: null,
       controlledListId: null,
       isNew: true,
+      // Starts open so the existing "focus the new row's name field" flow keeps working --
+      // ntrloc-property-table.js's add-button handler looks for a rendered .name-input.
+      isEditing: true,
     });
   }
 }
@@ -122,6 +131,12 @@ class ItemLinkPerspectiveViewModel {
     this.originalMaxCardinality = args.maxCardinality;
     this.link = args.link;
     this.isDeleted = false;
+    // Same rationale as PropertyDefinitionViewModel.isEditing -- lives on this long-lived object,
+    // not on ntrloc-links-table's component instance, so it survives the full-tree rebuild that
+    // notifySchemaViewModelChange() triggers on every field edit. ntrloc-links-table.js never
+    // renders an unsaved perspective (new links go through ntrloc-item-detail.js's separate
+    // pendingLinkCard()/PendingLinkViewModel flow instead), so this is always false to start.
+    this.isEditing = false;
   }
 
   get isReadonly() {
