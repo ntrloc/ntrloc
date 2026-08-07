@@ -56,7 +56,7 @@ public class Domain1Initializer implements DomainInitializer, ApplicationRunner 
         }
 
         schemaManager.applyMutations(List.of(
-                new CreateItemDefinitionMutation("DemoWorkflowItem", "Sample state machine for diagram rendering", List.of())));
+                new CreateItemDefinitionMutation("DemoWorkflowItem", "Sample state machine for diagram rendering", List.of(), null, false)));
 
         AdminItemDefinitionView itemType = schemaManager.getAdminSchema().items().stream()
                 .filter(item -> item.name().equals("DemoWorkflowItem"))
