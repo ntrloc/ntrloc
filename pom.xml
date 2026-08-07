@@ -20,6 +20,9 @@
 
         <sonar.organization>NTRLOC</sonar.organization>
         <sonar.projectKey>ntrloc_ntrloc</sonar.projectKey>
+        <!-- Force Sonar to analyze the domain-graph Flyway scripts against Postgres rules, not PL/SQL -->
+        <sonar.plsql.file.suffixes></sonar.plsql.file.suffixes>
+        <sonar.postgres.file.suffixes>sql,pgsql,psql</sonar.postgres.file.suffixes>
 
         <maven-compiler-plugin.version>3.13.0</maven-compiler-plugin.version>
         <maven-source-plugin.version>3.2.1</maven-source-plugin.version>
