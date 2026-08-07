@@ -34,7 +34,7 @@ class SchemaAdminControllerIntegrationTest extends AbstractIntegrationTest {
     private UUID createProperty() {
         String itemName = "SchemaAdminTest-" + UUID.randomUUID();
         String propName = "prop-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(itemName, "d", List.of(), null, false)));
+        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(itemName, "d", List.of(), null, false, null)));
         UUID itemId = schemaManager.getAdminSchema().items().stream()
                 .filter(i -> i.name().equals(itemName)).findFirst().orElseThrow().id();
         schemaManager.applyMutations(List.of(new CreateItemPropertyDefinitionMutation(
@@ -47,7 +47,7 @@ class SchemaAdminControllerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void getAdminSchema_returnsTheCurrentSchema() {
         String itemName = "SchemaAdminTest-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(itemName, "d", List.of(), null, false)));
+        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(itemName, "d", List.of(), null, false, null)));
 
         webTestClient.get().uri("/api/admin/schema")
                 .exchange()
@@ -114,7 +114,7 @@ class SchemaAdminControllerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void applyMutations_settingASupertypeThatWouldCreateACycle_returnsBadRequestWithMessage() {
         String itemName = "SchemaAdminTest-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(itemName, "d", List.of(), null, false)));
+        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(itemName, "d", List.of(), null, false, null)));
         UUID itemId = schemaManager.getAdminSchema().items().stream()
                 .filter(i -> i.name().equals(itemName)).findFirst().orElseThrow().id();
 

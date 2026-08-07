@@ -507,7 +507,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
     @Test
     void deletingAnItemType_dropsItsRegisterTable() {
         schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(
-                "RegisterProjectionTestThrowaway", "created only to be deleted in this test", List.of(), null, false)));
+                "RegisterProjectionTestThrowaway", "created only to be deleted in this test", List.of(), null, false, null)));
         UUID throwawayTypeId = schemaManager.getAdminSchema().items().stream()
                 .filter(item -> item.name().equals("RegisterProjectionTestThrowaway"))
                 .findFirst().orElseThrow().id();

@@ -53,7 +53,7 @@ class ItemMutationApplier {
         if (m.supertypeId() != null) {
             SchemaMutationValidation.requireKnownItem(repo, m.supertypeId());
         }
-        var item = repo.createItem(m.name(), m.description(), m.supertypeId(), m.abstractType());
+        var item = repo.createItem(m.name(), m.description(), m.supertypeId(), m.abstractType(), m.displayLabelPattern());
         Set<String> usedNames = new HashSet<>();
         for (var p : m.properties()) {
             SchemaMutationValidation.requireUniqueName(usedNames, p.name(), "item type '" + m.name() + "'");
@@ -74,7 +74,7 @@ class ItemMutationApplier {
                 SchemaMutationValidation.requireNameNotInSupertypeChain(repo, m.supertypeId(), ownProperty.name());
             }
         }
-        repo.updateItem(m.id(), m.name(), m.description(), m.supertypeId(), m.abstractType());
+        repo.updateItem(m.id(), m.name(), m.description(), m.supertypeId(), m.abstractType(), m.displayLabelPattern());
     }
 
     private void applyDelete(DeleteItemDefinitionMutation m) {

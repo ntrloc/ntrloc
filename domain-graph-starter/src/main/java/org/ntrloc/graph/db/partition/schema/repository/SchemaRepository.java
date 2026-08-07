@@ -22,7 +22,7 @@ import java.util.stream.Collectors;
 @Component
 public class SchemaRepository {
 
-    public record ItemRow(UUID id, String name, String description, String initProcessId, UUID supertypeId, boolean abstractType) {}
+    public record ItemRow(UUID id, String name, String description, String initProcessId, UUID supertypeId, boolean abstractType, String displayLabelPattern) {}
 
     public record TraitRow(UUID id, String name, String description) {}
 
@@ -54,32 +54,34 @@ public class SchemaRepository {
     // --- Items ---
 
     public Set<ItemRow> getAllItems() {
-        return Set.copyOf(jdbcClient.sql("SELECT id, name, description, init_process_id, supertype_id, abstract FROM schema_item")
+        return Set.copyOf(jdbcClient.sql("SELECT id, name, description, init_process_id, supertype_id, abstract, display_label_pattern FROM schema_item")
                 .query((rs, n) -> new ItemRow(
                         rs.getObject("id", UUID.class),
                         rs.getString("name"),
                         rs.getString(PARAM_DESCRIPTION),
                         rs.getString("init_process_id"),
                         rs.getObject("supertype_id", UUID.class),
-                        rs.getBoolean("abstract")))
+                        rs.getBoolean("abstract"),
+                        rs.getString("display_label_pattern")))
                 .list());
     }
 
     // Convenience overload for the common case (no supertype, not abstract) -- keeps every
     // existing caller that predates inheritance compiling unchanged.
     public ItemRow createItem(String name, String description) {
-        return createItem(name, description, null, false);
+        return createItem(name, description, null, false, null);
     }
 
-    public ItemRow createItem(String name, String description, UUID supertypeId, boolean abstractType) {
+    public ItemRow createItem(String name, String description, UUID supertypeId, boolean abstractType, String displayLabelPattern) {
         UUID itemId = jdbcClient.sql("""
-                INSERT INTO schema_item (name, description, supertype_id, abstract)
-                VALUES (:name, :description, :supertypeId, :abstractType) RETURNING id
+                INSERT INTO schema_item (name, description, supertype_id, abstract, display_label_pattern)
+                VALUES (:name, :description, :supertypeId, :abstractType, :displayLabelPattern) RETURNING id
                 """)
                 .param("name", name).param(PARAM_DESCRIPTION, description)
                 .param("supertypeId", supertypeId).param("abstractType", abstractType)
+                .param("displayLabelPattern", displayLabelPattern)
                 .query(UUID.class).single();
-        return new ItemRow(itemId, name, description, null, supertypeId, abstractType);
+        return new ItemRow(itemId, name, description, null, supertypeId, abstractType, displayLabelPattern);
     }
 
     public void setItemInitProcess(UUID itemId, String initProcessId) {
@@ -90,16 +92,17 @@ public class SchemaRepository {
     // Convenience overload for the common case (no supertype, not abstract) -- keeps every
     // existing caller that predates inheritance compiling unchanged.
     public void updateItem(UUID id, String name, String description) {
-        updateItem(id, name, description, null, false);
+        updateItem(id, name, description, null, false, null);
     }
 
-    public void updateItem(UUID id, String name, String description, UUID supertypeId, boolean abstractType) {
+    public void updateItem(UUID id, String name, String description, UUID supertypeId, boolean abstractType, String displayLabelPattern) {
         jdbcClient.sql("""
                 UPDATE schema_item SET name = :name, description = :description,
-                    supertype_id = :supertypeId, abstract = :abstractType WHERE id = :id
+                    supertype_id = :supertypeId, abstract = :abstractType, display_label_pattern = :displayLabelPattern WHERE id = :id
                 """)
                 .param("id", id).param("name", name).param(PARAM_DESCRIPTION, description)
                 .param("supertypeId", supertypeId).param("abstractType", abstractType)
+                .param("displayLabelPattern", displayLabelPattern)
                 .update();
     }
 

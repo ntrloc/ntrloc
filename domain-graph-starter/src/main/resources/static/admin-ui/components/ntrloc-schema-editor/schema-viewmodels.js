@@ -396,6 +396,8 @@ class ItemDefinitionViewModel {
     this.originalSupertypeId = args.supertypeId ?? null;
     this.abstractType = args.abstractType ?? false;
     this.originalAbstractType = args.abstractType ?? false;
+    this.displayLabelPattern = args.displayLabelPattern ?? null;
+    this.originalDisplayLabelPattern = args.displayLabelPattern ?? null;
     this.isNew = args.isNew;
     this.isDeleted = false;
   }
@@ -407,6 +409,7 @@ class ItemDefinitionViewModel {
       || (this.description ?? '') !== (this.originalDescription ?? '')
       || this.supertypeId !== this.originalSupertypeId
       || this.abstractType !== this.originalAbstractType
+      || (this.displayLabelPattern ?? '') !== (this.originalDisplayLabelPattern ?? '')
       || this.properties.some((p) => p.isDirty)
       || this.traitAssignments.some((t) => t.isDirty)
       || Object.values(this.links).some((perspectives) => perspectives.some((p) => p.isDirty))
@@ -460,6 +463,7 @@ class ItemDefinitionViewModel {
       stateMachines: (item.stateMachines ?? []).map((m) => StateMachineViewModel.fromAdmin(m)),
       supertypeId: item.supertypeId ?? null,
       abstractType: item.abstractType ?? false,
+      displayLabelPattern: item.displayLabelPattern ?? null,
       isNew: false,
     });
   }
@@ -475,6 +479,7 @@ class ItemDefinitionViewModel {
       stateMachines: [],
       supertypeId: null,
       abstractType: false,
+      displayLabelPattern: null,
       isNew: true,
     });
   }

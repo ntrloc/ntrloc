@@ -63,7 +63,7 @@ public class CoordinatorTestDomainInitializer implements DomainInitializer, Appl
                         property("name", PropertyType.STRING, PropertyCardinality.SINGLE),
                         property("color", PropertyType.STRING, PropertyCardinality.SINGLE),
                         property("tags", PropertyType.STRING, PropertyCardinality.SET),
-                        property("releaseDate", PropertyType.DATE, PropertyCardinality.SINGLE)), null, false)));
+                        property("releaseDate", PropertyType.DATE, PropertyCardinality.SINGLE)), null, false, null)));
 
         AdminItemDefinitionView product = findItem(schemaManager, "CoordinatorTestProduct");
         productTypeId = product.id();
@@ -72,7 +72,7 @@ public class CoordinatorTestDomainInitializer implements DomainInitializer, Appl
 
         schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(
                 "CoordinatorTestContributor", "Coordinator integration test fixture",
-                List.of(property("name", PropertyType.STRING, PropertyCardinality.SINGLE)), null, false)));
+                List.of(property("name", PropertyType.STRING, PropertyCardinality.SINGLE)), null, false, null)));
 
         AdminItemDefinitionView contributor = findItem(schemaManager, "CoordinatorTestContributor");
         contributorTypeId = contributor.id();

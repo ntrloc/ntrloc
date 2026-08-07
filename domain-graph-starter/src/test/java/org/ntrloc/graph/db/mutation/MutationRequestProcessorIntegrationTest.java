@@ -294,7 +294,7 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
     @Test
     void itemCreateMutation_forAnAbstractItemType_reportsAValidationError() {
         String typeName = "MutReqProcAbstract-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(typeName, "d", List.of(), null, true)));
+        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(typeName, "d", List.of(), null, true, null)));
 
         assertThatThrownBy(() -> processor.process(new MutationRequest(
                 List.of(new ItemCreateMutation(null, typeName, Map.of())), List.of()), SOME_PRINCIPAL))
@@ -307,12 +307,12 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
     void itemCreateMutation_forASubtype_canSetAnInheritedPropertyFromItsSupertype() {
         String supertypeName = "MutReqProcSuper-" + UUID.randomUUID();
         schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(supertypeName, "d", List.of(
-                new CreatePropertyDefinitionMutation("inheritedProp", "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL)), null, false)));
+                new CreatePropertyDefinitionMutation("inheritedProp", "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL)), null, false, null)));
         UUID supertypeId = schemaManager.getAdminSchema().items().stream()
                 .filter(i -> i.name().equals(supertypeName)).findFirst().orElseThrow().id();
 
         String subtypeName = "MutReqProcSub-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(subtypeName, "d", List.of(), supertypeId, false)));
+        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(subtypeName, "d", List.of(), supertypeId, false, null)));
         UUID subtypeId = schemaManager.getAdminSchema().items().stream()
                 .filter(i -> i.name().equals(subtypeName)).findFirst().orElseThrow().id();
 
@@ -341,7 +341,7 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
     @Test
     void deleteItemDefinitionMutation_forATypeWithAnExistingInstance_throwsWithItsName() {
         String typeName = "MutReqProcInUse-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(typeName, "d", List.of(), null, false)));
+        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(typeName, "d", List.of(), null, false, null)));
         UUID typeId = schemaManager.getAdminSchema().items().stream()
                 .filter(i -> i.name().equals(typeName)).findFirst().orElseThrow().id();
         createItem(typeName);
@@ -360,15 +360,15 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
     @Test
     void linkCreateMutation_perspectiveDeclaredOnASupertype_isUsableByASubtypeInstance() {
         String vehicleName = "MutReqProcVehicle-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(vehicleName, "d", List.of(), null, false)));
+        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(vehicleName, "d", List.of(), null, false, null)));
         UUID vehicleId = schemaManager.getAdminSchema().items().stream()
                 .filter(i -> i.name().equals(vehicleName)).findFirst().orElseThrow().id();
 
         String carName = "MutReqProcCar-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(), vehicleId, false)));
+        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(), vehicleId, false, null)));
 
         String ownerName = "MutReqProcOwner-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(ownerName, "d", List.of(), null, false)));
+        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(ownerName, "d", List.of(), null, false, null)));
         UUID ownerTypeId = schemaManager.getAdminSchema().items().stream()
                 .filter(i -> i.name().equals(ownerName)).findFirst().orElseThrow().id();
 
@@ -392,12 +392,12 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
     @Test
     void markingAnItemTypeAbstract_doesNotAffectExistingInstances_onlyBlocksNewOnes() {
         String typeName = "MutReqProcRetro-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(typeName, "d", List.of(), null, false)));
+        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(typeName, "d", List.of(), null, false, null)));
         UUID typeId = schemaManager.getAdminSchema().items().stream()
                 .filter(i -> i.name().equals(typeName)).findFirst().orElseThrow().id();
         UUID existingItemId = createItem(typeName);
 
-        schemaManager.applyMutations(List.of(new UpdateItemDefinitionMutation(typeId, typeName, "d", null, true)));
+        schemaManager.applyMutations(List.of(new UpdateItemDefinitionMutation(typeId, typeName, "d", null, true, null)));
 
         // Existing instance is untouched -- still readable, not retroactively invalidated.
         assertThat(registerPartitionManager.projectOne(typeId, existingItemId, "http://binary")).isPresent();

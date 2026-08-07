@@ -58,19 +58,19 @@ public class MutationRequestProcessorTestDomainInitializer implements DomainInit
                         property("attachment", PropertyType.BINARY, PropertyCardinality.SINGLE),
                         property("count", PropertyType.LONG, PropertyCardinality.SINGLE),
                         property("createdAt", PropertyType.DATETIME, PropertyCardinality.SINGLE),
-                        property("extra", PropertyType.OBJECT, PropertyCardinality.SINGLE)), null, false)));
+                        property("extra", PropertyType.OBJECT, PropertyCardinality.SINGLE)), null, false, null)));
         aTypeId = findItem("MutReqProcA").id();
 
         schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(
-                "MutReqProcB", "MutationRequestProcessor test fixture", List.of(), null, false)));
+                "MutReqProcB", "MutationRequestProcessor test fixture", List.of(), null, false, null)));
         bTypeId = findItem("MutReqProcB").id();
 
         schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(
-                "MutReqProcC", "MutationRequestProcessor test fixture", List.of(), null, false)));
+                "MutReqProcC", "MutationRequestProcessor test fixture", List.of(), null, false, null)));
         cTypeId = findItem("MutReqProcC").id();
 
         schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(
-                "MutReqProcD", "MutationRequestProcessor test fixture", List.of(), null, false)));
+                "MutReqProcD", "MutationRequestProcessor test fixture", List.of(), null, false, null)));
         dTypeId = findItem("MutReqProcD").id();
 
         // link1 and link2: two distinct link types both using the perspective-name pair

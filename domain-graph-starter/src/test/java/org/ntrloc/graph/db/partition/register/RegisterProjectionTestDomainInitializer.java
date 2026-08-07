@@ -67,7 +67,7 @@ public class RegisterProjectionTestDomainInitializer implements DomainInitialize
                         // own class comment on why it's a singleton, not per-class). No controlled
                         // list, so it's also not facetable -- doesn't show up in the "every
                         // facetable property" auto-populate test.
-                        property("testMarker", PropertyType.STRING, PropertyCardinality.SINGLE)), null, false)));
+                        property("testMarker", PropertyType.STRING, PropertyCardinality.SINGLE)), null, false, null)));
 
         AdminItemDefinitionView book = findItem("RegisterProjectionTestBook");
         bookTypeId = book.id();
@@ -97,7 +97,7 @@ public class RegisterProjectionTestDomainInitializer implements DomainInitialize
 
         schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(
                 "RegisterProjectionTestAuthor", "RegisterPartitionManager projection/facet test fixture",
-                List.of(property("name", PropertyType.STRING, PropertyCardinality.SINGLE)), null, false)));
+                List.of(property("name", PropertyType.STRING, PropertyCardinality.SINGLE)), null, false, null)));
         authorTypeId = findItem("RegisterProjectionTestAuthor").id();
 
         schemaManager.applyMutations(List.of(new CreateLinkDefinitionMutation(

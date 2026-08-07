@@ -71,7 +71,7 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
     private UUID createUnmarkedItemType() {
         String name = "AccessAdminControllerTestDoc-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(name, "test fixture", List.of(), null, false)));
+        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(name, "test fixture", List.of(), null, false, null)));
         UUID itemTypeId = schemaManager.getAdminSchema().items().stream()
                 .filter(item -> item.name().equals(name))
                 .findFirst()

@@ -403,6 +403,12 @@ injectStyles('ntrloc-search-styles', `
     font-weight: 600;
     border-bottom: 1px solid var(--border);
   }
+  .nested-item-type {
+    font-weight: 400;
+    color: var(--muted);
+    font-size: 11px;
+    margin-left: 6px;
+  }
   .nested-item-id {
     font-weight: 400;
     color: var(--muted);
@@ -878,7 +884,7 @@ class NtrlocSearch extends HTMLElement {
     const pane = this.pane(id);
     const item = pane.results.find(r => r.itemId === itemId);
     if (!item) return;
-    const title = item.properties.title || item.properties.name || item.itemType;
+    const title = item.displayLabel || item.itemType;
     const confirmed = await openConfirmDialog({
       title: 'Delete Item',
       message: `Delete "${title}"? This cannot be undone.`,
@@ -1258,7 +1264,7 @@ class NtrlocSearch extends HTMLElement {
   renderItemCard(pane, item) {
     const edit = pane.editingItems[item.itemId];
     const isEditing = !!edit;
-    const title = item.properties.title || item.properties.name || item.itemType;
+    const title = item.displayLabel || item.itemType;
     const shortId = item.itemId.substring(0, 8) + '...';
     const canEditProps = item.permissions?.edit?.length > 0;
     const canDelete = !!item.permissions?.delete;
@@ -1388,12 +1394,15 @@ class NtrlocSearch extends HTMLElement {
 
   // Item section alone -- no unlink button here anymore (see renderLinkedItemCard's own comment
   // on why it moved out to the card's action rail instead).
-  renderNestedItemSection(linkedItem, shortId) {
+  renderNestedItemSection(linkedItem, shortId, title) {
     const propEntries = Object.entries(linkedItem.properties || {}).sort((a, b) => a[0].localeCompare(b[0]));
     return `
       <div class="nested-item-section">
         <div class="nested-item-header">
-          <span>${escapeHtml(linkedItem.itemType)}</span>
+          <div>
+            <span>${escapeHtml(title)}</span>
+            <span class="nested-item-type">${escapeHtml(linkedItem.itemType)}</span>
+          </div>
           <span class="nested-item-id">${shortId}</span>
         </div>
         <div class="prop-grid">
@@ -1411,13 +1420,13 @@ class NtrlocSearch extends HTMLElement {
   renderLinkedItemCard(linkEntry, propertyDefs) {
     const linkedItem = linkEntry.item;
     const shortId = linkedItem.itemId.substring(0, 8) + '...';
-    const title = linkedItem.properties.title || linkedItem.properties.name || linkedItem.itemType;
+    const title = linkedItem.displayLabel || linkedItem.itemType;
     // Only properties the link actually has a value for -- propertyDefs is every property the
     // link TYPE could carry, not every property THIS link instance has actually set.
     const linkPropEntries = (propertyDefs || [])
       .filter(p => linkEntry.properties && linkEntry.properties[p.name] !== undefined && linkEntry.properties[p.name] !== null)
       .map(p => [p.name, linkEntry.properties[p.name]]);
-    const itemSection = this.renderNestedItemSection(linkedItem, shortId);
+    const itemSection = this.renderNestedItemSection(linkedItem, shortId, title);
 
     const body = propertyDefs.length === 0 ? itemSection : `
       <div class="nested-item-sections">

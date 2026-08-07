@@ -14,11 +14,18 @@ import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyDefinitionView;
+import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminSchemaView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminStateMachineView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminStateView;
 import org.ntrloc.graph.db.partition.schema.event.SchemaChangeEvent;
 import org.ntrloc.graph.db.partition.schema.event.SchemaChangeListener;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.event.EventListener;
+import org.springframework.context.expression.MapAccessor;
+import org.springframework.expression.Expression;
+import org.springframework.expression.spel.standard.SpelExpressionParser;
+import org.springframework.expression.spel.support.SimpleEvaluationContext;
 import org.ntrloc.graph.db.projection.ProjectedItem;
 import org.ntrloc.graph.db.projection.ProjectedItemState;
 import org.ntrloc.graph.db.projection.ProjectedLink;
@@ -42,6 +49,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -49,10 +57,27 @@ import java.util.stream.Collectors;
 @Component
 public class RegisterPartitionManager implements SchemaChangeListener {
 
+    private static final Logger LOG = LoggerFactory.getLogger(RegisterPartitionManager.class);
+
     private final JdbcClient jdbcClient;
     private final ObjectMapper objectMapper;
     private final BinaryPartitionManager binaryPartitionManager;
     private final SchemaManager schemaManager;
+
+    // Keyed by pattern *string*, not item type -- a pure function cache (the same SpEL text always
+    // compiles to the same Expression), so it needs no invalidation hook when a pattern is edited;
+    // an edited pattern is simply a different string, a new cache entry. Unbounded is fine: the
+    // realistic number of distinct patterns ever authored across a schema's lifetime is small.
+    private final Map<String, Expression> compiledPatternCache = new ConcurrentHashMap<>();
+    private final SpelExpressionParser spelParser = new SpelExpressionParser();
+
+    // Memoizes resolveEffectiveDisplayLabelPatterns() by reference-identity of the last-seen
+    // AdminSchemaView -- schemaManager.getAdminSchema() only ever returns a new instance when
+    // rebuildCache() runs (on any schema mutation), so a normal run of project()/projectOne()/
+    // projectAcrossTypes() (which each call assembleProjectedItems, and thus this resolution,
+    // once) is a cache hit rather than an O(item types) supertype-chain walk every time.
+    private volatile AdminSchemaView lastSeenSchemaForDisplayLabels;
+    private volatile Map<String, String> lastResolvedDisplayLabelPatterns = Map.of();
 
     public RegisterPartitionManager(JdbcClient jdbcClient, ObjectMapper objectMapper,
                                     BinaryPartitionManager binaryPartitionManager, SchemaManager schemaManager) {
@@ -952,6 +977,68 @@ public class RegisterPartitionManager implements SchemaChangeListener {
 
     private record BinaryPropertyRow(UUID registerItemId, String propertyName, UUID binaryId) {}
 
+    // Every item type's EFFECTIVE display-label pattern (own, or inherited from the nearest
+    // supertype that defines one), keyed by type name -- name, not id, because RawItem/LinkRow
+    // only carry the type name per row (schema_item.name is NOT NULL UNIQUE, so this is
+    // unambiguous). Resolved for the whole schema, not just the branch(es) a given call is
+    // querying: a linked item reachable via linksByItem below can be of a type completely
+    // unrelated to the outer query, so a branch-scoped resolution (like the property-name merge
+    // projectAcrossTypes already does) wouldn't cover it. Mirrors SchemaManager's own
+    // implementsTraitInChain walk-up-supertype-chain idiom.
+    private Map<String, String> resolveEffectiveDisplayLabelPatterns() {
+        AdminSchemaView schema = schemaManager.getAdminSchema();
+        if (schema == lastSeenSchemaForDisplayLabels) {
+            return lastResolvedDisplayLabelPatterns;
+        }
+        Map<UUID, AdminItemDefinitionView> itemById = schema.items().stream()
+                .collect(Collectors.toMap(AdminItemDefinitionView::id, i -> i));
+        Map<String, String> resolved = new HashMap<>();
+        for (AdminItemDefinitionView item : schema.items()) {
+            AdminItemDefinitionView current = item;
+            while (current != null && current.displayLabelPattern() == null) {
+                current = current.supertypeId() == null ? null : itemById.get(current.supertypeId());
+            }
+            if (current != null) {
+                resolved.put(item.name(), current.displayLabelPattern());
+            }
+        }
+        lastResolvedDisplayLabelPatterns = resolved;
+        lastSeenSchemaForDisplayLabels = schema;
+        return resolved;
+    }
+
+    private static final Pattern DISPLAY_LABEL_SEPARATOR_TRIM = Pattern.compile("^[\\s,\\-/|]+|[\\s,\\-/|]+$");
+    private static final Pattern DISPLAY_LABEL_WHITESPACE_RUN = Pattern.compile("\\s+");
+
+    // pattern is the EFFECTIVE (already supertype-resolved) pattern for this item's type, or null
+    // if none exists anywhere in its chain. A broken pattern (bad SpEL syntax, a property that
+    // isn't actually a Map key so evaluation throws for some other reason) must never break
+    // projection -- caught broadly and logged, not propagated. Evaluated with
+    // SimpleEvaluationContext (not the default StandardEvaluationContext): no method calls, no
+    // `new`, no type/bean references -- MapAccessor is registered so a pattern can reference
+    // property names directly (`lastName`) rather than needing `['lastName']` map-index syntax.
+    private String computeDisplayLabel(UUID itemId, Map<String, Object> props, String pattern) {
+        if (pattern != null && !pattern.isBlank()) {
+            try {
+                Expression expression = compiledPatternCache.computeIfAbsent(pattern, spelParser::parseExpression);
+                var context = SimpleEvaluationContext.forPropertyAccessors(new MapAccessor()).build();
+                Object result = expression.getValue(context, props);
+                String cleaned = DISPLAY_LABEL_WHITESPACE_RUN.matcher(
+                        DISPLAY_LABEL_SEPARATOR_TRIM.matcher(String.valueOf(result == null ? "" : result)).replaceAll(""))
+                        .replaceAll(" ").trim();
+                if (!cleaned.isEmpty()) {
+                    return cleaned;
+                }
+            } catch (Exception e) {
+                LOG.warn("Display label pattern \"{}\" failed to evaluate for item {}: {}", pattern, itemId, e.getMessage());
+            }
+        }
+        // No pattern anywhere in the chain, evaluation failed, or the cleaned result was empty --
+        // a deliberate "fail loud" signal (the item's own id) that this type has no usable display
+        // label configured, rather than silently guessing from a title/name-ish property.
+        return itemId.toString();
+    }
+
     // ownPropertyNames/stateMachines are pre-resolved by the caller rather than looked up here from
     // a single itemTypeId -- the single-table project()/projectOne() resolve them from their one
     // known type; projectAcrossTypes resolves a merged view across every branch instead (property
@@ -961,6 +1048,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
     private List<ProjectedItem> assembleProjectedItems(List<RawItem> rawItems, Map<UUID, String> ownPropertyNames,
                                                          List<AdminStateMachineView> stateMachines, String binaryBaseUrl) {
         List<UUID> rawItemIds = rawItems.stream().map(RawItem::registerItemId).toList();
+        Map<String, String> displayLabelPatterns = resolveEffectiveDisplayLabelPatterns();
 
         List<LinkRow> linkRows = jdbcClient.sql("""
                 SELECT
@@ -1013,7 +1101,9 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                         LinkRow::myRegisterItemId,
                         Collectors.groupingBy(
                                 LinkRow::perspectiveName,
-                                Collectors.mapping(row -> new ProjectedLink(
+                                Collectors.mapping(row -> {
+                                    Map<String, Object> linkedProps = linkedItemProperties.getOrDefault(row.linkedRegisterItemId(), Map.of());
+                                    return new ProjectedLink(
                                         row.linkId(),
                                         linkProperties.getOrDefault(row.registerLinkId(), Map.of()),
                                         // states is left null for a linked item -- a projection's link expansion has
@@ -1023,11 +1113,14 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                                         new ProjectedItem(
                                                 row.linkedItemId(),
                                                 row.linkedItemType(),
-                                                linkedItemProperties.getOrDefault(row.linkedRegisterItemId(), Map.of()),
+                                                linkedProps,
                                                 Map.of(),
                                                 null,
-                                                null)),
-                                        Collectors.toList()))));
+                                                null,
+                                                computeDisplayLabel(row.linkedItemId(), linkedProps, displayLabelPatterns.get(row.linkedItemType())))
+                                    );
+                                },
+                                Collectors.toList()))));
 
         List<BinaryPropertyRow> binaryRows = jdbcClient.sql("""
                 SELECT rbp.register_item_id, sp.name AS property_name, rbp.binary_id
@@ -1065,7 +1158,8 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                             props,
                             linksByItem.getOrDefault(raw.registerItemId(), Map.of()),
                             buildProjectedItemStates(raw.states(), stateMachines),
-                            null);
+                            null,
+                            computeDisplayLabel(raw.itemId(), props, displayLabelPatterns.get(raw.itemType())));
                 })
                 .toList();
     }

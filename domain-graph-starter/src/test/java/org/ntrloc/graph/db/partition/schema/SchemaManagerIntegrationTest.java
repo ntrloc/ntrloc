@@ -64,7 +64,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     private ControlledListManager controlledListManager;
 
     private UUID createItem(String name) {
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(name, "d", List.of(), null, false)));
+        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(name, "d", List.of(), null, false, null)));
         return findItem(name).id();
     }
 
@@ -189,7 +189,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         UUID itemId = createItem("Item-" + UUID.randomUUID());
         String newName = "Renamed-" + UUID.randomUUID();
 
-        schemaManager.applyMutations(List.of(new UpdateItemDefinitionMutation(itemId, newName, "updated description", null, false)));
+        schemaManager.applyMutations(List.of(new UpdateItemDefinitionMutation(itemId, newName, "updated description", null, false, null)));
 
         var updated = findItem(newName);
         assertThat(updated.id()).isEqualTo(itemId);
@@ -451,7 +451,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
 
         schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(
                 new CreatePropertyDefinitionMutation("doors", "d", PropertyType.INT, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL)),
-                vehicleId, false)));
+                vehicleId, false, null)));
 
         var car = findItem(carName);
         assertThat(car.supertypeId()).isEqualTo(vehicleId);
@@ -480,13 +480,13 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         String carName = "Item-" + UUID.randomUUID();
         schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(
                 new CreatePropertyDefinitionMutation("doors", "d", PropertyType.INT, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL)),
-                vehicleId, false)));
+                vehicleId, false, null)));
         UUID carId = findItem(carName).id();
 
         String sportsCarName = "Item-" + UUID.randomUUID();
         schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(sportsCarName, "d", List.of(
                 new CreatePropertyDefinitionMutation("topSpeed", "d", PropertyType.INT, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL)),
-                carId, false)));
+                carId, false, null)));
 
         var sportsCar = findItem(sportsCarName);
         assertThat(sportsCar.properties()).extracting(p -> p.name()).contains("wheels", "doors", "topSpeed");
@@ -501,7 +501,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(
                 "Item-" + UUID.randomUUID(), "d", List.of(
                         new CreatePropertyDefinitionMutation("wheels", "d", PropertyType.INT, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL)),
-                vehicleId, false))))
+                vehicleId, false, null))))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("wheels")
                 .hasMessageContaining("already defined");
@@ -513,13 +513,13 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         schemaManager.applyMutations(List.of(new CreateItemPropertyDefinitionMutation(
                 vehicleId, "wheels", "d", PropertyType.INT, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL)));
         String carName = "Item-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(), vehicleId, false)));
+        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(), vehicleId, false, null)));
         UUID carId = findItem(carName).id();
 
         assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(
                 "Item-" + UUID.randomUUID(), "d", List.of(
                         new CreatePropertyDefinitionMutation("wheels", "d", PropertyType.INT, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL)),
-                carId, false))))
+                carId, false, null))))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("wheels");
     }
@@ -530,7 +530,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         schemaManager.applyMutations(List.of(new CreateItemPropertyDefinitionMutation(
                 vehicleId, "wheels", "d", PropertyType.INT, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL)));
         String carName = "Item-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(), vehicleId, false)));
+        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(), vehicleId, false, null)));
         UUID carId = findItem(carName).id();
 
         assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new CreateItemPropertyDefinitionMutation(
@@ -548,11 +548,11 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         String boatName = "Item-" + UUID.randomUUID();
         schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(boatName, "d", List.of(
                 new CreatePropertyDefinitionMutation("wheels", "d", PropertyType.INT, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL)),
-                null, false)));
+                null, false, null)));
         UUID boatId = findItem(boatName).id();
 
         assertThatThrownBy(() -> schemaManager.applyMutations(List.of(
-                new UpdateItemDefinitionMutation(boatId, boatName, "d", vehicleId, false))))
+                new UpdateItemDefinitionMutation(boatId, boatName, "d", vehicleId, false, null))))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("wheels")
                 .hasMessageContaining("already defined");
@@ -571,7 +571,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         String carName = "Item-" + UUID.randomUUID();
         schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(
                 new CreatePropertyDefinitionMutation("doors", "d", PropertyType.INT, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL)),
-                vehicleId, false)));
+                vehicleId, false, null)));
         UUID carId = findItem(carName).id();
         schemaManager.applyMutations(List.of(new ImplementTraitMutation(carId, traitId)));
 
@@ -588,7 +588,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
                 new CreatePerspectiveDefinitionMutation(ownerId, "owns", "d", 0, null)))));
 
         String carName = "Item-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(), vehicleId, false)));
+        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(), vehicleId, false, null)));
 
         var car = findItem(carName);
         assertThat(car.links()).containsKey("ownedBy");
@@ -602,7 +602,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         schemaManager.applyMutations(List.of(new CreateStateMachineMutation(vehicleId, "lifecycle", "d")));
 
         String carName = "Item-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(), vehicleId, false)));
+        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(), vehicleId, false, null)));
 
         var car = findItem(carName);
         assertThat(car.stateMachines()).extracting(m -> m.name()).contains("lifecycle");
@@ -611,7 +611,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void createItemDefinitionMutation_withAnUnknownSupertype_throws() {
         assertThatThrownBy(() -> schemaManager.applyMutations(List.of(
-                new CreateItemDefinitionMutation("Item-" + UUID.randomUUID(), "d", List.of(), UUID.randomUUID(), false))))
+                new CreateItemDefinitionMutation("Item-" + UUID.randomUUID(), "d", List.of(), UUID.randomUUID(), false, null))))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Unknown item type");
     }
@@ -624,7 +624,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         UUID traitId = findTrait(traitName).id();
 
         assertThatThrownBy(() -> schemaManager.applyMutations(List.of(
-                new UpdateItemDefinitionMutation(itemId, "Item-" + UUID.randomUUID(), "d", traitId, false))))
+                new UpdateItemDefinitionMutation(itemId, "Item-" + UUID.randomUUID(), "d", traitId, false, null))))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Unknown item type");
     }
@@ -634,7 +634,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         UUID itemId = createItem("Item-" + UUID.randomUUID());
 
         assertThatThrownBy(() -> schemaManager.applyMutations(List.of(
-                new UpdateItemDefinitionMutation(itemId, "Item-" + UUID.randomUUID(), "d", itemId, false))))
+                new UpdateItemDefinitionMutation(itemId, "Item-" + UUID.randomUUID(), "d", itemId, false, null))))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("cycle");
     }
@@ -644,16 +644,16 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         String aName = "Item-" + UUID.randomUUID();
         UUID aId = createItem(aName);
         String bName = "Item-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(bName, "d", List.of(), aId, false)));
+        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(bName, "d", List.of(), aId, false, null)));
         UUID bId = findItem(bName).id();
         String cName = "Item-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(cName, "d", List.of(), bId, false)));
+        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(cName, "d", List.of(), bId, false, null)));
         UUID cId = findItem(cName).id();
 
         // Chain: C's supertype is B, B's supertype is A. Setting A's supertype to C would close
         // the loop (A -> C -> B -> A).
         assertThatThrownBy(() -> schemaManager.applyMutations(List.of(
-                new UpdateItemDefinitionMutation(aId, aName, "d", cId, false))))
+                new UpdateItemDefinitionMutation(aId, aName, "d", cId, false, null))))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("cycle");
     }
@@ -663,13 +663,13 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         UUID firstSupertypeId = createItem("Item-" + UUID.randomUUID());
         UUID secondSupertypeId = createItem("Item-" + UUID.randomUUID());
         String itemName = "Item-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(itemName, "d", List.of(), firstSupertypeId, false)));
+        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(itemName, "d", List.of(), firstSupertypeId, false, null)));
         UUID itemId = findItem(itemName).id();
         assertThat(findItem(itemName).supertypeId()).isEqualTo(firstSupertypeId);
 
         // Unlike deletion (requireItemTypeNotInUse), re-parenting has no "in use" guard at all --
         // this is intentionally live/forward-only, matching how trait reassignment already works.
-        schemaManager.applyMutations(List.of(new UpdateItemDefinitionMutation(itemId, itemName, "d", secondSupertypeId, false)));
+        schemaManager.applyMutations(List.of(new UpdateItemDefinitionMutation(itemId, itemName, "d", secondSupertypeId, false, null)));
 
         assertThat(findItem(itemName).supertypeId()).isEqualTo(secondSupertypeId);
     }
@@ -677,14 +677,14 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void abstractFlag_roundTripsThroughCreateAndUpdate_andCanBeToggledFreely() {
         String itemName = "Item-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(itemName, "d", List.of(), null, true)));
+        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(itemName, "d", List.of(), null, true, null)));
         UUID itemId = findItem(itemName).id();
         assertThat(findItem(itemName).abstractType()).isTrue();
 
-        schemaManager.applyMutations(List.of(new UpdateItemDefinitionMutation(itemId, itemName, "d", null, false)));
+        schemaManager.applyMutations(List.of(new UpdateItemDefinitionMutation(itemId, itemName, "d", null, false, null)));
         assertThat(findItem(itemName).abstractType()).isFalse();
 
-        schemaManager.applyMutations(List.of(new UpdateItemDefinitionMutation(itemId, itemName, "d", null, true)));
+        schemaManager.applyMutations(List.of(new UpdateItemDefinitionMutation(itemId, itemName, "d", null, true, null)));
         assertThat(findItem(itemName).abstractType()).isTrue();
     }
 

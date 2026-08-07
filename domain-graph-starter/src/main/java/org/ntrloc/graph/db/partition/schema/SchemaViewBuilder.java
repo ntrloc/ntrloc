@@ -119,7 +119,7 @@ class SchemaViewBuilder {
 
             return new AdminItemDefinitionView(item.id(), item.name(), item.description(), traitRefs, allProps, allLinks,
                     sortableFieldsFor(allProps), item.initProcessId(), stateMachineViews.isEmpty() ? null : stateMachineViews,
-                    item.supertypeId(), item.abstractType());
+                    item.supertypeId(), item.abstractType(), item.displayLabelPattern());
         }).toList();
 
         var traitViews = traits.stream().map(trait -> {

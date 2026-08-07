@@ -122,6 +122,26 @@ injectStyles('ntrloc-item-detail-styles', `
   input.item-description-input::placeholder {
     opacity: 0.4;
   }
+  input.item-display-label-pattern-input {
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid transparent;
+    color: inherit;
+    font: inherit;
+    font-family: monospace;
+    font-size: 0.9em;
+    opacity: 0.7;
+    flex: 1;
+    outline: none;
+    padding: 2px 0;
+  }
+  input.item-display-label-pattern-input:focus {
+    border-bottom-color: rgba(255, 255, 255, 0.4);
+    opacity: 1;
+  }
+  input.item-display-label-pattern-input::placeholder {
+    opacity: 0.4;
+  }
   .original-value {
     font-size: 11px;
     color: var(--muted);
@@ -554,6 +574,15 @@ class NtrlocItemDetail extends HTMLElement {
         </div>
         ${!item.isNew && (item.description ?? '') !== (item.originalDescription ?? '') && item.originalDescription ? `<div class="original-value">${escapeHtml(item.originalDescription)}</div>` : ''}
 
+        ${this.isItem ? `
+          <div class="field-row">
+            ${!item.isNew && (item.displayLabelPattern ?? '') !== (item.originalDisplayLabelPattern ?? '') ? '<span class="dirty-dot">●</span>' : ''}
+            <input class="item-display-label-pattern-input" value="${escapeHtml(item.displayLabelPattern ?? '')}" placeholder="Display label pattern (SpEL, optional)" />
+            ${!item.isNew && (item.displayLabelPattern ?? '') !== (item.originalDisplayLabelPattern ?? '') ? '<md-text-button class="revert-display-label-pattern-button">Revert</md-text-button>' : ''}
+          </div>
+          ${!item.isNew && (item.displayLabelPattern ?? '') !== (item.originalDisplayLabelPattern ?? '') && item.originalDisplayLabelPattern ? `<div class="original-value">${escapeHtml(item.originalDisplayLabelPattern)}</div>` : ''}
+        ` : ''}
+
         ${!this.isItem ? (item.isDeleted ? `<p class="status">Marked for deletion -- Save to confirm.</p>` : `
           <div class="field-row">
             <md-text-button class="delete-entity-button">Delete Trait</md-text-button>
@@ -637,6 +666,20 @@ class NtrlocItemDetail extends HTMLElement {
     const revertDescriptionButton = this.querySelector('.revert-description-button');
     if (revertDescriptionButton) revertDescriptionButton.addEventListener('click', () => {
       item.description = item.originalDescription;
+      this.render();
+      notifySchemaViewModelChange();
+    });
+
+    const displayLabelPatternInput = this.querySelector('.item-display-label-pattern-input');
+    if (displayLabelPatternInput) displayLabelPatternInput.addEventListener('change', (event) => {
+      item.displayLabelPattern = event.target.value || null;
+      this.render();
+      notifySchemaViewModelChange();
+    });
+
+    const revertDisplayLabelPatternButton = this.querySelector('.revert-display-label-pattern-button');
+    if (revertDisplayLabelPatternButton) revertDisplayLabelPatternButton.addEventListener('click', () => {
+      item.displayLabelPattern = item.originalDisplayLabelPattern;
       this.render();
       notifySchemaViewModelChange();
     });

@@ -230,6 +230,7 @@ const schemaViewModel = {
           })),
           supertypeId: item.supertypeId,
           abstractType: item.abstractType,
+          displayLabelPattern: item.displayLabelPattern,
         });
         continue;
       }
@@ -240,10 +241,12 @@ const schemaViewModel = {
       }
 
       if (item.name !== item.originalName || (item.description ?? '') !== (item.originalDescription ?? '')
-        || item.supertypeId !== item.originalSupertypeId || item.abstractType !== item.originalAbstractType) {
+        || item.supertypeId !== item.originalSupertypeId || item.abstractType !== item.originalAbstractType
+        || (item.displayLabelPattern ?? '') !== (item.originalDisplayLabelPattern ?? '')) {
         ops.push({
           type: 'UPDATE_ITEM', id: item.id, name: item.name, description: item.description,
           supertypeId: item.supertypeId, abstractType: item.abstractType,
+          displayLabelPattern: item.displayLabelPattern,
         });
       }
 
@@ -410,6 +413,7 @@ const schemaViewModel = {
         changes.push(`Parent type: "${supertypeName(item.originalSupertypeId)}" → "${supertypeName(item.supertypeId)}"`);
       }
       if (item.abstractType !== item.originalAbstractType) changes.push(`Abstract: ${item.abstractType ? 'yes' : 'no'}`);
+      if ((item.displayLabelPattern ?? '') !== (item.originalDisplayLabelPattern ?? '')) changes.push('Display label pattern updated');
 
       for (const t of item.traitAssignments) {
         if (t.isNew && !t.isRemoved) changes.push(`+ Trait "${t.name}"`);
