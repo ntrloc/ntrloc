@@ -322,9 +322,11 @@ class SchemaViewBuilder {
         Map<UUID, ItemRow> itemById = items.stream()
                 .collect(Collectors.toMap(ItemRow::id, i -> i));
 
+        var linkBuildContext = new LinkBuildContext(perspectivesByEntity, entityNameMap, itemEntityIds, propertiesByLink, traitIdsByItem, traitById);
+
         var itemViews = items.stream().map(item -> {
             var allProps = effectiveProperties(item, itemById, traitIdsByItem, propertiesByItem, propertiesByTrait, traitById);
-            var allLinks = effectiveLinks(item, itemById, perspectivesByEntity, entityNameMap, itemEntityIds, propertiesByLink, traitIdsByItem, traitById);
+            var allLinks = effectiveLinks(item, itemById, linkBuildContext);
 
             // Rebuild admin props for sortableFields (includes own, trait, and supertype-chain properties)
             var adminAllProps = effectivePropertiesAdmin(item, itemById, traitIdsByItem, propertiesByItem, propertiesByTrait, traitById);
@@ -338,7 +340,7 @@ class SchemaViewBuilder {
             var props = adminProps.stream()
                     .map(p -> new PropertyDefinitionView(p.id(), p.name(), p.description(), p.type(), p.cardinality(), null, allowedValuesFor(p)))
                     .toList();
-            var links = buildPerspectiveViews(trait.id(), perspectivesByEntity, entityNameMap, itemEntityIds, propertiesByLink, null);
+            var links = buildPerspectiveViews(trait.id(), linkBuildContext, null);
             return new TraitDefinitionView(trait.id(), trait.name(), trait.description(), props, links, sortableFieldsFor(adminProps));
         }).toList();
 
@@ -382,32 +384,38 @@ class SchemaViewBuilder {
         return Stream.concat(own.stream(), inherited.stream()).toList();
     }
 
-    private Map<String, List<ItemLinkPerspectiveView>> ownAndTraitLinks(
-            ItemRow item, Map<UUID, List<SchemaRepository.PerspectiveRow>> perspectivesByEntity,
-            Map<UUID, String> entityNameMap, Set<UUID> itemEntityIds, Map<UUID, List<AdminPropertyDefinitionView>> propertiesByLink,
-            Map<UUID, List<UUID>> traitIdsByItem, Map<UUID, TraitRow> traitById) {
-        var traitIds = traitIdsByItem.getOrDefault(item.id(), List.of());
-        var ownLinks = buildPerspectiveViews(item.id(), perspectivesByEntity, entityNameMap, itemEntityIds, propertiesByLink, null);
+    // Bundles the schema-wide lookup maps ownAndTraitLinks/effectiveLinks/buildPerspectiveViews all
+    // thread through unchanged -- keeps effectiveLinks under Sonar's 7-parameter limit (S107)
+    // without changing behavior; every field here is still exactly what buildSchema() already
+    // builds once per call and passes down.
+    private record LinkBuildContext(
+            Map<UUID, List<SchemaRepository.PerspectiveRow>> perspectivesByEntity,
+            Map<UUID, String> entityNameMap,
+            Set<UUID> itemEntityIds,
+            Map<UUID, List<AdminPropertyDefinitionView>> propertiesByLink,
+            Map<UUID, List<UUID>> traitIdsByItem,
+            Map<UUID, TraitRow> traitById) {
+    }
+
+    private Map<String, List<ItemLinkPerspectiveView>> ownAndTraitLinks(ItemRow item, LinkBuildContext ctx) {
+        var traitIds = ctx.traitIdsByItem().getOrDefault(item.id(), List.of());
+        var ownLinks = buildPerspectiveViews(item.id(), ctx, null);
         var traitLinks = traitIds.stream()
                 .map(traitId -> {
-                    var trait = traitById.get(traitId);
+                    var trait = ctx.traitById().get(traitId);
                     var definedIn = new DefinedInView(ENTITY_KIND_TRAIT, trait.name());
-                    return buildPerspectiveViews(trait.id(), perspectivesByEntity, entityNameMap, itemEntityIds, propertiesByLink, definedIn);
+                    return buildPerspectiveViews(trait.id(), ctx, definedIn);
                 })
                 .filter(m -> m != null && !m.isEmpty())
                 .reduce(new LinkedHashMap<>(), (acc, m) -> { acc.putAll(m); return acc; });
         return mergeLinkViews(ownLinks, traitLinks);
     }
 
-    private Map<String, List<ItemLinkPerspectiveView>> effectiveLinks(
-            ItemRow item, Map<UUID, ItemRow> itemById,
-            Map<UUID, List<SchemaRepository.PerspectiveRow>> perspectivesByEntity,
-            Map<UUID, String> entityNameMap, Set<UUID> itemEntityIds, Map<UUID, List<AdminPropertyDefinitionView>> propertiesByLink,
-            Map<UUID, List<UUID>> traitIdsByItem, Map<UUID, TraitRow> traitById) {
-        var own = ownAndTraitLinks(item, perspectivesByEntity, entityNameMap, itemEntityIds, propertiesByLink, traitIdsByItem, traitById);
+    private Map<String, List<ItemLinkPerspectiveView>> effectiveLinks(ItemRow item, Map<UUID, ItemRow> itemById, LinkBuildContext ctx) {
+        var own = ownAndTraitLinks(item, ctx);
         var supertype = item.supertypeId() == null ? null : itemById.get(item.supertypeId());
         if (supertype == null) return own;
-        var inherited = effectiveLinks(supertype, itemById, perspectivesByEntity, entityNameMap, itemEntityIds, propertiesByLink, traitIdsByItem, traitById);
+        var inherited = effectiveLinks(supertype, itemById, ctx);
         return mergeLinkViews(own, retagLinksAsSupertype(inherited, supertype.name()));
     }
 
@@ -424,21 +432,15 @@ class SchemaViewBuilder {
         return result;
     }
 
-    private Map<String, List<ItemLinkPerspectiveView>> buildPerspectiveViews(
-            UUID entityId,
-            Map<UUID, List<SchemaRepository.PerspectiveRow>> perspectivesByEntity,
-            Map<UUID, String> entityNameMap,
-            Set<UUID> itemEntityIds,
-            Map<UUID, List<AdminPropertyDefinitionView>> propertiesByLink,
-            DefinedInView definedIn) {
-        var perspectives = perspectivesByEntity.get(entityId);
+    private Map<String, List<ItemLinkPerspectiveView>> buildPerspectiveViews(UUID entityId, LinkBuildContext ctx, DefinedInView definedIn) {
+        var perspectives = ctx.perspectivesByEntity().get(entityId);
         if (perspectives == null || perspectives.isEmpty()) return null;
         return perspectives.stream().map(p -> {
             var inverses = repo.findInversePerspectives(p.linkId(), p.id());
             var targets = inverses.stream()
-                    .map(inv -> new TargetEntityView(entityNameMap.get(inv.entityId()), itemEntityIds.contains(inv.entityId()) ? "item" : ENTITY_KIND_TRAIT))
+                    .map(inv -> new TargetEntityView(ctx.entityNameMap().get(inv.entityId()), ctx.itemEntityIds().contains(inv.entityId()) ? "item" : ENTITY_KIND_TRAIT))
                     .toList();
-            var linkProps = propertiesByLink.get(p.linkId());
+            var linkProps = ctx.propertiesByLink().get(p.linkId());
             var linkPropViews = linkProps == null ? null : linkProps.stream()
                     .map(lp -> new PropertyDefinitionView(lp.id(), lp.name(), lp.description(), lp.type(), lp.cardinality(), null, allowedValuesFor(lp)))
                     .toList();

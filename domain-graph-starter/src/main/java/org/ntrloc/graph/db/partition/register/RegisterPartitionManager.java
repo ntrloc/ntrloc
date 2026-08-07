@@ -68,6 +68,10 @@ public class RegisterPartitionManager implements SchemaChangeListener {
     private static final String COL_REGISTER_ITEM_ID = "register_item_id";
     private static final String COL_ITEM_ID = "item_id";
     private static final String COL_PROPERTIES = "properties";
+    private static final String COL_ITEM_TYPE = "item_type";
+    private static final String COL_STATES = "states";
+    private static final String COL_FACET_VALUE = "value";
+    private static final String COL_FACET_COUNT = "count";
     private static final String PARAM_TRANSACTION_ID = "transactionId";
     private static final String PARAM_LINK_ID = "linkId";
     private static final String COL_REGISTER_LINK_ID = "register_link_id";
@@ -214,9 +218,9 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                 .query((rs, n) -> new RawItem(
                         rs.getObject(COL_REGISTER_ITEM_ID, UUID.class),
                         rs.getObject(COL_ITEM_ID, UUID.class),
-                        rs.getString("item_type"),
+                        rs.getString(COL_ITEM_TYPE),
                         parseJsonb(rs.getString(COL_PROPERTIES)),
-                        parseJsonb(rs.getString("states"))))
+                        parseJsonb(rs.getString(COL_STATES))))
                 .list();
 
         Map<UUID, String> ownPropertyNames = propertyNamesByIdForItemType(itemTypeId);
@@ -320,9 +324,9 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                 .query((rs, n) -> new RawItem(
                         rs.getObject(COL_REGISTER_ITEM_ID, UUID.class),
                         rs.getObject(COL_ITEM_ID, UUID.class),
-                        rs.getString("item_type"),
+                        rs.getString(COL_ITEM_TYPE),
                         parseJsonb(rs.getString(COL_PROPERTIES)),
-                        parseJsonb(rs.getString("states"))))
+                        parseJsonb(rs.getString(COL_STATES))))
                 .list();
 
         // Merged, not per-row-resolved: property ids are globally unique across the whole schema
@@ -390,8 +394,8 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                 """.formatted(propertyId, source.sql(), propertyId))
                 .params(source.params())
                 .query((rs, n) -> {
-                    String value = rs.getString("value");
-                    return new FacetBucket(value, value, rs.getLong("count"));
+                    String value = rs.getString(COL_FACET_VALUE);
+                    return new FacetBucket(value, value, rs.getLong(COL_FACET_COUNT));
                 })
                 .list();
     }
@@ -442,8 +446,8 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                 .param(PARAM_ITEM_TYPE_ID, itemTypeId)
                 .params(mergeParams(filter, otherFacetFilters))
                 .query((rs, n) -> {
-                    String value = rs.getString("value");
-                    return new FacetBucket(value, value, rs.getLong("count"));
+                    String value = rs.getString(COL_FACET_VALUE);
+                    return new FacetBucket(value, value, rs.getLong(COL_FACET_COUNT));
                 })
                 .list();
     }
@@ -469,9 +473,9 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                 .param(PARAM_ITEM_TYPE_ID, itemTypeId)
                 .params(filter.params())
                 .query((rs, n) -> {
-                    String stateId = rs.getString("value");
+                    String stateId = rs.getString(COL_FACET_VALUE);
                     String label = stateId == null ? null : stateNames.get(UUID.fromString(stateId));
-                    return new FacetBucket(stateId, label, rs.getLong("count"));
+                    return new FacetBucket(stateId, label, rs.getLong(COL_FACET_COUNT));
                 })
                 .list();
     }
@@ -549,9 +553,9 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                 .query((rs, n) -> new RawItem(
                         rs.getObject(COL_REGISTER_ITEM_ID, UUID.class),
                         rs.getObject(COL_ITEM_ID, UUID.class),
-                        rs.getString("item_type"),
+                        rs.getString(COL_ITEM_TYPE),
                         parseJsonb(rs.getString(COL_PROPERTIES)),
-                        parseJsonb(rs.getString("states"))))
+                        parseJsonb(rs.getString(COL_STATES))))
                 .list();
 
         if (rawItems.isEmpty()) {

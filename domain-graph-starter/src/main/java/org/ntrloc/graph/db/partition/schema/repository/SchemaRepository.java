@@ -154,7 +154,7 @@ public class SchemaRepository {
                     SELECT 1 FROM schema_entity_link_perspective WHERE entity_id = :traitId
                 )
                 """)
-                .param("traitId", traitId)
+                .param(PARAM_TRAIT_ID, traitId)
                 .query(Boolean.class).single());
     }
 
