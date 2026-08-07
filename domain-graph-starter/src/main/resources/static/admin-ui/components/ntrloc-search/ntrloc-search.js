@@ -315,6 +315,78 @@ injectStyles('ntrloc-search-styles', `
   .add-prop-row {
     padding: 8px 14px;
   }
+  .link-groups {
+    border-top: 1px solid var(--border);
+  }
+  .link-group + .link-group {
+    border-top: 1px solid var(--border);
+  }
+  .link-group-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 10px 14px;
+    background: none;
+    border: none;
+    color: var(--text);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+  }
+  .link-group-header:hover {
+    background: rgba(74, 158, 255, 0.04);
+  }
+  .link-group-header .chevron {
+    flex-shrink: 0;
+    transition: transform 0.15s ease;
+  }
+  .link-group-header .chevron.collapsed {
+    transform: rotate(-90deg);
+  }
+  .link-group-label {
+    letter-spacing: 0.02em;
+  }
+  .link-group-count {
+    color: var(--muted);
+    font-weight: 400;
+  }
+  .link-group-body {
+    padding: 0 14px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .nested-item-card {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    overflow: hidden;
+  }
+  .nested-item-header {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 7px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    border-bottom: 1px solid var(--border);
+  }
+  .nested-item-id {
+    font-weight: 400;
+    color: var(--muted);
+    font-family: monospace;
+    font-size: 11px;
+  }
+  .nested-item-card .prop-row {
+    padding: 3px 12px;
+    border-bottom: none;
+  }
+  .nested-item-card .prop-row + .prop-row {
+    border-top: 1px solid var(--border);
+  }
   .add-prop-row button {
     padding: 4px 10px;
     border: 1px dashed var(--border);
@@ -421,6 +493,14 @@ class NtrlocSearch extends HTMLElement {
       viewMode: 'formatted',
       propertyDefs: [],
       editingItems: {},
+      // { [itemId]: Set<perspectiveName> } -- absence means expanded, matching editingItems'
+      // own "only the entries that need tracking are present" convention. Starts empty so every
+      // link group is expanded by default (nothing hidden until the user actively collapses it),
+      // per feedback that collapsing is for "pushing items out of view" once you've seen them,
+      // not a default-hidden state. Lives on the pane object, not re-initialized in project() --
+      // same lifetime as editingItems, reset only on selectType() (a real type change), so
+      // re-running the same search (e.g. after a save) doesn't silently re-expand everything.
+      collapsedLinkGroups: {},
     });
     this.render();
     this.loadItemTypes(id);
@@ -451,12 +531,14 @@ class NtrlocSearch extends HTMLElement {
   }
 
   mapAvailableTypes(schema) {
-    return (schema.items || []).map(item => ({
-      id: item.id,
-      name: item.name,
-      sortableFields: item.sortableFields || [],
-      properties: (item.properties || []).map(p => ({ name: p.name, type: p.type, cardinality: p.cardinality })),
-    }));
+    return (schema.items || [])
+      .map(item => ({
+        id: item.id,
+        name: item.name,
+        sortableFields: item.sortableFields || [],
+        properties: (item.properties || []).map(p => ({ name: p.name, type: p.type, cardinality: p.cardinality })),
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
   }
 
   async loadItemTypes(id) {
@@ -491,6 +573,7 @@ class NtrlocSearch extends HTMLElement {
     pane.selectedSortField = null;
     pane.selectedSortDirection = 'ASC';
     pane.editingItems = {};
+    pane.collapsedLinkGroups = {};
     const type = pane.availableTypes.find(t => t.name === typeName);
     pane.sortableFields = type?.sortableFields ?? [];
     pane.propertyDefs = type?.properties ?? [];
@@ -540,6 +623,15 @@ class NtrlocSearch extends HTMLElement {
 
   setViewMode(id, mode) {
     this.pane(id).viewMode = mode;
+    this.render();
+  }
+
+  toggleLinkGroup(id, itemId, perspectiveName) {
+    const pane = this.pane(id);
+    if (!pane.collapsedLinkGroups[itemId]) pane.collapsedLinkGroups[itemId] = new Set();
+    const collapsed = pane.collapsedLinkGroups[itemId];
+    if (collapsed.has(perspectiveName)) collapsed.delete(perspectiveName);
+    else collapsed.add(perspectiveName);
     this.render();
   }
 
@@ -874,6 +966,7 @@ class NtrlocSearch extends HTMLElement {
           </div>` : ''}
         </div>
         <div class="prop-grid ${isEditing ? 'is-editing' : ''}">${rows}</div>
+        ${this.renderLinkGroups(pane, item)}
         ${isEditing ? `
           <div class="add-prop-row">
             <button data-action="add-prop">+ Add property</button>
@@ -884,6 +977,63 @@ class NtrlocSearch extends HTMLElement {
             <button class="save-btn" data-action="save-edit">Save</button>
           </div>
         ` : ''}
+      </div>
+    `;
+  }
+
+  // Grouped by perspective name (the shape the projection response already comes in --
+  // { perspectiveName: [{linkId, properties, item}, ...] }, so no client-side grouping logic is
+  // actually needed, just per-group rendering), each group independently collapsible so a large
+  // perspective can be pushed out of view without hiding the others. The nested item is rendered
+  // one level deep only, matching what the backend actually returns (a linked item's own `links`
+  // always comes back empty in this response) -- no risk of runaway recursive nesting.
+  renderLinkGroups(pane, item) {
+    const links = item.links || {};
+    const perspectiveNames = Object.keys(links).sort();
+    if (perspectiveNames.length === 0) return '';
+    const collapsed = pane.collapsedLinkGroups[item.itemId] || new Set();
+    return `
+      <div class="link-groups">
+        ${perspectiveNames.map(name => {
+          const linkedItems = links[name];
+          const isCollapsed = collapsed.has(name);
+          return `
+            <div class="link-group">
+              <button class="link-group-header" data-action="toggle-link-group" data-perspective="${escapeHtml(name)}">
+                <svg class="chevron ${isCollapsed ? 'collapsed' : ''}" viewBox="0 0 24 24" width="14" height="14"
+                     fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+                <span class="link-group-label">${escapeHtml(name)}</span>
+                <span class="link-group-count">${linkedItems.length}</span>
+              </button>
+              ${!isCollapsed ? `
+                <div class="link-group-body">
+                  ${linkedItems.map(l => this.renderLinkedItemCard(l.item)).join('')}
+                </div>
+              ` : ''}
+            </div>
+          `;
+        }).join('')}
+      </div>
+    `;
+  }
+
+  renderLinkedItemCard(linkedItem) {
+    const shortId = linkedItem.itemId.substring(0, 8) + '...';
+    const propEntries = Object.entries(linkedItem.properties || {}).sort((a, b) => a[0].localeCompare(b[0]));
+    return `
+      <div class="nested-item-card">
+        <div class="nested-item-header">
+          <span>${escapeHtml(linkedItem.itemType)}</span>
+          <span class="nested-item-id">${shortId}</span>
+        </div>
+        ${propEntries.map(([key, val]) => `
+          <div class="prop-row">
+            <div class="prop-key">${escapeHtml(key)}</div>
+            <div class="prop-value">${this.renderPropertyValue(val)}</div>
+          </div>
+        `).join('')}
       </div>
     `;
   }
@@ -940,6 +1090,7 @@ class NtrlocSearch extends HTMLElement {
           if (action === 'remove-prop') el.addEventListener('click', () => this.removeProperty(id, itemId, el.dataset.prop));
           if (action === 'undo-remove') el.addEventListener('click', () => this.undoRemoveProperty(id, itemId, el.dataset.prop));
           if (action === 'edit-value') el.addEventListener('input', e => this.updateEditValue(id, itemId, el.dataset.prop, e.target.value));
+          if (action === 'toggle-link-group') el.addEventListener('click', () => this.toggleLinkGroup(id, itemId, el.dataset.perspective));
         });
       });
 
