@@ -359,11 +359,40 @@ injectStyles('ntrloc-search-styles', `
     flex-direction: column;
     gap: 8px;
   }
+  /* Row layout: the unlink action rail on the left, full height, followed by everything the link
+     grouped together (link properties + item, or just item -- see renderLinkedItemCard) as one
+     block on the right. Unlink acts on the whole grouped unit (it removes the LINK, not either
+     side of it individually), which is why it sits outside/beside that grouping rather than
+     inside either section's own header, the way edit-link (which only ever acts on the link-
+     properties section specifically) still does. */
   .nested-item-card {
+    display: flex;
+    align-items: stretch;
     background: rgba(255, 255, 255, 0.02);
     border: 1px solid var(--border);
     border-radius: 5px;
     overflow: hidden;
+  }
+  .nested-item-card > .unlink-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 30px;
+    padding: 0;
+    background: none;
+    border: none;
+    border-right: 1px solid var(--border);
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .nested-item-card > .unlink-button:hover {
+    background: rgba(248, 81, 73, 0.1);
+    color: #ef5350;
+  }
+  .nested-item-body {
+    flex: 1;
+    min-width: 0;
   }
   .nested-item-header {
     display: flex;
@@ -380,12 +409,24 @@ injectStyles('ntrloc-search-styles', `
     font-family: monospace;
     font-size: 11px;
   }
-  .nested-item-card .prop-row {
-    padding: 3px 12px;
-    border-bottom: none;
+  /* Link-properties-above-item split, only present when the link type actually has properties to
+     show (see renderLinkedItemCard) -- a link with none keeps the single-section layout above
+     (just .nested-item-header + item .prop-grid), no empty section on top. Each section reuses
+     .nested-item-header/.prop-grid/.prop-row completely unmodified, the same way the top-level
+     item card itself uses them -- "flows horizontally" here means exactly what it means there:
+     the shared .prop-grid's own auto-fill columns, not a bespoke nested variant. */
+  .nested-item-sections {
+    display: flex;
+    flex-direction: column;
   }
-  .nested-item-card .prop-row + .prop-row {
+  .nested-item-section + .nested-item-section {
     border-top: 1px solid var(--border);
+  }
+  .nested-empty-note {
+    padding: 4px 12px 10px;
+    color: var(--muted);
+    font-style: italic;
+    font-size: 13px;
   }
   .add-prop-row button {
     padding: 4px 10px;
@@ -448,6 +489,55 @@ injectStyles('ntrloc-search-styles', `
     width: 220px;
     min-height: unset;
   }
+  .item-card-header[draggable="true"] {
+    cursor: grab;
+  }
+  .item-card-header[draggable="true"]:active {
+    cursor: grabbing;
+  }
+  /* Left behind in place while its content follows the cursor as the native drag image (same
+     technique as .pane.is-drag-source) -- content stays laid out (unlike the pane version) so
+     the other cards around it don't jump, just dimmed to read as "this is what's being moved". */
+  .item-card.is-drag-source {
+    opacity: 0.4;
+  }
+  /* Computed once at dragstart and written directly to matching cards/groups (see
+     computeLinkCandidates' callers) -- not part of the normal render(), since re-rendering mid-
+     drag would tear down the dragged node and abort the gesture, same reasoning as the existing
+     pane-reorder preview. */
+  .item-card.valid-drop-target {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+  }
+  .item-card.valid-drop-target .item-card-header {
+    background: rgba(74, 158, 255, 0.08);
+  }
+  .link-group.valid-drop-target {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+    border-radius: 4px;
+  }
+  .nested-item-header {
+    justify-content: space-between;
+  }
+  .nested-item-header .edit-link-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    background: none;
+    border: none;
+    border-radius: 4px;
+    color: var(--muted);
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .nested-item-header .edit-link-button:hover {
+    background: rgba(74, 158, 255, 0.1);
+    color: var(--accent);
+  }
 `);
 
 // Recreates the Angular search screen: a toolbar to add panes, and a grid of independent
@@ -464,6 +554,28 @@ class NtrlocSearch extends HTMLElement {
     // Live working copy of the active-pane order while a drag is in progress -- only committed
     // into `panes` on a real drop, so a cancelled drag (dragend with no drop) just discards it.
     this.dragPreviewOrder = null;
+    // Item-card drag-to-link state -- fully separate from draggingPaneId/dragPreviewOrder above
+    // (a different gesture, on a different element) so the two drag systems can't interfere:
+    // each one's own handlers only ever act when its own state is non-null. draggingItem is
+    // {itemId, itemType, paneId} for the card currently being dragged; dragValidTargets/
+    // dragValidGroups are computed once at dragstart (see startItemDrag) and written directly
+    // into the DOM rather than through render(), since a re-render mid-drag would tear down the
+    // dragged node and abort the native drag gesture -- same reasoning as dragPreviewOrder.
+    this.draggingItem = null;
+    this.dragValidTargets = null;
+    this.dragValidGroups = null;
+    // { [linkId]: {id, properties} } -- the schema-wide link property definitions (AdminLinkView),
+    // separate from each item's own per-perspective links map: a perspective only carries a
+    // linkId, the property *definitions* for that link live here, keyed by that id.
+    this.linkDefsById = new Map();
+    // { [typeName]: mappedType } -- every pane's own availableTypes is an identical copy of the
+    // same schema, so drag/drop resolution (which is cross-pane by nature) reads from this single
+    // component-level cache instead of reaching into whichever pane happens to be involved.
+    this.itemTypesByName = new Map();
+    // Same mapped types, keyed by id instead of name -- lets typeIsAssignableTo walk a concrete
+    // type's supertypeId chain (which only carries ids, never names) up to whatever type a
+    // perspective's targets actually declare.
+    this.itemTypesById = new Map();
   }
 
   connectedCallback() {
@@ -530,6 +642,9 @@ class NtrlocSearch extends HTMLElement {
     return this.panes.find(p => p.id === id);
   }
 
+  // links is kept as-is from the admin schema response (already { perspectiveName: [{id,
+  // linkId, targets, minCardinality, maxCardinality, definedIn}] }, see AdminItemLinkPerspectiveView)
+  // -- computeLinkCandidates reads targets/linkId straight off it, no need to remap.
   mapAvailableTypes(schema) {
     return (schema.items || [])
       .map(item => ({
@@ -537,8 +652,33 @@ class NtrlocSearch extends HTMLElement {
         name: item.name,
         sortableFields: item.sortableFields || [],
         properties: (item.properties || []).map(p => ({ name: p.name, type: p.type, cardinality: p.cardinality })),
+        links: item.links || {},
+        supertypeId: item.supertypeId || null,
       }))
       .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  cacheSchemaSideTables(schema) {
+    this.linkDefsById = new Map((schema.links || []).map(l => [l.id, l]));
+    const mapped = this.mapAvailableTypes(schema);
+    this.itemTypesByName = new Map(mapped.map(t => [t.name, t]));
+    this.itemTypesById = new Map(mapped.map(t => [t.id, t]));
+  }
+
+  // A perspective's declared target can be an abstract supertype (e.g. Person's ownsVehicle
+  // targets "Vehicle", not "Car"/"Bicycle" individually -- confirmed live: dragging a Car onto a
+  // Person worked because Car's own inherited "ownedBy" perspective targets the concrete "Person"
+  // directly, but dragging a Person onto a Bicycle failed until this walked the chain, since
+  // "Bicycle" !== "Vehicle" under plain string equality). Walks typeName's own supertypeId chain
+  // (concrete type -> ... -> abstract root) checking each ancestor against targetTypeName, so a
+  // concrete subtype still matches a perspective declared against its abstract supertype.
+  typeIsAssignableTo(typeName, targetTypeName) {
+    let current = this.itemTypesByName.get(typeName);
+    while (current) {
+      if (current.name === targetTypeName) return true;
+      current = current.supertypeId ? this.itemTypesById.get(current.supertypeId) : null;
+    }
+    return false;
   }
 
   async loadItemTypes(id) {
@@ -550,6 +690,7 @@ class NtrlocSearch extends HTMLElement {
       // own fresh-fetch-per-open behavior.
       const schema = await globalSchemaModel.load();
       this.pane(id).availableTypes = this.mapAvailableTypes(schema);
+      this.cacheSchemaSideTables(schema);
       this.render();
     } catch (e) {
       // Left silently empty, mirroring the Angular view model's fetchItemTypes() error handling.
@@ -562,6 +703,7 @@ class NtrlocSearch extends HTMLElement {
     // reassigned wholesale elsewhere in this class, never mutated in place, but there's no reason
     // to rely on that staying true.
     this.panes.forEach(p => { p.availableTypes = this.mapAvailableTypes(globalSchemaModel._schema); });
+    this.cacheSchemaSideTables(globalSchemaModel._schema);
     this.render();
   }
 
@@ -737,7 +879,13 @@ class NtrlocSearch extends HTMLElement {
     const item = pane.results.find(r => r.itemId === itemId);
     if (!item) return;
     const title = item.properties.title || item.properties.name || item.itemType;
-    if (!confirm(`Delete "${title}"? This cannot be undone.`)) return;
+    const confirmed = await openConfirmDialog({
+      title: 'Delete Item',
+      message: `Delete "${title}"? This cannot be undone.`,
+      confirmLabel: 'Delete',
+      destructive: true,
+    });
+    if (!confirmed) return;
     try {
       const response = await fetch('/api/mutation', {
         method: 'POST',
@@ -756,6 +904,211 @@ class NtrlocSearch extends HTMLElement {
     }
   }
 
+  // Every valid (type-pair, not-already-linked) way to connect draggedItem to targetItem, paired
+  // up by shared linkId rather than by target-type-name coincidence -- two item types can have
+  // more than one link between them (e.g. "ownsVehicle" and a hypothetical "reservedVehicle"),
+  // and only the underlying linkId (present on both sides' perspectives, via AdminLinkView/
+  // AdminItemLinkPerspectiveView -- see global-schema-model.js's own comment on why the admin
+  // schema, not the calculated one, is what's available here) reliably says which perspective on
+  // draggedItem's side pairs with which on targetItem's side. "Already linked" is checked against
+  // the already-fetched projection data (draggedItem.links), not the schema -- the schema only
+  // proves the two *types* can be linked, not whether these two *instances* already are.
+  // Reused as-is for both the drag-time highlight computation and the actual drop resolution, and
+  // for a drop on a specific link-group section (see the .link-group drop handler in wireUp) by
+  // just filtering this same list down to the one candidate whose toPerspective matches the
+  // pinned group.
+  computeLinkCandidates(draggedItem, targetItem) {
+    const fromType = this.itemTypesByName.get(draggedItem.itemType);
+    const toType = this.itemTypesByName.get(targetItem.itemType);
+    if (!fromType || !toType) return [];
+    const candidates = [];
+    for (const [fromPerspective, fromEntries] of Object.entries(fromType.links)) {
+      for (const fromEntry of fromEntries) {
+        if (!fromEntry.targets.some(t => this.typeIsAssignableTo(targetItem.itemType, t.name))) continue;
+        for (const [toPerspective, toEntries] of Object.entries(toType.links)) {
+          if (!toEntries.some(e => e.linkId === fromEntry.linkId)) continue;
+          // Matched on target-item identity alone, not l.linkId -- ProjectedLink.linkId is the
+          // per-instance link's own id (register_link.link_id), a different UUID from the
+          // schema-level fromEntry.linkId (link_definition_id) used everywhere else in this
+          // method; a perspective already pointing at this exact target item is already linked
+          // regardless of which specific instance id that link happens to have.
+          const alreadyLinked = (draggedItem.links?.[fromPerspective] || [])
+            .some(l => l.item?.itemId === targetItem.itemId);
+          if (alreadyLinked) continue;
+          const linkDef = this.linkDefsById.get(fromEntry.linkId);
+          candidates.push({
+            linkId: fromEntry.linkId,
+            fromPerspective,
+            toPerspective,
+            propertyDefs: linkDef?.properties || [],
+          });
+        }
+      }
+    }
+    return candidates;
+  }
+
+  // Re-runs project() on every currently-open pane that could be showing either side of a link
+  // that just changed -- not just a pane whose selectedTypeName exactly matches one of the two
+  // concrete types (typeNames), but also any pane searching an ABSTRACT ancestor of one of them:
+  // a pane searching "Vehicle" still lists Bicycle instances, so a Person<->Bicycle link change
+  // needs to refresh it too, even though "Vehicle" never appears in typeNames itself (typeNames is
+  // always the two concrete item types actually on each end of the link). Confirmed live as the
+  // cause of a real bug: linking a Person to a Bicycle updated a pane searching "Bicycle" directly,
+  // but not one searching "Vehicle" -- same abstract/concrete gap as computeLinkCandidates' own
+  // targets check, just surfacing on the refresh side instead of the candidate-resolution side.
+  reprojectPanesForTypes(typeNames) {
+    this.panes
+      .filter(p => p.selectedTypeName && typeNames.some(t => this.typeIsAssignableTo(t, p.selectedTypeName)))
+      .forEach(p => this.project(p.id));
+  }
+
+  async createLink(candidate, draggedItem, targetItem, properties) {
+    try {
+      const response = await fetch('/api/mutation', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          links: [{
+            type: 'CREATE',
+            firstItem: { perspectiveName: candidate.fromPerspective, item: { type: 'EXISTING', itemId: draggedItem.itemId } },
+            secondItem: { perspectiveName: candidate.toPerspective, item: { type: 'EXISTING', itemId: targetItem.itemId } },
+            properties: properties && Object.keys(properties).length > 0 ? properties : undefined,
+          }],
+        }),
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        throw new Error(body?.errors?.[0]?.message || 'Link failed: ' + response.status);
+      }
+      this.reprojectPanesForTypes([draggedItem.itemType, targetItem.itemType]);
+    } catch (e) {
+      alert('Link failed: ' + e.message);
+    }
+  }
+
+  // Same openConfirmDialog convention as deleteItem -- unlike link *creation* (still immediate on
+  // drop with no confirm step when there are no properties to fill in), removing an existing link
+  // is a one-click destructive action on data the user can already see, so it earns the same guard
+  // rail as deleting an item outright.
+  async unlinkItem(id, linkId, otherItemType, otherItemTitle) {
+    const pane = this.pane(id);
+    const confirmed = await openConfirmDialog({
+      title: 'Remove Link',
+      message: `Remove link to "${otherItemTitle}" (${otherItemType})?`,
+      confirmLabel: 'Remove',
+      destructive: true,
+    });
+    if (!confirmed) return;
+    try {
+      const response = await fetch('/api/mutation', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ links: [{ type: 'DELETE', linkId }] }),
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        throw new Error(body?.errors?.[0]?.message || 'Unlink failed: ' + response.status);
+      }
+      this.reprojectPanesForTypes([pane.selectedTypeName, otherItemType]);
+    } catch (e) {
+      alert('Unlink failed: ' + e.message);
+    }
+  }
+
+  // itemId/perspective/linkId together pin down exactly one ProjectedLink entry inside the
+  // *outer* item's own already-fetched projection data -- reused as both the dialog's pre-fill
+  // (linkEntry.properties) and the baseline the post-dialog diff is computed against, so this
+  // never needs its own separate fetch.
+  async editLinkProperties(id, itemId, perspective, linkId, otherItemType, otherItemTitle) {
+    const pane = this.pane(id);
+    const item = pane.results.find(r => r.itemId === itemId);
+    if (!item) return;
+    const linkEntry = (item.links[perspective] || []).find(l => l.linkId === linkId);
+    if (!linkEntry) return;
+    const propertyDefs = this.linkPropertyDefsFor(item.itemType, perspective);
+    if (propertyDefs.length === 0) return;
+    const edited = await openLinkPropertiesDialog({
+      title: `Edit Link Properties — ${otherItemTitle}`,
+      propertyDefs,
+      initialValues: linkEntry.properties || {},
+    });
+    if (!edited) return;
+    // Delta against the link's current properties, not a full replace -- mirrors saveEdit's own
+    // item-property diffing (see its comment): only properties that actually changed are sent,
+    // and a property the user blanked out (present in initialValues, absent from `edited` because
+    // openLinkPropertiesDialog omits blank fields -- same convention as openLinkCreateDialog's own
+    // confirm handler) becomes an explicit null rather than being silently dropped from the diff.
+    const current = linkEntry.properties || {};
+    const delta = {};
+    for (const p of propertyDefs) {
+      const newVal = Object.prototype.hasOwnProperty.call(edited, p.name) ? edited[p.name] : null;
+      if (newVal !== (current[p.name] ?? null)) delta[p.name] = newVal;
+    }
+    if (Object.keys(delta).length === 0) return;
+    try {
+      const response = await fetch('/api/mutation', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ links: [{ type: 'UPDATE', linkId, properties: delta }] }),
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        throw new Error(body?.errors?.[0]?.message || 'Update failed: ' + response.status);
+      }
+      this.reprojectPanesForTypes([item.itemType, otherItemType]);
+    } catch (e) {
+      alert('Update link failed: ' + e.message);
+    }
+  }
+
+  // Called once at dragstart (not per dragenter, unlike the pane-reorder preview -- there's no
+  // live "preview order" to keep recomputing here, just a fixed valid/invalid classification of
+  // every currently-rendered item-card and link-group). Writes '.valid-drop-target' straight into
+  // the DOM, matching every other item-card and link-group's own class list; cleared again by
+  // clearItemDragHighlights() at dragend.
+  applyItemDragHighlights(draggedItem) {
+    this.querySelectorAll('.item-card[data-item-id]').forEach(cardEl => {
+      const targetItemId = cardEl.dataset.itemId;
+      if (targetItemId === draggedItem.itemId) return;
+      const targetPaneId = Number(cardEl.closest('[data-pane-id]')?.dataset.paneId);
+      const targetPane = this.pane(targetPaneId);
+      const targetItem = targetPane?.results.find(r => r.itemId === targetItemId);
+      if (!targetItem) return;
+      const candidates = this.computeLinkCandidates(draggedItem, targetItem);
+      if (candidates.length === 0) return;
+      cardEl.classList.add('valid-drop-target');
+      cardEl.querySelectorAll('.link-group[data-perspective]').forEach(groupEl => {
+        if (candidates.some(c => c.toPerspective === groupEl.dataset.perspective)) {
+          groupEl.classList.add('valid-drop-target');
+        }
+      });
+    });
+  }
+
+  clearItemDragHighlights() {
+    this.querySelectorAll('.valid-drop-target').forEach(el => el.classList.remove('valid-drop-target'));
+  }
+
+  // Shared by both drop paths below: resolves candidates down to a chosen {linkId, fromPerspective,
+  // toPerspective, properties}, opening the picker/properties dialog only when the candidate list or
+  // its properties actually require user input (see ntrloc-link-create-dialog.js), then creates the
+  // link. `candidates` is passed in already filtered -- full list for a plain item-card drop, pinned
+  // to one perspective for a link-group drop (see wireUp).
+  async resolveAndCreateLink(candidates, draggedItem, targetItem) {
+    if (candidates.length === 0) return;
+    let chosen;
+    if (candidates.length === 1 && candidates[0].propertyDefs.length === 0) {
+      chosen = { ...candidates[0], properties: {} };
+    } else {
+      chosen = await openLinkCreateDialog(candidates);
+      if (!chosen) return;
+    }
+    await this.createLink(chosen, draggedItem, targetItem, chosen.properties);
+  }
 
   activePanes() {
     return this.panes.filter(p => p.windowState !== 'minimized');
@@ -954,8 +1307,8 @@ class NtrlocSearch extends HTMLElement {
     const editCount = isEditing ? edit.removed.size + Object.entries(edit.values).filter(([k, v]) => !edit.removed.has(k) && v !== item.properties[k]).length : 0;
 
     return `
-      <div class="item-card" data-item-id="${item.itemId}">
-        <div class="item-card-header">
+      <div class="item-card" data-item-id="${item.itemId}" data-item-type="${escapeHtml(item.itemType)}">
+        <div class="item-card-header" draggable="true">
           <div>
             <span class="item-card-title">${escapeHtml(title)}</span>
             <span class="item-card-id">${shortId}</span>
@@ -997,8 +1350,9 @@ class NtrlocSearch extends HTMLElement {
         ${perspectiveNames.map(name => {
           const linkedItems = links[name];
           const isCollapsed = collapsed.has(name);
+          const propertyDefs = this.linkPropertyDefsFor(item.itemType, name);
           return `
-            <div class="link-group">
+            <div class="link-group" data-perspective="${escapeHtml(name)}">
               <button class="link-group-header" data-action="toggle-link-group" data-perspective="${escapeHtml(name)}">
                 <svg class="chevron ${isCollapsed ? 'collapsed' : ''}" viewBox="0 0 24 24" width="14" height="14"
                      fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -1009,7 +1363,7 @@ class NtrlocSearch extends HTMLElement {
               </button>
               ${!isCollapsed ? `
                 <div class="link-group-body">
-                  ${linkedItems.map(l => this.renderLinkedItemCard(l.item)).join('')}
+                  ${linkedItems.map(l => this.renderLinkedItemCard(l, propertyDefs)).join('')}
                 </div>
               ` : ''}
             </div>
@@ -1019,21 +1373,94 @@ class NtrlocSearch extends HTMLElement {
     `;
   }
 
-  renderLinkedItemCard(linkedItem) {
-    const shortId = linkedItem.itemId.substring(0, 8) + '...';
+  // Resolves a perspective name to its link type's own property *definitions* -- two hops, since
+  // a perspective (AdminItemLinkPerspectiveView) only carries the schema-level link-type id, and
+  // the property definitions themselves live on the link type (AdminLinkView), keyed by that id
+  // (see cacheSchemaSideTables). Returns [] for a perspective with no properties or one this
+  // client's schema cache doesn't (yet) recognize, rather than throwing -- callers all treat an
+  // empty list as "nothing to show/edit", which is the correct fallback either way.
+  linkPropertyDefsFor(itemTypeName, perspectiveName) {
+    const type = this.itemTypesByName.get(itemTypeName);
+    const perspectiveEntry = (type?.links[perspectiveName] || [])[0];
+    if (!perspectiveEntry) return [];
+    return this.linkDefsById.get(perspectiveEntry.linkId)?.properties || [];
+  }
+
+  // Item section alone -- no unlink button here anymore (see renderLinkedItemCard's own comment
+  // on why it moved out to the card's action rail instead).
+  renderNestedItemSection(linkedItem, shortId) {
     const propEntries = Object.entries(linkedItem.properties || {}).sort((a, b) => a[0].localeCompare(b[0]));
     return `
-      <div class="nested-item-card">
+      <div class="nested-item-section">
         <div class="nested-item-header">
           <span>${escapeHtml(linkedItem.itemType)}</span>
           <span class="nested-item-id">${shortId}</span>
         </div>
-        ${propEntries.map(([key, val]) => `
-          <div class="prop-row">
-            <div class="prop-key">${escapeHtml(key)}</div>
-            <div class="prop-value">${this.renderPropertyValue(val)}</div>
+        <div class="prop-grid">
+          ${propEntries.map(([key, val]) => `
+            <div class="prop-row">
+              <div class="prop-key">${escapeHtml(key)}</div>
+              <div class="prop-value">${this.renderPropertyValue(val)}</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }
+
+  renderLinkedItemCard(linkEntry, propertyDefs) {
+    const linkedItem = linkEntry.item;
+    const shortId = linkedItem.itemId.substring(0, 8) + '...';
+    const title = linkedItem.properties.title || linkedItem.properties.name || linkedItem.itemType;
+    // Only properties the link actually has a value for -- propertyDefs is every property the
+    // link TYPE could carry, not every property THIS link instance has actually set.
+    const linkPropEntries = (propertyDefs || [])
+      .filter(p => linkEntry.properties && linkEntry.properties[p.name] !== undefined && linkEntry.properties[p.name] !== null)
+      .map(p => [p.name, linkEntry.properties[p.name]]);
+    const itemSection = this.renderNestedItemSection(linkedItem, shortId);
+
+    const body = propertyDefs.length === 0 ? itemSection : `
+      <div class="nested-item-sections">
+        <div class="nested-item-section">
+          <div class="nested-item-header">
+            <span class="nested-item-section-label">Link Properties</span>
+            <button class="edit-link-button" title="Edit link properties" aria-label="Edit link properties" data-action="edit-link">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 20h9"></path>
+                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
+              </svg>
+            </button>
           </div>
-        `).join('')}
+          ${linkPropEntries.length > 0 ? `
+            <div class="prop-grid">
+              ${linkPropEntries.map(([key, val]) => `
+                <div class="prop-row">
+                  <div class="prop-key">${escapeHtml(key)}</div>
+                  <div class="prop-value">${this.renderPropertyValue(val)}</div>
+                </div>
+              `).join('')}
+            </div>
+          ` : `<div class="nested-empty-note">No properties set</div>`}
+        </div>
+        ${itemSection}
+      </div>
+    `;
+
+    // unlink lives on the card itself, to the left of everything it groups together (link
+    // properties + item, or just item), since it removes the LINK -- not either section
+    // individually the way edit-link (scoped to just the link-properties section) still does.
+    return `
+      <div class="nested-item-card" data-link-id="${escapeHtml(linkEntry.linkId)}" data-item-type="${escapeHtml(linkedItem.itemType)}" data-item-title="${escapeHtml(title)}">
+        <button class="unlink-button" title="Remove link" aria-label="Remove link" data-action="unlink">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="3 6 5 6 21 6"></polyline>
+            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+            <path d="M10 11v6"></path>
+            <path d="M14 11v6"></path>
+            <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path>
+          </svg>
+        </button>
+        <div class="nested-item-body">${body}</div>
       </div>
     `;
   }
@@ -1091,6 +1518,27 @@ class NtrlocSearch extends HTMLElement {
           if (action === 'undo-remove') el.addEventListener('click', () => this.undoRemoveProperty(id, itemId, el.dataset.prop));
           if (action === 'edit-value') el.addEventListener('input', e => this.updateEditValue(id, itemId, el.dataset.prop, e.target.value));
           if (action === 'toggle-link-group') el.addEventListener('click', () => this.toggleLinkGroup(id, itemId, el.dataset.perspective));
+          // Nested inside cardEl (a linked item's own card, inside a link-group), not one of the
+          // outer item's own actions above -- reads the linkId/type off the nested card itself
+          // rather than the outer item, since that's what actually identifies the link to delete.
+          if (action === 'unlink') {
+            el.addEventListener('click', (e) => {
+              e.stopPropagation();
+              const nestedEl = el.closest('.nested-item-card');
+              this.unlinkItem(id, nestedEl.dataset.linkId, nestedEl.dataset.itemType, nestedEl.dataset.itemTitle);
+            });
+          }
+          // Perspective name isn't on the nested card itself (it's shared by every card in the
+          // group) -- read off the ancestor .link-group instead of threading it through as its
+          // own data attribute on every single nested card.
+          if (action === 'edit-link') {
+            el.addEventListener('click', (e) => {
+              e.stopPropagation();
+              const nestedEl = el.closest('.nested-item-card');
+              const perspective = el.closest('.link-group').dataset.perspective;
+              this.editLinkProperties(id, itemId, perspective, nestedEl.dataset.linkId, nestedEl.dataset.itemType, nestedEl.dataset.itemTitle);
+            });
+          }
         });
       });
 
@@ -1139,6 +1587,70 @@ class NtrlocSearch extends HTMLElement {
       paneEl.addEventListener('drop', e => {
         e.preventDefault();
         if (this.draggingPaneId !== null) this.commitDragPreviewOrder();
+      });
+
+      // draggable="true" lives on .item-card-header only, for the same reason as .pane-header
+      // above -- an ancestor-wide draggable would hijack click-drag text selection and edit-mode
+      // <input> focus inside the card body.
+      paneEl.querySelectorAll('.item-card[data-item-id]').forEach(cardEl => {
+        const itemId = cardEl.dataset.itemId;
+        const headerEl = cardEl.querySelector('.item-card-header');
+        headerEl.addEventListener('dragstart', e => {
+          const pane = this.pane(id);
+          const item = pane.results.find(r => r.itemId === itemId);
+          if (!item) return;
+          this.draggingItem = item;
+          e.dataTransfer.effectAllowed = 'link';
+          e.dataTransfer.setData('text/plain', itemId);
+          e.dataTransfer.setDragImage(cardEl, e.offsetX, e.offsetY);
+          setTimeout(() => cardEl.classList.add('is-drag-source'), 0);
+          this.applyItemDragHighlights(item);
+        });
+        headerEl.addEventListener('dragend', () => {
+          cardEl.classList.remove('is-drag-source');
+          this.draggingItem = null;
+          this.clearItemDragHighlights();
+        });
+
+        cardEl.addEventListener('dragover', e => {
+          if (this.draggingItem === null || !cardEl.classList.contains('valid-drop-target')) return;
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'link';
+        });
+        cardEl.addEventListener('drop', e => {
+          if (this.draggingItem === null) return;
+          e.preventDefault();
+          const dragged = this.draggingItem;
+          const pane = this.pane(id);
+          const target = pane.results.find(r => r.itemId === itemId);
+          if (!target) return;
+          const candidates = this.computeLinkCandidates(dragged, target);
+          this.resolveAndCreateLink(candidates, dragged, target);
+        });
+
+        // Listeners scoped to each .link-group individually (not delegated from cardEl) so
+        // stopPropagation cleanly prevents the ancestor .item-card's own dragover/drop above from
+        // also firing -- a drop pinned to one perspective shouldn't also run full resolution.
+        cardEl.querySelectorAll('.link-group[data-perspective]').forEach(groupEl => {
+          groupEl.addEventListener('dragover', e => {
+            if (this.draggingItem === null || !groupEl.classList.contains('valid-drop-target')) return;
+            e.preventDefault();
+            e.stopPropagation();
+            e.dataTransfer.dropEffect = 'link';
+          });
+          groupEl.addEventListener('drop', e => {
+            if (this.draggingItem === null) return;
+            e.preventDefault();
+            e.stopPropagation();
+            const dragged = this.draggingItem;
+            const pane = this.pane(id);
+            const target = pane.results.find(r => r.itemId === itemId);
+            if (!target) return;
+            const perspective = groupEl.dataset.perspective;
+            const candidates = this.computeLinkCandidates(dragged, target).filter(c => c.toPerspective === perspective);
+            this.resolveAndCreateLink(candidates, dragged, target);
+          });
+        });
       });
     });
     const addPaneButton = this.querySelector('.add-pane-button');
