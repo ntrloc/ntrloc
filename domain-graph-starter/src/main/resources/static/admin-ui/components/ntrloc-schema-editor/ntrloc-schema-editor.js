@@ -50,8 +50,17 @@ injectStyles('ntrloc-schema-editor-styles', `
     background: var(--border);
     color: var(--text);
   }
+  aside .type-button.pending-delete {
+    color: var(--muted);
+    text-decoration: line-through;
+  }
   aside .save-button {
     margin-top: auto;
+  }
+  aside .save-error {
+    color: #f85149;
+    font-size: 13px;
+    margin: 8px 0 0 0;
   }
   main {
     flex: 1;
@@ -84,6 +93,14 @@ class NtrlocSchemaEditor extends HTMLElement {
 
   render() {
     const loading = !schemaViewModel._loaded;
+    // <main> is the only scrollable region in this panel (ntrloc-item-detail itself has no
+    // overflow of its own) -- but it's rebuilt from scratch by innerHTML = below, along with
+    // every element inside it, on every single field edit anywhere in the detail view (every
+    // edit calls notifySchemaViewModelChange(), whose only subscriber is this render()). A freshly
+    // created element starts at scrollTop 0, so without this the whole panel visibly jumped back
+    // to the top on every keystroke-commit -- most noticeable scrolled down into Links/States.
+    const previousMain = this.querySelector('main');
+    const scrollTop = previousMain ? previousMain.scrollTop : 0;
 
     this.innerHTML = `
       <div class="body-row">
@@ -92,18 +109,19 @@ class NtrlocSchemaEditor extends HTMLElement {
             <div class="section-header">ITEM TYPES</div>
             <md-outlined-button class="add-button new-item-button">+ New Item Type</md-outlined-button>
             ${schemaViewModel.items.map((item, index) => `
-              <button class="type-button item-button ${schemaViewModel.selectedItem === item ? 'selected' : ''}"
+              <button class="type-button item-button ${schemaViewModel.selectedItem === item ? 'selected' : ''} ${item.isDeleted ? 'pending-delete' : ''}"
                       data-index="${index}">${escapeHtml(item.name || '(unnamed)')}</button>
             `).join('')}
 
             <div class="section-header" style="margin-top: 16px;">TRAITS</div>
             <md-outlined-button class="add-button new-trait-button">+ New Trait</md-outlined-button>
             ${schemaViewModel.traits.map((trait, index) => `
-              <button class="type-button trait-button ${schemaViewModel.selectedTrait === trait ? 'selected' : ''}"
+              <button class="type-button trait-button ${schemaViewModel.selectedTrait === trait ? 'selected' : ''} ${trait.isDeleted ? 'pending-delete' : ''}"
                       data-index="${index}">${escapeHtml(trait.name || '(unnamed)')}</button>
             `).join('')}
           `}
           <md-filled-button class="save-button" ${schemaViewModel.isDirty && !schemaViewModel.hasInvalidPendingLinks && !schemaViewModel.hasInvalidPendingGuardConditions ? '' : 'disabled'}>Save</md-filled-button>
+          ${this._saveError ? `<p class="save-error">${escapeHtml(this._saveError)}</p>` : ''}
         </aside>
 
         <main>
@@ -113,6 +131,22 @@ class NtrlocSchemaEditor extends HTMLElement {
     `;
 
     this.wireUp();
+
+    const newMain = this.querySelector('main');
+    if (newMain) {
+      newMain.scrollTop = scrollTop;
+      // The freshly-inserted Material web components (md-filled-text-field, md-filled-select,
+      // etc.) haven't finished upgrading their shadow DOM yet at this point, so scrollHeight is
+      // still momentarily smaller than its final size -- the assignment above can get silently
+      // clamped short. A frame later, once those components finish upgrading and the browser's
+      // own layout settles, the same scrollTop no longer lines up with the pre-edit position
+      // (confirmed by measuring: e.g. 354 -> clamped to 337 synchronously -> drifts to 359 a
+      // frame later), which read as a small extra jump on top of the fix. Re-applying once more
+      // after a frame corrects for that settling instead of fighting it synchronously.
+      requestAnimationFrame(() => {
+        if (newMain.isConnected) newMain.scrollTop = scrollTop;
+      });
+    }
   }
 
   wireUp() {
@@ -150,11 +184,15 @@ class NtrlocSchemaEditor extends HTMLElement {
     const mutations = schemaViewModel.collectMutations();
     const confirmed = await openSaveConfirmDialog(summary);
     if (!confirmed) return;
+    this._saveError = null;
+    this.render();
     try {
       await schemaService.applyMutations(mutations);
       await schemaViewModel.reload();
     } catch (e) {
       console.error('[save] error:', e);
+      this._saveError = e.message || 'Save failed.';
+      this.render();
     }
   }
 }

@@ -46,6 +46,7 @@ import java.util.stream.Stream;
 class SchemaViewBuilder {
 
     private static final String ENTITY_KIND_TRAIT = "trait";
+    private static final String ENTITY_KIND_SUPERTYPE = "supertype";
 
     private static final List<SortableFieldView> SYSTEM_SORTABLE_FIELDS = List.of(
             new SortableFieldView("itemId",          true),
@@ -100,59 +101,25 @@ class SchemaViewBuilder {
 
         Map<UUID, TraitRow> traitById = traits.stream()
                 .collect(Collectors.toMap(TraitRow::id, t -> t));
+        Map<UUID, ItemRow> itemById = items.stream()
+                .collect(Collectors.toMap(ItemRow::id, i -> i));
 
         var itemViews = items.stream().map(item -> {
             var traitIds = traitIdsByItem.getOrDefault(item.id(), List.of());
             var traitRefs = traitIds.stream().map(id -> new TraitRefView(traitById.get(id).id(), traitById.get(id).name())).toList();
 
-            // Own properties (definedIn = null) + trait-inherited properties
-            var ownProps = propertiesByItem.getOrDefault(item.id(), List.of());
-            var traitProps = traitIds.stream()
-                    .flatMap(traitId -> {
-                        var trait = traitById.get(traitId);
-                        var definedIn = new DefinedInView(ENTITY_KIND_TRAIT, trait.name());
-                        return propertiesByTrait.getOrDefault(traitId, List.of()).stream()
-                                .map(p -> new AdminPropertyDefinitionView(
-                                        p.id(), p.name(), p.description(), p.type(), p.cardinality(), p.usage(), definedIn, p.controlledListId()));
-                    })
-                    .toList();
-            var allProps = Stream.concat(ownProps.stream(), traitProps.stream()).toList();
+            // Own properties + trait-inherited properties + full supertype chain's effective properties
+            var allProps = effectivePropertiesAdmin(item, itemById, traitIdsByItem, propertiesByItem, propertiesByTrait, traitById);
 
-            // Own link perspectives (definedIn = null) + trait-inherited perspectives
-            var ownLinks = buildPerspectiveAdminViews(item.id(), perspectivesByEntity, entityNameMap, itemEntityIds, null);
-            var traitLinks = traitIds.stream()
-                    .map(traitId -> {
-                        var trait = traitById.get(traitId);
-                        var definedIn = new DefinedInView(ENTITY_KIND_TRAIT, trait.name());
-                        return buildPerspectiveAdminViews(trait.id(), perspectivesByEntity, entityNameMap, itemEntityIds, definedIn);
-                    })
-                    .filter(m -> m != null && !m.isEmpty())
-                    .reduce(new LinkedHashMap<>(), (acc, m) -> { acc.putAll(m); return acc; });
+            // Own link perspectives + trait-inherited perspectives + supertype chain's effective links
+            var allLinks = effectiveLinksAdmin(item, itemById, perspectivesByEntity, entityNameMap, itemEntityIds, traitIdsByItem, traitById);
 
-            var allLinks = mergeLinkAdminMaps(ownLinks, traitLinks);
+            // Own state machines + full supertype chain's state machines (additive, no override)
+            var stateMachineViews = effectiveStateMachinesAdmin(item, itemById, stateMachinesByItem, statesByStateMachine, transitionsByFromState);
 
-            var rawStateMachines = stateMachinesByItem.get(item.id());
-            List<AdminStateMachineView> stateMachineViews = null;
-            if (rawStateMachines != null && !rawStateMachines.isEmpty()) {
-                stateMachineViews = rawStateMachines.stream().map(machine -> {
-                    var rawStates = statesByStateMachine.getOrDefault(machine.id(), List.of());
-                    Map<UUID, String> stateNameById = rawStates.stream()
-                            .collect(Collectors.toMap(StateRow::id, StateRow::name));
-                    var stateViews = rawStates.stream().map(state -> {
-                        var transitions = transitionsByFromState.getOrDefault(state.id(), List.of()).stream()
-                                .map(t -> new AdminTransitionView(
-                                        t.id(), t.toStateId(), stateNameById.get(t.toStateId()),
-                                        t.name(), t.description(), t.processId(),
-                                        repo.parseGuardCondition(t.guardCondition())))
-                                .toList();
-                        return new AdminStateView(state.id(), state.name(), state.description(),
-                                state.isInitial(), state.entryProcessId(), state.exitProcessId(), transitions);
-                    }).toList();
-                    return new AdminStateMachineView(machine.id(), machine.name(), machine.description(), stateViews);
-                }).toList();
-            }
-
-            return new AdminItemDefinitionView(item.id(), item.name(), item.description(), traitRefs, allProps, allLinks, sortableFieldsFor(allProps), item.initProcessId(), stateMachineViews);
+            return new AdminItemDefinitionView(item.id(), item.name(), item.description(), traitRefs, allProps, allLinks,
+                    sortableFieldsFor(allProps), item.initProcessId(), stateMachineViews.isEmpty() ? null : stateMachineViews,
+                    item.supertypeId(), item.abstractType(), item.displayLabelPattern());
         }).toList();
 
         var traitViews = traits.stream().map(trait -> {
@@ -170,6 +137,136 @@ class SchemaViewBuilder {
                 .toList();
 
         return new AdminSchemaView(itemViews, traitViews, linkViews, propertyTypes);
+    }
+
+    // An item's own properties (definedIn = null) plus its directly-implemented traits'
+    // properties (definedIn = trait) -- no supertype involvement, used both directly and as the
+    // per-level building block for effectivePropertiesAdmin's chain walk.
+    private List<AdminPropertyDefinitionView> ownAndTraitPropertiesAdmin(
+            ItemRow item, Map<UUID, List<UUID>> traitIdsByItem,
+            Map<UUID, List<AdminPropertyDefinitionView>> propertiesByItem,
+            Map<UUID, List<AdminPropertyDefinitionView>> propertiesByTrait,
+            Map<UUID, TraitRow> traitById) {
+        var traitIds = traitIdsByItem.getOrDefault(item.id(), List.of());
+        var ownProps = propertiesByItem.getOrDefault(item.id(), List.of());
+        var traitProps = traitIds.stream()
+                .flatMap(traitId -> {
+                    var trait = traitById.get(traitId);
+                    var definedIn = new DefinedInView(ENTITY_KIND_TRAIT, trait.name());
+                    return propertiesByTrait.getOrDefault(traitId, List.of()).stream()
+                            .map(p -> new AdminPropertyDefinitionView(
+                                    p.id(), p.name(), p.description(), p.type(), p.cardinality(), p.usage(), definedIn, p.controlledListId()));
+                })
+                .toList();
+        return Stream.concat(ownProps.stream(), traitProps.stream()).toList();
+    }
+
+    // Recursive: own+trait properties, plus the full supertype chain's own effective set walked
+    // upward. A property inherited from a supertype is tagged with that supertype's name -- but
+    // only if it isn't already tagged (i.e. it's genuinely that ancestor's own property, not
+    // something *that* ancestor itself inherited from a trait or a further ancestor), so the tag
+    // always names the actual originating source, not just the immediate parent.
+    private List<AdminPropertyDefinitionView> effectivePropertiesAdmin(
+            ItemRow item, Map<UUID, ItemRow> itemById, Map<UUID, List<UUID>> traitIdsByItem,
+            Map<UUID, List<AdminPropertyDefinitionView>> propertiesByItem,
+            Map<UUID, List<AdminPropertyDefinitionView>> propertiesByTrait,
+            Map<UUID, TraitRow> traitById) {
+        var own = ownAndTraitPropertiesAdmin(item, traitIdsByItem, propertiesByItem, propertiesByTrait, traitById);
+        var supertype = item.supertypeId() == null ? null : itemById.get(item.supertypeId());
+        if (supertype == null) return own;
+        var inherited = effectivePropertiesAdmin(supertype, itemById, traitIdsByItem, propertiesByItem, propertiesByTrait, traitById).stream()
+                .map(p -> p.definedIn() == null
+                        ? new AdminPropertyDefinitionView(p.id(), p.name(), p.description(), p.type(), p.cardinality(), p.usage(),
+                                new DefinedInView(ENTITY_KIND_SUPERTYPE, supertype.name()), p.controlledListId())
+                        : p)
+                .toList();
+        return Stream.concat(own.stream(), inherited.stream()).toList();
+    }
+
+    private Map<String, List<AdminItemLinkPerspectiveView>> ownAndTraitLinksAdmin(
+            ItemRow item, Map<UUID, List<SchemaRepository.PerspectiveRow>> perspectivesByEntity,
+            Map<UUID, String> entityNameMap, Set<UUID> itemEntityIds,
+            Map<UUID, List<UUID>> traitIdsByItem, Map<UUID, TraitRow> traitById) {
+        var traitIds = traitIdsByItem.getOrDefault(item.id(), List.of());
+        var ownLinks = buildPerspectiveAdminViews(item.id(), perspectivesByEntity, entityNameMap, itemEntityIds, null);
+        var traitLinks = traitIds.stream()
+                .map(traitId -> {
+                    var trait = traitById.get(traitId);
+                    var definedIn = new DefinedInView(ENTITY_KIND_TRAIT, trait.name());
+                    return buildPerspectiveAdminViews(trait.id(), perspectivesByEntity, entityNameMap, itemEntityIds, definedIn);
+                })
+                .filter(m -> m != null && !m.isEmpty())
+                .reduce(new LinkedHashMap<>(), (acc, m) -> { acc.putAll(m); return acc; });
+        return mergeLinkAdminMaps(ownLinks, traitLinks);
+    }
+
+    // Recursive counterpart to effectivePropertiesAdmin for links. mergeLinkAdminMaps requires
+    // its second argument to be a non-null (possibly empty) map -- retagLinksAdminAsSupertype
+    // upholds that even when the recursive call itself returns null (an ancestor with no links
+    // of its own at all).
+    private Map<String, List<AdminItemLinkPerspectiveView>> effectiveLinksAdmin(
+            ItemRow item, Map<UUID, ItemRow> itemById,
+            Map<UUID, List<SchemaRepository.PerspectiveRow>> perspectivesByEntity,
+            Map<UUID, String> entityNameMap, Set<UUID> itemEntityIds,
+            Map<UUID, List<UUID>> traitIdsByItem, Map<UUID, TraitRow> traitById) {
+        var own = ownAndTraitLinksAdmin(item, perspectivesByEntity, entityNameMap, itemEntityIds, traitIdsByItem, traitById);
+        var supertype = item.supertypeId() == null ? null : itemById.get(item.supertypeId());
+        if (supertype == null) return own;
+        var inherited = effectiveLinksAdmin(supertype, itemById, perspectivesByEntity, entityNameMap, itemEntityIds, traitIdsByItem, traitById);
+        return mergeLinkAdminMaps(own, retagLinksAdminAsSupertype(inherited, supertype.name()));
+    }
+
+    private Map<String, List<AdminItemLinkPerspectiveView>> retagLinksAdminAsSupertype(
+            Map<String, List<AdminItemLinkPerspectiveView>> links, String supertypeName) {
+        if (links == null) return new LinkedHashMap<>();
+        var definedIn = new DefinedInView(ENTITY_KIND_SUPERTYPE, supertypeName);
+        var result = new LinkedHashMap<String, List<AdminItemLinkPerspectiveView>>();
+        links.forEach((name, list) -> result.put(name, list.stream()
+                .map(p -> p.definedIn() == null
+                        ? new AdminItemLinkPerspectiveView(p.id(), p.linkId(), p.targets(), p.description(), p.minCardinality(), p.maxCardinality(), definedIn)
+                        : p)
+                .toList()));
+        return result;
+    }
+
+    private List<AdminStateMachineView> ownStateMachinesAdmin(
+            ItemRow item, Map<UUID, List<StateMachineRow>> stateMachinesByItem,
+            Map<UUID, List<StateRow>> statesByStateMachine,
+            Map<UUID, List<SchemaRepository.TransitionRow>> transitionsByFromState) {
+        var rawStateMachines = stateMachinesByItem.get(item.id());
+        if (rawStateMachines == null || rawStateMachines.isEmpty()) return List.of();
+        return rawStateMachines.stream().map(machine -> {
+            var rawStates = statesByStateMachine.getOrDefault(machine.id(), List.of());
+            Map<UUID, String> stateNameById = rawStates.stream()
+                    .collect(Collectors.toMap(StateRow::id, StateRow::name));
+            var stateViews = rawStates.stream().map(state -> {
+                var transitions = transitionsByFromState.getOrDefault(state.id(), List.of()).stream()
+                        .map(t -> new AdminTransitionView(
+                                t.id(), t.toStateId(), stateNameById.get(t.toStateId()),
+                                t.name(), t.description(), t.processId(),
+                                repo.parseGuardCondition(t.guardCondition())))
+                        .toList();
+                return new AdminStateView(state.id(), state.name(), state.description(),
+                        state.isInitial(), state.entryProcessId(), state.exitProcessId(), transitions);
+            }).toList();
+            return new AdminStateMachineView(machine.id(), machine.name(), machine.description(), stateViews);
+        }).toList();
+    }
+
+    // Additive, no override: a subtype's effective state machines are its own plus every
+    // ancestor's, concatenated. Unlike properties/links, AdminStateMachineView carries no
+    // definedIn -- a state machine either belongs to this type or an ancestor's, and since it's
+    // never redefined along the way (strictly additive), there's nothing to disambiguate.
+    private List<AdminStateMachineView> effectiveStateMachinesAdmin(
+            ItemRow item, Map<UUID, ItemRow> itemById,
+            Map<UUID, List<StateMachineRow>> stateMachinesByItem,
+            Map<UUID, List<StateRow>> statesByStateMachine,
+            Map<UUID, List<SchemaRepository.TransitionRow>> transitionsByFromState) {
+        var own = ownStateMachinesAdmin(item, stateMachinesByItem, statesByStateMachine, transitionsByFromState);
+        var supertype = item.supertypeId() == null ? null : itemById.get(item.supertypeId());
+        if (supertype == null) return own;
+        var inherited = effectiveStateMachinesAdmin(supertype, itemById, stateMachinesByItem, statesByStateMachine, transitionsByFromState);
+        return Stream.concat(own.stream(), inherited.stream()).toList();
     }
 
     private Map<String, List<AdminItemLinkPerspectiveView>> buildPerspectiveAdminViews(
@@ -222,42 +319,20 @@ class SchemaViewBuilder {
 
         Map<UUID, TraitRow> traitById = traits.stream()
                 .collect(Collectors.toMap(TraitRow::id, t -> t));
+        Map<UUID, ItemRow> itemById = items.stream()
+                .collect(Collectors.toMap(ItemRow::id, i -> i));
+
+        var linkBuildContext = new LinkBuildContext(perspectivesByEntity, entityNameMap, itemEntityIds, propertiesByLink, traitIdsByItem, traitById);
 
         var itemViews = items.stream().map(item -> {
-            var traitIds = traitIdsByItem.getOrDefault(item.id(), List.of());
+            var allProps = effectiveProperties(item, itemById, traitIdsByItem, propertiesByItem, propertiesByTrait, traitById);
+            var allLinks = effectiveLinks(item, itemById, linkBuildContext);
 
-            var ownProps = propertiesByItem.getOrDefault(item.id(), List.of()).stream()
-                    .map(p -> new PropertyDefinitionView(p.id(), p.name(), p.description(), p.type(), p.cardinality(), null, allowedValuesFor(p)))
-                    .toList();
-            var traitProps = traitIds.stream()
-                    .flatMap(traitId -> {
-                        var trait = traitById.get(traitId);
-                        var definedIn = new DefinedInView(ENTITY_KIND_TRAIT, trait.name());
-                        return propertiesByTrait.getOrDefault(traitId, List.of()).stream()
-                                .map(p -> new PropertyDefinitionView(p.id(), p.name(), p.description(), p.type(), p.cardinality(), definedIn, allowedValuesFor(p)));
-                    })
-                    .toList();
-            var allProps = Stream.concat(ownProps.stream(), traitProps.stream()).toList();
+            // Rebuild admin props for sortableFields (includes own, trait, and supertype-chain properties)
+            var adminAllProps = effectivePropertiesAdmin(item, itemById, traitIdsByItem, propertiesByItem, propertiesByTrait, traitById);
 
-            var ownLinks = buildPerspectiveViews(item.id(), perspectivesByEntity, entityNameMap, itemEntityIds, propertiesByLink, null);
-            var traitLinks = traitIds.stream()
-                    .map(traitId -> {
-                        var trait = traitById.get(traitId);
-                        var definedIn = new DefinedInView(ENTITY_KIND_TRAIT, trait.name());
-                        return buildPerspectiveViews(trait.id(), perspectivesByEntity, entityNameMap, itemEntityIds, propertiesByLink, definedIn);
-                    })
-                    .filter(m -> m != null && !m.isEmpty())
-                    .reduce(new LinkedHashMap<>(), (acc, m) -> { acc.putAll(m); return acc; });
-
-            var allLinks = mergeLinkViews(ownLinks, traitLinks);
-
-            // Rebuild admin props for sortableFields (includes both own and trait)
-            var adminAllProps = Stream.concat(
-                    propertiesByItem.getOrDefault(item.id(), List.of()).stream(),
-                    traitIds.stream().flatMap(tid -> propertiesByTrait.getOrDefault(tid, List.of()).stream())
-            ).toList();
-
-            return new ItemDefinitionView(item.id(), item.name(), item.description(), allProps, allLinks, sortableFieldsFor(adminAllProps));
+            return new ItemDefinitionView(item.id(), item.name(), item.description(), allProps, allLinks,
+                    sortableFieldsFor(adminAllProps), item.supertypeId(), item.abstractType());
         }).toList();
 
         var traitViews = traits.stream().map(trait -> {
@@ -265,28 +340,107 @@ class SchemaViewBuilder {
             var props = adminProps.stream()
                     .map(p -> new PropertyDefinitionView(p.id(), p.name(), p.description(), p.type(), p.cardinality(), null, allowedValuesFor(p)))
                     .toList();
-            var links = buildPerspectiveViews(trait.id(), perspectivesByEntity, entityNameMap, itemEntityIds, propertiesByLink, null);
+            var links = buildPerspectiveViews(trait.id(), linkBuildContext, null);
             return new TraitDefinitionView(trait.id(), trait.name(), trait.description(), props, links, sortableFieldsFor(adminProps));
         }).toList();
 
         return new SchemaView(itemViews, traitViews);
     }
 
-    private Map<String, List<ItemLinkPerspectiveView>> buildPerspectiveViews(
-            UUID entityId,
+    private List<PropertyDefinitionView> ownAndTraitProperties(
+            ItemRow item, Map<UUID, List<UUID>> traitIdsByItem,
+            Map<UUID, List<AdminPropertyDefinitionView>> propertiesByItem,
+            Map<UUID, List<AdminPropertyDefinitionView>> propertiesByTrait,
+            Map<UUID, TraitRow> traitById) {
+        var traitIds = traitIdsByItem.getOrDefault(item.id(), List.of());
+        var ownProps = propertiesByItem.getOrDefault(item.id(), List.of()).stream()
+                .map(p -> new PropertyDefinitionView(p.id(), p.name(), p.description(), p.type(), p.cardinality(), null, allowedValuesFor(p)))
+                .toList();
+        var traitProps = traitIds.stream()
+                .flatMap(traitId -> {
+                    var trait = traitById.get(traitId);
+                    var definedIn = new DefinedInView(ENTITY_KIND_TRAIT, trait.name());
+                    return propertiesByTrait.getOrDefault(traitId, List.of()).stream()
+                            .map(p -> new PropertyDefinitionView(p.id(), p.name(), p.description(), p.type(), p.cardinality(), definedIn, allowedValuesFor(p)));
+                })
+                .toList();
+        return Stream.concat(ownProps.stream(), traitProps.stream()).toList();
+    }
+
+    private List<PropertyDefinitionView> effectiveProperties(
+            ItemRow item, Map<UUID, ItemRow> itemById, Map<UUID, List<UUID>> traitIdsByItem,
+            Map<UUID, List<AdminPropertyDefinitionView>> propertiesByItem,
+            Map<UUID, List<AdminPropertyDefinitionView>> propertiesByTrait,
+            Map<UUID, TraitRow> traitById) {
+        var own = ownAndTraitProperties(item, traitIdsByItem, propertiesByItem, propertiesByTrait, traitById);
+        var supertype = item.supertypeId() == null ? null : itemById.get(item.supertypeId());
+        if (supertype == null) return own;
+        var inherited = effectiveProperties(supertype, itemById, traitIdsByItem, propertiesByItem, propertiesByTrait, traitById).stream()
+                .map(p -> p.definedIn() == null
+                        ? new PropertyDefinitionView(p.id(), p.name(), p.description(), p.type(), p.cardinality(),
+                                new DefinedInView(ENTITY_KIND_SUPERTYPE, supertype.name()), p.allowedValues())
+                        : p)
+                .toList();
+        return Stream.concat(own.stream(), inherited.stream()).toList();
+    }
+
+    // Bundles the schema-wide lookup maps ownAndTraitLinks/effectiveLinks/buildPerspectiveViews all
+    // thread through unchanged -- keeps effectiveLinks under Sonar's 7-parameter limit (S107)
+    // without changing behavior; every field here is still exactly what buildSchema() already
+    // builds once per call and passes down.
+    private record LinkBuildContext(
             Map<UUID, List<SchemaRepository.PerspectiveRow>> perspectivesByEntity,
             Map<UUID, String> entityNameMap,
             Set<UUID> itemEntityIds,
             Map<UUID, List<AdminPropertyDefinitionView>> propertiesByLink,
-            DefinedInView definedIn) {
-        var perspectives = perspectivesByEntity.get(entityId);
+            Map<UUID, List<UUID>> traitIdsByItem,
+            Map<UUID, TraitRow> traitById) {
+    }
+
+    private Map<String, List<ItemLinkPerspectiveView>> ownAndTraitLinks(ItemRow item, LinkBuildContext ctx) {
+        var traitIds = ctx.traitIdsByItem().getOrDefault(item.id(), List.of());
+        var ownLinks = buildPerspectiveViews(item.id(), ctx, null);
+        var traitLinks = traitIds.stream()
+                .map(traitId -> {
+                    var trait = ctx.traitById().get(traitId);
+                    var definedIn = new DefinedInView(ENTITY_KIND_TRAIT, trait.name());
+                    return buildPerspectiveViews(trait.id(), ctx, definedIn);
+                })
+                .filter(m -> m != null && !m.isEmpty())
+                .reduce(new LinkedHashMap<>(), (acc, m) -> { acc.putAll(m); return acc; });
+        return mergeLinkViews(ownLinks, traitLinks);
+    }
+
+    private Map<String, List<ItemLinkPerspectiveView>> effectiveLinks(ItemRow item, Map<UUID, ItemRow> itemById, LinkBuildContext ctx) {
+        var own = ownAndTraitLinks(item, ctx);
+        var supertype = item.supertypeId() == null ? null : itemById.get(item.supertypeId());
+        if (supertype == null) return own;
+        var inherited = effectiveLinks(supertype, itemById, ctx);
+        return mergeLinkViews(own, retagLinksAsSupertype(inherited, supertype.name()));
+    }
+
+    private Map<String, List<ItemLinkPerspectiveView>> retagLinksAsSupertype(
+            Map<String, List<ItemLinkPerspectiveView>> links, String supertypeName) {
+        if (links == null) return new LinkedHashMap<>();
+        var definedIn = new DefinedInView(ENTITY_KIND_SUPERTYPE, supertypeName);
+        var result = new LinkedHashMap<String, List<ItemLinkPerspectiveView>>();
+        links.forEach((name, list) -> result.put(name, list.stream()
+                .map(p -> p.definedIn() == null
+                        ? new ItemLinkPerspectiveView(p.targets(), p.description(), p.minCardinality(), p.maxCardinality(), p.properties(), definedIn)
+                        : p)
+                .toList()));
+        return result;
+    }
+
+    private Map<String, List<ItemLinkPerspectiveView>> buildPerspectiveViews(UUID entityId, LinkBuildContext ctx, DefinedInView definedIn) {
+        var perspectives = ctx.perspectivesByEntity().get(entityId);
         if (perspectives == null || perspectives.isEmpty()) return null;
         return perspectives.stream().map(p -> {
             var inverses = repo.findInversePerspectives(p.linkId(), p.id());
             var targets = inverses.stream()
-                    .map(inv -> new TargetEntityView(entityNameMap.get(inv.entityId()), itemEntityIds.contains(inv.entityId()) ? "item" : ENTITY_KIND_TRAIT))
+                    .map(inv -> new TargetEntityView(ctx.entityNameMap().get(inv.entityId()), ctx.itemEntityIds().contains(inv.entityId()) ? "item" : ENTITY_KIND_TRAIT))
                     .toList();
-            var linkProps = propertiesByLink.get(p.linkId());
+            var linkProps = ctx.propertiesByLink().get(p.linkId());
             var linkPropViews = linkProps == null ? null : linkProps.stream()
                     .map(lp -> new PropertyDefinitionView(lp.id(), lp.name(), lp.description(), lp.type(), lp.cardinality(), null, allowedValuesFor(lp)))
                     .toList();

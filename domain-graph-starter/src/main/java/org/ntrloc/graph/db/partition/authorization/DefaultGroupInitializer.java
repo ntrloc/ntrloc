@@ -5,15 +5,22 @@ import org.ntrloc.graph.db.partition.authorization.repository.AuthorizationRepos
 import org.ntrloc.graph.db.partition.schema.event.SchemaChangeEvent;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
-import org.springframework.context.annotation.DependsOn;
+import org.springframework.boot.sql.init.dependency.DependsOnDatabaseInitialization;
 import org.springframework.context.event.EventListener;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 
 import java.util.UUID;
 
+// @DependsOnDatabaseInitialization (not a literal @DependsOn on Flyway's own bean name) is Boot's
+// purpose-built mechanism for this: FlywayAutoConfiguration already @Imports
+// DatabaseInitializationDependencyConfigurer, which wires a real BeanDefinition-level dependsOn
+// from any bean carrying this annotation onto whatever DatabaseInitializerDetector finds (Flyway's
+// migration bean) -- guaranteed ordering, not an assumption about JdbcClient bean wiring. Needed
+// because ensureGroupExists() below is the only DML left running at boot now that schema_* tables
+// are Flyway-managed rather than always-already-there via the old *Initializer @PostConstruct DDL.
 @Component
-@DependsOn({"securityInitializer", "authorizationInitializer"})
+@DependsOnDatabaseInitialization
 public class DefaultGroupInitializer {
 
     public static final String DEFAULT_GROUP_NAME = "everyone";

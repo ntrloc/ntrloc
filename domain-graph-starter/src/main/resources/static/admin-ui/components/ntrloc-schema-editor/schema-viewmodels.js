@@ -21,6 +21,11 @@ class PropertyDefinitionViewModel {
     this.controlledListId = args.controlledListId;
     this.isNew = args.isNew;
     this.isDeleted = false;
+    // Which row is "open" for editing -- lives here, not as component-instance state, because
+    // notifySchemaViewModelChange() (see schema-view-model.js) rebuilds ntrloc-item-detail and
+    // everything nested inside it (including a fresh ntrloc-property-table) on every field edit
+    // anywhere in the panel. This object is the one thing that survives that churn.
+    this.isEditing = args.isEditing ?? false;
   }
 
   get isReadonly() {
@@ -69,6 +74,7 @@ class PropertyDefinitionViewModel {
       definedIn: p.definedIn ?? null,
       controlledListId: p.controlledListId ?? null,
       isNew: false,
+      isEditing: false,
     });
   }
 
@@ -85,6 +91,9 @@ class PropertyDefinitionViewModel {
       definedIn: null,
       controlledListId: null,
       isNew: true,
+      // Starts open so the existing "focus the new row's name field" flow keeps working --
+      // ntrloc-property-table.js's add-button handler looks for a rendered .name-input.
+      isEditing: true,
     });
   }
 }
@@ -122,6 +131,12 @@ class ItemLinkPerspectiveViewModel {
     this.originalMaxCardinality = args.maxCardinality;
     this.link = args.link;
     this.isDeleted = false;
+    // Same rationale as PropertyDefinitionViewModel.isEditing -- lives on this long-lived object,
+    // not on ntrloc-links-table's component instance, so it survives the full-tree rebuild that
+    // notifySchemaViewModelChange() triggers on every field edit. ntrloc-links-table.js never
+    // renders an unsaved perspective (new links go through ntrloc-item-detail.js's separate
+    // pendingLinkCard()/PendingLinkViewModel flow instead), so this is always false to start.
+    this.isEditing = false;
   }
 
   get isReadonly() {
@@ -377,13 +392,24 @@ class ItemDefinitionViewModel {
     this.links = args.links;
     this.traitAssignments = args.traitAssignments;
     this.stateMachines = args.stateMachines;
+    this.supertypeId = args.supertypeId ?? null;
+    this.originalSupertypeId = args.supertypeId ?? null;
+    this.abstractType = args.abstractType ?? false;
+    this.originalAbstractType = args.abstractType ?? false;
+    this.displayLabelPattern = args.displayLabelPattern ?? null;
+    this.originalDisplayLabelPattern = args.displayLabelPattern ?? null;
     this.isNew = args.isNew;
+    this.isDeleted = false;
   }
 
   get isDirty() {
     return this.isNew
+      || this.isDeleted
       || this.name !== this.originalName
       || (this.description ?? '') !== (this.originalDescription ?? '')
+      || this.supertypeId !== this.originalSupertypeId
+      || this.abstractType !== this.originalAbstractType
+      || (this.displayLabelPattern ?? '') !== (this.originalDisplayLabelPattern ?? '')
       || this.properties.some((p) => p.isDirty)
       || this.traitAssignments.some((t) => t.isDirty)
       || Object.values(this.links).some((perspectives) => perspectives.some((p) => p.isDirty))
@@ -435,6 +461,9 @@ class ItemDefinitionViewModel {
       links,
       traitAssignments: (item.traits ?? []).map((t) => new TraitAssignmentViewModel(t)),
       stateMachines: (item.stateMachines ?? []).map((m) => StateMachineViewModel.fromAdmin(m)),
+      supertypeId: item.supertypeId ?? null,
+      abstractType: item.abstractType ?? false,
+      displayLabelPattern: item.displayLabelPattern ?? null,
       isNew: false,
     });
   }
@@ -448,6 +477,9 @@ class ItemDefinitionViewModel {
       links: {},
       traitAssignments: [],
       stateMachines: [],
+      supertypeId: null,
+      abstractType: false,
+      displayLabelPattern: null,
       isNew: true,
     });
   }
@@ -463,10 +495,12 @@ class TraitDefinitionViewModel {
     this.properties = args.properties;
     this.links = args.links;
     this.isNew = args.isNew;
+    this.isDeleted = false;
   }
 
   get isDirty() {
     return this.isNew
+      || this.isDeleted
       || this.name !== this.originalName
       || (this.description ?? '') !== (this.originalDescription ?? '')
       || this.properties.some((p) => p.isDirty)

@@ -3,13 +3,15 @@ package org.ntrloc.graph.db.partition.process;
 import jakarta.annotation.PostConstruct;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.sql.init.dependency.DependsOnDatabaseInitialization;
 import org.springframework.context.annotation.DependsOn;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 
 @Component
 @ConditionalOnProperty(prefix = "graph.security", name = "seed-local-accounts", havingValue = "true")
-@DependsOn({"processGroupInitializer", "localAccountSeeder"})
+@DependsOn("localAccountSeeder")
+@DependsOnDatabaseInitialization
 public class ProcessGroupSeeder {
 
     private final ProcessGroupRepository groupRepo;

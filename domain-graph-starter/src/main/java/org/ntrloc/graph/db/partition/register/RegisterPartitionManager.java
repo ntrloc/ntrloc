@@ -14,11 +14,18 @@ import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyDefinitionView;
+import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminSchemaView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminStateMachineView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminStateView;
 import org.ntrloc.graph.db.partition.schema.event.SchemaChangeEvent;
 import org.ntrloc.graph.db.partition.schema.event.SchemaChangeListener;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.event.EventListener;
+import org.springframework.context.expression.MapAccessor;
+import org.springframework.expression.Expression;
+import org.springframework.expression.spel.standard.SpelExpressionParser;
+import org.springframework.expression.spel.support.SimpleEvaluationContext;
 import org.ntrloc.graph.db.projection.ProjectedItem;
 import org.ntrloc.graph.db.projection.ProjectedItemState;
 import org.ntrloc.graph.db.projection.ProjectedLink;
@@ -42,17 +49,42 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @Component
 public class RegisterPartitionManager implements SchemaChangeListener {
 
+    private static final Logger LOG = LoggerFactory.getLogger(RegisterPartitionManager.class);
+
     private final JdbcClient jdbcClient;
     private final ObjectMapper objectMapper;
     private final BinaryPartitionManager binaryPartitionManager;
     private final SchemaManager schemaManager;
+
+    // Keyed by pattern *string*, not item type -- a pure function cache (the same SpEL text always
+    // compiles to the same Expression), so it needs no invalidation hook when a pattern is edited;
+    // an edited pattern is simply a different string, a new cache entry. Unbounded is fine: the
+    // realistic number of distinct patterns ever authored across a schema's lifetime is small.
+    private final Map<String, Expression> compiledPatternCache = new ConcurrentHashMap<>();
+    private final SpelExpressionParser spelParser = new SpelExpressionParser();
+
+    // Memoizes resolveEffectiveDisplayLabelPatterns() by reference-identity of the last-seen
+    // AdminSchemaView -- schemaManager.getAdminSchema() only ever returns a new instance when
+    // rebuildCache() runs (on any schema mutation), so a normal run of project()/projectOne()/
+    // projectAcrossTypes() (which each call assembleProjectedItems, and thus this resolution,
+    // once) is a cache hit rather than an O(item types) supertype-chain walk every time.
+    // schema and resolved are updated together as a pair, so they're held in one AtomicReference
+    // rather than two volatile fields -- otherwise a racing reader could see the new schema but
+    // the stale resolved map (or vice versa).
+    private record DisplayLabelPatternsCache(AdminSchemaView schema, Map<String, String> resolved) {
+    }
+
+    private final AtomicReference<DisplayLabelPatternsCache> displayLabelPatternsCache =
+            new AtomicReference<>(new DisplayLabelPatternsCache(null, Map.of()));
 
     public RegisterPartitionManager(JdbcClient jdbcClient, ObjectMapper objectMapper,
                                     BinaryPartitionManager binaryPartitionManager, SchemaManager schemaManager) {
@@ -68,6 +100,10 @@ public class RegisterPartitionManager implements SchemaChangeListener {
     private static final String COL_REGISTER_ITEM_ID = "register_item_id";
     private static final String COL_ITEM_ID = "item_id";
     private static final String COL_PROPERTIES = "properties";
+    private static final String COL_ITEM_TYPE = "item_type";
+    private static final String COL_STATES = "states";
+    private static final String COL_FACET_VALUE = "value";
+    private static final String COL_FACET_COUNT = "count";
     private static final String PARAM_TRANSACTION_ID = "transactionId";
     private static final String PARAM_LINK_ID = "linkId";
     private static final String COL_REGISTER_LINK_ID = "register_link_id";
@@ -214,12 +250,195 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                 .query((rs, n) -> new RawItem(
                         rs.getObject(COL_REGISTER_ITEM_ID, UUID.class),
                         rs.getObject(COL_ITEM_ID, UUID.class),
-                        rs.getString("item_type"),
+                        rs.getString(COL_ITEM_TYPE),
                         parseJsonb(rs.getString(COL_PROPERTIES)),
-                        parseJsonb(rs.getString("states"))))
+                        parseJsonb(rs.getString(COL_STATES))))
                 .list();
 
-        return new ProjectionResult(assembleProjectedItems(rawItems, itemTypeId, binaryBaseUrl), totalCount, facetedCount, facets, stateMachineFacets);
+        Map<UUID, String> ownPropertyNames = propertyNamesByIdForItemType(itemTypeId);
+        List<AdminStateMachineView> stateMachines = schemaManager.getAdminSchema().items().stream()
+                .filter(item -> item.id().equals(itemTypeId))
+                .findFirst()
+                .map(AdminItemDefinitionView::stateMachines)
+                .orElse(null);
+        return new ProjectionResult(assembleProjectedItems(rawItems, ownPropertyNames, stateMachines, binaryBaseUrl), totalCount, facetedCount, facets, stateMachineFacets);
+    }
+
+    // --- Cross-type (trait/supertype-scoped) queries ---
+
+    private static final Map<String, String> SYSTEM_SORT_COLUMNS_ACROSS_TYPES = Map.of(
+            PARAM_ITEM_ID,     "combined.item_id",
+            "itemType",        "combined.item_type",
+            "createdAt",       "combined.created_at",
+            "updatedAt",       "combined.updated_at",
+            "visibilityState", "combined.visibility_state"
+    );
+
+    // Parallel to project(), not a refactor of it: the single-table path is proven and
+    // read-performance-critical, and reshaping it to always route through an N-branch code path
+    // risked destabilizing it for the (still overwhelmingly common) case of a type with no
+    // descendants. EntityManagerImpl only calls this once a resolved type set actually has more
+    // than one member.
+    public ProjectionResult projectAcrossTypes(Set<UUID> itemTypeIds, CollectionProjectionSpec spec, String binaryBaseUrl) {
+        List<UUID> branches = List.copyOf(itemTypeIds);
+        // Property/sort/facet field names resolve against a single representative branch, not each
+        // one individually -- deliberate: every branch in a resolved set is guaranteed (by
+        // construction of SchemaManager's resolvers) to have inherited whichever properties are
+        // common to the whole set, so any single member resolves them identically. A field valid on
+        // only one specific sibling branch correctly fails to resolve here, same as it would
+        // against project() for that branch alone -- querying it means querying that concrete type
+        // directly, not polymorphically. Known minor wrinkle: Set has no defined order, so an empty
+        // spec.facets() ("auto-populate every facetable property") auto-populates from whichever
+        // branch happens to land here, not necessarily the query's literal root -- for a supertype
+        // query that can pull in a sibling's own facetable property alongside the shared ones. Not
+        // incorrect (branches lacking that property just contribute no values to it), just
+        // possibly slightly more inclusive than strictly necessary in that one case.
+        UUID representativeItemTypeId = branches.get(0);
+
+        SqlFragment filterFragment = buildPredicateFragment(spec.filter(), representativeItemTypeId);
+
+        List<FacetFilter> activeFacetFilters = spec.facetFilters() != null ? spec.facetFilters() : List.of();
+        List<String> requestedFacets = resolveRequestedFacets(spec, representativeItemTypeId);
+
+        AtomicInteger facetParamCounter = new AtomicInteger();
+        Map<String, SqlFragment> facetFragmentsByField = new LinkedHashMap<>();
+        for (FacetFilter ff : activeFacetFilters) {
+            facetFragmentsByField.put(ff.field(), buildFacetFilterFragment(ff, representativeItemTypeId, facetParamCounter));
+        }
+        SqlFragment allFacetFilters = combineFragments(facetFragmentsByField.values());
+
+        SqlFragment baseSource = buildUnionedBranchSource(branches, filterFragment, SqlFragment.empty());
+        long totalCount = jdbcClient.sql("SELECT COUNT(*) FROM (" + baseSource.sql() + ") combined")
+                .params(baseSource.params())
+                .query(Long.class).single();
+
+        long facetedCount = totalCount;
+        if (!activeFacetFilters.isEmpty()) {
+            SqlFragment facetedSource = buildUnionedBranchSource(branches, filterFragment, allFacetFilters);
+            facetedCount = jdbcClient.sql("SELECT COUNT(*) FROM (" + facetedSource.sql() + ") combined")
+                    .params(facetedSource.params())
+                    .query(Long.class).single();
+        }
+
+        Map<String, List<FacetBucket>> facets = null;
+        if (!requestedFacets.isEmpty()) {
+            facets = new LinkedHashMap<>();
+            for (String field : requestedFacets) {
+                SqlFragment otherFilters = combineFragments(
+                        facetFragmentsByField.entrySet().stream()
+                                .filter(e -> !e.getKey().equals(field))
+                                .map(Map.Entry::getValue)
+                                .toList());
+                facets.put(field, runTermsFacetQueryAcrossTypes(branches, filterFragment, otherFilters, field, representativeItemTypeId));
+            }
+        }
+
+        // No cross-type equivalent for state-machine facets in this pass -- naming one specific
+        // machine id isn't guaranteed meaningful the same way across an arbitrary branch set the
+        // way a merged property lookup is; left unsupported here rather than guessed at.
+        Map<String, List<FacetBucket>> stateMachineFacets = null;
+
+        if (facetedCount == 0) {
+            return new ProjectionResult(List.of(), totalCount, 0, facets, stateMachineFacets);
+        }
+
+        SqlFragment mainSource = buildUnionedBranchSource(branches, filterFragment, allFacetFilters);
+        List<RawItem> rawItems = jdbcClient.sql("""
+                SELECT combined.register_item_id, combined.item_id, combined.item_type,
+                       combined.properties::text AS properties, combined.states::text AS states
+                FROM (%s) combined
+                %s
+                LIMIT :limit OFFSET :offset
+                """.formatted(mainSource.sql(), orderByClauseAcrossTypes(spec, representativeItemTypeId)))
+                .params(mainSource.params())
+                .param("limit", effectiveLimit(spec))
+                .param("offset", effectiveOffset(spec))
+                .query((rs, n) -> new RawItem(
+                        rs.getObject(COL_REGISTER_ITEM_ID, UUID.class),
+                        rs.getObject(COL_ITEM_ID, UUID.class),
+                        rs.getString(COL_ITEM_TYPE),
+                        parseJsonb(rs.getString(COL_PROPERTIES)),
+                        parseJsonb(rs.getString(COL_STATES))))
+                .list();
+
+        // Merged, not per-row-resolved: property ids are globally unique across the whole schema
+        // (never scoped per type), so unioning each branch's own name lookup is a safe, unambiguous
+        // merge -- see assembleProjectedItems' own comment on why an over-inclusive stateMachines
+        // list is equally safe.
+        Map<UUID, String> mergedPropertyNames = new HashMap<>();
+        List<AdminStateMachineView> mergedStateMachines = new ArrayList<>();
+        for (UUID branchId : branches) {
+            mergedPropertyNames.putAll(propertyNamesByIdForItemType(branchId));
+            schemaManager.getAdminSchema().items().stream()
+                    .filter(item -> item.id().equals(branchId))
+                    .findFirst()
+                    .map(AdminItemDefinitionView::stateMachines)
+                    .ifPresent(mergedStateMachines::addAll);
+        }
+
+        var items = assembleProjectedItems(rawItems, mergedPropertyNames,
+                mergedStateMachines.isEmpty() ? null : mergedStateMachines, binaryBaseUrl);
+        return new ProjectionResult(items, totalCount, facetedCount, facets, stateMachineFacets);
+    }
+
+    // One SELECT per branch (its own physical table, its own item-type-id parameter), UNION ALL'd
+    // into a single source reusable for a count wrapper, a facet GROUP BY wrapper, or the main
+    // paginated select -- filter/additionalFilter's own SQL text (and thus its :param placeholders)
+    // is repeated verbatim in every branch, which is safe: JdbcClient binds a named parameter to
+    // the same value everywhere it appears in one statement, so the shared filter params only need
+    // to be bound once despite appearing N times. properties/states are left as JSONB here (not
+    // cast to text) so a facet wrapper can access them directly -- only the final main-select
+    // wrapper casts to text, matching what parseJsonb expects.
+    private SqlFragment buildUnionedBranchSource(List<UUID> branches, SqlFragment filter, SqlFragment additionalFilter) {
+        List<String> selects = new ArrayList<>();
+        Map<String, Object> params = new HashMap<>();
+        params.putAll(filter.params());
+        params.putAll(additionalFilter.params());
+        for (int i = 0; i < branches.size(); i++) {
+            UUID branchId = branches.get(i);
+            String paramName = "branchType_" + i;
+            params.put(paramName, branchId);
+            selects.add("""
+                    SELECT ri.id AS register_item_id, ri.item_id, si.name AS item_type,
+                           rt.properties AS properties, rt.states AS states,
+                           ri.created_at AS created_at, ri.updated_at AS updated_at, ri.state AS visibility_state
+                    FROM register_item ri
+                    JOIN %s rt ON rt.register_item_id = ri.id
+                    JOIN schema_item si ON si.id = ri.item_type_id
+                    WHERE ri.item_type_id = :%s
+                      AND ri.state = 'COMMITTED'
+                      %s
+                      %s
+                    """.formatted(tableNameFor(branchId), paramName, filter.sql(), additionalFilter.sql()));
+        }
+        return new SqlFragment(String.join(" UNION ALL ", selects), params);
+    }
+
+    private List<FacetBucket> runTermsFacetQueryAcrossTypes(List<UUID> branches, SqlFragment filter, SqlFragment otherFacetFilters,
+                                                              String field, UUID representativeItemTypeId) {
+        String propertyId = resolvePropertyId(representativeItemTypeId, sanitizeFieldName(field)).toString();
+        SqlFragment source = buildUnionedBranchSource(branches, filter, otherFacetFilters);
+        return jdbcClient.sql("""
+                SELECT combined.properties->>'%s' AS value, COUNT(*) AS count
+                FROM (%s) combined
+                GROUP BY combined.properties->>'%s'
+                ORDER BY count DESC, value ASC NULLS LAST
+                """.formatted(propertyId, source.sql(), propertyId))
+                .params(source.params())
+                .query((rs, n) -> {
+                    String value = rs.getString(COL_FACET_VALUE);
+                    return new FacetBucket(value, value, rs.getLong(COL_FACET_COUNT));
+                })
+                .list();
+    }
+
+    private String orderByClauseAcrossTypes(CollectionProjectionSpec spec, UUID representativeItemTypeId) {
+        if (spec.sortField() == null || spec.sortField().isBlank()) return "ORDER BY combined.item_id ASC";
+        String direction = "DESC".equalsIgnoreCase(spec.sortDirection()) ? "DESC" : "ASC";
+        String column = SYSTEM_SORT_COLUMNS_ACROSS_TYPES.containsKey(spec.sortField())
+                ? SYSTEM_SORT_COLUMNS_ACROSS_TYPES.get(spec.sortField())
+                : "combined.properties->>'" + resolvePropertyId(representativeItemTypeId, spec.sortField()) + "'";
+        return "ORDER BY " + column + " " + direction + " NULLS LAST, combined.item_id ASC";
     }
 
     private long runCount(String tableName, UUID itemTypeId, SqlFragment filter, SqlFragment additionalFilter) {
@@ -259,8 +478,8 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                 .param(PARAM_ITEM_TYPE_ID, itemTypeId)
                 .params(mergeParams(filter, otherFacetFilters))
                 .query((rs, n) -> {
-                    String value = rs.getString("value");
-                    return new FacetBucket(value, value, rs.getLong("count"));
+                    String value = rs.getString(COL_FACET_VALUE);
+                    return new FacetBucket(value, value, rs.getLong(COL_FACET_COUNT));
                 })
                 .list();
     }
@@ -286,9 +505,9 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                 .param(PARAM_ITEM_TYPE_ID, itemTypeId)
                 .params(filter.params())
                 .query((rs, n) -> {
-                    String stateId = rs.getString("value");
+                    String stateId = rs.getString(COL_FACET_VALUE);
                     String label = stateId == null ? null : stateNames.get(UUID.fromString(stateId));
-                    return new FacetBucket(stateId, label, rs.getLong("count"));
+                    return new FacetBucket(stateId, label, rs.getLong(COL_FACET_COUNT));
                 })
                 .list();
     }
@@ -366,15 +585,21 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                 .query((rs, n) -> new RawItem(
                         rs.getObject(COL_REGISTER_ITEM_ID, UUID.class),
                         rs.getObject(COL_ITEM_ID, UUID.class),
-                        rs.getString("item_type"),
+                        rs.getString(COL_ITEM_TYPE),
                         parseJsonb(rs.getString(COL_PROPERTIES)),
-                        parseJsonb(rs.getString("states"))))
+                        parseJsonb(rs.getString(COL_STATES))))
                 .list();
 
         if (rawItems.isEmpty()) {
             return Optional.empty();
         }
-        return Optional.of(assembleProjectedItems(rawItems, itemTypeId, binaryBaseUrl).get(0));
+        Map<UUID, String> ownPropertyNames = propertyNamesByIdForItemType(itemTypeId);
+        List<AdminStateMachineView> stateMachines = schemaManager.getAdminSchema().items().stream()
+                .filter(item -> item.id().equals(itemTypeId))
+                .findFirst()
+                .map(AdminItemDefinitionView::stateMachines)
+                .orElse(null);
+        return Optional.of(assembleProjectedItems(rawItems, ownPropertyNames, stateMachines, binaryBaseUrl).get(0));
     }
 
     // --- Write side: staged at prepare (UNCOMMITTED), flipped/cleaned up at commit/abort ---
@@ -759,14 +984,78 @@ public class RegisterPartitionManager implements SchemaChangeListener {
 
     private record BinaryPropertyRow(UUID registerItemId, String propertyName, UUID binaryId) {}
 
-    private List<ProjectedItem> assembleProjectedItems(List<RawItem> rawItems, UUID itemTypeId, String binaryBaseUrl) {
-        Map<UUID, String> ownPropertyNames = propertyNamesByIdForItemType(itemTypeId);
-        List<AdminStateMachineView> stateMachines = schemaManager.getAdminSchema().items().stream()
-                .filter(item -> item.id().equals(itemTypeId))
-                .findFirst()
-                .map(AdminItemDefinitionView::stateMachines)
-                .orElse(null);
+    // Every item type's EFFECTIVE display-label pattern (own, or inherited from the nearest
+    // supertype that defines one), keyed by type name -- name, not id, because RawItem/LinkRow
+    // only carry the type name per row (schema_item.name is NOT NULL UNIQUE, so this is
+    // unambiguous). Resolved for the whole schema, not just the branch(es) a given call is
+    // querying: a linked item reachable via linksByItem below can be of a type completely
+    // unrelated to the outer query, so a branch-scoped resolution (like the property-name merge
+    // projectAcrossTypes already does) wouldn't cover it. Mirrors SchemaManager's own
+    // implementsTraitInChain walk-up-supertype-chain idiom.
+    private Map<String, String> resolveEffectiveDisplayLabelPatterns() {
+        AdminSchemaView schema = schemaManager.getAdminSchema();
+        DisplayLabelPatternsCache cached = displayLabelPatternsCache.get();
+        if (schema == cached.schema()) {
+            return cached.resolved();
+        }
+        Map<UUID, AdminItemDefinitionView> itemById = schema.items().stream()
+                .collect(Collectors.toMap(AdminItemDefinitionView::id, i -> i));
+        Map<String, String> resolved = new HashMap<>();
+        for (AdminItemDefinitionView item : schema.items()) {
+            AdminItemDefinitionView current = item;
+            while (current != null && current.displayLabelPattern() == null) {
+                current = current.supertypeId() == null ? null : itemById.get(current.supertypeId());
+            }
+            if (current != null) {
+                resolved.put(item.name(), current.displayLabelPattern());
+            }
+        }
+        displayLabelPatternsCache.set(new DisplayLabelPatternsCache(schema, resolved));
+        return resolved;
+    }
+
+    private static final Pattern DISPLAY_LABEL_SEPARATOR_TRIM = Pattern.compile("(^[\\s,\\-/|]+)|([\\s,\\-/|]+$)");
+    private static final Pattern DISPLAY_LABEL_WHITESPACE_RUN = Pattern.compile("\\s+");
+
+    // pattern is the EFFECTIVE (already supertype-resolved) pattern for this item's type, or null
+    // if none exists anywhere in its chain. A broken pattern (bad SpEL syntax, a property that
+    // isn't actually a Map key so evaluation throws for some other reason) must never break
+    // projection -- caught broadly and logged, not propagated. Evaluated with
+    // SimpleEvaluationContext (not the default StandardEvaluationContext): no method calls, no
+    // `new`, no type/bean references -- MapAccessor is registered so a pattern can reference
+    // property names directly (`lastName`) rather than needing `['lastName']` map-index syntax.
+    private String computeDisplayLabel(UUID itemId, Map<String, Object> props, String pattern) {
+        if (pattern != null && !pattern.isBlank()) {
+            try {
+                Expression expression = compiledPatternCache.computeIfAbsent(pattern, spelParser::parseExpression);
+                var context = SimpleEvaluationContext.forPropertyAccessors(new MapAccessor()).build();
+                Object result = expression.getValue(context, props);
+                String cleaned = DISPLAY_LABEL_WHITESPACE_RUN.matcher(
+                        DISPLAY_LABEL_SEPARATOR_TRIM.matcher(String.valueOf(result == null ? "" : result)).replaceAll(""))
+                        .replaceAll(" ").trim();
+                if (!cleaned.isEmpty()) {
+                    return cleaned;
+                }
+            } catch (Exception e) {
+                LOG.warn("Display label pattern \"{}\" failed to evaluate for item {}: {}", pattern, itemId, e.getMessage());
+            }
+        }
+        // No pattern anywhere in the chain, evaluation failed, or the cleaned result was empty --
+        // a deliberate "fail loud" signal (the item's own id) that this type has no usable display
+        // label configured, rather than silently guessing from a title/name-ish property.
+        return itemId.toString();
+    }
+
+    // ownPropertyNames/stateMachines are pre-resolved by the caller rather than looked up here from
+    // a single itemTypeId -- the single-table project()/projectOne() resolve them from their one
+    // known type; projectAcrossTypes resolves a merged view across every branch instead (property
+    // ids are globally unique across the whole schema, so a plain union of each branch's own
+    // lookup is a safe, unambiguous merge -- an over-inclusive stateMachines list is likewise safe,
+    // since buildProjectedItemStates already skips any machine a given row's states don't mention).
+    private List<ProjectedItem> assembleProjectedItems(List<RawItem> rawItems, Map<UUID, String> ownPropertyNames,
+                                                         List<AdminStateMachineView> stateMachines, String binaryBaseUrl) {
         List<UUID> rawItemIds = rawItems.stream().map(RawItem::registerItemId).toList();
+        Map<String, String> displayLabelPatterns = resolveEffectiveDisplayLabelPatterns();
 
         List<LinkRow> linkRows = jdbcClient.sql("""
                 SELECT
@@ -819,7 +1108,9 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                         LinkRow::myRegisterItemId,
                         Collectors.groupingBy(
                                 LinkRow::perspectiveName,
-                                Collectors.mapping(row -> new ProjectedLink(
+                                Collectors.mapping(row -> {
+                                    Map<String, Object> linkedProps = linkedItemProperties.getOrDefault(row.linkedRegisterItemId(), Map.of());
+                                    return new ProjectedLink(
                                         row.linkId(),
                                         linkProperties.getOrDefault(row.registerLinkId(), Map.of()),
                                         // states is left null for a linked item -- a projection's link expansion has
@@ -829,11 +1120,14 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                                         new ProjectedItem(
                                                 row.linkedItemId(),
                                                 row.linkedItemType(),
-                                                linkedItemProperties.getOrDefault(row.linkedRegisterItemId(), Map.of()),
+                                                linkedProps,
                                                 Map.of(),
                                                 null,
-                                                null)),
-                                        Collectors.toList()))));
+                                                null,
+                                                computeDisplayLabel(row.linkedItemId(), linkedProps, displayLabelPatterns.get(row.linkedItemType())))
+                                    );
+                                },
+                                Collectors.toList()))));
 
         List<BinaryPropertyRow> binaryRows = jdbcClient.sql("""
                 SELECT rbp.register_item_id, sp.name AS property_name, rbp.binary_id
@@ -871,7 +1165,8 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                             props,
                             linksByItem.getOrDefault(raw.registerItemId(), Map.of()),
                             buildProjectedItemStates(raw.states(), stateMachines),
-                            null);
+                            null,
+                            computeDisplayLabel(raw.itemId(), props, displayLabelPatterns.get(raw.itemType())));
                 })
                 .toList();
     }
@@ -1017,10 +1312,10 @@ public class RegisterPartitionManager implements SchemaChangeListener {
     // Each item/link type gets its own physical properties table (see tableNameFor/
     // linkTableNameFor), so that table has to be created the moment the type is defined and
     // dropped the moment it's deleted -- otherwise projection queries against a type created
-    // after boot fail with "relation does not exist", since RegisterInitializer only creates
-    // these tables once, at startup, for whatever types already existed then. Traits have no
-    // register-side table of their own (their properties live in the owning item type's JSONB
-    // blob), so trait events are intentionally ignored here.
+    // after boot fail with "relation does not exist", since the static V1_0_0_1__baseline.sql Flyway
+    // migration only creates the shared register_* tables once, for whatever types already
+    // existed when it ran. Traits have no register-side table of their own (their properties live
+    // in the owning item type's JSONB blob), so trait events are intentionally ignored here.
 
     @Override
     @EventListener

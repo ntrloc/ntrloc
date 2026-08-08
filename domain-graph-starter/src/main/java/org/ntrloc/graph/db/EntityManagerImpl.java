@@ -19,7 +19,9 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 // @ProcessAccessible: the only bean reachable from process scripts as ${entityManager}, now that
 // it fronts both reads and writes. RegisterPartitionManager and LedgerPartitionManagerImpl lost
@@ -41,25 +43,81 @@ public class EntityManagerImpl implements EntityManager {
         this.mutationRequestProcessor = mutationRequestProcessor;
     }
 
+    // Polymorphic by default: itemTypeName resolves to itself plus every descendant (see
+    // SchemaManager.resolveSupertypeInclusiveItemTypeIds), so a lookup by a supertype name still
+    // finds an item that actually exists as a concrete subtype. The permission check runs against
+    // the item's *actual* type, not the queried name -- what matters is whether this principal can
+    // read the concrete data being returned, not the root of however it was searched for.
     @Override
     public Optional<ProjectedItem> project(SingleItemProjectionSpec spec, String binaryBaseUrl, NtrlocPrincipal principal) {
-        UUID itemTypeId = resolveItemTypeId(spec.itemTypeName());
-        requireReadAccess(principal, itemTypeId, spec.itemTypeName());
+        UUID rootItemTypeId = resolveItemTypeId(spec.itemTypeName());
+        Set<UUID> allowedItemTypeIds = schemaManager.resolveSupertypeInclusiveItemTypeIds(rootItemTypeId);
+
+        Optional<UUID> actualItemTypeId = registerPartitionManager.findItemTypeId(spec.itemId());
+        if (actualItemTypeId.isEmpty() || !allowedItemTypeIds.contains(actualItemTypeId.get())) {
+            return Optional.empty();
+        }
+        requireReadAccess(principal, actualItemTypeId.get(), spec.itemTypeName());
         var permissions = computePermissions(principal);
-        return registerPartitionManager.projectOne(itemTypeId, spec.itemId(), binaryBaseUrl)
+        return registerPartitionManager.projectOne(actualItemTypeId.get(), spec.itemId(), binaryBaseUrl)
                 .map(item -> item.withPermissions(permissions));
     }
 
     @Override
     public ProjectionResult project(CollectionProjectionSpec spec, String binaryBaseUrl, NtrlocPrincipal principal) {
-        UUID itemTypeId = resolveItemTypeId(spec.itemTypeName());
-        requireReadAccess(principal, itemTypeId, spec.itemTypeName());
+        Set<UUID> itemTypeIds = resolveItemTypeIds(spec);
+
+        // A *partial* drop (some branches unreadable, at least one isn't) proceeds silently --
+        // a principal who can't read one specific subtype should still see every other branch of a
+        // polymorphic query, not have the whole query fail. But if filtering leaves nothing
+        // readable at all, that has to behave exactly like the pre-existing single-type case
+        // already tested and relied on (AuthorizationEndpointsIntegrationTest): 404, not an empty
+        // 200 -- an empty-but-200 response would leak "something exists here, you're just not
+        // allowed to see it," which is exactly what the existing 404-not-403 principle exists to
+        // avoid. requireReadAccess below reuses that exact same signal for the "nothing readable"
+        // case, single-type or not.
+        Set<UUID> readableItemTypeIds = itemTypeIds.stream()
+                .filter(id -> permissionService.canReadItemType(principal, id))
+                .collect(Collectors.toSet());
+        if (readableItemTypeIds.isEmpty()) {
+            String queriedName = spec.itemTypeName() != null ? spec.itemTypeName() : spec.traitName();
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown item type: " + queriedName);
+        }
+
         var permissions = computePermissions(principal);
-        var result = registerPartitionManager.project(itemTypeId, spec, binaryBaseUrl);
+        // The common case (a type with no descendants, queried by name) goes through the existing,
+        // proven single-table path unchanged -- projectAcrossTypes only engages once polymorphism
+        // is actually in play, not on every request.
+        var result = readableItemTypeIds.size() == 1
+                ? registerPartitionManager.project(readableItemTypeIds.iterator().next(), spec, binaryBaseUrl)
+                : registerPartitionManager.projectAcrossTypes(readableItemTypeIds, spec, binaryBaseUrl);
         var itemsWithPermissions = result.items().stream()
                 .map(item -> item.withPermissions(permissions))
                 .toList();
         return new ProjectionResult(itemsWithPermissions, result.totalCount(), result.facetedCount(), result.facets(), result.stateMachineFacets());
+    }
+
+    // Exactly one of itemTypeName/traitName must be set; resolves to the set of concrete item-type
+    // ids the query should span -- itself plus every descendant for a supertype root, or every
+    // implementer (direct or inherited) for a trait.
+    private Set<UUID> resolveItemTypeIds(CollectionProjectionSpec spec) {
+        boolean hasItemType = spec.itemTypeName() != null && !spec.itemTypeName().isBlank();
+        boolean hasTrait = spec.traitName() != null && !spec.traitName().isBlank();
+        if (hasItemType == hasTrait) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Specify exactly one of itemTypeName or traitName");
+        }
+        if (hasItemType) {
+            return schemaManager.resolveSupertypeInclusiveItemTypeIds(resolveItemTypeId(spec.itemTypeName()));
+        }
+        return schemaManager.resolveTraitImplementerItemTypeIds(resolveTraitId(spec.traitName()));
+    }
+
+    private UUID resolveTraitId(String traitName) {
+        return schemaManager.getAdminSchema().traits().stream()
+                .filter(t -> t.name().equals(traitName))
+                .map(t -> t.id())
+                .findFirst()
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown trait: " + traitName));
     }
 
     // Pure passthrough -- no permission check, matching MutationRequestProcessor's own documented

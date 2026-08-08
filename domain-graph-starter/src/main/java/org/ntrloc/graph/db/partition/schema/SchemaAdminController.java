@@ -4,7 +4,9 @@ import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminSchemaView;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -12,6 +14,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import reactor.core.publisher.Flux;
 
 import java.util.List;
 import java.util.UUID;
@@ -24,15 +27,25 @@ public class SchemaAdminController {
 
     private final SchemaManager schemaManager;
     private final ControlledListManager controlledListManager;
+    private final SchemaChangeBroadcaster broadcaster;
 
-    public SchemaAdminController(SchemaManager schemaManager, ControlledListManager controlledListManager) {
+    public SchemaAdminController(SchemaManager schemaManager, ControlledListManager controlledListManager,
+                                  SchemaChangeBroadcaster broadcaster) {
         this.schemaManager = schemaManager;
         this.controlledListManager = controlledListManager;
+        this.broadcaster = broadcaster;
     }
 
     @GetMapping
     ResponseEntity<AdminSchemaView> getAdminSchema() {
         return ResponseEntity.ok(schemaManager.getAdminSchema());
+    }
+
+    // A trivial "something changed" signal, not a data channel -- every connected client just
+    // re-fetches GET /api/admin/schema (see SchemaChangeBroadcaster for why).
+    @GetMapping(value = "/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    Flux<ServerSentEvent<String>> schemaEvents() {
+        return broadcaster.events().map(type -> ServerSentEvent.builder(type).build());
     }
 
     @GetMapping("/properties/{propertyId}/controlled-list")

@@ -4,6 +4,16 @@ import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.coordinator.CoordinatorTestDomainInitializer;
 import org.ntrloc.graph.db.partition.register.RegisterPartitionManager;
+import org.ntrloc.graph.db.partition.schema.SchemaManager;
+import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
+import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
+import org.ntrloc.graph.db.partition.schema.definition.PropertyUsage;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateItemDefinitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateLinkDefinitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePerspectiveDefinitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePropertyDefinitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.DeleteItemDefinitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.UpdateItemDefinitionMutation;
 import org.ntrloc.graph.db.partition.security.ResolvedPrincipal;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -48,6 +58,9 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private MutationRequestProcessorTestDomainInitializer fixture;
+
+    @Autowired
+    private SchemaManager schemaManager;
 
     private UUID createItem(String itemTypeName) {
         MutationResponse response = processor.process(
@@ -274,5 +287,126 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
                 .isInstanceOf(MutationValidationException.class)
                 .satisfies(e -> assertThat(((MutationValidationException) e).errors())
                         .anyMatch(err -> err.path().equals("items[0].properties.createdAt")));
+    }
+
+    // --- Item type inheritance ---
+
+    @Test
+    void itemCreateMutation_forAnAbstractItemType_reportsAValidationError() {
+        String typeName = "MutReqProcAbstract-" + UUID.randomUUID();
+        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(typeName, "d", List.of(), null, true, null)));
+
+        assertThatThrownBy(() -> processor.process(new MutationRequest(
+                List.of(new ItemCreateMutation(null, typeName, Map.of())), List.of()), SOME_PRINCIPAL))
+                .isInstanceOf(MutationValidationException.class)
+                .satisfies(e -> assertThat(((MutationValidationException) e).errors())
+                        .anyMatch(err -> err.message().contains("abstract")));
+    }
+
+    @Test
+    void itemCreateMutation_forASubtype_canSetAnInheritedPropertyFromItsSupertype() {
+        String supertypeName = "MutReqProcSuper-" + UUID.randomUUID();
+        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(supertypeName, "d", List.of(
+                new CreatePropertyDefinitionMutation("inheritedProp", "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL)), null, false, null)));
+        UUID supertypeId = schemaManager.getAdminSchema().items().stream()
+                .filter(i -> i.name().equals(supertypeName)).findFirst().orElseThrow().id();
+
+        String subtypeName = "MutReqProcSub-" + UUID.randomUUID();
+        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(subtypeName, "d", List.of(), supertypeId, false, null)));
+        UUID subtypeId = schemaManager.getAdminSchema().items().stream()
+                .filter(i -> i.name().equals(subtypeName)).findFirst().orElseThrow().id();
+
+        MutationResponse response = processor.process(new MutationRequest(
+                List.of(new ItemCreateMutation(null, subtypeName, Map.of("inheritedProp", "value-from-supertype"))), List.of()),
+                SOME_PRINCIPAL);
+        UUID itemId = response.items().get(0).itemId();
+
+        // Write-path validation resolved "inheritedProp" against the subtype's merged property set
+        // (own + supertype chain, via SchemaViewBuilder) with zero changes needed to
+        // resolveItemPropertyIds itself -- this proves that "falls out for free" claim, not just
+        // assumes it.
+        var item = registerPartitionManager.projectOne(subtypeId, itemId, "http://binary").orElseThrow();
+        assertThat(item.properties()).containsEntry("inheritedProp", "value-from-supertype");
+
+        // Leaf-only storage: the item's actual stored type is the subtype it was created as, not
+        // the supertype the property came from. By construction there is exactly one register_item
+        // row and exactly one physical table it can live in, so this is sufficient proof no second
+        // copy exists anywhere in the ancestor chain.
+        assertThat(registerPartitionManager.findItemTypeId(itemId)).contains(subtypeId);
+    }
+
+    // requireItemTypeNotInUse's actually-in-use branch needs a real, committed register_item row
+    // to trigger -- SchemaManagerIntegrationTest (schema-mutations only, no item CRUD) can't
+    // produce that, so this lives here instead, alongside the other real-instance-creating tests.
+    @Test
+    void deleteItemDefinitionMutation_forATypeWithAnExistingInstance_throwsWithItsName() {
+        String typeName = "MutReqProcInUse-" + UUID.randomUUID();
+        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(typeName, "d", List.of(), null, false, null)));
+        UUID typeId = schemaManager.getAdminSchema().items().stream()
+                .filter(i -> i.name().equals(typeName)).findFirst().orElseThrow().id();
+        createItem(typeName);
+
+        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new DeleteItemDefinitionMutation(typeId))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("items of this type still exist")
+                .hasMessageContaining(typeName);
+    }
+
+    // Phase 2: confirms a link perspective declared on a supertype is usable by a subtype
+    // instance -- researched and expected to already work with zero production-code changes,
+    // since resolveEndpoint looks up perspectives via AdminItemDefinitionView.links(), which
+    // SchemaViewBuilder.effectiveLinksAdmin already walks the supertype chain to build (Phase 1).
+    // This test is the actual proof, not an assumption.
+    @Test
+    void linkCreateMutation_perspectiveDeclaredOnASupertype_isUsableByASubtypeInstance() {
+        String vehicleName = "MutReqProcVehicle-" + UUID.randomUUID();
+        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(vehicleName, "d", List.of(), null, false, null)));
+        UUID vehicleId = schemaManager.getAdminSchema().items().stream()
+                .filter(i -> i.name().equals(vehicleName)).findFirst().orElseThrow().id();
+
+        String carName = "MutReqProcCar-" + UUID.randomUUID();
+        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(), vehicleId, false, null)));
+
+        String ownerName = "MutReqProcOwner-" + UUID.randomUUID();
+        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(ownerName, "d", List.of(), null, false, null)));
+        UUID ownerTypeId = schemaManager.getAdminSchema().items().stream()
+                .filter(i -> i.name().equals(ownerName)).findFirst().orElseThrow().id();
+
+        // The perspective is declared against Vehicle, never against Car directly.
+        schemaManager.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
+                new CreatePerspectiveDefinitionMutation(vehicleId, "ownedBy", "d", 0, 1),
+                new CreatePerspectiveDefinitionMutation(ownerTypeId, "owns", "d", 0, null)))));
+
+        UUID carItemId = createItem(carName);
+        UUID ownerItemId = createItem(ownerName);
+
+        MutationResponse response = processor.process(new MutationRequest(List.of(), List.of(
+                new LinkCreateMutation(
+                        new LinkEndpointReference("ownedBy", new ExistingItemReference(carItemId)),
+                        new LinkEndpointReference("owns", new ExistingItemReference(ownerItemId)),
+                        Map.of()))), SOME_PRINCIPAL);
+
+        assertThat(response.links()).extracting(r -> r.operation().name()).containsExactly("CREATE");
+    }
+
+    @Test
+    void markingAnItemTypeAbstract_doesNotAffectExistingInstances_onlyBlocksNewOnes() {
+        String typeName = "MutReqProcRetro-" + UUID.randomUUID();
+        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(typeName, "d", List.of(), null, false, null)));
+        UUID typeId = schemaManager.getAdminSchema().items().stream()
+                .filter(i -> i.name().equals(typeName)).findFirst().orElseThrow().id();
+        UUID existingItemId = createItem(typeName);
+
+        schemaManager.applyMutations(List.of(new UpdateItemDefinitionMutation(typeId, typeName, "d", null, true, null)));
+
+        // Existing instance is untouched -- still readable, not retroactively invalidated.
+        assertThat(registerPartitionManager.projectOne(typeId, existingItemId, "http://binary")).isPresent();
+
+        // New instances are rejected going forward.
+        assertThatThrownBy(() -> processor.process(new MutationRequest(
+                List.of(new ItemCreateMutation(null, typeName, Map.of())), List.of()), SOME_PRINCIPAL))
+                .isInstanceOf(MutationValidationException.class)
+                .satisfies(e -> assertThat(((MutationValidationException) e).errors())
+                        .anyMatch(err -> err.message().contains("abstract")));
     }
 }

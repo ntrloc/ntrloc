@@ -1,6 +1,6 @@
 services:
   app:
-    image: docker.io/ntrloc/ntrloc:1.0.0   # update once an actual version is published
+    image: docker.io/ntrloc/ntrloc:1.0.1
     ports: ["8080:8080"]
     environment:
       DB_HOST: postgres

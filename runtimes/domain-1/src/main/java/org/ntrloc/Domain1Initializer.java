@@ -12,6 +12,7 @@ import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Optional;
 
 // This runtime's own seed content. Self-contained and self-triggering -- nothing calls initSchema()
 // for us, so this bean does it itself, from run() (not @PostConstruct: SchemaManager is ready either
@@ -41,10 +42,21 @@ public class Domain1Initializer implements DomainInitializer, ApplicationRunner 
     // pushed off the right edge of the panel. Lets that rendering be fixed and verified against
     // this runtime's own admin UI, without depending on the other (external) demo project being
     // up. Not meant to model a real domain; DemoWorkflowItem exists purely to exercise this shape.
+    // Idempotent -- schema_* tables are now Flyway-managed (see domain-graph-starter's
+    // db/migration/V1_0_0_1__baseline.sql) and survive every boot, so this must tolerate running again
+    // against a database that already has DemoWorkflowItem from a previous boot, rather than
+    // crashing on CreateItemDefinitionMutation's schema_item.name UNIQUE violation.
     @Override
     public void initSchema(SchemaManager schemaManager, ControlledListManager controlledListManager) {
+        Optional<AdminItemDefinitionView> existing = schemaManager.getAdminSchema().items().stream()
+                .filter(item -> item.name().equals("DemoWorkflowItem"))
+                .findFirst();
+        if (existing.isPresent()) {
+            return;
+        }
+
         schemaManager.applyMutations(List.of(
-                new CreateItemDefinitionMutation("DemoWorkflowItem", "Sample state machine for diagram rendering", List.of())));
+                new CreateItemDefinitionMutation("DemoWorkflowItem", "Sample state machine for diagram rendering", List.of(), null, false, null)));
 
         AdminItemDefinitionView itemType = schemaManager.getAdminSchema().items().stream()
                 .filter(item -> item.name().equals("DemoWorkflowItem"))

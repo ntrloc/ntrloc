@@ -58,19 +58,19 @@ public class MutationRequestProcessorTestDomainInitializer implements DomainInit
                         property("attachment", PropertyType.BINARY, PropertyCardinality.SINGLE),
                         property("count", PropertyType.LONG, PropertyCardinality.SINGLE),
                         property("createdAt", PropertyType.DATETIME, PropertyCardinality.SINGLE),
-                        property("extra", PropertyType.OBJECT, PropertyCardinality.SINGLE)))));
+                        property("extra", PropertyType.OBJECT, PropertyCardinality.SINGLE)), null, false, null)));
         aTypeId = findItem("MutReqProcA").id();
 
         schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(
-                "MutReqProcB", "MutationRequestProcessor test fixture", List.of())));
+                "MutReqProcB", "MutationRequestProcessor test fixture", List.of(), null, false, null)));
         bTypeId = findItem("MutReqProcB").id();
 
         schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(
-                "MutReqProcC", "MutationRequestProcessor test fixture", List.of())));
+                "MutReqProcC", "MutationRequestProcessor test fixture", List.of(), null, false, null)));
         cTypeId = findItem("MutReqProcC").id();
 
         schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(
-                "MutReqProcD", "MutationRequestProcessor test fixture", List.of())));
+                "MutReqProcD", "MutationRequestProcessor test fixture", List.of(), null, false, null)));
         dTypeId = findItem("MutReqProcD").id();
 
         // link1 and link2: two distinct link types both using the perspective-name pair
@@ -85,10 +85,9 @@ public class MutationRequestProcessorTestDomainInitializer implements DomainInit
 
         // link3: connects C and D, sharing no perspective name with A/B's link1/link2 at all --
         // connecting A.toB to C.onlyC has zero candidate link types in common (the opposite
-        // failure mode from link1/link2's ambiguity). Deliberately two distinct item types, not a
-        // self-link on C: schema_entity_link_perspective's own UNIQUE(entity_id, link_definition_id)
-        // constraint means one entity can have at most one perspective per link definition, so a
-        // single link definition can never connect an item type to itself.
+        // failure mode from link1/link2's ambiguity). Deliberately two distinct item types rather
+        // than a self-link on C, purely to keep this fixture's naming simple -- self-links are
+        // supported (see SelfLinkIntegrationTest).
         schemaManager.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
                 new CreatePerspectiveDefinitionMutation(cTypeId, "onlyC", "d", 0, null),
                 new CreatePerspectiveDefinitionMutation(dTypeId, "onlyD", "d", 0, null)))));

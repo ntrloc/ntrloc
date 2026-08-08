@@ -23,7 +23,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 // The one and only thing that seeds a domain -- schema, data, processes, everything. Nothing else
-// in the system (SchemaManager, RegisterInitializer, ProcessEngineConfig, DmnEngineConfig) has any
+// in the system (SchemaManager, RegisterPartitionManager, ProcessEngineConfig, DmnEngineConfig) has any
 // knowledge that a DomainInitializer exists or that the system is being "initialized": it starts
 // up empty, and a DomainInitializer implementation seeds it afterward through the same public APIs
 // any other caller would use (SchemaManager.applyMutations() publishes SchemaChangeEvent, which

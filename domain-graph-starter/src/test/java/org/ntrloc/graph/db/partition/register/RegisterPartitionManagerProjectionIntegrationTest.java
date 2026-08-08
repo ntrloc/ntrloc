@@ -105,7 +105,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
         Predicate combinedFilter = spec.filter() == null
                 ? scopedToThisTest
                 : new AndPredicate(List.of(scopedToThisTest, spec.filter()));
-        var scopedSpec = new CollectionProjectionSpec(spec.itemTypeName(), spec.sortField(), spec.sortDirection(),
+        var scopedSpec = new CollectionProjectionSpec(spec.itemTypeName(), spec.traitName(), spec.sortField(), spec.sortDirection(),
                 combinedFilter, spec.facets(), spec.facetFilters(), spec.stateMachineFacets(), spec.offset(), spec.limit());
         var result = registerPartitionManager.project(fixture.bookTypeId(), scopedSpec, "http://binary");
         return new ProjectedItemsAndFacets(result);
@@ -274,7 +274,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
         createBook("Foundation", 300, true, "Fiction");
         createBook("Neuromancer", 300, false, "Fiction");
 
-        var spec = new CollectionProjectionSpec(BOOK_TYPE, null, null, null,
+        var spec = new CollectionProjectionSpec(BOOK_TYPE, null, null, null, null,
                 List.of("inStock"), null, null, null, null);
 
         Map<String, List<FacetBucket>> facets = project(spec).result().facets();
@@ -291,7 +291,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
         createBook("Neuromancer", 300, true, "Fiction");
         createBook("The Pragmatic Programmer", 300, true, "Reference");
 
-        var spec = new CollectionProjectionSpec(BOOK_TYPE, null, null, null,
+        var spec = new CollectionProjectionSpec(BOOK_TYPE, null, null, null, null,
                 List.of("genre"), null, null, null, null);
 
         Map<String, List<FacetBucket>> facets = project(spec).result().facets();
@@ -310,7 +310,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
         // facetableFieldsFor's own contract. title/pageCount aren't facetable (title has no
         // controlled list, pageCount isn't STRING/BOOLEAN), so only inStock and genre should
         // show up here.
-        var spec = new CollectionProjectionSpec(BOOK_TYPE, null, null, null,
+        var spec = new CollectionProjectionSpec(BOOK_TYPE, null, null, null, null,
                 List.of(), null, null, null, null);
 
         assertThat(project(spec).result().facets().keySet()).containsExactlyInAnyOrder("inStock", "genre");
@@ -322,7 +322,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
         createBook("Foundation", 300, true, "Fiction");
         createBook("The Pragmatic Programmer", 300, true, "Reference");
 
-        var spec = new CollectionProjectionSpec(BOOK_TYPE, null, null, null,
+        var spec = new CollectionProjectionSpec(BOOK_TYPE, null, null, null, null,
                 null, List.of(new TermsFacetFilter("genre", List.of("Reference"), false)), null, null, null);
 
         var result = project(spec).result();
@@ -336,7 +336,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
         createBook("Dune", 400, true, "Fiction");
         createBook("Untitled Draft", 100, true, null);
 
-        var spec = new CollectionProjectionSpec(BOOK_TYPE, null, null, null,
+        var spec = new CollectionProjectionSpec(BOOK_TYPE, null, null, null, null,
                 null, List.of(new TermsFacetFilter("genre", List.of(), true)), null, null, null);
 
         assertThat(project(spec).titles()).containsExactly("Untitled Draft");
@@ -352,7 +352,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
         createBook("Foundation", 300, true, "Fiction");
         createBook("The Pragmatic Programmer", 300, true, "Reference");
 
-        var spec = new CollectionProjectionSpec(BOOK_TYPE, null, null, null,
+        var spec = new CollectionProjectionSpec(BOOK_TYPE, null, null, null, null,
                 List.of("genre"), List.of(new TermsFacetFilter("genre", List.of("Reference"), false)), null, null, null);
 
         Map<String, List<FacetBucket>> facets = project(spec).result().facets();
@@ -375,7 +375,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
         registerPartitionManager.setItemState(outOfStock, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE,
                 RegisterProjectionTestDomainInitializer.OUT_OF_STOCK);
 
-        var spec = new CollectionProjectionSpec(BOOK_TYPE, null, null, null,
+        var spec = new CollectionProjectionSpec(BOOK_TYPE, null, null, null, null,
                 null, null, List.of(RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE), null, null);
 
         Map<String, List<FacetBucket>> stateFacets = project(spec).result().stateMachineFacets();
@@ -388,7 +388,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
 
     @Test
     void invalidFacetFieldName_throwsIllegalArgumentException() {
-        var spec = new CollectionProjectionSpec(BOOK_TYPE, null, null, null,
+        var spec = new CollectionProjectionSpec(BOOK_TYPE, null, null, null, null,
                 List.of("not a valid field; drop table books"), null, null, null, null);
 
         assertThatThrownBy(() -> project(spec)).isInstanceOf(IllegalArgumentException.class);
@@ -396,11 +396,11 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
 
     @Test
     void unsupportedFacetFilterTypes_throwUnsupportedOperationException() {
-        var rangeSpec = new CollectionProjectionSpec(BOOK_TYPE, null, null, null,
+        var rangeSpec = new CollectionProjectionSpec(BOOK_TYPE, null, null, null, null,
                 null, List.of(new RangeFacetFilter("pageCount", null, null)), null, null, null);
         assertThatThrownBy(() -> project(rangeSpec)).isInstanceOf(UnsupportedOperationException.class);
 
-        var dateRangeSpec = new CollectionProjectionSpec(BOOK_TYPE, null, null, null,
+        var dateRangeSpec = new CollectionProjectionSpec(BOOK_TYPE, null, null, null, null,
                 null, List.of(new DateRangeFacetFilter("pageCount", LocalDate.now(), LocalDate.now())), null, null, null);
         assertThatThrownBy(() -> project(dateRangeSpec)).isInstanceOf(UnsupportedOperationException.class);
     }
@@ -436,7 +436,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
         createBook("Foundation", 300, true, "Fiction");
         createBook("Neuromancer", 300, true, "Fiction");
 
-        var spec = new CollectionProjectionSpec(BOOK_TYPE, "title", "ASC", null, null, null, null, 1, 1);
+        var spec = new CollectionProjectionSpec(BOOK_TYPE, null, "title", "ASC", null, null, null, null, 1, 1);
         assertThat(project(spec).titles()).containsExactly("Foundation");
     }
 
@@ -507,7 +507,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
     @Test
     void deletingAnItemType_dropsItsRegisterTable() {
         schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(
-                "RegisterProjectionTestThrowaway", "created only to be deleted in this test", List.of())));
+                "RegisterProjectionTestThrowaway", "created only to be deleted in this test", List.of(), null, false, null)));
         UUID throwawayTypeId = schemaManager.getAdminSchema().items().stream()
                 .filter(item -> item.name().equals("RegisterProjectionTestThrowaway"))
                 .findFirst().orElseThrow().id();

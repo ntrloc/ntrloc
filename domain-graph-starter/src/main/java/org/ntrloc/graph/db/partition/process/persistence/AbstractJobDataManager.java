@@ -11,7 +11,7 @@ import java.util.List;
 
 // Shared CRUD/finder logic for the five AbstractRuntimeJobEntity-shaped job kinds (Job, TimerJob,
 // SuspendedJob, DeadLetterJob, ExternalWorkerJob) -- all backed by one process_job table with a
-// job_kind discriminator (see ProcessPersistenceInitializer), matching this package's existing
+// job_kind discriminator (see V1_0_0_1__baseline.sql), matching this package's existing
 // process_task_identitylink discriminator convention. HistoryJob is different enough in shape (no
 // execution/process-instance fields at all) to warrant its own standalone class instead.
 //
@@ -84,7 +84,7 @@ abstract class AbstractJobDataManager<T extends AbstractRuntimeJobEntity> extend
     // job-kind transition as insert-the-new-kind-then-delete-the-old-kind, copying the *same* id across
     // (copyJobInfo: copyToJob.setId(copyFromJob.getId())) -- a pattern that only works if the two kinds
     // live in separate tables, so the same id can transiently exist in both. This table deliberately
-    // uses one shared row per job (ProcessPersistenceInitializer's process_job comment: a kind change is
+    // uses one shared row per job (V1_0_0_1__baseline.sql's process_job comment: a kind change is
     // meant to be "a plain UPDATE of job_kind"), so a plain INSERT here collided with the still-present
     // old-kind row on the id primary key -- confirmed live: every AcquireTimerJobsRunnable poll cycle
     // threw "duplicate key value violates unique constraint process_job_pkey" and the timer job could

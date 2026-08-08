@@ -8,7 +8,7 @@ injectStyles('ntrloc-links-table-styles', `
      and avoids nesting a <table> inside a <td> for this row's own property grid). */
   .links-grid {
     display: grid;
-    grid-template-columns: 8px minmax(100px, 180px) minmax(80px, 140px) auto 1fr auto;
+    grid-template-columns: 8px minmax(100px, 180px) minmax(80px, 140px) auto 1fr;
     column-gap: 16px;
     align-items: start;
     width: 100%;
@@ -26,7 +26,26 @@ injectStyles('ntrloc-links-table-styles', `
   }
   .links-grid .grid-cell {
     padding: 4px 0;
+  }
+  /* Each perspective is two grid rows, not one: the name/target/cardinality/actions cells fill
+     the normal columns above, and this cell spans the full row width (grid-column: 1 / -1 forces
+     grid auto-placement onto its own row, since nothing else can share a row with something that
+     wide) directly beneath -- the property sub-table gets the whole panel's width to lay out its
+     own Name/Description/Type/Cardinality/Usage columns instead of being squeezed into a single
+     column of the outer grid. The bottom border that used to sit under every cell now lives here
+     only, so each perspective still reads as one row-separated block, not two. */
+  .links-grid .properties-cell {
+    grid-column: 1 / -1;
+    padding: 8px 0 12px 24px;
     border-bottom: 1px solid var(--border);
+  }
+  .links-grid .properties-label {
+    display: block;
+    font-size: 11px;
+    color: var(--muted);
+    font-weight: bold;
+    letter-spacing: 0.05em;
+    margin-bottom: 4px;
   }
   .links-grid .row-deleted .grid-cell {
     opacity: 0.5;
@@ -57,6 +76,19 @@ injectStyles('ntrloc-links-table-styles', `
     opacity: 0.6;
     color: var(--accent);
     margin-top: 2px;
+  }
+  .links-grid .read-only-value {
+    display: block;
+    padding: 4px 0;
+    font-size: 13px;
+    color: var(--text);
+    min-height: 1em;
+  }
+  .links-grid .grid-row.row-clickable {
+    cursor: pointer;
+  }
+  .links-grid .grid-row.row-clickable:hover .grid-cell:not(.properties-cell) {
+    background: var(--panel-bg);
   }
   .links-grid .cardinality-inputs {
     display: flex;
@@ -107,11 +139,52 @@ injectStyles('ntrloc-links-table-styles', `
     margin-top: 2px;
   }
   /* Same fix as ntrloc-property-table.js's actions-cell: md-text-button's 40px default height
-     was the tallest thing in the row once everything else was compacted. */
-  .links-grid .delete-button, .links-grid .restore-button {
+     was the tallest thing in the row once everything else was compacted. justify-content
+     right-aligns the buttons within this cell -- the actions column is the grid's only 1fr
+     track, so it soaks up whatever width the fixed/auto name/target/cardinality columns don't
+     use and pushes its own content to the panel's right edge instead of sitting flush against
+     Cardinality. */
+  .links-grid .actions-cell {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 2px;
+    white-space: nowrap;
+  }
+  .links-grid .restore-button, .links-grid .done-button {
     --md-text-button-container-height: 30px;
   }
+  /* No icon font is vendored in this app (see ntrloc-item-detail.js's chevron-SVG comment for
+     the rationale) -- a small stroked inline SVG, matching that same convention, instead of an
+     <md-text-button>"Delete" label once there's a Restore/Done text button right next to it on
+     every row; the icon plus a native title-attribute tooltip reads clearly without the extra
+     width. */
+  .links-grid .icon-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    background: none;
+    border: none;
+    border-radius: 6px;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .links-grid .icon-button:hover {
+    background: var(--panel-bg);
+    color: var(--deleted-color, #f85149);
+  }
 `);
+
+// Maps a read-only-value cell's field class (see render()) to the selector for the control it
+// becomes once the row opens for editing -- lets the row-click handler focus whichever field the
+// user actually clicked, not always Name.
+const LINK_FIELD_FOCUS_TARGETS = {
+  'name-value': '.name-input',
+  'cardinality-value': '.min-input',
+};
 
 // Flattens the { linkName: perspective[] } record into rows and renders them, one row per
 // perspective, with a collapsible group header when a link name has more than one perspective
@@ -145,7 +218,11 @@ class NtrlocLinksTable extends HTMLElement {
 
   _buildRows() {
     this._rows = [];
-    for (const [groupName, perspectives] of Object.entries(this._links)) {
+    // Alphabetical by link/perspective name -- rows are looked up by their own `key` everywhere
+    // else (wireUp(), _visibleRows()), never by array position, so reordering this construction
+    // is display-only and doesn't risk any indexing mismatch the way property-table's sort does.
+    const sortedEntries = Object.entries(this._links).sort(([a], [b]) => a.localeCompare(b));
+    for (const [groupName, perspectives] of sortedEntries) {
       const isCollapsible = perspectives.length > 1;
       perspectives.forEach((vm, i) => {
         this._rows.push({ key: `${groupName}::${i}`, groupName, showGroupName: i === 0, isCollapsible, vm });
@@ -177,15 +254,19 @@ class NtrlocLinksTable extends HTMLElement {
           <div class="grid-header" role="columnheader">Name</div>
           <div class="grid-header" role="columnheader">Target</div>
           <div class="grid-header" role="columnheader">Cardinality</div>
-          <div class="grid-header" role="columnheader">Properties</div>
           <div class="grid-header" role="columnheader"></div>
         </div>
-        ${rows.map((row) => `
-          <div class="grid-row ${row.vm.isDeleted ? 'row-deleted' : ''}" role="row" data-key="${escapeHtml(row.key)}">
+        ${rows.map((row) => {
+          const editable = !row.vm.isDeleted && !row.vm.isReadonly;
+          const showForm = editable && row.vm.isEditing;
+          return `
+          <div class="grid-row ${row.vm.isDeleted ? 'row-deleted' : ''} ${editable && !row.vm.isEditing ? 'row-clickable' : ''}" role="row" data-key="${escapeHtml(row.key)}">
             <div class="grid-cell" role="gridcell">${row.vm.isDirty ? `<span class="links-table-dirty-dot ${row.vm.isDeleted ? 'is-deleted' : ''}">●</span>` : ''}</div>
             <div class="grid-cell" role="gridcell">
               ${row.showGroupName && row.isCollapsible ? `<button class="collapse-button" data-group="${escapeHtml(row.groupName)}">${this._collapsedGroups.has(row.groupName) ? '▸' : '▾'}</button>` : ''}
-              <md-filled-text-field class="editable-field name-input" value="${escapeHtml(row.vm.name)}" ${row.vm.isDeleted || row.vm.isReadonly ? 'disabled' : ''}></md-filled-text-field>
+              ${showForm
+                ? `<md-filled-text-field class="editable-field name-input" value="${escapeHtml(row.vm.name)}"></md-filled-text-field>`
+                : `<span class="read-only-value name-value">${escapeHtml(row.vm.name)}</span>`}
               ${!row.vm.isDeleted && row.vm.name !== row.vm.originalName && row.vm.originalName ? `<div class="original-value">${escapeHtml(row.vm.originalName)}</div>` : ''}
             </div>
             <div class="grid-cell" role="gridcell">
@@ -193,25 +274,42 @@ class NtrlocLinksTable extends HTMLElement {
               ${row.vm.definedIn ? `<span class="defined-in-badge">via ${escapeHtml(row.vm.definedIn.entityName)}</span>` : ''}
             </div>
             <div class="grid-cell" role="gridcell">
-              <div class="cardinality-inputs">
-                <input type="number" min="0" class="cardinality-input min-input" value="${row.vm.minCardinality}" ${row.vm.isDeleted || row.vm.isReadonly ? 'disabled' : ''} />
-                <span>..</span>
-                <input type="number" min="0" class="cardinality-input max-input" value="${row.vm.maxCardinality ?? ''}" placeholder="∞" ${row.vm.isDeleted || row.vm.isReadonly ? 'disabled' : ''} />
-              </div>
+              ${showForm ? `
+                <div class="cardinality-inputs">
+                  <input type="number" min="0" class="cardinality-input min-input" value="${row.vm.minCardinality}" />
+                  <span>..</span>
+                  <input type="number" min="0" class="cardinality-input max-input" value="${row.vm.maxCardinality ?? ''}" placeholder="∞" />
+                </div>
+              ` : `<span class="read-only-value cardinality-value">${row.vm.minCardinality}..${this._formatMax(row.vm.maxCardinality)}</span>`}
               ${!row.vm.isDeleted && (row.vm.minCardinality !== row.vm.originalMinCardinality || row.vm.maxCardinality !== row.vm.originalMaxCardinality) ? `<div class="original-value">${row.vm.originalMinCardinality}..${this._formatMax(row.vm.originalMaxCardinality)}</div>` : ''}
             </div>
-            <div class="grid-cell" role="gridcell">
-              ${row.vm.isDeleted ? '' : `<ntrloc-property-table data-key="link-${escapeHtml(row.vm.linkId)}"></ntrloc-property-table>`}
-            </div>
-            <div class="grid-cell" role="gridcell">
+            <div class="grid-cell actions-cell" role="gridcell">
+              ${showForm ? '<md-text-button class="done-button">Done</md-text-button>' : ''}
               ${!row.vm.isReadonly ? (
                 row.vm.isDeleted
                   ? '<md-text-button class="restore-button">Restore</md-text-button>'
-                  : '<md-text-button class="delete-button">Delete</md-text-button>'
+                  : `
+                    <button class="icon-button delete-button" title="Delete" aria-label="Delete">
+                      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="3 6 5 6 21 6"></polyline>
+                        <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+                        <path d="M10 11v6"></path>
+                        <path d="M14 11v6"></path>
+                        <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path>
+                      </svg>
+                    </button>
+                  `
               ) : ''}
             </div>
+            ${row.vm.isDeleted ? '' : `
+              <div class="grid-cell properties-cell" role="gridcell">
+                <span class="properties-label">Properties</span>
+                <ntrloc-property-table data-key="link-${escapeHtml(row.vm.linkId)}"></ntrloc-property-table>
+              </div>
+            `}
           </div>
-        `).join('')}
+        `;
+        }).join('')}
       </div>
     `;
     this.wireUp();
@@ -232,6 +330,32 @@ class NtrlocLinksTable extends HTMLElement {
       const entry = this._rows.find((r) => r.key === key);
       if (!entry) return;
       const vm = entry.vm;
+
+      if (row.classList.contains('row-clickable')) {
+        row.addEventListener('click', (event) => {
+          // Excludes clicks on the collapse toggle, the row's own action buttons, and the nested
+          // property sub-table -- each of those is already independently clickable and shouldn't
+          // also open this row into edit mode.
+          if (event.target.closest('.actions-cell, .properties-cell, .collapse-button')) return;
+          // Whichever read-only field the click actually landed in gets focused once the row
+          // opens, not always Name -- read-only-value carries a second class naming its field
+          // (name-value/cardinality-value, see render()) that maps to the input it becomes.
+          const clickedValue = event.target.closest('.read-only-value');
+          const fieldClass = clickedValue ? [...clickedValue.classList].find((c) => c !== 'read-only-value') : null;
+          const preferredSelector = LINK_FIELD_FOCUS_TARGETS[fieldClass] ?? '.name-input';
+          vm.isEditing = true;
+          this.render();
+          const newRow = Array.from(this.querySelectorAll('.grid-row[data-key]')).find((r) => r.dataset.key === key);
+          const target = newRow ? (newRow.querySelector(preferredSelector) ?? newRow.querySelector('.name-input')) : null;
+          if (target) Promise.resolve(target.updateComplete).then(() => target.focus());
+        });
+      }
+
+      const doneButton = row.querySelector('.done-button');
+      if (doneButton) doneButton.addEventListener('click', () => {
+        vm.isEditing = false;
+        this.render();
+      });
 
       const nameInput = row.querySelector('.name-input');
       if (nameInput) nameInput.addEventListener('change', (event) => {

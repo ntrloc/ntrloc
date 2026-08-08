@@ -26,10 +26,10 @@ import org.ntrloc.graph.db.partition.process.script.ProcessScriptEngineFactory;
 import org.ntrloc.graph.db.partition.process.script.ProcessScriptProperties;
 import org.flowable.spring.SpringProcessEngineConfiguration;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.sql.init.dependency.DependsOnDatabaseInitialization;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.DependsOn;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.transaction.PlatformTransactionManager;
 
@@ -44,7 +44,7 @@ import java.util.List;
 // than given custom persistence. History stays off -- nothing reads/writes it, so its tables
 // simply never get created (see the schema-management override below).
 @Configuration
-@DependsOn({"processPersistenceInitializer", "decisionPersistenceInitializer"})
+@DependsOnDatabaseInitialization
 @EnableConfigurationProperties(ProcessScriptProperties.class)
 public class ProcessEngineConfig {
 
@@ -76,8 +76,8 @@ public class ProcessEngineConfig {
         // hard-fails since that table will never exist. setSchemaManagementCmd pre-set to a literal
         // no-op is the actual extension point (AbstractEngineConfiguration.initSchemaManagementCommand()
         // only builds Flowable's own SchemaOperationsEngineBuild if this field is still null), so no
-        // ACT_*/FLW_* table gets created at all -- ProcessPersistenceInitializer owns process_* table
-        // DDL entirely independently.
+        // ACT_*/FLW_* table gets created at all -- V1_0_0_1__baseline.sql owns process_* table DDL
+        // entirely independently.
         config.setSchemaManagementCmd(commandContext -> null);
         // Flowable's default DbIdGenerator reads ACT_GE_PROPERTY at runtime, not just boot -- bypass
         // it entirely rather than rely on the per-DataManager workaround alone.

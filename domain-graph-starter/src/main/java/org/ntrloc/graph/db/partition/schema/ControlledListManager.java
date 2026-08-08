@@ -2,7 +2,7 @@ package org.ntrloc.graph.db.partition.schema;
 
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.ReplaceControlledListMutation;
-import org.springframework.context.annotation.DependsOn;
+import org.springframework.boot.sql.init.dependency.DependsOnDatabaseInitialization;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 
@@ -12,7 +12,7 @@ import java.util.Set;
 import java.util.UUID;
 
 @Component
-@DependsOn("schemaInitializer")
+@DependsOnDatabaseInitialization
 public class ControlledListManager {
 
     private static final String PARAM_VALUE = "value";

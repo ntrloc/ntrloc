@@ -129,15 +129,41 @@ const schemaViewModel = {
       });
   },
 
+  // Traits/States start collapsed the moment an item/trait is selected if that section would
+  // otherwise be empty -- nothing worth showing open by default. Called only from
+  // selectItem/selectTrait (a real selection change), never from a render cycle -- every field
+  // edit anywhere in the panel re-renders via notifySchemaViewModelChange, and recomputing here
+  // on every one of those would immediately re-collapse a section the user just expanded to
+  // start adding to it. Properties/Links are left alone: both are core to every item type and
+  // stay open by default regardless of content, matching today's behavior.
+  //
+  // hasTraits mirrors ntrloc-item-detail.js's own display logic exactly, not just "any traits
+  // exist": an item's own traitAssignments (unfiltered -- a pending removal or a brand-new
+  // not-yet-saved assignment both still count, same as trait-chip rendering) for isItem, or
+  // (viewing a trait) whether any item's traitAssignments references this trait's id at all,
+  // matching implementingItems' own "any assignment, even isRemoved" check.
+  _applyDefaultSectionsExpanded(entity, isItem) {
+    const hasTraits = isItem
+      ? entity.traitAssignments.length > 0
+      : this.items.some((item) => item.traitAssignments.some((t) => t.id === entity.id));
+    this.sectionsExpanded = {
+      ...this.sectionsExpanded,
+      traits: hasTraits,
+      states: isItem ? entity.stateMachines.some((m) => !m.isDeleted) : this.sectionsExpanded.states,
+    };
+  },
+
   selectItem(item) {
     this.selectedTrait = null;
     this.selectedItem = item;
+    this._applyDefaultSectionsExpanded(item, true);
     notifySchemaViewModelChange();
   },
 
   selectTrait(trait) {
     this.selectedItem = null;
     this.selectedTrait = trait;
+    this._applyDefaultSectionsExpanded(trait, false);
     notifySchemaViewModelChange();
   },
 
@@ -151,6 +177,32 @@ const schemaViewModel = {
     const vm = TraitDefinitionViewModel.create();
     this.traits = [...this.traits, vm];
     this.selectTrait(vm);
+  },
+
+  // Same isNew-vs-not shape as ItemDefinitionViewModel.removeStateMachine, but at this level
+  // (item types/traits are top-level, not nested inside another view-model) rather than on the
+  // view-model class itself, since only schemaViewModel holds the items/traits arrays a brand-new
+  // one needs removing from. A brand-new one has nothing left to show once removed, so selection
+  // clears; an existing one stays selected so ntrloc-item-detail.js can show its "marked for
+  // deletion" state rather than jumping to a blank pane.
+  deleteItem(item) {
+    if (item.isNew) {
+      this.items = this.items.filter((i) => i !== item);
+      if (this.selectedItem === item) this.selectedItem = null;
+    } else {
+      item.isDeleted = true;
+    }
+    notifySchemaViewModelChange();
+  },
+
+  deleteTrait(trait) {
+    if (trait.isNew) {
+      this.traits = this.traits.filter((t) => t !== trait);
+      if (this.selectedTrait === trait) this.selectedTrait = null;
+    } else {
+      trait.isDeleted = true;
+    }
+    notifySchemaViewModelChange();
   },
 
   // Direct port of Angular's SchemaViewModel.collectMutations() (schema-view-model.ts lines
@@ -176,12 +228,26 @@ const schemaViewModel = {
             name: p.name, description: p.description,
             propertyType: p.type, cardinality: p.cardinality, usage: p.usage,
           })),
+          supertypeId: item.supertypeId,
+          abstractType: item.abstractType,
+          displayLabelPattern: item.displayLabelPattern,
         });
         continue;
       }
 
-      if (item.name !== item.originalName || (item.description ?? '') !== (item.originalDescription ?? '')) {
-        ops.push({ type: 'UPDATE_ITEM', id: item.id, name: item.name, description: item.description });
+      if (item.isDeleted) {
+        ops.push({ type: 'DELETE_ITEM', id: item.id });
+        continue;
+      }
+
+      if (item.name !== item.originalName || (item.description ?? '') !== (item.originalDescription ?? '')
+        || item.supertypeId !== item.originalSupertypeId || item.abstractType !== item.originalAbstractType
+        || (item.displayLabelPattern ?? '') !== (item.originalDisplayLabelPattern ?? '')) {
+        ops.push({
+          type: 'UPDATE_ITEM', id: item.id, name: item.name, description: item.description,
+          supertypeId: item.supertypeId, abstractType: item.abstractType,
+          displayLabelPattern: item.displayLabelPattern,
+        });
       }
 
       for (const t of item.traitAssignments) {
@@ -284,6 +350,11 @@ const schemaViewModel = {
         continue;
       }
 
+      if (trait.isDeleted) {
+        ops.push({ type: 'DELETE_TRAIT', id: trait.id });
+        continue;
+      }
+
       // TODO: UPDATE_TRAIT when backend supports it (matches Angular reference)
     }
 
@@ -329,9 +400,20 @@ const schemaViewModel = {
         continue;
       }
 
+      if (item.isDeleted) {
+        summaries.push({ label: `- Item Type "${item.name}"`, changes: [] });
+        continue;
+      }
+
       const changes = [];
       if (item.name !== item.originalName) changes.push(`Name: "${item.originalName}" → "${item.name}"`);
       if ((item.description ?? '') !== (item.originalDescription ?? '')) changes.push('Description updated');
+      if (item.supertypeId !== item.originalSupertypeId) {
+        const supertypeName = (id) => this.items.find((i) => i.id === id)?.name ?? '(none)';
+        changes.push(`Parent type: "${supertypeName(item.originalSupertypeId)}" → "${supertypeName(item.supertypeId)}"`);
+      }
+      if (item.abstractType !== item.originalAbstractType) changes.push(`Abstract: ${item.abstractType ? 'yes' : 'no'}`);
+      if ((item.displayLabelPattern ?? '') !== (item.originalDisplayLabelPattern ?? '')) changes.push('Display label pattern updated');
 
       for (const t of item.traitAssignments) {
         if (t.isNew && !t.isRemoved) changes.push(`+ Trait "${t.name}"`);
@@ -401,6 +483,8 @@ const schemaViewModel = {
           ? [`${trait.properties.length} propert${trait.properties.length === 1 ? 'y' : 'ies'}`]
           : [];
         summaries.push({ label: `+ Trait "${trait.name || '(unnamed)'}"`, changes: propSummary });
+      } else if (trait.isDeleted) {
+        summaries.push({ label: `- Trait "${trait.name}"`, changes: [] });
       }
     }
 

@@ -14,6 +14,7 @@ import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
+import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemLinkPerspectiveView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyDefinitionView;
 import org.springframework.lang.Nullable;
@@ -110,7 +111,7 @@ public class MutationRequestProcessor {
         UUID commitId = UUID.randomUUID();
         // principal is @Nullable, same as it is on EntityManager.mutate() -- unlike project()'s
         // principal (a hard permission-check requirement), this one is attribution-only
-        // (LedgerInitializer's own note on actor_external_id): an unresolvable/absent principal
+        // (ledger_entry.actor_external_id is nullable by design): an unresolvable/absent principal
         // is a real, displayable state ("Edited by" blank), not a reason to refuse the mutation.
         String actorExternalId = principal == null ? null : principal.externalId();
         coordinator.prepare(entries, transactionId, actorExternalId);
@@ -124,6 +125,10 @@ public class MutationRequestProcessor {
         Optional<UUID> itemTypeId = findItemTypeIdByName(m.itemTypeName());
         if (itemTypeId.isEmpty()) {
             errors.add(new ValidationError(path + ".itemTypeName", "Unknown item type: " + m.itemTypeName()));
+            return;
+        }
+        if (isAbstractItemType(itemTypeId.get())) {
+            errors.add(new ValidationError(path + ".itemTypeName", "Cannot create an instance of abstract item type: " + m.itemTypeName()));
             return;
         }
         UUID itemId = UUID.randomUUID();
@@ -253,6 +258,18 @@ public class MutationRequestProcessor {
             return Optional.empty();
         }
         return Optional.of(common.iterator().next());
+    }
+
+    // An abstract item type exists only to be extended -- items must be created as one of its
+    // concrete subtypes instead. Checked here, not in SchemaMutationValidation, since this is an
+    // item-instance write-path concern, not a schema-mutation one (see this class's ValidationError
+    // convention vs. that class's IllegalArgumentException one).
+    private boolean isAbstractItemType(UUID itemTypeId) {
+        return schemaManager.getAdminSchema().items().stream()
+                .filter(item -> item.id().equals(itemTypeId))
+                .findFirst()
+                .map(AdminItemDefinitionView::abstractType)
+                .orElse(false);
     }
 
     private Map<UUID, Object> resolveItemPropertyIds(UUID itemTypeId, Map<String, Object> propertiesByName, String path, List<ValidationError> errors) {

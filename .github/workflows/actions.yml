@@ -47,6 +47,8 @@ jobs:
             -Dsonar.java.binaries=**/target/classes
             -Dsonar.coverage.jacoco.xmlReportPaths=**/target/site/jacoco/jacoco.xml
             -Dsonar.exclusions=.github/**/*,runtimes/**/*,**/*Test.java,**/*Configuration.java,**/*ConfigurationFactory.java,domain-graph-starter/**/*.js,domain-graph-starter/**/*.html,domain-graph-starter/src/test/**/*
+            -Dsonar.plsql.file.suffixes=
+            -Dsonar.postgres.file.suffixes=sql,pgsql,psql
 
       - name: Publish Test Report
         uses: dorny/test-reporter@dc3a92680fcc15842eef52e8c4606ea7ce6bd3f3 # version 2.1.1

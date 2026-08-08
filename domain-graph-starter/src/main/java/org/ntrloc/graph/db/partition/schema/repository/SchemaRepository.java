@@ -22,7 +22,7 @@ import java.util.stream.Collectors;
 @Component
 public class SchemaRepository {
 
-    public record ItemRow(UUID id, String name, String description, String initProcessId) {}
+    public record ItemRow(UUID id, String name, String description, String initProcessId, UUID supertypeId, boolean abstractType, String displayLabelPattern) {}
 
     public record TraitRow(UUID id, String name, String description) {}
 
@@ -54,20 +54,34 @@ public class SchemaRepository {
     // --- Items ---
 
     public Set<ItemRow> getAllItems() {
-        return Set.copyOf(jdbcClient.sql("SELECT id, name, description, init_process_id FROM schema_item")
+        return Set.copyOf(jdbcClient.sql("SELECT id, name, description, init_process_id, supertype_id, abstract, display_label_pattern FROM schema_item")
                 .query((rs, n) -> new ItemRow(
                         rs.getObject("id", UUID.class),
                         rs.getString("name"),
                         rs.getString(PARAM_DESCRIPTION),
-                        rs.getString("init_process_id")))
+                        rs.getString("init_process_id"),
+                        rs.getObject("supertype_id", UUID.class),
+                        rs.getBoolean("abstract"),
+                        rs.getString("display_label_pattern")))
                 .list());
     }
 
+    // Convenience overload for the common case (no supertype, not abstract) -- keeps every
+    // existing caller that predates inheritance compiling unchanged.
     public ItemRow createItem(String name, String description) {
-        UUID itemId = jdbcClient.sql("INSERT INTO schema_item (name, description) VALUES (:name, :description) RETURNING id")
+        return createItem(name, description, null, false, null);
+    }
+
+    public ItemRow createItem(String name, String description, UUID supertypeId, boolean abstractType, String displayLabelPattern) {
+        UUID itemId = jdbcClient.sql("""
+                INSERT INTO schema_item (name, description, supertype_id, abstract, display_label_pattern)
+                VALUES (:name, :description, :supertypeId, :abstractType, :displayLabelPattern) RETURNING id
+                """)
                 .param("name", name).param(PARAM_DESCRIPTION, description)
+                .param("supertypeId", supertypeId).param("abstractType", abstractType)
+                .param("displayLabelPattern", displayLabelPattern)
                 .query(UUID.class).single();
-        return new ItemRow(itemId, name, description, null);
+        return new ItemRow(itemId, name, description, null, supertypeId, abstractType, displayLabelPattern);
     }
 
     public void setItemInitProcess(UUID itemId, String initProcessId) {
@@ -75,14 +89,37 @@ public class SchemaRepository {
                 .param("id", itemId).param("initProcessId", initProcessId).update();
     }
 
+    // Convenience overload for the common case (no supertype, not abstract) -- keeps every
+    // existing caller that predates inheritance compiling unchanged.
     public void updateItem(UUID id, String name, String description) {
-        jdbcClient.sql("UPDATE schema_item SET name = :name, description = :description WHERE id = :id")
+        updateItem(id, name, description, null, false, null);
+    }
+
+    public void updateItem(UUID id, String name, String description, UUID supertypeId, boolean abstractType, String displayLabelPattern) {
+        jdbcClient.sql("""
+                UPDATE schema_item SET name = :name, description = :description,
+                    supertype_id = :supertypeId, abstract = :abstractType, display_label_pattern = :displayLabelPattern WHERE id = :id
+                """)
                 .param("id", id).param("name", name).param(PARAM_DESCRIPTION, description)
+                .param("supertypeId", supertypeId).param("abstractType", abstractType)
+                .param("displayLabelPattern", displayLabelPattern)
                 .update();
     }
 
     public void deleteItem(UUID id) {
         jdbcClient.sql("DELETE FROM schema_item WHERE id = :id").param("id", id).update();
+    }
+
+    // register_item.item_type_id has no FK cascade (deliberately -- deleting an item type must
+    // never touch already-persisted instance data), so this mirrors that same "in use" boundary
+    // as an explicit, friendly check rather than relying on catching the FK violation it would
+    // otherwise surface.
+    public boolean isItemTypeInUse(UUID itemTypeId) {
+        return Boolean.TRUE.equals(jdbcClient.sql("""
+                SELECT EXISTS(SELECT 1 FROM register_item WHERE item_type_id = :itemTypeId AND state = 'COMMITTED')
+                """)
+                .param("itemTypeId", itemTypeId)
+                .query(Boolean.class).single());
     }
 
     // --- Traits ---
@@ -105,6 +142,23 @@ public class SchemaRepository {
 
     public void deleteTrait(UUID id) {
         jdbcClient.sql("DELETE FROM schema_trait WHERE id = :id").param("id", id).update();
+    }
+
+    // Covers both ways a trait can be "in use": implemented by an item type (schema_item_trait),
+    // or the target of a link perspective (schema_entity_link_perspective.entity_id -- deliberately
+    // unconstrained by its own FK, since it's polymorphic across schema_item/schema_trait, so a
+    // deleted trait referenced there would otherwise leave a silently orphaned perspective row
+    // instead of a clean, caught error).
+    public boolean isTraitInUse(UUID traitId) {
+        return Boolean.TRUE.equals(jdbcClient.sql("""
+                SELECT EXISTS(
+                    SELECT 1 FROM schema_item_trait WHERE trait_id = :traitId
+                    UNION ALL
+                    SELECT 1 FROM schema_entity_link_perspective WHERE entity_id = :traitId
+                )
+                """)
+                .param(PARAM_TRAIT_ID, traitId)
+                .query(Boolean.class).single());
     }
 
     public void implementTrait(UUID itemId, UUID traitId) {
@@ -241,6 +295,13 @@ public class SchemaRepository {
                 .single();
     }
 
+    public PerspectiveRow findPerspectiveById(UUID id) {
+        return jdbcClient.sql("SELECT * FROM schema_entity_link_perspective WHERE id = :id")
+                .param("id", id)
+                .query(this::mapPerspective)
+                .single();
+    }
+
     public PerspectiveRow updatePerspective(UUID id, String name, String description, Integer minCardinality, Integer maxCardinality) {
         return jdbcClient.sql("""
                 UPDATE schema_entity_link_perspective SET name = :name, description = :description, minimum_cardinality = :minCardinality, maximum_cardinality = :maxCardinality
@@ -262,6 +323,20 @@ public class SchemaRepository {
     public List<PerspectiveRow> findInversePerspectives(UUID linkId, UUID perspectiveId) {
         return jdbcClient.sql("SELECT * FROM schema_entity_link_perspective WHERE link_definition_id = :linkId AND id != :perspectiveId")
                 .param(PARAM_LINK_ID, linkId).param("perspectiveId", perspectiveId)
+                .query(this::mapPerspective)
+                .list();
+    }
+
+    // Used by SchemaMutationValidation.requireConsistentPerspectiveTarget -- excludeLinkId lets
+    // the caller ignore rows belonging to the link definition currently being created, whose own
+    // perspectives are each other's target by construction and shouldn't be compared against
+    // themselves via this lookup.
+    public List<PerspectiveRow> findPerspectivesByEntityAndName(UUID entityId, String name, UUID excludeLinkId) {
+        return jdbcClient.sql("""
+                SELECT * FROM schema_entity_link_perspective
+                WHERE entity_id = :entityId AND name = :name AND link_definition_id != :excludeLinkId
+                """)
+                .param("entityId", entityId).param("name", name).param("excludeLinkId", excludeLinkId)
                 .query(this::mapPerspective)
                 .list();
     }
