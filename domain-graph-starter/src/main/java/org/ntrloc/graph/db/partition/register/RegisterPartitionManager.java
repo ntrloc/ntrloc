@@ -51,6 +51,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -76,8 +77,14 @@ public class RegisterPartitionManager implements SchemaChangeListener {
     // rebuildCache() runs (on any schema mutation), so a normal run of project()/projectOne()/
     // projectAcrossTypes() (which each call assembleProjectedItems, and thus this resolution,
     // once) is a cache hit rather than an O(item types) supertype-chain walk every time.
-    private volatile AdminSchemaView lastSeenSchemaForDisplayLabels;
-    private volatile Map<String, String> lastResolvedDisplayLabelPatterns = Map.of();
+    // schema and resolved are updated together as a pair, so they're held in one AtomicReference
+    // rather than two volatile fields -- otherwise a racing reader could see the new schema but
+    // the stale resolved map (or vice versa).
+    private record DisplayLabelPatternsCache(AdminSchemaView schema, Map<String, String> resolved) {
+    }
+
+    private final AtomicReference<DisplayLabelPatternsCache> displayLabelPatternsCache =
+            new AtomicReference<>(new DisplayLabelPatternsCache(null, Map.of()));
 
     public RegisterPartitionManager(JdbcClient jdbcClient, ObjectMapper objectMapper,
                                     BinaryPartitionManager binaryPartitionManager, SchemaManager schemaManager) {
@@ -987,8 +994,9 @@ public class RegisterPartitionManager implements SchemaChangeListener {
     // implementsTraitInChain walk-up-supertype-chain idiom.
     private Map<String, String> resolveEffectiveDisplayLabelPatterns() {
         AdminSchemaView schema = schemaManager.getAdminSchema();
-        if (schema == lastSeenSchemaForDisplayLabels) {
-            return lastResolvedDisplayLabelPatterns;
+        DisplayLabelPatternsCache cached = displayLabelPatternsCache.get();
+        if (schema == cached.schema()) {
+            return cached.resolved();
         }
         Map<UUID, AdminItemDefinitionView> itemById = schema.items().stream()
                 .collect(Collectors.toMap(AdminItemDefinitionView::id, i -> i));
@@ -1002,12 +1010,11 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                 resolved.put(item.name(), current.displayLabelPattern());
             }
         }
-        lastResolvedDisplayLabelPatterns = resolved;
-        lastSeenSchemaForDisplayLabels = schema;
+        displayLabelPatternsCache.set(new DisplayLabelPatternsCache(schema, resolved));
         return resolved;
     }
 
-    private static final Pattern DISPLAY_LABEL_SEPARATOR_TRIM = Pattern.compile("^[\\s,\\-/|]+|[\\s,\\-/|]+$");
+    private static final Pattern DISPLAY_LABEL_SEPARATOR_TRIM = Pattern.compile("(^[\\s,\\-/|]+)|([\\s,\\-/|]+$)");
     private static final Pattern DISPLAY_LABEL_WHITESPACE_RUN = Pattern.compile("\\s+");
 
     // pattern is the EFFECTIVE (already supertype-resolved) pattern for this item's type, or null
