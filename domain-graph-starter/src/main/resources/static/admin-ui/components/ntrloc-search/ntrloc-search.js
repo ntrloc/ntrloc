@@ -191,7 +191,7 @@ injectStyles('ntrloc-search-styles', `
     font-family: monospace;
     margin-left: 8px;
   }
-  .item-card-actions button {
+  .item-card-actions button:not(.edit-link-button):not(.delete-item-button) {
     padding: 4px 10px;
     border-radius: 4px;
     font-size: 11px;
@@ -201,7 +201,7 @@ injectStyles('ntrloc-search-styles', `
     color: var(--muted);
     transition: all 0.15s;
   }
-  .item-card-actions button:hover {
+  .item-card-actions button:not(.edit-link-button):not(.delete-item-button):hover {
     color: var(--text);
     border-color: var(--accent);
   }
@@ -296,11 +296,6 @@ injectStyles('ntrloc-search-styles', `
   }
   .prop-actions button.delete-btn:hover {
     background: rgba(248, 81, 73, 0.1);
-    color: #ef5350;
-  }
-  .item-card-actions button.delete-btn:hover {
-    background: rgba(248, 81, 73, 0.1);
-    border-color: #ef5350;
     color: #ef5350;
   }
   .prop-key.removed {
@@ -415,9 +410,9 @@ injectStyles('ntrloc-search-styles', `
     font-family: monospace;
     font-size: 11px;
   }
-  /* Link-properties-above-item split, only present when the link type actually has properties to
+  /* Item-above-link-properties split, only present when the link type actually has properties to
      show (see renderLinkedItemCard) -- a link with none keeps the single-section layout above
-     (just .nested-item-header + item .prop-grid), no empty section on top. Each section reuses
+     (just .nested-item-header + item .prop-grid), no empty section below. Each section reuses
      .nested-item-header/.prop-grid/.prop-row completely unmodified, the same way the top-level
      item card itself uses them -- "flows horizontally" here means exactly what it means there:
      the shared .prop-grid's own auto-fill columns, not a bespoke nested variant. */
@@ -526,7 +521,11 @@ injectStyles('ntrloc-search-styles', `
   .nested-item-header {
     justify-content: space-between;
   }
-  .nested-item-header .edit-link-button {
+  /* Shared icon-button look, reused as-is by the item card's own edit/delete actions (see
+     renderItemCard) so both contexts present the same pencil/trash icon and tooltip pattern
+     rather than each growing its own bespoke button style. */
+  .edit-link-button,
+  .delete-item-button {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -540,9 +539,13 @@ injectStyles('ntrloc-search-styles', `
     cursor: pointer;
     flex-shrink: 0;
   }
-  .nested-item-header .edit-link-button:hover {
+  .edit-link-button:hover {
     background: rgba(74, 158, 255, 0.1);
     color: var(--accent);
+  }
+  .delete-item-button:hover {
+    background: rgba(248, 81, 73, 0.1);
+    color: #ef5350;
   }
 `);
 
@@ -1320,8 +1323,21 @@ class NtrlocSearch extends HTMLElement {
             <span class="item-card-id">${shortId}</span>
           </div>
           ${canEditProps || canDelete ? `<div class="item-card-actions">
-            ${canEditProps ? `<button class="${isEditing ? 'editing' : ''}" data-action="toggle-edit">${isEditing ? 'Editing' : 'Edit'}</button>` : ''}
-            ${canDelete && !isEditing ? `<button class="delete-btn" data-action="delete-item">Delete</button>` : ''}
+            ${canEditProps ? `<button class="edit-link-button ${isEditing ? 'editing' : ''}" title="${isEditing ? 'Editing' : 'Edit item'}" aria-label="${isEditing ? 'Editing' : 'Edit item'}" data-action="toggle-edit">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 20h9"></path>
+                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
+              </svg>
+            </button>` : ''}
+            ${canDelete && !isEditing ? `<button class="delete-item-button" title="Delete item" aria-label="Delete item" data-action="delete-item">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="3 6 5 6 21 6"></polyline>
+                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+                <path d="M10 11v6"></path>
+                <path d="M14 11v6"></path>
+                <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path>
+              </svg>
+            </button>` : ''}
           </div>` : ''}
         </div>
         <div class="prop-grid ${isEditing ? 'is-editing' : ''}">${rows}</div>
@@ -1428,30 +1444,38 @@ class NtrlocSearch extends HTMLElement {
       .map(p => [p.name, linkEntry.properties[p.name]]);
     const itemSection = this.renderNestedItemSection(linkedItem, shortId, title);
 
+    const linkPropertiesSection = `
+      <div class="nested-item-section">
+        <div class="nested-item-header">
+          <span class="nested-item-section-label">Link Properties</span>
+          <button class="edit-link-button" title="Edit link properties" aria-label="Edit link properties" data-action="edit-link">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 20h9"></path>
+              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
+            </svg>
+          </button>
+        </div>
+        ${linkPropEntries.length > 0 ? `
+          <div class="prop-grid">
+            ${linkPropEntries.map(([key, val]) => `
+              <div class="prop-row">
+                <div class="prop-key">${escapeHtml(key)}</div>
+                <div class="prop-value">${this.renderPropertyValue(val)}</div>
+              </div>
+            `).join('')}
+          </div>
+        ` : `<div class="nested-empty-note">No properties set</div>`}
+      </div>
+    `;
+
+    // Item first, link properties below it -- flipped from the property order (link
+    // properties are conceptually "about the connection", the item is the thing connected),
+    // matching how the search pane groups results: the linked item is what a reader scans for
+    // first, the link's own metadata is supplementary detail underneath it.
     const body = propertyDefs.length === 0 ? itemSection : `
       <div class="nested-item-sections">
-        <div class="nested-item-section">
-          <div class="nested-item-header">
-            <span class="nested-item-section-label">Link Properties</span>
-            <button class="edit-link-button" title="Edit link properties" aria-label="Edit link properties" data-action="edit-link">
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 20h9"></path>
-                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
-              </svg>
-            </button>
-          </div>
-          ${linkPropEntries.length > 0 ? `
-            <div class="prop-grid">
-              ${linkPropEntries.map(([key, val]) => `
-                <div class="prop-row">
-                  <div class="prop-key">${escapeHtml(key)}</div>
-                  <div class="prop-value">${this.renderPropertyValue(val)}</div>
-                </div>
-              `).join('')}
-            </div>
-          ` : `<div class="nested-empty-note">No properties set</div>`}
-        </div>
         ${itemSection}
+        ${linkPropertiesSection}
       </div>
     `;
 

@@ -11,6 +11,15 @@ injectStyles('ntrloc-item-detail-styles', `
     letter-spacing: 0.05em;
     color: var(--muted);
   }
+  /* ITEM/TRAIT eyebrow on the left, Delete Item Type/Delete Trait (or its deleted-status text) on
+     the right -- shared by both entity kinds, unlike the rest of item-header below it (the
+     parent-type row is items-only). Name/Description/etc. all follow beneath this, so the delete
+     action reads as acting on the item type or trait as a whole rather than on any one field. */
+  .header-top-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
   .states-edit-row {
     margin-top: 12px;
   }
@@ -58,32 +67,63 @@ injectStyles('ntrloc-item-detail-styles', `
   .field-row .dirty-dot.is-new {
     color: var(--new-color, #3fb950);
   }
-  /* Parent type / Abstract / Delete in one row, left/center/right. A 3-column grid (not flex with
-     space-between) is what actually keeps the center column truly centered on the row as a whole
-     regardless of how wide the left (variable-width select) and right (button vs. status text)
-     columns end up being -- space-between only centers a middle item when its neighbors are equal
-     width, which these aren't. */
+  /* Parent type / Abstract / Display label in one row, below Name/Description now (Delete Item
+     Type moved to header-top-row above, see its own comment). The display-label group takes the
+     1fr track so it gets first claim on any slack width (it holds a free-text SpEL input, the only
+     field here that actually needs room to grow) while the other two stay their natural content
+     width. align-items:start keeps every caption on one shared baseline across the row regardless
+     of row-display-label's extra prior-value line making it taller than the other two. */
   .three-col-row {
     display: grid;
-    grid-template-columns: 1fr auto 1fr;
-    align-items: center;
-    margin-top: 4px;
+    grid-template-columns: auto auto 1fr;
+    align-items: start;
+    gap: 100px;
+    margin-top: 20px;
   }
+  /* Caption-above-control, shared by all three input groups (see col-header/col-body below) --
+     row-display-label additionally carries the prior-value line (see its own comment) beneath the
+     control, which is why min-width:0 lives here too: without it, the flex column won't let its
+     child input shrink below its content width, which for a free-text SpEL pattern can overflow the
+     grid track. */
   .three-col-row .row-start,
   .three-col-row .row-center,
-  .three-col-row .row-end {
+  .three-col-row .row-display-label {
     display: flex;
-    align-items: center;
-    gap: 8px;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
   }
   .three-col-row .row-start {
     justify-self: start;
   }
   .three-col-row .row-center {
-    justify-self: center;
+    justify-self: start;
   }
-  .three-col-row .row-end {
-    justify-self: end;
+  .three-col-row .row-display-label {
+    justify-self: stretch;
+  }
+  .col-header {
+    font-size: 11px;
+    font-weight: bold;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .col-body {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+  /* Unlabeled (the col-header above it is the label -- see the three-col-row markup), but the
+     filled select still reserves its default full label-row height regardless, leaving a big gap
+     between col-header and the field's own visible text. --md-filled-field-top/bottom-space is the
+     same token ntrloc-property-table.js already uses to compact md-filled-select for the identical
+     reason (md-filled-select has no *-text-field-top/bottom-space alias of its own, unlike
+     md-filled-text-field -- it reads the shared underlying token directly). */
+  .item-supertype-select {
+    --md-filled-field-top-space: 4px;
+    --md-filled-field-bottom-space: 4px;
   }
   /* Matches the Angular reference's item-detail.scss exactly (plain input + placeholder, not a
      persistent Material label -- md-filled-text-field's floating label doesn't have a mode that
@@ -536,29 +576,12 @@ class NtrlocItemDetail extends HTMLElement {
 
     this.innerHTML = `
       <div class="item-header">
-        <div class="eyebrow">${this._entityKind === 'item' ? 'ITEM' : 'TRAIT'}</div>
-
-        ${this.isItem ? `
-          <div class="three-col-row">
-            <div class="row-start">
-              ${item.supertypeId !== item.originalSupertypeId ? '<span class="dirty-dot">●</span>' : ''}
-              <md-filled-select class="item-supertype-select">
-                <md-select-option value="" ${!item.supertypeId ? 'selected' : ''}><div slot="headline">No parent type</div></md-select-option>
-                ${this.supertypeCandidates.map((i) => `<md-select-option value="${escapeHtml(i.id)}" ${i.id === item.supertypeId ? 'selected' : ''}><div slot="headline">${escapeHtml(i.name)}</div></md-select-option>`).join('')}
-              </md-filled-select>
-            </div>
-            <div class="row-center">
-              ${item.abstractType !== item.originalAbstractType ? '<span class="dirty-dot">●</span>' : ''}
-              <md-checkbox class="item-abstract-checkbox" ${item.abstractType ? 'checked' : ''}></md-checkbox>
-              <label for="item-abstract-checkbox">Abstract</label>
-            </div>
-            <div class="row-end">
-              ${item.isDeleted
-                ? '<span class="status">Marked for deletion -- Save to confirm.</span>'
-                : '<md-text-button class="delete-entity-button">Delete Item Type</md-text-button>'}
-            </div>
-          </div>
-        ` : ''}
+        <div class="header-top-row">
+          <div class="eyebrow">${this._entityKind === 'item' ? 'ITEM' : 'TRAIT'}</div>
+          ${item.isDeleted
+            ? '<span class="status">Marked for deletion -- Save to confirm.</span>'
+            : `<md-text-button class="delete-entity-button">${this.isItem ? 'Delete Item Type' : 'Delete Trait'}</md-text-button>`}
+        </div>
 
         <div class="field-row">
           ${item.isNew || item.name !== item.originalName ? `<span class="dirty-dot ${item.isNew ? 'is-new' : ''}">●</span>` : ''}
@@ -575,19 +598,35 @@ class NtrlocItemDetail extends HTMLElement {
         ${!item.isNew && (item.description ?? '') !== (item.originalDescription ?? '') && item.originalDescription ? `<div class="original-value">${escapeHtml(item.originalDescription)}</div>` : ''}
 
         ${this.isItem ? `
-          <div class="field-row">
-            ${!item.isNew && (item.displayLabelPattern ?? '') !== (item.originalDisplayLabelPattern ?? '') ? '<span class="dirty-dot">●</span>' : ''}
-            <input class="item-display-label-pattern-input" value="${escapeHtml(item.displayLabelPattern ?? '')}" placeholder="Display label pattern (SpEL, optional)" />
-            ${!item.isNew && (item.displayLabelPattern ?? '') !== (item.originalDisplayLabelPattern ?? '') ? '<md-text-button class="revert-display-label-pattern-button">Revert</md-text-button>' : ''}
+          <div class="three-col-row">
+            <div class="row-start">
+              <label class="col-header" for="item-supertype-select">Parent Type</label>
+              <div class="col-body">
+                ${item.supertypeId !== item.originalSupertypeId ? '<span class="dirty-dot">●</span>' : ''}
+                <md-filled-select id="item-supertype-select" class="item-supertype-select">
+                  <md-select-option value="" ${!item.supertypeId ? 'selected' : ''}><div slot="headline">No parent type</div></md-select-option>
+                  ${this.supertypeCandidates.map((i) => `<md-select-option value="${escapeHtml(i.id)}" ${i.id === item.supertypeId ? 'selected' : ''}><div slot="headline">${escapeHtml(i.name)}</div></md-select-option>`).join('')}
+                </md-filled-select>
+              </div>
+            </div>
+            <div class="row-center">
+              <label class="col-header" for="item-abstract-checkbox">Abstract</label>
+              <div class="col-body">
+                ${item.abstractType !== item.originalAbstractType ? '<span class="dirty-dot">●</span>' : ''}
+                <md-checkbox id="item-abstract-checkbox" class="item-abstract-checkbox" ${item.abstractType ? 'checked' : ''}></md-checkbox>
+              </div>
+            </div>
+            <div class="row-display-label">
+              <label class="col-header" for="item-display-label-pattern-input">Display Label</label>
+              <div class="col-body">
+                ${!item.isNew && (item.displayLabelPattern ?? '') !== (item.originalDisplayLabelPattern ?? '') ? '<span class="dirty-dot">●</span>' : ''}
+                <input id="item-display-label-pattern-input" class="item-display-label-pattern-input" value="${escapeHtml(item.displayLabelPattern ?? '')}" placeholder="SpEL expression (optional)" />
+                ${!item.isNew && (item.displayLabelPattern ?? '') !== (item.originalDisplayLabelPattern ?? '') ? '<md-text-button class="revert-display-label-pattern-button">Revert</md-text-button>' : ''}
+              </div>
+              ${!item.isNew && (item.displayLabelPattern ?? '') !== (item.originalDisplayLabelPattern ?? '') && item.originalDisplayLabelPattern ? `<div class="original-value">${escapeHtml(item.originalDisplayLabelPattern)}</div>` : ''}
+            </div>
           </div>
-          ${!item.isNew && (item.displayLabelPattern ?? '') !== (item.originalDisplayLabelPattern ?? '') && item.originalDisplayLabelPattern ? `<div class="original-value">${escapeHtml(item.originalDisplayLabelPattern)}</div>` : ''}
         ` : ''}
-
-        ${!this.isItem ? (item.isDeleted ? `<p class="status">Marked for deletion -- Save to confirm.</p>` : `
-          <div class="field-row">
-            <md-text-button class="delete-entity-button">Delete Trait</md-text-button>
-          </div>
-        `) : ''}
       </div>
 
       ${this.panel('traits', this.isItem ? 'Traits' : 'Implemented By', traitsBody)}
