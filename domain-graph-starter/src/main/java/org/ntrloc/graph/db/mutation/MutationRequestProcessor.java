@@ -17,6 +17,7 @@ import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemLinkPerspectiveView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyDefinitionView;
+import org.ntrloc.graph.db.partition.schema.definition.view.admin.ObjectAdminPropertyDefinitionView;
 import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -302,6 +303,14 @@ public class MutationRequestProcessor {
                 errors.add(new ValidationError(path + "." + name, "Unknown property: " + name));
                 return;
             }
+            // OBJECT properties are intercepted here, one level above validatePropertyValue --
+            // unlike every other type, resolving one doesn't produce a single id->value entry, it
+            // recurses and flattens into potentially many leaf entries (or, for null, an entire
+            // subtree of them), so it can't share the single-put path below.
+            if (property instanceof ObjectAdminPropertyDefinitionView objectProperty) {
+                resolveObjectPropertyValue(path + "." + name, objectProperty, value, byId, errors);
+                return;
+            }
             // null is the update-diff "clear this property" sentinel -- never type-checked.
             if (value == null) {
                 byId.put(property.id(), null);
@@ -314,6 +323,43 @@ public class MutationRequestProcessor {
             }
         });
         return byId;
+    }
+
+    // Recurses into an OBJECT property's nested payload, resolving each child name against the
+    // property's *own* children -- not the container's list -- which is what lets two properties
+    // named the same thing coexist under different object properties: the JSON nesting itself
+    // scopes the lookup, same as any nested JSON disambiguates same-named keys by which object
+    // they're inside. A bare `null` wipes the entire subtree: every leaf currently under this
+    // object property per the *live* schema (not just whatever the client happened to list) gets
+    // cleared, since a client can't be expected to enumerate a container's full current shape.
+    private void resolveObjectPropertyValue(String path, ObjectAdminPropertyDefinitionView objectProperty, Object value,
+                                             Map<UUID, Object> byId, List<ValidationError> errors) {
+        if (value == null) {
+            nullAllLeaves(objectProperty.properties(), byId);
+            return;
+        }
+        if (!(value instanceof Map<?, ?> rawMap)) {
+            errors.add(new ValidationError(path, PROPERTY_QUOTE_PREFIX + objectProperty.name() + "' expects an object value but got: " + describeValue(value)));
+            return;
+        }
+        Map<String, AdminPropertyDefinitionView> childNameToProperty = objectProperty.properties().stream()
+                .collect(Collectors.toMap(AdminPropertyDefinitionView::name, p -> p));
+        // JSON object keys are always strings -- Jackson never produces anything else when binding
+        // a JSON object into a Map<String, Object>-typed field, the same assumption the top-level
+        // ItemCreateMutation/ItemUpdateMutation properties maps already rely on.
+        @SuppressWarnings("unchecked")
+        Map<String, Object> nestedProperties = (Map<String, Object>) rawMap;
+        byId.putAll(resolvePropertyIds(nestedProperties, childNameToProperty, path, errors));
+    }
+
+    private void nullAllLeaves(List<AdminPropertyDefinitionView> properties, Map<UUID, Object> byId) {
+        for (AdminPropertyDefinitionView p : properties) {
+            if (p instanceof ObjectAdminPropertyDefinitionView o) {
+                nullAllLeaves(o.properties(), byId);
+            } else {
+                byId.put(p.id(), null);
+            }
+        }
     }
 
     private void validatePropertyValue(String path, AdminPropertyDefinitionView property, Object value, List<ValidationError> errors) {
@@ -348,7 +394,7 @@ public class MutationRequestProcessor {
             case INT -> value instanceof Integer;
             case LONG -> value instanceof Integer || value instanceof Long;
             case BOOLEAN -> value instanceof Boolean;
-            case OBJECT -> value instanceof Map;
+            case OBJECT -> false; // handled by resolvePropertyIds/resolveObjectPropertyValue before reaching here
             case DATE -> value instanceof String s && isValidDate(s);
             case DATETIME -> value instanceof String s && isValidDateTime(s);
             case BINARY -> false; // handled by the caller before reaching here

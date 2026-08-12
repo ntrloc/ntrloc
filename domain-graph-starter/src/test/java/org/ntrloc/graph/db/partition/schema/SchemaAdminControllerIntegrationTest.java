@@ -38,7 +38,7 @@ class SchemaAdminControllerIntegrationTest extends AbstractIntegrationTest {
         UUID itemId = schemaManager.getAdminSchema().items().stream()
                 .filter(i -> i.name().equals(itemName)).findFirst().orElseThrow().id();
         schemaManager.applyMutations(List.of(new CreateItemPropertyDefinitionMutation(
-                itemId, propName, "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL)));
+                itemId, propName, "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, java.util.List.of())));
         return schemaManager.getAdminSchema().items().stream()
                 .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
                 .properties().stream().filter(p -> p.name().equals(propName)).findFirst().orElseThrow().id();

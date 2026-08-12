@@ -49,7 +49,7 @@ class LinkMutationApplier {
         Set<String> usedNames = new HashSet<>();
         for (var p : m.properties()) {
             SchemaMutationValidation.requireUniqueName(usedNames, p.name(), "this link type");
-            var prop = repo.createProperty(p.name(), p.description(), p.propertyType(), p.cardinality(), p.usage());
+            var prop = PropertyMutationApplier.createPropertyRecursive(repo, p);
             repo.associateLinkProperty(linkId, prop.id());
         }
         var perspectives = m.perspectives();

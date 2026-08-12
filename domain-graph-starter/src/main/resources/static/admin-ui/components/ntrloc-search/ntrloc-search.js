@@ -216,28 +216,33 @@ injectStyles('ntrloc-search-styles', `
     font-size: 13px;
     padding: 4px 0;
   }
+  /* Label above value, not beside it -- reads better once an OBJECT property is in the mix
+     (see .object-property-row below): a fixed-width side-by-side key column has no good answer
+     for "the value is itself a whole nested panel", where stacking does. Kept for every property
+     now, not just object-typed ones, so a card doesn't mix two different row shapes side by side. */
   .prop-row {
     display: flex;
-    align-items: baseline;
-    padding: 4px 14px;
-    border-bottom: 1px solid var(--border);
+    flex-direction: column;
+    gap: 3px;
+    padding: 6px 14px;
   }
   .prop-row:hover {
     background: rgba(74, 158, 255, 0.04);
   }
   .prop-key {
-    color: var(--muted);
-    font-weight: 500;
-    min-width: 140px;
-    flex-shrink: 0;
-    padding-right: 12px;
+    color: var(--accent);
+    opacity: 0.75;
+    font-weight: 600;
+    font-size: 11px;
+    letter-spacing: 0.02em;
   }
   .prop-value {
-    flex: 1;
+    width: 100%;
     word-break: break-word;
     display: flex;
     align-items: center;
     gap: 8px;
+    font-size: 15px;
   }
   .prop-value .value-text {
     flex: 1;
@@ -309,6 +314,86 @@ injectStyles('ntrloc-search-styles', `
   }
   .add-prop-row {
     padding: 8px 14px;
+  }
+  /* A nested OBJECT property's value, rendered by renderObjectPropRow as a <details> standing in
+     for the whole .prop-row -- native <details> rather than the click-tracked-state approach
+     .link-group-header uses below, since an object property can appear (and itself nest
+     arbitrarily deep) inside any property row in any item card, at any depth: tracking "which
+     panels are open" as explicit component state the way .collapsedLinkGroups does for the one
+     flat, per-item, non-recursive case would mean a per-item-per-property-per-nesting-path key
+     space instead of a single Set. The browser already tracks each <details>'s own open/closed
+     state for free, so this reuses that instead, closed by default so a large item card isn't
+     overwhelmed by every nested field showing at once. The chevron sits with the label in
+     <summary> (the actual toggle) rather than inside the value, matching every other row's own
+     label-above-value shape -- the property's *name* is what's being expanded, same as a link
+     group's name is above. */
+  .object-property-row {
+    cursor: pointer;
+  }
+  /* Two lines inside the toggle itself: chevron+label (.object-property-summary-row), then the
+     "(N fields)" hint beneath it in the value's usual spot -- both have to live inside <summary>
+     itself (see renderObjectPropRow's own comment on why), not as siblings after it. */
+  .object-property-row > summary {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    list-style: none;
+    user-select: none;
+  }
+  .object-property-row > summary::-webkit-details-marker {
+    display: none;
+  }
+  .object-property-summary-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .object-property-row .chevron {
+    flex-shrink: 0;
+    transition: transform 0.15s ease;
+    transform: rotate(-90deg);
+    color: var(--accent);
+    opacity: 0.75;
+  }
+  .object-property-row[open] .chevron {
+    transform: rotate(0deg);
+  }
+  /* Stands in for the value line while collapsed -- the real nested grid is <details> content,
+     so it isn't even in the DOM being interacted with while hidden; this hint is, and disappears
+     once the real content takes its place. */
+  .object-property-row[open] > summary .collapsed-hint {
+    display: none;
+  }
+  /* A visibly distinct box (background + border), not just an indent -- this *is* the value now,
+     for a row whose value is a whole nested panel rather than a line of text, so it needs to read
+     as content rather than as a sub-list. Its own auto-fill minimum is much smaller than the
+     outer .prop-grid's (140px vs 300px): a nested box is narrower to begin with, and its fields
+     (a schema-fixed set of short, known identifiers) don't need anywhere near 300px each to lay
+     out several per row the way a top-level card, sized for arbitrary property names, does. */
+  .nested-object-grid {
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    margin-top: 8px;
+    padding: 10px 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+  }
+  /* Wider minimum than the read-only .nested-object-grid -- a bare label+value pair can fit in
+     140px, but an <input> needs more breathing room to stay usable. */
+  .nested-object-grid.is-editing {
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  }
+  /* An OBJECT property's editable form, standing in for renderObjectPropRow's <details> -- no
+     collapse here, since edit mode exists precisely so the user can reach every leaf, and a
+     closed-by-default panel would hide the very fields they came to change. */
+  .object-property-edit-row .object-property-summary-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+  }
+  .object-property-edit-row > .add-prop-row {
+    padding: 8px 0 0;
   }
   .link-groups {
     border-top: 1px solid var(--border);
@@ -655,12 +740,21 @@ class NtrlocSearch extends HTMLElement {
   // linkId, targets, minCardinality, maxCardinality, definedIn}] }, see AdminItemLinkPerspectiveView)
   // -- computeLinkCandidates reads targets/linkId straight off it, no need to remap.
   mapAvailableTypes(schema) {
+    // Recurses into an OBJECT property's own `properties` -- needed so the item-card editor can
+    // find/offer a nested property's definition (type, and its own children) at any depth, not
+    // just the top level.
+    const mapProps = (props) => (props || []).map(p => ({
+      name: p.name,
+      type: p.type,
+      cardinality: p.cardinality,
+      properties: p.type === 'OBJECT' ? mapProps(p.properties) : undefined,
+    }));
     return (schema.items || [])
       .map(item => ({
         id: item.id,
         name: item.name,
         sortableFields: item.sortableFields || [],
-        properties: (item.properties || []).map(p => ({ name: p.name, type: p.type, cardinality: p.cardinality })),
+        properties: mapProps(item.properties),
         links: item.links || {},
         supertypeId: item.supertypeId || null,
       }))
@@ -794,9 +888,16 @@ class NtrlocSearch extends HTMLElement {
       const item = pane.results.find(r => r.itemId === itemId);
       if (!item) return;
       pane.editingItems[itemId] = {
-        values: { ...item.properties },
+        // Deep-cloned, not spread -- an OBJECT property's value is itself an object, and a shallow
+        // spread would leave edit.values[key] pointing at the exact same nested object as
+        // item.properties[key], so editing a leaf would silently mutate the live (pre-save) item
+        // too, corrupting both the diff and a cancelled edit.
+        values: structuredClone(item.properties),
+        // Dotted paths (e.g. "contactInfo.email"), not just top-level keys -- a removal can target
+        // a single nested leaf or an entire OBJECT subtree at any depth. The value at a removed
+        // path is left in place in `values` (not deleted) so "undo remove" has something to
+        // restore.
         removed: new Set(),
-        added: [],
       };
     }
     this.render();
@@ -807,58 +908,109 @@ class NtrlocSearch extends HTMLElement {
     this.render();
   }
 
-  updateEditValue(id, itemId, propName, value) {
+  updateEditValue(id, itemId, pathKey, value) {
     const edit = this.pane(id).editingItems[itemId];
-    if (edit) edit.values[propName] = value;
+    if (edit) setAtPath(edit.values, pathKey.split('.'), value);
   }
 
-  removeProperty(id, itemId, propName) {
+  removeProperty(id, itemId, pathKey) {
     const edit = this.pane(id).editingItems[itemId];
     if (edit) {
-      edit.removed.add(propName);
+      edit.removed.add(pathKey);
       this.render();
     }
   }
 
-  undoRemoveProperty(id, itemId, propName) {
+  undoRemoveProperty(id, itemId, pathKey) {
     const edit = this.pane(id).editingItems[itemId];
     if (edit) {
-      edit.removed.delete(propName);
+      edit.removed.delete(pathKey);
       this.render();
     }
   }
 
-  addProperty(id, itemId) {
-    const edit = this.pane(id).editingItems[itemId];
-    if (!edit) return;
+  // pathKey identifies the containing OBJECT property ("" for the item's own top-level
+  // properties, "contactInfo" for a field nested inside it, etc.) -- the prompted name is looked
+  // up against that container's own schema children, same idea as
+  // ntrloc-property-table.js's "add property to X" but one level (item instance values, not
+  // schema definitions).
+  addProperty(id, itemId, pathKey) {
     const pane = this.pane(id);
-    const existingKeys = new Set(Object.keys(edit.values));
-    const available = pane.propertyDefs.filter(p => !existingKeys.has(p.name) || edit.removed.has(p.name));
+    const edit = pane.editingItems[itemId];
+    if (!edit) return;
+    const path = pathKey ? pathKey.split('.') : [];
+    const containerDef = path.length === 0 ? null : this.findPropertyDef(pane.propertyDefs, path);
+    const childDefs = path.length === 0 ? pane.propertyDefs : (containerDef?.properties || []);
+    const parentVal = path.length === 0 ? edit.values : (getAtPath(edit.values, path) || {});
+    const existingKeys = new Set(Object.keys(parentVal));
+    const available = childDefs.filter(p => !existingKeys.has(p.name) || edit.removed.has([...path, p.name].join('.')));
     if (available.length === 0) return;
     const name = prompt('Property name to add:\n\nAvailable: ' + available.map(p => p.name).join(', '));
     if (!name) return;
-    const def = pane.propertyDefs.find(p => p.name === name);
-    if (!def && !name.trim()) return;
-    edit.values[name] = '';
-    edit.removed.delete(name);
+    const def = childDefs.find(p => p.name === name);
+    if (!def) return;
+    const childPath = [...path, name];
+    setAtPath(edit.values, childPath, def.type === 'OBJECT' ? {} : '');
+    edit.removed.delete(childPath.join('.'));
     this.render();
+  }
+
+  // Recursively diffs `newVal` (edit.values, or one of its nested objects) against `oldVal` (the
+  // matching spot in item.properties) into the same partial-update shape the backend's nested
+  // property resolution expects (see MutationRequestProcessor.resolveObjectPropertyValue): only
+  // changed leaves are included, an explicit null clears just that leaf (or, for a whole removed
+  // OBJECT subtree, everything beneath it), and untouched siblings are simply absent rather than
+  // echoed back. `leafCount` powers the "N changes" badge -- a removed subtree counts as one
+  // change (matching the single removal action that produced it), not one per descendant.
+  diffEditedValue(newVal, oldVal, removed, path) {
+    const pathKey = path.join('.');
+    if (removed.has(pathKey)) return { changed: true, value: null, leafCount: 1 };
+    if (newVal !== null && typeof newVal === 'object' && !Array.isArray(newVal)) {
+      const oldObj = (oldVal && typeof oldVal === 'object' && !Array.isArray(oldVal)) ? oldVal : {};
+      const nested = {};
+      let leafCount = 0;
+      for (const key of Object.keys(newVal)) {
+        const child = this.diffEditedValue(newVal[key], oldObj[key], removed, [...path, key]);
+        leafCount += child.leafCount;
+        if (child.changed) nested[key] = child.value;
+      }
+      return { changed: leafCount > 0, value: nested, leafCount };
+    }
+    // Deep-cloning at toggleEdit() means an unedited LIST/SET-cardinality (array-valued) property
+    // no longer shares a reference with item.properties -- a plain !== would flag it as changed
+    // on every save. Compared by content instead, same as everything else here.
+    const same = Array.isArray(newVal) || Array.isArray(oldVal)
+      ? JSON.stringify(newVal) === JSON.stringify(oldVal)
+      : newVal === oldVal;
+    return same
+      ? { changed: false, value: undefined, leafCount: 0 }
+      : { changed: true, value: newVal === '' ? null : newVal, leafCount: 1 };
+  }
+
+  // Recursive lookup of a property's own definition against pane.propertyDefs' nested `properties`
+  // (see mapAvailableTypes), by path -- e.g. ["contactInfo", "email"] walks into contactInfo's own
+  // children to find email's definition (its type, and if it's itself OBJECT-typed, its children).
+  findPropertyDef(defs, path) {
+    let list = defs;
+    let def = null;
+    for (const key of path) {
+      def = (list || []).find(d => d.name === key);
+      if (!def) return null;
+      list = def.properties;
+    }
+    return def;
   }
 
   async saveEdit(id, itemId) {
     const pane = this.pane(id);
     const edit = pane.editingItems[itemId];
     if (!edit) return;
-    const properties = {};
     const item = pane.results.find(r => r.itemId === itemId);
     if (!item) return;
-    for (const [key, val] of Object.entries(edit.values)) {
-      if (edit.removed.has(key)) continue;
-      if (item.properties[key] !== val) {
-        properties[key] = val === '' ? null : val;
-      }
-    }
-    for (const key of edit.removed) {
-      properties[key] = null;
+    const properties = {};
+    for (const key of Object.keys(edit.values)) {
+      const result = this.diffEditedValue(edit.values[key], item.properties[key], edit.removed, [key]);
+      if (result.changed) properties[key] = result.value;
     }
     if (Object.keys(properties).length === 0) {
       delete pane.editingItems[itemId];
@@ -1274,46 +1426,16 @@ class NtrlocSearch extends HTMLElement {
 
     const propEntries = Object.entries(item.properties).sort((a, b) => a[0].localeCompare(b[0]));
     let rows;
+    let editCount = 0;
     if (isEditing) {
-      const allKeys = Array.from(new Set([...Object.keys(edit.values)])).sort();
-      rows = allKeys.map(key => {
-        const removed = edit.removed.has(key);
-        const val = edit.values[key];
-        const def = pane.propertyDefs.find(p => p.name === key);
-        const inputType = this.inputTypeFor(def?.type);
-        if (removed) {
-          return `<div class="prop-row is-editing">
-            <div class="prop-key removed">${escapeHtml(key)}</div>
-            <div class="prop-value removed">
-              <span class="value-null">(marked for removal)</span>
-              <div class="prop-actions">
-                <button title="Undo remove" data-action="undo-remove" data-prop="${escapeHtml(key)}">&#x21b6;</button>
-              </div>
-            </div>
-          </div>`;
-        }
-        return `<div class="prop-row is-editing">
-          <div class="prop-key">${escapeHtml(key)}</div>
-          <div class="prop-value">
-            <input type="${inputType}" value="${escapeHtml(val == null ? '' : String(val))}" data-action="edit-value" data-prop="${escapeHtml(key)}">
-            <div class="prop-actions">
-              <button class="delete-btn" title="Remove property" data-action="remove-prop" data-prop="${escapeHtml(key)}">&times;</button>
-            </div>
-          </div>
-        </div>`;
-      }).join('');
+      const topKeys = Array.from(new Set(Object.keys(edit.values))).sort();
+      rows = topKeys.map(key => this.renderEditableRow(pane, edit, [key])).join('');
+      for (const key of topKeys) {
+        editCount += this.diffEditedValue(edit.values[key], item.properties[key], edit.removed, [key]).leafCount;
+      }
     } else {
-      rows = propEntries.map(([key, val]) => `
-        <div class="prop-row">
-          <div class="prop-key">${escapeHtml(key)}</div>
-          <div class="prop-value">
-            ${this.renderPropertyValue(val)}
-          </div>
-        </div>
-      `).join('');
+      rows = propEntries.map(([key, val]) => this.renderPropRow(key, val)).join('');
     }
-
-    const editCount = isEditing ? edit.removed.size + Object.entries(edit.values).filter(([k, v]) => !edit.removed.has(k) && v !== item.properties[k]).length : 0;
 
     return `
       <div class="item-card" data-item-id="${item.itemId}" data-item-type="${escapeHtml(item.itemType)}">
@@ -1344,7 +1466,7 @@ class NtrlocSearch extends HTMLElement {
         ${this.renderLinkGroups(pane, item)}
         ${isEditing ? `
           <div class="add-prop-row">
-            <button data-action="add-prop">+ Add property</button>
+            <button data-action="add-prop" data-path="">+ Add property</button>
           </div>
           <div class="save-bar">
             ${editCount > 0 ? `<span class="change-count">${editCount} change${editCount !== 1 ? 's' : ''}</span>` : ''}
@@ -1422,12 +1544,7 @@ class NtrlocSearch extends HTMLElement {
           <span class="nested-item-id">${shortId}</span>
         </div>
         <div class="prop-grid">
-          ${propEntries.map(([key, val]) => `
-            <div class="prop-row">
-              <div class="prop-key">${escapeHtml(key)}</div>
-              <div class="prop-value">${this.renderPropertyValue(val)}</div>
-            </div>
-          `).join('')}
+          ${propEntries.map(([key, val]) => this.renderPropRow(key, val)).join('')}
         </div>
       </div>
     `;
@@ -1457,12 +1574,7 @@ class NtrlocSearch extends HTMLElement {
         </div>
         ${linkPropEntries.length > 0 ? `
           <div class="prop-grid">
-            ${linkPropEntries.map(([key, val]) => `
-              <div class="prop-row">
-                <div class="prop-key">${escapeHtml(key)}</div>
-                <div class="prop-value">${this.renderPropertyValue(val)}</div>
-              </div>
-            `).join('')}
+            ${linkPropEntries.map(([key, val]) => this.renderPropRow(key, val)).join('')}
           </div>
         ` : `<div class="nested-empty-note">No properties set</div>`}
       </div>
@@ -1494,6 +1606,124 @@ class NtrlocSearch extends HTMLElement {
           </svg>
         </button>
         <div class="nested-item-body">${body}</div>
+      </div>
+    `;
+  }
+
+  // Renders one property as a label-above-value cell. A nested OBJECT property's value gets a
+  // fundamentally different shape from a scalar one -- the property's own name doubles as a
+  // disclosure toggle (chevron sits right next to the label, not buried down in the value), so
+  // that case is a <details> covering the *whole* cell (see renderObjectPropRow), not something
+  // decided inside the value alone. Arrays (LIST/SET cardinality) and binary refs are still plain
+  // values here, same as any scalar.
+  renderPropRow(key, val) {
+    if (val && typeof val === 'object' && !Array.isArray(val) && !(val.mimeType && val.url)) {
+      return this.renderObjectPropRow(key, val);
+    }
+    return `
+      <div class="prop-row">
+        <div class="prop-key">${escapeHtml(key)}</div>
+        <div class="prop-value">${this.renderPropertyValue(val)}</div>
+      </div>
+    `;
+  }
+
+  // Closed-by-default <details> standing in for a normal .prop-row -- the chevron+label live in
+  // <summary> (the actual toggle). The "(N fields)" hint has to live *inside* <summary> too, not
+  // as a sibling after it -- a native <details> unconditionally hides every child except
+  // <summary> while closed (a browser-level content model, not a CSS display:none my own rules
+  // could override), so a hint placed outside <summary> would never actually paint while
+  // collapsed no matter what CSS targeted it. Hidden again once open via the [open] rule below,
+  // at which point the real nested grid (genuine <details> content, so never in the DOM being
+  // interacted with while hidden) takes its place. Each entry recurses through renderPropRow
+  // again, so a child that's itself an OBJECT property becomes its own nested <details>
+  // automatically, however deep the schema goes -- no depth limit needed (unlike
+  // renderLinkGroups' linked items, which the backend only ever returns one level deep, this is
+  // client-side recursion over data the projection already returned in full).
+  renderObjectPropRow(key, val) {
+    const entries = Object.entries(val).sort((a, b) => a[0].localeCompare(b[0]));
+    const hint = entries.length === 0 ? '(empty)' : `(${entries.length} field${entries.length === 1 ? '' : 's'})`;
+    return `
+      <details class="prop-row object-property-row">
+        <summary>
+          <span class="object-property-summary-row">
+            <svg class="chevron" viewBox="0 0 24 24" width="12" height="12"
+                 fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+            <span class="prop-key">${escapeHtml(key)}</span>
+          </span>
+          <span class="collapsed-hint value-text">${hint}</span>
+        </summary>
+        ${entries.length > 0 ? `
+          <div class="prop-grid nested-object-grid">
+            ${entries.map(([k, v]) => this.renderPropRow(k, v)).join('')}
+          </div>
+        ` : ''}
+      </details>
+    `;
+  }
+
+  // The editable counterpart to renderPropRow/renderObjectPropRow -- same recursive shape (an
+  // OBJECT-valued row renders its own boxed sub-grid instead of a single field), but every leaf is
+  // an <input> and every row carries a remove action, addressed by dotted path (see
+  // toggleEdit's own comment on why edit.values/edit.removed are path-keyed rather than flat).
+  // Branches on the *value's* actual shape (object vs. not), not solely on the schema def's
+  // declared type -- mirrors renderPropRow's own reasoning, and stays correct even if a value's
+  // def can't be found (e.g. a property added before a schema change).
+  renderEditableRow(pane, edit, path) {
+    const pathKey = path.join('.');
+    const key = path[path.length - 1];
+    if (edit.removed.has(pathKey)) {
+      return `<div class="prop-row is-editing">
+        <div class="prop-key removed">${escapeHtml(key)}</div>
+        <div class="prop-value removed">
+          <span class="value-null">(marked for removal)</span>
+          <div class="prop-actions">
+            <button title="Undo remove" data-action="undo-remove" data-path="${escapeHtml(pathKey)}">&#x21b6;</button>
+          </div>
+        </div>
+      </div>`;
+    }
+    const val = getAtPath(edit.values, path);
+    const def = this.findPropertyDef(pane.propertyDefs, path);
+    if (val !== null && typeof val === 'object' && !Array.isArray(val)) {
+      return this.renderEditableObjectRow(pane, edit, path, val, def);
+    }
+    const inputType = this.inputTypeFor(def?.type);
+    return `<div class="prop-row is-editing">
+      <div class="prop-key">${escapeHtml(key)}</div>
+      <div class="prop-value">
+        <input type="${inputType}" value="${escapeHtml(val == null ? '' : String(val))}" data-action="edit-value" data-path="${escapeHtml(pathKey)}">
+        <div class="prop-actions">
+          <button class="delete-btn" title="Remove property" data-action="remove-prop" data-path="${escapeHtml(pathKey)}">&times;</button>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  renderEditableObjectRow(pane, edit, path, val, def) {
+    const pathKey = path.join('.');
+    const key = path[path.length - 1];
+    const childKeys = Object.keys(val).sort();
+    const childDefs = def?.properties || [];
+    const available = childDefs.filter(p => !childKeys.includes(p.name));
+    return `
+      <div class="prop-row is-editing object-property-edit-row">
+        <div class="object-property-summary-row">
+          <span class="prop-key">${escapeHtml(key)}</span>
+          <div class="prop-actions">
+            <button class="delete-btn" title="Remove property" data-action="remove-prop" data-path="${escapeHtml(pathKey)}">&times;</button>
+          </div>
+        </div>
+        <div class="prop-grid nested-object-grid is-editing">
+          ${childKeys.map(k => this.renderEditableRow(pane, edit, [...path, k])).join('')}
+        </div>
+        ${available.length > 0 ? `
+          <div class="add-prop-row">
+            <button data-action="add-prop" data-path="${escapeHtml(pathKey)}">+ Add field</button>
+          </div>
+        ` : ''}
       </div>
     `;
   }
@@ -1546,10 +1776,10 @@ class NtrlocSearch extends HTMLElement {
           if (action === 'cancel-edit') el.addEventListener('click', () => this.cancelEdit(id, itemId));
           if (action === 'save-edit') el.addEventListener('click', () => this.saveEdit(id, itemId));
           if (action === 'delete-item') el.addEventListener('click', () => this.deleteItem(id, itemId));
-          if (action === 'add-prop') el.addEventListener('click', () => this.addProperty(id, itemId));
-          if (action === 'remove-prop') el.addEventListener('click', () => this.removeProperty(id, itemId, el.dataset.prop));
-          if (action === 'undo-remove') el.addEventListener('click', () => this.undoRemoveProperty(id, itemId, el.dataset.prop));
-          if (action === 'edit-value') el.addEventListener('input', e => this.updateEditValue(id, itemId, el.dataset.prop, e.target.value));
+          if (action === 'add-prop') el.addEventListener('click', () => this.addProperty(id, itemId, el.dataset.path));
+          if (action === 'remove-prop') el.addEventListener('click', () => this.removeProperty(id, itemId, el.dataset.path));
+          if (action === 'undo-remove') el.addEventListener('click', () => this.undoRemoveProperty(id, itemId, el.dataset.path));
+          if (action === 'edit-value') el.addEventListener('input', e => this.updateEditValue(id, itemId, el.dataset.path, e.target.value));
           if (action === 'toggle-link-group') el.addEventListener('click', () => this.toggleLinkGroup(id, itemId, el.dataset.perspective));
           // Nested inside cardEl (a linked item's own card, inside a link-group), not one of the
           // outer item's own actions above -- reads the linkId/type off the nested card itself
@@ -1695,6 +1925,28 @@ function escapeHtml(value) {
   const div = document.createElement('div');
   div.textContent = String(value);
   return div.innerHTML;
+}
+
+// path-addressed read/write into a nested value tree (item.properties' shape) -- used by the
+// item-card editor so a dotted path like ["contactInfo", "email"] can reach a leaf however deep
+// it's nested, without every caller re-implementing the walk.
+function getAtPath(obj, path) {
+  let cur = obj;
+  for (const key of path) {
+    if (cur == null || typeof cur !== 'object') return undefined;
+    cur = cur[key];
+  }
+  return cur;
+}
+
+function setAtPath(obj, path, value) {
+  let cur = obj;
+  for (let i = 0; i < path.length - 1; i++) {
+    const key = path[i];
+    if (cur[key] == null || typeof cur[key] !== 'object') cur[key] = {};
+    cur = cur[key];
+  }
+  cur[path[path.length - 1]] = value;
 }
 
 customElements.define('ntrloc-search', NtrlocSearch);

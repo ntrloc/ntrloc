@@ -5,6 +5,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
+import org.ntrloc.graph.db.partition.schema.definition.PropertyContainerKind;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyUsage;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyDefinitionView;
@@ -15,6 +16,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -27,6 +29,8 @@ public class SchemaRepository {
     public record TraitRow(UUID id, String name, String description) {}
 
     public record PerspectiveRow(UUID id, UUID entityId, UUID linkId, String name, String description, Integer minCardinality, Integer maxCardinality) {}
+
+    public record PropertyOwnerRef(PropertyContainerKind kind, UUID ownerId) {}
 
     public record StateMachineRow(UUID id, UUID itemDefinitionId, String name, String description) {}
 
@@ -202,6 +206,34 @@ public class SchemaRepository {
         jdbcClient.sql("DELETE FROM schema_property WHERE id = :id").param("id", id).update();
     }
 
+    public Optional<AdminPropertyDefinitionView> findProperty(UUID id) {
+        return jdbcClient.sql("SELECT * FROM schema_property WHERE id = :id")
+                .param("id", id)
+                .query(this::mapProperty)
+                .optional();
+    }
+
+    // A property's current container, regardless of kind -- whichever of the four association
+    // tables actually references it. Assumes (as an application-maintained invariant, same as
+    // every other association table here) that a property is associated with exactly one owner
+    // at a time; move mutations preserve this by pairing a dissociate with an associate.
+    public Optional<PropertyOwnerRef> findCurrentOwner(UUID propertyId) {
+        return jdbcClient.sql("""
+                SELECT 'ITEM' AS kind, item_definition_id AS owner_id FROM schema_item_property WHERE property_id = :propertyId
+                UNION ALL
+                SELECT 'TRAIT', trait_id FROM schema_trait_property WHERE property_id = :propertyId
+                UNION ALL
+                SELECT 'LINK', link_definition_id FROM schema_link_property WHERE property_id = :propertyId
+                UNION ALL
+                SELECT 'PROPERTY', parent_property_id FROM schema_property_property WHERE child_property_id = :propertyId
+                """)
+                .param("propertyId", propertyId)
+                .query((rs, n) -> new PropertyOwnerRef(
+                        PropertyContainerKind.valueOf(rs.getString("kind")),
+                        rs.getObject("owner_id", UUID.class)))
+                .optional();
+    }
+
     public Map<UUID, List<AdminPropertyDefinitionView>> getPropertiesByItem() {
         return jdbcClient.sql("""
                 SELECT ip.item_definition_id, p.*
@@ -254,6 +286,49 @@ public class SchemaRepository {
     public void dissociateItemProperty(UUID itemId, UUID propertyId) {
         jdbcClient.sql("DELETE FROM schema_item_property WHERE item_definition_id = :itemId AND property_id = :propertyId")
                 .param(PARAM_ITEM_ID, itemId).param(PARAM_PROPERTY_ID, propertyId).update();
+    }
+
+    public void dissociateTraitProperty(UUID traitId, UUID propertyId) {
+        jdbcClient.sql("DELETE FROM schema_trait_property WHERE trait_id = :traitId AND property_id = :propertyId")
+                .param(PARAM_TRAIT_ID, traitId).param(PARAM_PROPERTY_ID, propertyId).update();
+    }
+
+    // --- Object properties (property -> property containment) ---
+
+    public Map<UUID, List<AdminPropertyDefinitionView>> getPropertiesByProperty() {
+        return jdbcClient.sql("""
+                SELECT pp.parent_property_id, p.*
+                FROM schema_property p
+                JOIN schema_property_property pp ON pp.child_property_id = p.id
+                """)
+                .query((rs, n) -> Map.entry(
+                        rs.getObject("parent_property_id", UUID.class),
+                        mapProperty(rs, n)))
+                .list().stream()
+                .collect(Collectors.groupingBy(Map.Entry::getKey, Collectors.mapping(Map.Entry::getValue, Collectors.toList())));
+    }
+
+    public void associatePropertyProperty(UUID parentPropertyId, UUID childPropertyId) {
+        jdbcClient.sql("INSERT INTO schema_property_property (parent_property_id, child_property_id) VALUES (:parentPropertyId, :childPropertyId)")
+                .param("parentPropertyId", parentPropertyId).param("childPropertyId", childPropertyId).update();
+    }
+
+    public void dissociatePropertyProperty(UUID parentPropertyId, UUID childPropertyId) {
+        jdbcClient.sql("DELETE FROM schema_property_property WHERE parent_property_id = :parentPropertyId AND child_property_id = :childPropertyId")
+                .param("parentPropertyId", parentPropertyId).param("childPropertyId", childPropertyId).update();
+    }
+
+    // Every property's current parent, regardless of container kind -- used by move validation and
+    // by the cycle guard, which needs to walk "what owns this property" independent of whether that
+    // owner is another property, an item, a trait, or a link (only the property->property edges are
+    // relevant to a containment cycle, since only properties can themselves be containers).
+    public Map<UUID, UUID> getParentPropertyIdByProperty() {
+        return jdbcClient.sql("SELECT parent_property_id, child_property_id FROM schema_property_property")
+                .query((rs, n) -> Map.entry(
+                        rs.getObject("child_property_id", UUID.class),
+                        rs.getObject("parent_property_id", UUID.class)))
+                .list().stream()
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
     }
 
     // --- Links ---
@@ -441,8 +516,11 @@ public class SchemaRepository {
 
     // --- Row mappers ---
 
+    // Children of an OBJECT-typed property aren't resolvable from this single-row query (they come
+    // from a separate join, see getPropertiesByProperty) -- this always returns an empty list as a
+    // placeholder, immediately replaced by SchemaViewBuilder's recursive child-resolution pass.
     private AdminPropertyDefinitionView mapProperty(ResultSet rs, int n) throws SQLException {
-        return new AdminPropertyDefinitionView(
+        return AdminPropertyDefinitionView.of(
                 rs.getObject("id", UUID.class),
                 rs.getString("name"),
                 rs.getString(PARAM_DESCRIPTION),
@@ -450,7 +528,8 @@ public class SchemaRepository {
                 PropertyCardinality.valueOf(rs.getString(PARAM_CARDINALITY)),
                 PropertyUsage.valueOf(rs.getString(PARAM_USAGE)),
                 null,
-                rs.getObject("controlled_list_id", UUID.class)
+                rs.getObject("controlled_list_id", UUID.class),
+                List.of()
         );
     }
 

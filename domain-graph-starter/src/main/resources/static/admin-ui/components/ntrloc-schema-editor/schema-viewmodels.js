@@ -21,18 +21,33 @@ class PropertyDefinitionViewModel {
     this.controlledListId = args.controlledListId;
     this.isNew = args.isNew;
     this.isDeleted = false;
+    // Children of an OBJECT property, always present (empty for anything else) so rendering code
+    // never needs an undefined check. Recursive -- a child can itself be OBJECT-typed and have its
+    // own children, arbitrarily deep.
+    this.properties = args.properties ?? [];
     // Which row is "open" for editing -- lives here, not as component-instance state, because
     // notifySchemaViewModelChange() (see schema-view-model.js) rebuilds ntrloc-item-detail and
     // everything nested inside it (including a fresh ntrloc-property-table) on every field edit
     // anywhere in the panel. This object is the one thing that survives that churn.
     this.isEditing = args.isEditing ?? false;
+    // Whether this OBJECT property's children are currently shown -- same rationale as isEditing
+    // above, and for the same reason it matters even more here: adding a new child calls
+    // notifySchemaViewModelChange() too, and if expand state lived on the (about to be replaced)
+    // ntrloc-property-table instance instead, the freshly-created child would end up hidden
+    // inside a newly-collapsed parent immediately after being created.
+    this.isExpanded = args.isExpanded ?? false;
   }
 
   get isReadonly() {
     return this.definedIn != null;
   }
 
-  get isDirty() {
+  // Only this property's own fields -- used to decide whether *this* row needs an UPDATE_PROPERTY
+  // of its own. Distinct from isDirty (below), which also reports true when a descendant changed;
+  // conflating the two would emit a spurious no-op UPDATE_PROPERTY for a parent every time a child
+  // changed, and would make the parent's "Revert" button appear to apply to changes it can't
+  // actually undo (revert() below is single-level only).
+  get ownFieldsDirty() {
     if (this.isReadonly) return false;
     return this.isNew
       || this.isDeleted
@@ -41,6 +56,15 @@ class PropertyDefinitionViewModel {
       || this.type !== this.originalType
       || this.cardinality !== this.originalCardinality
       || this.usage !== this.originalUsage;
+  }
+
+  // True if this property's own fields changed OR any descendant did -- deliberately broad, so a
+  // collapsed OBJECT property's dirty-dot still signals "something changed underneath here", and
+  // so ItemDefinitionViewModel/TraitDefinitionViewModel/LinkViewModel's own isDirty (each already
+  // just checks `this.properties.some(p => p.isDirty)`) picks up nested changes for free without
+  // needing their own recursive walk.
+  get isDirty() {
+    return this.ownFieldsDirty || this.properties.some((p) => p.isDirty);
   }
 
   revert() {
@@ -61,8 +85,15 @@ class PropertyDefinitionViewModel {
     }
   }
 
-  static fromAdmin(p, propertyTypes) {
+  // inheritedDefinedIn propagates a readonly parent's definedIn down to every descendant, even
+  // though the backend only ever tags the top-level entry (a nested child's own definedIn always
+  // comes back null -- see SchemaViewBuilder.toCalculated's own comment on the backend side).
+  // Without this, a child of an inherited (trait/supertype) object property would render as
+  // editable even though editing it would silently mutate the shared underlying property row for
+  // every other item type that also inherits it.
+  static fromAdmin(p, propertyTypes, inheritedDefinedIn = null) {
     const typeInfo = propertyTypes.find((t) => t.type === p.type);
+    const definedIn = p.definedIn ?? inheritedDefinedIn;
     return new PropertyDefinitionViewModel({
       id: p.id,
       name: p.name,
@@ -71,8 +102,9 @@ class PropertyDefinitionViewModel {
       cardinality: p.cardinality,
       usage: p.usage,
       validCardinalities: typeInfo?.validCardinalities ?? [p.cardinality],
-      definedIn: p.definedIn ?? null,
+      definedIn,
       controlledListId: p.controlledListId ?? null,
+      properties: (p.properties ?? []).map((child) => PropertyDefinitionViewModel.fromAdmin(child, propertyTypes, definedIn)),
       isNew: false,
       isEditing: false,
     });

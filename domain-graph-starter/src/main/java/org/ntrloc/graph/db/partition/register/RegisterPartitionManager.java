@@ -17,6 +17,7 @@ import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyD
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminSchemaView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminStateMachineView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminStateView;
+import org.ntrloc.graph.db.partition.schema.definition.view.admin.ObjectAdminPropertyDefinitionView;
 import org.ntrloc.graph.db.partition.schema.event.SchemaChangeEvent;
 import org.ntrloc.graph.db.partition.schema.event.SchemaChangeListener;
 import org.slf4j.Logger;
@@ -255,7 +256,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                         parseJsonb(rs.getString(COL_STATES))))
                 .list();
 
-        Map<UUID, String> ownPropertyNames = propertyNamesByIdForItemType(itemTypeId);
+        Map<UUID, List<String>> ownPropertyNames = propertyPathsByIdForItemType(itemTypeId);
         List<AdminStateMachineView> stateMachines = schemaManager.getAdminSchema().items().stream()
                 .filter(item -> item.id().equals(itemTypeId))
                 .findFirst()
@@ -365,10 +366,10 @@ public class RegisterPartitionManager implements SchemaChangeListener {
         // (never scoped per type), so unioning each branch's own name lookup is a safe, unambiguous
         // merge -- see assembleProjectedItems' own comment on why an over-inclusive stateMachines
         // list is equally safe.
-        Map<UUID, String> mergedPropertyNames = new HashMap<>();
+        Map<UUID, List<String>> mergedPropertyNames = new HashMap<>();
         List<AdminStateMachineView> mergedStateMachines = new ArrayList<>();
         for (UUID branchId : branches) {
-            mergedPropertyNames.putAll(propertyNamesByIdForItemType(branchId));
+            mergedPropertyNames.putAll(propertyPathsByIdForItemType(branchId));
             schemaManager.getAdminSchema().items().stream()
                     .filter(item -> item.id().equals(branchId))
                     .findFirst()
@@ -593,7 +594,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
         if (rawItems.isEmpty()) {
             return Optional.empty();
         }
-        Map<UUID, String> ownPropertyNames = propertyNamesByIdForItemType(itemTypeId);
+        Map<UUID, List<String>> ownPropertyNames = propertyPathsByIdForItemType(itemTypeId);
         List<AdminStateMachineView> stateMachines = schemaManager.getAdminSchema().items().stream()
                 .filter(item -> item.id().equals(itemTypeId))
                 .findFirst()
@@ -875,7 +876,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
     // register row has to keep meaning the same thing across a rename with zero data migration.
     // This is the write-side half of that: LedgerEntry already carries properties keyed by id, so
     // there's nothing to resolve here, just a key-type change for JSON (object keys must be
-    // strings). The read side (propertyNamesByIdForItemType/ForLinkType, used via namesForIds) is
+    // strings). The read side (propertyPathsByIdForItemType/ForLinkType, used via namesForIds) is
     // the mirror image, resolving back to names only at the point a client-facing response is
     // assembled -- see assembleProjectedItems and fetchPropertiesByRegisterItemId.
     private Map<String, Object> keysToStrings(Map<UUID, Object> propertiesById) {
@@ -884,22 +885,42 @@ public class RegisterPartitionManager implements SchemaChangeListener {
         return byIdString;
     }
 
-    private Map<UUID, String> propertyNamesByIdForItemType(UUID itemTypeId) {
+    // Returns each leaf property's full name path from root to leaf, not just its own name --
+    // storage is flat (a leaf's own id), but two leaves nested under different object properties
+    // can share a name (e.g. dimensions.length vs packagingDimensions.length), so only the full
+    // path is unambiguous. An OBJECT property's own id never appears here: nothing is ever stored
+    // under a container's own id, only under each of its leaves'.
+    private Map<UUID, List<String>> propertyPathsByIdForItemType(UUID itemTypeId) {
         return schemaManager.getAdminSchema().items().stream()
                 .filter(item -> item.id().equals(itemTypeId))
                 .findFirst()
-                .map(item -> item.properties().stream()
-                        .collect(Collectors.toMap(AdminPropertyDefinitionView::id, AdminPropertyDefinitionView::name)))
+                .map(item -> propertyPaths(item.properties()))
                 .orElse(Map.of());
     }
 
-    private Map<UUID, String> propertyNamesByIdForLinkType(UUID linkTypeId) {
+    private Map<UUID, List<String>> propertyPathsByIdForLinkType(UUID linkTypeId) {
         return schemaManager.getAdminSchema().links().stream()
                 .filter(link -> link.id().equals(linkTypeId))
                 .findFirst()
-                .map(link -> link.properties().stream()
-                        .collect(Collectors.toMap(AdminPropertyDefinitionView::id, AdminPropertyDefinitionView::name)))
+                .map(link -> propertyPaths(link.properties()))
                 .orElse(Map.of());
+    }
+
+    private Map<UUID, List<String>> propertyPaths(List<AdminPropertyDefinitionView> properties) {
+        Map<UUID, List<String>> result = new HashMap<>();
+        for (AdminPropertyDefinitionView p : properties) {
+            if (p instanceof ObjectAdminPropertyDefinitionView o) {
+                propertyPaths(o.properties()).forEach((id, childPath) -> {
+                    List<String> fullPath = new ArrayList<>();
+                    fullPath.add(o.name());
+                    fullPath.addAll(childPath);
+                    result.put(id, fullPath);
+                });
+            } else {
+                result.put(p.id(), List.of(p.name()));
+            }
+        }
+        return result;
     }
 
     // The inverse lookup -- a client-supplied property *name* (in a filter, sort field, or facet
@@ -965,15 +986,25 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                 .update();
     }
 
-    // Converts an id-keyed properties map (as read straight from the register's JSONB) into the
-    // name-keyed map a client actually wants to see. A key that no longer resolves (the property
-    // was deleted from the schema after this row was written) is silently dropped rather than
-    // surfacing a raw id the client has no way to interpret.
-    private Map<String, Object> namesForIds(Map<String, Object> propertiesById, Map<UUID, String> idToName) {
+    // Converts an id-keyed properties map (as read straight from the register's JSONB, always
+    // flat -- storage never nests) into the nested name-keyed map a client actually wants to see,
+    // by walking each stored leaf's full path and inserting it at the right depth, creating
+    // intermediate maps as needed. A key that no longer resolves (the property was deleted from
+    // the schema after this row was written) is silently dropped, same as before. The unchecked
+    // cast is safe: only an OBJECT property's name ever occupies a non-final path segment, and a
+    // container's own id is never a storage key (see propertyPaths), so a segment can't be both an
+    // intermediate map and a leaf value at once.
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> namesForIds(Map<String, Object> propertiesById, Map<UUID, List<String>> idToPath) {
         Map<String, Object> byName = new HashMap<>();
         propertiesById.forEach((idString, value) -> {
-            String name = idToName.get(UUID.fromString(idString));
-            if (name != null) byName.put(name, value);
+            List<String> path = idToPath.get(UUID.fromString(idString));
+            if (path == null) return;
+            Map<String, Object> cursor = byName;
+            for (int i = 0; i < path.size() - 1; i++) {
+                cursor = (Map<String, Object>) cursor.computeIfAbsent(path.get(i), k -> new HashMap<String, Object>());
+            }
+            cursor.put(path.get(path.size() - 1), value);
         });
         return byName;
     }
@@ -1052,7 +1083,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
     // ids are globally unique across the whole schema, so a plain union of each branch's own
     // lookup is a safe, unambiguous merge -- an over-inclusive stateMachines list is likewise safe,
     // since buildProjectedItemStates already skips any machine a given row's states don't mention).
-    private List<ProjectedItem> assembleProjectedItems(List<RawItem> rawItems, Map<UUID, String> ownPropertyNames,
+    private List<ProjectedItem> assembleProjectedItems(List<RawItem> rawItems, Map<UUID, List<String>> ownPropertyNames,
                                                          List<AdminStateMachineView> stateMachines, String binaryBaseUrl) {
         List<UUID> rawItemIds = rawItems.stream().map(RawItem::registerItemId).toList();
         Map<String, String> displayLabelPatterns = resolveEffectiveDisplayLabelPatterns();
@@ -1275,14 +1306,14 @@ public class RegisterPartitionManager implements SchemaChangeListener {
         for (var entry : typeOrDefIdToRegisterIds.entrySet()) {
             UUID typeOrDefId = entry.getKey();
             String table = isLinkTable ? linkTableNameFor(typeOrDefId) : tableNameFor(typeOrDefId);
-            Map<UUID, String> idToName = isLinkTable
-                    ? propertyNamesByIdForLinkType(typeOrDefId)
-                    : propertyNamesByIdForItemType(typeOrDefId);
+            Map<UUID, List<String>> idToPath = isLinkTable
+                    ? propertyPathsByIdForLinkType(typeOrDefId)
+                    : propertyPathsByIdForItemType(typeOrDefId);
             jdbcClient.sql("SELECT " + idColumn + ", properties::text FROM " + table + " WHERE " + idColumn + " IN (:ids)")
                     .param("ids", entry.getValue())
                     .query((rs, n) -> Map.entry(
                             rs.getObject(idColumn, UUID.class),
-                            namesForIds(parseJsonb(rs.getString(COL_PROPERTIES)), idToName)))
+                            namesForIds(parseJsonb(rs.getString(COL_PROPERTIES)), idToPath)))
                     .list()
                     .forEach(e -> result.put(e.getKey(), e.getValue()));
         }
@@ -1334,7 +1365,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
     public void createItemTypeTable(UUID itemTypeId) {
         String tableName = tableNameFor(itemTypeId);
         // states is keyed by state-machine id (stringified), mirroring properties' own id-keying --
-        // see keysToStrings/propertyNamesByIdForItemType's comment. Each value is a small object
+        // see keysToStrings/propertyPathsByIdForItemType's comment. Each value is a small object
         // (currently just currentStateId, currentTransitionId later) rather than the state id
         // directly, leaving room to add fields without a column/shape migration. Only item types
         // have this column -- state machines are schema_state_machine.item_definition_id-scoped,

@@ -271,6 +271,79 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void objectProperty_nestedValueRoundTripsThroughCreateAndRead() {
+        MutationResponse response = processor.process(new MutationRequest(
+                List.of(new ItemCreateMutation(null, "MutReqProcA",
+                        Map.of("extra", Map.of("nested", "hello", "second", "world")))), List.of()),
+                SOME_PRINCIPAL);
+
+        UUID itemId = response.items().get(0).itemId();
+        var item = registerPartitionManager.projectOne(fixture.aTypeId(), itemId, "http://binary").orElseThrow();
+        assertThat(item.properties().get("extra")).isEqualTo(Map.of("nested", "hello", "second", "world"));
+    }
+
+    @Test
+    void objectProperty_unknownNestedPropertyName_throws() {
+        assertThatThrownBy(() -> processor.process(new MutationRequest(
+                List.of(new ItemCreateMutation(null, "MutReqProcA", Map.of("extra", Map.of("bogus", "x")))), List.of()),
+                SOME_PRINCIPAL))
+                .isInstanceOf(MutationValidationException.class)
+                .satisfies(e -> assertThat(((MutationValidationException) e).errors())
+                        .anyMatch(err -> err.path().equals("items[0].properties.extra.bogus")));
+    }
+
+    // "extra" and "extra2" both have a leaf named "nested" -- they must resolve to distinct
+    // property ids and never collide in storage, since the JSON nesting itself scopes the lookup,
+    // not a global name (see MutationRequestProcessor.resolveObjectPropertyValue's own comment).
+    @Test
+    void objectProperty_sameLeafNameUnderDifferentContainers_resolvesIndependently() {
+        MutationResponse response = processor.process(new MutationRequest(
+                List.of(new ItemCreateMutation(null, "MutReqProcA", Map.of(
+                        "extra", Map.of("nested", "extra-value"),
+                        "extra2", Map.of("nested", "extra2-value")))), List.of()),
+                SOME_PRINCIPAL);
+
+        UUID itemId = response.items().get(0).itemId();
+        var item = registerPartitionManager.projectOne(fixture.aTypeId(), itemId, "http://binary").orElseThrow();
+        assertThat(item.properties().get("extra")).isEqualTo(Map.of("nested", "extra-value"));
+        assertThat(item.properties().get("extra2")).isEqualTo(Map.of("nested", "extra2-value"));
+    }
+
+    @Test
+    void objectProperty_update_partialNestedDiffLeavesSiblingsUntouched() {
+        MutationResponse createResponse = processor.process(new MutationRequest(
+                List.of(new ItemCreateMutation(null, "MutReqProcA",
+                        Map.of("extra", Map.of("nested", "original", "second", "keep-me")))), List.of()),
+                SOME_PRINCIPAL);
+        UUID itemId = createResponse.items().get(0).itemId();
+
+        processor.process(new MutationRequest(
+                List.of(new ItemUpdateMutation(itemId, Map.of("extra", Map.of("nested", "changed")))), List.of()),
+                SOME_PRINCIPAL);
+
+        var item = registerPartitionManager.projectOne(fixture.aTypeId(), itemId, "http://binary").orElseThrow();
+        assertThat(item.properties().get("extra")).isEqualTo(Map.of("nested", "changed", "second", "keep-me"));
+    }
+
+    @Test
+    void objectProperty_updateWithNull_clearsEntireSubtree() {
+        MutationResponse createResponse = processor.process(new MutationRequest(
+                List.of(new ItemCreateMutation(null, "MutReqProcA",
+                        Map.of("extra", Map.of("nested", "a", "second", "b")))), List.of()),
+                SOME_PRINCIPAL);
+        UUID itemId = createResponse.items().get(0).itemId();
+
+        Map<String, Object> clearDiff = new HashMap<>();
+        clearDiff.put("extra", null);
+        processor.process(new MutationRequest(
+                List.of(new ItemUpdateMutation(itemId, clearDiff)), List.of()),
+                SOME_PRINCIPAL);
+
+        var item = registerPartitionManager.projectOne(fixture.aTypeId(), itemId, "http://binary").orElseThrow();
+        assertThat(item.properties()).doesNotContainKey("extra");
+    }
+
+    @Test
     void datetimeProperty_acceptsAValidOffsetDateTimeString() {
         MutationResponse response = processor.process(new MutationRequest(
                 List.of(new ItemCreateMutation(null, "MutReqProcA", Map.of("createdAt", "2026-01-15T10:30:00Z"))), List.of()),
@@ -307,7 +380,7 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
     void itemCreateMutation_forASubtype_canSetAnInheritedPropertyFromItsSupertype() {
         String supertypeName = "MutReqProcSuper-" + UUID.randomUUID();
         schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(supertypeName, "d", List.of(
-                new CreatePropertyDefinitionMutation("inheritedProp", "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL)), null, false, null)));
+                new CreatePropertyDefinitionMutation("inheritedProp", "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, java.util.List.of())), null, false, null)));
         UUID supertypeId = schemaManager.getAdminSchema().items().stream()
                 .filter(i -> i.name().equals(supertypeName)).findFirst().orElseThrow().id();
 

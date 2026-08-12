@@ -13,11 +13,15 @@ import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminStateMach
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminStateView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminTraitDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminTransitionView;
+import org.ntrloc.graph.db.partition.schema.definition.view.admin.ObjectAdminPropertyDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.PropertyTypeView;
+import org.ntrloc.graph.db.partition.schema.definition.view.admin.ScalarAdminPropertyDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.TraitRefView;
 import org.ntrloc.graph.db.partition.schema.definition.view.calculated.ItemDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.calculated.ItemLinkPerspectiveView;
+import org.ntrloc.graph.db.partition.schema.definition.view.calculated.ObjectPropertyDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.calculated.PropertyDefinitionView;
+import org.ntrloc.graph.db.partition.schema.definition.view.calculated.ScalarPropertyDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.calculated.SchemaView;
 import org.ntrloc.graph.db.partition.schema.definition.view.calculated.TraitDefinitionView;
 import org.ntrloc.graph.db.partition.schema.repository.SchemaRepository;
@@ -90,9 +94,10 @@ class SchemaViewBuilder {
                 .map(ItemRow::id)
                 .collect(Collectors.toSet());
 
-        var propertiesByItem     = repo.getPropertiesByItem();
-        var propertiesByTrait    = repo.getPropertiesByTrait();
-        var propertiesByLink     = repo.getPropertiesByLink();
+        var propertiesByProperty = repo.getPropertiesByProperty();
+        var propertiesByItem     = resolveChildrenForMap(repo.getPropertiesByItem(), propertiesByProperty);
+        var propertiesByTrait    = resolveChildrenForMap(repo.getPropertiesByTrait(), propertiesByProperty);
+        var propertiesByLink     = resolveChildrenForMap(repo.getPropertiesByLink(), propertiesByProperty);
         var perspectivesByEntity = repo.getPerspectivesByEntity();
         var traitIdsByItem       = repo.getTraitIdsByItem();
         var stateMachinesByItem    = repo.getStateMachinesByItem();
@@ -154,11 +159,32 @@ class SchemaViewBuilder {
                     var trait = traitById.get(traitId);
                     var definedIn = new DefinedInView(ENTITY_KIND_TRAIT, trait.name());
                     return propertiesByTrait.getOrDefault(traitId, List.of()).stream()
-                            .map(p -> new AdminPropertyDefinitionView(
-                                    p.id(), p.name(), p.description(), p.type(), p.cardinality(), p.usage(), definedIn, p.controlledListId()));
+                            .map(p -> p.withDefinedIn(definedIn));
                 })
                 .toList();
         return Stream.concat(ownProps.stream(), traitProps.stream()).toList();
+    }
+
+    // Object properties' children live in a separate join (schema_property_property), unresolvable
+    // from a single-row property query -- mapProperty leaves them as an empty placeholder list,
+    // replaced here with the real (recursively resolved) children before any view is assembled.
+    // Applied once to each raw owner map, so the own/trait/supertype merge below never needs to
+    // know children exist at all -- it just carries whatever's already on the node through.
+    private Map<UUID, List<AdminPropertyDefinitionView>> resolveChildrenForMap(
+            Map<UUID, List<AdminPropertyDefinitionView>> propertiesByOwner,
+            Map<UUID, List<AdminPropertyDefinitionView>> propertiesByProperty) {
+        Map<UUID, List<AdminPropertyDefinitionView>> result = new HashMap<>();
+        propertiesByOwner.forEach((ownerId, props) -> result.put(ownerId, resolveChildrenAdmin(props, propertiesByProperty)));
+        return result;
+    }
+
+    private List<AdminPropertyDefinitionView> resolveChildrenAdmin(
+            List<AdminPropertyDefinitionView> properties, Map<UUID, List<AdminPropertyDefinitionView>> propertiesByProperty) {
+        return properties.stream()
+                .map(p -> p instanceof ObjectAdminPropertyDefinitionView o
+                        ? o.withProperties(resolveChildrenAdmin(propertiesByProperty.getOrDefault(o.id(), List.of()), propertiesByProperty))
+                        : p)
+                .toList();
     }
 
     // Recursive: own+trait properties, plus the full supertype chain's own effective set walked
@@ -175,10 +201,7 @@ class SchemaViewBuilder {
         var supertype = item.supertypeId() == null ? null : itemById.get(item.supertypeId());
         if (supertype == null) return own;
         var inherited = effectivePropertiesAdmin(supertype, itemById, traitIdsByItem, propertiesByItem, propertiesByTrait, traitById).stream()
-                .map(p -> p.definedIn() == null
-                        ? new AdminPropertyDefinitionView(p.id(), p.name(), p.description(), p.type(), p.cardinality(), p.usage(),
-                                new DefinedInView(ENTITY_KIND_SUPERTYPE, supertype.name()), p.controlledListId())
-                        : p)
+                .map(p -> p.definedIn() == null ? p.withDefinedIn(new DefinedInView(ENTITY_KIND_SUPERTYPE, supertype.name())) : p)
                 .toList();
         return Stream.concat(own.stream(), inherited.stream()).toList();
     }
@@ -311,9 +334,10 @@ class SchemaViewBuilder {
                 .map(ItemRow::id)
                 .collect(Collectors.toSet());
 
-        var propertiesByItem  = repo.getPropertiesByItem();
-        var propertiesByTrait = repo.getPropertiesByTrait();
-        var propertiesByLink  = repo.getPropertiesByLink();
+        var propertiesByProperty = repo.getPropertiesByProperty();
+        var propertiesByItem  = resolveChildrenForMap(repo.getPropertiesByItem(), propertiesByProperty);
+        var propertiesByTrait = resolveChildrenForMap(repo.getPropertiesByTrait(), propertiesByProperty);
+        var propertiesByLink  = resolveChildrenForMap(repo.getPropertiesByLink(), propertiesByProperty);
         var perspectivesByEntity = repo.getPerspectivesByEntity();
         var traitIdsByItem    = repo.getTraitIdsByItem();
 
@@ -337,9 +361,7 @@ class SchemaViewBuilder {
 
         var traitViews = traits.stream().map(trait -> {
             var adminProps = propertiesByTrait.getOrDefault(trait.id(), List.of());
-            var props = adminProps.stream()
-                    .map(p -> new PropertyDefinitionView(p.id(), p.name(), p.description(), p.type(), p.cardinality(), null, allowedValuesFor(p)))
-                    .toList();
+            var props = adminProps.stream().map(p -> toCalculated(p, null)).toList();
             var links = buildPerspectiveViews(trait.id(), linkBuildContext, null);
             return new TraitDefinitionView(trait.id(), trait.name(), trait.description(), props, links, sortableFieldsFor(adminProps));
         }).toList();
@@ -354,17 +376,32 @@ class SchemaViewBuilder {
             Map<UUID, TraitRow> traitById) {
         var traitIds = traitIdsByItem.getOrDefault(item.id(), List.of());
         var ownProps = propertiesByItem.getOrDefault(item.id(), List.of()).stream()
-                .map(p -> new PropertyDefinitionView(p.id(), p.name(), p.description(), p.type(), p.cardinality(), null, allowedValuesFor(p)))
+                .map(p -> toCalculated(p, null))
                 .toList();
         var traitProps = traitIds.stream()
                 .flatMap(traitId -> {
                     var trait = traitById.get(traitId);
                     var definedIn = new DefinedInView(ENTITY_KIND_TRAIT, trait.name());
                     return propertiesByTrait.getOrDefault(traitId, List.of()).stream()
-                            .map(p -> new PropertyDefinitionView(p.id(), p.name(), p.description(), p.type(), p.cardinality(), definedIn, allowedValuesFor(p)));
+                            .map(p -> toCalculated(p, definedIn));
                 })
                 .toList();
         return Stream.concat(ownProps.stream(), traitProps.stream()).toList();
+    }
+
+    // Converts an admin-side property (id-keyed children resolved by resolveChildrenAdmin) into
+    // its client-facing calculated equivalent, recursively -- definedIn is only ever set at the
+    // top level a caller passes in; a nested child's own definedIn always resolves to null, since
+    // "why does this item have this top-level property" doesn't apply one level down (the parent
+    // object property's own tag already answers that).
+    private PropertyDefinitionView toCalculated(AdminPropertyDefinitionView p, DefinedInView definedIn) {
+        if (p instanceof ObjectAdminPropertyDefinitionView o) {
+            return new ObjectPropertyDefinitionView(
+                    o.id(), o.name(), o.description(), o.type(), o.cardinality(), definedIn, allowedValuesFor(o),
+                    o.properties().stream().map(child -> toCalculated(child, null)).toList());
+        }
+        return new ScalarPropertyDefinitionView(
+                p.id(), p.name(), p.description(), p.type(), p.cardinality(), definedIn, allowedValuesFor(p));
     }
 
     private List<PropertyDefinitionView> effectiveProperties(
@@ -376,10 +413,7 @@ class SchemaViewBuilder {
         var supertype = item.supertypeId() == null ? null : itemById.get(item.supertypeId());
         if (supertype == null) return own;
         var inherited = effectiveProperties(supertype, itemById, traitIdsByItem, propertiesByItem, propertiesByTrait, traitById).stream()
-                .map(p -> p.definedIn() == null
-                        ? new PropertyDefinitionView(p.id(), p.name(), p.description(), p.type(), p.cardinality(),
-                                new DefinedInView(ENTITY_KIND_SUPERTYPE, supertype.name()), p.allowedValues())
-                        : p)
+                .map(p -> p.definedIn() == null ? p.withDefinedIn(new DefinedInView(ENTITY_KIND_SUPERTYPE, supertype.name())) : p)
                 .toList();
         return Stream.concat(own.stream(), inherited.stream()).toList();
     }
@@ -442,7 +476,7 @@ class SchemaViewBuilder {
                     .toList();
             var linkProps = ctx.propertiesByLink().get(p.linkId());
             var linkPropViews = linkProps == null ? null : linkProps.stream()
-                    .map(lp -> new PropertyDefinitionView(lp.id(), lp.name(), lp.description(), lp.type(), lp.cardinality(), null, allowedValuesFor(lp)))
+                    .map(lp -> toCalculated(lp, null))
                     .toList();
             return Map.entry(p.name(), new ItemLinkPerspectiveView(
                     targets, p.description(), p.minCardinality(), p.maxCardinality(), linkPropViews, definedIn));

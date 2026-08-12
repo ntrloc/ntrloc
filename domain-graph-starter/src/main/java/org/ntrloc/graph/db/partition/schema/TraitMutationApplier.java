@@ -33,7 +33,7 @@ class TraitMutationApplier {
             Set<String> usedNames = new HashSet<>();
             for (var p : m.properties()) {
                 SchemaMutationValidation.requireUniqueName(usedNames, p.name(), ENTITY_KIND_TRAIT + " '" + m.name() + "'");
-                var prop = repo.createProperty(p.name(), p.description(), p.propertyType(), p.cardinality(), p.usage());
+                var prop = PropertyMutationApplier.createPropertyRecursive(repo, p);
                 repo.associateTraitProperty(trait.id(), prop.id());
             }
             eventPublisher.publishEvent(new SchemaChangeEvent.TraitCreated(trait.id()));

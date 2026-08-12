@@ -110,7 +110,7 @@ public class RegisterProjectionTestDomainInitializer implements DomainInitialize
     }
 
     private CreatePropertyDefinitionMutation property(String name, PropertyType type, PropertyCardinality cardinality) {
-        return new CreatePropertyDefinitionMutation(name, "Register projection test fixture", type, cardinality, PropertyUsage.OPTIONAL);
+        return new CreatePropertyDefinitionMutation(name, "Register projection test fixture", type, cardinality, PropertyUsage.OPTIONAL, java.util.List.of());
     }
 
     private AdminItemDefinitionView findItem(String name) {

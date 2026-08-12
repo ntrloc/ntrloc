@@ -6,9 +6,11 @@ import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyUsage;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateItemDefinitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateItemPropertyDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateLinkDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePerspectiveDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePropertyDefinitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePropertyPropertyDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemDefinitionView;
 import org.ntrloc.graph.domain.DomainInitializer;
 import org.springframework.boot.ApplicationArguments;
@@ -61,6 +63,28 @@ public class MutationRequestProcessorTestDomainInitializer implements DomainInit
                         property("extra", PropertyType.OBJECT, PropertyCardinality.SINGLE)), null, false, null)));
         aTypeId = findItem("MutReqProcA").id();
 
+        // "extra" is now a genuinely structured OBJECT property (no more opaque-JSON-blob
+        // behavior) -- it needs a real child to be usable at all, since resolveObjectPropertyValue
+        // resolves nested keys against the property's own children, not an arbitrary shape.
+        UUID extraPropertyId = findItem("MutReqProcA").properties().stream()
+                .filter(p -> p.name().equals("extra"))
+                .findFirst().orElseThrow().id();
+        schemaManager.applyMutations(List.of(new CreatePropertyPropertyDefinitionMutation(
+                extraPropertyId, "nested", "MutationRequestProcessor test fixture", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, java.util.List.of())));
+        schemaManager.applyMutations(List.of(new CreatePropertyPropertyDefinitionMutation(
+                extraPropertyId, "second", "MutationRequestProcessor test fixture", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, java.util.List.of())));
+
+        // A second object property with a leaf sharing "extra"'s own leaf name ("nested") --
+        // exercises resolveObjectPropertyValue's container-scoped resolution end to end (the two
+        // "nested" leaves must resolve to distinct property ids and never collide in storage).
+        schemaManager.applyMutations(List.of(new CreateItemPropertyDefinitionMutation(
+                aTypeId, "extra2", "MutationRequestProcessor test fixture", PropertyType.OBJECT, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, java.util.List.of())));
+        UUID extra2PropertyId = findItem("MutReqProcA").properties().stream()
+                .filter(p -> p.name().equals("extra2"))
+                .findFirst().orElseThrow().id();
+        schemaManager.applyMutations(List.of(new CreatePropertyPropertyDefinitionMutation(
+                extra2PropertyId, "nested", "MutationRequestProcessor test fixture", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, java.util.List.of())));
+
         schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(
                 "MutReqProcB", "MutationRequestProcessor test fixture", List.of(), null, false, null)));
         bTypeId = findItem("MutReqProcB").id();
@@ -94,7 +118,7 @@ public class MutationRequestProcessorTestDomainInitializer implements DomainInit
     }
 
     private CreatePropertyDefinitionMutation property(String name, PropertyType type, PropertyCardinality cardinality) {
-        return new CreatePropertyDefinitionMutation(name, "MutationRequestProcessor test fixture", type, cardinality, PropertyUsage.OPTIONAL);
+        return new CreatePropertyDefinitionMutation(name, "MutationRequestProcessor test fixture", type, cardinality, PropertyUsage.OPTIONAL, java.util.List.of());
     }
 
     private AdminItemDefinitionView findItem(String name) {

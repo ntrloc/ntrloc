@@ -12,6 +12,51 @@ function onSchemaViewModelChange(listener) {
   return () => schemaViewModelListeners.delete(listener);
 }
 
+// Converts a property (and, recursively, any of its own children) into the
+// CreatePropertyDefinitionMutation JSON shape the backend expects -- shared by every place that
+// embeds an initial property list (CREATE_ITEM, CREATE_TRAIT, CREATE_LINK) or creates a single
+// new property, standalone or nested (CREATE_ITEM_PROPERTY, CREATE_LINK_PROPERTY,
+// CREATE_OBJECT_PROPERTY_CHILD). The backend creates the whole returned subtree atomically, in
+// one call, since a still-unsaved property has no real id yet for a *separate* child-creation
+// call to reference (same "no real id yet" limitation CREATE_STATE_MACHINE's own comment
+// documents for state machines) -- embedding sidesteps that rather than working around it.
+function toCreatePropertySpec(prop) {
+  return {
+    name: prop.name, description: prop.description,
+    propertyType: prop.type, cardinality: prop.cardinality, usage: prop.usage,
+    properties: prop.properties.map(toCreatePropertySpec),
+  };
+}
+
+// Recurses into an OBJECT property's children (however deep), collecting UPDATE_PROPERTY/
+// DELETE_PROPERTY/CREATE_OBJECT_PROPERTY_CHILD the same way collectMutations()'s own top-level
+// property loop does. UPDATE_PROPERTY/DELETE_PROPERTY are keyed purely by the property's own id,
+// so nesting depth doesn't matter to them; uses ownFieldsDirty, not isDirty, for the same reason
+// the top-level loop below does -- isDirty is true whenever a descendant changed too, which would
+// otherwise emit a spurious no-op UPDATE_PROPERTY for every ancestor on the way up.
+//
+// A new child is only reachable here when parentPropertyId is real, i.e. the *immediate* container
+// already exists -- a new child of a still-new top-level property is embedded directly in that
+// property's own CREATE_ITEM_PROPERTY/CREATE_LINK_PROPERTY spec instead (see the two call sites
+// below), so this function is never reached for it at all.
+function collectNestedPropertyMutations(properties, ops, parentPropertyId) {
+  for (const prop of properties) {
+    if (prop.isReadonly) continue;
+    if (prop.isNew) {
+      ops.push({ type: 'CREATE_OBJECT_PROPERTY_CHILD', parentPropertyId, ...toCreatePropertySpec(prop) });
+      continue; // prop's own new children are embedded in the spec above, not created separately
+    }
+    if (prop.isDeleted) {
+      ops.push({ type: 'DELETE_PROPERTY', id: prop.id });
+      continue; // a deleted property's own (soon-to-be-orphaned) children aren't walked further
+    }
+    if (prop.ownFieldsDirty) {
+      ops.push({ type: 'UPDATE_PROPERTY', id: prop.id, name: prop.name, description: prop.description, propertyType: prop.type, cardinality: prop.cardinality, usage: prop.usage });
+    }
+    collectNestedPropertyMutations(prop.properties, ops, prop.id);
+  }
+}
+
 function notifySchemaViewModelChange() {
   schemaViewModelListeners.forEach((listener) => listener());
 }
@@ -224,10 +269,7 @@ const schemaViewModel = {
           type: 'CREATE_ITEM',
           name: item.name,
           description: item.description,
-          properties: item.properties.map((p) => ({
-            name: p.name, description: p.description,
-            propertyType: p.type, cardinality: p.cardinality, usage: p.usage,
-          })),
+          properties: item.properties.map(toCreatePropertySpec),
           supertypeId: item.supertypeId,
           abstractType: item.abstractType,
           displayLabelPattern: item.displayLabelPattern,
@@ -258,12 +300,15 @@ const schemaViewModel = {
       for (const prop of item.properties) {
         if (prop.isReadonly) continue;
         if (prop.isNew) {
-          ops.push({ type: 'CREATE_ITEM_PROPERTY', itemId: item.id, name: prop.name, description: prop.description, propertyType: prop.type, cardinality: prop.cardinality, usage: prop.usage });
+          ops.push({ type: 'CREATE_ITEM_PROPERTY', itemId: item.id, ...toCreatePropertySpec(prop) });
+          continue; // prop's own new children are embedded above, not created separately
         } else if (prop.isDeleted) {
           ops.push({ type: 'DELETE_PROPERTY', id: prop.id });
-        } else if (prop.isDirty) {
+          continue;
+        } else if (prop.ownFieldsDirty) {
           ops.push({ type: 'UPDATE_PROPERTY', id: prop.id, name: prop.name, description: prop.description, propertyType: prop.type, cardinality: prop.cardinality, usage: prop.usage });
         }
+        collectNestedPropertyMutations(prop.properties, ops, prop.id);
       }
 
       for (const perspectives of Object.values(item.links)) {
@@ -276,12 +321,15 @@ const schemaViewModel = {
             processedLinkIds.add(p.linkId);
             for (const prop of p.link.properties) {
               if (prop.isNew) {
-                ops.push({ type: 'CREATE_LINK_PROPERTY', linkId: p.linkId, name: prop.name, description: prop.description, propertyType: prop.type, cardinality: prop.cardinality, usage: prop.usage });
+                ops.push({ type: 'CREATE_LINK_PROPERTY', linkId: p.linkId, ...toCreatePropertySpec(prop) });
+                continue; // prop's own new children are embedded above, not created separately
               } else if (prop.isDeleted) {
                 ops.push({ type: 'DELETE_PROPERTY', id: prop.id });
-              } else if (prop.isDirty) {
+                continue;
+              } else if (prop.ownFieldsDirty) {
                 ops.push({ type: 'UPDATE_PROPERTY', id: prop.id, name: prop.name, description: prop.description, propertyType: prop.type, cardinality: prop.cardinality, usage: prop.usage });
               }
+              collectNestedPropertyMutations(prop.properties, ops, prop.id);
             }
           }
         }
@@ -342,10 +390,7 @@ const schemaViewModel = {
           type: 'CREATE_TRAIT',
           name: trait.name,
           description: trait.description,
-          properties: trait.properties.map((p) => ({
-            name: p.name, description: p.description,
-            propertyType: p.type, cardinality: p.cardinality, usage: p.usage,
-          })),
+          properties: trait.properties.map(toCreatePropertySpec),
         });
         continue;
       }
@@ -369,10 +414,7 @@ const schemaViewModel = {
       if (!link.isValid) continue;
       ops.push({
         type: 'CREATE_LINK',
-        properties: link.properties.map((p) => ({
-          name: p.name, description: p.description,
-          propertyType: p.type, cardinality: p.cardinality, usage: p.usage,
-        })),
+        properties: link.properties.map(toCreatePropertySpec),
         perspectives: [
           { itemId: link.firstItemId, name: link.firstPerspectiveName, description: null, minCardinality: link.firstMinCardinality, maxCardinality: link.firstMaxCardinality },
           { itemId: link.secondItemId, name: link.secondPerspectiveName, description: null, minCardinality: link.secondMinCardinality, maxCardinality: link.secondMaxCardinality },
@@ -381,6 +423,23 @@ const schemaViewModel = {
     }
 
     return ops;
+  },
+
+  // Recurses into an OBJECT property's children, appending their own new/deleted/updated summary
+  // lines dotted-path-prefixed (e.g. "contactInfo.firstName") so a change inside a collapsed
+  // subtree still shows up in the confirm dialog -- without the recursion, isDirty's own
+  // broadened meaning (true for a dirty descendant too, see PropertyDefinitionViewModel's own
+  // comment) would make the *parent's* line read "updated" even though none of its own fields
+  // changed, with no indication of what actually did.
+  describeNestedPropertyChanges(properties, changes, pathPrefix) {
+    for (const prop of properties) {
+      if (prop.isReadonly) continue;
+      if (prop.isNew) { changes.push(`+ Property "${pathPrefix}.${prop.name || '(unnamed)'}"`); continue; }
+      const path = `${pathPrefix}.${prop.originalName || '(unnamed)'}`;
+      if (prop.isDeleted) { changes.push(`- Property "${path}"`); continue; }
+      if (prop.ownFieldsDirty) changes.push(`Property "${path}": updated`);
+      this.describeNestedPropertyChanges(prop.properties, changes, path);
+    }
   },
 
   // Direct port of Angular's describePendingChanges() -- a parallel, independent human-readable
@@ -422,9 +481,10 @@ const schemaViewModel = {
 
       for (const prop of item.properties) {
         if (prop.isReadonly) continue;
-        if (prop.isNew) changes.push(`+ Property "${prop.name}"`);
-        else if (prop.isDeleted) changes.push(`- Property "${prop.originalName}"`);
-        else if (prop.isDirty) changes.push(`Property "${prop.originalName}": updated`);
+        if (prop.isNew) { changes.push(`+ Property "${prop.name}"`); continue; }
+        if (prop.isDeleted) { changes.push(`- Property "${prop.originalName}"`); continue; }
+        if (prop.ownFieldsDirty) changes.push(`Property "${prop.originalName}": updated`);
+        this.describeNestedPropertyChanges(prop.properties, changes, prop.originalName);
       }
 
       for (const [perspName, perspectives] of Object.entries(item.links)) {
@@ -467,9 +527,10 @@ const schemaViewModel = {
           processedLinkIds.add(p.linkId);
           const linkChanges = [];
           for (const prop of p.link.properties) {
-            if (prop.isNew) linkChanges.push(`+ Property "${prop.name}"`);
-            else if (prop.isDeleted) linkChanges.push(`- Property "${prop.originalName}"`);
-            else if (prop.isDirty) linkChanges.push(`Property "${prop.originalName}": updated`);
+            if (prop.isNew) { linkChanges.push(`+ Property "${prop.name}"`); continue; }
+            if (prop.isDeleted) { linkChanges.push(`- Property "${prop.originalName}"`); continue; }
+            if (prop.ownFieldsDirty) linkChanges.push(`Property "${prop.originalName}": updated`);
+            this.describeNestedPropertyChanges(prop.properties, linkChanges, prop.originalName);
           }
           if (linkChanges.length > 0) summaries.push({ label: this._linkLabel(p.linkId), changes: linkChanges });
         }

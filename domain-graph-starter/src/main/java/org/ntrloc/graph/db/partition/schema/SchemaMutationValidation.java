@@ -1,5 +1,6 @@
 package org.ntrloc.graph.db.partition.schema;
 
+import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyDefinitionView;
 import org.ntrloc.graph.db.partition.schema.repository.SchemaRepository;
 
@@ -158,6 +159,32 @@ final class SchemaMutationValidation {
                 throw new IllegalArgumentException("Cannot set supertype: would create a cycle");
             }
             current = supertypeById.get(current);
+        }
+    }
+
+    // Object properties nest via schema_property_property, the same single-parent-tree shape as
+    // the supertype chain above -- same cycle risk, same walk. Only relevant when the *new*
+    // container of a moved property is itself a property (nesting into an item/trait/link can
+    // never cycle, since those aren't part of the property containment tree).
+    static void requireNoPropertyContainmentCycle(SchemaRepository repo, UUID propertyId, UUID proposedParentPropertyId) {
+        Map<UUID, UUID> parentByProperty = repo.getParentPropertyIdByProperty();
+        UUID current = proposedParentPropertyId;
+        while (current != null) {
+            if (current.equals(propertyId)) {
+                throw new IllegalArgumentException("Cannot move property: would create a containment cycle");
+            }
+            current = parentByProperty.get(current);
+        }
+    }
+
+    // A property can only contain children if it's itself OBJECT-typed -- nesting inside a
+    // scalar property has no meaning, there's nowhere for the structure to go.
+    static void requireObjectTypeProperty(SchemaRepository repo, UUID propertyId) {
+        PropertyType type = repo.findProperty(propertyId)
+                .orElseThrow(() -> new IllegalArgumentException("Unknown property: " + propertyId))
+                .type();
+        if (type != PropertyType.OBJECT) {
+            throw new IllegalArgumentException("Property " + propertyId + " is not an OBJECT property and cannot contain other properties");
         }
     }
 }

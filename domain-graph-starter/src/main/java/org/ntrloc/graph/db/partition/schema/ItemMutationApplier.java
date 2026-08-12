@@ -60,7 +60,7 @@ class ItemMutationApplier {
             if (m.supertypeId() != null) {
                 SchemaMutationValidation.requireNameNotInSupertypeChain(repo, m.supertypeId(), p.name());
             }
-            var prop = repo.createProperty(p.name(), p.description(), p.propertyType(), p.cardinality(), p.usage());
+            var prop = PropertyMutationApplier.createPropertyRecursive(repo, p);
             repo.associateItemProperty(item.id(), prop.id());
         }
         eventPublisher.publishEvent(new SchemaChangeEvent.ItemTypeCreated(item.id()));

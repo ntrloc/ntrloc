@@ -4,7 +4,14 @@ import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyUsage;
 
+import java.util.List;
 import java.util.UUID;
 
-public record CreateItemPropertyDefinitionMutation(UUID itemId, String name, String description, PropertyType propertyType, PropertyCardinality cardinality, PropertyUsage usage) implements DefinitionMutation {
+// properties is recursive -- see CreatePropertyDefinitionMutation's own comment. Lets a brand-new
+// OBJECT property be created on an existing item type together with its full nested structure,
+// atomically, in one mutation.
+public record CreateItemPropertyDefinitionMutation(UUID itemId, String name, String description, PropertyType propertyType, PropertyCardinality cardinality, PropertyUsage usage, List<CreatePropertyDefinitionMutation> properties) implements DefinitionMutation {
+    public CreateItemPropertyDefinitionMutation {
+        if (properties == null) properties = List.of();
+    }
 }

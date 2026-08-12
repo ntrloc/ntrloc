@@ -200,7 +200,7 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
     void collectionProjection_sortAndFilterOnAnInheritedProperty_workAcrossBranches() {
         String vehicleName = "CrossTypeVehicle-" + UUID.randomUUID();
         schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(vehicleName, "d", List.of(
-                new CreatePropertyDefinitionMutation("wheels", "d", PropertyType.INT, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL)),
+                new CreatePropertyDefinitionMutation("wheels", "d", PropertyType.INT, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, java.util.List.of())),
                 null, false, null)));
         UUID vehicleId = idOf(vehicleName);
 
@@ -241,7 +241,7 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
     void collectionProjection_facetsAndFacetFiltersOnAnInheritedProperty_aggregateAcrossBranches() {
         String vehicleName = "CrossTypeVehicle-" + UUID.randomUUID();
         schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(vehicleName, "d", List.of(
-                new CreatePropertyDefinitionMutation("electric", "d", PropertyType.BOOLEAN, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL)),
+                new CreatePropertyDefinitionMutation("electric", "d", PropertyType.BOOLEAN, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, java.util.List.of())),
                 null, false, null)));
         UUID vehicleId = idOf(vehicleName);
 
