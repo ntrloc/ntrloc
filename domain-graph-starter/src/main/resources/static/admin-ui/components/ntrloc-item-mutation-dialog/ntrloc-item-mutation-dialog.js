@@ -140,7 +140,7 @@ injectStyles('ntrloc-item-mutation-dialog-styles', `
 // addableProperties/createProperties below): only SINGLE-cardinality properties are offered in
 // this first cut -- LIST/SET would need a multi-value editor this dialog doesn't have yet, not a
 // fundamental backend limit.
-const VALUE_TYPES = ['STRING', 'INT', 'LONG', 'DATE', 'DATETIME', 'BOOLEAN', 'OBJECT'];
+const VALUE_TYPES = ['STRING', 'INT', 'LONG', 'DOUBLE', 'DATE', 'DATETIME', 'BOOLEAN', 'OBJECT'];
 
 // Promise-based wrapper around a transient <md-dialog>, same shape as
 // ntrloc-save-confirm-dialog.js/ntrloc-controlled-list-dialog.js's open*Dialog functions. Handles
@@ -237,6 +237,8 @@ function openItemMutationDialog({ mode = 'create', item } = {}) {
         case 'INT':
         case 'LONG':
           return `<input type="number" step="1" class="value-input" ${dataAttr} value="${escapeHtml(v)}">`;
+        case 'DOUBLE':
+          return `<input type="number" step="any" class="value-input" ${dataAttr} value="${escapeHtml(v)}">`;
         case 'DATE':
           return `<input type="date" class="value-input" ${dataAttr} value="${escapeHtml(v)}">`;
         case 'DATETIME':
@@ -585,7 +587,8 @@ function coerceCreateValues(properties, values) {
 function coerceValue(property, rawValue) {
   switch (property.type) {
     case 'INT':
-    case 'LONG': {
+    case 'LONG':
+    case 'DOUBLE': {
       const n = Number(rawValue);
       if (rawValue === '' || Number.isNaN(n)) throw new Error('Expected a number');
       return n;

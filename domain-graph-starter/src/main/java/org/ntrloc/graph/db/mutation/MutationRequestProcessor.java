@@ -393,6 +393,7 @@ public class MutationRequestProcessor {
             case STRING -> value instanceof String;
             case INT -> value instanceof Integer;
             case LONG -> value instanceof Integer || value instanceof Long;
+            case DOUBLE -> value instanceof Double || value instanceof Integer || value instanceof Long;
             case BOOLEAN -> value instanceof Boolean;
             case OBJECT -> false; // handled by resolvePropertyIds/resolveObjectPropertyValue before reaching here
             case DATE -> value instanceof String s && isValidDate(s);

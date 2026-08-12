@@ -4,7 +4,7 @@ import java.util.EnumSet;
 import java.util.Set;
 
 public enum PropertyType {
-    STRING, INT, LONG, DATE, DATETIME, BOOLEAN, BINARY, OBJECT;
+    STRING, INT, LONG, DOUBLE, DATE, DATETIME, BOOLEAN, BINARY, OBJECT;
 
     public Set<PropertyCardinality> validCardinalities() {
         return switch (this) {

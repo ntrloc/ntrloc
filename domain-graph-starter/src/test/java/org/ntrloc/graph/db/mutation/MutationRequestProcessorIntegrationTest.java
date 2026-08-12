@@ -211,7 +211,7 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
         assertThat(item.properties()).doesNotContainKey("name");
     }
 
-    // --- validateScalar: BINARY rejection, LONG, DATETIME ---
+    // --- validateScalar: BINARY rejection, LONG, DOUBLE, DATETIME ---
 
     @Test
     void binaryProperty_isRejected_binaryPropertiesCannotBeSetViaMutation() {
@@ -248,6 +248,33 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
                 List.of(new ItemCreateMutation(null, "MutReqProcA", Map.of("count", 9_000_000_000L))), List.of()), SOME_PRINCIPAL);
 
         assertThat(response.items()).hasSize(1);
+    }
+
+    @Test
+    void doubleProperty_acceptsADecimalValue() {
+        MutationResponse response = processor.process(new MutationRequest(
+                List.of(new ItemCreateMutation(null, "MutReqProcA", Map.of("price", 19.99))), List.of()), SOME_PRINCIPAL);
+
+        UUID itemId = response.items().get(0).itemId();
+        var item = registerPartitionManager.projectOne(fixture.aTypeId(), itemId, "http://binary").orElseThrow();
+        assertThat(item.properties()).containsEntry("price", 19.99);
+    }
+
+    @Test
+    void doubleProperty_acceptsAWholeNumberValue() {
+        MutationResponse response = processor.process(new MutationRequest(
+                List.of(new ItemCreateMutation(null, "MutReqProcA", Map.of("price", 20))), List.of()), SOME_PRINCIPAL);
+
+        assertThat(response.items()).hasSize(1);
+    }
+
+    @Test
+    void doubleProperty_rejectsANonNumericValue() {
+        assertThatThrownBy(() -> processor.process(new MutationRequest(
+                List.of(new ItemCreateMutation(null, "MutReqProcA", Map.of("price", "not-a-number"))), List.of()), SOME_PRINCIPAL))
+                .isInstanceOf(MutationValidationException.class)
+                .satisfies(e -> assertThat(((MutationValidationException) e).errors())
+                        .anyMatch(err -> err.path().equals("items[0].properties.price")));
     }
 
     @Test

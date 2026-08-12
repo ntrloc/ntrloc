@@ -10,7 +10,7 @@ import { DEFAULT_SIZE, EXPANDED_SUB_PROCESS_SIZE, SUB_PROCESS, isFlowNode, nextI
 // itemSubjectRef -> bpmn:ItemDefinition.structureRef carries the type, as one of these strings --
 // the same vocabulary PropertyType (schema/mutation side) uses, for one consistent type vocabulary
 // across the app, though nothing here technically requires them to match that enum.
-export const PROCESS_VARIABLE_TYPES = ['STRING', 'INT', 'LONG', 'BOOLEAN', 'DATE', 'DATETIME', 'OBJECT'];
+export const PROCESS_VARIABLE_TYPES = ['STRING', 'INT', 'LONG', 'DOUBLE', 'BOOLEAN', 'DATE', 'DATETIME', 'OBJECT'];
 
 // Reads a process's declared variables back out of its ioSpecification (see buildIoSpecification
 // below for how one gets built on export) -- {name, type, required} triples, the shape

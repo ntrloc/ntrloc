@@ -75,6 +75,8 @@ export function openRunProcessDialog(variables) {
         case 'INT':
         case 'LONG':
           return `<input type="number" step="1" class="value-input" data-name="${escapeHtml(variable.name)}" value="${escapeHtml(value)}">`;
+        case 'DOUBLE':
+          return `<input type="number" step="any" class="value-input" data-name="${escapeHtml(variable.name)}" value="${escapeHtml(value)}">`;
         case 'DATE':
           return `<input type="date" class="value-input" data-name="${escapeHtml(variable.name)}" value="${escapeHtml(value)}">`;
         case 'DATETIME':
@@ -177,7 +179,8 @@ function escapeHtml(value) {
 function coerceValue(type, rawValue) {
   switch (type) {
     case 'INT':
-    case 'LONG': {
+    case 'LONG':
+    case 'DOUBLE': {
       const n = Number(rawValue);
       if (Number.isNaN(n)) throw new Error('Expected a number');
       return n;

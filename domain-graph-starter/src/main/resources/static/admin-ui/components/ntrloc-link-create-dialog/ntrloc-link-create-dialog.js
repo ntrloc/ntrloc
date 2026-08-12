@@ -110,6 +110,8 @@ function openLinkCreateDialog(candidates) {
         case 'INT':
         case 'LONG':
           return `<input type="number" step="1" class="value-input" data-name="${escapeHtml(property.name)}" value="${escapeHtml(v)}">`;
+        case 'DOUBLE':
+          return `<input type="number" step="any" class="value-input" data-name="${escapeHtml(property.name)}" value="${escapeHtml(v)}">`;
         case 'DATE':
           return `<input type="date" class="value-input" data-name="${escapeHtml(property.name)}" value="${escapeHtml(v)}">`;
         case 'DATETIME':
@@ -234,6 +236,8 @@ function openLinkPropertiesDialog({ title, propertyDefs, initialValues }) {
         case 'INT':
         case 'LONG':
           return `<input type="number" step="1" class="value-input" data-name="${escapeHtml(property.name)}" value="${escapeHtml(v)}">`;
+        case 'DOUBLE':
+          return `<input type="number" step="any" class="value-input" data-name="${escapeHtml(property.name)}" value="${escapeHtml(v)}">`;
         case 'DATE':
           return `<input type="date" class="value-input" data-name="${escapeHtml(property.name)}" value="${escapeHtml(v)}">`;
         case 'DATETIME':
@@ -319,7 +323,8 @@ function openLinkPropertiesDialog({ title, propertyDefs, initialValues }) {
 function coerceValue(property, rawValue) {
   switch (property.type) {
     case 'INT':
-    case 'LONG': {
+    case 'LONG':
+    case 'DOUBLE': {
       const n = Number(rawValue);
       if (rawValue === '' || Number.isNaN(n)) throw new Error('Expected a number');
       return n;

@@ -25,7 +25,7 @@ import java.util.UUID;
 //
 //  - A property of every scalar type MutationRequestProcessor's validateScalar() switches on
 //    (CoordinatorTestDomainInitializer only has STRING/DATE), to reach the BINARY-rejection and
-//    LONG/DATETIME branches.
+//    LONG/DOUBLE/DATETIME branches.
 //  - Two link definitions sharing the *same* perspective-name pair between A and B (link1, link2)
 //    -- resolveLinkTypeId's "ambiguous" branch (multiple link types connect the same perspective
 //    pair) needs a genuine second candidate, which no single-link fixture can ever produce -- plus
@@ -59,6 +59,7 @@ public class MutationRequestProcessorTestDomainInitializer implements DomainInit
                 List.of(
                         property("attachment", PropertyType.BINARY, PropertyCardinality.SINGLE),
                         property("count", PropertyType.LONG, PropertyCardinality.SINGLE),
+                        property("price", PropertyType.DOUBLE, PropertyCardinality.SINGLE),
                         property("createdAt", PropertyType.DATETIME, PropertyCardinality.SINGLE),
                         property("extra", PropertyType.OBJECT, PropertyCardinality.SINGLE)), null, false, null)));
         aTypeId = findItem("MutReqProcA").id();
