@@ -44,6 +44,12 @@ public class ProjectionService {
             item type's own properties or one of the system fields (itemId, itemType, createdAt,
             updatedAt, visibilityState).
 
+            A property nested inside an OBJECT-typed property is addressed by dot-separated path
+            (e.g. "dimensions.widthCm"), one segment per level of nesting -- this applies to a
+            predicate's propertyName, sortField, and facet field alike. The path must end on a
+            leaf (scalar) property; naming an OBJECT property itself, without a leaf beneath it,
+            is not a valid filter/sort/facet target.
+
             Results are paginated: at most 50 items are returned per call unless a larger limit is
             requested (capped at 500 regardless), and totalCount in the response is the count of
             all matching items, not just the ones returned -- use offset to page through the rest.

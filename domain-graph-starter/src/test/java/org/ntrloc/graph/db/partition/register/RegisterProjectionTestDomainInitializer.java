@@ -9,6 +9,7 @@ import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateItemDefini
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateLinkDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePerspectiveDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePropertyDefinitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePropertyPropertyDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyDefinitionView;
 import org.ntrloc.graph.domain.DomainInitializer;
@@ -40,6 +41,8 @@ public class RegisterProjectionTestDomainInitializer implements DomainInitialize
     private UUID pageCountPropertyId;
     private UUID inStockPropertyId;
     private UUID genrePropertyId;
+    private UUID dimensionsPropertyId;
+    private UUID packagingPropertyId;
     private UUID authorsPerspectiveId;
 
     public RegisterProjectionTestDomainInitializer(SchemaManager schemaManager, ControlledListManager controlledListManager) {
@@ -67,7 +70,13 @@ public class RegisterProjectionTestDomainInitializer implements DomainInitialize
                         // own class comment on why it's a singleton, not per-class). No controlled
                         // list, so it's also not facetable -- doesn't show up in the "every
                         // facetable property" auto-populate test.
-                        property("testMarker", PropertyType.STRING, PropertyCardinality.SINGLE)), null, false, null)));
+                        property("testMarker", PropertyType.STRING, PropertyCardinality.SINGLE),
+                        // Two OBJECT properties, deliberately sharing a leaf name ("widthCm"), so
+                        // dot-path resolution/filtering tests can exercise a real container-scoped
+                        // lookup (dimensions.widthCm vs packaging.widthCm), not just a single
+                        // unambiguous nested property.
+                        property("dimensions", PropertyType.OBJECT, PropertyCardinality.SINGLE),
+                        property("packaging", PropertyType.OBJECT, PropertyCardinality.SINGLE)), null, false, null)));
 
         AdminItemDefinitionView book = findItem("RegisterProjectionTestBook");
         bookTypeId = book.id();
@@ -75,6 +84,13 @@ public class RegisterProjectionTestDomainInitializer implements DomainInitialize
         pageCountPropertyId = findProperty(book.properties(), "pageCount");
         inStockPropertyId = findProperty(book.properties(), "inStock");
         genrePropertyId = findProperty(book.properties(), "genre");
+        dimensionsPropertyId = findProperty(book.properties(), "dimensions");
+        packagingPropertyId = findProperty(book.properties(), "packaging");
+
+        schemaManager.applyMutations(List.of(new CreatePropertyPropertyDefinitionMutation(
+                dimensionsPropertyId, "widthCm", "Register projection test fixture", PropertyType.INT, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, List.of())));
+        schemaManager.applyMutations(List.of(new CreatePropertyPropertyDefinitionMutation(
+                packagingPropertyId, "widthCm", "Register projection test fixture", PropertyType.INT, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, List.of())));
 
         // genre is controlled-list-backed specifically so it exercises the STRING branch of
         // isTermsFacetable (which requires a controlled list); inStock exercises the BOOLEAN
@@ -150,6 +166,14 @@ public class RegisterProjectionTestDomainInitializer implements DomainInitialize
 
     public UUID genrePropertyId() {
         return genrePropertyId;
+    }
+
+    public UUID dimensionsPropertyId() {
+        return dimensionsPropertyId;
+    }
+
+    public UUID packagingPropertyId() {
+        return packagingPropertyId;
     }
 
     public UUID authorsPerspectiveId() {

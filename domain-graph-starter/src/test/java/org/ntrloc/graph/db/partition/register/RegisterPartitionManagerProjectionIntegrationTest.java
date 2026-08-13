@@ -83,12 +83,23 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
     }
 
     private UUID createBook(String title, Integer pageCount, Boolean inStock, String genre) {
+        return createBook(title, pageCount, inStock, genre, null, null);
+    }
+
+    // dimensionsWidthCm/packagingWidthCm feed the two OBJECT properties the fixture defines
+    // (RegisterProjectionTestDomainInitializer's own comment on why there are two, sharing a leaf
+    // name) -- exists so dot-path predicate/sort tests can create books distinguishable only by a
+    // nested value, without every other test having to pass two extra nulls through createBook.
+    private UUID createBook(String title, Integer pageCount, Boolean inStock, String genre,
+                             Integer dimensionsWidthCm, Integer packagingWidthCm) {
         Map<String, Object> properties = new HashMap<>();
         properties.put("testMarker", marker);
         if (title != null) properties.put("title", title);
         if (pageCount != null) properties.put("pageCount", pageCount);
         if (inStock != null) properties.put("inStock", inStock);
         if (genre != null) properties.put("genre", genre);
+        if (dimensionsWidthCm != null) properties.put("dimensions", Map.of("widthCm", dimensionsWidthCm));
+        if (packagingWidthCm != null) properties.put("packaging", Map.of("widthCm", packagingWidthCm));
 
         MutationResponse response = webTestClient.post().uri("/api/mutation")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -253,6 +264,88 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
         assertThatThrownBy(() -> project(spec))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("noSuchProperty");
+    }
+
+    // --- Dot-path resolution into OBJECT properties ---
+
+    @Test
+    void propertyValuePredicate_dotPath_filtersOnANestedObjectLeaf() {
+        createBook("Dune", 400, true, "Fiction", 20, null);
+        createBook("Foundation", 300, true, "Fiction", 15, null);
+
+        var spec = new CollectionProjectionSpec(BOOK_TYPE, null, null,
+                new PropertyValuePredicate("dimensions.widthCm", Operator.EQUALS, "20"));
+
+        assertThat(project(spec).titles()).containsExactly("Dune");
+    }
+
+    @Test
+    void propertyValuePredicate_dotPath_distinguishesSameLeafNameUnderDifferentObjectProperties() {
+        // Both books set widthCm to 20 under "dimensions"; only "Dune" also sets it under
+        // "packaging" -- if the two same-named leaves ever collided (resolved to the same stored
+        // id), this would either match both books or throw, not select exactly one.
+        createBook("Dune", 400, true, "Fiction", 20, 5);
+        createBook("Foundation", 300, true, "Fiction", 20, null);
+
+        var spec = new CollectionProjectionSpec(BOOK_TYPE, null, null,
+                new PropertyValuePredicate("packaging.widthCm", Operator.EQUALS, "5"));
+
+        assertThat(project(spec).titles()).containsExactly("Dune");
+    }
+
+    @Test
+    void propertyExistencePredicate_dotPath_matchesOnlyItemsWhereTheNestedLeafWasSet() {
+        createBook("Dune", 400, true, "Fiction", 20, null);
+        createBook("Foundation", 300, true, "Fiction", null, null);
+
+        var spec = new CollectionProjectionSpec(BOOK_TYPE, null, null,
+                new PropertyExistencePredicate("dimensions.widthCm"));
+
+        assertThat(project(spec).titles()).containsExactly("Dune");
+    }
+
+    @Test
+    void sortField_dotPath_sortsOnTheNestedLeaf() {
+        createBook("Dune", 400, true, "Fiction", 30, null);
+        createBook("Foundation", 300, true, "Fiction", 10, null);
+        createBook("Neuromancer", 300, true, "Fiction", 20, null);
+
+        var spec = new CollectionProjectionSpec(BOOK_TYPE, "dimensions.widthCm", "ASC");
+
+        assertThat(project(spec).titles()).containsExactly("Foundation", "Neuromancer", "Dune");
+    }
+
+    @Test
+    void predicateOnUnknownNestedProperty_throwsIllegalArgumentExceptionNamingTheFullPath() {
+        var spec = new CollectionProjectionSpec(BOOK_TYPE, null, null,
+                new PropertyValuePredicate("dimensions.noSuchLeaf", Operator.EQUALS, "x"));
+
+        assertThatThrownBy(() -> project(spec))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("dimensions.noSuchLeaf");
+    }
+
+    @Test
+    void predicateOnPathThroughANonObjectProperty_throwsIllegalArgumentException() {
+        // "title" is a plain STRING, not an OBJECT -- "title.anything" has nowhere to descend into.
+        var spec = new CollectionProjectionSpec(BOOK_TYPE, null, null,
+                new PropertyValuePredicate("title.anything", Operator.EQUALS, "x"));
+
+        assertThatThrownBy(() -> project(spec))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("title.anything");
+    }
+
+    @Test
+    void predicateOnAnObjectPropertyItself_throwsIllegalArgumentException() {
+        // "dimensions" alone names a container, not a leaf value -- there's no single stored value
+        // to compare against.
+        var spec = new CollectionProjectionSpec(BOOK_TYPE, null, null,
+                new PropertyValuePredicate("dimensions", Operator.EQUALS, "x"));
+
+        assertThatThrownBy(() -> project(spec))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("dimensions");
     }
 
     @Test

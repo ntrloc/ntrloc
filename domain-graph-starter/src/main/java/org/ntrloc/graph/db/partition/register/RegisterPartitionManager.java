@@ -42,6 +42,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -159,7 +160,9 @@ public class RegisterPartitionManager implements SchemaChangeListener {
         };
     }
 
-    private static final Pattern SAFE_FIELD_NAME = Pattern.compile("^[a-zA-Z]\\w*$");
+    // Each dot-separated segment (one per level of OBJECT-property nesting) follows the same
+    // identifier shape as a bare field name did before dot-paths existed.
+    private static final Pattern SAFE_FIELD_NAME = Pattern.compile("^[a-zA-Z]\\w*(\\.[a-zA-Z]\\w*)*$");
 
     private String sanitizeFieldName(String field) {
         if (field == null || !SAFE_FIELD_NAME.matcher(field).matches()) {
@@ -927,15 +930,39 @@ public class RegisterPartitionManager implements SchemaChangeListener {
     // field) has to resolve to the id the register actually stores before it can be used in SQL.
     // This also gives predicate/sort/facet validation for free: an unknown name now fails clearly
     // here instead of silently generating a condition that matches nothing.
+    //
+    // propertyName may be a dot-separated path (e.g. "dimensions.length") reaching into one or more
+    // OBJECT properties -- mirrors the write-side walk in
+    // MutationRequestProcessor.resolveObjectPropertyValue, which resolves each segment against the
+    // *containing* object property's own children rather than a global name index. That scoping is
+    // required, not just mirrored for consistency: propertyPaths' own comment notes two leaves
+    // nested under different object properties can share a name (dimensions.length vs
+    // packagingDimensions.length), so only the full path is unambiguous.
     private UUID resolvePropertyId(UUID itemTypeId, String propertyName) {
-        return schemaManager.getAdminSchema().items().stream()
+        List<AdminPropertyDefinitionView> rootProperties = schemaManager.getAdminSchema().items().stream()
                 .filter(item -> item.id().equals(itemTypeId))
                 .findFirst()
-                .flatMap(item -> item.properties().stream()
-                        .filter(p -> p.name().equals(propertyName))
-                        .map(AdminPropertyDefinitionView::id)
-                        .findFirst())
-                .orElseThrow(() -> new IllegalArgumentException("Unknown property: " + propertyName));
+                .map(AdminItemDefinitionView::properties)
+                .orElse(List.of());
+        return resolvePropertyId(rootProperties, propertyName.split("\\."), propertyName);
+    }
+
+    private UUID resolvePropertyId(List<AdminPropertyDefinitionView> properties, String[] pathSegments, String fullPath) {
+        AdminPropertyDefinitionView match = properties.stream()
+                .filter(p -> p.name().equals(pathSegments[0]))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException("Unknown property: " + fullPath));
+        boolean isLastSegment = pathSegments.length == 1;
+        if (match instanceof ObjectAdminPropertyDefinitionView object) {
+            if (isLastSegment) {
+                throw new IllegalArgumentException("Property is an object, not a leaf value: " + fullPath);
+            }
+            return resolvePropertyId(object.properties(), Arrays.copyOfRange(pathSegments, 1, pathSegments.length), fullPath);
+        }
+        if (!isLastSegment) {
+            throw new IllegalArgumentException("Unknown property: " + fullPath);
+        }
+        return match.id();
     }
 
     // Same "translate name to id, never store the name" rule as resolvePropertyId, one level up:
