@@ -100,7 +100,7 @@ public class CoordinatorTestDomainInitializer implements DomainInitializer, Appl
     }
 
     private CreatePropertyDefinitionMutation property(String name, PropertyType type, PropertyCardinality cardinality) {
-        return new CreatePropertyDefinitionMutation(name, "Coordinator integration test fixture", type, cardinality, PropertyUsage.OPTIONAL, java.util.List.of());
+        return new CreatePropertyDefinitionMutation(name, "Coordinator integration test fixture", type, cardinality, PropertyUsage.OPTIONAL, false, java.util.List.of());
     }
 
     private AdminItemDefinitionView findItem(SchemaManager schemaManager, String name) {

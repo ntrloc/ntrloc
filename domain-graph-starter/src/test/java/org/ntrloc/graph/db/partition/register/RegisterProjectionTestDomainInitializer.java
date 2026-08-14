@@ -12,6 +12,7 @@ import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePropertyDe
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePropertyPropertyDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyDefinitionView;
+import org.ntrloc.graph.db.partition.schema.definition.view.admin.ObjectAdminPropertyDefinitionView;
 import org.ntrloc.graph.domain.DomainInitializer;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
@@ -43,6 +44,7 @@ public class RegisterProjectionTestDomainInitializer implements DomainInitialize
     private UUID genrePropertyId;
     private UUID dimensionsPropertyId;
     private UUID packagingPropertyId;
+    private UUID dimensionsMaterialPropertyId;
     private UUID authorsPerspectiveId;
 
     public RegisterProjectionTestDomainInitializer(SchemaManager schemaManager, ControlledListManager controlledListManager) {
@@ -62,8 +64,8 @@ public class RegisterProjectionTestDomainInitializer implements DomainInitialize
                 List.of(
                         property("title", PropertyType.STRING, PropertyCardinality.SINGLE),
                         property("pageCount", PropertyType.INT, PropertyCardinality.SINGLE),
-                        property("inStock", PropertyType.BOOLEAN, PropertyCardinality.SINGLE),
-                        property("genre", PropertyType.STRING, PropertyCardinality.SINGLE),
+                        property("inStock", PropertyType.BOOLEAN, PropertyCardinality.SINGLE, true),
+                        property("genre", PropertyType.STRING, PropertyCardinality.SINGLE, true),
                         // Not a domain property -- exists purely so the test class can scope every
                         // query down to one test method's own rows despite every test sharing the
                         // same singleton Postgres container and register table (AbstractIntegrationTest's
@@ -88,18 +90,32 @@ public class RegisterProjectionTestDomainInitializer implements DomainInitialize
         packagingPropertyId = findProperty(book.properties(), "packaging");
 
         schemaManager.applyMutations(List.of(new CreatePropertyPropertyDefinitionMutation(
-                dimensionsPropertyId, "widthCm", "Register projection test fixture", PropertyType.INT, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, List.of())));
+                dimensionsPropertyId, "widthCm", "Register projection test fixture", PropertyType.INT, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false, List.of())));
         schemaManager.applyMutations(List.of(new CreatePropertyPropertyDefinitionMutation(
-                packagingPropertyId, "widthCm", "Register projection test fixture", PropertyType.INT, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, List.of())));
+                packagingPropertyId, "widthCm", "Register projection test fixture", PropertyType.INT, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false, List.of())));
+        // Nested under "dimensions" (not a new top-level property) specifically so facet tests can
+        // exercise RegisterPartitionManager.collectFacetableFieldNames' recursion into OBJECT
+        // properties -- a facetable leaf one level deep, resolved/auto-discovered under its
+        // dot-path name "dimensions.material", the same way a top-level facetable property is.
+        schemaManager.applyMutations(List.of(new CreatePropertyPropertyDefinitionMutation(
+                dimensionsPropertyId, "material", "Register projection test fixture", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, true, List.of())));
+        var dimensions = (ObjectAdminPropertyDefinitionView) findPropertyView(findItem("RegisterProjectionTestBook").properties(), "dimensions");
+        dimensionsMaterialPropertyId = findProperty(dimensions.properties(), "material");
 
-        // genre is controlled-list-backed specifically so it exercises the STRING branch of
-        // isTermsFacetable (which requires a controlled list); inStock exercises the BOOLEAN
-        // branch (facetable unconditionally) -- between the two, both facetable-property code
-        // paths are covered, not just one.
+        // genre is controlled-list-backed AND marked facetable=true, so it exercises the STRING
+        // branch of isTermsFacetable (which requires both); inStock is BOOLEAN and also marked
+        // facetable=true, exercising the BOOLEAN branch (no controlled list needed, but the
+        // explicit admin opt-in still is) -- between the two, both facetable-property code paths
+        // are covered, not just one.
         var genreList = controlledListManager.createList("RegisterProjectionTestGenre", PropertyType.STRING);
         controlledListManager.setPropertyControlledList(genrePropertyId, genreList.id());
         controlledListManager.addValue(genreList.id(), "Fiction", "Fiction", 0);
         controlledListManager.addValue(genreList.id(), "Reference", "Reference", 1);
+
+        var materialList = controlledListManager.createList("RegisterProjectionTestMaterial", PropertyType.STRING);
+        controlledListManager.setPropertyControlledList(dimensionsMaterialPropertyId, materialList.id());
+        controlledListManager.addValue(materialList.id(), "Hardcover", "Hardcover", 0);
+        controlledListManager.addValue(materialList.id(), "Paperback", "Paperback", 1);
 
         initStateMachine(schemaManager, bookTypeId, AVAILABILITY_MACHINE,
                 List.of(
@@ -126,7 +142,11 @@ public class RegisterProjectionTestDomainInitializer implements DomainInitialize
     }
 
     private CreatePropertyDefinitionMutation property(String name, PropertyType type, PropertyCardinality cardinality) {
-        return new CreatePropertyDefinitionMutation(name, "Register projection test fixture", type, cardinality, PropertyUsage.OPTIONAL, java.util.List.of());
+        return property(name, type, cardinality, false);
+    }
+
+    private CreatePropertyDefinitionMutation property(String name, PropertyType type, PropertyCardinality cardinality, boolean facetable) {
+        return new CreatePropertyDefinitionMutation(name, "Register projection test fixture", type, cardinality, PropertyUsage.OPTIONAL, facetable, java.util.List.of());
     }
 
     private AdminItemDefinitionView findItem(String name) {
@@ -137,10 +157,13 @@ public class RegisterProjectionTestDomainInitializer implements DomainInitialize
     }
 
     private UUID findProperty(List<AdminPropertyDefinitionView> properties, String name) {
+        return findPropertyView(properties, name).id();
+    }
+
+    private AdminPropertyDefinitionView findPropertyView(List<AdminPropertyDefinitionView> properties, String name) {
         return properties.stream()
                 .filter(p -> p.name().equals(name))
                 .findFirst()
-                .map(AdminPropertyDefinitionView::id)
                 .orElseThrow();
     }
 
@@ -174,6 +197,10 @@ public class RegisterProjectionTestDomainInitializer implements DomainInitialize
 
     public UUID packagingPropertyId() {
         return packagingPropertyId;
+    }
+
+    public UUID dimensionsMaterialPropertyId() {
+        return dimensionsMaterialPropertyId;
     }
 
     public UUID authorsPerspectiveId() {

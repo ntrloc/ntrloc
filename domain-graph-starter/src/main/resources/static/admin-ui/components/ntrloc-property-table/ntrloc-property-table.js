@@ -9,13 +9,14 @@ injectStyles('ntrloc-property-table-styles', `
      technique already used for the outer custom element itself) purely so each row can carry
      role="row" and a data-index for wireUp() to query against -- it has zero effect on the grid
      layout itself, which only "sees" the actual cell divs.
-     Type/Cardinality/Usage are auto-sized (shrink to whatever their content -- a short read-only
-     value or an open select -- actually needs, same as Actions already was) rather than fr'd,
-     since their content is always short; Name and Description are the two columns worth reading
-     at length, so they're the only ones that get an even fr share of whatever space is left over. */
+     Type/Cardinality/Usage/Facet are auto-sized (shrink to whatever their content -- a short
+     read-only value, an open select, or a checkbox -- actually needs, same as Actions already
+     was) rather than fr'd, since their content is always short; Name and Description are the two
+     columns worth reading at length, so they're the only ones that get an even fr share of
+     whatever space is left over. */
   .property-grid {
     display: grid;
-    grid-template-columns: 12px 1fr 1fr auto auto auto auto;
+    grid-template-columns: 12px 1fr 1fr auto auto auto auto auto;
     gap: 4px 16px;
     align-items: center;
     width: 100%;
@@ -237,6 +238,7 @@ const PROPERTY_FIELD_FOCUS_TARGETS = {
   'type-value': '.type-select',
   'cardinality-value': '.cardinality-select',
   'usage-value': '.usage-select',
+  'facetable-value': '.facetable-checkbox',
 };
 
 // Reusable editable property grid -- used both for an item/trait's own properties and for a
@@ -309,6 +311,19 @@ class NtrlocPropertyTable extends HTMLElement {
   hasControlledList(prop) {
     const CONTROLLED_LIST_TYPES = new Set(['STRING', 'INT', 'LONG']);
     return !prop.isNew && prop.controlledListId != null && CONTROLLED_LIST_TYPES.has(prop.type);
+  }
+
+  // Whether the Facet checkbox should even appear for this property -- narrower than the server's
+  // own requireFacetableEligible (SINGLE cardinality, and either BOOLEAN or a controlled-list-
+  // capable type): here a STRING/INT/LONG property also has to actually have a controlled list
+  // attached (hasControlledList, which itself excludes unsaved properties). There's no point
+  // showing a checkbox for something that can't actually be faceted yet -- an INT with no list, or
+  // a still-unsaved property -- even though the server would technically accept facetable=true for
+  // it. BOOLEAN needs no list, so it's eligible on cardinality alone.
+  isFacetEligible(prop) {
+    if (prop.cardinality !== 'SINGLE') return false;
+    if (prop.type === 'BOOLEAN') return true;
+    return this.hasControlledList(prop);
   }
 
   // Flattens the top-level properties named by topLevelIndices, plus -- for any OBJECT property
@@ -388,6 +403,7 @@ class NtrlocPropertyTable extends HTMLElement {
             <div class="grid-cell" role="gridcell"></div>
             <div class="grid-cell" role="gridcell"></div>
             <div class="grid-cell" role="gridcell"></div>
+            <div class="grid-cell" role="gridcell"></div>
           </div>
           <div class="grid-row" role="row">
             <div class="grid-header" role="columnheader"></div>
@@ -396,6 +412,7 @@ class NtrlocPropertyTable extends HTMLElement {
             <div class="grid-header" role="columnheader">Type</div>
             <div class="grid-header" role="columnheader">Cardinality</div>
             <div class="grid-header" role="columnheader">Usage</div>
+            <div class="grid-header" role="columnheader">Facet</div>
             <div class="grid-header" role="columnheader"></div>
           </div>
           ${this._visibleRows.length === 0 ? '<p class="status filter-empty-status">No properties match the current filter.</p>' : this._visibleRows.map((row, index) => {
@@ -407,6 +424,7 @@ class NtrlocPropertyTable extends HTMLElement {
                   <span class="expand-toggle-spacer"></span>
                   <button class="add-nested-property-button">+ Add property to ${escapeHtml(row.parentProp.name)}</button>
                 </div>
+                <div class="grid-cell" role="gridcell"></div>
                 <div class="grid-cell" role="gridcell"></div>
                 <div class="grid-cell" role="gridcell"></div>
                 <div class="grid-cell" role="gridcell"></div>
@@ -474,6 +492,14 @@ class NtrlocPropertyTable extends HTMLElement {
                   </md-filled-select>
                 ` : `<span class="read-only-value usage-value">${escapeHtml(prop.usage)}</span>`}
                 ${!prop.isNew && prop.usage !== prop.originalUsage && prop.originalUsage ? `<div class="original-value">${escapeHtml(prop.originalUsage)}</div>` : ''}
+              </div>
+              <div class="grid-cell" role="gridcell">
+                ${this.isFacetEligible(prop) ? (
+                  showForm
+                    ? `<md-checkbox class="editable-field facetable-checkbox" ${prop.facetable ? 'checked' : ''}></md-checkbox>`
+                    : `<md-checkbox class="read-only-value facetable-value" disabled ${prop.facetable ? 'checked' : ''}></md-checkbox>`
+                ) : ''}
+                ${!prop.isNew && prop.facetable !== prop.originalFacetable ? `<div class="original-value">${prop.originalFacetable ? 'Yes' : 'No'}</div>` : ''}
               </div>
               <div class="grid-cell actions-cell" role="gridcell">
                 ${showForm ? '<md-text-button class="done-button">Done</md-text-button>' : ''}
@@ -637,6 +663,13 @@ class NtrlocPropertyTable extends HTMLElement {
       const usageSelect = row.querySelector('.usage-select');
       if (usageSelect) usageSelect.addEventListener('change', (event) => {
         prop.usage = event.target.value;
+        this.render();
+        notifySchemaViewModelChange();
+      });
+
+      const facetableCheckbox = row.querySelector('.facetable-checkbox');
+      if (facetableCheckbox) facetableCheckbox.addEventListener('change', (event) => {
+        prop.facetable = event.target.checked;
         this.render();
         notifySchemaViewModelChange();
       });

@@ -111,6 +111,27 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
         return response.items().get(0).itemId();
     }
 
+    // Sets dimensions.material specifically -- the fixture's one nested, facetable property
+    // (RegisterProjectionTestDomainInitializer's own comment on why it lives under "dimensions"
+    // rather than as a new top-level property). Kept separate from the main createBook overloads
+    // above, which are already at their practical parameter-count limit and have no other caller
+    // that needs this field.
+    private UUID createBookWithDimensionsMaterial(String title, String material) {
+        Map<String, Object> properties = new HashMap<>();
+        properties.put("testMarker", marker);
+        properties.put("title", title);
+        properties.put("dimensions", Map.of("material", material));
+
+        MutationResponse response = webTestClient.post().uri("/api/mutation")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(new MutationRequest(List.of(new ItemCreateMutation(null, BOOK_TYPE, properties)), List.of()))
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(MutationResponse.class)
+                .returnResult().getResponseBody();
+        return response.items().get(0).itemId();
+    }
+
     private ProjectedItemsAndFacets project(CollectionProjectionSpec spec) {
         Predicate scopedToThisTest = new PropertyValuePredicate("testMarker", Operator.EQUALS, marker);
         Predicate combinedFilter = spec.filter() == null
@@ -401,12 +422,30 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
 
         // Empty list (not null) means "every facetable property on this item type" --
         // facetableFieldsFor's own contract. title/pageCount aren't facetable (title has no
-        // controlled list, pageCount isn't STRING/BOOLEAN), so only inStock and genre should
-        // show up here.
+        // controlled list, pageCount isn't STRING/BOOLEAN), so only inStock, genre, and the nested
+        // dimensions.material should show up here -- the last one specifically exercises
+        // collectFacetableFieldNames' recursion into an OBJECT property, not just top-level fields.
         var spec = new CollectionProjectionSpec(BOOK_TYPE, null, null, null, null,
                 List.of(), null, null, null, null);
 
-        assertThat(project(spec).result().facets().keySet()).containsExactlyInAnyOrder("inStock", "genre");
+        assertThat(project(spec).result().facets().keySet()).containsExactlyInAnyOrder("inStock", "genre", "dimensions.material");
+    }
+
+    @Test
+    void termsFacet_onNestedControlledListBackedProperty_countsEachDistinctValue() {
+        createBookWithDimensionsMaterial("Dune", "Hardcover");
+        createBookWithDimensionsMaterial("Foundation", "Hardcover");
+        createBookWithDimensionsMaterial("Neuromancer", "Paperback");
+
+        var spec = new CollectionProjectionSpec(BOOK_TYPE, null, null, null, null,
+                List.of("dimensions.material"), null, null, null, null);
+
+        Map<String, List<FacetBucket>> facets = project(spec).result().facets();
+        assertThat(facets.get("dimensions.material"))
+                .extracting(FacetBucket::value, FacetBucket::count)
+                .containsExactlyInAnyOrder(
+                        tuple("Hardcover", 2L),
+                        tuple("Paperback", 1L));
     }
 
     @Test

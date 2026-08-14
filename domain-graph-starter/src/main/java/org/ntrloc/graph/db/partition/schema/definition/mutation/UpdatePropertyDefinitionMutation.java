@@ -6,5 +6,5 @@ import org.ntrloc.graph.db.partition.schema.definition.PropertyUsage;
 
 import java.util.UUID;
 
-public record UpdatePropertyDefinitionMutation(UUID id, String name, String description, PropertyType propertyType, PropertyCardinality cardinality, PropertyUsage usage) implements DefinitionMutation {
+public record UpdatePropertyDefinitionMutation(UUID id, String name, String description, PropertyType propertyType, PropertyCardinality cardinality, PropertyUsage usage, boolean facetable) implements DefinitionMutation {
 }

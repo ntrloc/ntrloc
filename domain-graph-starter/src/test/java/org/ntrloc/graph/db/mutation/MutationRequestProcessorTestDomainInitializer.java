@@ -71,20 +71,20 @@ public class MutationRequestProcessorTestDomainInitializer implements DomainInit
                 .filter(p -> p.name().equals("extra"))
                 .findFirst().orElseThrow().id();
         schemaManager.applyMutations(List.of(new CreatePropertyPropertyDefinitionMutation(
-                extraPropertyId, "nested", "MutationRequestProcessor test fixture", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, java.util.List.of())));
+                extraPropertyId, "nested", "MutationRequestProcessor test fixture", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false, java.util.List.of())));
         schemaManager.applyMutations(List.of(new CreatePropertyPropertyDefinitionMutation(
-                extraPropertyId, "second", "MutationRequestProcessor test fixture", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, java.util.List.of())));
+                extraPropertyId, "second", "MutationRequestProcessor test fixture", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false, java.util.List.of())));
 
         // A second object property with a leaf sharing "extra"'s own leaf name ("nested") --
         // exercises resolveObjectPropertyValue's container-scoped resolution end to end (the two
         // "nested" leaves must resolve to distinct property ids and never collide in storage).
         schemaManager.applyMutations(List.of(new CreateItemPropertyDefinitionMutation(
-                aTypeId, "extra2", "MutationRequestProcessor test fixture", PropertyType.OBJECT, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, java.util.List.of())));
+                aTypeId, "extra2", "MutationRequestProcessor test fixture", PropertyType.OBJECT, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false, java.util.List.of())));
         UUID extra2PropertyId = findItem("MutReqProcA").properties().stream()
                 .filter(p -> p.name().equals("extra2"))
                 .findFirst().orElseThrow().id();
         schemaManager.applyMutations(List.of(new CreatePropertyPropertyDefinitionMutation(
-                extra2PropertyId, "nested", "MutationRequestProcessor test fixture", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, java.util.List.of())));
+                extra2PropertyId, "nested", "MutationRequestProcessor test fixture", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false, java.util.List.of())));
 
         schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(
                 "MutReqProcB", "MutationRequestProcessor test fixture", List.of(), null, false, null)));
@@ -119,7 +119,7 @@ public class MutationRequestProcessorTestDomainInitializer implements DomainInit
     }
 
     private CreatePropertyDefinitionMutation property(String name, PropertyType type, PropertyCardinality cardinality) {
-        return new CreatePropertyDefinitionMutation(name, "MutationRequestProcessor test fixture", type, cardinality, PropertyUsage.OPTIONAL, java.util.List.of());
+        return new CreatePropertyDefinitionMutation(name, "MutationRequestProcessor test fixture", type, cardinality, PropertyUsage.OPTIONAL, false, java.util.List.of());
     }
 
     private AdminItemDefinitionView findItem(String name) {

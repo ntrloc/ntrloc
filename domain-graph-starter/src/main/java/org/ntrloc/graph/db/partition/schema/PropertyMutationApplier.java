@@ -36,19 +36,20 @@ class PropertyMutationApplier {
                     .findFirst()
                     .map(SchemaRepository.ItemRow::supertypeId)
                     .ifPresent(supertypeId -> SchemaMutationValidation.requireNameNotInSupertypeChain(repo, supertypeId, m.name()));
-            var prop = createPropertyRecursive(repo, new CreatePropertyDefinitionMutation(m.name(), m.description(), m.propertyType(), m.cardinality(), m.usage(), m.properties()));
+            var prop = createPropertyRecursive(repo, new CreatePropertyDefinitionMutation(m.name(), m.description(), m.propertyType(), m.cardinality(), m.usage(), m.facetable(), m.properties()));
             repo.associateItemProperty(m.itemId(), prop.id());
         } else if (mutation instanceof CreateLinkPropertyDefinitionMutation m) {
             SchemaMutationValidation.requireNameNotAssociated(repo.getPropertiesByLink(), m.linkId(), m.name(), "this link type");
-            var prop = createPropertyRecursive(repo, new CreatePropertyDefinitionMutation(m.name(), m.description(), m.propertyType(), m.cardinality(), m.usage(), m.properties()));
+            var prop = createPropertyRecursive(repo, new CreatePropertyDefinitionMutation(m.name(), m.description(), m.propertyType(), m.cardinality(), m.usage(), m.facetable(), m.properties()));
             repo.associateLinkProperty(m.linkId(), prop.id());
         } else if (mutation instanceof CreatePropertyPropertyDefinitionMutation m) {
             SchemaMutationValidation.requireObjectTypeProperty(repo, m.parentPropertyId());
             SchemaMutationValidation.requireNameNotAssociated(repo.getPropertiesByProperty(), m.parentPropertyId(), m.name(), "this object property");
-            var prop = createPropertyRecursive(repo, new CreatePropertyDefinitionMutation(m.name(), m.description(), m.propertyType(), m.cardinality(), m.usage(), m.properties()));
+            var prop = createPropertyRecursive(repo, new CreatePropertyDefinitionMutation(m.name(), m.description(), m.propertyType(), m.cardinality(), m.usage(), m.facetable(), m.properties()));
             repo.associatePropertyProperty(m.parentPropertyId(), prop.id());
         } else if (mutation instanceof UpdatePropertyDefinitionMutation m) {
-            repo.updateProperty(m.id(), m.name(), m.description(), m.propertyType(), m.cardinality(), m.usage());
+            SchemaMutationValidation.requireFacetableEligible(m.propertyType(), m.cardinality(), m.facetable());
+            repo.updateProperty(m.id(), m.name(), m.description(), m.propertyType(), m.cardinality(), m.usage(), m.facetable());
         } else if (mutation instanceof DeletePropertyDefinitionMutation m) {
             repo.deleteProperty(m.id());
         } else if (mutation instanceof MovePropertyDefinitionMutation m) {
@@ -113,7 +114,8 @@ class PropertyMutationApplier {
         if (!spec.properties().isEmpty() && spec.propertyType() != PropertyType.OBJECT) {
             throw new IllegalArgumentException("Property '" + spec.name() + "' is not an OBJECT property and cannot contain other properties");
         }
-        var prop = repo.createProperty(spec.name(), spec.description(), spec.propertyType(), spec.cardinality(), spec.usage());
+        SchemaMutationValidation.requireFacetableEligible(spec.propertyType(), spec.cardinality(), spec.facetable());
+        var prop = repo.createProperty(spec.name(), spec.description(), spec.propertyType(), spec.cardinality(), spec.usage(), spec.facetable());
         Set<String> usedNames = new HashSet<>();
         for (var childSpec : spec.properties()) {
             SchemaMutationValidation.requireUniqueName(usedNames, childSpec.name(), "object property '" + spec.name() + "'");

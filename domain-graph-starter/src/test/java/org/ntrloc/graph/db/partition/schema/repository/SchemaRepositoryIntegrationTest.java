@@ -98,10 +98,10 @@ class SchemaRepositoryIntegrationTest extends AbstractIntegrationTest {
     @Test
     void updateProperty_persistsChanges() {
         var property = schemaRepo.createProperty("Prop-" + UUID.randomUUID(), "d",
-                PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL);
+                PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false);
 
         AdminPropertyDefinitionView updated = schemaRepo.updateProperty(property.id(), "Renamed-" + UUID.randomUUID(),
-                "updated", PropertyType.INT, PropertyCardinality.LIST, PropertyUsage.REQUIRED);
+                "updated", PropertyType.INT, PropertyCardinality.LIST, PropertyUsage.REQUIRED, false);
 
         assertThat(updated.description()).isEqualTo("updated");
         assertThat(updated.type()).isEqualTo(PropertyType.INT);
@@ -112,7 +112,7 @@ class SchemaRepositoryIntegrationTest extends AbstractIntegrationTest {
     @Test
     void deleteProperty_removesIt_soAssociatingItAfterwardsIsNoLongerPossible() {
         var property = schemaRepo.createProperty("Prop-" + UUID.randomUUID(), "d",
-                PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL);
+                PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false);
 
         schemaRepo.deleteProperty(property.id());
 
@@ -126,9 +126,9 @@ class SchemaRepositoryIntegrationTest extends AbstractIntegrationTest {
         var item = schemaRepo.createItem("Item-" + UUID.randomUUID(), "d");
         var trait = schemaRepo.createTrait("Trait-" + UUID.randomUUID(), "d");
         var itemProperty = schemaRepo.createProperty("ItemProp-" + UUID.randomUUID(), "d",
-                PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL);
+                PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false);
         var traitProperty = schemaRepo.createProperty("TraitProp-" + UUID.randomUUID(), "d",
-                PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL);
+                PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false);
 
         schemaRepo.associateItemProperty(item.id(), itemProperty.id());
         schemaRepo.associateTraitProperty(trait.id(), traitProperty.id());
@@ -159,7 +159,7 @@ class SchemaRepositoryIntegrationTest extends AbstractIntegrationTest {
     void dissociateLinkProperty_removesTheAssociation() {
         UUID linkId = schemaRepo.createLink();
         var property = schemaRepo.createProperty("LinkProp-" + UUID.randomUUID(), "d",
-                PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL);
+                PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false);
         schemaRepo.associateLinkProperty(linkId, property.id());
         assertThat(schemaRepo.getPropertiesByLink().get(linkId))
                 .extracting(AdminPropertyDefinitionView::id).contains(property.id());

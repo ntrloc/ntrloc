@@ -38,7 +38,7 @@ class SchemaAdminControllerIntegrationTest extends AbstractIntegrationTest {
         UUID itemId = schemaManager.getAdminSchema().items().stream()
                 .filter(i -> i.name().equals(itemName)).findFirst().orElseThrow().id();
         schemaManager.applyMutations(List.of(new CreateItemPropertyDefinitionMutation(
-                itemId, propName, "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, java.util.List.of())));
+                itemId, propName, "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false, java.util.List.of())));
         return schemaManager.getAdminSchema().items().stream()
                 .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
                 .properties().stream().filter(p -> p.name().equals(propName)).findFirst().orElseThrow().id();
@@ -85,6 +85,36 @@ class SchemaAdminControllerIntegrationTest extends AbstractIntegrationTest {
                 .expectStatus().isOk()
                 .expectBody()
                 .jsonPath("$.values.length()").isEqualTo(2);
+    }
+
+    // Regression test: createOrReplaceControlledList writes via ControlledListManager directly,
+    // bypassing schemaManager.applyMutations (and therefore its cache-rebuild-and-broadcast tail)
+    // entirely. Without an explicit refresh, GET /api/admin/schema kept serving its pre-write
+    // cached snapshot -- controlledListId still null -- indefinitely, confirmed live against a
+    // running dev server before SchemaManager.refreshCache existed. This asserts the fix by
+    // reading back through the same cached path (schemaManager.getAdminSchema()), not just the
+    // dedicated GET .../controlled-list endpoint (which always re-queries the DB fresh and so
+    // would never have caught this).
+    @Test
+    void createOrReplaceControlledList_refreshesTheCachedAdminSchema() {
+        UUID propertyId = createProperty();
+
+        var putResponse = webTestClient.put().uri("/api/admin/schema/properties/{id}/controlled-list", propertyId)
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(java.util.Map.of("name", "list-" + UUID.randomUUID(), "values", List.of(
+                        java.util.Map.of("value", "A", "label", "Alpha"))))
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(SchemaAdminController.ControlledListResponse.class)
+                .returnResult().getResponseBody();
+
+        UUID cachedControlledListId = schemaManager.getAdminSchema().items().stream()
+                .flatMap(i -> i.properties().stream())
+                .filter(p -> p.id().equals(propertyId))
+                .findFirst().orElseThrow()
+                .controlledListId();
+
+        assertThat(cachedControlledListId).isEqualTo(putResponse.listId());
     }
 
     @Test

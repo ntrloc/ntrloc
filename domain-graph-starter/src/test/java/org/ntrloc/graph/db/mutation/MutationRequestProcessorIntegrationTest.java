@@ -407,7 +407,7 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
     void itemCreateMutation_forASubtype_canSetAnInheritedPropertyFromItsSupertype() {
         String supertypeName = "MutReqProcSuper-" + UUID.randomUUID();
         schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(supertypeName, "d", List.of(
-                new CreatePropertyDefinitionMutation("inheritedProp", "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, java.util.List.of())), null, false, null)));
+                new CreatePropertyDefinitionMutation("inheritedProp", "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false, java.util.List.of())), null, false, null)));
         UUID supertypeId = schemaManager.getAdminSchema().items().stream()
                 .filter(i -> i.name().equals(supertypeName)).findFirst().orElseThrow().id();
 

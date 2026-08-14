@@ -24,6 +24,11 @@ public sealed interface AdminPropertyDefinitionView
     PropertyUsage usage();
     DefinedInView definedIn();
     UUID controlledListId();
+    // Admin-declared opt-in, separate from (and gated by) structural eligibility -- see
+    // RegisterPartitionManager.isTermsFacetable. Always present on both variants, same as
+    // controlledListId, even though it's only ever meaningful on a scalar leaf -- an OBJECT
+    // property itself is never facetable, only its own leaves can be.
+    boolean facetable();
 
     // Used by the trait/supertype inheritance-tagging walk in SchemaViewBuilder to copy a property
     // with only definedIn changed, regardless of which concrete variant it is.
@@ -31,10 +36,10 @@ public sealed interface AdminPropertyDefinitionView
 
     static AdminPropertyDefinitionView of(UUID id, String name, String description, PropertyType type,
                                            PropertyCardinality cardinality, PropertyUsage usage,
-                                           DefinedInView definedIn, UUID controlledListId,
+                                           DefinedInView definedIn, UUID controlledListId, boolean facetable,
                                            List<AdminPropertyDefinitionView> properties) {
         return type == PropertyType.OBJECT
-                ? new ObjectAdminPropertyDefinitionView(id, name, description, type, cardinality, usage, definedIn, controlledListId, properties)
-                : new ScalarAdminPropertyDefinitionView(id, name, description, type, cardinality, usage, definedIn, controlledListId);
+                ? new ObjectAdminPropertyDefinitionView(id, name, description, type, cardinality, usage, definedIn, controlledListId, facetable, properties)
+                : new ScalarAdminPropertyDefinitionView(id, name, description, type, cardinality, usage, definedIn, controlledListId, facetable);
     }
 }

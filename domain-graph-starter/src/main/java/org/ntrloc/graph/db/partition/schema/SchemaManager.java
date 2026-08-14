@@ -91,6 +91,17 @@ public class SchemaManager {
         for (DefinitionMutation mutation : mutations) {
             applyMutation(mutation);
         }
+        refreshCache();
+    }
+
+    // Public because ControlledListManager writes (SchemaAdminController.createOrReplaceControlledList
+    // in particular) go straight to the DB via ControlledListManager, bypassing applyMutations/
+    // applyMutation entirely -- ReplaceControlledListMutation's own handler (below) can't cover that
+    // endpoint's "create a brand-new list" branch, since it requires a list to already exist
+    // (getListForProperty(...).orElseThrow()). Without calling this afterward, cachedAdminSchema
+    // keeps serving its pre-write snapshot (controlledListId still null, or the old value list)
+    // until something unrelated happens to call applyMutations and rebuild it as a side effect.
+    public void refreshCache() {
         rebuildCache();
         schemaChangedTopic.publish(UUID.randomUUID().toString());
     }

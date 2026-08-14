@@ -11,7 +11,7 @@ import java.util.List;
 // structure along atomically, in the same create call, rather than needing a second round-trip
 // once the parent has a real id. Normalized to an empty list rather than null so every consumer
 // (PropertyMutationApplier.createPropertyRecursive) can iterate it unconditionally.
-public record CreatePropertyDefinitionMutation(String name, String description, PropertyType propertyType, PropertyCardinality cardinality, PropertyUsage usage, List<CreatePropertyDefinitionMutation> properties) {
+public record CreatePropertyDefinitionMutation(String name, String description, PropertyType propertyType, PropertyCardinality cardinality, PropertyUsage usage, boolean facetable, List<CreatePropertyDefinitionMutation> properties) {
     public CreatePropertyDefinitionMutation {
         if (properties == null) properties = List.of();
     }

@@ -16,6 +16,8 @@ class PropertyDefinitionViewModel {
     this.originalCardinality = args.cardinality;
     this.usage = args.usage;
     this.originalUsage = args.usage;
+    this.facetable = args.facetable ?? false;
+    this.originalFacetable = args.facetable ?? false;
     this.validCardinalities = args.validCardinalities;
     this.definedIn = args.definedIn;
     this.controlledListId = args.controlledListId;
@@ -55,7 +57,8 @@ class PropertyDefinitionViewModel {
       || (this.description ?? '') !== (this.originalDescription ?? '')
       || this.type !== this.originalType
       || this.cardinality !== this.originalCardinality
-      || this.usage !== this.originalUsage;
+      || this.usage !== this.originalUsage
+      || this.facetable !== this.originalFacetable;
   }
 
   // True if this property's own fields changed OR any descendant did -- deliberately broad, so a
@@ -73,6 +76,7 @@ class PropertyDefinitionViewModel {
     this.type = this.originalType;
     this.cardinality = this.originalCardinality;
     this.usage = this.originalUsage;
+    this.facetable = this.originalFacetable;
     this.isDeleted = false;
   }
 
@@ -101,6 +105,7 @@ class PropertyDefinitionViewModel {
       type: p.type,
       cardinality: p.cardinality,
       usage: p.usage,
+      facetable: p.facetable ?? false,
       validCardinalities: typeInfo?.validCardinalities ?? [p.cardinality],
       definedIn,
       controlledListId: p.controlledListId ?? null,

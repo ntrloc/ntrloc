@@ -9,11 +9,11 @@ import java.util.UUID;
 
 public record ScalarAdminPropertyDefinitionView(
         UUID id, String name, String description, PropertyType type, PropertyCardinality cardinality,
-        PropertyUsage usage, DefinedInView definedIn, UUID controlledListId
+        PropertyUsage usage, DefinedInView definedIn, UUID controlledListId, boolean facetable
 ) implements AdminPropertyDefinitionView {
 
     @Override
     public AdminPropertyDefinitionView withDefinedIn(DefinedInView definedIn) {
-        return new ScalarAdminPropertyDefinitionView(id, name, description, type, cardinality, usage, definedIn, controlledListId);
+        return new ScalarAdminPropertyDefinitionView(id, name, description, type, cardinality, usage, definedIn, controlledListId, facetable);
     }
 }

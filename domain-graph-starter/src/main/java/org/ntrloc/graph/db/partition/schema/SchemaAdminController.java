@@ -88,6 +88,11 @@ public class SchemaAdminController {
             }
             controlledListManager.setPropertyControlledList(propertyId, listId);
         }
+        // ControlledListManager writes go straight to the DB, bypassing schemaManager.applyMutations
+        // entirely -- without this, GET /api/admin/schema (and every connected admin UI tab's SSE
+        // refresh) would keep serving the pre-write schema snapshot indefinitely. See
+        // SchemaManager.refreshCache's own comment for the full story.
+        schemaManager.refreshCache();
         var finalList = controlledListManager.getListForProperty(propertyId).orElseThrow();
         var values = controlledListManager.getValues(finalList.id(), finalList.valueType());
         return ResponseEntity.status(HttpStatus.OK)

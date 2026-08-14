@@ -186,18 +186,20 @@ public class SchemaRepository {
 
     // --- Properties ---
 
-    public AdminPropertyDefinitionView createProperty(String name, String description, PropertyType type, PropertyCardinality cardinality, PropertyUsage usage) {
-        return jdbcClient.sql("INSERT INTO schema_property (name, description, type, cardinality, usage) VALUES (:name, :description, :type, :cardinality, :usage) RETURNING *")
+    public AdminPropertyDefinitionView createProperty(String name, String description, PropertyType type, PropertyCardinality cardinality, PropertyUsage usage, boolean facetable) {
+        return jdbcClient.sql("INSERT INTO schema_property (name, description, type, cardinality, usage, facetable) VALUES (:name, :description, :type, :cardinality, :usage, :facetable) RETURNING *")
                 .param("name", name).param(PARAM_DESCRIPTION, description)
                 .param("type", type.name()).param(PARAM_CARDINALITY, cardinality.name()).param(PARAM_USAGE, usage.name())
+                .param("facetable", facetable)
                 .query(this::mapProperty)
                 .single();
     }
 
-    public AdminPropertyDefinitionView updateProperty(UUID id, String name, String description, PropertyType type, PropertyCardinality cardinality, PropertyUsage usage) {
-        return jdbcClient.sql("UPDATE schema_property SET name = :name, description = :description, type = :type, cardinality = :cardinality, usage = :usage WHERE id = :id RETURNING *")
+    public AdminPropertyDefinitionView updateProperty(UUID id, String name, String description, PropertyType type, PropertyCardinality cardinality, PropertyUsage usage, boolean facetable) {
+        return jdbcClient.sql("UPDATE schema_property SET name = :name, description = :description, type = :type, cardinality = :cardinality, usage = :usage, facetable = :facetable WHERE id = :id RETURNING *")
                 .param("id", id).param("name", name).param(PARAM_DESCRIPTION, description)
                 .param("type", type.name()).param(PARAM_CARDINALITY, cardinality.name()).param(PARAM_USAGE, usage.name())
+                .param("facetable", facetable)
                 .query(this::mapProperty)
                 .single();
     }
@@ -529,6 +531,7 @@ public class SchemaRepository {
                 PropertyUsage.valueOf(rs.getString(PARAM_USAGE)),
                 null,
                 rs.getObject("controlled_list_id", UUID.class),
+                rs.getBoolean("facetable"),
                 List.of()
         );
     }

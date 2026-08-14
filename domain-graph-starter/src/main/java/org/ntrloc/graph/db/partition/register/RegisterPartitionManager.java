@@ -138,11 +138,31 @@ public class RegisterPartitionManager implements SchemaChangeListener {
         return schemaManager.getAdminSchema().items().stream()
                 .filter(item -> item.id().equals(itemTypeId))
                 .findFirst()
-                .map(item -> item.properties().stream()
-                        .filter(p -> isTermsFacetable(p.type(), p.cardinality(), p.controlledListId()))
-                        .map(AdminPropertyDefinitionView::name)
-                        .toList())
+                .map(item -> collectFacetableFieldNames(item.properties(), ""))
                 .orElse(List.of());
+    }
+
+    // Recurses into OBJECT properties so a nested facetable property (e.g. "additionalDetails.
+    // reviewStatus") is auto-discovered by facets: [] the same as a top-level one, using the same
+    // dot-path naming resolvePropertyId already understands for explicit facet requests -- this is
+    // the only piece that was missing; querying a dot-path facet has worked since dot-notation was
+    // added. An OBJECT property is itself never facetable (isTermsFacetable always rejects it, no
+    // controlled list/BOOLEAN type applies), so it's only ever a container to recurse through here,
+    // never added to the result itself. No cardinality guard needed on the recursion: OBJECT's own
+    // valid cardinalities are SINGLE-only (PropertyType.validCardinalities), so a repeating group of
+    // nested objects -- which would make a child's value multi-valued per item, the same ambiguity
+    // LIST cardinality already rules out for a scalar -- can't occur here.
+    private List<String> collectFacetableFieldNames(List<AdminPropertyDefinitionView> properties, String pathPrefix) {
+        List<String> names = new ArrayList<>();
+        for (AdminPropertyDefinitionView p : properties) {
+            String qualifiedName = pathPrefix.isEmpty() ? p.name() : pathPrefix + "." + p.name();
+            if (isTermsFacetable(p)) {
+                names.add(qualifiedName);
+            } else if (p instanceof ObjectAdminPropertyDefinitionView object) {
+                names.addAll(collectFacetableFieldNames(object.properties(), qualifiedName));
+            }
+        }
+        return names;
     }
 
     private List<String> resolveRequestedFacets(CollectionProjectionSpec spec, UUID itemTypeId) {
@@ -151,13 +171,20 @@ public class RegisterPartitionManager implements SchemaChangeListener {
         return spec.facets();
     }
 
-    private boolean isTermsFacetable(PropertyType type, PropertyCardinality cardinality, UUID controlledListId) {
-        if (cardinality != PropertyCardinality.SINGLE) return false;
-        return switch (type) {
-            case STRING  -> controlledListId != null;
-            case BOOLEAN -> true;
-            default      -> false;
-        };
+    // Facetable is an explicit admin declaration (schema_property.facetable), not inferred purely
+    // from shape -- see SchemaMutationValidation.requireFacetableEligible's own comment on why.
+    // The structural check stays here too, not just at mutation time: it's what keeps an admin's
+    // "facetable" flag from ever being treated as usable before a controlled-list-backed
+    // property's list is actually attached (a real, normal sequencing gap in the admin workflow --
+    // attaching a list requires the property to already have an id), rather than rejecting that
+    // sequencing outright the way mutation-time validation does for combinations that could never
+    // be valid. Not restricted to STRING -- any type a controlled list can back (see the admin
+    // UI's own CONTROLLED_LIST_TYPES) is eligible once one is actually attached; BOOLEAN is the
+    // one type that's facetable without a controlled list at all, since true/false is already a
+    // closed set.
+    private boolean isTermsFacetable(AdminPropertyDefinitionView p) {
+        if (!p.facetable() || p.cardinality() != PropertyCardinality.SINGLE) return false;
+        return p.type() == PropertyType.BOOLEAN || p.controlledListId() != null;
     }
 
     // Each dot-separated segment (one per level of OBJECT-property nesting) follows the same

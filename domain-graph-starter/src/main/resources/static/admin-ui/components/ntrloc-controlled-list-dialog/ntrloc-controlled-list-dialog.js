@@ -101,19 +101,29 @@ function openControlledListDialog(prop, pendingValues) {
         });
       });
 
+      // Only present once state.loading is false -- renderContent()'s markup renders "Loading..."
+      // in place of the whole add-row while the initial fetch is in flight (see below), so the
+      // very first wireContent() call (always while still loading, for any property with no
+      // pendingValues already staged) used to crash here unconditionally, before dialog.open =
+      // true ever ran -- the dialog was created and populated but never actually shown, and the
+      // click handler's await threw a silent, unhandled rejection. Guarding this block is what
+      // lets that first call return cleanly; the second renderContent() call once the fetch
+      // resolves finds the add-row present and wires it normally.
       const newValueInput = dialog.querySelector('.new-value-input');
       const newLabelInput = dialog.querySelector('.new-label-input');
-      const addValue = () => {
-        const value = newValueInput.value.trim();
-        if (!value) return;
-        state.values.push({ value, label: newLabelInput.value.trim() || null });
-        state.newValue = '';
-        state.newLabel = '';
-        renderContent();
-      };
-      newValueInput.addEventListener('keydown', (event) => { if (event.key === 'Enter') addValue(); });
-      newLabelInput.addEventListener('keydown', (event) => { if (event.key === 'Enter') addValue(); });
-      dialog.querySelector('.add-value-button').addEventListener('click', addValue);
+      if (newValueInput && newLabelInput) {
+        const addValue = () => {
+          const value = newValueInput.value.trim();
+          if (!value) return;
+          state.values.push({ value, label: newLabelInput.value.trim() || null });
+          state.newValue = '';
+          state.newLabel = '';
+          renderContent();
+        };
+        newValueInput.addEventListener('keydown', (event) => { if (event.key === 'Enter') addValue(); });
+        newLabelInput.addEventListener('keydown', (event) => { if (event.key === 'Enter') addValue(); });
+        dialog.querySelector('.add-value-button').addEventListener('click', addValue);
+      }
     }
 
     dialog.innerHTML = `

@@ -210,21 +210,31 @@ injectStyles('ntrloc-search-styles', `
     border-color: var(--accent);
     color: #fff;
   }
+  /* flex-wrap, not grid -- a grid's auto-fill/minmax tracks are all the SAME width, which is
+     right for a row of scalar properties alone but wrong once an OBJECT property (see
+     .object-property-row below) needs to size to its own content instead of stretching to fill
+     a uniform column. flex-wrap lets every row claim only the width it actually needs and wrap
+     onto a new line once the row runs out of room, scalar and object properties side by side. */
   .prop-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    display: flex;
+    flex-wrap: wrap;
     font-size: 13px;
     padding: 4px 0;
   }
   /* Label above value, not beside it -- reads better once an OBJECT property is in the mix
      (see .object-property-row below): a fixed-width side-by-side key column has no good answer
      for "the value is itself a whole nested panel", where stacking does. Kept for every property
-     now, not just object-typed ones, so a card doesn't mix two different row shapes side by side. */
+     now, not just object-typed ones, so a card doesn't mix two different row shapes side by side.
+     flex-basis/min-width here is the top-level default (a bare item card's own .prop-grid);
+     :where(.nested-object-grid) below overrides both to a smaller basis for nested OBJECT
+     properties' own fields, same as the old grid's separate minmax value did. */
   .prop-row {
     display: flex;
     flex-direction: column;
     gap: 3px;
     padding: 6px 14px;
+    flex: 1 1 300px;
+    min-width: 300px;
   }
   .prop-row:hover {
     background: rgba(74, 158, 255, 0.04);
@@ -327,6 +337,25 @@ injectStyles('ntrloc-search-styles', `
      <summary> (the actual toggle) rather than inside the value, matching every other row's own
      label-above-value shape -- the property's *name* is what's being expanded, same as a link
      group's name is above. */
+  /* Deliberately NOT opted out of .prop-row's flex-grow/basis -- an OBJECT property's panel
+     shares leftover row space evenly with its scalar siblings (same flex-grow:1 from the base
+     .prop-row rule, and the same 300px/140px/200px basis-by-context from :where() below) rather
+     than sizing to bare content and leaving every extra pixel to the siblings around it. Its own
+     content still reflows to whatever width it ends up with -- .nested-object-grid inside is
+     itself flex-wrap, so a narrower share just re-wraps its fields into fewer columns rather than
+     overflowing. max-width is still worth stating explicitly here: unlike a scalar row's text, a
+     deeply nested panel's content can genuinely want more than an even share, and this is the
+     backstop that keeps it from ever exceeding whatever contains it even then.
+     min-width IS reset back to auto, though -- the 300px/140px/200px floor exists to keep a
+     scalar's label+value readable, which doesn't apply to a collapsed "chevron + short label +
+     (N fields)" summary the way it does to actual text. Letting an OBJECT panel shrink to its own
+     min-content keeps a short one from being padded out to a scalar-sized floor it never needed,
+     while flex-grow above still lets it expand and share space evenly whenever there's room. */
+  .prop-row.object-property-row,
+  .prop-row.object-property-edit-row {
+    min-width: auto;
+    max-width: 100%;
+  }
   .object-property-row {
     cursor: pointer;
   }
@@ -366,22 +395,18 @@ injectStyles('ntrloc-search-styles', `
   }
   /* A visibly distinct box (background + border), not just an indent -- this *is* the value now,
      for a row whose value is a whole nested panel rather than a line of text, so it needs to read
-     as content rather than as a sub-list. Its own auto-fill minimum is much smaller than the
-     outer .prop-grid's (140px vs 300px): a nested box is narrower to begin with, and its fields
-     (a schema-fixed set of short, known identifiers) don't need anywhere near 300px each to lay
-     out several per row the way a top-level card, sized for arbitrary property names, does. */
+     as content rather than as a sub-list. display:flex/flex-wrap comes from also carrying the
+     .prop-grid class (renderObjectPropRow's own markup); its fields size the same as any other
+     .prop-row -- no separate basis/min-width for nested scalars anymore (a scalar's minimum
+     readable width doesn't depend on how deep it's nested, only on it being a scalar at all --
+     see .prop-row.object-property-row's own min-width: auto opt-out above for the one case that
+     genuinely does differ). */
   .nested-object-grid {
-    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
     margin-top: 8px;
     padding: 10px 12px;
     background: rgba(255, 255, 255, 0.03);
     border: 1px solid var(--border);
     border-radius: 6px;
-  }
-  /* Wider minimum than the read-only .nested-object-grid -- a bare label+value pair can fit in
-     140px, but an <input> needs more breathing room to stay usable. */
-  .nested-object-grid.is-editing {
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   }
   /* An OBJECT property's editable form, standing in for renderObjectPropRow's <details> -- no
      collapse here, since edit mode exists precisely so the user can reach every leaf, and a
@@ -1424,13 +1449,14 @@ class NtrlocSearch extends HTMLElement {
     const canEditProps = item.permissions?.edit?.length > 0;
     const canDelete = !!item.permissions?.delete;
 
-    const propEntries = Object.entries(item.properties).sort((a, b) => a[0].localeCompare(b[0]));
+    const propEntries = this.sortPropEntries(Object.entries(item.properties));
     let rows;
     let editCount = 0;
     if (isEditing) {
-      const topKeys = Array.from(new Set(Object.keys(edit.values))).sort();
-      rows = topKeys.map(key => this.renderEditableRow(pane, edit, [key])).join('');
-      for (const key of topKeys) {
+      const topKeys = Array.from(new Set(Object.keys(edit.values)));
+      const topEntries = this.sortPropEntries(topKeys.map(key => [key, getAtPath(edit.values, [key])]));
+      rows = topEntries.map(([key]) => this.renderEditableRow(pane, edit, [key])).join('');
+      for (const [key] of topEntries) {
         editCount += this.diffEditedValue(edit.values[key], item.properties[key], edit.removed, [key]).leafCount;
       }
     } else {
@@ -1533,7 +1559,7 @@ class NtrlocSearch extends HTMLElement {
   // Item section alone -- no unlink button here anymore (see renderLinkedItemCard's own comment
   // on why it moved out to the card's action rail instead).
   renderNestedItemSection(linkedItem, shortId, title) {
-    const propEntries = Object.entries(linkedItem.properties || {}).sort((a, b) => a[0].localeCompare(b[0]));
+    const propEntries = this.sortPropEntries(Object.entries(linkedItem.properties || {}));
     return `
       <div class="nested-item-section">
         <div class="nested-item-header">
@@ -1556,9 +1582,9 @@ class NtrlocSearch extends HTMLElement {
     const title = linkedItem.displayLabel || linkedItem.itemType;
     // Only properties the link actually has a value for -- propertyDefs is every property the
     // link TYPE could carry, not every property THIS link instance has actually set.
-    const linkPropEntries = (propertyDefs || [])
+    const linkPropEntries = this.sortPropEntries((propertyDefs || [])
       .filter(p => linkEntry.properties && linkEntry.properties[p.name] !== undefined && linkEntry.properties[p.name] !== null)
-      .map(p => [p.name, linkEntry.properties[p.name]]);
+      .map(p => [p.name, linkEntry.properties[p.name]]));
     const itemSection = this.renderNestedItemSection(linkedItem, shortId, title);
 
     const linkPropertiesSection = `
@@ -1610,14 +1636,34 @@ class NtrlocSearch extends HTMLElement {
     `;
   }
 
+  // Same "does this render as a nested panel or a flat value" test renderPropRow branches on --
+  // factored out so the scalar/object split used for display *ordering* (sortPropEntries below)
+  // can never drift out of sync with what actually decides *how* a property renders. Arrays
+  // (LIST/SET cardinality) and binary refs are objects in JS but render as plain values, same as
+  // any scalar, so both count as "scalar" for ordering purposes too.
+  isObjectProperty(val) {
+    return !!(val && typeof val === 'object' && !Array.isArray(val) && !(val.mimeType && val.url));
+  }
+
+  // Scalar properties before OBJECT ones, alphabetical within each group -- so display order
+  // tracks the same scalar/object distinction that already governs each property's shape, rather
+  // than whatever order the schema or a JSON object's own keys happened to produce. Takes
+  // [key, value] entries (not a plain properties object) so callers that need to sort by a value
+  // living somewhere other than the entry itself (e.g. edit-mode's edit.values, keyed separately
+  // from the schema-defined keys) can build entries however they need to first.
+  sortPropEntries(entries) {
+    const scalars = entries.filter(([, v]) => !this.isObjectProperty(v)).sort((a, b) => a[0].localeCompare(b[0]));
+    const objects = entries.filter(([, v]) => this.isObjectProperty(v)).sort((a, b) => a[0].localeCompare(b[0]));
+    return [...scalars, ...objects];
+  }
+
   // Renders one property as a label-above-value cell. A nested OBJECT property's value gets a
   // fundamentally different shape from a scalar one -- the property's own name doubles as a
   // disclosure toggle (chevron sits right next to the label, not buried down in the value), so
   // that case is a <details> covering the *whole* cell (see renderObjectPropRow), not something
-  // decided inside the value alone. Arrays (LIST/SET cardinality) and binary refs are still plain
-  // values here, same as any scalar.
+  // decided inside the value alone.
   renderPropRow(key, val) {
-    if (val && typeof val === 'object' && !Array.isArray(val) && !(val.mimeType && val.url)) {
+    if (this.isObjectProperty(val)) {
       return this.renderObjectPropRow(key, val);
     }
     return `
@@ -1641,7 +1687,7 @@ class NtrlocSearch extends HTMLElement {
   // renderLinkGroups' linked items, which the backend only ever returns one level deep, this is
   // client-side recursion over data the projection already returned in full).
   renderObjectPropRow(key, val) {
-    const entries = Object.entries(val).sort((a, b) => a[0].localeCompare(b[0]));
+    const entries = this.sortPropEntries(Object.entries(val));
     const hint = entries.length === 0 ? '(empty)' : `(${entries.length} field${entries.length === 1 ? '' : 's'})`;
     return `
       <details class="prop-row object-property-row">
@@ -1705,7 +1751,7 @@ class NtrlocSearch extends HTMLElement {
   renderEditableObjectRow(pane, edit, path, val, def) {
     const pathKey = path.join('.');
     const key = path[path.length - 1];
-    const childKeys = Object.keys(val).sort();
+    const childKeys = this.sortPropEntries(Object.entries(val)).map(([k]) => k);
     const childDefs = def?.properties || [];
     const available = childDefs.filter(p => !childKeys.includes(p.name));
     return `

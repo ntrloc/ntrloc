@@ -12,7 +12,7 @@ import java.util.UUID;
 // level down: the parent is a property instead of an item/link type. properties is recursive --
 // see CreatePropertyDefinitionMutation's own comment -- so a new grandchild subtree can be
 // created together with this new child in one call.
-public record CreatePropertyPropertyDefinitionMutation(UUID parentPropertyId, String name, String description, PropertyType propertyType, PropertyCardinality cardinality, PropertyUsage usage, List<CreatePropertyDefinitionMutation> properties) implements DefinitionMutation {
+public record CreatePropertyPropertyDefinitionMutation(UUID parentPropertyId, String name, String description, PropertyType propertyType, PropertyCardinality cardinality, PropertyUsage usage, boolean facetable, List<CreatePropertyDefinitionMutation> properties) implements DefinitionMutation {
     public CreatePropertyPropertyDefinitionMutation {
         if (properties == null) properties = List.of();
     }

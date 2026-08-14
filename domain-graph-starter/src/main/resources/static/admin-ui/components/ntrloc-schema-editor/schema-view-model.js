@@ -23,7 +23,7 @@ function onSchemaViewModelChange(listener) {
 function toCreatePropertySpec(prop) {
   return {
     name: prop.name, description: prop.description,
-    propertyType: prop.type, cardinality: prop.cardinality, usage: prop.usage,
+    propertyType: prop.type, cardinality: prop.cardinality, usage: prop.usage, facetable: prop.facetable,
     properties: prop.properties.map(toCreatePropertySpec),
   };
 }
@@ -51,7 +51,7 @@ function collectNestedPropertyMutations(properties, ops, parentPropertyId) {
       continue; // a deleted property's own (soon-to-be-orphaned) children aren't walked further
     }
     if (prop.ownFieldsDirty) {
-      ops.push({ type: 'UPDATE_PROPERTY', id: prop.id, name: prop.name, description: prop.description, propertyType: prop.type, cardinality: prop.cardinality, usage: prop.usage });
+      ops.push({ type: 'UPDATE_PROPERTY', id: prop.id, name: prop.name, description: prop.description, propertyType: prop.type, cardinality: prop.cardinality, usage: prop.usage, facetable: prop.facetable });
     }
     collectNestedPropertyMutations(prop.properties, ops, prop.id);
   }
@@ -306,7 +306,7 @@ const schemaViewModel = {
           ops.push({ type: 'DELETE_PROPERTY', id: prop.id });
           continue;
         } else if (prop.ownFieldsDirty) {
-          ops.push({ type: 'UPDATE_PROPERTY', id: prop.id, name: prop.name, description: prop.description, propertyType: prop.type, cardinality: prop.cardinality, usage: prop.usage });
+          ops.push({ type: 'UPDATE_PROPERTY', id: prop.id, name: prop.name, description: prop.description, propertyType: prop.type, cardinality: prop.cardinality, usage: prop.usage, facetable: prop.facetable });
         }
         collectNestedPropertyMutations(prop.properties, ops, prop.id);
       }
@@ -327,7 +327,7 @@ const schemaViewModel = {
                 ops.push({ type: 'DELETE_PROPERTY', id: prop.id });
                 continue;
               } else if (prop.ownFieldsDirty) {
-                ops.push({ type: 'UPDATE_PROPERTY', id: prop.id, name: prop.name, description: prop.description, propertyType: prop.type, cardinality: prop.cardinality, usage: prop.usage });
+                ops.push({ type: 'UPDATE_PROPERTY', id: prop.id, name: prop.name, description: prop.description, propertyType: prop.type, cardinality: prop.cardinality, usage: prop.usage, facetable: prop.facetable });
               }
               collectNestedPropertyMutations(prop.properties, ops, prop.id);
             }
