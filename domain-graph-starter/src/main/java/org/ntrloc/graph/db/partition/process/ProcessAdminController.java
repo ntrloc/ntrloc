@@ -60,10 +60,26 @@ public class ProcessAdminController {
     @GetMapping("/definitions")
     ResponseEntity<List<ProcessDefinitionView>> getDefinitions() {
         List<ProcessDefinitionView> definitions = repositoryService.createProcessDefinitionQuery()
+                .latestVersion()
                 .list().stream()
                 .map(this::toView)
                 .toList();
         return ResponseEntity.ok(definitions);
+    }
+
+    // Full version history for one key, unlike getDefinitions() above (which now only shows each
+    // key's latest via .latestVersion()) -- for a "Version History" panel in the editor. Same path
+    // as deployNewVersion below, distinguished by HTTP method (GET vs POST), not a separate route.
+    // Ordered oldest-to-newest since Flowable's own version numbers already encode that ordering.
+    @GetMapping("/definitions/{key}/versions")
+    ResponseEntity<List<ProcessDefinitionView>> getVersions(@PathVariable String key) {
+        List<ProcessDefinitionView> versions = repositoryService.createProcessDefinitionQuery()
+                .processDefinitionKey(key)
+                .orderByProcessDefinitionVersion().asc()
+                .list().stream()
+                .map(this::toView)
+                .toList();
+        return ResponseEntity.ok(versions);
     }
 
     // id is a query param, not a path variable: Flowable's own definition ids follow the format

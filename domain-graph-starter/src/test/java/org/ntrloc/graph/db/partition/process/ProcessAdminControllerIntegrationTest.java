@@ -58,20 +58,39 @@ class ProcessAdminControllerIntegrationTest extends AbstractIntegrationTest {
     private static final String TEST_KEY = "adminEditorTestProcess";
 
     @Test
-    void deployingModifiedXmlCreatesANewVersion() {
+    void deployingModifiedXmlReplacesTheVisibleDefinitionForThatKey() {
         deploy(TEST_KEY, "Admin Editor Test", "v1");
-        int versionsBefore = (int) fetchDefinitions().stream().filter(d -> d.key().equals(TEST_KEY)).count();
 
         ProcessDefinitionView deployed = deploy(TEST_KEY, "Admin Editor Test, Edited", "v2");
 
         assertThat(deployed.key()).isEqualTo(TEST_KEY);
         assertThat(deployed.name()).isEqualTo("Admin Editor Test, Edited");
 
-        List<ProcessDefinitionView> versions = fetchDefinitions().stream()
+        // getDefinitions() now filters to latestVersion() -- deploying v2 replaces v1 in this
+        // list, it doesn't add alongside it. Full history is a separate concern (see
+        // versionsEndpoint_returnsFullHistoryOldestToNewest below).
+        List<ProcessDefinitionView> visible = fetchDefinitions().stream()
                 .filter(d -> d.key().equals(TEST_KEY))
                 .toList();
-        assertThat(versions).hasSize(versionsBefore + 1);
-        assertThat(versions).anyMatch(d -> d.id().equals(deployed.id()));
+        assertThat(visible).hasSize(1);
+        assertThat(visible.get(0).id()).isEqualTo(deployed.id());
+    }
+
+    private static final String VERSIONS_ENDPOINT_TEST_KEY = "adminEditorVersionsEndpointTestProcess";
+
+    @Test
+    void versionsEndpoint_returnsFullHistoryOldestToNewest() {
+        ProcessDefinitionView v1 = deploy(VERSIONS_ENDPOINT_TEST_KEY, "Versions Endpoint Test", "v1");
+        ProcessDefinitionView v2 = deploy(VERSIONS_ENDPOINT_TEST_KEY, "Versions Endpoint Test, Edited", "v2");
+
+        ProcessDefinitionView[] versions = webTestClient.get()
+                .uri("/api/admin/process/definitions/{key}/versions", VERSIONS_ENDPOINT_TEST_KEY)
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(ProcessDefinitionView[].class)
+                .returnResult().getResponseBody();
+
+        assertThat(versions).extracting(ProcessDefinitionView::id).containsExactly(v1.id(), v2.id());
     }
 
     // --- Start process instance ---
