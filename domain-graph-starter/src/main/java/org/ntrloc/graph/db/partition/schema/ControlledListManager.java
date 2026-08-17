@@ -6,7 +6,10 @@ import org.springframework.boot.sql.init.dependency.DependsOnDatabaseInitializat
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -60,6 +63,37 @@ public class ControlledListManager {
                 .update();
     }
 
+    public record ValueEntry(Object value, String label) {}
+
+    // Batches into multi-row INSERTs so seeding large lists doesn't pay a network
+    // round trip per value (49k individual inserts over a tunneled connection is minutes;
+    // batched it's seconds).
+    private static final int BATCH_SIZE = 1000;
+
+    public void addValues(UUID listId, List<ValueEntry> entries) {
+        if (entries.isEmpty()) {
+            return;
+        }
+        String tableName = tableNameFor(listId);
+        for (int start = 0; start < entries.size(); start += BATCH_SIZE) {
+            List<ValueEntry> batch = entries.subList(start, Math.min(start + BATCH_SIZE, entries.size()));
+            StringBuilder sql = new StringBuilder("INSERT INTO ").append(tableName)
+                    .append(" (value, label, sort_order) VALUES ");
+            Map<String, Object> params = new HashMap<>();
+            for (int i = 0; i < batch.size(); i++) {
+                if (i > 0) {
+                    sql.append(", ");
+                }
+                sql.append("(:value").append(i).append(", :label").append(i).append(", :sortOrder").append(i).append(")");
+                ValueEntry entry = batch.get(i);
+                params.put("value" + i, entry.value());
+                params.put(PARAM_LABEL + i, entry.label());
+                params.put("sortOrder" + i, start + i);
+            }
+            jdbcClient.sql(sql.toString()).params(params).update();
+        }
+    }
+
     public List<AllowedValue> getValues(UUID listId, PropertyType valueType) {
         return jdbcClient.sql("SELECT value, label FROM %s ORDER BY sort_order, value"
                         .formatted(tableNameFor(listId)))
@@ -91,22 +125,18 @@ public class ControlledListManager {
     }
 
     public void replaceValues(UUID listId, PropertyType valueType, List<ReplaceControlledListMutation.Entry> entries) {
-        String tableName = tableNameFor(listId);
-        jdbcClient.sql("DELETE FROM " + tableName).update();
-        int order = 0;
+        jdbcClient.sql("DELETE FROM " + tableNameFor(listId)).update();
+        List<ValueEntry> typed = new ArrayList<>(entries.size());
         for (var entry : entries) {
-            Object typed = switch (valueType) {
+            Object value = switch (valueType) {
                 case STRING -> entry.value();
                 case INT    -> Integer.parseInt(entry.value());
                 case LONG   -> Long.parseLong(entry.value());
                 default -> throw new IllegalArgumentException("Unsupported controlled list type: " + valueType);
             };
-            jdbcClient.sql("INSERT INTO %s (value, label, sort_order) VALUES (:value, :label, :sortOrder)".formatted(tableName))
-                    .param(PARAM_VALUE, typed)
-                    .param(PARAM_LABEL, entry.label())
-                    .param("sortOrder", order++)
-                    .update();
+            typed.add(new ValueEntry(value, entry.label()));
         }
+        addValues(listId, typed);
     }
 
     public void setPropertyControlledList(UUID propertyId, UUID listId) {

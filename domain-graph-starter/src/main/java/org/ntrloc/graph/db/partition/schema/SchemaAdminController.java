@@ -82,10 +82,9 @@ public class SchemaAdminController {
         } else {
             var list = controlledListManager.createList(body.name(), PropertyType.STRING);
             listId = list.id();
-            int i = 0;
-            for (var entry : body.values()) {
-                controlledListManager.addValue(listId, entry.value(), entry.label(), i++);
-            }
+            controlledListManager.addValues(listId, body.values().stream()
+                    .map(e -> new ControlledListManager.ValueEntry(e.value(), e.label()))
+                    .toList());
             controlledListManager.setPropertyControlledList(propertyId, listId);
         }
         // ControlledListManager writes go straight to the DB, bypassing schemaManager.applyMutations
