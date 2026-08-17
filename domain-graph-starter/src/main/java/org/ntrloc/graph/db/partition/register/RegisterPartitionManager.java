@@ -7,6 +7,7 @@ import org.ntrloc.graph.db.projection.AndPredicate;
 import org.ntrloc.graph.db.projection.CollectionProjectionSpec;
 import org.ntrloc.graph.db.projection.FacetBucket;
 import org.ntrloc.graph.db.projection.FacetFilter;
+import org.ntrloc.graph.db.projection.LinkProjectionSpec;
 import org.ntrloc.graph.db.projection.NotPredicate;
 import org.ntrloc.graph.db.projection.Predicate;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
@@ -39,6 +40,7 @@ import org.ntrloc.graph.db.projection.DateRangeFacetFilter;
 import org.ntrloc.graph.db.projection.StateValuePredicate;
 import org.ntrloc.graph.db.projection.TermsFacetFilter;
 import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -292,7 +294,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                 .findFirst()
                 .map(AdminItemDefinitionView::stateMachines)
                 .orElse(null);
-        return new ProjectionResult(assembleProjectedItems(rawItems, ownPropertyNames, stateMachines, binaryBaseUrl), totalCount, facetedCount, facets, stateMachineFacets);
+        return new ProjectionResult(assembleProjectedItems(rawItems, ownPropertyNames, stateMachines, binaryBaseUrl, spec.links()), totalCount, facetedCount, facets, stateMachineFacets);
     }
 
     // --- Cross-type (trait/supertype-scoped) queries ---
@@ -408,7 +410,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
         }
 
         var items = assembleProjectedItems(rawItems, mergedPropertyNames,
-                mergedStateMachines.isEmpty() ? null : mergedStateMachines, binaryBaseUrl);
+                mergedStateMachines.isEmpty() ? null : mergedStateMachines, binaryBaseUrl, spec.links());
         return new ProjectionResult(items, totalCount, facetedCount, facets, stateMachineFacets);
     }
 
@@ -602,6 +604,11 @@ public class RegisterPartitionManager implements SchemaChangeListener {
     }
 
     public Optional<ProjectedItem> projectOne(UUID itemTypeId, UUID itemId, String binaryBaseUrl) {
+        return projectOne(itemTypeId, itemId, binaryBaseUrl, null);
+    }
+
+    public Optional<ProjectedItem> projectOne(UUID itemTypeId, UUID itemId, String binaryBaseUrl,
+                                               @Nullable Map<String, LinkProjectionSpec> requestedLinks) {
         List<RawItem> rawItems = jdbcClient.sql("""
                 SELECT ri.id AS register_item_id, ri.item_id, si.name AS item_type, rt.properties::text AS properties, rt.states::text AS states
                 FROM register_item ri
@@ -630,7 +637,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                 .findFirst()
                 .map(AdminItemDefinitionView::stateMachines)
                 .orElse(null);
-        return Optional.of(assembleProjectedItems(rawItems, ownPropertyNames, stateMachines, binaryBaseUrl).get(0));
+        return Optional.of(assembleProjectedItems(rawItems, ownPropertyNames, stateMachines, binaryBaseUrl, requestedLinks).get(0));
     }
 
     // --- Write side: staged at prepare (UNCOMMITTED), flipped/cleaned up at commit/abort ---
@@ -1131,16 +1138,18 @@ public class RegisterPartitionManager implements SchemaChangeListener {
         return itemId.toString();
     }
 
-    // ownPropertyNames/stateMachines are pre-resolved by the caller rather than looked up here from
-    // a single itemTypeId -- the single-table project()/projectOne() resolve them from their one
-    // known type; projectAcrossTypes resolves a merged view across every branch instead (property
-    // ids are globally unique across the whole schema, so a plain union of each branch's own
-    // lookup is a safe, unambiguous merge -- an over-inclusive stateMachines list is likewise safe,
-    // since buildProjectedItemStates already skips any machine a given row's states don't mention).
-    private List<ProjectedItem> assembleProjectedItems(List<RawItem> rawItems, Map<UUID, List<String>> ownPropertyNames,
-                                                         List<AdminStateMachineView> stateMachines, String binaryBaseUrl) {
-        List<UUID> rawItemIds = rawItems.stream().map(RawItem::registerItemId).toList();
-        Map<String, String> displayLabelPatterns = resolveEffectiveDisplayLabelPatterns();
+    // requestedLinks == null: today's original single-hop behavior, unchanged -- every direct
+    // link, unfiltered, each linked item's own `links` left empty (Map.of()). requestedLinks !=
+    // null: only the named perspectives come back, and any entry whose own LinkProjectionSpec
+    // carries a non-empty `links` recurses exactly one more batched round trip for that
+    // perspective's linked items -- never per item, so query count scales with depth actually
+    // requested, not with result size. A perspective named in requestedLinks with no matching rows,
+    // or with a spec whose own `links` is null/empty, simply doesn't recurse further.
+    private Map<UUID, Map<String, List<ProjectedLink>>> fetchLinksByItem(
+            List<UUID> myRegisterItemIds, @Nullable Map<String, LinkProjectionSpec> requestedLinks) {
+        if (myRegisterItemIds.isEmpty() || (requestedLinks != null && requestedLinks.isEmpty())) {
+            return Map.of();
+        }
 
         List<LinkRow> linkRows = jdbcClient.sql("""
                 SELECT
@@ -1162,8 +1171,10 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                 JOIN schema_item                   si_other    ON si_other.id = ri_other.item_type_id
                 WHERE ri_mine.id IN (:rawItemIds)
                   AND ri_mine.state = 'COMMITTED'
-                """)
-                .param("rawItemIds", rawItemIds)
+                  %s
+                """.formatted(requestedLinks != null ? "AND silp_mine.name IN (:perspectiveNames)" : ""))
+                .param("rawItemIds", myRegisterItemIds)
+                .param("perspectiveNames", requestedLinks != null ? List.copyOf(requestedLinks.keySet()) : List.of())
                 .query((rs, n) -> new LinkRow(
                         rs.getObject("my_register_item_id", UUID.class),
                         rs.getString("perspective_name"),
@@ -1175,6 +1186,10 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                         rs.getObject("linked_item_type_id", UUID.class),
                         rs.getString("linked_item_type")))
                 .list();
+
+        if (linkRows.isEmpty()) {
+            return Map.of();
+        }
 
         Map<UUID, Map<String, Object>> linkedItemProperties = fetchPropertiesByRegisterItemId(
                 linkRows.stream().collect(Collectors.groupingBy(
@@ -1188,7 +1203,29 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                         Collectors.mapping(LinkRow::registerLinkId, Collectors.toList()))),
                 COL_REGISTER_LINK_ID);
 
-        Map<UUID, Map<String, List<ProjectedLink>>> linksByItem = linkRows.stream()
+        Map<UUID, Map<String, List<ProjectedLink>>> nestedLinksByLinkedRegisterItemId = Map.of();
+        if (requestedLinks != null) {
+            Map<String, List<LinkRow>> rowsByPerspective = linkRows.stream()
+                    .collect(Collectors.groupingBy(LinkRow::perspectiveName));
+            Map<UUID, Map<String, List<ProjectedLink>>> nested = new HashMap<>();
+            for (var entry : rowsByPerspective.entrySet()) {
+                LinkProjectionSpec childSpec = requestedLinks.get(entry.getKey());
+                Map<String, LinkProjectionSpec> childLinks = childSpec != null ? childSpec.links() : null;
+                if (childLinks == null || childLinks.isEmpty()) {
+                    continue;
+                }
+                List<UUID> childRegisterItemIds = entry.getValue().stream()
+                        .map(LinkRow::linkedRegisterItemId).distinct().toList();
+                // registerItemId is globally unique across every item type, so merging per-perspective
+                // results here is safe even if two requested perspectives happened to reach the same item.
+                nested.putAll(fetchLinksByItem(childRegisterItemIds, childLinks));
+            }
+            nestedLinksByLinkedRegisterItemId = nested;
+        }
+
+        Map<String, String> displayLabelPatterns = resolveEffectiveDisplayLabelPatterns();
+        Map<UUID, Map<String, List<ProjectedLink>>> finalNestedLinks = nestedLinksByLinkedRegisterItemId;
+        return linkRows.stream()
                 .collect(Collectors.groupingBy(
                         LinkRow::myRegisterItemId,
                         Collectors.groupingBy(
@@ -1206,13 +1243,28 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                                                 row.linkedItemId(),
                                                 row.linkedItemType(),
                                                 linkedProps,
-                                                Map.of(),
+                                                finalNestedLinks.getOrDefault(row.linkedRegisterItemId(), Map.of()),
                                                 null,
                                                 null,
                                                 computeDisplayLabel(row.linkedItemId(), linkedProps, displayLabelPatterns.get(row.linkedItemType())))
                                     );
                                 },
                                 Collectors.toList()))));
+    }
+
+    // ownPropertyNames/stateMachines are pre-resolved by the caller rather than looked up here from
+    // a single itemTypeId -- the single-table project()/projectOne() resolve them from their one
+    // known type; projectAcrossTypes resolves a merged view across every branch instead (property
+    // ids are globally unique across the whole schema, so a plain union of each branch's own
+    // lookup is a safe, unambiguous merge -- an over-inclusive stateMachines list is likewise safe,
+    // since buildProjectedItemStates already skips any machine a given row's states don't mention).
+    private List<ProjectedItem> assembleProjectedItems(List<RawItem> rawItems, Map<UUID, List<String>> ownPropertyNames,
+                                                         List<AdminStateMachineView> stateMachines, String binaryBaseUrl,
+                                                         @Nullable Map<String, LinkProjectionSpec> requestedLinks) {
+        List<UUID> rawItemIds = rawItems.stream().map(RawItem::registerItemId).toList();
+        Map<String, String> displayLabelPatterns = resolveEffectiveDisplayLabelPatterns();
+
+        Map<UUID, Map<String, List<ProjectedLink>>> linksByItem = fetchLinksByItem(rawItemIds, requestedLinks);
 
         List<BinaryPropertyRow> binaryRows = jdbcClient.sql("""
                 SELECT rbp.register_item_id, sp.name AS property_name, rbp.binary_id

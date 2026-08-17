@@ -38,6 +38,7 @@ public class RegisterProjectionTestDomainInitializer implements DomainInitialize
 
     private UUID bookTypeId;
     private UUID authorTypeId;
+    private UUID publisherTypeId;
     private UUID titlePropertyId;
     private UUID pageCountPropertyId;
     private UUID inStockPropertyId;
@@ -139,6 +140,20 @@ public class RegisterProjectionTestDomainInitializer implements DomainInitialize
                         new CreatePerspectiveDefinitionMutation(authorTypeId, "books", "desc", 0, null)))));
 
         authorsPerspectiveId = findItem("RegisterProjectionTestBook").links().get("authors").get(0).id();
+
+        // Publisher, linked one hop past Author (Book -> authors -> Author -> publisher ->
+        // Publisher) -- exists purely so multi-hop requested-link tests have a real third item type
+        // to recurse into; no other test in this class needs it.
+        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(
+                "RegisterProjectionTestPublisher", "RegisterPartitionManager projection/facet test fixture",
+                List.of(property("name", PropertyType.STRING, PropertyCardinality.SINGLE)), null, false, null)));
+        publisherTypeId = findItem("RegisterProjectionTestPublisher").id();
+
+        schemaManager.applyMutations(List.of(new CreateLinkDefinitionMutation(
+                List.of(),
+                List.of(
+                        new CreatePerspectiveDefinitionMutation(authorTypeId, "publisher", "desc", 0, null),
+                        new CreatePerspectiveDefinitionMutation(publisherTypeId, "publishedAuthors", "desc", 0, null)))));
     }
 
     private CreatePropertyDefinitionMutation property(String name, PropertyType type, PropertyCardinality cardinality) {
@@ -173,6 +188,10 @@ public class RegisterProjectionTestDomainInitializer implements DomainInitialize
 
     public UUID authorTypeId() {
         return authorTypeId;
+    }
+
+    public UUID publisherTypeId() {
+        return publisherTypeId;
     }
 
     public UUID titlePropertyId() {

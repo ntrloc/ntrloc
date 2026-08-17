@@ -59,7 +59,7 @@ public class EntityManagerImpl implements EntityManager {
         }
         requireReadAccess(principal, actualItemTypeId.get(), spec.itemTypeName());
         var permissions = computePermissions(principal);
-        return registerPartitionManager.projectOne(actualItemTypeId.get(), spec.itemId(), binaryBaseUrl)
+        return registerPartitionManager.projectOne(actualItemTypeId.get(), spec.itemId(), binaryBaseUrl, spec.links())
                 .map(item -> item.withPermissions(permissions));
     }
 

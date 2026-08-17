@@ -3,6 +3,7 @@ package org.ntrloc.graph.db.projection;
 import org.springframework.lang.Nullable;
 
 import java.util.List;
+import java.util.Map;
 
 public record CollectionProjectionSpec(
         String itemTypeName,
@@ -31,8 +32,21 @@ public record CollectionProjectionSpec(
         // not defaulted in the record itself, matching how facets/facetFilters are already
         // null-checked at the point of use rather than forced to a default up front.
         @Nullable Integer offset,
-        @Nullable Integer limit
+        @Nullable Integer limit,
+        // null -- today's plain single-hop link behavior, unchanged. Non-null -- only the named
+        // perspectives, recursing into whichever entries carry their own nested links. See
+        // LinkProjectionSpec.
+        @Nullable Map<String, LinkProjectionSpec> links
 ) implements ProjectionSpec {
+
+    // Preserves every existing 10-arg call site (this was the canonical/only constructor before
+    // links was added) -- links defaults to null.
+    public CollectionProjectionSpec(String itemTypeName, @Nullable String traitName, @Nullable String sortField,
+            @Nullable String sortDirection, @Nullable Predicate filter, @Nullable List<String> facets,
+            @Nullable List<FacetFilter> facetFilters, @Nullable List<String> stateMachineFacets,
+            @Nullable Integer offset, @Nullable Integer limit) {
+        this(itemTypeName, traitName, sortField, sortDirection, filter, facets, facetFilters, stateMachineFacets, offset, limit, null);
+    }
 
     public CollectionProjectionSpec(String itemTypeName, String sortField, String sortDirection, Predicate filter) {
         this(itemTypeName, null, sortField, sortDirection, filter, null, null, null, null, null);

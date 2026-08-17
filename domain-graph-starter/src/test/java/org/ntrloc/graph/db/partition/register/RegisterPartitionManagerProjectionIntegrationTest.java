@@ -16,6 +16,7 @@ import org.ntrloc.graph.db.projection.AndPredicate;
 import org.ntrloc.graph.db.projection.CollectionProjectionSpec;
 import org.ntrloc.graph.db.projection.DateRangeFacetFilter;
 import org.ntrloc.graph.db.projection.FacetBucket;
+import org.ntrloc.graph.db.projection.LinkProjectionSpec;
 import org.ntrloc.graph.db.projection.NotPredicate;
 import org.ntrloc.graph.db.projection.Operator;
 import org.ntrloc.graph.db.projection.OrPredicate;
@@ -138,7 +139,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
                 ? scopedToThisTest
                 : new AndPredicate(List.of(scopedToThisTest, spec.filter()));
         var scopedSpec = new CollectionProjectionSpec(spec.itemTypeName(), spec.traitName(), spec.sortField(), spec.sortDirection(),
-                combinedFilter, spec.facets(), spec.facetFilters(), spec.stateMachineFacets(), spec.offset(), spec.limit());
+                combinedFilter, spec.facets(), spec.facetFilters(), spec.stateMachineFacets(), spec.offset(), spec.limit(), spec.links());
         var result = registerPartitionManager.project(fixture.bookTypeId(), scopedSpec, "http://binary");
         return new ProjectedItemsAndFacets(result);
     }
@@ -611,6 +612,99 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
         assertThat(book.links().get("authors"))
                 .extracting(link -> link.item().properties().get("name"))
                 .containsExactly("Frank Herbert");
+    }
+
+    // --- Multi-hop requested links ---
+
+    private UUID createAuthorLinkedToBook(UUID bookId, String name) {
+        MutationResponse authorResponse = webTestClient.post().uri("/api/mutation")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(new MutationRequest(
+                        List.of(new ItemCreateMutation(null, "RegisterProjectionTestAuthor", Map.of("name", name))),
+                        List.of()))
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(MutationResponse.class)
+                .returnResult().getResponseBody();
+        UUID authorId = authorResponse.items().get(0).itemId();
+
+        webTestClient.post().uri("/api/mutation")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(new MutationRequest(List.of(), List.of(new LinkCreateMutation(
+                        new LinkEndpointReference("authors", new ExistingItemReference(bookId)),
+                        new LinkEndpointReference("books", new ExistingItemReference(authorId)),
+                        Map.of()))))
+                .exchange()
+                .expectStatus().isOk();
+        return authorId;
+    }
+
+    private void createPublisherLinkedToAuthor(UUID authorId, String name) {
+        MutationResponse publisherResponse = webTestClient.post().uri("/api/mutation")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(new MutationRequest(
+                        List.of(new ItemCreateMutation(null, "RegisterProjectionTestPublisher", Map.of("name", name))),
+                        List.of()))
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(MutationResponse.class)
+                .returnResult().getResponseBody();
+        UUID publisherId = publisherResponse.items().get(0).itemId();
+
+        webTestClient.post().uri("/api/mutation")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(new MutationRequest(List.of(), List.of(new LinkCreateMutation(
+                        new LinkEndpointReference("publisher", new ExistingItemReference(authorId)),
+                        new LinkEndpointReference("publishedAuthors", new ExistingItemReference(publisherId)),
+                        Map.of()))))
+                .exchange()
+                .expectStatus().isOk();
+    }
+
+    @Test
+    void requestedLinks_emptyMap_excludesAllLinks() {
+        UUID bookId = createBook("Dune", 400, true, "Fiction");
+        createAuthorLinkedToBook(bookId, "Frank Herbert");
+
+        var book = registerPartitionManager.projectOne(fixture.bookTypeId(), bookId, "http://binary", Map.of())
+                .orElseThrow();
+
+        assertThat(book.links()).isEmpty();
+    }
+
+    @Test
+    void requestedLinks_namedPerspectiveWithoutNestedSpec_expandsOneHopOnlyLikeTheDefault() {
+        UUID bookId = createBook("Dune", 400, true, "Fiction");
+        UUID authorId = createAuthorLinkedToBook(bookId, "Frank Herbert");
+        createPublisherLinkedToAuthor(authorId, "Ace Books");
+
+        var requestedLinks = Map.of("authors", new LinkProjectionSpec(null));
+        var book = registerPartitionManager.projectOne(fixture.bookTypeId(), bookId, "http://binary", requestedLinks)
+                .orElseThrow();
+
+        var author = book.links().get("authors").get(0).item();
+        assertThat(author.properties().get("name")).isEqualTo("Frank Herbert");
+        // No nested spec named for "authors" -- the Publisher one hop further isn't fetched, even
+        // though it exists, matching today's plain single-hop default exactly.
+        assertThat(author.links()).isEmpty();
+    }
+
+    @Test
+    void requestedLinks_nestedSpec_recursesIntoTheNamedLinkOfTheLinkedItem() {
+        UUID bookId = createBook("Dune", 400, true, "Fiction");
+        UUID authorId = createAuthorLinkedToBook(bookId, "Frank Herbert");
+        createPublisherLinkedToAuthor(authorId, "Ace Books");
+
+        var requestedLinks = Map.of("authors",
+                new LinkProjectionSpec(Map.of("publisher", new LinkProjectionSpec(null))));
+        var book = registerPartitionManager.projectOne(fixture.bookTypeId(), bookId, "http://binary", requestedLinks)
+                .orElseThrow();
+
+        var author = book.links().get("authors").get(0).item();
+        assertThat(author.properties().get("name")).isEqualTo("Frank Herbert");
+        assertThat(author.links().get("publisher"))
+                .extracting(link -> link.item().properties().get("name"))
+                .containsExactly("Ace Books");
     }
 
     // --- setItemState ---
