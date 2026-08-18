@@ -8,6 +8,7 @@ import org.ntrloc.graph.db.partition.schema.definition.PropertyUsage;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateItemDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateItemPropertyDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateLinkDefinitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateLinkPropertyDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePerspectiveDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePropertyDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePropertyPropertyDefinitionMutation;
@@ -38,6 +39,7 @@ public class MutationRequestProcessorTestDomainInitializer implements DomainInit
     private UUID bTypeId;
     private UUID cTypeId;
     private UUID dTypeId;
+    private UUID link3Id;
 
     private final SchemaManager schemaManager;
     private final ControlledListManager controlledListManager;
@@ -116,6 +118,28 @@ public class MutationRequestProcessorTestDomainInitializer implements DomainInit
         schemaManager.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
                 new CreatePerspectiveDefinitionMutation(cTypeId, "onlyC", "d", 0, null),
                 new CreatePerspectiveDefinitionMutation(dTypeId, "onlyD", "d", 0, null)))));
+        // link1/link2 (above) deliberately can't be created via a normal LinkCreateMutation --
+        // A.toB/B.fromA is ambiguous by construction. link3 (C<->D) is the only unambiguous link in
+        // this fixture, so it's the one that carries the OBJECT-property test coverage below.
+        link3Id = findItem("MutReqProcC").links().get("onlyC").get(0).linkId();
+
+        // link3's own OBJECT property, nested one level -- proves the write/read flat-storage model
+        // already verified for item OBJECT properties (see "extra"/"extra2" above) also applies to
+        // link properties, which no test exercised before. Leaf name ("nested") deliberately
+        // collides with MutReqProcA's own "extra.nested" leaf -- same container-scoped-resolution
+        // proof as extra/extra2 above, now crossing the item/link boundary specifically.
+        schemaManager.applyMutations(List.of(new CreateLinkPropertyDefinitionMutation(
+                link3Id, "linkExtra", "MutationRequestProcessor test fixture", PropertyType.OBJECT, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false, java.util.List.of())));
+        UUID linkExtraPropertyId = schemaManager.getAdminSchema().links().stream()
+                .filter(link -> link.id().equals(link3Id))
+                .findFirst().orElseThrow()
+                .properties().stream()
+                .filter(p -> p.name().equals("linkExtra"))
+                .findFirst().orElseThrow().id();
+        schemaManager.applyMutations(List.of(new CreatePropertyPropertyDefinitionMutation(
+                linkExtraPropertyId, "nested", "MutationRequestProcessor test fixture", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false, java.util.List.of())));
+        schemaManager.applyMutations(List.of(new CreatePropertyPropertyDefinitionMutation(
+                linkExtraPropertyId, "second", "MutationRequestProcessor test fixture", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false, java.util.List.of())));
     }
 
     private CreatePropertyDefinitionMutation property(String name, PropertyType type, PropertyCardinality cardinality) {
@@ -143,5 +167,9 @@ public class MutationRequestProcessorTestDomainInitializer implements DomainInit
 
     public UUID dTypeId() {
         return dTypeId;
+    }
+
+    public UUID link3Id() {
+        return link3Id;
     }
 }

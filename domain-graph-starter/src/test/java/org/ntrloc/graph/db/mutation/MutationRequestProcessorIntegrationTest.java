@@ -15,6 +15,7 @@ import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePropertyDe
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DeleteItemDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.UpdateItemDefinitionMutation;
 import org.ntrloc.graph.db.partition.security.ResolvedPrincipal;
+import org.ntrloc.graph.db.projection.ProjectedLink;
 import org.springframework.beans.factory.annotation.Autowired;
 
 import java.util.HashMap;
@@ -368,6 +369,128 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
 
         var item = registerPartitionManager.projectOne(fixture.aTypeId(), itemId, "http://binary").orElseThrow();
         assertThat(item.properties()).doesNotContainKey("extra");
+    }
+
+    // --- Link OBJECT properties (mirrors the item-side "extra"/"extra2" coverage above, proving
+    // the same flat-storage/nested-reconstruction model applies identically to links) ---
+
+    private ProjectedLink createCDLinkAndFindIt(Map<String, Object> properties) {
+        UUID cId = createItem("MutReqProcC");
+        UUID dId = createItem("MutReqProcD");
+        MutationResponse response = processor.process(new MutationRequest(List.of(), List.of(
+                new LinkCreateMutation(
+                        new LinkEndpointReference("onlyC", new ExistingItemReference(cId)),
+                        new LinkEndpointReference("onlyD", new ExistingItemReference(dId)),
+                        properties))), SOME_PRINCIPAL);
+        UUID linkId = response.links().get(0).linkId();
+
+        var item = registerPartitionManager.projectOne(fixture.cTypeId(), cId, "http://binary").orElseThrow();
+        return item.links().values().stream().flatMap(List::stream)
+                .filter(link -> link.linkId().equals(linkId))
+                .findFirst().orElseThrow();
+    }
+
+    @Test
+    void linkObjectProperty_acceptsAMapValue() {
+        var link = createCDLinkAndFindIt(Map.of("linkExtra", Map.of("nested", "value")));
+
+        assertThat(link.properties()).containsKey("linkExtra");
+    }
+
+    @Test
+    void linkObjectProperty_rejectsANonMapValue() {
+        UUID cId = createItem("MutReqProcC");
+        UUID dId = createItem("MutReqProcD");
+
+        assertThatThrownBy(() -> processor.process(new MutationRequest(List.of(), List.of(
+                new LinkCreateMutation(
+                        new LinkEndpointReference("onlyC", new ExistingItemReference(cId)),
+                        new LinkEndpointReference("onlyD", new ExistingItemReference(dId)),
+                        Map.of("linkExtra", "not-a-map")))), SOME_PRINCIPAL))
+                .isInstanceOf(MutationValidationException.class)
+                .satisfies(e -> assertThat(((MutationValidationException) e).errors())
+                        .anyMatch(err -> err.path().equals("links[0].properties.linkExtra")));
+    }
+
+    @Test
+    void linkObjectProperty_nestedValueRoundTripsThroughCreateAndRead() {
+        var link = createCDLinkAndFindIt(Map.of("linkExtra", Map.of("nested", "hello", "second", "world")));
+
+        assertThat(link.properties().get("linkExtra")).isEqualTo(Map.of("nested", "hello", "second", "world"));
+    }
+
+    @Test
+    void linkObjectProperty_unknownNestedPropertyName_throws() {
+        UUID cId = createItem("MutReqProcC");
+        UUID dId = createItem("MutReqProcD");
+
+        assertThatThrownBy(() -> processor.process(new MutationRequest(List.of(), List.of(
+                new LinkCreateMutation(
+                        new LinkEndpointReference("onlyC", new ExistingItemReference(cId)),
+                        new LinkEndpointReference("onlyD", new ExistingItemReference(dId)),
+                        Map.of("linkExtra", Map.of("bogus", "x"))))), SOME_PRINCIPAL))
+                .isInstanceOf(MutationValidationException.class)
+                .satisfies(e -> assertThat(((MutationValidationException) e).errors())
+                        .anyMatch(err -> err.path().equals("links[0].properties.linkExtra.bogus")));
+    }
+
+    // MutReqProcA's own "extra" object property and link3's "linkExtra" both have a leaf named
+    // "nested" -- proves resolveObjectPropertyValue's container-scoped resolution holds across the
+    // item/link boundary specifically, not just between two containers on the same item (see the
+    // item-only version of this test above).
+    @Test
+    void linkObjectProperty_sameLeafNameAsAnItemsObjectProperty_resolvesIndependently() {
+        MutationResponse itemResponse = processor.process(new MutationRequest(
+                List.of(new ItemCreateMutation(null, "MutReqProcA", Map.of("extra", Map.of("nested", "item-value")))), List.of()),
+                SOME_PRINCIPAL);
+        UUID itemId = itemResponse.items().get(0).itemId();
+
+        var link = createCDLinkAndFindIt(Map.of("linkExtra", Map.of("nested", "link-value")));
+
+        var item = registerPartitionManager.projectOne(fixture.aTypeId(), itemId, "http://binary").orElseThrow();
+        assertThat(item.properties().get("extra")).isEqualTo(Map.of("nested", "item-value"));
+        assertThat(link.properties().get("linkExtra")).isEqualTo(Map.of("nested", "link-value"));
+    }
+
+    @Test
+    void linkUpdateMutation_withObjectProperty_partialNestedDiffLeavesSiblingsUntouched() {
+        UUID cId = createItem("MutReqProcC");
+        UUID dId = createItem("MutReqProcD");
+        MutationResponse createResponse = processor.process(new MutationRequest(List.of(), List.of(
+                new LinkCreateMutation(
+                        new LinkEndpointReference("onlyC", new ExistingItemReference(cId)),
+                        new LinkEndpointReference("onlyD", new ExistingItemReference(dId)),
+                        Map.of("linkExtra", Map.of("nested", "original", "second", "keep-me"))))), SOME_PRINCIPAL);
+        UUID linkId = createResponse.links().get(0).linkId();
+
+        processor.process(new MutationRequest(List.of(),
+                List.of(new LinkUpdateMutation(linkId, Map.of("linkExtra", Map.of("nested", "changed"))))), SOME_PRINCIPAL);
+
+        var item = registerPartitionManager.projectOne(fixture.cTypeId(), cId, "http://binary").orElseThrow();
+        var link = item.links().values().stream().flatMap(List::stream)
+                .filter(l -> l.linkId().equals(linkId)).findFirst().orElseThrow();
+        assertThat(link.properties().get("linkExtra")).isEqualTo(Map.of("nested", "changed", "second", "keep-me"));
+    }
+
+    @Test
+    void linkUpdateMutation_withObjectPropertySetToNull_clearsEntireSubtree() {
+        UUID cId = createItem("MutReqProcC");
+        UUID dId = createItem("MutReqProcD");
+        MutationResponse createResponse = processor.process(new MutationRequest(List.of(), List.of(
+                new LinkCreateMutation(
+                        new LinkEndpointReference("onlyC", new ExistingItemReference(cId)),
+                        new LinkEndpointReference("onlyD", new ExistingItemReference(dId)),
+                        Map.of("linkExtra", Map.of("nested", "a", "second", "b"))))), SOME_PRINCIPAL);
+        UUID linkId = createResponse.links().get(0).linkId();
+
+        Map<String, Object> clearDiff = new HashMap<>();
+        clearDiff.put("linkExtra", null);
+        processor.process(new MutationRequest(List.of(), List.of(new LinkUpdateMutation(linkId, clearDiff))), SOME_PRINCIPAL);
+
+        var item = registerPartitionManager.projectOne(fixture.cTypeId(), cId, "http://binary").orElseThrow();
+        var link = item.links().values().stream().flatMap(List::stream)
+                .filter(l -> l.linkId().equals(linkId)).findFirst().orElseThrow();
+        assertThat(link.properties()).doesNotContainKey("linkExtra");
     }
 
     @Test

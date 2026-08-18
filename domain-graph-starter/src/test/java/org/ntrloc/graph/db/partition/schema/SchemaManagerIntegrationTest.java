@@ -708,6 +708,21 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         return findProperty(itemId, name).id();
     }
 
+    private AdminPropertyDefinitionView findLinkProperty(UUID linkId, String name) {
+        return schemaManager.getAdminSchema().links().stream()
+                .filter(link -> link.id().equals(linkId))
+                .findFirst().orElseThrow()
+                .properties().stream()
+                .filter(p -> p.name().equals(name))
+                .findFirst().orElseThrow();
+    }
+
+    private UUID createObjectPropertyOnLink(UUID linkId, String name) {
+        schemaManager.applyMutations(List.of(new CreateLinkPropertyDefinitionMutation(
+                linkId, name, "d", PropertyType.OBJECT, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false, java.util.List.of())));
+        return findLinkProperty(linkId, name).id();
+    }
+
     @Test
     void createPropertyPropertyDefinitionMutation_onANonObjectProperty_throws() {
         UUID itemId = createItem("Item-" + UUID.randomUUID());
@@ -733,6 +748,24 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         assertThat(dimensions).isInstanceOf(ObjectAdminPropertyDefinitionView.class);
         assertThat(((ObjectAdminPropertyDefinitionView) dimensions).properties())
                 .extracting(AdminPropertyDefinitionView::name).containsExactly("length");
+    }
+
+    // Mirrors createPropertyPropertyDefinitionMutation_addsANestedChild_visibleInEffectiveProperties
+    // above, but for a link-owned OBJECT property instead of an item-owned one -- proves nesting is
+    // genuinely schema-owner-agnostic (see CreatePropertyPropertyDefinitionMutation's own comment
+    // on why its only check is "is this an OBJECT property," never who owns it).
+    @Test
+    void createPropertyPropertyDefinitionMutation_onALinkOwnedObjectProperty_addsANestedChild_visibleInEffectiveProperties() {
+        UUID linkId = createBareLink();
+        UUID detailsId = createObjectPropertyOnLink(linkId, "details");
+
+        schemaManager.applyMutations(List.of(new CreatePropertyPropertyDefinitionMutation(
+                detailsId, "role", "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false, java.util.List.of())));
+
+        var details = findLinkProperty(linkId, "details");
+        assertThat(details).isInstanceOf(ObjectAdminPropertyDefinitionView.class);
+        assertThat(((ObjectAdminPropertyDefinitionView) details).properties())
+                .extracting(AdminPropertyDefinitionView::name).containsExactly("role");
     }
 
     @Test
