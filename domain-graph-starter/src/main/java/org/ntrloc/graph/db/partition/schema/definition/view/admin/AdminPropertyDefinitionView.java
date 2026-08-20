@@ -34,12 +34,13 @@ public sealed interface AdminPropertyDefinitionView
     // with only definedIn changed, regardless of which concrete variant it is.
     AdminPropertyDefinitionView withDefinedIn(DefinedInView definedIn);
 
-    static AdminPropertyDefinitionView of(UUID id, String name, String description, PropertyType type,
-                                           PropertyCardinality cardinality, PropertyUsage usage,
-                                           DefinedInView definedIn, UUID controlledListId, boolean facetable,
+    static AdminPropertyDefinitionView of(UUID id, PropertyIdentity identity, DefinedInView definedIn,
+                                           UUID controlledListId, boolean facetable,
                                            List<AdminPropertyDefinitionView> properties) {
-        return type == PropertyType.OBJECT
-                ? new ObjectAdminPropertyDefinitionView(id, name, description, type, cardinality, usage, definedIn, controlledListId, facetable, properties)
-                : new ScalarAdminPropertyDefinitionView(id, name, description, type, cardinality, usage, definedIn, controlledListId, facetable);
+        return identity.type() == PropertyType.OBJECT
+                ? new ObjectAdminPropertyDefinitionView(id, identity.name(), identity.description(), identity.type(),
+                        identity.cardinality(), identity.usage(), definedIn, controlledListId, facetable, properties)
+                : new ScalarAdminPropertyDefinitionView(id, identity.name(), identity.description(), identity.type(),
+                        identity.cardinality(), identity.usage(), definedIn, controlledListId, facetable);
     }
 }

@@ -22,12 +22,4 @@ public sealed interface PropertyDefinitionView
     List<AllowedValue> allowedValues();
 
     PropertyDefinitionView withDefinedIn(DefinedInView definedIn);
-
-    static PropertyDefinitionView of(UUID id, String name, String description, PropertyType type,
-                                      PropertyCardinality cardinality, DefinedInView definedIn,
-                                      List<AllowedValue> allowedValues, List<PropertyDefinitionView> properties) {
-        return type == PropertyType.OBJECT
-                ? new ObjectPropertyDefinitionView(id, name, description, type, cardinality, definedIn, allowedValues, properties)
-                : new ScalarPropertyDefinitionView(id, name, description, type, cardinality, definedIn, allowedValues);
-    }
 }

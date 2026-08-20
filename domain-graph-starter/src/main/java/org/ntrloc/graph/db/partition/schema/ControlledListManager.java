@@ -86,7 +86,7 @@ public class ControlledListManager {
                 }
                 sql.append("(:value").append(i).append(", :label").append(i).append(", :sortOrder").append(i).append(")");
                 ValueEntry entry = batch.get(i);
-                params.put("value" + i, entry.value());
+                params.put(PARAM_VALUE + i, entry.value());
                 params.put(PARAM_LABEL + i, entry.label());
                 params.put("sortOrder" + i, start + i);
             }

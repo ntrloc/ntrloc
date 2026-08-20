@@ -9,6 +9,7 @@ import org.ntrloc.graph.db.partition.schema.definition.PropertyContainerKind;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyUsage;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyDefinitionView;
+import org.ntrloc.graph.db.partition.schema.definition.view.admin.PropertyIdentity;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 
@@ -47,6 +48,7 @@ public class SchemaRepository {
     private static final String PARAM_CARDINALITY = "cardinality";
     private static final String COL_ITEM_DEFINITION_ID = "item_definition_id";
     private static final String PARAM_PROPERTY_ID = "propertyId";
+    private static final String COL_FACETABLE = "facetable";
     private static final String PARAM_LINK_ID = "linkId";
 
     private final JdbcClient jdbcClient;
@@ -190,7 +192,7 @@ public class SchemaRepository {
         return jdbcClient.sql("INSERT INTO schema_property (name, description, type, cardinality, usage, facetable) VALUES (:name, :description, :type, :cardinality, :usage, :facetable) RETURNING *")
                 .param("name", name).param(PARAM_DESCRIPTION, description)
                 .param("type", type.name()).param(PARAM_CARDINALITY, cardinality.name()).param(PARAM_USAGE, usage.name())
-                .param("facetable", facetable)
+                .param(COL_FACETABLE, facetable)
                 .query(this::mapProperty)
                 .single();
     }
@@ -199,7 +201,7 @@ public class SchemaRepository {
         return jdbcClient.sql("UPDATE schema_property SET name = :name, description = :description, type = :type, cardinality = :cardinality, usage = :usage, facetable = :facetable WHERE id = :id RETURNING *")
                 .param("id", id).param("name", name).param(PARAM_DESCRIPTION, description)
                 .param("type", type.name()).param(PARAM_CARDINALITY, cardinality.name()).param(PARAM_USAGE, usage.name())
-                .param("facetable", facetable)
+                .param(COL_FACETABLE, facetable)
                 .query(this::mapProperty)
                 .single();
     }
@@ -229,7 +231,7 @@ public class SchemaRepository {
                 UNION ALL
                 SELECT 'PROPERTY', parent_property_id FROM schema_property_property WHERE child_property_id = :propertyId
                 """)
-                .param("propertyId", propertyId)
+                .param(PARAM_PROPERTY_ID, propertyId)
                 .query((rs, n) -> new PropertyOwnerRef(
                         PropertyContainerKind.valueOf(rs.getString("kind")),
                         rs.getObject("owner_id", UUID.class)))
@@ -524,14 +526,15 @@ public class SchemaRepository {
     private AdminPropertyDefinitionView mapProperty(ResultSet rs, int n) throws SQLException {
         return AdminPropertyDefinitionView.of(
                 rs.getObject("id", UUID.class),
-                rs.getString("name"),
-                rs.getString(PARAM_DESCRIPTION),
-                PropertyType.valueOf(rs.getString("type")),
-                PropertyCardinality.valueOf(rs.getString(PARAM_CARDINALITY)),
-                PropertyUsage.valueOf(rs.getString(PARAM_USAGE)),
+                new PropertyIdentity(
+                        rs.getString("name"),
+                        rs.getString(PARAM_DESCRIPTION),
+                        PropertyType.valueOf(rs.getString("type")),
+                        PropertyCardinality.valueOf(rs.getString(PARAM_CARDINALITY)),
+                        PropertyUsage.valueOf(rs.getString(PARAM_USAGE))),
                 null,
                 rs.getObject("controlled_list_id", UUID.class),
-                rs.getBoolean("facetable"),
+                rs.getBoolean(COL_FACETABLE),
                 List.of()
         );
     }

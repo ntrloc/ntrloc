@@ -190,8 +190,11 @@ public class RegisterPartitionManager implements SchemaChangeListener {
     }
 
     // Each dot-separated segment (one per level of OBJECT-property nesting) follows the same
-    // identifier shape as a bare field name did before dot-paths existed.
-    private static final Pattern SAFE_FIELD_NAME = Pattern.compile("^[a-zA-Z]\\w*(\\.[a-zA-Z]\\w*)*$");
+    // identifier shape as a bare field name did before dot-paths existed. Quantifiers are
+    // possessive (++/*+) so the engine never backtracks into them -- each segment's own \w*+ can't
+    // be re-split against the outer repetition, which is what a client-controlled field name would
+    // need to trigger catastrophic backtracking on a pathological input.
+    private static final Pattern SAFE_FIELD_NAME = Pattern.compile("^[a-zA-Z]\\w*+(?:\\.[a-zA-Z]\\w*+)*+$");
 
     private String sanitizeFieldName(String field) {
         if (field == null || !SAFE_FIELD_NAME.matcher(field).matches()) {
@@ -1203,25 +1206,9 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                         Collectors.mapping(LinkRow::registerLinkId, Collectors.toList()))),
                 COL_REGISTER_LINK_ID);
 
-        Map<UUID, Map<String, List<ProjectedLink>>> nestedLinksByLinkedRegisterItemId = Map.of();
-        if (requestedLinks != null) {
-            Map<String, List<LinkRow>> rowsByPerspective = linkRows.stream()
-                    .collect(Collectors.groupingBy(LinkRow::perspectiveName));
-            Map<UUID, Map<String, List<ProjectedLink>>> nested = new HashMap<>();
-            for (var entry : rowsByPerspective.entrySet()) {
-                LinkProjectionSpec childSpec = requestedLinks.get(entry.getKey());
-                Map<String, LinkProjectionSpec> childLinks = childSpec != null ? childSpec.links() : null;
-                if (childLinks == null || childLinks.isEmpty()) {
-                    continue;
-                }
-                List<UUID> childRegisterItemIds = entry.getValue().stream()
-                        .map(LinkRow::linkedRegisterItemId).distinct().toList();
-                // registerItemId is globally unique across every item type, so merging per-perspective
-                // results here is safe even if two requested perspectives happened to reach the same item.
-                nested.putAll(fetchLinksByItem(childRegisterItemIds, childLinks));
-            }
-            nestedLinksByLinkedRegisterItemId = nested;
-        }
+        Map<UUID, Map<String, List<ProjectedLink>>> nestedLinksByLinkedRegisterItemId = requestedLinks != null
+                ? fetchNestedLinksForRequestedPerspectives(linkRows, requestedLinks)
+                : Map.of();
 
         Map<String, String> displayLabelPatterns = resolveEffectiveDisplayLabelPatterns();
         Map<UUID, Map<String, List<ProjectedLink>>> finalNestedLinks = nestedLinksByLinkedRegisterItemId;
@@ -1250,6 +1237,29 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                                     );
                                 },
                                 Collectors.toList()))));
+    }
+
+    // Extracted from fetchLinksByItem purely to keep that method's own cognitive complexity down --
+    // one more batched round trip per requested perspective that itself names further nested links,
+    // never per item (fetchLinksByItem's own comment on why that's the scaling property that matters).
+    private Map<UUID, Map<String, List<ProjectedLink>>> fetchNestedLinksForRequestedPerspectives(
+            List<LinkRow> linkRows, Map<String, LinkProjectionSpec> requestedLinks) {
+        Map<String, List<LinkRow>> rowsByPerspective = linkRows.stream()
+                .collect(Collectors.groupingBy(LinkRow::perspectiveName));
+        Map<UUID, Map<String, List<ProjectedLink>>> nested = new HashMap<>();
+        for (var entry : rowsByPerspective.entrySet()) {
+            LinkProjectionSpec childSpec = requestedLinks.get(entry.getKey());
+            Map<String, LinkProjectionSpec> childLinks = childSpec != null ? childSpec.links() : null;
+            if (childLinks == null || childLinks.isEmpty()) {
+                continue;
+            }
+            List<UUID> childRegisterItemIds = entry.getValue().stream()
+                    .map(LinkRow::linkedRegisterItemId).distinct().toList();
+            // registerItemId is globally unique across every item type, so merging per-perspective
+            // results here is safe even if two requested perspectives happened to reach the same item.
+            nested.putAll(fetchLinksByItem(childRegisterItemIds, childLinks));
+        }
+        return nested;
     }
 
     // ownPropertyNames/stateMachines are pre-resolved by the caller rather than looked up here from
