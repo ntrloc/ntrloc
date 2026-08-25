@@ -16,8 +16,4 @@ import java.util.UUID;
 // the item's own id if no pattern is configured or evaluation failed. Every UI consumer should use
 // this directly rather than guessing a label from properties.
 public record ProjectedItem(UUID itemId, String itemType, Map<String, Object> properties, Map<String, List<ProjectedLink>> links, @Nullable Map<String, ProjectedItemState> states, @Nullable ProjectedItemPermissions permissions, String displayLabel) {
-
-    public ProjectedItem withPermissions(ProjectedItemPermissions permissions) {
-        return new ProjectedItem(itemId, itemType, properties, links, states, permissions, displayLabel);
-    }
 }

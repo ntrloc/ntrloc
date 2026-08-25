@@ -1,5 +1,6 @@
 package org.ntrloc.graph.db.partition.authorization.repository;
 
+import org.ntrloc.graph.db.partition.authorization.DefaultGroupInitializer;
 import org.ntrloc.graph.db.partition.authorization.PermissionService;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateItemDefinitionMutation;
@@ -77,22 +78,20 @@ public class AuthorizationTestDataInitializer implements ApplicationRunner {
         securityRepo.addUserToGroup(alice.id(), viewers.id());
         securityRepo.addUserToGroup(bob.id(), viewers.id());
 
-        var publicRead = authorizationRepo.createMarker("public-read", "Grants read of AclTestPublicDoc");
-        var confidentialRead = authorizationRepo.createMarker("confidential-read", "Grants read of AclTestConfidentialDoc");
-        authorizationRepo.assignMarkerToItemType(publicDocId, publicRead.id());
-        authorizationRepo.assignMarkerToItemType(confidentialDocId, confidentialRead.id());
-
-        authorizationRepo.grant(publicRead.id(), "GROUP", viewers.id(), PermissionService.ITEM_READ);
-        authorizationRepo.grant(confidentialRead.id(), "USER", carol.id(), PermissionService.ITEM_READ);
+        authorizationRepo.grantItemType(publicDocId, "GROUP", viewers.id(), PermissionService.ITEM_TYPE_READ);
+        authorizationRepo.grantItemType(confidentialDocId, "USER", carol.id(), PermissionService.ITEM_TYPE_READ);
     }
 
     private void revokeDefaultReadGrant(UUID itemTypeId) {
+        UUID everyoneGroupId = securityRepo.findGroupByName(DefaultGroupInitializer.DEFAULT_GROUP_NAME).orElseThrow().id();
         jdbcClient.sql("""
-                DELETE FROM authorization_grant WHERE marker_id IN (
-                    SELECT id FROM authorization_marker WHERE name = :name
-                )
+                DELETE FROM authorization_item_type_grant
+                WHERE item_type_id = :itemTypeId AND permission = :permission
+                  AND principal_type = 'GROUP' AND principal_id = :groupId
                 """)
-                .param("name", "default-read-" + itemTypeId)
+                .param("itemTypeId", itemTypeId)
+                .param("permission", PermissionService.ITEM_TYPE_READ)
+                .param("groupId", everyoneGroupId)
                 .update();
     }
 }

@@ -58,7 +58,9 @@ public class DefaultGroupInitializer {
 
     @EventListener
     public void onLinkTypeCreated(SchemaChangeEvent.LinkTypeCreated event) {
-        // Link types may need read markers in the future; hook is here for when that's built.
+        // Link types have no independent type-visibility grant of their own -- visible iff both
+        // participant item types are visible (see docs/ntrloc-security-projections-summary.md
+        // "Type Visibility"). Nothing to do here; hook stays for parity with onItemTypeCreated.
     }
 
     public UUID getDefaultGroupId() {
@@ -75,38 +77,19 @@ public class DefaultGroupInitializer {
                 .update();
     }
 
+    // "Uncovered" means no default-visibility decision has ever been made for this type -- not
+    // "has no grant right now". An admin's explicit revocation must survive this backfill running
+    // again on a later restart; see the migration comment on schema_item.default_visibility_decided.
     private void grantReadForUncoveredItemTypes(UUID groupId) {
-        var coveredItemTypes = authorizationRepo.getMarkerIdsByItemType().keySet();
-        jdbcClient.sql("SELECT id, name FROM schema_item")
-                .query((rs, n) -> new Object[]{rs.getObject("id", UUID.class), rs.getString("name")})
+        jdbcClient.sql("SELECT id FROM schema_item WHERE NOT default_visibility_decided")
+                .query((rs, n) -> rs.getObject("id", UUID.class))
                 .list()
-                .stream()
-                .filter(row -> !coveredItemTypes.contains((UUID) row[0]))
-                .forEach(row -> grantReadForItemType((UUID) row[0], groupId));
+                .forEach(itemTypeId -> grantReadForItemType(itemTypeId, groupId));
     }
 
     private void grantReadForItemType(UUID itemTypeId, UUID groupId) {
-        String markerName = "default-read-" + itemTypeId.toString();
-        var existing = jdbcClient.sql("SELECT id FROM authorization_marker WHERE name = :name")
-                .param("name", markerName)
-                .query((rs, n) -> rs.getObject("id", UUID.class))
-                .optional();
-        UUID markerId;
-        if (existing.isPresent()) {
-            markerId = existing.get();
-        } else {
-            markerId = authorizationRepo.createMarker(markerName, "Default read access (auto-created)").id();
-        }
-        jdbcClient.sql("""
-                INSERT INTO authorization_item_type_marker (item_type_id, marker_id)
-                VALUES (:itemTypeId, :markerId) ON CONFLICT DO NOTHING
-                """)
-                .param("itemTypeId", itemTypeId).param("markerId", markerId).update();
-        jdbcClient.sql("""
-                INSERT INTO authorization_grant (id, marker_id, principal_type, principal_id, operation)
-                VALUES (gen_random_uuid(), :markerId, 'GROUP', :groupId, :operation) ON CONFLICT DO NOTHING
-                """)
-                .param("markerId", markerId).param("groupId", groupId)
-                .param("operation", PermissionService.ITEM_READ).update();
+        authorizationRepo.grantItemTypeIfAbsent(itemTypeId, "GROUP", groupId, PermissionService.ITEM_TYPE_READ);
+        jdbcClient.sql("UPDATE schema_item SET default_visibility_decided = TRUE WHERE id = :itemTypeId")
+                .param("itemTypeId", itemTypeId).update();
     }
 }

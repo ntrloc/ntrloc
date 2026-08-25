@@ -8,12 +8,12 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.reactive.server.WebTestClient;
 
 /**
- * Exercises the item-type-marker tracer bullet end-to-end against a real Postgres
+ * Exercises the item-type direct-grant tracer bullet end-to-end against a real Postgres
  * (Testcontainers) and the fixture seeded by AuthorizationTestDataInitializer:
- *  - alice, bob -> group "viewers" -> item:read on "public-read" marker -> AclTestPublicDoc
- *  - carol -> direct grant -> item:read on "confidential-read" marker -> AclTestConfidentialDoc
- *  - root -> superuser -> bypasses marker authorization entirely, including AclTestUnmarkedDoc,
- *    which has no marker assignment at all and is therefore invisible to everyone else
+ *  - alice, bob -> group "viewers" -> item-type:read grant -> AclTestPublicDoc
+ *  - carol -> direct user grant -> item-type:read grant -> AclTestConfidentialDoc
+ *  - root -> superuser -> bypasses type-visibility authorization entirely, including
+ *    AclTestUnmarkedDoc, which has no grant at all and is therefore invisible to everyone else
  */
 class AuthorizationEndpointsIntegrationTest extends AbstractIntegrationTest {
 
@@ -21,7 +21,7 @@ class AuthorizationEndpointsIntegrationTest extends AbstractIntegrationTest {
     private WebTestClient webTestClient;
 
     @Test
-    void schemaViewShowsOnlyMarkerGrantedTypes_forGroupMember() {
+    void schemaViewShowsOnlyGrantedTypes_forGroupMember() {
         webTestClient.get().uri("/api/schema")
                 .header("X-Ntrloc-User", "alice")
                 .exchange()
@@ -36,7 +36,7 @@ class AuthorizationEndpointsIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void schemaViewShowsOnlyMarkerGrantedTypes_forDirectUserGrant() {
+    void schemaViewShowsOnlyGrantedTypes_forDirectUserGrant() {
         webTestClient.get().uri("/api/schema")
                 .header("X-Ntrloc-User", "carol")
                 .exchange()

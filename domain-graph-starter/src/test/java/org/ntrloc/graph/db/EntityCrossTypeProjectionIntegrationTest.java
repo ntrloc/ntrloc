@@ -7,6 +7,9 @@ import org.ntrloc.graph.db.mutation.MutationRequest;
 import org.ntrloc.graph.db.mutation.MutationRequestProcessor;
 import org.ntrloc.graph.db.mutation.MutationResponse;
 import org.ntrloc.graph.db.partition.authorization.DefaultGroupInitializer;
+import org.ntrloc.graph.db.partition.authorization.MarkerAssignmentService;
+import org.ntrloc.graph.db.partition.authorization.PermissionService;
+import org.ntrloc.graph.db.partition.authorization.repository.AuthorizationRepository;
 import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
 import org.ntrloc.graph.db.projection.SingleItemProjectionSpec;
@@ -55,6 +58,12 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private DefaultGroupInitializer defaultGroupInitializer;
+
+    @Autowired
+    private MarkerAssignmentService markerAssignmentService;
+
+    @Autowired
+    private AuthorizationRepository authRepo;
 
     @Autowired
     private JdbcClient jdbcClient;
@@ -299,7 +308,7 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
         assertThat(itemIdsOf(body)).containsExactlyInAnyOrder(vehicleItemId.toString(), carItemId.toString());
     }
 
-    // Marker-based access control, mirroring AuthorizationTestDataInitializer's own
+    // Direct item-type:read grant revocation, mirroring AuthorizationTestDataInitializer's own
     // revoke-default-then-grant-explicitly pattern rather than inventing a new one. Vehicle keeps
     // its default "everyone" read grant; Car's is revoked and never re-granted to "root2" -- so a
     // polymorphic query by a principal who can read Vehicle but not Car should see only the
@@ -326,6 +335,15 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
 
         UUID vehicleItemId = createItem(vehicleName);
         createItem(carName);
+
+        // Type-level read (revoked/kept above) is a prerequisite, not sufficient on its own --
+        // instance-level item:read (marker-based, see PermissionServiceInstanceReadIntegrationTest)
+        // is a separate, also-real gate now. Grant it on the Vehicle instance specifically so this
+        // test keeps exercising type-level partial-branch-drop, the thing it's actually about,
+        // without being blocked by the orthogonal instance-level check.
+        var marker = authRepo.createMarker("cross-type-vehicle-read-" + UUID.randomUUID(), "test fixture");
+        markerAssignmentService.addItemMarker(vehicleItemId, marker.id(), null);
+        authRepo.grantMarker(marker.id(), "GROUP", defaultGroupInitializer.getDefaultGroupId(), PermissionService.ITEM_READ, null);
 
         var body = webTestClient.post().uri("/api/entity/projection")
                 .header("X-Ntrloc-User", restrictedUser.externalId())
@@ -416,11 +434,12 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
 
     private void revokeDefaultReadGrant(UUID itemTypeId) {
         jdbcClient.sql("""
-                DELETE FROM authorization_grant WHERE marker_id IN (
-                    SELECT id FROM authorization_marker WHERE name = :name
-                )
+                DELETE FROM authorization_item_type_grant
+                WHERE item_type_id = :itemTypeId AND permission = 'item-type:read'
+                  AND principal_type = 'GROUP' AND principal_id = :groupId
                 """)
-                .param("name", "default-read-" + itemTypeId)
+                .param("itemTypeId", itemTypeId)
+                .param("groupId", defaultGroupInitializer.getDefaultGroupId())
                 .update();
     }
 }

@@ -160,6 +160,10 @@ Traversals up to approximately 5 hops are handled efficiently via PostgreSQL rec
 
 ## 4. Security Model
 
+> **Superseded** — this section is an earlier, shorter duplicate. The current, detailed model
+> (including the type-visibility gate added 2026-08-24) lives in
+> `ntrloc-security-projections-summary.md` §2. Kept here for historical context only.
+
 ### Core Concepts
 
 **Policy Markers** — Simple identifier tags applied to items and links. Markers carry no logic themselves; they are the attachment point for permission grants.

@@ -70,7 +70,7 @@ public class AccessAdminController {
         securityRepo.findGroupById(groupId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, GROUP_NOT_FOUND));
 
-        var grants = authRepo.getGrantsForPrincipal(GROUP_PRINCIPAL_TYPE, groupId);
+        var grants = authRepo.getItemTypeGrantsForPrincipal(GROUP_PRINCIPAL_TYPE, groupId);
 
         // Group by item type, collect operations
         Map<UUID, GroupPermissionView> byItemType = new LinkedHashMap<>();
@@ -78,10 +78,10 @@ public class AccessAdminController {
             byItemType.compute(g.itemTypeId(), (k, existing) -> {
                 if (existing == null) {
                     var ops = new ArrayList<String>();
-                    ops.add(g.operation());
+                    ops.add(g.permission());
                     return new GroupPermissionView(g.itemTypeName(), g.itemTypeId(), ops);
                 } else {
-                    existing.operations().add(g.operation());
+                    existing.operations().add(g.permission());
                     return existing;
                 }
             });
@@ -96,21 +96,9 @@ public class AccessAdminController {
         requireAdmin(request, authentication);
         securityRepo.findGroupById(groupId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, GROUP_NOT_FOUND));
-        if (body.itemTypeId() == null || body.operation() == null || body.operation().isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "itemTypeId and operation are required");
-        }
+        requireValidPermissionRequest(body);
 
-        // Find or create a marker for this item type
-        UUID markerId = authRepo.findMarkerForItemType(body.itemTypeId())
-                .orElseGet(() -> {
-                    String markerName = "access-" + body.itemTypeId().toString();
-                    var marker = authRepo.createMarker(markerName, "Auto-created for admin permission grant");
-                    authRepo.assignMarkerToItemTypeIfAbsent(body.itemTypeId(), marker.id());
-                    return marker.id();
-                });
-
-        // Create the grant (idempotent)
-        authRepo.grantIfAbsent(markerId, GROUP_PRINCIPAL_TYPE, groupId, body.operation());
+        authRepo.grantItemTypeIfAbsent(body.itemTypeId(), GROUP_PRINCIPAL_TYPE, groupId, body.operation());
         return ResponseEntity.noContent().build();
     }
 
@@ -121,17 +109,12 @@ public class AccessAdminController {
         requireAdmin(request, authentication);
         securityRepo.findGroupById(groupId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, GROUP_NOT_FOUND));
-        if (body.itemTypeId() == null || body.operation() == null || body.operation().isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "itemTypeId and operation are required");
-        }
+        requireValidPermissionRequest(body);
 
-        UUID markerId = authRepo.findMarkerForItemType(body.itemTypeId())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No marker found for item type"));
-
-        UUID grantId = authRepo.findGrant(markerId, GROUP_PRINCIPAL_TYPE, groupId, body.operation())
+        UUID grantId = authRepo.findItemTypeGrant(body.itemTypeId(), GROUP_PRINCIPAL_TYPE, groupId, body.operation())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Grant not found"));
 
-        authRepo.deleteGrant(grantId);
+        authRepo.deleteItemTypeGrant(grantId);
         return ResponseEntity.noContent().build();
     }
 
@@ -153,9 +136,9 @@ public class AccessAdminController {
         record GrantWithGroup(UUID itemTypeId, String itemTypeName, String operation, String groupName) {}
         List<GrantWithGroup> grantsWithGroup = new ArrayList<>();
         for (var group : userGroups) {
-            var groupGrants = authRepo.getGrantsForPrincipal(GROUP_PRINCIPAL_TYPE, group.id());
+            var groupGrants = authRepo.getItemTypeGrantsForPrincipal(GROUP_PRINCIPAL_TYPE, group.id());
             for (var g : groupGrants) {
-                grantsWithGroup.add(new GrantWithGroup(g.itemTypeId(), g.itemTypeName(), g.operation(), group.name()));
+                grantsWithGroup.add(new GrantWithGroup(g.itemTypeId(), g.itemTypeName(), g.permission(), group.name()));
             }
         }
 
@@ -215,6 +198,16 @@ public class AccessAdminController {
         var principal = principalResolver.resolve(request, authentication);
         if (!principal.isSuperuser()) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only admins can manage access");
+        }
+    }
+
+    private void requireValidPermissionRequest(PermissionRequest body) {
+        if (body.itemTypeId() == null || body.operation() == null || body.operation().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "itemTypeId and operation are required");
+        }
+        if (!PermissionService.ITEM_TYPE_READ.equals(body.operation()) && !PermissionService.ITEM_TYPE_CREATE.equals(body.operation())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "operation must be one of: " + PermissionService.ITEM_TYPE_READ + ", " + PermissionService.ITEM_TYPE_CREATE);
         }
     }
 }

@@ -68,9 +68,21 @@ Each deployment is expected to use a single authentication mechanism per user po
 
 ## 2. Security Model
 
+> **Implementation status (2026-08-24):** Type Visibility, `item:read`/`link:read` (existence
+> filtering), `property:read`/`write`/`link_property:read`/`write` (field filtering),
+> `item:delete`/`link:delete` (capability flags), and grant caching are all built and tested — see
+> `ntrloc-acl-design-notes.md` for the as-built mechanics and file references. **Not built:**
+> Marker Assignment Rules (the rule engine), Ad-Hoc Markers (TTL/audit), Temporary Security
+> Overrides, `item:create`/`link:create`'s Hypothetical Instance Gate, `marker:apply`/
+> `marker:remove`/`security:override`/`binary:download` as enforced primitives, and Permission
+> Transparency Tools. Markers today are assigned only via the minimal, manual
+> `MarkerAssignmentService` write path.
+
 ### Core Concepts
 
-**Policy Markers** — simple identifier tags applied to items and links. Markers carry no logic; they are the attachment point for permission grants. The term "policy" is a misnomer — markers are tags, and the user/group permission grants against them are the actual policy.
+**Type Visibility** — the only permission defined at the item-type level, and structurally separate from the marker/grant mechanism below. Two primitives, `item-type:read` and `item-type:create`, granted directly to a user or group against an item type — no marker indirection. See "Type Visibility" below.
+
+**Policy Markers** — simple identifier tags applied to item and link *instances*. Markers carry no logic; they are the attachment point for instance-level permission grants. The term "policy" is a misnomer — markers are tags, and the user/group permission grants against them are the actual policy.
 
 **Permission Grants** — a user or group is granted specific operation primitives on a marker. The effective permission set for a principal on an item is the union of all grants across all markers applied to that item.
 
@@ -80,16 +92,31 @@ Each deployment is expected to use a single authentication mechanism per user po
 
 ---
 
+### Type Visibility
+
+The one gate that exists outside the marker system entirely. `item-type:read` and `item-type:create` are granted directly — `(principal, item_type, permission)` — to a user or group, the same way any admin grant works, but with no marker in between.
+
+- **`item-type:read`** — can this principal see that the type exists at all. Governs whether the type appears in the caller's projected schema and whether the caller can issue any projection/mutation request against it.
+- **`item-type:create`** — can this principal attempt to create items of this type at all. A prerequisite check that runs before the marker-based Hypothetical Instance Gate (see Create Permission Evaluation below) — passing it doesn't by itself authorize a create, it just means the type isn't closed to this principal outright.
+
+Without `item-type:read`, the type does not exist for this principal: it is absent from `getSchema`, and any projection/mutation naming it directly returns 404 ("unknown item type"), never 403 — indistinguishable from a genuinely nonexistent type. This is deliberate: existence of a type a principal can't see must not be observable.
+
+Link types have no independent type-visibility grant of their own — a link type is visible only if **both** its participant item types are visible (`item-type:read` on each). See "Link Read Visibility" below for how this composes with instance-level checks when reading an actual link.
+
+---
+
 ### Operation Primitives
 
 | Primitive | Applies to |
 |---|---|
-| `item:create` | Item type |
+| `item-type:read` | Item type (direct grant, not marker-mediated) |
+| `item-type:create` | Item type (direct grant, not marker-mediated) |
+| `item:create` | Item instance (hypothetical, evaluated pre-creation via markers the new item would carry) |
 | `item:read` | Item instance |
 | `item:delete` | Item instance |
 | `property:read` | Property on item |
 | `property:write` | Property on item (implies read) |
-| `link:create` | Link type |
+| `link:create` | Link instance (hypothetical, evaluated pre-creation via markers the new link would carry) |
 | `link:read` | Link instance |
 | `link:delete` | Link instance |
 | `link_property:read` | Property on link |
@@ -115,6 +142,8 @@ Each deployment is expected to use a single authentication mechanism per user po
 ### Property-Level Permission Granularity
 
 Permissions are granted at the individual property level — not as blanket "read all properties" or "write all properties". A user might have `property:read` on some properties and `property:write` on others, independently controlled per marker.
+
+Unlike `item:read`/`link:read`, this is never expressed as a query-level filter — it doesn't change which rows come back, only which fields of an already-visible row are shown or writable, so it's resolved in memory against a request-scoped grant map rather than a SQL predicate. **Built** — full mechanism, including the `authorization_grant.property_id` scope column this requires, in `ntrloc-acl-design-notes.md`'s "Grants need a property-scope column" and "Request-scoped permission context" sections. (This is per-instance filtering on projection responses — see the "Projected Schema" gap noted above for where this doesn't yet extend to the schema contract itself.)
 
 ---
 
@@ -161,7 +190,7 @@ These are distinct:
 
 **Create permission evaluation — two gates:**
 
-1. **Type-level gate** — does this principal have `item:create` for this item type via any applicable marker?
+1. **Type-level gate** — does this principal have `item-type:create` for this item type (direct grant, no marker involved)? This is a coarse prerequisite, not the actual authorization decision.
 2. **Hypothetical instance gate** — given the intended properties and links of the new item, what markers would be assigned? Does the principal have `item:create` on any of those markers? Do create-specific rules (which may traverse linked items) permit this creation?
 
 **Creator visibility check** — if the creating principal would not have `item:read` on the newly-created item under the markers that would be assigned, the create is rejected. A user should never be able to create something they immediately can't see.
@@ -199,13 +228,31 @@ Policy marker changes — both rule-assigned and ad-hoc — are first-class even
 ### Projected Schema
 
 The schema endpoint returns a caller-scoped projection:
-- Item types not visible to the caller are omitted entirely
-- Properties are included only if the caller has `property:read` or `property:write`
-- Each property indicates read-only or read-write
-- Link types are included only if both participant types are visible
-- Traits are included only if at least one property is visible in an accessible type context
+- Item types the caller lacks `item-type:read` on are omitted entirely — **built**
+- Properties are included only if the caller has `property:read` or `property:write` — **not reconciled with the instance-scoped marker model.** `property:read`/`write` grants are scoped to markers on specific item *instances* (see "Request-scoped permission context" in `ntrloc-acl-design-notes.md`), so "can this caller read this property" has no single type-wide answer independent of which instance's markers are in play — the schema endpoint has no instance in hand. What property-level filtering *is* built operates per returned item in a projection response, not in the schema contract. Needs a real decision (a type-level default? "readable on at least one currently-existing instance"?) before this bullet is implementable as stated.
+- Each property indicates read-only or read-write — same gap as above
+- Link types are included only if both participant item types are visible (`item-type:read` on each) — **built**
+- Traits are included only if at least one property is visible in an accessible type context — same gap as above
 
 This makes the projected schema a complete, accurate contract for what the caller can do — no trial and error, no runtime surprises. Particularly valuable for MCP tool exposure — an AI agent sees exactly what it's permitted to do.
+
+---
+
+### Link Read Visibility
+
+Reading a link is not gated by a single check — it composes five independent conditions, each of which must hold for the link to appear at all:
+
+1. `item-type:read` on item A's type
+2. `item-type:read` on item B's type
+3. `item:read` on item A specifically (instance-level, marker-based)
+4. `item:read` on item B specifically (instance-level, marker-based)
+5. `link:read` on that link, evaluated from item A's perspective (respecting the participant-label model in §3 Link Model — a link with no label on a given slot is invisible from that participant's perspective regardless of permission)
+
+All five are ANDed; the first failure prunes the branch. (1)/(2) are cheap direct-grant lookups checked in memory before any query runs — an invisible type prunes the entire link with no database access at all. (3)/(4)/(5) are the per-item marker checks, resolved with **`grantedItemReadMarkerIds`**/**`grantedLinkReadMarkerIds`** (the principal's effective grants, computed once per request as part of `RequestPermissionContext`) joined into the *same* query that retrieves the link and projects its target — a `WHERE ... register_item_id IN (SELECT register_item_id FROM register_item_marker WHERE marker_id IN (:grantedItemReadMarkerIds))`-shaped semi-join against the target item's register row, not a separate fetch. Because it composes as one more predicate rather than a round trip, it costs the same as the existing top-level item-visibility filter, and — unlike a post-fetch filter — it stays correct under pagination and `totalCount`, both of which must reflect the already-filtered result set.
+
+**Built** — see `ntrloc-acl-design-notes.md` "Link existence filtering: two semi-joins in `fetchLinksByItem`" for the as-implemented SQL and test coverage.
+
+This resolves what an earlier draft called `link_target:read` — a proposal to let a link's own markers govern disclosure of the connected item's data *without* checking that item's own markers, to avoid exactly this join. That's dropped as a separate primitive: it bought nothing in performance once the check is expressed as a join instead of a fetch, and it would have opened a second, unaudited channel for an item's data to become visible — one a domain admin configuring markers on the link wouldn't necessarily connect back to that item's own read grants. Keeping a single channel (`item:read`, intrinsic or, later, extrinsic-rule-derived) for "can this principal see this item's data" keeps the permission model something an admin can actually reason about and the "Current state explanation" tooling can actually explain, at the cost of foreclosing pure relationship-conferred visibility (see `ntrloc-acl-design-notes.md`'s note on the caseworker/assigned-client pattern) until extrinsic rules exist to grant it properly. This generalizes a principle the design already committed to for the cross-domain case — `ntrloc-design-summary.md` §5 "Supergraph and Regulatory Compliance": "if a linked item in another domain is not visible to the caller, the link itself is not surfaced" — to link visibility generally, rather than introducing a new, narrower stance.
 
 ---
 

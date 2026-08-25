@@ -3,13 +3,10 @@ package org.ntrloc.graph.db.partition.authorization;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.partition.authorization.repository.AuthorizationRepository;
-import org.ntrloc.graph.db.partition.schema.SchemaManager;
-import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateItemDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.repository.SchemaRepository;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
-import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.web.reactive.server.WebTestClient;
 
 import java.util.List;
@@ -20,19 +17,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 // Covers AccessAdminController's group-permission CRUD, user-effective-permissions rollup,
 // user-group listing, and item-type listing endpoints. Reuses AuthorizationTestDataInitializer's
-// standing fixture (alice/bob/carol/root, group "viewers", AclTestPublicDoc + its "public-read"
-// marker -- see that class's own comment) for read-only assertions, since those never mutate it.
+// standing fixture (alice/bob/carol/root, group "viewers", AclTestPublicDoc's item-type:read
+// grant -- see that class's own comment) for read-only assertions, since those never mutate it.
 // Anything that WRITES a grant uses a freshly created, UUID-suffixed group instead, so this class
 // can never leave state behind that could flip an assertion in AuthorizationEndpointsIntegrationTest
 // (same shared singleton Postgres/schema -- see AbstractIntegrationTest's own comment on why).
 //
-// grantGroupPermission's "no marker assigned to this item type yet" branch (the orElseGet that
-// creates one on demand) can't be reached via any item type created through the normal mutation
-// pipeline: DefaultGroupInitializer.onItemTypeCreated auto-assigns a "default-read-<id>" marker to
-// every new item type the instant it's created. createUnmarkedItemType() below creates a
-// single-use item type and immediately strips that auto-assignment back off -- same technique
-// AuthorizationTestDataInitializer already uses for its own three ACL tracer-bullet types -- so
-// that branch, and revokeGroupPermission's matching "no marker found" branch, are both reachable.
+// Grants are direct (item_type_id, principal_type, principal_id, permission) rows -- no marker
+// indirection -- so there's no "not assigned yet" branch to special-case the way the old
+// marker-routed implementation had; grant/revoke behave the same regardless of an item type's
+// prior grant history.
 class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
@@ -46,12 +40,6 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private SchemaRepository schemaRepo;
-
-    @Autowired
-    private SchemaManager schemaManager;
-
-    @Autowired
-    private JdbcClient jdbcClient;
 
     private UUID publicDocId() {
         return schemaRepo.getAllItems().stream()
@@ -67,34 +55,6 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
     private UUID aliceId() {
         return securityRepo.findUserByExternalId("alice").orElseThrow().id();
-    }
-
-    private UUID createUnmarkedItemType() {
-        String name = "AccessAdminControllerTestDoc-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(name, "test fixture", List.of(), null, false, null)));
-        UUID itemTypeId = schemaManager.getAdminSchema().items().stream()
-                .filter(item -> item.name().equals(name))
-                .findFirst()
-                .orElseThrow()
-                .id();
-
-        String markerName = "default-read-" + itemTypeId;
-        jdbcClient.sql("""
-                DELETE FROM authorization_grant WHERE marker_id IN (
-                    SELECT id FROM authorization_marker WHERE name = :name
-                )
-                """)
-                .param("name", markerName)
-                .update();
-        jdbcClient.sql("""
-                DELETE FROM authorization_item_type_marker WHERE item_type_id = :itemTypeId AND marker_id IN (
-                    SELECT id FROM authorization_marker WHERE name = :name
-                )
-                """)
-                .param("itemTypeId", itemTypeId)
-                .param("name", markerName)
-                .update();
-        return itemTypeId;
     }
 
     @SuppressWarnings("unchecked")
@@ -127,22 +87,21 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
         assertThat(permissions)
                 .filteredOn(p -> p.get("itemTypeName").equals("AclTestPublicDoc"))
                 .flatExtracting(p -> (List<String>) p.get("operations"))
-                .contains("item:read");
+                .contains("item-type:read");
     }
 
     @Test
     void getGroupPermissions_groupsMultipleOperationsOnTheSameItemTypeIntoOneEntry() {
         var group = securityRepo.createGroup("access-admin-test-" + UUID.randomUUID());
-        UUID markerId = authRepo.findMarkerForItemType(publicDocId()).orElseThrow();
-        authRepo.grantIfAbsent(markerId, "GROUP", group.id(), "item:read");
-        authRepo.grantIfAbsent(markerId, "GROUP", group.id(), "item:create");
+        authRepo.grantItemTypeIfAbsent(publicDocId(), "GROUP", group.id(), "item-type:read");
+        authRepo.grantItemTypeIfAbsent(publicDocId(), "GROUP", group.id(), "item-type:create");
 
         List<Map<String, Object>> permissions = getAsRoot("/api/admin/groups/" + group.id() + "/permissions");
 
         assertThat(permissions)
                 .filteredOn(p -> p.get("itemTypeName").equals("AclTestPublicDoc"))
                 .flatExtracting(p -> (List<String>) p.get("operations"))
-                .containsExactlyInAnyOrder("item:read", "item:create");
+                .containsExactlyInAnyOrder("item-type:read", "item-type:create");
     }
 
     @Test
@@ -154,36 +113,18 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void grantGroupPermission_createsAMarkerOnDemandWhenNoneIsAssignedYet() {
-        UUID itemTypeId = createUnmarkedItemType();
+    void grantGroupPermission_addsAGrantThatWasNotPreviouslyThere() {
         var group = securityRepo.createGroup("access-admin-test-" + UUID.randomUUID());
-        assertThat(authRepo.findMarkerForItemType(itemTypeId)).isEmpty();
+        assertThat(authRepo.findItemTypeGrant(publicDocId(), "GROUP", group.id(), "item-type:read")).isEmpty();
 
         webTestClient.post().uri("/api/admin/groups/" + group.id() + "/permissions")
                 .header("X-Ntrloc-User", "root")
                 .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue(Map.of("itemTypeId", itemTypeId.toString(), "operation", "item:read"))
+                .bodyValue(Map.of("itemTypeId", publicDocId().toString(), "operation", "item-type:read"))
                 .exchange()
                 .expectStatus().isNoContent();
 
-        UUID markerId = authRepo.findMarkerForItemType(itemTypeId).orElseThrow();
-        assertThat(authRepo.findGrant(markerId, "GROUP", group.id(), "item:read")).isPresent();
-    }
-
-    @Test
-    void grantGroupPermission_reusesTheExistingMarkerWhenOneIsAlreadyAssigned() {
-        var group = securityRepo.createGroup("access-admin-test-" + UUID.randomUUID());
-        UUID existingMarkerId = authRepo.findMarkerForItemType(publicDocId()).orElseThrow();
-
-        webTestClient.post().uri("/api/admin/groups/" + group.id() + "/permissions")
-                .header("X-Ntrloc-User", "root")
-                .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue(Map.of("itemTypeId", publicDocId().toString(), "operation", "item:read"))
-                .exchange()
-                .expectStatus().isNoContent();
-
-        assertThat(authRepo.findMarkerForItemType(publicDocId())).contains(existingMarkerId);
-        assertThat(authRepo.findGrant(existingMarkerId, "GROUP", group.id(), "item:read")).isPresent();
+        assertThat(authRepo.findItemTypeGrant(publicDocId(), "GROUP", group.id(), "item-type:read")).isPresent();
     }
 
     @Test
@@ -191,7 +132,7 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
         webTestClient.post().uri("/api/admin/groups/" + UUID.randomUUID() + "/permissions")
                 .header("X-Ntrloc-User", "root")
                 .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue(Map.of("itemTypeId", publicDocId().toString(), "operation", "item:read"))
+                .bodyValue(Map.of("itemTypeId", publicDocId().toString(), "operation", "item-type:read"))
                 .exchange()
                 .expectStatus().isNotFound();
     }
@@ -203,7 +144,19 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
         webTestClient.post().uri("/api/admin/groups/" + group.id() + "/permissions")
                 .header("X-Ntrloc-User", "root")
                 .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue(Map.of("operation", "item:read"))
+                .bodyValue(Map.of("operation", "item-type:read"))
+                .exchange()
+                .expectStatus().isBadRequest();
+    }
+
+    @Test
+    void grantGroupPermission_withAnUnrecognizedOperation_returnsBadRequest() {
+        var group = securityRepo.createGroup("access-admin-test-" + UUID.randomUUID());
+
+        webTestClient.post().uri("/api/admin/groups/" + group.id() + "/permissions")
+                .header("X-Ntrloc-User", "root")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(Map.of("itemTypeId", publicDocId().toString(), "operation", "item:read"))
                 .exchange()
                 .expectStatus().isBadRequest();
     }
@@ -211,18 +164,17 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void revokeGroupPermission_removesAnExistingGrant() {
         var group = securityRepo.createGroup("access-admin-test-" + UUID.randomUUID());
-        UUID markerId = authRepo.findMarkerForItemType(publicDocId()).orElseThrow();
-        authRepo.grantIfAbsent(markerId, "GROUP", group.id(), "item:read");
+        authRepo.grantItemTypeIfAbsent(publicDocId(), "GROUP", group.id(), "item-type:read");
 
         webTestClient.method(org.springframework.http.HttpMethod.DELETE)
                 .uri("/api/admin/groups/" + group.id() + "/permissions")
                 .header("X-Ntrloc-User", "root")
                 .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue(Map.of("itemTypeId", publicDocId().toString(), "operation", "item:read"))
+                .bodyValue(Map.of("itemTypeId", publicDocId().toString(), "operation", "item-type:read"))
                 .exchange()
                 .expectStatus().isNoContent();
 
-        assertThat(authRepo.findGrant(markerId, "GROUP", group.id(), "item:read")).isEmpty();
+        assertThat(authRepo.findItemTypeGrant(publicDocId(), "GROUP", group.id(), "item-type:read")).isEmpty();
     }
 
     @Test
@@ -231,7 +183,7 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
                 .uri("/api/admin/groups/" + UUID.randomUUID() + "/permissions")
                 .header("X-Ntrloc-User", "root")
                 .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue(Map.of("itemTypeId", publicDocId().toString(), "operation", "item:read"))
+                .bodyValue(Map.of("itemTypeId", publicDocId().toString(), "operation", "item-type:read"))
                 .exchange()
                 .expectStatus().isNotFound();
     }
@@ -244,23 +196,9 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
                 .uri("/api/admin/groups/" + group.id() + "/permissions")
                 .header("X-Ntrloc-User", "root")
                 .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue(Map.of("operation", "item:read"))
+                .bodyValue(Map.of("operation", "item-type:read"))
                 .exchange()
                 .expectStatus().isBadRequest();
-    }
-
-    @Test
-    void revokeGroupPermission_forAnItemTypeWithNoMarkerAtAll_returnsNotFound() {
-        UUID itemTypeId = createUnmarkedItemType();
-        var group = securityRepo.createGroup("access-admin-test-" + UUID.randomUUID());
-
-        webTestClient.method(org.springframework.http.HttpMethod.DELETE)
-                .uri("/api/admin/groups/" + group.id() + "/permissions")
-                .header("X-Ntrloc-User", "root")
-                .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue(Map.of("itemTypeId", itemTypeId.toString(), "operation", "item:read"))
-                .exchange()
-                .expectStatus().isNotFound();
     }
 
     @Test
@@ -271,7 +209,7 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
                 .uri("/api/admin/groups/" + group.id() + "/permissions")
                 .header("X-Ntrloc-User", "root")
                 .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue(Map.of("itemTypeId", publicDocId().toString(), "operation", "item:read"))
+                .bodyValue(Map.of("itemTypeId", publicDocId().toString(), "operation", "item-type:read"))
                 .exchange()
                 .expectStatus().isNotFound();
     }
@@ -286,7 +224,7 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
             assertThat(p.get("itemTypeName")).isEqualTo("AclTestPublicDoc");
             List<Map<String, Object>> operations = (List<Map<String, Object>>) (List<?>) p.get("operations");
             assertThat(operations).anySatisfy(op -> {
-                assertThat(op.get("operation")).isEqualTo("item:read");
+                assertThat(op.get("operation")).isEqualTo("item-type:read");
                 assertThat((List<String>) op.get("via")).contains("viewers");
             });
         });
@@ -297,9 +235,8 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
         var group = securityRepo.createGroup("access-admin-test-" + UUID.randomUUID());
         var user = securityRepo.createUser("access-admin-test-" + UUID.randomUUID(), "Multi-Op User", null, false);
         securityRepo.addUserToGroup(user.id(), group.id());
-        UUID markerId = authRepo.findMarkerForItemType(publicDocId()).orElseThrow();
-        authRepo.grantIfAbsent(markerId, "GROUP", group.id(), "item:read");
-        authRepo.grantIfAbsent(markerId, "GROUP", group.id(), "item:create");
+        authRepo.grantItemTypeIfAbsent(publicDocId(), "GROUP", group.id(), "item-type:read");
+        authRepo.grantItemTypeIfAbsent(publicDocId(), "GROUP", group.id(), "item-type:create");
 
         List<Map<String, Object>> permissions = getAsRoot("/api/admin/users/" + user.id() + "/permissions");
 
@@ -307,7 +244,7 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
             assertThat(p.get("itemTypeName")).isEqualTo("AclTestPublicDoc");
             List<Map<String, Object>> operations = (List<Map<String, Object>>) (List<?>) p.get("operations");
             assertThat(operations).extracting(op -> op.get("operation"))
-                    .containsExactlyInAnyOrder("item:read", "item:create");
+                    .containsExactlyInAnyOrder("item-type:read", "item-type:create");
         });
     }
 

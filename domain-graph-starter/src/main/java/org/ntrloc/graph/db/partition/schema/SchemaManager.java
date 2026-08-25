@@ -133,13 +133,9 @@ public class SchemaManager {
         if (principal.isSuperuser()) {
             return schema;
         }
-        var markersByType = permissionService.getItemTypeMarkerAssignments();
-        var grantedMarkers = permissionService.effectiveMarkers(principal, PermissionService.ITEM_READ);
+        var readableItemTypeIds = permissionService.readableItemTypeIds(principal);
         var visibleItems = schema.items().stream()
-                .filter(item -> {
-                    var markers = markersByType.getOrDefault(item.id(), List.of());
-                    return !markers.isEmpty() && markers.stream().anyMatch(grantedMarkers::contains);
-                })
+                .filter(item -> readableItemTypeIds.contains(item.id()))
                 .toList();
         return new SchemaView(visibleItems, schema.traits());
     }

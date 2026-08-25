@@ -2,12 +2,16 @@ package org.ntrloc.graph.db.coordinator;
 
 import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
 import org.ntrloc.graph.db.partition.ledger.ItemDeleteEntry;
+import org.ntrloc.graph.db.partition.ledger.ItemMarkerAddEntry;
+import org.ntrloc.graph.db.partition.ledger.ItemMarkerRemoveEntry;
 import org.ntrloc.graph.db.partition.ledger.ItemUpdateEntry;
 import org.ntrloc.graph.db.partition.ledger.LedgerEntry;
 import org.ntrloc.graph.db.partition.ledger.LedgerPartitionManager;
 import org.ntrloc.graph.db.partition.ledger.LinkCreateEntry;
 import org.ntrloc.graph.db.partition.ledger.LinkDeleteEntry;
 import org.ntrloc.graph.db.partition.ledger.LinkEndpoint;
+import org.ntrloc.graph.db.partition.ledger.LinkMarkerAddEntry;
+import org.ntrloc.graph.db.partition.ledger.LinkMarkerRemoveEntry;
 import org.ntrloc.graph.db.partition.ledger.LinkUpdateEntry;
 import org.ntrloc.graph.db.partition.register.RegisterLinkEndpoint;
 import org.ntrloc.graph.db.partition.register.RegisterPartitionManager;
@@ -83,6 +87,12 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
         }
         for (LedgerEntry entry : entries) {
             if (entry instanceof ItemDeleteEntry e) registerPartitionManager.deleteItem(e.itemId());
+        }
+        for (LedgerEntry entry : entries) {
+            if (entry instanceof ItemMarkerAddEntry e) registerPartitionManager.postItemMarkerAdd(e.itemId(), e.markerId());
+            else if (entry instanceof ItemMarkerRemoveEntry e) registerPartitionManager.postItemMarkerRemove(e.itemId(), e.markerId());
+            else if (entry instanceof LinkMarkerAddEntry e) registerPartitionManager.postLinkMarkerAdd(e.linkId(), e.markerId());
+            else if (entry instanceof LinkMarkerRemoveEntry e) registerPartitionManager.postLinkMarkerRemove(e.linkId(), e.markerId());
         }
 
         ledgerPartitionManager.commit(transactionId, commitId);

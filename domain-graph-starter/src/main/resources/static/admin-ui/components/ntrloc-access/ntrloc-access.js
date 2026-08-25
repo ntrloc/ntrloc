@@ -653,8 +653,8 @@ class NtrlocAccess extends HTMLElement {
   }
 
   renderGroupPermissions() {
-    const operations = ['item:read', 'item:create', 'item:delete'];
-    const opLabels = { 'item:read': 'Read', 'item:create': 'Write', 'item:delete': 'Delete' };
+    const operations = ['item-type:read', 'item-type:create'];
+    const opLabels = { 'item-type:read': 'Read', 'item-type:create': 'Create' };
 
     const rows = this.itemTypes.map(it => {
       const perm = this.permissions.find(p => p.itemTypeId === it.id);
@@ -687,8 +687,8 @@ class NtrlocAccess extends HTMLElement {
       `<option value="${g.id}">${this.escapeHtml(g.name)}</option>`
     ).join('');
 
-    const operations = ['item:read', 'item:create', 'item:delete'];
-    const opLabels = { 'item:read': 'Read', 'item:create': 'Write', 'item:delete': 'Delete' };
+    const operations = ['item-type:read', 'item-type:create'];
+    const opLabels = { 'item-type:read': 'Read', 'item-type:create': 'Create' };
     const permRows = this.userPermissions.map(p => {
       const cells = operations.map(op => {
         const entry = p.operations.find(o => o.operation === op);

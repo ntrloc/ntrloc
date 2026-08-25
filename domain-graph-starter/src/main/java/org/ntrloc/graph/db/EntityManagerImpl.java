@@ -9,7 +9,6 @@ import org.ntrloc.graph.db.partition.register.RegisterPartitionManager;
 import org.ntrloc.graph.db.partition.process.ProcessAccessible;
 import org.ntrloc.graph.db.projection.CollectionProjectionSpec;
 import org.ntrloc.graph.db.projection.ProjectedItem;
-import org.ntrloc.graph.db.projection.ProjectedItemPermissions;
 import org.ntrloc.graph.db.projection.ProjectionResult;
 import org.ntrloc.graph.db.projection.SingleItemProjectionSpec;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
@@ -17,7 +16,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -58,9 +56,15 @@ public class EntityManagerImpl implements EntityManager {
             return Optional.empty();
         }
         requireReadAccess(principal, actualItemTypeId.get(), spec.itemTypeName());
-        var permissions = computePermissions(principal);
-        return registerPartitionManager.projectOne(actualItemTypeId.get(), spec.itemId(), binaryBaseUrl, spec.links())
-                .map(item -> item.withPermissions(permissions));
+        // Instance-level check, separate from the type-level one above -- cheaper to check before
+        // fetching the item's own (possibly large) properties than to fetch first and discard; see
+        // RegisterPartitionManager.projectOne's own comment on why this lives here, not in a
+        // query-level semi-join.
+        if (!permissionService.canReadItem(principal, spec.itemId())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown item type: " + spec.itemTypeName());
+        }
+        var permissionContext = permissionService.buildContext(principal);
+        return registerPartitionManager.projectOne(actualItemTypeId.get(), spec.itemId(), binaryBaseUrl, spec.links(), permissionContext);
     }
 
     @Override
@@ -84,17 +88,13 @@ public class EntityManagerImpl implements EntityManager {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown item type: " + queriedName);
         }
 
-        var permissions = computePermissions(principal);
+        var permissionContext = permissionService.buildContext(principal);
         // The common case (a type with no descendants, queried by name) goes through the existing,
         // proven single-table path unchanged -- projectAcrossTypes only engages once polymorphism
         // is actually in play, not on every request.
-        var result = readableItemTypeIds.size() == 1
-                ? registerPartitionManager.project(readableItemTypeIds.iterator().next(), spec, binaryBaseUrl)
-                : registerPartitionManager.projectAcrossTypes(readableItemTypeIds, spec, binaryBaseUrl);
-        var itemsWithPermissions = result.items().stream()
-                .map(item -> item.withPermissions(permissions))
-                .toList();
-        return new ProjectionResult(itemsWithPermissions, result.totalCount(), result.facetedCount(), result.facets(), result.stateMachineFacets());
+        return readableItemTypeIds.size() == 1
+                ? registerPartitionManager.project(readableItemTypeIds.iterator().next(), spec, binaryBaseUrl, permissionContext)
+                : registerPartitionManager.projectAcrossTypes(readableItemTypeIds, spec, binaryBaseUrl, permissionContext);
     }
 
     // Exactly one of itemTypeName/traitName must be set; resolves to the set of concrete item-type
@@ -135,13 +135,6 @@ public class EntityManagerImpl implements EntityManager {
     @Override
     public void setItemState(UUID itemId, String stateMachineName, String stateName) {
         registerPartitionManager.setItemState(itemId, stateMachineName, stateName);
-    }
-
-    private ProjectedItemPermissions computePermissions(NtrlocPrincipal principal) {
-        if (principal.isSuperuser()) {
-            return new ProjectedItemPermissions(List.of("*"), true);
-        }
-        return new ProjectedItemPermissions(null, false);
     }
 
     private void requireReadAccess(NtrlocPrincipal principal, UUID itemTypeId, String itemTypeName) {
