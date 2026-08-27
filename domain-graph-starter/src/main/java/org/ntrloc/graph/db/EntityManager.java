@@ -30,8 +30,12 @@ public interface EntityManager {
     // refuse the mutation.
     MutationResponse mutate(MutationRequest request, @Nullable NtrlocPrincipal principal);
 
-    // Minimal, direct register write, deliberately outside the ledger-backed mutate() above -- see
-    // RegisterPartitionManager.setItemState's own comment for why. Exists only so current-state
-    // querying/faceting has real data to test against before real transition execution is built.
+    // Ledger-backed like mutate() above (an ItemUpdateEntry with only its stateChanges facet
+    // populated, staged/committed through the same coordinator) -- but deliberately still minimal:
+    // it does not check that stateName is actually reachable from the item's current state via a
+    // defined transition, and (like mutate()) doesn't enforce permissions. Transition validity
+    // enforcement is a separate, not-yet-built follow-up; this method exists now so state changes
+    // are audited and available as marker-rule trigger input once that system exists, without
+    // waiting on transition validation to be designed first.
     void setItemState(UUID itemId, String stateMachineName, String stateName);
 }

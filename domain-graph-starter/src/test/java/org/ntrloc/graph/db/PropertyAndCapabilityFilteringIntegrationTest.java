@@ -59,7 +59,7 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
         UUID itemId = UUID.randomUUID();
         UUID txn = UUID.randomUUID();
         coordinator.prepare(List.of(new ItemCreateEntry(itemId, fixture.productTypeId(),
-                Map.of(fixture.namePropertyId(), name, fixture.colorPropertyId(), color))), txn, null);
+                Map.of(fixture.namePropertyId(), name, fixture.colorPropertyId(), color), Map.of(), Set.of())), txn, null);
         coordinator.commit(txn, UUID.randomUUID());
         return itemId;
     }
@@ -68,7 +68,7 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
         UUID id = UUID.randomUUID();
         UUID txn = UUID.randomUUID();
         coordinator.prepare(List.of(new ItemCreateEntry(id, fixture.contributorTypeId(),
-                Map.of(fixture.contributorNamePropertyId(), "Ada"))), txn, null);
+                Map.of(fixture.contributorNamePropertyId(), "Ada"), Map.of(), Set.of())), txn, null);
         coordinator.commit(txn, UUID.randomUUID());
         return id;
     }
@@ -79,7 +79,7 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
         coordinator.prepare(List.of(new LinkCreateEntry(linkId, fixture.linkTypeId(),
                 new LinkEndpoint(fixture.productPerspectiveId(), productId),
                 new LinkEndpoint(fixture.contributorPerspectiveId(), contributorId),
-                Map.of(fixture.rolePropertyId(), role))), txn, null);
+                Map.of(fixture.rolePropertyId(), role), Set.of())), txn, null);
         coordinator.commit(txn, UUID.randomUUID());
         return linkId;
     }
@@ -96,13 +96,13 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
 
     private MarkerRow markerOnItem(UUID itemId) {
         var marker = authRepo.createMarker("pcf-" + UUID.randomUUID(), "test fixture");
-        markerAssignmentService.addItemMarker(itemId, marker.id(), null);
+        markerAssignmentService.addItemMarker(itemId, marker.id(), "test-actor", "test reason");
         return marker;
     }
 
     private MarkerRow markerOnLink(UUID linkId) {
         var marker = authRepo.createMarker("pcf-" + UUID.randomUUID(), "test fixture");
-        markerAssignmentService.addLinkMarker(linkId, marker.id(), null);
+        markerAssignmentService.addLinkMarker(linkId, marker.id(), "test-actor", "test reason");
         return marker;
     }
 

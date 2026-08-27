@@ -121,10 +121,6 @@ public class LedgerPartitionManagerImpl implements LedgerPartitionManager {
         if (entry instanceof LinkCreateEntry e) return new TargetRef("LINK", e.linkId());
         if (entry instanceof LinkUpdateEntry e) return new TargetRef("LINK", e.linkId());
         if (entry instanceof LinkDeleteEntry e) return new TargetRef("LINK", e.linkId());
-        if (entry instanceof ItemMarkerAddEntry e) return new TargetRef("ITEM", e.itemId());
-        if (entry instanceof ItemMarkerRemoveEntry e) return new TargetRef("ITEM", e.itemId());
-        if (entry instanceof LinkMarkerAddEntry e) return new TargetRef("LINK", e.linkId());
-        if (entry instanceof LinkMarkerRemoveEntry e) return new TargetRef("LINK", e.linkId());
         throw new IllegalArgumentException("Unsupported entry: " + entry.getClass().getSimpleName());
     }
 
@@ -135,10 +131,6 @@ public class LedgerPartitionManagerImpl implements LedgerPartitionManager {
         if (entry instanceof LinkCreateEntry) return "LINK_CREATE";
         if (entry instanceof LinkUpdateEntry) return "LINK_UPDATE";
         if (entry instanceof LinkDeleteEntry) return "LINK_DELETE";
-        if (entry instanceof ItemMarkerAddEntry) return "ITEM_MARKER_ADD";
-        if (entry instanceof ItemMarkerRemoveEntry) return "ITEM_MARKER_REMOVE";
-        if (entry instanceof LinkMarkerAddEntry) return "LINK_MARKER_ADD";
-        if (entry instanceof LinkMarkerRemoveEntry) return "LINK_MARKER_REMOVE";
         throw new IllegalArgumentException("Unsupported entry: " + entry.getClass().getSimpleName());
     }
 

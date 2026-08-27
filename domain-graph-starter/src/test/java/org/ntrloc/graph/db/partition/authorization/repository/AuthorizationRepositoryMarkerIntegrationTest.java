@@ -45,7 +45,7 @@ class AuthorizationRepositoryMarkerIntegrationTest extends AbstractIntegrationTe
     private UUID createItem() {
         UUID itemId = UUID.randomUUID();
         UUID txn = UUID.randomUUID();
-        coordinator.prepare(List.of(new ItemCreateEntry(itemId, fixture.productTypeId(), Map.of(fixture.namePropertyId(), "Widget"))), txn, null);
+        coordinator.prepare(List.of(new ItemCreateEntry(itemId, fixture.productTypeId(), Map.of(fixture.namePropertyId(), "Widget"), Map.of(), Set.of())), txn, null);
         coordinator.commit(txn, UUID.randomUUID());
         return itemId;
     }
@@ -131,7 +131,7 @@ class AuthorizationRepositoryMarkerIntegrationTest extends AbstractIntegrationTe
     void getMarkerIdsForItem_returnsAssignedMarkers() {
         UUID itemId = createItem();
         var marker = authRepo.createMarker("arm-" + UUID.randomUUID(), "d");
-        markerAssignmentService.addItemMarker(itemId, marker.id(), null);
+        markerAssignmentService.addItemMarker(itemId, marker.id(), "test-actor", "test reason");
 
         assertThat(authRepo.getMarkerIdsForItem(itemId)).containsExactly(marker.id());
     }
@@ -142,8 +142,8 @@ class AuthorizationRepositoryMarkerIntegrationTest extends AbstractIntegrationTe
         UUID item2 = createItem();
         var marker1 = authRepo.createMarker("arm-" + UUID.randomUUID(), "d");
         var marker2 = authRepo.createMarker("arm-" + UUID.randomUUID(), "d");
-        markerAssignmentService.addItemMarker(item1, marker1.id(), null);
-        markerAssignmentService.addItemMarker(item2, marker2.id(), null);
+        markerAssignmentService.addItemMarker(item1, marker1.id(), "test-actor", "test reason");
+        markerAssignmentService.addItemMarker(item2, marker2.id(), "test-actor", "test reason");
 
         Map<UUID, Set<UUID>> byItem = authRepo.getMarkerIdsForItems(Set.of(item1, item2));
 

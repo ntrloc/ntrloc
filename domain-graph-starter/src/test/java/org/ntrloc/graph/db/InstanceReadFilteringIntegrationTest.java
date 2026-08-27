@@ -60,7 +60,7 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
     private UUID createItem(UUID itemTypeId, UUID propertyId, Object value) {
         UUID itemId = UUID.randomUUID();
         UUID txn = UUID.randomUUID();
-        coordinator.prepare(List.of(new ItemCreateEntry(itemId, itemTypeId, Map.of(propertyId, value))), txn, null);
+        coordinator.prepare(List.of(new ItemCreateEntry(itemId, itemTypeId, Map.of(propertyId, value), Map.of(), Set.of())), txn, null);
         coordinator.commit(txn, UUID.randomUUID());
         return itemId;
     }
@@ -79,7 +79,7 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
         coordinator.prepare(List.of(new LinkCreateEntry(linkId, fixture.linkTypeId(),
                 new LinkEndpoint(fixture.productPerspectiveId(), productId),
                 new LinkEndpoint(fixture.contributorPerspectiveId(), contributorId),
-                Map.of())), txn, null);
+                Map.of(), Set.of())), txn, null);
         coordinator.commit(txn, UUID.randomUUID());
         return linkId;
     }
@@ -99,13 +99,13 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
 
     private void grantItemRead(UUID itemId, NtrlocPrincipal principal) {
         var marker = authRepo.createMarker("irf-" + UUID.randomUUID(), "test fixture");
-        markerAssignmentService.addItemMarker(itemId, marker.id(), null);
+        markerAssignmentService.addItemMarker(itemId, marker.id(), "test-actor", "test reason");
         authRepo.grantMarker(marker.id(), "USER", principal.id(), PermissionService.ITEM_READ, null);
     }
 
     private void grantLinkRead(UUID linkId, NtrlocPrincipal principal) {
         var marker = authRepo.createMarker("irf-" + UUID.randomUUID(), "test fixture");
-        markerAssignmentService.addLinkMarker(linkId, marker.id(), null);
+        markerAssignmentService.addLinkMarker(linkId, marker.id(), "test-actor", "test reason");
         authRepo.grantMarker(marker.id(), "USER", principal.id(), PermissionService.LINK_READ, null);
     }
 

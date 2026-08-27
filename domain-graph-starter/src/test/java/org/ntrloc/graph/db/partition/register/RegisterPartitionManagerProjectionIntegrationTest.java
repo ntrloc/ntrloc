@@ -3,6 +3,7 @@ package org.ntrloc.graph.db.partition.register;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
+import org.ntrloc.graph.db.EntityManager;
 import org.ntrloc.graph.db.mutation.ExistingItemReference;
 import org.ntrloc.graph.db.mutation.ItemCreateMutation;
 import org.ntrloc.graph.db.mutation.LinkCreateMutation;
@@ -56,6 +57,9 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
 
     @Autowired
     private RegisterPartitionManager registerPartitionManager;
+
+    @Autowired
+    private EntityManager entityManager;
 
     @Autowired
     private RegisterProjectionTestDomainInitializer fixture;
@@ -268,7 +272,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
     void stateValuePredicate_matchesItemsCurrentlyInThatState() {
         UUID outOfStockBook = createBook("Dune", 400, true, "Fiction");
         createBook("Foundation", 300, true, "Fiction");
-        registerPartitionManager.setItemState(outOfStockBook, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE,
+        entityManager.setItemState(outOfStockBook, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE,
                 RegisterProjectionTestDomainInitializer.OUT_OF_STOCK);
 
         var spec = new CollectionProjectionSpec(BOOK_TYPE, null, null,
@@ -503,9 +507,9 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
         // to have a recorded state at all, even the one meant to represent "Available".
         UUID available = createBook("Dune", 400, true, "Fiction");
         UUID outOfStock = createBook("Foundation", 300, true, "Fiction");
-        registerPartitionManager.setItemState(available, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE,
+        entityManager.setItemState(available, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE,
                 RegisterProjectionTestDomainInitializer.AVAILABLE);
-        registerPartitionManager.setItemState(outOfStock, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE,
+        entityManager.setItemState(outOfStock, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE,
                 RegisterProjectionTestDomainInitializer.OUT_OF_STOCK);
 
         var spec = new CollectionProjectionSpec(BOOK_TYPE, null, null, null, null,
@@ -713,7 +717,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
     void setItemState_thenProjectOne_reflectsTheNewCurrentState() {
         UUID bookId = createBook("Dune", 400, true, "Fiction");
 
-        registerPartitionManager.setItemState(bookId, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE,
+        entityManager.setItemState(bookId, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE,
                 RegisterProjectionTestDomainInitializer.OUT_OF_STOCK);
 
         var book = registerPartitionManager.projectOne(fixture.bookTypeId(), bookId, "http://binary").orElseThrow();
@@ -723,7 +727,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
 
     @Test
     void setItemStateForUnknownItem_throwsIllegalArgumentException() {
-        assertThatThrownBy(() -> registerPartitionManager.setItemState(UUID.randomUUID(),
+        assertThatThrownBy(() -> entityManager.setItemState(UUID.randomUUID(),
                 RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, RegisterProjectionTestDomainInitializer.OUT_OF_STOCK))
                 .isInstanceOf(IllegalArgumentException.class);
     }

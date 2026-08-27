@@ -1,8 +1,10 @@
 package org.ntrloc.graph.db;
 
+import org.ntrloc.graph.db.coordinator.LedgerRegisterCoordinator;
 import org.ntrloc.graph.db.mutation.MutationRequest;
 import org.ntrloc.graph.db.mutation.MutationRequestProcessor;
 import org.ntrloc.graph.db.mutation.MutationResponse;
+import org.ntrloc.graph.db.partition.ledger.ItemUpdateEntry;
 import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
 import org.ntrloc.graph.db.partition.authorization.PermissionService;
 import org.ntrloc.graph.db.partition.register.RegisterPartitionManager;
@@ -16,6 +18,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -32,13 +36,16 @@ public class EntityManagerImpl implements EntityManager {
     private final SchemaManager schemaManager;
     private final PermissionService permissionService;
     private final MutationRequestProcessor mutationRequestProcessor;
+    private final LedgerRegisterCoordinator coordinator;
 
     public EntityManagerImpl(RegisterPartitionManager registerPartitionManager, SchemaManager schemaManager,
-                              PermissionService permissionService, MutationRequestProcessor mutationRequestProcessor) {
+                              PermissionService permissionService, MutationRequestProcessor mutationRequestProcessor,
+                              LedgerRegisterCoordinator coordinator) {
         this.registerPartitionManager = registerPartitionManager;
         this.schemaManager = schemaManager;
         this.permissionService = permissionService;
         this.mutationRequestProcessor = mutationRequestProcessor;
+        this.coordinator = coordinator;
     }
 
     // Polymorphic by default: itemTypeName resolves to itself plus every descendant (see
@@ -134,7 +141,14 @@ public class EntityManagerImpl implements EntityManager {
 
     @Override
     public void setItemState(UUID itemId, String stateMachineName, String stateName) {
-        registerPartitionManager.setItemState(itemId, stateMachineName, stateName);
+        UUID itemTypeId = registerPartitionManager.findItemTypeId(itemId)
+                .orElseThrow(() -> new IllegalArgumentException("Unknown item: " + itemId));
+        UUID stateMachineId = registerPartitionManager.resolveStateMachineId(itemTypeId, stateMachineName);
+        UUID stateId = registerPartitionManager.resolveStateId(stateMachineId, stateName);
+
+        UUID transactionId = UUID.randomUUID();
+        coordinator.prepare(List.of(new ItemUpdateEntry(itemId, Map.of(), Map.of(stateMachineId, stateId), Set.of(), Set.of())), transactionId, null);
+        coordinator.commit(transactionId, UUID.randomUUID());
     }
 
     private void requireReadAccess(NtrlocPrincipal principal, UUID itemTypeId, String itemTypeName) {

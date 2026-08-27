@@ -45,7 +45,7 @@ public class ItemDeleteCascadeExpander {
 
                 expanded.add(new LinkDeleteEntry(linked.linkId()));
                 if (!deletedItemIds.contains(linked.connectedItemId())) {
-                    expanded.add(new ItemUpdateEntry(linked.connectedItemId(), Map.of()));
+                    expanded.add(new ItemUpdateEntry(linked.connectedItemId(), Map.of(), Map.of(), Set.of(), Set.of()));
                 }
             }
         }

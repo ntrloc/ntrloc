@@ -46,7 +46,7 @@ class PermissionServiceInstanceReadIntegrationTest extends AbstractIntegrationTe
     private UUID createItem() {
         UUID itemId = UUID.randomUUID();
         UUID txn = UUID.randomUUID();
-        coordinator.prepare(List.of(new ItemCreateEntry(itemId, fixture.productTypeId(), Map.of(fixture.namePropertyId(), "Widget"))), txn, null);
+        coordinator.prepare(List.of(new ItemCreateEntry(itemId, fixture.productTypeId(), Map.of(fixture.namePropertyId(), "Widget"), Map.of(), Set.of())), txn, null);
         coordinator.commit(txn, UUID.randomUUID());
         return itemId;
     }
@@ -54,7 +54,7 @@ class PermissionServiceInstanceReadIntegrationTest extends AbstractIntegrationTe
     private UUID createContributor() {
         UUID id = UUID.randomUUID();
         UUID txn = UUID.randomUUID();
-        coordinator.prepare(List.of(new ItemCreateEntry(id, fixture.contributorTypeId(), Map.of(fixture.contributorNamePropertyId(), "Ada"))), txn, null);
+        coordinator.prepare(List.of(new ItemCreateEntry(id, fixture.contributorTypeId(), Map.of(fixture.contributorNamePropertyId(), "Ada"), Map.of(), Set.of())), txn, null);
         coordinator.commit(txn, UUID.randomUUID());
         return id;
     }
@@ -65,7 +65,7 @@ class PermissionServiceInstanceReadIntegrationTest extends AbstractIntegrationTe
         coordinator.prepare(List.of(new LinkCreateEntry(linkId, fixture.linkTypeId(),
                 new LinkEndpoint(fixture.productPerspectiveId(), productId),
                 new LinkEndpoint(fixture.contributorPerspectiveId(), contributorId),
-                Map.of())), txn, null);
+                Map.of(), Set.of())), txn, null);
         coordinator.commit(txn, UUID.randomUUID());
         return linkId;
     }
@@ -93,7 +93,7 @@ class PermissionServiceInstanceReadIntegrationTest extends AbstractIntegrationTe
     void itemWithGroupGrantedMarker_isReadableForGroupMemberOnly() {
         UUID itemId = createItem();
         var marker = authRepo.createMarker("pisr-" + UUID.randomUUID(), "d");
-        markerAssignmentService.addItemMarker(itemId, marker.id(), null);
+        markerAssignmentService.addItemMarker(itemId, marker.id(), "test-actor", "test reason");
         var group = securityRepo.createGroup("pisr-" + UUID.randomUUID());
         authRepo.grantMarker(marker.id(), "GROUP", group.id(), PermissionService.ITEM_READ, null);
 
@@ -108,7 +108,7 @@ class PermissionServiceInstanceReadIntegrationTest extends AbstractIntegrationTe
     void itemWithUserDirectGrantedMarker_isReadableForThatUserOnly() {
         UUID itemId = createItem();
         var marker = authRepo.createMarker("pisr-" + UUID.randomUUID(), "d");
-        markerAssignmentService.addItemMarker(itemId, marker.id(), null);
+        markerAssignmentService.addItemMarker(itemId, marker.id(), "test-actor", "test reason");
         var grantedUser = securityRepo.createUser("pisr-" + UUID.randomUUID(), "Granted", null, false);
         var otherUser = securityRepo.createUser("pisr-" + UUID.randomUUID(), "Other", null, false);
         authRepo.grantMarker(marker.id(), "USER", grantedUser.id(), PermissionService.ITEM_READ, null);
@@ -121,7 +121,7 @@ class PermissionServiceInstanceReadIntegrationTest extends AbstractIntegrationTe
     void revokingGrant_removesReadAccess() {
         UUID itemId = createItem();
         var marker = authRepo.createMarker("pisr-" + UUID.randomUUID(), "d");
-        markerAssignmentService.addItemMarker(itemId, marker.id(), null);
+        markerAssignmentService.addItemMarker(itemId, marker.id(), "test-actor", "test reason");
         var user = securityRepo.createUser("pisr-" + UUID.randomUUID(), "User", null, false);
         authRepo.grantMarker(marker.id(), "USER", user.id(), PermissionService.ITEM_READ, null);
         var userPrincipal = principal(user.id(), user.externalId(), Set.of(), false);
@@ -137,13 +137,13 @@ class PermissionServiceInstanceReadIntegrationTest extends AbstractIntegrationTe
     void removingMarkerFromItem_removesReadAccessEvenIfGrantStillExists() {
         UUID itemId = createItem();
         var marker = authRepo.createMarker("pisr-" + UUID.randomUUID(), "d");
-        markerAssignmentService.addItemMarker(itemId, marker.id(), null);
+        markerAssignmentService.addItemMarker(itemId, marker.id(), "test-actor", "test reason");
         var user = securityRepo.createUser("pisr-" + UUID.randomUUID(), "User", null, false);
         authRepo.grantMarker(marker.id(), "USER", user.id(), PermissionService.ITEM_READ, null);
         var userPrincipal = principal(user.id(), user.externalId(), Set.of(), false);
         assertThat(permissionService.canReadItem(userPrincipal, itemId)).isTrue();
 
-        markerAssignmentService.removeItemMarker(itemId, marker.id(), null);
+        markerAssignmentService.removeItemMarker(itemId, marker.id(), "test-actor", "test reason");
 
         assertThat(permissionService.canReadItem(userPrincipal, itemId)).isFalse();
     }
@@ -160,7 +160,7 @@ class PermissionServiceInstanceReadIntegrationTest extends AbstractIntegrationTe
     void linkWithGroupGrantedMarker_isReadableForGroupMember() {
         UUID linkId = createLink(createItem(), createContributor());
         var marker = authRepo.createMarker("pisr-" + UUID.randomUUID(), "d");
-        markerAssignmentService.addLinkMarker(linkId, marker.id(), null);
+        markerAssignmentService.addLinkMarker(linkId, marker.id(), "test-actor", "test reason");
         var group = securityRepo.createGroup("pisr-" + UUID.randomUUID());
         authRepo.grantMarker(marker.id(), "GROUP", group.id(), PermissionService.LINK_READ, null);
         var member = securityRepo.createUser("pisr-" + UUID.randomUUID(), "Member", null, false);

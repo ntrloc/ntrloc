@@ -676,28 +676,56 @@ public class RegisterPartitionManager implements SchemaChangeListener {
     // Updates are never in-place: prepare stages a whole new row: commit deletes the old
     // committed row for the same business id and flips the new one to COMMITTED.
 
-    public UUID stageItemCreate(UUID itemId, UUID itemTypeId, Map<UUID, Object> properties, UUID transactionId) {
-        return insertItemRow(itemId, itemTypeId, keysToStrings(properties), transactionId);
+    public UUID stageItemCreate(UUID itemId, UUID itemTypeId, Map<UUID, Object> properties, Map<UUID, UUID> initialStates, UUID transactionId) {
+        Map<String, Object> states = new HashMap<>();
+        initialStates.forEach((stateMachineId, stateId) -> states.put(stateMachineId.toString(), Map.of("currentStateId", stateId.toString())));
+        return insertItemRow(itemId, itemTypeId, keysToStrings(properties), states, transactionId);
     }
 
-    public UUID stageItemUpdate(UUID itemId, Map<UUID, Object> propertiesDiff, UUID transactionId) {
+    // The only staging entry point for an already-existing item, regardless of how many ledger
+    // entries (property update, state change, both) target it within one transaction. Deliberately
+    // NOT split into separate "stage update" / "stage state change" methods: register_item rows are
+    // swapped wholesale (never patched in place -- see commitItem), so each staging call reads
+    // COMMITTED and inserts one new UNCOMMITTED row. Two independent staging calls for the same
+    // item in the same transaction would each read the same stale COMMITTED row and produce two
+    // competing UNCOMMITTED rows, which commitItem's single-row lookup can't resolve. The caller
+    // (LedgerRegisterCoordinatorImpl.prepare) is responsible for merging every entry that targets a
+    // given item within a transaction before calling this once -- this method has no way to detect
+    // that on its own, and shouldn't need to.
+    //
+    // propertiesDiff/stateChanges are both allowed to be empty (a change to only one of them is the
+    // common case); at least one is expected to be non-empty in practice.
+    //
+    // Deliberately deferred: stateChanges values are accepted unconditionally -- this does not check
+    // that a given stateId is actually reachable from the item's current state via a defined
+    // transition in the state machine's schema. Transition validity enforcement is a separate,
+    // not-yet-built piece.
+    public UUID stageItemChange(UUID itemId, Map<UUID, Object> propertiesDiff, Map<UUID, UUID> stateChanges, UUID transactionId) {
         UUID itemTypeId = findItemTypeId(itemId).orElseThrow();
 
-        Map<String, Object> currentProperties = jdbcClient.sql("""
-                SELECT rt.properties::text AS properties
+        var current = jdbcClient.sql("""
+                SELECT rt.properties::text AS properties, rt.states::text AS states
                 FROM register_item ri
                 JOIN %s rt ON rt.register_item_id = ri.id
                 WHERE ri.item_id = :itemId AND ri.state = 'COMMITTED'
                 """.formatted(tableNameFor(itemTypeId)))
                 .param(PARAM_ITEM_ID, itemId)
-                .query((rs, n) -> parseJsonb(rs.getString(COL_PROPERTIES)))
+                .query((rs, n) -> new CurrentItemRowContent(parseJsonb(rs.getString(COL_PROPERTIES)), parseJsonb(rs.getString(COL_STATES))))
                 .single();
 
-        Map<String, Object> merged = mergeProperties(currentProperties, keysToStrings(propertiesDiff));
-        return insertItemRow(itemId, itemTypeId, merged, transactionId);
+        Map<String, Object> mergedProperties = propertiesDiff.isEmpty()
+                ? current.properties()
+                : mergeProperties(current.properties(), keysToStrings(propertiesDiff));
+
+        Map<String, Object> mergedStates = new HashMap<>(current.states());
+        stateChanges.forEach((stateMachineId, stateId) -> mergedStates.put(stateMachineId.toString(), Map.of("currentStateId", stateId.toString())));
+
+        return insertItemRow(itemId, itemTypeId, mergedProperties, mergedStates, transactionId);
     }
 
-    private UUID insertItemRow(UUID itemId, UUID itemTypeId, Map<String, Object> properties, UUID transactionId) {
+    private record CurrentItemRowContent(Map<String, Object> properties, Map<String, Object> states) {}
+
+    private UUID insertItemRow(UUID itemId, UUID itemTypeId, Map<String, Object> properties, Map<String, Object> states, UUID transactionId) {
         UUID registerItemId = jdbcClient.sql("""
                 INSERT INTO register_item (item_id, item_type_id, state, transaction_id)
                 VALUES (:itemId, :itemTypeId, 'UNCOMMITTED', :transactionId)
@@ -709,10 +737,11 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                 .query(UUID.class)
                 .single();
 
-        jdbcClient.sql("INSERT INTO %s (register_item_id, properties) VALUES (:registerItemId, :properties::jsonb)"
+        jdbcClient.sql("INSERT INTO %s (register_item_id, properties, states) VALUES (:registerItemId, :properties::jsonb, :states::jsonb)"
                 .formatted(tableNameFor(itemTypeId)))
                 .param("registerItemId", registerItemId)
                 .param(COL_PROPERTIES, writeProperties(properties))
+                .param(COL_STATES, writeProperties(states))
                 .update();
 
         return registerItemId;
@@ -747,6 +776,15 @@ public class RegisterPartitionManager implements SchemaChangeListener {
         // register_item_link_perspective (no cascade on that side) blocks the delete.
         if (oldRegisterItemId.isPresent()) {
             jdbcClient.sql("UPDATE register_item_link_perspective SET register_item_id = :newId WHERE register_item_id = :oldId")
+                    .param("newId", stagedRegisterItemId)
+                    .param("oldId", oldRegisterItemId.get())
+                    .update();
+
+            // register_item_marker also FKs to register_item.id, ON DELETE CASCADE -- without this,
+            // the DELETE below would silently wipe every marker this item had. Same "row-swap
+            // forgot to carry something forward" bug class as the states carry-forward fix, just via
+            // an FK cascade instead of a missing field.
+            jdbcClient.sql("UPDATE register_item_marker SET register_item_id = :newId WHERE register_item_id = :oldId")
                     .param("newId", stagedRegisterItemId)
                     .param("oldId", oldRegisterItemId.get())
                     .update();
@@ -861,6 +899,17 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                 .param(PARAM_TRANSACTION_ID, transactionId)
                 .query(UUID.class)
                 .single();
+
+        // register_link_marker FKs to register_link.id, ON DELETE CASCADE -- same carry-forward
+        // requirement as commitItem's register_item_marker fix, for the same reason: the DELETE
+        // below would otherwise silently wipe every marker this link had.
+        jdbcClient.sql("""
+                UPDATE register_link_marker SET register_link_id = :stagedRegisterLinkId
+                WHERE register_link_id = (SELECT id FROM register_link WHERE link_id = :linkId AND state = 'COMMITTED' AND id != :stagedRegisterLinkId)
+                """)
+                .param(PARAM_LINK_ID, linkId)
+                .param("stagedRegisterLinkId", stagedRegisterLinkId)
+                .update();
 
         jdbcClient.sql("DELETE FROM register_link WHERE link_id = :linkId AND state = 'COMMITTED' AND id != :stagedRegisterLinkId")
                 .param(PARAM_LINK_ID, linkId)
@@ -1151,7 +1200,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
     // Same "translate name to id, never store the name" rule as resolvePropertyId, one level up:
     // a state machine name (like a property name) is mutable, so the states column has to be
     // keyed by the machine's stable id.
-    private UUID resolveStateMachineId(UUID itemTypeId, String stateMachineName) {
+    public UUID resolveStateMachineId(UUID itemTypeId, String stateMachineName) {
         return schemaManager.getAdminSchema().items().stream()
                 .filter(item -> item.id().equals(itemTypeId))
                 .findFirst()
@@ -1164,7 +1213,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
 
     // A state's name is only unique within its own machine (schema_state's UNIQUE constraint is
     // (state_machine_id, name)), so resolution is scoped to a specific machine id, not global.
-    private UUID resolveStateId(UUID stateMachineId, String stateName) {
+    public UUID resolveStateId(UUID stateMachineId, String stateName) {
         return schemaManager.getAdminSchema().items().stream()
                 .flatMap(item -> Optional.ofNullable(item.stateMachines()).orElse(List.of()).stream())
                 .filter(m -> m.id().equals(stateMachineId))
@@ -1174,26 +1223,6 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                         .map(AdminStateView::id)
                         .findFirst())
                 .orElseThrow(() -> new IllegalArgumentException("Unknown state: " + stateName));
-    }
-
-    // Minimal, direct register write -- deliberately bypasses the ledger (states isn't ledger-backed)
-    // and any guard/process execution. Exists solely so current-state querying/faceting (below,
-    // and the facet query in runTermsFacetQuery's sibling) has real data to run against before
-    // real transition execution is built; a proper "perform transition" mutation replaces this.
-    public void setItemState(UUID itemId, String stateMachineName, String stateName) {
-        UUID itemTypeId = findItemTypeId(itemId)
-                .orElseThrow(() -> new IllegalArgumentException("Unknown item: " + itemId));
-        UUID stateMachineId = resolveStateMachineId(itemTypeId, stateMachineName);
-        UUID stateId = resolveStateId(stateMachineId, stateName);
-        String tableName = tableNameFor(itemTypeId);
-        jdbcClient.sql("""
-                UPDATE %s SET states = jsonb_set(coalesce(states, '{}'::jsonb), ARRAY[:machineId], (:stateJson)::jsonb, true)
-                WHERE register_item_id = (SELECT id FROM register_item WHERE item_id = :itemId AND state = 'COMMITTED')
-                """.formatted(tableName))
-                .param("machineId", stateMachineId.toString())
-                .param("stateJson", "{\"currentStateId\": \"" + stateId + "\"}")
-                .param(PARAM_ITEM_ID, itemId)
-                .update();
     }
 
     // Converts an id-keyed properties map (as read straight from the register's JSONB, always

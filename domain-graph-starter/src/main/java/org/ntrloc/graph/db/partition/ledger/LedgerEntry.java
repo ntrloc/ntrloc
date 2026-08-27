@@ -10,15 +10,9 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
         @JsonSubTypes.Type(value = ItemDeleteEntry.class, name = "ITEM_DELETE"),
         @JsonSubTypes.Type(value = LinkCreateEntry.class, name = "LINK_CREATE"),
         @JsonSubTypes.Type(value = LinkUpdateEntry.class, name = "LINK_UPDATE"),
-        @JsonSubTypes.Type(value = LinkDeleteEntry.class, name = "LINK_DELETE"),
-        @JsonSubTypes.Type(value = ItemMarkerAddEntry.class, name = "ITEM_MARKER_ADD"),
-        @JsonSubTypes.Type(value = ItemMarkerRemoveEntry.class, name = "ITEM_MARKER_REMOVE"),
-        @JsonSubTypes.Type(value = LinkMarkerAddEntry.class, name = "LINK_MARKER_ADD"),
-        @JsonSubTypes.Type(value = LinkMarkerRemoveEntry.class, name = "LINK_MARKER_REMOVE")
+        @JsonSubTypes.Type(value = LinkDeleteEntry.class, name = "LINK_DELETE")
 })
 public sealed interface LedgerEntry
         permits ItemCreateEntry, ItemUpdateEntry, ItemDeleteEntry,
-                LinkCreateEntry, LinkUpdateEntry, LinkDeleteEntry,
-                ItemMarkerAddEntry, ItemMarkerRemoveEntry,
-                LinkMarkerAddEntry, LinkMarkerRemoveEntry {
+                LinkCreateEntry, LinkUpdateEntry, LinkDeleteEntry {
 }

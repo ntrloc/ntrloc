@@ -342,7 +342,7 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
         // test keeps exercising type-level partial-branch-drop, the thing it's actually about,
         // without being blocked by the orthogonal instance-level check.
         var marker = authRepo.createMarker("cross-type-vehicle-read-" + UUID.randomUUID(), "test fixture");
-        markerAssignmentService.addItemMarker(vehicleItemId, marker.id(), null);
+        markerAssignmentService.addItemMarker(vehicleItemId, marker.id(), "test-actor", "test reason");
         authRepo.grantMarker(marker.id(), "GROUP", defaultGroupInitializer.getDefaultGroupId(), PermissionService.ITEM_READ, null);
 
         var body = webTestClient.post().uri("/api/entity/projection")

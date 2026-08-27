@@ -6,13 +6,16 @@ import org.ntrloc.graph.db.coordinator.CoordinatorTestDomainInitializer;
 import org.ntrloc.graph.db.coordinator.LedgerRegisterCoordinator;
 import org.ntrloc.graph.db.partition.authorization.repository.AuthorizationRepository;
 import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
+import org.ntrloc.graph.db.partition.ledger.ItemUpdateEntry;
 import org.ntrloc.graph.db.partition.ledger.LinkCreateEntry;
 import org.ntrloc.graph.db.partition.ledger.LinkEndpoint;
+import org.ntrloc.graph.db.partition.ledger.LinkUpdateEntry;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -40,7 +43,7 @@ class MarkerAssignmentServiceIntegrationTest extends AbstractIntegrationTest {
     private UUID createItem() {
         UUID itemId = UUID.randomUUID();
         UUID txn = UUID.randomUUID();
-        coordinator.prepare(List.of(new ItemCreateEntry(itemId, fixture.productTypeId(), Map.of(fixture.namePropertyId(), "Widget"))), txn, null);
+        coordinator.prepare(List.of(new ItemCreateEntry(itemId, fixture.productTypeId(), Map.of(fixture.namePropertyId(), "Widget"), Map.of(), Set.of())), txn, null);
         coordinator.commit(txn, UUID.randomUUID());
         return itemId;
     }
@@ -51,7 +54,7 @@ class MarkerAssignmentServiceIntegrationTest extends AbstractIntegrationTest {
         coordinator.prepare(List.of(new LinkCreateEntry(linkId, fixture.linkTypeId(),
                 new LinkEndpoint(fixture.productPerspectiveId(), productId),
                 new LinkEndpoint(fixture.contributorPerspectiveId(), contributorId),
-                Map.of())), txn, null);
+                Map.of(), Set.of())), txn, null);
         coordinator.commit(txn, UUID.randomUUID());
         return linkId;
     }
@@ -61,23 +64,38 @@ class MarkerAssignmentServiceIntegrationTest extends AbstractIntegrationTest {
         UUID itemId = createItem();
         UUID markerId = authRepo.createMarker("mast-" + UUID.randomUUID(), "test marker").id();
 
-        markerAssignmentService.addItemMarker(itemId, markerId, "test-actor");
+        markerAssignmentService.addItemMarker(itemId, markerId, "test-actor", "flagged for review");
 
         assertThat(authRepo.getMarkerIdsForItem(itemId)).contains(markerId);
 
         Long ledgerRows = jdbcClient.sql("""
                 SELECT COUNT(*) FROM ledger_entry
-                WHERE target_type = 'ITEM' AND target_id = :itemId AND entry_type = 'ITEM_MARKER_ADD' AND state = 'COMMITTED'
+                WHERE target_type = 'ITEM' AND target_id = :itemId AND entry_type = 'ITEM_UPDATE' AND state = 'COMMITTED'
                 """)
                 .param("itemId", itemId).query(Long.class).single();
         assertThat(ledgerRows).isEqualTo(1L);
 
         String actor = jdbcClient.sql("""
                 SELECT actor_external_id FROM ledger_entry
-                WHERE target_type = 'ITEM' AND target_id = :itemId AND entry_type = 'ITEM_MARKER_ADD'
+                WHERE target_type = 'ITEM' AND target_id = :itemId AND entry_type = 'ITEM_UPDATE'
                 """)
                 .param("itemId", itemId).query(String.class).single();
         assertThat(actor).isEqualTo("test-actor");
+
+        // ManuallyAppliedMarker's userExternalId/reason are separate from the entry-level actor --
+        // this proves both actually made it into the payload, not just the entry-level attribution.
+        Long attributedRows = jdbcClient.sql("""
+                SELECT COUNT(*) FROM ledger_entry
+                WHERE target_type = 'ITEM' AND target_id = :itemId AND entry_type = 'ITEM_UPDATE' AND state = 'COMMITTED'
+                  AND EXISTS (
+                      SELECT 1 FROM jsonb_array_elements(payload::jsonb -> 'markersAdded') marker
+                      WHERE marker ->> 'markerId' = :markerId
+                        AND marker ->> 'userExternalId' = 'test-actor'
+                        AND marker ->> 'reason' = 'flagged for review'
+                  )
+                """)
+                .param("itemId", itemId).param("markerId", markerId.toString()).query(Long.class).single();
+        assertThat(attributedRows).isEqualTo(1L);
     }
 
     @Test
@@ -85,8 +103,8 @@ class MarkerAssignmentServiceIntegrationTest extends AbstractIntegrationTest {
         UUID itemId = createItem();
         UUID markerId = authRepo.createMarker("mast-" + UUID.randomUUID(), "test marker").id();
 
-        markerAssignmentService.addItemMarker(itemId, markerId, null);
-        markerAssignmentService.addItemMarker(itemId, markerId, null);
+        markerAssignmentService.addItemMarker(itemId, markerId, "test-actor", "test reason");
+        markerAssignmentService.addItemMarker(itemId, markerId, "test-actor", "test reason");
 
         Long registerRows = jdbcClient.sql("""
                 SELECT COUNT(*) FROM register_item_marker rim
@@ -101,17 +119,26 @@ class MarkerAssignmentServiceIntegrationTest extends AbstractIntegrationTest {
     void removeItemMarker_removesFromRegisterAndWritesLedgerEntry() {
         UUID itemId = createItem();
         UUID markerId = authRepo.createMarker("mast-" + UUID.randomUUID(), "test marker").id();
-        markerAssignmentService.addItemMarker(itemId, markerId, null);
+        markerAssignmentService.addItemMarker(itemId, markerId, "test-actor", "test reason");
 
-        markerAssignmentService.removeItemMarker(itemId, markerId, null);
+        markerAssignmentService.removeItemMarker(itemId, markerId, "test-actor", "test reason");
 
         assertThat(authRepo.getMarkerIdsForItem(itemId)).doesNotContain(markerId);
 
+        // Both add and remove write an ITEM_UPDATE entry now (markers are a facet, not their own
+        // entry type) -- entry_type alone can't distinguish them, so this checks the payload's
+        // markersRemoved facet specifically for this marker. markersRemoved is an array of
+        // AttributedMarker objects (not bare marker-id strings), so this has to look inside each
+        // element rather than use jsonb's top-level string-array `?` existence operator.
         Long ledgerRows = jdbcClient.sql("""
                 SELECT COUNT(*) FROM ledger_entry
-                WHERE target_type = 'ITEM' AND target_id = :itemId AND entry_type = 'ITEM_MARKER_REMOVE' AND state = 'COMMITTED'
+                WHERE target_type = 'ITEM' AND target_id = :itemId AND entry_type = 'ITEM_UPDATE' AND state = 'COMMITTED'
+                  AND EXISTS (
+                      SELECT 1 FROM jsonb_array_elements(payload::jsonb -> 'markersRemoved') marker
+                      WHERE marker ->> 'markerId' = :markerId
+                  )
                 """)
-                .param("itemId", itemId).query(Long.class).single();
+                .param("itemId", itemId).param("markerId", markerId.toString()).query(Long.class).single();
         assertThat(ledgerRows).isEqualTo(1L);
     }
 
@@ -121,18 +148,18 @@ class MarkerAssignmentServiceIntegrationTest extends AbstractIntegrationTest {
         UUID contributorId = UUID.randomUUID();
         UUID contributorTxn = UUID.randomUUID();
         coordinator.prepare(List.of(new ItemCreateEntry(contributorId, fixture.contributorTypeId(),
-                Map.of(fixture.contributorNamePropertyId(), "Ada"))), contributorTxn, null);
+                Map.of(fixture.contributorNamePropertyId(), "Ada"), Map.of(), Set.of())), contributorTxn, null);
         coordinator.commit(contributorTxn, UUID.randomUUID());
         UUID linkId = createLink(productId, contributorId);
         UUID markerId = authRepo.createMarker("mast-" + UUID.randomUUID(), "test marker").id();
 
-        markerAssignmentService.addLinkMarker(linkId, markerId, null);
+        markerAssignmentService.addLinkMarker(linkId, markerId, "test-actor", "test reason");
 
         assertThat(authRepo.getMarkerIdsForLink(linkId)).contains(markerId);
 
         Long ledgerRows = jdbcClient.sql("""
                 SELECT COUNT(*) FROM ledger_entry
-                WHERE target_type = 'LINK' AND target_id = :linkId AND entry_type = 'LINK_MARKER_ADD' AND state = 'COMMITTED'
+                WHERE target_type = 'LINK' AND target_id = :linkId AND entry_type = 'LINK_UPDATE' AND state = 'COMMITTED'
                 """)
                 .param("linkId", linkId).query(Long.class).single();
         assertThat(ledgerRows).isEqualTo(1L);
@@ -144,14 +171,51 @@ class MarkerAssignmentServiceIntegrationTest extends AbstractIntegrationTest {
         UUID contributorId = UUID.randomUUID();
         UUID contributorTxn = UUID.randomUUID();
         coordinator.prepare(List.of(new ItemCreateEntry(contributorId, fixture.contributorTypeId(),
-                Map.of(fixture.contributorNamePropertyId(), "Ada"))), contributorTxn, null);
+                Map.of(fixture.contributorNamePropertyId(), "Ada"), Map.of(), Set.of())), contributorTxn, null);
         coordinator.commit(contributorTxn, UUID.randomUUID());
         UUID linkId = createLink(productId, contributorId);
         UUID markerId = authRepo.createMarker("mast-" + UUID.randomUUID(), "test marker").id();
-        markerAssignmentService.addLinkMarker(linkId, markerId, null);
+        markerAssignmentService.addLinkMarker(linkId, markerId, "test-actor", "test reason");
 
-        markerAssignmentService.removeLinkMarker(linkId, markerId, null);
+        markerAssignmentService.removeLinkMarker(linkId, markerId, "test-actor", "test reason");
 
         assertThat(authRepo.getMarkerIdsForLink(linkId)).doesNotContain(markerId);
+    }
+
+    @Test
+    void itemMarker_survivesAnOrdinaryPropertyUpdateAfterward() {
+        // Regression guard: register_item_marker FKs to register_item.id (ON DELETE CASCADE), and
+        // an update swaps that row out for a new one wholesale (see RegisterPartitionManager.
+        // commitItem). Without explicitly carrying register_item_marker rows forward to the new id
+        // before deleting the old one, this marker would be silently wiped by the cascade.
+        UUID itemId = createItem();
+        UUID markerId = authRepo.createMarker("mast-" + UUID.randomUUID(), "test marker").id();
+        markerAssignmentService.addItemMarker(itemId, markerId, "test-actor", "test reason");
+
+        UUID updateTxn = UUID.randomUUID();
+        coordinator.prepare(List.of(new ItemUpdateEntry(itemId, Map.of(fixture.namePropertyId(), "Widget Pro"), Map.of(), Set.of(), Set.of())), updateTxn, null);
+        coordinator.commit(updateTxn, UUID.randomUUID());
+
+        assertThat(authRepo.getMarkerIdsForItem(itemId)).contains(markerId);
+    }
+
+    @Test
+    void linkMarker_survivesAnOrdinaryPropertyUpdateAfterward() {
+        // Same regression guard as above, for register_link_marker/register_link.
+        UUID productId = createItem();
+        UUID contributorId = UUID.randomUUID();
+        UUID contributorTxn = UUID.randomUUID();
+        coordinator.prepare(List.of(new ItemCreateEntry(contributorId, fixture.contributorTypeId(),
+                Map.of(fixture.contributorNamePropertyId(), "Ada"), Map.of(), Set.of())), contributorTxn, null);
+        coordinator.commit(contributorTxn, UUID.randomUUID());
+        UUID linkId = createLink(productId, contributorId);
+        UUID markerId = authRepo.createMarker("mast-" + UUID.randomUUID(), "test marker").id();
+        markerAssignmentService.addLinkMarker(linkId, markerId, "test-actor", "test reason");
+
+        UUID updateTxn = UUID.randomUUID();
+        coordinator.prepare(List.of(new LinkUpdateEntry(linkId, Map.of(fixture.rolePropertyId(), "editor"), Set.of(), Set.of())), updateTxn, null);
+        coordinator.commit(updateTxn, UUID.randomUUID());
+
+        assertThat(authRepo.getMarkerIdsForLink(linkId)).contains(markerId);
     }
 }

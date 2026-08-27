@@ -138,7 +138,7 @@ public class MutationRequestProcessor {
             refIdToItemTypeId.put(m.refId(), itemTypeId.get());
         }
         Map<UUID, Object> properties = resolveItemPropertyIds(itemTypeId.get(), m.properties(), path + PROPERTIES_PATH_SUFFIX, errors);
-        entries.add(new ItemCreateEntry(itemId, itemTypeId.get(), properties));
+        entries.add(new ItemCreateEntry(itemId, itemTypeId.get(), properties, Map.of(), Set.of()));
         itemResults.add(new ItemMutationResult(m.refId(), itemId, MutationOperation.CREATE));
     }
 
@@ -150,7 +150,7 @@ public class MutationRequestProcessor {
             return;
         }
         Map<UUID, Object> properties = resolveItemPropertyIds(itemTypeId.get(), m.properties(), path + PROPERTIES_PATH_SUFFIX, errors);
-        entries.add(new ItemUpdateEntry(m.itemId(), properties));
+        entries.add(new ItemUpdateEntry(m.itemId(), properties, Map.of(), Set.of(), Set.of()));
         itemResults.add(new ItemMutationResult(null, m.itemId(), MutationOperation.UPDATE));
     }
 
@@ -167,7 +167,7 @@ public class MutationRequestProcessor {
         LinkEndpoint endpointA = new LinkEndpoint(a.get().perspectiveIdFor(linkTypeId.get()), a.get().itemId());
         LinkEndpoint endpointB = new LinkEndpoint(b.get().perspectiveIdFor(linkTypeId.get()), b.get().itemId());
         Map<UUID, Object> properties = resolveLinkPropertyIds(linkTypeId.get(), m.properties(), path + PROPERTIES_PATH_SUFFIX, errors);
-        entries.add(new LinkCreateEntry(linkId, linkTypeId.get(), endpointA, endpointB, properties));
+        entries.add(new LinkCreateEntry(linkId, linkTypeId.get(), endpointA, endpointB, properties, Set.of()));
         linkResults.add(new LinkMutationResult(linkId, MutationOperation.CREATE));
     }
 
@@ -179,7 +179,7 @@ public class MutationRequestProcessor {
             return;
         }
         Map<UUID, Object> properties = resolveLinkPropertyIds(linkTypeId.get(), m.properties(), path + PROPERTIES_PATH_SUFFIX, errors);
-        entries.add(new LinkUpdateEntry(m.linkId(), properties));
+        entries.add(new LinkUpdateEntry(m.linkId(), properties, Set.of(), Set.of()));
         linkResults.add(new LinkMutationResult(m.linkId(), MutationOperation.UPDATE));
     }
 
