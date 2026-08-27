@@ -82,7 +82,7 @@ class LedgerPartitionManagerIntegrationTest extends AbstractIntegrationTest {
         LinkCreateEntry entry = new LinkCreateEntry(linkId, UUID.randomUUID(),
                 new LinkEndpoint(UUID.randomUUID(), UUID.randomUUID()),
                 new LinkEndpoint(UUID.randomUUID(), UUID.randomUUID()),
-                Map.of(UUID.randomUUID(), "2026"), Set.of());
+                Map.of(UUID.randomUUID(), "2026"));
 
         ledgerPartitionManager.append(List.of(entry), txn, null);
         ledgerPartitionManager.commit(txn, UUID.randomUUID());

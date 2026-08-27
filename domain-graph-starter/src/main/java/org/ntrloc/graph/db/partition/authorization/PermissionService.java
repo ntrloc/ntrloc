@@ -14,22 +14,9 @@ public class PermissionService {
     public static final String ITEM_TYPE_READ = "item-type:read";
     public static final String ITEM_TYPE_CREATE = "item-type:create";
 
-    // Instance-level, marker-based operations (see docs/ntrloc-acl-design-notes.md "Request-scoped
-    // permission context"). ITEM_READ/LINK_READ are mode-1 (existence-affecting, resolved as a SQL
-    // semi-join). The rest are mode-2 (field/capability-affecting, resolved in memory post-fetch).
-    public static final String ITEM_READ = "item:read";
-    public static final String ITEM_DELETE = "item:delete";
-    public static final String LINK_READ = "link:read";
-    public static final String LINK_DELETE = "link:delete";
-    public static final String PROPERTY_READ = "property:read";
-    public static final String PROPERTY_WRITE = "property:write";
-    public static final String LINK_PROPERTY_READ = "link_property:read";
-    public static final String LINK_PROPERTY_WRITE = "link_property:write";
-
-    // repo is only needed here now for getMarkerIdsForItem/getMarkerIdsForLink -- data-sized
-    // register_item_marker/register_link_marker lookups that are deliberately never cached (see
-    // AuthorizationCacheManager's own comment). Every grant/permission read below goes through the
-    // cache manager instead of issuing a live query.
+    // repo is only needed here now for getMarkerIdsForItem -- a data-sized register_item_marker
+    // lookup that's deliberately never cached (see AuthorizationCacheManager's own comment). Every
+    // grant/permission read below goes through the cache manager instead of issuing a live query.
     private final AuthorizationRepository repo;
     private final AuthorizationCacheManager cache;
 
@@ -70,22 +57,11 @@ public class PermissionService {
         if (principal.isSuperuser()) {
             return true;
         }
-        Set<UUID> granted = cache.getGrantedMarkerIds(principal.id(), principal.groupIds(), ITEM_READ);
+        Set<UUID> granted = cache.getGrantedItemReadMarkerIds(principal.id(), principal.groupIds());
         if (granted.isEmpty()) {
             return false;
         }
         return !Collections.disjoint(repo.getMarkerIdsForItem(itemId), granted);
-    }
-
-    public boolean canReadLink(NtrlocPrincipal principal, UUID linkId) {
-        if (principal.isSuperuser()) {
-            return true;
-        }
-        Set<UUID> granted = cache.getGrantedMarkerIds(principal.id(), principal.groupIds(), LINK_READ);
-        if (granted.isEmpty()) {
-            return false;
-        }
-        return !Collections.disjoint(repo.getMarkerIdsForLink(linkId), granted);
     }
 
     /**
@@ -103,13 +79,13 @@ public class PermissionService {
         return new RequestPermissionContext(
                 false,
                 readableItemTypeIds(principal),
-                cache.getGrantedMarkerIds(userId, groupIds, ITEM_READ),
-                cache.getGrantedMarkerIds(userId, groupIds, LINK_READ),
-                cache.getGrantedMarkerIds(userId, groupIds, ITEM_DELETE),
-                cache.getGrantedMarkerIds(userId, groupIds, LINK_DELETE),
-                cache.getGrantedPropertyIdsByMarker(userId, groupIds, PROPERTY_READ),
-                cache.getGrantedPropertyIdsByMarker(userId, groupIds, PROPERTY_WRITE),
-                cache.getGrantedPropertyIdsByMarker(userId, groupIds, LINK_PROPERTY_READ),
-                cache.getGrantedPropertyIdsByMarker(userId, groupIds, LINK_PROPERTY_WRITE));
+                cache.getGrantedItemReadMarkerIds(userId, groupIds),
+                cache.getGrantedItemDeleteMarkerIds(userId, groupIds),
+                cache.getPropertyReadGrantsByMarker(userId, groupIds),
+                cache.getPropertyWriteGrantsByMarker(userId, groupIds),
+                cache.getLinkPropertyReadGrantsByMarker(userId, groupIds),
+                cache.getLinkPropertyWriteGrantsByMarker(userId, groupIds),
+                cache.getLinkPerspectiveReadGrantsByMarker(userId, groupIds),
+                cache.getLinkPerspectiveDeleteGrantsByMarker(userId, groupIds));
     }
 }

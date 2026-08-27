@@ -32,58 +32,76 @@ class AuthorizationCacheManagerIntegrationTest extends AbstractIntegrationTest {
     @Autowired
     private CoordinatorTestDomainInitializer fixture;
 
-    @Test
-    void getGrantedMarkerIds_returnsMarkersGrantedDirectlyAndViaGroup() {
-        var directMarker = authRepo.createMarker("acm-" + UUID.randomUUID(), "d");
-        var groupMarker = authRepo.createMarker("acm-" + UUID.randomUUID(), "d");
-        var ungrantedMarker = authRepo.createMarker("acm-" + UUID.randomUUID(), "d");
-        var user = securityRepo.createUser("acm-" + UUID.randomUUID(), "User", null, false);
-        var group = securityRepo.createGroup("acm-" + UUID.randomUUID());
-
-        authRepo.grantMarker(directMarker.id(), "USER", user.id(), PermissionService.ITEM_READ, null);
-        authRepo.grantMarker(groupMarker.id(), "GROUP", group.id(), PermissionService.ITEM_READ, null);
-
-        Set<UUID> granted = cache.getGrantedMarkerIds(user.id(), Set.of(group.id()), PermissionService.ITEM_READ);
-
-        assertThat(granted).contains(directMarker.id(), groupMarker.id());
-        assertThat(granted).doesNotContain(ungrantedMarker.id());
+    private UUID createMarker() {
+        return authRepo.createMarker("acm-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId()).id();
     }
 
     @Test
-    void getGrantedPropertyIdsByMarker_scopesToSpecificProperties() {
-        var marker = authRepo.createMarker("acm-" + UUID.randomUUID(), "d");
+    void getGrantedItemReadMarkerIds_returnsMarkersGrantedDirectlyAndViaGroup() {
+        UUID directMarker = createMarker();
+        UUID groupMarker = createMarker();
+        UUID ungrantedMarker = createMarker();
         var user = securityRepo.createUser("acm-" + UUID.randomUUID(), "User", null, false);
+        var group = securityRepo.createGroup("acm-" + UUID.randomUUID());
 
-        authRepo.grantMarker(marker.id(), "USER", user.id(), PermissionService.PROPERTY_READ, fixture.namePropertyId());
-        authRepo.grantMarker(marker.id(), "USER", user.id(), PermissionService.PROPERTY_READ, fixture.colorPropertyId());
+        authRepo.setItemPermissions(authRepo.ensureMarkerGrant(directMarker, "USER", user.id()), true, false);
+        authRepo.setItemPermissions(authRepo.ensureMarkerGrant(groupMarker, "GROUP", group.id()), true, false);
 
-        Map<UUID, Set<UUID>> byMarker = cache.getGrantedPropertyIdsByMarker(user.id(), Set.of(), PermissionService.PROPERTY_READ);
+        Set<UUID> granted = cache.getGrantedItemReadMarkerIds(user.id(), Set.of(group.id()));
 
-        assertThat(byMarker.get(marker.id())).containsExactlyInAnyOrder(fixture.namePropertyId(), fixture.colorPropertyId());
+        assertThat(granted).contains(directMarker, groupMarker);
+        assertThat(granted).doesNotContain(ungrantedMarker);
+    }
+
+    @Test
+    void getPropertyReadGrantsByMarker_scopesToSpecificProperties() {
+        UUID marker = createMarker();
+        var user = securityRepo.createUser("acm-" + UUID.randomUUID(), "User", null, false);
+        UUID grantId = authRepo.ensureMarkerGrant(marker, "USER", user.id());
+
+        authRepo.grantPropertyAccess(grantId, fixture.namePropertyId(), true, false, false);
+        authRepo.grantPropertyAccess(grantId, fixture.colorPropertyId(), true, false, false);
+
+        Map<UUID, Set<UUID>> byMarker = cache.getPropertyReadGrantsByMarker(user.id(), Set.of());
+
+        assertThat(byMarker.get(marker)).containsExactlyInAnyOrder(fixture.namePropertyId(), fixture.colorPropertyId());
+    }
+
+    @Test
+    void getLinkPerspectiveReadGrantsByMarker_scopesToSpecificPerspectives() {
+        UUID marker = createMarker();
+        var user = securityRepo.createUser("acm-" + UUID.randomUUID(), "User", null, false);
+        UUID grantId = authRepo.ensureMarkerGrant(marker, "USER", user.id());
+
+        authRepo.grantLinkPerspectiveAccess(grantId, fixture.productPerspectiveId(), false, true, false);
+
+        Map<UUID, Set<UUID>> byMarker = cache.getLinkPerspectiveReadGrantsByMarker(user.id(), Set.of());
+
+        assertThat(byMarker.get(marker)).containsExactly(fixture.productPerspectiveId());
     }
 
     @Test
     void grantingAMarker_isVisibleInTheCacheImmediately_noRestartNeeded() {
-        var marker = authRepo.createMarker("acm-" + UUID.randomUUID(), "d");
+        UUID marker = createMarker();
         var user = securityRepo.createUser("acm-" + UUID.randomUUID(), "User", null, false);
-        assertThat(cache.getGrantedMarkerIds(user.id(), Set.of(), PermissionService.ITEM_READ)).doesNotContain(marker.id());
+        assertThat(cache.getGrantedItemReadMarkerIds(user.id(), Set.of())).doesNotContain(marker);
 
-        authRepo.grantMarker(marker.id(), "USER", user.id(), PermissionService.ITEM_READ, null);
+        authRepo.setItemPermissions(authRepo.ensureMarkerGrant(marker, "USER", user.id()), true, false);
 
-        assertThat(cache.getGrantedMarkerIds(user.id(), Set.of(), PermissionService.ITEM_READ)).contains(marker.id());
+        assertThat(cache.getGrantedItemReadMarkerIds(user.id(), Set.of())).contains(marker);
     }
 
     @Test
     void revokingAGrant_removesItFromTheCacheImmediately() {
-        var marker = authRepo.createMarker("acm-" + UUID.randomUUID(), "d");
+        UUID marker = createMarker();
         var user = securityRepo.createUser("acm-" + UUID.randomUUID(), "User", null, false);
-        authRepo.grantMarker(marker.id(), "USER", user.id(), PermissionService.ITEM_READ, null);
-        assertThat(cache.getGrantedMarkerIds(user.id(), Set.of(), PermissionService.ITEM_READ)).contains(marker.id());
-        UUID grantId = authRepo.findMarkerGrant(marker.id(), "USER", user.id(), PermissionService.ITEM_READ, null).orElseThrow();
+        UUID grantId = authRepo.ensureMarkerGrant(marker, "USER", user.id());
+        authRepo.setItemPermissions(grantId, true, false);
+        assertThat(cache.getGrantedItemReadMarkerIds(user.id(), Set.of())).contains(marker);
 
         authRepo.deleteMarkerGrant(grantId);
 
-        assertThat(cache.getGrantedMarkerIds(user.id(), Set.of(), PermissionService.ITEM_READ)).doesNotContain(marker.id());
+        assertThat(cache.getGrantedItemReadMarkerIds(user.id(), Set.of())).doesNotContain(marker);
     }
 
     @Test
@@ -99,9 +117,9 @@ class AuthorizationCacheManagerIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void groupMembershipChangeAlone_needsNoCacheRebuild_membershipResolvedAtReadTime() {
-        var marker = authRepo.createMarker("acm-" + UUID.randomUUID(), "d");
+        UUID marker = createMarker();
         var group = securityRepo.createGroup("acm-" + UUID.randomUUID());
-        authRepo.grantMarker(marker.id(), "GROUP", group.id(), PermissionService.ITEM_READ, null);
+        authRepo.setItemPermissions(authRepo.ensureMarkerGrant(marker, "GROUP", group.id()), true, false);
 
         // Joining the group happens strictly after the grant/cache-refresh above -- no grant or
         // revoke fires afterward, so nothing re-triggers refreshCache(). If this still resolves
@@ -110,6 +128,6 @@ class AuthorizationCacheManagerIntegrationTest extends AbstractIntegrationTest {
         var user = securityRepo.createUser("acm-" + UUID.randomUUID(), "User", null, false);
         securityRepo.addUserToGroup(user.id(), group.id());
 
-        assertThat(cache.getGrantedMarkerIds(user.id(), Set.of(group.id()), PermissionService.ITEM_READ)).contains(marker.id());
+        assertThat(cache.getGrantedItemReadMarkerIds(user.id(), Set.of(group.id()))).contains(marker);
     }
 }

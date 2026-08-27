@@ -5,11 +5,9 @@ import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.coordinator.CoordinatorTestDomainInitializer;
 import org.ntrloc.graph.db.coordinator.LedgerRegisterCoordinator;
 import org.ntrloc.graph.db.partition.authorization.MarkerAssignmentService;
-import org.ntrloc.graph.db.partition.authorization.PermissionService;
 import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
 import java.util.List;
@@ -18,10 +16,12 @@ import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-// Covers AuthorizationRepository's marker/grant CRUD and the DB-level correctness constraints
-// added in V1_0_1_7 (property_id required/forbidden per operation, NULLS NOT DISTINCT dedup).
+// Covers AuthorizationRepository's marker/grant CRUD against the marker_grant + child-table shape
+// (see docs/ntrloc-marker-admin-ui-design-notes.md). Illegal states that used to need a DB CHECK
+// constraint (property_id required only for property-scoped operations) are now structurally
+// unrepresentable -- marker_grant_property always has a property_id column, item-level flags live
+// on marker_grant with no property_id at all -- so there's nothing left to test a constraint for.
 class AuthorizationRepositoryMarkerIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
@@ -51,86 +51,126 @@ class AuthorizationRepositoryMarkerIntegrationTest extends AbstractIntegrationTe
     }
 
     @Test
-    void createMarker_persistsAndReturnsRow() {
-        var marker = authRepo.createMarker("arm-" + UUID.randomUUID(), "a description");
+    void createMarker_persistsScopeAndReturnsRow() {
+        var marker = authRepo.createMarker("arm-" + UUID.randomUUID(), "a description", "ITEM_TYPE", fixture.productTypeId());
         assertThat(marker.id()).isNotNull();
         assertThat(marker.description()).isEqualTo("a description");
+        assertThat(marker.scopeKind()).isEqualTo("ITEM_TYPE");
+        assertThat(marker.scopeId()).isEqualTo(fixture.productTypeId());
     }
 
     @Test
-    void grantMarker_thenFindMarkerGrant_isPresent() {
-        var marker = authRepo.createMarker("arm-" + UUID.randomUUID(), "d");
+    void ensureMarkerGrant_isIdempotent() {
+        var marker = authRepo.createMarker("arm-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId());
         var group = securityRepo.createGroup("arm-" + UUID.randomUUID());
 
-        authRepo.grantMarker(marker.id(), "GROUP", group.id(), PermissionService.ITEM_READ, null);
+        UUID first = authRepo.ensureMarkerGrant(marker.id(), "GROUP", group.id());
+        UUID second = authRepo.ensureMarkerGrant(marker.id(), "GROUP", group.id());
 
-        assertThat(authRepo.findMarkerGrant(marker.id(), "GROUP", group.id(), PermissionService.ITEM_READ, null)).isPresent();
-    }
-
-    @Test
-    void grantMarkerIfAbsent_isIdempotent() {
-        var marker = authRepo.createMarker("arm-" + UUID.randomUUID(), "d");
-        var group = securityRepo.createGroup("arm-" + UUID.randomUUID());
-
-        authRepo.grantMarkerIfAbsent(marker.id(), "GROUP", group.id(), PermissionService.ITEM_READ, null);
-        authRepo.grantMarkerIfAbsent(marker.id(), "GROUP", group.id(), PermissionService.ITEM_READ, null);
-
-        Long rows = jdbcClient.sql("SELECT COUNT(*) FROM authorization_grant WHERE marker_id = :markerId")
+        assertThat(second).isEqualTo(first);
+        Long rows = jdbcClient.sql("SELECT COUNT(*) FROM marker_grant WHERE marker_id = :markerId")
                 .param("markerId", marker.id()).query(Long.class).single();
         assertThat(rows).isEqualTo(1L);
     }
 
     @Test
-    void deleteMarkerGrant_removesIt() {
-        var marker = authRepo.createMarker("arm-" + UUID.randomUUID(), "d");
+    void findMarkerGrant_findsAnEnsuredGrant() {
+        var marker = authRepo.createMarker("arm-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId());
         var group = securityRepo.createGroup("arm-" + UUID.randomUUID());
-        authRepo.grantMarker(marker.id(), "GROUP", group.id(), PermissionService.ITEM_READ, null);
-        UUID grantId = authRepo.findMarkerGrant(marker.id(), "GROUP", group.id(), PermissionService.ITEM_READ, null).orElseThrow();
+        UUID grantId = authRepo.ensureMarkerGrant(marker.id(), "GROUP", group.id());
+
+        assertThat(authRepo.findMarkerGrant(marker.id(), "GROUP", group.id())).contains(grantId);
+    }
+
+    @Test
+    void setItemPermissions_persistsTheFlags() {
+        var marker = authRepo.createMarker("arm-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId());
+        var group = securityRepo.createGroup("arm-" + UUID.randomUUID());
+        UUID grantId = authRepo.ensureMarkerGrant(marker.id(), "GROUP", group.id());
+
+        authRepo.setItemPermissions(grantId, true, false);
+
+        var row = jdbcClient.sql("SELECT item_can_read, item_can_delete FROM marker_grant WHERE id = :id")
+                .param("id", grantId).query((rs, n) -> Map.entry(rs.getBoolean("item_can_read"), rs.getBoolean("item_can_delete"))).single();
+        assertThat(row.getKey()).isTrue();
+        assertThat(row.getValue()).isFalse();
+    }
+
+    @Test
+    void grantPropertyAccess_upsertsOnConflict() {
+        var marker = authRepo.createMarker("arm-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId());
+        var group = securityRepo.createGroup("arm-" + UUID.randomUUID());
+        UUID grantId = authRepo.ensureMarkerGrant(marker.id(), "GROUP", group.id());
+
+        authRepo.grantPropertyAccess(grantId, fixture.namePropertyId(), true, false, false);
+        authRepo.grantPropertyAccess(grantId, fixture.namePropertyId(), true, true, false);
+
+        var row = jdbcClient.sql("SELECT can_read, can_write FROM marker_grant_property WHERE marker_grant_id = :id AND property_id = :propId")
+                .param("id", grantId).param("propId", fixture.namePropertyId())
+                .query((rs, n) -> Map.entry(rs.getBoolean("can_read"), rs.getBoolean("can_write"))).single();
+        assertThat(row.getKey()).isTrue();
+        assertThat(row.getValue()).isTrue();
+        Long rows = jdbcClient.sql("SELECT COUNT(*) FROM marker_grant_property WHERE marker_grant_id = :id")
+                .param("id", grantId).query(Long.class).single();
+        assertThat(rows).isEqualTo(1L);
+    }
+
+    @Test
+    void grantLinkPerspectiveAccess_upsertsOnConflict() {
+        var marker = authRepo.createMarker("arm-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId());
+        var group = securityRepo.createGroup("arm-" + UUID.randomUUID());
+        UUID grantId = authRepo.ensureMarkerGrant(marker.id(), "GROUP", group.id());
+
+        authRepo.grantLinkPerspectiveAccess(grantId, fixture.productPerspectiveId(), false, true, false);
+        authRepo.grantLinkPerspectiveAccess(grantId, fixture.productPerspectiveId(), true, true, true);
+
+        var row = jdbcClient.sql("""
+                SELECT can_create, can_read, can_delete FROM marker_grant_link_perspective
+                WHERE marker_grant_id = :id AND perspective_id = :perspId
+                """)
+                .param("id", grantId).param("perspId", fixture.productPerspectiveId())
+                .query((rs, n) -> List.of(rs.getBoolean("can_create"), rs.getBoolean("can_read"), rs.getBoolean("can_delete"))).single();
+        assertThat(row).containsExactly(true, true, true);
+    }
+
+    @Test
+    void grantLinkPropertyAccess_persists() {
+        var marker = authRepo.createMarker("arm-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId());
+        var group = securityRepo.createGroup("arm-" + UUID.randomUUID());
+        UUID grantId = authRepo.ensureMarkerGrant(marker.id(), "GROUP", group.id());
+
+        authRepo.grantLinkPropertyAccess(grantId, fixture.rolePropertyId(), true, true, false);
+
+        Long rows = jdbcClient.sql("""
+                SELECT COUNT(*) FROM marker_grant_link_property WHERE marker_grant_id = :id AND property_id = :propId AND can_read AND can_write
+                """)
+                .param("id", grantId).param("propId", fixture.rolePropertyId()).query(Long.class).single();
+        assertThat(rows).isEqualTo(1L);
+    }
+
+    @Test
+    void deleteMarkerGrant_cascadesToChildTables() {
+        var marker = authRepo.createMarker("arm-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId());
+        var group = securityRepo.createGroup("arm-" + UUID.randomUUID());
+        UUID grantId = authRepo.ensureMarkerGrant(marker.id(), "GROUP", group.id());
+        authRepo.grantPropertyAccess(grantId, fixture.namePropertyId(), true, false, false);
+        authRepo.grantLinkPerspectiveAccess(grantId, fixture.productPerspectiveId(), false, true, false);
 
         authRepo.deleteMarkerGrant(grantId);
 
-        assertThat(authRepo.findMarkerGrant(marker.id(), "GROUP", group.id(), PermissionService.ITEM_READ, null)).isEmpty();
-    }
-
-    // getGrantedMarkerIds/getGrantedPropertyIdsByMarker moved to AuthorizationCacheManager (see
-    // AuthorizationCacheManagerIntegrationTest) -- reads are cache-backed now, these two methods
-    // no longer exist on the repository itself.
-
-    @Test
-    void propertyScopedOperation_withoutPropertyId_violatesCheckConstraint() {
-        var marker = authRepo.createMarker("arm-" + UUID.randomUUID(), "d");
-        var user = securityRepo.createUser("arm-" + UUID.randomUUID(), "User", null, false);
-
-        assertThatThrownBy(() -> authRepo.grantMarker(marker.id(), "USER", user.id(), PermissionService.PROPERTY_READ, null))
-                .isInstanceOf(DataIntegrityViolationException.class);
-    }
-
-    @Test
-    void itemLevelOperation_withPropertyId_violatesCheckConstraint() {
-        var marker = authRepo.createMarker("arm-" + UUID.randomUUID(), "d");
-        var user = securityRepo.createUser("arm-" + UUID.randomUUID(), "User", null, false);
-
-        assertThatThrownBy(() -> authRepo.grantMarker(marker.id(), "USER", user.id(), PermissionService.ITEM_READ, fixture.namePropertyId()))
-                .isInstanceOf(DataIntegrityViolationException.class);
-    }
-
-    @Test
-    void duplicateItemLevelGrant_violatesUniqueConstraint() {
-        var marker = authRepo.createMarker("arm-" + UUID.randomUUID(), "d");
-        var user = securityRepo.createUser("arm-" + UUID.randomUUID(), "User", null, false);
-        authRepo.grantMarker(marker.id(), "USER", user.id(), PermissionService.ITEM_READ, null);
-
-        // Two item:read grants for the same marker/principal both have property_id = NULL --
-        // without NULLS NOT DISTINCT on the unique constraint, Postgres would treat these as
-        // non-duplicate (NULL <> NULL) and silently allow both.
-        assertThatThrownBy(() -> authRepo.grantMarker(marker.id(), "USER", user.id(), PermissionService.ITEM_READ, null))
-                .isInstanceOf(DataIntegrityViolationException.class);
+        assertThat(authRepo.findMarkerGrant(marker.id(), "GROUP", group.id())).isEmpty();
+        Long propertyRows = jdbcClient.sql("SELECT COUNT(*) FROM marker_grant_property WHERE marker_grant_id = :id")
+                .param("id", grantId).query(Long.class).single();
+        Long perspectiveRows = jdbcClient.sql("SELECT COUNT(*) FROM marker_grant_link_perspective WHERE marker_grant_id = :id")
+                .param("id", grantId).query(Long.class).single();
+        assertThat(propertyRows).isEqualTo(0L);
+        assertThat(perspectiveRows).isEqualTo(0L);
     }
 
     @Test
     void getMarkerIdsForItem_returnsAssignedMarkers() {
         UUID itemId = createItem();
-        var marker = authRepo.createMarker("arm-" + UUID.randomUUID(), "d");
+        var marker = authRepo.createMarker("arm-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId());
         markerAssignmentService.addItemMarker(itemId, marker.id(), "test-actor", "test reason");
 
         assertThat(authRepo.getMarkerIdsForItem(itemId)).containsExactly(marker.id());
@@ -140,8 +180,8 @@ class AuthorizationRepositoryMarkerIntegrationTest extends AbstractIntegrationTe
     void getMarkerIdsForItems_batchesAcrossMultipleItems() {
         UUID item1 = createItem();
         UUID item2 = createItem();
-        var marker1 = authRepo.createMarker("arm-" + UUID.randomUUID(), "d");
-        var marker2 = authRepo.createMarker("arm-" + UUID.randomUUID(), "d");
+        var marker1 = authRepo.createMarker("arm-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId());
+        var marker2 = authRepo.createMarker("arm-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId());
         markerAssignmentService.addItemMarker(item1, marker1.id(), "test-actor", "test reason");
         markerAssignmentService.addItemMarker(item2, marker2.id(), "test-actor", "test reason");
 

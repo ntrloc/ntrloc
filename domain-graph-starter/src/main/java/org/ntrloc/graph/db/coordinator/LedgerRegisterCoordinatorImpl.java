@@ -95,17 +95,14 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
         // committed form (a fresh create's row, or an update's swapped-in row). Only markerId
         // crosses into the register -- ruleId/ruleVersion/reason are attribution, a ledger-only
         // concern (the register only ever needs "is this marker currently applied," never why).
+        // Items only -- markers never apply to links (see LinkCreateEntry/LinkUpdateEntry's own
+        // comments).
         for (LedgerEntry entry : entries) {
             if (entry instanceof ItemCreateEntry e) {
                 e.initialMarkers().forEach(m -> registerPartitionManager.postItemMarkerAdd(e.itemId(), m.markerId()));
             } else if (entry instanceof ItemUpdateEntry e) {
                 e.markersAdded().forEach(m -> registerPartitionManager.postItemMarkerAdd(e.itemId(), m.markerId()));
                 e.markersRemoved().forEach(m -> registerPartitionManager.postItemMarkerRemove(e.itemId(), m.markerId()));
-            } else if (entry instanceof LinkCreateEntry e) {
-                e.initialMarkers().forEach(m -> registerPartitionManager.postLinkMarkerAdd(e.linkId(), m.markerId()));
-            } else if (entry instanceof LinkUpdateEntry e) {
-                e.markersAdded().forEach(m -> registerPartitionManager.postLinkMarkerAdd(e.linkId(), m.markerId()));
-                e.markersRemoved().forEach(m -> registerPartitionManager.postLinkMarkerRemove(e.linkId(), m.markerId()));
             }
         }
 

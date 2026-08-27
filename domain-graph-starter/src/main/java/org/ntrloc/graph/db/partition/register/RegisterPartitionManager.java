@@ -900,17 +900,6 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                 .query(UUID.class)
                 .single();
 
-        // register_link_marker FKs to register_link.id, ON DELETE CASCADE -- same carry-forward
-        // requirement as commitItem's register_item_marker fix, for the same reason: the DELETE
-        // below would otherwise silently wipe every marker this link had.
-        jdbcClient.sql("""
-                UPDATE register_link_marker SET register_link_id = :stagedRegisterLinkId
-                WHERE register_link_id = (SELECT id FROM register_link WHERE link_id = :linkId AND state = 'COMMITTED' AND id != :stagedRegisterLinkId)
-                """)
-                .param(PARAM_LINK_ID, linkId)
-                .param("stagedRegisterLinkId", stagedRegisterLinkId)
-                .update();
-
         jdbcClient.sql("DELETE FROM register_link WHERE link_id = :linkId AND state = 'COMMITTED' AND id != :stagedRegisterLinkId")
                 .param(PARAM_LINK_ID, linkId)
                 .param("stagedRegisterLinkId", stagedRegisterLinkId)
@@ -953,28 +942,6 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                 .update();
     }
 
-    public void postLinkMarkerAdd(UUID linkId, UUID markerId) {
-        jdbcClient.sql("""
-                INSERT INTO register_link_marker (register_link_id, marker_id)
-                SELECT id, :markerId FROM register_link WHERE link_id = :linkId AND state = 'COMMITTED'
-                ON CONFLICT DO NOTHING
-                """)
-                .param(PARAM_LINK_ID, linkId)
-                .param("markerId", markerId)
-                .update();
-    }
-
-    public void postLinkMarkerRemove(UUID linkId, UUID markerId) {
-        jdbcClient.sql("""
-                DELETE FROM register_link_marker
-                WHERE marker_id = :markerId
-                  AND register_link_id = (SELECT id FROM register_link WHERE link_id = :linkId AND state = 'COMMITTED')
-                """)
-                .param(PARAM_LINK_ID, linkId)
-                .param("markerId", markerId)
-                .update();
-    }
-
     // --- Mode-2 (field/capability-affecting) permission resolution: batched per-page marker
     // lookup + in-memory set arithmetic against RequestPermissionContext's grant maps. Never a
     // WHERE-clause concern (see buildItemReadPermissionFragment's own comment on the mode split).
@@ -988,19 +955,11 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                 .collect(Collectors.groupingBy(Map.Entry::getKey, Collectors.mapping(Map.Entry::getValue, Collectors.toSet())));
     }
 
-    private Map<UUID, Set<UUID>> getMarkerIdsForRegisterLinks(Collection<UUID> registerLinkIds) {
-        if (registerLinkIds.isEmpty()) return Map.of();
-        return jdbcClient.sql("SELECT register_link_id, marker_id FROM register_link_marker WHERE register_link_id IN (:ids)")
-                .param("ids", registerLinkIds)
-                .query((rs, n) -> Map.entry(rs.getObject("register_link_id", UUID.class), rs.getObject("marker_id", UUID.class)))
-                .list().stream()
-                .collect(Collectors.groupingBy(Map.Entry::getKey, Collectors.mapping(Map.Entry::getValue, Collectors.toSet())));
-    }
-
     // Union of a grant map's values across the markers a row actually carries -- the core mode-2
-    // computation, reused for property:read/write and link_property:read/write alike, just with a
-    // different (markerIds, grantsByMarker) pair each time.
-    private Set<UUID> grantedPropertyIds(Set<UUID> markerIds, Map<UUID, Set<UUID>> grantsByMarker) {
+    // computation, reused for property:read/write, link_property:read/write, and (for the
+    // perspective-keyed maps) link:read/delete alike, just with a different (markerIds,
+    // grantsByMarker) pair each time.
+    private Set<UUID> unionGrantedIds(Set<UUID> markerIds, Map<UUID, Set<UUID>> grantsByMarker) {
         if (markerIds.isEmpty() || grantsByMarker.isEmpty()) return Set.of();
         Set<UUID> result = new HashSet<>();
         for (UUID markerId : markerIds) {
@@ -1016,7 +975,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
     private Map<String, Object> filterPropertiesByReadGrant(Map<String, Object> propertiesById, Set<UUID> markerIds,
                                                               @Nullable Map<UUID, Set<UUID>> propertyReadGrantsByMarker) {
         if (propertyReadGrantsByMarker == null) return propertiesById;
-        Set<UUID> readable = grantedPropertyIds(markerIds, propertyReadGrantsByMarker);
+        Set<UUID> readable = unionGrantedIds(markerIds, propertyReadGrantsByMarker);
         if (readable.isEmpty()) return Map.of();
         Map<String, Object> filtered = new HashMap<>();
         propertiesById.forEach((idString, value) -> {
@@ -1035,13 +994,33 @@ public class RegisterPartitionManager implements SchemaChangeListener {
         if (permissions.superuser()) {
             return new ProjectedItemPermissions(List.of("*"), true);
         }
-        List<String> editNames = grantedPropertyIds(markerIds, writeGrantsByMarker).stream()
+        List<String> editNames = unionGrantedIds(markerIds, writeGrantsByMarker).stream()
                 .map(ownPropertyNames::get)
                 .filter(Objects::nonNull)
                 .map(path -> path.get(0))
                 .distinct()
                 .toList();
         boolean canDelete = !Collections.disjoint(markerIds, deleteGrantedMarkerIds);
+        return new ProjectedItemPermissions(editNames, canDelete);
+    }
+
+    // A link's own permissions differ from buildPermissions' shape in exactly one way: delete is
+    // perspective-keyed (marker_grant_link_perspective.can_delete), not a flat marker set, since
+    // link:delete is anchored to the source item's marker via the specific perspective traversed --
+    // same reasoning as link:read's own filtering above. Edit (link_property:write) stays flat,
+    // since link properties aren't perspective-scoped (symmetric regardless of viewing side).
+    private ProjectedItemPermissions buildLinkPermissions(RequestPermissionContext permissions, Set<UUID> sourceMarkerIds, UUID perspectiveId,
+                                                            Map<UUID, List<String>> linkPropertyNames) {
+        if (permissions.superuser()) {
+            return new ProjectedItemPermissions(List.of("*"), true);
+        }
+        List<String> editNames = unionGrantedIds(sourceMarkerIds, permissions.linkPropertyWriteGrantsByMarker()).stream()
+                .map(linkPropertyNames::get)
+                .filter(Objects::nonNull)
+                .map(path -> path.get(0))
+                .distinct()
+                .toList();
+        boolean canDelete = unionGrantedIds(sourceMarkerIds, permissions.linkPerspectiveDeleteGrantsByMarker()).contains(perspectiveId);
         return new ProjectedItemPermissions(editNames, canDelete);
     }
 
@@ -1248,7 +1227,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
         return byName;
     }
 
-    private record LinkRow(UUID myRegisterItemId, String perspectiveName,
+    private record LinkRow(UUID myRegisterItemId, String perspectiveName, UUID perspectiveId,
                            UUID registerLinkId, UUID linkId, UUID linkDefinitionId,
                            UUID linkedRegisterItemId, UUID linkedItemId, UUID linkedItemTypeId, String linkedItemType) {}
 
@@ -1332,10 +1311,11 @@ public class RegisterPartitionManager implements SchemaChangeListener {
 
         SqlFragment permissionFragment = buildLinkVisibilityPermissionFragment(permissions);
 
-        List<LinkRow> linkRows = jdbcClient.sql("""
+        List<LinkRow> allLinkRows = jdbcClient.sql("""
                 SELECT
                     rilp_mine.register_item_id  AS my_register_item_id,
                     silp_mine.name              AS perspective_name,
+                    silp_mine.id                AS perspective_id,
                     rl.id                       AS register_link_id,
                     rl.link_id                  AS link_id,
                     rl.link_definition_id       AS link_definition_id,
@@ -1361,6 +1341,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                 .query((rs, n) -> new LinkRow(
                         rs.getObject("my_register_item_id", UUID.class),
                         rs.getString("perspective_name"),
+                        rs.getObject("perspective_id", UUID.class),
                         rs.getObject(COL_REGISTER_LINK_ID, UUID.class),
                         rs.getObject("link_id", UUID.class),
                         rs.getObject("link_definition_id", UUID.class),
@@ -1370,17 +1351,42 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                         rs.getString("linked_item_type")))
                 .list();
 
+        if (allLinkRows.isEmpty()) {
+            return Map.of();
+        }
+
+        // Mode-2, in-memory: link:read/create/delete are anchored to the *source* item's own
+        // marker via the specific perspective traversed here (rilp_mine/silp_mine), never to a
+        // marker on the link itself (link markers don't exist -- see
+        // docs/ntrloc-marker-admin-ui-design-notes.md). This can't be a SQL semi-join the way
+        // item:read is: it's a two-dimensional check (marker AND perspective together), and links
+        // aren't independently paginated the way top-level items are, so there's no
+        // pagination/totalCount correctness reason it has to be.
+        Map<UUID, Set<UUID>> sourceItemMarkerIds = permissions.superuser() ? Map.of()
+                : getMarkerIdsForRegisterItems(allLinkRows.stream().map(LinkRow::myRegisterItemId).distinct().toList());
+        List<LinkRow> linkRows = permissions.superuser() ? allLinkRows : allLinkRows.stream()
+                .filter(row -> !Collections.disjoint(
+                        unionGrantedIds(sourceItemMarkerIds.getOrDefault(row.myRegisterItemId(), Set.of()), permissions.linkPerspectiveReadGrantsByMarker()),
+                        Set.of(row.perspectiveId())))
+                .toList();
+
         if (linkRows.isEmpty()) {
             return Map.of();
         }
 
         // Linked item's own properties use property:read/write (it's still an item, just reached
         // via a link); the link's own properties use link_property:read/write -- distinct grant
-        // maps even though both may reference the same underlying schema_property ids.
+        // maps even though both may reference the same underlying schema_property ids. Link
+        // properties aren't perspective-scoped (symmetric regardless of viewing side), so they're
+        // gated by the source item's markers directly, same shape as an item's own properties --
+        // merged (union) across every row reaching a given link, for the rare case the same link is
+        // reachable from more than one source item in this same batch (e.g. a polymorphic page
+        // containing both of a link's endpoints).
         Map<UUID, Set<UUID>> linkedItemMarkerIds = permissions.superuser() ? Map.of()
                 : getMarkerIdsForRegisterItems(linkRows.stream().map(LinkRow::linkedRegisterItemId).distinct().toList());
-        Map<UUID, Set<UUID>> linkMarkerIds = permissions.superuser() ? Map.of()
-                : getMarkerIdsForRegisterLinks(linkRows.stream().map(LinkRow::registerLinkId).distinct().toList());
+        Map<UUID, Set<UUID>> linkOwnerMarkerIds = permissions.superuser() ? Map.of()
+                : linkRows.stream().collect(Collectors.groupingBy(LinkRow::registerLinkId,
+                        Collectors.flatMapping(row -> sourceItemMarkerIds.getOrDefault(row.myRegisterItemId(), Set.of()).stream(), Collectors.toSet())));
 
         Map<UUID, Map<String, Object>> linkedItemProperties = fetchPropertiesByRegisterItemId(
                 linkRows.stream().collect(Collectors.groupingBy(
@@ -1392,7 +1398,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                 linkRows.stream().collect(Collectors.groupingBy(
                         LinkRow::linkDefinitionId,
                         Collectors.mapping(LinkRow::registerLinkId, Collectors.toList()))),
-                COL_REGISTER_LINK_ID, linkMarkerIds, permissions.superuser() ? null : permissions.linkPropertyReadGrantsByMarker());
+                COL_REGISTER_LINK_ID, linkOwnerMarkerIds, permissions.superuser() ? null : permissions.linkPropertyReadGrantsByMarker());
 
         // Merged across every distinct type/link-definition in this batch -- safe since property
         // ids are globally unique across the whole schema (same reasoning projectAcrossTypes'
@@ -1417,7 +1423,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                                 Collectors.mapping(row -> {
                                     Map<String, Object> linkedProps = linkedItemProperties.getOrDefault(row.linkedRegisterItemId(), Map.of());
                                     Set<UUID> linkedItemOwnMarkerIds = linkedItemMarkerIds.getOrDefault(row.linkedRegisterItemId(), Set.of());
-                                    Set<UUID> linkOwnMarkerIds = linkMarkerIds.getOrDefault(row.registerLinkId(), Set.of());
+                                    Set<UUID> mySourceMarkerIds = sourceItemMarkerIds.getOrDefault(row.myRegisterItemId(), Set.of());
                                     return new ProjectedLink(
                                         row.linkId(),
                                         linkProperties.getOrDefault(row.registerLinkId(), Map.of()),
@@ -1434,8 +1440,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                                                 buildPermissions(permissions, linkedItemOwnMarkerIds,
                                                         permissions.propertyWriteGrantsByMarker(), permissions.itemDeleteGrantedMarkerIds(), linkedItemPropertyNames),
                                                 computeDisplayLabel(row.linkedItemId(), linkedProps, displayLabelPatterns.get(row.linkedItemType()))),
-                                        buildPermissions(permissions, linkOwnMarkerIds,
-                                                permissions.linkPropertyWriteGrantsByMarker(), permissions.linkDeleteGrantedMarkerIds(), linkPropertyNames)
+                                        buildLinkPermissions(permissions, mySourceMarkerIds, row.perspectiveId(), linkPropertyNames)
                                     );
                                 },
                                 Collectors.toList()))));
@@ -1606,12 +1611,18 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                 Map.of("grantedItemReadMarkerIds", permissions.grantedItemReadMarkerIds()));
     }
 
-    // The three checks fetchLinksByItem needs (see docs/ntrloc-acl-design-notes.md "Link existence
-    // filtering: two semi-joins in fetchLinksByItem") beyond what's already established by the time
-    // a row reaches that query: the *source* item (ri_mine) already passed the top-level filter to
-    // be in the page this method was called with, so only the target's (ri_other) type/instance
-    // readability and the link's (rl) own readability need checking here. Aliases ri_other/rl are
-    // fixed by fetchLinksByItem's own query text, not parameterized.
+    // The two checks fetchLinksByItem needs as a SQL semi-join beyond what's already established by
+    // the time a row reaches that query: the *source* item (ri_mine) already passed the top-level
+    // filter to be in the page this method was called with, so only the target's (ri_other)
+    // type/instance readability needs checking here. Alias ri_other is fixed by fetchLinksByItem's
+    // own query text, not parameterized.
+    //
+    // Link visibility itself (can this principal traverse *this* perspective from ri_mine) used to
+    // be a third check here too, against the link's own marker -- markers only ever apply to items
+    // now (see docs/ntrloc-marker-admin-ui-design-notes.md), so that check moved to an in-memory,
+    // mode-2 filter in fetchLinksByItem instead (it's a two-dimensional marker+perspective check,
+    // and links aren't independently paginated, so there's no correctness reason it has to be a
+    // semi-join).
     private SqlFragment buildLinkVisibilityPermissionFragment(RequestPermissionContext permissions) {
         if (permissions.superuser()) {
             return SqlFragment.empty();
@@ -1624,11 +1635,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                 ? new SqlFragment("AND FALSE", Map.of())
                 : new SqlFragment("AND ri_other.id IN (SELECT register_item_id FROM register_item_marker WHERE marker_id IN (:grantedItemReadMarkerIds))",
                         Map.of("grantedItemReadMarkerIds", permissions.grantedItemReadMarkerIds()));
-        SqlFragment linkReadCheck = permissions.grantedLinkReadMarkerIds().isEmpty()
-                ? new SqlFragment("AND FALSE", Map.of())
-                : new SqlFragment("AND rl.id IN (SELECT register_link_id FROM register_link_marker WHERE marker_id IN (:grantedLinkReadMarkerIds))",
-                        Map.of("grantedLinkReadMarkerIds", permissions.grantedLinkReadMarkerIds()));
-        return combineFragments(List.of(targetTypeCheck, targetItemReadCheck, linkReadCheck));
+        return combineFragments(List.of(targetTypeCheck, targetItemReadCheck));
     }
 
     private SqlFragment translatePredicate(Predicate predicate, UUID itemTypeId, AtomicInteger counter) {

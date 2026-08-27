@@ -8,7 +8,6 @@ import org.ntrloc.graph.db.mutation.MutationRequestProcessor;
 import org.ntrloc.graph.db.mutation.MutationResponse;
 import org.ntrloc.graph.db.partition.authorization.DefaultGroupInitializer;
 import org.ntrloc.graph.db.partition.authorization.MarkerAssignmentService;
-import org.ntrloc.graph.db.partition.authorization.PermissionService;
 import org.ntrloc.graph.db.partition.authorization.repository.AuthorizationRepository;
 import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
@@ -341,9 +340,9 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
         // is a separate, also-real gate now. Grant it on the Vehicle instance specifically so this
         // test keeps exercising type-level partial-branch-drop, the thing it's actually about,
         // without being blocked by the orthogonal instance-level check.
-        var marker = authRepo.createMarker("cross-type-vehicle-read-" + UUID.randomUUID(), "test fixture");
+        var marker = authRepo.createMarker("cross-type-vehicle-read-" + UUID.randomUUID(), "test fixture", "ITEM_TYPE", idOf(vehicleName));
         markerAssignmentService.addItemMarker(vehicleItemId, marker.id(), "test-actor", "test reason");
-        authRepo.grantMarker(marker.id(), "GROUP", defaultGroupInitializer.getDefaultGroupId(), PermissionService.ITEM_READ, null);
+        authRepo.setItemPermissions(authRepo.ensureMarkerGrant(marker.id(), "GROUP", defaultGroupInitializer.getDefaultGroupId()), true, false);
 
         var body = webTestClient.post().uri("/api/entity/projection")
                 .header("X-Ntrloc-User", restrictedUser.externalId())

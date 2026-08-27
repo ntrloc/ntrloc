@@ -6,7 +6,6 @@ import org.ntrloc.graph.db.coordinator.CoordinatorTestDomainInitializer;
 import org.ntrloc.graph.db.coordinator.LedgerRegisterCoordinator;
 import org.ntrloc.graph.db.partition.authorization.DefaultGroupInitializer;
 import org.ntrloc.graph.db.partition.authorization.MarkerAssignmentService;
-import org.ntrloc.graph.db.partition.authorization.PermissionService;
 import org.ntrloc.graph.db.partition.authorization.repository.AuthorizationRepository;
 import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
 import org.ntrloc.graph.db.partition.ledger.LinkCreateEntry;
@@ -79,7 +78,7 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
         coordinator.prepare(List.of(new LinkCreateEntry(linkId, fixture.linkTypeId(),
                 new LinkEndpoint(fixture.productPerspectiveId(), productId),
                 new LinkEndpoint(fixture.contributorPerspectiveId(), contributorId),
-                Map.of(), Set.of())), txn, null);
+                Map.of())), txn, null);
         coordinator.commit(txn, UUID.randomUUID());
         return linkId;
     }
@@ -98,15 +97,20 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
             new ResolvedPrincipal(UUID.randomUUID(), "irf-root", "Root", null, Set.of(), true);
 
     private void grantItemRead(UUID itemId, NtrlocPrincipal principal) {
-        var marker = authRepo.createMarker("irf-" + UUID.randomUUID(), "test fixture");
+        var marker = authRepo.createMarker("irf-" + UUID.randomUUID(), "test fixture", "ITEM_TYPE", fixture.productTypeId());
         markerAssignmentService.addItemMarker(itemId, marker.id(), "test-actor", "test reason");
-        authRepo.grantMarker(marker.id(), "USER", principal.id(), PermissionService.ITEM_READ, null);
+        authRepo.setItemPermissions(authRepo.ensureMarkerGrant(marker.id(), "USER", principal.id()), true, false);
     }
 
-    private void grantLinkRead(UUID linkId, NtrlocPrincipal principal) {
-        var marker = authRepo.createMarker("irf-" + UUID.randomUUID(), "test fixture");
-        markerAssignmentService.addLinkMarker(linkId, marker.id(), "test-actor", "test reason");
-        authRepo.grantMarker(marker.id(), "USER", principal.id(), PermissionService.LINK_READ, null);
+    // link:read is anchored to the *source* item's own marker via a specific perspective now
+    // (markers only ever apply to items, never links -- see
+    // docs/ntrloc-marker-admin-ui-design-notes.md), so this grants a marker on sourceItemId itself,
+    // with a link-perspective grant for the perspective the link is being traversed through.
+    private void grantLinkRead(UUID sourceItemId, UUID perspectiveId, NtrlocPrincipal principal) {
+        var marker = authRepo.createMarker("irf-" + UUID.randomUUID(), "test fixture", "ITEM_TYPE", fixture.productTypeId());
+        markerAssignmentService.addItemMarker(sourceItemId, marker.id(), "test-actor", "test reason");
+        UUID grantId = authRepo.ensureMarkerGrant(marker.id(), "USER", principal.id());
+        authRepo.grantLinkPerspectiveAccess(grantId, perspectiveId, false, true, false);
     }
 
     // --- Collection projection ---
@@ -222,11 +226,11 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
     void linkFiltering_allThreeConditionsSatisfied_linkIsIncluded() {
         UUID productId = createProduct();
         UUID contributorId = createContributor();
-        UUID linkId = createLink(productId, contributorId);
+        createLink(productId, contributorId);
         var principal = newUserInEveryoneGroup();
         grantItemRead(productId, principal);
         grantItemRead(contributorId, principal);
-        grantLinkRead(linkId, principal);
+        grantLinkRead(productId, fixture.productPerspectiveId(), principal);
 
         var result = entityManager.project(
                 new SingleItemProjectionSpec("CoordinatorTestProduct", productId, Map.of("products", new LinkProjectionSpec(null))),

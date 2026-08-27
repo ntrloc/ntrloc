@@ -3,7 +3,6 @@ package org.ntrloc.graph.db.partition.authorization;
 import org.ntrloc.graph.db.coordinator.LedgerRegisterCoordinator;
 import org.ntrloc.graph.db.partition.ledger.ItemUpdateEntry;
 import org.ntrloc.graph.db.partition.ledger.LedgerEntry;
-import org.ntrloc.graph.db.partition.ledger.LinkUpdateEntry;
 import org.ntrloc.graph.db.partition.ledger.ManuallyAppliedMarker;
 import org.springframework.stereotype.Service;
 
@@ -17,6 +16,9 @@ import java.util.UUID;
 // markers get assigned via rules (a rule engine is still unbuilt; see RuleAppliedMarker for that
 // shape once it exists). Every marker change made through this service is manual by construction --
 // ManuallyAppliedMarker requires both who did it and why, so both are required parameters here too.
+//
+// Items only -- markers never apply to links (see docs/ntrloc-marker-admin-ui-design-notes.md,
+// "Decision: markers apply to items only").
 @Service
 public class MarkerAssignmentService {
 
@@ -32,14 +34,6 @@ public class MarkerAssignmentService {
 
     public void removeItemMarker(UUID itemId, UUID markerId, String actorExternalId, String reason) {
         commit(List.of(new ItemUpdateEntry(itemId, Map.of(), Map.of(), Set.of(), Set.of(manual(markerId, actorExternalId, reason)))), actorExternalId);
-    }
-
-    public void addLinkMarker(UUID linkId, UUID markerId, String actorExternalId, String reason) {
-        commit(List.of(new LinkUpdateEntry(linkId, Map.of(), Set.of(manual(markerId, actorExternalId, reason)), Set.of())), actorExternalId);
-    }
-
-    public void removeLinkMarker(UUID linkId, UUID markerId, String actorExternalId, String reason) {
-        commit(List.of(new LinkUpdateEntry(linkId, Map.of(), Set.of(), Set.of(manual(markerId, actorExternalId, reason)))), actorExternalId);
     }
 
     private ManuallyAppliedMarker manual(UUID markerId, String actorExternalId, String reason) {

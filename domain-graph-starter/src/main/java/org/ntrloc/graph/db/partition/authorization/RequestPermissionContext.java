@@ -12,22 +12,30 @@ import java.util.UUID;
 // so RegisterPartitionManager (which builds SQL and does the in-memory mode-2 resolution from
 // this) doesn't need to depend on how these sets/maps are computed -- only on their shape.
 //
-// Mode 1 (existence-affecting, resolved as a SQL semi-join): grantedItemReadMarkerIds,
-// grantedLinkReadMarkerIds. Mode 2 (field/capability-affecting, resolved in memory on an
-// already-fetched page): everything else. See docs/ntrloc-acl-design-notes.md "Performance model".
+// Mode 1 (existence-affecting, resolved as a SQL semi-join): grantedItemReadMarkerIds only now --
+// link visibility used to be mode-1 too (a marker directly on the link), but markers only ever
+// apply to items now (see docs/ntrloc-marker-admin-ui-design-notes.md, "Decision: markers apply to
+// items only"), so link:read is resolved in-memory instead (mode 2, below) -- links aren't
+// independently paginated the way top-level items are, so there's no pagination/totalCount
+// correctness reason it has to be a semi-join.
+//
+// Mode 2 (field/capability-affecting, resolved in memory on an already-fetched page): everything
+// else, including link visibility/deletion, which are now keyed by (markerId -> perspectiveIds)
+// rather than a flat marker set, since link:read/create/delete are anchored to the *source* item's
+// marker via a specific perspective, not to a marker on the link itself.
 public record RequestPermissionContext(
         boolean superuser,
         Set<UUID> readableItemTypeIds,
         Set<UUID> grantedItemReadMarkerIds,
-        Set<UUID> grantedLinkReadMarkerIds,
         Set<UUID> itemDeleteGrantedMarkerIds,
-        Set<UUID> linkDeleteGrantedMarkerIds,
         Map<UUID, Set<UUID>> propertyReadGrantsByMarker,
         Map<UUID, Set<UUID>> propertyWriteGrantsByMarker,
         Map<UUID, Set<UUID>> linkPropertyReadGrantsByMarker,
-        Map<UUID, Set<UUID>> linkPropertyWriteGrantsByMarker
+        Map<UUID, Set<UUID>> linkPropertyWriteGrantsByMarker,
+        Map<UUID, Set<UUID>> linkPerspectiveReadGrantsByMarker,
+        Map<UUID, Set<UUID>> linkPerspectiveDeleteGrantsByMarker
 ) {
     public static RequestPermissionContext forSuperuser() {
-        return new RequestPermissionContext(true, Set.of(), Set.of(), Set.of(), Set.of(), Set.of(), Map.of(), Map.of(), Map.of(), Map.of());
+        return new RequestPermissionContext(true, Set.of(), Set.of(), Set.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of());
     }
 }
