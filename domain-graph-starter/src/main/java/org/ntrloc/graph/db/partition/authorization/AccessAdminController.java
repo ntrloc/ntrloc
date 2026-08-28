@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -45,6 +46,14 @@ public class AccessAdminController {
     public record GroupMembershipView(UUID id, String name) {}
 
     public record ItemTypeView(UUID id, String name) {}
+
+    public record MarkerPropertyGrantView(UUID propertyId, boolean canRead, boolean canWrite, boolean canDownload) {}
+
+    public record MarkerPropertyGrantRequest(boolean canRead, boolean canWrite, boolean canDownload) {}
+
+    public record LinkPerspectiveGrantView(UUID perspectiveId, boolean canCreate, boolean canRead, boolean canDelete) {}
+
+    public record LinkPerspectiveGrantRequest(boolean canCreate, boolean canRead, boolean canDelete) {}
 
     // --- Dependencies ---
 
@@ -115,6 +124,140 @@ public class AccessAdminController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Grant not found"));
 
         authRepo.deleteItemTypeGrant(grantId);
+        return ResponseEntity.noContent().build();
+    }
+
+    // --- Group marker-scoped property grants (Read/Write/Download per property, under a marker
+    // scoped to the item type being viewed) ---
+
+    @GetMapping("/groups/{groupId}/markers/{markerId}/properties")
+    List<MarkerPropertyGrantView> getGroupMarkerPropertyGrants(@PathVariable("groupId") UUID groupId,
+                                                                @PathVariable("markerId") UUID markerId,
+                                                                ServerHttpRequest request, Authentication authentication) {
+        requireAdmin(request, authentication);
+        securityRepo.findGroupById(groupId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, GROUP_NOT_FOUND));
+
+        return authRepo.getPropertyGrantsForMarker(markerId, GROUP_PRINCIPAL_TYPE, groupId).stream()
+                .map(r -> new MarkerPropertyGrantView(r.propertyId(), r.canRead(), r.canWrite(), r.canDownload()))
+                .toList();
+    }
+
+    @PutMapping("/groups/{groupId}/markers/{markerId}/properties/{propertyId}")
+    ResponseEntity<Void> setGroupMarkerPropertyGrant(@PathVariable("groupId") UUID groupId,
+                                                      @PathVariable("markerId") UUID markerId,
+                                                      @PathVariable("propertyId") UUID propertyId,
+                                                      @RequestBody MarkerPropertyGrantRequest body,
+                                                      ServerHttpRequest request, Authentication authentication) {
+        requireAdmin(request, authentication);
+        securityRepo.findGroupById(groupId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, GROUP_NOT_FOUND));
+
+        UUID markerGrantId = authRepo.ensureMarkerGrant(markerId, GROUP_PRINCIPAL_TYPE, groupId);
+        authRepo.grantPropertyAccess(markerGrantId, propertyId, body.canRead(), body.canWrite(), body.canDownload());
+        return ResponseEntity.noContent().build();
+    }
+
+    // --- Group marker-scoped link-property grants -- same shape as item properties above, just
+    // against a link type's own properties (marker_grant_link_property) ---
+
+    @GetMapping("/groups/{groupId}/markers/{markerId}/link-properties")
+    List<MarkerPropertyGrantView> getGroupMarkerLinkPropertyGrants(@PathVariable("groupId") UUID groupId,
+                                                                    @PathVariable("markerId") UUID markerId,
+                                                                    ServerHttpRequest request, Authentication authentication) {
+        requireAdmin(request, authentication);
+        securityRepo.findGroupById(groupId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, GROUP_NOT_FOUND));
+
+        return authRepo.getLinkPropertyGrantsForMarker(markerId, GROUP_PRINCIPAL_TYPE, groupId).stream()
+                .map(r -> new MarkerPropertyGrantView(r.propertyId(), r.canRead(), r.canWrite(), r.canDownload()))
+                .toList();
+    }
+
+    @PutMapping("/groups/{groupId}/markers/{markerId}/link-properties/{propertyId}")
+    ResponseEntity<Void> setGroupMarkerLinkPropertyGrant(@PathVariable("groupId") UUID groupId,
+                                                          @PathVariable("markerId") UUID markerId,
+                                                          @PathVariable("propertyId") UUID propertyId,
+                                                          @RequestBody MarkerPropertyGrantRequest body,
+                                                          ServerHttpRequest request, Authentication authentication) {
+        requireAdmin(request, authentication);
+        securityRepo.findGroupById(groupId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, GROUP_NOT_FOUND));
+
+        UUID markerGrantId = authRepo.ensureMarkerGrant(markerId, GROUP_PRINCIPAL_TYPE, groupId);
+        authRepo.grantLinkPropertyAccess(markerGrantId, propertyId, body.canRead(), body.canWrite(), body.canDownload());
+        return ResponseEntity.noContent().build();
+    }
+
+    // --- Group marker-scoped link-perspective grants (Create/Read/Delete per perspective) ---
+
+    @GetMapping("/groups/{groupId}/markers/{markerId}/link-perspectives")
+    List<LinkPerspectiveGrantView> getGroupMarkerLinkPerspectiveGrants(@PathVariable("groupId") UUID groupId,
+                                                                        @PathVariable("markerId") UUID markerId,
+                                                                        ServerHttpRequest request, Authentication authentication) {
+        requireAdmin(request, authentication);
+        securityRepo.findGroupById(groupId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, GROUP_NOT_FOUND));
+
+        return authRepo.getLinkPerspectiveGrantsForMarker(markerId, GROUP_PRINCIPAL_TYPE, groupId).stream()
+                .map(r -> new LinkPerspectiveGrantView(r.perspectiveId(), r.canCreate(), r.canRead(), r.canDelete()))
+                .toList();
+    }
+
+    @PutMapping("/groups/{groupId}/markers/{markerId}/link-perspectives/{perspectiveId}")
+    ResponseEntity<Void> setGroupMarkerLinkPerspectiveGrant(@PathVariable("groupId") UUID groupId,
+                                                             @PathVariable("markerId") UUID markerId,
+                                                             @PathVariable("perspectiveId") UUID perspectiveId,
+                                                             @RequestBody LinkPerspectiveGrantRequest body,
+                                                             ServerHttpRequest request, Authentication authentication) {
+        requireAdmin(request, authentication);
+        securityRepo.findGroupById(groupId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, GROUP_NOT_FOUND));
+
+        UUID markerGrantId = authRepo.ensureMarkerGrant(markerId, GROUP_PRINCIPAL_TYPE, groupId);
+        authRepo.grantLinkPerspectiveAccess(markerGrantId, perspectiveId, body.canCreate(), body.canRead(), body.canDelete());
+        return ResponseEntity.noContent().build();
+    }
+
+    // --- Group marker-scoped transition-execute grants (existence-only, see
+    // AuthorizationRepository.grantTransitionExecute's own comment) ---
+
+    @GetMapping("/groups/{groupId}/markers/{markerId}/transitions")
+    Set<UUID> getGroupMarkerTransitionGrants(@PathVariable("groupId") UUID groupId,
+                                              @PathVariable("markerId") UUID markerId,
+                                              ServerHttpRequest request, Authentication authentication) {
+        requireAdmin(request, authentication);
+        securityRepo.findGroupById(groupId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, GROUP_NOT_FOUND));
+
+        return authRepo.getTransitionGrantsForMarker(markerId, GROUP_PRINCIPAL_TYPE, groupId);
+    }
+
+    @PostMapping("/groups/{groupId}/markers/{markerId}/transitions/{transitionId}")
+    ResponseEntity<Void> grantGroupMarkerTransition(@PathVariable("groupId") UUID groupId,
+                                                     @PathVariable("markerId") UUID markerId,
+                                                     @PathVariable("transitionId") UUID transitionId,
+                                                     ServerHttpRequest request, Authentication authentication) {
+        requireAdmin(request, authentication);
+        securityRepo.findGroupById(groupId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, GROUP_NOT_FOUND));
+
+        UUID markerGrantId = authRepo.ensureMarkerGrant(markerId, GROUP_PRINCIPAL_TYPE, groupId);
+        authRepo.grantTransitionExecute(markerGrantId, transitionId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/groups/{groupId}/markers/{markerId}/transitions/{transitionId}")
+    ResponseEntity<Void> revokeGroupMarkerTransition(@PathVariable("groupId") UUID groupId,
+                                                      @PathVariable("markerId") UUID markerId,
+                                                      @PathVariable("transitionId") UUID transitionId,
+                                                      ServerHttpRequest request, Authentication authentication) {
+        requireAdmin(request, authentication);
+        securityRepo.findGroupById(groupId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, GROUP_NOT_FOUND));
+
+        authRepo.findMarkerGrant(markerId, GROUP_PRINCIPAL_TYPE, groupId)
+                .ifPresent(markerGrantId -> authRepo.revokeTransitionExecute(markerGrantId, transitionId));
         return ResponseEntity.noContent().build();
     }
 

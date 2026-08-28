@@ -55,6 +55,47 @@ injectStyles('ntrloc-item-detail-styles', `
     font-size: 13px;
     border-bottom: 1px solid var(--border);
   }
+  .markers-list {
+    list-style: none;
+    margin: 0 0 12px 0;
+    padding: 0;
+  }
+  .markers-list li {
+    display: flex;
+    align-items: center;
+    padding: 6px 0;
+    font-size: 13px;
+    border-bottom: 1px solid var(--border);
+  }
+  .markers-list .marker-name {
+    font-weight: 500;
+  }
+  .markers-list .marker-description {
+    color: var(--muted);
+    margin-left: 8px;
+    flex: 1;
+  }
+  .markers-list .marker-actions {
+    margin-left: auto;
+    display: flex;
+    gap: 6px;
+  }
+  .markers-list .marker-actions button {
+    background: none;
+    border: none;
+    color: var(--accent);
+    cursor: pointer;
+    font-size: 12px;
+    padding: 2px 6px;
+  }
+  .markers-list .marker-actions button:hover {
+    text-decoration: underline;
+  }
+  .marker-error {
+    color: #f85149;
+    font-size: 13px;
+    margin: 8px 0 0 0;
+  }
   .field-row {
     display: flex;
     align-items: center;
@@ -455,6 +496,93 @@ class NtrlocItemDetail extends HTMLElement {
     `;
   }
 
+  // Item-type-scoped markers only (scopeKind === 'ITEM_TYPE') -- a marker's scope determines which
+  // item instances it's eligible to be assigned to and which properties/transitions its grants may
+  // reference (see docs/ntrloc-marker-admin-ui-design-notes.md), so a marker scoped to a *trait*
+  // wouldn't belong on any one item type's own panel. Trait-scoped markers get their own panel on
+  // the trait editor when that's built; not yet.
+  markersBody() {
+    const item = this._item;
+    const markers = schemaViewModel.markersForItem(item.id);
+
+    const listHtml = markers.length > 0
+      ? `<ul class="markers-list">${markers.map((m) => `
+          <li data-marker-id="${m.id}">
+            <span class="marker-name">${escapeHtml(m.name)}</span>
+            ${m.description ? `<span class="marker-description">${escapeHtml(m.description)}</span>` : ''}
+            <span class="marker-actions">
+              <button class="marker-edit-button" type="button">Edit</button>
+              <button class="marker-delete-button" type="button">Delete</button>
+            </span>
+          </li>
+        `).join('')}</ul>`
+      : '<p class="status">No markers defined.</p>';
+
+    // Same "save this first" guard as Links/States -- a marker's scope_id has to be a real item
+    // type id, which a not-yet-saved item type doesn't have yet.
+    const addAffordance = item.isNew
+      ? '<p class="status">Save this item type before adding markers.</p>'
+      : '<md-outlined-button class="add-marker-button">+ New Marker</md-outlined-button>';
+
+    return `${listHtml}${addAffordance}${this._markerError ? `<p class="marker-error">${escapeHtml(this._markerError)}</p>` : ''}`;
+  }
+
+  // Immediate write, not staged into Save -- see schema-view-model.js's createMarker comment.
+  // Scope is fixed to this item type, not picked in the dialog (see
+  // ntrloc-create-marker-dialog.js's own comment on why).
+  async onNewMarker() {
+    const item = this._item;
+    const result = await openCreateMarkerDialog({
+      scopeKind: 'ITEM_TYPE',
+      scopeId: item.id,
+      scopeLabel: `Item Type — ${item.name || '(unnamed)'}`,
+    });
+    if (!result) return;
+    this._markerError = null;
+    try {
+      await schemaViewModel.createMarker(result);
+    } catch (e) {
+      console.error('[item-detail] failed to create marker:', e);
+      this._markerError = e.message || 'Failed to create marker.';
+      this.render();
+    }
+  }
+
+  async onEditMarker(marker) {
+    const item = this._item;
+    const result = await openEditMarkerDialog({
+      id: marker.id,
+      name: marker.name,
+      description: marker.description,
+      scopeLabel: `Item Type — ${item.name || '(unnamed)'}`,
+    });
+    if (!result) return;
+    this._markerError = null;
+    try {
+      await schemaViewModel.updateMarker(result.id, { name: result.name, description: result.description });
+    } catch (e) {
+      console.error('[item-detail] failed to update marker:', e);
+      this._markerError = e.message || 'Failed to update marker.';
+      this.render();
+    }
+  }
+
+  // Native confirm(), same as the item type/trait "Delete" flow above -- deleting a marker cascades
+  // into its grants (marker_grant) and its item assignments (register_item_marker), so it's worth
+  // naming what's about to happen even though this file can't know the counts without a dedicated
+  // usage-lookup endpoint (not built yet).
+  async onDeleteMarker(marker) {
+    if (!confirm(`Delete marker "${marker.name}"? This also removes any grants and item assignments that use it. This cannot be undone.`)) return;
+    this._markerError = null;
+    try {
+      await schemaViewModel.deleteMarker(marker.id);
+    } catch (e) {
+      console.error('[item-detail] failed to delete marker:', e);
+      this._markerError = e.message || 'Failed to delete marker.';
+      this.render();
+    }
+  }
+
   linksBody() {
     const item = this._item;
     const hasExistingLinks = Object.keys(item.links || {}).length > 0;
@@ -628,6 +756,8 @@ class NtrlocItemDetail extends HTMLElement {
           </div>
         ` : ''}
       </div>
+
+      ${this.isItem ? this.panel('markers', 'Access Markers', this.markersBody()) : ''}
 
       ${this.panel('traits', this.isItem ? 'Traits' : 'Implemented By', traitsBody)}
 
@@ -809,6 +939,17 @@ class NtrlocItemDetail extends HTMLElement {
     if (editStatesButton) editStatesButton.addEventListener('click', async () => {
       await openStateMachineEditorDialog(item);
       this.render();
+    });
+
+    const addMarkerButton = this.querySelector('.add-marker-button');
+    if (addMarkerButton) addMarkerButton.addEventListener('click', () => this.onNewMarker());
+
+    const markers = schemaViewModel.markersForItem(item.id);
+    this.querySelectorAll('.markers-list li').forEach((row) => {
+      const marker = markers.find((m) => m.id === row.dataset.markerId);
+      if (!marker) return;
+      row.querySelector('.marker-edit-button').addEventListener('click', () => this.onEditMarker(marker));
+      row.querySelector('.marker-delete-button').addEventListener('click', () => this.onDeleteMarker(marker));
     });
 
     const addLinkButton = this.querySelector('.add-link-button');

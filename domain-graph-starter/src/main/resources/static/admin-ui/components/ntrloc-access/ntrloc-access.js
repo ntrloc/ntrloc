@@ -160,6 +160,160 @@ injectStyles('ntrloc-access-styles', `
     border-bottom: 1px solid var(--border);
   }
   .access-table tr:hover { background: var(--panel-bg); }
+  .access-table tr.clickable { cursor: pointer; }
+  .access-table tr.clickable.selected {
+    background: var(--panel-bg);
+    box-shadow: inset 3px 0 0 var(--accent);
+  }
+
+  /* Same inline-SVG chevron idiom as ntrloc-property-table.js's own OBJECT-property rows --
+     duplicated (not shared) since that file's styles aren't guaranteed to be injected on this
+     page (Schema tab may never have been visited this session). Scoped to
+     .marker-grants-properties (not .access-table) since this chevron button is reused for the
+     property tree's OBJECT rows *and* the Links section's perspective/link-property rows *and*
+     the State Machines section's machine/state rows -- most of which aren't inside a <table> at
+     all, so an .access-table-scoped rule left them with an unstyled default <button> (white
+     background, no rotation). */
+  .marker-grants-properties .expand-toggle-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 20px;
+    padding: 0;
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    flex-shrink: 0;
+    vertical-align: middle;
+  }
+  .marker-grants-properties .expand-toggle-button .chevron {
+    transition: transform 0.15s ease;
+  }
+  .marker-grants-properties .expand-toggle-button .chevron.collapsed {
+    transform: rotate(-90deg);
+  }
+  .marker-grants-properties .grant-leaf-spacer {
+    display: inline-block;
+    width: 16px;
+  }
+
+  /* Same .panel/.panel-header idiom as ntrloc-item-detail.js's own collapsible sections --
+     distinctly named (not reused) to avoid any cross-component CSS coupling, since styles here
+     aren't shadow-DOM-scoped and both components can be mounted on the page at once. */
+  .grant-panel {
+    background: var(--panel-bg);
+    border-radius: 8px;
+    margin-bottom: 16px;
+    overflow: hidden;
+  }
+  .grant-panel-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: bold;
+    padding: 16px 20px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .grant-panel-header .chevron {
+    color: var(--muted);
+    flex-shrink: 0;
+    transition: transform 0.15s ease;
+  }
+  .grant-panel-header .chevron.collapsed {
+    transform: rotate(-90deg);
+  }
+  .grant-panel-body {
+    padding: 0 20px 20px 20px;
+  }
+  .perm-check.partial {
+    background: rgba(74, 158, 255, 0.08);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .marker-grants-section {
+    border-top: 1px solid var(--border);
+    padding-top: 20px;
+  }
+  .marker-grants-layout {
+    display: flex;
+    gap: 0;
+  }
+  .marker-grants-markers {
+    width: 200px;
+    flex-shrink: 0;
+    border-right: 1px solid var(--border);
+    padding-right: 16px;
+    margin-right: 16px;
+  }
+  .marker-grants-markers-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .marker-grants-markers-header h4 {
+    margin: 0;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--muted);
+  }
+  .marker-grant-item {
+    padding: 8px 4px;
+    cursor: pointer;
+    font-size: 14px;
+    border-radius: 4px;
+  }
+  .marker-grant-item:hover { background: var(--panel-bg); }
+  .marker-grant-item.selected {
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .marker-grants-properties {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .perspective-card + .perspective-card {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+  }
+  .perspective-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .perspective-name {
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+  }
+  .perspective-checks {
+    display: flex;
+    gap: 16px;
+  }
+  .perspective-check-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .perspective-property-table,
+  .perspective-card .access-table {
+    margin-top: 10px;
+    margin-left: 20px;
+    width: calc(100% - 20px);
+  }
 
   .access-error {
     color: #e55;
@@ -256,16 +410,82 @@ class NtrlocAccess extends HTMLElement {
     this.userPermissions = [];
     this.tokens = [];
     this.itemTypes = [];
+    this.markers = [];
+    this.selectedItemTypeId = null; // ITEM TYPE row selected in the group permissions table
+    this.selectedMarkerId = null; // marker selected within that item type's Markers list
+    this.markerPropertyGrants = []; // [{propertyId, canRead, canWrite, canDownload}] for selectedMarkerId
+    this.linkPropertyGrants = []; // same shape, over a link type's own properties
+    this.linkPerspectiveGrants = []; // [{perspectiveId, canCreate, canRead, canDelete}]
+    this.transitionGrants = new Set(); // granted transition ids (existence-only)
+    this.expandedGrantContainers = new Set(); // OBJECT-property ids expanded, shared across item/link property trees
+    this.expandedGrantSections = new Set(['properties', 'links', 'statemachines']); // Properties/Links/State Machines panels
+    this.expandedGrantPerspectives = new Set(); // perspective ids expanded in the Links section
+    this.expandedGrantStateMachines = new Set(); // state machine ids expanded in the State Machines section
     this.error = '';
   }
 
   connectedCallback() {
     this.fetchAll();
+    // Keeps the marker property grid (sourced from globalSchemaModel, not its own fetch) live as
+    // properties are added/removed elsewhere -- otherwise a schema change made in the Schema tab
+    // wouldn't show up here until this component happened to re-render for some other reason.
+    this._unsubscribeSchema = onGlobalSchemaChange(() => this.render());
+    // Same reasoning for markers -- this component keeps its own local this.markers, independent
+    // of schema-view-model.js's own copy used by the Schema tab's "Access Markers" panel. Without
+    // this, a marker created/edited/deleted on the Schema tab would never appear here (or a marker
+    // created here, per onNewMarker's own splice, would never appear there) until a full reload.
+    this._unsubscribeMarkers = onMarkersChange(() => this.fetchMarkers().then(() => this.render()));
+  }
+
+  disconnectedCallback() {
+    if (this._unsubscribeSchema) this._unsubscribeSchema();
+    if (this._unsubscribeMarkers) this._unsubscribeMarkers();
   }
 
   async fetchAll() {
-    await Promise.all([this.fetchUsers(), this.fetchGroups(), this.fetchItemTypes()]);
+    await Promise.all([this.fetchUsers(), this.fetchGroups(), this.fetchItemTypes(), this.fetchMarkers(), globalSchemaModel.load()]);
     this.render();
+  }
+
+  async fetchMarkers() {
+    try {
+      const res = await fetch('/api/admin/markers', { credentials: 'include' });
+      this.markers = res.ok ? await res.json() : [];
+    } catch (e) { this.markers = []; }
+  }
+
+  grantsArrayFor(kind) {
+    return kind === 'link' ? this.linkPropertyGrants : this.markerPropertyGrants;
+  }
+
+  grantsEndpointSegment(kind) {
+    return kind === 'link' ? 'link-properties' : 'properties';
+  }
+
+  async refetchPropertyGrants(kind) {
+    if (kind === 'link') await this.fetchMarkerLinkPropertyGrants(this.selectedMarkerId);
+    else await this.fetchMarkerPropertyGrants(this.selectedMarkerId);
+  }
+
+  async fetchMarkerLinkPropertyGrants(markerId) {
+    try {
+      const res = await fetch(`/api/admin/groups/${this.selectedId}/markers/${markerId}/link-properties`, { credentials: 'include' });
+      this.linkPropertyGrants = res.ok ? await res.json() : [];
+    } catch (e) { this.linkPropertyGrants = []; }
+  }
+
+  async fetchMarkerLinkPerspectiveGrants(markerId) {
+    try {
+      const res = await fetch(`/api/admin/groups/${this.selectedId}/markers/${markerId}/link-perspectives`, { credentials: 'include' });
+      this.linkPerspectiveGrants = res.ok ? await res.json() : [];
+    } catch (e) { this.linkPerspectiveGrants = []; }
+  }
+
+  async fetchMarkerTransitionGrants(markerId) {
+    try {
+      const res = await fetch(`/api/admin/groups/${this.selectedId}/markers/${markerId}/transitions`, { credentials: 'include' });
+      this.transitionGrants = res.ok ? new Set(await res.json()) : new Set();
+    } catch (e) { this.transitionGrants = new Set(); }
   }
 
   async fetchUsers() {
@@ -296,10 +516,217 @@ class NtrlocAccess extends HTMLElement {
     this.selectedId = groupId;
     this.selectedData = group;
     this.activeTab = 'members';
+    this.selectedItemTypeId = null;
+    this.selectedMarkerId = null;
+    this.markerPropertyGrants = [];
+    this.linkPropertyGrants = [];
+    this.linkPerspectiveGrants = [];
+    this.transitionGrants = new Set();
     this.error = '';
     await this.fetchGroupMembers();
     await this.fetchGroupPermissions();
     this.render();
+  }
+
+  selectItemTypeForGrants(itemTypeId) {
+    this.selectedItemTypeId = this.selectedItemTypeId === itemTypeId ? null : itemTypeId;
+    this.selectedMarkerId = null;
+    this.markerPropertyGrants = [];
+    this.linkPropertyGrants = [];
+    this.linkPerspectiveGrants = [];
+    this.transitionGrants = new Set();
+    this.expandedGrantContainers = new Set();
+    this.expandedGrantPerspectives = new Set();
+    this.expandedGrantStateMachines = new Set();
+    this.render();
+  }
+
+  // Same immediate-write pattern as ntrloc-item-detail.js's own "+ New Marker" (see
+  // ntrloc-create-marker-dialog.js's comment on why scope isn't picked here) -- but updates this
+  // component's own local this.markers rather than the schema editor's schemaViewModel.markers,
+  // since this panel is mounted independently of the schema editor and doesn't share its state.
+  async onNewMarker() {
+    const itemType = this.itemTypes.find(it => it.id === this.selectedItemTypeId);
+    const result = await openCreateMarkerDialog({
+      scopeKind: 'ITEM_TYPE',
+      scopeId: this.selectedItemTypeId,
+      scopeLabel: `Item Type — ${itemType ? itemType.name : '(unknown)'}`,
+    });
+    if (!result) return;
+    this.error = '';
+    try {
+      const marker = await markerService.createMarker(result);
+      this.markers = [...this.markers, marker].sort((a, b) => a.name.localeCompare(b.name));
+      await this.selectMarkerForGrants(marker.id);
+    } catch (e) {
+      this.error = e.message || 'Failed to create marker.';
+      this.render();
+    }
+  }
+
+  toggleGrantContainer(propertyId) {
+    if (this.expandedGrantContainers.has(propertyId)) this.expandedGrantContainers.delete(propertyId);
+    else this.expandedGrantContainers.add(propertyId);
+    this.render();
+  }
+
+  toggleGrantSection(key) {
+    if (this.expandedGrantSections.has(key)) this.expandedGrantSections.delete(key);
+    else this.expandedGrantSections.add(key);
+    this.render();
+  }
+
+  toggleGrantPerspective(perspectiveId) {
+    if (this.expandedGrantPerspectives.has(perspectiveId)) this.expandedGrantPerspectives.delete(perspectiveId);
+    else this.expandedGrantPerspectives.add(perspectiveId);
+    this.render();
+  }
+
+  toggleGrantStateMachine(machineId) {
+    if (this.expandedGrantStateMachines.has(machineId)) this.expandedGrantStateMachines.delete(machineId);
+    else this.expandedGrantStateMachines.add(machineId);
+    this.render();
+  }
+
+
+  async selectMarkerForGrants(markerId) {
+    this.selectedMarkerId = markerId;
+    await Promise.all([
+      this.fetchMarkerPropertyGrants(markerId),
+      this.fetchMarkerLinkPropertyGrants(markerId),
+      this.fetchMarkerLinkPerspectiveGrants(markerId),
+      this.fetchMarkerTransitionGrants(markerId),
+    ]);
+    this.render();
+  }
+
+  async fetchMarkerPropertyGrants(markerId) {
+    try {
+      const res = await fetch(`/api/admin/groups/${this.selectedId}/markers/${markerId}/properties`, { credentials: 'include' });
+      this.markerPropertyGrants = res.ok ? await res.json() : [];
+    } catch (e) { this.markerPropertyGrants = []; }
+  }
+
+  // kind: 'item' (marker_grant_property, this item type's own properties) or 'link'
+  // (marker_grant_link_property, a link type's own properties reached via a perspective in the
+  // Links section) -- same grant shape and UI, different backend table/endpoint.
+  async setMarkerPropertyGrant(propertyId, patch, kind) {
+    try {
+      await this.putMarkerPropertyGrant(propertyId, patch, kind);
+      await this.refetchPropertyGrants(kind);
+      this.render();
+    } catch (e) { this.error = e.message; this.render(); }
+  }
+
+  // Raw single-property PUT, no refetch/render -- used both by the leaf checkbox handler above
+  // (via setMarkerPropertyGrant) and by the container "select all" bulk action below, which needs
+  // to fire several of these before refreshing once at the end.
+  putMarkerPropertyGrant(propertyId, patch, kind) {
+    const current = this.grantsArrayFor(kind).find(g => g.propertyId === propertyId)
+      || { canRead: false, canWrite: false, canDownload: false };
+    const next = { ...current, ...patch };
+    const segment = this.grantsEndpointSegment(kind);
+    return fetch(`/api/admin/groups/${this.selectedId}/markers/${this.selectedMarkerId}/${segment}/${propertyId}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      credentials: 'include', body: JSON.stringify(next)
+    });
+  }
+
+  // Every leaf (non-OBJECT) property reachable under this node, recursively -- a plain property is
+  // its own sole leaf. Mirrors the server's propertyPaths walk (RegisterPartitionManager): an
+  // OBJECT property's own id is never a grant target, only its leaves' are.
+  leavesUnder(node) {
+    if (node.type !== 'OBJECT') return [node];
+    return (node.properties || []).flatMap(child => this.leavesUnder(child));
+  }
+
+  findPropertyNode(properties, propertyId) {
+    for (const p of properties) {
+      if (p.id === propertyId) return p;
+      if (p.type === 'OBJECT') {
+        const found = this.findPropertyNode(p.properties || [], propertyId);
+        if (found) return found;
+      }
+    }
+    return null;
+  }
+
+  // 'all' | 'partial' | 'none' | null (null = no eligible leaf under this container for this field,
+  // e.g. a Download bulk-check over a subtree with no BINARY leaves at all -- renders as a blank
+  // cell, same as a non-BINARY leaf row's Download cell).
+  containerFieldState(node, field, kind) {
+    const grants = this.grantsArrayFor(kind);
+    const eligible = this.leavesUnder(node).filter(l => field !== 'canDownload' || l.type === 'BINARY');
+    if (eligible.length === 0) return null;
+    const grantedCount = eligible.filter(l => {
+      const g = grants.find(g => g.propertyId === l.id);
+      return g ? g[field] : false;
+    }).length;
+    if (grantedCount === 0) return 'none';
+    return grantedCount === eligible.length ? 'all' : 'partial';
+  }
+
+  // Container-row "select all" click: partial/none -> grant the field on every eligible leaf;
+  // all -> revoke it on every eligible leaf. One PUT per leaf (admin surface, small N), then a
+  // single refetch/render at the end rather than one per leaf. rootProperties is the tree to search
+  // for containerId in -- the selected item type's own properties for 'item', or the specific link
+  // type's properties (reached via linkId) for 'link', since a single item type can have several
+  // link perspectives, each with its own independent property tree.
+  async setBulkPropertyGrant(containerId, field, kind, rootProperties) {
+    const node = this.findPropertyNode(rootProperties, containerId);
+    if (!node) return;
+    const eligible = this.leavesUnder(node).filter(l => field !== 'canDownload' || l.type === 'BINARY');
+    const nextValue = this.containerFieldState(node, field, kind) !== 'all';
+    try {
+      await Promise.all(eligible.map(l => this.putMarkerPropertyGrant(l.id, { [field]: nextValue }, kind)));
+      await this.refetchPropertyGrants(kind);
+      this.render();
+    } catch (e) { this.error = e.message; this.render(); }
+  }
+
+  linksForItemType(itemTypeId) {
+    const schema = globalSchemaModel._schema;
+    const item = schema && (schema.items || []).find(i => i.id === itemTypeId);
+    if (!item || !item.links) return [];
+    const result = [];
+    Object.entries(item.links).forEach(([name, perspectives]) => {
+      (perspectives || []).forEach(p => result.push({ ...p, perspectiveName: name }));
+    });
+    return result.sort((a, b) => a.perspectiveName.localeCompare(b.perspectiveName));
+  }
+
+  linkPropertiesForLinkId(linkId) {
+    const schema = globalSchemaModel._schema;
+    const linkDef = schema && (schema.links || []).find(l => l.id === linkId);
+    return linkDef ? (linkDef.properties || []) : [];
+  }
+
+  stateMachinesForItemType(itemTypeId) {
+    const schema = globalSchemaModel._schema;
+    const item = schema && (schema.items || []).find(i => i.id === itemTypeId);
+    return item ? (item.stateMachines || []) : [];
+  }
+
+  async setLinkPerspectiveGrant(perspectiveId, next) {
+    try {
+      await fetch(`/api/admin/groups/${this.selectedId}/markers/${this.selectedMarkerId}/link-perspectives/${perspectiveId}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        credentials: 'include', body: JSON.stringify(next)
+      });
+      await this.fetchMarkerLinkPerspectiveGrants(this.selectedMarkerId);
+      this.render();
+    } catch (e) { this.error = e.message; this.render(); }
+  }
+
+  async toggleTransitionGrant(transitionId) {
+    const granted = this.transitionGrants.has(transitionId);
+    try {
+      await fetch(`/api/admin/groups/${this.selectedId}/markers/${this.selectedMarkerId}/transitions/${transitionId}`, {
+        method: granted ? 'DELETE' : 'POST', credentials: 'include'
+      });
+      await this.fetchMarkerTransitionGrants(this.selectedMarkerId);
+      this.render();
+    } catch (e) { this.error = e.message; this.render(); }
   }
 
   async selectUser(userId) {
@@ -663,7 +1090,8 @@ class NtrlocAccess extends HTMLElement {
         const granted = ops.includes(op);
         return `<td><button class="perm-check ${granted ? 'granted' : ''}" data-perm-item="${it.id}" data-perm-op="${op}">${granted ? '&#10003;' : ''}</button></td>`;
       }).join('');
-      return `<tr><td>${this.escapeHtml(it.name)}</td>${cells}</tr>`;
+      const selected = this.selectedItemTypeId === it.id;
+      return `<tr class="clickable ${selected ? 'selected' : ''}" data-select-item-type="${it.id}"><td>${this.escapeHtml(it.name)}</td>${cells}</tr>`;
     }).join('');
 
     return `
@@ -672,6 +1100,230 @@ class NtrlocAccess extends HTMLElement {
           <thead><tr><th>Item Type</th>${operations.map(op => `<th>${opLabels[op]}</th>`).join('')}</tr></thead>
           <tbody>${rows || '<tr><td colspan="4" class="access-empty">No item types defined</td></tr>'}</tbody>
         </table>
+      </div>
+      ${this.selectedItemTypeId ? this.renderMarkerPropertyGrants() : ''}
+    `;
+  }
+
+  // Recursive rows for the property grants tree -- OBJECT properties render as an expandable
+  // container row with bulk "select all descendants" checkboxes (see setBulkPropertyGrant) instead
+  // of their own grant, since nothing is ever stored under a container's own property id (see
+  // leavesUnder's comment); leaf rows render the real per-property grant checkboxes, same as before
+  // nesting was supported. Mirrors ntrloc-property-table.js's chevron-toggle idiom for visual
+  // consistency with the schema editor's own nested-property display.
+  // kind/linkId thread through recursion so leaf/bulk buttons know which grant table and which
+  // property tree (this item type's own vs. a specific link type's, reached via linkId) they
+  // belong to -- see setMarkerPropertyGrant/setBulkPropertyGrant's own comments.
+  renderPropertyGrantRows(properties, depth, kind, linkId) {
+    const sorted = [...properties].sort((a, b) => a.name.localeCompare(b.name));
+    return sorted.map(p => {
+      const isContainer = p.type === 'OBJECT';
+      const indent = `style="padding-left: ${depth * 20}px"`;
+      if (isContainer) {
+        const expanded = this.expandedGrantContainers.has(p.id);
+        const chevron = `
+          <button class="expand-toggle-button" data-toggle-grant-container="${p.id}" aria-label="${expanded ? 'Collapse' : 'Expand'} ${this.escapeHtml(p.name)}" aria-expanded="${expanded}">
+            <svg class="chevron ${expanded ? '' : 'collapsed'}" viewBox="0 0 24 24" width="14" height="14"
+                 fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="6 9 12 15 18 9"></polyline>
+            </svg>
+          </button>
+        `;
+        const bulkCell = (field) => {
+          const state = this.containerFieldState(p, field, kind);
+          if (state === null) return '<td></td>';
+          const label = state === 'all' ? '&#10003;' : state === 'partial' ? '&#8211;' : '';
+          return `<td><button class="perm-check ${state === 'all' ? 'granted' : ''} ${state === 'partial' ? 'partial' : ''}" data-bulk-property="${p.id}" data-bulk-field="${field}" data-bulk-kind="${kind}" data-bulk-link-id="${linkId || ''}">${label}</button></td>`;
+        };
+        const ownRow = `
+          <tr>
+            <td ${indent}>${chevron}${this.escapeHtml(p.name)}</td>
+            ${bulkCell('canRead')}
+            ${bulkCell('canWrite')}
+            ${bulkCell('canDownload')}
+          </tr>
+        `;
+        const childRows = expanded ? this.renderPropertyGrantRows(p.properties || [], depth + 1, kind, linkId) : '';
+        return ownRow + childRows;
+      }
+
+      const grant = this.grantsArrayFor(kind).find(g => g.propertyId === p.id)
+        || { canRead: false, canWrite: false, canDownload: false };
+      const downloadCell = p.type === 'BINARY'
+        ? `<td><button class="perm-check ${grant.canDownload ? 'granted' : ''}" data-marker-grant-property="${p.id}" data-marker-grant-field="canDownload" data-grant-kind="${kind}">${grant.canDownload ? '&#10003;' : ''}</button></td>`
+        : '<td></td>';
+      return `
+        <tr>
+          <td ${indent}><span class="grant-leaf-spacer"></span>${this.escapeHtml(p.name)}</td>
+          <td><button class="perm-check ${grant.canRead ? 'granted' : ''}" data-marker-grant-property="${p.id}" data-marker-grant-field="canRead" data-grant-kind="${kind}">${grant.canRead ? '&#10003;' : ''}</button></td>
+          <td><button class="perm-check ${grant.canWrite ? 'granted' : ''}" data-marker-grant-property="${p.id}" data-marker-grant-field="canWrite" data-grant-kind="${kind}">${grant.canWrite ? '&#10003;' : ''}</button></td>
+          ${downloadCell}
+        </tr>
+      `;
+    }).join('');
+  }
+
+  propertyGrantTable(properties, kind, linkId) {
+    const rows = this.renderPropertyGrantRows(properties, 0, kind, linkId);
+    return `
+      <table class="access-table">
+        <thead><tr><th>Property</th><th>Read</th><th>Write</th><th>Download</th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="4" class="access-empty">No properties defined</td></tr>'}</tbody>
+      </table>
+    `;
+  }
+
+  propertiesForItemType(itemTypeId) {
+    const schema = globalSchemaModel._schema;
+    const item = schema && (schema.items || []).find(i => i.id === itemTypeId);
+    return item ? (item.properties || []) : [];
+  }
+
+  renderLinksSection() {
+    const perspectives = this.linksForItemType(this.selectedItemTypeId);
+    if (perspectives.length === 0) return '<div class="access-empty">No links defined on this item type.</div>';
+
+    return perspectives.map(p => {
+      const grant = this.linkPerspectiveGrants.find(g => g.perspectiveId === p.id)
+        || { canCreate: false, canRead: false, canDelete: false };
+      const expanded = this.expandedGrantPerspectives.has(p.id);
+      const chevron = `
+        <button class="expand-toggle-button" data-toggle-grant-perspective="${p.id}" aria-label="${expanded ? 'Collapse' : 'Expand'} ${this.escapeHtml(p.perspectiveName)}" aria-expanded="${expanded}">
+          <svg class="chevron ${expanded ? '' : 'collapsed'}" viewBox="0 0 24 24" width="14" height="14"
+               fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </button>
+      `;
+      const perspectiveCheck = (field, label) => `
+        <label class="perspective-check-label">${label}
+          <button class="perm-check ${grant[field] ? 'granted' : ''}" data-perspective-grant="${p.id}" data-perspective-field="${field}">${grant[field] ? '&#10003;' : ''}</button>
+        </label>
+      `;
+      const header = `
+        <div class="perspective-header">
+          <span class="perspective-name">${chevron}${this.escapeHtml(p.perspectiveName)}</span>
+          <span class="perspective-checks">
+            ${perspectiveCheck('canCreate', 'Create')}
+            ${perspectiveCheck('canRead', 'Read')}
+            ${perspectiveCheck('canDelete', 'Delete')}
+          </span>
+        </div>
+      `;
+      const propertyTable = expanded
+        ? this.propertyGrantTable(this.linkPropertiesForLinkId(p.linkId), 'link', p.linkId)
+        : '';
+      return `<div class="perspective-card">${header}${propertyTable}</div>`;
+    }).join('');
+  }
+
+  // Flat "From State / Transition / To State / Execute" table per machine -- no separate
+  // state-level expand/collapse tier (a state has no grant of its own, just like an OBJECT
+  // property container; showing it as a plain column value alongside its transitions is both
+  // simpler and enough, per the mockup this replaced).
+  renderStateMachinesSection() {
+    const machines = this.stateMachinesForItemType(this.selectedItemTypeId);
+    if (machines.length === 0) return '<div class="access-empty">No state machines defined on this item type.</div>';
+
+    const rows = machines.map(m => {
+      const expanded = this.expandedGrantStateMachines.has(m.id);
+      const chevron = `
+        <button class="expand-toggle-button" data-toggle-grant-statemachine="${m.id}" aria-label="${expanded ? 'Collapse' : 'Expand'} ${this.escapeHtml(m.name)}" aria-expanded="${expanded}">
+          <svg class="chevron ${expanded ? '' : 'collapsed'}" viewBox="0 0 24 24" width="14" height="14"
+               fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        </button>
+      `;
+      const machineRow = `<tr><td>${chevron}${this.escapeHtml(m.name)}</td><td></td><td></td><td></td><td></td></tr>`;
+
+      let transitionRows = '';
+      if (expanded) {
+        const transitions = (m.states || []).flatMap(s => (s.transitions || []).map(t => ({ state: s, transition: t })));
+        transitionRows = transitions.map(({ state, transition: t }) => {
+          const granted = this.transitionGrants.has(t.id);
+          return `
+            <tr>
+              <td></td>
+              <td>${this.escapeHtml(state.name)}</td>
+              <td>${this.escapeHtml(t.name)}</td>
+              <td>${this.escapeHtml(t.toStateName)}</td>
+              <td><button class="perm-check ${granted ? 'granted' : ''}" data-transition-grant="${t.id}">${granted ? '&#10003;' : ''}</button></td>
+            </tr>
+          `;
+        }).join('') || '<tr><td></td><td colspan="4" class="access-empty">No transitions</td></tr>';
+      }
+
+      return machineRow + transitionRows;
+    }).join('');
+
+    return `
+      <table class="access-table">
+        <thead><tr><th>State Machine</th><th>From State</th><th>Transition</th><th>To State</th><th>Execute</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    `;
+  }
+
+  renderMarkerPropertyGrants() {
+    const markersForType = this.markers.filter(m => m.scopeKind === 'ITEM_TYPE' && m.scopeId === this.selectedItemTypeId);
+
+    const markerItems = markersForType.map(m => `
+      <div class="marker-grant-item ${this.selectedMarkerId === m.id ? 'selected' : ''}" data-select-marker="${m.id}">
+        ${this.escapeHtml(m.name)}
+      </div>
+    `).join('') || '<div class="access-empty">No markers on this item type</div>';
+
+    let sectionsHtml = '<div class="access-empty">Select a marker to view its grants.</div>';
+    if (this.selectedMarkerId) {
+      const sections = [
+        { key: 'properties', label: 'Properties' },
+        { key: 'links', label: 'Links' },
+        { key: 'statemachines', label: 'State Machines' },
+      ];
+      sectionsHtml = sections.map(({ key, label }) => {
+        const expanded = this.expandedGrantSections.has(key);
+        // Plain SVG (no button wrapper) with the whole header div as the click target -- same
+        // idiom as ntrloc-item-detail.js's own .panel-header sections, not the button-based
+        // chevron used for inline row toggles elsewhere in this file (property/perspective/state
+        // rows, where other independently-clickable elements share the same row).
+        const chevronSvg = `
+          <svg class="chevron ${expanded ? '' : 'collapsed'}" viewBox="0 0 24 24" width="20" height="20"
+               fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"></polyline>
+          </svg>
+        `;
+        let body = '';
+        if (expanded) {
+          if (key === 'properties') body = this.propertyGrantTable(this.propertiesForItemType(this.selectedItemTypeId), 'item', null);
+          else if (key === 'links') body = this.renderLinksSection();
+          else body = this.renderStateMachinesSection();
+        }
+        return `
+          <div class="grant-panel">
+            <div class="grant-panel-header" data-toggle-grant-section="${key}">
+              ${chevronSvg}<span>${label}</span>
+            </div>
+            ${expanded ? `<div class="grant-panel-body">${body}</div>` : ''}
+          </div>
+        `;
+      }).join('');
+    }
+
+    return `
+      <div class="access-section marker-grants-section">
+        <div class="marker-grants-layout">
+          <div class="marker-grants-markers">
+            <div class="marker-grants-markers-header">
+              <h4>Markers</h4>
+              <button class="access-btn primary" data-action="new-marker">+ New</button>
+            </div>
+            ${markerItems}
+          </div>
+          <div class="marker-grants-properties">
+            ${sectionsHtml}
+          </div>
+        </div>
       </div>
     `;
   }
@@ -849,7 +1501,57 @@ class NtrlocAccess extends HTMLElement {
       this.addMemberToGroup(this.querySelector('[name="add-member-select"]')?.value);
     });
     this.querySelectorAll('[data-perm-item]').forEach(el => {
-      el.addEventListener('click', () => this.toggleGroupPermission(el.dataset.permItem, el.dataset.permOp));
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.toggleGroupPermission(el.dataset.permItem, el.dataset.permOp);
+      });
+    });
+    this.querySelectorAll('[data-select-item-type]').forEach(el => {
+      el.addEventListener('click', () => this.selectItemTypeForGrants(el.dataset.selectItemType));
+    });
+    this.querySelectorAll('[data-select-marker]').forEach(el => {
+      el.addEventListener('click', () => this.selectMarkerForGrants(el.dataset.selectMarker));
+    });
+    this.querySelectorAll('[data-marker-grant-property]').forEach(el => {
+      el.addEventListener('click', () => {
+        const field = el.dataset.markerGrantField;
+        const kind = el.dataset.grantKind;
+        const current = this.grantsArrayFor(kind).find(g => g.propertyId === el.dataset.markerGrantProperty);
+        const currentlyOn = current ? current[field] : false;
+        this.setMarkerPropertyGrant(el.dataset.markerGrantProperty, { [field]: !currentlyOn }, kind);
+      });
+    });
+    this.querySelectorAll('[data-toggle-grant-container]').forEach(el => {
+      el.addEventListener('click', () => this.toggleGrantContainer(el.dataset.toggleGrantContainer));
+    });
+    this.querySelectorAll('[data-bulk-property]').forEach(el => {
+      el.addEventListener('click', () => {
+        const kind = el.dataset.bulkKind;
+        const rootProperties = kind === 'link'
+          ? this.linkPropertiesForLinkId(el.dataset.bulkLinkId)
+          : this.propertiesForItemType(this.selectedItemTypeId);
+        this.setBulkPropertyGrant(el.dataset.bulkProperty, el.dataset.bulkField, kind, rootProperties);
+      });
+    });
+    this.querySelectorAll('[data-toggle-grant-section]').forEach(el => {
+      el.addEventListener('click', () => this.toggleGrantSection(el.dataset.toggleGrantSection));
+    });
+    this.querySelectorAll('[data-toggle-grant-perspective]').forEach(el => {
+      el.addEventListener('click', () => this.toggleGrantPerspective(el.dataset.toggleGrantPerspective));
+    });
+    this.querySelectorAll('[data-perspective-grant]').forEach(el => {
+      el.addEventListener('click', () => {
+        const field = el.dataset.perspectiveField;
+        const current = this.linkPerspectiveGrants.find(g => g.perspectiveId === el.dataset.perspectiveGrant)
+          || { canCreate: false, canRead: false, canDelete: false };
+        this.setLinkPerspectiveGrant(el.dataset.perspectiveGrant, { ...current, [field]: !current[field] });
+      });
+    });
+    this.querySelectorAll('[data-toggle-grant-statemachine]').forEach(el => {
+      el.addEventListener('click', () => this.toggleGrantStateMachine(el.dataset.toggleGrantStatemachine));
+    });
+    this.querySelectorAll('[data-transition-grant]').forEach(el => {
+      el.addEventListener('click', () => this.toggleTransitionGrant(el.dataset.transitionGrant));
     });
     this.querySelector('[data-action="rename-group"]')?.addEventListener('click', () => {
       const name = prompt('New group name:', this.selectedData.name);
@@ -901,6 +1603,7 @@ class NtrlocAccess extends HTMLElement {
     });
     this.querySelector('[data-action="create-user"]')?.addEventListener('click', () => this.createUser());
     this.querySelector('[data-action="create-group"]')?.addEventListener('click', () => this.createGroup());
+    this.querySelector('[data-action="new-marker"]')?.addEventListener('click', () => this.onNewMarker());
   }
 }
 

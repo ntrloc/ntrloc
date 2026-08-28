@@ -51,6 +51,10 @@ public class AuthorizationRepository {
 
     public record LinkPerspectiveGrantRow(String principalType, UUID principalId, UUID markerId, UUID perspectiveId, boolean canRead, boolean canDelete) {}
 
+    public record PropertyAccessRow(UUID propertyId, boolean canRead, boolean canWrite, boolean canDownload) {}
+
+    public record LinkPerspectiveAccessRow(UUID perspectiveId, boolean canCreate, boolean canRead, boolean canDelete) {}
+
     private final JdbcClient jdbcClient;
     private final AuthorizationCacheManager cacheManager;
 
@@ -165,6 +169,38 @@ public class AuthorizationRepository {
                 .param("scopeKind", scopeKind).param("scopeId", scopeId)
                 .query(UUID.class).single();
         return new MarkerRow(id, name, description, scopeKind, scopeId);
+    }
+
+    // Name/description only -- scope is immutable after creation (see the design doc: scope is
+    // what a marker's grants are validated against, so changing it out from under existing grants
+    // would silently invalidate them). Not cache-affecting: AuthorizationCacheManager's Snapshot
+    // keys everything by marker id, never by name/description, so no refreshCache() call here.
+    public MarkerRow updateMarker(UUID id, String name, String description) {
+        return jdbcClient.sql("""
+                UPDATE authorization_marker SET name = :name, description = :description
+                WHERE id = :id RETURNING id, name, description, scope_kind, scope_id
+                """)
+                .param("id", id).param("name", name).param("description", description)
+                .query((rs, n) -> new MarkerRow(
+                        rs.getObject("id", UUID.class), rs.getString("name"), rs.getString("description"),
+                        rs.getString("scope_kind"), rs.getObject("scope_id", UUID.class)))
+                .single();
+    }
+
+    public void deleteMarker(UUID id) {
+        jdbcClient.sql("DELETE FROM authorization_marker WHERE id = :id").param("id", id).update();
+        cacheManager.refreshCache();
+    }
+
+    public List<MarkerRow> getAllMarkers() {
+        return jdbcClient.sql("SELECT id, name, description, scope_kind, scope_id FROM authorization_marker ORDER BY name")
+                .query((rs, n) -> new MarkerRow(
+                        rs.getObject("id", UUID.class),
+                        rs.getString("name"),
+                        rs.getString("description"),
+                        rs.getString("scope_kind"),
+                        rs.getObject("scope_id", UUID.class)))
+                .list();
     }
 
     /** Every marker id assigned to this item, for the batched per-page lookup used to resolve mode-2 (property/capability) checks. */
@@ -295,6 +331,68 @@ public class AuthorizationRepository {
                 """)
                 .param(PARAM_MARKER_ID, markerId).param(PARAM_PRINCIPAL_TYPE, principalType).param(PARAM_PRINCIPAL_ID, principalId)
                 .query(UUID.class).optional();
+    }
+
+    // Admin-panel read (low-traffic; not cache-backed, unlike the enforcement-path getters on
+    // AuthorizationCacheManager) -- hydrates the property-grant checkbox grid for one (marker,
+    // principal) pair. A property absent from the result has no grant row at all, equivalent to
+    // read/write/download all false.
+    public List<PropertyAccessRow> getPropertyGrantsForMarker(UUID markerId, String principalType, UUID principalId) {
+        return jdbcClient.sql("""
+                SELECT mgp.property_id, mgp.can_read, mgp.can_write, mgp.can_download
+                FROM marker_grant_property mgp
+                JOIN marker_grant mg ON mg.id = mgp.marker_grant_id
+                WHERE mg.marker_id = :markerId AND mg.principal_type = :principalType AND mg.principal_id = :principalId
+                """)
+                .param(PARAM_MARKER_ID, markerId).param(PARAM_PRINCIPAL_TYPE, principalType).param(PARAM_PRINCIPAL_ID, principalId)
+                .query((rs, n) -> new PropertyAccessRow(
+                        rs.getObject(COL_PROPERTY_ID, UUID.class), rs.getBoolean(COL_CAN_READ),
+                        rs.getBoolean(COL_CAN_WRITE), rs.getBoolean(COL_CAN_DOWNLOAD)))
+                .list();
+    }
+
+    // Same shape as getPropertyGrantsForMarker, over marker_grant_link_property instead -- a link
+    // type's own properties are granted exactly like an item type's, just via a different child table.
+    public List<PropertyAccessRow> getLinkPropertyGrantsForMarker(UUID markerId, String principalType, UUID principalId) {
+        return jdbcClient.sql("""
+                SELECT mgp.property_id, mgp.can_read, mgp.can_write, mgp.can_download
+                FROM marker_grant_link_property mgp
+                JOIN marker_grant mg ON mg.id = mgp.marker_grant_id
+                WHERE mg.marker_id = :markerId AND mg.principal_type = :principalType AND mg.principal_id = :principalId
+                """)
+                .param(PARAM_MARKER_ID, markerId).param(PARAM_PRINCIPAL_TYPE, principalType).param(PARAM_PRINCIPAL_ID, principalId)
+                .query((rs, n) -> new PropertyAccessRow(
+                        rs.getObject(COL_PROPERTY_ID, UUID.class), rs.getBoolean(COL_CAN_READ),
+                        rs.getBoolean(COL_CAN_WRITE), rs.getBoolean(COL_CAN_DOWNLOAD)))
+                .list();
+    }
+
+    public List<LinkPerspectiveAccessRow> getLinkPerspectiveGrantsForMarker(UUID markerId, String principalType, UUID principalId) {
+        return jdbcClient.sql("""
+                SELECT mglp.perspective_id, mglp.can_create, mglp.can_read, mglp.can_delete
+                FROM marker_grant_link_perspective mglp
+                JOIN marker_grant mg ON mg.id = mglp.marker_grant_id
+                WHERE mg.marker_id = :markerId AND mg.principal_type = :principalType AND mg.principal_id = :principalId
+                """)
+                .param(PARAM_MARKER_ID, markerId).param(PARAM_PRINCIPAL_TYPE, principalType).param(PARAM_PRINCIPAL_ID, principalId)
+                .query((rs, n) -> new LinkPerspectiveAccessRow(
+                        rs.getObject(COL_PERSPECTIVE_ID, UUID.class), rs.getBoolean("can_create"),
+                        rs.getBoolean(COL_CAN_READ), rs.getBoolean("can_delete")))
+                .list();
+    }
+
+    // Existence-only grant -- a transition either has an execute grant row or it doesn't, no
+    // read/write/download shape (see grantTransitionExecute's own comment).
+    public Set<UUID> getTransitionGrantsForMarker(UUID markerId, String principalType, UUID principalId) {
+        return Set.copyOf(jdbcClient.sql("""
+                SELECT mgt.transition_id
+                FROM marker_grant_transition mgt
+                JOIN marker_grant mg ON mg.id = mgt.marker_grant_id
+                WHERE mg.marker_id = :markerId AND mg.principal_type = :principalType AND mg.principal_id = :principalId
+                """)
+                .param(PARAM_MARKER_ID, markerId).param(PARAM_PRINCIPAL_TYPE, principalType).param(PARAM_PRINCIPAL_ID, principalId)
+                .query((rs, n) -> rs.getObject("transition_id", UUID.class))
+                .list());
     }
 
     // --- Bulk reads for AuthorizationCacheManager.rebuildCache() -- never called elsewhere ---

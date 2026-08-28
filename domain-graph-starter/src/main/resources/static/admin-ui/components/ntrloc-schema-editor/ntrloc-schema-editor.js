@@ -79,11 +79,19 @@ class NtrlocSchemaEditor extends HTMLElement {
   connectedCallback() {
     this.render();
     this._unsubscribe = onSchemaViewModelChange(() => this.render());
+    // Markers can also be created/edited/deleted from the Access tab's own Markers panel (see
+    // marker-service.js's own comment) -- without this, a marker written there would never appear
+    // here until a full page reload, since schemaViewModel.markers is this component's own local
+    // copy with no other refresh trigger.
+    this._unsubscribeMarkers = onMarkersChange(() => {
+      schemaViewModel._loadMarkers().then(() => notifySchemaViewModelChange());
+    });
     schemaViewModel.load();
   }
 
   disconnectedCallback() {
     if (this._unsubscribe) this._unsubscribe();
+    if (this._unsubscribeMarkers) this._unsubscribeMarkers();
   }
 
   isSelected(kind, id) {

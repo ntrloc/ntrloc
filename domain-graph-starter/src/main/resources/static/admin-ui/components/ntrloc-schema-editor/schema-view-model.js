@@ -64,6 +64,14 @@ function notifySchemaViewModelChange() {
 const schemaViewModel = {
   items: [],
   traits: [],
+  // Policy markers (authorization_marker) -- loaded alongside the schema for admin convenience
+  // (an admin naturally reaches for marker creation from the item-type editor, since a marker's
+  // scope is one specific item type/trait), but NOT part of the schema-mutation batch system:
+  // markerService.createMarker is a direct, immediate write (see marker-service.js's own comment),
+  // unlike items/traits/links which stage locally and only commit on Save. Rendered inside
+  // ntrloc-item-detail.js's own "Access Markers" panel, filtered to whichever item is selected --
+  // see markersForItem below.
+  markers: [],
   propertyTypes: [],
   // Flowable's deployed process definitions -- fetched alongside the schema purely to populate
   // the entry/exit/transition/init process pickers in the states editor. Best-effort: a failure
@@ -86,7 +94,14 @@ const schemaViewModel = {
   // persistent singleton instead is what makes a panel stay collapsed while the user keeps
   // editing, matching the Angular reference's mat-expansion-panel (whose own open/closed state
   // is intrinsic to the long-lived component instance, not reset by unrelated input changes).
-  sectionsExpanded: { traits: true, properties: true, links: true, states: true },
+  sectionsExpanded: { traits: true, properties: true, links: true, states: true, markers: true },
+
+  // Markers scoped to a given item type -- the only scope kind ntrloc-item-detail.js's "Access
+  // Markers" panel shows right now (see that panel's own comment on why trait-scoped markers
+  // aren't included yet).
+  markersForItem(itemId) {
+    return this.markers.filter((m) => m.scopeKind === 'ITEM_TYPE' && m.scopeId === itemId);
+  },
 
   get isDirty() {
     return this.items.some((i) => i.isDirty)
@@ -144,7 +159,7 @@ const schemaViewModel = {
 
   load() {
     if (this._loaded) return Promise.resolve();
-    return Promise.all([schemaModel.load(), this._loadProcessDefinitions()])
+    return Promise.all([schemaModel.load(), this._loadProcessDefinitions(), this._loadMarkers()])
       .then(([schema]) => this._applySchema(schema, null, null, null, null));
   },
 
@@ -158,7 +173,7 @@ const schemaViewModel = {
     this.selectedTrait = null;
     this.pendingControlledListReplacements.clear();
     this.pendingNewLinks = [];
-    return Promise.all([schemaModel.reload(), this._loadProcessDefinitions()])
+    return Promise.all([schemaModel.reload(), this._loadProcessDefinitions(), this._loadMarkers()])
       .then(([schema]) => this._applySchema(schema, selectedItemId, selectedItemName, selectedTraitId, selectedTraitName));
   },
 
@@ -172,6 +187,44 @@ const schemaViewModel = {
         console.error('[schema] failed to load process definitions:', e);
         this.processDefinitions = [];
       });
+  },
+
+  // Same best-effort treatment as _loadProcessDefinitions -- a marker-listing failure shouldn't
+  // block the schema editor itself from opening.
+  _loadMarkers() {
+    return markerService.getMarkers()
+      .then((markers) => { this.markers = markers; })
+      .catch((e) => {
+        console.error('[schema] failed to load markers:', e);
+        this.markers = [];
+      });
+  },
+
+  // Direct, immediate write (see marker-service.js's own comment) -- unlike newItem()/newTrait(),
+  // there's no local draft stage; the marker exists on the server (and in AuthorizationCacheManager)
+  // the moment this resolves. Throws on failure so the caller (ntrloc-item-detail.js) can show the
+  // error inline rather than this silently doing nothing.
+  async createMarker({ name, description, scopeKind, scopeId }) {
+    const marker = await markerService.createMarker({ name, description, scopeKind, scopeId });
+    this.markers = [...this.markers, marker].sort((a, b) => a.name.localeCompare(b.name));
+    this.sectionsExpanded.markers = true;
+    notifySchemaViewModelChange();
+    return marker;
+  },
+
+  async updateMarker(id, { name, description }) {
+    const marker = await markerService.updateMarker(id, { name, description });
+    this.markers = this.markers
+      .map((m) => (m.id === id ? marker : m))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    notifySchemaViewModelChange();
+    return marker;
+  },
+
+  async deleteMarker(id) {
+    await markerService.deleteMarker(id);
+    this.markers = this.markers.filter((m) => m.id !== id);
+    notifySchemaViewModelChange();
   },
 
   // Traits/States start collapsed the moment an item/trait is selected if that section would
@@ -195,6 +248,7 @@ const schemaViewModel = {
       ...this.sectionsExpanded,
       traits: hasTraits,
       states: isItem ? entity.stateMachines.some((m) => !m.isDeleted) : this.sectionsExpanded.states,
+      markers: isItem ? this.markersForItem(entity.id).length > 0 : this.sectionsExpanded.markers,
     };
   },
 
