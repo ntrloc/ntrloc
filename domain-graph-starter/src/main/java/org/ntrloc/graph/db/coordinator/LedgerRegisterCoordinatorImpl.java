@@ -1,5 +1,6 @@
 package org.ntrloc.graph.db.coordinator;
 
+import org.ntrloc.graph.db.partition.authorization.MarkerRuleEvaluationService;
 import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
 import org.ntrloc.graph.db.partition.ledger.ItemDeleteEntry;
 import org.ntrloc.graph.db.partition.ledger.ItemUpdateEntry;
@@ -11,6 +12,7 @@ import org.ntrloc.graph.db.partition.ledger.LinkEndpoint;
 import org.ntrloc.graph.db.partition.ledger.LinkUpdateEntry;
 import org.ntrloc.graph.db.partition.register.RegisterLinkEndpoint;
 import org.ntrloc.graph.db.partition.register.RegisterPartitionManager;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,19 +25,35 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
     private final LedgerPartitionManager ledgerPartitionManager;
     private final RegisterPartitionManager registerPartitionManager;
     private final ItemDeleteCascadeExpander cascadeExpander;
+    private final MarkerRuleEvaluationService markerRuleEvaluationService;
 
+    // @Lazy breaks a real circular bean dependency, same technique and same reason as
+    // AuthorizationRepository's own @Lazy AuthorizationCacheManager: MarkerRuleEvaluationService
+    // needs Flowable's DmnDecisionService/DmnRepositoryService, which come from the DMN engine
+    // config, which is built on top of the process engine config, which (via EntityManagerImpl ->
+    // MutationRequestProcessor) depends right back on this coordinator. A deferred-resolution
+    // proxy here means this bean's own construction doesn't require that whole chain to already
+    // exist -- it's only resolved the first time prepare() actually calls it.
     public LedgerRegisterCoordinatorImpl(LedgerPartitionManager ledgerPartitionManager,
                                           RegisterPartitionManager registerPartitionManager,
-                                          ItemDeleteCascadeExpander cascadeExpander) {
+                                          ItemDeleteCascadeExpander cascadeExpander,
+                                          @Lazy MarkerRuleEvaluationService markerRuleEvaluationService) {
         this.ledgerPartitionManager = ledgerPartitionManager;
         this.registerPartitionManager = registerPartitionManager;
         this.cascadeExpander = cascadeExpander;
+        this.markerRuleEvaluationService = markerRuleEvaluationService;
     }
 
     @Override
     @Transactional
     public void prepare(List<LedgerEntry> entries, UUID transactionId, String actorExternalId) {
         List<LedgerEntry> expanded = cascadeExpander.expand(entries);
+        // Marker Assignment Rules fire here, before the ledger append below -- not in commit(),
+        // after it -- so a rule's marker decision lands in the SAME ledger row as the property
+        // change that triggered it (see MarkerRuleEvaluationService's own comment). commit()
+        // needs no changes to apply what this produces: it already reads markersAdded/Removed off
+        // whatever entries it's given.
+        expanded = markerRuleEvaluationService.enrichWithRuleDecisions(expanded);
         ledgerPartitionManager.append(expanded, transactionId, actorExternalId);
 
         // Items before links: link endpoint resolution needs same-transaction item staging

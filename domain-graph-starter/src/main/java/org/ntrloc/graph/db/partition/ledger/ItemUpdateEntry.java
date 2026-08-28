@@ -18,4 +18,14 @@ import java.util.UUID;
 // reading the ledger than two separate rows correlated only by a shared transaction_id.
 public record ItemUpdateEntry(UUID itemId, Map<UUID, Object> properties, Map<UUID, UUID> stateChanges,
                                Set<MarkerAttribution> markersAdded, Set<MarkerAttribution> markersRemoved) implements LedgerEntry {
+
+    // Same null-normalizing compact constructor as ItemCreateEntry, same reason: a stored ledger
+    // payload missing one of these facets (predates markers being written at all, e.g.) would
+    // otherwise deserialize it as null instead of empty.
+    public ItemUpdateEntry {
+        if (properties == null) properties = Map.of();
+        if (stateChanges == null) stateChanges = Map.of();
+        if (markersAdded == null) markersAdded = Set.of();
+        if (markersRemoved == null) markersRemoved = Set.of();
+    }
 }

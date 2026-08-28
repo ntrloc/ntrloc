@@ -53,6 +53,12 @@ public class AuthorizationRepository {
 
     public record PropertyAccessRow(UUID propertyId, boolean canRead, boolean canWrite, boolean canDownload) {}
 
+    // decisionKey is a Flowable DMN decision key (see MarkerRuleEvaluationService) -- deployed/
+    // versioned independently, not a foreign key. No markerId here: a rule's DMN output declares
+    // which marker(s) apply by name; which of an item's *current* markers a rule may remove is
+    // decided at evaluation time via ledger provenance, not a static ownership column.
+    public record MarkerRuleRow(UUID id, String name, UUID itemTypeId, String decisionKey) {}
+
     public record LinkPerspectiveAccessRow(UUID perspectiveId, boolean canCreate, boolean canRead, boolean canDelete) {}
 
     private final JdbcClient jdbcClient;
@@ -201,6 +207,40 @@ public class AuthorizationRepository {
                         rs.getString("scope_kind"),
                         rs.getObject("scope_id", UUID.class)))
                 .list();
+    }
+
+    // --- Marker assignment rules (tracer bullet) ---
+
+    public List<MarkerRuleRow> getEnabledMarkerRulesForItemType(UUID itemTypeId) {
+        return jdbcClient.sql("""
+                SELECT id, name, item_type_id, decision_key
+                FROM authorization_marker_rule
+                WHERE item_type_id = :itemTypeId AND enabled = true
+                """)
+                .param(PARAM_ITEM_TYPE_ID, itemTypeId)
+                .query((rs, n) -> new MarkerRuleRow(
+                        rs.getObject("id", UUID.class),
+                        rs.getString("name"),
+                        rs.getObject(COL_ITEM_TYPE_ID, UUID.class),
+                        rs.getString("decision_key")))
+                .list();
+    }
+
+    // Resolves a marker by name within an item type's own ITEM_TYPE-scoped markers -- the only
+    // scope a marker-assignment rule can meaningfully target, since the rule fires per item of
+    // that type. A marker outside this scope (or absent entirely) is simply not resolvable here;
+    // the caller (MarkerRuleEvaluationService) treats an unresolved output name as "no such
+    // marker" rather than failing the whole evaluation, since a typo'd DMN output shouldn't block
+    // an otherwise-valid mutation.
+    public Optional<UUID> findItemTypeScopedMarkerByName(UUID itemTypeId, String name) {
+        return jdbcClient.sql("""
+                SELECT id FROM authorization_marker
+                WHERE scope_kind = 'ITEM_TYPE' AND scope_id = :itemTypeId AND name = :name
+                """)
+                .param(PARAM_ITEM_TYPE_ID, itemTypeId)
+                .param("name", name)
+                .query(UUID.class)
+                .optional();
     }
 
     /** Every marker id assigned to this item, for the batched per-page lookup used to resolve mode-2 (property/capability) checks. */

@@ -754,6 +754,36 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                 .optional();
     }
 
+    // --- Marker-rule support: resolve a mutation's property values by name, for DMN input
+    // variables. Both called from MarkerRuleEvaluationService during prepare(), before the
+    // mutation's own ledger entry is appended -- see that class's own comment on why.
+
+    /** A create's properties are already the complete set -- no current-row merge needed. */
+    public Map<String, Object> resolvePropertiesByName(UUID itemTypeId, Map<UUID, Object> propertiesById) {
+        return namesForIds(keysToStrings(propertiesById), propertyPathsByIdForItemType(itemTypeId));
+    }
+
+    // An update's properties() is a diff; DMN evaluation needs the item's full resulting property
+    // set. Reads the same current-committed-row query stageItemChange uses internally and applies
+    // the same merge -- duplicated rather than threaded through stageItemChange's own call, to
+    // avoid restructuring that already-tested path for this first slice.
+    public Map<String, Object> resolveMergedPropertiesByName(UUID itemId, UUID itemTypeId, Map<UUID, Object> propertiesDiff) {
+        String currentJson = jdbcClient.sql("""
+                SELECT rt.properties::text AS properties
+                FROM register_item ri
+                JOIN %s rt ON rt.register_item_id = ri.id
+                WHERE ri.item_id = :itemId AND ri.state = 'COMMITTED'
+                """.formatted(tableNameFor(itemTypeId)))
+                .param(PARAM_ITEM_ID, itemId)
+                .query(String.class)
+                .single();
+        Map<String, Object> currentById = parseJsonb(currentJson);
+        Map<String, Object> mergedById = propertiesDiff.isEmpty()
+                ? currentById
+                : mergeProperties(currentById, keysToStrings(propertiesDiff));
+        return namesForIds(mergedById, propertyPathsByIdForItemType(itemTypeId));
+    }
+
     public void commitItem(UUID itemId, UUID transactionId, UUID commitId) {
         UUID stagedRegisterItemId = jdbcClient.sql("""
                 SELECT id FROM register_item WHERE item_id = :itemId AND transaction_id = :transactionId AND state = 'UNCOMMITTED'
@@ -953,6 +983,19 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                 .query((rs, n) -> Map.entry(rs.getObject("register_item_id", UUID.class), rs.getObject("marker_id", UUID.class)))
                 .list().stream()
                 .collect(Collectors.groupingBy(Map.Entry::getKey, Collectors.mapping(Map.Entry::getValue, Collectors.toSet())));
+    }
+
+    // Marker id -> name, for ProjectedItem.markers -- a display-only concern (never used for any
+    // permission decision, unlike getMarkerIdsForRegisterItems above), so this queries
+    // authorization_marker directly rather than going through AuthorizationRepository, matching
+    // how this class already reads register_item_marker itself rather than depending on that repo.
+    private Map<UUID, String> resolveMarkerNames(Set<UUID> markerIds) {
+        if (markerIds.isEmpty()) return Map.of();
+        return jdbcClient.sql("SELECT id, name FROM authorization_marker WHERE id IN (:ids)")
+                .param("ids", markerIds)
+                .query((rs, n) -> Map.entry(rs.getObject("id", UUID.class), rs.getString("name")))
+                .list().stream()
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
     }
 
     // Union of a grant map's values across the markers a row actually carries -- the core mode-2
@@ -1439,7 +1482,8 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                                                 null,
                                                 buildPermissions(permissions, linkedItemOwnMarkerIds,
                                                         permissions.propertyWriteGrantsByMarker(), permissions.itemDeleteGrantedMarkerIds(), linkedItemPropertyNames),
-                                                computeDisplayLabel(row.linkedItemId(), linkedProps, displayLabelPatterns.get(row.linkedItemType()))),
+                                                computeDisplayLabel(row.linkedItemId(), linkedProps, displayLabelPatterns.get(row.linkedItemType())),
+                                                null), // markers: not populated for a linked item yet -- see ProjectedItem's own comment
                                         buildLinkPermissions(permissions, mySourceMarkerIds, row.perspectiveId(), linkPropertyNames)
                                     );
                                 },
@@ -1495,7 +1539,14 @@ public class RegisterPartitionManager implements SchemaChangeListener {
         Map<String, String> displayLabelPatterns = resolveEffectiveDisplayLabelPatterns();
 
         Map<UUID, Map<String, List<ProjectedLink>>> linksByItem = fetchLinksByItem(rawItemIds, requestedLinks, permissions);
-        Map<UUID, Set<UUID>> markerIdsByRegisterItemId = permissions.superuser() ? Map.of() : getMarkerIdsForRegisterItems(rawItemIds);
+        // A superuser used to skip this fetch entirely (nothing to filter by), but now also needs
+        // it to populate ProjectedItem.markers -- so it's unconditional regardless of who's asking.
+        Map<UUID, Set<UUID>> markerIdsByRegisterItemId = getMarkerIdsForRegisterItems(rawItemIds);
+        // Resolved only for a superuser -- see ProjectedItem.markers' own comment on why a
+        // non-superuser gets null, not an empty list, rather than resolving names unconditionally.
+        Map<UUID, String> markerNamesById = permissions.superuser()
+                ? resolveMarkerNames(markerIdsByRegisterItemId.values().stream().flatMap(Set::stream).collect(Collectors.toSet()))
+                : Map.of();
 
         List<BinaryPropertyRow> binaryRows = jdbcClient.sql("""
                 SELECT rbp.register_item_id, sp.name AS property_name, rbp.binary_id
@@ -1532,6 +1583,9 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                     if (binProps != null) props.putAll(binProps);
                     var itemPermissions = buildPermissions(permissions, markerIds,
                             permissions.propertyWriteGrantsByMarker(), permissions.itemDeleteGrantedMarkerIds(), ownPropertyNames);
+                    List<String> markerNames = permissions.superuser()
+                            ? markerIds.stream().map(markerNamesById::get).filter(Objects::nonNull).sorted().toList()
+                            : null;
                     return new ProjectedItem(
                             raw.itemId(),
                             raw.itemType(),
@@ -1539,7 +1593,8 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                             linksByItem.getOrDefault(raw.registerItemId(), Map.of()),
                             buildProjectedItemStates(raw.states(), stateMachines),
                             itemPermissions,
-                            computeDisplayLabel(raw.itemId(), props, displayLabelPatterns.get(raw.itemType())));
+                            computeDisplayLabel(raw.itemId(), props, displayLabelPatterns.get(raw.itemType())),
+                            markerNames);
                 })
                 .toList();
     }
