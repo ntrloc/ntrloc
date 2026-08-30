@@ -96,10 +96,50 @@ public class ProcessAdminController {
         }
     }
 
+    // First-ever save of a brand-new process (mirrors DecisionAdminController.createDecision --
+    // see its own comment for the full reasoning). candidateKey is usually a random guess from
+    // the admin-ui's own short-id.js, occasionally something the admin typed themselves; either
+    // way "new" always means creation, never "add a version to something that already exists," so
+    // a candidate colliding with an existing process key gets silently replaced with a fresh one
+    // (swapped everywhere it appears in the XML) rather than deployed as an unintended version of
+    // an unrelated process. The response's key tells the caller what was actually used.
+    @PostMapping("/definitions")
+    ResponseEntity<?> createDefinition(@RequestParam String candidateKey, @RequestBody String xml) {
+        try {
+            String key = candidateKey;
+            String body = xml;
+            int attempts = 0;
+            while (repositoryService.createProcessDefinitionQuery().processDefinitionKey(key).count() > 0) {
+                if (++attempts > 20) {
+                    return ResponseEntity.internalServerError()
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .body(new DeployErrorResponse("Could not allocate a unique process id."));
+                }
+                String nextKey = ShortIdGenerator.generate("p");
+                body = body.replace(key, nextKey);
+                key = nextKey;
+            }
+            Deployment deployment = repositoryService.createDeployment()
+                    .name(key)
+                    .addString(key + ".bpmn20.xml", body)
+                    .deploy();
+            ProcessDefinition definition = repositoryService.createProcessDefinitionQuery()
+                    .deploymentId(deployment.getId())
+                    .processDefinitionKey(key)
+                    .singleResult();
+            return ResponseEntity.ok(toView(definition));
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest()
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(new DeployErrorResponse("Failed to deploy process: " + e.getMessage()));
+        }
+    }
+
     // Flowable deployments are immutable and versioned: this always creates a brand-new
     // deployment (never overwrites one in place). Flowable auto-detects that the deployed BPMN
     // reuses an existing process key and assigns the next version number itself -- see
-    // ProcessDefinitionDataManagerImpl.findLatestProcessDefinitionByKey().
+    // ProcessDefinitionDataManagerImpl.findLatestProcessDefinitionByKey(). Only ever called for a
+    // key that's already established (see createDefinition above for a brand-new one).
     //
     // Broad RuntimeException catch is deliberate: BPMN parse failures during deploy() surface as
     // org.flowable.bpmn.exceptions.XMLException (a plain RuntimeException, not a

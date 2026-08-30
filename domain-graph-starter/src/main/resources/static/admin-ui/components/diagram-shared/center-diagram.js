@@ -16,6 +16,20 @@ export function centerDiagram(diagram) {
 
   const bbox = getBBox(elements);
   const outer = canvas.getSize();
+  // A freshly-connected tab's container can still measure 0x0 for a frame or two after this
+  // element's own connectedCallback runs (tab-workspace toggles the container's display right
+  // around when the new content element is appended, and the browser hasn't necessarily laid it
+  // out yet at that exact synchronous point) -- most visible on a brand-new DRD, whose default
+  // decision node makes `elements` non-empty immediately, unlike a brand-new BPMN process's empty
+  // canvas (which short-circuits above and never reaches this code at all). Computing against a
+  // zero-sized outer would divide by zero into an infinite/NaN scale and boxWidth/boxHeight, and
+  // canvas.viewbox() applying that throws trying to build an SVGMatrix from it -- which aborts
+  // before ever repositioning the viewport, leaving the content wherever diagram-js first placed
+  // it (visually pinned near the origin) instead of centered. Retry next frame instead.
+  if (!outer.width || !outer.height) {
+    requestAnimationFrame(() => centerDiagram(diagram));
+    return;
+  }
   const scale = Math.min(1, outer.width / bbox.width, outer.height / bbox.height);
   const boxWidth = outer.width / scale;
   const boxHeight = outer.height / scale;

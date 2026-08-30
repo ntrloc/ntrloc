@@ -287,6 +287,20 @@ injectStyles('ntrloc-search-styles', `
   .prop-value select:focus {
     border-bottom-color: var(--accent);
   }
+  /* Same fix as ntrloc-item-detail.js's .pending-link-cardinality input -- Chrome/Safari's native
+     number-input spinner renders as an opaque white box with tiny dark arrows (inverting its
+     colors was tried first, but at native size the arrows are too small to register as a control
+     worth keeping), and there's no way to actually restyle/enlarge it, only hide it. The input's
+     own type="number" (see inputTypeFor) still gets the browser's native numeric keyboard/
+     validation/scroll-to-change behavior -- only the spin buttons themselves are gone. */
+  .prop-value input[type=number]::-webkit-inner-spin-button,
+  .prop-value input[type=number]::-webkit-outer-spin-button {
+    appearance: none;
+    margin: 0;
+  }
+  .prop-value input[type=number] {
+    -moz-appearance: textfield;
+  }
   .prop-actions {
     display: flex;
     gap: 4px;
@@ -538,6 +552,27 @@ injectStyles('ntrloc-search-styles', `
     color: var(--muted);
     font-style: italic;
     font-size: 13px;
+  }
+  /* Admin-only info (see ProjectedItem.markers -- null, not rendered at all, for a non-superuser),
+     so it reads as a distinct "system" affordance rather than another property: chips, not rows,
+     below both properties and links since markers apply to the whole item rather than any one
+     field. Reuses the same amber the decision-table editor uses for its own admin-facing accents. */
+  .marker-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 10px 14px;
+    border-top: 1px solid var(--border);
+  }
+  .marker-chip {
+    padding: 3px 10px;
+    border: 1px solid rgba(232, 167, 53, 0.4);
+    border-radius: 999px;
+    background: rgba(232, 167, 53, 0.08);
+    color: #e8a735;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
   }
   .add-prop-row button {
     padding: 4px 10px;
@@ -1490,6 +1525,7 @@ class NtrlocSearch extends HTMLElement {
         </div>
         <div class="prop-grid ${isEditing ? 'is-editing' : ''}">${rows}</div>
         ${this.renderLinkGroups(pane, item)}
+        ${this.renderMarkerChips(item)}
         ${isEditing ? `
           <div class="add-prop-row">
             <button data-action="add-prop" data-path="">+ Add property</button>
@@ -1500,6 +1536,19 @@ class NtrlocSearch extends HTMLElement {
             <button class="save-btn" data-action="save-edit">Save</button>
           </div>
         ` : ''}
+      </div>
+    `;
+  }
+
+  // item.markers is null for a non-superuser (see ProjectedItem's own comment) -- rendered as
+  // nothing at all, not an empty section, so the formatted view doesn't hint that admin-only data
+  // exists. An empty array (superuser, item just has no markers) also renders nothing, same as
+  // link groups do for an item with no links.
+  renderMarkerChips(item) {
+    if (!item.markers || item.markers.length === 0) return '';
+    return `
+      <div class="marker-chips">
+        ${item.markers.map(name => `<span class="marker-chip">${escapeHtml(name)}</span>`).join('')}
       </div>
     `;
   }
@@ -1788,10 +1837,17 @@ class NtrlocSearch extends HTMLElement {
     return `<span class="value-text">${escapeHtml(String(val))}</span>`;
   }
 
+  // Matches PropertyType.java's real enum values (STRING, INT, LONG, DOUBLE, DATE, DATETIME,
+  // BOOLEAN, BINARY, OBJECT) -- this used to check for 'INTEGER'/'FLOAT', which that enum has
+  // never had, so every numeric property silently rendered as a plain text input. That in turn
+  // meant its edited value was always captured as a JS string (see the 'edit-value' listener in
+  // wireUp()), which the backend correctly rejects for an INT/LONG/DOUBLE property expecting an
+  // actual number.
   inputTypeFor(schemaType) {
     switch (schemaType) {
-      case 'INTEGER': case 'LONG': case 'DOUBLE': case 'FLOAT': return 'number';
+      case 'INT': case 'LONG': case 'DOUBLE': return 'number';
       case 'DATE': return 'date';
+      case 'DATETIME': return 'datetime-local';
       case 'BOOLEAN': return 'checkbox';
       default: return 'text';
     }
@@ -1825,7 +1881,20 @@ class NtrlocSearch extends HTMLElement {
           if (action === 'add-prop') el.addEventListener('click', () => this.addProperty(id, itemId, el.dataset.path));
           if (action === 'remove-prop') el.addEventListener('click', () => this.removeProperty(id, itemId, el.dataset.path));
           if (action === 'undo-remove') el.addEventListener('click', () => this.undoRemoveProperty(id, itemId, el.dataset.path));
-          if (action === 'edit-value') el.addEventListener('input', e => this.updateEditValue(id, itemId, el.dataset.path, e.target.value));
+          // A number input's own .value is still a plain string in JS regardless of its type
+          // attribute -- .valueAsNumber is what actually parses it, and is what makes an
+          // INT/LONG/DOUBLE property round-trip as a real number instead of a string the backend
+          // then rejects (see inputTypeFor's own comment). Empty is null (property cleared, not
+          // NaN sent to the server), and a value that hasn't parsed to a valid number yet (e.g.
+          // mid-typing "-") is left as NaN in memory -- diffEditedValue/saveEdit only ever compare
+          // it against the old value and JSON.stringify it on actual save, both of which handle a
+          // stray NaN fine without needing special-casing here.
+          if (action === 'edit-value') el.addEventListener('input', e => {
+            const value = e.target.type === 'number'
+              ? (e.target.value === '' ? null : e.target.valueAsNumber)
+              : e.target.value;
+            this.updateEditValue(id, itemId, el.dataset.path, value);
+          });
           if (action === 'toggle-link-group') el.addEventListener('click', () => this.toggleLinkGroup(id, itemId, el.dataset.perspective));
           // Nested inside cardEl (a linked item's own card, inside a link-group), not one of the
           // outer item's own actions above -- reads the linkId/type off the nested card itself

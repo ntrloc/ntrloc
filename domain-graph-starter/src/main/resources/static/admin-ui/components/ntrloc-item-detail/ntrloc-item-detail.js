@@ -96,6 +96,83 @@ injectStyles('ntrloc-item-detail-styles', `
     font-size: 13px;
     margin: 8px 0 0 0;
   }
+  /* The two halves of the "Access Control" panel -- Access Markers and Marker Assignment Rules are
+     related but distinct admin concepts (what a marker grants vs. what assigns it to an item), so
+     they read as clearly separate blocks within the one panel rather than one flat list. Side by
+     side rather than stacked: both lists are short and this is the panel's only content, so a row
+     makes better use of the item detail pane's width instead of pushing Traits/Properties/etc.
+     further down the page. */
+  .access-control-body {
+    display: flex;
+    gap: 24px;
+    align-items: flex-start;
+  }
+  .access-control-subsection {
+    flex: 1;
+    min-width: 0;
+  }
+  .access-control-subsection + .access-control-subsection {
+    padding-left: 24px;
+    border-left: 1px solid var(--border);
+  }
+  .subsection-header {
+    margin: 0 0 8px 0;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .marker-rules-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .marker-rules-list li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 0;
+    font-size: 13px;
+    border-bottom: 1px solid var(--border);
+  }
+  .marker-rule-name {
+    font-weight: 500;
+  }
+  .marker-rule-key {
+    color: var(--muted);
+    font-family: monospace;
+    font-size: 12px;
+    flex: 1;
+  }
+  .marker-rule-status {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 999px;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+  }
+  .marker-rule-status.enabled {
+    color: #3fb950;
+    background: rgba(63, 185, 80, 0.12);
+  }
+  .marker-rule-status.disabled {
+    color: var(--muted);
+    background: rgba(255, 255, 255, 0.06);
+  }
+  .marker-rule-open-button {
+    background: none;
+    border: none;
+    color: var(--accent);
+    cursor: pointer;
+    font-size: 12px;
+    padding: 2px 6px;
+    white-space: nowrap;
+  }
+  .marker-rule-open-button:hover {
+    text-decoration: underline;
+  }
   .field-row {
     display: flex;
     align-items: center;
@@ -114,34 +191,57 @@ injectStyles('ntrloc-item-detail-styles', `
      field here that actually needs room to grow) while the other two stay their natural content
      width. align-items:start keeps every caption on one shared baseline across the row regardless
      of row-display-label's extra prior-value line making it taller than the other two. */
-  .three-col-row {
+  .header-fields-row {
     display: grid;
-    grid-template-columns: auto auto 1fr;
+    grid-template-columns: auto auto auto 1fr;
     align-items: start;
     gap: 100px;
     margin-top: 20px;
   }
-  /* Caption-above-control, shared by all three input groups (see col-header/col-body below) --
+  /* Caption-above-control, shared by all four input groups (see col-header/col-body below) --
      row-display-label additionally carries the prior-value line (see its own comment) beneath the
      control, which is why min-width:0 lives here too: without it, the flex column won't let its
      child input shrink below its content width, which for a free-text SpEL pattern can overflow the
      grid track. */
-  .three-col-row .row-start,
-  .three-col-row .row-center,
-  .three-col-row .row-display-label {
+  .header-fields-row .row-start,
+  .header-fields-row .row-center,
+  .header-fields-row .row-traits,
+  .header-fields-row .row-display-label {
     display: flex;
     flex-direction: column;
     gap: 4px;
     min-width: 0;
   }
-  .three-col-row .row-start {
+  .header-fields-row .row-start {
     justify-self: start;
   }
-  .three-col-row .row-center {
+  .header-fields-row .row-center {
     justify-self: start;
   }
-  .three-col-row .row-display-label {
+  .header-fields-row .row-traits {
+    justify-self: start;
+  }
+  .header-fields-row .row-display-label {
     justify-self: stretch;
+  }
+  .traits-chip-row {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+  .add-trait-button {
+    display: inline-flex;
+    align-items: center;
+    background: none;
+    border: 1px solid var(--accent);
+    border-radius: 16px;
+    padding: 4px 12px;
+    font-size: 13px;
+    color: var(--accent);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .add-trait-button:hover {
+    background: rgba(74, 158, 255, 0.08);
   }
   .col-header {
     font-size: 11px;
@@ -156,7 +256,7 @@ injectStyles('ntrloc-item-detail-styles', `
     gap: 8px;
     min-width: 0;
   }
-  /* Unlabeled (the col-header above it is the label -- see the three-col-row markup), but the
+  /* Unlabeled (the col-header above it is the label -- see the header-fields-row markup), but the
      filled select still reserves its default full label-row height regardless, leaving a big gap
      between col-header and the field's own visible text. --md-filled-field-top/bottom-space is the
      same token ntrloc-property-table.js already uses to compact md-filled-select for the identical
@@ -266,7 +366,7 @@ injectStyles('ntrloc-item-detail-styles', `
     align-items: center;
     gap: 6px;
     background: var(--bg);
-    border: 1px solid var(--border);
+    border: 1px solid var(--accent);
     border-radius: 16px;
     padding: 4px 6px 4px 12px;
     font-size: 13px;
@@ -285,9 +385,6 @@ injectStyles('ntrloc-item-detail-styles', `
     cursor: pointer;
     font-size: 14px;
     padding: 0 4px;
-  }
-  .add-trait-select {
-    --md-filled-select-text-field-container-shape: 16px;
   }
   .pending-link-card {
     background: var(--bg);
@@ -527,6 +624,51 @@ class NtrlocItemDetail extends HTMLElement {
     return `${listHtml}${addAffordance}${this._markerError ? `<p class="marker-error">${escapeHtml(this._markerError)}</p>` : ''}`;
   }
 
+  // These are the DMN-backed rules that apply this item type's markers automatically on
+  // create/update (MarkerRuleEvaluationService), as distinct from the markers themselves above.
+  // Create-only for now -- enable/disable and delete from here are a smaller follow-up (see
+  // MarkerAdminController's own comment); the decision-key text field lets a rule be created
+  // before its DMN table is deployed (see openCreateMarkerRuleDialog's own comment), so a fresh
+  // rule commonly shows up here with nothing to "open" yet until that table exists.
+  markerRulesBody() {
+    const item = this._item;
+    const rules = schemaViewModel.markerRulesForItem(item.id);
+
+    const listHtml = rules.length > 0
+      ? `<ul class="marker-rules-list">${rules.map((r) => `
+          <li data-marker-rule-id="${r.id}">
+            <span class="marker-rule-name">${escapeHtml(r.name)}</span>
+            <span class="marker-rule-key">${escapeHtml(r.decisionKey)}</span>
+            <span class="marker-rule-status ${r.enabled ? 'enabled' : 'disabled'}">${r.enabled ? 'Enabled' : 'Disabled'}</span>
+            <button class="marker-rule-open-button" type="button" title="Open this rule's DMN decision table">Open DMN</button>
+          </li>
+        `).join('')}</ul>`
+      : '<p class="status">No marker assignment rules defined for this item type.</p>';
+
+    // Same "save this first" guard as Access Markers/Links/States -- a rule's item_type_id has to
+    // be a real item type id, which a not-yet-saved item type doesn't have yet.
+    const addAffordance = item.isNew
+      ? '<p class="status">Save this item type before adding assignment rules.</p>'
+      : '<md-outlined-button class="add-marker-rule-button">+ New Assignment Rule</md-outlined-button>';
+
+    return `${listHtml}${addAffordance}${this._markerRuleError ? `<p class="marker-error">${escapeHtml(this._markerRuleError)}</p>` : ''}`;
+  }
+
+  accessControlBody() {
+    return `
+      <div class="access-control-body">
+        <div class="access-control-subsection">
+          <h4 class="subsection-header">Access Markers</h4>
+          ${this.markersBody()}
+        </div>
+        <div class="access-control-subsection">
+          <h4 class="subsection-header">Marker Assignment Rules</h4>
+          ${this.markerRulesBody()}
+        </div>
+      </div>
+    `;
+  }
+
   // Immediate write, not staged into Save -- see schema-view-model.js's createMarker comment.
   // Scope is fixed to this item type, not picked in the dialog (see
   // ntrloc-create-marker-dialog.js's own comment on why).
@@ -581,6 +723,60 @@ class NtrlocItemDetail extends HTMLElement {
       this._markerError = e.message || 'Failed to delete marker.';
       this.render();
     }
+  }
+
+  // Immediate write, not staged into Save -- see schema-view-model.js's createMarkerRule comment.
+  // Item type is fixed to this item type, not picked in the dialog (see
+  // openCreateMarkerRuleDialog's own comment on why), mirroring onNewMarker.
+  async onNewMarkerRule() {
+    const item = this._item;
+    let existingKeys = [];
+    try {
+      const decisions = await fetch('/api/admin/dmn/decisions', { credentials: 'include' }).then((r) => (r.ok ? r.json() : []));
+      existingKeys = [...new Set(decisions.map((d) => d.key))].sort();
+    } catch {
+      // Best-effort only -- the dialog still works fine with an empty datalist if this fails.
+    }
+    const result = await openCreateMarkerRuleDialog({
+      itemTypeId: item.id,
+      itemTypeLabel: item.name || '(unnamed)',
+      existingKeys,
+    });
+    if (!result) return;
+    this._markerRuleError = null;
+    try {
+      await schemaViewModel.createMarkerRule(result);
+    } catch (e) {
+      console.error('[item-detail] failed to create marker rule:', e);
+      this._markerRuleError = e.message || 'Failed to create assignment rule.';
+      this.render();
+    }
+  }
+
+  // Cross-tab navigation into the Processes screen -- see ntrloc-processes.js's own
+  // openDecisionByKey comment for how a decision *key* (all a rule row stores) resolves to a
+  // specific deployed decision table to open. The <ntrloc-processes> element is a permanent
+  // singleton (index.html mounts every route once and toggles visibility, never recreating them),
+  // so grabbing it straight off the document and calling into it directly is safe and simpler than
+  // inventing a cross-component event/router-param scheme for a single call site.
+  //
+  // applyRoute() (index.html's own hash router, a plain global function) is called explicitly
+  // rather than left to the 'hashchange' listener alone -- that event dispatches as a separate
+  // task, not synchronously with the location.hash assignment above, and without it the Processes
+  // element would still be display:none the moment openDecisionByKey runs.
+  //
+  // Known cosmetic wrinkle: opening a decision table this way (route switch + tab-open in the same
+  // gesture) logs two harmless "<rect> attribute width/height: Expected length, NaN" console
+  // errors from diagram-js's initial background-rect sizing, which the same decision table does
+  // NOT produce when opened by clicking it directly from an already-visible Processes tab. Neither
+  // an explicit applyRoute() before the call nor deferring the call past a render pass (nested
+  // requestAnimationFrame, tried and removed) prevents it, and the diagram still renders and
+  // functions correctly either way -- verified visually, not just assumed. Left as a known,
+  // non-blocking artifact rather than chased further into diagram-js internals.
+  onOpenMarkerRule(rule) {
+    location.hash = '#/processes';
+    applyRoute();
+    document.querySelector('ntrloc-processes')?.openDecisionByKey(rule.decisionKey, rule.name);
   }
 
   linksBody() {
@@ -666,23 +862,12 @@ class NtrlocItemDetail extends HTMLElement {
     }
     const item = this._item;
 
-    const traitsBody = this.isItem ? `
-      <div class="trait-assignments">
-        ${item.traitAssignments.map((t) => `
-          <div class="trait-chip ${t.isRemoved ? 'trait-removed' : ''} ${t.isNew && !t.isRemoved ? 'trait-new' : ''}" data-trait-id="${escapeHtml(t.id)}">
-            <span>${escapeHtml(t.name)}</span>
-            ${!t.isRemoved ? '<button class="trait-remove-button" title="Remove trait">✕</button>' : '<button class="trait-restore-button" title="Restore trait">↺</button>'}
-          </div>
-        `).join('')}
-        ${item.traitAssignments.length === 0 ? '<p class="status">No traits assigned.</p>' : ''}
-        ${this.unassignedTraits.length > 0 ? `
-          <md-filled-select class="add-trait-select">
-            <md-select-option value="" selected><div slot="headline">Add trait…</div></md-select-option>
-            ${this.unassignedTraits.map((t) => `<md-select-option value="${escapeHtml(t.id)}"><div slot="headline">${escapeHtml(t.name)}</div></md-select-option>`).join('')}
-          </md-filled-select>
-        ` : ''}
-      </div>
-    ` : `
+    // Only the trait-editor's own "Implemented By" view uses this now -- an item type's own
+    // trait assignments render inline in the header-fields-row instead (see the Traits column
+    // below), compact chips + an "Add Trait" button that opens a picker dialog rather than a
+    // whole collapsible panel, since a handful of trait chips next to Parent Type doesn't need
+    // the weight of its own section.
+    const implementedByBody = `
       <div class="trait-assignments">
         ${item.id ? `
           ${this.implementingItems.map(({ item: implementingItem, assignment }) => `
@@ -726,7 +911,7 @@ class NtrlocItemDetail extends HTMLElement {
         ${!item.isNew && (item.description ?? '') !== (item.originalDescription ?? '') && item.originalDescription ? `<div class="original-value">${escapeHtml(item.originalDescription)}</div>` : ''}
 
         ${this.isItem ? `
-          <div class="three-col-row">
+          <div class="header-fields-row">
             <div class="row-start">
               <label class="col-header" for="item-supertype-select">Parent Type</label>
               <div class="col-body">
@@ -735,6 +920,18 @@ class NtrlocItemDetail extends HTMLElement {
                   <md-select-option value="" ${!item.supertypeId ? 'selected' : ''}><div slot="headline">No parent type</div></md-select-option>
                   ${this.supertypeCandidates.map((i) => `<md-select-option value="${escapeHtml(i.id)}" ${i.id === item.supertypeId ? 'selected' : ''}><div slot="headline">${escapeHtml(i.name)}</div></md-select-option>`).join('')}
                 </md-filled-select>
+              </div>
+            </div>
+            <div class="row-traits">
+              <label class="col-header">Traits</label>
+              <div class="col-body traits-chip-row">
+                ${item.traitAssignments.map((t) => `
+                  <span class="trait-chip ${t.isRemoved ? 'trait-removed' : ''} ${t.isNew && !t.isRemoved ? 'trait-new' : ''}" data-trait-id="${escapeHtml(t.id)}">
+                    <span>${escapeHtml(t.name)}</span>
+                    ${!t.isRemoved ? '<button class="trait-remove-button" title="Remove trait">✕</button>' : '<button class="trait-restore-button" title="Restore trait">↺</button>'}
+                  </span>
+                `).join('')}
+                <button class="add-trait-button" type="button">+ Add Trait</button>
               </div>
             </div>
             <div class="row-center">
@@ -757,9 +954,9 @@ class NtrlocItemDetail extends HTMLElement {
         ` : ''}
       </div>
 
-      ${this.isItem ? this.panel('markers', 'Access Markers', this.markersBody()) : ''}
+      ${this.isItem ? this.panel('accessControl', 'Access Control', this.accessControlBody()) : ''}
 
-      ${this.panel('traits', this.isItem ? 'Traits' : 'Implemented By', traitsBody)}
+      ${!this.isItem ? this.panel('traits', 'Implemented By', implementedByBody) : ''}
 
       ${this.panel('properties', 'Properties', '<ntrloc-property-table class="properties-table"></ntrloc-property-table>')}
 
@@ -872,9 +1069,9 @@ class NtrlocItemDetail extends HTMLElement {
           notifySchemaViewModelChange();
         });
       });
-      const addTraitSelect = this.querySelector('.add-trait-select');
-      if (addTraitSelect) addTraitSelect.addEventListener('change', (event) => {
-        const traitId = event.target.value;
+      const addTraitButton = this.querySelector('.add-trait-button');
+      if (addTraitButton) addTraitButton.addEventListener('click', async () => {
+        const traitId = await openAddTraitDialog({ traits: this.unassignedTraits });
         if (!traitId) return;
         const trait = this._availableTraits.find((t) => t.id === traitId);
         if (trait?.id) item.addTrait({ id: trait.id, name: trait.name });
@@ -950,6 +1147,16 @@ class NtrlocItemDetail extends HTMLElement {
       if (!marker) return;
       row.querySelector('.marker-edit-button').addEventListener('click', () => this.onEditMarker(marker));
       row.querySelector('.marker-delete-button').addEventListener('click', () => this.onDeleteMarker(marker));
+    });
+
+    const addMarkerRuleButton = this.querySelector('.add-marker-rule-button');
+    if (addMarkerRuleButton) addMarkerRuleButton.addEventListener('click', () => this.onNewMarkerRule());
+
+    const markerRules = schemaViewModel.markerRulesForItem(item.id);
+    this.querySelectorAll('.marker-rules-list li').forEach((row) => {
+      const rule = markerRules.find((r) => r.id === row.dataset.markerRuleId);
+      if (!rule) return;
+      row.querySelector('.marker-rule-open-button').addEventListener('click', () => this.onOpenMarkerRule(rule));
     });
 
     const addLinkButton = this.querySelector('.add-link-button');

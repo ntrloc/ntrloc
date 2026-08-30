@@ -8,7 +8,7 @@ injectStyles('ntrloc-links-table-styles', `
      and avoids nesting a <table> inside a <td> for this row's own property grid). */
   .links-grid {
     display: grid;
-    grid-template-columns: 8px minmax(100px, 180px) minmax(80px, 140px) auto 1fr;
+    grid-template-columns: 8px minmax(100px, 180px) minmax(80px, 180px) auto 1fr;
     column-gap: 16px;
     align-items: start;
     width: 100%;
@@ -64,10 +64,16 @@ injectStyles('ntrloc-links-table-styles', `
     font-size: 12px;
     margin-right: 4px;
   }
+  /* Block, not inline -- a long target name (e.g. "DemoWorkflowItem") sharing one line with its
+     kind badge could exceed the Target column's own capped width with nothing to stop it, and an
+     overflowing grid-cell child paints past its track into the Cardinality column next to it
+     rather than wrapping (CSS Grid doesn't clip overflow by default). Dropping the kind to its
+     own line removes that horizontal crowding at the source instead of just capping/ellipsizing
+     the name to hide it. */
   .links-grid .target-kind {
+    display: block;
     color: var(--muted);
     font-size: 11px;
-    margin-left: 4px;
   }
   .links-grid .defined-in-badge {
     display: block;
@@ -83,6 +89,14 @@ injectStyles('ntrloc-links-table-styles', `
     font-size: 13px;
     color: var(--text);
     min-height: 1em;
+  }
+  /* em, not a fixed px bump -- scales correctly wherever _formatMax's "unbounded" reading gets
+     used, whether that's the 13px .read-only-value or the smaller 11px .original-value line, so
+     both grow by the same 50% relative to their own context instead of needing two fixed sizes. */
+  .infinity-symbol {
+    font-size: 1.5em;
+    line-height: 1;
+    vertical-align: middle;
   }
   .links-grid .grid-row.row-clickable {
     cursor: pointer;
@@ -242,7 +256,7 @@ class NtrlocLinksTable extends HTMLElement {
   }
 
   _formatMax(max) {
-    return max === null || max === undefined ? '∞' : String(max);
+    return max === null || max === undefined ? '<span class="infinity-symbol">∞</span>' : String(max);
   }
 
   render() {

@@ -172,6 +172,32 @@ class NtrlocProcesses extends HTMLElement {
     this._workspace.openTab({ id, title, resourceType: 'dmn' });
   }
 
+  // Entry point for "open the DMN behind this rule" (ntrloc-item-detail.js's Marker Assignment
+  // Rules list, see its own comment) -- callers only know a decision *key* (what a marker rule is
+  // stored against), never a specific deployment id, so this resolves key -> latest-version id
+  // itself rather than pushing that lookup onto every caller. `this.decisions` may already be
+  // loaded (this element is never torn down, see the class comment) but could be stale if the
+  // table was deployed after this tab's own last load, hence the refetch-and-retry before giving
+  // up. this.decisions holds every version of every key (loadDecisions' own fetch, unfiltered), so
+  // picking the max version here is what "latest" means, same as newDecisionTable's sibling flow
+  // through the decision table editor's own version picker.
+  async openDecisionByKey(decisionKey, title) {
+    const latest = (decisions) => decisions
+      .filter((d) => d.key === decisionKey)
+      .sort((a, b) => b.version - a.version)[0];
+
+    let match = latest(this.decisions);
+    if (!match) {
+      await this.loadDecisions();
+      match = latest(this.decisions);
+    }
+    if (!match) {
+      alert(`No decision table is deployed yet under key "${decisionKey}". Create one in the Processes tab using this exact key, then try again.`);
+      return;
+    }
+    this.openDecision(match.id, title || match.name || match.key);
+  }
+
   // Placeholder id deliberately contains no colon -- ntrloc-decision-table-editor.js treats that
   // as its signal for "not yet deployed, start from an empty table" rather than fetching XML for
   // a real backend id (which always has the "<key>:<version>:<generatedId>" shape).

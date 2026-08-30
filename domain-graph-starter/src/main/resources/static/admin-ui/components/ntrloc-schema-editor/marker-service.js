@@ -33,6 +33,30 @@ const markerService = {
     return response.json();
   },
 
+  async getMarkerRules() {
+    const response = await fetch('/api/admin/markers/rules', { credentials: 'include' });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: 'Request failed: ' + response.status }));
+      throw new Error(error.message || 'Request failed: ' + response.status);
+    }
+    return response.json();
+  },
+
+  // Enable/disable and delete aren't here yet -- see MarkerAdminController's own comment.
+  async createMarkerRule({ name, itemTypeId, decisionKey }) {
+    const response = await fetch('/api/admin/markers/rules', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, itemTypeId, decisionKey }),
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: 'Request failed: ' + response.status }));
+      throw new Error(error.message || 'Request failed: ' + response.status);
+    }
+    return response.json();
+  },
+
   async createMarker({ name, description, scopeKind, scopeId }) {
     const response = await fetch('/api/admin/markers', {
       method: 'POST',

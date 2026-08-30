@@ -94,4 +94,38 @@ public class MarkerAdminController {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only admins can manage markers");
         }
     }
+
+    // Nested under /markers rather than its own top-level resource -- same admin surface, same
+    // requireAdmin gate, same "list everything, filter client-side by item type" shape as
+    // listMarkers() above. Enable/disable toggling and delete aren't here yet (a deliberate,
+    // smaller follow-up); create exists so an admin can wire a rule to an item type without going
+    // around this UI to raw SQL, per MarkerRuleEvaluationService's own comment on how rules used to
+    // be inserted.
+    @GetMapping("/rules")
+    List<MarkerRuleView> listMarkerRules(ServerHttpRequest request, Authentication authentication) {
+        requireAdmin(request, authentication);
+        return authRepo.getAllMarkerRules().stream()
+                .map(r -> new MarkerRuleView(r.id(), r.name(), r.itemTypeId(), r.decisionKey(), r.enabled()))
+                .toList();
+    }
+
+    public record MarkerRuleView(UUID id, String name, UUID itemTypeId, String decisionKey, boolean enabled) {}
+
+    public record CreateMarkerRuleRequest(String name, UUID itemTypeId, String decisionKey) {}
+
+    @PostMapping("/rules")
+    MarkerRuleView createMarkerRule(@RequestBody CreateMarkerRuleRequest body, ServerHttpRequest request, Authentication authentication) {
+        requireAdmin(request, authentication);
+        if (body.name() == null || body.name().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "name is required");
+        }
+        if (body.itemTypeId() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "itemTypeId is required");
+        }
+        if (body.decisionKey() == null || body.decisionKey().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "decisionKey is required");
+        }
+        var rule = authRepo.createMarkerRule(body.name(), body.itemTypeId(), body.decisionKey());
+        return new MarkerRuleView(rule.id(), rule.name(), rule.itemTypeId(), rule.decisionKey(), rule.enabled());
+    }
 }

@@ -381,6 +381,10 @@ injectStyles('ntrloc-access-styles', `
     border-color: var(--accent);
     color: var(--accent);
   }
+  .perm-check.implied {
+    opacity: 0.45;
+    cursor: default;
+  }
 
   .access-empty {
     color: var(--muted);
@@ -1152,10 +1156,19 @@ class NtrlocAccess extends HTMLElement {
       const downloadCell = p.type === 'BINARY'
         ? `<td><button class="perm-check ${grant.canDownload ? 'granted' : ''}" data-marker-grant-property="${p.id}" data-marker-grant-field="canDownload" data-grant-kind="${kind}">${grant.canDownload ? '&#10003;' : ''}</button></td>`
         : '<td></td>';
+      // Write and Download both carry Read implicitly (server-enforced -- see
+      // AuthorizationRepository), so an implied-but-not-explicit Read renders checked but faded and
+      // non-interactive rather than a real, independently-clickable grant: toggling it off here
+      // wouldn't actually revoke read access while Write/Download stays on, which would be
+      // misleading to show as a live checkbox.
+      const readImplied = !grant.canRead && (grant.canWrite || grant.canDownload);
+      const readCell = readImplied
+        ? `<td><button class="perm-check granted implied" disabled title="Implied by Write/Download">&#10003;</button></td>`
+        : `<td><button class="perm-check ${grant.canRead ? 'granted' : ''}" data-marker-grant-property="${p.id}" data-marker-grant-field="canRead" data-grant-kind="${kind}">${grant.canRead ? '&#10003;' : ''}</button></td>`;
       return `
         <tr>
           <td ${indent}><span class="grant-leaf-spacer"></span>${this.escapeHtml(p.name)}</td>
-          <td><button class="perm-check ${grant.canRead ? 'granted' : ''}" data-marker-grant-property="${p.id}" data-marker-grant-field="canRead" data-grant-kind="${kind}">${grant.canRead ? '&#10003;' : ''}</button></td>
+          ${readCell}
           <td><button class="perm-check ${grant.canWrite ? 'granted' : ''}" data-marker-grant-property="${p.id}" data-marker-grant-field="canWrite" data-grant-kind="${kind}">${grant.canWrite ? '&#10003;' : ''}</button></td>
           ${downloadCell}
         </tr>

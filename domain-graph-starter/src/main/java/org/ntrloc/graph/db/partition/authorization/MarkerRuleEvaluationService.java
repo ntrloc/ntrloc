@@ -1,8 +1,11 @@
 package org.ntrloc.graph.db.partition.authorization;
 
+import org.flowable.common.engine.api.FlowableObjectNotFoundException;
 import org.flowable.dmn.api.DmnDecision;
 import org.flowable.dmn.api.DmnDecisionService;
 import org.flowable.dmn.api.DmnRepositoryService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.ntrloc.graph.db.partition.authorization.repository.AuthorizationRepository;
 import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
 import org.ntrloc.graph.db.partition.ledger.ItemUpdateEntry;
@@ -35,6 +38,8 @@ import java.util.UUID;
 // in the docs, not attempted here).
 @Service
 public class MarkerRuleEvaluationService {
+
+    private static final Logger log = LoggerFactory.getLogger(MarkerRuleEvaluationService.class);
 
     private final AuthorizationRepository authRepo;
     private final RegisterPartitionManager registerPartitionManager;
@@ -126,10 +131,23 @@ public class MarkerRuleEvaluationService {
     }
 
     private Set<UUID> desiredMarkerIds(AuthorizationRepository.MarkerRuleRow rule, UUID itemTypeId, Map<String, Object> propertiesByName) {
-        List<Map<String, Object>> outputRows = dmnDecisionService.createExecuteDecisionBuilder()
-                .decisionKey(rule.decisionKey())
-                .variables(propertiesByName)
-                .execute();
+        List<Map<String, Object>> outputRows;
+        try {
+            outputRows = dmnDecisionService.createExecuteDecisionBuilder()
+                    .decisionKey(rule.decisionKey())
+                    .variables(propertiesByName)
+                    .execute();
+        } catch (FlowableObjectNotFoundException e) {
+            // A rule row can exist (created from the Schema editor's own "+ New assignment rule")
+            // before its decision table is ever deployed under that key -- see
+            // AuthorizationRepository.createMarkerRule's own comment on why that's an intentionally
+            // safe, valid intermediate state rather than something rule creation should block on.
+            // Treated as "this rule has nothing to say yet," same as decisionVersion()'s own
+            // null-decision handling below, not as a failure that should block the mutation this
+            // evaluation is running inside of.
+            log.warn("Marker rule '{}' ({}) references decision key '{}', which has no deployed decision table -- skipping", rule.name(), rule.id(), rule.decisionKey());
+            return Set.of();
+        }
         Set<UUID> markerIds = new HashSet<>();
         for (Map<String, Object> row : outputRows) {
             Object markerName = row.get("markerName");

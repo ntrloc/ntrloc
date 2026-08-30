@@ -28,6 +28,7 @@ import BendpointsModule from '../../vendor/diagram-js/diagram-js/lib/features/be
 // drag-start shape for the entire drag before jumping to the final one on drop.
 import ConnectionPreviewModule from '../../vendor/diagram-js/diagram-js/lib/features/connection-preview/index.js';
 import CroppingConnectionDocking from '../../vendor/diagram-js/diagram-js/lib/layout/CroppingConnectionDocking.js';
+import { generateShortId } from '../diagram-shared/short-id.js';
 
 import BpmnRenderer from './BpmnRenderer.js';
 import BpmnPaletteProvider from './BpmnPaletteProvider.js';
@@ -558,7 +559,10 @@ class NtrlocProcessEditor extends HTMLElement {
     this._isNew = !this._definitionId || this._definitionId.startsWith('new-process-');
     this.renderShell();
     if (this._isNew) {
-      this._processId = '';
+      // Pre-filled, not left blank -- see short-id.js's own comment. Still a plain editable text
+      // input until first save (unchanged), so a deliberate, memorable id is one edit away for
+      // whoever wants one; this is just a sensible default for whoever doesn't.
+      this._processId = generateShortId('p');
       this._processName = 'New Process';
       this._processDescription = '';
       this._processVariables = [];
@@ -719,17 +723,31 @@ class NtrlocProcessEditor extends HTMLElement {
     }
     try {
       this.setStatus('Saving...', false);
+      const requestedId = this._processId;
       const xml = await exportXml(
           this._moddle, this._diagram.get('elementRegistry'), this._diagram.get('canvas'),
-          this._processId, this._processName, this._processDescription, this._processVariables,
+          requestedId, this._processName, this._processDescription, this._processVariables,
           this._processRunAsUser);
 
-      const response = await fetch(`/api/admin/process/definitions/${encodeURIComponent(this._processId)}/versions`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/xml' },
-        body: xml,
-      });
+      // First save of a brand-new process goes through the keyless create endpoint, which is the
+      // one place the server actually enforces uniqueness (see ProcessAdminController's own
+      // comment) -- the id the admin-ui pre-filled or typed is only a candidate there, not a
+      // guarantee. An already-established process (this._isNew already false) keeps using the
+      // versions endpoint exactly as before: an existing id there always means "add a version,"
+      // never a collision to resolve.
+      const response = this._isNew
+        ? await fetch(`/api/admin/process/definitions?candidateKey=${encodeURIComponent(requestedId)}`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/xml' },
+            body: xml,
+          })
+        : await fetch(`/api/admin/process/definitions/${encodeURIComponent(requestedId)}/versions`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/xml' },
+            body: xml,
+          });
 
       if (!response.ok) {
         const error = await response.json().catch(() => ({ message: 'Request failed: ' + response.status }));
@@ -741,11 +759,16 @@ class NtrlocProcessEditor extends HTMLElement {
       // running should mean "run what's on screen", and what's on screen is now this version.
       this._definitionId = deployed.id;
       this._isNew = false;
-      // Process ID's disabled state is computed fresh from _isNew every renderProcessPanel() --
-      // re-render now so it locks immediately if that view happens to be showing.
+      // Server is authoritative on the id -- update our own display if it had to reassign one due
+      // to a collision (only possible on the create path above).
+      this._processId = deployed.key;
+      // Re-render so the (permanently disabled) Process ID field picks up the possibly-reassigned
+      // value if that view happens to be showing.
       this.renderPanel();
       this.reportDirty(false);
-      this.setStatus(`Saved as version ${deployed.version}.`, false);
+      this.setStatus(deployed.key !== requestedId
+        ? `Process ID "${requestedId}" was already in use -- assigned "${deployed.key}" instead. Saved as version ${deployed.version}.`
+        : `Saved as version ${deployed.version}.`, false);
       // Same bubbling-event contract as dirty-changed -- lets a host that references a process by
       // key (ntrloc-state-machine-editor.js's entry/exit/transition process fields) learn what key
       // to store without reaching into this editor's private fields.
@@ -997,16 +1020,17 @@ class NtrlocProcessEditor extends HTMLElement {
   // here". Name/Process ID used to live in the toolbar; moved here so this state is useful
   // instead of empty, and so the process can carry a Description the same way every element
   // already can (elementDocumentation/setElementDocumentation below, reused as-is: a
-  // bpmn:Process is just another businessObject with a documentation array). Process ID keeps
-  // the exact same first-save lock as before (editable only while _isNew), just computed fresh
-  // from current state on every render instead of being poked at directly from save().
+  // bpmn:Process is just another businessObject with a documentation array). Process ID is
+  // always disabled now -- system-generated (short-id.js pre-fill, ProcessAdminController.
+  // createDefinition reassigns on collision) rather than admin-chosen, so unlike Name/
+  // Description/Run As User there's no window where typing into it does anything.
   renderProcessPanel(panel) {
     panel.innerHTML = `
       <label>Name</label>
       <input type="text" class="process-name-input" value="${escapeHtml(this._processName || '')}">
       <label>Process ID</label>
-      <input type="text" class="process-key-input" placeholder="e.g. approvalProcess"
-             value="${escapeHtml(this._processId || '')}" ${!this._isNew ? 'disabled' : ''}>
+      <input type="text" class="process-key-input" title="System-generated, not editable"
+             value="${escapeHtml(this._processId || '')}" disabled>
       <label>Description</label>
       <textarea class="process-description-input" rows="4"
                 placeholder="Notes about this process, saved as its BPMN documentation.">${escapeHtml(this._processDescription || '')}</textarea>
@@ -1051,10 +1075,6 @@ class NtrlocProcessEditor extends HTMLElement {
     `;
     panel.querySelector('.process-name-input').addEventListener('change', (event) => {
       this._processName = event.target.value;
-      this.markDirty();
-    });
-    panel.querySelector('.process-key-input').addEventListener('change', (event) => {
-      this._processId = event.target.value.trim();
       this.markDirty();
     });
     panel.querySelector('.process-description-input').addEventListener('change', (event) => {

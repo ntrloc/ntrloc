@@ -15,6 +15,7 @@ import ConnectionLayouter from '../diagram-shared/ConnectionLayouter.js';
 import ConnectionMovePreview from '../diagram-shared/ConnectionMovePreview.js';
 import { addArrowheadMarker, nextArrowheadMarkerId } from '../diagram-shared/arrowhead-marker.js';
 import { centerDiagram as centerDiagramOnCanvas } from '../diagram-shared/center-diagram.js';
+import { generateShortId } from '../diagram-shared/short-id.js';
 
 import DrdRenderer from './DrdRenderer.js';
 import DrdPaletteProvider from './DrdPaletteProvider.js';
@@ -287,6 +288,10 @@ class NtrlocDecisionTableEditor extends HTMLElement {
     if (this._isNew) {
       this._model = emptyDrdModel();
       this._model.decisionServiceName = 'New Decision Table';
+      // Pre-filled, not left blank -- see short-id.js's own comment. Still a plain editable text
+      // input until first save (unchanged), so a deliberate, memorable key is one edit away for
+      // whoever wants one; this is just a sensible default for whoever doesn't.
+      this._model.decisionServiceKey = generateShortId('d');
       this.syncMetaInputs();
       this.initCanvas();
       this.centerDiagram();
@@ -328,12 +333,26 @@ class NtrlocDecisionTableEditor extends HTMLElement {
       this.setStatus('Saving...', false);
       this.collectDrdModel();
       const xml = serializeDrd(this._model);
-      const response = await fetch(`/api/admin/dmn/decisions/${encodeURIComponent(this._model.decisionServiceKey)}/versions`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/xml' },
-        body: xml,
-      });
+      const requestedKey = this._model.decisionServiceKey;
+      // First save of a brand-new table goes through the keyless create endpoint, which is the
+      // one place the server actually enforces uniqueness (see DecisionAdminController's own
+      // comment) -- the key the admin-ui pre-filled or typed is only a candidate there, not a
+      // guarantee. An already-established table (this._isNew already false) keeps using the
+      // versions endpoint exactly as before: an existing key there always means "add a version,"
+      // never a collision to resolve.
+      const response = this._isNew
+        ? await fetch(`/api/admin/dmn/decisions?candidateKey=${encodeURIComponent(requestedKey)}`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/xml' },
+            body: xml,
+          })
+        : await fetch(`/api/admin/dmn/decisions/${encodeURIComponent(requestedKey)}/versions`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/xml' },
+            body: xml,
+          });
       if (!response.ok) {
         const error = await response.json().catch(() => ({ message: 'Request failed: ' + response.status }));
         throw new Error(error.message || 'Request failed: ' + response.status);
@@ -341,11 +360,15 @@ class NtrlocDecisionTableEditor extends HTMLElement {
       const deployed = await response.json();
       this._decisionId = deployed.id;
       this._isNew = false;
-      const keyInput = this.querySelector('.key-input');
-      keyInput.disabled = true;
-      keyInput.title = 'Key is fixed once a decision table is saved';
+      // Server is authoritative on the key -- update our own display if it had to reassign one
+      // due to a collision (only possible on the create path above). The input is already
+      // permanently disabled (see renderShell) -- nothing else to toggle here.
+      this._model.decisionServiceKey = deployed.key;
+      this.querySelector('.key-input').value = deployed.key;
       this.reportDirty(false);
-      this.setStatus(`Saved as version ${deployed.version}.`, false);
+      this.setStatus(deployed.key !== requestedKey
+        ? `Key "${requestedKey}" was already in use -- assigned "${deployed.key}" instead. Saved as version ${deployed.version}.`
+        : `Saved as version ${deployed.version}.`, false);
     } catch (e) {
       this.setStatus('Failed to save: ' + e.message, true);
     }
@@ -497,7 +520,7 @@ class NtrlocDecisionTableEditor extends HTMLElement {
           </div>
           <div class="field">
             <label>Key</label>
-            <input type="text" class="key-input" placeholder="e.g. approvalDecision">
+            <input type="text" class="key-input" disabled title="System-generated, not editable">
           </div>
         </div>
         <span class="editor-status status"></span>
@@ -516,19 +539,18 @@ class NtrlocDecisionTableEditor extends HTMLElement {
       this._model.decisionServiceName = e.target.value;
       this.markDirty();
     });
-    this.querySelector('.key-input').addEventListener('change', (e) => {
-      this._model.decisionServiceKey = e.target.value.trim();
-      this.markDirty();
-    });
   }
 
+  // Key is always disabled here now -- system-generated (short-id.js pre-fill, DecisionAdmin
+  // Controller.createDecision reassigns on collision) rather than admin-chosen, so there's no
+  // "editable until first save" window the way there briefly was. Not just cosmetically
+  // read-only: with no change listener wired to it anymore, typing into it (were the disabled
+  // attribute ever removed) wouldn't do anything to this._model anyway.
   syncMetaInputs() {
     const nameInput = this.querySelector('.name-input');
     const keyInput = this.querySelector('.key-input');
     nameInput.value = this._model.decisionServiceName || '';
     keyInput.value = this._model.decisionServiceKey || '';
-    keyInput.disabled = !this._isNew;
-    keyInput.title = this._isNew ? '' : 'Key is fixed once a decision table is saved';
   }
 
   renderTable() {

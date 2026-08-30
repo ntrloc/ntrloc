@@ -3,6 +3,7 @@ package org.ntrloc.graph.db.partition.process.dmn;
 import org.flowable.dmn.api.DmnDecision;
 import org.flowable.dmn.api.DmnDeployment;
 import org.flowable.dmn.api.DmnRepositoryService;
+import org.ntrloc.graph.db.partition.process.ShortIdGenerator;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -55,11 +56,57 @@ public class DecisionAdminController {
         }
     }
 
+    // First-ever save of a brand-new decision table (see ntrloc-decision-table-editor.js's own
+    // comment on why this is a separate endpoint from deployNewVersion below, not just that one
+    // called with whatever key the client happened to propose). candidateKey is usually a random
+    // guess from the admin-ui's own short-id.js, occasionally something the admin typed
+    // themselves -- either way, this is the one place actual uniqueness is enforced: a "new"
+    // decision table always means "creation," never "add a version to something that already
+    // exists," so a candidate that turns out to collide with an existing key gets silently
+    // replaced with a fresh one (all its occurrences swapped in the XML, since dmn-io.js's own
+    // serializeDrd interpolates the same key string into every id attribute the DRD needs) rather
+    // than being deployed as an unintended new version of an unrelated decision table. The
+    // response's key tells the caller what was actually used, so it can update its own display if
+    // this ever differs from what it sent.
+    @PostMapping("/decisions")
+    ResponseEntity<?> createDecision(@RequestParam String candidateKey, @RequestBody String xml) {
+        try {
+            String key = candidateKey;
+            String body = xml;
+            int attempts = 0;
+            while (dmnRepositoryService.createDecisionQuery().decisionKey(key).count() > 0) {
+                if (++attempts > 20) {
+                    return ResponseEntity.internalServerError()
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .body(new DeployErrorResponse("Could not allocate a unique decision key."));
+                }
+                String nextKey = ShortIdGenerator.generate("d");
+                body = body.replace(key, nextKey);
+                key = nextKey;
+            }
+            DmnDeployment deployment = dmnRepositoryService.createDeployment()
+                    .name(key)
+                    .addString(key + ".dmn", body)
+                    .deploy();
+            DmnDecision decision = dmnRepositoryService.createDecisionQuery()
+                    .deploymentId(deployment.getId())
+                    .decisionKey(key)
+                    .singleResult();
+            return ResponseEntity.ok(toView(decision));
+        } catch (RuntimeException e) {
+            return ResponseEntity.badRequest()
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(new DeployErrorResponse("Failed to deploy decision table: " + e.getMessage()));
+        }
+    }
+
     // Same "always a brand-new deployment, Flowable assigns the next version by key" behavior as
     // ProcessAdminController.deployNewVersion, and the same broad RuntimeException catch -- DMN
     // XML parse failures surface as org.flowable.dmn.xml.exceptions.DmnXMLException (a
     // RuntimeException, not necessarily a FlowableException), so a specific catch type would risk
-    // missing some failure modes.
+    // missing some failure modes. Only ever called for a key that's already established (see
+    // createDecision above for a brand-new one) -- an existing key here always means "add a
+    // version," which is exactly what should happen, uniqueness not being a concern for it.
     @PostMapping("/decisions/{key}/versions")
     ResponseEntity<?> deployNewVersion(@PathVariable String key, @RequestBody String xml) {
         try {
