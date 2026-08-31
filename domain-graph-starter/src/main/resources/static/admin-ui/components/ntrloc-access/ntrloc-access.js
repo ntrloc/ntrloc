@@ -217,6 +217,9 @@ injectStyles('ntrloc-access-styles', `
     cursor: pointer;
     user-select: none;
   }
+  .grant-panel-header.static {
+    cursor: default;
+  }
   .grant-panel-header .chevron {
     color: var(--muted);
     flex-shrink: 0;
@@ -417,7 +420,8 @@ class NtrlocAccess extends HTMLElement {
     this.markers = [];
     this.selectedItemTypeId = null; // ITEM TYPE row selected in the group permissions table
     this.selectedMarkerId = null; // marker selected within that item type's Markers list
-    this.markerPropertyGrants = []; // [{propertyId, canRead, canWrite, canDownload}] for selectedMarkerId
+    this.markerPropertyGrants = []; // [{propertyId, canRead, canWrite}] for selectedMarkerId
+    this.markerItemGrant = { canRead: false, canDelete: false }; // marker_grant's own item-level Read/Delete
     this.linkPropertyGrants = []; // same shape, over a link type's own properties
     this.linkPerspectiveGrants = []; // [{perspectiveId, canCreate, canRead, canDelete}]
     this.transitionGrants = new Set(); // granted transition ids (existence-only)
@@ -523,6 +527,7 @@ class NtrlocAccess extends HTMLElement {
     this.selectedItemTypeId = null;
     this.selectedMarkerId = null;
     this.markerPropertyGrants = [];
+    this.markerItemGrant = { canRead: false, canDelete: false };
     this.linkPropertyGrants = [];
     this.linkPerspectiveGrants = [];
     this.transitionGrants = new Set();
@@ -536,6 +541,7 @@ class NtrlocAccess extends HTMLElement {
     this.selectedItemTypeId = this.selectedItemTypeId === itemTypeId ? null : itemTypeId;
     this.selectedMarkerId = null;
     this.markerPropertyGrants = [];
+    this.markerItemGrant = { canRead: false, canDelete: false };
     this.linkPropertyGrants = [];
     this.linkPerspectiveGrants = [];
     this.transitionGrants = new Set();
@@ -597,6 +603,7 @@ class NtrlocAccess extends HTMLElement {
     this.selectedMarkerId = markerId;
     await Promise.all([
       this.fetchMarkerPropertyGrants(markerId),
+      this.fetchMarkerItemGrant(markerId),
       this.fetchMarkerLinkPropertyGrants(markerId),
       this.fetchMarkerLinkPerspectiveGrants(markerId),
       this.fetchMarkerTransitionGrants(markerId),
@@ -609,6 +616,25 @@ class NtrlocAccess extends HTMLElement {
       const res = await fetch(`/api/admin/groups/${this.selectedId}/markers/${markerId}/properties`, { credentials: 'include' });
       this.markerPropertyGrants = res.ok ? await res.json() : [];
     } catch (e) { this.markerPropertyGrants = []; }
+  }
+
+  async fetchMarkerItemGrant(markerId) {
+    try {
+      const res = await fetch(`/api/admin/groups/${this.selectedId}/markers/${markerId}/item-permissions`, { credentials: 'include' });
+      this.markerItemGrant = res.ok ? await res.json() : { canRead: false, canDelete: false };
+    } catch (e) { this.markerItemGrant = { canRead: false, canDelete: false }; }
+  }
+
+  async toggleMarkerItemGrant(field) {
+    const next = { ...this.markerItemGrant, [field]: !this.markerItemGrant[field] };
+    try {
+      await fetch(`/api/admin/groups/${this.selectedId}/markers/${this.selectedMarkerId}/item-permissions`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        credentials: 'include', body: JSON.stringify(next)
+      });
+      await this.fetchMarkerItemGrant(this.selectedMarkerId);
+      this.render();
+    } catch (e) { this.error = e.message; this.render(); }
   }
 
   // kind: 'item' (marker_grant_property, this item type's own properties) or 'link'
@@ -627,7 +653,7 @@ class NtrlocAccess extends HTMLElement {
   // to fire several of these before refreshing once at the end.
   putMarkerPropertyGrant(propertyId, patch, kind) {
     const current = this.grantsArrayFor(kind).find(g => g.propertyId === propertyId)
-      || { canRead: false, canWrite: false, canDownload: false };
+      || { canRead: false, canWrite: false };
     const next = { ...current, ...patch };
     const segment = this.grantsEndpointSegment(kind);
     return fetch(`/api/admin/groups/${this.selectedId}/markers/${this.selectedMarkerId}/${segment}/${propertyId}`, {
@@ -655,12 +681,11 @@ class NtrlocAccess extends HTMLElement {
     return null;
   }
 
-  // 'all' | 'partial' | 'none' | null (null = no eligible leaf under this container for this field,
-  // e.g. a Download bulk-check over a subtree with no BINARY leaves at all -- renders as a blank
-  // cell, same as a non-BINARY leaf row's Download cell).
+  // 'all' | 'partial' | 'none' | null (null = no leaf under this container at all -- renders as a
+  // blank cell).
   containerFieldState(node, field, kind) {
     const grants = this.grantsArrayFor(kind);
-    const eligible = this.leavesUnder(node).filter(l => field !== 'canDownload' || l.type === 'BINARY');
+    const eligible = this.leavesUnder(node);
     if (eligible.length === 0) return null;
     const grantedCount = eligible.filter(l => {
       const g = grants.find(g => g.propertyId === l.id);
@@ -679,7 +704,7 @@ class NtrlocAccess extends HTMLElement {
   async setBulkPropertyGrant(containerId, field, kind, rootProperties) {
     const node = this.findPropertyNode(rootProperties, containerId);
     if (!node) return;
-    const eligible = this.leavesUnder(node).filter(l => field !== 'canDownload' || l.type === 'BINARY');
+    const eligible = this.leavesUnder(node);
     const nextValue = this.containerFieldState(node, field, kind) !== 'all';
     try {
       await Promise.all(eligible.map(l => this.putMarkerPropertyGrant(l.id, { [field]: nextValue }, kind)));
@@ -1144,7 +1169,6 @@ class NtrlocAccess extends HTMLElement {
             <td ${indent}>${chevron}${this.escapeHtml(p.name)}</td>
             ${bulkCell('canRead')}
             ${bulkCell('canWrite')}
-            ${bulkCell('canDownload')}
           </tr>
         `;
         const childRows = expanded ? this.renderPropertyGrantRows(p.properties || [], depth + 1, kind, linkId) : '';
@@ -1152,25 +1176,20 @@ class NtrlocAccess extends HTMLElement {
       }
 
       const grant = this.grantsArrayFor(kind).find(g => g.propertyId === p.id)
-        || { canRead: false, canWrite: false, canDownload: false };
-      const downloadCell = p.type === 'BINARY'
-        ? `<td><button class="perm-check ${grant.canDownload ? 'granted' : ''}" data-marker-grant-property="${p.id}" data-marker-grant-field="canDownload" data-grant-kind="${kind}">${grant.canDownload ? '&#10003;' : ''}</button></td>`
-        : '<td></td>';
-      // Write and Download both carry Read implicitly (server-enforced -- see
-      // AuthorizationRepository), so an implied-but-not-explicit Read renders checked but faded and
-      // non-interactive rather than a real, independently-clickable grant: toggling it off here
-      // wouldn't actually revoke read access while Write/Download stays on, which would be
-      // misleading to show as a live checkbox.
-      const readImplied = !grant.canRead && (grant.canWrite || grant.canDownload);
+        || { canRead: false, canWrite: false };
+      // Write carries Read implicitly (server-enforced -- see AuthorizationRepository), so an
+      // implied-but-not-explicit Read renders checked but faded and non-interactive rather than a
+      // real, independently-clickable grant: toggling it off here wouldn't actually revoke read
+      // access while Write stays on, which would be misleading to show as a live checkbox.
+      const readImplied = !grant.canRead && grant.canWrite;
       const readCell = readImplied
-        ? `<td><button class="perm-check granted implied" disabled title="Implied by Write/Download">&#10003;</button></td>`
+        ? `<td><button class="perm-check granted implied" disabled title="Implied by Write">&#10003;</button></td>`
         : `<td><button class="perm-check ${grant.canRead ? 'granted' : ''}" data-marker-grant-property="${p.id}" data-marker-grant-field="canRead" data-grant-kind="${kind}">${grant.canRead ? '&#10003;' : ''}</button></td>`;
       return `
         <tr>
           <td ${indent}><span class="grant-leaf-spacer"></span>${this.escapeHtml(p.name)}</td>
           ${readCell}
           <td><button class="perm-check ${grant.canWrite ? 'granted' : ''}" data-marker-grant-property="${p.id}" data-marker-grant-field="canWrite" data-grant-kind="${kind}">${grant.canWrite ? '&#10003;' : ''}</button></td>
-          ${downloadCell}
         </tr>
       `;
     }).join('');
@@ -1180,8 +1199,8 @@ class NtrlocAccess extends HTMLElement {
     const rows = this.renderPropertyGrantRows(properties, 0, kind, linkId);
     return `
       <table class="access-table">
-        <thead><tr><th>Property</th><th>Read</th><th>Write</th><th>Download</th></tr></thead>
-        <tbody>${rows || '<tr><td colspan="4" class="access-empty">No properties defined</td></tr>'}</tbody>
+        <thead><tr><th>Property</th><th>Read</th><th>Write</th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="3" class="access-empty">No properties defined</td></tr>'}</tbody>
       </table>
     `;
   }
@@ -1289,12 +1308,28 @@ class NtrlocAccess extends HTMLElement {
 
     let sectionsHtml = '<div class="access-empty">Select a marker to view its grants.</div>';
     if (this.selectedMarkerId) {
+      const g = this.markerItemGrant;
+      const itemPanel = `
+        <div class="grant-panel">
+          <div class="grant-panel-header static"><span>Item</span></div>
+          <div class="grant-panel-body">
+            <div class="perspective-checks">
+              <label class="perspective-check-label">Read
+                <button class="perm-check ${g.canRead ? 'granted' : ''}" data-marker-item-field="canRead">${g.canRead ? '&#10003;' : ''}</button>
+              </label>
+              <label class="perspective-check-label">Delete
+                <button class="perm-check ${g.canDelete ? 'granted' : ''}" data-marker-item-field="canDelete">${g.canDelete ? '&#10003;' : ''}</button>
+              </label>
+            </div>
+          </div>
+        </div>
+      `;
       const sections = [
         { key: 'properties', label: 'Properties' },
         { key: 'links', label: 'Links' },
         { key: 'statemachines', label: 'State Machines' },
       ];
-      sectionsHtml = sections.map(({ key, label }) => {
+      sectionsHtml = itemPanel + sections.map(({ key, label }) => {
         const expanded = this.expandedGrantSections.has(key);
         // Plain SVG (no button wrapper) with the whole header div as the click target -- same
         // idiom as ntrloc-item-detail.js's own .panel-header sections, not the button-based
@@ -1524,6 +1559,9 @@ class NtrlocAccess extends HTMLElement {
     });
     this.querySelectorAll('[data-select-marker]').forEach(el => {
       el.addEventListener('click', () => this.selectMarkerForGrants(el.dataset.selectMarker));
+    });
+    this.querySelectorAll('[data-marker-item-field]').forEach(el => {
+      el.addEventListener('click', () => this.toggleMarkerItemGrant(el.dataset.markerItemField));
     });
     this.querySelectorAll('[data-marker-grant-property]').forEach(el => {
       el.addEventListener('click', () => {

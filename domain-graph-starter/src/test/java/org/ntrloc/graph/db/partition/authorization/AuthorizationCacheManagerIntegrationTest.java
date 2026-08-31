@@ -59,8 +59,8 @@ class AuthorizationCacheManagerIntegrationTest extends AbstractIntegrationTest {
         var user = securityRepo.createUser("acm-" + UUID.randomUUID(), "User", null, false);
         UUID grantId = authRepo.ensureMarkerGrant(marker, "USER", user.id());
 
-        authRepo.grantPropertyAccess(grantId, fixture.namePropertyId(), true, false, false);
-        authRepo.grantPropertyAccess(grantId, fixture.colorPropertyId(), true, false, false);
+        authRepo.grantPropertyAccess(grantId, fixture.namePropertyId(), true, false);
+        authRepo.grantPropertyAccess(grantId, fixture.colorPropertyId(), true, false);
 
         Map<UUID, Set<UUID>> byMarker = cache.getPropertyReadGrantsByMarker(user.id(), Set.of());
 

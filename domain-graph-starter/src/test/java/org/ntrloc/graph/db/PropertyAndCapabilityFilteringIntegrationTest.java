@@ -116,7 +116,7 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
         var principal = newUserInEveryoneGroup();
         UUID grantId = grantId(markerOnItem(productId).id(), principal);
         authRepo.setItemPermissions(grantId, true, false);
-        authRepo.grantPropertyAccess(grantId, fixture.namePropertyId(), true, false, false);
+        authRepo.grantPropertyAccess(grantId, fixture.namePropertyId(), true, false);
         // color deliberately not granted
 
         var result = entityManager.project(new SingleItemProjectionSpec("CoordinatorTestProduct", productId), "http://binary", principal);
@@ -130,8 +130,8 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
         UUID productId = createProduct("Widget", "red");
         var principal = newUserInEveryoneGroup();
         authRepo.setItemPermissions(grantId(markerOnItem(productId).id(), principal), true, false);
-        authRepo.grantPropertyAccess(grantId(markerOnItem(productId).id(), principal), fixture.namePropertyId(), true, false, false);
-        authRepo.grantPropertyAccess(grantId(markerOnItem(productId).id(), principal), fixture.colorPropertyId(), true, false, false);
+        authRepo.grantPropertyAccess(grantId(markerOnItem(productId).id(), principal), fixture.namePropertyId(), true, false);
+        authRepo.grantPropertyAccess(grantId(markerOnItem(productId).id(), principal), fixture.colorPropertyId(), true, false);
 
         var result = entityManager.project(new SingleItemProjectionSpec("CoordinatorTestProduct", productId), "http://binary", principal);
 
@@ -139,17 +139,20 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
     }
 
     @Test
-    void propertyWriteOnly_withoutReadGrant_isStillAbsentFromReadResponse() {
+    void propertyWithWriteGrantOnly_isReadable_becauseWriteImpliesRead() {
         UUID productId = createProduct("Widget", "red");
         var principal = newUserInEveryoneGroup();
         UUID grantId = grantId(markerOnItem(productId).id(), principal);
         authRepo.setItemPermissions(grantId, true, false);
-        authRepo.grantPropertyAccess(grantId, fixture.namePropertyId(), false, true, false);
-        // No property:read grant for "name" -- write alone must not leak the value into a read.
+        authRepo.grantPropertyAccess(grantId, fixture.namePropertyId(), false, true);
+        // Write grant but no explicit read grant for "name" -- a write grant implies read (editing a
+        // value you can't see back is not a coherent capability; the admin UI already shows read as
+        // "implied by write").
 
         var result = entityManager.project(new SingleItemProjectionSpec("CoordinatorTestProduct", productId), "http://binary", principal);
 
-        assertThat(result.get().properties()).doesNotContainKey("name");
+        assertThat(result.get().properties()).containsEntry("name", "Widget");
+        assertThat(result.get().properties()).doesNotContainKey("color");
     }
 
     @Test
@@ -169,7 +172,7 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
         var principal = newUserInEveryoneGroup();
         UUID grantId = grantId(markerOnItem(productId).id(), principal);
         authRepo.setItemPermissions(grantId, true, false);
-        authRepo.grantPropertyAccess(grantId, fixture.namePropertyId(), false, true, false);
+        authRepo.grantPropertyAccess(grantId, fixture.namePropertyId(), false, true);
 
         var result = entityManager.project(new SingleItemProjectionSpec("CoordinatorTestProduct", productId), "http://binary", principal);
 
@@ -230,7 +233,7 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
         UUID sourceGrantId = grantId(markerOnItem(productId).id(), principal);
         authRepo.setItemPermissions(sourceGrantId, true, false);
         authRepo.grantLinkPerspectiveAccess(sourceGrantId, fixture.productPerspectiveId(), false, true, false);
-        authRepo.grantLinkPropertyAccess(sourceGrantId, fixture.rolePropertyId(), true, false, false);
+        authRepo.grantLinkPropertyAccess(sourceGrantId, fixture.rolePropertyId(), true, false);
         authRepo.setItemPermissions(grantId(markerOnItem(contributorId).id(), principal), true, false);
 
         var result = entityManager.project(
@@ -273,7 +276,7 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
         UUID sourceGrantId = grantId(markerOnItem(productId).id(), principal);
         authRepo.setItemPermissions(sourceGrantId, true, false);
         authRepo.grantLinkPerspectiveAccess(sourceGrantId, fixture.productPerspectiveId(), false, true, false);
-        authRepo.grantLinkPropertyAccess(sourceGrantId, fixture.rolePropertyId(), false, true, false);
+        authRepo.grantLinkPropertyAccess(sourceGrantId, fixture.rolePropertyId(), false, true);
         authRepo.setItemPermissions(grantId(markerOnItem(contributorId).id(), principal), true, false);
 
         var result = entityManager.project(

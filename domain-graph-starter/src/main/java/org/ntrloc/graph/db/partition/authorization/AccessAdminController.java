@@ -47,13 +47,17 @@ public class AccessAdminController {
 
     public record ItemTypeView(UUID id, String name) {}
 
-    public record MarkerPropertyGrantView(UUID propertyId, boolean canRead, boolean canWrite, boolean canDownload) {}
+    public record MarkerPropertyGrantView(UUID propertyId, boolean canRead, boolean canWrite) {}
 
-    public record MarkerPropertyGrantRequest(boolean canRead, boolean canWrite, boolean canDownload) {}
+    public record MarkerPropertyGrantRequest(boolean canRead, boolean canWrite) {}
 
     public record LinkPerspectiveGrantView(UUID perspectiveId, boolean canCreate, boolean canRead, boolean canDelete) {}
 
     public record LinkPerspectiveGrantRequest(boolean canCreate, boolean canRead, boolean canDelete) {}
+
+    public record MarkerItemGrantView(boolean canRead, boolean canDelete) {}
+
+    public record MarkerItemGrantRequest(boolean canRead, boolean canDelete) {}
 
     // --- Dependencies ---
 
@@ -127,7 +131,7 @@ public class AccessAdminController {
         return ResponseEntity.noContent().build();
     }
 
-    // --- Group marker-scoped property grants (Read/Write/Download per property, under a marker
+    // --- Group marker-scoped property grants (Read/Write per property, under a marker
     // scoped to the item type being viewed) ---
 
     @GetMapping("/groups/{groupId}/markers/{markerId}/properties")
@@ -139,7 +143,7 @@ public class AccessAdminController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, GROUP_NOT_FOUND));
 
         return authRepo.getPropertyGrantsForMarker(markerId, GROUP_PRINCIPAL_TYPE, groupId).stream()
-                .map(r -> new MarkerPropertyGrantView(r.propertyId(), r.canRead(), r.canWrite(), r.canDownload()))
+                .map(r -> new MarkerPropertyGrantView(r.propertyId(), r.canRead(), r.canWrite()))
                 .toList();
     }
 
@@ -154,7 +158,36 @@ public class AccessAdminController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, GROUP_NOT_FOUND));
 
         UUID markerGrantId = authRepo.ensureMarkerGrant(markerId, GROUP_PRINCIPAL_TYPE, groupId);
-        authRepo.grantPropertyAccess(markerGrantId, propertyId, body.canRead(), body.canWrite(), body.canDownload());
+        authRepo.grantPropertyAccess(markerGrantId, propertyId, body.canRead(), body.canWrite());
+        return ResponseEntity.noContent().build();
+    }
+
+    // --- Group marker-scoped item-level grants (Read/Delete of the item carrying the marker --
+    // item_can_read / item_can_delete live directly on marker_grant, one pair per (marker, principal)) ---
+
+    @GetMapping("/groups/{groupId}/markers/{markerId}/item-permissions")
+    MarkerItemGrantView getGroupMarkerItemGrant(@PathVariable("groupId") UUID groupId,
+                                                @PathVariable("markerId") UUID markerId,
+                                                ServerHttpRequest request, Authentication authentication) {
+        requireAdmin(request, authentication);
+        securityRepo.findGroupById(groupId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, GROUP_NOT_FOUND));
+
+        var row = authRepo.getItemPermissionsForMarker(markerId, GROUP_PRINCIPAL_TYPE, groupId);
+        return new MarkerItemGrantView(row.canRead(), row.canDelete());
+    }
+
+    @PutMapping("/groups/{groupId}/markers/{markerId}/item-permissions")
+    ResponseEntity<Void> setGroupMarkerItemGrant(@PathVariable("groupId") UUID groupId,
+                                                 @PathVariable("markerId") UUID markerId,
+                                                 @RequestBody MarkerItemGrantRequest body,
+                                                 ServerHttpRequest request, Authentication authentication) {
+        requireAdmin(request, authentication);
+        securityRepo.findGroupById(groupId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, GROUP_NOT_FOUND));
+
+        UUID markerGrantId = authRepo.ensureMarkerGrant(markerId, GROUP_PRINCIPAL_TYPE, groupId);
+        authRepo.setItemPermissions(markerGrantId, body.canRead(), body.canDelete());
         return ResponseEntity.noContent().build();
     }
 
@@ -170,7 +203,7 @@ public class AccessAdminController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, GROUP_NOT_FOUND));
 
         return authRepo.getLinkPropertyGrantsForMarker(markerId, GROUP_PRINCIPAL_TYPE, groupId).stream()
-                .map(r -> new MarkerPropertyGrantView(r.propertyId(), r.canRead(), r.canWrite(), r.canDownload()))
+                .map(r -> new MarkerPropertyGrantView(r.propertyId(), r.canRead(), r.canWrite()))
                 .toList();
     }
 
@@ -185,7 +218,7 @@ public class AccessAdminController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, GROUP_NOT_FOUND));
 
         UUID markerGrantId = authRepo.ensureMarkerGrant(markerId, GROUP_PRINCIPAL_TYPE, groupId);
-        authRepo.grantLinkPropertyAccess(markerGrantId, propertyId, body.canRead(), body.canWrite(), body.canDownload());
+        authRepo.grantLinkPropertyAccess(markerGrantId, propertyId, body.canRead(), body.canWrite());
         return ResponseEntity.noContent().build();
     }
 

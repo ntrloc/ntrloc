@@ -24,7 +24,6 @@ public class AuthorizationRepository {
     private static final String COL_PERSPECTIVE_ID = "perspective_id";
     private static final String COL_CAN_READ = "can_read";
     private static final String COL_CAN_WRITE = "can_write";
-    private static final String COL_CAN_DOWNLOAD = "can_download";
     private static final String PARAM_ITEM_TYPE_ID = "itemTypeId";
     private static final String PARAM_PRINCIPAL_TYPE = "principalType";
     private static final String PARAM_PRINCIPAL_ID = "principalId";
@@ -36,7 +35,6 @@ public class AuthorizationRepository {
     private static final String PARAM_PERSPECTIVE_ID = "perspectiveId";
     private static final String PARAM_CAN_READ = "canRead";
     private static final String PARAM_CAN_WRITE = "canWrite";
-    private static final String PARAM_CAN_DOWNLOAD = "canDownload";
 
     public record GrantRow(UUID grantId, UUID itemTypeId, String itemTypeName, String permission) {}
 
@@ -51,7 +49,7 @@ public class AuthorizationRepository {
 
     public record LinkPerspectiveGrantRow(String principalType, UUID principalId, UUID markerId, UUID perspectiveId, boolean canRead, boolean canDelete) {}
 
-    public record PropertyAccessRow(UUID propertyId, boolean canRead, boolean canWrite, boolean canDownload) {}
+    public record PropertyAccessRow(UUID propertyId, boolean canRead, boolean canWrite) {}
 
     // decisionKey is a Flowable DMN decision key (see MarkerRuleEvaluationService) -- deployed/
     // versioned independently, not a foreign key. No markerId here: a rule's DMN output declares
@@ -65,6 +63,10 @@ public class AuthorizationRepository {
     public record MarkerRuleAdminRow(UUID id, String name, UUID itemTypeId, String decisionKey, boolean enabled) {}
 
     public record LinkPerspectiveAccessRow(UUID perspectiveId, boolean canCreate, boolean canRead, boolean canDelete) {}
+
+    // The marker grant's own item-level verbs (item_can_read / item_can_delete live directly on
+    // marker_grant, not a child table). No grant row at all == both false.
+    public record ItemLevelAccessRow(boolean canRead, boolean canDelete) {}
 
     private final JdbcClient jdbcClient;
     private final AuthorizationCacheManager cacheManager;
@@ -336,28 +338,28 @@ public class AuthorizationRepository {
         cacheManager.refreshCache();
     }
 
-    public void grantPropertyAccess(UUID markerGrantId, UUID propertyId, boolean canRead, boolean canWrite, boolean canDownload) {
+    public void grantPropertyAccess(UUID markerGrantId, UUID propertyId, boolean canRead, boolean canWrite) {
         jdbcClient.sql("""
-                INSERT INTO marker_grant_property (marker_grant_id, property_id, can_read, can_write, can_download)
-                VALUES (:markerGrantId, :propertyId, :canRead, :canWrite, :canDownload)
+                INSERT INTO marker_grant_property (marker_grant_id, property_id, can_read, can_write)
+                VALUES (:markerGrantId, :propertyId, :canRead, :canWrite)
                 ON CONFLICT (marker_grant_id, property_id) DO UPDATE
-                    SET can_read = EXCLUDED.can_read, can_write = EXCLUDED.can_write, can_download = EXCLUDED.can_download
+                    SET can_read = EXCLUDED.can_read, can_write = EXCLUDED.can_write
                 """)
                 .param(PARAM_MARKER_GRANT_ID, markerGrantId).param(PARAM_PROPERTY_ID, propertyId)
-                .param(PARAM_CAN_READ, canRead).param(PARAM_CAN_WRITE, canWrite).param(PARAM_CAN_DOWNLOAD, canDownload)
+                .param(PARAM_CAN_READ, canRead).param(PARAM_CAN_WRITE, canWrite)
                 .update();
         cacheManager.refreshCache();
     }
 
-    public void grantLinkPropertyAccess(UUID markerGrantId, UUID propertyId, boolean canRead, boolean canWrite, boolean canDownload) {
+    public void grantLinkPropertyAccess(UUID markerGrantId, UUID propertyId, boolean canRead, boolean canWrite) {
         jdbcClient.sql("""
-                INSERT INTO marker_grant_link_property (marker_grant_id, property_id, can_read, can_write, can_download)
-                VALUES (:markerGrantId, :propertyId, :canRead, :canWrite, :canDownload)
+                INSERT INTO marker_grant_link_property (marker_grant_id, property_id, can_read, can_write)
+                VALUES (:markerGrantId, :propertyId, :canRead, :canWrite)
                 ON CONFLICT (marker_grant_id, property_id) DO UPDATE
-                    SET can_read = EXCLUDED.can_read, can_write = EXCLUDED.can_write, can_download = EXCLUDED.can_download
+                    SET can_read = EXCLUDED.can_read, can_write = EXCLUDED.can_write
                 """)
                 .param(PARAM_MARKER_GRANT_ID, markerGrantId).param(PARAM_PROPERTY_ID, propertyId)
-                .param(PARAM_CAN_READ, canRead).param(PARAM_CAN_WRITE, canWrite).param(PARAM_CAN_DOWNLOAD, canDownload)
+                .param(PARAM_CAN_READ, canRead).param(PARAM_CAN_WRITE, canWrite)
                 .update();
         cacheManager.refreshCache();
     }
@@ -402,6 +404,19 @@ public class AuthorizationRepository {
         cacheManager.refreshCache();
     }
 
+    // Admin-panel read for the marker grant's item-level Read/Delete pair (see ItemLevelAccessRow).
+    // Not cache-backed -- low-traffic admin UI, same rationale as getPropertyGrantsForMarker below.
+    public ItemLevelAccessRow getItemPermissionsForMarker(UUID markerId, String principalType, UUID principalId) {
+        return jdbcClient.sql("""
+                SELECT item_can_read, item_can_delete FROM marker_grant
+                WHERE marker_id = :markerId AND principal_type = :principalType AND principal_id = :principalId
+                """)
+                .param(PARAM_MARKER_ID, markerId).param(PARAM_PRINCIPAL_TYPE, principalType).param(PARAM_PRINCIPAL_ID, principalId)
+                .query((rs, n) -> new ItemLevelAccessRow(rs.getBoolean("item_can_read"), rs.getBoolean("item_can_delete")))
+                .optional()
+                .orElse(new ItemLevelAccessRow(false, false));
+    }
+
     public Optional<UUID> findMarkerGrant(UUID markerId, String principalType, UUID principalId) {
         return jdbcClient.sql("""
                 SELECT id FROM marker_grant WHERE marker_id = :markerId AND principal_type = :principalType AND principal_id = :principalId
@@ -413,18 +428,17 @@ public class AuthorizationRepository {
     // Admin-panel read (low-traffic; not cache-backed, unlike the enforcement-path getters on
     // AuthorizationCacheManager) -- hydrates the property-grant checkbox grid for one (marker,
     // principal) pair. A property absent from the result has no grant row at all, equivalent to
-    // read/write/download all false.
+    // read/write both false.
     public List<PropertyAccessRow> getPropertyGrantsForMarker(UUID markerId, String principalType, UUID principalId) {
         return jdbcClient.sql("""
-                SELECT mgp.property_id, mgp.can_read, mgp.can_write, mgp.can_download
+                SELECT mgp.property_id, mgp.can_read, mgp.can_write
                 FROM marker_grant_property mgp
                 JOIN marker_grant mg ON mg.id = mgp.marker_grant_id
                 WHERE mg.marker_id = :markerId AND mg.principal_type = :principalType AND mg.principal_id = :principalId
                 """)
                 .param(PARAM_MARKER_ID, markerId).param(PARAM_PRINCIPAL_TYPE, principalType).param(PARAM_PRINCIPAL_ID, principalId)
                 .query((rs, n) -> new PropertyAccessRow(
-                        rs.getObject(COL_PROPERTY_ID, UUID.class), rs.getBoolean(COL_CAN_READ),
-                        rs.getBoolean(COL_CAN_WRITE), rs.getBoolean(COL_CAN_DOWNLOAD)))
+                        rs.getObject(COL_PROPERTY_ID, UUID.class), rs.getBoolean(COL_CAN_READ), rs.getBoolean(COL_CAN_WRITE)))
                 .list();
     }
 
@@ -432,15 +446,14 @@ public class AuthorizationRepository {
     // type's own properties are granted exactly like an item type's, just via a different child table.
     public List<PropertyAccessRow> getLinkPropertyGrantsForMarker(UUID markerId, String principalType, UUID principalId) {
         return jdbcClient.sql("""
-                SELECT mgp.property_id, mgp.can_read, mgp.can_write, mgp.can_download
+                SELECT mgp.property_id, mgp.can_read, mgp.can_write
                 FROM marker_grant_link_property mgp
                 JOIN marker_grant mg ON mg.id = mgp.marker_grant_id
                 WHERE mg.marker_id = :markerId AND mg.principal_type = :principalType AND mg.principal_id = :principalId
                 """)
                 .param(PARAM_MARKER_ID, markerId).param(PARAM_PRINCIPAL_TYPE, principalType).param(PARAM_PRINCIPAL_ID, principalId)
                 .query((rs, n) -> new PropertyAccessRow(
-                        rs.getObject(COL_PROPERTY_ID, UUID.class), rs.getBoolean(COL_CAN_READ),
-                        rs.getBoolean(COL_CAN_WRITE), rs.getBoolean(COL_CAN_DOWNLOAD)))
+                        rs.getObject(COL_PROPERTY_ID, UUID.class), rs.getBoolean(COL_CAN_READ), rs.getBoolean(COL_CAN_WRITE)))
                 .list();
     }
 
@@ -459,7 +472,7 @@ public class AuthorizationRepository {
     }
 
     // Existence-only grant -- a transition either has an execute grant row or it doesn't, no
-    // read/write/download shape (see grantTransitionExecute's own comment).
+    // read/write shape (see grantTransitionExecute's own comment).
     public Set<UUID> getTransitionGrantsForMarker(UUID markerId, String principalType, UUID principalId) {
         return Set.copyOf(jdbcClient.sql("""
                 SELECT mgt.transition_id

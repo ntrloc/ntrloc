@@ -1012,6 +1012,17 @@ public class RegisterPartitionManager implements SchemaChangeListener {
         return result;
     }
 
+    // A write grant on a property implies read of it -- editing a value you can't see back is not a
+    // coherent capability, and the admin UI already presents read as "implied by write". Callers
+    // pass this merged (read UNION write) map into the read filter rather than the bare read map.
+    // For binary properties there is no separate "download" grant -- read alone gates the bytes.
+    private Map<UUID, Set<UUID>> readImpliedByWrite(Map<UUID, Set<UUID>> readGrants, Map<UUID, Set<UUID>> writeGrants) {
+        Map<UUID, Set<UUID>> merged = new HashMap<>();
+        readGrants.forEach((markerId, ids) -> merged.computeIfAbsent(markerId, k -> new HashSet<>()).addAll(ids));
+        writeGrants.forEach((markerId, ids) -> merged.computeIfAbsent(markerId, k -> new HashSet<>()).addAll(ids));
+        return merged;
+    }
+
     // Filters a still-property-ID-keyed JSONB map down to what's readable, before namesForIds
     // resolves it -- redaction has to happen at the ID level, namesForIds has no concept of
     // permission. propertyReadGrantsByMarker == null means "don't filter at all" (superuser).
@@ -1274,7 +1285,9 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                            UUID registerLinkId, UUID linkId, UUID linkDefinitionId,
                            UUID linkedRegisterItemId, UUID linkedItemId, UUID linkedItemTypeId, String linkedItemType) {}
 
-    private record BinaryPropertyRow(UUID registerItemId, String propertyName, UUID binaryId) {}
+    private record BinaryPropertyRow(UUID registerItemId, UUID propertyId, String propertyName, UUID binaryId) {}
+
+    private record AssembledBinary(UUID propertyId, String name, Object value) {}
 
     // Every item type's EFFECTIVE display-label pattern (own, or inherited from the nearest
     // supertype that defines one), keyed by type name -- name, not id, because RawItem/LinkRow
@@ -1435,13 +1448,15 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                 linkRows.stream().collect(Collectors.groupingBy(
                         LinkRow::linkedItemTypeId,
                         Collectors.mapping(LinkRow::linkedRegisterItemId, Collectors.toList()))),
-                COL_REGISTER_ITEM_ID, linkedItemMarkerIds, permissions.superuser() ? null : permissions.propertyReadGrantsByMarker());
+                COL_REGISTER_ITEM_ID, linkedItemMarkerIds, permissions.superuser() ? null
+                        : readImpliedByWrite(permissions.propertyReadGrantsByMarker(), permissions.propertyWriteGrantsByMarker()));
 
         Map<UUID, Map<String, Object>> linkProperties = fetchPropertiesByRegisterItemId(
                 linkRows.stream().collect(Collectors.groupingBy(
                         LinkRow::linkDefinitionId,
                         Collectors.mapping(LinkRow::registerLinkId, Collectors.toList()))),
-                COL_REGISTER_LINK_ID, linkOwnerMarkerIds, permissions.superuser() ? null : permissions.linkPropertyReadGrantsByMarker());
+                COL_REGISTER_LINK_ID, linkOwnerMarkerIds, permissions.superuser() ? null
+                        : readImpliedByWrite(permissions.linkPropertyReadGrantsByMarker(), permissions.linkPropertyWriteGrantsByMarker()));
 
         // Merged across every distinct type/link-definition in this batch -- safe since property
         // ids are globally unique across the whole schema (same reasoning projectAcrossTypes'
@@ -1542,14 +1557,17 @@ public class RegisterPartitionManager implements SchemaChangeListener {
         // A superuser used to skip this fetch entirely (nothing to filter by), but now also needs
         // it to populate ProjectedItem.markers -- so it's unconditional regardless of who's asking.
         Map<UUID, Set<UUID>> markerIdsByRegisterItemId = getMarkerIdsForRegisterItems(rawItemIds);
-        // Resolved only for a superuser -- see ProjectedItem.markers' own comment on why a
-        // non-superuser gets null, not an empty list, rather than resolving names unconditionally.
-        Map<UUID, String> markerNamesById = permissions.superuser()
-                ? resolveMarkerNames(markerIdsByRegisterItemId.values().stream().flatMap(Set::stream).collect(Collectors.toSet()))
-                : Map.of();
+        // Names for every marker we might surface on a projected item: all of them for a superuser,
+        // or just the caller's item:read-granted subset for everyone else. A non-superuser only ever
+        // sees an item because one of its markers is granted (buildItemReadPermissionFragment), so a
+        // visible item's disclosable list is non-empty in practice.
+        Set<UUID> markerIdsToName = permissions.superuser()
+                ? markerIdsByRegisterItemId.values().stream().flatMap(Set::stream).collect(Collectors.toSet())
+                : permissions.grantedItemReadMarkerIds();
+        Map<UUID, String> markerNamesById = resolveMarkerNames(markerIdsToName);
 
         List<BinaryPropertyRow> binaryRows = jdbcClient.sql("""
-                SELECT rbp.register_item_id, sp.name AS property_name, rbp.binary_id
+                SELECT rbp.register_item_id, rbp.property_id, sp.name AS property_name, rbp.binary_id
                 FROM register_binary_property rbp
                 JOIN schema_property sp ON sp.id = rbp.property_id
                 WHERE rbp.register_item_id IN (:ids)
@@ -1557,6 +1575,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                 .param("ids", rawItemIds)
                 .query((rs, n) -> new BinaryPropertyRow(
                         rs.getObject(COL_REGISTER_ITEM_ID, UUID.class),
+                        rs.getObject("property_id", UUID.class),
                         rs.getString("property_name"),
                         rs.getObject("binary_id", UUID.class)))
                 .list();
@@ -1564,28 +1583,46 @@ public class RegisterPartitionManager implements SchemaChangeListener {
         Set<UUID> binaryIds = binaryRows.stream().map(BinaryPropertyRow::binaryId).collect(Collectors.toSet());
         Map<UUID, BinaryPropertyObject> binaryObjects = binaryPartitionManager.getBinaryProperties(binaryIds);
 
-        Map<UUID, Map<String, Object>> binaryPropsByItem = new HashMap<>();
+        Map<UUID, List<AssembledBinary>> binaryPropsByItem = new HashMap<>();
         for (var row : binaryRows) {
             BinaryPropertyObject obj = binaryObjects.get(row.binaryId());
             if (obj == null) continue;
             binaryPropsByItem
-                    .computeIfAbsent(row.registerItemId(), k -> new HashMap<>())
-                    .put(row.propertyName(), assembleBinaryValue(obj, binaryBaseUrl));
+                    .computeIfAbsent(row.registerItemId(), k -> new ArrayList<>())
+                    .add(new AssembledBinary(row.propertyId(), row.propertyName(), assembleBinaryValue(obj, binaryBaseUrl)));
         }
+
+        // Null for a superuser (no filtering); otherwise the read-granted (write implies read)
+        // property-id grant map, resolved per item against that item's markers below.
+        Map<UUID, Set<UUID>> effectiveReadGrants = permissions.superuser() ? null
+                : readImpliedByWrite(permissions.propertyReadGrantsByMarker(), permissions.propertyWriteGrantsByMarker());
 
         return rawItems.stream()
                 .map(raw -> {
                     Set<UUID> markerIds = markerIdsByRegisterItemId.getOrDefault(raw.registerItemId(), Set.of());
-                    Map<String, Object> readableProps = filterPropertiesByReadGrant(raw.properties(), markerIds,
-                            permissions.superuser() ? null : permissions.propertyReadGrantsByMarker());
+                    Map<String, Object> readableProps = filterPropertiesByReadGrant(raw.properties(), markerIds, effectiveReadGrants);
                     Map<String, Object> props = new HashMap<>(namesForIds(readableProps, ownPropertyNames));
-                    Map<String, Object> binProps = binaryPropsByItem.get(raw.registerItemId());
-                    if (binProps != null) props.putAll(binProps);
+                    // Binary properties are gated by property:read exactly like scalar ones -- there
+                    // is no separate download grant; read is equivalent to download.
+                    List<AssembledBinary> bins = binaryPropsByItem.get(raw.registerItemId());
+                    if (bins != null) {
+                        Set<UUID> readableBinaryIds = effectiveReadGrants == null ? null
+                                : unionGrantedIds(markerIds, effectiveReadGrants);
+                        for (var b : bins) {
+                            if (readableBinaryIds == null || readableBinaryIds.contains(b.propertyId())) {
+                                props.put(b.name(), b.value());
+                            }
+                        }
+                    }
                     var itemPermissions = buildPermissions(permissions, markerIds,
                             permissions.propertyWriteGrantsByMarker(), permissions.itemDeleteGrantedMarkerIds(), ownPropertyNames);
-                    List<String> markerNames = permissions.superuser()
-                            ? markerIds.stream().map(markerNamesById::get).filter(Objects::nonNull).sorted().toList()
-                            : null;
+                    // Superuser sees every marker on the item; anyone else sees only the ones they
+                    // hold an item:read grant on -- never the mere existence of markers they can't read.
+                    Set<UUID> disclosableMarkerIds = permissions.superuser()
+                            ? markerIds
+                            : markerIds.stream().filter(permissions.grantedItemReadMarkerIds()::contains).collect(Collectors.toSet());
+                    List<String> markerNames = disclosableMarkerIds.stream()
+                            .map(markerNamesById::get).filter(Objects::nonNull).sorted().toList();
                     return new ProjectedItem(
                             raw.itemId(),
                             raw.itemType(),

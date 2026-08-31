@@ -102,8 +102,8 @@ class AuthorizationRepositoryMarkerIntegrationTest extends AbstractIntegrationTe
         var group = securityRepo.createGroup("arm-" + UUID.randomUUID());
         UUID grantId = authRepo.ensureMarkerGrant(marker.id(), "GROUP", group.id());
 
-        authRepo.grantPropertyAccess(grantId, fixture.namePropertyId(), true, false, false);
-        authRepo.grantPropertyAccess(grantId, fixture.namePropertyId(), true, true, false);
+        authRepo.grantPropertyAccess(grantId, fixture.namePropertyId(), true, false);
+        authRepo.grantPropertyAccess(grantId, fixture.namePropertyId(), true, true);
 
         var row = jdbcClient.sql("SELECT can_read, can_write FROM marker_grant_property WHERE marker_grant_id = :id AND property_id = :propId")
                 .param("id", grantId).param("propId", fixture.namePropertyId())
@@ -139,7 +139,7 @@ class AuthorizationRepositoryMarkerIntegrationTest extends AbstractIntegrationTe
         var group = securityRepo.createGroup("arm-" + UUID.randomUUID());
         UUID grantId = authRepo.ensureMarkerGrant(marker.id(), "GROUP", group.id());
 
-        authRepo.grantLinkPropertyAccess(grantId, fixture.rolePropertyId(), true, true, false);
+        authRepo.grantLinkPropertyAccess(grantId, fixture.rolePropertyId(), true, true);
 
         Long rows = jdbcClient.sql("""
                 SELECT COUNT(*) FROM marker_grant_link_property WHERE marker_grant_id = :id AND property_id = :propId AND can_read AND can_write
@@ -153,7 +153,7 @@ class AuthorizationRepositoryMarkerIntegrationTest extends AbstractIntegrationTe
         var marker = authRepo.createMarker("arm-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId());
         var group = securityRepo.createGroup("arm-" + UUID.randomUUID());
         UUID grantId = authRepo.ensureMarkerGrant(marker.id(), "GROUP", group.id());
-        authRepo.grantPropertyAccess(grantId, fixture.namePropertyId(), true, false, false);
+        authRepo.grantPropertyAccess(grantId, fixture.namePropertyId(), true, false);
         authRepo.grantLinkPerspectiveAccess(grantId, fixture.productPerspectiveId(), false, true, false);
 
         authRepo.deleteMarkerGrant(grantId);
