@@ -48,11 +48,22 @@ injectStyles('ntrloc-state-machine-diagram-styles', `
     stroke-width: 1.5;
     rx: 8;
   }
-  .sm-node-rect.is-initial {
-    stroke: var(--accent);
-    stroke-width: 2;
-  }
   .sm-node-rect.is-selected {
+    stroke: #f0883e;
+    stroke-width: 2.5;
+  }
+  /* START = filled dot, END = ringed dot (UML initial/final pseudostate convention). */
+  .sm-node-pseudo-fill {
+    fill: var(--fg, currentColor);
+    stroke: none;
+  }
+  .sm-node-pseudo-ring {
+    fill: none;
+    stroke: var(--fg, currentColor);
+    stroke-width: 1.5;
+  }
+  .sm-node-pseudo-fill.is-selected,
+  .sm-node-pseudo-ring.is-selected {
     stroke: #f0883e;
     stroke-width: 2.5;
   }
@@ -237,7 +248,7 @@ class NtrlocStateMachineDiagram extends HTMLElement {
     }
 
     const orientation = this._orientation || 'horizontal';
-    const { positions, edges, selfLoopEdges, width, height, nodeSize } = computeLayout(states, orientation);
+    const { rects, edges, selfLoopEdges, width, height } = computeLayout(states, orientation);
     const markerId = `sm-arrow-${++markerIdCounter}`;
 
     const svg = document.createElementNS(SVG_NS, 'svg');
@@ -270,7 +281,7 @@ class NtrlocStateMachineDiagram extends HTMLElement {
 
     for (const state of states) {
       const selected = state.id === this._selectedStateId;
-      const node = buildNode(rectFor(positions.get(state.id), nodeSize.width, nodeSize.height), state, selected);
+      const node = buildNode(rects.get(state.id), state, selected);
       if (this._onSelectState) {
         node.classList.add('is-clickable');
         node.addEventListener('click', () => this._onSelectState(state));
@@ -419,7 +430,7 @@ function classifyEdges(states) {
     color.set(id, 'black');
   }
 
-  for (const s of states) if (s.isInitial && color.get(s.id) === 'white') dfs(s.id);
+  for (const s of states) if (s.kind === 'START' && color.get(s.id) === 'white') dfs(s.id);
   for (const s of states) if (color.get(s.id) === 'white') dfs(s.id);
   return { forwardEdges, backEdges, selfLoops };
 }
@@ -443,6 +454,18 @@ function computeRanks(states, forwardEdges) {
       }
     }
     if (!changed) break;
+  }
+
+  // Pin the pseudostates: START is always the origin rank, END always sits one rank past every
+  // real state -- even when END has no incoming transition yet, it belongs at the far end of the
+  // flow, never floating alongside START at rank 0.
+  const startId = states.find((s) => s.kind === 'START')?.id;
+  const endId = states.find((s) => s.kind === 'END')?.id;
+  if (startId != null) rank.set(startId, 0);
+  if (endId != null) {
+    let maxOther = 0;
+    for (const s of states) if (s.id !== endId) maxOther = Math.max(maxOther, rank.get(s.id));
+    rank.set(endId, maxOther + 1);
   }
   return rank;
 }
@@ -650,18 +673,71 @@ function computeLayout(states, orientation = 'horizontal') {
     }
   }
 
+  // A START/END pseudostate draws as a small dot -- half a normal node's short side.
+  const PSEUDO_SIZE = Math.round(Math.min(NODE_WIDTH, NODE_HEIGHT) * 0.5);
+
+  // Rank-axis placement: ranks sit at accumulated offsets rather than a single uniform stride, so
+  // a pseudostate-only rank (START at rank 0, END at the last rank) can occupy just the dot's
+  // width and sit a tight gap from its neighbour. Otherwise rankGap -- driven by the widest
+  // transition label anywhere in the diagram -- leaves a large void beside the tiny dot (found
+  // live in the horizontal schema-editor preview). Horizontal only; vertical already reads well
+  // and keeps its uniform stride and full-size slots.
+  const tightenPseudo = !vertical;
+  const rankIsPseudo = (r) => (byRank.get(r) ?? []).every((s) => s.kind === 'START' || s.kind === 'END');
+  const pseudoAdjacentLabelWidths = tightenPseudo
+    ? edgeDescriptors
+        .filter((e) => rankIsPseudo(rank.get(e.fromId)) || rankIsPseudo(rank.get(e.toId)))
+        .map((e) => (e.transition.name ? estimateLabelWidth(e.transition.name) : 0))
+    : [];
+  const pseudoRankGap = Math.max(SIBLING_GAP, ...pseudoAdjacentLabelWidths.map((w) => w + 2 * MIN_LABEL_CLEARANCE), 0);
+  const rankAxisSlot = (r) => (tightenPseudo && rankIsPseudo(r) ? PSEUDO_SIZE : rankAxisNodeSize);
+  const gapAfterRank = (r, next) =>
+    tightenPseudo && (rankIsPseudo(r) || rankIsPseudo(next)) ? pseudoRankGap : rankGap;
+
+  const sortedRanks = [...byRank.keys()].sort((a, b) => a - b);
+  const rankCoordByRank = new Map();
+  {
+    let cursor = PADDING;
+    sortedRanks.forEach((r, i) => {
+      rankCoordByRank.set(r, cursor);
+      if (i < sortedRanks.length - 1) cursor += rankAxisSlot(r) + gapAfterRank(r, sortedRanks[i + 1]);
+    });
+  }
+
   const positions = new Map();
   for (const [r, list] of byRank.entries()) {
     const centerOffset = (maxRankSpan - spanFor(list.length)) / 2;
     list.forEach((s, idx) => {
-      const rankCoord = PADDING + r * (rankAxisNodeSize + rankGap);
+      const rankCoord = rankCoordByRank.get(r);
       const siblingCoord = outerLeadingMargin + leadingReserve + centerOffset + idx * (siblingAxisNodeSize + SIBLING_GAP);
       positions.set(s.id, toXY(rankCoord, siblingCoord, vertical));
     });
   }
 
+  // The concrete drawn/attached-to rect per node. A pseudostate dot is centered on the sibling
+  // axis of its slot; on the rank axis it hugs the slot's near edge when that rank was tightened
+  // to PSEUDO_SIZE (so the small slot == the dot), else it centers there too.
+  const rects = new Map();
+  for (const s of states) {
+    const pos = positions.get(s.id);
+    if (s.kind === 'START' || s.kind === 'END') {
+      const r = rank.get(s.id);
+      const rankAxisPad = (rankAxisSlot(r) - PSEUDO_SIZE) / 2;
+      const siblingAxisPad = (siblingAxisNodeSize - PSEUDO_SIZE) / 2;
+      rects.set(s.id, {
+        x: pos.x + (vertical ? siblingAxisPad : rankAxisPad),
+        y: pos.y + (vertical ? rankAxisPad : siblingAxisPad),
+        width: PSEUDO_SIZE,
+        height: PSEUDO_SIZE,
+      });
+    } else {
+      rects.set(s.id, rectFor(pos, NODE_WIDTH, NODE_HEIGHT));
+    }
+  }
+  const rankAxisSizeOf = (id) => (vertical ? rects.get(id).height : rects.get(id).width);
+
   const maxRank = Math.max(...[...rank.values()]);
-  const rankAxisTotal = PADDING + maxRank * (rankAxisNodeSize + rankGap) + rankAxisNodeSize + PADDING;
+  const rankAxisTotal = rankCoordByRank.get(maxRank) + rankAxisSlot(maxRank) + PADDING;
   const siblingAxisTotal = outerLeadingMargin + leadingReserve + maxRankSpan + trailingReserve + outerTrailingMargin;
 
   // Per-(node, side) attachment point allocation -- every rail edge needs one point on each of its
@@ -717,10 +793,10 @@ function computeLayout(states, orientation = 'horizontal') {
       // particular transition's arrow points *from* -- a reciprocal pair's two transitions attach
       // to the exact same two points, just with arrowheads pointing opposite ways along the line.
       const loId = rank.get(e.fromId) <= rank.get(e.toId) ? e.fromId : e.toId;
-      const loRect = rectFor(positions.get(loId), NODE_WIDTH, NODE_HEIGHT);
+      const loRect = rects.get(loId);
       const siblingCoord = edgeAxisHelpers.siblingCenter(loRect) + offsets[i];
-      const fromRect = rectFor(positions.get(e.fromId), NODE_WIDTH, NODE_HEIGHT);
-      const toRect = rectFor(positions.get(e.toId), NODE_WIDTH, NODE_HEIGHT);
+      const fromRect = rects.get(e.fromId);
+      const toRect = rects.get(e.toId);
       const start = toXY(edgeAxisHelpers.rankFacing(fromRect, e.fromId === loId ? 'trailing' : 'leading'), siblingCoord, vertical);
       const end = toXY(edgeAxisHelpers.rankFacing(toRect, e.toId === loId ? 'trailing' : 'leading'), siblingCoord, vertical);
       edges.push({
@@ -733,11 +809,11 @@ function computeLayout(states, orientation = 'horizontal') {
   }
 
   for (const e of railEdges) {
-    const fromRect = rectFor(positions.get(e.fromId), NODE_WIDTH, NODE_HEIGHT);
-    const toRect = rectFor(positions.get(e.toId), NODE_WIDTH, NODE_HEIGHT);
+    const fromRect = rects.get(e.fromId);
+    const toRect = rects.get(e.toId);
     const fractions = fractionByRequest.get(e);
-    const fromRank = edgeAxisHelpers.rankBack(fromRect) + fractions.from * rankAxisNodeSize;
-    const toRank = edgeAxisHelpers.rankBack(toRect) + fractions.to * rankAxisNodeSize;
+    const fromRank = edgeAxisHelpers.rankBack(fromRect) + fractions.from * rankAxisSizeOf(e.fromId);
+    const toRank = edgeAxisHelpers.rankBack(toRect) + fractions.to * rankAxisSizeOf(e.toId);
     const railLevel = e.side === 'leading'
       ? globalLeadingEdge - (selfLoopReserve + railGap + e.nestIndex * RAIL_SPACING)
       : globalTrailingEdge + railGap + e.nestIndex * RAIL_SPACING;
@@ -757,7 +833,7 @@ function computeLayout(states, orientation = 'horizontal') {
 
   const selfLoopEdges = [];
   for (const [nodeId, transitions] of selfLoopsByNode) {
-    const rect = rectFor(positions.get(nodeId), NODE_WIDTH, NODE_HEIGHT);
+    const rect = rects.get(nodeId);
     const edgeCoord = edgeAxisHelpers.siblingLeading(rect);
     const outerCoord = edgeCoord - SELF_LOOP_DEPTH;
     const footOuter = edgeAxisHelpers.rankBack(rect) + SELF_LOOP_OUTER_FRACTION * rankAxisNodeSize;
@@ -778,6 +854,7 @@ function computeLayout(states, orientation = 'horizontal') {
 
   return {
     positions,
+    rects,
     edges,
     selfLoopEdges,
     nodeSize: { width: NODE_WIDTH, height: NODE_HEIGHT },
@@ -829,8 +906,12 @@ function buildNode(rect, state, selected = false) {
   const g = document.createElementNS(SVG_NS, 'g');
   g.setAttribute('class', 'sm-node');
 
+  if (state.kind === 'START' || state.kind === 'END') {
+    return buildPseudoNode(g, rect, state.kind, selected);
+  }
+
   const box = document.createElementNS(SVG_NS, 'rect');
-  box.setAttribute('class', `sm-node-rect${state.isInitial ? ' is-initial' : ''}${selected ? ' is-selected' : ''}`);
+  box.setAttribute('class', `sm-node-rect${selected ? ' is-selected' : ''}`);
   box.setAttribute('x', String(rect.x));
   box.setAttribute('y', String(rect.y));
   box.setAttribute('width', String(rect.width));
@@ -855,6 +936,30 @@ function buildNode(rect, state, selected = false) {
   });
   g.appendChild(label);
 
+  return g;
+}
+
+// START = a small filled dot; END = a filled dot inside an open ring. Drawn centered in the same
+// bounding rect the router allocated for a normal node, so edge attachment math is unchanged.
+function buildPseudoNode(g, rect, kind, selected) {
+  const cx = rect.x + rect.width / 2;
+  const cy = rect.y + rect.height / 2;
+  const r = Math.min(rect.width, rect.height) / 2;
+  const sel = selected ? ' is-selected' : '';
+  if (kind === 'END') {
+    const ring = document.createElementNS(SVG_NS, 'circle');
+    ring.setAttribute('class', `sm-node-pseudo-ring${sel}`);
+    ring.setAttribute('cx', String(cx));
+    ring.setAttribute('cy', String(cy));
+    ring.setAttribute('r', String(r));
+    g.appendChild(ring);
+  }
+  const dot = document.createElementNS(SVG_NS, 'circle');
+  dot.setAttribute('class', `sm-node-pseudo-fill${sel}`);
+  dot.setAttribute('cx', String(cx));
+  dot.setAttribute('cy', String(cy));
+  dot.setAttribute('r', String(kind === 'END' ? r * 0.55 : r));
+  g.appendChild(dot);
   return g;
 }
 

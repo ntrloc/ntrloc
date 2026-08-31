@@ -237,12 +237,6 @@ injectStyles('ntrloc-state-machine-editor-styles', `
     padding: 0;
     margin-bottom: 4px;
   }
-  .state-machine-editor-dialog .editor-checkbox-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin: 8px 0;
-  }
   /* Tabs switch which large editor occupies .detail-tab-content below -- this is the mechanism
      mockups -2/-3 show for a transition (Guard/Process) and the first mockup shows for a state
      (Entry process/Exit process), replacing the plain field-picker this used to be. */
@@ -413,7 +407,7 @@ function openStateMachineEditorDialog(item) {
       return visibleStates().map((s) => ({
         id: s.id,
         name: s.name,
-        isInitial: s.isInitial,
+        kind: s.kind,
         vm: s,
         transitions: s.transitions.filter((t) => !t.isDeleted).map((t) => ({
           id: t.id,
@@ -433,12 +427,19 @@ function openStateMachineEditorDialog(item) {
       renderContent();
     }
 
+    // The source state of a transition vm (transitions don't carry it) -- same lookup the delete
+    // handler uses. Returns undefined for a transition not in the selected machine.
+    function ownerStateOf(transitionVm) {
+      return (local.selectedMachine?.states ?? []).find((s) => s.transitions.includes(transitionVm));
+    }
+
     function selectTransition(vm) {
       local.selectedTransition = vm;
       local.selectedState = null;
       local.connectingFrom = null;
       local.connectError = null;
-      local.activeTab = 'guard';
+      // The START -> first-state transition has no guard; default it to the Process tab.
+      local.activeTab = ownerStateOf(vm)?.kind === 'START' ? 'process' : 'guard';
       renderContent();
     }
 
@@ -447,6 +448,17 @@ function openStateMachineEditorDialog(item) {
       if (local.connectingFrom) {
         if (vm.isNew) {
           local.connectError = `Save "${vm.name || '(unnamed)'}" before connecting to it.`;
+          renderContent();
+          return;
+        }
+        if (vm.kind === 'START') {
+          local.connectError = 'The START pseudostate cannot be a transition target.';
+          renderContent();
+          return;
+        }
+        if (local.connectingFrom.kind === 'START'
+            && local.connectingFrom.transitions.some((t) => !t.isDeleted)) {
+          local.connectError = 'START already has an outgoing transition.';
           renderContent();
           return;
         }
@@ -512,17 +524,41 @@ function openStateMachineEditorDialog(item) {
         : '';
     }
 
+    function pseudostateDetailHtml(vm) {
+      const outgoing = vm.transitions.filter((t) => !t.isDeleted);
+      const label = vm.kind === 'START' ? 'Start' : 'End';
+      const blurb = vm.kind === 'START'
+        ? 'An item enters the machine here. Connect it to a single starting state; that transition may run an action but has no guard.'
+        : 'Reaching this state detaches the item from the machine. Any state may transition to it.';
+      return `
+        <div class="detail-header">
+          <div class="editor-readonly-value">${label} (pseudostate)</div>
+        </div>
+        <p class="status">${blurb}</p>
+        <div class="detail-footer">
+          <label>Outgoing transitions</label>
+          ${outgoing.length > 0 ? `
+            <ul class="editor-transition-list">
+              ${outgoing.map((t) => `
+                <li><button class="transition-jump-button" data-transition-id="${escapeHtml(t.id)}">${escapeHtml(t.name || '(unnamed)')} → ${escapeHtml(t.toStateName)}</button></li>
+              `).join('')}
+            </ul>
+          ` : '<p class="status">None yet.</p>'}
+          ${vm.kind === 'START' && outgoing.length === 0
+            ? '<div class="editor-detail-actions"><md-outlined-button class="add-transition-button">+ Add Transition</md-outlined-button></div>'
+            : ''}
+        </div>
+      `;
+    }
+
     function stateDetailHtml(vm) {
+      if (vm.isPseudo) return pseudostateDetailHtml(vm);
       const outgoing = vm.transitions.filter((t) => !t.isDeleted);
       const isProcessTab = true; // both state tabs are process tabs
       return `
         <div class="detail-header">
           <input class="detail-input state-name-input" value="${escapeHtml(vm.name)}" placeholder="State name" />
           <input class="detail-input state-description-input" value="${escapeHtml(vm.description ?? '')}" placeholder="Description (optional)" />
-          <div class="editor-checkbox-row">
-            <md-checkbox class="state-initial-checkbox" ${vm.isInitial ? 'checked' : ''}></md-checkbox>
-            <span>Initial state</span>
-          </div>
         </div>
 
         <div class="detail-tabs">
@@ -555,7 +591,9 @@ function openStateMachineEditorDialog(item) {
     }
 
     function transitionDetailHtml(vm) {
-      const isProcessTab = local.activeTab === 'process';
+      // The START -> first-state transition carries an action but never a guard.
+      const guardAllowed = ownerStateOf(vm)?.kind !== 'START';
+      const isProcessTab = !guardAllowed || local.activeTab === 'process';
       return `
         <div class="detail-header">
           <input class="detail-input transition-name-input" value="${escapeHtml(vm.name)}" placeholder="Transition name" />
@@ -564,8 +602,8 @@ function openStateMachineEditorDialog(item) {
         </div>
 
         <div class="detail-tabs">
-          <button class="detail-tab-button ${local.activeTab === 'guard' ? 'active' : ''}" data-tab="guard">Guard</button>
-          <button class="detail-tab-button ${local.activeTab === 'process' ? 'active' : ''}" data-tab="process">Process</button>
+          ${guardAllowed ? `<button class="detail-tab-button ${local.activeTab === 'guard' ? 'active' : ''}" data-tab="guard">Guard</button>` : ''}
+          <button class="detail-tab-button ${isProcessTab ? 'active' : ''}" data-tab="process">${guardAllowed ? 'Process' : 'Action'}</button>
         </div>
         <div class="detail-tab-content ${isProcessTab ? 'is-process-tab' : ''}">
           ${isProcessTab ? processTabContentHtml(vm.processId, 'transition', vm.id) : guardTabContentHtml(vm)}
@@ -797,12 +835,6 @@ function openStateMachineEditorDialog(item) {
         local.selectedState.description = event.target.value || null;
         notifySchemaViewModelChange();
       });
-      const stateInitialCheckbox = dialog.querySelector('.state-initial-checkbox');
-      if (stateInitialCheckbox) stateInitialCheckbox.addEventListener('change', (event) => {
-        local.selectedState.isInitial = event.target.checked;
-        wireDiagramOnly();
-        notifySchemaViewModelChange();
-      });
       const addTransitionButton = dialog.querySelector('.add-transition-button');
       if (addTransitionButton) addTransitionButton.addEventListener('click', () => {
         local.connectingFrom = local.selectedState;
@@ -893,8 +925,8 @@ function openStateMachineEditorDialog(item) {
       });
     }
 
-    // Re-applying just the diagram's `.data` (not a full renderContent()) after a name/isInitial
-    // edit would still work via renderContent, but it steals focus from the input the user is
+    // Re-applying just the diagram's `.data` (not a full renderContent()) after a name edit
+    // would still work via renderContent, but it steals focus from the input the user is
     // actively typing in -- 'change' only fires on blur/Enter though, so in practice this is only
     // reached after the input already lost focus. Kept as its own step anyway so the diagram
     // relabels itself without rebuilding the (unrelated) detail pane inputs -- and the possibly

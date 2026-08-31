@@ -123,7 +123,7 @@ class SchemaViewBuilder {
             var stateMachineViews = effectiveStateMachinesAdmin(item, itemById, stateMachinesByItem, statesByStateMachine, transitionsByFromState);
 
             return new AdminItemDefinitionView(item.id(), item.name(), item.description(), traitRefs, allProps, allLinks,
-                    sortableFieldsFor(allProps), item.initProcessId(), stateMachineViews.isEmpty() ? null : stateMachineViews,
+                    sortableFieldsFor(allProps), stateMachineViews.isEmpty() ? null : stateMachineViews,
                     item.supertypeId(), item.abstractType(), item.displayLabelPattern());
         }).toList();
 
@@ -270,7 +270,7 @@ class SchemaViewBuilder {
                                 repo.parseGuardCondition(t.guardCondition())))
                         .toList();
                 return new AdminStateView(state.id(), state.name(), state.description(),
-                        state.isInitial(), state.entryProcessId(), state.exitProcessId(), transitions);
+                        state.kind(), state.entryProcessId(), state.exitProcessId(), transitions);
             }).toList();
             return new AdminStateMachineView(machine.id(), machine.name(), machine.description(), stateViews);
         }).toList();

@@ -26,15 +26,13 @@ class SchemaRepositoryIntegrationTest extends AbstractIntegrationTest {
     // --- Items ---
 
     @Test
-    void setItemInitProcess_andUpdateItem_persistChanges() {
+    void updateItem_persistsChanges() {
         var item = schemaRepo.createItem("Item-" + UUID.randomUUID(), "original description");
 
-        schemaRepo.setItemInitProcess(item.id(), "some-process-id");
         schemaRepo.updateItem(item.id(), "Renamed-" + UUID.randomUUID(), "updated description");
 
         var reloaded = schemaRepo.getAllItems().stream().filter(i -> i.id().equals(item.id())).findFirst().orElseThrow();
         assertThat(reloaded.description()).isEqualTo("updated description");
-        assertThat(reloaded.initProcessId()).isEqualTo("some-process-id");
     }
 
     @Test
@@ -218,14 +216,14 @@ class SchemaRepositoryIntegrationTest extends AbstractIntegrationTest {
     void updateState_persistsChanges() {
         var item = schemaRepo.createItem("Item-" + UUID.randomUUID(), "d");
         var machine = schemaRepo.createStateMachine(item.id(), "machine", "d");
-        var state = schemaRepo.createState(machine.id(), "original", "d", true, null, null);
+        var state = schemaRepo.createState(machine.id(), "original", "d", SchemaRepository.STATE_KIND_NORMAL, null, null);
 
-        schemaRepo.updateState(state.id(), "renamed", "updated", false, "entry-proc", "exit-proc");
+        schemaRepo.updateState(state.id(), "renamed", "updated", "entry-proc", "exit-proc");
 
         var reloaded = schemaRepo.getStatesByStateMachine().get(machine.id()).stream()
                 .filter(s -> s.id().equals(state.id())).findFirst().orElseThrow();
         assertThat(reloaded.name()).isEqualTo("renamed");
-        assertThat(reloaded.isInitial()).isFalse();
+        assertThat(reloaded.kind()).isEqualTo(SchemaRepository.STATE_KIND_NORMAL);
         assertThat(reloaded.entryProcessId()).isEqualTo("entry-proc");
         assertThat(reloaded.exitProcessId()).isEqualTo("exit-proc");
     }
@@ -234,7 +232,7 @@ class SchemaRepositoryIntegrationTest extends AbstractIntegrationTest {
     void deleteState_removesIt() {
         var item = schemaRepo.createItem("Item-" + UUID.randomUUID(), "d");
         var machine = schemaRepo.createStateMachine(item.id(), "machine", "d");
-        var state = schemaRepo.createState(machine.id(), "original", "d", true, null, null);
+        var state = schemaRepo.createState(machine.id(), "original", "d", SchemaRepository.STATE_KIND_NORMAL, null, null);
 
         schemaRepo.deleteState(state.id());
 
@@ -248,8 +246,8 @@ class SchemaRepositoryIntegrationTest extends AbstractIntegrationTest {
     void updateTransition_persistsChanges() {
         var item = schemaRepo.createItem("Item-" + UUID.randomUUID(), "d");
         var machine = schemaRepo.createStateMachine(item.id(), "machine", "d");
-        var from = schemaRepo.createState(machine.id(), "from", "d", true, null, null);
-        var to = schemaRepo.createState(machine.id(), "to", "d", false, null, null);
+        var from = schemaRepo.createState(machine.id(), "from", "d", SchemaRepository.STATE_KIND_NORMAL, null, null);
+        var to = schemaRepo.createState(machine.id(), "to", "d", SchemaRepository.STATE_KIND_NORMAL, null, null);
         var transition = schemaRepo.createTransition(from.id(), to.id(), "original", "d", null, null);
 
         schemaRepo.updateTransition(transition.id(), "renamed", "updated", "guard-proc", "{\"op\":\"AND\"}");
@@ -265,8 +263,8 @@ class SchemaRepositoryIntegrationTest extends AbstractIntegrationTest {
     void deleteTransition_removesIt() {
         var item = schemaRepo.createItem("Item-" + UUID.randomUUID(), "d");
         var machine = schemaRepo.createStateMachine(item.id(), "machine", "d");
-        var from = schemaRepo.createState(machine.id(), "from", "d", true, null, null);
-        var to = schemaRepo.createState(machine.id(), "to", "d", false, null, null);
+        var from = schemaRepo.createState(machine.id(), "from", "d", SchemaRepository.STATE_KIND_NORMAL, null, null);
+        var to = schemaRepo.createState(machine.id(), "to", "d", SchemaRepository.STATE_KIND_NORMAL, null, null);
         var transition = schemaRepo.createTransition(from.id(), to.id(), "original", "d", null, null);
 
         schemaRepo.deleteTransition(transition.id());

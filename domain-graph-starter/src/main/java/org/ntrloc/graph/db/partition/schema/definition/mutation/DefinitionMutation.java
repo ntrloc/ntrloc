@@ -30,8 +30,7 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
         @JsonSubTypes.Type(value = DeleteStateMutation.class,                    name = "DELETE_STATE"),
         @JsonSubTypes.Type(value = CreateTransitionMutation.class,               name = "CREATE_TRANSITION"),
         @JsonSubTypes.Type(value = UpdateTransitionMutation.class,               name = "UPDATE_TRANSITION"),
-        @JsonSubTypes.Type(value = DeleteTransitionMutation.class,               name = "DELETE_TRANSITION"),
-        @JsonSubTypes.Type(value = SetItemInitProcessMutation.class,             name = "SET_INIT_PROCESS")
+        @JsonSubTypes.Type(value = DeleteTransitionMutation.class,               name = "DELETE_TRANSITION")
 })
 public sealed interface DefinitionMutation
         permits CreateItemDefinitionMutation, UpdateItemDefinitionMutation, DeleteItemDefinitionMutation,
@@ -42,6 +41,5 @@ public sealed interface DefinitionMutation
                 ReplaceControlledListMutation,
                 CreateStateMachineMutation, UpdateStateMachineMutation, DeleteStateMachineMutation,
                 CreateStateMutation, UpdateStateMutation, DeleteStateMutation,
-                CreateTransitionMutation, UpdateTransitionMutation, DeleteTransitionMutation,
-                SetItemInitProcessMutation {
+                CreateTransitionMutation, UpdateTransitionMutation, DeleteTransitionMutation {
 }

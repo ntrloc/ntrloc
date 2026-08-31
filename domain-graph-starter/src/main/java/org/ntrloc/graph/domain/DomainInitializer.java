@@ -101,7 +101,7 @@ public interface DomainInitializer {
 
         schemaManager.applyMutations(states.stream()
                 .<DefinitionMutation>map(s -> new CreateStateMutation(
-                        stateMachineId, s.name(), s.description(), s.isInitial(), s.entryProcessId(), s.exitProcessId()))
+                        stateMachineId, s.name(), s.description(), s.entryProcessId(), s.exitProcessId()))
                 .toList());
 
         List<AdminStateView> createdStates = schemaManager.getAdminSchema().items().stream()
@@ -136,20 +136,25 @@ public interface DomainInitializer {
     }
 
     /**
-     * A state to create via initStateMachine. Mirrors CreateStateMutation's fields exactly, minus
-     * itemDefinitionId (initStateMachine already takes that once for the whole batch).
+     * A state to create via initStateMachine -- always a NORMAL state (the START/END pseudostates
+     * come with the machine). Mirrors CreateStateMutation's fields, minus itemDefinitionId
+     * (initStateMachine already takes that once for the whole batch).
      */
-    record StateDefinition(String name, @Nullable String description, boolean isInitial,
+    record StateDefinition(String name, @Nullable String description,
                             @Nullable String entryProcessId, @Nullable String exitProcessId) {
-        public StateDefinition(String name, boolean isInitial) {
-            this(name, null, isInitial, null, null);
+        public StateDefinition(String name) {
+            this(name, null, null, null);
         }
     }
+
+    /** Sentinel state names for wiring transitions to/from the pseudostates in a TransitionDefinition. */
+    String START_STATE = "__start__";
+    String END_STATE = "__end__";
 
     /**
      * A transition to create via initStateMachine. fromStateName/toStateName are plain names, not
      * ids -- see initStateMachine's own comment on why the ids can't exist yet when this record is
-     * built.
+     * built. Use START_STATE / END_STATE to wire to the pseudostates.
      */
     record TransitionDefinition(String fromStateName, String toStateName, String name,
                                  @Nullable String description, @Nullable String processId,

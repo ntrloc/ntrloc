@@ -120,10 +120,11 @@ public class RegisterProjectionTestDomainInitializer implements DomainInitialize
 
         initStateMachine(schemaManager, bookTypeId, AVAILABILITY_MACHINE,
                 List.of(
-                        new StateDefinition(AVAILABLE, true),
-                        new StateDefinition(OUT_OF_STOCK, false),
-                        new StateDefinition(DISCONTINUED, false)),
+                        new StateDefinition(AVAILABLE),
+                        new StateDefinition(OUT_OF_STOCK),
+                        new StateDefinition(DISCONTINUED)),
                 List.of(
+                        new TransitionDefinition(START_STATE, AVAILABLE, "start"),
                         new TransitionDefinition(AVAILABLE, OUT_OF_STOCK, "MarkOutOfStock"),
                         new TransitionDefinition(OUT_OF_STOCK, AVAILABLE, "Restock"),
                         new TransitionDefinition(OUT_OF_STOCK, DISCONTINUED, "Discontinue")));

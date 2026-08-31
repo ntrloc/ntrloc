@@ -293,8 +293,9 @@ class StateViewModel {
     this.originalName = args.name;
     this.description = args.description;
     this.originalDescription = args.description;
-    this.isInitial = args.isInitial;
-    this.originalIsInitial = args.isInitial;
+    // 'NORMAL' | 'START' | 'END'. START/END are the pseudostates every machine owns -- rendered by
+    // kind, not editable, never mutated. Defaults to NORMAL for anything the server didn't stamp.
+    this.kind = args.kind ?? 'NORMAL';
     this.entryProcessId = args.entryProcessId;
     this.originalEntryProcessId = args.entryProcessId;
     this.exitProcessId = args.exitProcessId;
@@ -304,12 +305,17 @@ class StateViewModel {
     this.isDeleted = false;
   }
 
+  get isPseudo() {
+    return this.kind === 'START' || this.kind === 'END';
+  }
+
   get isDirty() {
+    // Pseudostates are never editable, but their outgoing transitions (START -> first state) are.
+    if (this.isPseudo) return this.transitions.some((t) => t.isDirty);
     return this.isNew
       || this.isDeleted
       || this.name !== this.originalName
       || (this.description ?? '') !== (this.originalDescription ?? '')
-      || this.isInitial !== this.originalIsInitial
       || this.entryProcessId !== this.originalEntryProcessId
       || this.exitProcessId !== this.originalExitProcessId
       || this.transitions.some((t) => t.isDirty);
@@ -334,7 +340,7 @@ class StateViewModel {
       id: s.id,
       name: s.name,
       description: s.description,
-      isInitial: s.isInitial,
+      kind: s.kind,
       entryProcessId: s.entryProcessId,
       exitProcessId: s.exitProcessId,
       transitions: (s.transitions ?? []).map((t) => TransitionViewModel.fromAdmin(t)),
@@ -349,7 +355,7 @@ class StateViewModel {
       id: crypto.randomUUID(),
       name: '',
       description: null,
-      isInitial: false,
+      kind: 'NORMAL',
       entryProcessId: null,
       exitProcessId: null,
       transitions: [],

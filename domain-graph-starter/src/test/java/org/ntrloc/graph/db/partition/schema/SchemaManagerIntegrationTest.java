@@ -28,7 +28,6 @@ import org.ntrloc.graph.db.partition.schema.definition.mutation.ImplementTraitMu
 import org.ntrloc.graph.db.partition.schema.definition.mutation.MovePropertyDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.RemoveTraitMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.ReplaceControlledListMutation;
-import org.ntrloc.graph.db.partition.schema.definition.mutation.SetItemInitProcessMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.UpdateItemDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.UpdatePerspectiveDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.UpdatePropertyDefinitionMutation;
@@ -258,17 +257,6 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         assertThat(afterDelete.properties()).extracting(p -> p.name()).doesNotContain("renamed");
     }
 
-    @Test
-    void setItemInitProcessMutation_persistsIt() {
-        UUID itemId = createItem("Item-" + UUID.randomUUID());
-
-        schemaManager.applyMutations(List.of(new SetItemInitProcessMutation(itemId, "some-process-id")));
-
-        var updated = schemaManager.getAdminSchema().items().stream()
-                .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow();
-        assertThat(updated.initProcessId()).isEqualTo("some-process-id");
-    }
-
     // --- Link/perspective mutations ---
 
     @Test
@@ -387,24 +375,105 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         UUID machineId = schemaManager.getAdminSchema().items().stream()
                 .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
                 .stateMachines().get(0).id();
-        schemaManager.applyMutations(List.of(new CreateStateMutation(machineId, "original", "d", true, null, null)));
-        UUID stateId = schemaManager.getAdminSchema().items().stream()
-                .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
-                .stateMachines().get(0).states().get(0).id();
+        schemaManager.applyMutations(List.of(new CreateStateMutation(machineId, "original", "d", null, null)));
+        UUID stateId = normalStateNamed(itemId, "original").id();
 
         schemaManager.applyMutations(List.of(
-                new UpdateStateMutation(stateId, "renamed", "updated", false, "entry-proc", "exit-proc")));
-        var afterUpdate = schemaManager.getAdminSchema().items().stream()
-                .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
-                .stateMachines().get(0).states().get(0);
+                new UpdateStateMutation(stateId, "renamed", "updated", "entry-proc", "exit-proc")));
+        var afterUpdate = normalStateNamed(itemId, "renamed");
         assertThat(afterUpdate.name()).isEqualTo("renamed");
-        assertThat(afterUpdate.isInitial()).isFalse();
+        assertThat(afterUpdate.kind()).isEqualTo("NORMAL");
 
         schemaManager.applyMutations(List.of(new DeleteStateMutation(stateId)));
         var afterDelete = schemaManager.getAdminSchema().items().stream()
                 .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
                 .stateMachines().get(0).states();
-        assertThat(afterDelete).isEmpty();
+        // The user-defined state is gone; the START/END pseudostates remain.
+        assertThat(afterDelete).extracting(s -> s.name()).containsExactlyInAnyOrder("__start__", "__end__");
+    }
+
+    // The user-defined (NORMAL) state of a given name within the item's single state machine.
+    private org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminStateView normalStateNamed(UUID itemId, String name) {
+        return schemaManager.getAdminSchema().items().stream()
+                .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
+                .stateMachines().get(0).states().stream()
+                .filter(s -> s.name().equals(name)).findFirst().orElseThrow();
+    }
+
+    @Test
+    void createStateMachine_alsoCreatesStartAndEndPseudostates() {
+        UUID itemId = createItem("Item-" + UUID.randomUUID());
+        schemaManager.applyMutations(List.of(new CreateStateMachineMutation(itemId, "machine", "d")));
+
+        var states = schemaManager.getAdminSchema().items().stream()
+                .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
+                .stateMachines().get(0).states();
+        assertThat(states).extracting(s -> s.kind()).containsExactlyInAnyOrder("START", "END");
+        assertThat(states).extracting(s -> s.name()).containsExactlyInAnyOrder("__start__", "__end__");
+    }
+
+    @Test
+    void deleteStateMutation_onAPseudostate_isRejected() {
+        UUID itemId = createItem("Item-" + UUID.randomUUID());
+        schemaManager.applyMutations(List.of(new CreateStateMachineMutation(itemId, "machine", "d")));
+        UUID startId = schemaManager.getAdminSchema().items().stream()
+                .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
+                .stateMachines().get(0).states().stream()
+                .filter(s -> s.kind().equals("START")).findFirst().orElseThrow().id();
+
+        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new DeleteStateMutation(startId))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("cannot be deleted");
+    }
+
+    @Test
+    void createStateMutation_withAReservedName_isRejected() {
+        UUID itemId = createItem("Item-" + UUID.randomUUID());
+        schemaManager.applyMutations(List.of(new CreateStateMachineMutation(itemId, "machine", "d")));
+        UUID machineId = schemaManager.getAdminSchema().items().stream()
+                .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
+                .stateMachines().get(0).id();
+
+        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new CreateStateMutation(machineId, "__start__", "d", null, null))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("reserved");
+    }
+
+    @Test
+    void transitionsAroundPseudostates_enforceTheStructuralRules() {
+        UUID itemId = createItem("Item-" + UUID.randomUUID());
+        schemaManager.applyMutations(List.of(new CreateStateMachineMutation(itemId, "machine", "d")));
+        UUID machineId = schemaManager.getAdminSchema().items().stream()
+                .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
+                .stateMachines().get(0).id();
+        schemaManager.applyMutations(List.of(
+                new CreateStateMutation(machineId, "s1", "d", null, null),
+                new CreateStateMutation(machineId, "s2", "d", null, null)));
+        var states = schemaManager.getAdminSchema().items().stream()
+                .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
+                .stateMachines().get(0).states();
+        UUID startId = states.stream().filter(s -> s.kind().equals("START")).findFirst().orElseThrow().id();
+        UUID endId = states.stream().filter(s -> s.kind().equals("END")).findFirst().orElseThrow().id();
+        UUID s1 = states.stream().filter(s -> s.name().equals("s1")).findFirst().orElseThrow().id();
+        UUID s2 = states.stream().filter(s -> s.name().equals("s2")).findFirst().orElseThrow().id();
+
+        // into START -> rejected
+        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new CreateTransitionMutation(s1, startId, "x", null, null, null))))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("START");
+        // out of END -> rejected
+        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new CreateTransitionMutation(endId, s1, "x", null, null, null))))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("END");
+        // START -> s1 with a guard -> rejected
+        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new CreateTransitionMutation(startId, s1, "start", null, null, guardJson()))))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("guard");
+        // START -> s1 (no guard) -> ok; a second outgoing from START -> rejected
+        schemaManager.applyMutations(List.of(new CreateTransitionMutation(startId, s1, "start", null, null, null)));
+        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new CreateTransitionMutation(startId, s2, "start2", null, null, null))))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("outgoing");
+    }
+
+    private static tools.jackson.databind.JsonNode guardJson() {
+        return tools.jackson.databind.json.JsonMapper.builder().build().createObjectNode().put("op", "AND");
     }
 
     @Test
@@ -415,8 +484,8 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
                 .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
                 .stateMachines().get(0).id();
         schemaManager.applyMutations(List.of(
-                new CreateStateMutation(machineId, "from", "d", true, null, null),
-                new CreateStateMutation(machineId, "to", "d", false, null, null)));
+                new CreateStateMutation(machineId, "from", "d", null, null),
+                new CreateStateMutation(machineId, "to", "d", null, null)));
         var states = schemaManager.getAdminSchema().items().stream()
                 .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
                 .stateMachines().get(0).states();

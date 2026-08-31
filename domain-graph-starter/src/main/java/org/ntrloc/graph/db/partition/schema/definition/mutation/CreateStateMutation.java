@@ -4,5 +4,7 @@ import org.springframework.lang.Nullable;
 
 import java.util.UUID;
 
-public record CreateStateMutation(UUID stateMachineId, String name, @Nullable String description, boolean isInitial, @Nullable String entryProcessId, @Nullable String exitProcessId) implements DefinitionMutation {
+// Only ever creates NORMAL states -- the START/END pseudostates are created with the machine
+// (CreateStateMachineMutation) and are not mutable through this.
+public record CreateStateMutation(UUID stateMachineId, String name, @Nullable String description, @Nullable String entryProcessId, @Nullable String exitProcessId) implements DefinitionMutation {
 }

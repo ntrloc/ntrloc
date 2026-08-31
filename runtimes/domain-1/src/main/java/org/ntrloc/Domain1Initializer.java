@@ -65,19 +65,19 @@ public class Domain1Initializer implements DomainInitializer, ApplicationRunner 
 
         initStateMachine(schemaManager, itemType.id(), "ISBN Approval",
                 List.of(
-                        new StateDefinition("Work in Progress", true),
-                        new StateDefinition("Pending ISBN Finalization", false),
-                        new StateDefinition("Recently Finalized", false),
-                        new StateDefinition("End", false)),
+                        new StateDefinition("Work in Progress"),
+                        new StateDefinition("Pending ISBN Finalization"),
+                        new StateDefinition("Recently Finalized")),
                 List.of(
+                        new TransitionDefinition(START_STATE, "Work in Progress", "start"),
                         new TransitionDefinition("Work in Progress", "Pending ISBN Finalization", "Request_ISBN"),
                         new TransitionDefinition("Work in Progress", "Recently Finalized", "Finalize_ISBN"),
                         new TransitionDefinition("Work in Progress", "Work in Progress", "Loop"),
-                        new TransitionDefinition("Work in Progress", "End", "Done"),
+                        new TransitionDefinition("Work in Progress", END_STATE, "Done"),
                         new TransitionDefinition("Pending ISBN Finalization", "Recently Finalized", "Finalize_ISBN"),
                         new TransitionDefinition("Pending ISBN Finalization", "Work in Progress", "Return_to_Requestor"),
                         new TransitionDefinition("Pending ISBN Finalization", "Pending ISBN Finalization", "Loop"),
-                        new TransitionDefinition("Pending ISBN Finalization", "End", "Done"),
-                        new TransitionDefinition("Recently Finalized", "End", "Remove")));
+                        new TransitionDefinition("Pending ISBN Finalization", END_STATE, "Done"),
+                        new TransitionDefinition("Recently Finalized", END_STATE, "Remove")));
     }
 }

@@ -25,7 +25,7 @@ import java.util.stream.Collectors;
 @Component
 public class SchemaRepository {
 
-    public record ItemRow(UUID id, String name, String description, String initProcessId, UUID supertypeId, boolean abstractType, String displayLabelPattern) {}
+    public record ItemRow(UUID id, String name, String description, UUID supertypeId, boolean abstractType, String displayLabelPattern) {}
 
     public record TraitRow(UUID id, String name, String description) {}
 
@@ -35,7 +35,7 @@ public class SchemaRepository {
 
     public record StateMachineRow(UUID id, UUID itemDefinitionId, String name, String description) {}
 
-    public record StateRow(UUID id, UUID stateMachineId, String name, String description, boolean isInitial, String entryProcessId, String exitProcessId) {}
+    public record StateRow(UUID id, UUID stateMachineId, String name, String description, String kind, String entryProcessId, String exitProcessId) {}
 
     public record TransitionRow(UUID id, UUID fromStateId, UUID toStateId, String name, String description, String processId, String guardCondition) {}
 
@@ -60,12 +60,11 @@ public class SchemaRepository {
     // --- Items ---
 
     public Set<ItemRow> getAllItems() {
-        return Set.copyOf(jdbcClient.sql("SELECT id, name, description, init_process_id, supertype_id, abstract, display_label_pattern FROM schema_item")
+        return Set.copyOf(jdbcClient.sql("SELECT id, name, description, supertype_id, abstract, display_label_pattern FROM schema_item")
                 .query((rs, n) -> new ItemRow(
                         rs.getObject("id", UUID.class),
                         rs.getString("name"),
                         rs.getString(PARAM_DESCRIPTION),
-                        rs.getString("init_process_id"),
                         rs.getObject("supertype_id", UUID.class),
                         rs.getBoolean("abstract"),
                         rs.getString("display_label_pattern")))
@@ -87,12 +86,7 @@ public class SchemaRepository {
                 .param("supertypeId", supertypeId).param("abstractType", abstractType)
                 .param("displayLabelPattern", displayLabelPattern)
                 .query(UUID.class).single();
-        return new ItemRow(itemId, name, description, null, supertypeId, abstractType, displayLabelPattern);
-    }
-
-    public void setItemInitProcess(UUID itemId, String initProcessId) {
-        jdbcClient.sql("UPDATE schema_item SET init_process_id = :initProcessId WHERE id = :id")
-                .param("id", itemId).param("initProcessId", initProcessId).update();
+        return new ItemRow(itemId, name, description, supertypeId, abstractType, displayLabelPattern);
     }
 
     // Convenience overload for the common case (no supertype, not abstract) -- keeps every
@@ -451,29 +445,48 @@ public class SchemaRepository {
 
     // --- States ---
 
-    public StateRow createState(UUID stateMachineId, String name, String description, boolean isInitial, String entryProcessId, String exitProcessId) {
+    public static final String STATE_KIND_NORMAL = "NORMAL";
+    public static final String STATE_KIND_START = "START";
+    public static final String STATE_KIND_END = "END";
+    public static final String START_STATE_NAME = "__start__";
+    public static final String END_STATE_NAME = "__end__";
+
+    public StateRow createState(UUID stateMachineId, String name, String description, String kind, String entryProcessId, String exitProcessId) {
         UUID id = jdbcClient.sql("""
-                INSERT INTO schema_state (state_machine_id, name, description, is_initial, entry_process_id, exit_process_id)
-                VALUES (:stateMachineId, :name, :description, :isInitial, :entryProcessId, :exitProcessId) RETURNING id
+                INSERT INTO schema_state (state_machine_id, name, description, kind, entry_process_id, exit_process_id)
+                VALUES (:stateMachineId, :name, :description, :kind, :entryProcessId, :exitProcessId) RETURNING id
                 """)
                 .param("stateMachineId", stateMachineId).param("name", name).param(PARAM_DESCRIPTION, description)
-                .param("isInitial", isInitial).param("entryProcessId", entryProcessId).param("exitProcessId", exitProcessId)
+                .param("kind", kind).param("entryProcessId", entryProcessId).param("exitProcessId", exitProcessId)
                 .query(UUID.class).single();
-        return new StateRow(id, stateMachineId, name, description, isInitial, entryProcessId, exitProcessId);
+        return new StateRow(id, stateMachineId, name, description, kind, entryProcessId, exitProcessId);
     }
 
-    public void updateState(UUID id, String name, String description, boolean isInitial, String entryProcessId, String exitProcessId) {
+    // The START/END pseudostates a machine is born with -- sentinel name, no processes, undeletable.
+    public StateRow createPseudoState(UUID stateMachineId, String kind) {
+        String name = STATE_KIND_START.equals(kind) ? START_STATE_NAME : END_STATE_NAME;
+        return createState(stateMachineId, name, null, kind, null, null);
+    }
+
+    // Only NORMAL states are updatable through this -- name/description/entry/exit, never kind.
+    public void updateState(UUID id, String name, String description, String entryProcessId, String exitProcessId) {
         jdbcClient.sql("""
-                UPDATE schema_state SET name = :name, description = :description, is_initial = :isInitial,
+                UPDATE schema_state SET name = :name, description = :description,
                     entry_process_id = :entryProcessId, exit_process_id = :exitProcessId WHERE id = :id
                 """)
                 .param("id", id).param("name", name).param(PARAM_DESCRIPTION, description)
-                .param("isInitial", isInitial).param("entryProcessId", entryProcessId).param("exitProcessId", exitProcessId)
+                .param("entryProcessId", entryProcessId).param("exitProcessId", exitProcessId)
                 .update();
     }
 
     public void deleteState(UUID id) {
         jdbcClient.sql("DELETE FROM schema_state WHERE id = :id").param("id", id).update();
+    }
+
+    public Optional<StateRow> findState(UUID id) {
+        return jdbcClient.sql("SELECT * FROM schema_state WHERE id = :id")
+                .param("id", id)
+                .query((rs, n) -> mapState(rs)).optional();
     }
 
     public Map<UUID, List<StateRow>> getStatesByStateMachine() {
@@ -509,6 +522,12 @@ public class SchemaRepository {
 
     public void deleteTransition(UUID id) {
         jdbcClient.sql("DELETE FROM schema_state_transition WHERE id = :id").param("id", id).update();
+    }
+
+    public Optional<TransitionRow> findTransition(UUID id) {
+        return jdbcClient.sql("SELECT * FROM schema_state_transition WHERE id = :id")
+                .param("id", id)
+                .query((rs, n) -> mapTransition(rs)).optional();
     }
 
     public Map<UUID, List<TransitionRow>> getTransitionsByFromState() {
@@ -566,7 +585,7 @@ public class SchemaRepository {
                 rs.getObject("state_machine_id", UUID.class),
                 rs.getString("name"),
                 rs.getString(PARAM_DESCRIPTION),
-                rs.getBoolean("is_initial"),
+                rs.getString("kind"),
                 rs.getString("entry_process_id"),
                 rs.getString("exit_process_id")
         );

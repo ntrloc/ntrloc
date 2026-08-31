@@ -211,4 +211,60 @@ final class SchemaMutationValidation {
             throw new IllegalArgumentException("Property " + propertyId + " is not an OBJECT property and cannot contain other properties");
         }
     }
+
+    // --- State machines ---
+    // START/END are pseudostates: one of each per machine, born with the machine, undeletable, and
+    // not creatable or renameable through the normal state mutations. The sentinel names below are
+    // reserved so a NORMAL state can never collide with a pseudostate row.
+
+    static void requireNotReservedStateName(String name) {
+        if (SchemaRepository.START_STATE_NAME.equals(name) || SchemaRepository.END_STATE_NAME.equals(name)) {
+            throw new IllegalArgumentException("State name '" + name + "' is reserved for the START/END pseudostates");
+        }
+    }
+
+    static void requireDeletableState(SchemaRepository repo, UUID stateId) {
+        SchemaRepository.StateRow state = repo.findState(stateId)
+                .orElseThrow(() -> new IllegalArgumentException("Unknown state: " + stateId));
+        if (!SchemaRepository.STATE_KIND_NORMAL.equals(state.kind())) {
+            throw new IllegalArgumentException("The START and END pseudostates cannot be deleted");
+        }
+    }
+
+    // Structural rules for a transition being created between fromStateId and toStateId, with the
+    // given (already-serialized) guard. Enforced here rather than the DB so the message is useful.
+    static void requireValidTransitionEndpoints(SchemaRepository repo, UUID fromStateId, UUID toStateId, String serializedGuard) {
+        SchemaRepository.StateRow from = repo.findState(fromStateId)
+                .orElseThrow(() -> new IllegalArgumentException("Unknown from-state: " + fromStateId));
+        SchemaRepository.StateRow to = repo.findState(toStateId)
+                .orElseThrow(() -> new IllegalArgumentException("Unknown to-state: " + toStateId));
+        if (SchemaRepository.STATE_KIND_END.equals(from.kind())) {
+            throw new IllegalArgumentException("The END pseudostate cannot have outgoing transitions");
+        }
+        if (SchemaRepository.STATE_KIND_START.equals(to.kind())) {
+            throw new IllegalArgumentException("The START pseudostate cannot have incoming transitions");
+        }
+        if (SchemaRepository.STATE_KIND_START.equals(from.kind())) {
+            if (serializedGuard != null) {
+                throw new IllegalArgumentException("The transition out of START cannot have a guard condition");
+            }
+            boolean alreadyWired = !repo.getTransitionsByFromState().getOrDefault(fromStateId, List.of()).isEmpty();
+            if (alreadyWired) {
+                throw new IllegalArgumentException("START already has an outgoing transition");
+            }
+        }
+    }
+
+    // A guard may not be added to the START -> first-state transition on update either.
+    static void requireGuardAllowedOnTransition(SchemaRepository repo, UUID transitionId, String serializedGuard) {
+        if (serializedGuard == null) return;
+        SchemaRepository.TransitionRow transition = repo.findTransition(transitionId)
+                .orElseThrow(() -> new IllegalArgumentException("Unknown transition: " + transitionId));
+        boolean fromStart = repo.findState(transition.fromStateId())
+                .map(s -> SchemaRepository.STATE_KIND_START.equals(s.kind()))
+                .orElse(false);
+        if (fromStart) {
+            throw new IllegalArgumentException("The transition out of START cannot have a guard condition");
+        }
+    }
 }

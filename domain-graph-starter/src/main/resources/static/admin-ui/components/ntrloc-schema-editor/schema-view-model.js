@@ -441,19 +441,22 @@ const schemaViewModel = {
 
         for (const state of machine.states) {
           if (state.isNew) {
-            ops.push({ type: 'CREATE_STATE', stateMachineId: machine.id, name: state.name, description: state.description, isInitial: state.isInitial, entryProcessId: state.entryProcessId, exitProcessId: state.exitProcessId });
+            ops.push({ type: 'CREATE_STATE', stateMachineId: machine.id, name: state.name, description: state.description, entryProcessId: state.entryProcessId, exitProcessId: state.exitProcessId });
             continue; // a brand-new state's transitions are unreachable too -- same "no real id yet" problem, one level down
           }
-          if (state.isDeleted) {
-            ops.push({ type: 'DELETE_STATE', id: state.id });
-            continue;
-          }
-          if (state.name !== state.originalName
-            || (state.description ?? '') !== (state.originalDescription ?? '')
-            || state.isInitial !== state.originalIsInitial
-            || state.entryProcessId !== state.originalEntryProcessId
-            || state.exitProcessId !== state.originalExitProcessId) {
-            ops.push({ type: 'UPDATE_STATE', id: state.id, name: state.name, description: state.description, isInitial: state.isInitial, entryProcessId: state.entryProcessId, exitProcessId: state.exitProcessId });
+          // START/END pseudostates are server-managed -- never emit CREATE/UPDATE/DELETE_STATE for
+          // them, but their outgoing transitions (START -> first state) still flow through below.
+          if (!state.isPseudo) {
+            if (state.isDeleted) {
+              ops.push({ type: 'DELETE_STATE', id: state.id });
+              continue;
+            }
+            if (state.name !== state.originalName
+              || (state.description ?? '') !== (state.originalDescription ?? '')
+              || state.entryProcessId !== state.originalEntryProcessId
+              || state.exitProcessId !== state.originalExitProcessId) {
+              ops.push({ type: 'UPDATE_STATE', id: state.id, name: state.name, description: state.description, entryProcessId: state.entryProcessId, exitProcessId: state.exitProcessId });
+            }
           }
 
           for (const transition of state.transitions) {

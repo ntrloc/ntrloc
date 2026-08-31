@@ -3,7 +3,6 @@ package org.ntrloc.graph.db.partition.schema;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateItemDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DeleteItemDefinitionMutation;
-import org.ntrloc.graph.db.partition.schema.definition.mutation.SetItemInitProcessMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.UpdateItemDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.event.SchemaChangeEvent;
 import org.ntrloc.graph.db.partition.schema.repository.SchemaRepository;
@@ -41,8 +40,6 @@ class ItemMutationApplier {
             applyUpdate(m);
         } else if (mutation instanceof DeleteItemDefinitionMutation m) {
             applyDelete(m);
-        } else if (mutation instanceof SetItemInitProcessMutation m) {
-            repo.setItemInitProcess(m.itemId(), m.initProcessId());
         } else {
             return false;
         }
