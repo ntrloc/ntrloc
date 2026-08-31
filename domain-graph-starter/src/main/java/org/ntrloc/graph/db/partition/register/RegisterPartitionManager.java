@@ -5,6 +5,7 @@ import org.ntrloc.graph.db.partition.authorization.RequestPermissionContext;
 import org.ntrloc.graph.db.partition.binary.BinaryPartitionManager;
 import org.ntrloc.graph.db.partition.binary.BinaryPropertyObject;
 import org.ntrloc.graph.db.projection.AndPredicate;
+import org.ntrloc.graph.db.projection.AvailableTransition;
 import org.ntrloc.graph.db.projection.CollectionProjectionSpec;
 import org.ntrloc.graph.db.projection.FacetBucket;
 import org.ntrloc.graph.db.projection.FacetFilter;
@@ -693,14 +694,16 @@ public class RegisterPartitionManager implements SchemaChangeListener {
     // given item within a transaction before calling this once -- this method has no way to detect
     // that on its own, and shouldn't need to.
     //
-    // propertiesDiff/stateChanges are both allowed to be empty (a change to only one of them is the
-    // common case); at least one is expected to be non-empty in practice.
+    // propertiesDiff/stateChanges/stateMachinesEnded are all allowed to be empty (a change to only
+    // one is the common case); at least one is expected to be non-empty in practice.
+    // stateMachinesEnded removes those machines from the item's _state entirely (END pseudostate
+    // reached) -- no tombstone, since re-entry via START is valid.
     //
     // Deliberately deferred: stateChanges values are accepted unconditionally -- this does not check
     // that a given stateId is actually reachable from the item's current state via a defined
-    // transition in the state machine's schema. Transition validity enforcement is a separate,
-    // not-yet-built piece.
-    public UUID stageItemChange(UUID itemId, Map<UUID, Object> propertiesDiff, Map<UUID, UUID> stateChanges, UUID transactionId) {
+    // transition. Transition validity/guard enforcement lives in EntityManagerImpl.executeTransition.
+    public UUID stageItemChange(UUID itemId, Map<UUID, Object> propertiesDiff, Map<UUID, UUID> stateChanges,
+                                 Set<UUID> stateMachinesEnded, UUID transactionId) {
         UUID itemTypeId = findItemTypeId(itemId).orElseThrow();
 
         var current = jdbcClient.sql("""
@@ -719,6 +722,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
 
         Map<String, Object> mergedStates = new HashMap<>(current.states());
         stateChanges.forEach((stateMachineId, stateId) -> mergedStates.put(stateMachineId.toString(), Map.of("currentStateId", stateId.toString())));
+        stateMachinesEnded.forEach(stateMachineId -> mergedStates.remove(stateMachineId.toString()));
 
         return insertItemRow(itemId, itemTypeId, mergedProperties, mergedStates, transactionId);
     }
@@ -1258,6 +1262,29 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                 .orElseThrow(() -> new IllegalArgumentException("Unknown state: " + stateName));
     }
 
+    // The item's current state id per state machine it is participating in (empty for machines it
+    // isn't in). Reads the committed register row's states JSONB, shape
+    // { "<stateMachineId>": { "currentStateId": "<stateId>" } }.
+    public Map<UUID, UUID> currentStateIds(UUID itemId) {
+        UUID itemTypeId = findItemTypeId(itemId).orElseThrow(() -> new IllegalArgumentException("Unknown item: " + itemId));
+        String statesJson = jdbcClient.sql("""
+                SELECT rt.states::text AS states
+                FROM register_item ri
+                JOIN %s rt ON rt.register_item_id = ri.id
+                WHERE ri.item_id = :itemId AND ri.state = 'COMMITTED'
+                """.formatted(tableNameFor(itemTypeId)))
+                .param(PARAM_ITEM_ID, itemId)
+                .query(String.class).optional().orElse("{}");
+        Map<String, Object> byId = parseJsonb(statesJson);
+        Map<UUID, UUID> result = new HashMap<>();
+        byId.forEach((smId, entry) -> {
+            if (entry instanceof Map<?, ?> m && m.get("currentStateId") != null) {
+                result.put(UUID.fromString(smId), UUID.fromString(m.get("currentStateId").toString()));
+            }
+        });
+        return result;
+    }
+
     // Converts an id-keyed properties map (as read straight from the register's JSONB, always
     // flat -- storage never nests) into the nested name-keyed map a client actually wants to see,
     // by walking each stored leaf's full path and inserting it at the right depth, creating
@@ -1628,7 +1655,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                             raw.itemType(),
                             props,
                             linksByItem.getOrDefault(raw.registerItemId(), Map.of()),
-                            buildProjectedItemStates(raw.states(), stateMachines),
+                            buildProjectedItemStates(raw.states(), stateMachines, markerIds, permissions),
                             itemPermissions,
                             computeDisplayLabel(raw.itemId(), props, displayLabelPatterns.get(raw.itemType())),
                             markerNames);
@@ -1636,29 +1663,52 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                 .toList();
     }
 
-    // Resolves the register's id-keyed states storage back to names for the client. Returns null
-    // (not an empty map) when the item type has no state machines, or none is recorded.
-    private Map<String, ProjectedItemState> buildProjectedItemStates(Map<String, Object> statesById, List<AdminStateMachineView> stateMachines) {
-        if (stateMachines == null || stateMachines.isEmpty() || statesById == null || statesById.isEmpty()) {
+    // One ProjectedItemState per state machine on the item's type (null only when the type has no
+    // machines at all). Active machines carry currentState + the outgoing transitions the principal
+    // may execute; inactive ones carry startable (may the principal begin it).
+    private Map<String, ProjectedItemState> buildProjectedItemStates(Map<String, Object> statesById,
+            List<AdminStateMachineView> stateMachines, Set<UUID> markerIds, RequestPermissionContext permissions) {
+        if (stateMachines == null || stateMachines.isEmpty()) {
             return null;
         }
+        Map<String, Object> states = statesById == null ? Map.of() : statesById;
+        Set<UUID> startGrantedSmIds = permissions.superuser() ? Set.of()
+                : unionGrantedIds(markerIds, permissions.stateMachineStartGrantsByMarker());
+        Set<UUID> executeGrantedTransitionIds = permissions.superuser() ? Set.of()
+                : unionGrantedIds(markerIds, permissions.transitionExecuteGrantsByMarker());
+
         Map<String, ProjectedItemState> result = new LinkedHashMap<>();
         for (AdminStateMachineView machine : stateMachines) {
-            resolveCurrentStateName(machine, statesById.get(machine.id().toString()))
-                    // A dangling id (the state was deleted from the schema after this row was
-                    // written) is silently dropped, same as namesForIds does for properties.
-                    .ifPresent(currentStateName -> result.put(machine.name(), new ProjectedItemState(currentStateName, null)));
+            Optional<AdminStateView> currentState = currentStateOf(machine, states.get(machine.id().toString()));
+            if (currentState.isPresent()) {
+                AdminStateView cs = currentState.get();
+                Map<UUID, String> kindByStateId = machine.states().stream()
+                        .collect(Collectors.toMap(AdminStateView::id, AdminStateView::kind));
+                List<AvailableTransition> available = cs.transitions().stream()
+                        .filter(t -> permissions.superuser() || executeGrantedTransitionIds.contains(t.id()))
+                        .map(t -> new AvailableTransition(t.id(), t.name(), t.toStateName(),
+                                kindByStateId.getOrDefault(t.toStateId(), STATE_KIND_NORMAL)))
+                        .toList();
+                result.put(machine.name(), new ProjectedItemState(cs.name(), null, false, available));
+            } else {
+                boolean startable = permissions.superuser() || startGrantedSmIds.contains(machine.id());
+                result.put(machine.name(), new ProjectedItemState(null, null, startable, List.of()));
+            }
         }
-        return result.isEmpty() ? null : result;
+        return result;
     }
 
-    private Optional<String> resolveCurrentStateName(AdminStateMachineView machine, Object rawStateEntry) {
+    private static final String STATE_KIND_NORMAL = "NORMAL";
+
+    // The item's current AdminStateView in this machine, or empty when the machine isn't active
+    // (or the recorded state id no longer exists in the schema -- a dangling id is dropped, same
+    // as namesForIds does for properties).
+    private Optional<AdminStateView> currentStateOf(AdminStateMachineView machine, Object rawStateEntry) {
         if (!(rawStateEntry instanceof Map<?, ?> stateEntry)) return Optional.empty();
         Object currentStateId = stateEntry.get("currentStateId");
         if (currentStateId == null) return Optional.empty();
         return machine.states().stream()
                 .filter(s -> s.id().toString().equals(currentStateId.toString()))
-                .map(AdminStateView::name)
                 .findFirst();
     }
 

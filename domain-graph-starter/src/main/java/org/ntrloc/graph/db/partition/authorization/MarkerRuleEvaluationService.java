@@ -127,7 +127,7 @@ public class MarkerRuleEvaluationService {
         markersAdded.addAll(toAdd);
         Set<MarkerAttribution> markersRemoved = new HashSet<>(e.markersRemoved());
         markersRemoved.addAll(toRemove);
-        return new ItemUpdateEntry(e.itemId(), e.properties(), e.stateChanges(), markersAdded, markersRemoved);
+        return new ItemUpdateEntry(e.itemId(), e.properties(), e.stateChanges(), e.stateMachinesEnded(), markersAdded, markersRemoved);
     }
 
     private Set<UUID> desiredMarkerIds(AuthorizationRepository.MarkerRuleRow rule, UUID itemTypeId, Map<String, Object> propertiesByName) {

@@ -29,11 +29,11 @@ public class MarkerAssignmentService {
     }
 
     public void addItemMarker(UUID itemId, UUID markerId, String actorExternalId, String reason) {
-        commit(List.of(new ItemUpdateEntry(itemId, Map.of(), Map.of(), Set.of(manual(markerId, actorExternalId, reason)), Set.of())), actorExternalId);
+        commit(List.of(new ItemUpdateEntry(itemId, Map.of(), Map.of(), Set.of(), Set.of(manual(markerId, actorExternalId, reason)), Set.of())), actorExternalId);
     }
 
     public void removeItemMarker(UUID itemId, UUID markerId, String actorExternalId, String reason) {
-        commit(List.of(new ItemUpdateEntry(itemId, Map.of(), Map.of(), Set.of(), Set.of(manual(markerId, actorExternalId, reason)))), actorExternalId);
+        commit(List.of(new ItemUpdateEntry(itemId, Map.of(), Map.of(), Set.of(), Set.of(), Set.of(manual(markerId, actorExternalId, reason)))), actorExternalId);
     }
 
     private ManuallyAppliedMarker manual(UUID markerId, String actorExternalId, String reason) {

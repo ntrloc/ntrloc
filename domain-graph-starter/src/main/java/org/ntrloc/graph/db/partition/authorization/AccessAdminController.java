@@ -294,6 +294,47 @@ public class AccessAdminController {
         return ResponseEntity.noContent().build();
     }
 
+    // --- Group marker-scoped state-machine:start grants (existence-only, mirrors transitions above) ---
+
+    @GetMapping("/groups/{groupId}/markers/{markerId}/state-machines/start")
+    Set<UUID> getGroupMarkerStateMachineStartGrants(@PathVariable("groupId") UUID groupId,
+                                                     @PathVariable("markerId") UUID markerId,
+                                                     ServerHttpRequest request, Authentication authentication) {
+        requireAdmin(request, authentication);
+        securityRepo.findGroupById(groupId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, GROUP_NOT_FOUND));
+
+        return authRepo.getStateMachineStartGrantsForMarker(markerId, GROUP_PRINCIPAL_TYPE, groupId);
+    }
+
+    @PostMapping("/groups/{groupId}/markers/{markerId}/state-machines/{stateMachineId}/start")
+    ResponseEntity<Void> grantGroupMarkerStateMachineStart(@PathVariable("groupId") UUID groupId,
+                                                            @PathVariable("markerId") UUID markerId,
+                                                            @PathVariable("stateMachineId") UUID stateMachineId,
+                                                            ServerHttpRequest request, Authentication authentication) {
+        requireAdmin(request, authentication);
+        securityRepo.findGroupById(groupId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, GROUP_NOT_FOUND));
+
+        UUID markerGrantId = authRepo.ensureMarkerGrant(markerId, GROUP_PRINCIPAL_TYPE, groupId);
+        authRepo.grantStateMachineStart(markerGrantId, stateMachineId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/groups/{groupId}/markers/{markerId}/state-machines/{stateMachineId}/start")
+    ResponseEntity<Void> revokeGroupMarkerStateMachineStart(@PathVariable("groupId") UUID groupId,
+                                                             @PathVariable("markerId") UUID markerId,
+                                                             @PathVariable("stateMachineId") UUID stateMachineId,
+                                                             ServerHttpRequest request, Authentication authentication) {
+        requireAdmin(request, authentication);
+        securityRepo.findGroupById(groupId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, GROUP_NOT_FOUND));
+
+        authRepo.findMarkerGrant(markerId, GROUP_PRINCIPAL_TYPE, groupId)
+                .ifPresent(markerGrantId -> authRepo.revokeStateMachineStart(markerGrantId, stateMachineId));
+        return ResponseEntity.noContent().build();
+    }
+
     // --- User effective permissions ---
 
     @GetMapping("/users/{userId}/permissions")

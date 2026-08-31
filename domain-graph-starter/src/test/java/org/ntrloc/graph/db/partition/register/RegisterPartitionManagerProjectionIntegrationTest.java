@@ -726,6 +726,31 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
     }
 
     @Test
+    void projection_forAnItemNotInAMachine_surfacesTheMachineAsStartable() {
+        UUID bookId = createBook("Dune", 400, true, "Fiction");
+
+        var book = registerPartitionManager.projectOne(fixture.bookTypeId(), bookId, "http://binary").orElseThrow();
+        var s = book.states().get(RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE);
+        assertThat(s).isNotNull();
+        assertThat(s.currentState()).isNull();
+        assertThat(s.startable()).isTrue(); // superuser
+        assertThat(s.availableTransitions()).isEmpty();
+    }
+
+    @Test
+    void projection_forAnActiveMachine_listsTheCurrentStatesOutgoingTransitions() {
+        UUID bookId = createBook("Dune", 400, true, "Fiction");
+        entityManager.setItemState(bookId, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE,
+                RegisterProjectionTestDomainInitializer.OUT_OF_STOCK);
+
+        var book = registerPartitionManager.projectOne(fixture.bookTypeId(), bookId, "http://binary").orElseThrow();
+        var s = book.states().get(RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE);
+        assertThat(s.startable()).isFalse();
+        assertThat(s.availableTransitions()).extracting(t -> t.name())
+                .contains("Restock", "Discontinue"); // OutOfStock's outgoing transitions
+    }
+
+    @Test
     void setItemStateForUnknownItem_throwsIllegalArgumentException() {
         assertThatThrownBy(() -> entityManager.setItemState(UUID.randomUUID(),
                 RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, RegisterProjectionTestDomainInitializer.OUT_OF_STOCK))

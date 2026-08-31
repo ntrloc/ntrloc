@@ -44,7 +44,9 @@ public class AuthorizationCacheManager {
             Map<PrincipalKey, Map<UUID, Set<UUID>>> linkPropertyReadGrants,
             Map<PrincipalKey, Map<UUID, Set<UUID>>> linkPropertyWriteGrants,
             Map<PrincipalKey, Map<UUID, Set<UUID>>> linkPerspectiveReadGrants,
-            Map<PrincipalKey, Map<UUID, Set<UUID>>> linkPerspectiveDeleteGrants) {
+            Map<PrincipalKey, Map<UUID, Set<UUID>>> linkPerspectiveDeleteGrants,
+            Map<PrincipalKey, Map<UUID, Set<UUID>>> transitionExecuteGrants,
+            Map<PrincipalKey, Map<UUID, Set<UUID>>> stateMachineStartGrants) {
     }
 
     private final AuthorizationRepository authRepo;
@@ -109,9 +111,20 @@ public class AuthorizationCacheManager {
             if (row.canDelete()) addToNestedSet(linkPerspectiveDeleteGrants, key, row.markerId(), row.perspectiveId());
         }
 
+        // Existence-only grants (transition:execute, state-machine:start): a row present == granted.
+        Map<PrincipalKey, Map<UUID, Set<UUID>>> transitionExecuteGrants = new HashMap<>();
+        for (var row : authRepo.getAllTransitionGrants()) {
+            addToNestedSet(transitionExecuteGrants, new PrincipalKey(row.principalType(), row.principalId()), row.markerId(), row.targetId());
+        }
+        Map<PrincipalKey, Map<UUID, Set<UUID>>> stateMachineStartGrants = new HashMap<>();
+        for (var row : authRepo.getAllStateMachineStartGrants()) {
+            addToNestedSet(stateMachineStartGrants, new PrincipalKey(row.principalType(), row.principalId()), row.markerId(), row.targetId());
+        }
+
         cache.set(new Snapshot(itemTypeGrants, itemReadMarkers, itemDeleteMarkers,
                 propertyReadGrants, propertyWriteGrants, linkPropertyReadGrants, linkPropertyWriteGrants,
-                linkPerspectiveReadGrants, linkPerspectiveDeleteGrants));
+                linkPerspectiveReadGrants, linkPerspectiveDeleteGrants,
+                transitionExecuteGrants, stateMachineStartGrants));
     }
 
     private void addToNestedSet(Map<PrincipalKey, Map<UUID, Set<UUID>>> index, PrincipalKey key, UUID markerId, UUID objectId) {
@@ -170,6 +183,16 @@ public class AuthorizationCacheManager {
     /** markerId -> perspectiveIds this marker grants link:delete for. */
     public Map<UUID, Set<UUID>> getLinkPerspectiveDeleteGrantsByMarker(UUID userId, Set<UUID> groupIds) {
         return effectiveNestedSet(cache.get().linkPerspectiveDeleteGrants(), userId, groupIds);
+    }
+
+    /** markerId -> transition ids this marker grants transition:execute for. */
+    public Map<UUID, Set<UUID>> getTransitionExecuteGrantsByMarker(UUID userId, Set<UUID> groupIds) {
+        return effectiveNestedSet(cache.get().transitionExecuteGrants(), userId, groupIds);
+    }
+
+    /** markerId -> state-machine ids this marker grants state-machine:start for. */
+    public Map<UUID, Set<UUID>> getStateMachineStartGrantsByMarker(UUID userId, Set<UUID> groupIds) {
+        return effectiveNestedSet(cache.get().stateMachineStartGrants(), userId, groupIds);
     }
 
     private Set<UUID> effectiveSet(Map<PrincipalKey, Set<UUID>> index, UUID userId, Set<UUID> groupIds) {

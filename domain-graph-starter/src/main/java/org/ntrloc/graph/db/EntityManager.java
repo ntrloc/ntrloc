@@ -38,4 +38,16 @@ public interface EntityManager {
     // are audited and available as marker-rule trigger input once that system exists, without
     // waiting on transition validation to be designed first.
     void setItemState(UUID itemId, String stateMachineName, String stateName);
+
+    // Begin an item's participation in a state machine: enters the state its START pseudostate
+    // points at. Enforces state-machine:start (marker-scoped) and rejects if the machine is already
+    // active on the item or has no wired start transition. No process execution yet -- v1 just moves
+    // the current state. Throws ResponseStatusException with the appropriate status on failure.
+    void startStateMachine(UUID itemId, String stateMachineName, NtrlocPrincipal principal);
+
+    // Advance an active state machine along one of the current state's outgoing transitions
+    // (identified by transition id). Enforces transition:execute and the transition's guard
+    // (authoritatively), and detaches the item from the machine when the target is the END
+    // pseudostate. No exit/action/entry process execution yet.
+    void executeTransition(UUID itemId, String stateMachineName, UUID transitionId, NtrlocPrincipal principal);
 }

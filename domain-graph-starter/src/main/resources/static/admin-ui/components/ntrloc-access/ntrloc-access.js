@@ -425,6 +425,7 @@ class NtrlocAccess extends HTMLElement {
     this.linkPropertyGrants = []; // same shape, over a link type's own properties
     this.linkPerspectiveGrants = []; // [{perspectiveId, canCreate, canRead, canDelete}]
     this.transitionGrants = new Set(); // granted transition ids (existence-only)
+    this.stateMachineStartGrants = new Set(); // granted state-machine ids for state-machine:start
     this.expandedGrantContainers = new Set(); // OBJECT-property ids expanded, shared across item/link property trees
     this.expandedGrantSections = new Set(['properties', 'links', 'statemachines']); // Properties/Links/State Machines panels
     this.expandedGrantPerspectives = new Set(); // perspective ids expanded in the Links section
@@ -496,6 +497,13 @@ class NtrlocAccess extends HTMLElement {
     } catch (e) { this.transitionGrants = new Set(); }
   }
 
+  async fetchMarkerStateMachineStartGrants(markerId) {
+    try {
+      const res = await fetch(`/api/admin/groups/${this.selectedId}/markers/${markerId}/state-machines/start`, { credentials: 'include' });
+      this.stateMachineStartGrants = res.ok ? new Set(await res.json()) : new Set();
+    } catch (e) { this.stateMachineStartGrants = new Set(); }
+  }
+
   async fetchUsers() {
     try {
       const res = await fetch('/api/admin/users', { credentials: 'include' });
@@ -531,6 +539,7 @@ class NtrlocAccess extends HTMLElement {
     this.linkPropertyGrants = [];
     this.linkPerspectiveGrants = [];
     this.transitionGrants = new Set();
+    this.stateMachineStartGrants = new Set();
     this.error = '';
     await this.fetchGroupMembers();
     await this.fetchGroupPermissions();
@@ -545,6 +554,7 @@ class NtrlocAccess extends HTMLElement {
     this.linkPropertyGrants = [];
     this.linkPerspectiveGrants = [];
     this.transitionGrants = new Set();
+    this.stateMachineStartGrants = new Set();
     this.expandedGrantContainers = new Set();
     this.expandedGrantPerspectives = new Set();
     this.expandedGrantStateMachines = new Set();
@@ -607,6 +617,7 @@ class NtrlocAccess extends HTMLElement {
       this.fetchMarkerLinkPropertyGrants(markerId),
       this.fetchMarkerLinkPerspectiveGrants(markerId),
       this.fetchMarkerTransitionGrants(markerId),
+      this.fetchMarkerStateMachineStartGrants(markerId),
     ]);
     this.render();
   }
@@ -754,6 +765,17 @@ class NtrlocAccess extends HTMLElement {
         method: granted ? 'DELETE' : 'POST', credentials: 'include'
       });
       await this.fetchMarkerTransitionGrants(this.selectedMarkerId);
+      this.render();
+    } catch (e) { this.error = e.message; this.render(); }
+  }
+
+  async toggleStateMachineStartGrant(machineId) {
+    const granted = this.stateMachineStartGrants.has(machineId);
+    try {
+      await fetch(`/api/admin/groups/${this.selectedId}/markers/${this.selectedMarkerId}/state-machines/${machineId}/start`, {
+        method: granted ? 'DELETE' : 'POST', credentials: 'include'
+      });
+      await this.fetchMarkerStateMachineStartGrants(this.selectedMarkerId);
       this.render();
     } catch (e) { this.error = e.message; this.render(); }
   }
@@ -1267,7 +1289,13 @@ class NtrlocAccess extends HTMLElement {
           </svg>
         </button>
       `;
-      const machineRow = `<tr><td>${chevron}${this.escapeHtml(m.name)}</td><td></td><td></td><td></td><td></td></tr>`;
+      const startGranted = this.stateMachineStartGrants.has(m.id);
+      const machineRow = `<tr>
+        <td>${chevron}${this.escapeHtml(m.name)}</td>
+        <td></td><td></td>
+        <td style="text-align:right;color:var(--muted);font-size:11px">start</td>
+        <td><button class="perm-check ${startGranted ? 'granted' : ''}" data-sm-start-grant="${m.id}" title="state-machine:start">${startGranted ? '&#10003;' : ''}</button></td>
+      </tr>`;
 
       let transitionRows = '';
       if (expanded) {
@@ -1291,7 +1319,7 @@ class NtrlocAccess extends HTMLElement {
 
     return `
       <table class="access-table">
-        <thead><tr><th>State Machine</th><th>From State</th><th>Transition</th><th>To State</th><th>Execute</th></tr></thead>
+        <thead><tr><th>State Machine</th><th>From State</th><th>Transition</th><th>To State</th><th>Grant</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     `;
@@ -1600,6 +1628,9 @@ class NtrlocAccess extends HTMLElement {
     });
     this.querySelectorAll('[data-toggle-grant-statemachine]').forEach(el => {
       el.addEventListener('click', () => this.toggleGrantStateMachine(el.dataset.toggleGrantStatemachine));
+    });
+    this.querySelectorAll('[data-sm-start-grant]').forEach(el => {
+      el.addEventListener('click', () => this.toggleStateMachineStartGrant(el.dataset.smStartGrant));
     });
     this.querySelectorAll('[data-transition-grant]').forEach(el => {
       el.addEventListener('click', () => this.toggleTransitionGrant(el.dataset.transitionGrant));

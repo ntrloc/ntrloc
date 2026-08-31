@@ -150,7 +150,7 @@ public class MutationRequestProcessor {
             return;
         }
         Map<UUID, Object> properties = resolveItemPropertyIds(itemTypeId.get(), m.properties(), path + PROPERTIES_PATH_SUFFIX, errors);
-        entries.add(new ItemUpdateEntry(m.itemId(), properties, Map.of(), Set.of(), Set.of()));
+        entries.add(new ItemUpdateEntry(m.itemId(), properties, Map.of(), Set.of(), Set.of(), Set.of()));
         itemResults.add(new ItemMutationResult(null, m.itemId(), MutationOperation.UPDATE));
     }
 

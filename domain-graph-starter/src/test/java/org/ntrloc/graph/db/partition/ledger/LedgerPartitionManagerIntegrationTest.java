@@ -27,12 +27,12 @@ class LedgerPartitionManagerIntegrationTest extends AbstractIntegrationTest {
         ledgerPartitionManager.append(List.of(new ItemCreateEntry(itemId, itemTypeId, Map.of(namePropertyId, "Widget"), Map.of(), Set.of())), txn1, null);
         ledgerPartitionManager.commit(txn1, UUID.randomUUID());
 
-        ledgerPartitionManager.append(List.of(new ItemUpdateEntry(itemId, Map.of(namePropertyId, "Widget Pro"), Map.of(), Set.of(), Set.of())), txn2, null);
+        ledgerPartitionManager.append(List.of(new ItemUpdateEntry(itemId, Map.of(namePropertyId, "Widget Pro"), Map.of(), Set.of(), Set.of(), Set.of())), txn2, null);
         ledgerPartitionManager.commit(txn2, UUID.randomUUID());
 
         assertThat(ledgerPartitionManager.readItemStream(itemId)).containsExactly(
                 new ItemCreateEntry(itemId, itemTypeId, Map.of(namePropertyId, "Widget"), Map.of(), Set.of()),
-                new ItemUpdateEntry(itemId, Map.of(namePropertyId, "Widget Pro"), Map.of(), Set.of(), Set.of())
+                new ItemUpdateEntry(itemId, Map.of(namePropertyId, "Widget Pro"), Map.of(), Set.of(), Set.of(), Set.of())
         );
     }
 
@@ -101,11 +101,11 @@ class LedgerPartitionManagerIntegrationTest extends AbstractIntegrationTest {
         UUID txn = UUID.randomUUID();
         RuleAppliedMarker attributed = new RuleAppliedMarker(markerId, ruleId, 3);
 
-        ledgerPartitionManager.append(List.of(new ItemUpdateEntry(itemId, Map.of(), Map.of(), Set.of(attributed), Set.of())), txn, null);
+        ledgerPartitionManager.append(List.of(new ItemUpdateEntry(itemId, Map.of(), Map.of(), Set.of(), Set.of(attributed), Set.of())), txn, null);
         ledgerPartitionManager.commit(txn, UUID.randomUUID());
 
         assertThat(ledgerPartitionManager.readItemStream(itemId)).containsExactly(
-                new ItemUpdateEntry(itemId, Map.of(), Map.of(), Set.of(attributed), Set.of())
+                new ItemUpdateEntry(itemId, Map.of(), Map.of(), Set.of(), Set.of(attributed), Set.of())
         );
     }
 
@@ -118,11 +118,11 @@ class LedgerPartitionManagerIntegrationTest extends AbstractIntegrationTest {
         UUID txn = UUID.randomUUID();
         ManuallyAppliedMarker attributed = new ManuallyAppliedMarker(markerId, "some-user", "flagged by pre-production naming rule");
 
-        ledgerPartitionManager.append(List.of(new ItemUpdateEntry(itemId, Map.of(), Map.of(), Set.of(attributed), Set.of())), txn, null);
+        ledgerPartitionManager.append(List.of(new ItemUpdateEntry(itemId, Map.of(), Map.of(), Set.of(), Set.of(attributed), Set.of())), txn, null);
         ledgerPartitionManager.commit(txn, UUID.randomUUID());
 
         assertThat(ledgerPartitionManager.readItemStream(itemId)).containsExactly(
-                new ItemUpdateEntry(itemId, Map.of(), Map.of(), Set.of(attributed), Set.of())
+                new ItemUpdateEntry(itemId, Map.of(), Map.of(), Set.of(), Set.of(attributed), Set.of())
         );
     }
 

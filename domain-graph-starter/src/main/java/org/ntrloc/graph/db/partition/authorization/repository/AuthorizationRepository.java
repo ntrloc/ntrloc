@@ -49,6 +49,10 @@ public class AuthorizationRepository {
 
     public record LinkPerspectiveGrantRow(String principalType, UUID principalId, UUID markerId, UUID perspectiveId, boolean canRead, boolean canDelete) {}
 
+    // Raw row for the two existence-only grant kinds (transition:execute, state-machine:start):
+    // targetId is a transition id or a state-machine id respectively.
+    public record MarkerScopedGrantRow(String principalType, UUID principalId, UUID markerId, UUID targetId) {}
+
     public record PropertyAccessRow(UUID propertyId, boolean canRead, boolean canWrite) {}
 
     // decisionKey is a Flowable DMN decision key (see MarkerRuleEvaluationService) -- deployed/
@@ -398,6 +402,24 @@ public class AuthorizationRepository {
         cacheManager.refreshCache();
     }
 
+    // Plain existence grant -- "start" is a single boolean-shaped verb, like transition:execute.
+    public void grantStateMachineStart(UUID markerGrantId, UUID stateMachineId) {
+        jdbcClient.sql("""
+                INSERT INTO marker_grant_state_machine_start (marker_grant_id, state_machine_id) VALUES (:markerGrantId, :stateMachineId)
+                ON CONFLICT DO NOTHING
+                """)
+                .param(PARAM_MARKER_GRANT_ID, markerGrantId).param("stateMachineId", stateMachineId)
+                .update();
+        cacheManager.refreshCache();
+    }
+
+    public void revokeStateMachineStart(UUID markerGrantId, UUID stateMachineId) {
+        jdbcClient.sql("DELETE FROM marker_grant_state_machine_start WHERE marker_grant_id = :markerGrantId AND state_machine_id = :stateMachineId")
+                .param(PARAM_MARKER_GRANT_ID, markerGrantId).param("stateMachineId", stateMachineId)
+                .update();
+        cacheManager.refreshCache();
+    }
+
     public void deleteMarkerGrant(UUID markerGrantId) {
         jdbcClient.sql("DELETE FROM marker_grant WHERE id = :id")
                 .param("id", markerGrantId).update();
@@ -485,6 +507,19 @@ public class AuthorizationRepository {
                 .list());
     }
 
+    // Existence-only, same shape as getTransitionGrantsForMarker -- the granted state-machine ids.
+    public Set<UUID> getStateMachineStartGrantsForMarker(UUID markerId, String principalType, UUID principalId) {
+        return Set.copyOf(jdbcClient.sql("""
+                SELECT mgs.state_machine_id
+                FROM marker_grant_state_machine_start mgs
+                JOIN marker_grant mg ON mg.id = mgs.marker_grant_id
+                WHERE mg.marker_id = :markerId AND mg.principal_type = :principalType AND mg.principal_id = :principalId
+                """)
+                .param(PARAM_MARKER_ID, markerId).param(PARAM_PRINCIPAL_TYPE, principalType).param(PARAM_PRINCIPAL_ID, principalId)
+                .query((rs, n) -> rs.getObject("state_machine_id", UUID.class))
+                .list());
+    }
+
     // --- Bulk reads for AuthorizationCacheManager.rebuildCache() -- never called elsewhere ---
 
     public List<ItemTypeGrantRow> getAllItemTypeGrants() {
@@ -538,6 +573,28 @@ public class AuthorizationRepository {
                 .query((rs, n) -> new LinkPerspectiveGrantRow(
                         rs.getString(COL_PRINCIPAL_TYPE), rs.getObject(COL_PRINCIPAL_ID, UUID.class), rs.getObject(COL_MARKER_ID, UUID.class),
                         rs.getObject(COL_PERSPECTIVE_ID, UUID.class), rs.getBoolean(COL_CAN_READ), rs.getBoolean("can_delete")))
+                .list();
+    }
+
+    public List<MarkerScopedGrantRow> getAllTransitionGrants() {
+        return jdbcClient.sql("""
+                SELECT mg.principal_type, mg.principal_id, mg.marker_id, mgt.transition_id
+                FROM marker_grant_transition mgt JOIN marker_grant mg ON mg.id = mgt.marker_grant_id
+                """)
+                .query((rs, n) -> new MarkerScopedGrantRow(
+                        rs.getString(COL_PRINCIPAL_TYPE), rs.getObject(COL_PRINCIPAL_ID, UUID.class),
+                        rs.getObject(COL_MARKER_ID, UUID.class), rs.getObject("transition_id", UUID.class)))
+                .list();
+    }
+
+    public List<MarkerScopedGrantRow> getAllStateMachineStartGrants() {
+        return jdbcClient.sql("""
+                SELECT mg.principal_type, mg.principal_id, mg.marker_id, mgs.state_machine_id
+                FROM marker_grant_state_machine_start mgs JOIN marker_grant mg ON mg.id = mgs.marker_grant_id
+                """)
+                .query((rs, n) -> new MarkerScopedGrantRow(
+                        rs.getString(COL_PRINCIPAL_TYPE), rs.getObject(COL_PRINCIPAL_ID, UUID.class),
+                        rs.getObject(COL_MARKER_ID, UUID.class), rs.getObject("state_machine_id", UUID.class)))
                 .list();
     }
 }

@@ -74,7 +74,7 @@ class ItemStateChangeLedgerIntegrationTest extends AbstractIntegrationTest {
                 RegisterProjectionTestDomainInitializer.OUT_OF_STOCK);
 
         UUID updateTxn = UUID.randomUUID();
-        coordinator.prepare(List.of(new ItemUpdateEntry(bookId, Map.of(fixture.pageCountPropertyId(), 250), Map.of(), Set.of(), Set.of())), updateTxn, null);
+        coordinator.prepare(List.of(new ItemUpdateEntry(bookId, Map.of(fixture.pageCountPropertyId(), 250), Map.of(), Set.of(), Set.of(), Set.of())), updateTxn, null);
         coordinator.commit(updateTxn, UUID.randomUUID());
 
         var book = registerPartitionManager.projectOne(fixture.bookTypeId(), bookId, "http://binary").orElseThrow();
@@ -87,7 +87,7 @@ class ItemStateChangeLedgerIntegrationTest extends AbstractIntegrationTest {
     void stateChangeAfterPropertyUpdate_doesNotWipeExistingProperties() {
         UUID bookId = createBook("Symmetric Test Book");
         UUID updateTxn = UUID.randomUUID();
-        coordinator.prepare(List.of(new ItemUpdateEntry(bookId, Map.of(fixture.pageCountPropertyId(), 400), Map.of(), Set.of(), Set.of())), updateTxn, null);
+        coordinator.prepare(List.of(new ItemUpdateEntry(bookId, Map.of(fixture.pageCountPropertyId(), 400), Map.of(), Set.of(), Set.of(), Set.of())), updateTxn, null);
         coordinator.commit(updateTxn, UUID.randomUUID());
 
         entityManager.setItemState(bookId, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE,
@@ -113,7 +113,7 @@ class ItemStateChangeLedgerIntegrationTest extends AbstractIntegrationTest {
 
         UUID txn = UUID.randomUUID();
         coordinator.prepare(List.of(new ItemUpdateEntry(bookId, Map.of(fixture.pageCountPropertyId(), 500),
-                Map.of(stateMachineId, stateId), Set.of(), Set.of())), txn, null);
+                Map.of(stateMachineId, stateId), Set.of(), Set.of(), Set.of())), txn, null);
         coordinator.commit(txn, UUID.randomUUID());
 
         var book = registerPartitionManager.projectOne(fixture.bookTypeId(), bookId, "http://binary").orElseThrow();

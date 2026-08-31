@@ -44,6 +44,23 @@ public class EntityController {
 
     record SetItemStateRequest(String stateMachineName, String stateName) {}
 
+    // Begin the item's participation in a state machine (enters the START target state).
+    @PostMapping("/{itemId}/state-machines/{stateMachineName}/start")
+    ResponseEntity<Void> startStateMachine(@PathVariable UUID itemId, @PathVariable String stateMachineName,
+                                            ServerHttpRequest request, Authentication authentication) {
+        entityManager.startStateMachine(itemId, stateMachineName, principalResolver.resolve(request, authentication));
+        return ResponseEntity.noContent().build();
+    }
+
+    // Advance an active state machine along one outgoing transition (by id).
+    @PostMapping("/{itemId}/state-machines/{stateMachineName}/transitions/{transitionId}")
+    ResponseEntity<Void> executeTransition(@PathVariable UUID itemId, @PathVariable String stateMachineName,
+                                            @PathVariable UUID transitionId,
+                                            ServerHttpRequest request, Authentication authentication) {
+        entityManager.executeTransition(itemId, stateMachineName, transitionId, principalResolver.resolve(request, authentication));
+        return ResponseEntity.noContent().build();
+    }
+
     private String extractBaseUrl(ServerHttpRequest request) {
         var uri = request.getURI();
         int port = uri.getPort();

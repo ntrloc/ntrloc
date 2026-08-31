@@ -613,7 +613,9 @@ public class SchemaRepository {
     }
 
     public String serializeGuardCondition(JsonNode node) {
-        if (node == null) return null;
+        // A JSON null (NullNode, e.g. from a REST payload's "guardCondition": null) is "no guard",
+        // same as a Java null -- store real SQL NULL, not the string "null".
+        if (node == null || node.isNull()) return null;
         return node.toString();
     }
 }

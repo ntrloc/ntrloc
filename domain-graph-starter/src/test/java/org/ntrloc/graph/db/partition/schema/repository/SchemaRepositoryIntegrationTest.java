@@ -292,6 +292,12 @@ class SchemaRepositoryIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void serializeGuardCondition_forAJsonNullNode_returnsNull() {
+        // A REST payload's "guardCondition": null deserializes to a NullNode, not Java null.
+        assertThat(schemaRepo.serializeGuardCondition(schemaRepo.parseGuardCondition("null"))).isNull();
+    }
+
+    @Test
     void serializeGuardCondition_roundTripsWithParseGuardCondition() {
         var node = schemaRepo.parseGuardCondition("{\"op\":\"OR\"}");
         assertThat(schemaRepo.serializeGuardCondition(node)).isEqualTo("{\"op\":\"OR\"}");

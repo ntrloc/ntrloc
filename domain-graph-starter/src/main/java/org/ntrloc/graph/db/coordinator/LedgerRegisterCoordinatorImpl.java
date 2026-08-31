@@ -68,8 +68,8 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
         for (LedgerEntry entry : expanded) {
             if (entry instanceof ItemCreateEntry e) {
                 registerPartitionManager.stageItemCreate(e.itemId(), e.itemTypeId(), e.properties(), e.initialStates(), transactionId);
-            } else if (entry instanceof ItemUpdateEntry e && (!e.properties().isEmpty() || !e.stateChanges().isEmpty())) {
-                registerPartitionManager.stageItemChange(e.itemId(), e.properties(), e.stateChanges(), transactionId);
+            } else if (entry instanceof ItemUpdateEntry e && hasRegisterEffect(e)) {
+                registerPartitionManager.stageItemChange(e.itemId(), e.properties(), e.stateChanges(), e.stateMachinesEnded(), transactionId);
             }
         }
         for (LedgerEntry entry : expanded) {
@@ -90,7 +90,7 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
         for (LedgerEntry entry : entries) {
             if (entry instanceof ItemCreateEntry e) {
                 registerPartitionManager.commitItem(e.itemId(), transactionId, commitId);
-            } else if (entry instanceof ItemUpdateEntry e && (!e.properties().isEmpty() || !e.stateChanges().isEmpty())) {
+            } else if (entry instanceof ItemUpdateEntry e && hasRegisterEffect(e)) {
                 registerPartitionManager.commitItem(e.itemId(), transactionId, commitId);
             }
         }
@@ -132,6 +132,13 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
     public void abort(UUID transactionId) {
         registerPartitionManager.discardStaged(transactionId);
         ledgerPartitionManager.abort(transactionId);
+    }
+
+    // An ItemUpdateEntry only needs a staged/committed register row when it actually changes the
+    // register: a property diff, a state change, or a state machine ending (markers apply directly
+    // to the already-committed row and never gate staging).
+    private static boolean hasRegisterEffect(ItemUpdateEntry e) {
+        return !e.properties().isEmpty() || !e.stateChanges().isEmpty() || !e.stateMachinesEnded().isEmpty();
     }
 
     private RegisterLinkEndpoint toRegisterEndpoint(LinkEndpoint endpoint) {

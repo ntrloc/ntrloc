@@ -12,11 +12,17 @@ import java.util.UUID;
 // several independent markers, and two different writers touching different markers in the same
 // transaction must not be able to clobber each other by each submitting "the new complete set."
 //
-// One entry, three optional facets -- not three entry types -- because a coincident change (say,
+// stateMachinesEnded is the counterpart to stateChanges for the END pseudostate: the listed
+// machine ids are removed from the item's _state entirely (the item stops participating), rather
+// than moved to a new current state. No tombstone -- re-entry via START is valid, so "ended" and
+// "never started" are the same register shape.
+//
+// One entry, four optional facets -- not four entry types -- because a coincident change (say,
 // a state transition that also adjusts a property) shows up as one ledger row with multiple
 // populated facets, which is a much stronger and more legible signal of relatedness for an admin
 // reading the ledger than two separate rows correlated only by a shared transaction_id.
 public record ItemUpdateEntry(UUID itemId, Map<UUID, Object> properties, Map<UUID, UUID> stateChanges,
+                               Set<UUID> stateMachinesEnded,
                                Set<MarkerAttribution> markersAdded, Set<MarkerAttribution> markersRemoved) implements LedgerEntry {
 
     // Same null-normalizing compact constructor as ItemCreateEntry, same reason: a stored ledger
@@ -25,6 +31,7 @@ public record ItemUpdateEntry(UUID itemId, Map<UUID, Object> properties, Map<UUI
     public ItemUpdateEntry {
         if (properties == null) properties = Map.of();
         if (stateChanges == null) stateChanges = Map.of();
+        if (stateMachinesEnded == null) stateMachinesEnded = Set.of();
         if (markersAdded == null) markersAdded = Set.of();
         if (markersRemoved == null) markersRemoved = Set.of();
     }

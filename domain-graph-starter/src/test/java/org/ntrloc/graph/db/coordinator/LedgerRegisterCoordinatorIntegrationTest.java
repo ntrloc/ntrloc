@@ -58,7 +58,7 @@ class LedgerRegisterCoordinatorIntegrationTest extends AbstractIntegrationTest {
         Map<UUID, Object> diff = new java.util.HashMap<>();
         diff.put(fixture.namePropertyId(), "Widget Pro");
         diff.put(fixture.colorPropertyId(), null);
-        coordinator.prepare(List.of(new ItemUpdateEntry(itemId, diff, Map.of(), Set.of(), Set.of())), updateTxn, null);
+        coordinator.prepare(List.of(new ItemUpdateEntry(itemId, diff, Map.of(), Set.of(), Set.of(), Set.of())), updateTxn, null);
         coordinator.commit(updateTxn, UUID.randomUUID());
 
         var projected = registerPartitionManager.projectOne(fixture.productTypeId(), itemId, "http://binary").orElseThrow();
@@ -232,7 +232,7 @@ class LedgerRegisterCoordinatorIntegrationTest extends AbstractIntegrationTest {
         // productId's register_item row gets swapped out for a new one on update -- the
         // existing perspective row from the link created above must be repointed at the new
         // row, or this delete-old-committed-row step would hit an FK violation.
-        coordinator.prepare(List.of(new ItemUpdateEntry(productId, Map.of(fixture.namePropertyId(), "Widget Pro"), Map.of(), Set.of(), Set.of())), updateTxn, null);
+        coordinator.prepare(List.of(new ItemUpdateEntry(productId, Map.of(fixture.namePropertyId(), "Widget Pro"), Map.of(), Set.of(), Set.of(), Set.of())), updateTxn, null);
         coordinator.commit(updateTxn, UUID.randomUUID());
 
         var product = registerPartitionManager.projectOne(fixture.productTypeId(), productId, "http://binary").orElseThrow();

@@ -86,6 +86,30 @@ public class PermissionService {
                 cache.getLinkPropertyReadGrantsByMarker(userId, groupIds),
                 cache.getLinkPropertyWriteGrantsByMarker(userId, groupIds),
                 cache.getLinkPerspectiveReadGrantsByMarker(userId, groupIds),
-                cache.getLinkPerspectiveDeleteGrantsByMarker(userId, groupIds));
+                cache.getLinkPerspectiveDeleteGrantsByMarker(userId, groupIds),
+                cache.getTransitionExecuteGrantsByMarker(userId, groupIds),
+                cache.getStateMachineStartGrantsByMarker(userId, groupIds));
+    }
+
+    /** May this principal begin an item carrying {@code itemMarkerIds} in state machine {@code smId}? */
+    public boolean mayStartStateMachine(RequestPermissionContext ctx, Set<UUID> itemMarkerIds, UUID smId) {
+        return ctx.superuser() || anyMarkerGrants(ctx.stateMachineStartGrantsByMarker(), itemMarkerIds, smId);
+    }
+
+    /** May this principal execute {@code transitionId} on an item carrying {@code itemMarkerIds}? */
+    public boolean mayExecuteTransition(RequestPermissionContext ctx, Set<UUID> itemMarkerIds, UUID transitionId) {
+        return ctx.superuser() || anyMarkerGrants(ctx.transitionExecuteGrantsByMarker(), itemMarkerIds, transitionId);
+    }
+
+    private static boolean anyMarkerGrants(java.util.Map<UUID, Set<UUID>> grantsByMarker, Set<UUID> itemMarkerIds, UUID targetId) {
+        for (UUID markerId : itemMarkerIds) {
+            if (grantsByMarker.getOrDefault(markerId, Set.of()).contains(targetId)) return true;
+        }
+        return false;
+    }
+
+    /** The markers currently on this item -- data-sized, never cached (see class comment). */
+    public Set<UUID> markerIdsForItem(UUID itemId) {
+        return repo.getMarkerIdsForItem(itemId);
     }
 }

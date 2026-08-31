@@ -145,7 +145,7 @@ class MarkerAssignmentServiceIntegrationTest extends AbstractIntegrationTest {
         markerAssignmentService.addItemMarker(itemId, markerId, "test-actor", "test reason");
 
         UUID updateTxn = UUID.randomUUID();
-        coordinator.prepare(List.of(new ItemUpdateEntry(itemId, Map.of(fixture.namePropertyId(), "Widget Pro"), Map.of(), Set.of(), Set.of())), updateTxn, null);
+        coordinator.prepare(List.of(new ItemUpdateEntry(itemId, Map.of(fixture.namePropertyId(), "Widget Pro"), Map.of(), Set.of(), Set.of(), Set.of())), updateTxn, null);
         coordinator.commit(updateTxn, UUID.randomUUID());
 
         assertThat(authRepo.getMarkerIdsForItem(itemId)).contains(markerId);

@@ -574,6 +574,60 @@ injectStyles('ntrloc-search-styles', `
     font-weight: 600;
     white-space: nowrap;
   }
+  .sm-section {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 10px 14px;
+    border-top: 1px solid var(--border);
+  }
+  .sm-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .sm-machine {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--muted);
+    min-width: 120px;
+  }
+  .state-chip {
+    padding: 2px 10px;
+    border-radius: 999px;
+    background: rgba(74, 158, 255, 0.12);
+    border: 1px solid rgba(74, 158, 255, 0.4);
+    color: var(--accent);
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .sm-inactive {
+    font-size: 11px;
+    color: var(--muted);
+    font-style: italic;
+  }
+  .sm-start-btn, .sm-transition-btn {
+    padding: 3px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--panel-bg);
+    color: var(--fg);
+    font-size: 11px;
+    cursor: pointer;
+  }
+  .sm-start-btn:hover, .sm-transition-btn:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .sm-transition-btn.is-end {
+    border-style: dashed;
+    color: var(--muted);
+  }
+  .sm-transition-btn.is-end:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
   .add-prop-row button {
     padding: 4px 10px;
     border: 1px dashed var(--border);
@@ -1095,6 +1149,64 @@ class NtrlocSearch extends HTMLElement {
     }
   }
 
+  // item.states is a map keyed by state-machine name: { currentState, startable, availableTransitions }.
+  // Active machines show their current state + a button per transition the caller may execute;
+  // inactive-but-startable machines show a Start button.
+  renderStateSection(item) {
+    const machines = item.states ? Object.entries(item.states) : [];
+    if (machines.length === 0) return '';
+    const rows = machines.map(([name, s]) => {
+      if (s.currentState) {
+        // The button is always the transition's own name. An END-bound transition additionally gets
+        // a marker class so it can read as "this one exits the machine".
+        const buttons = (s.availableTransitions || []).map(t => `
+          <button class="sm-transition-btn ${t.toKind === 'END' ? 'is-end' : ''}" data-action="sm-transition" data-machine="${escapeHtml(name)}" data-transition="${t.id}" title="${t.toKind === 'END' ? 'Exits the state machine' : escapeHtml('→ ' + t.toState)}">
+            ${escapeHtml(t.name)}
+          </button>`).join('');
+        return `<div class="sm-row">
+          <span class="sm-machine">${escapeHtml(name)}</span>
+          <span class="state-chip">${escapeHtml(s.currentState)}</span>
+          ${buttons}
+        </div>`;
+      }
+      if (s.startable) {
+        return `<div class="sm-row">
+          <span class="sm-machine">${escapeHtml(name)}</span>
+          <button class="sm-start-btn" data-action="sm-start" data-machine="${escapeHtml(name)}">Start</button>
+        </div>`;
+      }
+      return `<div class="sm-row">
+        <span class="sm-machine">${escapeHtml(name)}</span>
+        <span class="sm-inactive">not started</span>
+      </div>`;
+    }).join('');
+    return `<div class="sm-section">${rows}</div>`;
+  }
+
+  async startStateMachineForItem(id, itemId, machineName) {
+    try {
+      const response = await fetch(`/api/entity/${itemId}/state-machines/${encodeURIComponent(machineName)}/start`, {
+        method: 'POST', credentials: 'include',
+      });
+      if (!response.ok) throw new Error((await response.text()) || 'Start failed: ' + response.status);
+      this.project(id);
+    } catch (e) {
+      alert('Start failed: ' + e.message);
+    }
+  }
+
+  async executeTransitionForItem(id, itemId, machineName, transitionId) {
+    try {
+      const response = await fetch(`/api/entity/${itemId}/state-machines/${encodeURIComponent(machineName)}/transitions/${transitionId}`, {
+        method: 'POST', credentials: 'include',
+      });
+      if (!response.ok) throw new Error((await response.text()) || 'Transition failed: ' + response.status);
+      this.project(id);
+    } catch (e) {
+      alert('Transition failed: ' + e.message);
+    }
+  }
+
   async deleteItem(id, itemId) {
     const pane = this.pane(id);
     const item = pane.results.find(r => r.itemId === itemId);
@@ -1525,6 +1637,7 @@ class NtrlocSearch extends HTMLElement {
         </div>
         <div class="prop-grid ${isEditing ? 'is-editing' : ''}">${rows}</div>
         ${this.renderLinkGroups(pane, item)}
+        ${this.renderStateSection(item)}
         ${this.renderMarkerChips(item)}
         ${isEditing ? `
           <div class="add-prop-row">
@@ -1878,6 +1991,8 @@ class NtrlocSearch extends HTMLElement {
           if (action === 'cancel-edit') el.addEventListener('click', () => this.cancelEdit(id, itemId));
           if (action === 'save-edit') el.addEventListener('click', () => this.saveEdit(id, itemId));
           if (action === 'delete-item') el.addEventListener('click', () => this.deleteItem(id, itemId));
+          if (action === 'sm-start') el.addEventListener('click', () => this.startStateMachineForItem(id, itemId, el.dataset.machine));
+          if (action === 'sm-transition') el.addEventListener('click', () => this.executeTransitionForItem(id, itemId, el.dataset.machine, el.dataset.transition));
           if (action === 'add-prop') el.addEventListener('click', () => this.addProperty(id, itemId, el.dataset.path));
           if (action === 'remove-prop') el.addEventListener('click', () => this.removeProperty(id, itemId, el.dataset.path));
           if (action === 'undo-remove') el.addEventListener('click', () => this.undoRemoveProperty(id, itemId, el.dataset.path));
