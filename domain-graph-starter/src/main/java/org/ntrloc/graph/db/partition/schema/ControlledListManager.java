@@ -109,6 +109,51 @@ public class ControlledListManager {
                 .list();
     }
 
+    public List<ControlledList> getAllLists() {
+        return jdbcClient.sql("SELECT id, name, value_type FROM schema_controlled_list ORDER BY name")
+                .query((rs, n) -> new ControlledList(
+                        rs.getObject("id", UUID.class),
+                        rs.getString("name"),
+                        PropertyType.valueOf(rs.getString("value_type"))))
+                .list();
+    }
+
+    public Optional<ControlledList> getListById(UUID listId) {
+        return jdbcClient.sql("SELECT id, name, value_type FROM schema_controlled_list WHERE id = :id")
+                .param("id", listId)
+                .query((rs, n) -> new ControlledList(
+                        rs.getObject("id", UUID.class),
+                        rs.getString("name"),
+                        PropertyType.valueOf(rs.getString("value_type"))))
+                .optional();
+    }
+
+    public void renameList(UUID listId, String name) {
+        jdbcClient.sql("UPDATE schema_controlled_list SET name = :name WHERE id = :id")
+                .param("name", name).param("id", listId).update();
+    }
+
+    // Delete the catalog row FIRST -- the schema_property.controlled_list_id FK is ON DELETE SET
+    // NULL, so this detaches every property using the list in one statement. Only then drop the
+    // per-list value table. applyMutations is not transactional: if the DROP failed after the row
+    // was gone we'd have a harmless orphan table; the reverse order would leave properties pointing
+    // at a list whose value table no longer exists, and SchemaViewBuilder.allowedValuesFor would
+    // throw on the next GET /api/admin/schema.
+    public void deleteList(UUID listId) {
+        jdbcClient.sql("DELETE FROM schema_controlled_list WHERE id = :id").param("id", listId).update();
+        jdbcClient.sql("DROP TABLE IF EXISTS " + tableNameFor(listId)).update();
+    }
+
+    public void clearPropertyControlledList(UUID propertyId) {
+        jdbcClient.sql("UPDATE schema_property SET controlled_list_id = NULL WHERE id = :id")
+                .param("id", propertyId).update();
+    }
+
+    public int countValues(UUID listId) {
+        return jdbcClient.sql("SELECT count(*) FROM " + tableNameFor(listId))
+                .query(Integer.class).single();
+    }
+
     public Optional<ControlledList> getListForProperty(UUID propertyId) {
         return jdbcClient.sql("""
                 SELECT cl.id, cl.name, cl.value_type

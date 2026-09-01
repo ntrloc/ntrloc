@@ -25,8 +25,10 @@ const schemaService = {
     }
   },
 
-  async getControlledList(propertyId) {
-    const response = await fetch(`/api/admin/schema/properties/${encodeURIComponent(propertyId)}/controlled-list`, {
+  // The controlled-list detail pane lazy-loads a list's values here when it's selected --
+  // AdminSchemaView.controlledLists only carries name/valueCount/usedBy.
+  async getControlledListById(listId) {
+    const response = await fetch(`/api/admin/schema/controlled-lists/${encodeURIComponent(listId)}`, {
       credentials: 'include',
     });
     if (!response.ok) {

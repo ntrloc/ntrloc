@@ -97,10 +97,9 @@ public class MarkerAdminController {
 
     // Nested under /markers rather than its own top-level resource -- same admin surface, same
     // requireAdmin gate, same "list everything, filter client-side by item type" shape as
-    // listMarkers() above. Enable/disable toggling and delete aren't here yet (a deliberate,
-    // smaller follow-up); create exists so an admin can wire a rule to an item type without going
-    // around this UI to raw SQL, per MarkerRuleEvaluationService's own comment on how rules used to
-    // be inserted.
+    // listMarkers() above. Enable/disable toggling isn't here yet (a deliberate, smaller
+    // follow-up); create + delete exist so an admin can wire a rule to an item type, or remove
+    // one, without going around this UI to raw SQL.
     @GetMapping("/rules")
     List<MarkerRuleView> listMarkerRules(ServerHttpRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
@@ -127,5 +126,14 @@ public class MarkerAdminController {
         }
         var rule = authRepo.createMarkerRule(body.name(), body.itemTypeId(), body.decisionKey());
         return new MarkerRuleView(rule.id(), rule.name(), rule.itemTypeId(), rule.decisionKey(), rule.enabled());
+    }
+
+    // Plain delete -- see AuthorizationRepository.deleteMarkerRule for why markers a deleted rule
+    // already applied are left in place rather than reconciled away here.
+    @DeleteMapping("/rules/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    void deleteMarkerRule(@PathVariable UUID id, ServerHttpRequest request, Authentication authentication) {
+        requireAdmin(request, authentication);
+        authRepo.deleteMarkerRule(id);
     }
 }

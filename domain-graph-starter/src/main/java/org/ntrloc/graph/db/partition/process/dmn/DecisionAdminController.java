@@ -4,8 +4,11 @@ import org.flowable.dmn.api.DmnDecision;
 import org.flowable.dmn.api.DmnDeployment;
 import org.flowable.dmn.api.DmnRepositoryService;
 import org.ntrloc.graph.db.partition.process.ShortIdGenerator;
+import org.ntrloc.graph.db.partition.process.WorkflowReferenceScanner;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -29,9 +32,11 @@ public class DecisionAdminController {
     public record DeployErrorResponse(String message) {}
 
     private final DmnRepositoryService dmnRepositoryService;
+    private final WorkflowReferenceScanner referenceScanner;
 
-    public DecisionAdminController(DmnRepositoryService dmnRepositoryService) {
+    public DecisionAdminController(DmnRepositoryService dmnRepositoryService, WorkflowReferenceScanner referenceScanner) {
         this.dmnRepositoryService = dmnRepositoryService;
+        this.referenceScanner = referenceScanner;
     }
 
     @GetMapping("/decisions")
@@ -124,6 +129,34 @@ public class DecisionAdminController {
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(new DeployErrorResponse("Failed to deploy decision table: " + e.getMessage()));
         }
+    }
+
+    // DMN-side mirror of ProcessAdminController.deleteDefinition -- deletes every deployed version
+    // of this decision key, hard-gated on "not in use": refused with a 409 if any state's
+    // entry-marker decision or any marker rule still points at this key. Unlike BPMN there's no
+    // cascade concept (a decision has no running "instances"); a plain per-deployment delete is
+    // all it takes.
+    @DeleteMapping("/decisions/{key}")
+    ResponseEntity<?> deleteDecision(@PathVariable String key) {
+        List<String> references = referenceScanner.decisionReferences(key);
+        if (!references.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(new DeployErrorResponse(
+                            "Cannot delete decision table \"" + key + "\" -- still referenced by "
+                                    + String.join("; ", references) + "."));
+        }
+        List<String> deploymentIds = dmnRepositoryService.createDecisionQuery()
+                .decisionKey(key)
+                .list().stream()
+                .map(DmnDecision::getDeploymentId)
+                .distinct()
+                .toList();
+        if (deploymentIds.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        deploymentIds.forEach(dmnRepositoryService::deleteDeployment);
+        return ResponseEntity.noContent().build();
     }
 
     private DecisionDefinitionView toView(DmnDecision decision) {

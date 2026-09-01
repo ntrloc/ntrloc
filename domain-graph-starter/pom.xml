@@ -147,12 +147,13 @@
             <version>2.29.0-alpha</version>
         </dependency>
 
-        <!-- tools.jackson.core:jackson-databind requires jackson-annotations:2.21, but the root
-             pom's legacy com.fasterxml.jackson.dataformat:jackson-dataformat-yaml (still needed by
-             other, unmigrated modules) transitively drags in jackson-annotations:2.19.0. Maven's
-             depth-based mediation picks whichever one is "nearer" for a given build, which varies
-             by consumer — declaring the correct version directly here pins it for every consumer
-             of this module, not just this module's own build. -->
+        <!-- Both jackson worlds in this build (tools.jackson.core:jackson-databind for Jackson 3.x,
+             plus the root pom's legacy com.fasterxml.jackson stack, now on 2.21.5) share this one
+             artifact. Since Jackson 2.20, jackson-annotations deliberately dropped its patch
+             segment and ships as a bare "2.21" for the whole 2.21.x line (see jackson-bom's
+             jackson.version.annotations), so this stays "2.21" even though databind is 2.21.5.
+             Pinned directly here so Maven's depth-based mediation can't hand some consumer of this
+             module a "nearer" transitive 2.19.x copy instead. -->
         <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-annotations</artifactId>
@@ -162,7 +163,7 @@
         <dependency>
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
-            <version>42.7.11</version>
+            <version>42.7.12</version>
         </dependency>
 
         <!-- Workflow (BPMN/DMN/CMMN): walking-skeleton step, embedded with Flowable's own

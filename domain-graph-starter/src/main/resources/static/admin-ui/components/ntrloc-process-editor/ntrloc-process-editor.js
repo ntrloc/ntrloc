@@ -558,6 +558,9 @@ class NtrlocProcessEditor extends HTMLElement {
     // from otherwise.
     this._isNew = !this._definitionId || this._definitionId.startsWith('new-process-');
     this.renderShell();
+    // Show Delete for any already-deployed process straight away -- independent of whether load()
+    // succeeds, so a process whose XML fails to parse can still be deleted.
+    this.updateDeleteButtonState();
     if (this._isNew) {
       // Pre-filled, not left blank -- see short-id.js's own comment. Still a plain editable text
       // input until first save (unchanged), so a deliberate, memorable id is one edit away for
@@ -828,6 +831,7 @@ class NtrlocProcessEditor extends HTMLElement {
   reportDirty(dirty) {
     this._dirty = dirty;
     this.updateRunButtonState();
+    this.updateDeleteButtonState();
     this.dispatchEvent(new CustomEvent('dirty-changed', { bubbles: true, detail: { dirty } }));
   }
 
@@ -839,6 +843,46 @@ class NtrlocProcessEditor extends HTMLElement {
     // unlike an existing one, there's genuinely nothing deployed to run until the first Save.
     runButton.disabled = this._dirty || this._isNew;
     runButton.title = this._isNew ? 'Save before running' : (this._dirty ? 'Save your changes before running' : '');
+  }
+
+  // Hidden until the first Save -- a brand-new process has nothing deployed to delete (there,
+  // "delete" is just closing the tab). Kept in sync via reportDirty(), same as the Run button.
+  updateDeleteButtonState() {
+    const deleteButton = this.querySelector('.delete-button');
+    if (deleteButton) deleteButton.style.display = this._isNew ? 'none' : '';
+  }
+
+  async deleteProcess() {
+    if (this._isNew) return;
+    // Fall back to the key embedded in the definition id ("<key>:<version>:<generatedId>") when
+    // the process never loaded -- lets a process with unparseable XML still be deleted.
+    const key = this._processId || (this._definitionId || '').split(':')[0];
+    if (!key) return;
+    const name = this._processName || key;
+    const confirmed = await openConfirmDialog({
+      title: 'Delete Process',
+      message: `Delete "${name}" and every deployed version? This cannot be undone.`,
+      confirmLabel: 'Delete',
+      destructive: true,
+    });
+    if (!confirmed) return;
+    try {
+      this.setStatus('Deleting...', false);
+      const response = await fetch(`/api/admin/process/definitions/${encodeURIComponent(key)}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ message: 'Request failed: ' + response.status }));
+        throw new Error(error.message || 'Request failed: ' + response.status);
+      }
+      // Clear dirty first so tab-workspace closes this tab without a redundant "discard your
+      // changes?" prompt -- the whole process is gone, unsaved edits are moot.
+      this.reportDirty(false);
+      this.dispatchEvent(new CustomEvent('editor-closed', { bubbles: true }));
+    } catch (e) {
+      this.setStatus('Failed to delete: ' + e.message, true);
+    }
   }
 
   // Kept as an instance method (not called directly as an import) since ntrloc-processes.js's
@@ -890,6 +934,7 @@ class NtrlocProcessEditor extends HTMLElement {
         <span class="editor-status status"></span>
         <span class="spacer"></span>
         <md-outlined-button class="run-button" title="Save your changes before running" disabled>Run</md-outlined-button>
+        <md-outlined-button class="delete-button" style="display: none;">Delete</md-outlined-button>
         <md-filled-button class="save-button">Save</md-filled-button>
       </div>
       <div class="editor-body">
@@ -899,6 +944,7 @@ class NtrlocProcessEditor extends HTMLElement {
     `;
     this.querySelector('.save-button').addEventListener('click', () => this.save());
     this.querySelector('.run-button').addEventListener('click', () => this.run());
+    this.querySelector('.delete-button').addEventListener('click', () => this.deleteProcess());
   }
 
   renderPanel() {

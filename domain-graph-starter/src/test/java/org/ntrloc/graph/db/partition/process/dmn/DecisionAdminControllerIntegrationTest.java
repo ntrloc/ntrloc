@@ -2,6 +2,8 @@ package org.ntrloc.graph.db.partition.process.dmn;
 
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
+import org.ntrloc.graph.db.coordinator.CoordinatorTestDomainInitializer;
+import org.ntrloc.graph.db.partition.authorization.repository.AuthorizationRepository;
 import org.ntrloc.graph.db.partition.process.dmn.DecisionAdminController.DecisionDefinitionView;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
@@ -25,6 +27,12 @@ class DecisionAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private WebTestClient webTestClient;
+
+    @Autowired
+    private AuthorizationRepository authRepo;
+
+    @Autowired
+    private CoordinatorTestDomainInitializer fixture;
 
     @Test
     void listsDeployedDecisionsIncludingApprovalDecision() {
@@ -75,6 +83,43 @@ class DecisionAdminControllerIntegrationTest extends AbstractIntegrationTest {
                 .expectStatus().isBadRequest()
                 .expectBody()
                 .jsonPath("$.message").exists();
+    }
+
+    @Test
+    void deletingADecisionRemovesEveryDeployedVersion() {
+        String key = "deleteDecisionTest-" + UUID.randomUUID();
+        deploy(key, "v1");
+        deploy(key, "v2");
+        assertThat(fetchDecisions()).anyMatch(d -> d.key().equals(key));
+
+        webTestClient.delete().uri("/api/admin/dmn/decisions/{key}", key)
+                .exchange()
+                .expectStatus().isNoContent();
+
+        assertThat(fetchDecisions()).noneMatch(d -> d.key().equals(key));
+    }
+
+    @Test
+    void deletingAnUnknownDecisionReturnsNotFound() {
+        webTestClient.delete().uri("/api/admin/dmn/decisions/{key}", "missing-" + UUID.randomUUID())
+                .exchange()
+                .expectStatus().isNotFound();
+    }
+
+    @Test
+    void deletingADecisionStillReferencedByAMarkerRuleIsBlockedWithA409() {
+        String key = "referencedDecisionTest-" + UUID.randomUUID();
+        deploy(key, "v1");
+        String ruleName = "delete-guard-rule-" + UUID.randomUUID();
+        authRepo.createMarkerRule(ruleName, fixture.productTypeId(), key);
+
+        webTestClient.delete().uri("/api/admin/dmn/decisions/{key}", key)
+                .exchange()
+                .expectStatus().isEqualTo(409)
+                .expectBody()
+                .jsonPath("$.message").value(m -> assertThat((String) m).contains(ruleName));
+
+        assertThat(fetchDecisions()).anyMatch(d -> d.key().equals(key));
     }
 
     private DecisionDefinitionView deploy(String key, String labelSuffix) {

@@ -11,11 +11,13 @@ import org.flowable.engine.runtime.ProcessInstance;
 import org.ntrloc.graph.db.partition.process.persistence.NtrlocPrincipalVariableType;
 import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
 import org.ntrloc.graph.db.partition.security.PrincipalResolver;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.lang.Nullable;
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -50,11 +52,14 @@ public class ProcessAdminController {
     private final RepositoryService repositoryService;
     private final RuntimeService runtimeService;
     private final PrincipalResolver principalResolver;
+    private final WorkflowReferenceScanner referenceScanner;
 
-    public ProcessAdminController(RepositoryService repositoryService, RuntimeService runtimeService, PrincipalResolver principalResolver) {
+    public ProcessAdminController(RepositoryService repositoryService, RuntimeService runtimeService,
+                                  PrincipalResolver principalResolver, WorkflowReferenceScanner referenceScanner) {
         this.repositoryService = repositoryService;
         this.runtimeService = runtimeService;
         this.principalResolver = principalResolver;
+        this.referenceScanner = referenceScanner;
     }
 
     @GetMapping("/definitions")
@@ -163,6 +168,37 @@ public class ProcessAdminController {
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(new DeployErrorResponse("Failed to deploy process: " + e.getMessage()));
         }
+    }
+
+    // Deletes a process outright -- every deployed version of this key, not just the latest.
+    // Hard-gated on "not in use": if any state machine's entry/exit process or transition process
+    // still points at this key, the delete is refused with a 409 naming what references it, rather
+    // than leaving a dangling reference behind (same contract as schema item-type / trait
+    // deletion). cascade=true on deleteDeployment also drops any live process instances of the
+    // key -- history is "none" (ProcessEngineConfig), so there's nothing historic to orphan.
+    @DeleteMapping("/definitions/{key}")
+    ResponseEntity<?> deleteDefinition(@PathVariable String key) {
+        List<String> references = referenceScanner.processReferences(key);
+        if (!references.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(new DeployErrorResponse(
+                            "Cannot delete process \"" + key + "\" -- still referenced by "
+                                    + String.join("; ", references) + "."));
+        }
+        List<String> deploymentIds = repositoryService.createProcessDefinitionQuery()
+                .processDefinitionKey(key)
+                .list().stream()
+                .map(ProcessDefinition::getDeploymentId)
+                .distinct()
+                .toList();
+        if (deploymentIds.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        for (String deploymentId : deploymentIds) {
+            repositoryService.deleteDeployment(deploymentId, true);
+        }
+        return ResponseEntity.noContent().build();
     }
 
     // Same query-param id convention as getDefinitionXml above, for the same reason (a literal

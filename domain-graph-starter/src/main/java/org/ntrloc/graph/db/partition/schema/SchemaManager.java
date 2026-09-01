@@ -46,6 +46,7 @@ public class SchemaManager {
     private final PropertyMutationApplier propertyMutationApplier;
     private final LinkMutationApplier linkMutationApplier;
     private final StateMutationApplier stateMutationApplier;
+    private final ControlledListMutationApplier controlledListMutationApplier;
     private final PermissionService permissionService;
     private final ClusterService clusterService;
     private final ITopic<String> schemaChangedTopic;
@@ -61,8 +62,8 @@ public class SchemaManager {
     public SchemaManager(ControlledListManager controlledListManager, SchemaViewBuilder viewBuilder,
                           ItemMutationApplier itemMutationApplier, TraitMutationApplier traitMutationApplier,
                           PropertyMutationApplier propertyMutationApplier, LinkMutationApplier linkMutationApplier,
-                          StateMutationApplier stateMutationApplier, PermissionService permissionService,
-                          ClusterService clusterService) {
+                          StateMutationApplier stateMutationApplier, ControlledListMutationApplier controlledListMutationApplier,
+                          PermissionService permissionService, ClusterService clusterService) {
         this.controlledListManager = controlledListManager;
         this.viewBuilder = viewBuilder;
         this.itemMutationApplier = itemMutationApplier;
@@ -70,6 +71,7 @@ public class SchemaManager {
         this.propertyMutationApplier = propertyMutationApplier;
         this.linkMutationApplier = linkMutationApplier;
         this.stateMutationApplier = stateMutationApplier;
+        this.controlledListMutationApplier = controlledListMutationApplier;
         this.permissionService = permissionService;
         this.clusterService = clusterService;
         rebuildCache();
@@ -115,6 +117,7 @@ public class SchemaManager {
         if (propertyMutationApplier.apply(mutation)) return;
         if (linkMutationApplier.apply(mutation)) return;
         if (stateMutationApplier.apply(mutation)) return;
+        if (controlledListMutationApplier.apply(mutation)) return;
         if (mutation instanceof ReplaceControlledListMutation m) {
             var list = controlledListManager.getListForProperty(m.propertyId())
                     .orElseThrow(() -> new IllegalArgumentException("No controlled list for property: " + m.propertyId()));

@@ -9,14 +9,14 @@ injectStyles('ntrloc-property-table-styles', `
      technique already used for the outer custom element itself) purely so each row can carry
      role="row" and a data-index for wireUp() to query against -- it has zero effect on the grid
      layout itself, which only "sees" the actual cell divs.
-     Type/Cardinality/Usage/Facet are auto-sized (shrink to whatever their content -- a short
+     Type/List/Cardinality/Usage/Facet are auto-sized (shrink to whatever their content -- a short
      read-only value, an open select, or a checkbox -- actually needs, same as Actions already
      was) rather than fr'd, since their content is always short; Name and Description are the two
      columns worth reading at length, so they're the only ones that get an even fr share of
      whatever space is left over. */
   .property-grid {
     display: grid;
-    grid-template-columns: 12px 1fr 1fr auto auto auto auto auto;
+    grid-template-columns: 12px 1fr 1fr auto auto auto auto auto auto;
     gap: 4px 16px;
     align-items: center;
     width: 100%;
@@ -308,22 +308,24 @@ class NtrlocPropertyTable extends HTMLElement {
     this.render();
   }
 
-  hasControlledList(prop) {
-    const CONTROLLED_LIST_TYPES = new Set(['STRING', 'INT', 'LONG']);
-    return !prop.isNew && prop.controlledListId != null && CONTROLLED_LIST_TYPES.has(prop.type);
-  }
-
   // Whether the Facet checkbox should even appear for this property -- narrower than the server's
   // own requireFacetableEligible (SINGLE cardinality, and either BOOLEAN or a controlled-list-
-  // capable type): here a STRING/INT/LONG property also has to actually have a controlled list
-  // attached (hasControlledList, which itself excludes unsaved properties). There's no point
-  // showing a checkbox for something that can't actually be faceted yet -- an INT with no list, or
-  // a still-unsaved property -- even though the server would technically accept facetable=true for
-  // it. BOOLEAN needs no list, so it's eligible on cardinality alone.
+  // capable type): here a non-BOOLEAN property also has to actually have a controlled list
+  // attached. controlledListId reflects the *staged* association (set via the List column below,
+  // committed on Save), so ticking Facet right after picking a list works without a save round-
+  // trip first. BOOLEAN needs no list, so it's eligible on cardinality alone.
   isFacetEligible(prop) {
     if (prop.cardinality !== 'SINGLE') return false;
     if (prop.type === 'BOOLEAN') return true;
-    return this.hasControlledList(prop);
+    return prop.controlledListId != null;
+  }
+
+  // Prior-value line under the List cell when a property's list association is staged for change --
+  // the name of whatever list it pointed at before this edit (or "— None —" if it was unattached).
+  originalListName(prop) {
+    if (prop.originalControlledListId == null) return '— None —';
+    const list = schemaViewModel.controlledLists.find((l) => l.id === prop.originalControlledListId);
+    return list ? (list.name || '(unnamed)') : '(list)';
   }
 
   // Flattens the top-level properties named by topLevelIndices, plus -- for any OBJECT property
@@ -404,12 +406,14 @@ class NtrlocPropertyTable extends HTMLElement {
             <div class="grid-cell" role="gridcell"></div>
             <div class="grid-cell" role="gridcell"></div>
             <div class="grid-cell" role="gridcell"></div>
+            <div class="grid-cell" role="gridcell"></div>
           </div>
           <div class="grid-row" role="row">
             <div class="grid-header" role="columnheader"></div>
             <div class="grid-header" role="columnheader">Name</div>
             <div class="grid-header" role="columnheader">Description</div>
             <div class="grid-header" role="columnheader">Type</div>
+            <div class="grid-header" role="columnheader">List</div>
             <div class="grid-header" role="columnheader">Cardinality</div>
             <div class="grid-header" role="columnheader">Usage</div>
             <div class="grid-header" role="columnheader">Facet</div>
@@ -424,6 +428,7 @@ class NtrlocPropertyTable extends HTMLElement {
                   <span class="expand-toggle-spacer"></span>
                   <button class="add-nested-property-button">+ Add property to ${escapeHtml(row.parentProp.name)}</button>
                 </div>
+                <div class="grid-cell" role="gridcell"></div>
                 <div class="grid-cell" role="gridcell"></div>
                 <div class="grid-cell" role="gridcell"></div>
                 <div class="grid-cell" role="gridcell"></div>
@@ -477,6 +482,19 @@ class NtrlocPropertyTable extends HTMLElement {
                   </md-filled-select>
                 ` : `<span class="read-only-value type-value">${escapeHtml(prop.type)}</span>`}
               </div>
+              <div class="grid-cell list-cell" role="gridcell">
+                ${prop.type !== 'STRING'
+                  ? ''
+                  : prop.isReadonly || prop.isNew
+                    ? '<span class="read-only-value">—</span>'
+                    : `<md-outlined-select class="editable-field list-select">
+                        <md-select-option value="" ${!prop.controlledListId ? 'selected' : ''}><div slot="headline">— None —</div></md-select-option>
+                        ${schemaViewModel.controlledLists
+                          .filter((l) => !l.isDeleted && l.valueType === 'STRING')
+                          .map((l) => `<md-select-option value="${escapeHtml(l.id)}" ${l.id === prop.controlledListId ? 'selected' : ''}><div slot="headline">${escapeHtml(l.name || '(unnamed)')}</div></md-select-option>`).join('')}
+                      </md-outlined-select>`}
+                ${!prop.isNew && prop.listAssociationDirty ? `<div class="original-value">${escapeHtml(this.originalListName(prop))}</div>` : ''}
+              </div>
               <div class="grid-cell" role="gridcell">
                 ${prop.validCardinalities.length > 1 && showForm ? `
                   <md-filled-select class="editable-field cardinality-select">
@@ -503,7 +521,6 @@ class NtrlocPropertyTable extends HTMLElement {
               </div>
               <div class="grid-cell actions-cell" role="gridcell">
                 ${showForm ? '<md-text-button class="done-button">Done</md-text-button>' : ''}
-                ${this.hasControlledList(prop) ? '<md-text-button class="list-button">List</md-text-button>' : ''}
                 ${!prop.isReadonly ? (
                   prop.isDeleted
                     ? '<md-text-button class="restore-button">Restore</md-text-button>'
@@ -605,6 +622,9 @@ class NtrlocPropertyTable extends HTMLElement {
       if (row.classList.contains('row-clickable')) {
         row.addEventListener('click', (event) => {
           if (event.target.closest('.actions-cell')) return;
+          // The List column is edited in place (its select works whether or not the row is open),
+          // so a click there must not also flip the row into name/description edit mode.
+          if (event.target.closest('.list-cell')) return;
           // Whichever field the click actually landed in gets focused once the row opens, not
           // always Name.
           const clickedValue = event.target.closest('.read-only-value');
@@ -674,13 +694,15 @@ class NtrlocPropertyTable extends HTMLElement {
         notifySchemaViewModelChange();
       });
 
-      const listButton = row.querySelector('.list-button');
-      if (listButton) listButton.addEventListener('click', async () => {
-        const pending = schemaViewModel.pendingControlledListReplacements.get(prop.id) ?? null;
-        const result = await openControlledListDialog(prop, pending);
-        if (result !== undefined) {
-          schemaViewModel.setPendingControlledList(prop.id, result);
-        }
+      const listSelect = row.querySelector('.list-select');
+      if (listSelect) listSelect.addEventListener('change', (event) => {
+        prop.controlledListId = event.target.value || null;
+        // A detached property can no longer be faceted (a non-BOOLEAN facet needs a list) --
+        // clear the now-invalid flag rather than leave a checkbox ticked for something
+        // isFacetEligible will stop even showing.
+        if (prop.controlledListId == null && prop.facetable) prop.facetable = false;
+        this.render();
+        notifySchemaViewModelChange();
       });
 
       const revertButton = row.querySelector('.revert-button');

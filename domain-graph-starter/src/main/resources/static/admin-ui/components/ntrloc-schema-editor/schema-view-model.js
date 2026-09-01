@@ -53,6 +53,9 @@ function collectNestedPropertyMutations(properties, ops, parentPropertyId) {
     if (prop.ownFieldsDirty) {
       ops.push({ type: 'UPDATE_PROPERTY', id: prop.id, name: prop.name, description: prop.description, propertyType: prop.type, cardinality: prop.cardinality, usage: prop.usage, facetable: prop.facetable });
     }
+    if (prop.listAssociationDirty) {
+      ops.push({ type: 'SET_PROPERTY_CONTROLLED_LIST', propertyId: prop.id, listId: prop.controlledListId });
+    }
     collectNestedPropertyMutations(prop.properties, ops, prop.id);
   }
 }
@@ -83,9 +86,15 @@ const schemaViewModel = {
   // the entry/exit/transition/init process pickers in the states editor. Best-effort: a failure
   // here (see _loadProcessDefinitions) never blocks the schema itself from loading.
   processDefinitions: [],
+  // Reusable controlled lists (schema_controlled_list) -- managed as their own schema element
+  // alongside items/traits, and staged/committed through the same Save flow (see
+  // ControlledListViewModel + collectMutations' CREATE/UPDATE/DELETE_CONTROLLED_LIST ops). A
+  // property opts into a list via its own controlledListId (SET_PROPERTY_CONTROLLED_LIST); one
+  // list can back many properties across different item types/traits.
+  controlledLists: [],
   selectedItem: null,
   selectedTrait: null,
-  pendingControlledListReplacements: new Map(),
+  selectedControlledList: null,
   // Not-yet-saved links (see schema-viewmodels.js's PendingLinkViewModel) -- a plain array, not
   // nested inside items/traits, since a link spans two item types and doesn't belong to either
   // one alone.
@@ -118,7 +127,7 @@ const schemaViewModel = {
   get isDirty() {
     return this.items.some((i) => i.isDirty)
       || this.traits.some((t) => t.isDirty)
-      || this.pendingControlledListReplacements.size > 0
+      || this.controlledLists.some((l) => l.isDirty)
       || this.pendingNewLinks.length > 0;
   },
 
@@ -154,11 +163,6 @@ const schemaViewModel = {
     return [...latestByKey.values()].sort((a, b) => (a.name ?? a.key).localeCompare(b.name ?? b.key));
   },
 
-  setPendingControlledList(propertyId, values) {
-    this.pendingControlledListReplacements.set(propertyId, values);
-    notifySchemaViewModelChange();
-  },
-
   newLink(item) {
     this.pendingNewLinks = [...this.pendingNewLinks, PendingLinkViewModel.create(item.id)];
     notifySchemaViewModelChange();
@@ -172,7 +176,7 @@ const schemaViewModel = {
   load() {
     if (this._loaded) return Promise.resolve();
     return Promise.all([schemaModel.load(), this._loadProcessDefinitions(), this._loadMarkers(), this._loadMarkerRules()])
-      .then(([schema]) => this._applySchema(schema, null, null, null, null));
+      .then(([schema]) => this._applySchema(schema, null, null, null, null, null, null));
   },
 
   reload() {
@@ -180,13 +184,15 @@ const schemaViewModel = {
     const selectedItemName = this.selectedItem?.name ?? null;
     const selectedTraitId = this.selectedTrait?.id ?? null;
     const selectedTraitName = this.selectedTrait?.name ?? null;
+    const selectedListId = this.selectedControlledList?.id ?? null;
+    const selectedListName = this.selectedControlledList?.name ?? null;
     this._loaded = false;
     this.selectedItem = null;
     this.selectedTrait = null;
-    this.pendingControlledListReplacements.clear();
+    this.selectedControlledList = null;
     this.pendingNewLinks = [];
     return Promise.all([schemaModel.reload(), this._loadProcessDefinitions(), this._loadMarkers(), this._loadMarkerRules()])
-      .then(([schema]) => this._applySchema(schema, selectedItemId, selectedItemName, selectedTraitId, selectedTraitName));
+      .then(([schema]) => this._applySchema(schema, selectedItemId, selectedItemName, selectedTraitId, selectedTraitName, selectedListId, selectedListName));
   },
 
   // Best-effort: a failure loading process definitions (Flowable down, etc.) shouldn't block the
@@ -258,6 +264,14 @@ const schemaViewModel = {
     return rule;
   },
 
+  // Immediate write, same as createMarkerRule/deleteMarker -- no local draft stage, not part of
+  // the schema-mutation batch.
+  async deleteMarkerRule(id) {
+    await markerService.deleteMarkerRule(id);
+    this.markerRules = this.markerRules.filter((r) => r.id !== id);
+    notifySchemaViewModelChange();
+  },
+
   // Traits/States start collapsed the moment an item/trait is selected if that section would
   // otherwise be empty -- nothing worth showing open by default. Called only from
   // selectItem/selectTrait (a real selection change), never from a render cycle -- every field
@@ -287,6 +301,7 @@ const schemaViewModel = {
 
   selectItem(item) {
     this.selectedTrait = null;
+    this.selectedControlledList = null;
     this.selectedItem = item;
     this._applyDefaultSectionsExpanded(item, true);
     notifySchemaViewModelChange();
@@ -294,8 +309,36 @@ const schemaViewModel = {
 
   selectTrait(trait) {
     this.selectedItem = null;
+    this.selectedControlledList = null;
     this.selectedTrait = trait;
     this._applyDefaultSectionsExpanded(trait, false);
+    notifySchemaViewModelChange();
+  },
+
+  selectControlledList(list) {
+    this.selectedItem = null;
+    this.selectedTrait = null;
+    this.selectedControlledList = list;
+    notifySchemaViewModelChange();
+  },
+
+  newControlledList() {
+    const vm = ControlledListViewModel.create();
+    this.controlledLists = [...this.controlledLists, vm];
+    this.selectControlledList(vm);
+  },
+
+  // Same isNew-vs-not shape as deleteItem/deleteTrait. A list still attached to properties is
+  // deletable anyway -- the FK's ON DELETE SET NULL auto-detaches them server-side, and list
+  // values are advisory (no item data is invalidated). ntrloc-controlled-list-detail.js shows a
+  // "N properties will be detached" heads-up from list.usedBy before the user commits.
+  deleteControlledList(list) {
+    if (list.isNew) {
+      this.controlledLists = this.controlledLists.filter((l) => l !== list);
+      if (this.selectedControlledList === list) this.selectedControlledList = null;
+    } else {
+      list.isDeleted = true;
+    }
     notifySchemaViewModelChange();
   },
 
@@ -348,6 +391,29 @@ const schemaViewModel = {
     const ops = [];
     const processedLinkIds = new Set();
 
+    // Controlled-list lifecycle first: a SET_PROPERTY_CONTROLLED_LIST emitted by the property
+    // loops below may point at a list that CREATE_CONTROLLED_LIST in this same batch just made
+    // (the backend applies ops in array order). UPDATE sends name/values only when each actually
+    // changed -- null means "leave alone" (values stay null when never lazy-loaded, so a rename
+    // can't wipe them).
+    for (const list of this.controlledLists) {
+      if (!list.isDirty) continue;
+      if (list.isNew) {
+        ops.push({ type: 'CREATE_CONTROLLED_LIST', name: list.name, valueType: list.valueType, values: list.values });
+        continue;
+      }
+      if (list.isDeleted) {
+        ops.push({ type: 'DELETE_CONTROLLED_LIST', listId: list.id });
+        continue;
+      }
+      ops.push({
+        type: 'UPDATE_CONTROLLED_LIST',
+        listId: list.id,
+        name: list.name !== list.originalName ? list.name : null,
+        values: list.valuesLoaded && JSON.stringify(list.values) !== JSON.stringify(list.originalValues) ? list.values : null,
+      });
+    }
+
     for (const item of this.items) {
       if (!item.isDirty) continue;
 
@@ -395,6 +461,9 @@ const schemaViewModel = {
         } else if (prop.ownFieldsDirty) {
           ops.push({ type: 'UPDATE_PROPERTY', id: prop.id, name: prop.name, description: prop.description, propertyType: prop.type, cardinality: prop.cardinality, usage: prop.usage, facetable: prop.facetable });
         }
+        if (!prop.isNew && prop.listAssociationDirty) {
+          ops.push({ type: 'SET_PROPERTY_CONTROLLED_LIST', propertyId: prop.id, listId: prop.controlledListId });
+        }
         collectNestedPropertyMutations(prop.properties, ops, prop.id);
       }
 
@@ -415,6 +484,9 @@ const schemaViewModel = {
                 continue;
               } else if (prop.ownFieldsDirty) {
                 ops.push({ type: 'UPDATE_PROPERTY', id: prop.id, name: prop.name, description: prop.description, propertyType: prop.type, cardinality: prop.cardinality, usage: prop.usage, facetable: prop.facetable });
+              }
+              if (!prop.isNew && prop.listAssociationDirty) {
+                ops.push({ type: 'SET_PROPERTY_CONTROLLED_LIST', propertyId: prop.id, listId: prop.controlledListId });
               }
               collectNestedPropertyMutations(prop.properties, ops, prop.id);
             }
@@ -494,10 +566,6 @@ const schemaViewModel = {
       // TODO: UPDATE_TRAIT when backend supports it (matches Angular reference)
     }
 
-    for (const [propertyId, values] of this.pendingControlledListReplacements) {
-      ops.push({ type: 'REPLACE_CONTROLLED_LIST', propertyId, values });
-    }
-
     // Invalid pending links (missing target/names, or self-referential) are never emitted --
     // Save is gated on hasInvalidPendingLinks so this should never actually filter anything out
     // in practice, but it's the last line of defense against a request that would 500.
@@ -529,6 +597,7 @@ const schemaViewModel = {
       const path = `${pathPrefix}.${prop.originalName || '(unnamed)'}`;
       if (prop.isDeleted) { changes.push(`- Property "${path}"`); continue; }
       if (prop.ownFieldsDirty) changes.push(`Property "${path}": updated`);
+      if (prop.listAssociationDirty) changes.push(this._describeListAssociationChange(prop, path));
       this.describeNestedPropertyChanges(prop.properties, changes, path);
     }
   },
@@ -575,6 +644,7 @@ const schemaViewModel = {
         if (prop.isNew) { changes.push(`+ Property "${prop.name}"`); continue; }
         if (prop.isDeleted) { changes.push(`- Property "${prop.originalName}"`); continue; }
         if (prop.ownFieldsDirty) changes.push(`Property "${prop.originalName}": updated`);
+        if (prop.listAssociationDirty) changes.push(this._describeListAssociationChange(prop, prop.originalName));
         this.describeNestedPropertyChanges(prop.properties, changes, prop.originalName);
       }
 
@@ -621,6 +691,7 @@ const schemaViewModel = {
             if (prop.isNew) { linkChanges.push(`+ Property "${prop.name}"`); continue; }
             if (prop.isDeleted) { linkChanges.push(`- Property "${prop.originalName}"`); continue; }
             if (prop.ownFieldsDirty) linkChanges.push(`Property "${prop.originalName}": updated`);
+            if (prop.listAssociationDirty) linkChanges.push(this._describeListAssociationChange(prop, prop.originalName));
             this.describeNestedPropertyChanges(prop.properties, linkChanges, prop.originalName);
           }
           if (linkChanges.length > 0) summaries.push({ label: this._linkLabel(p.linkId), changes: linkChanges });
@@ -640,9 +711,23 @@ const schemaViewModel = {
       }
     }
 
-    for (const [propertyId, values] of this.pendingControlledListReplacements) {
-      const propName = this._findPropertyName(propertyId);
-      summaries.push({ label: `Controlled list: "${propName}"`, changes: [`${values.length} value${values.length === 1 ? '' : 's'}`] });
+    for (const list of this.controlledLists) {
+      if (!list.isDirty) continue;
+      if (list.isNew) {
+        summaries.push({ label: `+ Controlled List "${list.name || '(unnamed)'}"`, changes: [`${list.values.length} value${list.values.length === 1 ? '' : 's'}`] });
+        continue;
+      }
+      if (list.isDeleted) {
+        const detach = list.usedBy.length > 0 ? [`${list.usedBy.length} propert${list.usedBy.length === 1 ? 'y' : 'ies'} detached`] : [];
+        summaries.push({ label: `- Controlled List "${list.originalName}"`, changes: detach });
+        continue;
+      }
+      const listChanges = [];
+      if (list.name !== list.originalName) listChanges.push(`Name: "${list.originalName}" → "${list.name}"`);
+      if (list.valuesLoaded && JSON.stringify(list.values) !== JSON.stringify(list.originalValues)) {
+        listChanges.push(`${list.values.length} value${list.values.length === 1 ? '' : 's'}`);
+      }
+      if (listChanges.length > 0) summaries.push({ label: `Controlled List "${list.originalName}"`, changes: listChanges });
     }
 
     for (const link of this.pendingNewLinks) {
@@ -661,18 +746,6 @@ const schemaViewModel = {
     return summaries;
   },
 
-  _findPropertyName(propertyId) {
-    for (const item of this.items) {
-      const prop = item.properties.find((p) => p.id === propertyId);
-      if (prop) return prop.name;
-    }
-    for (const trait of this.traits) {
-      const prop = trait.properties.find((p) => p.id === propertyId);
-      if (prop) return prop.name;
-    }
-    return propertyId;
-  },
-
   _linkLabel(linkId) {
     const names = [];
     for (const item of this.items) {
@@ -681,7 +754,16 @@ const schemaViewModel = {
     return `Link (${names.join(' ↔ ')})`;
   },
 
-  _applySchema(schema, restoreItemId, restoreItemName, restoreTraitId, restoreTraitName) {
+  // Confirm-dialog line for a property whose controlled-list association changed (its
+  // SET_PROPERTY_CONTROLLED_LIST op in collectMutations). `label` is the already-formatted
+  // property path/name the caller uses for its other lines.
+  _describeListAssociationChange(prop, label) {
+    if (prop.controlledListId == null) return `Property "${label}": list detached`;
+    const list = this.controlledLists.find((l) => l.id === prop.controlledListId);
+    return `Property "${label}": list → "${list?.name ?? list?.originalName ?? '?'}"`;
+  },
+
+  _applySchema(schema, restoreItemId, restoreItemName, restoreTraitId, restoreTraitName, restoreListId, restoreListName) {
     this._loaded = true;
     this.propertyTypes = schema.propertyTypes;
     const linkMap = new Map(
@@ -694,6 +776,10 @@ const schemaViewModel = {
     this.traits = [...(schema.traits ?? [])]
       .sort((a, b) => a.name.localeCompare(b.name))
       .map((trait) => TraitDefinitionViewModel.fromAdmin(trait, schema.propertyTypes, linkMap));
+
+    this.controlledLists = [...(schema.controlledLists ?? [])]
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((list) => ControlledListViewModel.fromAdmin(list));
 
     const restoredItem = restoreItemId
       ? this.items.find((i) => i.id === restoreItemId)
@@ -708,6 +794,15 @@ const schemaViewModel = {
         ? this.traits.find((t) => t.name === restoreTraitName)
         : null;
     if (restoredTrait) this.selectedTrait = restoredTrait;
+
+    // A brand-new list that was just saved comes back with a real id, so an id lookup misses --
+    // fall back to name (list names are unique, enforced in ControlledListMutationApplier).
+    const restoredList = restoreListId
+      ? this.controlledLists.find((l) => l.id === restoreListId)
+      : null;
+    const restoredListByName = restoredList
+      ?? (restoreListName ? this.controlledLists.find((l) => l.name === restoreListName) : null);
+    if (restoredListByName) this.selectedControlledList = restoredListByName;
 
     notifySchemaViewModelChange();
   },

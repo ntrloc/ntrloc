@@ -4,6 +4,7 @@ import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
 import org.ntrloc.graph.db.partition.schema.definition.view.DefinedInView;
 import org.ntrloc.graph.db.partition.schema.definition.view.SortableFieldView;
 import org.ntrloc.graph.db.partition.schema.definition.view.TargetEntityView;
+import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminControlledListView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemLinkPerspectiveView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminLinkView;
@@ -141,7 +142,46 @@ class SchemaViewBuilder {
                 .map(type -> new PropertyTypeView(type, type.validCardinalities()))
                 .toList();
 
-        return new AdminSchemaView(itemViews, traitViews, linkViews, propertyTypes);
+        var controlledLists = buildControlledListViews(propertiesByItem, propertiesByTrait, propertiesByLink, entityNameMap);
+
+        return new AdminSchemaView(itemViews, traitViews, linkViews, propertyTypes, controlledLists);
+    }
+
+    // controlledListManager.getAllLists() + a valueCount per list + the reverse "which properties
+    // point at each list" map, built from the raw defining-owner property maps (each property
+    // appears once, under its true owner -- inheritance is not walked here). Link-owned list-backed
+    // properties are rare; they get a generic owner label since links carry no name.
+    private List<AdminControlledListView> buildControlledListViews(
+            Map<UUID, List<AdminPropertyDefinitionView>> propertiesByItem,
+            Map<UUID, List<AdminPropertyDefinitionView>> propertiesByTrait,
+            Map<UUID, List<AdminPropertyDefinitionView>> propertiesByLink,
+            Map<UUID, String> entityNameMap) {
+        Map<UUID, List<AdminControlledListView.UsageRef>> usageByListId = new HashMap<>();
+        propertiesByItem.forEach((ownerId, props) ->
+                collectListUsage(props, entityNameMap.getOrDefault(ownerId, "(item)"), usageByListId));
+        propertiesByTrait.forEach((ownerId, props) ->
+                collectListUsage(props, entityNameMap.getOrDefault(ownerId, "(trait)"), usageByListId));
+        propertiesByLink.forEach((ownerId, props) ->
+                collectListUsage(props, "(link property)", usageByListId));
+
+        return controlledListManager.getAllLists().stream()
+                .map(list -> new AdminControlledListView(list.id(), list.name(), list.valueType(),
+                        controlledListManager.countValues(list.id()),
+                        usageByListId.getOrDefault(list.id(), List.of())))
+                .toList();
+    }
+
+    private void collectListUsage(List<AdminPropertyDefinitionView> props, String ownerLabel,
+                                  Map<UUID, List<AdminControlledListView.UsageRef>> out) {
+        for (AdminPropertyDefinitionView p : props) {
+            if (p.controlledListId() != null) {
+                out.computeIfAbsent(p.controlledListId(), k -> new ArrayList<>())
+                        .add(new AdminControlledListView.UsageRef(p.id(), p.name(), ownerLabel));
+            }
+            if (p instanceof ObjectAdminPropertyDefinitionView o) {
+                collectListUsage(o.properties(), ownerLabel, out);
+            }
+        }
     }
 
     // An item's own properties (definedIn = null) plus its directly-implemented traits'

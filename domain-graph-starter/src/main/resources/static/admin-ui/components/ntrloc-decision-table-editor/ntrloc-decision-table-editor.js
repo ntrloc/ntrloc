@@ -413,13 +413,20 @@ class NtrlocDecisionTableEditor extends HTMLElement {
     // DecisionDataManagerImpl.assignIdIfMissing(), no composite format to infer "new" from.
     this._isNew = !this._decisionId || this._decisionId.startsWith('new-decision-');
     this.renderShell();
+    // Show Delete for any already-deployed table straight away -- independent of whether load()
+    // below succeeds, so a table with malformed XML (which fails to load) can still be deleted.
+    this.updateDeleteButtonState();
     if (this._isNew) {
       this._model = emptyDrdModel();
       this._model.decisionServiceName = 'New Decision Table';
       // Pre-filled, not left blank -- see short-id.js's own comment. Still a plain editable text
       // input until first save (unchanged), so a deliberate, memorable key is one edit away for
       // whoever wants one; this is just a sensible default for whoever doesn't.
-      this._model.decisionServiceKey = generateShortId('d');
+      // Normally system-generated (short-id.js), but a caller can pin the key -- ntrloc-processes
+      // does this when "Open DMN" is clicked for a marker rule whose key has no table yet, so the
+      // new table saves under the exact key the rule references. The Key field stays disabled; it's
+      // just pre-filled correctly instead of with a throwaway id.
+      this._model.decisionServiceKey = this.dataset.initialKey || generateShortId('d');
       // Optional caller-supplied starting shape. The state-machine editor's "Entry markers" tab
       // sets data-template="state-entry-markers" so a brand-new table opens already in the shape
       // StateMarkerDecisionService reads: COLLECT hit policy (0-to-many markers) and a single
@@ -630,7 +637,49 @@ class NtrlocDecisionTableEditor extends HTMLElement {
 
   reportDirty(dirty) {
     this._dirty = dirty;
+    this.updateDeleteButtonState();
     this.dispatchEvent(new CustomEvent('dirty-changed', { bubbles: true, detail: { dirty } }));
+  }
+
+  // Delete only makes sense once there's something deployed to delete -- hidden for a brand-new,
+  // never-saved table (there, "delete" is just closing the tab). reportDirty(false) runs on every
+  // load path and again at the end of save(), so this stays in sync without its own call sites.
+  updateDeleteButtonState() {
+    const button = this.querySelector('.delete-button');
+    if (button) button.style.display = this._isNew ? 'none' : '';
+  }
+
+  async deleteTable() {
+    if (this._isNew) return;
+    // Fall back to the key embedded in the decision id ("<key>:<version>:<generatedId>") when the
+    // model never loaded -- lets a malformed-XML table still be deleted.
+    const key = this._model?.decisionServiceKey || (this._decisionId || '').split(':')[0];
+    if (!key) return;
+    const name = this._model?.decisionServiceName || key;
+    const confirmed = await openConfirmDialog({
+      title: 'Delete Decision Table',
+      message: `Delete "${name}" and every deployed version? This cannot be undone.`,
+      confirmLabel: 'Delete',
+      destructive: true,
+    });
+    if (!confirmed) return;
+    try {
+      this.setStatus('Deleting...', false);
+      const response = await fetch(`/api/admin/dmn/decisions/${encodeURIComponent(key)}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ message: 'Request failed: ' + response.status }));
+        throw new Error(error.message || 'Request failed: ' + response.status);
+      }
+      // Drop the dirty flag first so the tab-workspace closes this tab without a redundant
+      // "discard your changes?" prompt -- the whole table is gone, unsaved edits are moot.
+      this.reportDirty(false);
+      this.dispatchEvent(new CustomEvent('editor-closed', { bubbles: true }));
+    } catch (e) {
+      this.setStatus('Failed to delete: ' + e.message, true);
+    }
   }
 
   setStatus(message, isError) {
@@ -666,6 +715,7 @@ class NtrlocDecisionTableEditor extends HTMLElement {
         </div>
         <span class="editor-status status"></span>
         <span class="spacer"></span>
+        <md-outlined-button class="delete-button" style="display: none;">Delete</md-outlined-button>
         <md-filled-button class="save-button">Save</md-filled-button>
       </div>
       <div class="editor-body">
@@ -676,6 +726,7 @@ class NtrlocDecisionTableEditor extends HTMLElement {
       </div>
     `;
     this.querySelector('.save-button').addEventListener('click', () => this.save());
+    this.querySelector('.delete-button').addEventListener('click', () => this.deleteTable());
     this.querySelector('.name-input').addEventListener('change', (e) => {
       this._model.decisionServiceName = e.target.value;
       this.markDirty();

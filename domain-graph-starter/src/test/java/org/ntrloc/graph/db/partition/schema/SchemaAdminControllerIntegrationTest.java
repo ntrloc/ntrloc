@@ -178,4 +178,82 @@ class SchemaAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
         assertThat(schemaManager.getAdminSchema().items()).extracting(i -> i.name()).contains(itemName);
     }
+
+    // --- Controlled lists as a first-class schema element ---
+
+    @Test
+    void getAdminSchema_includesControlledLists_withValueCountAndUsedBy() {
+        UUID propertyId = createProperty();
+        String listName = "list-" + UUID.randomUUID();
+        String createList = """
+                [{"type":"CREATE_CONTROLLED_LIST","name":"%s","valueType":"STRING",
+                  "values":[{"value":"A","label":"Alpha"},{"value":"B","label":"Beta"}]}]
+                """.formatted(listName);
+        webTestClient.post().uri("/api/admin/schema/mutations")
+                .contentType(MediaType.APPLICATION_JSON).bodyValue(createList)
+                .exchange().expectStatus().isNoContent();
+
+        UUID listId = schemaManager.getAdminSchema().controlledLists().stream()
+                .filter(l -> l.name().equals(listName)).findFirst().orElseThrow().id();
+        String attach = """
+                [{"type":"SET_PROPERTY_CONTROLLED_LIST","propertyId":"%s","listId":"%s"}]
+                """.formatted(propertyId, listId);
+        webTestClient.post().uri("/api/admin/schema/mutations")
+                .contentType(MediaType.APPLICATION_JSON).bodyValue(attach)
+                .exchange().expectStatus().isNoContent();
+
+        webTestClient.get().uri("/api/admin/schema")
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath("$.controlledLists[?(@.name == '" + listName + "')]").exists();
+
+        var listView = schemaManager.getAdminSchema().controlledLists().stream()
+                .filter(l -> l.id().equals(listId)).findFirst().orElseThrow();
+        assertThat(listView.valueCount()).isEqualTo(2);
+        assertThat(listView.usedBy()).extracting(u -> u.propertyId()).contains(propertyId);
+    }
+
+    @Test
+    void getControlledListById_returnsTheValues_orNotFoundForAnUnknownId() {
+        String listName = "list-" + UUID.randomUUID();
+        String createList = """
+                [{"type":"CREATE_CONTROLLED_LIST","name":"%s","valueType":"STRING",
+                  "values":[{"value":"X","label":"Ex"}]}]
+                """.formatted(listName);
+        webTestClient.post().uri("/api/admin/schema/mutations")
+                .contentType(MediaType.APPLICATION_JSON).bodyValue(createList)
+                .exchange().expectStatus().isNoContent();
+        UUID listId = schemaManager.getAdminSchema().controlledLists().stream()
+                .filter(l -> l.name().equals(listName)).findFirst().orElseThrow().id();
+
+        webTestClient.get().uri("/api/admin/schema/controlled-lists/{id}", listId)
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath("$.name").isEqualTo(listName)
+                .jsonPath("$.values.length()").isEqualTo(1)
+                .jsonPath("$.values[0].value").isEqualTo("X");
+
+        webTestClient.get().uri("/api/admin/schema/controlled-lists/{id}", UUID.randomUUID())
+                .exchange()
+                .expectStatus().isNotFound();
+    }
+
+    // Mirror of createOrReplaceControlledList_refreshesTheCachedAdminSchema for the list-centric
+    // path: a POST /mutations carrying the new controlled-list types must rebuild the cached
+    // AdminSchemaView, not just write through ControlledListManager.
+    @Test
+    void applyMutations_withControlledListTypes_refreshesTheCachedAdminSchema() {
+        String listName = "list-" + UUID.randomUUID();
+        String rawJson = """
+                [{"type":"CREATE_CONTROLLED_LIST","name":"%s","valueType":"STRING","values":[]}]
+                """.formatted(listName);
+
+        webTestClient.post().uri("/api/admin/schema/mutations")
+                .contentType(MediaType.APPLICATION_JSON).bodyValue(rawJson)
+                .exchange().expectStatus().isNoContent();
+
+        assertThat(schemaManager.getAdminSchema().controlledLists()).extracting(l -> l.name()).contains(listName);
+    }
 }

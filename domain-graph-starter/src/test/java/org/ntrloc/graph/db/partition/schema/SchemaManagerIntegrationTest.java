@@ -16,8 +16,10 @@ import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePropertyPr
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateStateMachineMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateStateMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateTraitDefinitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateControlledListMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateTransitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DefinitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.DeleteControlledListMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DeleteLinkDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DeletePropertyDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DeleteStateMachineMutation;
@@ -28,6 +30,8 @@ import org.ntrloc.graph.db.partition.schema.definition.mutation.ImplementTraitMu
 import org.ntrloc.graph.db.partition.schema.definition.mutation.MovePropertyDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.RemoveTraitMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.ReplaceControlledListMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.SetPropertyControlledListMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.UpdateControlledListMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.UpdateItemDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.UpdatePerspectiveDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.UpdatePropertyDefinitionMutation;
@@ -343,6 +347,138 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new ReplaceControlledListMutation(propId, List.of()))))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("No controlled list");
+    }
+
+    // --- List-centric controlled-list mutations (ControlledListMutationApplier) ---
+
+    private UUID createStringProp(UUID itemId, String propName) {
+        schemaManager.applyMutations(List.of(new CreateItemPropertyDefinitionMutation(
+                itemId, propName, "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false, List.of())));
+        return schemaManager.getAdminSchema().items().stream()
+                .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
+                .properties().stream().filter(p -> p.name().equals(propName)).findFirst().orElseThrow().id();
+    }
+
+    @Test
+    void createControlledListMutation_createsAReusableList_withValues() {
+        String name = "List-" + UUID.randomUUID();
+
+        schemaManager.applyMutations(List.of(new CreateControlledListMutation(name, PropertyType.STRING,
+                List.of(new CreateControlledListMutation.Entry("A", "Alpha"),
+                        new CreateControlledListMutation.Entry("B", "Beta")))));
+
+        var list = controlledListManager.getAllLists().stream()
+                .filter(l -> l.name().equals(name)).findFirst().orElseThrow();
+        assertThat(controlledListManager.getValues(list.id(), PropertyType.STRING))
+                .extracting(v -> v.value()).containsExactly("A", "B");
+    }
+
+    @Test
+    void createControlledListMutation_withACaseInsensitivelyDuplicateName_throws() {
+        String name = "Dup-" + UUID.randomUUID();
+        schemaManager.applyMutations(List.of(new CreateControlledListMutation(name, PropertyType.STRING, List.of())));
+
+        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(
+                new CreateControlledListMutation(name.toUpperCase(), PropertyType.STRING, List.of()))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("already exists");
+    }
+
+    @Test
+    void updateControlledListMutation_renamesWithoutTouchingValues_whenValuesAreNull() {
+        var list = controlledListManager.createList("List-" + UUID.randomUUID(), PropertyType.STRING);
+        controlledListManager.addValue(list.id(), "keep", "keep", 0);
+        String renamed = "Renamed-" + UUID.randomUUID();
+
+        schemaManager.applyMutations(List.of(new UpdateControlledListMutation(list.id(), renamed, null)));
+
+        assertThat(controlledListManager.getListById(list.id())).hasValueSatisfying(l -> assertThat(l.name()).isEqualTo(renamed));
+        assertThat(controlledListManager.getValues(list.id(), PropertyType.STRING)).extracting(v -> v.value()).containsExactly("keep");
+    }
+
+    @Test
+    void updateControlledListMutation_replacesValuesWithoutRenaming_whenNameIsNull() {
+        var list = controlledListManager.createList("List-" + UUID.randomUUID(), PropertyType.STRING);
+        controlledListManager.addValue(list.id(), "old", "old", 0);
+
+        schemaManager.applyMutations(List.of(new UpdateControlledListMutation(list.id(), null,
+                List.of(new UpdateControlledListMutation.Entry("new", "new")))));
+
+        assertThat(controlledListManager.getValues(list.id(), PropertyType.STRING)).extracting(v -> v.value()).containsExactly("new");
+    }
+
+    @Test
+    void deleteControlledListMutation_detachesProperties_andDropsTheValueTable() {
+        UUID itemId = createItem("Item-" + UUID.randomUUID());
+        UUID propId = createStringProp(itemId, "backed");
+        var list = controlledListManager.createList("List-" + UUID.randomUUID(), PropertyType.STRING);
+        controlledListManager.addValue(list.id(), "A", "A", 0);
+        controlledListManager.setPropertyControlledList(propId, list.id());
+
+        schemaManager.applyMutations(List.of(new DeleteControlledListMutation(list.id())));
+
+        assertThat(controlledListManager.getListById(list.id())).isEmpty();
+        assertThat(controlledListManager.getListForProperty(propId)).isEmpty();
+    }
+
+    @Test
+    void setPropertyControlledListMutation_attachesAndDetaches() {
+        UUID itemId = createItem("Item-" + UUID.randomUUID());
+        UUID propId = createStringProp(itemId, "genre");
+        var list = controlledListManager.createList("List-" + UUID.randomUUID(), PropertyType.STRING);
+
+        schemaManager.applyMutations(List.of(new SetPropertyControlledListMutation(propId, list.id())));
+        assertThat(controlledListManager.getListForProperty(propId)).hasValueSatisfying(l -> assertThat(l.id()).isEqualTo(list.id()));
+
+        schemaManager.applyMutations(List.of(new SetPropertyControlledListMutation(propId, null)));
+        assertThat(controlledListManager.getListForProperty(propId)).isEmpty();
+    }
+
+    @Test
+    void setPropertyControlledListMutation_onANonStringProperty_throws() {
+        UUID itemId = createItem("Item-" + UUID.randomUUID());
+        schemaManager.applyMutations(List.of(new CreateItemPropertyDefinitionMutation(
+                itemId, "flag", "d", PropertyType.BOOLEAN, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false, List.of())));
+        UUID propId = schemaManager.getAdminSchema().items().stream()
+                .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
+                .properties().stream().filter(p -> p.name().equals("flag")).findFirst().orElseThrow().id();
+        var list = controlledListManager.createList("List-" + UUID.randomUUID(), PropertyType.STRING);
+
+        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new SetPropertyControlledListMutation(propId, list.id()))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("not supported");
+    }
+
+    @Test
+    void setPropertyControlledListMutation_withAValueTypeMismatch_throws() {
+        UUID itemId = createItem("Item-" + UUID.randomUUID());
+        UUID propId = createStringProp(itemId, "str");
+        var intList = controlledListManager.createList("List-" + UUID.randomUUID(), PropertyType.INT);
+
+        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new SetPropertyControlledListMutation(propId, intList.id()))))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void createThenSetPropertyControlledList_inSeparateBatches_surfacesInGetAdminSchema() {
+        UUID itemId = createItem("Item-" + UUID.randomUUID());
+        UUID propId = createStringProp(itemId, "status");
+        String listName = "List-" + UUID.randomUUID();
+
+        schemaManager.applyMutations(List.of(new CreateControlledListMutation(listName, PropertyType.STRING,
+                List.of(new CreateControlledListMutation.Entry("Open", "Open")))));
+        UUID listId = controlledListManager.getAllLists().stream()
+                .filter(l -> l.name().equals(listName)).findFirst().orElseThrow().id();
+        schemaManager.applyMutations(List.of(new SetPropertyControlledListMutation(propId, listId)));
+
+        var schema = schemaManager.getAdminSchema();
+        var prop = schema.items().stream().filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
+                .properties().stream().filter(p -> p.id().equals(propId)).findFirst().orElseThrow();
+        assertThat(prop.controlledListId()).isEqualTo(listId);
+
+        var listView = schema.controlledLists().stream().filter(l -> l.id().equals(listId)).findFirst().orElseThrow();
+        assertThat(listView.valueCount()).isEqualTo(1);
+        assertThat(listView.usedBy()).extracting(u -> u.propertyId()).contains(propId);
     }
 
     // --- State machine / state / transition update+delete mutations ---

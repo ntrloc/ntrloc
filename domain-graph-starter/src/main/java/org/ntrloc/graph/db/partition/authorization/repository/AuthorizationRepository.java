@@ -252,6 +252,17 @@ public class AuthorizationRepository {
         return new MarkerRuleAdminRow(id, name, itemTypeId, decisionKey, true);
     }
 
+    // Plain delete, no cascade. A rule owns no markers statically (see MarkerRuleRow's own
+    // comment): any markers it applied are recorded in the ledger as RuleAppliedMarker carrying
+    // this rule's id and stay put on the items that have them -- future re-evaluations simply stop
+    // including this rule. Reconciling those already-applied markers away is the same cascading-
+    // re-evaluation gap MarkerRuleEvaluationService's class comment already flags, out of scope
+    // here. Not cache-affecting: AuthorizationCacheManager never reads rules (they're queried
+    // fresh at evaluation time), same as createMarkerRule above.
+    public void deleteMarkerRule(UUID id) {
+        jdbcClient.sql("DELETE FROM authorization_marker_rule WHERE id = :id").param("id", id).update();
+    }
+
     // All rules regardless of item type/enabled state -- the admin surface filters client-side by
     // item type the same way getAllMarkers()/MarkerAdminController's own listing does.
     public List<MarkerRuleAdminRow> getAllMarkerRules() {

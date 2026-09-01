@@ -60,6 +60,17 @@ class AuthorizationRepositoryMarkerIntegrationTest extends AbstractIntegrationTe
     }
 
     @Test
+    void createMarkerRule_thenDeleteMarkerRule_roundTrips() {
+        String name = "arm-rule-" + UUID.randomUUID();
+        var rule = authRepo.createMarkerRule(name, fixture.productTypeId(), "someDecisionKey-" + UUID.randomUUID());
+        assertThat(authRepo.getAllMarkerRules()).extracting(AuthorizationRepository.MarkerRuleAdminRow::id).contains(rule.id());
+
+        authRepo.deleteMarkerRule(rule.id());
+
+        assertThat(authRepo.getAllMarkerRules()).extracting(AuthorizationRepository.MarkerRuleAdminRow::id).doesNotContain(rule.id());
+    }
+
+    @Test
     void ensureMarkerGrant_isIdempotent() {
         var marker = authRepo.createMarker("arm-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId());
         var group = securityRepo.createGroup("arm-" + UUID.randomUUID());

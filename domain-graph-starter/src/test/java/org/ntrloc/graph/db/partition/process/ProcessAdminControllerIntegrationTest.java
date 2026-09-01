@@ -4,6 +4,10 @@ import org.flowable.engine.TaskService;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.partition.process.ProcessAdminController.ProcessDefinitionView;
+import org.ntrloc.graph.db.partition.schema.SchemaManager;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateItemDefinitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateStateMachineMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateStateMutation;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.reactive.server.WebTestClient;
@@ -25,6 +29,9 @@ class ProcessAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private TaskService taskService;
+
+    @Autowired
+    private SchemaManager schemaManager;
 
     @Test
     void listsDeployedDefinitionsIncludingHelloWorld() {
@@ -91,6 +98,58 @@ class ProcessAdminControllerIntegrationTest extends AbstractIntegrationTest {
                 .returnResult().getResponseBody();
 
         assertThat(versions).extracting(ProcessDefinitionView::id).containsExactly(v1.id(), v2.id());
+    }
+
+    // --- Delete process ---
+
+    @Test
+    void deletingAProcessRemovesEveryDeployedVersion() {
+        String key = "deleteProcessTest" + UUID.randomUUID().toString().replace("-", "");
+        deploy(key, "Delete Process Test", "v1");
+        deploy(key, "Delete Process Test, Edited", "v2");
+        assertThat(fetchDefinitions()).anyMatch(d -> d.key().equals(key));
+
+        webTestClient.delete().uri("/api/admin/process/definitions/{key}", key)
+                .exchange()
+                .expectStatus().isNoContent();
+
+        assertThat(fetchDefinitions()).noneMatch(d -> d.key().equals(key));
+        webTestClient.get().uri("/api/admin/process/definitions/{key}/versions", key)
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(ProcessDefinitionView[].class)
+                .value(versions -> assertThat(versions).isEmpty());
+    }
+
+    @Test
+    void deletingAnUnknownProcessReturnsNotFound() {
+        webTestClient.delete().uri("/api/admin/process/definitions/{key}", "missing" + UUID.randomUUID().toString().replace("-", ""))
+                .exchange()
+                .expectStatus().isNotFound();
+    }
+
+    @Test
+    void deletingAProcessStillReferencedByAStateMachineIsBlockedWithA409() {
+        String key = "referencedProcessTest" + UUID.randomUUID().toString().replace("-", "");
+        deploy(key, "Referenced Process Test", "v1");
+
+        String itemName = "DeleteGuardItem-" + UUID.randomUUID();
+        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(itemName, "d", List.of(), null, false, null)));
+        UUID itemId = schemaManager.getAdminSchema().items().stream()
+                .filter(i -> i.name().equals(itemName)).findFirst().orElseThrow().id();
+        schemaManager.applyMutations(List.of(new CreateStateMachineMutation(itemId, "DeleteGuardSM", null)));
+        UUID stateMachineId = schemaManager.getAdminSchema().items().stream()
+                .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
+                .stateMachines().get(0).id();
+        schemaManager.applyMutations(List.of(new CreateStateMutation(stateMachineId, "GuardState", null, key, null, null)));
+
+        webTestClient.delete().uri("/api/admin/process/definitions/{key}", key)
+                .exchange()
+                .expectStatus().isEqualTo(409)
+                .expectBody()
+                .jsonPath("$.message").value(m -> assertThat((String) m).contains("GuardState"));
+
+        assertThat(fetchDefinitions()).anyMatch(d -> d.key().equals(key));
     }
 
     // --- Start process instance ---

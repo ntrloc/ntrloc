@@ -48,6 +48,16 @@ public class SchemaAdminController {
         return broadcaster.events().map(type -> ServerSentEvent.builder(type).build());
     }
 
+    // Fetch one list's values by list id -- the schema editor's controlled-list detail pane
+    // lazy-loads values here (AdminSchemaView.controlledLists carries only name/valueCount/usedBy).
+    @GetMapping("/controlled-lists/{listId}")
+    ResponseEntity<ControlledListResponse> getControlledListById(@PathVariable UUID listId) {
+        return controlledListManager.getListById(listId)
+                .map(list -> ResponseEntity.ok(new ControlledListResponse(list.id(), list.name(), list.valueType(),
+                        controlledListManager.getValues(list.id(), list.valueType()))))
+                .orElse(ResponseEntity.notFound().build());
+    }
+
     @GetMapping("/properties/{propertyId}/controlled-list")
     ResponseEntity<ControlledListResponse> getControlledList(@PathVariable UUID propertyId) {
         return controlledListManager.getListForProperty(propertyId)

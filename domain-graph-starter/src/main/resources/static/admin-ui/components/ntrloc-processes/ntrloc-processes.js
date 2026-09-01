@@ -168,8 +168,8 @@ class NtrlocProcesses extends HTMLElement {
     this._workspace.openTab({ id, title, resourceType: 'bpmn' });
   }
 
-  openDecision(id, title) {
-    this._workspace.openTab({ id, title, resourceType: 'dmn' });
+  openDecision(id, title, opts = {}) {
+    this._workspace.openTab({ id, title, resourceType: 'dmn', initialKey: opts.initialKey, template: opts.template });
   }
 
   // Entry point for "open the DMN behind this rule" (ntrloc-item-detail.js's Marker Assignment
@@ -192,7 +192,14 @@ class NtrlocProcesses extends HTMLElement {
       match = latest(this.decisions);
     }
     if (!match) {
-      alert(`No decision table is deployed yet under key "${decisionKey}". Create one in the Processes tab using this exact key, then try again.`);
+      // No table under this key yet -- open a fresh one pre-pinned to the exact key (and in the
+      // marker-decision shape: COLLECT + a `markerName` output), so saving it deploys the table
+      // the caller's marker rule / state entry decision is already pointing at. A colon in the
+      // placeholder id would make the editor try to fetch a real deployment; the `new-decision-`
+      // prefix is what marks it "new", so that's kept and any colon in the key is stripped.
+      const placeholderId = `new-decision-for-key-${decisionKey.replace(/:/g, '_')}`;
+      this.openDecision(placeholderId, title ? `${title} (new)` : `New: ${decisionKey}`,
+        { initialKey: decisionKey, template: 'state-entry-markers' });
       return;
     }
     this.openDecision(match.id, title || match.name || match.key);
@@ -252,6 +259,8 @@ class NtrlocProcesses extends HTMLElement {
       if (tab.resourceType === 'dmn') {
         const el = document.createElement('ntrloc-decision-table-editor');
         el.dataset.decisionId = tab.id;
+        if (tab.initialKey) el.dataset.initialKey = tab.initialKey;
+        if (tab.template) el.dataset.template = tab.template;
         return el;
       }
       const el = document.createElement('ntrloc-process-editor');

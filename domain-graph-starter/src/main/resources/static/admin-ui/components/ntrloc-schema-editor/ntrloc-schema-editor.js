@@ -127,13 +127,22 @@ class NtrlocSchemaEditor extends HTMLElement {
               <button class="type-button trait-button ${schemaViewModel.selectedTrait === trait ? 'selected' : ''} ${trait.isDeleted ? 'pending-delete' : ''}"
                       data-index="${index}">${escapeHtml(trait.name || '(unnamed)')}</button>
             `).join('')}
+
+            <div class="section-header" style="margin-top: 16px;">CONTROLLED LISTS</div>
+            <md-outlined-button class="add-button new-controlled-list-button">+ New Controlled List</md-outlined-button>
+            ${schemaViewModel.controlledLists.map((list, index) => `
+              <button class="type-button controlled-list-button ${schemaViewModel.selectedControlledList === list ? 'selected' : ''} ${list.isDeleted ? 'pending-delete' : ''}"
+                      data-index="${index}">${escapeHtml(list.name || '(unnamed)')}</button>
+            `).join('')}
           `}
           <md-filled-button class="save-button" ${schemaViewModel.isDirty && !schemaViewModel.hasInvalidPendingLinks && !schemaViewModel.hasInvalidPendingGuardConditions ? '' : 'disabled'}>Save</md-filled-button>
           ${this._saveError ? `<p class="save-error">${escapeHtml(this._saveError)}</p>` : ''}
         </aside>
 
         <main>
-          <ntrloc-item-detail></ntrloc-item-detail>
+          ${schemaViewModel.selectedControlledList
+            ? '<ntrloc-controlled-list-detail></ntrloc-controlled-list-detail>'
+            : '<ntrloc-item-detail></ntrloc-item-detail>'}
         </main>
       </div>
     `;
@@ -168,6 +177,11 @@ class NtrlocSchemaEditor extends HTMLElement {
         schemaViewModel.selectTrait(schemaViewModel.traits[Number(button.dataset.index)]);
       });
     });
+    this.querySelectorAll('.controlled-list-button').forEach((button) => {
+      button.addEventListener('click', () => {
+        schemaViewModel.selectControlledList(schemaViewModel.controlledLists[Number(button.dataset.index)]);
+      });
+    });
 
     const newItemButton = this.querySelector('.new-item-button');
     if (newItemButton) newItemButton.addEventListener('click', () => schemaViewModel.newItem());
@@ -175,7 +189,16 @@ class NtrlocSchemaEditor extends HTMLElement {
     const newTraitButton = this.querySelector('.new-trait-button');
     if (newTraitButton) newTraitButton.addEventListener('click', () => schemaViewModel.newTrait());
 
+    const newControlledListButton = this.querySelector('.new-controlled-list-button');
+    if (newControlledListButton) newControlledListButton.addEventListener('click', () => schemaViewModel.newControlledList());
+
     this.querySelector('.save-button').addEventListener('click', () => this.onSave());
+
+    const listDetail = this.querySelector('ntrloc-controlled-list-detail');
+    if (listDetail) {
+      listDetail.configure({ list: schemaViewModel.selectedControlledList });
+      return;
+    }
 
     const itemDetail = this.querySelector('ntrloc-item-detail');
     itemDetail.configure({

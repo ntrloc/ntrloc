@@ -161,7 +161,8 @@ injectStyles('ntrloc-item-detail-styles', `
     color: var(--muted);
     background: rgba(255, 255, 255, 0.06);
   }
-  .marker-rule-open-button {
+  .marker-rule-open-button,
+  .marker-rule-delete-button {
     background: none;
     border: none;
     color: var(--accent);
@@ -170,7 +171,8 @@ injectStyles('ntrloc-item-detail-styles', `
     padding: 2px 6px;
     white-space: nowrap;
   }
-  .marker-rule-open-button:hover {
+  .marker-rule-open-button:hover,
+  .marker-rule-delete-button:hover {
     text-decoration: underline;
   }
   .field-row {
@@ -626,7 +628,7 @@ class NtrlocItemDetail extends HTMLElement {
 
   // These are the DMN-backed rules that apply this item type's markers automatically on
   // create/update (MarkerRuleEvaluationService), as distinct from the markers themselves above.
-  // Create-only for now -- enable/disable and delete from here are a smaller follow-up (see
+  // Create + delete only -- enable/disable toggling from here is a smaller follow-up (see
   // MarkerAdminController's own comment); the decision-key text field lets a rule be created
   // before its DMN table is deployed (see openCreateMarkerRuleDialog's own comment), so a fresh
   // rule commonly shows up here with nothing to "open" yet until that table exists.
@@ -641,6 +643,7 @@ class NtrlocItemDetail extends HTMLElement {
             <span class="marker-rule-key">${escapeHtml(r.decisionKey)}</span>
             <span class="marker-rule-status ${r.enabled ? 'enabled' : 'disabled'}">${r.enabled ? 'Enabled' : 'Disabled'}</span>
             <button class="marker-rule-open-button" type="button" title="Open this rule's DMN decision table">Open DMN</button>
+            <button class="marker-rule-delete-button" type="button" title="Delete this assignment rule">Delete</button>
           </li>
         `).join('')}</ul>`
       : '<p class="status">No marker assignment rules defined for this item type.</p>';
@@ -753,6 +756,21 @@ class NtrlocItemDetail extends HTMLElement {
     }
   }
 
+  // Native confirm(), same as onDeleteMarker above. A deleted rule stops firing on future
+  // create/update evaluations; markers it already applied stay on their items (see
+  // AuthorizationRepository.deleteMarkerRule) -- worth naming so the admin isn't surprised.
+  async onDeleteMarkerRule(rule) {
+    if (!confirm(`Delete assignment rule "${rule.name}"? It will stop assigning markers on future changes. Markers it has already applied stay in place.`)) return;
+    this._markerRuleError = null;
+    try {
+      await schemaViewModel.deleteMarkerRule(rule.id);
+    } catch (e) {
+      console.error('[item-detail] failed to delete marker rule:', e);
+      this._markerRuleError = e.message || 'Failed to delete assignment rule.';
+      this.render();
+    }
+  }
+
   // Cross-tab navigation into the Processes screen -- see ntrloc-processes.js's own
   // openDecisionByKey comment for how a decision *key* (all a rule row stores) resolves to a
   // specific deployed decision table to open. The <ntrloc-processes> element is a permanent
@@ -857,7 +875,7 @@ class NtrlocItemDetail extends HTMLElement {
 
   render() {
     if (!this._item) {
-      this.innerHTML = '<p class="status">Select an item or trait to view its details.</p>';
+      this.innerHTML = '<p class="status">Select an item, trait, or controlled list to view its details.</p>';
       return;
     }
     const item = this._item;
@@ -1157,6 +1175,7 @@ class NtrlocItemDetail extends HTMLElement {
       const rule = markerRules.find((r) => r.id === row.dataset.markerRuleId);
       if (!rule) return;
       row.querySelector('.marker-rule-open-button').addEventListener('click', () => this.onOpenMarkerRule(rule));
+      row.querySelector('.marker-rule-delete-button').addEventListener('click', () => this.onDeleteMarkerRule(rule));
     });
 
     const addLinkButton = this.querySelector('.add-link-button');

@@ -20,7 +20,11 @@ class PropertyDefinitionViewModel {
     this.originalFacetable = args.facetable ?? false;
     this.validCardinalities = args.validCardinalities;
     this.definedIn = args.definedIn;
-    this.controlledListId = args.controlledListId;
+    this.controlledListId = args.controlledListId ?? null;
+    // Remembered separately from controlledListId so a changed list association emits a
+    // SET_PROPERTY_CONTROLLED_LIST op without also tripping ownFieldsDirty (which would tack a
+    // spurious no-op UPDATE_PROPERTY onto every attach/detach). See listAssociationDirty below.
+    this.originalControlledListId = args.controlledListId ?? null;
     this.isNew = args.isNew;
     this.isDeleted = false;
     // Children of an OBJECT property, always present (empty for anything else) so rendering code
@@ -67,7 +71,14 @@ class PropertyDefinitionViewModel {
   // just checks `this.properties.some(p => p.isDirty)`) picks up nested changes for free without
   // needing their own recursive walk.
   get isDirty() {
-    return this.ownFieldsDirty || this.properties.some((p) => p.isDirty);
+    return this.ownFieldsDirty || this.listAssociationDirty || this.properties.some((p) => p.isDirty);
+  }
+
+  // Deliberately NOT part of ownFieldsDirty -- the list association is committed by its own
+  // SET_PROPERTY_CONTROLLED_LIST op, so folding it into ownFieldsDirty would emit a redundant
+  // UPDATE_PROPERTY carrying no actual field change.
+  get listAssociationDirty() {
+    return !this.isReadonly && (this.controlledListId ?? null) !== (this.originalControlledListId ?? null);
   }
 
   revert() {
@@ -77,6 +88,7 @@ class PropertyDefinitionViewModel {
     this.cardinality = this.originalCardinality;
     this.usage = this.originalUsage;
     this.facetable = this.originalFacetable;
+    this.controlledListId = this.originalControlledListId;
     this.isDeleted = false;
   }
 
@@ -622,5 +634,75 @@ class PendingLinkViewModel {
 
   static create(firstItemId) {
     return new PendingLinkViewModel(firstItemId);
+  }
+}
+
+// A reusable controlled list managed as its own schema element, alongside item types and traits.
+// Its values are lazy-loaded (AdminControlledListView carries only name/valueCount/usedBy), so
+// valuesLoaded gates the value-diff in isDirty -- a rename must never be mistaken for "wiped every
+// value" just because values were never fetched. usedBy is server-computed (every property
+// currently pointing at this list) and is display-only here.
+class ControlledListViewModel {
+  constructor(args) {
+    this.id = args.id;
+    this.name = args.name;
+    this.originalName = args.name;
+    this.valueType = args.valueType ?? 'STRING';
+    this.values = args.values ?? [];
+    this.originalValues = args.originalValues ?? JSON.parse(JSON.stringify(this.values));
+    this.valuesLoaded = args.valuesLoaded ?? false;
+    this.valueCount = args.valueCount ?? this.values.length;
+    this.usedBy = args.usedBy ?? [];
+    this.isNew = args.isNew ?? false;
+    this.isDeleted = false;
+  }
+
+  get isDirty() {
+    return this.isNew
+      || this.isDeleted
+      || this.name !== this.originalName
+      || (this.valuesLoaded && JSON.stringify(this.values) !== JSON.stringify(this.originalValues));
+  }
+
+  addValue() {
+    this.values = [...this.values, { value: '', label: '' }];
+  }
+
+  removeValue(index) {
+    this.values = this.values.filter((_, i) => i !== index);
+  }
+
+  // Called once the lazy GET .../controlled-lists/{id} resolves -- seeds both values and the
+  // baseline they're diffed against, and flips valuesLoaded so isDirty starts trusting the diff.
+  markValuesLoaded(values) {
+    this.values = values.map((v) => ({ value: v.value, label: v.label }));
+    this.originalValues = JSON.parse(JSON.stringify(this.values));
+    this.valuesLoaded = true;
+  }
+
+  static fromAdmin(v) {
+    return new ControlledListViewModel({
+      id: v.id,
+      name: v.name,
+      valueType: v.valueType,
+      valueCount: v.valueCount ?? 0,
+      usedBy: v.usedBy ?? [],
+      values: [],
+      valuesLoaded: false,
+      isNew: false,
+    });
+  }
+
+  static create() {
+    return new ControlledListViewModel({
+      id: null,
+      name: '',
+      valueType: 'STRING',
+      values: [],
+      valueCount: 0,
+      usedBy: [],
+      valuesLoaded: true,
+      isNew: true,
+    });
   }
 }
