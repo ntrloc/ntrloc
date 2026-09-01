@@ -4,5 +4,7 @@ import org.springframework.lang.Nullable;
 
 import java.util.UUID;
 
-public record UpdateStateMutation(UUID id, String name, @Nullable String description, @Nullable String entryProcessId, @Nullable String exitProcessId) implements DefinitionMutation {
+public record UpdateStateMutation(UUID id, String name, @Nullable String description,
+                                  @Nullable String entryProcessId, @Nullable String exitProcessId,
+                                  @Nullable String entryMarkerDecisionKey) implements DefinitionMutation {
 }

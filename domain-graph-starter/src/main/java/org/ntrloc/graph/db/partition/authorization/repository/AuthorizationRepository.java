@@ -239,9 +239,9 @@ public class AuthorizationRepository {
 
     // enabled defaults true (not left to the column's own DEFAULT TRUE, spelled out here so it's
     // obvious at the call site) -- safe to leave on immediately even before a decision table exists
-    // under decisionKey, since MarkerRuleEvaluationService.desiredMarkerIds() treats an undeployed
-    // key as "no markers this evaluation," not a failure. An admin can wire up the actual DMN table
-    // afterward (Processes tab) without a separate enable step.
+    // under decisionKey, since MarkerDecisionSupport.evaluateDecisionToMarkerIds() treats an
+    // undeployed key as "no markers this evaluation," not a failure. An admin can wire up the actual
+    // DMN table afterward (Processes tab) without a separate enable step.
     public MarkerRuleAdminRow createMarkerRule(String name, UUID itemTypeId, String decisionKey) {
         UUID id = jdbcClient.sql("""
                 INSERT INTO authorization_marker_rule (name, item_type_id, decision_key, enabled)

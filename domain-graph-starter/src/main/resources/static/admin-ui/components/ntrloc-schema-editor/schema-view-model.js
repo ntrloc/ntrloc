@@ -441,7 +441,7 @@ const schemaViewModel = {
 
         for (const state of machine.states) {
           if (state.isNew) {
-            ops.push({ type: 'CREATE_STATE', stateMachineId: machine.id, name: state.name, description: state.description, entryProcessId: state.entryProcessId, exitProcessId: state.exitProcessId });
+            ops.push({ type: 'CREATE_STATE', stateMachineId: machine.id, name: state.name, description: state.description, entryProcessId: state.entryProcessId, exitProcessId: state.exitProcessId, entryMarkerDecisionKey: state.entryMarkerDecisionKey });
             continue; // a brand-new state's transitions are unreachable too -- same "no real id yet" problem, one level down
           }
           // START/END pseudostates are server-managed -- never emit CREATE/UPDATE/DELETE_STATE for
@@ -454,8 +454,9 @@ const schemaViewModel = {
             if (state.name !== state.originalName
               || (state.description ?? '') !== (state.originalDescription ?? '')
               || state.entryProcessId !== state.originalEntryProcessId
-              || state.exitProcessId !== state.originalExitProcessId) {
-              ops.push({ type: 'UPDATE_STATE', id: state.id, name: state.name, description: state.description, entryProcessId: state.entryProcessId, exitProcessId: state.exitProcessId });
+              || state.exitProcessId !== state.originalExitProcessId
+              || (state.entryMarkerDecisionKey ?? '') !== (state.originalEntryMarkerDecisionKey ?? '')) {
+              ops.push({ type: 'UPDATE_STATE', id: state.id, name: state.name, description: state.description, entryProcessId: state.entryProcessId, exitProcessId: state.exitProcessId, entryMarkerDecisionKey: state.entryMarkerDecisionKey });
             }
           }
 

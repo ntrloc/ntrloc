@@ -112,6 +112,17 @@ injectStyles('ntrloc-search-styles', `
     color: var(--muted);
     flex-shrink: 0;
   }
+  .page-size-input {
+    width: 72px;
+    flex-shrink: 0;
+    padding: 6px 8px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 13px;
+    font-family: inherit;
+  }
   .query-select {
     flex: 1;
     min-width: 140px;
@@ -162,6 +173,28 @@ injectStyles('ntrloc-search-styles', `
   .view-toggle button:not(.active):hover {
     background: rgba(74, 158, 255, 0.1);
     color: var(--text);
+  }
+  .pager {
+    display: flex;
+    gap: 6px;
+  }
+  .pager button {
+    padding: 4px 10px;
+    background: transparent;
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .pager button:hover:not(:disabled) {
+    background: rgba(74, 158, 255, 0.1);
+    border-color: var(--accent);
+  }
+  .pager button:disabled {
+    color: var(--muted);
+    cursor: default;
+    opacity: 0.5;
   }
   .item-card {
     background: var(--bg);
@@ -807,9 +840,16 @@ class NtrlocSearch extends HTMLElement {
       sortableFields: [],
       selectedSortField: null,
       selectedSortDirection: 'ASC',
+      // null = no limit (server returns everything). A positive integer caps the page; the
+      // projection's totalCount is still surfaced so it's obvious how many rows were held back.
+      pageSize: null,
+      // Row index the current page starts at. Only meaningful with a pageSize; reset to 0 whenever
+      // the query shape changes (type / sort / page size / a fresh Project click).
+      pageOffset: 0,
       results: [],
       isLoading: false,
       lastProjectionMs: null,
+      lastTotalCount: null,
       viewMode: 'formatted',
       propertyDefs: [],
       editingItems: {},
@@ -929,8 +969,11 @@ class NtrlocSearch extends HTMLElement {
     pane.selectedTypeName = typeName || null;
     pane.results = [];
     pane.lastProjectionMs = null;
+    pane.lastTotalCount = null;
     pane.selectedSortField = null;
     pane.selectedSortDirection = 'ASC';
+    pane.pageSize = null;
+    pane.pageOffset = 0;
     pane.editingItems = {};
     pane.collapsedLinkGroups = {};
     const type = pane.availableTypes.find(t => t.name === typeName);
@@ -940,19 +983,55 @@ class NtrlocSearch extends HTMLElement {
   }
 
   selectSortField(id, field) {
-    this.pane(id).selectedSortField = field || null;
+    const pane = this.pane(id);
+    pane.selectedSortField = field || null;
+    pane.pageOffset = 0;
     this.render();
   }
 
   toggleSortDirection(id) {
     const pane = this.pane(id);
     pane.selectedSortDirection = pane.selectedSortDirection === 'ASC' ? 'DESC' : 'ASC';
+    pane.pageOffset = 0;
     this.render();
   }
 
-  async project(id) {
+  // Stored, not applied, until the next Project -- same as the sort controls. No re-render: the
+  // caller normalizes the field's displayed value itself so results aren't torn down mid-tweak.
+  setPageSize(id, value) {
+    const n = parseInt(value, 10);
+    const pane = this.pane(id);
+    pane.pageSize = Number.isInteger(n) && n > 0 ? n : null;
+    pane.pageOffset = 0;
+  }
+
+  // The "Project" button runs the query afresh, from page one. Prev/Next call project(id)
+  // directly so they keep the offset they just set.
+  runQuery(id) {
+    this.pane(id).pageOffset = 0;
+    this.project(id);
+  }
+
+  nextPage(id) {
+    const pane = this.pane(id);
+    if (!pane.pageSize) return;
+    // Don't advance past the last page (the backend errors on an offset >= the row count).
+    if (pane.lastTotalCount != null && pane.pageOffset + pane.pageSize >= pane.lastTotalCount) return;
+    pane.pageOffset += pane.pageSize;
+    this.project(id);
+  }
+
+  prevPage(id) {
+    const pane = this.pane(id);
+    if (!pane.pageSize) return;
+    pane.pageOffset = Math.max(0, pane.pageOffset - pane.pageSize);
+    this.project(id);
+  }
+
+  async project(id, _retriedAfterClamp = false) {
     const pane = this.pane(id);
     if (!pane.selectedTypeName) return;
+    if (!pane.pageSize) pane.pageOffset = 0; // offset without a limit is meaningless
     pane.isLoading = true;
     pane.lastProjectionMs = null;
     this.render();
@@ -966,12 +1045,24 @@ class NtrlocSearch extends HTMLElement {
           itemTypeName: pane.selectedTypeName,
           sortField: pane.selectedSortField,
           sortDirection: pane.selectedSortField ? pane.selectedSortDirection : undefined,
+          limit: pane.pageSize ?? undefined,
+          offset: pane.pageOffset || undefined,
         }),
       });
       if (!response.ok) throw new Error('Request failed: ' + response.status);
       const result = await response.json();
       pane.lastProjectionMs = performance.now() - start;
       pane.results = result.items || [];
+      pane.lastTotalCount = result.totalCount ?? null;
+
+      // Landed past the end (rows deleted since, or a stale offset) -- snap to the last real page
+      // and fetch it once, so the user never sees an empty page they have to Prev out of.
+      if (!_retriedAfterClamp && pane.pageSize && pane.pageOffset > 0
+          && pane.results.length === 0 && pane.lastTotalCount > 0) {
+        pane.pageOffset = Math.max(0, Math.floor((pane.lastTotalCount - 1) / pane.pageSize) * pane.pageSize);
+        pane.isLoading = false;
+        return this.project(id, true);
+      }
     } catch (e) {
       pane.results = [];
     } finally {
@@ -1544,29 +1635,43 @@ class NtrlocSearch extends HTMLElement {
                   ${pane.isLoading ? 'Loading...' : 'Project'}
                 </md-filled-button>
               </div>
-              ${pane.sortableFields.length > 0 ? `
+              ${pane.selectedTypeName ? `
                 <div class="sort-row">
-                  <span class="sort-label">Sort</span>
-                  <md-outlined-select class="query-select" data-action="select-sort-field">
-                    <md-select-option value="" ${!pane.selectedSortField ? 'selected' : ''}>
-                      <div slot="headline">-- None --</div>
-                    </md-select-option>
-                    ${pane.sortableFields.map(field => `
-                      <md-select-option value="${escapeHtml(field.name)}" ${pane.selectedSortField === field.name ? 'selected' : ''}>
-                        <div slot="headline">${escapeHtml(field.name)}${field.system ? ' *' : ''}</div>
+                  ${pane.sortableFields.length > 0 ? `
+                    <span class="sort-label">Sort</span>
+                    <md-outlined-select class="query-select" data-action="select-sort-field">
+                      <md-select-option value="" ${!pane.selectedSortField ? 'selected' : ''}>
+                        <div slot="headline">-- None --</div>
                       </md-select-option>
-                    `).join('')}
-                  </md-outlined-select>
-                  ${pane.selectedSortField ? `
-                    <md-outlined-button class="sort-direction-button" data-action="toggle-sort-direction">${pane.selectedSortDirection}</md-outlined-button>
+                      ${pane.sortableFields.map(field => `
+                        <md-select-option value="${escapeHtml(field.name)}" ${pane.selectedSortField === field.name ? 'selected' : ''}>
+                          <div slot="headline">${escapeHtml(field.name)}${field.system ? ' *' : ''}</div>
+                        </md-select-option>
+                      `).join('')}
+                    </md-outlined-select>
+                    ${pane.selectedSortField ? `
+                      <md-outlined-button class="sort-direction-button" data-action="toggle-sort-direction">${pane.selectedSortDirection}</md-outlined-button>
+                    ` : ''}
                   ` : ''}
+                  <span class="sort-label page-size-label">Page size</span>
+                  <input type="number" class="page-size-input" data-action="set-page-size"
+                         min="1" step="1" inputmode="numeric" placeholder="all"
+                         value="${pane.pageSize ?? ''}" />
                 </div>
               ` : ''}
             </div>
             ${pane.results.length > 0 ? `
-              <div class="results-summary" style="display: flex; align-items: center;">
-                <span>${pane.results.length} items
+              <div class="results-summary" style="display: flex; align-items: center; gap: 12px;">
+                <span>${pane.pageSize != null && pane.lastTotalCount != null
+                  ? `${pane.pageOffset + 1}–${pane.pageOffset + pane.results.length} of ${pane.lastTotalCount}`
+                  : `${pane.results.length}${pane.lastTotalCount != null && pane.lastTotalCount !== pane.results.length ? ` of ${pane.lastTotalCount}` : ''}`} items
                 ${pane.lastProjectionMs !== null ? `<span class="timing"> &middot; ${(pane.lastProjectionMs / 1000).toFixed(3)}s</span>` : ''}</span>
+                ${pane.pageSize != null && pane.lastTotalCount != null && pane.lastTotalCount > pane.pageSize ? `
+                  <div class="pager">
+                    <button data-action="page-prev" ${pane.pageOffset === 0 ? 'disabled' : ''}>&lsaquo; Prev</button>
+                    <button data-action="page-next" ${pane.pageOffset + pane.pageSize >= pane.lastTotalCount ? 'disabled' : ''}>Next &rsaquo;</button>
+                  </div>
+                ` : ''}
                 <div class="view-toggle">
                   <button class="${pane.viewMode === 'formatted' ? 'active' : ''}" data-action="view-formatted">Formatted</button>
                   <button class="${pane.viewMode === 'raw' ? 'active' : ''}" data-action="view-raw">Raw</button>
@@ -1975,10 +2080,16 @@ class NtrlocSearch extends HTMLElement {
         if (action === 'maximize') el.addEventListener('click', () => this.maximizePane(id));
         if (action === 'restore') el.addEventListener('click', () => this.restorePane(id));
         if (action === 'close') el.addEventListener('click', () => this.closePane(id));
-        if (action === 'project') el.addEventListener('click', () => this.project(id));
+        if (action === 'project') el.addEventListener('click', () => this.runQuery(id));
+        if (action === 'page-prev') el.addEventListener('click', () => this.prevPage(id));
+        if (action === 'page-next') el.addEventListener('click', () => this.nextPage(id));
         if (action === 'toggle-sort-direction') el.addEventListener('click', () => this.toggleSortDirection(id));
         if (action === 'select-type') el.addEventListener('change', e => this.selectType(id, e.target.value));
         if (action === 'select-sort-field') el.addEventListener('change', e => this.selectSortField(id, e.target.value));
+        if (action === 'set-page-size') el.addEventListener('change', e => {
+          this.setPageSize(id, e.target.value);
+          e.target.value = this.pane(id).pageSize ?? ''; // reflect the normalized value without a re-render
+        });
         if (action === 'view-formatted') el.addEventListener('click', () => this.setViewMode(id, 'formatted'));
         if (action === 'view-raw') el.addEventListener('click', () => this.setViewMode(id, 'raw'));
       });

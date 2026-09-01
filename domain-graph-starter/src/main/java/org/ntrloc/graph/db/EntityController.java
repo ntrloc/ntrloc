@@ -33,17 +33,6 @@ public class EntityController {
         return ResponseEntity.ok(entityManager.project(spec, binaryBaseUrl, principal));
     }
 
-    // Minimal, direct register write -- see EntityManager.setItemState's own comment for why this
-    // is deliberately separate from /api/mutation's ledger-backed pipeline. Exists only so
-    // current-state querying/faceting has real test data before real transition execution exists.
-    @PostMapping("/{itemId}/state")
-    ResponseEntity<?> setState(@PathVariable UUID itemId, @RequestBody SetItemStateRequest request) {
-        entityManager.setItemState(itemId, request.stateMachineName(), request.stateName());
-        return ResponseEntity.ok().build();
-    }
-
-    record SetItemStateRequest(String stateMachineName, String stateName) {}
-
     // Begin the item's participation in a state machine (enters the START target state).
     @PostMapping("/{itemId}/state-machines/{stateMachineName}/start")
     ResponseEntity<Void> startStateMachine(@PathVariable UUID itemId, @PathVariable String stateMachineName,

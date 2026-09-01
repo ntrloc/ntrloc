@@ -300,6 +300,10 @@ class StateViewModel {
     this.originalEntryProcessId = args.entryProcessId;
     this.exitProcessId = args.exitProcessId;
     this.originalExitProcessId = args.exitProcessId;
+    // DMN decision key evaluated on entering this NORMAL state; every marker it returns is applied
+    // for as long as the item stays here. Null on pseudostates and on any state that sets none.
+    this.entryMarkerDecisionKey = args.entryMarkerDecisionKey ?? null;
+    this.originalEntryMarkerDecisionKey = args.entryMarkerDecisionKey ?? null;
     this.transitions = args.transitions;
     this.isNew = args.isNew;
     this.isDeleted = false;
@@ -318,6 +322,7 @@ class StateViewModel {
       || (this.description ?? '') !== (this.originalDescription ?? '')
       || this.entryProcessId !== this.originalEntryProcessId
       || this.exitProcessId !== this.originalExitProcessId
+      || (this.entryMarkerDecisionKey ?? '') !== (this.originalEntryMarkerDecisionKey ?? '')
       || this.transitions.some((t) => t.isDirty);
   }
 
@@ -343,6 +348,7 @@ class StateViewModel {
       kind: s.kind,
       entryProcessId: s.entryProcessId,
       exitProcessId: s.exitProcessId,
+      entryMarkerDecisionKey: s.entryMarkerDecisionKey,
       transitions: (s.transitions ?? []).map((t) => TransitionViewModel.fromAdmin(t)),
       isNew: false,
     });
@@ -358,6 +364,7 @@ class StateViewModel {
       kind: 'NORMAL',
       entryProcessId: null,
       exitProcessId: null,
+      entryMarkerDecisionKey: null,
       transitions: [],
       isNew: true,
     });

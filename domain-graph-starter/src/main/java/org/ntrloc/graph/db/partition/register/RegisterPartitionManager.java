@@ -214,8 +214,23 @@ public class RegisterPartitionManager implements SchemaChangeListener {
         String direction = "DESC".equalsIgnoreCase(spec.sortDirection()) ? "DESC" : "ASC";
         String column = SYSTEM_SORT_COLUMNS.containsKey(spec.sortField())
                 ? SYSTEM_SORT_COLUMNS.get(spec.sortField())
-                : PROPERTIES_JSON_ARROW_PREFIX + resolvePropertyId(itemTypeId, spec.sortField()) + "'";
+                : typedSortExpression("rt.properties", resolveProperty(itemTypeId, spec.sortField()));
         return "ORDER BY " + column + " " + direction + " NULLS LAST, ri.item_id ASC";
+    }
+
+    // `->>` always yields text, so an unqualified ORDER BY on it sorts an INT property as "1", "10",
+    // "2". Cast the extracted text to the property's real type so the sort is by value. NULLIF(_,'')
+    // keeps an empty-string (or absent -> NULL) cell from failing the cast; NULLS LAST still applies.
+    private static String typedSortExpression(String jsonbColumnAlias, AdminPropertyDefinitionView property) {
+        String text = jsonbColumnAlias + "->>'" + property.id() + "'";
+        return switch (property.type()) {
+            case INT, LONG -> "NULLIF(" + text + ", '')::bigint";
+            case DOUBLE -> "NULLIF(" + text + ", '')::double precision";
+            case DATE -> "NULLIF(" + text + ", '')::date";
+            case DATETIME -> "NULLIF(" + text + ", '')::timestamptz";
+            case BOOLEAN -> "NULLIF(" + text + ", '')::boolean";
+            default -> text;
+        };
     }
 
     private record RawItem(UUID registerItemId, UUID itemId, String itemType, Map<String, Object> properties, Map<String, Object> states) {}
@@ -491,7 +506,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
         String direction = "DESC".equalsIgnoreCase(spec.sortDirection()) ? "DESC" : "ASC";
         String column = SYSTEM_SORT_COLUMNS_ACROSS_TYPES.containsKey(spec.sortField())
                 ? SYSTEM_SORT_COLUMNS_ACROSS_TYPES.get(spec.sortField())
-                : "combined.properties->>'" + resolvePropertyId(representativeItemTypeId, spec.sortField()) + "'";
+                : typedSortExpression("combined.properties", resolveProperty(representativeItemTypeId, spec.sortField()));
         return "ORDER BY " + column + " " + direction + " NULLS LAST, combined.item_id ASC";
     }
 
@@ -1208,15 +1223,19 @@ public class RegisterPartitionManager implements SchemaChangeListener {
     // nested under different object properties can share a name (dimensions.length vs
     // packagingDimensions.length), so only the full path is unambiguous.
     private UUID resolvePropertyId(UUID itemTypeId, String propertyName) {
+        return resolveProperty(itemTypeId, propertyName).id();
+    }
+
+    private AdminPropertyDefinitionView resolveProperty(UUID itemTypeId, String propertyName) {
         List<AdminPropertyDefinitionView> rootProperties = schemaManager.getAdminSchema().items().stream()
                 .filter(item -> item.id().equals(itemTypeId))
                 .findFirst()
                 .map(AdminItemDefinitionView::properties)
                 .orElse(List.of());
-        return resolvePropertyId(rootProperties, propertyName.split("\\."), propertyName);
+        return resolveProperty(rootProperties, propertyName.split("\\."), propertyName);
     }
 
-    private UUID resolvePropertyId(List<AdminPropertyDefinitionView> properties, String[] pathSegments, String fullPath) {
+    private AdminPropertyDefinitionView resolveProperty(List<AdminPropertyDefinitionView> properties, String[] pathSegments, String fullPath) {
         AdminPropertyDefinitionView match = properties.stream()
                 .filter(p -> p.name().equals(pathSegments[0]))
                 .findFirst()
@@ -1226,12 +1245,12 @@ public class RegisterPartitionManager implements SchemaChangeListener {
             if (isLastSegment) {
                 throw new IllegalArgumentException("Property is an object, not a leaf value: " + fullPath);
             }
-            return resolvePropertyId(object.properties(), Arrays.copyOfRange(pathSegments, 1, pathSegments.length), fullPath);
+            return resolveProperty(object.properties(), Arrays.copyOfRange(pathSegments, 1, pathSegments.length), fullPath);
         }
         if (!isLastSegment) {
             throw new IllegalArgumentException("Unknown property: " + fullPath);
         }
-        return match.id();
+        return match;
     }
 
     // Same "translate name to id, never store the name" rule as resolvePropertyId, one level up:
@@ -1577,6 +1596,10 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                                                          List<AdminStateMachineView> stateMachines, String binaryBaseUrl,
                                                          @Nullable Map<String, LinkProjectionSpec> requestedLinks,
                                                          RequestPermissionContext permissions) {
+        // Nothing to assemble -- and every batch fetch below binds `... IN (:ids)`, which Postgres
+        // rejects as a syntax error when the list is empty. A page whose offset lands past the last
+        // row (offset >= totalCount) reaches here with an empty list; it must come back as [], not 500.
+        if (rawItems.isEmpty()) return List.of();
         List<UUID> rawItemIds = rawItems.stream().map(RawItem::registerItemId).toList();
         Map<String, String> displayLabelPatterns = resolveEffectiveDisplayLabelPatterns();
 

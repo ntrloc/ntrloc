@@ -125,21 +125,99 @@ injectStyles('ntrloc-decision-table-editor-styles', `
   table.dmn-table .col-divider {
     border-right: 3px solid var(--border);
   }
+  /* Fill the cell rather than field-sizing: content -- the column is already sized by its 2-line
+     header (name / type) plus the wide data-column padding, so a content-sized input just left a
+     short value looking stranded in a much wider cell. */
   table.dmn-table th input, table.dmn-table td input {
     box-sizing: border-box;
+    width: 100%;
     padding: 4px 6px;
     border: 1px solid var(--border);
     border-radius: 4px;
     background: var(--bg);
     color: var(--text);
-    font-size: 12px;
+    font-size: 14px;
     margin-top: 2px;
-    /* Sizes the input itself to its actual value, not a fixed/default width -- without this, a
-       rule cell's input reverts to the browser's default ~20-character intrinsic size regardless
-       of how short or long its real value is, which is exactly the "wider than it needs to be"
-       problem this whole change is fixing everywhere else. */
-    field-sizing: content;
-    min-width: 3em;
+  }
+  /* A constrained output column (see outputCellHtml): the cell shows the current selection and
+     opens a ticklist on click. The list is a top-layer popover (rule-choice-dropdown) so it
+     escapes both the table's own overflow and the surrounding md-dialog -- showing every marker
+     inline for every rule doesn't scale once there are more than a handful. */
+  table.dmn-table td.rule-choice-cell {
+    padding: 8px 14px;
+    vertical-align: middle;
+  }
+  .rule-choice-trigger {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 12em;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 8px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 14px;
+    font-family: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .rule-choice-trigger:hover {
+    border-color: var(--muted);
+  }
+  .rule-choice-summary {
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .rule-choice-summary.is-placeholder {
+    color: var(--muted);
+  }
+  .rule-choice-caret {
+    color: var(--muted);
+    flex-shrink: 0;
+    font-size: 11px;
+  }
+  .rule-choice-dropdown {
+    position: fixed;
+    inset: auto;
+    margin: 0;
+    padding: 6px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--panel-bg);
+    color: var(--text);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    max-height: 280px;
+    overflow-y: auto;
+    z-index: 1000;
+  }
+  .rule-choice-dropdown label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 8px;
+    border-radius: 4px;
+    font-size: 14px;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .rule-choice-dropdown label:hover {
+    background: var(--bg);
+  }
+  .rule-choice-dropdown input {
+    width: auto;
+    margin: 0;
+    cursor: pointer;
+  }
+  .rule-choice-empty {
+    font-size: 13px;
+    color: var(--muted);
+    padding: 5px 8px;
   }
   .remove-rule-button {
     border: none;
@@ -256,6 +334,53 @@ injectStyles('ntrloc-decision-table-editor-styles', `
   }
 `);
 
+// Reshapes a fresh emptyDrdModel() into the shape a state's entry marker decision needs: COLLECT
+// (a state can confer any number of markers) and a lone output column literally named `markerName`
+// (StateMarkerDecisionService reads that column off each hit row). Everything else -- the input
+// column, the one blank rule -- is left exactly as emptyDecisionData() produced it for the user to
+// fill in. Mutates in place; only ever called for a brand-new table (never on load).
+function applyStateEntryMarkerTemplate(model) {
+  const decision = model.decisions[0];
+  if (!decision) return;
+  decision.name = 'Entry markers';
+  decision.hitPolicy = 'COLLECT';
+  if (decision.outputs && decision.outputs.length) {
+    decision.outputs[0].label = 'Marker name';
+    decision.outputs[0].name = 'markerName';
+  }
+}
+
+// Parses the optional data-column-choices attribute -- JSON of { "<output name>": ["A", "B", …] }.
+// A column listed here renders its rule cells as a ticklist of those values instead of a free-text
+// FEEL input; the marker-decision editors (state entry markers, item-type marker rules) pass the
+// item type's marker names for the "markerName" column so a rule can't name a marker that doesn't
+// exist. Structurally generic so an input column bound to a controlled list can use it later.
+function parseColumnChoices(raw) {
+  if (!raw) return new Map();
+  try {
+    const obj = JSON.parse(raw);
+    return new Map(Object.entries(obj)
+      .filter(([, v]) => Array.isArray(v))
+      .map(([k, v]) => [k, v.map(String)]));
+  } catch {
+    return new Map();
+  }
+}
+
+// A constrained output cell stores its ticked values as one comma-joined string literal:
+// "" for none, "A" for one, "A,B" for several. The DMN engine evaluates cells as JUEL (no list
+// literal), so this is how "several markers for one rule" is expressed; MarkerDecisionSupport
+// .markerNamesFromCell splits it back out. parse tolerates single quotes / stray whitespace so a
+// hand-edited cell still round-trips. (A marker name may therefore not contain a comma.)
+function parseChoiceCell(text) {
+  const trimmed = (text || '').trim().replace(/^["']|["']$/g, '');
+  return trimmed.split(',').map((part) => part.trim()).filter(Boolean);
+}
+
+function serializeChoiceCell(names) {
+  return names.length === 0 ? '' : `"${names.join(',')}"`;
+}
+
 // DRD (Decision Requirements Diagram) editor: a diagram-js canvas of decision-table nodes linked
 // by dependency arrows (see dmn-io.js for the always-bundled <decisionService> XML this reads/
 // writes), with a drill-in table editor for each node's rule grid -- the user's explicit call
@@ -276,10 +401,13 @@ class NtrlocDecisionTableEditor extends HTMLElement {
     this._activeNode = null;
     this._view = 'canvas';
     this._dirty = false;
+    this._columnChoices = new Map();
+    this._choiceDropdown = null;
   }
 
   connectedCallback() {
     this._decisionId = this.dataset.decisionId;
+    this._columnChoices = parseColumnChoices(this.dataset.columnChoices);
     // Same reserved-placeholder-prefix detection as ntrloc-process-editor.js and the prior
     // single-table version of this editor -- DMN decision ids are plain UUIDs assigned by
     // DecisionDataManagerImpl.assignIdIfMissing(), no composite format to infer "new" from.
@@ -292,6 +420,11 @@ class NtrlocDecisionTableEditor extends HTMLElement {
       // input until first save (unchanged), so a deliberate, memorable key is one edit away for
       // whoever wants one; this is just a sensible default for whoever doesn't.
       this._model.decisionServiceKey = generateShortId('d');
+      // Optional caller-supplied starting shape. The state-machine editor's "Entry markers" tab
+      // sets data-template="state-entry-markers" so a brand-new table opens already in the shape
+      // StateMarkerDecisionService reads: COLLECT hit policy (0-to-many markers) and a single
+      // output column named `markerName`. Only ever applied to a fresh table, never on load.
+      if (this.dataset.template === 'state-entry-markers') applyStateEntryMarkerTemplate(this._model);
       this.syncMetaInputs();
       this.initCanvas();
       this.centerDiagram();
@@ -302,6 +435,7 @@ class NtrlocDecisionTableEditor extends HTMLElement {
   }
 
   disconnectedCallback() {
+    this.closeChoiceDropdown();
     if (this._diagram) {
       this._diagram.destroy();
       this._diagram = null;
@@ -366,6 +500,12 @@ class NtrlocDecisionTableEditor extends HTMLElement {
       this._model.decisionServiceKey = deployed.key;
       this.querySelector('.key-input').value = deployed.key;
       this.reportDirty(false);
+      // Mirrors <ntrloc-process-editor>'s process-saved: lets a host (the state-machine editor's
+      // Entry markers tab) capture the now-authoritative key without re-fetching or re-rendering.
+      this.dispatchEvent(new CustomEvent('decision-saved', {
+        bubbles: true,
+        detail: { key: deployed.key, id: deployed.id, version: deployed.version },
+      }));
       this.setStatus(deployed.key !== requestedKey
         ? `Key "${requestedKey}" was already in use -- assigned "${deployed.key}" instead. Saved as version ${deployed.version}.`
         : `Saved as version ${deployed.version}.`, false);
@@ -465,6 +605,7 @@ class NtrlocDecisionTableEditor extends HTMLElement {
   }
 
   backToDiagram() {
+    this.closeChoiceDropdown();
     this._activeNode = null;
     this._view = 'canvas';
     this.querySelector('.table-wrap').style.display = 'none';
@@ -554,6 +695,7 @@ class NtrlocDecisionTableEditor extends HTMLElement {
   }
 
   renderTable() {
+    this.closeChoiceDropdown();
     const node = this._activeNode;
     const wrap = this.querySelector('.table-wrap');
     wrap.innerHTML = `
@@ -608,9 +750,7 @@ class NtrlocDecisionTableEditor extends HTMLElement {
                   ${rule.inputEntries.map((text, colIndex) => `
                     <td class="${colIndex === node.inputs.length - 1 ? 'col-divider' : ''}"><input type="text" class="rule-input-entry" data-rule-index="${ruleIndex}" data-col-index="${colIndex}" value="${escapeHtml(text)}" placeholder="any"></td>
                   `).join('')}
-                  ${rule.outputEntries.map((text, colIndex) => `
-                    <td><input type="text" class="rule-output-entry" data-rule-index="${ruleIndex}" data-col-index="${colIndex}" value="${escapeHtml(text)}"></td>
-                  `).join('')}
+                  ${rule.outputEntries.map((text, colIndex) => this.outputCellHtml(text, ruleIndex, colIndex)).join('')}
                   <td class="rule-actions-col"><button class="remove-rule-button" data-rule-index="${ruleIndex}" title="Remove rule">&times;</button></td>
                 </tr>
               `).join('')}
@@ -621,6 +761,27 @@ class NtrlocDecisionTableEditor extends HTMLElement {
       </div>
     `;
     this.wireTableEvents();
+  }
+
+  // A plain FEEL text input, unless this output column is in _columnChoices -- then a trigger that
+  // shows the current selection and opens a checkbox dropdown (see openChoiceDropdown). The picked
+  // set is stored back as a comma-joined string literal (serializeChoiceCell); the rest of the
+  // table stays a normal DMN table.
+  outputCellHtml(text, ruleIndex, colIndex) {
+    const output = this._activeNode.outputs[colIndex];
+    const choices = output ? this._columnChoices.get(output.name) : null;
+    if (!choices) {
+      return `<td><input type="text" class="rule-output-entry" data-rule-index="${ruleIndex}" data-col-index="${colIndex}" value="${escapeHtml(text)}"></td>`;
+    }
+    const selected = parseChoiceCell(text);
+    const joined = selected.join(', ');
+    return `
+      <td class="rule-choice-cell" data-rule-index="${ruleIndex}" data-col-index="${colIndex}">
+        <button type="button" class="rule-choice-trigger" aria-haspopup="true" aria-expanded="false" title="${escapeHtml(joined)}">
+          <span class="rule-choice-summary${selected.length ? '' : ' is-placeholder'}">${selected.length ? escapeHtml(joined) : 'Select markers'}</span>
+          <span class="rule-choice-caret" aria-hidden="true">&#9662;</span>
+        </button>
+      </td>`;
   }
 
   wireTableEvents() {
@@ -722,6 +883,101 @@ class NtrlocDecisionTableEditor extends HTMLElement {
         this.markDirty();
       });
     });
+    wrap.querySelectorAll('.rule-choice-cell').forEach((cell) => {
+      const trigger = cell.querySelector('.rule-choice-trigger');
+      if (trigger) trigger.addEventListener('click', () => this.toggleChoiceDropdown(cell, trigger));
+    });
+  }
+
+  toggleChoiceDropdown(cell, trigger) {
+    if (this._choiceDropdown && this._choiceDropdown.cell === cell) {
+      this.closeChoiceDropdown();
+      return;
+    }
+    this.openChoiceDropdown(cell, trigger);
+  }
+
+  openChoiceDropdown(cell, trigger) {
+    this.closeChoiceDropdown();
+    const ruleIndex = Number(cell.dataset.ruleIndex);
+    const colIndex = Number(cell.dataset.colIndex);
+    const output = this._activeNode.outputs[colIndex];
+    const choices = this._columnChoices.get(output.name) || [];
+    const selected = new Set(parseChoiceCell(this._activeNode.rules[ruleIndex].outputEntries[colIndex]));
+
+    const dropdown = document.createElement('div');
+    dropdown.className = 'rule-choice-dropdown';
+    dropdown.setAttribute('popover', 'manual');
+    dropdown.innerHTML = choices.length
+      ? choices.map((name) => `
+          <label><input type="checkbox" value="${escapeHtml(name)}" ${selected.has(name) ? 'checked' : ''}><span>${escapeHtml(name)}</span></label>
+        `).join('')
+      : '<div class="rule-choice-empty">No markers defined for this item type yet</div>';
+
+    // Appended to the host (which is inside the md-dialog subtree) rather than document.body: a
+    // top-layer popover promoted from within the dialog stacks above it, whereas a body child
+    // would sit behind the modal's own top layer.
+    this.appendChild(dropdown);
+
+    dropdown.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
+      cb.addEventListener('change', () => {
+        const chosen = [...dropdown.querySelectorAll('input[type="checkbox"]:checked')].map((x) => x.value);
+        this._activeNode.rules[ruleIndex].outputEntries[colIndex] = serializeChoiceCell(chosen);
+        this.markDirty();
+        this.updateChoiceSummary(trigger, chosen);
+      });
+    });
+
+    const onPointerDown = (e) => {
+      if (!dropdown.contains(e.target) && !trigger.contains(e.target)) this.closeChoiceDropdown();
+    };
+    const onKeyDown = (e) => { if (e.key === 'Escape') { this.closeChoiceDropdown(); trigger.focus(); } };
+    const onReposition = () => this.closeChoiceDropdown();
+    this._choiceDropdown = { el: dropdown, cell, trigger, onPointerDown, onKeyDown, onReposition };
+
+    try { dropdown.showPopover(); } catch (e) { /* popover unsupported -- fixed position + z-index still render it */ }
+    this.positionChoiceDropdown();
+    trigger.setAttribute('aria-expanded', 'true');
+
+    // Capture so these run before the checkbox's own change handler and before the trigger's click.
+    document.addEventListener('pointerdown', onPointerDown, true);
+    document.addEventListener('keydown', onKeyDown, true);
+    // A scroll under the fixed-positioned dropdown would leave it stranded -- simplest to close.
+    window.addEventListener('scroll', onReposition, true);
+    window.addEventListener('resize', onReposition, true);
+  }
+
+  positionChoiceDropdown() {
+    const d = this._choiceDropdown;
+    if (!d) return;
+    const r = d.trigger.getBoundingClientRect();
+    d.el.style.minWidth = `${r.width}px`;
+    const dh = d.el.offsetHeight;
+    const openUpward = window.innerHeight - r.bottom < dh + 8 && r.top > dh + 8;
+    d.el.style.top = `${Math.max(4, openUpward ? r.top - dh - 4 : r.bottom + 4)}px`;
+    d.el.style.left = `${Math.max(4, Math.min(r.left, window.innerWidth - d.el.offsetWidth - 8))}px`;
+  }
+
+  updateChoiceSummary(trigger, chosen) {
+    const summaryEl = trigger.querySelector('.rule-choice-summary');
+    if (!summaryEl) return;
+    const joined = chosen.join(', ');
+    summaryEl.textContent = chosen.length ? joined : 'Select markers';
+    summaryEl.classList.toggle('is-placeholder', chosen.length === 0);
+    trigger.title = joined;
+  }
+
+  closeChoiceDropdown() {
+    const d = this._choiceDropdown;
+    if (!d) return;
+    this._choiceDropdown = null;
+    document.removeEventListener('pointerdown', d.onPointerDown, true);
+    document.removeEventListener('keydown', d.onKeyDown, true);
+    window.removeEventListener('scroll', d.onReposition, true);
+    window.removeEventListener('resize', d.onReposition, true);
+    try { d.el.hidePopover(); } catch (e) { /* not open */ }
+    d.el.remove();
+    if (d.trigger.isConnected) d.trigger.setAttribute('aria-expanded', 'false');
   }
 }
 

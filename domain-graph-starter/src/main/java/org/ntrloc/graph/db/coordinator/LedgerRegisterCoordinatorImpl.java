@@ -1,6 +1,7 @@
 package org.ntrloc.graph.db.coordinator;
 
 import org.ntrloc.graph.db.partition.authorization.MarkerRuleEvaluationService;
+import org.ntrloc.graph.db.partition.authorization.StateMarkerDecisionService;
 import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
 import org.ntrloc.graph.db.partition.ledger.ItemDeleteEntry;
 import org.ntrloc.graph.db.partition.ledger.ItemUpdateEntry;
@@ -26,6 +27,7 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
     private final RegisterPartitionManager registerPartitionManager;
     private final ItemDeleteCascadeExpander cascadeExpander;
     private final MarkerRuleEvaluationService markerRuleEvaluationService;
+    private final StateMarkerDecisionService stateMarkerDecisionService;
 
     // @Lazy breaks a real circular bean dependency, same technique and same reason as
     // AuthorizationRepository's own @Lazy AuthorizationCacheManager: MarkerRuleEvaluationService
@@ -37,11 +39,13 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
     public LedgerRegisterCoordinatorImpl(LedgerPartitionManager ledgerPartitionManager,
                                           RegisterPartitionManager registerPartitionManager,
                                           ItemDeleteCascadeExpander cascadeExpander,
-                                          @Lazy MarkerRuleEvaluationService markerRuleEvaluationService) {
+                                          @Lazy MarkerRuleEvaluationService markerRuleEvaluationService,
+                                          @Lazy StateMarkerDecisionService stateMarkerDecisionService) {
         this.ledgerPartitionManager = ledgerPartitionManager;
         this.registerPartitionManager = registerPartitionManager;
         this.cascadeExpander = cascadeExpander;
         this.markerRuleEvaluationService = markerRuleEvaluationService;
+        this.stateMarkerDecisionService = stateMarkerDecisionService;
     }
 
     @Override
@@ -54,6 +58,10 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
         // needs no changes to apply what this produces: it already reads markersAdded/Removed off
         // whatever entries it's given.
         expanded = markerRuleEvaluationService.enrichWithRuleDecisions(expanded);
+        // State-entry marker decisions run second, on the same entries: a state transition's
+        // add/remove of StateAppliedMarker attributions folds into the same ledger row, and running
+        // after the rules lets it dedup against (and defer to) any marker a rule just re-asserted.
+        expanded = stateMarkerDecisionService.enrichWithStateMarkerDecisions(expanded);
         ledgerPartitionManager.append(expanded, transactionId, actorExternalId);
 
         // Items before links: link endpoint resolution needs same-transaction item staging

@@ -7,5 +7,7 @@ import java.util.UUID;
 
 // kind is "NORMAL", "START", or "END". START/END are the pseudostates every machine owns; the
 // editor renders them by kind, not by their sentinel name.
-public record AdminStateView(UUID id, String name, @Nullable String description, String kind, @Nullable String entryProcessId, @Nullable String exitProcessId, List<AdminTransitionView> transitions) {
+public record AdminStateView(UUID id, String name, @Nullable String description, String kind,
+                             @Nullable String entryProcessId, @Nullable String exitProcessId,
+                             @Nullable String entryMarkerDecisionKey, List<AdminTransitionView> transitions) {
 }

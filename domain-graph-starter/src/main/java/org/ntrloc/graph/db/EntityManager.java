@@ -30,15 +30,6 @@ public interface EntityManager {
     // refuse the mutation.
     MutationResponse mutate(MutationRequest request, @Nullable NtrlocPrincipal principal);
 
-    // Ledger-backed like mutate() above (an ItemUpdateEntry with only its stateChanges facet
-    // populated, staged/committed through the same coordinator) -- but deliberately still minimal:
-    // it does not check that stateName is actually reachable from the item's current state via a
-    // defined transition, and (like mutate()) doesn't enforce permissions. Transition validity
-    // enforcement is a separate, not-yet-built follow-up; this method exists now so state changes
-    // are audited and available as marker-rule trigger input once that system exists, without
-    // waiting on transition validation to be designed first.
-    void setItemState(UUID itemId, String stateMachineName, String stateName);
-
     // Begin an item's participation in a state machine: enters the state its START pseudostate
     // points at. Enforces state-machine:start (marker-scoped) and rejects if the machine is already
     // active on the item or has no wired start transition. No process execution yet -- v1 just moves

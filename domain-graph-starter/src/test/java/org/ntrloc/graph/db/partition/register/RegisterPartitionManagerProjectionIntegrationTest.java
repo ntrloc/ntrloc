@@ -3,7 +3,7 @@ package org.ntrloc.graph.db.partition.register;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
-import org.ntrloc.graph.db.EntityManager;
+import org.ntrloc.graph.db.coordinator.LedgerRegisterCoordinator;
 import org.ntrloc.graph.db.mutation.ExistingItemReference;
 import org.ntrloc.graph.db.mutation.ItemCreateMutation;
 import org.ntrloc.graph.db.mutation.LinkCreateMutation;
@@ -28,6 +28,7 @@ import org.ntrloc.graph.db.projection.PropertyValuePredicate;
 import org.ntrloc.graph.db.projection.RangeFacetFilter;
 import org.ntrloc.graph.db.projection.StateValuePredicate;
 import org.ntrloc.graph.db.projection.TermsFacetFilter;
+import org.ntrloc.graph.db.partition.ledger.ItemUpdateEntry;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -37,6 +38,7 @@ import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -44,10 +46,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 
 // Covers RegisterPartitionManager.project(...) and its supporting machinery (predicate
-// translation, faceting, sorting/pagination, link expansion, setItemState, schema-change table
-// management) -- the read/query side of the class. The write side (create/update/delete via the
-// ledger/coordinator) is already exercised by MutationControllerIntegrationTest and
-// LedgerRegisterCoordinatorIntegrationTest; this file deliberately doesn't repeat that.
+// translation, faceting, sorting/pagination, link expansion, state-change projection, schema-change
+// table management) -- the read/query side of the class. The write side (create/update/delete via
+// the ledger/coordinator) is already exercised by MutationControllerIntegrationTest and
+// LedgerRegisterCoordinatorIntegrationTest; this file deliberately doesn't repeat that. State
+// changes here go straight through the coordinator (setState() helper) rather than an EntityManager
+// entry point -- StateMachineExecutionIntegrationTest covers start/executeTransition end to end.
 class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrationTest {
 
     private static final String BOOK_TYPE = "RegisterProjectionTestBook";
@@ -59,7 +63,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
     private RegisterPartitionManager registerPartitionManager;
 
     @Autowired
-    private EntityManager entityManager;
+    private LedgerRegisterCoordinator coordinator;
 
     @Autowired
     private RegisterProjectionTestDomainInitializer fixture;
@@ -75,7 +79,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
     // project() below always ANDs a "testMarker = this test's marker" predicate into whatever
     // filter the test asked for -- so a facet/sort/pagination query run by one test method can
     // never see another method's leftover rows, without every test having to remember to scope
-    // itself manually. Tests that instead look up a single, specific item by id (setItemState,
+    // itself manually. Tests that instead look up a single, specific item by id (setState,
     // projectOne) don't need this -- an exact id can't collide with another test's rows either way.
     private String marker;
 
@@ -135,6 +139,18 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
                 .expectBody(MutationResponse.class)
                 .returnResult().getResponseBody();
         return response.items().get(0).itemId();
+    }
+
+    // Moves an item to a named state by staging an ItemUpdateEntry with only its stateChanges facet
+    // through the coordinator -- exactly what the retired EntityManager.setItemState stub did
+    // internally. The real transition entry points are covered by StateMachineExecutionIntegrationTest;
+    // these projection/facet tests only need a recorded current state, not START-pseudostate wiring.
+    private void setState(UUID itemId, String machineName, String stateName) {
+        UUID smId = registerPartitionManager.resolveStateMachineId(fixture.bookTypeId(), machineName);
+        UUID stateId = registerPartitionManager.resolveStateId(smId, stateName);
+        UUID txn = UUID.randomUUID();
+        coordinator.prepare(List.of(new ItemUpdateEntry(itemId, Map.of(), Map.of(smId, stateId), Set.of(), Set.of(), Set.of())), txn, null);
+        coordinator.commit(txn, UUID.randomUUID());
     }
 
     private ProjectedItemsAndFacets project(CollectionProjectionSpec spec) {
@@ -272,7 +288,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
     void stateValuePredicate_matchesItemsCurrentlyInThatState() {
         UUID outOfStockBook = createBook("Dune", 400, true, "Fiction");
         createBook("Foundation", 300, true, "Fiction");
-        entityManager.setItemState(outOfStockBook, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE,
+        setState(outOfStockBook, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE,
                 RegisterProjectionTestDomainInitializer.OUT_OF_STOCK);
 
         var spec = new CollectionProjectionSpec(BOOK_TYPE, null, null,
@@ -502,14 +518,13 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
 
     @Test
     void stateMachineFacet_countsItemsByCurrentState() {
-        // Creating an item never assigns it a state automatically -- setItemState's own comment on
-        // why (no "perform transition" mutation exists yet) -- so both items need an explicit call
-        // to have a recorded state at all, even the one meant to represent "Available".
+        // Creating an item never assigns it a state automatically -- so both items need an explicit
+        // setState call to have a recorded state at all, even the one meant to represent "Available".
         UUID available = createBook("Dune", 400, true, "Fiction");
         UUID outOfStock = createBook("Foundation", 300, true, "Fiction");
-        entityManager.setItemState(available, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE,
+        setState(available, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE,
                 RegisterProjectionTestDomainInitializer.AVAILABLE);
-        entityManager.setItemState(outOfStock, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE,
+        setState(outOfStock, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE,
                 RegisterProjectionTestDomainInitializer.OUT_OF_STOCK);
 
         var spec = new CollectionProjectionSpec(BOOK_TYPE, null, null, null, null,
@@ -557,6 +572,21 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
     }
 
     @Test
+    void sorting_byIntPropertyColumn_ordersNumericallyNotLexicographically() {
+        // pageCount is INT: the JSONB ->> extraction is text, so without a numeric cast "10" sorts
+        // before "2". Values chosen so lexicographic and numeric order genuinely differ.
+        createBook("ten", 10, true, "Fiction");
+        createBook("two", 2, true, "Fiction");
+        createBook("one", 1, true, "Fiction");
+        createBook("hundred", 100, true, "Fiction");
+
+        assertThat(project(new CollectionProjectionSpec(BOOK_TYPE, "pageCount", "ASC")).titles())
+                .containsExactly("one", "two", "ten", "hundred");
+        assertThat(project(new CollectionProjectionSpec(BOOK_TYPE, "pageCount", "DESC")).titles())
+                .containsExactly("hundred", "ten", "two", "one");
+    }
+
+    @Test
     void sorting_bySystemColumn_isAcceptedAlongsidePropertyColumns() {
         createBook("Dune", 400, true, "Fiction");
         createBook("Foundation", 300, true, "Fiction");
@@ -575,6 +605,23 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
 
         var spec = new CollectionProjectionSpec(BOOK_TYPE, null, "title", "ASC", null, null, null, null, 1, 1);
         assertThat(project(spec).titles()).containsExactly("Foundation");
+    }
+
+    @Test
+    void pagination_offsetPastTheLastRow_returnsAnEmptyPageNotAnError() {
+        createBook("Dune", 400, true, "Fiction");
+        createBook("Foundation", 300, true, "Fiction");
+        createBook("Neuromancer", 300, true, "Fiction");
+
+        // offset == totalCount, and well past it: both must come back empty (the batch assembly
+        // fetches bind `IN (:ids)`, which Postgres rejects for an empty list) with totalCount intact.
+        var atEnd = new CollectionProjectionSpec(BOOK_TYPE, null, "title", "ASC", null, null, null, null, 3, 5);
+        assertThat(project(atEnd).titles()).isEmpty();
+        assertThat(project(atEnd).result().totalCount()).isEqualTo(3);
+
+        var pastEnd = new CollectionProjectionSpec(BOOK_TYPE, null, "title", "ASC", null, null, null, null, 100, 5);
+        assertThat(project(pastEnd).titles()).isEmpty();
+        assertThat(project(pastEnd).result().totalCount()).isEqualTo(3);
     }
 
     @Test
@@ -711,13 +758,13 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
                 .containsExactly("Ace Books");
     }
 
-    // --- setItemState ---
+    // --- state-change projection ---
 
     @Test
-    void setItemState_thenProjectOne_reflectsTheNewCurrentState() {
+    void stateChange_thenProjectOne_reflectsTheNewCurrentState() {
         UUID bookId = createBook("Dune", 400, true, "Fiction");
 
-        entityManager.setItemState(bookId, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE,
+        setState(bookId, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE,
                 RegisterProjectionTestDomainInitializer.OUT_OF_STOCK);
 
         var book = registerPartitionManager.projectOne(fixture.bookTypeId(), bookId, "http://binary").orElseThrow();
@@ -740,7 +787,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
     @Test
     void projection_forAnActiveMachine_listsTheCurrentStatesOutgoingTransitions() {
         UUID bookId = createBook("Dune", 400, true, "Fiction");
-        entityManager.setItemState(bookId, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE,
+        setState(bookId, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE,
                 RegisterProjectionTestDomainInitializer.OUT_OF_STOCK);
 
         var book = registerPartitionManager.projectOne(fixture.bookTypeId(), bookId, "http://binary").orElseThrow();
@@ -748,13 +795,6 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
         assertThat(s.startable()).isFalse();
         assertThat(s.availableTransitions()).extracting(t -> t.name())
                 .contains("Restock", "Discontinue"); // OutOfStock's outgoing transitions
-    }
-
-    @Test
-    void setItemStateForUnknownItem_throwsIllegalArgumentException() {
-        assertThatThrownBy(() -> entityManager.setItemState(UUID.randomUUID(),
-                RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, RegisterProjectionTestDomainInitializer.OUT_OF_STOCK))
-                .isInstanceOf(IllegalArgumentException.class);
     }
 
     // --- Schema-change table management ---

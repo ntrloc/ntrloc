@@ -101,7 +101,7 @@ public interface DomainInitializer {
 
         schemaManager.applyMutations(states.stream()
                 .<DefinitionMutation>map(s -> new CreateStateMutation(
-                        stateMachineId, s.name(), s.description(), s.entryProcessId(), s.exitProcessId()))
+                        stateMachineId, s.name(), s.description(), s.entryProcessId(), s.exitProcessId(), s.entryMarkerDecisionKey()))
                 .toList());
 
         List<AdminStateView> createdStates = schemaManager.getAdminSchema().items().stream()
@@ -141,9 +141,10 @@ public interface DomainInitializer {
      * (initStateMachine already takes that once for the whole batch).
      */
     record StateDefinition(String name, @Nullable String description,
-                            @Nullable String entryProcessId, @Nullable String exitProcessId) {
+                            @Nullable String entryProcessId, @Nullable String exitProcessId,
+                            @Nullable String entryMarkerDecisionKey) {
         public StateDefinition(String name) {
-            this(name, null, null, null);
+            this(name, null, null, null, null);
         }
     }
 

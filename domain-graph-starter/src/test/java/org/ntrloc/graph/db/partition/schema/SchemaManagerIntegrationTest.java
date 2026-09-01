@@ -375,14 +375,15 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         UUID machineId = schemaManager.getAdminSchema().items().stream()
                 .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
                 .stateMachines().get(0).id();
-        schemaManager.applyMutations(List.of(new CreateStateMutation(machineId, "original", "d", null, null)));
+        schemaManager.applyMutations(List.of(new CreateStateMutation(machineId, "original", "d", null, null, null)));
         UUID stateId = normalStateNamed(itemId, "original").id();
 
         schemaManager.applyMutations(List.of(
-                new UpdateStateMutation(stateId, "renamed", "updated", "entry-proc", "exit-proc")));
+                new UpdateStateMutation(stateId, "renamed", "updated", "entry-proc", "exit-proc", "marker-dec")));
         var afterUpdate = normalStateNamed(itemId, "renamed");
         assertThat(afterUpdate.name()).isEqualTo("renamed");
         assertThat(afterUpdate.kind()).isEqualTo("NORMAL");
+        assertThat(afterUpdate.entryMarkerDecisionKey()).isEqualTo("marker-dec");
 
         schemaManager.applyMutations(List.of(new DeleteStateMutation(stateId)));
         var afterDelete = schemaManager.getAdminSchema().items().stream()
@@ -434,7 +435,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
                 .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
                 .stateMachines().get(0).id();
 
-        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new CreateStateMutation(machineId, "__start__", "d", null, null))))
+        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new CreateStateMutation(machineId, "__start__", "d", null, null, null))))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("reserved");
     }
@@ -447,8 +448,8 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
                 .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
                 .stateMachines().get(0).id();
         schemaManager.applyMutations(List.of(
-                new CreateStateMutation(machineId, "s1", "d", null, null),
-                new CreateStateMutation(machineId, "s2", "d", null, null)));
+                new CreateStateMutation(machineId, "s1", "d", null, null, null),
+                new CreateStateMutation(machineId, "s2", "d", null, null, null)));
         var states = schemaManager.getAdminSchema().items().stream()
                 .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
                 .stateMachines().get(0).states();
@@ -484,8 +485,8 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
                 .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
                 .stateMachines().get(0).id();
         schemaManager.applyMutations(List.of(
-                new CreateStateMutation(machineId, "from", "d", null, null),
-                new CreateStateMutation(machineId, "to", "d", null, null)));
+                new CreateStateMutation(machineId, "from", "d", null, null, null),
+                new CreateStateMutation(machineId, "to", "d", null, null, null)));
         var states = schemaManager.getAdminSchema().items().stream()
                 .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
                 .stateMachines().get(0).states();

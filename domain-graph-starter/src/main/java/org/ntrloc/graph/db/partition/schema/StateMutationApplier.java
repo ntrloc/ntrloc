@@ -36,11 +36,12 @@ class StateMutationApplier {
             repo.deleteStateMachine(m.id());
         } else if (mutation instanceof CreateStateMutation m) {
             SchemaMutationValidation.requireNotReservedStateName(m.name());
-            repo.createState(m.stateMachineId(), m.name(), m.description(), SchemaRepository.STATE_KIND_NORMAL, m.entryProcessId(), m.exitProcessId());
+            repo.createState(m.stateMachineId(), m.name(), m.description(), SchemaRepository.STATE_KIND_NORMAL,
+                    m.entryProcessId(), m.exitProcessId(), m.entryMarkerDecisionKey());
         } else if (mutation instanceof UpdateStateMutation m) {
             SchemaMutationValidation.requireNotReservedStateName(m.name());
             SchemaMutationValidation.requireDeletableState(repo, m.id()); // NORMAL-only -- same gate as delete
-            repo.updateState(m.id(), m.name(), m.description(), m.entryProcessId(), m.exitProcessId());
+            repo.updateState(m.id(), m.name(), m.description(), m.entryProcessId(), m.exitProcessId(), m.entryMarkerDecisionKey());
         } else if (mutation instanceof DeleteStateMutation m) {
             SchemaMutationValidation.requireDeletableState(repo, m.id());
             repo.deleteState(m.id());

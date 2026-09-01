@@ -2,7 +2,6 @@ package org.ntrloc.graph.db.partition.register;
 
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
-import org.ntrloc.graph.db.EntityManager;
 import org.ntrloc.graph.db.coordinator.LedgerRegisterCoordinator;
 import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
 import org.ntrloc.graph.db.partition.ledger.ItemUpdateEntry;
@@ -16,16 +15,15 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-// EntityManager.setItemState is ledger-backed -- it builds an ItemUpdateEntry with only its
-// stateChanges facet populated, staged/committed through the same LedgerRegisterCoordinator every
-// other mutation uses, instead of the old direct, unaudited register UPDATE. This covers that
-// write path specifically -- read-side behavior (projectOne reflecting the new state,
-// StateValuePredicate filtering, state facets) is already covered by
-// RegisterPartitionManagerProjectionIntegrationTest and unaffected by this change.
+// A state change is ledger-backed -- it's an ItemUpdateEntry with only its stateChanges facet
+// populated, staged/committed through the same LedgerRegisterCoordinator every other mutation uses,
+// not a direct, unaudited register UPDATE. This covers that write path specifically -- read-side
+// behavior (projectOne reflecting the new state, StateValuePredicate filtering, state facets) is
+// already covered by RegisterPartitionManagerProjectionIntegrationTest and unaffected. The real
+// transition entry points (EntityManager.startStateMachine / executeTransition) are covered end to
+// end by StateMachineExecutionIntegrationTest; here we drive the coordinator directly so the write
+// path is tested in isolation from START-pseudostate wiring and permission checks.
 class ItemStateChangeLedgerIntegrationTest extends AbstractIntegrationTest {
-
-    @Autowired
-    private EntityManager entityManager;
 
     @Autowired
     private LedgerRegisterCoordinator coordinator;
@@ -48,11 +46,19 @@ class ItemStateChangeLedgerIntegrationTest extends AbstractIntegrationTest {
         return itemId;
     }
 
+    private void setState(UUID itemId, String machineName, String stateName) {
+        UUID smId = registerPartitionManager.resolveStateMachineId(fixture.bookTypeId(), machineName);
+        UUID stateId = registerPartitionManager.resolveStateId(smId, stateName);
+        UUID txn = UUID.randomUUID();
+        coordinator.prepare(List.of(new ItemUpdateEntry(itemId, Map.of(), Map.of(smId, stateId), Set.of(), Set.of(), Set.of())), txn, null);
+        coordinator.commit(txn, UUID.randomUUID());
+    }
+
     @Test
-    void setItemState_writesAnItemUpdateLedgerEntryWithAStateChangesFacet() {
+    void stateChange_writesAnItemUpdateLedgerEntryWithAStateChangesFacet() {
         UUID bookId = createBook("Ledger Test Book");
 
-        entityManager.setItemState(bookId, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE,
+        setState(bookId, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE,
                 RegisterProjectionTestDomainInitializer.OUT_OF_STOCK);
 
         Long ledgerRows = jdbcClient.sql("""
@@ -70,7 +76,7 @@ class ItemStateChangeLedgerIntegrationTest extends AbstractIntegrationTest {
         // every property-only update matters regardless of which facet of ItemUpdateEntry triggered
         // the write.
         UUID bookId = createBook("Carry-Forward Test Book");
-        entityManager.setItemState(bookId, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE,
+        setState(bookId, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE,
                 RegisterProjectionTestDomainInitializer.OUT_OF_STOCK);
 
         UUID updateTxn = UUID.randomUUID();
@@ -90,7 +96,7 @@ class ItemStateChangeLedgerIntegrationTest extends AbstractIntegrationTest {
         coordinator.prepare(List.of(new ItemUpdateEntry(bookId, Map.of(fixture.pageCountPropertyId(), 400), Map.of(), Set.of(), Set.of(), Set.of())), updateTxn, null);
         coordinator.commit(updateTxn, UUID.randomUUID());
 
-        entityManager.setItemState(bookId, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE,
+        setState(bookId, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE,
                 RegisterProjectionTestDomainInitializer.OUT_OF_STOCK);
 
         var book = registerPartitionManager.projectOne(fixture.bookTypeId(), bookId, "http://binary").orElseThrow();
@@ -133,12 +139,5 @@ class ItemStateChangeLedgerIntegrationTest extends AbstractIntegrationTest {
                 """)
                 .param("itemId", bookId).param("txn", txn).query(Long.class).single();
         assertThat(ledgerEntryCount).isEqualTo(1L);
-    }
-
-    @Test
-    void setItemStateForUnknownItem_throwsIllegalArgumentException() {
-        org.assertj.core.api.Assertions.assertThatThrownBy(() -> entityManager.setItemState(UUID.randomUUID(),
-                        RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, RegisterProjectionTestDomainInitializer.OUT_OF_STOCK))
-                .isInstanceOf(IllegalArgumentException.class);
     }
 }

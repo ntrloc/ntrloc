@@ -376,6 +376,12 @@ function openStateMachineEditorDialog(item) {
       // narrow side panel rather than half the dialog.
       diagramWidth: 480,
       paneCollapsed: null, // null | 'diagram' | 'detail'
+      // All deployed DMN decision definitions ({id, key, version, ...}), best-effort fetched on
+      // open and refreshed after an inline decision save -- used to resolve a state's stored
+      // entryMarkerDecisionKey back to the latest definition id to hand the embedded
+      // <ntrloc-decision-table-editor> in the "Entry markers" tab (same latest-per-key resolution
+      // as resolveDefinitionIdForKey does for processes).
+      decisions: [],
     };
 
     const dialog = document.createElement('md-dialog');
@@ -387,6 +393,28 @@ function openStateMachineEditorDialog(item) {
     // latest-version-per-key list rather than re-deriving it.
     function resolveDefinitionIdForKey(key) {
       return schemaViewModel.processOptions.find((def) => def.key === key)?.id ?? null;
+    }
+
+    // Same latest-version-per-key resolution as resolveDefinitionIdForKey, over the ad-hoc
+    // local.decisions list (there's no schemaViewModel-level decision cache the way there is for
+    // processes). A state stores only the decision *key*; the embedded editor needs a concrete
+    // definition id to load.
+    function resolveDecisionDefinitionIdForKey(key) {
+      let best = null;
+      for (const d of local.decisions) {
+        if (d.key === key && (!best || d.version > best.version)) best = d;
+      }
+      return best?.id ?? null;
+    }
+
+    // Best-effort refresh of local.decisions -- not awaited, and deliberately never folded into a
+    // renderContent() (that would tear down a still-open embedded editor). Callers that need the
+    // fresh list on screen re-render themselves once it resolves.
+    function loadDecisionOptions() {
+      return fetch('/api/admin/dmn/decisions', { credentials: 'include' })
+        .then((r) => (r.ok ? r.json() : []))
+        .then((decisions) => { local.decisions = decisions; })
+        .catch(() => {});
     }
 
     function visibleStates() {
@@ -423,7 +451,10 @@ function openStateMachineEditorDialog(item) {
       local.selectedTransition = null;
       local.connectingFrom = null;
       local.connectError = null;
-      local.activeTab = 'entry';
+      // Land on the Entry markers tab -- it's the leftmost and the most common reason to open a
+      // state (entry/exit processes are the rarer case). 'markers' isn't valid for a pseudostate
+      // or transition, but selectTransition resets activeTab and pseudostates render no tabs.
+      local.activeTab = 'markers';
       renderContent();
     }
 
@@ -511,6 +542,28 @@ function openStateMachineEditorDialog(item) {
       return `<ntrloc-process-editor class="tab-process-editor-el" data-definition-id="${escapeHtml(definitionId)}"></ntrloc-process-editor>`;
     }
 
+    // The "Entry markers" tab embeds a full decision-table editor inline, exactly like the process
+    // tabs embed <ntrloc-process-editor>. A state stores only the decision *key*; when it has one
+    // we resolve it to the latest definition id, otherwise we hand a `new-decision-` placeholder
+    // (same reserved-prefix convention the decision editor already recognises) plus a template hint
+    // so a brand-new table starts COLLECT with a `markerName` output -- the shape
+    // StateMarkerDecisionService expects. data-column-choices constrains the `markerName` output
+    // cells to this item type's actual marker names (a ticklist, not free text) so a rule can't
+    // reference a marker that doesn't exist. On save the editor fires `decision-saved` and we
+    // capture the key onto the state (see the listener in wireContent).
+    function markerTabContentHtml(vm) {
+      const decisionId = (vm.entryMarkerDecisionKey && resolveDecisionDefinitionIdForKey(vm.entryMarkerDecisionKey))
+        || `new-decision-state-entry-${vm.id}`;
+      const markerNames = schemaViewModel.markersForItem(item.id)
+        .map((m) => m.name)
+        .sort((a, b) => a.localeCompare(b));
+      // escapeHtml (textContent round-trip) does NOT escape the double quotes JSON is full of, so
+      // it can't go straight into a double-quoted attribute -- escape & and " explicitly instead.
+      const columnChoices = JSON.stringify({ markerName: markerNames })
+        .replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+      return `<ntrloc-decision-table-editor class="tab-decision-editor-el" data-decision-id="${escapeHtml(decisionId)}" data-template="state-entry-markers" data-column-choices="${columnChoices}"></ntrloc-decision-table-editor>`;
+    }
+
     function guardTabContentHtml(vm) {
       return `
         <ntrloc-predicate-builder class="transition-guard-builder-el"></ntrloc-predicate-builder>
@@ -554,7 +607,6 @@ function openStateMachineEditorDialog(item) {
     function stateDetailHtml(vm) {
       if (vm.isPseudo) return pseudostateDetailHtml(vm);
       const outgoing = vm.transitions.filter((t) => !t.isDeleted);
-      const isProcessTab = true; // both state tabs are process tabs
       return `
         <div class="detail-header">
           <input class="detail-input state-name-input" value="${escapeHtml(vm.name)}" placeholder="State name" />
@@ -562,13 +614,17 @@ function openStateMachineEditorDialog(item) {
         </div>
 
         <div class="detail-tabs">
+          <button class="detail-tab-button ${local.activeTab === 'markers' ? 'active' : ''}" data-tab="markers"
+                  title="Evaluated once on entering this state; every marker name it returns is applied while the item stays here">Entry markers</button>
           <button class="detail-tab-button ${local.activeTab === 'entry' ? 'active' : ''}" data-tab="entry">Entry process</button>
           <button class="detail-tab-button ${local.activeTab === 'exit' ? 'active' : ''}" data-tab="exit">Exit process</button>
         </div>
-        <div class="detail-tab-content ${isProcessTab ? 'is-process-tab' : ''}">
-          ${local.activeTab === 'entry'
-            ? processTabContentHtml(vm.entryProcessId, 'state-entry', vm.id)
-            : processTabContentHtml(vm.exitProcessId, 'state-exit', vm.id)}
+        <div class="detail-tab-content is-process-tab">
+          ${local.activeTab === 'markers'
+            ? markerTabContentHtml(vm)
+            : local.activeTab === 'exit'
+              ? processTabContentHtml(vm.exitProcessId, 'state-exit', vm.id)
+              : processTabContentHtml(vm.entryProcessId, 'state-entry', vm.id)}
         </div>
 
         <div class="detail-footer">
@@ -835,6 +891,19 @@ function openStateMachineEditorDialog(item) {
         local.selectedState.description = event.target.value || null;
         notifySchemaViewModelChange();
       });
+      // The "Entry markers" tab's embedded decision editor -- captures its key onto the state on
+      // save, mirroring the process-saved handler above. Not folded into a renderContent() for the
+      // same reason: it would tear down the still-open editor. local.decisions is refreshed in the
+      // background so the next real render can resolve the (possibly newly-created) key to an id.
+      const tabDecisionEditor = dialog.querySelector('.tab-decision-editor-el');
+      if (tabDecisionEditor) tabDecisionEditor.addEventListener('decision-saved', (event) => {
+        if (local.selectedState) {
+          local.selectedState.entryMarkerDecisionKey = event.detail.key;
+          notifySchemaViewModelChange();
+        }
+        loadDecisionOptions();
+      });
+
       const addTransitionButton = dialog.querySelector('.add-transition-button');
       if (addTransitionButton) addTransitionButton.addEventListener('click', () => {
         local.connectingFrom = local.selectedState;
@@ -963,6 +1032,13 @@ function openStateMachineEditorDialog(item) {
 
     renderContent();
     dialog.open = true;
+
+    // Populate local.decisions so a state that already references a decision key resolves to a
+    // concrete definition id on the first render of its Entry markers tab. Best-effort; if it
+    // lands after that tab is already open the tab just shows a fresh editor until the next render.
+    loadDecisionOptions().then(() => {
+      if (local.selectedState && local.activeTab === 'markers') renderContent();
+    });
   });
 }
 

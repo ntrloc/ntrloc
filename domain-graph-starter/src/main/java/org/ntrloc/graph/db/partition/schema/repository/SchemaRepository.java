@@ -35,7 +35,8 @@ public class SchemaRepository {
 
     public record StateMachineRow(UUID id, UUID itemDefinitionId, String name, String description) {}
 
-    public record StateRow(UUID id, UUID stateMachineId, String name, String description, String kind, String entryProcessId, String exitProcessId) {}
+    public record StateRow(UUID id, UUID stateMachineId, String name, String description, String kind,
+                           String entryProcessId, String exitProcessId, String entryMarkerDecisionKey) {}
 
     public record TransitionRow(UUID id, UUID fromStateId, UUID toStateId, String name, String description, String processId, String guardCondition) {}
 
@@ -451,31 +452,36 @@ public class SchemaRepository {
     public static final String START_STATE_NAME = "__start__";
     public static final String END_STATE_NAME = "__end__";
 
-    public StateRow createState(UUID stateMachineId, String name, String description, String kind, String entryProcessId, String exitProcessId) {
+    public StateRow createState(UUID stateMachineId, String name, String description, String kind,
+                                String entryProcessId, String exitProcessId, String entryMarkerDecisionKey) {
         UUID id = jdbcClient.sql("""
-                INSERT INTO schema_state (state_machine_id, name, description, kind, entry_process_id, exit_process_id)
-                VALUES (:stateMachineId, :name, :description, :kind, :entryProcessId, :exitProcessId) RETURNING id
+                INSERT INTO schema_state (state_machine_id, name, description, kind, entry_process_id, exit_process_id, entry_marker_decision_key)
+                VALUES (:stateMachineId, :name, :description, :kind, :entryProcessId, :exitProcessId, :entryMarkerDecisionKey) RETURNING id
                 """)
                 .param("stateMachineId", stateMachineId).param("name", name).param(PARAM_DESCRIPTION, description)
                 .param("kind", kind).param("entryProcessId", entryProcessId).param("exitProcessId", exitProcessId)
+                .param("entryMarkerDecisionKey", entryMarkerDecisionKey)
                 .query(UUID.class).single();
-        return new StateRow(id, stateMachineId, name, description, kind, entryProcessId, exitProcessId);
+        return new StateRow(id, stateMachineId, name, description, kind, entryProcessId, exitProcessId, entryMarkerDecisionKey);
     }
 
-    // The START/END pseudostates a machine is born with -- sentinel name, no processes, undeletable.
+    // The START/END pseudostates a machine is born with -- sentinel name, no processes/decisions, undeletable.
     public StateRow createPseudoState(UUID stateMachineId, String kind) {
         String name = STATE_KIND_START.equals(kind) ? START_STATE_NAME : END_STATE_NAME;
-        return createState(stateMachineId, name, null, kind, null, null);
+        return createState(stateMachineId, name, null, kind, null, null, null);
     }
 
-    // Only NORMAL states are updatable through this -- name/description/entry/exit, never kind.
-    public void updateState(UUID id, String name, String description, String entryProcessId, String exitProcessId) {
+    // Only NORMAL states are updatable through this -- name/description/entry/exit/marker-decision, never kind.
+    public void updateState(UUID id, String name, String description, String entryProcessId, String exitProcessId,
+                            String entryMarkerDecisionKey) {
         jdbcClient.sql("""
                 UPDATE schema_state SET name = :name, description = :description,
-                    entry_process_id = :entryProcessId, exit_process_id = :exitProcessId WHERE id = :id
+                    entry_process_id = :entryProcessId, exit_process_id = :exitProcessId,
+                    entry_marker_decision_key = :entryMarkerDecisionKey WHERE id = :id
                 """)
                 .param("id", id).param("name", name).param(PARAM_DESCRIPTION, description)
                 .param("entryProcessId", entryProcessId).param("exitProcessId", exitProcessId)
+                .param("entryMarkerDecisionKey", entryMarkerDecisionKey)
                 .update();
     }
 
@@ -587,7 +593,8 @@ public class SchemaRepository {
                 rs.getString(PARAM_DESCRIPTION),
                 rs.getString("kind"),
                 rs.getString("entry_process_id"),
-                rs.getString("exit_process_id")
+                rs.getString("exit_process_id"),
+                rs.getString("entry_marker_decision_key")
         );
     }
 

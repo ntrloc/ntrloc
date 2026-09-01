@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions id="definitions_smeStateEntryMarkers" name="SME State Entry Markers" namespace="http://flowable.org/dmn"
+             xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/"
+             xmlns:flowable="http://flowable.org/dmn">
+
+  <decision id="smeMarkersAll" name="SME Markers All">
+    <decisionTable id="smeMarkersAllTable" hitPolicy="COLLECT">
+      <input id="allIn" label="title">
+        <inputExpression id="allInExpr" typeRef="string"><text>title</text></inputExpression>
+      </input>
+      <output id="allOut" label="markerName" name="markerName" typeRef="string"/>
+      <rule id="allRule1">
+        <inputEntry id="allRule1In"><text>"SECRET"</text></inputEntry>
+        <outputEntry id="allRule1Out"><text>"SmeAlpha"</text></outputEntry>
+      </rule>
+      <rule id="allRule2">
+        <inputEntry id="allRule2In"><text>"SECRET"</text></inputEntry>
+        <outputEntry id="allRule2Out"><text>"SmeBravo"</text></outputEntry>
+      </rule>
+      <rule id="allRule3">
+        <inputEntry id="allRule3In"><text>"SECRET"</text></inputEntry>
+        <outputEntry id="allRule3Out"><text>"SmeCharlie"</text></outputEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+
+  <decision id="smeMarkersTwo" name="SME Markers Two">
+    <decisionTable id="smeMarkersTwoTable" hitPolicy="COLLECT">
+      <input id="twoIn" label="title">
+        <inputExpression id="twoInExpr" typeRef="string"><text>title</text></inputExpression>
+      </input>
+      <output id="twoOut" label="markerName" name="markerName" typeRef="string"/>
+      <rule id="twoRule1">
+        <inputEntry id="twoRule1In"><text>"SECRET"</text></inputEntry>
+        <outputEntry id="twoRule1Out"><text>"SmeAlpha"</text></outputEntry>
+      </rule>
+      <rule id="twoRule2">
+        <inputEntry id="twoRule2In"><text>"SECRET"</text></inputEntry>
+        <outputEntry id="twoRule2Out"><text>"SmeBravo"</text></outputEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+
+  <!-- One rule whose single output cell names several markers at once, comma-joined, the shape the
+       checkbox-list editor writes when more than one marker is ticked for one rule. -->
+  <decision id="smeMarkersListCell" name="SME Markers List Cell">
+    <decisionTable id="smeMarkersListCellTable" hitPolicy="COLLECT">
+      <input id="lcIn" label="title">
+        <inputExpression id="lcInExpr" typeRef="string"><text>title</text></inputExpression>
+      </input>
+      <output id="lcOut" label="markerName" name="markerName" typeRef="string"/>
+      <rule id="lcRule1">
+        <inputEntry id="lcRule1In"><text>"SECRET"</text></inputEntry>
+        <outputEntry id="lcRule1Out"><text>"SmeAlpha,SmeBravo,SmeCharlie"</text></outputEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+
+  <decision id="smeRuleWantsCharlie" name="SME Rule Wants Charlie">
+    <decisionTable id="smeRuleWantsCharlieTable" hitPolicy="COLLECT">
+      <input id="rwcIn" label="title">
+        <inputExpression id="rwcInExpr" typeRef="string"><text>title</text></inputExpression>
+      </input>
+      <output id="rwcOut" label="markerName" name="markerName" typeRef="string"/>
+      <rule id="rwcRule1">
+        <inputEntry id="rwcRule1In"><text>"SECRET"</text></inputEntry>
+        <outputEntry id="rwcRule1Out"><text>"SmeCharlie"</text></outputEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+
+</definitions>

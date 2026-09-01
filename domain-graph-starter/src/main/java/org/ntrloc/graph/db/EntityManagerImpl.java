@@ -146,18 +146,6 @@ public class EntityManagerImpl implements EntityManager {
     }
 
     @Override
-    public void setItemState(UUID itemId, String stateMachineName, String stateName) {
-        UUID itemTypeId = registerPartitionManager.findItemTypeId(itemId)
-                .orElseThrow(() -> new IllegalArgumentException("Unknown item: " + itemId));
-        UUID stateMachineId = registerPartitionManager.resolveStateMachineId(itemTypeId, stateMachineName);
-        UUID stateId = registerPartitionManager.resolveStateId(stateMachineId, stateName);
-
-        UUID transactionId = UUID.randomUUID();
-        coordinator.prepare(List.of(new ItemUpdateEntry(itemId, Map.of(), Map.of(stateMachineId, stateId), Set.of(), Set.of(), Set.of())), transactionId, null);
-        coordinator.commit(transactionId, UUID.randomUUID());
-    }
-
-    @Override
     public void startStateMachine(UUID itemId, String stateMachineName, NtrlocPrincipal principal) {
         UUID itemTypeId = requireItemType(itemId);
         UUID smId = registerPartitionManager.resolveStateMachineId(itemTypeId, stateMachineName);
