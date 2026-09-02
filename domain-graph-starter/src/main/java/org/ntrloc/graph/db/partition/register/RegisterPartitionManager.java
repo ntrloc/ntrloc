@@ -117,6 +117,9 @@ public class RegisterPartitionManager implements SchemaChangeListener {
     private static final String PARAM_TRANSACTION_ID = "transactionId";
     private static final String PARAM_LINK_ID = "linkId";
     private static final String COL_REGISTER_LINK_ID = "register_link_id";
+    private static final String STATE_CURRENT_STATE_ID = "currentStateId";
+    private static final String PARAM_OLD_ID = "oldId";
+    private static final String SQL_AND_FALSE = "AND FALSE";
 
     private static final Map<String, String> SYSTEM_SORT_COLUMNS = Map.of(
             PARAM_ITEM_ID,          "ri.item_id",
@@ -224,13 +227,17 @@ public class RegisterPartitionManager implements SchemaChangeListener {
     private static String typedSortExpression(String jsonbColumnAlias, AdminPropertyDefinitionView property) {
         String text = jsonbColumnAlias + "->>'" + property.id() + "'";
         return switch (property.type()) {
-            case INT, LONG -> "NULLIF(" + text + ", '')::bigint";
-            case DOUBLE -> "NULLIF(" + text + ", '')::double precision";
-            case DATE -> "NULLIF(" + text + ", '')::date";
-            case DATETIME -> "NULLIF(" + text + ", '')::timestamptz";
-            case BOOLEAN -> "NULLIF(" + text + ", '')::boolean";
+            case INT, LONG -> nullifCast(text, "bigint");
+            case DOUBLE -> nullifCast(text, "double precision");
+            case DATE -> nullifCast(text, "date");
+            case DATETIME -> nullifCast(text, "timestamptz");
+            case BOOLEAN -> nullifCast(text, "boolean");
             default -> text;
         };
+    }
+
+    private static String nullifCast(String text, String pgType) {
+        return "NULLIF(" + text + ", '')::" + pgType;
     }
 
     private record RawItem(UUID registerItemId, UUID itemId, String itemType, Map<String, Object> properties, Map<String, Object> states) {}
@@ -694,7 +701,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
 
     public UUID stageItemCreate(UUID itemId, UUID itemTypeId, Map<UUID, Object> properties, Map<UUID, UUID> initialStates, UUID transactionId) {
         Map<String, Object> states = new HashMap<>();
-        initialStates.forEach((stateMachineId, stateId) -> states.put(stateMachineId.toString(), Map.of("currentStateId", stateId.toString())));
+        initialStates.forEach((stateMachineId, stateId) -> states.put(stateMachineId.toString(), Map.of(STATE_CURRENT_STATE_ID, stateId.toString())));
         return insertItemRow(itemId, itemTypeId, keysToStrings(properties), states, transactionId);
     }
 
@@ -736,7 +743,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                 : mergeProperties(current.properties(), keysToStrings(propertiesDiff));
 
         Map<String, Object> mergedStates = new HashMap<>(current.states());
-        stateChanges.forEach((stateMachineId, stateId) -> mergedStates.put(stateMachineId.toString(), Map.of("currentStateId", stateId.toString())));
+        stateChanges.forEach((stateMachineId, stateId) -> mergedStates.put(stateMachineId.toString(), Map.of(STATE_CURRENT_STATE_ID, stateId.toString())));
         stateMachinesEnded.forEach(stateMachineId -> mergedStates.remove(stateMachineId.toString()));
 
         return insertItemRow(itemId, itemTypeId, mergedProperties, mergedStates, transactionId);
@@ -826,7 +833,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
         if (oldRegisterItemId.isPresent()) {
             jdbcClient.sql("UPDATE register_item_link_perspective SET register_item_id = :newId WHERE register_item_id = :oldId")
                     .param("newId", stagedRegisterItemId)
-                    .param("oldId", oldRegisterItemId.get())
+                    .param(PARAM_OLD_ID, oldRegisterItemId.get())
                     .update();
 
             // register_item_marker also FKs to register_item.id, ON DELETE CASCADE -- without this,
@@ -835,11 +842,11 @@ public class RegisterPartitionManager implements SchemaChangeListener {
             // an FK cascade instead of a missing field.
             jdbcClient.sql("UPDATE register_item_marker SET register_item_id = :newId WHERE register_item_id = :oldId")
                     .param("newId", stagedRegisterItemId)
-                    .param("oldId", oldRegisterItemId.get())
+                    .param(PARAM_OLD_ID, oldRegisterItemId.get())
                     .update();
 
             jdbcClient.sql("DELETE FROM register_item WHERE id = :oldId")
-                    .param("oldId", oldRegisterItemId.get())
+                    .param(PARAM_OLD_ID, oldRegisterItemId.get())
                     .update();
         }
 
@@ -999,7 +1006,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
         if (registerItemIds.isEmpty()) return Map.of();
         return jdbcClient.sql("SELECT register_item_id, marker_id FROM register_item_marker WHERE register_item_id IN (:ids)")
                 .param("ids", registerItemIds)
-                .query((rs, n) -> Map.entry(rs.getObject("register_item_id", UUID.class), rs.getObject("marker_id", UUID.class)))
+                .query((rs, n) -> Map.entry(rs.getObject(COL_REGISTER_ITEM_ID, UUID.class), rs.getObject("marker_id", UUID.class)))
                 .list().stream()
                 .collect(Collectors.groupingBy(Map.Entry::getKey, Collectors.mapping(Map.Entry::getValue, Collectors.toSet())));
     }
@@ -1297,8 +1304,8 @@ public class RegisterPartitionManager implements SchemaChangeListener {
         Map<String, Object> byId = parseJsonb(statesJson);
         Map<UUID, UUID> result = new HashMap<>();
         byId.forEach((smId, entry) -> {
-            if (entry instanceof Map<?, ?> m && m.get("currentStateId") != null) {
-                result.put(UUID.fromString(smId), UUID.fromString(m.get("currentStateId").toString()));
+            if (entry instanceof Map<?, ?> m && m.get(STATE_CURRENT_STATE_ID) != null) {
+                result.put(UUID.fromString(smId), UUID.fromString(m.get(STATE_CURRENT_STATE_ID).toString()));
             }
         });
         return result;
@@ -1647,43 +1654,58 @@ public class RegisterPartitionManager implements SchemaChangeListener {
         Map<UUID, Set<UUID>> effectiveReadGrants = permissions.superuser() ? null
                 : readImpliedByWrite(permissions.propertyReadGrantsByMarker(), permissions.propertyWriteGrantsByMarker());
 
-        return rawItems.stream()
-                .map(raw -> {
-                    Set<UUID> markerIds = markerIdsByRegisterItemId.getOrDefault(raw.registerItemId(), Set.of());
-                    Map<String, Object> readableProps = filterPropertiesByReadGrant(raw.properties(), markerIds, effectiveReadGrants);
-                    Map<String, Object> props = new HashMap<>(namesForIds(readableProps, ownPropertyNames));
-                    // Binary properties are gated by property:read exactly like scalar ones -- there
-                    // is no separate download grant; read is equivalent to download.
-                    List<AssembledBinary> bins = binaryPropsByItem.get(raw.registerItemId());
-                    if (bins != null) {
-                        Set<UUID> readableBinaryIds = effectiveReadGrants == null ? null
-                                : unionGrantedIds(markerIds, effectiveReadGrants);
-                        for (var b : bins) {
-                            if (readableBinaryIds == null || readableBinaryIds.contains(b.propertyId())) {
-                                props.put(b.name(), b.value());
-                            }
-                        }
-                    }
-                    var itemPermissions = buildPermissions(permissions, markerIds,
-                            permissions.propertyWriteGrantsByMarker(), permissions.itemDeleteGrantedMarkerIds(), ownPropertyNames);
-                    // Superuser sees every marker on the item; anyone else sees only the ones they
-                    // hold an item:read grant on -- never the mere existence of markers they can't read.
-                    Set<UUID> disclosableMarkerIds = permissions.superuser()
-                            ? markerIds
-                            : markerIds.stream().filter(permissions.grantedItemReadMarkerIds()::contains).collect(Collectors.toSet());
-                    List<String> markerNames = disclosableMarkerIds.stream()
-                            .map(markerNamesById::get).filter(Objects::nonNull).sorted().toList();
-                    return new ProjectedItem(
-                            raw.itemId(),
-                            raw.itemType(),
-                            props,
-                            linksByItem.getOrDefault(raw.registerItemId(), Map.of()),
-                            buildProjectedItemStates(raw.states(), stateMachines, markerIds, permissions),
-                            itemPermissions,
-                            computeDisplayLabel(raw.itemId(), props, displayLabelPatterns.get(raw.itemType())),
-                            markerNames);
-                })
-                .toList();
+        AssemblyContext ctx = new AssemblyContext(ownPropertyNames, stateMachines, displayLabelPatterns,
+                linksByItem, markerIdsByRegisterItemId, binaryPropsByItem, effectiveReadGrants,
+                markerNamesById, permissions);
+        return rawItems.stream().map(raw -> assembleProjectedItem(raw, ctx)).toList();
+    }
+
+    private record AssemblyContext(
+            Map<UUID, List<String>> ownPropertyNames,
+            List<AdminStateMachineView> stateMachines,
+            Map<String, String> displayLabelPatterns,
+            Map<UUID, Map<String, List<ProjectedLink>>> linksByItem,
+            Map<UUID, Set<UUID>> markerIdsByRegisterItemId,
+            Map<UUID, List<AssembledBinary>> binaryPropsByItem,
+            @Nullable Map<UUID, Set<UUID>> effectiveReadGrants,
+            Map<UUID, String> markerNamesById,
+            RequestPermissionContext permissions) {}
+
+    private ProjectedItem assembleProjectedItem(RawItem raw, AssemblyContext ctx) {
+        Set<UUID> markerIds = ctx.markerIdsByRegisterItemId().getOrDefault(raw.registerItemId(), Set.of());
+        Map<String, Object> readableProps = filterPropertiesByReadGrant(raw.properties(), markerIds, ctx.effectiveReadGrants());
+        Map<String, Object> props = new HashMap<>(namesForIds(readableProps, ctx.ownPropertyNames()));
+        // Binary properties are gated by property:read exactly like scalar ones -- there is no
+        // separate download grant; read is equivalent to download.
+        List<AssembledBinary> bins = ctx.binaryPropsByItem().get(raw.registerItemId());
+        if (bins != null) {
+            Set<UUID> readableBinaryIds = ctx.effectiveReadGrants() == null ? null
+                    : unionGrantedIds(markerIds, ctx.effectiveReadGrants());
+            for (var b : bins) {
+                if (readableBinaryIds == null || readableBinaryIds.contains(b.propertyId())) {
+                    props.put(b.name(), b.value());
+                }
+            }
+        }
+        var itemPermissions = buildPermissions(ctx.permissions(), markerIds,
+                ctx.permissions().propertyWriteGrantsByMarker(), ctx.permissions().itemDeleteGrantedMarkerIds(),
+                ctx.ownPropertyNames());
+        // Superuser sees every marker on the item; anyone else sees only the ones they hold an
+        // item:read grant on -- never the mere existence of markers they can't read.
+        Set<UUID> disclosableMarkerIds = ctx.permissions().superuser()
+                ? markerIds
+                : markerIds.stream().filter(ctx.permissions().grantedItemReadMarkerIds()::contains).collect(Collectors.toSet());
+        List<String> markerNames = disclosableMarkerIds.stream()
+                .map(ctx.markerNamesById()::get).filter(Objects::nonNull).sorted().toList();
+        return new ProjectedItem(
+                raw.itemId(),
+                raw.itemType(),
+                props,
+                ctx.linksByItem().getOrDefault(raw.registerItemId(), Map.of()),
+                buildProjectedItemStates(raw.states(), ctx.stateMachines(), markerIds, ctx.permissions()),
+                itemPermissions,
+                computeDisplayLabel(raw.itemId(), props, ctx.displayLabelPatterns().get(raw.itemType())),
+                markerNames);
     }
 
     // One ProjectedItemState per state machine on the item's type (null only when the type has no
@@ -1728,7 +1750,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
     // as namesForIds does for properties).
     private Optional<AdminStateView> currentStateOf(AdminStateMachineView machine, Object rawStateEntry) {
         if (!(rawStateEntry instanceof Map<?, ?> stateEntry)) return Optional.empty();
-        Object currentStateId = stateEntry.get("currentStateId");
+        Object currentStateId = stateEntry.get(STATE_CURRENT_STATE_ID);
         if (currentStateId == null) return Optional.empty();
         return machine.states().stream()
                 .filter(s -> s.id().toString().equals(currentStateId.toString()))
@@ -1769,7 +1791,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
             return SqlFragment.empty();
         }
         if (permissions.grantedItemReadMarkerIds().isEmpty()) {
-            return new SqlFragment("AND FALSE", Map.of());
+            return new SqlFragment(SQL_AND_FALSE, Map.of());
         }
         return new SqlFragment(
                 "AND " + registerItemAlias + ".id IN (SELECT register_item_id FROM register_item_marker WHERE marker_id IN (:grantedItemReadMarkerIds))",
@@ -1793,11 +1815,11 @@ public class RegisterPartitionManager implements SchemaChangeListener {
             return SqlFragment.empty();
         }
         SqlFragment targetTypeCheck = permissions.readableItemTypeIds().isEmpty()
-                ? new SqlFragment("AND FALSE", Map.of())
+                ? new SqlFragment(SQL_AND_FALSE, Map.of())
                 : new SqlFragment("AND ri_other.item_type_id IN (:readableItemTypeIds)",
                         Map.of("readableItemTypeIds", permissions.readableItemTypeIds()));
         SqlFragment targetItemReadCheck = permissions.grantedItemReadMarkerIds().isEmpty()
-                ? new SqlFragment("AND FALSE", Map.of())
+                ? new SqlFragment(SQL_AND_FALSE, Map.of())
                 : new SqlFragment("AND ri_other.id IN (SELECT register_item_id FROM register_item_marker WHERE marker_id IN (:grantedItemReadMarkerIds))",
                         Map.of("grantedItemReadMarkerIds", permissions.grantedItemReadMarkerIds()));
         return combineFragments(List.of(targetTypeCheck, targetItemReadCheck));

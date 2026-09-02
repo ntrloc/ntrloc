@@ -19,6 +19,9 @@ import java.util.List;
 @Component
 public class WorkflowReferenceScanner {
 
+    private static final String COL_MACHINE = "machine";
+    private static final String IN_STATE_MACHINE = "\" in state machine \"";
+
     private final JdbcClient jdbcClient;
 
     WorkflowReferenceScanner(JdbcClient jdbcClient) {
@@ -37,8 +40,8 @@ public class WorkflowReferenceScanner {
                 WHERE s.entry_process_id = :key OR s.exit_process_id = :key
                 """)
                 .param("key", processId)
-                .query((rs, n) -> "state \"" + rs.getString("state") + "\" in state machine \""
-                        + rs.getString("machine") + "\" (" + rs.getString("role") + " process)")
+                .query((rs, n) -> "state \"" + rs.getString("state") + IN_STATE_MACHINE
+                        + rs.getString(COL_MACHINE) + "\" (" + rs.getString("role") + " process)")
                 .list().forEach(refs::add);
         jdbcClient.sql("""
                 SELECT sm.name AS machine, t.name AS transition
@@ -48,8 +51,8 @@ public class WorkflowReferenceScanner {
                 WHERE t.process_id = :key
                 """)
                 .param("key", processId)
-                .query((rs, n) -> "transition \"" + rs.getString("transition") + "\" in state machine \""
-                        + rs.getString("machine") + "\"")
+                .query((rs, n) -> "transition \"" + rs.getString("transition") + IN_STATE_MACHINE
+                        + rs.getString(COL_MACHINE) + "\"")
                 .list().forEach(refs::add);
         return refs;
     }
@@ -65,8 +68,8 @@ public class WorkflowReferenceScanner {
                 WHERE s.entry_marker_decision_key = :key
                 """)
                 .param("key", decisionKey)
-                .query((rs, n) -> "state \"" + rs.getString("state") + "\" in state machine \""
-                        + rs.getString("machine") + "\" (entry-marker decision)")
+                .query((rs, n) -> "state \"" + rs.getString("state") + IN_STATE_MACHINE
+                        + rs.getString(COL_MACHINE) + "\" (entry-marker decision)")
                 .list().forEach(refs::add);
         jdbcClient.sql("SELECT name FROM authorization_marker_rule WHERE decision_key = :key")
                 .param("key", decisionKey)

@@ -99,29 +99,13 @@ public class MarkerRuleEvaluationService {
         boolean stateTransition = !e.stateChanges().isEmpty() || !e.stateMachinesEnded().isEmpty();
 
         Map<String, Object> propertiesByName = registerPartitionManager.resolveMergedPropertiesByName(e.itemId(), itemTypeId, e.properties());
-        Set<UUID> currentlyApplied = authRepo.getMarkerIdsForItem(e.itemId());
-        Map<UUID, MarkerAttribution> currentAttributionByMarker = support.replayCurrentAttribution(e.itemId());
+        RuleEvalContext ctx = new RuleEvalContext(itemTypeId, propertiesByName, stateTransition,
+                authRepo.getMarkerIdsForItem(e.itemId()), support.replayCurrentAttribution(e.itemId()));
 
         Set<MarkerAttribution> toAdd = new HashSet<>();
         Set<MarkerAttribution> toRemove = new HashSet<>();
         for (var rule : rules) {
-            Set<UUID> desired = new HashSet<>(support.evaluateDecisionToMarkerIds(rule.decisionKey(), itemTypeId, propertiesByName));
-            int ruleVersion = support.decisionVersion(rule.decisionKey());
-
-            for (UUID markerId : desired) {
-                boolean heldByStateOnly = currentAttributionByMarker.get(markerId) instanceof StateAppliedMarker;
-                if (!currentlyApplied.contains(markerId) || (stateTransition && heldByStateOnly)) {
-                    toAdd.add(new RuleAppliedMarker(markerId, rule.id(), ruleVersion));
-                }
-            }
-            // Removable only if this exact rule is why the marker is currently applied -- a
-            // marker present via manual application, or via a different rule, is left alone even
-            // if this rule's current decision wouldn't have added it.
-            currentAttributionByMarker.forEach((markerId, attribution) -> {
-                if (attribution instanceof RuleAppliedMarker ram && ram.ruleId().equals(rule.id()) && !desired.contains(markerId)) {
-                    toRemove.add(ram);
-                }
-            });
+            applyRuleDecision(rule, ctx, toAdd, toRemove);
         }
         if (toAdd.isEmpty() && toRemove.isEmpty()) return e;
 
@@ -130,5 +114,29 @@ public class MarkerRuleEvaluationService {
         Set<MarkerAttribution> markersRemoved = new HashSet<>(e.markersRemoved());
         markersRemoved.addAll(toRemove);
         return new ItemUpdateEntry(e.itemId(), e.properties(), e.stateChanges(), e.stateMachinesEnded(), markersAdded, markersRemoved);
+    }
+
+    private record RuleEvalContext(UUID itemTypeId, Map<String, Object> propertiesByName, boolean stateTransition,
+            Set<UUID> currentlyApplied, Map<UUID, MarkerAttribution> currentAttributionByMarker) {}
+
+    private void applyRuleDecision(AuthorizationRepository.MarkerRuleRow rule, RuleEvalContext ctx,
+            Set<MarkerAttribution> toAdd, Set<MarkerAttribution> toRemove) {
+        Set<UUID> desired = new HashSet<>(support.evaluateDecisionToMarkerIds(rule.decisionKey(), ctx.itemTypeId(), ctx.propertiesByName()));
+        int ruleVersion = support.decisionVersion(rule.decisionKey());
+
+        for (UUID markerId : desired) {
+            boolean heldByStateOnly = ctx.currentAttributionByMarker().get(markerId) instanceof StateAppliedMarker;
+            if (!ctx.currentlyApplied().contains(markerId) || (ctx.stateTransition() && heldByStateOnly)) {
+                toAdd.add(new RuleAppliedMarker(markerId, rule.id(), ruleVersion));
+            }
+        }
+        // Removable only if this exact rule is why the marker is currently applied -- a marker
+        // present via manual application, or via a different rule, is left alone even if this
+        // rule's current decision wouldn't have added it.
+        ctx.currentAttributionByMarker().forEach((markerId, attribution) -> {
+            if (attribution instanceof RuleAppliedMarker ram && ram.ruleId().equals(rule.id()) && !desired.contains(markerId)) {
+                toRemove.add(ram);
+            }
+        });
     }
 }

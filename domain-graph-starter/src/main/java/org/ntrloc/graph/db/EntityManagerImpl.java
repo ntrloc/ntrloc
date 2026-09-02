@@ -165,7 +165,7 @@ public class EntityManagerImpl implements EntityManager {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Not permitted to start this state machine");
         }
 
-        commitStateEntry(itemId, new ItemUpdateEntry(itemId, Map.of(), Map.of(smId, startTransition.toStateId()), Set.of(), Set.of(), Set.of()), principal);
+        commitStateEntry(new ItemUpdateEntry(itemId, Map.of(), Map.of(smId, startTransition.toStateId()), Set.of(), Set.of(), Set.of()), principal);
     }
 
     @Override
@@ -200,7 +200,7 @@ public class EntityManagerImpl implements EntityManager {
         ItemUpdateEntry entry = "END".equals(targetState.kind())
                 ? new ItemUpdateEntry(itemId, Map.of(), Map.of(), Set.of(smId), Set.of(), Set.of())
                 : new ItemUpdateEntry(itemId, Map.of(), Map.of(smId, targetState.id()), Set.of(), Set.of(), Set.of());
-        commitStateEntry(itemId, entry, principal);
+        commitStateEntry(entry, principal);
     }
 
     private UUID requireItemType(UUID itemId) {
@@ -235,7 +235,7 @@ public class EntityManagerImpl implements EntityManager {
                 PredicateEvaluator.fromJson(transition.guardCondition()), item.properties(), currentStateByMachine);
     }
 
-    private void commitStateEntry(UUID itemId, ItemUpdateEntry entry, NtrlocPrincipal principal) {
+    private void commitStateEntry(ItemUpdateEntry entry, NtrlocPrincipal principal) {
         UUID transactionId = UUID.randomUUID();
         String actor = principal == null ? null : principal.externalId();
         coordinator.prepare(List.of(entry), transactionId, actor);

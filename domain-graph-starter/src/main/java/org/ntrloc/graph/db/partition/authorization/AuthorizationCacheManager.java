@@ -30,6 +30,8 @@ import java.util.concurrent.atomic.AtomicReference;
 public class AuthorizationCacheManager {
 
     private static final String AUTHORIZATION_CHANGED_TOPIC = "authorizationChanged";
+    private static final String PRINCIPAL_USER = "USER";
+    private static final String PRINCIPAL_GROUP = "GROUP";
 
     private record PrincipalKey(String principalType, UUID principalId) {}
 
@@ -71,14 +73,36 @@ public class AuthorizationCacheManager {
         });
     }
 
+    private record MarkerGrantMaps(Map<PrincipalKey, Set<UUID>> readMarkers, Map<PrincipalKey, Set<UUID>> deleteMarkers) {}
+
+    private record NestedGrantMaps(Map<PrincipalKey, Map<UUID, Set<UUID>>> first, Map<PrincipalKey, Map<UUID, Set<UUID>>> second) {}
+
     private void rebuildCache() {
-        List<AuthorizationRepository.ItemTypeGrantRow> itemTypeRows = authRepo.getAllItemTypeGrants();
+        Map<PrincipalOpKey, Set<UUID>> itemTypeGrants = buildItemTypeGrants();
+        MarkerGrantMaps markerGrants = buildMarkerGrants();
+        NestedGrantMaps propertyGrants = buildPropertyGrants(authRepo.getAllPropertyGrants());
+        NestedGrantMaps linkPropertyGrants = buildPropertyGrants(authRepo.getAllLinkPropertyGrants());
+        NestedGrantMaps linkPerspectiveGrants = buildLinkPerspectiveGrants();
+        // Existence-only grants (transition:execute, state-machine:start): a row present == granted.
+        Map<PrincipalKey, Map<UUID, Set<UUID>>> transitionExecuteGrants = buildExistenceGrants(authRepo.getAllTransitionGrants());
+        Map<PrincipalKey, Map<UUID, Set<UUID>>> stateMachineStartGrants = buildExistenceGrants(authRepo.getAllStateMachineStartGrants());
+
+        cache.set(new Snapshot(itemTypeGrants, markerGrants.readMarkers(), markerGrants.deleteMarkers(),
+                propertyGrants.first(), propertyGrants.second(), linkPropertyGrants.first(), linkPropertyGrants.second(),
+                linkPerspectiveGrants.first(), linkPerspectiveGrants.second(),
+                transitionExecuteGrants, stateMachineStartGrants));
+    }
+
+    private Map<PrincipalOpKey, Set<UUID>> buildItemTypeGrants() {
         Map<PrincipalOpKey, Set<UUID>> itemTypeGrants = new HashMap<>();
-        for (var row : itemTypeRows) {
+        for (var row : authRepo.getAllItemTypeGrants()) {
             itemTypeGrants.computeIfAbsent(new PrincipalOpKey(row.principalType(), row.principalId(), row.permission()), k -> new HashSet<>())
                     .add(row.itemTypeId());
         }
+        return itemTypeGrants;
+    }
 
+    private MarkerGrantMaps buildMarkerGrants() {
         Map<PrincipalKey, Set<UUID>> itemReadMarkers = new HashMap<>();
         Map<PrincipalKey, Set<UUID>> itemDeleteMarkers = new HashMap<>();
         for (var row : authRepo.getAllMarkerGrants()) {
@@ -86,45 +110,37 @@ public class AuthorizationCacheManager {
             if (row.itemCanRead()) itemReadMarkers.computeIfAbsent(key, k -> new HashSet<>()).add(row.markerId());
             if (row.itemCanDelete()) itemDeleteMarkers.computeIfAbsent(key, k -> new HashSet<>()).add(row.markerId());
         }
+        return new MarkerGrantMaps(itemReadMarkers, itemDeleteMarkers);
+    }
 
-        Map<PrincipalKey, Map<UUID, Set<UUID>>> propertyReadGrants = new HashMap<>();
-        Map<PrincipalKey, Map<UUID, Set<UUID>>> propertyWriteGrants = new HashMap<>();
-        for (var row : authRepo.getAllPropertyGrants()) {
+    private NestedGrantMaps buildPropertyGrants(List<AuthorizationRepository.PropertyGrantRow> rows) {
+        Map<PrincipalKey, Map<UUID, Set<UUID>>> readGrants = new HashMap<>();
+        Map<PrincipalKey, Map<UUID, Set<UUID>>> writeGrants = new HashMap<>();
+        for (var row : rows) {
             var key = new PrincipalKey(row.principalType(), row.principalId());
-            if (row.canRead()) addToNestedSet(propertyReadGrants, key, row.markerId(), row.propertyId());
-            if (row.canWrite()) addToNestedSet(propertyWriteGrants, key, row.markerId(), row.propertyId());
+            if (row.canRead()) addToNestedSet(readGrants, key, row.markerId(), row.propertyId());
+            if (row.canWrite()) addToNestedSet(writeGrants, key, row.markerId(), row.propertyId());
         }
+        return new NestedGrantMaps(readGrants, writeGrants);
+    }
 
-        Map<PrincipalKey, Map<UUID, Set<UUID>>> linkPropertyReadGrants = new HashMap<>();
-        Map<PrincipalKey, Map<UUID, Set<UUID>>> linkPropertyWriteGrants = new HashMap<>();
-        for (var row : authRepo.getAllLinkPropertyGrants()) {
-            var key = new PrincipalKey(row.principalType(), row.principalId());
-            if (row.canRead()) addToNestedSet(linkPropertyReadGrants, key, row.markerId(), row.propertyId());
-            if (row.canWrite()) addToNestedSet(linkPropertyWriteGrants, key, row.markerId(), row.propertyId());
-        }
-
-        Map<PrincipalKey, Map<UUID, Set<UUID>>> linkPerspectiveReadGrants = new HashMap<>();
-        Map<PrincipalKey, Map<UUID, Set<UUID>>> linkPerspectiveDeleteGrants = new HashMap<>();
+    private NestedGrantMaps buildLinkPerspectiveGrants() {
+        Map<PrincipalKey, Map<UUID, Set<UUID>>> readGrants = new HashMap<>();
+        Map<PrincipalKey, Map<UUID, Set<UUID>>> deleteGrants = new HashMap<>();
         for (var row : authRepo.getAllLinkPerspectiveGrants()) {
             var key = new PrincipalKey(row.principalType(), row.principalId());
-            if (row.canRead()) addToNestedSet(linkPerspectiveReadGrants, key, row.markerId(), row.perspectiveId());
-            if (row.canDelete()) addToNestedSet(linkPerspectiveDeleteGrants, key, row.markerId(), row.perspectiveId());
+            if (row.canRead()) addToNestedSet(readGrants, key, row.markerId(), row.perspectiveId());
+            if (row.canDelete()) addToNestedSet(deleteGrants, key, row.markerId(), row.perspectiveId());
         }
+        return new NestedGrantMaps(readGrants, deleteGrants);
+    }
 
-        // Existence-only grants (transition:execute, state-machine:start): a row present == granted.
-        Map<PrincipalKey, Map<UUID, Set<UUID>>> transitionExecuteGrants = new HashMap<>();
-        for (var row : authRepo.getAllTransitionGrants()) {
-            addToNestedSet(transitionExecuteGrants, new PrincipalKey(row.principalType(), row.principalId()), row.markerId(), row.targetId());
+    private Map<PrincipalKey, Map<UUID, Set<UUID>>> buildExistenceGrants(List<AuthorizationRepository.MarkerScopedGrantRow> rows) {
+        Map<PrincipalKey, Map<UUID, Set<UUID>>> grants = new HashMap<>();
+        for (var row : rows) {
+            addToNestedSet(grants, new PrincipalKey(row.principalType(), row.principalId()), row.markerId(), row.targetId());
         }
-        Map<PrincipalKey, Map<UUID, Set<UUID>>> stateMachineStartGrants = new HashMap<>();
-        for (var row : authRepo.getAllStateMachineStartGrants()) {
-            addToNestedSet(stateMachineStartGrants, new PrincipalKey(row.principalType(), row.principalId()), row.markerId(), row.targetId());
-        }
-
-        cache.set(new Snapshot(itemTypeGrants, itemReadMarkers, itemDeleteMarkers,
-                propertyReadGrants, propertyWriteGrants, linkPropertyReadGrants, linkPropertyWriteGrants,
-                linkPerspectiveReadGrants, linkPerspectiveDeleteGrants,
-                transitionExecuteGrants, stateMachineStartGrants));
+        return grants;
     }
 
     private void addToNestedSet(Map<PrincipalKey, Map<UUID, Set<UUID>>> index, PrincipalKey key, UUID markerId, UUID objectId) {
@@ -144,9 +160,9 @@ public class AuthorizationCacheManager {
     }
 
     public Set<UUID> getGrantedItemTypeIds(UUID userId, Set<UUID> groupIds, String permission) {
-        Set<UUID> result = new HashSet<>(cache.get().itemTypeGrants().getOrDefault(new PrincipalOpKey("USER", userId, permission), Set.of()));
+        Set<UUID> result = new HashSet<>(cache.get().itemTypeGrants().getOrDefault(new PrincipalOpKey(PRINCIPAL_USER, userId, permission), Set.of()));
         for (UUID groupId : groupIds) {
-            result.addAll(cache.get().itemTypeGrants().getOrDefault(new PrincipalOpKey("GROUP", groupId, permission), Set.of()));
+            result.addAll(cache.get().itemTypeGrants().getOrDefault(new PrincipalOpKey(PRINCIPAL_GROUP, groupId, permission), Set.of()));
         }
         return result;
     }
@@ -196,18 +212,18 @@ public class AuthorizationCacheManager {
     }
 
     private Set<UUID> effectiveSet(Map<PrincipalKey, Set<UUID>> index, UUID userId, Set<UUID> groupIds) {
-        Set<UUID> result = new HashSet<>(index.getOrDefault(new PrincipalKey("USER", userId), Set.of()));
+        Set<UUID> result = new HashSet<>(index.getOrDefault(new PrincipalKey(PRINCIPAL_USER, userId), Set.of()));
         for (UUID groupId : groupIds) {
-            result.addAll(index.getOrDefault(new PrincipalKey("GROUP", groupId), Set.of()));
+            result.addAll(index.getOrDefault(new PrincipalKey(PRINCIPAL_GROUP, groupId), Set.of()));
         }
         return result;
     }
 
     private Map<UUID, Set<UUID>> effectiveNestedSet(Map<PrincipalKey, Map<UUID, Set<UUID>>> index, UUID userId, Set<UUID> groupIds) {
         Map<UUID, Set<UUID>> result = new HashMap<>();
-        mergeInto(result, index.get(new PrincipalKey("USER", userId)));
+        mergeInto(result, index.get(new PrincipalKey(PRINCIPAL_USER, userId)));
         for (UUID groupId : groupIds) {
-            mergeInto(result, index.get(new PrincipalKey("GROUP", groupId)));
+            mergeInto(result, index.get(new PrincipalKey(PRINCIPAL_GROUP, groupId)));
         }
         return result;
     }

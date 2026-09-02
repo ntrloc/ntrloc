@@ -95,6 +95,24 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
     public void commit(UUID transactionId, UUID commitId) {
         List<LedgerEntry> entries = ledgerPartitionManager.readTransaction(transactionId);
 
+        commitItems(entries, transactionId, commitId);
+        commitLinks(entries, transactionId, commitId);
+        // Link deletes before item deletes: a perspective row's FK to register_item has no
+        // cascade, so a still-linked item can't be deleted until its links are gone first.
+        deleteLinks(entries);
+        deleteItems(entries);
+        // Markers apply last, once the row they attach to is guaranteed to exist in its final
+        // committed form (a fresh create's row, or an update's swapped-in row). Only markerId
+        // crosses into the register -- ruleId/ruleVersion/reason are attribution, a ledger-only
+        // concern (the register only ever needs "is this marker currently applied," never why).
+        // Items only -- markers never apply to links (see LinkCreateEntry/LinkUpdateEntry's own
+        // comments).
+        applyMarkers(entries);
+
+        ledgerPartitionManager.commit(transactionId, commitId);
+    }
+
+    private void commitItems(List<LedgerEntry> entries, UUID transactionId, UUID commitId) {
         for (LedgerEntry entry : entries) {
             if (entry instanceof ItemCreateEntry e) {
                 registerPartitionManager.commitItem(e.itemId(), transactionId, commitId);
@@ -102,6 +120,9 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
                 registerPartitionManager.commitItem(e.itemId(), transactionId, commitId);
             }
         }
+    }
+
+    private void commitLinks(List<LedgerEntry> entries, UUID transactionId, UUID commitId) {
         for (LedgerEntry entry : entries) {
             if (entry instanceof LinkCreateEntry e) {
                 registerPartitionManager.commitLink(e.linkId(), transactionId, commitId);
@@ -109,20 +130,21 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
                 registerPartitionManager.commitLink(e.linkId(), transactionId, commitId);
             }
         }
-        // Link deletes before item deletes: a perspective row's FK to register_item has no
-        // cascade, so a still-linked item can't be deleted until its links are gone first.
+    }
+
+    private void deleteLinks(List<LedgerEntry> entries) {
         for (LedgerEntry entry : entries) {
             if (entry instanceof LinkDeleteEntry e) registerPartitionManager.deleteLink(e.linkId());
         }
+    }
+
+    private void deleteItems(List<LedgerEntry> entries) {
         for (LedgerEntry entry : entries) {
             if (entry instanceof ItemDeleteEntry e) registerPartitionManager.deleteItem(e.itemId());
         }
-        // Markers apply last, once the row they attach to is guaranteed to exist in its final
-        // committed form (a fresh create's row, or an update's swapped-in row). Only markerId
-        // crosses into the register -- ruleId/ruleVersion/reason are attribution, a ledger-only
-        // concern (the register only ever needs "is this marker currently applied," never why).
-        // Items only -- markers never apply to links (see LinkCreateEntry/LinkUpdateEntry's own
-        // comments).
+    }
+
+    private void applyMarkers(List<LedgerEntry> entries) {
         for (LedgerEntry entry : entries) {
             if (entry instanceof ItemCreateEntry e) {
                 e.initialMarkers().forEach(m -> registerPartitionManager.postItemMarkerAdd(e.itemId(), m.markerId()));
@@ -131,8 +153,6 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
                 e.markersRemoved().forEach(m -> registerPartitionManager.postItemMarkerRemove(e.itemId(), m.markerId()));
             }
         }
-
-        ledgerPartitionManager.commit(transactionId, commitId);
     }
 
     @Override

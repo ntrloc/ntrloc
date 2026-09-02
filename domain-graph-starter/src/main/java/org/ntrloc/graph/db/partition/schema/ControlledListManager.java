@@ -20,6 +20,7 @@ public class ControlledListManager {
 
     private static final String PARAM_VALUE = "value";
     private static final String PARAM_LABEL = "label";
+    private static final String COL_VALUE_TYPE = "value_type";
 
     public static final Set<PropertyType> SUPPORTED_TYPES = Set.of(
             PropertyType.STRING, PropertyType.INT, PropertyType.LONG);
@@ -114,7 +115,7 @@ public class ControlledListManager {
                 .query((rs, n) -> new ControlledList(
                         rs.getObject("id", UUID.class),
                         rs.getString("name"),
-                        PropertyType.valueOf(rs.getString("value_type"))))
+                        PropertyType.valueOf(rs.getString(COL_VALUE_TYPE))))
                 .list();
     }
 
@@ -124,7 +125,7 @@ public class ControlledListManager {
                 .query((rs, n) -> new ControlledList(
                         rs.getObject("id", UUID.class),
                         rs.getString("name"),
-                        PropertyType.valueOf(rs.getString("value_type"))))
+                        PropertyType.valueOf(rs.getString(COL_VALUE_TYPE))))
                 .optional();
     }
 
@@ -165,7 +166,7 @@ public class ControlledListManager {
                 .query((rs, n) -> new ControlledList(
                         rs.getObject("id", UUID.class),
                         rs.getString("name"),
-                        PropertyType.valueOf(rs.getString("value_type"))))
+                        PropertyType.valueOf(rs.getString(COL_VALUE_TYPE))))
                 .optional();
     }
 

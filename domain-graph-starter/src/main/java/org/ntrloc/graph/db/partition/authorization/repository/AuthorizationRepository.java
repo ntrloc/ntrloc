@@ -35,6 +35,7 @@ public class AuthorizationRepository {
     private static final String PARAM_PERSPECTIVE_ID = "perspectiveId";
     private static final String PARAM_CAN_READ = "canRead";
     private static final String PARAM_CAN_WRITE = "canWrite";
+    private static final String COL_DESCRIPTION = "description";
 
     public record GrantRow(UUID grantId, UUID itemTypeId, String itemTypeName, String permission) {}
 
@@ -182,7 +183,7 @@ public class AuthorizationRepository {
                 INSERT INTO authorization_marker (name, description, scope_kind, scope_id)
                 VALUES (:name, :description, :scopeKind, :scopeId) RETURNING id
                 """)
-                .param("name", name).param("description", description)
+                .param("name", name).param(COL_DESCRIPTION, description)
                 .param("scopeKind", scopeKind).param("scopeId", scopeId)
                 .query(UUID.class).single();
         return new MarkerRow(id, name, description, scopeKind, scopeId);
@@ -197,9 +198,9 @@ public class AuthorizationRepository {
                 UPDATE authorization_marker SET name = :name, description = :description
                 WHERE id = :id RETURNING id, name, description, scope_kind, scope_id
                 """)
-                .param("id", id).param("name", name).param("description", description)
+                .param("id", id).param("name", name).param(COL_DESCRIPTION, description)
                 .query((rs, n) -> new MarkerRow(
-                        rs.getObject("id", UUID.class), rs.getString("name"), rs.getString("description"),
+                        rs.getObject("id", UUID.class), rs.getString("name"), rs.getString(COL_DESCRIPTION),
                         rs.getString("scope_kind"), rs.getObject("scope_id", UUID.class)))
                 .single();
     }
@@ -214,7 +215,7 @@ public class AuthorizationRepository {
                 .query((rs, n) -> new MarkerRow(
                         rs.getObject("id", UUID.class),
                         rs.getString("name"),
-                        rs.getString("description"),
+                        rs.getString(COL_DESCRIPTION),
                         rs.getString("scope_kind"),
                         rs.getObject("scope_id", UUID.class)))
                 .list();
@@ -281,11 +282,9 @@ public class AuthorizationRepository {
     }
 
     // Resolves a marker by name within an item type's own ITEM_TYPE-scoped markers -- the only
-    // scope a marker-assignment rule can meaningfully target, since the rule fires per item of
-    // that type. A marker outside this scope (or absent entirely) is simply not resolvable here;
-    // the caller (MarkerRuleEvaluationService) treats an unresolved output name as "no such
-    // marker" rather than failing the whole evaluation, since a typo'd DMN output shouldn't block
-    // an otherwise-valid mutation.
+    // scope a marker-assignment rule can target. Unresolved (wrong scope, or absent) returns
+    // empty; the caller (MarkerRuleEvaluationService) treats that as "no such marker" rather than
+    // failing the whole evaluation, since a typo'd DMN output shouldn't block a valid mutation.
     public Optional<UUID> findItemTypeScopedMarkerByName(UUID itemTypeId, String name) {
         return jdbcClient.sql("""
                 SELECT id FROM authorization_marker

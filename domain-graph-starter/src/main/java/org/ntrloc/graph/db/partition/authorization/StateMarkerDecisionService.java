@@ -17,19 +17,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 // State-entry marker decisions -- the state-machine counterpart to MarkerRuleEvaluationService.
-// Each NORMAL state may carry an entryMarkerDecisionKey (a DMN key, exactly like entry_process_id
-// is a BPMN key). On entering that state, the decision is evaluated once against the item's
-// current property values and every marker it names is applied with StateAppliedMarker provenance;
-// on leaving the state (a transition to another state, or into END), those markers are revoked
-// unless the *new* state's decision also wants them, or another provenance (manual, an item-type
-// rule, a state in a different machine) independently holds them.
+// A NORMAL state's entryMarkerDecisionKey (DMN, like entry_process_id is BPMN) runs once on entry
+// with StateAppliedMarker provenance; on exit those markers are revoked unless the new state or
+// another provenance (manual, a rule, a different machine) still wants them.
 //
-// Runs in LedgerRegisterCoordinatorImpl.prepare(), right AFTER MarkerRuleEvaluationService, on the
-// same ItemUpdateEntry -- so a state transition's marker consequences land in the same ledger row
-// as the transition itself. Point-in-time at entry only: no standing re-evaluation while the item
-// sits in the state (a later property change won't re-run the entry decision).
+// Runs in LedgerRegisterCoordinatorImpl.prepare() right after MarkerRuleEvaluationService, on the
+// same ItemUpdateEntry. Point-in-time at entry only -- no re-evaluation while the item sits in the
+// state.
 @Component
 public class StateMarkerDecisionService {
 
@@ -56,69 +53,99 @@ public class StateMarkerDecisionService {
         UUID itemTypeId = registerPartitionManager.findItemTypeId(e.itemId()).orElse(null);
         if (itemTypeId == null) return entry; // defensive -- a state transition always targets an existing item
 
+        StateMarkerContext ctx = buildContext(e, itemTypeId);
+        for (UUID smId : ctx.affectedMachines()) {
+            processMachine(itemTypeId, smId, ctx);
+        }
+
+        if (ctx.toAdd().isEmpty() && ctx.toRemove().isEmpty()) return entry;
+
+        Set<MarkerAttribution> markersAdded = new LinkedHashSet<>(e.markersAdded());
+        markersAdded.addAll(ctx.toAdd());
+        Set<MarkerAttribution> markersRemoved = new LinkedHashSet<>(e.markersRemoved());
+        markersRemoved.addAll(ctx.toRemove());
+        return new ItemUpdateEntry(e.itemId(), e.properties(), e.stateChanges(), e.stateMachinesEnded(), markersAdded, markersRemoved);
+    }
+
+    private record StateMarkerContext(
+            ItemUpdateEntry entry,
+            Map<String, Object> propsByName,
+            Map<UUID, MarkerAttribution> attribution,
+            Map<UUID, UUID> priorStateIds,
+            Set<UUID> alreadyAddedMarkerIds,
+            Set<UUID> affectedMachines,
+            Set<MarkerAttribution> toAdd,
+            Set<MarkerAttribution> toRemove) {}
+
+    private StateMarkerContext buildContext(ItemUpdateEntry e, UUID itemTypeId) {
         Map<String, Object> propsByName = registerPartitionManager.resolveMergedPropertiesByName(e.itemId(), itemTypeId, e.properties());
         Map<UUID, MarkerAttribution> attribution = support.replayCurrentAttribution(e.itemId());
         Map<UUID, UUID> priorStateIds = registerPartitionManager.currentStateIds(e.itemId());
-
         // markerId of everything an earlier pass (rules) already put on this entry -- a state
         // decision must not add a second attribution for the same marker, and a state exit must not
         // remove a marker a rule just re-asserted (Part D).
-        Set<UUID> alreadyAddedMarkerIds = e.markersAdded().stream().map(MarkerAttribution::markerId).collect(java.util.stream.Collectors.toSet());
-
-        Set<MarkerAttribution> toAdd = new LinkedHashSet<>();
-        Set<MarkerAttribution> toRemove = new LinkedHashSet<>();
-
+        Set<UUID> alreadyAddedMarkerIds = e.markersAdded().stream().map(MarkerAttribution::markerId).collect(Collectors.toSet());
         Set<UUID> affectedMachines = new LinkedHashSet<>(e.stateChanges().keySet());
         affectedMachines.addAll(e.stateMachinesEnded());
+        return new StateMarkerContext(e, propsByName, attribution, priorStateIds, alreadyAddedMarkerIds, affectedMachines,
+                new LinkedHashSet<>(), new LinkedHashSet<>());
+    }
 
-        for (UUID smId : affectedMachines) {
-            UUID oldStateId = priorStateIds.get(smId);          // null for a startStateMachine
-            UUID newStateId = e.stateChanges().get(smId);       // null when smId is ending (into END)
+    private void processMachine(UUID itemTypeId, UUID smId, StateMarkerContext ctx) {
+        UUID oldStateId = ctx.priorStateIds().get(smId);            // null for a startStateMachine
+        UUID newStateId = ctx.entry().stateChanges().get(smId);     // null when smId is ending (into END)
 
-            Set<UUID> desiredIds = new HashSet<>();
-            if (newStateId != null) {
-                AdminStateView newState = findState(itemTypeId, smId, newStateId);
-                if (newState != null && "NORMAL".equals(newState.kind())
-                        && newState.entryMarkerDecisionKey() != null && !newState.entryMarkerDecisionKey().isBlank()) {
-                    desiredIds.addAll(support.evaluateDecisionToMarkerIds(newState.entryMarkerDecisionKey(), itemTypeId, propsByName));
-                }
+        Set<UUID> desiredIds = resolveDesiredMarkerIds(itemTypeId, smId, newStateId, ctx.propsByName());
+
+        // Exit reconciliation: drop every marker this machine conferred via the state being left,
+        // unless the entered state wants it too, or a rule already re-asserted it here.
+        if (oldStateId != null) {
+            reconcileExit(smId, oldStateId, desiredIds, ctx);
+        }
+        reconcileEntry(smId, newStateId, desiredIds, ctx);
+    }
+
+    private Set<UUID> resolveDesiredMarkerIds(UUID itemTypeId, UUID smId, UUID newStateId, Map<String, Object> propsByName) {
+        Set<UUID> desiredIds = new HashSet<>();
+        if (newStateId == null) return desiredIds;
+        AdminStateView newState = findState(itemTypeId, smId, newStateId);
+        if (newState != null && "NORMAL".equals(newState.kind())
+                && newState.entryMarkerDecisionKey() != null && !newState.entryMarkerDecisionKey().isBlank()) {
+            desiredIds.addAll(support.evaluateDecisionToMarkerIds(newState.entryMarkerDecisionKey(), itemTypeId, propsByName));
+        }
+        return desiredIds;
+    }
+
+    private void reconcileExit(UUID smId, UUID leftState, Set<UUID> desiredIds, StateMarkerContext ctx) {
+        ctx.attribution().forEach((markerId, attr) -> {
+            if (attr instanceof StateAppliedMarker sam
+                    && sam.stateMachineId().equals(smId) && sam.stateId().equals(leftState)
+                    && !desiredIds.contains(markerId)
+                    && !ctx.alreadyAddedMarkerIds().contains(markerId)) {
+                ctx.toRemove().add(sam);
             }
+        });
+    }
 
-            // Exit reconciliation: drop every marker this machine conferred via the state being
-            // left, unless the entered state wants it too, or a rule already re-asserted it here.
-            if (oldStateId != null) {
-                final UUID leftState = oldStateId;
-                attribution.forEach((markerId, attr) -> {
-                    if (attr instanceof StateAppliedMarker sam
-                            && sam.stateMachineId().equals(smId) && sam.stateId().equals(leftState)
-                            && !desiredIds.contains(markerId)
-                            && !alreadyAddedMarkerIds.contains(markerId)) {
-                        toRemove.add(sam);
-                    }
-                });
-            }
-
-            for (UUID markerId : desiredIds) {
-                if (alreadyAddedMarkerIds.contains(markerId)) continue; // a rule already owns this marker's slot on this entry
-                MarkerAttribution current = attribution.get(markerId);
-                if (current != null && !(current instanceof StateAppliedMarker)) {
-                    continue; // held independently (a rule or a manual application) -- not this state's to claim
-                }
-                if (current instanceof StateAppliedMarker sam
-                        && sam.stateMachineId().equals(smId) && sam.stateId().equals(newStateId)) {
-                    continue; // already attributed to this exact state (re-entry / idempotent re-run)
-                }
-                toAdd.add(new StateAppliedMarker(markerId, smId, newStateId));
+    private void reconcileEntry(UUID smId, UUID newStateId, Set<UUID> desiredIds, StateMarkerContext ctx) {
+        for (UUID markerId : desiredIds) {
+            if (shouldClaimMarker(markerId, smId, newStateId, ctx)) {
+                ctx.toAdd().add(new StateAppliedMarker(markerId, smId, newStateId));
             }
         }
+    }
 
-        if (toAdd.isEmpty() && toRemove.isEmpty()) return entry;
-
-        Set<MarkerAttribution> markersAdded = new LinkedHashSet<>(e.markersAdded());
-        markersAdded.addAll(toAdd);
-        Set<MarkerAttribution> markersRemoved = new LinkedHashSet<>(e.markersRemoved());
-        markersRemoved.addAll(toRemove);
-        return new ItemUpdateEntry(e.itemId(), e.properties(), e.stateChanges(), e.stateMachinesEnded(), markersAdded, markersRemoved);
+    private boolean shouldClaimMarker(UUID markerId, UUID smId, UUID newStateId, StateMarkerContext ctx) {
+        if (ctx.alreadyAddedMarkerIds().contains(markerId)) {
+            return false; // a rule already owns this marker's slot on this entry
+        }
+        MarkerAttribution current = ctx.attribution().get(markerId);
+        if (current != null && !(current instanceof StateAppliedMarker)) {
+            return false; // held independently (a rule or a manual application) -- not this state's to claim
+        }
+        // not already attributed to this exact state (re-entry / idempotent re-run)
+        return !(current instanceof StateAppliedMarker sam
+                && sam.stateMachineId().equals(smId) && sam.stateId().equals(newStateId));
     }
 
     private AdminStateView findState(UUID itemTypeId, UUID smId, UUID stateId) {
