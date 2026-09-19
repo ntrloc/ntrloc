@@ -426,6 +426,7 @@ const schemaViewModel = {
           supertypeId: item.supertypeId,
           abstractType: item.abstractType,
           displayLabelPattern: item.displayLabelPattern,
+          traitIds: item.traitAssignments.filter((t) => !t.isRemoved).map((t) => t.id),
         });
         continue;
       }
@@ -575,6 +576,34 @@ const schemaViewModel = {
       }
 
       // TODO: UPDATE_TRAIT when backend supports it (matches Angular reference)
+
+      // Property-level changes on an EXISTING trait -- mirrors the item loop's own property
+      // handling above, using the same owner-agnostic UPDATE_PROPERTY/DELETE_PROPERTY/
+      // CREATE_OBJECT_PROPERTY_CHILD ops (keyed purely by property id, never by who owns it -- see
+      // CreatePropertyPropertyDefinitionMutation's own comment) plus CREATE_TRAIT_PROPERTY (the
+      // trait-owned mirror of CREATE_ITEM_PROPERTY) for a brand-new top-level property. This loop
+      // was missing entirely before, which is why editing/deleting/adding an existing trait's
+      // property silently did nothing on Save: trait.isDirty correctly went true
+      // (PropertyDefinitionViewModel.isDirty bubbles up), so the Save button activated, but
+      // collectMutations() never looked inside trait.properties for anything short of the whole
+      // trait being new or deleted.
+      for (const prop of trait.properties) {
+        if (prop.isReadonly) continue;
+        if (prop.isNew) {
+          ops.push({ type: 'CREATE_TRAIT_PROPERTY', traitId: trait.id, ...toCreatePropertySpec(prop) });
+          continue; // prop's own new children are embedded above, not created separately
+        }
+        if (prop.isDeleted) {
+          ops.push({ type: 'DELETE_PROPERTY', id: prop.id });
+          continue;
+        } else if (prop.ownFieldsDirty) {
+          ops.push({ type: 'UPDATE_PROPERTY', id: prop.id, name: prop.name, description: prop.description, propertyType: prop.type, cardinality: prop.cardinality, usage: prop.usage, facetable: prop.facetable });
+        }
+        if (prop.listAssociationDirty) {
+          ops.push({ type: 'SET_PROPERTY_CONTROLLED_LIST', propertyId: prop.id, listId: prop.controlledListId });
+        }
+        collectNestedPropertyMutations(prop.properties, ops, prop.id);
+      }
     }
 
     // Invalid pending links (missing target/names, or self-referential) are never emitted --

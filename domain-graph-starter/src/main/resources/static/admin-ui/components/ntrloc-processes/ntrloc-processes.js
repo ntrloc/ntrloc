@@ -169,7 +169,7 @@ class NtrlocProcesses extends HTMLElement {
   }
 
   openDecision(id, title, opts = {}) {
-    this._workspace.openTab({ id, title, resourceType: 'dmn', initialKey: opts.initialKey, template: opts.template });
+    this._workspace.openTab({ id, title, resourceType: 'dmn', initialKey: opts.initialKey, template: opts.template, columnChoices: opts.columnChoices });
   }
 
   // Entry point for "open the DMN behind this rule" (ntrloc-item-detail.js's Marker Assignment
@@ -181,7 +181,13 @@ class NtrlocProcesses extends HTMLElement {
   // up. this.decisions holds every version of every key (loadDecisions' own fetch, unfiltered), so
   // picking the max version here is what "latest" means, same as newDecisionTable's sibling flow
   // through the decision table editor's own version picker.
-  async openDecisionByKey(decisionKey, title) {
+  // markerNames (optional): the item type's/state's own marker names, for the caller to constrain
+  // the `markerName` output column to a ticklist instead of free FEEL text -- same mechanism
+  // ntrloc-state-machine-editor.js wires up directly for its own Entry Markers tab (see
+  // ntrloc-decision-table-editor.js's parseColumnChoices), now also reachable from here so a
+  // marker rule opened via ntrloc-item-detail.js's "Open DMN" gets it too, new table or existing.
+  async openDecisionByKey(decisionKey, title, markerNames) {
+    const columnChoices = markerNames ? { markerName: markerNames } : undefined;
     const latest = (decisions) => decisions
       .filter((d) => d.key === decisionKey)
       .sort((a, b) => b.version - a.version)[0];
@@ -199,10 +205,10 @@ class NtrlocProcesses extends HTMLElement {
       // prefix is what marks it "new", so that's kept and any colon in the key is stripped.
       const placeholderId = `new-decision-for-key-${decisionKey.replace(/:/g, '_')}`;
       this.openDecision(placeholderId, title ? `${title} (new)` : `New: ${decisionKey}`,
-        { initialKey: decisionKey, template: 'state-entry-markers' });
+        { initialKey: decisionKey, template: 'state-entry-markers', columnChoices });
       return;
     }
-    this.openDecision(match.id, title || match.name || match.key);
+    this.openDecision(match.id, title || match.name || match.key, { columnChoices });
   }
 
   // Placeholder id deliberately contains no colon -- ntrloc-decision-table-editor.js treats that
@@ -261,6 +267,7 @@ class NtrlocProcesses extends HTMLElement {
         el.dataset.decisionId = tab.id;
         if (tab.initialKey) el.dataset.initialKey = tab.initialKey;
         if (tab.template) el.dataset.template = tab.template;
+        if (tab.columnChoices) el.dataset.columnChoices = JSON.stringify(tab.columnChoices);
         return el;
       }
       const el = document.createElement('ntrloc-process-editor');

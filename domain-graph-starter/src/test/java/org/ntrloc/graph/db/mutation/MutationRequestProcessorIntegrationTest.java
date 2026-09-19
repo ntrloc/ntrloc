@@ -3,6 +3,7 @@ package org.ntrloc.graph.db.mutation;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.coordinator.CoordinatorTestDomainInitializer;
+import org.ntrloc.graph.db.partition.binary.BinaryPartitionManager;
 import org.ntrloc.graph.db.partition.register.RegisterPartitionManager;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
@@ -13,10 +14,14 @@ import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateLinkDefini
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePerspectiveDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePropertyDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DeleteItemDefinitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.DeletePropertyDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.UpdateItemDefinitionMutation;
 import org.ntrloc.graph.db.partition.security.ResolvedPrincipal;
 import org.ntrloc.graph.db.projection.ProjectedLink;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.io.buffer.DefaultDataBufferFactory;
+import org.springframework.jdbc.core.simple.JdbcClient;
+import reactor.core.publisher.Flux;
 
 import java.util.HashMap;
 import java.util.List;
@@ -62,6 +67,17 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private SchemaManager schemaManager;
+
+    @Autowired
+    private BinaryPartitionManager binaryPartitionManager;
+
+    @Autowired
+    private JdbcClient jdbcClient;
+
+    private UUID storeBinary(byte[] content) {
+        var buffer = new DefaultDataBufferFactory().wrap(content);
+        return binaryPartitionManager.store(Flux.just(buffer)).block();
+    }
 
     private UUID createItem(String itemTypeName) {
         MutationResponse response = processor.process(
@@ -212,16 +228,114 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
         assertThat(item.properties()).doesNotContainKey("name");
     }
 
-    // --- validateScalar: BINARY rejection, LONG, DOUBLE, DATETIME ---
+    // --- validateBinaryValue/validateScalar: BINARY, LONG, DOUBLE, DATETIME ---
 
     @Test
-    void binaryProperty_isRejected_binaryPropertiesCannotBeSetViaMutation() {
+    void binaryProperty_acceptsAnIdFromAnEarlierUpload() {
+        UUID binaryId = storeBinary("some file content".getBytes());
+
+        MutationResponse response = processor.process(new MutationRequest(
+                List.of(new ItemCreateMutation(null, "MutReqProcA", Map.of("attachment", binaryId.toString()))), List.of()),
+                SOME_PRINCIPAL);
+
+        UUID itemId = response.items().get(0).itemId();
+        var item = registerPartitionManager.projectOne(fixture.aTypeId(), itemId, "http://binary").orElseThrow();
+        @SuppressWarnings("unchecked")
+        var attachment = (Map<String, Object>) item.properties().get("attachment");
+        assertThat(attachment).containsEntry("id", binaryId.toString())
+                .containsEntry("url", "http://binary/api/binary/" + binaryId);
+    }
+
+    @Test
+    void binaryProperty_rejectsAnIdThatWasNeverUploaded() {
         assertThatThrownBy(() -> processor.process(new MutationRequest(
-                List.of(new ItemCreateMutation(null, "MutReqProcA", Map.of("attachment", "some-value"))), List.of()),
+                List.of(new ItemCreateMutation(null, "MutReqProcA", Map.of("attachment", UUID.randomUUID().toString()))), List.of()),
                 SOME_PRINCIPAL))
                 .isInstanceOf(MutationValidationException.class)
                 .satisfies(e -> assertThat(((MutationValidationException) e).errors())
-                        .anyMatch(err -> err.message().contains("binary-typed")));
+                        .anyMatch(err -> err.message().contains("does not exist")));
+    }
+
+    @Test
+    void binaryProperty_rejectsAValueThatIsNotAValidId() {
+        assertThatThrownBy(() -> processor.process(new MutationRequest(
+                List.of(new ItemCreateMutation(null, "MutReqProcA", Map.of("attachment", "not-a-uuid"))), List.of()),
+                SOME_PRINCIPAL))
+                .isInstanceOf(MutationValidationException.class)
+                .satisfies(e -> assertThat(((MutationValidationException) e).errors())
+                        .anyMatch(err -> err.message().contains("is not a valid binary id")));
+    }
+
+    // A dedicated item type, not MutReqProcA -- this test deletes the property itself, which would
+    // break every other test in this class still relying on MutReqProcA.attachment existing.
+    @Test
+    void deletePropertyDefinitionMutation_onABinaryPropertyWithCommittedData_succeedsAndClearsItsRegisterBinaryPropertyRows() {
+        // Regression test: register_binary_property's FK to schema_property.id was missing ON
+        // DELETE CASCADE (unlike schema_item_property/schema_trait_property/schema_link_property/
+        // schema_property_property, which all cascade) -- see
+        // V1_0_2_7__register_binary_property_cascade_delete.sql. Deleting a BINARY property that
+        // any item had ever set used to 500 on a raw Postgres FK violation instead of succeeding
+        // the way deleting a scalar property (no such FK) already does.
+        String itemTypeName = "DeletePropTest-" + UUID.randomUUID();
+        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(itemTypeName, "d", List.of(
+                new CreatePropertyDefinitionMutation("attachment", "d", PropertyType.BINARY, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false, java.util.List.of())),
+                null, false, null)));
+        UUID propertyId = schemaManager.getAdminSchema().items().stream()
+                .filter(i -> i.name().equals(itemTypeName)).findFirst().orElseThrow()
+                .properties().stream().filter(p -> p.name().equals("attachment")).findFirst().orElseThrow().id();
+
+        UUID binaryId = storeBinary("delete-property regression content".getBytes());
+        processor.process(new MutationRequest(
+                List.of(new ItemCreateMutation(null, itemTypeName, Map.of("attachment", binaryId.toString()))), List.of()),
+                SOME_PRINCIPAL);
+
+        long before = jdbcClient.sql("SELECT COUNT(*) FROM register_binary_property WHERE property_id = :id")
+                .param("id", propertyId).query(Long.class).single();
+        assertThat(before).isEqualTo(1L);
+
+        schemaManager.applyMutations(List.of(new DeletePropertyDefinitionMutation(propertyId)));
+
+        long after = jdbcClient.sql("SELECT COUNT(*) FROM register_binary_property WHERE property_id = :id")
+                .param("id", propertyId).query(Long.class).single();
+        assertThat(after).isEqualTo(0L);
+        assertThat(schemaManager.getAdminSchema().items().stream()
+                .filter(i -> i.name().equals(itemTypeName)).findFirst().orElseThrow().properties())
+                .extracting(p -> p.name()).doesNotContain("attachment");
+    }
+
+    // Regression test for the reported symptom exactly: a BINARY property nested inside an OBJECT
+    // property (e.g. file.content) came back as a top-level sibling of its container on
+    // projection ("content" alongside "file", not nested inside it) instead of at its actual
+    // schema-nested location -- assembleProjectedItem's binary-value merge flattened to the leaf's
+    // own bare name instead of walking its schema path the way every other property type's merge
+    // (namesForIds) already does.
+    @Test
+    void nestedBinaryProperty_projectsAtItsSchemaNestedLocation_notFlattenedToTopLevel() {
+        String itemTypeName = "NestedBinaryTest-" + UUID.randomUUID();
+        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(itemTypeName, "d", List.of(
+                new CreatePropertyDefinitionMutation("file", "d", PropertyType.OBJECT, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false, List.of(
+                        new CreatePropertyDefinitionMutation("name", "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false, java.util.List.of()),
+                        new CreatePropertyDefinitionMutation("content", "d", PropertyType.BINARY, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false, java.util.List.of())))),
+                null, false, null)));
+        UUID itemTypeId = schemaManager.getAdminSchema().items().stream()
+                .filter(i -> i.name().equals(itemTypeName)).findFirst().orElseThrow().id();
+
+        UUID binaryId = storeBinary("nested binary regression content".getBytes());
+        MutationResponse response = processor.process(new MutationRequest(
+                List.of(new ItemCreateMutation(null, itemTypeName,
+                        Map.of("file", Map.of("name", "photo.jpg", "content", binaryId.toString())))), List.of()),
+                SOME_PRINCIPAL);
+        UUID itemId = response.items().get(0).itemId();
+
+        var item = registerPartitionManager.projectOne(itemTypeId, itemId, "http://binary").orElseThrow();
+        assertThat(item.properties()).doesNotContainKey("content");
+        @SuppressWarnings("unchecked")
+        var file = (Map<String, Object>) item.properties().get("file");
+        assertThat(file).containsEntry("name", "photo.jpg");
+        @SuppressWarnings("unchecked")
+        var content = (Map<String, Object>) file.get("content");
+        assertThat(content).containsEntry("id", binaryId.toString())
+                .containsEntry("url", "http://binary/api/binary/" + binaryId);
     }
 
     @Test

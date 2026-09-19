@@ -16,6 +16,7 @@ import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePropertyPr
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateStateMachineMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateStateMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateTraitDefinitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateTraitPropertyDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateControlledListMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateTransitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DefinitionMutation;
@@ -972,6 +973,90 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         assertThat(details).isInstanceOf(ObjectAdminPropertyDefinitionView.class);
         assertThat(((ObjectAdminPropertyDefinitionView) details).properties())
                 .extracting(AdminPropertyDefinitionView::name).containsExactly("role");
+    }
+
+    // Same owner-agnostic nesting as the link-owned test above, now proven against a trait-owned
+    // parent property -- CreatePropertyPropertyDefinitionMutation's only guard is "is the parent
+    // OBJECT-typed" (never who owns it), so this was expected to already work; this is what makes
+    // that airtight rather than inferred. Also proves SchemaViewBuilder's trait-inheritance merge
+    // preserves a nested child through to an implementing item's effective properties, not just a
+    // trait's own flat top-level properties.
+    @Test
+    void createPropertyPropertyDefinitionMutation_onATraitOwnedObjectProperty_addsANestedChild_visibleOnTheTraitAndOnImplementingItems() {
+        String traitName = "Trait-" + UUID.randomUUID();
+        String itemName = "Item-" + UUID.randomUUID();
+
+        schemaManager.applyMutations(List.of(new CreateTraitDefinitionMutation(traitName, "d", List.of(
+                new CreatePropertyDefinitionMutation("file", "d", PropertyType.OBJECT, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false, java.util.List.of())))));
+        UUID traitId = findTrait(traitName).id();
+        UUID filePropertyId = findTrait(traitName).properties().stream()
+                .filter(p -> p.name().equals("file")).findFirst().orElseThrow().id();
+
+        schemaManager.applyMutations(List.of(new CreatePropertyPropertyDefinitionMutation(
+                filePropertyId, "name", "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false, java.util.List.of())));
+
+        var traitFileProperty = findTrait(traitName).properties().stream()
+                .filter(p -> p.name().equals("file")).findFirst().orElseThrow();
+        assertThat(traitFileProperty).isInstanceOf(ObjectAdminPropertyDefinitionView.class);
+        assertThat(((ObjectAdminPropertyDefinitionView) traitFileProperty).properties())
+                .extracting(AdminPropertyDefinitionView::name).containsExactly("name");
+
+        UUID itemId = createItem(itemName);
+        schemaManager.applyMutations(List.of(new ImplementTraitMutation(itemId, traitId)));
+
+        var inheritedFileProperty = findProperty(itemId, "file");
+        assertThat(inheritedFileProperty.definedIn().entityName()).isEqualTo(traitName);
+        assertThat(inheritedFileProperty).isInstanceOf(ObjectAdminPropertyDefinitionView.class);
+        assertThat(((ObjectAdminPropertyDefinitionView) inheritedFileProperty).properties())
+                .extracting(AdminPropertyDefinitionView::name).containsExactly("name");
+    }
+
+    // Regression test for the reported symptom exactly: adding a brand-new nested OBJECT property
+    // to an already-existing trait through the admin-ui silently saved nothing, because
+    // collectMutations() had no op to emit for it (no CreateItemPropertyDefinitionMutation
+    // equivalent for traits existed at all). CreateTraitPropertyDefinitionMutation is that missing
+    // mutation -- this proves it end to end: a new "file" OBJECT property with a nested "name"
+    // child, added to an existing trait, shows up on the trait itself and propagates through the
+    // normal trait-inheritance merge to an item that implements it afterward.
+    @Test
+    void createTraitPropertyDefinitionMutation_addsANewTopLevelPropertyToAnExistingTrait_withNestedChildren_visibleOnTheTraitAndOnImplementingItems() {
+        String traitName = "Trait-" + UUID.randomUUID();
+        String itemName = "Item-" + UUID.randomUUID();
+
+        schemaManager.applyMutations(List.of(new CreateTraitDefinitionMutation(traitName, "d", List.of())));
+        UUID traitId = findTrait(traitName).id();
+
+        schemaManager.applyMutations(List.of(new CreateTraitPropertyDefinitionMutation(
+                traitId, "file", "d", PropertyType.OBJECT, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false, List.of(
+                        new CreatePropertyDefinitionMutation("name", "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false, java.util.List.of())))));
+
+        var traitFileProperty = findTrait(traitName).properties().stream()
+                .filter(p -> p.name().equals("file")).findFirst().orElseThrow();
+        assertThat(traitFileProperty).isInstanceOf(ObjectAdminPropertyDefinitionView.class);
+        assertThat(((ObjectAdminPropertyDefinitionView) traitFileProperty).properties())
+                .extracting(AdminPropertyDefinitionView::name).containsExactly("name");
+
+        UUID itemId = createItem(itemName);
+        schemaManager.applyMutations(List.of(new ImplementTraitMutation(itemId, traitId)));
+
+        var inheritedFileProperty = findProperty(itemId, "file");
+        assertThat(inheritedFileProperty.definedIn().entityName()).isEqualTo(traitName);
+        assertThat(inheritedFileProperty).isInstanceOf(ObjectAdminPropertyDefinitionView.class);
+        assertThat(((ObjectAdminPropertyDefinitionView) inheritedFileProperty).properties())
+                .extracting(AdminPropertyDefinitionView::name).containsExactly("name");
+    }
+
+    @Test
+    void createTraitPropertyDefinitionMutation_withACollidingName_throws() {
+        String traitName = "Trait-" + UUID.randomUUID();
+        schemaManager.applyMutations(List.of(new CreateTraitDefinitionMutation(traitName, "d", List.of(
+                new CreatePropertyDefinitionMutation("shared", "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false, java.util.List.of())))));
+        UUID traitId = findTrait(traitName).id();
+
+        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new CreateTraitPropertyDefinitionMutation(
+                traitId, "shared", "d2", PropertyType.INT, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false, java.util.List.of()))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("already exists");
     }
 
     @Test

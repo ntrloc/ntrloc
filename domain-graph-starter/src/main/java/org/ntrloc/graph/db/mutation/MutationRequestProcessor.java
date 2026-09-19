@@ -1,6 +1,7 @@
 package org.ntrloc.graph.db.mutation;
 
 import org.ntrloc.graph.db.coordinator.LedgerRegisterCoordinator;
+import org.ntrloc.graph.db.partition.binary.BinaryPartitionManager;
 import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
 import org.ntrloc.graph.db.partition.ledger.ItemDeleteEntry;
 import org.ntrloc.graph.db.partition.ledger.ItemUpdateEntry;
@@ -55,13 +56,16 @@ public class MutationRequestProcessor {
     private final LedgerRegisterCoordinator coordinator;
     private final RegisterPartitionManager registerPartitionManager;
     private final SchemaManager schemaManager;
+    private final BinaryPartitionManager binaryPartitionManager;
 
     public MutationRequestProcessor(LedgerRegisterCoordinator coordinator,
                                      RegisterPartitionManager registerPartitionManager,
-                                     SchemaManager schemaManager) {
+                                     SchemaManager schemaManager,
+                                     BinaryPartitionManager binaryPartitionManager) {
         this.coordinator = coordinator;
         this.registerPartitionManager = registerPartitionManager;
         this.schemaManager = schemaManager;
+        this.binaryPartitionManager = binaryPartitionManager;
     }
 
     @Transactional
@@ -364,7 +368,7 @@ public class MutationRequestProcessor {
 
     private void validatePropertyValue(String path, AdminPropertyDefinitionView property, Object value, List<ValidationError> errors) {
         if (property.type() == PropertyType.BINARY) {
-            errors.add(new ValidationError(path, PROPERTY_QUOTE_PREFIX + property.name() + "' is binary-typed; binary properties cannot be set via mutation"));
+            validateBinaryValue(path, property, value, errors);
             return;
         }
         if (property.cardinality() == PropertyCardinality.SINGLE) {
@@ -385,6 +389,26 @@ public class MutationRequestProcessor {
         }
         for (int i = 0; i < list.size(); i++) {
             validateScalar(path + "[" + i + "]", property, list.get(i), errors);
+        }
+    }
+
+    // A binary property's value is the id an earlier POST /api/binary/upload returned, not literal
+    // content -- so validation here means confirming that id actually names stored binary content,
+    // not type-checking a value the way validateScalar does for every other property type.
+    private void validateBinaryValue(String path, AdminPropertyDefinitionView property, Object value, List<ValidationError> errors) {
+        if (!(value instanceof String s)) {
+            errors.add(new ValidationError(path, PROPERTY_QUOTE_PREFIX + property.name() + "' expects a binary id but got: " + describeValue(value)));
+            return;
+        }
+        UUID binaryId;
+        try {
+            binaryId = UUID.fromString(s);
+        } catch (IllegalArgumentException e) {
+            errors.add(new ValidationError(path, PROPERTY_QUOTE_PREFIX + property.name() + "' is not a valid binary id: " + s));
+            return;
+        }
+        if (binaryPartitionManager.getBinaryProperty(binaryId).isEmpty()) {
+            errors.add(new ValidationError(path, PROPERTY_QUOTE_PREFIX + property.name() + "' references a binary that does not exist: " + s));
         }
     }
 

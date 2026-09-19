@@ -201,6 +201,10 @@ public class SchemaRepository {
                 .single();
     }
 
+    // register_binary_property cascades on schema_property.id (see
+    // V1_0_2_7__register_binary_property_cascade_delete.sql for why that needed fixing), same as
+    // every other property-ownership/nesting association table -- deleting the row here is all
+    // this needs, matching the pattern those already follow.
     public void deleteProperty(UUID id) {
         jdbcClient.sql("DELETE FROM schema_property WHERE id = :id").param("id", id).update();
     }

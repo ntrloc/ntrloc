@@ -1,15 +1,23 @@
 package org.ntrloc.graph.db.partition.binary;
 
+import org.ntrloc.graph.db.partition.binary.storage.BinaryContentInfo;
 import org.ntrloc.graph.db.partition.binary.storage.BinaryStorageAdapter;
+import org.ntrloc.graph.db.partition.binary.storage.HashingBinaryDataWriter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.sql.init.dependency.DependsOnDatabaseInitialization;
+import org.springframework.core.io.buffer.DataBuffer;
+import org.springframework.core.io.buffer.DataBufferUtils;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 import tools.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.UncheckedIOException;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -23,8 +31,6 @@ public class BinaryPartitionManagerImpl implements BinaryPartitionManager {
 
     private static final Logger LOG = LoggerFactory.getLogger(BinaryPartitionManagerImpl.class);
 
-    private static final int BUFFER_SIZE = 8192;
-
     private final JdbcClient jdbcClient;
     private final BinaryStorageAdapter storageAdapter;
     private final ObjectMapper objectMapper;
@@ -35,34 +41,52 @@ public class BinaryPartitionManagerImpl implements BinaryPartitionManager {
         this.objectMapper = objectMapper;
     }
 
+    // Consumes the upload as a reactive chunk stream rather than a blocking InputStream: a prior
+    // InputStream-bridging approach (pulling chunks via Flux.toIterable) let a slow consumer race
+    // ahead of backpressure and OOM on large uploads. Writing each chunk synchronously inside
+    // doOnNext, downstream of a single-item-prefetch publishOn, ties consumption of the next network
+    // chunk directly to this write finishing, which is what actually keeps memory bounded regardless
+    // of upload size.
     @Override
-    public UUID store(InputStream stream) throws IOException {
-        var writer = storageAdapter.openWriter();
+    public Mono<UUID> store(Flux<DataBuffer> content) {
+        return Mono.fromCallable(storageAdapter::openWriter)
+                .subscribeOn(Schedulers.boundedElastic())
+                .flatMap(writer -> content
+                        .publishOn(Schedulers.boundedElastic(), 1)
+                        .doOnNext(buffer -> writeChunk(writer, buffer))
+                        .then(Mono.fromCallable(() -> storageAdapter.close(writer)))
+                        .flatMap(this::insert)
+                        .onErrorResume(e -> Mono.fromRunnable(() -> storageAdapter.abandon(writer))
+                                .subscribeOn(Schedulers.boundedElastic())
+                                .then(Mono.error(e))));
+    }
+
+    private void writeChunk(HashingBinaryDataWriter writer, DataBuffer buffer) {
         try {
-            byte[] buffer = new byte[BUFFER_SIZE];
-            int read;
-            while ((read = stream.read(buffer)) != -1) {
-                writer.write(read == buffer.length ? buffer : java.util.Arrays.copyOf(buffer, read));
-            }
-            var info = storageAdapter.close(writer);
-
-            return jdbcClient.sql("""
-                    INSERT INTO binary_content (sha256, md5, mime_type, length)
-                    VALUES (:sha256, :md5, :mimeType, :length)
-                    ON CONFLICT (sha256) DO UPDATE SET sha256 = EXCLUDED.sha256
-                    RETURNING id
-                    """)
-                    .param("sha256", info.getSha256Hash())
-                    .param("md5", info.getMd5Hash())
-                    .param("mimeType", info.getMimeType())
-                    .param("length", info.getLength())
-                    .query(UUID.class)
-                    .single();
-
+            byte[] bytes = new byte[buffer.readableByteCount()];
+            buffer.read(bytes);
+            writer.write(bytes);
         } catch (IOException e) {
-            storageAdapter.abandon(writer);
-            throw e;
+            throw new UncheckedIOException(e);
+        } finally {
+            DataBufferUtils.release(buffer);
         }
+    }
+
+    private Mono<UUID> insert(BinaryContentInfo info) {
+        return Mono.fromCallable(() -> jdbcClient.sql("""
+                        INSERT INTO binary_content (sha256, md5, mime_type, length)
+                        VALUES (:sha256, :md5, :mimeType, :length)
+                        ON CONFLICT (sha256) DO UPDATE SET sha256 = EXCLUDED.sha256
+                        RETURNING id
+                        """)
+                        .param("sha256", info.getSha256Hash())
+                        .param("md5", info.getMd5Hash())
+                        .param("mimeType", info.getMimeType())
+                        .param("length", info.getLength())
+                        .query(UUID.class)
+                        .single())
+                .subscribeOn(Schedulers.boundedElastic());
     }
 
     @Override

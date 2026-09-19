@@ -25,6 +25,8 @@
         <opentelemetry.instrumentation.version>2.29.0</opentelemetry.instrumentation.version>
         <spring-ai.version>2.0.0</spring-ai.version>
         <hazelcast.version>5.5.0</hazelcast.version>
+        <!-- Matches media-processor-api's own pinned version, which matches ntrloc-media-processor's -->
+        <grpc.version>1.68.2</grpc.version>
     </properties>
 
     <dependencies>
@@ -229,6 +231,25 @@
             <groupId>com.hazelcast</groupId>
             <artifactId>hazelcast-spring</artifactId>
             <version>${hazelcast.version}</version>
+        </dependency>
+
+        <!-- Media processor client (org.ntrloc.graph.mediaprocessor): optional at the deployment
+             level only. media-processor-api and grpc-stub/grpc-protobuf/protobuf-java (transitive
+             through it) are always on the classpath, same as Hazelcast above for clustering.
+             MediaProcessorClientConfiguration only opens a channel and creates client beans when
+             media-processor.url is actually configured. grpc-netty-shaded is the one dependency
+             this app needs beyond what media-processor-api brings: the client-side Netty
+             transport, mirroring ntrloc-media-processor's own server-side choice of the same
+             artifact. -->
+        <dependency>
+            <groupId>org.ntrloc</groupId>
+            <artifactId>media-processor-api</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.grpc</groupId>
+            <artifactId>grpc-netty-shaded</artifactId>
+            <version>${grpc.version}</version>
         </dependency>
 
         <!-- Scalar -->

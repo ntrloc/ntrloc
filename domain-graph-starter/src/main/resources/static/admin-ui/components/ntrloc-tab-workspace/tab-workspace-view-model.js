@@ -29,16 +29,17 @@ function createTabWorkspaceViewModel() {
 
     // Opens a new tab for the given resource, or just activates it if already open -- opening the
     // same process definition twice should never produce two tabs onto the same document.
-    openTab({ id, title, resourceType, initialKey, template }) {
+    openTab({ id, title, resourceType, initialKey, template, columnChoices }) {
       const existing = this.tabs.find((t) => t.id === id);
       if (existing) {
         this.activeTabId = id;
         notify();
         return existing;
       }
-      // initialKey/template are only meaningful for a not-yet-saved resource -- the host's
-      // renderTabContent forwards them to the editor element as data-* attributes.
-      const tab = { id, title, resourceType, initialKey, template, isDirty: false };
+      // initialKey/template/columnChoices are only meaningful for a not-yet-saved resource (the
+      // first two) or a decision-table resource (the third) -- the host's renderTabContent
+      // forwards them to the editor element as data-* attributes.
+      const tab = { id, title, resourceType, initialKey, template, columnChoices, isDirty: false };
       this.tabs = [...this.tabs, tab];
       this.activeTabId = id;
       notify();

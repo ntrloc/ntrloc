@@ -62,6 +62,10 @@ class StateMarkerDecisionIntegrationTest extends AbstractIntegrationTest {
             dmnRepositoryService.createDeployment().name("sme-state-entry-markers")
                     .addClasspathResource("dmn/sme-state-entry-markers.dmn").deploy();
         }
+        if (dmnRepositoryService.createDecisionQuery().decisionKey("smeMarkersViaService").count() == 0) {
+            dmnRepositoryService.createDeployment().name("sme-decision-service-marker")
+                    .addClasspathResource("dmn/sme-decision-service-marker.dmn").deploy();
+        }
         for (String name : MARKER_NAMES) {
             if (authRepo.findItemTypeScopedMarkerByName(fixture.bookTypeId(), name).isEmpty()) {
                 authRepo.createMarker(name, "sme fixture marker", "ITEM_TYPE", fixture.bookTypeId());
@@ -243,6 +247,34 @@ class StateMarkerDecisionIntegrationTest extends AbstractIntegrationTest {
             assertThat(markerNamesOn(book)).containsExactly("SmeCharlie");
             assertThat(markerDecisionSupport.replayCurrentAttribution(book).get(markerId("SmeCharlie")))
                     .as("Charlie is now rule-attributed").isNotInstanceOf(StateAppliedMarker.class);
+        } finally {
+            jdbcClient.sql("DELETE FROM authorization_marker_rule WHERE id = :id").param("id", ruleId).update();
+        }
+    }
+
+    @Test
+    void anItemTypeRuleBackedByADecisionServiceWrappedTable_appliesItsMarkerOnCreate() {
+        // Regression test: the admin-ui's DMN editor always wraps its one decision table in a
+        // decisionService (see sme-decision-service-marker.dmn's own comment) -- every marker rule
+        // an admin actually creates through the UI points at a decisionService id, not a bare
+        // <decision> id, and used to crash with a 500 on item creation.
+        UUID ruleId = authRepo.createMarkerRule("SME via decision service", fixture.bookTypeId(), "smeMarkersViaService").id();
+        try {
+            UUID book = createBook("SECRET");
+
+            assertThat(markerNamesOn(book)).containsExactly("SmeAlpha");
+        } finally {
+            jdbcClient.sql("DELETE FROM authorization_marker_rule WHERE id = :id").param("id", ruleId).update();
+        }
+    }
+
+    @Test
+    void anItemTypeRuleBackedByADecisionServiceWrappedTable_appliesNoMarkerWhenItDoesNotMatch() {
+        UUID ruleId = authRepo.createMarkerRule("SME via decision service", fixture.bookTypeId(), "smeMarkersViaService").id();
+        try {
+            UUID book = createBook("public title");
+
+            assertThat(markerNamesOn(book)).isEmpty();
         } finally {
             jdbcClient.sql("DELETE FROM authorization_marker_rule WHERE id = :id").param("id", ruleId).update();
         }

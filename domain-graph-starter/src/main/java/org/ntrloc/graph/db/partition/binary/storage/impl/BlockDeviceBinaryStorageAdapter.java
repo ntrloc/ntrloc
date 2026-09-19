@@ -11,6 +11,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
+import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -59,7 +60,10 @@ public class BlockDeviceBinaryStorageAdapter implements BinaryStorageAdapter {
 
         tempFileMap.put(uuid, outputFile);
         try {
-            return new HashingBinaryDataWriter(uuid, new FileOutputStream(outputFile));
+            // Upload chunks arrive at whatever size the network/multipart layer hands us (typically
+            // a few KB) and each one is written through immediately to keep memory bounded -- buffer
+            // here so that doesn't mean one unbuffered write() syscall per chunk on a multi-GB upload.
+            return new HashingBinaryDataWriter(uuid, new BufferedOutputStream(new FileOutputStream(outputFile), 65536));
         } catch (NoSuchAlgorithmException e) {
             throw new IOException(e);
         }

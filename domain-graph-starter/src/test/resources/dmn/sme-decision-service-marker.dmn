@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions id="definitions_smeMarkersViaService" name="SME Markers Via Service" namespace="http://flowable.org/dmn"
+             xmlns="https://www.omg.org/spec/DMN/20191111/MODEL/"
+             xmlns:flowable="http://flowable.org/dmn">
+
+  <!-- Mirrors the shape the admin-ui's DMN editor actually produces (see approval-decision.dmn):
+       the decision table's own id differs from the id of the decisionService wrapping it.
+       Regression fixture for the bug where MarkerDecisionSupport only ever resolved a bare
+       decision by id, never a decisionService, even though that is the only shape the real admin
+       UI deploys, so every admin-authored marker rule crashed on item creation. -->
+  <decision id="smeMarkersViaServiceTable" name="SME Markers Via Service Table">
+    <decisionTable id="smeMarkersViaServiceDecisionTable" hitPolicy="COLLECT">
+      <input id="svcIn" label="title">
+        <inputExpression id="svcInExpr" typeRef="string"><text>title</text></inputExpression>
+      </input>
+      <output id="svcOut" label="markerName" name="markerName" typeRef="string"/>
+      <rule id="svcRule1">
+        <inputEntry id="svcRule1In"><text>"SECRET"</text></inputEntry>
+        <outputEntry id="svcRule1Out"><text>"SmeAlpha"</text></outputEntry>
+      </rule>
+    </decisionTable>
+  </decision>
+
+  <decisionService id="smeMarkersViaService" name="SME Markers Via Service">
+    <outputDecision href="#smeMarkersViaServiceTable"/>
+  </decisionService>
+
+</definitions>

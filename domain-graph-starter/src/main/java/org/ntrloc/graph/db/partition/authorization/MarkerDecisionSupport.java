@@ -1,6 +1,9 @@
 package org.ntrloc.graph.db.partition.authorization;
 
+import org.flowable.common.engine.api.FlowableException;
 import org.flowable.common.engine.api.FlowableObjectNotFoundException;
+import org.flowable.dmn.api.DecisionExecutionAuditContainer;
+import org.flowable.dmn.api.DecisionServiceExecutionAuditContainer;
 import org.flowable.dmn.api.DmnDecision;
 import org.flowable.dmn.api.DmnDecisionService;
 import org.flowable.dmn.api.DmnRepositoryService;
@@ -76,10 +79,7 @@ public class MarkerDecisionSupport {
     public List<UUID> evaluateDecisionToMarkerIds(String decisionKey, UUID itemTypeId, Map<String, Object> propertiesByName) {
         List<Map<String, Object>> outputRows;
         try {
-            outputRows = dmnDecisionService.createExecuteDecisionBuilder()
-                    .decisionKey(decisionKey)
-                    .variables(propertiesByName)
-                    .execute();
+            outputRows = executeRows(decisionKey, propertiesByName);
         } catch (FlowableObjectNotFoundException e) {
             log.warn("Decision key '{}' has no deployed decision table -- treating as 'nothing to say yet'", decisionKey);
             return List.of();
@@ -93,6 +93,30 @@ public class MarkerDecisionSupport {
             }
         }
         return markerIds;
+    }
+
+    // decisionKey may name a bare <decision> (hand-authored fixtures, e.g. sme-state-entry-
+    // markers.dmn) or a <decisionService> wrapping one (everything the admin-ui's DMN editor
+    // actually produces -- it always wraps its one table in a service). .execute()/.executeDecision()
+    // only ever resolve the former and throw if given the latter, which was this method's whole bug.
+    // executeWithAuditTrail() routes through Flowable's own EvaluateDecisionCmd, the same auto-
+    // detecting entry point the BPMN Business Rule Task itself uses (DmnActivityBehavior) --
+    // "executing a DecisionService is the default but will fallback to Decision" per that command's
+    // own comment -- so this mirrors Flowable's own answer rather than guessing at one.
+    private List<Map<String, Object>> executeRows(String decisionKey, Map<String, Object> propertiesByName) {
+        DecisionExecutionAuditContainer audit = dmnDecisionService.createExecuteDecisionBuilder()
+                .decisionKey(decisionKey)
+                .variables(propertiesByName)
+                .executeWithAuditTrail();
+        if (Boolean.TRUE.equals(audit.isFailed())) {
+            throw new FlowableException("DMN decision '" + decisionKey + "' execution failed", audit.getException());
+        }
+        if (audit instanceof DecisionServiceExecutionAuditContainer serviceAudit) {
+            return serviceAudit.getDecisionServiceResult().values().stream()
+                    .flatMap(List::stream)
+                    .toList();
+        }
+        return audit.getDecisionResult();
     }
 
     // A hit row's "markerName" cell contributes 0-to-many names. The editor's checkbox-list output

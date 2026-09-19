@@ -769,7 +769,13 @@ public class RegisterPartitionManager implements SchemaChangeListener {
     public UUID stageItemCreate(UUID itemId, UUID itemTypeId, Map<UUID, Object> properties, Map<UUID, UUID> initialStates, UUID transactionId) {
         Map<String, Object> states = new HashMap<>();
         initialStates.forEach((stateMachineId, stateId) -> states.put(stateMachineId.toString(), Map.of(STATE_CURRENT_STATE_ID, stateId.toString())));
-        return insertItemRow(itemId, itemTypeId, keysToStrings(properties), states, transactionId);
+
+        Set<UUID> binaryPropertyIds = binaryPropertyIdsForItemType(itemTypeId);
+        UUID registerItemId = insertItemRow(itemId, itemTypeId, keysToStrings(excludeKeys(properties, binaryPropertyIds)), states, transactionId);
+        if (!binaryPropertyIds.isEmpty()) {
+            insertBinaryProperties(registerItemId, toBinaryValues(filterKeys(properties, binaryPropertyIds)));
+        }
+        return registerItemId;
     }
 
     // The only staging entry point for an already-existing item, regardless of how many ledger
@@ -796,27 +802,111 @@ public class RegisterPartitionManager implements SchemaChangeListener {
         UUID itemTypeId = findItemTypeId(itemId).orElseThrow();
 
         var current = jdbcClient.sql("""
-                SELECT rt.properties::text AS properties, rt.states::text AS states
+                SELECT ri.id AS current_register_item_id, rt.properties::text AS properties, rt.states::text AS states
                 FROM register_item ri
                 JOIN %s rt ON rt.register_item_id = ri.id
                 WHERE ri.item_id = :itemId AND ri.state = 'COMMITTED'
                 """.formatted(tableNameFor(itemTypeId)))
                 .param(PARAM_ITEM_ID, itemId)
-                .query((rs, n) -> new CurrentItemRowContent(parseJsonb(rs.getString(COL_PROPERTIES)), parseJsonb(rs.getString(COL_STATES))))
+                .query((rs, n) -> new CurrentItemRowContent(
+                        rs.getObject("current_register_item_id", UUID.class),
+                        parseJsonb(rs.getString(COL_PROPERTIES)), parseJsonb(rs.getString(COL_STATES))))
                 .single();
 
-        Map<String, Object> mergedProperties = propertiesDiff.isEmpty()
+        Set<UUID> binaryPropertyIds = binaryPropertyIdsForItemType(itemTypeId);
+        Map<UUID, Object> nonBinaryDiff = excludeKeys(propertiesDiff, binaryPropertyIds);
+
+        Map<String, Object> mergedProperties = nonBinaryDiff.isEmpty()
                 ? current.properties()
-                : mergeProperties(current.properties(), keysToStrings(propertiesDiff));
+                : mergeProperties(current.properties(), keysToStrings(nonBinaryDiff));
 
         Map<String, Object> mergedStates = new HashMap<>(current.states());
         stateChanges.forEach((stateMachineId, stateId) -> mergedStates.put(stateMachineId.toString(), Map.of(STATE_CURRENT_STATE_ID, stateId.toString())));
         stateMachinesEnded.forEach(stateMachineId -> mergedStates.remove(stateMachineId.toString()));
 
-        return insertItemRow(itemId, itemTypeId, mergedProperties, mergedStates, transactionId);
+        UUID registerItemId = insertItemRow(itemId, itemTypeId, mergedProperties, mergedStates, transactionId);
+
+        // Binary properties live in their own table (register_binary_property), never in the jsonb
+        // properties blob above -- same "fully re-materialize per version" shape as mergedProperties,
+        // just carried forward from the prior register_item row instead of the jsonb blob, since
+        // there's no jsonb to read them back out of.
+        if (!binaryPropertyIds.isEmpty()) {
+            Map<UUID, UUID> mergedBinaryValues = currentBinaryPropertyValues(current.registerItemId());
+            filterKeys(propertiesDiff, binaryPropertyIds).forEach((propertyId, value) -> {
+                if (value == null) mergedBinaryValues.remove(propertyId);
+                else mergedBinaryValues.put(propertyId, UUID.fromString((String) value));
+            });
+            insertBinaryProperties(registerItemId, mergedBinaryValues);
+        }
+
+        return registerItemId;
     }
 
-    private record CurrentItemRowContent(Map<String, Object> properties, Map<String, Object> states) {}
+    private record CurrentItemRowContent(UUID registerItemId, Map<String, Object> properties, Map<String, Object> states) {}
+
+    private Set<UUID> binaryPropertyIdsForItemType(UUID itemTypeId) {
+        return schemaManager.getAdminSchema().items().stream()
+                .filter(item -> item.id().equals(itemTypeId))
+                .findFirst()
+                .map(item -> binaryPropertyIds(item.properties()))
+                .orElse(Set.of());
+    }
+
+    private Set<UUID> binaryPropertyIds(List<AdminPropertyDefinitionView> properties) {
+        Set<UUID> result = new HashSet<>();
+        for (AdminPropertyDefinitionView p : properties) {
+            if (p instanceof ObjectAdminPropertyDefinitionView o) {
+                result.addAll(binaryPropertyIds(o.properties()));
+            } else if (p.type() == PropertyType.BINARY) {
+                result.add(p.id());
+            }
+        }
+        return result;
+    }
+
+    private Map<UUID, Object> filterKeys(Map<UUID, Object> map, Set<UUID> keys) {
+        Map<UUID, Object> result = new HashMap<>();
+        map.forEach((k, v) -> {
+            if (keys.contains(k)) result.put(k, v);
+        });
+        return result;
+    }
+
+    private Map<UUID, Object> excludeKeys(Map<UUID, Object> map, Set<UUID> keys) {
+        if (keys.isEmpty()) return map;
+        Map<UUID, Object> result = new HashMap<>();
+        map.forEach((k, v) -> {
+            if (!keys.contains(k)) result.put(k, v);
+        });
+        return result;
+    }
+
+    private Map<UUID, UUID> toBinaryValues(Map<UUID, Object> rawValuesByPropertyId) {
+        Map<UUID, UUID> result = new HashMap<>();
+        rawValuesByPropertyId.forEach((propertyId, value) -> {
+            if (value != null) result.put(propertyId, UUID.fromString((String) value));
+        });
+        return result;
+    }
+
+    private Map<UUID, UUID> currentBinaryPropertyValues(UUID registerItemId) {
+        Map<UUID, UUID> result = new HashMap<>();
+        jdbcClient.sql("SELECT property_id, binary_id FROM register_binary_property WHERE register_item_id = :registerItemId")
+                .param("registerItemId", registerItemId)
+                .query((rs, n) -> Map.entry(rs.getObject("property_id", UUID.class), rs.getObject("binary_id", UUID.class)))
+                .list()
+                .forEach(e -> result.put(e.getKey(), e.getValue()));
+        return result;
+    }
+
+    private void insertBinaryProperties(UUID registerItemId, Map<UUID, UUID> binaryIdsByPropertyId) {
+        binaryIdsByPropertyId.forEach((propertyId, binaryId) ->
+                jdbcClient.sql("INSERT INTO register_binary_property (register_item_id, property_id, binary_id) VALUES (:registerItemId, :propertyId, :binaryId)")
+                        .param("registerItemId", registerItemId)
+                        .param("propertyId", propertyId)
+                        .param("binaryId", binaryId)
+                        .update());
+    }
 
     private UUID insertItemRow(UUID itemId, UUID itemTypeId, Map<String, Object> properties, Map<String, Object> states, UUID transactionId) {
         UUID registerItemId = jdbcClient.sql("""
@@ -1514,6 +1604,19 @@ public class RegisterPartitionManager implements SchemaChangeListener {
         return byName;
     }
 
+    // Same walk-and-create-intermediate-maps merge as namesForIds' own inner loop, extracted for
+    // a single (already-resolved) path/value pair -- used by the binary-property merge, which
+    // resolves its path from a different source (binaryPropsByItem, not the raw jsonb blob) but
+    // still needs to land at the identical nested location.
+    @SuppressWarnings("unchecked")
+    private void putAtPath(Map<String, Object> target, List<String> path, Object value) {
+        Map<String, Object> cursor = target;
+        for (int i = 0; i < path.size() - 1; i++) {
+            cursor = (Map<String, Object>) cursor.computeIfAbsent(path.get(i), k -> new HashMap<String, Object>());
+        }
+        cursor.put(path.get(path.size() - 1), value);
+    }
+
     private record LinkRow(UUID myRegisterItemId, String perspectiveName, UUID perspectiveId,
                            UUID registerLinkId, UUID linkId, UUID linkDefinitionId,
                            UUID linkedRegisterItemId, UUID linkedItemId, UUID linkedItemTypeId, String linkedItemType) {}
@@ -1854,7 +1957,12 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                     : unionGrantedIds(markerIds, ctx.effectiveReadGrants());
             for (var b : bins) {
                 if (readableBinaryIds == null || readableBinaryIds.contains(b.propertyId())) {
-                    props.put(b.name(), b.value());
+                    // Same path-walking merge namesForIds uses for every other property type -- a
+                    // BINARY leaf can live inside an OBJECT property (e.g. file.content) just like
+                    // any other leaf, so it needs to land at its schema-nested location, not always
+                    // flattened to the top level under its own bare name.
+                    List<String> path = ctx.ownPropertyNames().get(b.propertyId());
+                    if (path != null) putAtPath(props, path, b.value());
                 }
             }
         }

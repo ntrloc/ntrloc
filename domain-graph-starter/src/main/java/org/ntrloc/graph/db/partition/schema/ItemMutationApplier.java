@@ -60,6 +60,9 @@ class ItemMutationApplier {
             var prop = PropertyMutationApplier.createPropertyRecursive(repo, p);
             repo.associateItemProperty(item.id(), prop.id());
         }
+        for (var traitId : m.traitIds()) {
+            repo.implementTrait(item.id(), traitId);
+        }
         eventPublisher.publishEvent(new SchemaChangeEvent.ItemTypeCreated(item.id()));
     }
 

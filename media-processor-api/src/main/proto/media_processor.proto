@@ -1,0 +1,261 @@
+syntax = "proto3";
+
+package ntrloc.mediaprocessor.v1;
+
+option java_package = "org.ntrloc.mediaprocessor.grpc";
+option java_multiple_files = true;
+
+// Both directions stream: the client sends the source as a sequence of
+// chunks (one metadata chunk carrying the rendition specs, followed by
+// data chunks) instead of buffering the whole file into one message, and
+// the server streams each rendition back as soon as it's ready. Chunking
+// the request is what makes this workable for video later, where the
+// source won't fit in memory as a single message the way a still image
+// does.
+service ImageProcessor {
+  rpc ProcessImage(stream ImageChunk) returns (stream Result);
+}
+
+message ImageChunk {
+  oneof payload {
+    ImageMetadata metadata = 1;
+    bytes data = 2;
+  }
+}
+
+message ImageMetadata {
+  // Each Pipeline starts fresh from the source image - independent renditions (e.g. several
+  // differently-sized thumbnails) are just separate Pipeline entries, not derived from each other.
+  repeated Pipeline pipelines = 1;
+}
+
+// An ordered sequence of operations applied to the pipeline's own starting state (the source image
+// for a top-level Pipeline, or wherever its parent's steps left off for a nested one), one after
+// another. A step's result feeds the next step, and nested_pipelines each branch off from wherever
+// this pipeline's own steps end - shared setup (e.g. a colorspace conversion every rendition needs)
+// lives once in a parent's steps rather than being repeated in every independent branch. Still not
+// a general DAG: every pipeline has exactly one parent and never references anything but that
+// parent's ending state, so there's no step-ID namespace or cycle risk to design around. Revisit
+// only if a real case for referencing something other than the immediate parent shows up.
+message Pipeline {
+  repeated PipelineStep steps = 1;
+  repeated Pipeline nested_pipelines = 2;
+}
+
+message PipelineStep {
+  Operation operation = 1;
+  // If unset, this step's result just feeds the next step and is never returned - e.g. an
+  // intermediate resize in a progressive-downscale pipeline. Extracting metadata without setting
+  // this is pointless (there's nothing else to do with it) but is still just a normal unset case.
+  optional Output output = 2;
+}
+
+message Output {
+  string name = 1;
+  string format = 2;
+  int32 quality = 3;
+}
+
+// The day-one operation set - deliberately not exhaustive of everything ImageMagick can do (see
+// the design summary doc for the full survey and reasoning on what got deferred). Adding a new
+// variant later is purely additive and never breaks existing callers, so this list is expected to
+// grow; what's here is what's obvious enough in hindsight to not defer given that growing it later
+// means coordinating a media-processor deployment with every ntrloc server that calls it.
+message Operation {
+  oneof kind {
+    Resize resize = 1;
+    Crop crop = 2;
+    Rotate rotate = 3;
+    AutoOrient auto_orient = 4;
+    Flatten flatten = 5;
+    ColorspaceConvert colorspace_convert = 6;
+    ExtractMetadata extract_metadata = 7;
+    StripMetadata strip_metadata = 8;
+    Sharpen sharpen = 9;
+    Watermark watermark = 10;
+  }
+}
+
+message Resize {
+  int32 width = 1;
+  int32 height = 2;
+  ResizeMode mode = 3;
+}
+
+// Names and semantics match CSS object-fit exactly, rather than inventing our own vocabulary for
+// concepts that already have a widely-known standard name.
+enum ResizeMode {
+  RESIZE_MODE_UNSPECIFIED = 0;
+  RESIZE_MODE_CONTAIN = 1;  // fit within width x height, preserving aspect ratio (object-fit: contain)
+  RESIZE_MODE_COVER = 2;    // fill the box, preserving aspect ratio, cropping the excess (object-fit: cover)
+  RESIZE_MODE_FILL = 3;     // stretch to the exact dimensions, ignoring aspect ratio (object-fit: fill)
+}
+
+message Crop {
+  int32 x = 1;
+  int32 y = 2;
+  int32 width = 3;
+  int32 height = 4;
+}
+
+message Rotate {
+  double degrees = 1;
+}
+
+// Applies the EXIF orientation tag (phones/cameras routinely save images "sideways" and rely on
+// this tag rather than physically rotating pixels) and clears the tag afterward so nothing
+// downstream double-applies it. Most likely obvious-in-hindsight gap if this were left out.
+message AutoOrient {
+}
+
+// Composites the working image onto a solid background - mandatory before encoding a
+// transparent source (PNG, a rasterized EPS/PDF) to a format with no alpha channel (JPEG),
+// otherwise the transparent areas come out black/garbage rather than degrading gracefully.
+message Flatten {
+  string background_color = 1;  // e.g. "#FFFFFF"; empty defaults to white
+}
+
+message ColorspaceConvert {
+  Colorspace target = 1;
+  // Assumed source profile ONLY when the image has no embedded ICC profile of its own; ignored
+  // if one is embedded, since the embedded profile is what should actually be used to convert.
+  bytes fallback_icc_profile = 2;
+  // When set, conversion uses real ICC profile-to-profile color management (source's embedded or
+  // fallback profile -> this target profile) rather than `target`'s abstract colorspace swap -
+  // verified empirically to produce a real, visible difference (~9% RMSE) on an actual SWOP CMYK
+  // print asset, not just a theoretical distinction. `target` is only a fallback hint (and picks
+  // which abstract colorspace to use) when this is left empty.
+  bytes target_icc_profile = 3;
+  // Only meaningful alongside target_icc_profile - the abstract colorspace swap has no concept of
+  // rendering intent. 0/UNSPECIFIED lets ImageMagick use its own default.
+  RenderingIntent intent = 4;
+}
+
+enum Colorspace {
+  COLORSPACE_UNSPECIFIED = 0;
+  COLORSPACE_SRGB = 1;
+  COLORSPACE_CMYK = 2;
+  COLORSPACE_GRAY = 3;
+}
+
+enum RenderingIntent {
+  RENDERING_INTENT_UNSPECIFIED = 0;
+  RENDERING_INTENT_PERCEPTUAL = 1;
+  RENDERING_INTENT_RELATIVE_COLORIMETRIC = 2;
+  RENDERING_INTENT_SATURATION = 3;
+  RENDERING_INTENT_ABSOLUTE_COLORIMETRIC = 4;
+}
+
+// Read-only - doesn't change the working image, so the pipeline continues unaffected. The result
+// is data, not pixels, so it comes back as a DataResult with content_type "application/json" rather
+// than an ImageResult - same shape already used for the video transcript below.
+message ExtractMetadata {
+  // Which kinds to extract. Empty (the default if none are specified) means "everything present in
+  // the file" - same convention as VideoMetadata.artifacts below. Expected to be the common case,
+  // so it's the default rather than requiring every kind to be named explicitly - and it stays
+  // correct automatically if a new MetadataKind is added later, unlike enumerating every value
+  // by hand would.
+  repeated MetadataKind kinds = 1;
+}
+
+enum MetadataKind {
+  METADATA_KIND_UNSPECIFIED = 0;
+  METADATA_KIND_EXIF = 1;
+  METADATA_KIND_ICC_PROFILE = 2;
+  METADATA_KIND_IPTC = 3;  // captions, keywords, byline/credit, copyright - the classic DAM/stock-photo standard
+  METADATA_KIND_XMP = 4;   // Adobe's XML/RDF metadata container; often wraps IPTC Core/Extension data in practice
+}
+
+// Removes EXIF/IPTC/XMP/ICC metadata from the working image going forward - e.g. EXIF GPS
+// coordinates on a user-uploaded photo are a real privacy concern for anything served back out.
+// Unlike ExtractMetadata, this does mutate the working state for the rest of the pipeline.
+message StripMetadata {
+}
+
+message Sharpen {
+  double radius = 1;
+  double sigma = 2;
+  double amount = 3;  // 0 uses the service's own default
+}
+
+// Carries the watermark image's own bytes inline rather than a reference the processor would have
+// to resolve itself - that would mean the processor knowing about the caller's asset storage,
+// which is exactly the coupling already rejected for source-image references (see design summary
+// doc). Watermark logos are small, nothing like the size that justified chunked source upload, so
+// this doesn't need any new wire-protocol machinery. If a caller wants to avoid re-sending the same
+// logo repeatedly, that's a caching concern on their side - the processor stays stateless.
+message Watermark {
+  bytes image = 1;
+  string format = 2;
+  Gravity position = 3;
+  int32 offset_x = 4;
+  int32 offset_y = 5;
+  double opacity = 6;  // 0.0-1.0
+}
+
+enum Gravity {
+  GRAVITY_UNSPECIFIED = 0;
+  GRAVITY_CENTER = 1;
+  GRAVITY_TOP_LEFT = 2;
+  GRAVITY_TOP_RIGHT = 3;
+  GRAVITY_BOTTOM_LEFT = 4;
+  GRAVITY_BOTTOM_RIGHT = 5;
+}
+
+// "Rendition" was considered and rejected as this message's name - it only really means anything
+// for image output, and reads oddly for a JSON metadata blob or a text transcript. Split by payload
+// type instead of one flat shape: ImageResult carries fields (width/height) that only mean anything
+// for actual pixel data, while DataResult stays a plain content_type+bytes envelope for everything
+// else (JSON metadata, the video transcript, whatever else isn't literally an image) - there's no
+// need for a distinct message per non-image content type, since none of them have any structured
+// field beyond content_type and the bytes themselves.
+message Result {
+  string name = 1;
+  oneof payload {
+    ImageResult image = 2;
+    DataResult data = 3;
+  }
+}
+
+message ImageResult {
+  string content_type = 1;
+  bytes data = 2;
+  int32 width = 3;
+  int32 height = 4;
+}
+
+message DataResult {
+  string content_type = 1;
+  bytes data = 2;
+}
+
+// Same chunked-upload shape as ImageProcessor, but the request carries a single threshold rather
+// than a list of specs, and the number of keyframe results isn't known ahead of time - it depends
+// on how many scene changes ffmpeg finds - so each artifact streams back as a Result rather than
+// one-per-requested-spec. Keyframes come back as ImageResult; the transcript comes back as a
+// DataResult (content_type="text/plain").
+service VideoProcessor {
+  rpc ProcessVideo(stream VideoChunk) returns (stream Result);
+}
+
+message VideoChunk {
+  oneof payload {
+    VideoMetadata metadata = 1;
+    bytes data = 2;
+  }
+}
+
+message VideoMetadata {
+  // ffmpeg's scene-change score threshold, e.g. 0.4. 0 (the proto3 default) means
+  // "use the service's own default" rather than "never detect a scene change".
+  double scene_change_threshold = 1;
+
+  // Which artifacts to produce. Empty (the default if the client sends none) means "all".
+  repeated VideoArtifactType artifacts = 2;
+}
+
+enum VideoArtifactType {
+  VIDEO_ARTIFACT_TYPE_UNSPECIFIED = 0;
+  VIDEO_ARTIFACT_TYPE_KEYFRAMES = 1;
+  VIDEO_ARTIFACT_TYPE_TRANSCRIPT = 2;
+}

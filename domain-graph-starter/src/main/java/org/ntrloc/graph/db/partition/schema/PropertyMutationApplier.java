@@ -3,6 +3,7 @@ package org.ntrloc.graph.db.partition.schema;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyContainerKind;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateItemPropertyDefinitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateTraitPropertyDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateLinkPropertyDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePropertyDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePropertyPropertyDefinitionMutation;
@@ -38,6 +39,10 @@ class PropertyMutationApplier {
                     .ifPresent(supertypeId -> SchemaMutationValidation.requireNameNotInSupertypeChain(repo, supertypeId, m.name()));
             var prop = createPropertyRecursive(repo, new CreatePropertyDefinitionMutation(m.name(), m.description(), m.propertyType(), m.cardinality(), m.usage(), m.facetable(), m.properties()));
             repo.associateItemProperty(m.itemId(), prop.id());
+        } else if (mutation instanceof CreateTraitPropertyDefinitionMutation m) {
+            SchemaMutationValidation.requireNameNotAssociated(repo.getPropertiesByTrait(), m.traitId(), m.name(), "this trait");
+            var prop = createPropertyRecursive(repo, new CreatePropertyDefinitionMutation(m.name(), m.description(), m.propertyType(), m.cardinality(), m.usage(), m.facetable(), m.properties()));
+            repo.associateTraitProperty(m.traitId(), prop.id());
         } else if (mutation instanceof CreateLinkPropertyDefinitionMutation m) {
             SchemaMutationValidation.requireNameNotAssociated(repo.getPropertiesByLink(), m.linkId(), m.name(), "this link type");
             var prop = createPropertyRecursive(repo, new CreatePropertyDefinitionMutation(m.name(), m.description(), m.propertyType(), m.cardinality(), m.usage(), m.facetable(), m.properties()));

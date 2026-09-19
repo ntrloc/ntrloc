@@ -804,7 +804,8 @@ class NtrlocItemDetail extends HTMLElement {
   onOpenMarkerRule(rule) {
     location.hash = '#/processes';
     applyRoute();
-    document.querySelector('ntrloc-processes')?.openDecisionByKey(rule.decisionKey, rule.name);
+    const markerNames = schemaViewModel.markersForItem(this._item.id).map((m) => m.name);
+    document.querySelector('ntrloc-processes')?.openDecisionByKey(rule.decisionKey, rule.name, markerNames);
   }
 
   linksBody() {
@@ -1159,18 +1160,22 @@ class NtrlocItemDetail extends HTMLElement {
     }
 
     // One diagram element per (non-deleted, non-empty) state machine -- see statesBody(). Matched
-    // by data-machine-id rather than position since machine order isn't guaranteed stable.
-    const machinesById = new Map(item.stateMachines.filter((m) => !m.isDeleted).map((m) => [m.id, m]));
-    this.querySelectorAll('.states-diagram-el').forEach((statesDiagram) => {
-      const machine = machinesById.get(statesDiagram.dataset.machineId);
-      if (!machine) return;
-      statesDiagram.data = {
-        states: machine.states.filter((s) => !s.isDeleted).map((s) => ({
-          ...s,
-          transitions: s.transitions.filter((t) => !t.isDeleted),
-        })),
-      };
-    });
+    // by data-machine-id rather than position since machine order isn't guaranteed stable. Traits
+    // have no stateMachines at all (only item types do -- see the States panel itself being gated
+    // on this.isItem above), so this whole block is skipped for a trait.
+    if (this.isItem) {
+      const machinesById = new Map(item.stateMachines.filter((m) => !m.isDeleted).map((m) => [m.id, m]));
+      this.querySelectorAll('.states-diagram-el').forEach((statesDiagram) => {
+        const machine = machinesById.get(statesDiagram.dataset.machineId);
+        if (!machine) return;
+        statesDiagram.data = {
+          states: machine.states.filter((s) => !s.isDeleted).map((s) => ({
+            ...s,
+            transitions: s.transitions.filter((t) => !t.isDeleted),
+          })),
+        };
+      });
+    }
 
     const editStatesButton = this.querySelector('.edit-states-button');
     if (editStatesButton) editStatesButton.addEventListener('click', async () => {
