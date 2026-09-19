@@ -135,7 +135,9 @@ Findings from tracing the actual storage and mutation code:
   non-null object write is pure addressing syntax. The one exception: `null` for an object property
   recursively clears *every leaf currently in the live schema* beneath it (`nullAllLeaves`),
   including leaves the caller never mentioned — a distinct, more dangerous capability, closer to
-  item-level `can_delete` than to ordinary per-leaf `can_write`.
+  item-level `can_delete` than to ordinary per-leaf `can_write`. **Resolved (2026-09-19):** with
+  groups instead of object properties, `null` on a group is a validation error and `nullAllLeaves`
+  goes away — see "Mutation shape" in §5.
 - **Read.** `filterPropertiesByReadGrant` filters the flat, id-keyed map *before* `namesForIds`
   runs, so it is already per-leaf. An object property's own id never appears as a key, so a grant
   row on it is simply never consulted — on read *or* write. (The earlier draft of this section said
@@ -155,9 +157,18 @@ Findings from tracing the actual storage and mutation code:
   unrepresentable. "Property group" revives real ntrloc terminology (it predates permissions, so no
   conflicting baggage); it was chosen over "namespace" because a group *of* properties is
   grammatically not itself a property, and it doesn't assume programming-language background.
-- **History caveat.** `ntrloc-projection-summary-2.md` (§1) records that an earlier property-group
-  concept was abandoned because a real MDM reference screen (Stibo) needed groups to contain
-  *links*, not just properties. This work has only considered properties — see Open questions.
+- **History, and why the earlier objection doesn't apply.** `ntrloc-projection-summary-2.md`
+  records an earlier, schema-level, *presentation*-motivated property-group concept (a
+  `groupProperties` projection flag, groups assigned to individual properties) that was abandoned
+  because real grouped sections mix properties *and links*. That document moved presentation
+  grouping into the projection layer instead (`ViewProjectionShape`, `FieldsProjectionShape`,
+  `GroupField`), where a group can hold properties and links freely. Property groups here are a different thing: *structural* — they
+  carry addressing (paths), name scoping, and the parent scope for dynamic roots, replacing object
+  properties that already nest in the schema. So groups do not contain links (decided 2026-09-19);
+  link-mixing sections stay a projection-layer concern, and links themselves stay on item types,
+  traits, and link definitions. Checked: the old `groupProperties` flag and any schema-level group
+  concept no longer exist in `domain-graph-starter`, so nothing collides. The name is reused
+  deliberately, but the two concepts should be kept distinct.
 
 ---
 
@@ -165,7 +176,9 @@ Findings from tracing the actual storage and mutation code:
 
 Because the schema is being reworked anyway, the database is being recreated from scratch: no
 Flyway migration path, the baseline is rewritten in place. Register and ledger are unaffected
-(flat leaf-id storage).
+(flat leaf-id storage). The Flyway dependency stays for future use, but
+`FlywayMigrationUpgradeIntegrationTest` is retired until migrations are needed again (it remains in
+git history).
 
 **Node kinds.** *Property* — a leaf that carries a value; the only thing that can be granted.
 *Property group* — purely structural, its own table, never grantable, never carries a value.
@@ -186,9 +199,27 @@ The effective view still merges through the supertype chain, as today.
 
 **Naming.** Property, group, and dynamic-root names must be unique among their siblings. Because
 siblings span separate tables, this is enforced in the application (the schema mutation appliers),
-as trait-property uniqueness is today — not by a DB constraint.
+as trait-property uniqueness is today — not by a DB constraint. This includes the supertype chain,
+and the check has to run in both directions: adding a property, group, or root to a supertype must
+be validated against every descendant's names, and implementing a trait must be validated against
+the item type's effective top-level names (trait names are reserved there).
 
 **Deletion.** A static group that contains anything cannot be deleted (no cascade).
+
+**Mutation shape.** The envelope is unchanged from today: `properties` is a nested map, and a
+group is just the container key whose value is a map of its children. Trait contributions nest
+under the trait name:
+
+    { "type": "CREATE", "itemTypeName": "Product",
+      "properties": { "title": "Widget", "dimensions": { "width": 10, "height": 4 } } }
+    { "type": "CREATE", "itemTypeName": "Photo",
+      "properties": { "File": { "name": "IMG_0060.JPG", "content": "<binary-id>" } } }
+
+Updates keep the recursive diff semantics (`{"dimensions": {"width": 12}}` changes only `width`).
+A group is pure addressing: it has no value, so `null` on a group key
+(`{"dimensions": null}`) is a **validation error** — set the individual properties to `null`
+instead. This replaces today's `null`-on-object cascade (`nullAllLeaves`), which is removed; no
+bulk-clear primitive exists, and one can be added later if a real need appears.
 
 **Traits are namespaced in projections.** A trait's properties, groups, and links project (and are
 written, filtered, sorted, and faceted) under the trait's name: `File.name`, `File.content`. This
@@ -200,8 +231,8 @@ every trait's, and the only uniqueness check on trait properties — `PropertyMu
 names become reserved among an item type's own top-level names. Cost accepted: moving a property
 into or out of a trait becomes a breaking API change. The DAM's hand-built `file` group on the File
 trait becomes redundant and its consumers (`filePropertyPaths`, import mutation building) change.
-Mutation payloads are assumed to use the same namespaced shape as projections, since the write
-path currently mirrors the read shape — to be confirmed.
+Trait namespacing applies uniformly (decided 2026-09-19): projections, mutation payloads,
+filters, sorts, and facets all address a trait's contributions as `TraitName.…`.
 
 **Blast radius above the database:** the object variant of `AdminPropertyDefinitionView`,
 `namesForIds`'s path builder, `SchemaViewBuilder`/`SchemaRepository`, the admin schema editor, and
@@ -222,8 +253,10 @@ resolution, and projection/query resolution (§ end of this section).
 - **Dynamic property group** — cannot be declared, only discovered. Parent: a root or another
   dynamic group. Contains dynamic groups and dynamic properties. Example: `exif`, `iptc`, `xmp`
   under `intrinsicMetadata`.
-- **Dynamic property** — a discovered leaf. Parent: a root or a dynamic group. Supports
-  multi-values (lists).
+- **Dynamic property** — a discovered leaf. Parent: a root or a dynamic group. A scalar or a list
+  of scalars. Anything structured is modeled with dynamic groups and properties rather than
+  structured list elements — XMP bags translate to dynamic groups/properties (the details for bags
+  of structures are still to be worked out).
 
 Every node has exactly one parent (same single-parent columns-with-`CHECK` approach as §5, with the
 parent being a root or dynamic group), and names are unique among siblings.
@@ -268,19 +301,21 @@ names (paths are dot-addressed in sort/filter/facet requests), and sibling displ
 unique, including against unlabeled siblings' raw names, or keys merge silently. Renaming a display
 name changes the response shape clients see — accepted.
 
-**Writability.** Leaning toward *not user-mutable* (values are facts about the file's bytes; a
-human edit would be overwritten by the next re-extraction — corrections belong in a static
-property). If so, only an ingest path writes, through a dedicated entry point rather than the
-ordinary mutation validator (which rejects unknown names), and re-extraction needs a "replace this
-root's contents" operation or stale keys survive. Not settled.
+**Writability (decided 2026-09-19): dynamic properties are not user-mutable.** Values are facts
+about the file's bytes, and a human edit would be overwritten by the next re-extraction —
+corrections belong in a static property. Only an ingest path writes them, through a dedicated
+entry point rather than the ordinary mutation validator (which rejects unknown names). Consequence
+for the ingest design (later): re-extraction needs a "replace this root's contents" operation, or
+stale keys survive.
 
 **Deletion.** Deleting a dynamic root takes a `force` flag, default false: a non-empty root is
 rejected unless `force=true`, which cascades to all discovered nodes and their grant rows. Register
 values under the deleted ids are silently dropped on read, as with any deleted property.
 
-**Facet discovery changes character.** Static `collectFacetableFieldNames` walks the schema; for a
-dynamic root there is nothing declared to walk, so "what facetable paths exist" is answered from
-the dynamic registry (and ultimately the data), lazily per root — not by extending the schema walk.
+**Faceting needs no discovery mechanism.** Each dynamic property carries a `facetable` flag
+(default off), which admins will eventually be able to turn on; the set of facetable fields is
+simply the facetable rows across the static and dynamic tables, read through the combined
+resolver. The dynamic registry is itself the list — nothing has to scan data.
 
 **Where static and dynamic meet.**
 1. Ledger and register: flat property-id keys; the per-type `properties` JSONB holds static and
@@ -329,31 +364,39 @@ by construction — that asymmetry is the gap being filled, not a general "autom
 
 ---
 
+## Decided since the last checkpoint (2026-09-19)
+
+- Write enforcement on mutations is deferred until after the schema rework (owner's to-do).
+- Sibling-name uniqueness, including the supertype chain, is application-enforced (§5).
+- `FlywayMigrationUpgradeIntegrationTest` is retired; the Flyway dependency stays (§5).
+- Dynamic properties: scalars and lists of scalars; XMP bags map to dynamic groups/properties (§6).
+- Dynamic properties are not user-mutable (§6).
+- Admins will mark dynamic properties facetable, per property, later; no facet discovery (§6).
+- Dynamic registry cleanup is deferred.
+
 ## Open questions
 
-1. **Does the `null`-clears-a-subtree mutation path enforce per-leaf write grants on every
-   cascaded leaf?** Unverified. With groups replacing object properties, the mutation shape for
-   "clear this group" also needs deciding: its own flag, its own explicit mutation primitive, or
-   continued `null` overloading.
-2. **Property groups vs. links** — `ntrloc-projection-summary-2.md` found groups must be able to
-   hold links; this work has only considered properties. Revisit before treating the group concept
-   as final. (Also: do link types get static property groups? Assumed yes, no dynamic roots.)
-3. **Sibling-name uniqueness across the supertype chain** — trait contents are now namespaced, but
-   a subtype's own properties versus its supertypes' are still siblings in the merged effective view;
-   current behavior not checked.
-4. **Lists** — multi-valued dynamic properties: scalars only, or structured elements (XMP
-   bags/sequences)? Static properties already have cardinality; how the facet/filter SQL handles
-   multi-valued static properties should be checked before assuming dynamic ones need new SQL.
-5. **Type-conflict and normalization defaults (§6) are provisional** — to be refined in practice.
-6. **Dynamic-property mutability and re-extraction semantics** (§6, "Writability").
-7. **Display-name grammar** versus admin-friendly labels with spaces (§6) — restrict, or add
-   quoting to the path syntax.
-8. **Trait namespacing in mutation payloads/filters/sorts** — assumed symmetric with projections
-   (§5); confirm.
-9. **Payload size** — a photo may carry hundreds of dynamic leaves; projections need a way to
-   request or exclude a root by name.
-10. **Registry cleanup** — entries for paths no data uses anymore, and cascade on item type
-    deletion.
-11. **`FlywayMigrationUpgradeIntegrationTest`** — exists to test upgrade paths; with the baseline
-    rewritten in place it needs adapting or retiring.
-12. **Facet discovery for deep dynamic nesting** is only sketched (§6), not designed.
+1. **Display-name grammar.** Query-side field names must match `SAFE_FIELD_NAME`
+   (`^[a-zA-Z]\w*+(?:\.[a-zA-Z]\w*+)*+$`, `RegisterPartitionManager.java:212`) — a letter then
+   word characters, dot-separated — so a display name like "EXIF Metadata" or "Camera Model" cannot
+   currently be addressed in a sort, filter, or facet request. Options: restrict display names to
+   the grammar (with a separate free-form UI label), add quoted segments to the path syntax, or an
+   explicit array form for paths. May affect static properties too.
+2. **Payload size.** Projections return every readable property today (no property selection on
+   `CollectionProjectionSpec`); a photo with hundreds of dynamic leaves would bloat every list
+   response. Proposal: dynamic roots are omitted from projections unless the request names them.
+3. **Name-addressed consumers.** Marker-rule DMN tables receive `propertiesByName`; state-machine
+   conditions and BPMN scripts also address properties by name. Principle agreed: these must work
+   against property *ids* through an explicit input/output mapping, not names. Mechanism not yet
+   designed.
+4. **The advisory `edit` tree** (`ProjectedItemPermissions`, `scalars`/`objects` keys) needs to
+   express groups and trait namespaces. Proposal: keep the nested shape (an earlier design comment
+   deliberately rejected a flat dotted-path list) and rename `objects` to `groups`.
+5. **Bags of structures in dynamic data** (§6) — exact modeling still to be worked out.
+6. **Type-conflict and normalization defaults (§6) are provisional** — adopted as written, to be
+   refined in practice.
+7. **Write enforcement on mutations** (deferred, see above): `MutationRequestProcessor`'s header
+   says "Permission checks are a separate, not-yet-built component (Section 12)"; the principal is
+   attribution-only, and write grants only feed the advisory `edit` tree. When built, it must run
+   after name/group resolution so every leaf is checked individually, and a failing leaf should
+   reject the whole mutation.

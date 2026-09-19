@@ -12,9 +12,8 @@ Revise/refine in place as the thinking develops further.
 
 While implementing a `groupProperties` toggle (schema-level, properties-only — a group was a
 fixed, admin-curated grouping baked into the item type definition, assigned to individual
-properties only), a real production MDM screenshot (Stibo, the reference system behind the
-`pmdm-update-poc` project — see `docs/scholastic-ui/product-details.png` in that repo) surfaced
-two problems with that premise:
+properties only), a real production MDM screenshot (from the `pmdm-update-poc` reference
+project) surfaced two problems with that premise:
 
 1. **"Cloned From"** and **"Title Grouping Work"** are grouped sections in that UI, but both
    render as tables pointing at *other items* (a Product, a Work) — i.e. they are **links**, not
@@ -26,11 +25,11 @@ two problems with that premise:
    apparently a **separate query/view** of the same item (confirmed: switching tabs appears to
    re-execute a different query, not just re-render already-fetched data).
 
-**Guiding principle**: Stibo's specific implementation should not drive ntrloc's design. It's
-useful only as an existence proof that "richer, multi-shaped views of the same item" is a real
-need — not as a spec to copy. Notably, ntrloc's goal is *more* general than what Stibo appears to
-do: a single ntrloc projection should be able to present several distinct views of the same item
-in one response, rather than requiring a separate query per view.
+**Guiding principle**: the reference screen's specific implementation should not drive ntrloc's
+design. It's useful only as an existence proof that "richer, multi-shaped views of the same item"
+is a real need — not as a spec to copy. Notably, ntrloc's goal is *more* general than what that
+screen appears to do: a single ntrloc projection should be able to present several distinct views
+of the same item in one response, rather than requiring a separate query per view.
 
 ---
 
@@ -106,7 +105,7 @@ don't have to (`"info": {"type":"NAMED","name":"keyInfo"}` is equally valid — 
 just come back keyed `"info"`).
 
 **A "group" is not a separate concept — it's a view at finer grain.** A named section like
-Stibo's "Series & Property" is a `ViewProjectionShape` entry. For a section with *only*
+"Series & Property" is a `ViewProjectionShape` entry. For a section with *only*
 properties and no ordering requirement, the value can be a plain `DirectProjectionShape`:
 
 ```
@@ -152,7 +151,7 @@ projections — confirmed as a requirement, not an optional extra deferred to la
 separate, unordered-relative-to-each-other collections. That's the right shape for plain,
 order-doesn't-matter API consumption (e.g. a system-to-system caller pulling data via a PAT).
 
-But it can't express what a real view section needs: in Stibo's "Series & Property" section,
+But it can't express what a real view section needs: in the "Series & Property" section,
 properties and links are interleaved in a specific order — `series`, `subseries`, `property`,
 ..., **`clonedFrom` (a link)**, `suggested3rdPartyContributors`, ..., `setupUser`, `setupDate`,
 ..., **`titleGroupingWork` (a link)**, `isValidForTitleGrouping`. Two separate buckets
@@ -194,7 +193,7 @@ was raised — drop the link bare-array shorthand entirely, always requiring the
 `GroupField` and object-valued ones unambiguously mean `LinkField` — but this has **not** been
 decided. Revisit before implementing.
 
-**Full worked example** — Stibo's "Series & Property" section, as a `FieldsProjectionShape`
+**Full worked example** — the "Series & Property" section, as a `FieldsProjectionShape`
 (using the pinned-ambiguity link syntax above, i.e. not yet fully resolved):
 ```json
 [
@@ -261,8 +260,8 @@ the name directly.
   expressed, with no separate grouping mechanism needed.
 - Multi-view (`ViewProjectionShape`) works ad-hoc, not only when persisted/named.
 - Named projection = persisted shape only, never a persisted query.
-- Stibo's UI is an existence proof, not a spec to match; ntrloc's single-projection multi-view
-  capability is intentionally more general than what Stibo's tab-per-query behavior appears to do.
+- The reference UI is an existence proof, not a spec to match; ntrloc's single-projection
+  multi-view capability is intentionally more general than the reference's tab-per-query behavior.
 - `DirectProjectionShape` stays exactly as originally defined (`properties` + `links`, two
   separate collections) — it is *not* the shape used for ordered/interleaved view content.
 - A fourth shape, `FieldsProjectionShape`, covers ordered/interleaved view content: an ordered
