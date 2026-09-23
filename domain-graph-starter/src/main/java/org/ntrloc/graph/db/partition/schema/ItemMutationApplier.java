@@ -1,5 +1,6 @@
 package org.ntrloc.graph.db.partition.schema;
 
+import org.ntrloc.graph.db.partition.schema.definition.PropertyContainerKind;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateItemDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DeleteItemDefinitionMutation;
@@ -10,8 +11,8 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
 
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 // Applies item-definition mutations -- split out of SchemaManager (see its own history) to keep
 // each mutation-family applier's own dependency footprint small.
@@ -50,16 +51,18 @@ class ItemMutationApplier {
         if (m.supertypeId() != null) {
             SchemaMutationValidation.requireKnownItem(repo, m.supertypeId());
         }
+        // Everything the new item type will own at the top level -- properties, groups, and the names
+        // of the traits it implements -- checked against its supertype chain before anything is
+        // written, so a failure leaves no half-built item behind.
+        Set<String> ownNames = PropertyMutationApplier.topLevelNames(m.properties(), m.groups());
+        Set<String> traitNames = repo.getAllTraits().stream()
+                .filter(t -> m.traitIds().contains(t.id()))
+                .map(SchemaRepository.TraitRow::name)
+                .collect(Collectors.toSet());
+        SchemaMutationValidation.requireNamesAvailableUnderSupertype(repo, m.supertypeId(), ownNames, traitNames);
         var item = repo.createItem(m.name(), m.description(), m.supertypeId(), m.abstractType(), m.displayLabelPattern());
-        Set<String> usedNames = new HashSet<>();
-        for (var p : m.properties()) {
-            SchemaMutationValidation.requireUniqueName(usedNames, p.name(), "item type '" + m.name() + "'");
-            if (m.supertypeId() != null) {
-                SchemaMutationValidation.requireNameNotInSupertypeChain(repo, m.supertypeId(), p.name());
-            }
-            var prop = PropertyMutationApplier.createPropertyRecursive(repo, p);
-            repo.associateItemProperty(item.id(), prop.id());
-        }
+        PropertyMutationApplier.createContents(repo, new SchemaRepository.PropertyOwnerRef(PropertyContainerKind.ITEM, item.id()),
+                m.properties(), m.groups(), "item type '" + m.name() + "'");
         for (var traitId : m.traitIds()) {
             repo.implementTrait(item.id(), traitId);
         }
@@ -70,9 +73,7 @@ class ItemMutationApplier {
         if (m.supertypeId() != null) {
             SchemaMutationValidation.requireKnownItem(repo, m.supertypeId());
             SchemaMutationValidation.requireNoSupertypeCycle(repo, m.id(), m.supertypeId());
-            for (var ownProperty : repo.getPropertiesByItem().getOrDefault(m.id(), List.of())) {
-                SchemaMutationValidation.requireNameNotInSupertypeChain(repo, m.supertypeId(), ownProperty.name());
-            }
+            SchemaMutationValidation.requireNoTopLevelCollisionsForSupertype(repo, m.id(), m.supertypeId());
         }
         repo.updateItem(m.id(), m.name(), m.description(), m.supertypeId(), m.abstractType(), m.displayLabelPattern());
     }

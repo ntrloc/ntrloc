@@ -8,18 +8,15 @@ import org.ntrloc.graph.db.partition.schema.definition.view.DefinedInView;
 import java.util.List;
 import java.util.UUID;
 
-// Sealed for the same reason as its admin counterpart, AdminPropertyDefinitionView -- only an
-// OBJECT-typed property has a "properties" key in its JSON at all.
-public sealed interface PropertyDefinitionView
-        permits ScalarPropertyDefinitionView, ObjectPropertyDefinitionView {
+// A property is always a leaf carrying a value; PropertyGroupDefinitionView is the structural
+// counterpart (a separate kind, not a variant of this one) -- see its admin twin,
+// AdminPropertyDefinitionView.
+public record PropertyDefinitionView(
+        UUID id, String name, String description, PropertyType type, PropertyCardinality cardinality,
+        DefinedInView definedIn, List<AllowedValue> allowedValues
+) {
 
-    UUID id();
-    String name();
-    String description();
-    PropertyType type();
-    PropertyCardinality cardinality();
-    DefinedInView definedIn();
-    List<AllowedValue> allowedValues();
-
-    PropertyDefinitionView withDefinedIn(DefinedInView definedIn);
+    public PropertyDefinitionView withDefinedIn(DefinedInView definedIn) {
+        return new PropertyDefinitionView(id, name, description, type, cardinality, definedIn, allowedValues);
+    }
 }

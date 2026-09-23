@@ -44,10 +44,11 @@ public class ProjectionService {
             item type's own properties or one of the system fields (itemId, itemType, createdAt,
             updatedAt, visibilityState).
 
-            A property nested inside an OBJECT-typed property is addressed by dot-separated path
+            A property nested inside a property group is addressed by dot-separated path
             (e.g. "dimensions.widthCm"), one segment per level of nesting -- this applies to a
-            predicate's propertyName, sortField, and facet field alike. The path must end on a
-            leaf (scalar) property; naming an OBJECT property itself, without a leaf beneath it,
+            predicate's propertyName, sortField, and facet field alike. A trait's properties are
+            addressed under the trait's name (e.g. "File.mimeType"). The path must end on a
+            leaf (scalar) property; naming a group itself, without a leaf beneath it,
             is not a valid filter/sort/facet target.
 
             Results are paginated: at most 50 items are returned per call unless a larger limit is

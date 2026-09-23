@@ -1066,21 +1066,21 @@ class NtrlocSearch extends HTMLElement {
   // linkId, targets, minCardinality, maxCardinality, definedIn}] }, see AdminItemLinkPerspectiveView)
   // -- computeLinkCandidates reads targets/linkId straight off it, no need to remap.
   mapAvailableTypes(schema) {
-    // Recurses into an OBJECT property's own `properties` -- needed so the item-card editor can
-    // find/offer a nested property's definition (type, and its own children) at any depth, not
-    // just the top level.
-    const mapProps = (props) => (props || []).map(p => ({
-      name: p.name,
-      type: p.type,
-      cardinality: p.cardinality,
-      properties: p.type === 'OBJECT' ? mapProps(p.properties) : undefined,
-    }));
+    // Properties and property groups become one list of definitions, a group being
+    // { name, type: 'GROUP', properties: [children] } -- needed so the item-card editor can
+    // find/offer a nested property's definition (type, and for a group its own children) at any
+    // depth. A trait's contributions arrive as a group named for the trait, matching how item
+    // values are nested.
+    const mapContents = (container) => [
+      ...(container.properties || []).map(p => ({ name: p.name, type: p.type, cardinality: p.cardinality })),
+      ...(container.groups || []).map(g => ({ name: g.name, type: 'GROUP', cardinality: 'SINGLE', properties: mapContents(g) })),
+    ];
     return (schema.items || [])
       .map(item => ({
         id: item.id,
         name: item.name,
         sortableFields: item.sortableFields || [],
-        properties: mapProps(item.properties),
+        properties: mapContents(item),
         links: item.links || {},
         supertypeId: item.supertypeId || null,
       }))
@@ -1380,21 +1380,33 @@ class NtrlocSearch extends HTMLElement {
     const def = childDefs.find(p => p.name === name);
     if (!def) return;
     const childPath = [...path, name];
-    setAtPath(edit.values, childPath, def.type === 'OBJECT' ? {} : '');
+    setAtPath(edit.values, childPath, def.type === 'GROUP' ? {} : '');
     edit.removed.delete(childPath.join('.'));
     this.render();
   }
 
   // Recursively diffs `newVal` (edit.values, or one of its nested objects) against `oldVal` (the
   // matching spot in item.properties) into the same partial-update shape the backend's nested
-  // property resolution expects (see MutationRequestProcessor.resolveObjectPropertyValue): only
+  // property resolution expects (see MutationRequestProcessor.resolveGroupValue): only
   // changed leaves are included, an explicit null clears just that leaf (or, for a whole removed
-  // OBJECT subtree, everything beneath it), and untouched siblings are simply absent rather than
+  // group, each leaf beneath it), and untouched siblings are simply absent rather than
   // echoed back. `leafCount` powers the "N changes" badge -- a removed subtree counts as one
   // change (matching the single removal action that produced it), not one per descendant.
   diffEditedValue(newVal, oldVal, removed, path) {
     const pathKey = path.join('.');
-    if (removed.has(pathKey)) return { changed: true, value: null, leafCount: 1 };
+    // A removed group can't be sent as null (the backend rejects null on a group -- it has no value
+    // to clear), so clearing one means an explicit null on every leaf beneath it.
+    if (removed.has(pathKey)) {
+      const clearLeaves = (val) => {
+        if (val !== null && typeof val === 'object' && !Array.isArray(val)) {
+          const cleared = {};
+          for (const key of Object.keys(val)) cleared[key] = clearLeaves(val[key]);
+          return cleared;
+        }
+        return null;
+      };
+      return { changed: true, value: clearLeaves(oldVal), leafCount: 1 };
+    }
     if (newVal !== null && typeof newVal === 'object' && !Array.isArray(newVal)) {
       const oldObj = (oldVal && typeof oldVal === 'object' && !Array.isArray(oldVal)) ? oldVal : {};
       const nested = {};
@@ -2279,7 +2291,7 @@ class NtrlocSearch extends HTMLElement {
   // (LIST/SET cardinality) and binary refs are objects in JS but render as plain values, same as
   // any scalar, so both count as "scalar" for ordering purposes too.
   isObjectProperty(val) {
-    return !!(val && typeof val === 'object' && !Array.isArray(val) && !(val.mimeType && val.url));
+    return !!(val && typeof val === 'object' && !Array.isArray(val) && !(val.metadata && val.url));
   }
 
   // Scalar properties before OBJECT ones, alphabetical within each group -- so display order
@@ -2413,11 +2425,11 @@ class NtrlocSearch extends HTMLElement {
 
   renderPropertyValue(val) {
     if (val == null || val === '') return '<span class="value-null">(empty)</span>';
-    if (val && typeof val === 'object' && val.mimeType && val.url) {
-      if (val.mimeType.startsWith('image/')) {
+    if (val && typeof val === 'object' && val.metadata && val.url) {
+      if (val.metadata.mimeType && val.metadata.mimeType.startsWith('image/')) {
         return `<img class="prop-image" src="${escapeHtml(val.url)}" alt="image">`;
       }
-      return `<span class="value-text">${escapeHtml(val.mimeType)} (${Math.round((val.length || 0) / 1024)}KB)</span>`;
+      return `<span class="value-text">${escapeHtml(val.metadata.mimeType || 'unknown type')} (${Math.round((val.metadata.length || 0) / 1024)}KB)</span>`;
     }
     if (val && typeof val === 'object') {
       return `<span class="value-text">${escapeHtml(JSON.stringify(val))}</span>`;

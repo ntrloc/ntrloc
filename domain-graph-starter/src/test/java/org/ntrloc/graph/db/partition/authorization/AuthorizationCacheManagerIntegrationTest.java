@@ -37,15 +37,15 @@ class AuthorizationCacheManagerIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void getGrantedItemReadMarkerIds_returnsMarkersGrantedDirectlyAndViaGroup() {
+    void getGrantedItemReadMarkerIds_returnsMarkersGrantedDirectlyAndViaUserGroup() {
         UUID directMarker = createMarker();
         UUID groupMarker = createMarker();
         UUID ungrantedMarker = createMarker();
         var user = securityRepo.createUser("acm-" + UUID.randomUUID(), "User", null, false);
-        var group = securityRepo.createGroup("acm-" + UUID.randomUUID());
+        var group = securityRepo.createUserGroup("acm-" + UUID.randomUUID());
 
         authRepo.setItemPermissions(authRepo.ensureMarkerGrant(directMarker, "USER", user.id()), true, false);
-        authRepo.setItemPermissions(authRepo.ensureMarkerGrant(groupMarker, "GROUP", group.id()), true, false);
+        authRepo.setItemPermissions(authRepo.ensureMarkerGrant(groupMarker, "USER_GROUP", group.id()), true, false);
 
         Set<UUID> granted = cache.getGrantedItemReadMarkerIds(user.id(), Set.of(group.id()));
 
@@ -118,15 +118,15 @@ class AuthorizationCacheManagerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void groupMembershipChangeAlone_needsNoCacheRebuild_membershipResolvedAtReadTime() {
         UUID marker = createMarker();
-        var group = securityRepo.createGroup("acm-" + UUID.randomUUID());
-        authRepo.setItemPermissions(authRepo.ensureMarkerGrant(marker, "GROUP", group.id()), true, false);
+        var group = securityRepo.createUserGroup("acm-" + UUID.randomUUID());
+        authRepo.setItemPermissions(authRepo.ensureMarkerGrant(marker, "USER_GROUP", group.id()), true, false);
 
         // Joining the group happens strictly after the grant/cache-refresh above -- no grant or
         // revoke fires afterward, so nothing re-triggers refreshCache(). If this still resolves
         // correctly, it's proof group membership is consulted at union-time (read time), not baked
         // into what's cached -- exactly the design point this table shape was chosen for.
         var user = securityRepo.createUser("acm-" + UUID.randomUUID(), "User", null, false);
-        securityRepo.addUserToGroup(user.id(), group.id());
+        securityRepo.addUserToUserGroup(user.id(), group.id());
 
         assertThat(cache.getGrantedItemReadMarkerIds(user.id(), Set.of(group.id()))).contains(marker);
     }

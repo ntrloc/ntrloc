@@ -101,13 +101,13 @@ public class MarkerAdminController {
     // Which groups and users have their own marker_grant row for this marker -- a row exists the
     // moment any of the six grant categories is first set on a principal (see ensureMarkerGrant),
     // regardless of what's actually granted under it, so this is exactly "who to show in the Item
-    // Type perspective's Group grants / User grants trees" (a connector-only group pulled in for
+    // Type perspective's UserGroup grants / User grants trees" (a connector-only group pulled in for
     // hierarchy has no row here; it still renders, just with nothing of its own to show).
     @GetMapping("/{markerId}/grants")
     MarkerGrantPrincipalsView getMarkerGrantPrincipals(@PathVariable UUID markerId,
                                                         ServerHttpRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
-        var groupNames = securityRepo.listGroups().stream()
+        var groupNames = securityRepo.listUserGroups().stream()
                 .collect(Collectors.toMap(g -> g.id(), g -> g.name()));
         var userNames = securityRepo.listUsers().stream()
                 .collect(Collectors.toMap(u -> u.id(), u -> u.displayName()));
@@ -116,7 +116,7 @@ public class MarkerAdminController {
         List<PrincipalRef> users = new ArrayList<>();
         for (var grant : authRepo.getAllMarkerGrants()) {
             if (!grant.markerId().equals(markerId)) continue;
-            if ("GROUP".equals(grant.principalType()) && groupNames.containsKey(grant.principalId())) {
+            if ("USER_GROUP".equals(grant.principalType()) && groupNames.containsKey(grant.principalId())) {
                 groups.add(new PrincipalRef(grant.principalId(), groupNames.get(grant.principalId())));
             } else if ("USER".equals(grant.principalType()) && userNames.containsKey(grant.principalId())) {
                 users.add(new PrincipalRef(grant.principalId(), userNames.get(grant.principalId())));

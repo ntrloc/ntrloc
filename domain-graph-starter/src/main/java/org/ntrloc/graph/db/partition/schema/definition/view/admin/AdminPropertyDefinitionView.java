@@ -5,42 +5,22 @@ import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyUsage;
 import org.ntrloc.graph.db.partition.schema.definition.view.DefinedInView;
 
-import java.util.List;
 import java.util.UUID;
 
-// Sealed so a scalar property's JSON never carries a pointless "properties" key -- only
-// ObjectAdminPropertyDefinitionView has nested children, since only PropertyType.OBJECT can have
-// any. Never deserialized from a request body (mutations flow through their own dedicated
-// records), so no @JsonTypeInfo discriminator is needed -- Jackson serializes each element by its
-// runtime type without one.
-public sealed interface AdminPropertyDefinitionView
-        permits ScalarAdminPropertyDefinitionView, ObjectAdminPropertyDefinitionView {
-
-    UUID id();
-    String name();
-    String description();
-    PropertyType type();
-    PropertyCardinality cardinality();
-    PropertyUsage usage();
-    DefinedInView definedIn();
-    UUID controlledListId();
-    // Admin-declared opt-in, separate from (and gated by) structural eligibility -- see
-    // RegisterPartitionManager.isTermsFacetable. Always present on both variants, same as
-    // controlledListId, even though it's only ever meaningful on a scalar leaf -- an OBJECT
-    // property itself is never facetable, only its own leaves can be.
-    boolean facetable();
+// A property is always a leaf that carries a value, and the only thing a grant can target.
+// Structure is AdminPropertyGroupView's job -- a separate kind of schema node, deliberately not a
+// variant of this one, so nothing that takes a property can ever be handed a group by accident.
+public record AdminPropertyDefinitionView(
+        UUID id, String name, String description, PropertyType type, PropertyCardinality cardinality,
+        PropertyUsage usage, DefinedInView definedIn, UUID controlledListId,
+        // Admin-declared opt-in, separate from (and gated by) structural eligibility -- see
+        // RegisterPartitionManager.isTermsFacetable.
+        boolean facetable
+) {
 
     // Used by the trait/supertype inheritance-tagging walk in SchemaViewBuilder to copy a property
-    // with only definedIn changed, regardless of which concrete variant it is.
-    AdminPropertyDefinitionView withDefinedIn(DefinedInView definedIn);
-
-    static AdminPropertyDefinitionView of(UUID id, PropertyIdentity identity, DefinedInView definedIn,
-                                           UUID controlledListId, boolean facetable,
-                                           List<AdminPropertyDefinitionView> properties) {
-        return identity.type() == PropertyType.OBJECT
-                ? new ObjectAdminPropertyDefinitionView(id, identity.name(), identity.description(), identity.type(),
-                        identity.cardinality(), identity.usage(), definedIn, controlledListId, facetable, properties)
-                : new ScalarAdminPropertyDefinitionView(id, identity.name(), identity.description(), identity.type(),
-                        identity.cardinality(), identity.usage(), definedIn, controlledListId, facetable);
+    // with only definedIn changed.
+    public AdminPropertyDefinitionView withDefinedIn(DefinedInView definedIn) {
+        return new AdminPropertyDefinitionView(id, name, description, type, cardinality, usage, definedIn, controlledListId, facetable);
     }
 }

@@ -7,14 +7,41 @@
 -- security_user.email is folded directly into its CREATE TABLE (SecurityInitializer used to patch
 -- it on via a separate ALTER TABLE ... ADD COLUMN IF NOT EXISTS, evidence of the exact problem
 -- Flyway now replaces -- this baseline represents current target shape, not that history).
+--
+-- 2026-09-19: this file is now the *single* consolidated baseline. The eighteen incremental
+-- migrations that used to follow it (V1_0_1_1 .. V1_0_2_7) were folded in -- nothing needed an
+-- upgrade path, the database is recreated from scratch -- and the schema itself was reworked at
+-- the same time: object properties are gone (PropertyType.OBJECT no longer exists), replaced by
+-- schema_property_group, and every property/group now has exactly one parent, expressed as parent
+-- columns with a CHECK, instead of the four ownership/nesting join tables (schema_item_property,
+-- schema_trait_property, schema_link_property, schema_property_property). See
+-- docs/ntrloc-dynamic-properties-design-notes.md sections 4 and 5. Flyway stays wired in for
+-- future migrations; the history lives in git.
 
 -- === schema_* (SchemaInitializer) ===
 
+-- supertype_id: a nullable, self-referencing supertype forms a single-parent tree; abstract blocks
+-- direct instantiation of a type meant only to be extended. No cascade on supertype_id --
+-- re-parenting/deleting a supertype is a live, read-tolerant schema edit handled at the
+-- application layer (SchemaMutationValidation), not something the DB should enforce via cascade.
+--
+-- display_label_pattern: an optional SpEL pattern (evaluated against the item's own properties at
+-- projection time) computing a human-readable displayLabel for every projected instance. Null means
+-- "no pattern of this type's own" -- inherited from the nearest supertype that defines one,
+-- resolved at projection time (RegisterPartitionManager), not baked in here.
+--
+-- default_visibility_decided: tracks whether DefaultGroupInitializer has ever made its
+-- default-open-read-until-narrowed decision for this type, independent of whether that grant
+-- currently exists -- otherwise an admin's explicit revocation of "everyone"'s default read would
+-- be silently undone by the next boot-time backfill.
 CREATE TABLE schema_item (
-    id              UUID PRIMARY KEY DEFAULT uuidv7(),
-    name            TEXT NOT NULL UNIQUE,
-    description     TEXT,
-    init_process_id TEXT
+    id                         UUID PRIMARY KEY DEFAULT uuidv7(),
+    name                       TEXT NOT NULL UNIQUE,
+    description                TEXT,
+    supertype_id               UUID REFERENCES schema_item(id),
+    abstract                   BOOLEAN NOT NULL DEFAULT FALSE,
+    display_label_pattern      TEXT,
+    default_visibility_decided BOOLEAN NOT NULL DEFAULT FALSE
 );
 
 CREATE TABLE schema_trait (
@@ -33,11 +60,37 @@ CREATE TABLE schema_controlled_list (
     value_type TEXT NOT NULL
 );
 
--- name is intentionally not unique here -- a property's name only needs to be unique within
--- whichever single item/trait/link type it's associated with (enforced in SchemaManager, since the
--- association is a separate join table, not a column here). Two different types legitimately have
--- their own distinct property row (different id) that happens to share a name, e.g. Product.name
--- and Contributor.name.
+-- A property group is purely structural: it carries a name and a place in the tree (paths, name
+-- scoping), never a value, never a grant -- nothing can reference it from marker_grant_property.
+-- It replaces what used to be an OBJECT-typed schema_property row. Exactly one parent: an item
+-- type, a trait, a link type, or another group. Sibling-name uniqueness (across properties and
+-- groups, which live in separate tables) is enforced in the application (SchemaMutationValidation),
+-- not here -- a DB constraint can't span two tables.
+CREATE TABLE schema_property_group (
+    id              UUID PRIMARY KEY DEFAULT uuidv7(),
+    name            TEXT NOT NULL,
+    description     TEXT,
+    parent_item_id  UUID REFERENCES schema_item(id)  ON DELETE CASCADE,
+    parent_trait_id UUID REFERENCES schema_trait(id) ON DELETE CASCADE,
+    parent_link_id  UUID REFERENCES schema_link(id)  ON DELETE CASCADE,
+    parent_group_id UUID REFERENCES schema_property_group(id) ON DELETE CASCADE,
+    CHECK (num_nonnulls(parent_item_id, parent_trait_id, parent_link_id, parent_group_id) = 1)
+);
+CREATE INDEX schema_property_group_item_idx  ON schema_property_group (parent_item_id)  WHERE parent_item_id  IS NOT NULL;
+CREATE INDEX schema_property_group_trait_idx ON schema_property_group (parent_trait_id) WHERE parent_trait_id IS NOT NULL;
+CREATE INDEX schema_property_group_link_idx  ON schema_property_group (parent_link_id)  WHERE parent_link_id  IS NOT NULL;
+CREATE INDEX schema_property_group_group_idx ON schema_property_group (parent_group_id) WHERE parent_group_id IS NOT NULL;
+
+-- A property is a leaf that carries a value -- the only thing a grant can target. Names are not
+-- globally unique, only among siblings under the same parent (application-enforced, see above): two
+-- different types legitimately have their own distinct property row (different id) that happens to
+-- share a name, e.g. Product.name and Contributor.name. Exactly one parent, same shape as groups.
+--
+-- facetable is an explicit admin declaration, not inferred purely from type/cardinality/
+-- controlled-list: a data model carrying 50+ controlled-list-backed fields would otherwise have
+-- every one of them auto-treated as facetable (and computed by default whenever a caller passes an
+-- empty facets list). The structural rule (SINGLE cardinality, and either STRING with a controlled
+-- list or BOOLEAN) still gates *eligibility*; this column is the separate, admin-controlled opt-in.
 CREATE TABLE schema_property (
     id                 UUID PRIMARY KEY DEFAULT uuidv7(),
     name               TEXT NOT NULL,
@@ -45,31 +98,26 @@ CREATE TABLE schema_property (
     type               TEXT NOT NULL,
     cardinality        TEXT NOT NULL,
     usage              TEXT NOT NULL,
-    controlled_list_id UUID REFERENCES schema_controlled_list(id) ON DELETE SET NULL
+    controlled_list_id UUID REFERENCES schema_controlled_list(id) ON DELETE SET NULL,
+    facetable          BOOLEAN NOT NULL DEFAULT FALSE,
+    parent_item_id     UUID REFERENCES schema_item(id)  ON DELETE CASCADE,
+    parent_trait_id    UUID REFERENCES schema_trait(id) ON DELETE CASCADE,
+    parent_link_id     UUID REFERENCES schema_link(id)  ON DELETE CASCADE,
+    parent_group_id    UUID REFERENCES schema_property_group(id) ON DELETE CASCADE,
+    CHECK (num_nonnulls(parent_item_id, parent_trait_id, parent_link_id, parent_group_id) = 1)
 );
-
-CREATE TABLE schema_item_property (
-    item_definition_id UUID NOT NULL REFERENCES schema_item(id) ON DELETE CASCADE,
-    property_id        UUID NOT NULL REFERENCES schema_property(id) ON DELETE CASCADE,
-    PRIMARY KEY (item_definition_id, property_id)
-);
-
-CREATE TABLE schema_trait_property (
-    trait_id    UUID NOT NULL REFERENCES schema_trait(id) ON DELETE CASCADE,
-    property_id UUID NOT NULL REFERENCES schema_property(id) ON DELETE CASCADE,
-    PRIMARY KEY (trait_id, property_id)
-);
+-- "Which properties use this controlled list" runs on every admin-schema rebuild, and the FK's
+-- ON DELETE SET NULL scans this column when a list is deleted.
+CREATE INDEX schema_property_controlled_list_id_idx ON schema_property (controlled_list_id);
+CREATE INDEX schema_property_item_idx  ON schema_property (parent_item_id)  WHERE parent_item_id  IS NOT NULL;
+CREATE INDEX schema_property_trait_idx ON schema_property (parent_trait_id) WHERE parent_trait_id IS NOT NULL;
+CREATE INDEX schema_property_link_idx  ON schema_property (parent_link_id)  WHERE parent_link_id  IS NOT NULL;
+CREATE INDEX schema_property_group_idx ON schema_property (parent_group_id) WHERE parent_group_id IS NOT NULL;
 
 CREATE TABLE schema_item_trait (
     item_id  UUID NOT NULL REFERENCES schema_item(id) ON DELETE CASCADE,
     trait_id UUID NOT NULL REFERENCES schema_trait(id) ON DELETE CASCADE,
     PRIMARY KEY (item_id, trait_id)
-);
-
-CREATE TABLE schema_link_property (
-    link_definition_id UUID NOT NULL REFERENCES schema_link(id) ON DELETE CASCADE,
-    property_id        UUID NOT NULL REFERENCES schema_property(id) ON DELETE CASCADE,
-    PRIMARY KEY (link_definition_id, property_id)
 );
 
 -- A state machine is a named, independently-identified entity so multiple can exist per item type
@@ -83,14 +131,24 @@ CREATE TABLE schema_state_machine (
     UNIQUE (item_definition_id, name)
 );
 
+-- Every machine owns exactly one START and one END state (kind = 'START' / 'END'), created with the
+-- machine and undeletable. NORMAL states are the user-defined ones. START has at most one outgoing
+-- transition (to a NORMAL state, no guard); END has no outgoing transitions. Pseudostate rows carry
+-- a sentinel name ('__start__' / '__end__'); the editor renders them by kind, not name.
+--
+-- entry_marker_decision_key: a NORMAL state may declare a DMN decision (by key, deployed
+-- independently like entry_process_id) that runs on entry: it looks at the item's property values
+-- and returns marker names to apply for as long as the item is in that state. Nullable;
+-- pseudostates never get one.
 CREATE TABLE schema_state (
-    id               UUID PRIMARY KEY DEFAULT uuidv7(),
-    state_machine_id UUID NOT NULL REFERENCES schema_state_machine(id) ON DELETE CASCADE,
-    name             TEXT NOT NULL,
-    description      TEXT,
-    is_initial       BOOLEAN NOT NULL DEFAULT FALSE,
-    entry_process_id TEXT,
-    exit_process_id  TEXT,
+    id                        UUID PRIMARY KEY DEFAULT uuidv7(),
+    state_machine_id          UUID NOT NULL REFERENCES schema_state_machine(id) ON DELETE CASCADE,
+    name                      TEXT NOT NULL,
+    description               TEXT,
+    kind                      TEXT NOT NULL DEFAULT 'NORMAL' CHECK (kind IN ('NORMAL', 'START', 'END')),
+    entry_process_id          TEXT,
+    exit_process_id           TEXT,
+    entry_marker_decision_key TEXT,
     UNIQUE (state_machine_id, name)
 );
 
@@ -110,10 +168,9 @@ CREATE TABLE schema_state_transition (
 -- schema_entity is gone; see SchemaManager.applyMutations' validation of this value against both
 -- tables at write time, the only place that constraint can be enforced).
 --
--- UNIQUE(entity_id, link_definition_id) is what 1.0.0 actually shipped with -- this baseline is a
--- faithful record of that, bug included, not a retroactively-cleaned-up version. It's removed for
--- real by V1_0_1_1__drop_stale_perspective_unique_constraint.sql (see that file for why: it made
--- same-type/same-trait self-links impossible).
+-- No UNIQUE(entity_id, link_definition_id): it made same-type/same-trait self-links (e.g. Person
+-- "mother of" Person) impossible -- see SchemaMutationValidation.requireConsistentPerspectiveTarget
+-- for the guardrail that replaced it.
 CREATE TABLE schema_entity_link_perspective (
     id                  UUID PRIMARY KEY DEFAULT uuidv7(),
     entity_id           UUID NOT NULL,
@@ -121,8 +178,7 @@ CREATE TABLE schema_entity_link_perspective (
     name                TEXT NOT NULL,
     description         TEXT,
     minimum_cardinality INT NOT NULL CHECK (minimum_cardinality >= 0),
-    maximum_cardinality INT CHECK (maximum_cardinality IS NULL OR maximum_cardinality >= minimum_cardinality),
-    UNIQUE (entity_id, link_definition_id)
+    maximum_cardinality INT CHECK (maximum_cardinality IS NULL OR maximum_cardinality >= minimum_cardinality)
 );
 
 -- === security_* (SecurityInitializer) ===
@@ -139,15 +195,28 @@ CREATE TABLE security_user (
     is_superuser BOOLEAN NOT NULL DEFAULT FALSE
 );
 
-CREATE TABLE security_group (
+CREATE TABLE security_user_group (
     id   UUID PRIMARY KEY DEFAULT uuidv7(),
     name TEXT NOT NULL UNIQUE
 );
 
-CREATE TABLE security_group_member (
+CREATE TABLE security_user_group_member (
     user_id  UUID NOT NULL REFERENCES security_user(id)  ON DELETE CASCADE,
-    group_id UUID NOT NULL REFERENCES security_group(id) ON DELETE CASCADE,
+    group_id UUID NOT NULL REFERENCES security_user_group(id) ON DELETE CASCADE,
     PRIMARY KEY (user_id, group_id)
+);
+
+-- A group can itself be a member of another group -- member_group_id is a member of group_id,
+-- exactly the same shape as security_user_group_member's user_id being a member of group_id. A separate
+-- table rather than making security_user_group_member's user_id polymorphic: two real FKs beat one loose
+-- one. Self-membership is rejected by the CHECK; deeper cycles (A member of B member of A) are
+-- rejected at the application layer (SecurityRepository.addGroupToGroup) -- a CHECK constraint
+-- can't express "no path already exists back to this row."
+CREATE TABLE security_user_group_member_group (
+    member_group_id UUID NOT NULL REFERENCES security_user_group(id) ON DELETE CASCADE,
+    group_id        UUID NOT NULL REFERENCES security_user_group(id) ON DELETE CASCADE,
+    PRIMARY KEY (member_group_id, group_id),
+    CHECK (member_group_id != group_id)
 );
 
 CREATE TABLE security_local_credentials (
@@ -172,40 +241,118 @@ CREATE TABLE security_personal_access_token (
 
 -- === authorization_* (AuthorizationInitializer) ===
 
+-- A marker's scope answers two questions only: which item instances is it eligible to be assigned
+-- to, and which properties/transitions may a grant under it reference. It conveys no permission on
+-- its own -- this is a pure eligibility constraint on the marker's definition.
+--
+-- scope_id is deliberately unconstrained (no FK) -- it references schema_item.id, schema_trait.id,
+-- or schema_entity_link_perspective.id depending on scope_kind, and Postgres can't express a
+-- polymorphic FK across three possible target tables on one column. Same precedent as
+-- schema_entity_link_perspective.entity_id: validated only at the application layer.
 CREATE TABLE authorization_marker (
     id          UUID PRIMARY KEY DEFAULT uuidv7(),
     name        TEXT NOT NULL UNIQUE,
-    description TEXT
+    description TEXT,
+    scope_kind  TEXT NOT NULL CHECK (scope_kind IN ('ITEM_TYPE', 'TRAIT', 'LINK_PERSPECTIVE')),
+    scope_id    UUID NOT NULL
 );
 
--- Static, admin-curated assignment table. This exact shape is expected to later become "rule
--- engine output" without structural change -- no logic lives here.
-CREATE TABLE authorization_item_type_marker (
-    item_type_id UUID NOT NULL REFERENCES schema_item(id) ON DELETE CASCADE,
-    marker_id    UUID NOT NULL REFERENCES authorization_marker(id) ON DELETE CASCADE,
-    PRIMARY KEY (item_type_id, marker_id)
+-- Type visibility is a direct (principal, item_type, permission) grant, not marker-mediated. See
+-- docs/ntrloc-security-projections-summary.md "Type Visibility".
+CREATE TABLE authorization_item_type_grant (
+    id             UUID PRIMARY KEY DEFAULT uuidv7(),
+    item_type_id   UUID NOT NULL REFERENCES schema_item(id) ON DELETE CASCADE,
+    principal_type TEXT NOT NULL CHECK (principal_type IN ('USER', 'USER_GROUP')),
+    principal_id   UUID NOT NULL,
+    permission     TEXT NOT NULL CHECK (permission IN ('item-type:read', 'item-type:create')),
+    UNIQUE (item_type_id, principal_type, principal_id, permission)
 );
 
--- Row-per-operation (not flags-per-row): keeps the door open for new primitives via a
--- CHECK-constraint edit rather than a schema migration, and avoids sparse columns for primitives
--- that don't apply to a given marker's kind.
-CREATE TABLE authorization_grant (
+-- Marker Assignment Rules: a rule binds one item type to one deployed DMN decision. The decision's
+-- output declares which marker name(s) should apply -- no marker_id column here, since a rule isn't
+-- statically restricted to one marker; safety for removal comes from ledger provenance at
+-- evaluation time (see MarkerRuleEvaluationService). decision_key is a Flowable DMN decision key,
+-- not a foreign key -- decisions are deployed/versioned independently via /api/admin/dmn.
+CREATE TABLE authorization_marker_rule (
+    id            UUID PRIMARY KEY DEFAULT uuidv7(),
+    name          TEXT NOT NULL,
+    item_type_id  UUID NOT NULL REFERENCES schema_item(id) ON DELETE CASCADE,
+    decision_key  TEXT NOT NULL,
+    enabled       BOOLEAN NOT NULL DEFAULT TRUE
+);
+CREATE INDEX idx_authorization_marker_rule_item_type ON authorization_marker_rule(item_type_id);
+
+-- One marker_grant per (marker, principal) pair, plus one child table per object kind a grant can
+-- reference. Whether an object kind needs its own join table depends on whether it has real
+-- multiplicity for a given grant: item-level verbs (view/delete the item that carries the marker)
+-- are strictly 1:1, so they're flat columns here; properties, link perspectives, link properties,
+-- and transitions are all genuinely one-to-many per grant, so each gets a child table.
+CREATE TABLE marker_grant (
     id             UUID PRIMARY KEY DEFAULT uuidv7(),
     marker_id      UUID NOT NULL REFERENCES authorization_marker(id) ON DELETE CASCADE,
-    principal_type TEXT NOT NULL CHECK (principal_type IN ('USER', 'GROUP')),
+    principal_type TEXT NOT NULL CHECK (principal_type IN ('USER', 'USER_GROUP')),
     principal_id   UUID NOT NULL,
-    operation      TEXT NOT NULL CHECK (operation IN (
-        'item:create','item:read','item:delete',
-        'property:read','property:write',
-        'link:create','link:read','link:delete',
-        'link_property:read','link_property:write',
-        'binary:download','security:override','marker:apply','marker:remove'
-    )),
-    UNIQUE (marker_id, principal_type, principal_id, operation)
+    item_can_read   BOOLEAN NOT NULL DEFAULT FALSE,
+    item_can_delete BOOLEAN NOT NULL DEFAULT FALSE,
+    UNIQUE (marker_id, principal_type, principal_id)
+);
+
+-- Only leaf properties are ever grantable (property groups have no table a grant could reference).
+-- For a binary property, read is equivalent to download -- if a principal can read the property
+-- they can fetch its bytes; there is no second gate -- and can_write is simply unused (binary
+-- properties aren't set via ordinary mutation; uploads are a separate mechanism).
+CREATE TABLE marker_grant_property (
+    id              UUID PRIMARY KEY DEFAULT uuidv7(),
+    marker_grant_id UUID NOT NULL REFERENCES marker_grant(id) ON DELETE CASCADE,
+    property_id     UUID NOT NULL REFERENCES schema_property(id) ON DELETE CASCADE,
+    can_read        BOOLEAN NOT NULL DEFAULT FALSE,
+    can_write       BOOLEAN NOT NULL DEFAULT FALSE,
+    UNIQUE (marker_grant_id, property_id)
+);
+
+-- perspective_id resolves unambiguously to one link definition, so link:create/read/delete
+-- permission -- and, symmetrically, which link instances are even visible -- is anchored to the
+-- *source* item's own marker via a named perspective (markers only ever apply to items).
+CREATE TABLE marker_grant_link_perspective (
+    id              UUID PRIMARY KEY DEFAULT uuidv7(),
+    marker_grant_id UUID NOT NULL REFERENCES marker_grant(id) ON DELETE CASCADE,
+    perspective_id  UUID NOT NULL REFERENCES schema_entity_link_perspective(id) ON DELETE CASCADE,
+    can_create      BOOLEAN NOT NULL DEFAULT FALSE,
+    can_read        BOOLEAN NOT NULL DEFAULT FALSE,
+    can_delete      BOOLEAN NOT NULL DEFAULT FALSE,
+    UNIQUE (marker_grant_id, perspective_id)
+);
+
+-- A link's own properties, same shape as marker_grant_property.
+CREATE TABLE marker_grant_link_property (
+    id              UUID PRIMARY KEY DEFAULT uuidv7(),
+    marker_grant_id UUID NOT NULL REFERENCES marker_grant(id) ON DELETE CASCADE,
+    property_id     UUID NOT NULL REFERENCES schema_property(id) ON DELETE CASCADE,
+    can_read        BOOLEAN NOT NULL DEFAULT FALSE,
+    can_write       BOOLEAN NOT NULL DEFAULT FALSE,
+    UNIQUE (marker_grant_id, property_id)
+);
+
+-- Plain existence join -- execute is a single boolean-shaped verb, so presence of the row is the
+-- grant.
+CREATE TABLE marker_grant_transition (
+    id              UUID PRIMARY KEY DEFAULT uuidv7(),
+    marker_grant_id UUID NOT NULL REFERENCES marker_grant(id) ON DELETE CASCADE,
+    transition_id   UUID NOT NULL REFERENCES schema_state_transition(id) ON DELETE CASCADE,
+    UNIQUE (marker_grant_id, transition_id)
+);
+
+-- state-machine:start -- who may begin an item's participation in a state machine, mirroring
+-- marker_grant_transition (execute). Plain existence join.
+CREATE TABLE marker_grant_state_machine_start (
+    id               UUID PRIMARY KEY DEFAULT uuidv7(),
+    marker_grant_id  UUID NOT NULL REFERENCES marker_grant(id) ON DELETE CASCADE,
+    state_machine_id UUID NOT NULL REFERENCES schema_state_machine(id) ON DELETE CASCADE,
+    UNIQUE (marker_grant_id, state_machine_id)
 );
 
 -- === process_group* (ProcessGroupInitializer) ===
--- Deliberately separate from security_group: a process-assignment group (who can pick up a User
+-- Deliberately separate from security_user_group: a process-assignment group (who can pick up a User
 -- Task) is a different concept from a permission group (what a set of users can do to schema/graph
 -- data) even though both are "a group of users" -- coincidentally similar shape, unrelated
 -- lifecycle and ownership.
@@ -216,7 +363,7 @@ CREATE TABLE process_group (
 );
 
 -- user_id references security_user directly -- individual identity is shared app-wide, it's
--- specifically the grouping mechanism that's kept separate from security_group.
+-- specifically the grouping mechanism that's kept separate from security_user_group.
 CREATE TABLE process_group_member (
     group_id UUID NOT NULL REFERENCES process_group(id) ON DELETE CASCADE,
     user_id  UUID NOT NULL REFERENCES security_user(id) ON DELETE CASCADE,
@@ -252,6 +399,19 @@ CREATE TABLE register_link (
 );
 CREATE INDEX register_link_link_id_idx ON register_link (link_id);
 
+-- Instance-level marker assignment (item -> marker). Markers only ever apply to items, never to
+-- links. A join table, not a column on register_item: those rows aren't updated in place
+-- (commitItem() stages a whole new row per mutation), so a join table gets the same one-line FK
+-- repoint register_item_link_perspective already uses on commit.
+CREATE TABLE register_item_marker (
+    id               UUID PRIMARY KEY DEFAULT uuidv7(),
+    register_item_id UUID NOT NULL REFERENCES register_item(id) ON DELETE CASCADE,
+    marker_id        UUID NOT NULL REFERENCES authorization_marker(id) ON DELETE CASCADE,
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (register_item_id, marker_id)
+);
+CREATE INDEX idx_register_item_marker_marker ON register_item_marker(marker_id);
+
 CREATE TABLE register_item_link_perspective (
     id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     register_link_id    UUID NOT NULL REFERENCES register_link(id) ON DELETE CASCADE,
@@ -262,23 +422,40 @@ CREATE TABLE register_item_link_perspective (
 CREATE TABLE register_binary_property (
     id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     register_item_id UUID NOT NULL REFERENCES register_item(id) ON DELETE CASCADE,
-    property_id      UUID NOT NULL REFERENCES schema_property(id),
+    property_id      UUID NOT NULL REFERENCES schema_property(id) ON DELETE CASCADE,
     binary_id        UUID NOT NULL
 );
 CREATE INDEX register_binary_property_item_idx ON register_binary_property (register_item_id);
 
 -- === binary_content (BinaryInitializer) ===
 
+-- Uniqueness is a compound (sha256, md5, length) key, not sha256 alone: the storage layer
+-- (BlockDeviceBinaryStorageAdapter.permanentRelativePath) already places a file on disk by sha256
+-- *and* md5 together, so the DB has to agree or the two layers can disagree about what "the same
+-- content" means -- a sha256 match with a differing md5/length (only plausible from an internal
+-- hashing bug, never a practical attack on either hash) would otherwise let the DB silently conflate
+-- two uploads under one id while storage kept them as two separate files, permanently orphaning one.
+-- length earns its place in the key for the same reason md5 does: it's computed via an entirely
+-- independent code path (a filesystem stat after the write closes, not the running digest during the
+-- write), so it catches our own hashing bugs, which are far likelier than an actual hash break.
+--
+-- metadata mirrors sha256/md5/length/mime_type (see BinaryPartitionManagerImpl.insert) so every
+-- intrinsic fact about a binary is reachable through one uniform path-resolution mechanism, the same
+-- one embedded EXIF/IPTC data will use later -- while the real columns stay authoritative for the
+-- typed, functional reads that want them directly (openReader, the ETag header, Content-Length).
+-- This duplication is safe because these four values are write-once, computed synchronously during
+-- upload and written in the same INSERT as the row itself; binary_content rows are never updated
+-- after that. See docs/ntrloc-dynamic-properties-design-notes.md section 8.
 CREATE TABLE binary_content (
     id         UUID PRIMARY KEY DEFAULT uuidv7(),
-    sha256     TEXT NOT NULL UNIQUE,
+    sha256     TEXT NOT NULL,
     md5        TEXT NOT NULL,
     mime_type  TEXT,
     length     BIGINT NOT NULL,
-    metadata   JSONB,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    metadata   JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (sha256, md5, length)
 );
-CREATE INDEX binary_content_sha256_idx ON binary_content (sha256);
 
 -- === ledger_entry (LedgerInitializer) ===
 

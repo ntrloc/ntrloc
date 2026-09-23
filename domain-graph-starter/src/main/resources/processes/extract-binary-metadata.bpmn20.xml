@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://www.omg.org/spec/BPMN/20100524/MODEL"
+             xmlns:flowable="http://flowable.org/bpmn"
+             targetNamespace="org.ntrloc.workflow">
+  <process id="extractBinaryMetadata" name="Extract Binary Metadata" isExecutable="true">
+    <startEvent id="start"/>
+    <sequenceFlow id="flow1" sourceRef="start" targetRef="extractMetadata"/>
+    <serviceTask id="extractMetadata" name="Extract Embedded Metadata"
+                 flowable:delegateExpression="${extractBinaryMetadataDelegate}" flowable:async="true"/>
+    <sequenceFlow id="flow2" sourceRef="extractMetadata" targetRef="end"/>
+    <endEvent id="end"/>
+  </process>
+</definitions>

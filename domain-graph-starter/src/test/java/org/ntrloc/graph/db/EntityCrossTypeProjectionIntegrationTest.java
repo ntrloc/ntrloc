@@ -6,7 +6,7 @@ import org.ntrloc.graph.db.mutation.ItemCreateMutation;
 import org.ntrloc.graph.db.mutation.MutationRequest;
 import org.ntrloc.graph.db.mutation.MutationRequestProcessor;
 import org.ntrloc.graph.db.mutation.MutationResponse;
-import org.ntrloc.graph.db.partition.authorization.DefaultGroupInitializer;
+import org.ntrloc.graph.db.partition.authorization.DefaultUserGroupInitializer;
 import org.ntrloc.graph.db.partition.authorization.MarkerAssignmentService;
 import org.ntrloc.graph.db.partition.authorization.repository.AuthorizationRepository;
 import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
@@ -56,7 +56,7 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
     private SecurityRepository securityRepo;
 
     @Autowired
-    private DefaultGroupInitializer defaultGroupInitializer;
+    private DefaultUserGroupInitializer defaultUserGroupInitializer;
 
     @Autowired
     private MarkerAssignmentService markerAssignmentService;
@@ -208,7 +208,7 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
     void collectionProjection_sortAndFilterOnAnInheritedProperty_workAcrossBranches() {
         String vehicleName = "CrossTypeVehicle-" + UUID.randomUUID();
         schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(vehicleName, "d", List.of(
-                new CreatePropertyDefinitionMutation("wheels", "d", PropertyType.INT, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false, java.util.List.of())),
+                new CreatePropertyDefinitionMutation("wheels", "d", PropertyType.INT, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)),
                 null, false, null)));
         UUID vehicleId = idOf(vehicleName);
 
@@ -249,7 +249,7 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
     void collectionProjection_facetsAndFacetFiltersOnAnInheritedProperty_aggregateAcrossBranches() {
         String vehicleName = "CrossTypeVehicle-" + UUID.randomUUID();
         schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(vehicleName, "d", List.of(
-                new CreatePropertyDefinitionMutation("electric", "d", PropertyType.BOOLEAN, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, true, java.util.List.of())),
+                new CreatePropertyDefinitionMutation("electric", "d", PropertyType.BOOLEAN, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, true)),
                 null, false, null)));
         UUID vehicleId = idOf(vehicleName);
 
@@ -325,12 +325,12 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
 
         revokeDefaultReadGrant(carId);
 
-        // DefaultGroupInitializer only back-fills *existing* users into "everyone" once, at
+        // DefaultUserGroupInitializer only back-fills *existing* users into "everyone" once, at
         // ApplicationReadyEvent -- a user created here, mid-test, is never auto-added the way
         // alice/bob/carol/root were at boot, so joining explicitly is required to pick up
         // Vehicle's still-intact default read grant at all.
         var restrictedUser = securityRepo.createUser("restricted-" + UUID.randomUUID(), "Restricted", null, false);
-        securityRepo.addUserToGroup(restrictedUser.id(), defaultGroupInitializer.getDefaultGroupId());
+        securityRepo.addUserToUserGroup(restrictedUser.id(), defaultUserGroupInitializer.getDefaultUserGroupId());
 
         UUID vehicleItemId = createItem(vehicleName);
         createItem(carName);
@@ -342,7 +342,7 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
         // without being blocked by the orthogonal instance-level check.
         var marker = authRepo.createMarker("cross-type-vehicle-read-" + UUID.randomUUID(), "test fixture", "ITEM_TYPE", idOf(vehicleName));
         markerAssignmentService.addItemMarker(vehicleItemId, marker.id(), "test-actor", "test reason");
-        authRepo.setItemPermissions(authRepo.ensureMarkerGrant(marker.id(), "GROUP", defaultGroupInitializer.getDefaultGroupId()), true, false);
+        authRepo.setItemPermissions(authRepo.ensureMarkerGrant(marker.id(), "USER_GROUP", defaultUserGroupInitializer.getDefaultUserGroupId()), true, false);
 
         var body = webTestClient.post().uri("/api/entity/projection")
                 .header("X-Ntrloc-User", restrictedUser.externalId())
@@ -422,7 +422,7 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
         UUID vehicleItemId = createItem(vehicleName);
 
         var restrictedUser = securityRepo.createUser("restricted-" + UUID.randomUUID(), "Restricted", null, false);
-        securityRepo.addUserToGroup(restrictedUser.id(), defaultGroupInitializer.getDefaultGroupId());
+        securityRepo.addUserToUserGroup(restrictedUser.id(), defaultUserGroupInitializer.getDefaultUserGroupId());
         NtrlocPrincipal restrictedPrincipal = new ResolvedPrincipal(restrictedUser.id(), restrictedUser.externalId(), "Restricted", null, Set.of(), false);
 
         org.assertj.core.api.Assertions.assertThatThrownBy(() ->
@@ -435,10 +435,10 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
         jdbcClient.sql("""
                 DELETE FROM authorization_item_type_grant
                 WHERE item_type_id = :itemTypeId AND permission = 'item-type:read'
-                  AND principal_type = 'GROUP' AND principal_id = :groupId
+                  AND principal_type = 'USER_GROUP' AND principal_id = :groupId
                 """)
                 .param("itemTypeId", itemTypeId)
-                .param("groupId", defaultGroupInitializer.getDefaultGroupId())
+                .param("groupId", defaultUserGroupInitializer.getDefaultUserGroupId())
                 .update();
     }
 }

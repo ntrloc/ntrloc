@@ -6,12 +6,10 @@ import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyUsage;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateItemDefinitionMutation;
-import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateItemPropertyDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateLinkDefinitionMutation;
-import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateLinkPropertyDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePerspectiveDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePropertyDefinitionMutation;
-import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePropertyPropertyDefinitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePropertyGroupDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemDefinitionView;
 import org.ntrloc.graph.domain.DomainInitializer;
 import org.springframework.boot.ApplicationArguments;
@@ -56,37 +54,25 @@ public class MutationRequestProcessorTestDomainInitializer implements DomainInit
 
     @Override
     public void initSchema(SchemaManager schemaManager, ControlledListManager controlledListManager) {
+        // "extra" and "extra2" are property groups (structural, no value of their own); a payload
+        // addresses their leaves by JSON nesting, resolved against the group's own children. Both
+        // hold a leaf named "nested" -- exercises group-scoped resolution end to end (the two leaves
+        // must resolve to distinct property ids and never collide in storage).
         schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(
                 "MutReqProcA", "MutationRequestProcessor test fixture",
                 List.of(
                         property("attachment", PropertyType.BINARY, PropertyCardinality.SINGLE),
                         property("count", PropertyType.LONG, PropertyCardinality.SINGLE),
                         property("price", PropertyType.DOUBLE, PropertyCardinality.SINGLE),
-                        property("createdAt", PropertyType.DATETIME, PropertyCardinality.SINGLE),
-                        property("extra", PropertyType.OBJECT, PropertyCardinality.SINGLE)), null, false, null)));
+                        property("createdAt", PropertyType.DATETIME, PropertyCardinality.SINGLE)),
+                null, false, null, List.of(),
+                List.of(
+                        group("extra",
+                                property("nested", PropertyType.STRING, PropertyCardinality.SINGLE),
+                                property("second", PropertyType.STRING, PropertyCardinality.SINGLE)),
+                        group("extra2",
+                                property("nested", PropertyType.STRING, PropertyCardinality.SINGLE))))));
         aTypeId = findItem("MutReqProcA").id();
-
-        // "extra" is now a genuinely structured OBJECT property (no more opaque-JSON-blob
-        // behavior) -- it needs a real child to be usable at all, since resolveObjectPropertyValue
-        // resolves nested keys against the property's own children, not an arbitrary shape.
-        UUID extraPropertyId = findItem("MutReqProcA").properties().stream()
-                .filter(p -> p.name().equals("extra"))
-                .findFirst().orElseThrow().id();
-        schemaManager.applyMutations(List.of(new CreatePropertyPropertyDefinitionMutation(
-                extraPropertyId, "nested", "MutationRequestProcessor test fixture", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false, java.util.List.of())));
-        schemaManager.applyMutations(List.of(new CreatePropertyPropertyDefinitionMutation(
-                extraPropertyId, "second", "MutationRequestProcessor test fixture", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false, java.util.List.of())));
-
-        // A second object property with a leaf sharing "extra"'s own leaf name ("nested") --
-        // exercises resolveObjectPropertyValue's container-scoped resolution end to end (the two
-        // "nested" leaves must resolve to distinct property ids and never collide in storage).
-        schemaManager.applyMutations(List.of(new CreateItemPropertyDefinitionMutation(
-                aTypeId, "extra2", "MutationRequestProcessor test fixture", PropertyType.OBJECT, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false, java.util.List.of())));
-        UUID extra2PropertyId = findItem("MutReqProcA").properties().stream()
-                .filter(p -> p.name().equals("extra2"))
-                .findFirst().orElseThrow().id();
-        schemaManager.applyMutations(List.of(new CreatePropertyPropertyDefinitionMutation(
-                extra2PropertyId, "nested", "MutationRequestProcessor test fixture", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false, java.util.List.of())));
 
         schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(
                 "MutReqProcB", "MutationRequestProcessor test fixture", List.of(), null, false, null)));
@@ -115,35 +101,28 @@ public class MutationRequestProcessorTestDomainInitializer implements DomainInit
         // failure mode from link1/link2's ambiguity). Deliberately two distinct item types rather
         // than a self-link on C, purely to keep this fixture's naming simple -- self-links are
         // supported (see SelfLinkIntegrationTest).
-        schemaManager.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
-                new CreatePerspectiveDefinitionMutation(cTypeId, "onlyC", "d", 0, null),
-                new CreatePerspectiveDefinitionMutation(dTypeId, "onlyD", "d", 0, null)))));
+        //
         // link1/link2 (above) deliberately can't be created via a normal LinkCreateMutation --
         // A.toB/B.fromA is ambiguous by construction. link3 (C<->D) is the only unambiguous link in
-        // this fixture, so it's the one that carries the OBJECT-property test coverage below.
+        // this fixture, so it's the one that carries the property-group test coverage: a group
+        // "linkExtra" whose leaf name ("nested") deliberately collides with MutReqProcA's own
+        // "extra.nested" leaf -- same group-scoped-resolution proof, now crossing the item/link
+        // boundary.
+        schemaManager.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
+                new CreatePerspectiveDefinitionMutation(cTypeId, "onlyC", "d", 0, null),
+                new CreatePerspectiveDefinitionMutation(dTypeId, "onlyD", "d", 0, null)),
+                List.of(group("linkExtra",
+                        property("nested", PropertyType.STRING, PropertyCardinality.SINGLE),
+                        property("second", PropertyType.STRING, PropertyCardinality.SINGLE))))));
         link3Id = findItem("MutReqProcC").links().get("onlyC").get(0).linkId();
+    }
 
-        // link3's own OBJECT property, nested one level -- proves the write/read flat-storage model
-        // already verified for item OBJECT properties (see "extra"/"extra2" above) also applies to
-        // link properties, which no test exercised before. Leaf name ("nested") deliberately
-        // collides with MutReqProcA's own "extra.nested" leaf -- same container-scoped-resolution
-        // proof as extra/extra2 above, now crossing the item/link boundary specifically.
-        schemaManager.applyMutations(List.of(new CreateLinkPropertyDefinitionMutation(
-                link3Id, "linkExtra", "MutationRequestProcessor test fixture", PropertyType.OBJECT, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false, java.util.List.of())));
-        UUID linkExtraPropertyId = schemaManager.getAdminSchema().links().stream()
-                .filter(link -> link.id().equals(link3Id))
-                .findFirst().orElseThrow()
-                .properties().stream()
-                .filter(p -> p.name().equals("linkExtra"))
-                .findFirst().orElseThrow().id();
-        schemaManager.applyMutations(List.of(new CreatePropertyPropertyDefinitionMutation(
-                linkExtraPropertyId, "nested", "MutationRequestProcessor test fixture", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false, java.util.List.of())));
-        schemaManager.applyMutations(List.of(new CreatePropertyPropertyDefinitionMutation(
-                linkExtraPropertyId, "second", "MutationRequestProcessor test fixture", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false, java.util.List.of())));
+    private CreatePropertyGroupDefinitionMutation group(String name, CreatePropertyDefinitionMutation... properties) {
+        return new CreatePropertyGroupDefinitionMutation(name, "MutationRequestProcessor test fixture", List.of(properties), List.of());
     }
 
     private CreatePropertyDefinitionMutation property(String name, PropertyType type, PropertyCardinality cardinality) {
-        return new CreatePropertyDefinitionMutation(name, "MutationRequestProcessor test fixture", type, cardinality, PropertyUsage.OPTIONAL, false, java.util.List.of());
+        return new CreatePropertyDefinitionMutation(name, "MutationRequestProcessor test fixture", type, cardinality, PropertyUsage.OPTIONAL, false);
     }
 
     private AdminItemDefinitionView findItem(String name) {

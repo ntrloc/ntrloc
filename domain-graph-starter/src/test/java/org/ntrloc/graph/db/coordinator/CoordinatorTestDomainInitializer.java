@@ -9,6 +9,7 @@ import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateItemDefini
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateLinkDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePerspectiveDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePropertyDefinitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePropertyGroupDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemLinkPerspectiveView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyDefinitionView;
@@ -65,18 +66,17 @@ public class CoordinatorTestDomainInitializer implements DomainInitializer, Appl
                         property("name", PropertyType.STRING, PropertyCardinality.SINGLE),
                         property("color", PropertyType.STRING, PropertyCardinality.SINGLE),
                         property("tags", PropertyType.STRING, PropertyCardinality.SET),
-                        property("releaseDate", PropertyType.DATE, PropertyCardinality.SINGLE),
-                        objectProperty("dimensions",
-                                property("width", PropertyType.STRING, PropertyCardinality.SINGLE),
-                                property("height", PropertyType.STRING, PropertyCardinality.SINGLE))),
-                null, false, null)));
+                        property("releaseDate", PropertyType.DATE, PropertyCardinality.SINGLE)),
+                null, false, null, List.of(),
+                List.of(group("dimensions",
+                        property("width", PropertyType.STRING, PropertyCardinality.SINGLE),
+                        property("height", PropertyType.STRING, PropertyCardinality.SINGLE))))));
 
         AdminItemDefinitionView product = findItem(schemaManager, "CoordinatorTestProduct");
         productTypeId = product.id();
         namePropertyId = findProperty(product.properties(), "name");
         colorPropertyId = findProperty(product.properties(), "color");
-        var dimensions = (org.ntrloc.graph.db.partition.schema.definition.view.admin.ObjectAdminPropertyDefinitionView)
-                product.properties().stream().filter(p -> p.name().equals("dimensions")).findFirst().orElseThrow();
+        var dimensions = product.groups().stream().filter(g -> g.name().equals("dimensions")).findFirst().orElseThrow();
         dimensionsWidthPropertyId = findProperty(dimensions.properties(), "width");
         dimensionsHeightPropertyId = findProperty(dimensions.properties(), "height");
 
@@ -110,12 +110,11 @@ public class CoordinatorTestDomainInitializer implements DomainInitializer, Appl
     }
 
     private CreatePropertyDefinitionMutation property(String name, PropertyType type, PropertyCardinality cardinality) {
-        return new CreatePropertyDefinitionMutation(name, "Coordinator integration test fixture", type, cardinality, PropertyUsage.OPTIONAL, false, java.util.List.of());
+        return new CreatePropertyDefinitionMutation(name, "Coordinator integration test fixture", type, cardinality, PropertyUsage.OPTIONAL, false);
     }
 
-    private CreatePropertyDefinitionMutation objectProperty(String name, CreatePropertyDefinitionMutation... children) {
-        return new CreatePropertyDefinitionMutation(name, "Coordinator integration test fixture", PropertyType.OBJECT,
-                PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false, List.of(children));
+    private CreatePropertyGroupDefinitionMutation group(String name, CreatePropertyDefinitionMutation... properties) {
+        return new CreatePropertyGroupDefinitionMutation(name, "Coordinator integration test fixture", List.of(properties), List.of());
     }
 
     private AdminItemDefinitionView findItem(SchemaManager schemaManager, String name) {

@@ -18,7 +18,7 @@ import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemLinkPerspectiveView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyDefinitionView;
-import org.ntrloc.graph.db.partition.schema.definition.view.admin.ObjectAdminPropertyDefinitionView;
+import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyGroupView;
 import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -277,42 +277,48 @@ public class MutationRequestProcessor {
                 .orElse(false);
     }
 
+    // The names a payload can address at one level: leaf properties and property groups, which share
+    // one namespace (sibling-name uniqueness is enforced in the schema). Trait contributions appear
+    // as groups named for the trait, so a payload addresses them as {"File": {"name": ...}}.
+    private record Scope(Map<String, AdminPropertyDefinitionView> properties, Map<String, AdminPropertyGroupView> groups) {
+        static Scope of(List<AdminPropertyDefinitionView> properties, List<AdminPropertyGroupView> groups) {
+            return new Scope(
+                    properties.stream().collect(Collectors.toMap(AdminPropertyDefinitionView::name, p -> p, (a, b) -> a)),
+                    groups.stream().collect(Collectors.toMap(AdminPropertyGroupView::name, g -> g, (a, b) -> a)));
+        }
+    }
+
     private Map<UUID, Object> resolveItemPropertyIds(UUID itemTypeId, Map<String, Object> propertiesByName, String path, List<ValidationError> errors) {
-        Map<String, AdminPropertyDefinitionView> nameToProperty = schemaManager.getAdminSchema().items().stream()
+        Scope scope = schemaManager.getAdminSchema().items().stream()
                 .filter(item -> item.id().equals(itemTypeId))
                 .findFirst()
-                .map(item -> item.properties().stream()
-                        .collect(Collectors.toMap(AdminPropertyDefinitionView::name, p -> p)))
-                .orElse(Map.of());
-        return resolvePropertyIds(propertiesByName, nameToProperty, path, errors);
+                .map(item -> Scope.of(item.properties(), item.groups()))
+                .orElse(Scope.of(List.of(), List.of()));
+        return resolvePropertyIds(propertiesByName, scope, path, errors);
     }
 
     private Map<UUID, Object> resolveLinkPropertyIds(UUID linkTypeId, Map<String, Object> propertiesByName, String path, List<ValidationError> errors) {
-        Map<String, AdminPropertyDefinitionView> nameToProperty = schemaManager.getAdminSchema().links().stream()
+        Scope scope = schemaManager.getAdminSchema().links().stream()
                 .filter(link -> link.id().equals(linkTypeId))
                 .findFirst()
-                .map(link -> link.properties().stream()
-                        .collect(Collectors.toMap(AdminPropertyDefinitionView::name, p -> p)))
-                .orElse(Map.of());
-        return resolvePropertyIds(propertiesByName, nameToProperty, path, errors);
+                .map(link -> Scope.of(link.properties(), link.groups()))
+                .orElse(Scope.of(List.of(), List.of()));
+        return resolvePropertyIds(propertiesByName, scope, path, errors);
     }
 
-    private Map<UUID, Object> resolvePropertyIds(Map<String, Object> propertiesByName, Map<String, AdminPropertyDefinitionView> nameToProperty,
-                                                  String path, List<ValidationError> errors) {
+    private Map<UUID, Object> resolvePropertyIds(Map<String, Object> propertiesByName, Scope scope, String path, List<ValidationError> errors) {
         Map<UUID, Object> byId = new HashMap<>();
         if (propertiesByName == null) return byId;
         propertiesByName.forEach((name, value) -> {
-            AdminPropertyDefinitionView property = nameToProperty.get(name);
-            if (property == null) {
-                errors.add(new ValidationError(path + "." + name, "Unknown property: " + name));
+            String childPath = path + "." + name;
+            AdminPropertyGroupView group = scope.groups().get(name);
+            if (group != null) {
+                resolveGroupValue(childPath, group, value, byId, errors);
                 return;
             }
-            // OBJECT properties are intercepted here, one level above validatePropertyValue --
-            // unlike every other type, resolving one doesn't produce a single id->value entry, it
-            // recurses and flattens into potentially many leaf entries (or, for null, an entire
-            // subtree of them), so it can't share the single-put path below.
-            if (property instanceof ObjectAdminPropertyDefinitionView objectProperty) {
-                resolveObjectPropertyValue(path + "." + name, objectProperty, value, byId, errors);
+            AdminPropertyDefinitionView property = scope.properties().get(name);
+            if (property == null) {
+                errors.add(new ValidationError(childPath, "Unknown property: " + name));
                 return;
             }
             // null is the update-diff "clear this property" sentinel -- never type-checked.
@@ -321,7 +327,7 @@ public class MutationRequestProcessor {
                 return;
             }
             int before = errors.size();
-            validatePropertyValue(path + "." + name, property, value, errors);
+            validatePropertyValue(childPath, property, value, errors);
             if (errors.size() == before) {
                 byId.put(property.id(), value);
             }
@@ -329,41 +335,27 @@ public class MutationRequestProcessor {
         return byId;
     }
 
-    // Recurses into an OBJECT property's nested payload, resolving each child name against the
-    // property's *own* children -- not the container's list -- which is what lets two properties
-    // named the same thing coexist under different object properties: the JSON nesting itself
-    // scopes the lookup, same as any nested JSON disambiguates same-named keys by which object
-    // they're inside. A bare `null` wipes the entire subtree: every leaf currently under this
-    // object property per the *live* schema (not just whatever the client happened to list) gets
-    // cleared, since a client can't be expected to enumerate a container's full current shape.
-    private void resolveObjectPropertyValue(String path, ObjectAdminPropertyDefinitionView objectProperty, Object value,
-                                             Map<UUID, Object> byId, List<ValidationError> errors) {
+    // A group is structure, not a value: its payload is a nested object whose keys are resolved
+    // against the group's *own* children, which is what lets two properties named the same thing
+    // coexist under different groups -- the JSON nesting scopes the lookup. There is deliberately no
+    // way to write to the group itself, so null (which would mean "clear everything under it") is a
+    // validation error; clear the leaves you mean to clear.
+    private void resolveGroupValue(String path, AdminPropertyGroupView group, Object value,
+                                   Map<UUID, Object> byId, List<ValidationError> errors) {
         if (value == null) {
-            nullAllLeaves(objectProperty.properties(), byId);
+            errors.add(new ValidationError(path, PROPERTY_QUOTE_PREFIX + group.name() + "' is a property group and cannot be set to null; clear its properties individually"));
             return;
         }
         if (!(value instanceof Map<?, ?> rawMap)) {
-            errors.add(new ValidationError(path, PROPERTY_QUOTE_PREFIX + objectProperty.name() + "' expects an object value but got: " + describeValue(value)));
+            errors.add(new ValidationError(path, PROPERTY_QUOTE_PREFIX + group.name() + "' is a property group and expects an object value but got: " + describeValue(value)));
             return;
         }
-        Map<String, AdminPropertyDefinitionView> childNameToProperty = objectProperty.properties().stream()
-                .collect(Collectors.toMap(AdminPropertyDefinitionView::name, p -> p));
         // JSON object keys are always strings -- Jackson never produces anything else when binding
         // a JSON object into a Map<String, Object>-typed field, the same assumption the top-level
         // ItemCreateMutation/ItemUpdateMutation properties maps already rely on.
         @SuppressWarnings("unchecked")
-        Map<String, Object> nestedProperties = (Map<String, Object>) rawMap;
-        byId.putAll(resolvePropertyIds(nestedProperties, childNameToProperty, path, errors));
-    }
-
-    private void nullAllLeaves(List<AdminPropertyDefinitionView> properties, Map<UUID, Object> byId) {
-        for (AdminPropertyDefinitionView p : properties) {
-            if (p instanceof ObjectAdminPropertyDefinitionView o) {
-                nullAllLeaves(o.properties(), byId);
-            } else {
-                byId.put(p.id(), null);
-            }
-        }
+        Map<String, Object> nested = (Map<String, Object>) rawMap;
+        byId.putAll(resolvePropertyIds(nested, Scope.of(group.properties(), group.groups()), path, errors));
     }
 
     private void validatePropertyValue(String path, AdminPropertyDefinitionView property, Object value, List<ValidationError> errors) {
@@ -419,7 +411,6 @@ public class MutationRequestProcessor {
             case LONG -> value instanceof Integer || value instanceof Long;
             case DOUBLE -> value instanceof Double || value instanceof Integer || value instanceof Long;
             case BOOLEAN -> value instanceof Boolean;
-            case OBJECT -> false; // handled by resolvePropertyIds/resolveObjectPropertyValue before reaching here
             case DATE -> value instanceof String s && isValidDate(s);
             case DATETIME -> value instanceof String s && isValidDateTime(s);
             case BINARY -> false; // handled by the caller before reaching here

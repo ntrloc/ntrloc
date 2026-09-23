@@ -48,7 +48,7 @@ class UserAdminControllerIntegrationTest extends AbstractIntegrationTest {
     // --- Create ---
 
     @Test
-    void createUser_asAdmin_createsAUserWithCredentialsAndDefaultGroupMembership() {
+    void createUser_asAdmin_createsAUserWithCredentialsAndDefaultUserGroupMembership() {
         String externalId = "user-" + UUID.randomUUID();
 
         webTestClient.post().uri("/api/admin/users")
@@ -64,7 +64,7 @@ class UserAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
         var user = securityRepo.findUserByExternalId(externalId).orElseThrow();
         assertThat(securityRepo.findCredentialsByEmail(externalId)).isPresent();
-        assertThat(securityRepo.getGroupsForUser(user.id())).extracting(g -> g.name()).contains("everyone");
+        assertThat(securityRepo.getUserGroupsForUser(user.id())).extracting(g -> g.name()).contains("everyone");
     }
 
     @Test

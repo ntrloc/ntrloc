@@ -71,7 +71,7 @@ public class PersonalAccessTokenService {
         return repo.findUserByValidTokenHash(hash(rawToken))
                 .map(user -> new ResolvedPrincipal(
                         user.id(), user.externalId(), user.displayName(), user.email(),
-                        repo.getGroupIdsForUser(user.id()), user.isSuperuser()));
+                        repo.getUserGroupIdsForUser(user.id()), user.isSuperuser()));
     }
 
     private static String generateToken() {

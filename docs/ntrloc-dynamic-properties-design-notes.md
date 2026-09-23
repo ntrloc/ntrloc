@@ -296,10 +296,14 @@ type; later mismatched values are still stored (JSONB doesn't care) and sort fal
 scalar-vs-group conflict at one path keeps the first shape and skips the conflicting value with a
 logged warning rather than failing the whole mutation.
 
-**Display names are API keys.** Consequence: display names must satisfy the same grammar as static
-names (paths are dot-addressed in sort/filter/facet requests), and sibling display names must be
-unique, including against unlabeled siblings' raw names, or keys merge silently. Renaming a display
-name changes the response shape clients see — accepted.
+**Display names are API keys.** Sibling display names must be unique, including against
+unlabeled siblings' raw names, or keys merge silently. Renaming a display name changes the response
+shape clients see — accepted. **Decided (2026-09-19): path strings gain quoted segments**, so a
+display name like "EXIF Metadata" is addressable in sort/filter/facet requests as
+`intrinsicMetadata."EXIF Metadata"."Camera Model"`. Plain segments keep today's grammar
+(`SAFE_FIELD_NAME`, `RegisterPartitionManager.java:212`); quoting is only needed for segments that
+don't fit it, so static names are unaffected. Only ids reach SQL after resolution, so quoting doesn't
+weaken the injection guard.
 
 **Writability (decided 2026-09-19): dynamic properties are not user-mutable.** Values are facts
 about the file's bytes, and a human edit would be overwritten by the next re-extraction —
@@ -373,30 +377,399 @@ by construction — that asymmetry is the gap being filled, not a general "autom
 - Dynamic properties are not user-mutable (§6).
 - Admins will mark dynamic properties facetable, per property, later; no facet discovery (§6).
 - Dynamic registry cleanup is deferred.
+- Path strings gain quoted segments for display names (§6).
+- Projections carry two separate elements: `properties` (bounded, returned by default) and
+  `dynamicProperties` (unbounded, returned only when explicitly requested).
+- The advisory `edit` tree keeps its nested shape; `objects` is renamed `groups`, trait namespaces
+  appear as group nodes, and dynamic properties never appear (read-only).
+- Decision/process/state-machine inputs and outputs get an id-based mapping layer, insulating them
+  from property/group/trait name changes. Built right after the schema rework, not during it.
+- Type-conflict and normalization defaults (§6) are adopted as written, to be refined in practice.
 
 ## Open questions
 
-1. **Display-name grammar.** Query-side field names must match `SAFE_FIELD_NAME`
-   (`^[a-zA-Z]\w*+(?:\.[a-zA-Z]\w*+)*+$`, `RegisterPartitionManager.java:212`) — a letter then
-   word characters, dot-separated — so a display name like "EXIF Metadata" or "Camera Model" cannot
-   currently be addressed in a sort, filter, or facet request. Options: restrict display names to
-   the grammar (with a separate free-form UI label), add quoted segments to the path syntax, or an
-   explicit array form for paths. May affect static properties too.
-2. **Payload size.** Projections return every readable property today (no property selection on
-   `CollectionProjectionSpec`); a photo with hundreds of dynamic leaves would bloat every list
-   response. Proposal: dynamic roots are omitted from projections unless the request names them.
-3. **Name-addressed consumers.** Marker-rule DMN tables receive `propertiesByName`; state-machine
-   conditions and BPMN scripts also address properties by name. Principle agreed: these must work
-   against property *ids* through an explicit input/output mapping, not names. Mechanism not yet
-   designed.
-4. **The advisory `edit` tree** (`ProjectedItemPermissions`, `scalars`/`objects` keys) needs to
-   express groups and trait namespaces. Proposal: keep the nested shape (an earlier design comment
-   deliberately rejected a flat dotted-path list) and rename `objects` to `groups`.
-5. **Bags of structures in dynamic data** (§6) — exact modeling still to be worked out.
-6. **Type-conflict and normalization defaults (§6) are provisional** — adopted as written, to be
-   refined in practice.
-7. **Write enforcement on mutations** (deferred, see above): `MutationRequestProcessor`'s header
+1. **Shape details for `dynamicProperties`** (proposed, not yet agreed):
+   - Dynamic roots are owned only by item types and traits (not static groups) and appear as
+     top-level keys of `dynamicProperties`, trait-namespaced like everything else
+     (`dynamicProperties.Media.intrinsicMetadata…`). Allowing a root inside a static group would
+     force `dynamicProperties` to mirror the static group path as a prefix.
+   - A request names what it wants by path — a root, any dynamic group, or a single property — so
+     a client can take `exif` without `xmp`. Permission filtering applies as usual.
+   - Sort/filter/facet field paths mirror the response shape (`dynamicProperties.…` prefix), and
+     `dynamicProperties` becomes a reserved top-level name. That keeps the two namespaces fully
+     independent: no cross-collision rule between dynamic roots and static names, and the resolver
+     dispatches on the first segment.
+2. **Bags of structures in dynamic data** (§6) — exact modeling still to be worked out.
+3. **Write enforcement on mutations** (deferred, see above): `MutationRequestProcessor`'s header
    says "Permission checks are a separate, not-yet-built component (Section 12)"; the principal is
    attribution-only, and write grants only feed the advisory `edit` tree. When built, it must run
    after name/group resolution so every leaf is checked individually, and a failing leaf should
    reject the whole mutation.
+
+## Implementation checkpoint: static schema rework (backend done)
+
+Backend of the static schema rework is implemented in `domain-graph-starter` and the full suite is green (715 tests). Frontends (admin-ui schema editor, DAM) are not yet updated.
+
+Answers folded in from the last round of questions:
+- A projection scoped by `traitName` uses plain property names for sort/filter/facet (relative to the trait). Not yet built: it belongs with the projection work.
+- `PropertyGroup` is the term for the structural node. The security `Group` is renamed `UserGroup`
+  (done 2026-09-19: table, Java types/methods, REST paths, the `'GROUP'` → `'USER_GROUP'` principal
+  type, and the admin-ui labels; process groups and property groups were deliberately left alone).
+- All 18 migrations are folded into one baseline (`V1_0_0_1__baseline.sql`); the Flyway upgrade test is retired.
+
+As built:
+- Every property and group has exactly one parent, held as parent columns with a CHECK. Sibling names are unique across properties and groups, app-enforced, including the supertype chain in both directions and the names of implemented traits.
+- A trait's contributions appear on an item type as a namespace group named for the trait (`traitNamespace = true`); its link perspectives are keyed `TraitName.perspective`.
+- Mutation payloads address groups by JSON nesting. `null` on a group is a validation error; there is no bulk clear.
+- A group with any contents cannot be deleted. Deleting an item/trait/link cascades through the FKs.
+- The advisory `edit` tree uses `{scalars, groups}` (was `objects`).
+- Link perspective calculated views carry only a link's own properties; link-owned groups reach clients through the admin schema.
+
+---
+
+## 8. Binaries: content vs. file, and why a binary's own facts need no grants (2026-09-22)
+
+Prompted by revisiting an earlier, dismissed suggestion (store EXIF/IPTC in `binary_content.metadata`,
+a JSONB column that already exists — `V1_0_0_1__baseline.sql` — but that nothing has ever written; the
+projection path already reads it if present, so it's a wired-but-empty capability today, not a gap to
+build). The conversation that followed sharpened *why* it's a better fit than it first looked, and
+where its edges are.
+
+**Where binaries came from.** Not designed as a property type from the start — began as pure
+deduplication (`binary_content` keyed by `sha256`, so identical bytes are stored once). The property
+type came later, once it became clear a **binary is not a file**. A binary is the intrinsic *content*
+— the bytes, identified by their hash. A file is a name (or path, or whatever) used to work with that
+content. The File trait already reflects the split: `File.content` is the binary, `File.name` is the
+file. This split is also why item-scoped storage (`register_binary_property`) is separate from
+content-scoped storage (`binary_content`, unique on `sha256`) — two items referencing the same bytes
+share one content row.
+
+**The disclosure test.** A fact belongs on `binary_content.metadata` only if it reveals nothing beyond
+what's already recoverable from the bytes themselves: hashes, length, MIME type, EXIF/IPTC/XMP,
+ffprobe output. Anything that adds information *not* derivable from the bytes alone — ML-generated
+tags, GPS coordinates geocoded to a street address, moderation scores, OCR run through a model with
+outside knowledge — is extrinsic and does not belong there; it remains a candidate for governed
+(static or dynamic) properties, with their own grants, editing and history.
+
+**Why this needs no grants of its own.** The atomic permission primitive is marker → leaf → read/write
+(§7) — and a binary already *is* a leaf, the one property type whose value is itself structured
+(hash, length, MIME type, and now derived metadata) without being a container of separately-addressable,
+separately-grantable children. Intrinsic facts about a binary's content require no grant beyond the
+binary property's own `can_read`: if a principal can read the property, they can already fetch the raw
+bytes and derive every intrinsic fact from them directly — the hash, the length, the EXIF. A grant on
+any individual fact would be enforcing something already unenforceable. This is *read implies all
+intrinsic facts*, and it is what makes a binary's structure safe in a way an old-style OBJECT property's
+structure never was: object properties were removed because their children needed independent grants
+(§4); a binary's "children" don't, because none of them are extrinsic. This also means intrinsic
+metadata is never user-supplied and never user-editable — it can only be produced from the bytes — so
+the object-property read/write asymmetry question doesn't arise for it either.
+
+**Redaction stays consistent.** If a lower-privileged principal should see a version stripped of GPS or
+other sensitive EXIF, that's a *different binary* — a rendition, its own `binary_content` row with its
+own hash and its own (stripped) metadata — never a permission-filtered view of the same row. A
+principal who can read the original binary sees the original's full metadata; there's nothing to grant
+or hide within one binary's facts.
+
+**The size/sort gap this surfaced, built.** Prompted by a concrete DAM need — "find photos with content
+length between 1MB and 6MB," "sort photos by content length." Sort is built (filter/facet on binary
+attributes are not — still deliberately deferred, see below); a property path may now continue past a
+BINARY leaf into its metadata, resolved via a scalar subquery through `register_binary_property` →
+`binary_content` (safe because binary cardinality is always SINGLE), NULL for an item with no binary set,
+feeding the same NULLS-LAST sort/typed-cast machinery every other scalar sort already uses.
+
+The path grammar went through a correction once it was actually used. First built as a shortcut —
+`File.content.length` — reading straight from `binary_content.metadata` under the hood but naming a
+shorter path than the response itself uses (`assembleBinaryValue` returns `content.metadata.length`, not
+`content.length` — see below). Flagged as inelegant: a client has to remember two different paths for the
+same value, one to read it out of a response, another to sort by it, with no rule connecting them.
+**Corrected:** the sort path is exactly the response path — `File.content.metadata.length`, walking the
+JSON the same number of levels the path names (`bc.metadata->>'length'` for one level, a future
+`bc.metadata->'hashes'->>'sha256'` for two). No shortcut form exists; `File.content.length` is now a
+rejection, on purpose, so the address-what-you-see invariant every other property path already had holds
+here too. This is also what lets `File.content.metadata.extracted.exif.Make` resolve through the exact
+same mechanism once EXIF lands, rather than a separate one just for `length` (see "Storage shape,
+decided" below for why the extracted-metadata key is named `extracted`, not `metadata` — avoiding
+exactly the redundant `metadata.metadata` this note used to describe).
+
+A second asymmetry surfaced right behind the first: an ordinary property's sort cast is chosen from its
+own declared `PropertyType` (`typedSortExpression`) — why would a binary attribute's cast be hardcoded
+instead of type-directed the same way? It shouldn't, and now isn't: `BINARY_METADATA_PATH_TYPES` maps
+each recognized metadata path to the `PropertyType` its value should be treated as (`["length"] ->
+PropertyType.LONG` today), and both cases share one cast dispatch (`castedText`), just sourced from a
+different place — a real `schema_property` row for ordinary properties, a fixed map for binary attributes,
+since the latter have no schema row to read a type from.
+
+**Permission enforcement at filter/sort/facet time (scope widened).** Filters and sorts today check
+only item-level read; property-level read is applied afterward, by redacting already-fetched *results*
+(§7, "Two grant join tables"; `filterPropertiesByReadGrant`) — so a principal can already filter or sort
+on a property whose value they're not permitted to see, a pre-existing gap not specific to binaries.
+Binaries sharpen it into something worse: an equality filter on `sha256` becomes an existence oracle —
+"does this exact file exist in the system?", answerable by someone who cannot read the property at all.
+**Decided:** filter/sort/facet must be brought in line with property-level read grants generally, not
+just for binaries — this is now a second, related item alongside write enforcement on mutations (§7,
+open question 3), tracked together since both are "permission checks MutationRequestProcessor's /
+RegisterPartitionManager's own comments already flag as not-yet-built." Binary attribute filters/sorts
+specifically must require the *binary property's own* read grant (not just item-level read), precisely
+because of the oracle risk.
+
+**What this means for the larger dynamic-properties design.** Not a replacement for it — dynamic roots,
+groups and properties are still needed, for different reasons (governed/extrinsic/curated data, not
+intrinsic content facts) — but likely a significant *scope reduction*. If most of what a DAM actually
+wants from "dynamic properties" turns out to be intrinsic (EXIF, IPTC, XMP, dimensions, codec,
+duration), binary metadata absorbs that whole category on its own, permission-free, without touching
+the schema. What's left for the dynamic-properties machinery proper is the smaller, harder-to-avoid
+part: extrinsic, curated, user-editable, individually-permissioned facts.
+
+**Storage shape, decided.** `binary_content` keeps `sha256`, `md5` and `length` as real, `NOT NULL`
+columns — not folded into `metadata` — because they're not purely descriptive: the storage layer
+(`BlockDeviceBinaryStorageAdapter.permanentRelativePath`) already places a file on disk by `sha256` *and*
+`md5` together, so the DB's uniqueness has to match that or the two layers can disagree about what "the
+same content" means. It already did: the original schema had `sha256` alone as the unique key, so a
+`sha256` match with a `md5` mismatch — extremely unlikely under correct hashing, but exactly the failure
+mode worth defending against — would have let the DB silently conflate two different uploads under one
+id while the storage layer wrote them to two different files, orphaning the second one permanently.
+**Decided:** `UNIQUE (sha256, md5, length)`, `ON CONFLICT (sha256, md5, length) DO UPDATE ...`, replacing
+the single-column constraint. `length` earns its place in the key the same way `md5` does — not for
+cryptographic strength (an attacker who can't forge a `sha256` collision gains nothing from also matching
+a weaker hash), but because it's computed by an entirely independent code path (a filesystem stat after
+the write closes, versus a running digest during the write) and so catches our own hashing bugs, which
+are far likelier than an actual break.
+
+**The storage layer has to grow to match, not just the DB.** `permanentRelativePath`/`openReader` are
+still keyed on `(sha256, md5)` alone. Left that way, two rows differing only in `length` — the exact
+scenario the three-column key exists to catch — would resolve to the *same* file on disk: the second
+`close()` would see the first upload's path already occupied, treat itself as a duplicate, and silently
+discard its own (different) bytes, while its DB row's `openReader(sha256, md5)` would then hand back the
+*first* upload's content. That's worse than the original gap, not just incomplete — the DB would
+correctly record two distinct binaries while storage silently serves one of them the wrong bytes.
+**Decided:** `permanentRelativePath` and `openReader` both take `length` as a third key component,
+alongside `sha256` and `md5`, so the two layers can't diverge in either direction again.
+
+`mime_type` has no role in the constraint but is treated the same way as the other three for a different
+reason: `sha256`, `md5`, `length` and `mimeType` are *all* duplicated — kept as real columns **and**
+mirrored into `metadata` — so that every intrinsic fact about a binary is reachable through one uniform
+mechanism (`metadata`, resolved the same way `File.content.metadata.extracted.exif.Make` eventually will be), while
+the real columns stay authoritative for the handful of typed, functional reads that want them directly:
+locating the file (`openReader(sha256, md5)`), the ETag header, `Content-Length`. This duplication is
+safe specifically because these four values are write-once — computed synchronously during upload,
+written in the same `INSERT` as the row itself, and `binary_content` rows are never updated after that.
+There is no path by which a column and its `metadata` copy can drift, because there is no second write to
+either.
+
+That safety argument does **not** extend to the nested `metadata` key (see "Still open," below) — it
+comes from the media processor, asynchronously, after the row already exists, so writing it is
+unavoidably a *second* write to the column, from a different process, at a different time. **Revised
+2026-09-22, later the same day:** the first pass wrote this key as `embedded`, holding a
+hand-curated, per-kind grouping (`{"exif": {...}, "iptc": {...}}`) built from a hardcoded
+allowlist (a `MetadataKind` proto enum). That model needed a proto-and-code change every time a new
+category of file fact turned out to matter — it happened once in practice (adding JPEG's own
+technical properties), and a second real test photo immediately surfaced a category (`colorspace`,
+`geometry`, ...) that isn't reachable by extending the allowlist at all, because it lives in a
+structurally different part of the media processor's own output. **Decided:** invert the model —
+the processor now returns (almost) everything it can tell about the file, admin-configurable
+exclusion (`media-processor.metadata.exclude`, on the processor's own deployment config) trims what
+a given installation doesn't want, shipped with reasonable defaults. The key holding this result is
+renamed `embedded` → `metadata` (yes, nested inside `binary_content.metadata` itself — considered
+and rejected the idea that this needs to be disambiguated further; there's no real ambiguity once
+you're looking at the actual column). The per-request `MetadataKind`/`kinds` selection is retired
+entirely, wire and all — nothing ever used it non-empty, and narrowing what comes back is now an
+operator decision, not a caller one; a caller wanting custom post-processing beyond the built-in
+exclusion does so downstream (BPMN/delegate), not via new gRPC surface. The write is still whole-key
+replace, not a merge — still correct for this pass because ImageMagick is the only producer; the
+merge-not-replace concern below is about two *independent* producers, not yet a real scenario. (The
+exact key name and write mechanism below changed again the same day — see the next "Revised" note.)
+
+Final shape:
+```json
+{
+  "length": 1234563445,
+  "mimeType": "image/jpeg",
+  "hashes": { "sha256": "...", "md5": "..." },
+  "extracted": {
+    "colorspace": "sRGB",
+    "geometry": { "width": 1024, "height": 768, "x": 0, "y": 0 },
+    "depth": 8,
+    "compression": "JPEG",
+    "quality": 94,
+    "properties": {
+      "exif": { "Make": "Apple", "...": "..." },
+      "icc":  { "description": "Display P3", "...": "..." },
+      "jpeg": { "colorspace": "2", "sampling-factor": "2x2,1x1,1x1" }
+    }
+  },
+  "derived": {
+    "location": { "latitude": 33.782833, "longitude": -84.392333 }
+  }
+}
+```
+Top-level image characteristics (`colorspace`, `geometry`, `depth`, ...) pass through close to
+verbatim from the processor's own output — no separate "technical" wrapper invented for them. Only
+`properties` (the flat, colon-namespaced metadata bag — `exif:Make`, `jpeg:colorspace`, etc.) is
+reshaped, generically, into a nested tree keyed by namespace (split on each key's first colon; a
+colon-less key like `signature` would be a bare leaf, were it not excluded by default — see
+`ntrloc-media-processor`'s own `application.yml` for the full default exclusion list and reasoning).
+
+**Revised 2026-09-22, later again: `extracted`/`derived` split.** EXIF's own GPS representation
+(`GPSLatitude`/`GPSLongitude` as three comma-separated degrees/minutes/seconds rationals, plus
+separate `GPSLatitudeRef`/`GPSLongitudeRef` hemisphere tags — e.g. `"33/1,4697/100,0/1"` + `"N"`)
+turned out to be a concrete, motivating case for a distinction that had been implicit until now:
+some values genuinely are just "what the file says," passed through unmodified — the whole
+`extracted` object above — while others are *computed* from that raw data, not reported directly by
+anything. GPS is exactly the latter: four separate raw tags combined into one portable,
+decimal-degree coordinate. Decided: `ImageOperations.extractMetadata` now returns two sibling
+top-level objects, `extracted` (unchanged from above) and `derived` (currently just `location`,
+computed by `ImageOperations.deriveLocation`/`parseGpsCoordinate` — `null`/absent rather than a
+partial result if any of the four GPS tags is missing or malformed). Both land as top-level keys in
+`binary_content.metadata` directly (`ExtractBinaryMetadataDelegate` merges the whole response in
+with a shallow `metadata = metadata || :response::jsonb`, rather than nesting it under a further key
+— the response is already shaped exactly like the two keys that belong there). First tried naming
+these `metadata`/`derivedMetadata`, then caught: the column they get merged into is *itself* called
+`metadata`, so a key called `metadata` inside it reads back as the redundant `metadata.metadata`.
+`extracted`/`derived` sidestep that entirely, and read naturally as full paths too —
+`File.content.metadata.extracted.exif.Make`. `exclude` (the deployment's own config) applies only to
+`extracted`; `derived` isn't part of the generic passthrough surface it governs. Decimal degrees, not
+ISO 6709 — ISO 6709 is a string *display/interchange* format; storing it would mean re-parsing a
+string every time anything downstream (a proximity query, a map widget) needs to actually use the
+value, which is exactly the "not system-friendly" problem this exists to fix. Plain
+`{latitude, longitude}` numbers map directly
+onto what PostGIS/GeoJSON/every mapping API already expects.
+
+Deliberately out of scope for this pass: actual proximity search ("photos within 10 miles of this
+one"). Having a clean decimal coordinate doesn't provide that by itself — it needs its own indexed
+column on `binary_content` (PostGIS `geography(Point,4326)` + `ST_DWithin`, or plain
+`latitude`/`longitude` columns with a bounding-box-plus-Haversine fallback — a real infrastructure
+decision, not yet made) and a genuinely new kind of filter predicate (everything the sort/filter
+machinery does today is equality/range on a scalar; "within N miles" is a spatial predicate, a
+different shape of thing, on top of filter/facet on binary attributes not existing yet at all — see
+the "still open" items above). Its own design conversation when it's next in scope.
+
+`length` (not `size`) is deliberate — "size" invites reading this as *file* size, and a binary is
+explicitly not a file (see "Where binaries came from," above). `mimeType` (not `mime_type`) matches what
+the projection already returns and what the DAM frontend already reads (`SearchResultModel.js`) — the
+stored key and the response key are meant to be identical, so the response can be assembled by spreading
+`metadata` directly rather than translating field names.
+
+**Still open, not yet decided:**
+- Is binary metadata a *cache* (freely re-extracted and overwritten whenever the extractor improves) or
+  a *record* (preserved once written, changed only by explicit re-processing)? This turns out to gate a
+  concrete, unavoidable problem, not just a someday question: because binaries dedup on identical bytes,
+  two uploads of the same file can each trigger their own async extraction job against the *same*
+  `binary_content` row, racing to write `metadata.extracted`/`metadata.derived`. Nothing decided so far says what should
+  happen — last-write-wins, first-write-wins with the second a no-op, or a guard that only extracts when
+  the key is still absent. **Owner's read:** the correct answer likely points toward a generalized
+  job-tracking subsystem (has extraction already run, or started, for this content?) — deliberately not
+  being tackled now. Whatever ships first for this key should be the smallest thing that doesn't
+  corrupt data under the race, not a preview of that subsystem.
+- Exact exposed attribute set for the `File.content.metadata.<path>` continuation — `length` is built;
+  `mimeType`, `hashes.sha256`, `hashes.md5` are settled in shape (see "Storage shape," above) but not
+  yet wired into `BINARY_METADATA_PATH_TYPES`. `metadata.<path>` (the extracted-metadata subtree) is
+  now *deliberately* open-ended, both per format and per deployment's own exclusion config — not a gap
+  to close, the actual design (see the "Revised 2026-09-22" note above).
+- Filtering and faceting on binary attributes — same mechanism as sort, not yet extended to
+  `translatePredicate`/`buildTermsFacetFilterFragment`, nor to the cross-type projection path
+  (`orderByClauseAcrossTypes`). All still resolve an unqualified `File.content...` path the old way
+  (a real schema property or nothing) and reject a binary-attribute path outright.
+
+**Built, end to end (DAM).** `assembleBinaryValue` returns `{id, url, metadata}` for a binary value —
+no top-level `sha256`/`md5`/`mimeType`/`length` siblings duplicating what's already in `metadata`; the
+response and the sort/filter addressing scheme now agree on where every fact lives. The DAM's Search
+view shows each result's file size and offers a three-way sort control (default / smallest first /
+largest first) against `File.content.metadata.length` — the first real client of any of this.
+- Link perspective calculated views carry only a link's own properties; link-owned groups reach clients through the admin schema.
+
+---
+
+## 9. Media processor integration: first pass (2026-09-22)
+
+Scope for the first working slice of automatic metadata extraction, deliberately small — event-driven,
+async, content-scoped, and nothing more. Recorded before building it so "what's in this pass" doesn't
+drift as it's refined later.
+
+**In scope:**
+- A new event, `BinaryContentEvent.Created(UUID binaryContentId)` (mirroring the existing
+  `SchemaChangeEvent`/`ApplicationEventPublisher` pattern already used by the schema mutation
+  appliers), published from `BinaryPartitionManagerImpl.insert()` — and *only* on a genuine fresh
+  insert, never on a dedup hit. Detected via Postgres's `RETURNING (xmax = 0) AS inserted` on the
+  existing `ON CONFLICT (sha256, md5, length)` upsert, which also means two people uploading
+  identical bytes at the same moment can't both trigger it — Postgres's own row lock during the
+  upsert already gives the single-writer guarantee that would otherwise need a job-tracking
+  subsystem (see §8's "still open" cache-vs-record question, which this doesn't resolve but does
+  shrink).
+- Bound to the binary, never the item type. No "Photo" (or any item type name) appears anywhere in
+  this design — extraction is a property of the content, not of whichever item(s) happen to
+  reference it.
+- One listener translating that event into starting one hardcoded Flowable process definition,
+  passing `binaryContentId` as a process variable.
+- One BPMN process: start event → one service task, marked `flowable:async="true"` → end. No
+  gateways/branching in the process itself.
+- The service task's delegate follows the existing `HelloWorldDelegate` shape (`@Component`,
+  `@ProcessAccessible`, `JavaDelegate`), calls the media processor via the already-wired
+  `ImageProcessorGrpc`/`VideoProcessorGrpc` stubs (`MediaProcessorClientConfiguration`), and merges
+  the whole response's top-level keys straight in (`metadata = metadata || :response::jsonb`) — not
+  the finer-grained per-kind merge §8 originally described; correct for now because ImageMagick is
+  the only producer (see §8's "Revised 2026-09-22" notes for the full reasoning and current shape).
+- "Asynchronous" means Flowable's own async job executor (already running in this app), reached by
+  marking the service task as an async continuation — not Spring's `@Async`/`@EnableAsync`, which
+  this app doesn't use anywhere today and isn't being introduced just for this.
+- "After the creating transaction has committed" comes for free: `insert()`'s `INSERT ... RETURNING
+  id` has no `@Transactional` wrapping it anywhere in the call chain (checked), so it's Postgres's
+  own implicit, already-committed autocommit statement by the time the call returns — publishing the
+  event right after is already "after commit," with no `@TransactionalEventListener` needed.
+- Graceful no-op, not an error, when the binary's `mimeType` isn't something the media processor
+  handles, or `media-processor.url` isn't configured at all (mirrors
+  `MediaProcessorClientConfiguration`'s existing `@ConditionalOnProperty` opt-in).
+
+**Explicitly out of scope, deferred:**
+- Branching by media kind (image vs. video vs. other) inside the BPMN process — for this pass, that
+  dispatch is a plain conditional inside the delegate, not a gateway.
+- IPTC/XMP, or anything beyond the one extraction call the delegate makes.
+- Retry policy or failure handling beyond whatever Flowable's async job executor already does by
+  default.
+- Re-processing/idempotency story (rerun extraction after an extractor upgrade, etc.) — still the
+  open cache-vs-record question from §8, not resolved by this pass.
+- Any admin-ui/DAM-facing visibility into extraction status ("processing…", failures, etc.).
+- Filtering/faceting/sorting on any extracted field — `BINARY_METADATA_PATH_TYPES` isn't extended by
+  this pass; that's a separate, later step per extracted field, same as `mimeType`/`hashes.*` already
+  are for the intrinsic facts.
+
+**Verified live (2026-09-22):** end to end against a real running `ntrloc-media-processor`, with a
+real photo carrying genuine EXIF (Make/Model/GPS/DateTimeOriginal/etc.) — uploaded through the DAM
+UI, confirmed in Postgres that `binary_content.metadata->'embedded'->'exif'` held the real extracted
+values, not synthetic test data.
+
+**Found and closed a scope gap, same day:** a real-world photo carried ImageMagick properties outside
+the four `MetadataKind`s this pass shipped with — `jpeg:colorspace`/`jpeg:sampling-factor` (JPEG
+codec-level technical parameters), `date:create`/`date:modify`/`date:timestamp`, and `signature`.
+Decision, per discussion:
+- **`jpeg:*` — added.** New `METADATA_KIND_JPEG` value in `media_processor.proto`, prefix `jpeg:`,
+  included in `ImageOperations.extractMetadata`'s default "everything" list alongside exif/icc/iptc/
+  xmp. These are intrinsic, portable facts about the JPEG format itself — any JPEG decoder reports
+  the same values — same category as EXIF/IPTC, just a different standard. No `domain-graph-starter`
+  change was needed: the delegate already requests the empty/"everything" kind list and writes back
+  whatever JSON comes back wholesale, so a new server-side kind flows through automatically.
+- **`date:*` — deliberately excluded, not deferred.** These are ImageMagick's read of the *temp
+  file's own OS timestamps* from processing (the delegate always operates against a fresh temp file),
+  not anything about the photo's history — noise, not signal, in this pipeline. The real capture date
+  is already captured correctly as `exif:DateTimeOriginal`.
+- **`signature` — deliberately excluded, not deferred.** ImageMagick's own proprietary pixel-content
+  hash — categorically different from `hashes.sha256`/`hashes.md5` (byte-level, portable) and tied to
+  this one processor implementation. Decided against baking an ImageMagick-specific concept into the
+  stored shape, since the processor is swappable in principle.
+
+**Revised again, later the same day: kind curation replaced with generic passthrough +
+admin-configurable exclusion.** A *second* real test photo immediately surfaced another category —
+`colorspace`, `geometry`, `depth`, etc. — that isn't reachable by extending the `jpeg:`-style prefix
+map at all, because it lives in a structurally different part of the media processor's own output
+(top-level image attributes, not the flat properties bag `jpeg:`/`exif:`/etc. all share). Rather than
+keep chasing categories one at a time, the model inverted: `ImageOperations.extractMetadata` now
+captures (almost) everything the processor can tell about a file — every top-level image attribute
+passed through close to verbatim, plus the properties bag reshaped generically into a nested tree
+(split on each key's first colon, no hardcoded namespace list) — trimmed by an admin-configurable
+exclusion list (`media-processor.metadata.exclude`, deployment config on the processor itself, not a
+per-request field), shipped with reasonable defaults (processing-run noise like `userTime`/`version`/
+`name`, plus the already-decided `properties.date`/`properties.signature`). The `MetadataKind` enum
+and `ExtractMetadata.kinds` field are retired from the proto entirely — nothing ever used `kinds`
+non-empty, and per-request narrowing is superseded by the exclusion config; a caller wanting custom
+post-processing beyond that does so downstream (BPMN/delegate), not via new gRPC surface. See §8's
+own "Revised 2026-09-22" note for the storage-side half of this (the `embedded` key renamed to
+`metadata`) and the current final JSON shape.

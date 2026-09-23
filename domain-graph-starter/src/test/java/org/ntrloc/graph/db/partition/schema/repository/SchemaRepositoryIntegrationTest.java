@@ -3,6 +3,7 @@ package org.ntrloc.graph.db.partition.schema.repository;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
+import org.ntrloc.graph.db.partition.schema.definition.PropertyContainerKind;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyUsage;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyDefinitionView;
@@ -91,12 +92,21 @@ class SchemaRepositoryIntegrationTest extends AbstractIntegrationTest {
         assertThat(schemaRepo.getTraitIdsByItem().getOrDefault(item.id(), java.util.List.of())).doesNotContain(trait.id());
     }
 
-    // --- Properties ---
+    // --- Properties and groups ---
+
+    private SchemaRepository.PropertyOwnerRef itemRef(java.util.UUID id) {
+        return new SchemaRepository.PropertyOwnerRef(PropertyContainerKind.ITEM, id);
+    }
+
+    private AdminPropertyDefinitionView newProperty(SchemaRepository.PropertyOwnerRef parent, String prefix) {
+        return schemaRepo.createProperty(parent, prefix + UUID.randomUUID(), "d",
+                PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false);
+    }
 
     @Test
     void updateProperty_persistsChanges() {
-        var property = schemaRepo.createProperty("Prop-" + UUID.randomUUID(), "d",
-                PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false);
+        var item = schemaRepo.createItem("Item-" + UUID.randomUUID(), "d");
+        var property = newProperty(itemRef(item.id()), "Prop-");
 
         AdminPropertyDefinitionView updated = schemaRepo.updateProperty(property.id(), "Renamed-" + UUID.randomUUID(),
                 "updated", PropertyType.INT, PropertyCardinality.LIST, PropertyUsage.REQUIRED, false);
@@ -108,38 +118,72 @@ class SchemaRepositoryIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void deleteProperty_removesIt_soAssociatingItAfterwardsIsNoLongerPossible() {
-        var property = schemaRepo.createProperty("Prop-" + UUID.randomUUID(), "d",
-                PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false);
+    void deleteProperty_removesItFromItsParent() {
+        var item = schemaRepo.createItem("Item-" + UUID.randomUUID(), "d");
+        var property = newProperty(itemRef(item.id()), "Prop-");
 
         schemaRepo.deleteProperty(property.id());
 
-        var item = schemaRepo.createItem("Item-" + UUID.randomUUID(), "d");
-        assertThatThrownBy(() -> schemaRepo.associateItemProperty(item.id(), property.id()))
-                .isInstanceOf(RuntimeException.class);
+        assertThat(schemaRepo.findProperty(property.id())).isEmpty();
+        assertThat(schemaRepo.getPropertiesByItem().getOrDefault(item.id(), java.util.List.of()))
+                .extracting(AdminPropertyDefinitionView::id).doesNotContain(property.id());
     }
 
     @Test
-    void associateTraitPropertyAndDissociateItemProperty_updateTheirRespectiveGroupings() {
+    void propertiesAreGroupedUnderTheirSingleParent() {
         var item = schemaRepo.createItem("Item-" + UUID.randomUUID(), "d");
         var trait = schemaRepo.createTrait("Trait-" + UUID.randomUUID(), "d");
-        var itemProperty = schemaRepo.createProperty("ItemProp-" + UUID.randomUUID(), "d",
-                PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false);
-        var traitProperty = schemaRepo.createProperty("TraitProp-" + UUID.randomUUID(), "d",
-                PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false);
-
-        schemaRepo.associateItemProperty(item.id(), itemProperty.id());
-        schemaRepo.associateTraitProperty(trait.id(), traitProperty.id());
+        var itemProperty = newProperty(itemRef(item.id()), "ItemProp-");
+        var traitProperty = newProperty(new SchemaRepository.PropertyOwnerRef(PropertyContainerKind.TRAIT, trait.id()), "TraitProp-");
 
         assertThat(schemaRepo.getPropertiesByTrait().get(trait.id()))
-                .extracting(AdminPropertyDefinitionView::id).contains(traitProperty.id());
+                .extracting(AdminPropertyDefinitionView::id).containsExactly(traitProperty.id());
         assertThat(schemaRepo.getPropertiesByItem().get(item.id()))
-                .extracting(AdminPropertyDefinitionView::id).contains(itemProperty.id());
+                .extracting(AdminPropertyDefinitionView::id).containsExactly(itemProperty.id());
+        assertThat(schemaRepo.findPropertyParent(itemProperty.id()))
+                .hasValue(itemRef(item.id()));
+    }
 
-        schemaRepo.dissociateItemProperty(item.id(), itemProperty.id());
+    @Test
+    void moveProperty_repointsItsSingleParent() {
+        var item = schemaRepo.createItem("Item-" + UUID.randomUUID(), "d");
+        var group = schemaRepo.createGroup(itemRef(item.id()), "group-" + UUID.randomUUID(), "d");
+        var groupRef = new SchemaRepository.PropertyOwnerRef(PropertyContainerKind.GROUP, group.id());
+        var property = newProperty(itemRef(item.id()), "Prop-");
 
+        schemaRepo.moveProperty(property.id(), groupRef);
+
+        assertThat(schemaRepo.findPropertyParent(property.id())).hasValue(groupRef);
         assertThat(schemaRepo.getPropertiesByItem().getOrDefault(item.id(), java.util.List.of()))
-                .extracting(AdminPropertyDefinitionView::id).doesNotContain(itemProperty.id());
+                .extracting(AdminPropertyDefinitionView::id).doesNotContain(property.id());
+        assertThat(schemaRepo.getPropertiesByGroup().get(group.id()))
+                .extracting(AdminPropertyDefinitionView::id).containsExactly(property.id());
+    }
+
+    @Test
+    void groups_nestAndReportEmptiness() {
+        var item = schemaRepo.createItem("Item-" + UUID.randomUUID(), "d");
+        var outer = schemaRepo.createGroup(itemRef(item.id()), "outer-" + UUID.randomUUID(), "d");
+        var outerRef = new SchemaRepository.PropertyOwnerRef(PropertyContainerKind.GROUP, outer.id());
+        assertThat(schemaRepo.isGroupEmpty(outer.id())).isTrue();
+
+        var inner = schemaRepo.createGroup(outerRef, "inner-" + UUID.randomUUID(), "d");
+
+        assertThat(schemaRepo.isGroupEmpty(outer.id())).isFalse();
+        assertThat(schemaRepo.getParentGroupIdByGroup()).containsEntry(inner.id(), outer.id());
+        assertThat(schemaRepo.findChildNames(outerRef)).containsExactly(inner.name());
+    }
+
+    @Test
+    void deletingAnItem_cascadesToItsPropertiesAndGroups() {
+        var item = schemaRepo.createItem("Item-" + UUID.randomUUID(), "d");
+        var group = schemaRepo.createGroup(itemRef(item.id()), "group-" + UUID.randomUUID(), "d");
+        var property = newProperty(new SchemaRepository.PropertyOwnerRef(PropertyContainerKind.GROUP, group.id()), "Prop-");
+
+        schemaRepo.deleteItem(item.id());
+
+        assertThat(schemaRepo.findGroup(group.id())).isEmpty();
+        assertThat(schemaRepo.findProperty(property.id())).isEmpty();
     }
 
     // --- Links ---
@@ -154,18 +198,15 @@ class SchemaRepositoryIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void dissociateLinkProperty_removesTheAssociation() {
+    void deletingALink_cascadesToItsProperties() {
         UUID linkId = schemaRepo.createLink();
-        var property = schemaRepo.createProperty("LinkProp-" + UUID.randomUUID(), "d",
-                PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false);
-        schemaRepo.associateLinkProperty(linkId, property.id());
+        var property = newProperty(new SchemaRepository.PropertyOwnerRef(PropertyContainerKind.LINK, linkId), "LinkProp-");
         assertThat(schemaRepo.getPropertiesByLink().get(linkId))
                 .extracting(AdminPropertyDefinitionView::id).contains(property.id());
 
-        schemaRepo.dissociateLinkProperty(linkId, property.id());
+        schemaRepo.deleteLink(linkId);
 
-        assertThat(schemaRepo.getPropertiesByLink().getOrDefault(linkId, java.util.List.of()))
-                .extracting(AdminPropertyDefinitionView::id).doesNotContain(property.id());
+        assertThat(schemaRepo.findProperty(property.id())).isEmpty();
     }
 
     // --- Perspectives ---

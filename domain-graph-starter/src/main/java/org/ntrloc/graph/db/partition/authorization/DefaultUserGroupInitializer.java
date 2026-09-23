@@ -17,11 +17,11 @@ import java.util.UUID;
 // DatabaseInitializationDependencyConfigurer, which wires a real BeanDefinition-level dependsOn
 // from any bean carrying this annotation onto whatever DatabaseInitializerDetector finds (Flyway's
 // migration bean) -- guaranteed ordering, not an assumption about JdbcClient bean wiring. Needed
-// because ensureGroupExists() below is the only DML left running at boot now that schema_* tables
+// because ensureUserGroupExists() below is the only DML left running at boot now that schema_* tables
 // are Flyway-managed rather than always-already-there via the old *Initializer @PostConstruct DDL.
 @Component
 @DependsOnDatabaseInitialization
-public class DefaultGroupInitializer {
+public class DefaultUserGroupInitializer {
 
     public static final String DEFAULT_GROUP_NAME = "everyone";
 
@@ -29,7 +29,7 @@ public class DefaultGroupInitializer {
     private final AuthorizationRepository authorizationRepo;
     private final JdbcClient jdbcClient;
 
-    public DefaultGroupInitializer(SecurityRepository securityRepo, AuthorizationRepository authorizationRepo,
+    public DefaultUserGroupInitializer(SecurityRepository securityRepo, AuthorizationRepository authorizationRepo,
                                     JdbcClient jdbcClient) {
         this.securityRepo = securityRepo;
         this.authorizationRepo = authorizationRepo;
@@ -37,22 +37,22 @@ public class DefaultGroupInitializer {
     }
 
     @PostConstruct
-    void ensureGroupExists() {
-        if (securityRepo.findGroupByName(DEFAULT_GROUP_NAME).isEmpty()) {
-            securityRepo.createGroup(DEFAULT_GROUP_NAME);
+    void ensureUserGroupExists() {
+        if (securityRepo.findUserGroupByName(DEFAULT_GROUP_NAME).isEmpty()) {
+            securityRepo.createUserGroup(DEFAULT_GROUP_NAME);
         }
     }
 
     @EventListener(ApplicationReadyEvent.class)
     void populateAfterStartup() {
-        var group = securityRepo.findGroupByName(DEFAULT_GROUP_NAME).orElseThrow();
-        addAllExistingUsersToGroup(group.id());
+        var group = securityRepo.findUserGroupByName(DEFAULT_GROUP_NAME).orElseThrow();
+        addAllExistingUsersToUserGroup(group.id());
         grantReadForUncoveredItemTypes(group.id());
     }
 
     @EventListener
     public void onItemTypeCreated(SchemaChangeEvent.ItemTypeCreated event) {
-        var group = securityRepo.findGroupByName(DEFAULT_GROUP_NAME).orElseThrow();
+        var group = securityRepo.findUserGroupByName(DEFAULT_GROUP_NAME).orElseThrow();
         grantReadForItemType(event.itemTypeId(), group.id());
     }
 
@@ -63,26 +63,26 @@ public class DefaultGroupInitializer {
         // "Type Visibility"). Nothing to do here; hook stays for parity with onItemTypeCreated.
     }
 
-    public UUID getDefaultGroupId() {
-        return securityRepo.findGroupByName(DEFAULT_GROUP_NAME).orElseThrow().id();
+    public UUID getDefaultUserGroupId() {
+        return securityRepo.findUserGroupByName(DEFAULT_GROUP_NAME).orElseThrow().id();
     }
 
     // Every user-creation path (UserAdminController, LocalAccountSeeder,
     // AuthorizationTestDataInitializer) must call this so nobody ends up uncovered until the next
-    // restart's populateAfterStartup backfill catches them -- addUserToGroup is itself idempotent
+    // restart's populateAfterStartup backfill catches them -- addUserToUserGroup is itself idempotent
     // (ON CONFLICT DO NOTHING) so calling this twice for the same user is harmless. A caller that
-    // constructor-injects DefaultGroupInitializer is guaranteed ensureGroupExists() has already run
+    // constructor-injects DefaultUserGroupInitializer is guaranteed ensureUserGroupExists() has already run
     // (Spring fully initializes a bean, @PostConstruct included, before handing it to a dependent
-    // bean's constructor), so getDefaultGroupId() below never races the group's own creation.
-    public void addUserToDefaultGroup(UUID userId) {
-        securityRepo.addUserToGroup(userId, getDefaultGroupId());
+    // bean's constructor), so getDefaultUserGroupId() below never races the group's own creation.
+    public void addUserToDefaultUserGroup(UUID userId) {
+        securityRepo.addUserToUserGroup(userId, getDefaultUserGroupId());
     }
 
-    private void addAllExistingUsersToGroup(UUID groupId) {
+    private void addAllExistingUsersToUserGroup(UUID groupId) {
         jdbcClient.sql("""
-                INSERT INTO security_group_member (user_id, group_id)
+                INSERT INTO security_user_group_member (user_id, group_id)
                 SELECT id, :groupId FROM security_user
-                WHERE id NOT IN (SELECT user_id FROM security_group_member WHERE group_id = :groupId)
+                WHERE id NOT IN (SELECT user_id FROM security_user_group_member WHERE group_id = :groupId)
                 """)
                 .param("groupId", groupId)
                 .update();
@@ -99,7 +99,7 @@ public class DefaultGroupInitializer {
     }
 
     private void grantReadForItemType(UUID itemTypeId, UUID groupId) {
-        authorizationRepo.grantItemTypeIfAbsent(itemTypeId, "GROUP", groupId, PermissionService.ITEM_TYPE_READ);
+        authorizationRepo.grantItemTypeIfAbsent(itemTypeId, "USER_GROUP", groupId, PermissionService.ITEM_TYPE_READ);
         jdbcClient.sql("UPDATE schema_item SET default_visibility_decided = TRUE WHERE id = :itemTypeId")
                 .param("itemTypeId", itemTypeId).update();
     }

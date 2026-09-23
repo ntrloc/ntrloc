@@ -24,7 +24,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 // binary.storage.block.location) -- store() and the storage adapter are tested together
 // deliberately, since store()'s own correctness (computing the right hash, writing through the
 // adapter, then keying the DB row on that hash) can't be verified without a real adapter round
-// trip.
+// trip. BinaryContentEvent.Created publishing -- once on a fresh insert, not at all on a dedup hit --
+// is instead covered by BinaryContentEventPublishingIntegrationTest, in this same package: a plain,
+// manually-registered listener bean, not @RecordApplicationEvents (which showed unexplained
+// cross-test pollution when tried inside this file's own 15-test class) and not job-table row counts
+// (which race Flowable's async job executor for any claim spanning two separate actions -- see
+// BinaryMetadataExtractionIntegrationTest, in the process package, for that pitfall in detail).
 class BinaryPartitionManagerImplIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
@@ -147,12 +152,12 @@ class BinaryPartitionManagerImplIntegrationTest extends AbstractIntegrationTest 
         assertThat(found).containsOnlyKeys(id);
     }
 
-    // parseMetadata()'s catch block is unreachable through any real write path -- store() never
-    // sets the metadata column at all (see the class's own comment on why: nothing in this app
-    // writes it), so the only way to exercise the parse-failure branch is to put a
-    // wrong-shape-but-syntactically-valid JSON value there directly. A JSON array, not literally
-    // invalid text: Postgres's jsonb column type rejects malformed JSON outright at the SQL level,
-    // so "invalid JSON" here has to mean "valid JSON, wrong shape for Map.class" instead.
+    // parseMetadata()'s catch block has no real write path that reaches it -- store() always writes
+    // a well-shaped object (see metadataJson()), so the only way to exercise the parse-failure branch
+    // is to put a wrong-shape-but-syntactically-valid JSON value there directly, after the fact. A
+    // JSON array, not literally invalid text: Postgres's jsonb column type rejects malformed JSON
+    // outright at the SQL level, so "invalid JSON" here has to mean "valid JSON, wrong shape for
+    // Map.class" instead. Exists as a defensive fallback, not a documented possibility.
     @Test
     void getBinaryProperty_whenMetadataIsNotAJsonObject_returnsNullMetadataInsteadOfThrowing() throws Exception {
         UUID id = binaryPartitionManager.store(bufferFlux(
@@ -164,5 +169,57 @@ class BinaryPartitionManagerImplIntegrationTest extends AbstractIntegrationTest 
         var property = binaryPartitionManager.getBinaryProperty(id).orElseThrow();
 
         assertThat(property.metadata()).isNull();
+    }
+
+    // metadataJson() mirrors the real columns into metadata so filter/sort/facet resolution can read
+    // any intrinsic binary fact through one uniform mechanism (see the DDL's own comment on
+    // binary_content, and design-notes section 8). This proves the mirror actually lands in the shape
+    // that resolution will expect: length, mimeType, and a nested hashes object.
+    @Test
+    void store_mirrorsLengthMimeTypeAndHashesIntoMetadata() throws Exception {
+        byte[] content = ("metadata shape test " + UUID.randomUUID()).getBytes(StandardCharsets.UTF_8);
+
+        UUID id = binaryPartitionManager.store(bufferFlux(content)).block();
+
+        var property = binaryPartitionManager.getBinaryProperty(id).orElseThrow();
+        assertThat(property.metadata()).isNotNull();
+        assertThat(((Number) property.metadata().get("length")).longValue()).isEqualTo(content.length);
+        assertThat(property.metadata()).containsKey("mimeType");
+        @SuppressWarnings("unchecked")
+        var hashes = (Map<String, Object>) property.metadata().get("hashes");
+        assertThat(hashes).containsEntry("sha256", sha256Hex(content));
+        assertThat(hashes).containsEntry("md5", property.md5());
+    }
+
+    // A real upload can't be made to produce two matching hashes with a different length -- that
+    // would require an actual hash collision. This drives the constraint directly instead, proving
+    // the compound UNIQUE(sha256, md5, length) is genuinely three-column: a length mismatch is a
+    // distinct row (the case the constraint exists to catch -- see the DDL's own comment), while an
+    // exact repeat of all three is still deduplicated exactly as a single-column sha256 key would be.
+    @Test
+    void insertingBinaryContent_deduplicatesOnlyWhenSha256AndMd5AndLengthAllMatch() {
+        String sha256 = "same-hash-" + UUID.randomUUID();
+        String md5 = "same-md5-" + UUID.randomUUID();
+
+        UUID firstId = insertBinaryContentRow(sha256, md5, 100);
+        UUID differentLengthId = insertBinaryContentRow(sha256, md5, 200);
+        UUID repeatOfFirstId = insertBinaryContentRow(sha256, md5, 100);
+
+        assertThat(differentLengthId).isNotEqualTo(firstId);
+        assertThat(repeatOfFirstId).isEqualTo(firstId);
+    }
+
+    private UUID insertBinaryContentRow(String sha256, String md5, long length) {
+        return jdbcClient.sql("""
+                INSERT INTO binary_content (sha256, md5, mime_type, length, metadata)
+                VALUES (:sha256, :md5, 'text/plain', :length, '{}'::jsonb)
+                ON CONFLICT (sha256, md5, length) DO UPDATE SET sha256 = EXCLUDED.sha256
+                RETURNING id
+                """)
+                .param("sha256", sha256)
+                .param("md5", md5)
+                .param("length", length)
+                .query(UUID.class)
+                .single();
     }
 }

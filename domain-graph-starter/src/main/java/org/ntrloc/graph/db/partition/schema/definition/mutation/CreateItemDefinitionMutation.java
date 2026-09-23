@@ -7,22 +7,30 @@ import java.util.UUID;
 
 public record CreateItemDefinitionMutation(String name, String description, List<CreatePropertyDefinitionMutation> properties,
                                             @Nullable UUID supertypeId, boolean abstractType,
-                                            @Nullable String displayLabelPattern, List<UUID> traitIds) implements DefinitionMutation {
+                                            @Nullable String displayLabelPattern, List<UUID> traitIds,
+                                            List<CreatePropertyGroupDefinitionMutation> groups) implements DefinitionMutation {
 
     // Jackson deserializes records via this canonical constructor directly, never the Java-only
-    // 6-arg overload below -- a raw JSON mutation list (SchemaAdminControllerIntegrationTest's own
-    // "applies a raw JSON mutation list" coverage) that omits "traitIds" entirely lands here with
-    // traitIds == null, not List.of(), which ItemMutationApplier.applyCreate's for-each would NPE on.
+    // overloads below -- a raw JSON mutation list that omits "traitIds" or "groups" entirely lands
+    // here with them null, not List.of(), which ItemMutationApplier.applyCreate's for-each would
+    // NPE on.
     public CreateItemDefinitionMutation {
+        if (properties == null) properties = List.of();
         if (traitIds == null) traitIds = List.of();
+        if (groups == null) groups = List.of();
     }
 
-    // Traits are optional on most callers (every pre-existing construction site predates trait
-    // assignment at creation time) -- this keeps them all compiling against the canonical
-    // constructor above rather than threading List.of() through every call site.
+    // Traits and groups are optional on most callers -- these overloads keep them compiling against
+    // the canonical constructor above rather than threading List.of() through every call site.
+    public CreateItemDefinitionMutation(String name, String description, List<CreatePropertyDefinitionMutation> properties,
+                                         @Nullable UUID supertypeId, boolean abstractType,
+                                         @Nullable String displayLabelPattern, List<UUID> traitIds) {
+        this(name, description, properties, supertypeId, abstractType, displayLabelPattern, traitIds, List.of());
+    }
+
     public CreateItemDefinitionMutation(String name, String description, List<CreatePropertyDefinitionMutation> properties,
                                          @Nullable UUID supertypeId, boolean abstractType,
                                          @Nullable String displayLabelPattern) {
-        this(name, description, properties, supertypeId, abstractType, displayLabelPattern, List.of());
+        this(name, description, properties, supertypeId, abstractType, displayLabelPattern, List.of(), List.of());
     }
 }

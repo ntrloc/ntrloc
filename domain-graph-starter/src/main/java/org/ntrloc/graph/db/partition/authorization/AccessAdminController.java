@@ -31,13 +31,13 @@ import java.util.stream.Collectors;
 @RequestMapping("/api/admin")
 public class AccessAdminController {
 
-    private static final String GROUP_PRINCIPAL_TYPE = "GROUP";
+    private static final String GROUP_PRINCIPAL_TYPE = "USER_GROUP";
     private static final String USER_PRINCIPAL_TYPE = "USER";
-    private static final String GROUP_NOT_FOUND = "Group not found";
+    private static final String GROUP_NOT_FOUND = "UserGroup not found";
 
     // --- Request/response records ---
 
-    public record GroupPermissionView(String itemTypeName, UUID itemTypeId, List<String> operations) {}
+    public record UserGroupPermissionView(String itemTypeName, UUID itemTypeId, List<String> operations) {}
 
     public record PermissionRequest(UUID itemTypeId, String operation) {}
 
@@ -45,7 +45,7 @@ public class AccessAdminController {
 
     public record UserPermissionView(String itemTypeName, UUID itemTypeId, List<OperationWithVia> operations) {}
 
-    public record GroupMembershipView(UUID id, String name) {}
+    public record UserGroupMembershipView(UUID id, String name) {}
 
     public record ItemTypeView(UUID id, String name) {}
 
@@ -83,31 +83,31 @@ public class AccessAdminController {
     // --- Type-level item-type:read/create grants -- one endpoint trio per principal kind, thin
     // wrappers over shared helpers, same pattern as the marker-scoped grants below. ---
 
-    @GetMapping("/groups/{groupId}/permissions")
-    List<GroupPermissionView> getGroupPermissions(@PathVariable("groupId") UUID groupId,
+    @GetMapping("/user-groups/{groupId}/permissions")
+    List<UserGroupPermissionView> getUserGroupPermissions(@PathVariable("groupId") UUID groupId,
                                                   ServerHttpRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
-        requireGroupExists(groupId);
+        requireUserGroupExists(groupId);
         return getOwnPermissions(GROUP_PRINCIPAL_TYPE, groupId);
     }
 
-    @PostMapping("/groups/{groupId}/permissions")
-    ResponseEntity<Void> grantGroupPermission(@PathVariable("groupId") UUID groupId,
+    @PostMapping("/user-groups/{groupId}/permissions")
+    ResponseEntity<Void> grantUserGroupPermission(@PathVariable("groupId") UUID groupId,
                                                @RequestBody PermissionRequest body,
                                                ServerHttpRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
-        requireGroupExists(groupId);
+        requireUserGroupExists(groupId);
         requireValidPermissionRequest(body);
         authRepo.grantItemTypeIfAbsent(body.itemTypeId(), GROUP_PRINCIPAL_TYPE, groupId, body.operation());
         return ResponseEntity.noContent().build();
     }
 
-    @DeleteMapping("/groups/{groupId}/permissions")
-    ResponseEntity<Void> revokeGroupPermission(@PathVariable("groupId") UUID groupId,
+    @DeleteMapping("/user-groups/{groupId}/permissions")
+    ResponseEntity<Void> revokeUserGroupPermission(@PathVariable("groupId") UUID groupId,
                                                 @RequestBody PermissionRequest body,
                                                 ServerHttpRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
-        requireGroupExists(groupId);
+        requireUserGroupExists(groupId);
         revokePermission(GROUP_PRINCIPAL_TYPE, groupId, body);
         return ResponseEntity.noContent().build();
     }
@@ -116,7 +116,7 @@ public class AccessAdminController {
     // (getUserEffectivePermissions, used by the old Access screen) -- "own" distinguishes this
     // user's own direct grants only, the shape the Item Type perspective's detail pane needs.
     @GetMapping("/users/{userId}/permissions/own")
-    List<GroupPermissionView> getUserOwnPermissions(@PathVariable("userId") UUID userId,
+    List<UserGroupPermissionView> getUserOwnPermissions(@PathVariable("userId") UUID userId,
                                                     ServerHttpRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
         return getOwnPermissions(USER_PRINCIPAL_TYPE, userId);
@@ -141,15 +141,15 @@ public class AccessAdminController {
         return ResponseEntity.noContent().build();
     }
 
-    private List<GroupPermissionView> getOwnPermissions(String principalType, UUID principalId) {
+    private List<UserGroupPermissionView> getOwnPermissions(String principalType, UUID principalId) {
         var grants = authRepo.getItemTypeGrantsForPrincipal(principalType, principalId);
-        Map<UUID, GroupPermissionView> byItemType = new LinkedHashMap<>();
+        Map<UUID, UserGroupPermissionView> byItemType = new LinkedHashMap<>();
         for (var g : grants) {
             byItemType.compute(g.itemTypeId(), (k, existing) -> {
                 if (existing == null) {
                     var ops = new ArrayList<String>();
                     ops.add(g.permission());
-                    return new GroupPermissionView(g.itemTypeName(), g.itemTypeId(), ops);
+                    return new UserGroupPermissionView(g.itemTypeName(), g.itemTypeId(), ops);
                 } else {
                     existing.operations().add(g.permission());
                     return existing;
@@ -167,7 +167,7 @@ public class AccessAdminController {
     }
 
     // --- Which groups and users have any type-level grant (read or create) on one item type --
-    // the Item Type perspective's own detail pane needs this to build its Group grants / User
+    // the Item Type perspective's own detail pane needs this to build its UserGroup grants / User
     // grants lists, mirroring MarkerAdminController.getMarkerGrantPrincipals exactly, just over
     // authorization_item_type_grant instead of marker_grant. ---
 
@@ -175,7 +175,7 @@ public class AccessAdminController {
     ItemTypeGrantPrincipalsView getItemTypeGrantPrincipals(@PathVariable("itemTypeId") UUID itemTypeId,
                                                             ServerHttpRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
-        var groupNames = securityRepo.listGroups().stream()
+        var groupNames = securityRepo.listUserGroups().stream()
                 .collect(Collectors.toMap(g -> g.id(), g -> g.name()));
         var userNames = securityRepo.listUsers().stream()
                 .collect(Collectors.toMap(u -> u.id(), u -> u.displayName()));
@@ -197,14 +197,14 @@ public class AccessAdminController {
 
     // --- Which markers a group has its own grant row for (regardless of what's actually granted
     // under it -- same "has a row" semantics as MarkerAdminController.getMarkerGrantPrincipals) --
-    // used by the Group perspective's own Permissions tab to build its default "Granted markers"
+    // used by the UserGroup perspective's own Permissions tab to build its default "Granted markers"
     // list without walking every marker in the schema one at a time. ---
 
-    @GetMapping("/groups/{groupId}/markers")
-    List<UUID> getGroupGrantedMarkerIds(@PathVariable("groupId") UUID groupId,
+    @GetMapping("/user-groups/{groupId}/markers")
+    List<UUID> getUserGroupGrantedMarkerIds(@PathVariable("groupId") UUID groupId,
                                          ServerHttpRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
-        requireGroupExists(groupId);
+        requireUserGroupExists(groupId);
         return authRepo.getAllMarkerGrants().stream()
                 .filter(g -> GROUP_PRINCIPAL_TYPE.equals(g.principalType()) && g.principalId().equals(groupId))
                 .map(g -> g.markerId())
@@ -212,7 +212,7 @@ public class AccessAdminController {
                 .toList();
     }
 
-    // Mirrors getGroupGrantedMarkerIds above -- the User perspective's own Permissions tab needs
+    // Mirrors getUserGroupGrantedMarkerIds above -- the User perspective's own Permissions tab needs
     // the same reverse index for a user principal.
     @GetMapping("/users/{userId}/markers")
     List<UUID> getUserGrantedMarkerIds(@PathVariable("userId") UUID userId,
@@ -235,23 +235,23 @@ public class AccessAdminController {
 
     // --- Marker-scoped property grants (Read/Write per property) ---
 
-    @GetMapping("/groups/{groupId}/markers/{markerId}/properties")
+    @GetMapping("/user-groups/{groupId}/markers/{markerId}/properties")
     List<MarkerPropertyGrantView> getGroupMarkerPropertyGrants(@PathVariable("groupId") UUID groupId,
                                                                 @PathVariable("markerId") UUID markerId,
                                                                 ServerHttpRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
-        requireGroupExists(groupId);
+        requireUserGroupExists(groupId);
         return getMarkerPropertyGrants(GROUP_PRINCIPAL_TYPE, groupId, markerId);
     }
 
-    @PutMapping("/groups/{groupId}/markers/{markerId}/properties/{propertyId}")
+    @PutMapping("/user-groups/{groupId}/markers/{markerId}/properties/{propertyId}")
     ResponseEntity<Void> setGroupMarkerPropertyGrant(@PathVariable("groupId") UUID groupId,
                                                       @PathVariable("markerId") UUID markerId,
                                                       @PathVariable("propertyId") UUID propertyId,
                                                       @RequestBody MarkerPropertyGrantRequest body,
                                                       ServerHttpRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
-        requireGroupExists(groupId);
+        requireUserGroupExists(groupId);
         setMarkerPropertyGrant(GROUP_PRINCIPAL_TYPE, groupId, markerId, propertyId, body);
         return ResponseEntity.noContent().build();
     }
@@ -289,22 +289,22 @@ public class AccessAdminController {
     // --- Marker-scoped item-level grants (Read/Delete of the item carrying the marker --
     // item_can_read / item_can_delete live directly on marker_grant, one pair per (marker, principal)) ---
 
-    @GetMapping("/groups/{groupId}/markers/{markerId}/item-permissions")
-    MarkerItemGrantView getGroupMarkerItemGrant(@PathVariable("groupId") UUID groupId,
+    @GetMapping("/user-groups/{groupId}/markers/{markerId}/item-permissions")
+    MarkerItemGrantView getUserGroupMarkerItemGrant(@PathVariable("groupId") UUID groupId,
                                                 @PathVariable("markerId") UUID markerId,
                                                 ServerHttpRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
-        requireGroupExists(groupId);
+        requireUserGroupExists(groupId);
         return getMarkerItemGrant(GROUP_PRINCIPAL_TYPE, groupId, markerId);
     }
 
-    @PutMapping("/groups/{groupId}/markers/{markerId}/item-permissions")
-    ResponseEntity<Void> setGroupMarkerItemGrant(@PathVariable("groupId") UUID groupId,
+    @PutMapping("/user-groups/{groupId}/markers/{markerId}/item-permissions")
+    ResponseEntity<Void> setUserGroupMarkerItemGrant(@PathVariable("groupId") UUID groupId,
                                                  @PathVariable("markerId") UUID markerId,
                                                  @RequestBody MarkerItemGrantRequest body,
                                                  ServerHttpRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
-        requireGroupExists(groupId);
+        requireUserGroupExists(groupId);
         setMarkerItemGrant(GROUP_PRINCIPAL_TYPE, groupId, markerId, body);
         return ResponseEntity.noContent().build();
     }
@@ -340,23 +340,23 @@ public class AccessAdminController {
     // --- Marker-scoped link-property grants -- same shape as item properties above, just against
     // a link type's own properties (marker_grant_link_property) ---
 
-    @GetMapping("/groups/{groupId}/markers/{markerId}/link-properties")
+    @GetMapping("/user-groups/{groupId}/markers/{markerId}/link-properties")
     List<MarkerPropertyGrantView> getGroupMarkerLinkPropertyGrants(@PathVariable("groupId") UUID groupId,
                                                                     @PathVariable("markerId") UUID markerId,
                                                                     ServerHttpRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
-        requireGroupExists(groupId);
+        requireUserGroupExists(groupId);
         return getMarkerLinkPropertyGrants(GROUP_PRINCIPAL_TYPE, groupId, markerId);
     }
 
-    @PutMapping("/groups/{groupId}/markers/{markerId}/link-properties/{propertyId}")
+    @PutMapping("/user-groups/{groupId}/markers/{markerId}/link-properties/{propertyId}")
     ResponseEntity<Void> setGroupMarkerLinkPropertyGrant(@PathVariable("groupId") UUID groupId,
                                                           @PathVariable("markerId") UUID markerId,
                                                           @PathVariable("propertyId") UUID propertyId,
                                                           @RequestBody MarkerPropertyGrantRequest body,
                                                           ServerHttpRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
-        requireGroupExists(groupId);
+        requireUserGroupExists(groupId);
         setMarkerLinkPropertyGrant(GROUP_PRINCIPAL_TYPE, groupId, markerId, propertyId, body);
         return ResponseEntity.noContent().build();
     }
@@ -393,23 +393,23 @@ public class AccessAdminController {
 
     // --- Marker-scoped link-perspective grants (Create/Read/Delete per perspective) ---
 
-    @GetMapping("/groups/{groupId}/markers/{markerId}/link-perspectives")
-    List<LinkPerspectiveGrantView> getGroupMarkerLinkPerspectiveGrants(@PathVariable("groupId") UUID groupId,
+    @GetMapping("/user-groups/{groupId}/markers/{markerId}/link-perspectives")
+    List<LinkPerspectiveGrantView> getUserGroupMarkerLinkPerspectiveGrants(@PathVariable("groupId") UUID groupId,
                                                                         @PathVariable("markerId") UUID markerId,
                                                                         ServerHttpRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
-        requireGroupExists(groupId);
+        requireUserGroupExists(groupId);
         return getMarkerLinkPerspectiveGrants(GROUP_PRINCIPAL_TYPE, groupId, markerId);
     }
 
-    @PutMapping("/groups/{groupId}/markers/{markerId}/link-perspectives/{perspectiveId}")
-    ResponseEntity<Void> setGroupMarkerLinkPerspectiveGrant(@PathVariable("groupId") UUID groupId,
+    @PutMapping("/user-groups/{groupId}/markers/{markerId}/link-perspectives/{perspectiveId}")
+    ResponseEntity<Void> setUserGroupMarkerLinkPerspectiveGrant(@PathVariable("groupId") UUID groupId,
                                                              @PathVariable("markerId") UUID markerId,
                                                              @PathVariable("perspectiveId") UUID perspectiveId,
                                                              @RequestBody LinkPerspectiveGrantRequest body,
                                                              ServerHttpRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
-        requireGroupExists(groupId);
+        requireUserGroupExists(groupId);
         setMarkerLinkPerspectiveGrant(GROUP_PRINCIPAL_TYPE, groupId, markerId, perspectiveId, body);
         return ResponseEntity.noContent().build();
     }
@@ -447,33 +447,33 @@ public class AccessAdminController {
     // --- Marker-scoped transition-execute grants (existence-only, see
     // AuthorizationRepository.grantTransitionExecute's own comment) ---
 
-    @GetMapping("/groups/{groupId}/markers/{markerId}/transitions")
-    Set<UUID> getGroupMarkerTransitionGrants(@PathVariable("groupId") UUID groupId,
+    @GetMapping("/user-groups/{groupId}/markers/{markerId}/transitions")
+    Set<UUID> getUserGroupMarkerTransitionGrants(@PathVariable("groupId") UUID groupId,
                                               @PathVariable("markerId") UUID markerId,
                                               ServerHttpRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
-        requireGroupExists(groupId);
+        requireUserGroupExists(groupId);
         return authRepo.getTransitionGrantsForMarker(markerId, GROUP_PRINCIPAL_TYPE, groupId);
     }
 
-    @PostMapping("/groups/{groupId}/markers/{markerId}/transitions/{transitionId}")
-    ResponseEntity<Void> grantGroupMarkerTransition(@PathVariable("groupId") UUID groupId,
+    @PostMapping("/user-groups/{groupId}/markers/{markerId}/transitions/{transitionId}")
+    ResponseEntity<Void> grantUserGroupMarkerTransition(@PathVariable("groupId") UUID groupId,
                                                      @PathVariable("markerId") UUID markerId,
                                                      @PathVariable("transitionId") UUID transitionId,
                                                      ServerHttpRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
-        requireGroupExists(groupId);
+        requireUserGroupExists(groupId);
         grantMarkerTransition(GROUP_PRINCIPAL_TYPE, groupId, markerId, transitionId);
         return ResponseEntity.noContent().build();
     }
 
-    @DeleteMapping("/groups/{groupId}/markers/{markerId}/transitions/{transitionId}")
-    ResponseEntity<Void> revokeGroupMarkerTransition(@PathVariable("groupId") UUID groupId,
+    @DeleteMapping("/user-groups/{groupId}/markers/{markerId}/transitions/{transitionId}")
+    ResponseEntity<Void> revokeUserGroupMarkerTransition(@PathVariable("groupId") UUID groupId,
                                                       @PathVariable("markerId") UUID markerId,
                                                       @PathVariable("transitionId") UUID transitionId,
                                                       ServerHttpRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
-        requireGroupExists(groupId);
+        requireUserGroupExists(groupId);
         revokeMarkerTransition(GROUP_PRINCIPAL_TYPE, groupId, markerId, transitionId);
         return ResponseEntity.noContent().build();
     }
@@ -518,33 +518,33 @@ public class AccessAdminController {
 
     // --- Marker-scoped state-machine:start grants (existence-only, mirrors transitions above) ---
 
-    @GetMapping("/groups/{groupId}/markers/{markerId}/state-machines/start")
-    Set<UUID> getGroupMarkerStateMachineStartGrants(@PathVariable("groupId") UUID groupId,
+    @GetMapping("/user-groups/{groupId}/markers/{markerId}/state-machines/start")
+    Set<UUID> getUserGroupMarkerStateMachineStartGrants(@PathVariable("groupId") UUID groupId,
                                                      @PathVariable("markerId") UUID markerId,
                                                      ServerHttpRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
-        requireGroupExists(groupId);
+        requireUserGroupExists(groupId);
         return authRepo.getStateMachineStartGrantsForMarker(markerId, GROUP_PRINCIPAL_TYPE, groupId);
     }
 
-    @PostMapping("/groups/{groupId}/markers/{markerId}/state-machines/{stateMachineId}/start")
-    ResponseEntity<Void> grantGroupMarkerStateMachineStart(@PathVariable("groupId") UUID groupId,
+    @PostMapping("/user-groups/{groupId}/markers/{markerId}/state-machines/{stateMachineId}/start")
+    ResponseEntity<Void> grantUserGroupMarkerStateMachineStart(@PathVariable("groupId") UUID groupId,
                                                             @PathVariable("markerId") UUID markerId,
                                                             @PathVariable("stateMachineId") UUID stateMachineId,
                                                             ServerHttpRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
-        requireGroupExists(groupId);
+        requireUserGroupExists(groupId);
         grantMarkerStateMachineStart(GROUP_PRINCIPAL_TYPE, groupId, markerId, stateMachineId);
         return ResponseEntity.noContent().build();
     }
 
-    @DeleteMapping("/groups/{groupId}/markers/{markerId}/state-machines/{stateMachineId}/start")
-    ResponseEntity<Void> revokeGroupMarkerStateMachineStart(@PathVariable("groupId") UUID groupId,
+    @DeleteMapping("/user-groups/{groupId}/markers/{markerId}/state-machines/{stateMachineId}/start")
+    ResponseEntity<Void> revokeUserGroupMarkerStateMachineStart(@PathVariable("groupId") UUID groupId,
                                                              @PathVariable("markerId") UUID markerId,
                                                              @PathVariable("stateMachineId") UUID stateMachineId,
                                                              ServerHttpRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
-        requireGroupExists(groupId);
+        requireUserGroupExists(groupId);
         revokeMarkerStateMachineStart(GROUP_PRINCIPAL_TYPE, groupId, markerId, stateMachineId);
         return ResponseEntity.noContent().build();
     }
@@ -591,12 +591,12 @@ public class AccessAdminController {
     // to Edit -- only ever shown for a principal that has its own grant row, never for one that's
     // merely inheriting) ---
 
-    @DeleteMapping("/groups/{groupId}/markers/{markerId}")
-    ResponseEntity<Void> deleteGroupMarkerGrant(@PathVariable("groupId") UUID groupId,
+    @DeleteMapping("/user-groups/{groupId}/markers/{markerId}")
+    ResponseEntity<Void> deleteUserGroupMarkerGrant(@PathVariable("groupId") UUID groupId,
                                                 @PathVariable("markerId") UUID markerId,
                                                 ServerHttpRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
-        requireGroupExists(groupId);
+        requireUserGroupExists(groupId);
         authRepo.findMarkerGrant(markerId, GROUP_PRINCIPAL_TYPE, groupId).ifPresent(authRepo::deleteMarkerGrant);
         return ResponseEntity.noContent().build();
     }
@@ -618,37 +618,37 @@ public class AccessAdminController {
         requireAdmin(request, authentication);
 
         // Get all groups user belongs to
-        var userGroups = securityRepo.getGroupsForUser(userId);
-        if (userGroups.isEmpty()) {
+        var userUserGroups = securityRepo.getUserGroupsForUser(userId);
+        if (userUserGroups.isEmpty()) {
             return List.of();
         }
 
         // We also need to know which group each grant belongs to. Re-query per group to get that mapping.
         // Actually, let's restructure: query grants per group to know which group provides which grant.
-        record GrantWithGroup(UUID itemTypeId, String itemTypeName, String operation, String groupName) {}
-        List<GrantWithGroup> grantsWithGroup = new ArrayList<>();
-        for (var group : userGroups) {
+        record GrantWithUserGroup(UUID itemTypeId, String itemTypeName, String operation, String groupName) {}
+        List<GrantWithUserGroup> grantsWithUserGroup = new ArrayList<>();
+        for (var group : userUserGroups) {
             var groupGrants = authRepo.getItemTypeGrantsForPrincipal(GROUP_PRINCIPAL_TYPE, group.id());
             for (var g : groupGrants) {
-                grantsWithGroup.add(new GrantWithGroup(g.itemTypeId(), g.itemTypeName(), g.permission(), group.name()));
+                grantsWithUserGroup.add(new GrantWithUserGroup(g.itemTypeId(), g.itemTypeName(), g.permission(), group.name()));
             }
         }
 
-        // Group by (itemTypeId, operation) -> list of group names providing it
+        // UserGroup by (itemTypeId, operation) -> list of group names providing it
         record ItemOp(UUID itemTypeId, String itemTypeName, String operation) {}
         Map<ItemOp, List<String>> viaMap = new LinkedHashMap<>();
-        for (var gwg : grantsWithGroup) {
+        for (var gwg : grantsWithUserGroup) {
             var key = new ItemOp(gwg.itemTypeId(), gwg.itemTypeName(), gwg.operation());
             viaMap.computeIfAbsent(key, k -> new ArrayList<>()).add(gwg.groupName());
         }
 
-        // Group by item type
+        // UserGroup by item type
         Map<UUID, UserPermissionView> byItemType = new LinkedHashMap<>();
         for (var entry : viaMap.entrySet()) {
             var key = entry.getKey();
-            var viaGroups = entry.getValue();
+            var viaUserGroups = entry.getValue();
             byItemType.compute(key.itemTypeId(), (k, existing) -> {
-                var opWithVia = new OperationWithVia(key.operation(), viaGroups);
+                var opWithVia = new OperationWithVia(key.operation(), viaUserGroups);
                 if (existing == null) {
                     var ops = new ArrayList<OperationWithVia>();
                     ops.add(opWithVia);
@@ -664,12 +664,12 @@ public class AccessAdminController {
 
     // --- User group memberships ---
 
-    @GetMapping("/users/{userId}/groups")
-    List<GroupMembershipView> getUserGroups(@PathVariable("userId") UUID userId,
+    @GetMapping("/users/{userId}/user-groups")
+    List<UserGroupMembershipView> getUserGroups(@PathVariable("userId") UUID userId,
                                             ServerHttpRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
-        return securityRepo.getGroupsForUser(userId).stream()
-                .map(g -> new GroupMembershipView(g.id(), g.name()))
+        return securityRepo.getUserGroupsForUser(userId).stream()
+                .map(g -> new UserGroupMembershipView(g.id(), g.name()))
                 .toList();
     }
 
@@ -693,8 +693,8 @@ public class AccessAdminController {
         }
     }
 
-    private void requireGroupExists(UUID groupId) {
-        securityRepo.findGroupById(groupId)
+    private void requireUserGroupExists(UUID groupId) {
+        securityRepo.findUserGroupById(groupId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, GROUP_NOT_FOUND));
     }
 

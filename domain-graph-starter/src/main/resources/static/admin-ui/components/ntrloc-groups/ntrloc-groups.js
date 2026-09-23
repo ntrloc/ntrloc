@@ -204,7 +204,7 @@ class NtrlocGroups extends HTMLElement {
 
   async fetchGroups() {
     try {
-      const res = await fetch('/api/admin/groups', { credentials: 'include' });
+      const res = await fetch('/api/admin/user-groups', { credentials: 'include' });
       if (!res.ok) throw new Error('Failed to load groups');
       this.groups = await res.json();
     } catch (e) {
@@ -215,7 +215,7 @@ class NtrlocGroups extends HTMLElement {
 
   async fetchMembers(groupId) {
     try {
-      const res = await fetch(`/api/admin/groups/${groupId}/members`, { credentials: 'include' });
+      const res = await fetch(`/api/admin/user-groups/${groupId}/members`, { credentials: 'include' });
       if (!res.ok) throw new Error('Failed to load members');
       this.members = await res.json();
     } catch (e) {
@@ -244,7 +244,7 @@ class NtrlocGroups extends HTMLElement {
       return;
     }
     try {
-      const res = await fetch('/api/admin/groups', {
+      const res = await fetch('/api/admin/user-groups', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -273,7 +273,7 @@ class NtrlocGroups extends HTMLElement {
       return;
     }
     try {
-      const res = await fetch(`/api/admin/groups/${this.editingGroup.id}`, {
+      const res = await fetch(`/api/admin/user-groups/${this.editingGroup.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -296,7 +296,7 @@ class NtrlocGroups extends HTMLElement {
   async deleteGroup() {
     if (!confirm(`Delete group "${this.editingGroup.name}"? Members will be removed from this group.`)) return;
     try {
-      const res = await fetch(`/api/admin/groups/${this.editingGroup.id}`, {
+      const res = await fetch(`/api/admin/user-groups/${this.editingGroup.id}`, {
         method: 'DELETE',
         credentials: 'include'
       });
@@ -319,7 +319,7 @@ class NtrlocGroups extends HTMLElement {
     const userId = select?.value;
     if (!userId) return;
     try {
-      const res = await fetch(`/api/admin/groups/${this.editingGroup.id}/members`, {
+      const res = await fetch(`/api/admin/user-groups/${this.editingGroup.id}/members`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -336,7 +336,7 @@ class NtrlocGroups extends HTMLElement {
   async removeMember(userId) {
     this.error = '';
     try {
-      const res = await fetch(`/api/admin/groups/${this.editingGroup.id}/members/${userId}`, {
+      const res = await fetch(`/api/admin/user-groups/${this.editingGroup.id}/members/${userId}`, {
         method: 'DELETE',
         credentials: 'include'
       });
@@ -440,7 +440,7 @@ class NtrlocGroups extends HTMLElement {
 
     this.innerHTML = `
       <div class="groups-header">
-        <h2>Groups</h2>
+        <h2>User Groups</h2>
         <md-filled-button data-action="show-create">Create Group</md-filled-button>
       </div>
       ${this.mode === 'list' && this.success ? `<div class="groups-success">${this.escapeHtml(this.success)}</div>` : ''}

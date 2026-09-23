@@ -116,7 +116,7 @@ function openLinkCreateDialog(candidates) {
           return `<input type="date" class="value-input" data-name="${escapeHtml(property.name)}" value="${escapeHtml(v)}">`;
         case 'DATETIME':
           return `<input type="datetime-local" class="value-input" data-name="${escapeHtml(property.name)}" value="${escapeHtml(v)}">`;
-        case 'OBJECT':
+        case 'GROUP':
           return `<textarea rows="2" class="value-input" data-name="${escapeHtml(property.name)}" placeholder='{"key": "value"}'>${escapeHtml(typeof v === 'string' ? v : JSON.stringify(v))}</textarea>`;
         default:
           return `<input type="text" class="value-input" data-name="${escapeHtml(property.name)}" value="${escapeHtml(v)}">`;
@@ -242,7 +242,7 @@ function openLinkPropertiesDialog({ title, propertyDefs, initialValues }) {
           return `<input type="date" class="value-input" data-name="${escapeHtml(property.name)}" value="${escapeHtml(v)}">`;
         case 'DATETIME':
           return `<input type="datetime-local" class="value-input" data-name="${escapeHtml(property.name)}" value="${escapeHtml(v)}">`;
-        case 'OBJECT':
+        case 'GROUP':
           return `<textarea rows="2" class="value-input" data-name="${escapeHtml(property.name)}" placeholder='{"key": "value"}'>${escapeHtml(typeof v === 'string' ? v : JSON.stringify(v))}</textarea>`;
         default:
           return `<input type="text" class="value-input" data-name="${escapeHtml(property.name)}" value="${escapeHtml(v)}">`;
@@ -336,7 +336,7 @@ function coerceValue(property, rawValue) {
     case 'DATETIME':
       if (!rawValue) throw new Error('Expected a date/time');
       return new Date(rawValue).toISOString();
-    case 'OBJECT':
+    case 'GROUP':
       return rawValue ? JSON.parse(rawValue) : {};
     default:
       return rawValue;

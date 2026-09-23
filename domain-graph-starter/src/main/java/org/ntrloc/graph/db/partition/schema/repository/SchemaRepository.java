@@ -9,7 +9,6 @@ import org.ntrloc.graph.db.partition.schema.definition.PropertyContainerKind;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyUsage;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyDefinitionView;
-import org.ntrloc.graph.db.partition.schema.definition.view.admin.PropertyIdentity;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 
@@ -31,7 +30,10 @@ public class SchemaRepository {
 
     public record PerspectiveRow(UUID id, UUID entityId, UUID linkId, String name, String description, Integer minCardinality, Integer maxCardinality) {}
 
+    // A property's or a group's single parent: an item type, a trait, a link type, or another group.
     public record PropertyOwnerRef(PropertyContainerKind kind, UUID ownerId) {}
+
+    public record GroupRow(UUID id, String name, String description, PropertyOwnerRef parent) {}
 
     public record StateMachineRow(UUID id, UUID itemDefinitionId, String name, String description) {}
 
@@ -48,9 +50,16 @@ public class SchemaRepository {
     private static final String PARAM_USAGE = "usage";
     private static final String PARAM_CARDINALITY = "cardinality";
     private static final String COL_ITEM_DEFINITION_ID = "item_definition_id";
-    private static final String PARAM_PROPERTY_ID = "propertyId";
     private static final String COL_FACETABLE = "facetable";
     private static final String PARAM_LINK_ID = "linkId";
+    private static final String PARAM_PARENT_ITEM_ID = "parentItemId";
+    private static final String PARAM_PARENT_TRAIT_ID = "parentTraitId";
+    private static final String PARAM_PARENT_LINK_ID = "parentLinkId";
+    private static final String PARAM_PARENT_GROUP_ID = "parentGroupId";
+    private static final String COL_PARENT_ITEM_ID = "parent_item_id";
+    private static final String COL_PARENT_TRAIT_ID = "parent_trait_id";
+    private static final String COL_PARENT_LINK_ID = "parent_link_id";
+    private static final String COL_PARENT_GROUP_ID = "parent_group_id";
 
     private final JdbcClient jdbcClient;
 
@@ -181,10 +190,45 @@ public class SchemaRepository {
                 .collect(Collectors.groupingBy(Map.Entry::getKey, Collectors.mapping(Map.Entry::getValue, Collectors.toList())));
     }
 
-    // --- Properties ---
+    // --- Properties and property groups ---
+    //
+    // Every property and every group has exactly one parent, held in parent_* columns with a CHECK
+    // that exactly one is non-null -- so a row is always created *with* its parent, and a move is a
+    // single UPDATE that swaps which column is set. There is no separate associate/dissociate step.
 
-    public AdminPropertyDefinitionView createProperty(String name, String description, PropertyType type, PropertyCardinality cardinality, PropertyUsage usage, boolean facetable) {
-        return jdbcClient.sql("INSERT INTO schema_property (name, description, type, cardinality, usage, facetable) VALUES (:name, :description, :type, :cardinality, :usage, :facetable) RETURNING *")
+    // Binds all four parent columns, exactly one of them non-null.
+    private JdbcClient.StatementSpec bindParent(JdbcClient.StatementSpec spec, PropertyOwnerRef parent) {
+        return spec
+                .param(PARAM_PARENT_ITEM_ID, parent.kind() == PropertyContainerKind.ITEM ? parent.ownerId() : null)
+                .param(PARAM_PARENT_TRAIT_ID, parent.kind() == PropertyContainerKind.TRAIT ? parent.ownerId() : null)
+                .param(PARAM_PARENT_LINK_ID, parent.kind() == PropertyContainerKind.LINK ? parent.ownerId() : null)
+                .param(PARAM_PARENT_GROUP_ID, parent.kind() == PropertyContainerKind.GROUP ? parent.ownerId() : null);
+    }
+
+    private static String parentColumn(PropertyContainerKind kind) {
+        return switch (kind) {
+            case ITEM -> COL_PARENT_ITEM_ID;
+            case TRAIT -> COL_PARENT_TRAIT_ID;
+            case LINK -> COL_PARENT_LINK_ID;
+            case GROUP -> COL_PARENT_GROUP_ID;
+        };
+    }
+
+    private PropertyOwnerRef parentOf(ResultSet rs) throws SQLException {
+        for (PropertyContainerKind kind : PropertyContainerKind.values()) {
+            UUID id = rs.getObject(parentColumn(kind), UUID.class);
+            if (id != null) return new PropertyOwnerRef(kind, id);
+        }
+        throw new IllegalStateException("Row has no parent -- violates the exactly-one-parent CHECK");
+    }
+
+    public AdminPropertyDefinitionView createProperty(PropertyOwnerRef parent, String name, String description, PropertyType type, PropertyCardinality cardinality, PropertyUsage usage, boolean facetable) {
+        return bindParent(jdbcClient.sql("""
+                INSERT INTO schema_property (name, description, type, cardinality, usage, facetable,
+                    parent_item_id, parent_trait_id, parent_link_id, parent_group_id)
+                VALUES (:name, :description, :type, :cardinality, :usage, :facetable,
+                    :parentItemId, :parentTraitId, :parentLinkId, :parentGroupId) RETURNING *
+                """), parent)
                 .param("name", name).param(PARAM_DESCRIPTION, description)
                 .param("type", type.name()).param(PARAM_CARDINALITY, cardinality.name()).param(PARAM_USAGE, usage.name())
                 .param(COL_FACETABLE, facetable)
@@ -201,10 +245,8 @@ public class SchemaRepository {
                 .single();
     }
 
-    // register_binary_property cascades on schema_property.id (see
-    // V1_0_2_7__register_binary_property_cascade_delete.sql for why that needed fixing), same as
-    // every other property-ownership/nesting association table -- deleting the row here is all
-    // this needs, matching the pattern those already follow.
+    // register_binary_property and every marker_grant_* row cascade on schema_property.id, so
+    // deleting the row here is all this needs.
     public void deleteProperty(UUID id) {
         jdbcClient.sql("DELETE FROM schema_property WHERE id = :id").param("id", id).update();
     }
@@ -216,122 +258,141 @@ public class SchemaRepository {
                 .optional();
     }
 
-    // A property's current container, regardless of kind -- whichever of the four association
-    // tables actually references it. Assumes (as an application-maintained invariant, same as
-    // every other association table here) that a property is associated with exactly one owner
-    // at a time; move mutations preserve this by pairing a dissociate with an associate.
-    public Optional<PropertyOwnerRef> findCurrentOwner(UUID propertyId) {
-        return jdbcClient.sql("""
-                SELECT 'ITEM' AS kind, item_definition_id AS owner_id FROM schema_item_property WHERE property_id = :propertyId
-                UNION ALL
-                SELECT 'TRAIT', trait_id FROM schema_trait_property WHERE property_id = :propertyId
-                UNION ALL
-                SELECT 'LINK', link_definition_id FROM schema_link_property WHERE property_id = :propertyId
-                UNION ALL
-                SELECT 'PROPERTY', parent_property_id FROM schema_property_property WHERE child_property_id = :propertyId
-                """)
-                .param(PARAM_PROPERTY_ID, propertyId)
-                .query((rs, n) -> new PropertyOwnerRef(
-                        PropertyContainerKind.valueOf(rs.getString("kind")),
-                        rs.getObject("owner_id", UUID.class)))
+    public Optional<PropertyOwnerRef> findPropertyParent(UUID propertyId) {
+        return jdbcClient.sql("SELECT * FROM schema_property WHERE id = :id")
+                .param("id", propertyId)
+                .query((rs, n) -> parentOf(rs))
                 .optional();
     }
 
+    public void moveProperty(UUID propertyId, PropertyOwnerRef newParent) {
+        bindParent(jdbcClient.sql("""
+                UPDATE schema_property SET parent_item_id = :parentItemId, parent_trait_id = :parentTraitId,
+                    parent_link_id = :parentLinkId, parent_group_id = :parentGroupId WHERE id = :id
+                """), newParent)
+                .param("id", propertyId)
+                .update();
+    }
+
     public Map<UUID, List<AdminPropertyDefinitionView>> getPropertiesByItem() {
-        return jdbcClient.sql("""
-                SELECT ip.item_definition_id, p.*
-                FROM schema_property p
-                JOIN schema_item_property ip ON ip.property_id = p.id
-                """)
-                .query((rs, n) -> Map.entry(
-                        rs.getObject(COL_ITEM_DEFINITION_ID, UUID.class),
-                        mapProperty(rs, n)))
-                .list().stream()
-                .collect(Collectors.groupingBy(Map.Entry::getKey, Collectors.mapping(Map.Entry::getValue, Collectors.toList())));
+        return propertiesGroupedBy(COL_PARENT_ITEM_ID);
     }
 
     public Map<UUID, List<AdminPropertyDefinitionView>> getPropertiesByTrait() {
-        return jdbcClient.sql("""
-                SELECT tp.trait_id, p.*
-                FROM schema_property p
-                JOIN schema_trait_property tp ON tp.property_id = p.id
-                """)
-                .query((rs, n) -> Map.entry(
-                        rs.getObject("trait_id", UUID.class),
-                        mapProperty(rs, n)))
-                .list().stream()
-                .collect(Collectors.groupingBy(Map.Entry::getKey, Collectors.mapping(Map.Entry::getValue, Collectors.toList())));
+        return propertiesGroupedBy(COL_PARENT_TRAIT_ID);
     }
 
     public Map<UUID, List<AdminPropertyDefinitionView>> getPropertiesByLink() {
-        return jdbcClient.sql("""
-                SELECT lp.link_definition_id, p.*
-                FROM schema_property p
-                JOIN schema_link_property lp ON lp.property_id = p.id
-                """)
-                .query((rs, n) -> Map.entry(
-                        rs.getObject("link_definition_id", UUID.class),
-                        mapProperty(rs, n)))
+        return propertiesGroupedBy(COL_PARENT_LINK_ID);
+    }
+
+    public Map<UUID, List<AdminPropertyDefinitionView>> getPropertiesByGroup() {
+        return propertiesGroupedBy(COL_PARENT_GROUP_ID);
+    }
+
+    // column is one of this class's own COL_PARENT_* constants, never caller-supplied.
+    private Map<UUID, List<AdminPropertyDefinitionView>> propertiesGroupedBy(String column) {
+        return jdbcClient.sql("SELECT * FROM schema_property WHERE " + column + " IS NOT NULL")
+                .query((rs, n) -> Map.entry(rs.getObject(column, UUID.class), mapProperty(rs, n)))
                 .list().stream()
                 .collect(Collectors.groupingBy(Map.Entry::getKey, Collectors.mapping(Map.Entry::getValue, Collectors.toList())));
     }
 
-    public void associateItemProperty(UUID itemId, UUID propertyId) {
-        jdbcClient.sql("INSERT INTO schema_item_property (item_definition_id, property_id) VALUES (:itemId, :propertyId)")
-                .param(PARAM_ITEM_ID, itemId).param(PARAM_PROPERTY_ID, propertyId).update();
+    public GroupRow createGroup(PropertyOwnerRef parent, String name, String description) {
+        return bindParent(jdbcClient.sql("""
+                INSERT INTO schema_property_group (name, description, parent_item_id, parent_trait_id, parent_link_id, parent_group_id)
+                VALUES (:name, :description, :parentItemId, :parentTraitId, :parentLinkId, :parentGroupId) RETURNING *
+                """), parent)
+                .param("name", name).param(PARAM_DESCRIPTION, description)
+                .query((rs, n) -> mapGroup(rs))
+                .single();
     }
 
-    public void associateTraitProperty(UUID traitId, UUID propertyId) {
-        jdbcClient.sql("INSERT INTO schema_trait_property (trait_id, property_id) VALUES (:traitId, :propertyId)")
-                .param(PARAM_TRAIT_ID, traitId).param(PARAM_PROPERTY_ID, propertyId).update();
+    public GroupRow updateGroup(UUID id, String name, String description) {
+        return jdbcClient.sql("UPDATE schema_property_group SET name = :name, description = :description WHERE id = :id RETURNING *")
+                .param("id", id).param("name", name).param(PARAM_DESCRIPTION, description)
+                .query((rs, n) -> mapGroup(rs))
+                .single();
     }
 
-    public void dissociateItemProperty(UUID itemId, UUID propertyId) {
-        jdbcClient.sql("DELETE FROM schema_item_property WHERE item_definition_id = :itemId AND property_id = :propertyId")
-                .param(PARAM_ITEM_ID, itemId).param(PARAM_PROPERTY_ID, propertyId).update();
+    public void deleteGroup(UUID id) {
+        jdbcClient.sql("DELETE FROM schema_property_group WHERE id = :id").param("id", id).update();
     }
 
-    public void dissociateTraitProperty(UUID traitId, UUID propertyId) {
-        jdbcClient.sql("DELETE FROM schema_trait_property WHERE trait_id = :traitId AND property_id = :propertyId")
-                .param(PARAM_TRAIT_ID, traitId).param(PARAM_PROPERTY_ID, propertyId).update();
+    public Optional<GroupRow> findGroup(UUID id) {
+        return jdbcClient.sql("SELECT * FROM schema_property_group WHERE id = :id")
+                .param("id", id)
+                .query((rs, n) -> mapGroup(rs))
+                .optional();
     }
 
-    // --- Object properties (property -> property containment) ---
+    public void moveGroup(UUID groupId, PropertyOwnerRef newParent) {
+        bindParent(jdbcClient.sql("""
+                UPDATE schema_property_group SET parent_item_id = :parentItemId, parent_trait_id = :parentTraitId,
+                    parent_link_id = :parentLinkId, parent_group_id = :parentGroupId WHERE id = :id
+                """), newParent)
+                .param("id", groupId)
+                .update();
+    }
 
-    public Map<UUID, List<AdminPropertyDefinitionView>> getPropertiesByProperty() {
-        return jdbcClient.sql("""
-                SELECT pp.parent_property_id, p.*
-                FROM schema_property p
-                JOIN schema_property_property pp ON pp.child_property_id = p.id
-                """)
-                .query((rs, n) -> Map.entry(
-                        rs.getObject("parent_property_id", UUID.class),
-                        mapProperty(rs, n)))
+    public Map<UUID, List<GroupRow>> getGroupsByItem() {
+        return groupsGroupedBy(COL_PARENT_ITEM_ID);
+    }
+
+    public Map<UUID, List<GroupRow>> getGroupsByTrait() {
+        return groupsGroupedBy(COL_PARENT_TRAIT_ID);
+    }
+
+    public Map<UUID, List<GroupRow>> getGroupsByLink() {
+        return groupsGroupedBy(COL_PARENT_LINK_ID);
+    }
+
+    public Map<UUID, List<GroupRow>> getGroupsByGroup() {
+        return groupsGroupedBy(COL_PARENT_GROUP_ID);
+    }
+
+    // column is one of this class's own COL_PARENT_* constants, never caller-supplied.
+    private Map<UUID, List<GroupRow>> groupsGroupedBy(String column) {
+        return jdbcClient.sql("SELECT * FROM schema_property_group WHERE " + column + " IS NOT NULL")
+                .query((rs, n) -> Map.entry(rs.getObject(column, UUID.class), mapGroup(rs)))
                 .list().stream()
                 .collect(Collectors.groupingBy(Map.Entry::getKey, Collectors.mapping(Map.Entry::getValue, Collectors.toList())));
     }
 
-    public void associatePropertyProperty(UUID parentPropertyId, UUID childPropertyId) {
-        jdbcClient.sql("INSERT INTO schema_property_property (parent_property_id, child_property_id) VALUES (:parentPropertyId, :childPropertyId)")
-                .param("parentPropertyId", parentPropertyId).param("childPropertyId", childPropertyId).update();
-    }
-
-    public void dissociatePropertyProperty(UUID parentPropertyId, UUID childPropertyId) {
-        jdbcClient.sql("DELETE FROM schema_property_property WHERE parent_property_id = :parentPropertyId AND child_property_id = :childPropertyId")
-                .param("parentPropertyId", parentPropertyId).param("childPropertyId", childPropertyId).update();
-    }
-
-    // Every property's current parent, regardless of container kind -- used by move validation and
-    // by the cycle guard, which needs to walk "what owns this property" independent of whether that
-    // owner is another property, an item, a trait, or a link (only the property->property edges are
-    // relevant to a containment cycle, since only properties can themselves be containers).
-    public Map<UUID, UUID> getParentPropertyIdByProperty() {
-        return jdbcClient.sql("SELECT parent_property_id, child_property_id FROM schema_property_property")
+    // child group -> parent group, for the containment-cycle guard (only group->group edges can form
+    // a cycle -- a property is always a leaf).
+    public Map<UUID, UUID> getParentGroupIdByGroup() {
+        return jdbcClient.sql("SELECT id, parent_group_id FROM schema_property_group WHERE parent_group_id IS NOT NULL")
                 .query((rs, n) -> Map.entry(
-                        rs.getObject("child_property_id", UUID.class),
-                        rs.getObject("parent_property_id", UUID.class)))
+                        rs.getObject("id", UUID.class),
+                        rs.getObject(COL_PARENT_GROUP_ID, UUID.class)))
                 .list().stream()
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+    }
+
+    public boolean isGroupEmpty(UUID groupId) {
+        return !Boolean.TRUE.equals(jdbcClient.sql("""
+                SELECT EXISTS(
+                    SELECT 1 FROM schema_property WHERE parent_group_id = :groupId
+                    UNION ALL
+                    SELECT 1 FROM schema_property_group WHERE parent_group_id = :groupId
+                )
+                """)
+                .param("groupId", groupId)
+                .query(Boolean.class).single());
+    }
+
+    // Names of every property and group directly under one parent -- the sibling set that must stay
+    // unique. Properties and groups live in separate tables, so this cross-table check can only be
+    // enforced by the application (see SchemaMutationValidation), not by a DB constraint.
+    public Set<String> findChildNames(PropertyOwnerRef parent) {
+        String column = parentColumn(parent.kind());
+        return Set.copyOf(jdbcClient.sql(
+                        "SELECT name FROM schema_property WHERE " + column + " = :parentId "
+                                + "UNION ALL SELECT name FROM schema_property_group WHERE " + column + " = :parentId")
+                .param("parentId", parent.ownerId())
+                .query(String.class)
+                .list());
     }
 
     // --- Links ---
@@ -348,16 +409,6 @@ public class SchemaRepository {
 
     public void deleteLink(UUID id) {
         jdbcClient.sql("DELETE FROM schema_link WHERE id = :id").param("id", id).update();
-    }
-
-    public void associateLinkProperty(UUID linkId, UUID propertyId) {
-        jdbcClient.sql("INSERT INTO schema_link_property (link_definition_id, property_id) VALUES (:linkId, :propertyId)")
-                .param(PARAM_LINK_ID, linkId).param(PARAM_PROPERTY_ID, propertyId).update();
-    }
-
-    public void dissociateLinkProperty(UUID linkId, UUID propertyId) {
-        jdbcClient.sql("DELETE FROM schema_link_property WHERE link_definition_id = :linkId AND property_id = :propertyId")
-                .param(PARAM_LINK_ID, linkId).param(PARAM_PROPERTY_ID, propertyId).update();
     }
 
     // --- Perspectives ---
@@ -549,22 +600,26 @@ public class SchemaRepository {
 
     // --- Row mappers ---
 
-    // Children of an OBJECT-typed property aren't resolvable from this single-row query (they come
-    // from a separate join, see getPropertiesByProperty) -- this always returns an empty list as a
-    // placeholder, immediately replaced by SchemaViewBuilder's recursive child-resolution pass.
     private AdminPropertyDefinitionView mapProperty(ResultSet rs, int n) throws SQLException {
-        return AdminPropertyDefinitionView.of(
+        return new AdminPropertyDefinitionView(
                 rs.getObject("id", UUID.class),
-                new PropertyIdentity(
-                        rs.getString("name"),
-                        rs.getString(PARAM_DESCRIPTION),
-                        PropertyType.valueOf(rs.getString("type")),
-                        PropertyCardinality.valueOf(rs.getString(PARAM_CARDINALITY)),
-                        PropertyUsage.valueOf(rs.getString(PARAM_USAGE))),
+                rs.getString("name"),
+                rs.getString(PARAM_DESCRIPTION),
+                PropertyType.valueOf(rs.getString("type")),
+                PropertyCardinality.valueOf(rs.getString(PARAM_CARDINALITY)),
+                PropertyUsage.valueOf(rs.getString(PARAM_USAGE)),
                 null,
                 rs.getObject("controlled_list_id", UUID.class),
-                rs.getBoolean(COL_FACETABLE),
-                List.of()
+                rs.getBoolean(COL_FACETABLE)
+        );
+    }
+
+    private GroupRow mapGroup(ResultSet rs) throws SQLException {
+        return new GroupRow(
+                rs.getObject("id", UUID.class),
+                rs.getString("name"),
+                rs.getString(PARAM_DESCRIPTION),
+                parentOf(rs)
         );
     }
 

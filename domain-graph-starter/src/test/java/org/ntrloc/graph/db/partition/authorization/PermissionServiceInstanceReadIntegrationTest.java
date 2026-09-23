@@ -80,12 +80,12 @@ class PermissionServiceInstanceReadIntegrationTest extends AbstractIntegrationTe
     }
 
     @Test
-    void itemWithGroupGrantedMarker_isReadableForGroupMemberOnly() {
+    void itemWithUserGroupGrantedMarker_isReadableForUserGroupMemberOnly() {
         UUID itemId = createItem();
         UUID marker = createMarker();
         markerAssignmentService.addItemMarker(itemId, marker, "test-actor", "test reason");
-        var group = securityRepo.createGroup("pisr-" + UUID.randomUUID());
-        grantItemRead(marker, "GROUP", group.id());
+        var group = securityRepo.createUserGroup("pisr-" + UUID.randomUUID());
+        grantItemRead(marker, "USER_GROUP", group.id());
 
         var member = securityRepo.createUser("pisr-" + UUID.randomUUID(), "Member", null, false);
         var nonMember = securityRepo.createUser("pisr-" + UUID.randomUUID(), "NonMember", null, false);

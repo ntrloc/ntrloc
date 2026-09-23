@@ -4,7 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.coordinator.CoordinatorTestDomainInitializer;
 import org.ntrloc.graph.db.coordinator.LedgerRegisterCoordinator;
-import org.ntrloc.graph.db.partition.authorization.DefaultGroupInitializer;
+import org.ntrloc.graph.db.partition.authorization.DefaultUserGroupInitializer;
 import org.ntrloc.graph.db.partition.authorization.MarkerAssignmentService;
 import org.ntrloc.graph.db.partition.authorization.repository.AuthorizationRepository;
 import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
@@ -27,7 +27,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 // Slice C: mode-2 (field/capability-affecting) permission resolution -- property:read/write and
 // link_property:read/write filtering, plus item:delete/link:delete capability flags. Every
-// non-superuser fixture user is added to "everyone" (type-level read via DefaultGroupInitializer's
+// non-superuser fixture user is added to "everyone" (type-level read via DefaultUserGroupInitializer's
 // default-open grant) and separately granted item:read/link:read on the specific instance under
 // test, so each test isolates the property/capability gate specifically -- the mode-1 existence
 // gate is a prerequisite, already covered by InstanceReadFilteringIntegrationTest.
@@ -57,7 +57,7 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
     private SecurityRepository securityRepo;
 
     @Autowired
-    private DefaultGroupInitializer defaultGroupInitializer;
+    private DefaultUserGroupInitializer defaultUserGroupInitializer;
 
     private UUID createProduct(String name, String color) {
         UUID itemId = UUID.randomUUID();
@@ -88,11 +88,11 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
         return linkId;
     }
 
-    private NtrlocPrincipal newUserInEveryoneGroup() {
+    private NtrlocPrincipal newUserInEveryoneUserGroup() {
         var user = securityRepo.createUser("pcf-" + UUID.randomUUID(), "Restricted", null, false);
-        UUID everyoneGroupId = defaultGroupInitializer.getDefaultGroupId();
-        securityRepo.addUserToGroup(user.id(), everyoneGroupId);
-        return new ResolvedPrincipal(user.id(), user.externalId(), user.externalId(), null, Set.of(everyoneGroupId), false);
+        UUID everyoneUserGroupId = defaultUserGroupInitializer.getDefaultUserGroupId();
+        securityRepo.addUserToUserGroup(user.id(), everyoneUserGroupId);
+        return new ResolvedPrincipal(user.id(), user.externalId(), user.externalId(), null, Set.of(everyoneUserGroupId), false);
     }
 
     private static final NtrlocPrincipal SUPERUSER =
@@ -113,7 +113,7 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
     @Test
     void propertyWithNoReadGrant_isAbsentFromResponse() {
         UUID productId = createProduct("Widget", "red");
-        var principal = newUserInEveryoneGroup();
+        var principal = newUserInEveryoneUserGroup();
         UUID grantId = grantId(markerOnItem(productId).id(), principal);
         authRepo.setItemPermissions(grantId, true, false);
         authRepo.grantPropertyAccess(grantId, fixture.namePropertyId(), true, false);
@@ -128,7 +128,7 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
     @Test
     void propertyGrantedViaOneOfSeveralMarkers_isPresent_unionSemantics() {
         UUID productId = createProduct("Widget", "red");
-        var principal = newUserInEveryoneGroup();
+        var principal = newUserInEveryoneUserGroup();
         authRepo.setItemPermissions(grantId(markerOnItem(productId).id(), principal), true, false);
         authRepo.grantPropertyAccess(grantId(markerOnItem(productId).id(), principal), fixture.namePropertyId(), true, false);
         authRepo.grantPropertyAccess(grantId(markerOnItem(productId).id(), principal), fixture.colorPropertyId(), true, false);
@@ -141,7 +141,7 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
     @Test
     void propertyWithWriteGrantOnly_isReadable_becauseWriteImpliesRead() {
         UUID productId = createProduct("Widget", "red");
-        var principal = newUserInEveryoneGroup();
+        var principal = newUserInEveryoneUserGroup();
         UUID grantId = grantId(markerOnItem(productId).id(), principal);
         authRepo.setItemPermissions(grantId, true, false);
         authRepo.grantPropertyAccess(grantId, fixture.namePropertyId(), false, true);
@@ -169,7 +169,7 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
     @Test
     void editListReflectsPropertyWriteGrants() {
         UUID productId = createProduct("Widget", "red");
-        var principal = newUserInEveryoneGroup();
+        var principal = newUserInEveryoneUserGroup();
         UUID grantId = grantId(markerOnItem(productId).id(), principal);
         authRepo.setItemPermissions(grantId, true, false);
         authRepo.grantPropertyAccess(grantId, fixture.namePropertyId(), false, true);
@@ -183,7 +183,7 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
     @Test
     void deleteCapabilityReflectsItemDeleteGrant() {
         UUID productId = createProduct("Widget", "red");
-        var principal = newUserInEveryoneGroup();
+        var principal = newUserInEveryoneUserGroup();
         UUID grantId = grantId(markerOnItem(productId).id(), principal);
         authRepo.setItemPermissions(grantId, true, true);
 
@@ -193,7 +193,7 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
     }
 
     // Superuser gets the real, fully-enumerated tree -- same shape as anyone else, just with every
-    // scalar wildcarded and every OBJECT child present, rather than a separate flag/shortcut.
+    // scalar wildcarded and every group child present, rather than a separate flag/shortcut.
     @Test
     void superuserPermissions_fullyEnumeratedEditTreeAndDeleteTrue() {
         UUID productId = createProduct("Widget", "red");
@@ -201,18 +201,18 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
         var result = entityManager.project(new SingleItemProjectionSpec("CoordinatorTestProduct", productId, null, true, false), "http://binary", SUPERUSER);
 
         assertThat(result.get().permissions().edit()).isEqualTo(
-                Map.of("scalars", List.of("*"), "objects", Map.of("dimensions", Map.of("scalars", List.of("*")))));
+                Map.of("scalars", List.of("*"), "groups", Map.of("dimensions", Map.of("scalars", List.of("*")))));
         assertThat(result.get().permissions().delete()).isTrue();
         assertThat(result.get().permissions().createLinks()).containsExactly("products");
     }
 
-    // A write grant on every scalar under a nested OBJECT property must surface as that node
+    // A write grant on every scalar under a nested property group must surface as that node
     // collapsing to the wildcard, not as the top-level container name (the original bug report
     // this whole edit-tree design responds to) and not leaking into sibling top-level properties.
     @Test
     void editTreeCollapsesFullyGrantedNestedObjectToWildcard() {
         UUID productId = createProduct("Widget", "red");
-        var principal = newUserInEveryoneGroup();
+        var principal = newUserInEveryoneUserGroup();
         UUID grantId = grantId(markerOnItem(productId).id(), principal);
         authRepo.setItemPermissions(grantId, true, false);
         authRepo.grantPropertyAccess(grantId, fixture.dimensionsWidthPropertyId(), false, true);
@@ -221,7 +221,7 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
         var result = entityManager.project(new SingleItemProjectionSpec("CoordinatorTestProduct", productId, null, true, false), "http://binary", principal);
 
         assertThat(result.get().permissions().edit()).isEqualTo(
-                Map.of("objects", Map.of("dimensions", Map.of("scalars", List.of("*")))));
+                Map.of("groups", Map.of("dimensions", Map.of("scalars", List.of("*")))));
     }
 
     // Partial coverage of a nested object's own children must name exactly the granted ones,
@@ -229,7 +229,7 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
     @Test
     void editTreeNamesPartiallyGrantedNestedObjectScalars() {
         UUID productId = createProduct("Widget", "red");
-        var principal = newUserInEveryoneGroup();
+        var principal = newUserInEveryoneUserGroup();
         UUID grantId = grantId(markerOnItem(productId).id(), principal);
         authRepo.setItemPermissions(grantId, true, false);
         authRepo.grantPropertyAccess(grantId, fixture.dimensionsWidthPropertyId(), false, true);
@@ -238,7 +238,7 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
         var result = entityManager.project(new SingleItemProjectionSpec("CoordinatorTestProduct", productId, null, true, false), "http://binary", principal);
 
         assertThat(result.get().permissions().edit()).isEqualTo(
-                Map.of("objects", Map.of("dimensions", Map.of("scalars", List.of("width")))));
+                Map.of("groups", Map.of("dimensions", Map.of("scalars", List.of("width")))));
     }
 
     // --- Link property filtering and link capability, distinguished from item-level grants ---
@@ -249,7 +249,7 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
     @Test
     void createLinksCapability_governedByLinkPerspectiveCreateGrant() {
         UUID productId = createProduct("Widget", "red");
-        var principal = newUserInEveryoneGroup();
+        var principal = newUserInEveryoneUserGroup();
         UUID sourceGrantId = grantId(markerOnItem(productId).id(), principal);
         authRepo.setItemPermissions(sourceGrantId, true, false);
         authRepo.grantLinkPerspectiveAccess(sourceGrantId, fixture.productPerspectiveId(), true, false, false); // link:create only
@@ -262,7 +262,7 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
     @Test
     void createLinksCapability_absentWithoutCreateGrant() {
         UUID productId = createProduct("Widget", "red");
-        var principal = newUserInEveryoneGroup();
+        var principal = newUserInEveryoneUserGroup();
         UUID sourceGrantId = grantId(markerOnItem(productId).id(), principal);
         authRepo.setItemPermissions(sourceGrantId, true, false);
         authRepo.grantLinkPerspectiveAccess(sourceGrantId, fixture.productPerspectiveId(), false, true, false); // link:read only, no create
@@ -277,7 +277,7 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
         UUID productId = createProduct("Widget", "red");
         UUID contributorId = createContributor();
         createLink(productId, contributorId, "author");
-        var principal = newUserInEveryoneGroup();
+        var principal = newUserInEveryoneUserGroup();
         UUID sourceGrantId = grantId(markerOnItem(productId).id(), principal);
         authRepo.setItemPermissions(sourceGrantId, true, false);
         authRepo.grantLinkPerspectiveAccess(sourceGrantId, fixture.productPerspectiveId(), false, true, false);
@@ -297,7 +297,7 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
         UUID productId = createProduct("Widget", "red");
         UUID contributorId = createContributor();
         createLink(productId, contributorId, "author");
-        var principal = newUserInEveryoneGroup();
+        var principal = newUserInEveryoneUserGroup();
         UUID sourceGrantId = grantId(markerOnItem(productId).id(), principal);
         authRepo.setItemPermissions(sourceGrantId, true, false);
         authRepo.grantLinkPerspectiveAccess(sourceGrantId, fixture.productPerspectiveId(), false, true, false);
@@ -317,7 +317,7 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
         UUID productId = createProduct("Widget", "red");
         UUID contributorId = createContributor();
         createLink(productId, contributorId, "author");
-        var principal = newUserInEveryoneGroup();
+        var principal = newUserInEveryoneUserGroup();
         UUID sourceGrantId = grantId(markerOnItem(productId).id(), principal);
         authRepo.setItemPermissions(sourceGrantId, true, true); // item:read + item:delete on the product itself
         authRepo.grantLinkPerspectiveAccess(sourceGrantId, fixture.productPerspectiveId(), false, true, true); // link:read + link:delete
@@ -343,7 +343,7 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
         UUID productId = createProduct("Widget", "red");
         UUID contributorId = createContributor();
         createLink(productId, contributorId, "author");
-        var principal = newUserInEveryoneGroup();
+        var principal = newUserInEveryoneUserGroup();
         UUID sourceGrantId = grantId(markerOnItem(productId).id(), principal);
         authRepo.setItemPermissions(sourceGrantId, true, false);
         authRepo.grantLinkPerspectiveAccess(sourceGrantId, fixture.productPerspectiveId(), false, true, false);

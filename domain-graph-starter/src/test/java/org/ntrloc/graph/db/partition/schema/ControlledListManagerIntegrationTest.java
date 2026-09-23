@@ -6,7 +6,8 @@ import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyUsage;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateItemDefinitionMutation;
-import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateItemPropertyDefinitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.AddPropertyDefinitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.PropertyContainerKind;
 import org.springframework.beans.factory.annotation.Autowired;
 
 import java.util.List;
@@ -33,8 +34,8 @@ class ControlledListManagerIntegrationTest extends AbstractIntegrationTest {
         schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(itemName, "d", List.of(), null, false, null)));
         UUID itemId = schemaManager.getAdminSchema().items().stream()
                 .filter(i -> i.name().equals(itemName)).findFirst().orElseThrow().id();
-        schemaManager.applyMutations(List.of(new CreateItemPropertyDefinitionMutation(
-                itemId, propName, "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false, List.of())));
+        schemaManager.applyMutations(List.of(new AddPropertyDefinitionMutation(
+                PropertyContainerKind.ITEM, itemId, propName, "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)));
         return schemaManager.getAdminSchema().items().stream()
                 .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
                 .properties().stream().filter(p -> p.name().equals(propName)).findFirst().orElseThrow().id();

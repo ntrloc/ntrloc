@@ -87,7 +87,7 @@ public class BlockDeviceBinaryStorageAdapter implements BinaryStorageAdapter {
         }
 
         Path permanentPath = permanentStorageFolder.toPath()
-                .resolve(permanentRelativePath(info.getSha256Hash(), info.getMd5Hash()));
+                .resolve(permanentRelativePath(info.getSha256Hash(), info.getMd5Hash(), info.getLength()));
         File permanentFile = permanentPath.toFile();
 
         if (permanentFile.exists()) {
@@ -104,8 +104,8 @@ public class BlockDeviceBinaryStorageAdapter implements BinaryStorageAdapter {
     }
 
     @Override
-    public InputStream openReader(String sha256Hash, String md5Hash) throws IOException {
-        Path path = permanentStorageFolder.toPath().resolve(permanentRelativePath(sha256Hash, md5Hash));
+    public InputStream openReader(String sha256Hash, String md5Hash, long length) throws IOException {
+        Path path = permanentStorageFolder.toPath().resolve(permanentRelativePath(sha256Hash, md5Hash, length));
         return new FileInputStream(path.toFile());
     }
 
@@ -121,11 +121,17 @@ public class BlockDeviceBinaryStorageAdapter implements BinaryStorageAdapter {
         }
     }
 
-    private Path permanentRelativePath(String sha256, String md5) {
+    // Keyed on all three of sha256, md5 and length -- matching binary_content's own compound
+    // UNIQUE(sha256, md5, length) constraint -- so the two layers can't disagree about what counts
+    // as "the same content." Package-private (not private) so BlockDeviceBinaryStorageAdapterTest can
+    // assert directly that two different lengths produce two different paths even when both hashes
+    // happen to match, a case a real upload can't be made to exercise (that would require an actual
+    // hash collision).
+    Path permanentRelativePath(String sha256, String md5, long length) {
         String shaPath = StreamSupport.stream(
                 Splitter.fixedLength(4).split(sha256).spliterator(), false)
                 .collect(Collectors.joining("/"));
-        return Path.of(shaPath + "/" + sha256 + "-" + md5);
+        return Path.of(shaPath + "/" + sha256 + "-" + md5 + "-" + length);
     }
 
     private File ensureDirectory(File dir) throws IOException {

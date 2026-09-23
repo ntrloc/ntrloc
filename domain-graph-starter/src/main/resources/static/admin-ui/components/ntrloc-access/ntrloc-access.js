@@ -509,7 +509,7 @@ injectStyles('ntrloc-access-styles', `
   }
   /* Checked via inheritance only (not owned directly here) -- same checkmark, dimmed. */
   .axs-perm-check.dim { opacity: 0.5; }
-  /* OBJECT-container bulk toggle only (see bulkPermCheckHtml): some but not all descendant
+  /* group bulk toggle only (see bulkPermCheckHtml): some but not all descendant
      leaves have this field granted directly. */
   .axs-perm-check.partial {
     background: rgba(74, 158, 255, 0.08);
@@ -904,7 +904,7 @@ class NtrlocAccess extends HTMLElement {
     // Grant detail pane collapse state -- shared by all three perspectives, since they all render
     // through the same renderGrantDetailPane/renderPropertyGrantTree. Keyed by a fixed section name
     // ('properties'/'links'/'stateMachines') for the three top-level sections, and by property id
-    // for individual OBJECT containers (arbitrarily nested) within the Properties tree. Persists
+    // for individual groups (arbitrarily nested) within the Properties tree. Persists
     // across selection changes and re-renders (toggling is a pure DOM operation, not a re-render --
     // see syncPropertyRowVisibility/the [data-toggle-grant-section] handler -- so it never disturbs
     // in-progress edits).
@@ -1039,7 +1039,7 @@ class NtrlocAccess extends HTMLElement {
   // user browsed from the Item Type perspective's own User grants list).
   async fetchDirectGroupsForUser(userId) {
     try {
-      const res = await fetch(`/api/admin/users/${userId}/groups`, { credentials: 'include' });
+      const res = await fetch(`/api/admin/users/${userId}/user-groups`, { credentials: 'include' });
       return res.ok ? await res.json() : [];
     } catch (e) { return []; }
   }
@@ -1118,11 +1118,11 @@ class NtrlocAccess extends HTMLElement {
     const toRemove = [...currentIds].filter(id => !checkedIds.has(id));
     try {
       await Promise.all([
-        ...toAdd.map(groupId => fetch(`/api/admin/groups/${groupId}/members`, {
+        ...toAdd.map(groupId => fetch(`/api/admin/user-groups/${groupId}/members`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           credentials: 'include', body: JSON.stringify({ userId: u.id })
         })),
-        ...toRemove.map(groupId => fetch(`/api/admin/groups/${groupId}/members/${u.id}`, { method: 'DELETE', credentials: 'include' })),
+        ...toRemove.map(groupId => fetch(`/api/admin/user-groups/${groupId}/members/${u.id}`, { method: 'DELETE', credentials: 'include' })),
       ]);
       this.modal = null;
       this.error = '';
@@ -1329,7 +1329,7 @@ class NtrlocAccess extends HTMLElement {
 
   async fetchGroups() {
     try {
-      const res = await fetch('/api/admin/groups', { credentials: 'include' });
+      const res = await fetch('/api/admin/user-groups', { credentials: 'include' });
       if (res.ok) this.groups = await res.json();
     } catch (e) { /* best effort */ }
   }
@@ -1377,7 +1377,7 @@ class NtrlocAccess extends HTMLElement {
   async fetchGroupReach(groupId) {
     const fetchMembers = async (id) => {
       try {
-        const res = await fetch(`/api/admin/groups/${id}/members`, { credentials: 'include' });
+        const res = await fetch(`/api/admin/user-groups/${id}/members`, { credentials: 'include' });
         return res.ok ? await res.json() : [];
       } catch (e) { return []; }
     };
@@ -1402,7 +1402,7 @@ class NtrlocAccess extends HTMLElement {
     const parentGroupId = this.querySelector('[name="group-parent"]')?.value || null;
     if (!name) { this.groupError = 'Group name is required.'; this.render(); return; }
     try {
-      const res = await fetch('/api/admin/groups', {
+      const res = await fetch('/api/admin/user-groups', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         credentials: 'include', body: JSON.stringify({ name, parentGroupId })
       });
@@ -1433,7 +1433,7 @@ class NtrlocAccess extends HTMLElement {
     const name = this.querySelector('[name="rename-group"]')?.value.trim();
     if (!name) { this.groupError = 'Group name is required.'; this.render(); return; }
     try {
-      const res = await fetch(`/api/admin/groups/${this.selectedGroupId}`, {
+      const res = await fetch(`/api/admin/user-groups/${this.selectedGroupId}`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         credentials: 'include', body: JSON.stringify({ name })
       });
@@ -1450,7 +1450,7 @@ class NtrlocAccess extends HTMLElement {
     const groupId = this.modal.groupId;
     const parentGroupId = this.querySelector('[name="move-group-parent"]')?.value || null;
     try {
-      const res = await fetch(`/api/admin/groups/${groupId}/parent`, {
+      const res = await fetch(`/api/admin/user-groups/${groupId}/parent`, {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         credentials: 'include', body: JSON.stringify({ parentGroupId })
       });
@@ -1470,7 +1470,7 @@ class NtrlocAccess extends HTMLElement {
     const groupId = this.modal.groupId;
     const deleted = this.groups.find(g => g.id === groupId);
     try {
-      const res = await fetch(`/api/admin/groups/${groupId}`, { method: 'DELETE', credentials: 'include' });
+      const res = await fetch(`/api/admin/user-groups/${groupId}`, { method: 'DELETE', credentials: 'include' });
       if (!res.ok) throw new Error((await res.text()) || 'Failed to delete group.');
       this.modal = null;
       this.groupError = '';
@@ -1494,7 +1494,7 @@ class NtrlocAccess extends HTMLElement {
     const checkedIds = [...this.querySelectorAll('.axs-modal-checkboxes input[type="checkbox"]:checked')].map(cb => cb.value);
     if (!checkedIds.length) { this.groupError = 'No users selected.'; this.render(); return; }
     try {
-      await Promise.all(checkedIds.map(userId => fetch(`/api/admin/groups/${groupId}/members`, {
+      await Promise.all(checkedIds.map(userId => fetch(`/api/admin/user-groups/${groupId}/members`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         credentials: 'include', body: JSON.stringify({ userId })
       })));
@@ -1513,7 +1513,7 @@ class NtrlocAccess extends HTMLElement {
     const user = this.users.find(u => u.id === userId);
     const group = this.groups.find(g => g.id === groupId);
     try {
-      await fetch(`/api/admin/groups/${groupId}/members/${userId}`, { method: 'DELETE', credentials: 'include' });
+      await fetch(`/api/admin/user-groups/${groupId}/members/${userId}`, { method: 'DELETE', credentials: 'include' });
       this.modal = null;
       this.groupError = '';
       await this.fetchGroups();
@@ -1634,7 +1634,7 @@ class NtrlocAccess extends HTMLElement {
   // marker_grant row at all still resolves cleanly here (every endpoint below defaults to "not
   // granted" rather than 404ing) -- hasOwnGrant is tracked separately via grantPrincipals.
   async fetchPrincipalMarkerGrant(kind, principalId, markerId) {
-    const base = kind === 'group' ? `/api/admin/groups/${principalId}` : `/api/admin/users/${principalId}`;
+    const base = kind === 'group' ? `/api/admin/user-groups/${principalId}` : `/api/admin/users/${principalId}`;
     const getJson = async (path, fallback) => {
       try {
         const res = await fetch(`${base}${path}`, { credentials: 'include' });
@@ -1689,7 +1689,7 @@ class NtrlocAccess extends HTMLElement {
   // marker_grant-style row to speak of, each operation is its own independent authorization_
   // item_type_grant row (see AccessAdminController's own comment on getOwnPermissions).
   async fetchPrincipalTypeLevelGrant(kind, principalId, itemTypeId) {
-    const path = kind === 'group' ? `/api/admin/groups/${principalId}/permissions` : `/api/admin/users/${principalId}/permissions/own`;
+    const path = kind === 'group' ? `/api/admin/user-groups/${principalId}/permissions` : `/api/admin/users/${principalId}/permissions/own`;
     try {
       const res = await fetch(path, { credentials: 'include' });
       const list = res.ok ? await res.json() : [];
@@ -1876,7 +1876,7 @@ class NtrlocAccess extends HTMLElement {
   async saveMarkerGrantEdit() {
     const { kind, id } = this.grantSelection;
     const markerId = this.selectedMarkerId;
-    const base = kind === 'group' ? `/api/admin/groups/${id}` : `/api/admin/users/${id}`;
+    const base = kind === 'group' ? `/api/admin/user-groups/${id}` : `/api/admin/users/${id}`;
     const checked = {};
     this.querySelectorAll('[data-grant-field]').forEach(el => { checked[el.dataset.grantField] = el.dataset.granted === 'true'; });
     const putJson = (path, body) => fetch(`${base}${path}`, {
@@ -1939,7 +1939,7 @@ class NtrlocAccess extends HTMLElement {
   async saveTypeLevelGrantEdit() {
     const { kind, id } = this.grantSelection;
     const itemTypeId = this.selectedItemTypeId;
-    const base = kind === 'group' ? `/api/admin/groups/${id}` : `/api/admin/users/${id}`;
+    const base = kind === 'group' ? `/api/admin/user-groups/${id}` : `/api/admin/users/${id}`;
     const checked = {};
     this.querySelectorAll('[data-grant-field]').forEach(el => { checked[el.dataset.grantField] = el.dataset.granted === 'true'; });
     const wantRead = !!checked['item-type:read'];
@@ -1973,7 +1973,7 @@ class NtrlocAccess extends HTMLElement {
   async deleteMarkerGrantForSelection() {
     const { kind, id } = this.grantSelection;
     const markerId = this.selectedMarkerId;
-    const base = kind === 'group' ? `/api/admin/groups/${id}` : `/api/admin/users/${id}`;
+    const base = kind === 'group' ? `/api/admin/user-groups/${id}` : `/api/admin/users/${id}`;
     await fetch(`${base}/markers/${markerId}`, { method: 'DELETE', credentials: 'include' });
     this.modal = null;
     await this.fetchMarkerGrantPrincipals(markerId);
@@ -2004,7 +2004,7 @@ class NtrlocAccess extends HTMLElement {
   async deleteTypeLevelGrantForSelection() {
     const { kind, id } = this.grantSelection;
     const itemTypeId = this.selectedItemTypeId;
-    const base = kind === 'group' ? `/api/admin/groups/${id}` : `/api/admin/users/${id}`;
+    const base = kind === 'group' ? `/api/admin/user-groups/${id}` : `/api/admin/users/${id}`;
     const revoke = (operation) => fetch(`${base}/permissions`, {
       method: 'DELETE', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
       body: JSON.stringify({ itemTypeId, operation }),
@@ -2088,7 +2088,7 @@ class NtrlocAccess extends HTMLElement {
       <div class="axs-perspective-bar">
         <span class="axs-pb-label">Perspective:</span>
         <button class="axs-perspective-btn ${this.perspective === 'user' ? 'active' : ''}" data-perspective="user">User</button>
-        <button class="axs-perspective-btn ${this.perspective === 'group' ? 'active' : ''}" data-perspective="group">Group</button>
+        <button class="axs-perspective-btn ${this.perspective === 'group' ? 'active' : ''}" data-perspective="group">User Group</button>
         <button class="axs-perspective-btn ${this.perspective === 'itemtype' ? 'active' : ''}" data-perspective="itemtype">Item Type</button>
       </div>
       <div class="axs-body">
@@ -2201,7 +2201,7 @@ class NtrlocAccess extends HTMLElement {
         </div>
         <div class="axs-tabs">
           <div class="axs-tab ${this.activeTab === 'details' ? 'active' : ''}" data-tab="details">Details</div>
-          <div class="axs-tab ${this.activeTab === 'groups' ? 'active' : ''}" data-tab="groups">Groups</div>
+          <div class="axs-tab ${this.activeTab === 'groups' ? 'active' : ''}" data-tab="groups">User Groups</div>
           <div class="axs-tab ${this.activeTab === 'permissions' ? 'active' : ''}" data-tab="permissions">Permissions</div>
         </div>
       </div>
@@ -2439,7 +2439,7 @@ class NtrlocAccess extends HTMLElement {
     return `
       <div class="axs-directory">
         <div class="axs-directory-top">
-          <button class="axs-btn-block" data-action="open-add-group">+ Add group</button>
+          <button class="axs-btn-block" data-action="open-add-group">+ Add user group</button>
         </div>
         <div class="axs-directory-search">
           <input type="text" id="axs-group-filter-input" placeholder="Filter groups…" value="${this.escapeHtml(this.groupFilterText)}">
@@ -2539,7 +2539,7 @@ class NtrlocAccess extends HTMLElement {
         <div class="axs-detail-title-row">
           <div class="axs-detail-title-group">
             <h1>${this.escapeHtml(g.name)}</h1>
-            <span class="axs-type-pill">Group</span>
+            <span class="axs-type-pill">User Group</span>
           </div>
           <div class="axs-detail-actions-bar">${actionsHtml}</div>
         </div>
@@ -2651,7 +2651,7 @@ class NtrlocAccess extends HTMLElement {
   // Same endpoint the Item Type perspective's own type-level detail pane already uses for "own",
   // just fetched once for every item type at once instead of one at a time.
   async fetchGroupTypeLevelPermissionsRaw(groupId) {
-    const res = await fetch(`/api/admin/groups/${groupId}/permissions`, { credentials: 'include' });
+    const res = await fetch(`/api/admin/user-groups/${groupId}/permissions`, { credentials: 'include' });
     const rows = res.ok ? await res.json() : [];
     const map = new Map();
     for (const row of rows) {
@@ -2718,7 +2718,7 @@ class NtrlocAccess extends HTMLElement {
   // no state mutation. Used both for the top-level principal and, for a user, for each of its
   // reach groups in turn (see fetchPermGrantedIds below).
   async fetchPermGrantedIdsRaw(kind, principalId) {
-    const base = kind === 'group' ? `/api/admin/groups/${principalId}` : `/api/admin/users/${principalId}`;
+    const base = kind === 'group' ? `/api/admin/user-groups/${principalId}` : `/api/admin/users/${principalId}`;
     const permissionsPath = kind === 'group' ? `${base}/permissions` : `${base}/permissions/own`;
     const [markerIds, permissions] = await Promise.all([
       fetch(`${base}/markers`, { credentials: 'include' }).then(r => r.ok ? r.json() : []).catch(() => []),
@@ -3050,7 +3050,7 @@ class NtrlocAccess extends HTMLElement {
     return `
       <div class="axs-modal-overlay" data-action="close-modal-overlay">
         <div class="axs-modal" data-stop-overlay>
-          <div class="axs-modal-header">Add group</div>
+          <div class="axs-modal-header">Add user group</div>
           <div class="axs-modal-body">
             ${this.groupError ? `<div class="axs-error">${this.escapeHtml(this.groupError)}</div>` : ''}
             <label>Name</label>
@@ -3062,7 +3062,7 @@ class NtrlocAccess extends HTMLElement {
           </div>
           <div class="axs-modal-footer">
             <button class="axs-btn axs-btn-cancel" data-action="close-modal">Cancel</button>
-            <button class="axs-btn axs-btn-primary" data-action="submit-add-group">Create group</button>
+            <button class="axs-btn axs-btn-primary" data-action="submit-add-group">Create user group</button>
           </div>
         </div>
       </div>
@@ -3159,7 +3159,7 @@ class NtrlocAccess extends HTMLElement {
     return `
       <div class="axs-modal-overlay" data-action="close-modal-overlay">
         <div class="axs-modal" data-stop-overlay>
-          <div class="axs-modal-header">Delete group</div>
+          <div class="axs-modal-header">Delete user group</div>
           <div class="axs-modal-body">
             <p>Delete <b>${this.escapeHtml(g.name)}</b>? Its direct members lose whatever it grants them.${childCount ? ` Its ${childCount} subgroup${childCount === 1 ? '' : 's'} will move to the top level.` : ''}</p>
           </div>
@@ -3297,7 +3297,7 @@ class NtrlocAccess extends HTMLElement {
         </div>
         ${showUsersBlock ? `
         <div>
-          <div class="axs-grant-block-title">Members of this group</div>
+          <div class="axs-grant-block-title">Members of this user group</div>
           <div class="axs-grant-list">${this.renderGrantUsersPanel()}</div>
         </div>` : ''}
       </div>
@@ -3499,7 +3499,7 @@ class NtrlocAccess extends HTMLElement {
 
   // Non-hierarchical grant row (link perspectives, link properties, state machine starts) -- no
   // chevron, no nesting. The Properties tree has its own renderPropertyGrantRow instead, since it
-  // alone needs OBJECT-container chevrons, bulk toggles, and ancestor tracking for collapse.
+  // alone needs group chevrons, bulk toggles, and ancestor tracking for collapse.
   renderGrantTreeRow(name, depth, ownEntry, inheritedEntry, category, id, fields, inheritedNamesEntry, shadowNamesEntry) {
     const cells = fields.map(f => {
       const own = ownEntry ? !!ownEntry[f] : false;
@@ -3512,28 +3512,52 @@ class NtrlocAccess extends HTMLElement {
     return `<div class="axs-gt-row"><div class="axs-gt-name-cell" style="padding-left:${depth * 16}px">${this.escapeHtml(name)}</div>${cells}</div>`;
   }
 
-  // Every leaf (non-OBJECT) property id nested under an OBJECT container, recursively -- a
+  // A container's (item type / link / group) properties and groups as one tree of nodes: a leaf is
+  // the property as-is, a group becomes { id, name, type: 'GROUP', properties: [children] }. Only
+  // leaves are grant targets; a group is structure the tree is walked through. A trait's
+  // contributions arrive as a group named for the trait, like any other.
+  groupTree(container) {
+    return [
+      ...(container.properties || []),
+      ...(container.groups || []).map(g => ({ id: g.id, name: g.name, type: 'GROUP', properties: this.groupTree(g) })),
+    ];
+  }
+
+  // Every leaf property of a link (including those inside its groups), labelled by dotted path.
+  linkLeafProperties(link) {
+    const out = [];
+    const walk = (nodes, prefix) => {
+      for (const n of nodes) {
+        if (n.type === 'GROUP') walk(n.properties, prefix + n.name + '.');
+        else out.push({ id: n.id, name: prefix + n.name });
+      }
+    };
+    walk(this.groupTree(link), '');
+    return out.sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  // Every leaf (non-group) property id nested under an group, recursively -- a
   // container's own id is never a grant target, only its leaves' are (mirrors ntrloc-access-old.
   // js's leavesUnder/RegisterPartitionManager's propertyPaths walk).
   leafPropertyIdsUnder(node) {
-    if (node.type !== 'OBJECT') return [node.id];
+    if (node.type !== 'GROUP') return [node.id];
     return (node.properties || []).flatMap(child => this.leafPropertyIdsUnder(child));
   }
 
   // One row of the Properties tree. Unlike the generic renderGrantTreeRow, this one always
-  // reserves a leading chevron slot -- a real expand/collapse toggle for an OBJECT container
+  // reserves a leading chevron slot -- a real expand/collapse toggle for an group
   // (arbitrarily nested), or an invisible same-width spacer for a leaf -- so container and leaf
   // names stay column-aligned regardless of depth.
   //
-  // ancestorIds (root-first) is the chain of OBJECT container ids this row is nested under, minus
+  // ancestorIds (root-first) is the chain of group ids this row is nested under, minus
   // itself; stamped as data-property-ancestors so a container's own collapse toggle can find and
   // hide every descendant row in one pass (syncPropertyRowVisibility), however deep, without a
   // real DOM parent/child relationship to lean on -- wrapGrantGrid's rows are flat CSS-grid
   // siblings (display:contents), not actually nested in the DOM.
   renderPropertyGrantRow(node, depth, ancestorIds, ownMap, inheritedMap, inheritedNamesMap, shadowNamesMap, openState) {
-    const hasChildren = node.type === 'OBJECT' && node.properties && node.properties.length > 0;
+    const hasChildren = node.type === 'GROUP' && node.properties && node.properties.length > 0;
     // Default open only if some leaf under here actually has a grant -- an admin shouldn't have to
-    // manually collapse every empty branch of a deeply-nested OBJECT property just to find the ones
+    // manually collapse every empty branch of a deeply-nested property group just to find the ones
     // that matter. collapsedObjectProperties still just records "this id has been clicked" (an odd
     // number of times); XORing that against the computed default is what lets a leaf-less/grant-less
     // container start collapsed while a manual click still flips it open, and vice versa for a
@@ -3638,7 +3662,7 @@ class NtrlocAccess extends HTMLElement {
 
   renderPropertyGrantTree(t, ownMap, inheritedMap, inheritedNamesMap, shadowNamesMap) {
     const schema = this.itemTypeSchema(t.id);
-    const props = schema ? schema.properties : [];
+    const props = schema ? this.groupTree(schema) : [];
     if (!props.length) return '<div class="axs-empty-hint">Nothing defined on this scope.</div>';
     const rows = [];
     const openState = new Map(); // nodeId -> isOpen, populated pre-order (parents before children)
@@ -3646,7 +3670,7 @@ class NtrlocAccess extends HTMLElement {
       const sorted = [...nodes].sort((a, b) => a.name.localeCompare(b.name));
       for (const node of sorted) {
         rows.push(this.renderPropertyGrantRow(node, depth, ancestorIds, ownMap, inheritedMap, inheritedNamesMap, shadowNamesMap, openState));
-        const hasChildren = node.type === 'OBJECT' && node.properties && node.properties.length > 0;
+        const hasChildren = node.type === 'GROUP' && node.properties && node.properties.length > 0;
         if (hasChildren) walk(node.properties, depth + 1, [...ancestorIds, node.id]);
       }
     };
@@ -3670,7 +3694,7 @@ class NtrlocAccess extends HTMLElement {
       const persp = linksMap[name][0];
       const row = this.renderGrantTreeRow(name, 0, own.linkPerspectives.get(persp.id), inherited.linkPerspectives.get(persp.id), 'linkpersp', persp.id, ['create', 'read', 'delete'], inheritedNames.linkPerspectives.get(persp.id), shadowNames.linkPerspectives.get(persp.id));
       const linkType = (this.schema.links || []).find(l => l.id === persp.linkId);
-      const linkProps = linkType ? [...linkType.properties].sort((a, b) => a.name.localeCompare(b.name)) : [];
+      const linkProps = linkType ? this.linkLeafProperties(linkType) : [];
       const propGrid = linkProps.length
         ? this.wrapGrantGrid(linkProps.map(p => this.renderGrantTreeRow(p.name, 0, own.linkProperties.get(p.id), inherited.linkProperties.get(p.id), 'linkprop', p.id, ['read', 'write'], inheritedNames.linkProperties.get(p.id), shadowNames.linkProperties.get(p.id))).join(''), ['Read', 'Write'])
         : '<div class="axs-empty-hint" style="padding:2px 0;">No properties on this link.</div>';
@@ -3969,7 +3993,7 @@ class NtrlocAccess extends HTMLElement {
         // one when the leaf's own value would make it redundant) live-toggle with "own" -- so an
         // admin sees the warning *before* saving a redundant grant, not after.
         el.parentElement.querySelectorAll(':scope > .axs-shadow-warn').forEach(w => { w.hidden = !next; });
-        // If this leaf sits under an OBJECT-container bulk toggle (possibly more than one, for
+        // If this leaf sits under an group bulk toggle (possibly more than one, for
         // nested containers), keep that toggle's all/partial/none display honest even when the
         // leaf was flipped independently rather than via the bulk toggle itself.
         const parts = el.dataset.grantField.split(':');
@@ -3982,7 +4006,7 @@ class NtrlocAccess extends HTMLElement {
         }
       });
     });
-    // OBJECT-container bulk toggle: 'partial'/'none' -> grant the field on every descendant leaf,
+    // group bulk toggle: 'partial'/'none' -> grant the field on every descendant leaf,
     // 'all' -> revoke it on all of them. Synthesizes a click on each leaf's own [data-grant-field]
     // button rather than duplicating its DOM-mutation logic (see bulkPermCheckHtml's comment) --
     // Save still only ever reads real [data-grant-field] elements, so this control itself is never

@@ -12,51 +12,75 @@ function onSchemaViewModelChange(listener) {
   return () => schemaViewModelListeners.delete(listener);
 }
 
-// Converts a property (and, recursively, any of its own children) into the
-// CreatePropertyDefinitionMutation JSON shape the backend expects -- shared by every place that
-// embeds an initial property list (CREATE_ITEM, CREATE_TRAIT, CREATE_LINK) or creates a single
-// new property, standalone or nested (CREATE_ITEM_PROPERTY, CREATE_LINK_PROPERTY,
-// CREATE_OBJECT_PROPERTY_CHILD). The backend creates the whole returned subtree atomically, in
-// one call, since a still-unsaved property has no real id yet for a *separate* child-creation
-// call to reference (same "no real id yet" limitation CREATE_STATE_MACHINE's own comment
-// documents for state machines) -- embedding sidesteps that rather than working around it.
+// Converts a property into the CreatePropertyDefinitionMutation JSON shape the backend expects.
 function toCreatePropertySpec(prop) {
   return {
     name: prop.name, description: prop.description,
     propertyType: prop.type, cardinality: prop.cardinality, usage: prop.usage, facetable: prop.facetable,
-    properties: prop.properties.map(toCreatePropertySpec),
   };
 }
 
-// Recurses into an OBJECT property's children (however deep), collecting UPDATE_PROPERTY/
-// DELETE_PROPERTY/CREATE_OBJECT_PROPERTY_CHILD the same way collectMutations()'s own top-level
-// property loop does. UPDATE_PROPERTY/DELETE_PROPERTY are keyed purely by the property's own id,
-// so nesting depth doesn't matter to them; uses ownFieldsDirty, not isDirty, for the same reason
-// the top-level loop below does -- isDirty is true whenever a descendant changed too, which would
-// otherwise emit a spurious no-op UPDATE_PROPERTY for every ancestor on the way up.
-//
-// A new child is only reachable here when parentPropertyId is real, i.e. the *immediate* container
-// already exists -- a new child of a still-new top-level property is embedded directly in that
-// property's own CREATE_ITEM_PROPERTY/CREATE_LINK_PROPERTY spec instead (see the two call sites
-// below), so this function is never reached for it at all.
-function collectNestedPropertyMutations(properties, ops, parentPropertyId) {
-  for (const prop of properties) {
-    if (prop.isReadonly) continue;
-    if (prop.isNew) {
-      ops.push({ type: 'CREATE_OBJECT_PROPERTY_CHILD', parentPropertyId, ...toCreatePropertySpec(prop) });
-      continue; // prop's own new children are embedded in the spec above, not created separately
+// A group with its whole subtree, in the CreatePropertyGroupDefinitionMutation shape. The backend
+// creates the returned subtree atomically, in one call, since a still-unsaved group has no real id
+// yet for a *separate* child-creation call to reference (same "no real id yet" limitation
+// CREATE_STATE_MACHINE's own comment documents for state machines) -- embedding sidesteps that.
+function toCreateGroupSpec(group) {
+  return { name: group.name, description: group.description, ...splitContents(group.properties) };
+}
+
+// A mixed child list -> the {properties, groups} pair every create payload carries.
+function splitContents(nodes) {
+  return {
+    properties: nodes.filter((n) => !n.isGroup && !n.isReadonly).map(toCreatePropertySpec),
+    groups: nodes.filter((n) => n.isGroup && !n.isReadonly).map(toCreateGroupSpec),
+  };
+}
+
+// Collects the mutations for one container's mixed child list (properties and groups), recursing
+// into groups. parentKind/parentId address the container (ITEM/TRAIT/LINK/GROUP) -- a new node is
+// only reachable here when that container already exists; a new child of a still-new container is
+// embedded in the container's own create spec instead (see toCreateGroupSpec), so this is never
+// reached for it. UPDATE_*/DELETE_* are keyed purely by the node's own id, so depth doesn't matter
+// to them; uses ownFieldsDirty, not isDirty, since isDirty is also true whenever a descendant
+// changed, which would emit a spurious no-op update for every ancestor on the way up.
+function collectPropertyMutations(nodes, parentKind, parentId, ops) {
+  for (const node of nodes) {
+    if (node.isReadonly) continue;
+    if (node.isNew) {
+      ops.push(node.isGroup
+        ? { type: 'ADD_PROPERTY_GROUP', parentKind, parentId, ...toCreateGroupSpec(node) }
+        : { type: 'ADD_PROPERTY', parentKind, parentId, ...toCreatePropertySpec(node) });
+      continue; // a new node's own children are embedded in the spec above, not created separately
     }
-    if (prop.isDeleted) {
-      ops.push({ type: 'DELETE_PROPERTY', id: prop.id });
-      continue; // a deleted property's own (soon-to-be-orphaned) children aren't walked further
+    if (node.isDeleted) {
+      collectDeletion(node, ops);
+      continue;
     }
-    if (prop.ownFieldsDirty) {
-      ops.push({ type: 'UPDATE_PROPERTY', id: prop.id, name: prop.name, description: prop.description, propertyType: prop.type, cardinality: prop.cardinality, usage: prop.usage, facetable: prop.facetable });
+    if (node.isGroup) {
+      if (node.ownFieldsDirty) ops.push({ type: 'UPDATE_PROPERTY_GROUP', id: node.id, name: node.name, description: node.description });
+      collectPropertyMutations(node.properties, 'GROUP', node.id, ops);
+      continue;
     }
-    if (prop.listAssociationDirty) {
-      ops.push({ type: 'SET_PROPERTY_CONTROLLED_LIST', propertyId: prop.id, listId: prop.controlledListId });
+    if (node.ownFieldsDirty) {
+      ops.push({ type: 'UPDATE_PROPERTY', id: node.id, name: node.name, description: node.description, propertyType: node.type, cardinality: node.cardinality, usage: node.usage, facetable: node.facetable });
     }
-    collectNestedPropertyMutations(prop.properties, ops, prop.id);
+    if (node.listAssociationDirty) {
+      ops.push({ type: 'SET_PROPERTY_CONTROLLED_LIST', propertyId: node.id, listId: node.controlledListId });
+    }
+  }
+}
+
+// The backend refuses to delete a group that still contains anything, so deleting a group in the
+// editor deletes its saved descendants first, bottom-up, then the group itself. Still-unsaved
+// descendants have nothing to delete.
+function collectDeletion(node, ops) {
+  if (node.isGroup) {
+    for (const child of node.properties) {
+      if (!child.isNew && !child.isReadonly) collectDeletion(child, ops);
+    }
+    ops.push({ type: 'DELETE_PROPERTY_GROUP', id: node.id });
+  } else {
+    ops.push({ type: 'DELETE_PROPERTY', id: node.id });
   }
 }
 
@@ -422,7 +446,7 @@ const schemaViewModel = {
           type: 'CREATE_ITEM',
           name: item.name,
           description: item.description,
-          properties: item.properties.map(toCreatePropertySpec),
+          ...splitContents(item.properties),
           supertypeId: item.supertypeId,
           abstractType: item.abstractType,
           displayLabelPattern: item.displayLabelPattern,
@@ -451,22 +475,7 @@ const schemaViewModel = {
         else if (t.isRemoved && !t.isNew) ops.push({ type: 'REMOVE_TRAIT', itemId: item.id, traitId: t.id });
       }
 
-      for (const prop of item.properties) {
-        if (prop.isReadonly) continue;
-        if (prop.isNew) {
-          ops.push({ type: 'CREATE_ITEM_PROPERTY', itemId: item.id, ...toCreatePropertySpec(prop) });
-          continue; // prop's own new children are embedded above, not created separately
-        } else if (prop.isDeleted) {
-          ops.push({ type: 'DELETE_PROPERTY', id: prop.id });
-          continue;
-        } else if (prop.ownFieldsDirty) {
-          ops.push({ type: 'UPDATE_PROPERTY', id: prop.id, name: prop.name, description: prop.description, propertyType: prop.type, cardinality: prop.cardinality, usage: prop.usage, facetable: prop.facetable });
-        }
-        if (!prop.isNew && prop.listAssociationDirty) {
-          ops.push({ type: 'SET_PROPERTY_CONTROLLED_LIST', propertyId: prop.id, listId: prop.controlledListId });
-        }
-        collectNestedPropertyMutations(prop.properties, ops, prop.id);
-      }
+      collectPropertyMutations(item.properties, 'ITEM', item.id, ops);
 
       for (const perspectives of Object.values(item.links)) {
         for (const p of perspectives) {
@@ -487,21 +496,7 @@ const schemaViewModel = {
           }
           if (!processedLinkIds.has(p.linkId) && p.link.isDirty) {
             processedLinkIds.add(p.linkId);
-            for (const prop of p.link.properties) {
-              if (prop.isNew) {
-                ops.push({ type: 'CREATE_LINK_PROPERTY', linkId: p.linkId, ...toCreatePropertySpec(prop) });
-                continue; // prop's own new children are embedded above, not created separately
-              } else if (prop.isDeleted) {
-                ops.push({ type: 'DELETE_PROPERTY', id: prop.id });
-                continue;
-              } else if (prop.ownFieldsDirty) {
-                ops.push({ type: 'UPDATE_PROPERTY', id: prop.id, name: prop.name, description: prop.description, propertyType: prop.type, cardinality: prop.cardinality, usage: prop.usage, facetable: prop.facetable });
-              }
-              if (!prop.isNew && prop.listAssociationDirty) {
-                ops.push({ type: 'SET_PROPERTY_CONTROLLED_LIST', propertyId: prop.id, listId: prop.controlledListId });
-              }
-              collectNestedPropertyMutations(prop.properties, ops, prop.id);
-            }
+            collectPropertyMutations(p.link.properties, 'LINK', p.linkId, ops);
           }
         }
       }
@@ -565,7 +560,7 @@ const schemaViewModel = {
           type: 'CREATE_TRAIT',
           name: trait.name,
           description: trait.description,
-          properties: trait.properties.map(toCreatePropertySpec),
+          ...splitContents(trait.properties),
         });
         continue;
       }
@@ -577,33 +572,8 @@ const schemaViewModel = {
 
       // TODO: UPDATE_TRAIT when backend supports it (matches Angular reference)
 
-      // Property-level changes on an EXISTING trait -- mirrors the item loop's own property
-      // handling above, using the same owner-agnostic UPDATE_PROPERTY/DELETE_PROPERTY/
-      // CREATE_OBJECT_PROPERTY_CHILD ops (keyed purely by property id, never by who owns it -- see
-      // CreatePropertyPropertyDefinitionMutation's own comment) plus CREATE_TRAIT_PROPERTY (the
-      // trait-owned mirror of CREATE_ITEM_PROPERTY) for a brand-new top-level property. This loop
-      // was missing entirely before, which is why editing/deleting/adding an existing trait's
-      // property silently did nothing on Save: trait.isDirty correctly went true
-      // (PropertyDefinitionViewModel.isDirty bubbles up), so the Save button activated, but
-      // collectMutations() never looked inside trait.properties for anything short of the whole
-      // trait being new or deleted.
-      for (const prop of trait.properties) {
-        if (prop.isReadonly) continue;
-        if (prop.isNew) {
-          ops.push({ type: 'CREATE_TRAIT_PROPERTY', traitId: trait.id, ...toCreatePropertySpec(prop) });
-          continue; // prop's own new children are embedded above, not created separately
-        }
-        if (prop.isDeleted) {
-          ops.push({ type: 'DELETE_PROPERTY', id: prop.id });
-          continue;
-        } else if (prop.ownFieldsDirty) {
-          ops.push({ type: 'UPDATE_PROPERTY', id: prop.id, name: prop.name, description: prop.description, propertyType: prop.type, cardinality: prop.cardinality, usage: prop.usage, facetable: prop.facetable });
-        }
-        if (prop.listAssociationDirty) {
-          ops.push({ type: 'SET_PROPERTY_CONTROLLED_LIST', propertyId: prop.id, listId: prop.controlledListId });
-        }
-        collectNestedPropertyMutations(prop.properties, ops, prop.id);
-      }
+      // Property-level changes on an EXISTING trait: same ops as for an item, addressed to the trait.
+      collectPropertyMutations(trait.properties, 'TRAIT', trait.id, ops);
     }
 
     // Invalid pending links (missing target/names, or self-referential) are never emitted --
@@ -613,7 +583,7 @@ const schemaViewModel = {
       if (!link.isValid) continue;
       ops.push({
         type: 'CREATE_LINK',
-        properties: link.properties.map(toCreatePropertySpec),
+        ...splitContents(link.properties),
         perspectives: [
           { itemId: link.firstItemId, name: link.firstPerspectiveName, description: null, minCardinality: link.firstMinCardinality, maxCardinality: link.firstMaxCardinality },
           { itemId: link.secondItemId, name: link.secondPerspectiveName, description: null, minCardinality: link.secondMinCardinality, maxCardinality: link.secondMaxCardinality },
@@ -624,7 +594,7 @@ const schemaViewModel = {
     return ops;
   },
 
-  // Recurses into an OBJECT property's children, appending their own new/deleted/updated summary
+  // Recurses into a group's children, appending their own new/deleted/updated summary
   // lines dotted-path-prefixed (e.g. "contactInfo.firstName") so a change inside a collapsed
   // subtree still shows up in the confirm dialog -- without the recursion, isDirty's own
   // broadened meaning (true for a dirty descendant too, see PropertyDefinitionViewModel's own
@@ -633,10 +603,10 @@ const schemaViewModel = {
   describeNestedPropertyChanges(properties, changes, pathPrefix) {
     for (const prop of properties) {
       if (prop.isReadonly) continue;
-      if (prop.isNew) { changes.push(`+ Property "${pathPrefix}.${prop.name || '(unnamed)'}"`); continue; }
+      if (prop.isNew) { changes.push(`+ ${prop.isGroup ? 'Group' : 'Property'} "${pathPrefix}.${prop.name || '(unnamed)'}"`); continue; }
       const path = `${pathPrefix}.${prop.originalName || '(unnamed)'}`;
-      if (prop.isDeleted) { changes.push(`- Property "${path}"`); continue; }
-      if (prop.ownFieldsDirty) changes.push(`Property "${path}": updated`);
+      if (prop.isDeleted) { changes.push(`- ${prop.isGroup ? 'Group' : 'Property'} "${path}"`); continue; }
+      if (prop.ownFieldsDirty) changes.push(`${prop.isGroup ? 'Group' : 'Property'} "${path}": updated`);
       if (prop.listAssociationDirty) changes.push(this._describeListAssociationChange(prop, path));
       this.describeNestedPropertyChanges(prop.properties, changes, path);
     }
@@ -682,9 +652,9 @@ const schemaViewModel = {
 
       for (const prop of item.properties) {
         if (prop.isReadonly) continue;
-        if (prop.isNew) { changes.push(`+ Property "${prop.name}"`); continue; }
-        if (prop.isDeleted) { changes.push(`- Property "${prop.originalName}"`); continue; }
-        if (prop.ownFieldsDirty) changes.push(`Property "${prop.originalName}": updated`);
+        if (prop.isNew) { changes.push(`+ ${prop.isGroup ? 'Group' : 'Property'} "${prop.name}"`); continue; }
+        if (prop.isDeleted) { changes.push(`- ${prop.isGroup ? 'Group' : 'Property'} "${prop.originalName}"`); continue; }
+        if (prop.ownFieldsDirty) changes.push(`${prop.isGroup ? 'Group' : 'Property'} "${prop.originalName}": updated`);
         if (prop.listAssociationDirty) changes.push(this._describeListAssociationChange(prop, prop.originalName));
         this.describeNestedPropertyChanges(prop.properties, changes, prop.originalName);
       }
@@ -736,9 +706,9 @@ const schemaViewModel = {
           processedLinkIds.add(p.linkId);
           const linkChanges = [];
           for (const prop of p.link.properties) {
-            if (prop.isNew) { linkChanges.push(`+ Property "${prop.name}"`); continue; }
-            if (prop.isDeleted) { linkChanges.push(`- Property "${prop.originalName}"`); continue; }
-            if (prop.ownFieldsDirty) linkChanges.push(`Property "${prop.originalName}": updated`);
+            if (prop.isNew) { linkChanges.push(`+ ${prop.isGroup ? 'Group' : 'Property'} "${prop.name}"`); continue; }
+            if (prop.isDeleted) { linkChanges.push(`- ${prop.isGroup ? 'Group' : 'Property'} "${prop.originalName}"`); continue; }
+            if (prop.ownFieldsDirty) linkChanges.push(`${prop.isGroup ? 'Group' : 'Property'} "${prop.originalName}": updated`);
             if (prop.listAssociationDirty) linkChanges.push(this._describeListAssociationChange(prop, prop.originalName));
             this.describeNestedPropertyChanges(prop.properties, linkChanges, prop.originalName);
           }

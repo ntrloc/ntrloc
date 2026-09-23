@@ -21,7 +21,7 @@ public class SecurityRepository {
 
     public record UserRow(UUID id, String externalId, String displayName, String email, boolean isSuperuser) {}
 
-    public record GroupRow(UUID id, String name) {}
+    public record UserGroupRow(UUID id, String name) {}
 
     public record LocalCredentialsRow(UUID userId, String email, String passwordHash, String role, boolean active) {}
 
@@ -61,17 +61,17 @@ public class SecurityRepository {
     }
 
     // Transitive: a user's effective groups are their direct groups, plus every group any of those
-    // groups is itself (transitively) a member of via security_group_member_group. Everything
+    // groups is itself (transitively) a member of via security_user_group_member_group. Everything
     // downstream (AuthorizationCacheManager.effectiveSet/effectiveNestedSet, RequestPermissionContext)
     // already unions grants over whatever this returns, so nothing above this method needs to know
     // nesting exists at all -- the closure has to be complete by the time it leaves here.
-    public Set<UUID> getGroupIdsForUser(UUID userId) {
+    public Set<UUID> getUserGroupIdsForUser(UUID userId) {
         return Set.copyOf(jdbcClient.sql("""
                 WITH RECURSIVE effective_groups(group_id) AS (
-                    SELECT group_id FROM security_group_member WHERE user_id = :userId
+                    SELECT group_id FROM security_user_group_member WHERE user_id = :userId
                     UNION
                     SELECT smg.group_id
-                    FROM security_group_member_group smg
+                    FROM security_user_group_member_group smg
                     JOIN effective_groups eg ON smg.member_group_id = eg.group_id
                 )
                 SELECT group_id FROM effective_groups
@@ -81,14 +81,14 @@ public class SecurityRepository {
                 .list());
     }
 
-    public List<GroupRow> getGroupsForUser(UUID userId) {
+    public List<UserGroupRow> getUserGroupsForUser(UUID userId) {
         return jdbcClient.sql("""
-                SELECT g.id, g.name FROM security_group g
-                JOIN security_group_member gm ON gm.group_id = g.id
+                SELECT g.id, g.name FROM security_user_group g
+                JOIN security_user_group_member gm ON gm.group_id = g.id
                 WHERE gm.user_id = :userId ORDER BY g.name
                 """)
                 .param(PARAM_USER_ID, userId)
-                .query((rs, n) -> new GroupRow(rs.getObject("id", UUID.class), rs.getString("name")))
+                .query((rs, n) -> new UserGroupRow(rs.getObject("id", UUID.class), rs.getString("name")))
                 .list();
     }
 
@@ -105,110 +105,110 @@ public class SecurityRepository {
         return new UserRow(id, externalId, displayName, email, isSuperuser);
     }
 
-    public GroupRow createGroup(String name) {
-        UUID id = jdbcClient.sql("INSERT INTO security_group (name) VALUES (:name) RETURNING id")
+    public UserGroupRow createUserGroup(String name) {
+        UUID id = jdbcClient.sql("INSERT INTO security_user_group (name) VALUES (:name) RETURNING id")
                 .param("name", name)
                 .query(UUID.class).single();
-        return new GroupRow(id, name);
+        return new UserGroupRow(id, name);
     }
 
-    public void addUserToGroup(UUID userId, UUID groupId) {
-        jdbcClient.sql("INSERT INTO security_group_member (user_id, group_id) VALUES (:userId, :groupId) ON CONFLICT DO NOTHING")
+    public void addUserToUserGroup(UUID userId, UUID groupId) {
+        jdbcClient.sql("INSERT INTO security_user_group_member (user_id, group_id) VALUES (:userId, :groupId) ON CONFLICT DO NOTHING")
                 .param(PARAM_USER_ID, userId).param(PARAM_GROUP_ID, groupId).update();
     }
 
-    // memberGroupId becomes a member of groupId (same direction as addUserToGroup: member, then
+    // memberUserGroupId becomes a member of groupId (same direction as addUserToUserGroup: member, then
     // container). Self-membership is caught by the table's own CHECK; a deeper cycle (groupId
-    // already transitively a member of memberGroupId) has no equivalent constraint, so it's checked
+    // already transitively a member of memberUserGroupId) has no equivalent constraint, so it's checked
     // here before the insert.
-    public void addGroupToGroup(UUID memberGroupId, UUID groupId) {
-        if (memberGroupId.equals(groupId)) {
+    public void addUserGroupToUserGroup(UUID memberUserGroupId, UUID groupId) {
+        if (memberUserGroupId.equals(groupId)) {
             throw new IllegalArgumentException("A group cannot be a member of itself");
         }
-        if (isTransitiveMemberOf(groupId, memberGroupId)) {
+        if (isTransitiveMemberOf(groupId, memberUserGroupId)) {
             throw new IllegalArgumentException("Adding this membership would create a cycle");
         }
-        jdbcClient.sql("INSERT INTO security_group_member_group (member_group_id, group_id) VALUES (:memberGroupId, :groupId) ON CONFLICT DO NOTHING")
-                .param("memberGroupId", memberGroupId).param(PARAM_GROUP_ID, groupId).update();
+        jdbcClient.sql("INSERT INTO security_user_group_member_group (member_group_id, group_id) VALUES (:memberUserGroupId, :groupId) ON CONFLICT DO NOTHING")
+                .param("memberUserGroupId", memberUserGroupId).param(PARAM_GROUP_ID, groupId).update();
     }
 
-    // True iff candidateMemberId is already (directly or transitively) a member of ofGroupId --
+    // True iff candidateMemberId is already (directly or transitively) a member of ofUserGroupId --
     // i.e. whether groupId already appears somewhere in candidateMemberId's own membership chain.
-    // Used as the cycle guard for addGroupToGroup: adding "ofGroupId member of candidateMemberId"
+    // Used as the cycle guard for addUserGroupToUserGroup: adding "ofUserGroupId member of candidateMemberId"
     // when this already holds true would close a loop.
-    private boolean isTransitiveMemberOf(UUID candidateMemberId, UUID ofGroupId) {
+    private boolean isTransitiveMemberOf(UUID candidateMemberId, UUID ofUserGroupId) {
         return Boolean.TRUE.equals(jdbcClient.sql("""
                 WITH RECURSIVE ancestors(group_id) AS (
-                    SELECT group_id FROM security_group_member_group WHERE member_group_id = :candidateMemberId
+                    SELECT group_id FROM security_user_group_member_group WHERE member_group_id = :candidateMemberId
                     UNION
                     SELECT smg.group_id
-                    FROM security_group_member_group smg
+                    FROM security_user_group_member_group smg
                     JOIN ancestors a ON smg.member_group_id = a.group_id
                 )
-                SELECT EXISTS (SELECT 1 FROM ancestors WHERE group_id = :ofGroupId)
+                SELECT EXISTS (SELECT 1 FROM ancestors WHERE group_id = :ofUserGroupId)
                 """)
-                .param("candidateMemberId", candidateMemberId).param("ofGroupId", ofGroupId)
+                .param("candidateMemberId", candidateMemberId).param("ofUserGroupId", ofUserGroupId)
                 .query(Boolean.class).single());
     }
 
-    public void removeGroupFromGroup(UUID memberGroupId, UUID groupId) {
-        jdbcClient.sql("DELETE FROM security_group_member_group WHERE member_group_id = :memberGroupId AND group_id = :groupId")
-                .param("memberGroupId", memberGroupId).param(PARAM_GROUP_ID, groupId).update();
+    public void removeUserGroupFromUserGroup(UUID memberUserGroupId, UUID groupId) {
+        jdbcClient.sql("DELETE FROM security_user_group_member_group WHERE member_group_id = :memberUserGroupId AND group_id = :groupId")
+                .param("memberUserGroupId", memberUserGroupId).param(PARAM_GROUP_ID, groupId).update();
     }
 
     // Direct (non-transitive) child groups -- groups that are themselves members of groupId.
-    public List<GroupRow> listMemberGroups(UUID groupId) {
+    public List<UserGroupRow> listMemberUserGroups(UUID groupId) {
         return jdbcClient.sql("""
-                SELECT g.id, g.name FROM security_group g
-                JOIN security_group_member_group smg ON smg.member_group_id = g.id
+                SELECT g.id, g.name FROM security_user_group g
+                JOIN security_user_group_member_group smg ON smg.member_group_id = g.id
                 WHERE smg.group_id = :groupId ORDER BY g.name
                 """)
                 .param(PARAM_GROUP_ID, groupId)
-                .query((rs, n) -> new GroupRow(rs.getObject("id", UUID.class), rs.getString("name")))
+                .query((rs, n) -> new UserGroupRow(rs.getObject("id", UUID.class), rs.getString("name")))
                 .list();
     }
 
     // Direct (non-transitive) parent groups -- groups that groupId is itself a member of.
-    public List<GroupRow> listContainingGroups(UUID groupId) {
+    public List<UserGroupRow> listContainingUserGroups(UUID groupId) {
         return jdbcClient.sql("""
-                SELECT g.id, g.name FROM security_group g
-                JOIN security_group_member_group smg ON smg.group_id = g.id
+                SELECT g.id, g.name FROM security_user_group g
+                JOIN security_user_group_member_group smg ON smg.group_id = g.id
                 WHERE smg.member_group_id = :groupId ORDER BY g.name
                 """)
                 .param(PARAM_GROUP_ID, groupId)
-                .query((rs, n) -> new GroupRow(rs.getObject("id", UUID.class), rs.getString("name")))
+                .query((rs, n) -> new UserGroupRow(rs.getObject("id", UUID.class), rs.getString("name")))
                 .list();
     }
 
-    public List<GroupRow> listGroups() {
-        return jdbcClient.sql("SELECT id, name FROM security_group ORDER BY name")
-                .query((rs, n) -> new GroupRow(rs.getObject("id", UUID.class), rs.getString("name")))
+    public List<UserGroupRow> listUserGroups() {
+        return jdbcClient.sql("SELECT id, name FROM security_user_group ORDER BY name")
+                .query((rs, n) -> new UserGroupRow(rs.getObject("id", UUID.class), rs.getString("name")))
                 .list();
     }
 
-    public Optional<GroupRow> findGroupById(UUID groupId) {
-        return jdbcClient.sql("SELECT id, name FROM security_group WHERE id = :id")
+    public Optional<UserGroupRow> findUserGroupById(UUID groupId) {
+        return jdbcClient.sql("SELECT id, name FROM security_user_group WHERE id = :id")
                 .param("id", groupId)
-                .query((rs, n) -> new GroupRow(rs.getObject("id", UUID.class), rs.getString("name")))
+                .query((rs, n) -> new UserGroupRow(rs.getObject("id", UUID.class), rs.getString("name")))
                 .optional();
     }
 
-    public GroupRow updateGroup(UUID groupId, String name) {
-        jdbcClient.sql("UPDATE security_group SET name = :name WHERE id = :id")
+    public UserGroupRow updateUserGroup(UUID groupId, String name) {
+        jdbcClient.sql("UPDATE security_user_group SET name = :name WHERE id = :id")
                 .param("name", name).param("id", groupId).update();
-        return new GroupRow(groupId, name);
+        return new UserGroupRow(groupId, name);
     }
 
-    public void deleteGroup(UUID groupId) {
-        jdbcClient.sql("DELETE FROM security_group WHERE id = :id")
+    public void deleteUserGroup(UUID groupId) {
+        jdbcClient.sql("DELETE FROM security_user_group WHERE id = :id")
                 .param("id", groupId).update();
     }
 
-    public List<UserRow> listGroupMembers(UUID groupId) {
+    public List<UserRow> listUserGroupMembers(UUID groupId) {
         return jdbcClient.sql("""
                 SELECT u.id, u.external_id, u.display_name, u.email, u.is_superuser
                 FROM security_user u
-                JOIN security_group_member gm ON gm.user_id = u.id
+                JOIN security_user_group_member gm ON gm.user_id = u.id
                 WHERE gm.group_id = :groupId
                 ORDER BY u.display_name
                 """)
@@ -222,15 +222,15 @@ public class SecurityRepository {
                 .list();
     }
 
-    public void removeUserFromGroup(UUID userId, UUID groupId) {
-        jdbcClient.sql("DELETE FROM security_group_member WHERE user_id = :userId AND group_id = :groupId")
+    public void removeUserFromUserGroup(UUID userId, UUID groupId) {
+        jdbcClient.sql("DELETE FROM security_user_group_member WHERE user_id = :userId AND group_id = :groupId")
                 .param(PARAM_USER_ID, userId).param(PARAM_GROUP_ID, groupId).update();
     }
 
-    public Optional<GroupRow> findGroupByName(String name) {
-        return jdbcClient.sql("SELECT id, name FROM security_group WHERE name = :name")
+    public Optional<UserGroupRow> findUserGroupByName(String name) {
+        return jdbcClient.sql("SELECT id, name FROM security_user_group WHERE name = :name")
                 .param("name", name)
-                .query((rs, n) -> new GroupRow(rs.getObject("id", UUID.class), rs.getString("name")))
+                .query((rs, n) -> new UserGroupRow(rs.getObject("id", UUID.class), rs.getString("name")))
                 .optional();
     }
 
@@ -281,7 +281,7 @@ public class SecurityRepository {
                 .update();
     }
 
-    // Cascades to security_group_member, security_local_credentials, security_personal_access_token,
+    // Cascades to security_user_group_member, security_local_credentials, security_personal_access_token,
     // and process_group_member (all ON DELETE CASCADE) -- nothing else references security_user via
     // a real FK, since authorization grant tables key principals by a plain UUID (GROUP or USER)
     // rather than an FK to either table.

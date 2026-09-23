@@ -1,11 +1,13 @@
 package org.ntrloc.graph.db.partition.binary;
 
+import org.ntrloc.graph.db.partition.binary.event.BinaryContentEvent;
 import org.ntrloc.graph.db.partition.binary.storage.BinaryContentInfo;
 import org.ntrloc.graph.db.partition.binary.storage.BinaryStorageAdapter;
 import org.ntrloc.graph.db.partition.binary.storage.HashingBinaryDataWriter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.sql.init.dependency.DependsOnDatabaseInitialization;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.core.io.buffer.DataBufferUtils;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -19,6 +21,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -34,11 +37,14 @@ public class BinaryPartitionManagerImpl implements BinaryPartitionManager {
     private final JdbcClient jdbcClient;
     private final BinaryStorageAdapter storageAdapter;
     private final ObjectMapper objectMapper;
+    private final ApplicationEventPublisher eventPublisher;
 
-    public BinaryPartitionManagerImpl(JdbcClient jdbcClient, BinaryStorageAdapter storageAdapter, ObjectMapper objectMapper) {
+    public BinaryPartitionManagerImpl(JdbcClient jdbcClient, BinaryStorageAdapter storageAdapter, ObjectMapper objectMapper,
+                                       ApplicationEventPublisher eventPublisher) {
         this.jdbcClient = jdbcClient;
         this.storageAdapter = storageAdapter;
         this.objectMapper = objectMapper;
+        this.eventPublisher = eventPublisher;
     }
 
     // Consumes the upload as a reactive chunk stream rather than a blocking InputStream: a prior
@@ -73,20 +79,50 @@ public class BinaryPartitionManagerImpl implements BinaryPartitionManager {
         }
     }
 
+    // (xmax = 0) is Postgres's own idiom for "did this INSERT actually insert, or hit the ON CONFLICT
+    // branch" -- xmax is unset (0) on a freshly inserted row, non-zero on one touched by the UPDATE.
+    // BinaryContentEvent.Created only fires on a genuine fresh insert, never on a dedup hit: two
+    // uploads of identical bytes racing each other still only let one of them observe xmax = 0,
+    // since Postgres locks the row during the upsert -- the same guarantee a bespoke job-tracking
+    // check would otherwise need to provide. No @Transactional wraps this method (or anything that
+    // calls it), so this single INSERT is already its own committed statement by the time the
+    // publishEvent below runs -- "after the creating transaction has committed" needs nothing extra.
+    private record InsertResult(UUID id, boolean inserted) {}
+
     private Mono<UUID> insert(BinaryContentInfo info) {
         return Mono.fromCallable(() -> jdbcClient.sql("""
-                        INSERT INTO binary_content (sha256, md5, mime_type, length)
-                        VALUES (:sha256, :md5, :mimeType, :length)
-                        ON CONFLICT (sha256) DO UPDATE SET sha256 = EXCLUDED.sha256
-                        RETURNING id
+                        INSERT INTO binary_content (sha256, md5, mime_type, length, metadata)
+                        VALUES (:sha256, :md5, :mimeType, :length, :metadata::jsonb)
+                        ON CONFLICT (sha256, md5, length) DO UPDATE SET sha256 = EXCLUDED.sha256
+                        RETURNING id, (xmax = 0) AS inserted
                         """)
                         .param("sha256", info.getSha256Hash())
                         .param("md5", info.getMd5Hash())
                         .param("mimeType", info.getMimeType())
                         .param("length", info.getLength())
-                        .query(UUID.class)
+                        .param("metadata", metadataJson(info))
+                        .query((rs, n) -> new InsertResult(rs.getObject("id", UUID.class), rs.getBoolean("inserted")))
                         .single())
-                .subscribeOn(Schedulers.boundedElastic());
+                .subscribeOn(Schedulers.boundedElastic())
+                .doOnNext(result -> {
+                    if (result.inserted()) {
+                        eventPublisher.publishEvent(new BinaryContentEvent.Created(result.id()));
+                    }
+                })
+                .map(InsertResult::id);
+    }
+
+    // Mirrors sha256/md5/length/mimeType into metadata (alongside, later, embedded EXIF/IPTC under an
+    // "embedded" key) so filter/sort/facet resolution has one uniform mechanism for every intrinsic
+    // binary fact, real-column-backed or not -- see docs/ntrloc-dynamic-properties-design-notes.md
+    // section 8. Safe to write once, here, alongside the real columns: these four values are
+    // write-once, and binary_content rows are never updated after this insert.
+    private String metadataJson(BinaryContentInfo info) {
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        metadata.put("length", info.getLength());
+        if (info.getMimeType() != null) metadata.put("mimeType", info.getMimeType());
+        metadata.put("hashes", Map.of("sha256", info.getSha256Hash(), "md5", info.getMd5Hash()));
+        return objectMapper.writeValueAsString(metadata);
     }
 
     @Override
@@ -94,7 +130,7 @@ public class BinaryPartitionManagerImpl implements BinaryPartitionManager {
         var info = getBinaryProperty(id);
         if (info.isEmpty()) return Optional.empty();
         var obj = info.get();
-        InputStream stream = storageAdapter.openReader(obj.sha256(), obj.md5());
+        InputStream stream = storageAdapter.openReader(obj.sha256(), obj.md5(), obj.length());
         return Optional.of(new BinaryContentStream(obj, stream));
     }
 

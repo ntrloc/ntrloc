@@ -9,10 +9,9 @@ import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateItemDefini
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateLinkDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePerspectiveDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePropertyDefinitionMutation;
-import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePropertyPropertyDefinitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePropertyGroupDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyDefinitionView;
-import org.ntrloc.graph.db.partition.schema.definition.view.admin.ObjectAdminPropertyDefinitionView;
 import org.ntrloc.graph.domain.DomainInitializer;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
@@ -43,10 +42,9 @@ public class RegisterProjectionTestDomainInitializer implements DomainInitialize
     private UUID pageCountPropertyId;
     private UUID inStockPropertyId;
     private UUID genrePropertyId;
-    private UUID dimensionsPropertyId;
-    private UUID packagingPropertyId;
     private UUID dimensionsMaterialPropertyId;
     private UUID authorsPerspectiveId;
+    private UUID attachmentPropertyId;
 
     public RegisterProjectionTestDomainInitializer(SchemaManager schemaManager, ControlledListManager controlledListManager) {
         this.schemaManager = schemaManager;
@@ -74,12 +72,23 @@ public class RegisterProjectionTestDomainInitializer implements DomainInitialize
                         // list, so it's also not facetable -- doesn't show up in the "every
                         // facetable property" auto-populate test.
                         property("testMarker", PropertyType.STRING, PropertyCardinality.SINGLE),
-                        // Two OBJECT properties, deliberately sharing a leaf name ("widthCm"), so
-                        // dot-path resolution/filtering tests can exercise a real container-scoped
-                        // lookup (dimensions.widthCm vs packaging.widthCm), not just a single
-                        // unambiguous nested property.
-                        property("dimensions", PropertyType.OBJECT, PropertyCardinality.SINGLE),
-                        property("packaging", PropertyType.OBJECT, PropertyCardinality.SINGLE)), null, false, null)));
+                        // Lets RegisterPartitionManagerProjectionIntegrationTest exercise sorting by a
+                        // binary property's intrinsic content length (RegisterPartitionManager.sortExpressionFor).
+                        property("attachment", PropertyType.BINARY, PropertyCardinality.SINGLE)),
+                null, false, null, List.of(),
+                // Two property groups, deliberately sharing a leaf name ("widthCm"), so dot-path
+                // resolution/filtering tests can exercise a real group-scoped lookup
+                // (dimensions.widthCm vs packaging.widthCm), not just a single unambiguous nested
+                // property. "dimensions.material" is facetable so facet tests can exercise
+                // RegisterPartitionManager.collectFacetableFieldNames' recursion through groups --
+                // a facetable leaf one level deep, resolved/auto-discovered under its dot-path
+                // name, the same way a top-level facetable property is.
+                List.of(
+                        group("dimensions",
+                                property("widthCm", PropertyType.INT, PropertyCardinality.SINGLE),
+                                property("material", PropertyType.STRING, PropertyCardinality.SINGLE, true)),
+                        group("packaging",
+                                property("widthCm", PropertyType.INT, PropertyCardinality.SINGLE))))));
 
         AdminItemDefinitionView book = findItem("RegisterProjectionTestBook");
         bookTypeId = book.id();
@@ -87,20 +96,8 @@ public class RegisterProjectionTestDomainInitializer implements DomainInitialize
         pageCountPropertyId = findProperty(book.properties(), "pageCount");
         inStockPropertyId = findProperty(book.properties(), "inStock");
         genrePropertyId = findProperty(book.properties(), "genre");
-        dimensionsPropertyId = findProperty(book.properties(), "dimensions");
-        packagingPropertyId = findProperty(book.properties(), "packaging");
-
-        schemaManager.applyMutations(List.of(new CreatePropertyPropertyDefinitionMutation(
-                dimensionsPropertyId, "widthCm", "Register projection test fixture", PropertyType.INT, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false, List.of())));
-        schemaManager.applyMutations(List.of(new CreatePropertyPropertyDefinitionMutation(
-                packagingPropertyId, "widthCm", "Register projection test fixture", PropertyType.INT, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false, List.of())));
-        // Nested under "dimensions" (not a new top-level property) specifically so facet tests can
-        // exercise RegisterPartitionManager.collectFacetableFieldNames' recursion into OBJECT
-        // properties -- a facetable leaf one level deep, resolved/auto-discovered under its
-        // dot-path name "dimensions.material", the same way a top-level facetable property is.
-        schemaManager.applyMutations(List.of(new CreatePropertyPropertyDefinitionMutation(
-                dimensionsPropertyId, "material", "Register projection test fixture", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, true, List.of())));
-        var dimensions = (ObjectAdminPropertyDefinitionView) findPropertyView(findItem("RegisterProjectionTestBook").properties(), "dimensions");
+        attachmentPropertyId = findProperty(book.properties(), "attachment");
+        var dimensions = book.groups().stream().filter(g -> g.name().equals("dimensions")).findFirst().orElseThrow();
         dimensionsMaterialPropertyId = findProperty(dimensions.properties(), "material");
 
         // genre is controlled-list-backed AND marked facetable=true, so it exercises the STRING
@@ -162,7 +159,11 @@ public class RegisterProjectionTestDomainInitializer implements DomainInitialize
     }
 
     private CreatePropertyDefinitionMutation property(String name, PropertyType type, PropertyCardinality cardinality, boolean facetable) {
-        return new CreatePropertyDefinitionMutation(name, "Register projection test fixture", type, cardinality, PropertyUsage.OPTIONAL, facetable, java.util.List.of());
+        return new CreatePropertyDefinitionMutation(name, "Register projection test fixture", type, cardinality, PropertyUsage.OPTIONAL, facetable);
+    }
+
+    private CreatePropertyGroupDefinitionMutation group(String name, CreatePropertyDefinitionMutation... properties) {
+        return new CreatePropertyGroupDefinitionMutation(name, "Register projection test fixture", List.of(properties), List.of());
     }
 
     private AdminItemDefinitionView findItem(String name) {
@@ -211,13 +212,7 @@ public class RegisterProjectionTestDomainInitializer implements DomainInitialize
         return genrePropertyId;
     }
 
-    public UUID dimensionsPropertyId() {
-        return dimensionsPropertyId;
-    }
 
-    public UUID packagingPropertyId() {
-        return packagingPropertyId;
-    }
 
     public UUID dimensionsMaterialPropertyId() {
         return dimensionsMaterialPropertyId;
@@ -225,5 +220,9 @@ public class RegisterProjectionTestDomainInitializer implements DomainInitialize
 
     public UUID authorsPerspectiveId() {
         return authorsPerspectiveId;
+    }
+
+    public UUID attachmentPropertyId() {
+        return attachmentPropertyId;
     }
 }

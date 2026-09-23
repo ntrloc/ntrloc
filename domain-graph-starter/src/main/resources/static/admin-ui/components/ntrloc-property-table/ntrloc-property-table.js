@@ -172,7 +172,7 @@ injectStyles('ntrloc-property-table-styles', `
   .property-grid .filter-empty-status {
     grid-column: 1 / -1;
   }
-  /* Nested-property rows (children of an OBJECT property) reuse the same grid row shape as a
+  /* Nested-property rows (children of a property group) reuse the same grid row shape as a
      top-level property -- indentation is just left padding on the name cell, not a separate
      nested grid, so a child's Name/Description/Type/etc. columns still line up with every other
      row's. */
@@ -328,21 +328,21 @@ class NtrlocPropertyTable extends HTMLElement {
     return list ? (list.name || '(unnamed)') : '(list)';
   }
 
-  // Flattens the top-level properties named by topLevelIndices, plus -- for any OBJECT property
+  // Flattens the top-level properties named by topLevelIndices, plus -- for any property group
   // with isExpanded true -- its children, recursively, into a single
   // ordered list of rows: either { prop, containerArray, indexInContainer, depth } for a real
   // property, or { isAddButton: true, parentProp, depth } for the "+ Add property to X" row that
-  // follows an expanded object property's own children (at their depth, so it lines up with its
+  // follows an expanded group's own children (at their depth, so it lines up with its
   // siblings -- see the mockup this was built from). This flattening is what makes a nested
   // property row addressable at all: it doesn't live in this._properties, it lives in its
   // parent's own .properties array, so wireUp() needs containerArray (not always
   // this._properties) to know where to splice a still-new row out of on delete.
   //
-  // The add-button always appears for an expanded object property, new or already-saved --
-  // toCreatePropertySpec/collectNestedPropertyMutations (schema-view-model.js) handle both: a new
+  // The add-buttons always appear for an expanded group, new or already-saved --
+  // toCreateGroupSpec/collectPropertyMutations (schema-view-model.js) handle both: a new
   // child of a still-new parent is embedded in the parent's own create mutation, a new child of an
-  // existing parent gets its own CREATE_OBJECT_PROPERTY_CHILD. Recursion happens even into a
-  // currently-empty object property (nothing to walk, but the add-button still needs to render).
+  // existing parent gets its own ADD_PROPERTY / ADD_PROPERTY_GROUP. Recursion happens even into a
+  // currently-empty group (nothing to walk, but the add-button still needs to render).
   //
   // Children are always shown in full once their parent is expanded -- the name/description
   // filter only ever narrows which *top-level* rows appear, matching the filter's existing
@@ -353,7 +353,7 @@ class NtrlocPropertyTable extends HTMLElement {
       for (const index of indices) {
         const prop = containerArray[index];
         rows.push({ prop, containerArray, indexInContainer: index, depth });
-        if (prop.type === 'OBJECT' && prop.isExpanded) {
+        if (prop.isGroup && prop.isExpanded) {
           const childOrder = prop.properties.map((_, i) => i).sort((a, b) => prop.properties[a].name.localeCompare(prop.properties[b].name));
           walk(childOrder, prop.properties, depth + 1);
           rows.push({ isAddButton: true, parentProp: prop, depth: depth + 1 });
@@ -427,6 +427,7 @@ class NtrlocPropertyTable extends HTMLElement {
                 <div class="grid-cell name-cell" role="gridcell" style="padding-left: ${row.depth * 20}px">
                   <span class="expand-toggle-spacer"></span>
                   <button class="add-nested-property-button">+ Add property to ${escapeHtml(row.parentProp.name)}</button>
+                  <button class="add-nested-property-button add-nested-group-button">+ Add group</button>
                 </div>
                 <div class="grid-cell" role="gridcell"></div>
                 <div class="grid-cell" role="gridcell"></div>
@@ -441,10 +442,10 @@ class NtrlocPropertyTable extends HTMLElement {
             const { prop, depth } = row;
             const editable = !prop.isDeleted && !prop.isReadonly;
             const showForm = editable && prop.isEditing;
-            const isObjectType = prop.type === 'OBJECT';
+            const isObjectType = prop.isGroup;
             const isExpanded = isObjectType && prop.isExpanded;
             // Every row reserves the same gutter width, whether or not it actually has a twisty
-            // -- otherwise a scalar row's name would start further left than an OBJECT sibling's
+            // -- otherwise a property row's name would start further left than a group sibling's
             // at the same depth (the sibling's twisty pushes its name over), leaving property
             // labels raggedly unaligned instead of lining up column-straight like every other
             // field in the grid.
@@ -476,14 +477,14 @@ class NtrlocPropertyTable extends HTMLElement {
                 ${!prop.isNew && prop.description !== prop.originalDescription && prop.originalDescription ? `<div class="original-value">${escapeHtml(prop.originalDescription)}</div>` : ''}
               </div>
               <div class="grid-cell" role="gridcell">
-                ${prop.isNew && showForm ? `
+                ${prop.isGroup ? `<span class="read-only-value type-value">${prop.traitNamespace ? 'TRAIT' : 'GROUP'}</span>` : prop.isNew && showForm ? `
                   <md-filled-select class="editable-field type-select">
                     ${this._propertyTypes.map((t) => `<md-select-option value="${t.type}" ${t.type === prop.type ? 'selected' : ''}><div slot="headline">${t.type}</div></md-select-option>`).join('')}
                   </md-filled-select>
                 ` : `<span class="read-only-value type-value">${escapeHtml(prop.type)}</span>`}
               </div>
               <div class="grid-cell list-cell" role="gridcell">
-                ${prop.type !== 'STRING'
+                ${prop.isGroup || prop.type !== 'STRING'
                   ? ''
                   : prop.isReadonly || prop.isNew
                     ? '<span class="read-only-value">—</span>'
@@ -496,28 +497,28 @@ class NtrlocPropertyTable extends HTMLElement {
                 ${!prop.isNew && prop.listAssociationDirty ? `<div class="original-value">${escapeHtml(this.originalListName(prop))}</div>` : ''}
               </div>
               <div class="grid-cell" role="gridcell">
-                ${prop.validCardinalities.length > 1 && showForm ? `
+                ${prop.isGroup ? '' : prop.validCardinalities.length > 1 && showForm ? `
                   <md-filled-select class="editable-field cardinality-select">
                     ${prop.validCardinalities.map((c) => `<md-select-option value="${c}" ${c === prop.cardinality ? 'selected' : ''}><div slot="headline">${c}</div></md-select-option>`).join('')}
                   </md-filled-select>
                 ` : `<span class="read-only-value cardinality-value">${escapeHtml(prop.cardinality)}</span>`}
-                ${!prop.isNew && prop.cardinality !== prop.originalCardinality && prop.originalCardinality ? `<div class="original-value">${escapeHtml(prop.originalCardinality)}</div>` : ''}
+                ${!prop.isGroup && !prop.isNew && prop.cardinality !== prop.originalCardinality && prop.originalCardinality ? `<div class="original-value">${escapeHtml(prop.originalCardinality)}</div>` : ''}
               </div>
               <div class="grid-cell" role="gridcell">
-                ${showForm ? `
+                ${prop.isGroup ? '' : showForm ? `
                   <md-filled-select class="editable-field usage-select">
                     ${['OPTIONAL', 'REQUIRED', 'DEPRECATED'].map((u) => `<md-select-option value="${u}" ${u === prop.usage ? 'selected' : ''}><div slot="headline">${u}</div></md-select-option>`).join('')}
                   </md-filled-select>
                 ` : `<span class="read-only-value usage-value">${escapeHtml(prop.usage)}</span>`}
-                ${!prop.isNew && prop.usage !== prop.originalUsage && prop.originalUsage ? `<div class="original-value">${escapeHtml(prop.originalUsage)}</div>` : ''}
+                ${!prop.isGroup && !prop.isNew && prop.usage !== prop.originalUsage && prop.originalUsage ? `<div class="original-value">${escapeHtml(prop.originalUsage)}</div>` : ''}
               </div>
               <div class="grid-cell" role="gridcell">
-                ${this.isFacetEligible(prop) ? (
+                ${!prop.isGroup && this.isFacetEligible(prop) ? (
                   showForm
                     ? `<md-checkbox class="editable-field facetable-checkbox" ${prop.facetable ? 'checked' : ''}></md-checkbox>`
                     : `<md-checkbox class="read-only-value facetable-value" disabled ${prop.facetable ? 'checked' : ''}></md-checkbox>`
                 ) : ''}
-                ${!prop.isNew && prop.facetable !== prop.originalFacetable ? `<div class="original-value">${prop.originalFacetable ? 'Yes' : 'No'}</div>` : ''}
+                ${!prop.isGroup && !prop.isNew && prop.facetable !== prop.originalFacetable ? `<div class="original-value">${prop.originalFacetable ? 'Yes' : 'No'}</div>` : ''}
               </div>
               <div class="grid-cell actions-cell" role="gridcell">
                 ${showForm ? '<md-text-button class="done-button">Done</md-text-button>' : ''}
@@ -546,6 +547,7 @@ class NtrlocPropertyTable extends HTMLElement {
       ${this._allowAdd ? `
         <div class="add-property-row">
           <md-outlined-button class="add-property-button">+ Add Property</md-outlined-button>
+          <md-outlined-button class="add-group-button">+ Add Group</md-outlined-button>
         </div>
       ` : ''}
     `;
@@ -600,12 +602,15 @@ class NtrlocPropertyTable extends HTMLElement {
       const visibleRow = this._visibleRows[index];
 
       if (visibleRow.isAddButton) {
-        const addNestedButton = row.querySelector('.add-nested-property-button');
-        addNestedButton.addEventListener('click', () => {
-          const newProp = PropertyDefinitionViewModel.create(this._propertyTypes);
-          visibleRow.parentProp.properties.push(newProp);
-          notifySchemaViewModelChange();
-          this.focusNewPropertyInput(newProp);
+        row.querySelectorAll('.add-nested-property-button').forEach((button) => {
+          button.addEventListener('click', () => {
+            const newProp = button.classList.contains('add-nested-group-button')
+              ? PropertyDefinitionViewModel.createGroup()
+              : PropertyDefinitionViewModel.create(this._propertyTypes);
+            visibleRow.parentProp.properties.push(newProp);
+            notifySchemaViewModelChange();
+            this.focusNewPropertyInput(newProp);
+          });
         });
         return; // nothing else in this loop body applies to a synthetic add-button row
       }
@@ -665,10 +670,6 @@ class NtrlocPropertyTable extends HTMLElement {
       const typeSelect = row.querySelector('.type-select');
       if (typeSelect) typeSelect.addEventListener('change', (event) => {
         prop.updateType(event.target.value, this._propertyTypes);
-        // Expanded by default the moment a property becomes OBJECT-typed -- the user picking
-        // OBJECT is almost always immediately followed by adding its first child, so the "Add
-        // property to X" affordance (only shown while expanded) should already be visible.
-        if (prop.type === 'OBJECT') prop.isExpanded = true;
         this.render();
         notifySchemaViewModelChange();
       });
@@ -740,6 +741,14 @@ class NtrlocPropertyTable extends HTMLElement {
       this._properties.push(newProp);
       notifySchemaViewModelChange();
       this.focusNewPropertyInput(newProp);
+    });
+
+    const addGroupButton = this.querySelector('.add-group-button');
+    if (addGroupButton) addGroupButton.addEventListener('click', () => {
+      const newGroup = PropertyDefinitionViewModel.createGroup();
+      this._properties.push(newGroup);
+      notifySchemaViewModelChange();
+      this.focusNewPropertyInput(newGroup);
     });
   }
 

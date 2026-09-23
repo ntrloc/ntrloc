@@ -10,6 +10,12 @@ class PropertyDefinitionViewModel {
     this.originalName = args.name;
     this.description = args.description;
     this.originalDescription = args.description;
+    // A property group is structural -- it has a name and children but no type/cardinality/usage --
+    // and shares this class so a mixed tree of properties and groups can be rendered and edited
+    // through one recursive list. isGroup is the discriminator; traitNamespace marks the synthetic
+    // group a trait's contributions sit under on an item type (always read-only there).
+    this.isGroup = args.isGroup ?? false;
+    this.traitNamespace = args.traitNamespace ?? false;
     this.type = args.type;
     this.originalType = args.type;
     this.cardinality = args.cardinality;
@@ -27,16 +33,16 @@ class PropertyDefinitionViewModel {
     this.originalControlledListId = args.controlledListId ?? null;
     this.isNew = args.isNew;
     this.isDeleted = false;
-    // Children of an OBJECT property, always present (empty for anything else) so rendering code
-    // never needs an undefined check. Recursive -- a child can itself be OBJECT-typed and have its
-    // own children, arbitrarily deep.
+    // Children of a property group (properties and further groups, in one list), always present
+    // (empty for a plain property) so rendering code never needs an undefined check. Recursive --
+    // a child group has its own children, arbitrarily deep.
     this.properties = args.properties ?? [];
     // Which row is "open" for editing -- lives here, not as component-instance state, because
     // notifySchemaViewModelChange() (see schema-view-model.js) rebuilds ntrloc-item-detail and
     // everything nested inside it (including a fresh ntrloc-property-table) on every field edit
     // anywhere in the panel. This object is the one thing that survives that churn.
     this.isEditing = args.isEditing ?? false;
-    // Whether this OBJECT property's children are currently shown -- same rationale as isEditing
+    // Whether this group's children are currently shown -- same rationale as isEditing
     // above, and for the same reason it matters even more here: adding a new child calls
     // notifySchemaViewModelChange() too, and if expand state lived on the (about to be replaced)
     // ntrloc-property-table instance instead, the freshly-created child would end up hidden
@@ -55,6 +61,12 @@ class PropertyDefinitionViewModel {
   // actually undo (revert() below is single-level only).
   get ownFieldsDirty() {
     if (this.isReadonly) return false;
+    if (this.isGroup) {
+      return this.isNew
+        || this.isDeleted
+        || this.name !== this.originalName
+        || (this.description ?? '') !== (this.originalDescription ?? '');
+    }
     return this.isNew
       || this.isDeleted
       || this.name !== this.originalName
@@ -121,9 +133,45 @@ class PropertyDefinitionViewModel {
       validCardinalities: typeInfo?.validCardinalities ?? [p.cardinality],
       definedIn,
       controlledListId: p.controlledListId ?? null,
-      properties: (p.properties ?? []).map((child) => PropertyDefinitionViewModel.fromAdmin(child, propertyTypes, definedIn)),
       isNew: false,
       isEditing: false,
+    });
+  }
+
+  static fromAdminGroup(g, propertyTypes, inheritedDefinedIn = null) {
+    const definedIn = g.definedIn ?? inheritedDefinedIn;
+    return new PropertyDefinitionViewModel({
+      id: g.id,
+      name: g.name,
+      description: g.description,
+      isGroup: true,
+      traitNamespace: g.traitNamespace ?? false,
+      definedIn,
+      properties: PropertyDefinitionViewModel.fromAdminContents(g.properties, g.groups, propertyTypes, definedIn),
+      isNew: false,
+      isEditing: false,
+    });
+  }
+
+  // A container's (item/trait/link/group) properties and groups as one mixed child list, properties
+  // first -- the backend keeps them as two lists, the editor shows and edits them as one tree.
+  static fromAdminContents(properties, groups, propertyTypes, inheritedDefinedIn = null) {
+    return [
+      ...(properties ?? []).map((p) => PropertyDefinitionViewModel.fromAdmin(p, propertyTypes, inheritedDefinedIn)),
+      ...(groups ?? []).map((g) => PropertyDefinitionViewModel.fromAdminGroup(g, propertyTypes, inheritedDefinedIn)),
+    ];
+  }
+
+  static createGroup() {
+    return new PropertyDefinitionViewModel({
+      id: null,
+      name: '',
+      description: null,
+      isGroup: true,
+      definedIn: null,
+      isNew: true,
+      isEditing: true,
+      isExpanded: true,
     });
   }
 
@@ -160,7 +208,7 @@ class LinkViewModel {
   static fromAdmin(link, propertyTypes) {
     return new LinkViewModel({
       id: link.id,
-      properties: (link.properties ?? []).map((p) => PropertyDefinitionViewModel.fromAdmin(p, propertyTypes)),
+      properties: PropertyDefinitionViewModel.fromAdminContents(link.properties, link.groups, propertyTypes),
     });
   }
 }
@@ -519,7 +567,7 @@ class ItemDefinitionViewModel {
       id: item.id,
       name: item.name,
       description: item.description,
-      properties: (item.properties ?? []).map((p) => PropertyDefinitionViewModel.fromAdmin(p, propertyTypes)),
+      properties: PropertyDefinitionViewModel.fromAdminContents(item.properties, item.groups, propertyTypes),
       links,
       traitAssignments: (item.traits ?? []).map((t) => new TraitAssignmentViewModel(t)),
       stateMachines: (item.stateMachines ?? []).map((m) => StateMachineViewModel.fromAdmin(m)),
@@ -578,7 +626,7 @@ class TraitDefinitionViewModel {
       id: trait.id,
       name: trait.name,
       description: trait.description,
-      properties: (trait.properties ?? []).map((p) => PropertyDefinitionViewModel.fromAdmin(p, propertyTypes)),
+      properties: PropertyDefinitionViewModel.fromAdminContents(trait.properties, trait.groups, propertyTypes),
       links,
       isNew: false,
     });

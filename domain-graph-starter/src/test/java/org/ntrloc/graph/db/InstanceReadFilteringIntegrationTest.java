@@ -4,7 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.coordinator.CoordinatorTestDomainInitializer;
 import org.ntrloc.graph.db.coordinator.LedgerRegisterCoordinator;
-import org.ntrloc.graph.db.partition.authorization.DefaultGroupInitializer;
+import org.ntrloc.graph.db.partition.authorization.DefaultUserGroupInitializer;
 import org.ntrloc.graph.db.partition.authorization.MarkerAssignmentService;
 import org.ntrloc.graph.db.partition.authorization.repository.AuthorizationRepository;
 import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
@@ -31,7 +31,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 // paths (project/projectAcrossTypes, projectOne, and fetchLinksByItem), driven through
 // EntityManager exactly the way the real HTTP endpoints do. Every non-superuser fixture user is
 // added to the default "everyone" group, which already holds type-level item-type:read on these
-// fixture types (DefaultGroupInitializer's default-open-until-narrowed grant) -- so every test
+// fixture types (DefaultUserGroupInitializer's default-open-until-narrowed grant) -- so every test
 // here is isolating the *instance*-level marker gate specifically, not type-level visibility.
 class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
 
@@ -54,7 +54,7 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
     private SecurityRepository securityRepo;
 
     @Autowired
-    private DefaultGroupInitializer defaultGroupInitializer;
+    private DefaultUserGroupInitializer defaultUserGroupInitializer;
 
     private UUID createItem(UUID itemTypeId, UUID propertyId, Object value) {
         UUID itemId = UUID.randomUUID();
@@ -83,14 +83,14 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
         return linkId;
     }
 
-    private NtrlocPrincipal newUserInEveryoneGroup() {
+    private NtrlocPrincipal newUserInEveryoneUserGroup() {
         var user = securityRepo.createUser("irf-" + UUID.randomUUID(), "Restricted", null, false);
-        UUID everyoneGroupId = defaultGroupInitializer.getDefaultGroupId();
-        securityRepo.addUserToGroup(user.id(), everyoneGroupId);
+        UUID everyoneUserGroupId = defaultUserGroupInitializer.getDefaultUserGroupId();
+        securityRepo.addUserToUserGroup(user.id(), everyoneUserGroupId);
         // groupIds is carried directly on the principal, not re-resolved from the DB per check --
         // must match the membership just added above or every type-level (and instance-level
         // group-granted) check below fails as if the user were in no groups at all.
-        return new ResolvedPrincipal(user.id(), user.externalId(), user.externalId(), null, Set.of(everyoneGroupId), false);
+        return new ResolvedPrincipal(user.id(), user.externalId(), user.externalId(), null, Set.of(everyoneUserGroupId), false);
     }
 
     private static final NtrlocPrincipal SUPERUSER =
@@ -118,7 +118,7 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
     @Test
     void collectionProjection_itemWithNoMarker_isExcludedForNonSuperuser() {
         createProduct(); // no marker assigned
-        var principal = newUserInEveryoneGroup();
+        var principal = newUserInEveryoneUserGroup();
 
         var result = entityManager.project(new CollectionProjectionSpec("CoordinatorTestProduct", null, null), "http://binary", principal);
 
@@ -129,7 +129,7 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
     @Test
     void collectionProjection_itemWithGrantedMarker_isIncluded() {
         UUID productId = createProduct();
-        var principal = newUserInEveryoneGroup();
+        var principal = newUserInEveryoneUserGroup();
         grantItemRead(productId, principal);
 
         var result = entityManager.project(new CollectionProjectionSpec("CoordinatorTestProduct", null, null), "http://binary", principal);
@@ -141,7 +141,7 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
     void collectionProjection_mixedVisibility_onlyGrantedItemsReturned_andTotalCountReflectsTheFilter() {
         UUID visible = createProduct();
         createProduct(); // stays ungranted
-        var principal = newUserInEveryoneGroup();
+        var principal = newUserInEveryoneUserGroup();
         grantItemRead(visible, principal);
 
         var result = entityManager.project(new CollectionProjectionSpec("CoordinatorTestProduct", null, null), "http://binary", principal);
@@ -164,7 +164,7 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
     @Test
     void singleItemProjection_itemWithNoMarker_throwsNotFound() {
         UUID productId = createProduct();
-        var principal = newUserInEveryoneGroup();
+        var principal = newUserInEveryoneUserGroup();
 
         // project() throws rather than returning Optional.empty() on a permission denial (matching
         // requireReadAccess's existing type-level behavior) -- Optional.empty() is reserved for a
@@ -178,7 +178,7 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
     @Test
     void singleItemProjection_itemWithGrantedMarker_returnsIt() {
         UUID productId = createProduct();
-        var principal = newUserInEveryoneGroup();
+        var principal = newUserInEveryoneUserGroup();
         grantItemRead(productId, principal);
 
         var result = entityManager.project(new SingleItemProjectionSpec("CoordinatorTestProduct", productId), "http://binary", principal);
@@ -194,7 +194,7 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
         UUID productId = createProduct();
         UUID contributorId = createContributor(); // never marked
         createLink(productId, contributorId);
-        var principal = newUserInEveryoneGroup();
+        var principal = newUserInEveryoneUserGroup();
         grantItemRead(productId, principal);
 
         var result = entityManager.project(
@@ -210,7 +210,7 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
         UUID productId = createProduct();
         UUID contributorId = createContributor();
         createLink(productId, contributorId);
-        var principal = newUserInEveryoneGroup();
+        var principal = newUserInEveryoneUserGroup();
         grantItemRead(productId, principal);
         grantItemRead(contributorId, principal);
         // Deliberately no grantLinkRead(...) -- link:read is a separate, still-required condition.
@@ -227,7 +227,7 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
         UUID productId = createProduct();
         UUID contributorId = createContributor();
         createLink(productId, contributorId);
-        var principal = newUserInEveryoneGroup();
+        var principal = newUserInEveryoneUserGroup();
         grantItemRead(productId, principal);
         grantItemRead(contributorId, principal);
         grantLinkRead(productId, fixture.productPerspectiveId(), principal);

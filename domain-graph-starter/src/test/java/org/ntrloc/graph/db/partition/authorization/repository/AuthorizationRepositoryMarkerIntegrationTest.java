@@ -73,10 +73,10 @@ class AuthorizationRepositoryMarkerIntegrationTest extends AbstractIntegrationTe
     @Test
     void ensureMarkerGrant_isIdempotent() {
         var marker = authRepo.createMarker("arm-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId());
-        var group = securityRepo.createGroup("arm-" + UUID.randomUUID());
+        var group = securityRepo.createUserGroup("arm-" + UUID.randomUUID());
 
-        UUID first = authRepo.ensureMarkerGrant(marker.id(), "GROUP", group.id());
-        UUID second = authRepo.ensureMarkerGrant(marker.id(), "GROUP", group.id());
+        UUID first = authRepo.ensureMarkerGrant(marker.id(), "USER_GROUP", group.id());
+        UUID second = authRepo.ensureMarkerGrant(marker.id(), "USER_GROUP", group.id());
 
         assertThat(second).isEqualTo(first);
         Long rows = jdbcClient.sql("SELECT COUNT(*) FROM marker_grant WHERE marker_id = :markerId")
@@ -87,17 +87,17 @@ class AuthorizationRepositoryMarkerIntegrationTest extends AbstractIntegrationTe
     @Test
     void findMarkerGrant_findsAnEnsuredGrant() {
         var marker = authRepo.createMarker("arm-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId());
-        var group = securityRepo.createGroup("arm-" + UUID.randomUUID());
-        UUID grantId = authRepo.ensureMarkerGrant(marker.id(), "GROUP", group.id());
+        var group = securityRepo.createUserGroup("arm-" + UUID.randomUUID());
+        UUID grantId = authRepo.ensureMarkerGrant(marker.id(), "USER_GROUP", group.id());
 
-        assertThat(authRepo.findMarkerGrant(marker.id(), "GROUP", group.id())).contains(grantId);
+        assertThat(authRepo.findMarkerGrant(marker.id(), "USER_GROUP", group.id())).contains(grantId);
     }
 
     @Test
     void setItemPermissions_persistsTheFlags() {
         var marker = authRepo.createMarker("arm-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId());
-        var group = securityRepo.createGroup("arm-" + UUID.randomUUID());
-        UUID grantId = authRepo.ensureMarkerGrant(marker.id(), "GROUP", group.id());
+        var group = securityRepo.createUserGroup("arm-" + UUID.randomUUID());
+        UUID grantId = authRepo.ensureMarkerGrant(marker.id(), "USER_GROUP", group.id());
 
         authRepo.setItemPermissions(grantId, true, false);
 
@@ -110,8 +110,8 @@ class AuthorizationRepositoryMarkerIntegrationTest extends AbstractIntegrationTe
     @Test
     void grantPropertyAccess_upsertsOnConflict() {
         var marker = authRepo.createMarker("arm-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId());
-        var group = securityRepo.createGroup("arm-" + UUID.randomUUID());
-        UUID grantId = authRepo.ensureMarkerGrant(marker.id(), "GROUP", group.id());
+        var group = securityRepo.createUserGroup("arm-" + UUID.randomUUID());
+        UUID grantId = authRepo.ensureMarkerGrant(marker.id(), "USER_GROUP", group.id());
 
         authRepo.grantPropertyAccess(grantId, fixture.namePropertyId(), true, false);
         authRepo.grantPropertyAccess(grantId, fixture.namePropertyId(), true, true);
@@ -129,8 +129,8 @@ class AuthorizationRepositoryMarkerIntegrationTest extends AbstractIntegrationTe
     @Test
     void grantLinkPerspectiveAccess_upsertsOnConflict() {
         var marker = authRepo.createMarker("arm-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId());
-        var group = securityRepo.createGroup("arm-" + UUID.randomUUID());
-        UUID grantId = authRepo.ensureMarkerGrant(marker.id(), "GROUP", group.id());
+        var group = securityRepo.createUserGroup("arm-" + UUID.randomUUID());
+        UUID grantId = authRepo.ensureMarkerGrant(marker.id(), "USER_GROUP", group.id());
 
         authRepo.grantLinkPerspectiveAccess(grantId, fixture.productPerspectiveId(), false, true, false);
         authRepo.grantLinkPerspectiveAccess(grantId, fixture.productPerspectiveId(), true, true, true);
@@ -147,8 +147,8 @@ class AuthorizationRepositoryMarkerIntegrationTest extends AbstractIntegrationTe
     @Test
     void grantLinkPropertyAccess_persists() {
         var marker = authRepo.createMarker("arm-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId());
-        var group = securityRepo.createGroup("arm-" + UUID.randomUUID());
-        UUID grantId = authRepo.ensureMarkerGrant(marker.id(), "GROUP", group.id());
+        var group = securityRepo.createUserGroup("arm-" + UUID.randomUUID());
+        UUID grantId = authRepo.ensureMarkerGrant(marker.id(), "USER_GROUP", group.id());
 
         authRepo.grantLinkPropertyAccess(grantId, fixture.rolePropertyId(), true, true);
 
@@ -162,14 +162,14 @@ class AuthorizationRepositoryMarkerIntegrationTest extends AbstractIntegrationTe
     @Test
     void deleteMarkerGrant_cascadesToChildTables() {
         var marker = authRepo.createMarker("arm-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId());
-        var group = securityRepo.createGroup("arm-" + UUID.randomUUID());
-        UUID grantId = authRepo.ensureMarkerGrant(marker.id(), "GROUP", group.id());
+        var group = securityRepo.createUserGroup("arm-" + UUID.randomUUID());
+        UUID grantId = authRepo.ensureMarkerGrant(marker.id(), "USER_GROUP", group.id());
         authRepo.grantPropertyAccess(grantId, fixture.namePropertyId(), true, false);
         authRepo.grantLinkPerspectiveAccess(grantId, fixture.productPerspectiveId(), false, true, false);
 
         authRepo.deleteMarkerGrant(grantId);
 
-        assertThat(authRepo.findMarkerGrant(marker.id(), "GROUP", group.id())).isEmpty();
+        assertThat(authRepo.findMarkerGrant(marker.id(), "USER_GROUP", group.id())).isEmpty();
         Long propertyRows = jdbcClient.sql("SELECT COUNT(*) FROM marker_grant_property WHERE marker_grant_id = :id")
                 .param("id", grantId).query(Long.class).single();
         Long perspectiveRows = jdbcClient.sql("SELECT COUNT(*) FROM marker_grant_link_perspective WHERE marker_grant_id = :id")

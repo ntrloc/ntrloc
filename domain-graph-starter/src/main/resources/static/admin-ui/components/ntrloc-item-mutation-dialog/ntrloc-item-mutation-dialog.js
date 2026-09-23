@@ -140,7 +140,7 @@ injectStyles('ntrloc-item-mutation-dialog-styles', `
 // addableProperties/createProperties below): only SINGLE-cardinality properties are offered in
 // this first cut -- LIST/SET would need a multi-value editor this dialog doesn't have yet, not a
 // fundamental backend limit.
-const VALUE_TYPES = ['STRING', 'INT', 'LONG', 'DOUBLE', 'DATE', 'DATETIME', 'BOOLEAN', 'OBJECT'];
+const VALUE_TYPES = ['STRING', 'INT', 'LONG', 'DOUBLE', 'DATE', 'DATETIME', 'BOOLEAN', 'GROUP'];
 
 // Promise-based wrapper around a transient <md-dialog>, same shape as
 // ntrloc-save-confirm-dialog.js/ntrloc-controlled-list-dialog.js's open*Dialog functions. Handles
@@ -243,7 +243,7 @@ function openItemMutationDialog({ mode = 'create', item } = {}) {
           return `<input type="date" class="value-input" ${dataAttr} value="${escapeHtml(v)}">`;
         case 'DATETIME':
           return `<input type="datetime-local" class="value-input" ${dataAttr} value="${escapeHtml(v)}">`;
-        case 'OBJECT':
+        case 'GROUP':
           return `<textarea rows="2" class="value-input" ${dataAttr} placeholder='{"key": "value"}'>${escapeHtml(typeof v === 'string' ? v : JSON.stringify(v))}</textarea>`;
         default:
           return `<input type="text" class="value-input" ${dataAttr} value="${escapeHtml(v)}">`;
@@ -537,7 +537,7 @@ function openItemMutationDialog({ mode = 'create', item } = {}) {
 // MutationRequestProcessor.validateScalar on the backend for the exact target shapes), writing
 // the result onto row.coercedValue rather than returning a parallel array -- the submit handler
 // above reads it back off each row once this returns no errors. Returns the accumulated error
-// list (empty means every row coerced cleanly); INT/DATE/DATETIME/OBJECT can each fail to parse
+// list (empty means every row coerced cleanly); INT/DATE/DATETIME/GROUP (JSON) can each fail to parse
 // client-side before ever reaching the server's own validation.
 function coerceAllRows(state, propertyDef) {
   const errors = [];
@@ -604,7 +604,7 @@ function coerceValue(property, rawValue) {
       // of which require an explicit offset or "Z").
       if (!rawValue) throw new Error('Expected a date/time');
       return new Date(rawValue).toISOString();
-    case 'OBJECT':
+    case 'GROUP':
       return rawValue ? JSON.parse(rawValue) : {};
     default:
       return rawValue;

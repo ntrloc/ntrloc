@@ -23,7 +23,7 @@ import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemLinkP
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminStateMachineView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminStateView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminTransitionView;
-import org.ntrloc.graph.db.partition.schema.definition.view.admin.ObjectAdminPropertyDefinitionView;
+import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyGroupView;
 import org.ntrloc.graph.db.partition.schema.event.SchemaChangeEvent;
 import org.ntrloc.graph.db.partition.schema.event.SchemaChangeListener;
 import org.slf4j.Logger;
@@ -155,29 +155,25 @@ public class RegisterPartitionManager implements SchemaChangeListener {
         return schemaManager.getAdminSchema().items().stream()
                 .filter(item -> item.id().equals(itemTypeId))
                 .findFirst()
-                .map(item -> collectFacetableFieldNames(item.properties(), ""))
+                .map(item -> collectFacetableFieldNames(item.properties(), item.groups(), ""))
                 .orElse(List.of());
     }
 
-    // Recurses into OBJECT properties so a nested facetable property (e.g. "additionalDetails.
-    // reviewStatus") is auto-discovered by facets: [] the same as a top-level one, using the same
-    // dot-path naming resolvePropertyId already understands for explicit facet requests -- this is
-    // the only piece that was missing; querying a dot-path facet has worked since dot-notation was
-    // added. An OBJECT property is itself never facetable (isTermsFacetable always rejects it, no
-    // controlled list/BOOLEAN type applies), so it's only ever a container to recurse through here,
-    // never added to the result itself. No cardinality guard needed on the recursion: OBJECT's own
-    // valid cardinalities are SINGLE-only (PropertyType.validCardinalities), so a repeating group of
-    // nested objects -- which would make a child's value multi-valued per item, the same ambiguity
-    // LIST cardinality already rules out for a scalar -- can't occur here.
-    private List<String> collectFacetableFieldNames(List<AdminPropertyDefinitionView> properties, String pathPrefix) {
+    // Recurses through property groups so a nested facetable property (e.g. "dimensions.unit", or a
+    // trait's "File.mimeType") is auto-discovered by facets: [] the same as a top-level one, using
+    // the same dot-path naming resolvePropertyId understands for explicit facet requests. Groups are
+    // structural and never facetable themselves. No cardinality guard needed on the recursion: a
+    // group holds each of its properties at most once per item, so a child's value is never
+    // multi-valued through nesting (LIST/SET cardinality is ruled out by isTermsFacetable).
+    private List<String> collectFacetableFieldNames(List<AdminPropertyDefinitionView> properties, List<AdminPropertyGroupView> groups, String pathPrefix) {
         List<String> names = new ArrayList<>();
         for (AdminPropertyDefinitionView p : properties) {
-            String qualifiedName = pathPrefix.isEmpty() ? p.name() : pathPrefix + "." + p.name();
             if (isTermsFacetable(p)) {
-                names.add(qualifiedName);
-            } else if (p instanceof ObjectAdminPropertyDefinitionView object) {
-                names.addAll(collectFacetableFieldNames(object.properties(), qualifiedName));
+                names.add(pathPrefix + p.name());
             }
+        }
+        for (AdminPropertyGroupView g : groups) {
+            names.addAll(collectFacetableFieldNames(g.properties(), g.groups(), pathPrefix + g.name() + "."));
         }
         return names;
     }
@@ -204,7 +200,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
         return p.type() == PropertyType.BOOLEAN || p.controlledListId() != null;
     }
 
-    // Each dot-separated segment (one per level of OBJECT-property nesting) follows the same
+    // Each dot-separated segment (one per level of property-group nesting) follows the same
     // identifier shape as a bare field name did before dot-paths existed. Quantifiers are
     // possessive (++/*+) so the engine never backtracks into them -- each segment's own \w*+ can't
     // be re-split against the outer repetition, which is what a client-controlled field name would
@@ -223,16 +219,53 @@ public class RegisterPartitionManager implements SchemaChangeListener {
         String direction = "DESC".equalsIgnoreCase(spec.sortDirection()) ? "DESC" : "ASC";
         String column = SYSTEM_SORT_COLUMNS.containsKey(spec.sortField())
                 ? SYSTEM_SORT_COLUMNS.get(spec.sortField())
-                : typedSortExpression("rt.properties", resolveProperty(itemTypeId, spec.sortField()));
+                : sortExpressionFor(resolvePropertyPath(itemTypeId, spec.sortField()), spec.sortField());
         return "ORDER BY " + column + " " + direction + " NULLS LAST, ri.item_id ASC";
+    }
+
+    // Ordinary leaf -> the existing rt.properties->>'<id>' extraction, cast per the property's own
+    // declared type. A metadata path -> a correlated subquery into binary_content, its JSON walked
+    // the same number of levels the path names, cast per BINARY_METADATA_PATH_TYPES' entry for that
+    // exact path -- the same castedText dispatch either way, just sourced from a different place
+    // (a real schema property vs. a fixed map) since a binary's intrinsic facts have no
+    // schema_property row of their own to carry a type. A bare BINARY leaf (no trailing metadata
+    // path) is rejected outright rather than silently sorting everything as NULL, which is what it
+    // did before this method existed -- BINARY values are never stored in rt.properties at all.
+    private static String sortExpressionFor(PropertyPathResolution resolution, String fullPath) {
+        if (resolution.metadataPath().isEmpty()) {
+            if (resolution.property().type() == PropertyType.BINARY) {
+                throw new IllegalArgumentException("'" + fullPath
+                        + "' is binary content -- sort by an intrinsic attribute instead, e.g. '"
+                        + fullPath + ".metadata.length'");
+            }
+            return typedSortExpression("rt.properties", resolution.property());
+        }
+        String text = "(SELECT " + metadataJsonExtraction(resolution.metadataPath()) + " FROM register_binary_property rbp "
+                + "JOIN binary_content bc ON bc.id = rbp.binary_id "
+                + "WHERE rbp.register_item_id = ri.id AND rbp.property_id = '" + resolution.property().id() + "')";
+        return castedText(text, BINARY_METADATA_PATH_TYPES.get(resolution.metadataPath()));
+    }
+
+    // Walks a JSON path inside binary_content.metadata -- ->'segment' for every level but the last,
+    // ->>'segment' (text extraction) for the last, e.g. ["length"] -> metadata->>'length'; a future
+    // ["hashes","sha256"] -> metadata->'hashes'->>'sha256'.
+    private static String metadataJsonExtraction(List<String> metadataPath) {
+        StringBuilder sql = new StringBuilder("bc.metadata");
+        for (int i = 0; i < metadataPath.size() - 1; i++) {
+            sql.append("->'").append(metadataPath.get(i)).append("'");
+        }
+        return sql.append("->>'").append(metadataPath.get(metadataPath.size() - 1)).append("'").toString();
     }
 
     // `->>` always yields text, so an unqualified ORDER BY on it sorts an INT property as "1", "10",
     // "2". Cast the extracted text to the property's real type so the sort is by value. NULLIF(_,'')
     // keeps an empty-string (or absent -> NULL) cell from failing the cast; NULLS LAST still applies.
     private static String typedSortExpression(String jsonbColumnAlias, AdminPropertyDefinitionView property) {
-        String text = jsonbColumnAlias + "->>'" + property.id() + "'";
-        return switch (property.type()) {
+        return castedText(jsonbColumnAlias + "->>'" + property.id() + "'", property.type());
+    }
+
+    private static String castedText(String text, PropertyType type) {
+        return switch (type) {
             case INT, LONG -> nullifCast(text, "bigint");
             case DOUBLE -> nullifCast(text, "double precision");
             case DATE -> nullifCast(text, "date");
@@ -848,18 +881,17 @@ public class RegisterPartitionManager implements SchemaChangeListener {
         return schemaManager.getAdminSchema().items().stream()
                 .filter(item -> item.id().equals(itemTypeId))
                 .findFirst()
-                .map(item -> binaryPropertyIds(item.properties()))
+                .map(item -> binaryPropertyIds(item.properties(), item.groups()))
                 .orElse(Set.of());
     }
 
-    private Set<UUID> binaryPropertyIds(List<AdminPropertyDefinitionView> properties) {
+    private Set<UUID> binaryPropertyIds(List<AdminPropertyDefinitionView> properties, List<AdminPropertyGroupView> groups) {
         Set<UUID> result = new HashSet<>();
         for (AdminPropertyDefinitionView p : properties) {
-            if (p instanceof ObjectAdminPropertyDefinitionView o) {
-                result.addAll(binaryPropertyIds(o.properties()));
-            } else if (p.type() == PropertyType.BINARY) {
-                result.add(p.id());
-            }
+            if (p.type() == PropertyType.BINARY) result.add(p.id());
+        }
+        for (AdminPropertyGroupView g : groups) {
+            result.addAll(binaryPropertyIds(g.properties(), g.groups()));
         }
         return result;
     }
@@ -1228,7 +1260,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
     // no shortcut, so edit's shape never depends on who's asking.
     private ProjectedItemPermissions buildPermissions(RequestPermissionContext permissions, Set<UUID> markerIds,
                                                         Map<UUID, Set<UUID>> writeGrantsByMarker, Set<UUID> deleteGrantedMarkerIds,
-                                                        List<AdminPropertyDefinitionView> rootProperties,
+                                                        PropertyRoot rootProperties,
                                                         Map<String, List<AdminItemLinkPerspectiveView>> linkPerspectives) {
         if (permissions.superuser()) {
             List<String> allPerspectiveNames = linkPerspectives.isEmpty() ? null : List.copyOf(linkPerspectives.keySet());
@@ -1259,79 +1291,84 @@ public class RegisterPartitionManager implements SchemaChangeListener {
         return names.isEmpty() ? null : names;
     }
 
+    // What sits at one level of the schema tree: leaf properties and the property groups beside
+    // them. An item type's trait contributions are groups here (one per trait, named for it).
+    private record PropertyRoot(List<AdminPropertyDefinitionView> properties, List<AdminPropertyGroupView> groups) {
+        static final PropertyRoot EMPTY = new PropertyRoot(List.of(), List.of());
+    }
+
+    private Map<String, Object> buildEditTree(PropertyRoot root, Set<UUID> grantedIds) {
+        return buildEditTree(root.properties(), root.groups(), grantedIds);
+    }
+
+    private Map<String, Object> buildFullEditTree(PropertyRoot root) {
+        return buildFullEditTree(root.properties(), root.groups());
+    }
+
     // Bottom-up: a node whose own scalar children are ALL granted collapses its "scalars" entry to
-    // ["*"] rather than naming each one; an OBJECT child with nothing writable anywhere beneath it
-    // is omitted from "objects" entirely, same as a fully-uncovered node returns null and is
-    // omitted by its own parent. See ProjectedItemPermissions for why a fully-covered OBJECT child
-    // is NOT itself collapsed to a bare "*" or similar -- every node keeps the same {scalars,
-    // objects} shape regardless of how much of it is granted.
-    private Map<String, Object> buildEditTree(List<AdminPropertyDefinitionView> properties, Set<UUID> grantedIds) {
+    // ["*"] rather than naming each one; a group with nothing writable anywhere beneath it is
+    // omitted from "groups" entirely, same as a fully-uncovered node returns null and is omitted by
+    // its own parent. Every node keeps the same {scalars, groups} shape regardless of how much of it
+    // is granted. Advisory only: dynamic properties never appear here, and a group is only ever
+    // structure -- it is listed because something inside it is writable, never as a grant of its own.
+    private Map<String, Object> buildEditTree(List<AdminPropertyDefinitionView> properties, List<AdminPropertyGroupView> groups, Set<UUID> grantedIds) {
         List<String> grantedScalarNames = new ArrayList<>();
-        int totalScalarCount = 0;
-        Map<String, Object> objectChildren = new LinkedHashMap<>();
+        Map<String, Object> groupChildren = new LinkedHashMap<>();
 
         for (AdminPropertyDefinitionView p : properties) {
-            if (p instanceof ObjectAdminPropertyDefinitionView o) {
-                Map<String, Object> childNode = buildEditTree(o.properties(), grantedIds);
-                if (childNode != null) objectChildren.put(o.name(), childNode);
-            } else {
-                totalScalarCount++;
-                if (grantedIds.contains(p.id())) grantedScalarNames.add(p.name());
-            }
+            if (grantedIds.contains(p.id())) grantedScalarNames.add(p.name());
+        }
+        for (AdminPropertyGroupView g : groups) {
+            Map<String, Object> childNode = buildEditTree(g.properties(), g.groups(), grantedIds);
+            if (childNode != null) groupChildren.put(g.name(), childNode);
         }
 
-        if (grantedScalarNames.isEmpty() && objectChildren.isEmpty()) return null;
+        if (grantedScalarNames.isEmpty() && groupChildren.isEmpty()) return null;
 
         Map<String, Object> node = new LinkedHashMap<>();
         if (!grantedScalarNames.isEmpty()) {
-            node.put("scalars", grantedScalarNames.size() == totalScalarCount ? List.of("*") : List.copyOf(grantedScalarNames));
+            node.put("scalars", grantedScalarNames.size() == properties.size() ? List.of("*") : List.copyOf(grantedScalarNames));
         }
-        if (!objectChildren.isEmpty()) {
-            node.put("objects", objectChildren);
+        if (!groupChildren.isEmpty()) {
+            node.put("groups", groupChildren);
         }
         return node;
     }
 
     // Superuser's counterpart to buildEditTree -- every scalar is granted by definition, so this
-    // never needs a granted-id set, but keeps the identical {scalars, objects} shape (always "*",
+    // never needs a granted-id set, but keeps the identical {scalars, groups} shape (always "*",
     // never a per-name list) so a client can't tell which principal it's looking at from edit's
-    // shape alone. Only returns null for a node with no properties at all, which real schema
-    // content never produces.
-    private Map<String, Object> buildFullEditTree(List<AdminPropertyDefinitionView> properties) {
-        List<String> scalarNames = new ArrayList<>();
-        Map<String, Object> objectChildren = new LinkedHashMap<>();
-
-        for (AdminPropertyDefinitionView p : properties) {
-            if (p instanceof ObjectAdminPropertyDefinitionView o) {
-                Map<String, Object> childNode = buildFullEditTree(o.properties());
-                if (childNode != null) objectChildren.put(o.name(), childNode);
-            } else {
-                scalarNames.add(p.name());
-            }
+    // shape alone. Only returns null for a node with nothing at all, which real schema content
+    // never produces.
+    private Map<String, Object> buildFullEditTree(List<AdminPropertyDefinitionView> properties, List<AdminPropertyGroupView> groups) {
+        Map<String, Object> groupChildren = new LinkedHashMap<>();
+        for (AdminPropertyGroupView g : groups) {
+            Map<String, Object> childNode = buildFullEditTree(g.properties(), g.groups());
+            if (childNode != null) groupChildren.put(g.name(), childNode);
         }
 
-        if (scalarNames.isEmpty() && objectChildren.isEmpty()) return null;
+        if (properties.isEmpty() && groupChildren.isEmpty()) return null;
 
         Map<String, Object> node = new LinkedHashMap<>();
-        if (!scalarNames.isEmpty()) node.put("scalars", List.of("*"));
-        if (!objectChildren.isEmpty()) node.put("objects", objectChildren);
+        if (!properties.isEmpty()) node.put("scalars", List.of("*"));
+        if (!groupChildren.isEmpty()) node.put("groups", groupChildren);
         return node;
     }
 
-    private List<AdminPropertyDefinitionView> rootPropertiesForItemTypeName(String itemTypeName) {
+    private PropertyRoot rootPropertiesForItemTypeName(String itemTypeName) {
         return schemaManager.getAdminSchema().items().stream()
                 .filter(item -> item.name().equals(itemTypeName))
                 .findFirst()
-                .map(AdminItemDefinitionView::properties)
-                .orElse(List.of());
+                .map(item -> new PropertyRoot(item.properties(), item.groups()))
+                .orElse(PropertyRoot.EMPTY);
     }
 
-    private List<AdminPropertyDefinitionView> rootPropertiesForItemType(UUID itemTypeId) {
+    private PropertyRoot rootPropertiesForItemType(UUID itemTypeId) {
         return schemaManager.getAdminSchema().items().stream()
                 .filter(item -> item.id().equals(itemTypeId))
                 .findFirst()
-                .map(AdminItemDefinitionView::properties)
-                .orElse(List.of());
+                .map(item -> new PropertyRoot(item.properties(), item.groups()))
+                .orElse(PropertyRoot.EMPTY);
     }
 
     private Map<String, List<AdminItemLinkPerspectiveView>> linkPerspectivesForItemTypeName(String itemTypeName) {
@@ -1350,21 +1387,21 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                 .orElse(Map.of());
     }
 
-    private List<AdminPropertyDefinitionView> rootPropertiesForLinkType(UUID linkTypeId) {
+    private PropertyRoot rootPropertiesForLinkType(UUID linkTypeId) {
         return schemaManager.getAdminSchema().links().stream()
                 .filter(link -> link.id().equals(linkTypeId))
                 .findFirst()
-                .map(AdminLinkView::properties)
-                .orElse(List.of());
+                .map(link -> new PropertyRoot(link.properties(), link.groups()))
+                .orElse(PropertyRoot.EMPTY);
     }
 
     // A link's own permissions differ from buildPermissions' shape in exactly one way: delete is
     // perspective-keyed (marker_grant_link_perspective.can_delete), not a flat marker set, since
     // link:delete is anchored to the source item's marker via the specific perspective traversed --
     // same reasoning as link:read's own filtering above. Edit (link_property:write) uses the same
-    // tree shape as buildPermissions, since link properties can themselves be OBJECT-typed too.
+    // tree shape as buildPermissions, since link properties can sit inside groups too.
     private ProjectedItemPermissions buildLinkPermissions(RequestPermissionContext permissions, Set<UUID> sourceMarkerIds, UUID perspectiveId,
-                                                            List<AdminPropertyDefinitionView> linkRootProperties) {
+                                                            PropertyRoot linkRootProperties) {
         if (permissions.superuser()) {
             return new ProjectedItemPermissions(buildFullEditTree(linkRootProperties), true, null);
         }
@@ -1452,13 +1489,14 @@ public class RegisterPartitionManager implements SchemaChangeListener {
     // Returns each leaf property's full name path from root to leaf, not just its own name --
     // storage is flat (a leaf's own id), but two leaves nested under different object properties
     // can share a name (e.g. dimensions.length vs packagingDimensions.length), so only the full
-    // path is unambiguous. An OBJECT property's own id never appears here: nothing is ever stored
-    // under a container's own id, only under each of its leaves'.
+    // path is unambiguous. A group's own id never appears here: nothing is ever stored
+    // under a group's id, only under each of its leaf properties'. A trait's contributions sit
+    // under a path segment named for the trait.
     private Map<UUID, List<String>> propertyPathsByIdForItemType(UUID itemTypeId) {
         return schemaManager.getAdminSchema().items().stream()
                 .filter(item -> item.id().equals(itemTypeId))
                 .findFirst()
-                .map(item -> propertyPaths(item.properties()))
+                .map(item -> propertyPaths(item.properties(), item.groups()))
                 .orElse(Map.of());
     }
 
@@ -1466,23 +1504,22 @@ public class RegisterPartitionManager implements SchemaChangeListener {
         return schemaManager.getAdminSchema().links().stream()
                 .filter(link -> link.id().equals(linkTypeId))
                 .findFirst()
-                .map(link -> propertyPaths(link.properties()))
+                .map(link -> propertyPaths(link.properties(), link.groups()))
                 .orElse(Map.of());
     }
 
-    private Map<UUID, List<String>> propertyPaths(List<AdminPropertyDefinitionView> properties) {
+    private Map<UUID, List<String>> propertyPaths(List<AdminPropertyDefinitionView> properties, List<AdminPropertyGroupView> groups) {
         Map<UUID, List<String>> result = new HashMap<>();
         for (AdminPropertyDefinitionView p : properties) {
-            if (p instanceof ObjectAdminPropertyDefinitionView o) {
-                propertyPaths(o.properties()).forEach((id, childPath) -> {
-                    List<String> fullPath = new ArrayList<>();
-                    fullPath.add(o.name());
-                    fullPath.addAll(childPath);
-                    result.put(id, fullPath);
-                });
-            } else {
-                result.put(p.id(), List.of(p.name()));
-            }
+            result.put(p.id(), List.of(p.name()));
+        }
+        for (AdminPropertyGroupView g : groups) {
+            propertyPaths(g.properties(), g.groups()).forEach((id, childPath) -> {
+                List<String> fullPath = new ArrayList<>();
+                fullPath.add(g.name());
+                fullPath.addAll(childPath);
+                result.put(id, fullPath);
+            });
         }
         return result;
     }
@@ -1493,41 +1530,98 @@ public class RegisterPartitionManager implements SchemaChangeListener {
     // here instead of silently generating a condition that matches nothing.
     //
     // propertyName may be a dot-separated path (e.g. "dimensions.length") reaching into one or more
-    // OBJECT properties -- mirrors the write-side walk in
-    // MutationRequestProcessor.resolveObjectPropertyValue, which resolves each segment against the
+    // property groups -- mirrors the write-side walk in
+    // MutationRequestProcessor.resolveGroupValue, which resolves each segment against the
     // *containing* object property's own children rather than a global name index. That scoping is
     // required, not just mirrored for consistency: propertyPaths' own comment notes two leaves
-    // nested under different object properties can share a name (dimensions.length vs
+    // nested under different groups can share a name (dimensions.length vs
     // packagingDimensions.length), so only the full path is unambiguous.
+    // A property path resolves either to an ordinary schema property (the common case) or, when the
+    // path continues past a BINARY leaf via a literal "metadata" segment, to that leaf plus the
+    // JSON path within its metadata (e.g. "File.content.metadata.length" -> metadataPath
+    // ["length"]) -- that path isn't schema structure (a binary's own facts need no grants of their
+    // own, see design-notes section 8), so it can't be represented as further properties/groups.
+    // metadataPath is empty for the ordinary case.
+    private record PropertyPathResolution(AdminPropertyDefinitionView property, List<String> metadataPath) {
+        static PropertyPathResolution ofProperty(AdminPropertyDefinitionView property) {
+            return new PropertyPathResolution(property, List.of());
+        }
+    }
+
+    // Metadata JSON paths a sort/filter target may address past a BINARY leaf, each with the
+    // PropertyType its value should be treated as -- mirrors how an ordinary property's own
+    // declared type drives typedSortExpression's cast (see castedText, which this shares), just
+    // keyed by path instead of by a schema property, since a binary's intrinsic facts have no
+    // schema_property row of their own to read a type off. The path is exactly the one a client
+    // would walk in the response to find the same value (content.metadata.length), not a shorter
+    // stand-in for it -- "the path to address a value is the path to find it," no exceptions.
+    // Deliberately just "length" for now; "mimeType" (STRING) and "hashes.sha256"/"hashes.md5"
+    // (STRING) extend this the same way, each keyed by its own full path under "metadata".
+    private static final Map<List<String>, PropertyType> BINARY_METADATA_PATH_TYPES = Map.of(
+            List.of("length"), PropertyType.LONG
+    );
+
     private UUID resolvePropertyId(UUID itemTypeId, String propertyName) {
         return resolveProperty(itemTypeId, propertyName).id();
     }
 
+    // Ordinary-property resolution, preserved for every existing caller (filter, facet, and the
+    // cross-type sort path) -- none of them resolve a binary-attribute path yet, so one is reported
+    // as a clear, explicit error here rather than silently mishandled the way it would have been
+    // before path resolution knew about BINARY leaves at all.
     private AdminPropertyDefinitionView resolveProperty(UUID itemTypeId, String propertyName) {
-        List<AdminPropertyDefinitionView> rootProperties = schemaManager.getAdminSchema().items().stream()
-                .filter(item -> item.id().equals(itemTypeId))
-                .findFirst()
-                .map(AdminItemDefinitionView::properties)
-                .orElse(List.of());
-        return resolveProperty(rootProperties, propertyName.split("\\."), propertyName);
+        PropertyPathResolution resolution = resolvePropertyPath(itemTypeId, propertyName);
+        if (!resolution.metadataPath().isEmpty()) {
+            throw new IllegalArgumentException(
+                    "'" + propertyName + "' names a binary content attribute, not supported in this context");
+        }
+        return resolution.property();
     }
 
-    private AdminPropertyDefinitionView resolveProperty(List<AdminPropertyDefinitionView> properties, String[] pathSegments, String fullPath) {
-        AdminPropertyDefinitionView match = properties.stream()
-                .filter(p -> p.name().equals(pathSegments[0]))
+    private PropertyPathResolution resolvePropertyPath(UUID itemTypeId, String propertyName) {
+        PropertyRoot root = schemaManager.getAdminSchema().items().stream()
+                .filter(item -> item.id().equals(itemTypeId))
+                .findFirst()
+                .map(item -> new PropertyRoot(item.properties(), item.groups()))
+                .orElse(PropertyRoot.EMPTY);
+        return resolvePropertyPath(root.properties(), root.groups(), propertyName.split("\\."), propertyName);
+    }
+
+    private PropertyPathResolution resolvePropertyPath(List<AdminPropertyDefinitionView> properties, List<AdminPropertyGroupView> groups,
+                                                        String[] pathSegments, String fullPath) {
+        boolean isLastSegment = pathSegments.length == 1;
+        if (isLastSegment) {
+            return properties.stream()
+                    .filter(p -> p.name().equals(pathSegments[0]))
+                    .findFirst()
+                    .map(PropertyPathResolution::ofProperty)
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            groups.stream().anyMatch(g -> g.name().equals(pathSegments[0]))
+                                    ? "Property is a group, not a leaf value: " + fullPath
+                                    : "Unknown property: " + fullPath));
+        }
+        // A path continuing past a BINARY leaf addresses one of its intrinsic attributes, not
+        // further schema structure -- checked before falling through to the group lookup below.
+        // The next segment must literally be "metadata", matching assembleBinaryValue's own
+        // response shape (content.metadata.length, not content.length) -- see
+        // BINARY_METADATA_PATH_TYPES' own comment on why the two are kept in lockstep.
+        Optional<AdminPropertyDefinitionView> binaryLeaf = properties.stream()
+                .filter(p -> p.name().equals(pathSegments[0]) && p.type() == PropertyType.BINARY)
+                .findFirst();
+        if (binaryLeaf.isPresent()) {
+            List<String> rest = List.of(Arrays.copyOfRange(pathSegments, 1, pathSegments.length));
+            List<String> metadataPath = rest.size() >= 2 && "metadata".equals(rest.get(0))
+                    ? rest.subList(1, rest.size()) : null;
+            if (metadataPath == null || !BINARY_METADATA_PATH_TYPES.containsKey(metadataPath)) {
+                throw new IllegalArgumentException("Unknown binary content attribute: " + fullPath);
+            }
+            return new PropertyPathResolution(binaryLeaf.get(), metadataPath);
+        }
+        AdminPropertyGroupView group = groups.stream()
+                .filter(g -> g.name().equals(pathSegments[0]))
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("Unknown property: " + fullPath));
-        boolean isLastSegment = pathSegments.length == 1;
-        if (match instanceof ObjectAdminPropertyDefinitionView object) {
-            if (isLastSegment) {
-                throw new IllegalArgumentException("Property is an object, not a leaf value: " + fullPath);
-            }
-            return resolveProperty(object.properties(), Arrays.copyOfRange(pathSegments, 1, pathSegments.length), fullPath);
-        }
-        if (!isLastSegment) {
-            throw new IllegalArgumentException("Unknown property: " + fullPath);
-        }
-        return match;
+        return resolvePropertyPath(group.properties(), group.groups(), Arrays.copyOfRange(pathSegments, 1, pathSegments.length), fullPath);
     }
 
     // Same "translate name to id, never store the name" rule as resolvePropertyId, one level up:
@@ -1586,8 +1680,8 @@ public class RegisterPartitionManager implements SchemaChangeListener {
     // by walking each stored leaf's full path and inserting it at the right depth, creating
     // intermediate maps as needed. A key that no longer resolves (the property was deleted from
     // the schema after this row was written) is silently dropped, same as before. The unchecked
-    // cast is safe: only an OBJECT property's name ever occupies a non-final path segment, and a
-    // container's own id is never a storage key (see propertyPaths), so a segment can't be both an
+    // cast is safe: only a group's name ever occupies a non-final path segment, and a
+    // group's own id is never a storage key (see propertyPaths), so a segment can't be both an
     // intermediate map and a leaf value at once.
     @SuppressWarnings("unchecked")
     private Map<String, Object> namesForIds(Map<String, Object> propertiesById, Map<UUID, List<String>> idToPath) {
@@ -1958,7 +2052,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
             for (var b : bins) {
                 if (readableBinaryIds == null || readableBinaryIds.contains(b.propertyId())) {
                     // Same path-walking merge namesForIds uses for every other property type -- a
-                    // BINARY leaf can live inside an OBJECT property (e.g. file.content) just like
+                    // BINARY leaf can live inside a property group (e.g. file.content) just like
                     // any other leaf, so it needs to land at its schema-nested location, not always
                     // flattened to the top level under its own bare name.
                     List<String> path = ctx.ownPropertyNames().get(b.propertyId());
@@ -2044,13 +2138,14 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                 .findFirst();
     }
 
+    // sha256/md5/mimeType/length live only inside metadata now, not also as top-level siblings --
+    // binary_content.insert already mirrors them there (see that method's own comment), so
+    // returning them twice would just be the same values under two names for no reason. id and url
+    // aren't stored facts (id is formatted, url is built per-request from binaryBaseUrl), so they
+    // stay top-level alongside metadata rather than folded into it.
     private Map<String, Object> assembleBinaryValue(BinaryPropertyObject obj, String binaryBaseUrl) {
         Map<String, Object> value = new HashMap<>();
         value.put("id", obj.id().toString());
-        value.put("sha256", obj.sha256());
-        value.put("md5", obj.md5());
-        value.put("mimeType", obj.mimeType());
-        value.put("length", obj.length());
         value.put("url", binaryBaseUrl + "/api/binary/" + obj.id());
         if (obj.metadata() != null) value.put("metadata", obj.metadata());
         return value;

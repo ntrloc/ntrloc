@@ -31,7 +31,7 @@ public class AuthorizationCacheManager {
 
     private static final String AUTHORIZATION_CHANGED_TOPIC = "authorizationChanged";
     private static final String PRINCIPAL_USER = "USER";
-    private static final String PRINCIPAL_GROUP = "GROUP";
+    private static final String PRINCIPAL_GROUP = "USER_GROUP";
 
     private record PrincipalKey(String principalType, UUID principalId) {}
 

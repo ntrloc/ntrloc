@@ -1,5 +1,6 @@
 package org.ntrloc.graph.db.partition.schema;
 
+import org.ntrloc.graph.db.partition.schema.definition.PropertyContainerKind;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateLinkDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DeleteLinkDefinitionMutation;
@@ -46,12 +47,8 @@ class LinkMutationApplier {
 
     private void applyCreate(CreateLinkDefinitionMutation m) {
         UUID linkId = repo.createLink();
-        Set<String> usedNames = new HashSet<>();
-        for (var p : m.properties()) {
-            SchemaMutationValidation.requireUniqueName(usedNames, p.name(), "this link type");
-            var prop = PropertyMutationApplier.createPropertyRecursive(repo, p);
-            repo.associateLinkProperty(linkId, prop.id());
-        }
+        PropertyMutationApplier.createContents(repo, new SchemaRepository.PropertyOwnerRef(PropertyContainerKind.LINK, linkId),
+                m.properties(), m.groups(), "this link type");
         var perspectives = m.perspectives();
         for (int i = 0; i < perspectives.size(); i++) {
             var perspective = perspectives.get(i);

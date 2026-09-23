@@ -1,6 +1,6 @@
 package org.ntrloc.graph.db.partition.security;
 
-import org.ntrloc.graph.db.partition.authorization.DefaultGroupInitializer;
+import org.ntrloc.graph.db.partition.authorization.DefaultUserGroupInitializer;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -20,21 +20,21 @@ import java.util.List;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/admin/groups")
-public class GroupAdminController {
+@RequestMapping("/api/admin/user-groups")
+public class UserGroupAdminController {
 
-    private static final String GROUP_NOT_FOUND = "Group not found";
+    private static final String GROUP_NOT_FOUND = "UserGroup not found";
 
-    // parentIds is every group this one is directly nested under -- the schema (security_group_
+    // parentIds is every group this one is directly nested under -- the schema (security_user_group_
     // member_group) technically allows more than one, but the admin UI only ever offers a single
     // parent picker, so in practice this list has 0 or 1 entries for anything created there.
-    public record GroupView(UUID id, String name, int memberCount, List<UUID> parentIds) {}
+    public record UserGroupView(UUID id, String name, int memberCount, List<UUID> parentIds) {}
 
-    public record CreateGroupRequest(String name, UUID parentGroupId) {}
+    public record CreateUserGroupRequest(String name, UUID parentUserGroupId) {}
 
-    public record UpdateGroupRequest(String name) {}
+    public record UpdateUserGroupRequest(String name) {}
 
-    public record UpdateParentRequest(UUID parentGroupId) {}
+    public record UpdateParentRequest(UUID parentUserGroupId) {}
 
     public record MemberView(UUID id, String externalId, String displayName, String email, boolean isSuperuser) {}
 
@@ -42,105 +42,105 @@ public class GroupAdminController {
 
     private final SecurityRepository repo;
     private final PrincipalResolver principalResolver;
-    private final DefaultGroupInitializer defaultGroupInitializer;
+    private final DefaultUserGroupInitializer defaultUserGroupInitializer;
 
-    public GroupAdminController(SecurityRepository repo, PrincipalResolver principalResolver,
-                                DefaultGroupInitializer defaultGroupInitializer) {
+    public UserGroupAdminController(SecurityRepository repo, PrincipalResolver principalResolver,
+                                DefaultUserGroupInitializer defaultUserGroupInitializer) {
         this.repo = repo;
         this.principalResolver = principalResolver;
-        this.defaultGroupInitializer = defaultGroupInitializer;
+        this.defaultUserGroupInitializer = defaultUserGroupInitializer;
     }
 
     @GetMapping
-    List<GroupView> listGroups(ServerHttpRequest request, Authentication authentication) {
+    List<UserGroupView> listUserGroups(ServerHttpRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
-        return repo.listGroups().stream()
+        return repo.listUserGroups().stream()
                 .map(this::toView)
                 .toList();
     }
 
     // "everyone" is the one and only top-level group -- it's seeded directly by
-    // DefaultGroupInitializer at boot, never through this endpoint, so every group created here
+    // DefaultUserGroupInitializer at boot, never through this endpoint, so every group created here
     // must nest under something (ultimately "everyone" itself, directly or transitively). Without
     // this check the admin UI's old parent picker ("(Top level)" alongside "everyone") could create
     // a second, sibling root that the tree had no sensible way to relate to "everyone".
     @PostMapping
-    GroupView createGroup(@RequestBody CreateGroupRequest body, ServerHttpRequest request, Authentication authentication) {
+    UserGroupView createUserGroup(@RequestBody CreateUserGroupRequest body, ServerHttpRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
         if (body.name() == null || body.name().isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Group name is required");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "UserGroup name is required");
         }
-        if (body.parentGroupId() == null) {
+        if (body.parentUserGroupId() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A parent group is required -- 'everyone' is the only top-level group");
         }
-        if (repo.findGroupByName(body.name().trim()).isPresent()) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Group already exists: " + body.name());
+        if (repo.findUserGroupByName(body.name().trim()).isPresent()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "UserGroup already exists: " + body.name());
         }
-        repo.findGroupById(body.parentGroupId())
+        repo.findUserGroupById(body.parentUserGroupId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Parent group not found"));
-        var group = repo.createGroup(body.name().trim());
-        repo.addGroupToGroup(group.id(), body.parentGroupId());
+        var group = repo.createUserGroup(body.name().trim());
+        repo.addUserGroupToUserGroup(group.id(), body.parentUserGroupId());
         return toView(group);
     }
 
     @PutMapping("/{groupId}")
-    GroupView updateGroup(@PathVariable("groupId") UUID groupId, @RequestBody UpdateGroupRequest body,
+    UserGroupView updateUserGroup(@PathVariable("groupId") UUID groupId, @RequestBody UpdateUserGroupRequest body,
                           ServerHttpRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
-        repo.findGroupById(groupId)
+        repo.findUserGroupById(groupId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, GROUP_NOT_FOUND));
         if (body.name() == null || body.name().isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Group name is required");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "UserGroup name is required");
         }
-        var updated = repo.updateGroup(groupId, body.name().trim());
+        var updated = repo.updateUserGroup(groupId, body.name().trim());
         return toView(updated);
     }
 
     // Sets this group's single parent, replacing whatever it was nested under before. A null
-    // parentGroupId is rejected -- "everyone" is the only group allowed to have no parent (see
-    // createGroup's own comment), and it's seeded directly by DefaultGroupInitializer rather than
+    // parentUserGroupId is rejected -- "everyone" is the only group allowed to have no parent (see
+    // createUserGroup's own comment), and it's seeded directly by DefaultUserGroupInitializer rather than
     // ever passing through this endpoint, so there's no legitimate caller that needs to clear a
     // group's parent entirely. The admin UI's tree only ever shows/edits one parent per group (see
-    // GroupView's own comment), so "reparent" here means "clear every existing containing-group
+    // UserGroupView's own comment), so "reparent" here means "clear every existing containing-group
     // edge, then add the new one" rather than a general multi-parent add/remove; that's still
     // exactly what the DAG-shaped schema underneath allows, just used in a restricted way.
     @PutMapping("/{groupId}/parent")
-    GroupView updateParent(@PathVariable("groupId") UUID groupId, @RequestBody UpdateParentRequest body,
+    UserGroupView updateParent(@PathVariable("groupId") UUID groupId, @RequestBody UpdateParentRequest body,
                            ServerHttpRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
-        var group = repo.findGroupById(groupId)
+        var group = repo.findUserGroupById(groupId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, GROUP_NOT_FOUND));
-        if (body.parentGroupId() == null) {
+        if (body.parentUserGroupId() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A parent group is required -- 'everyone' is the only top-level group");
         }
-        repo.findGroupById(body.parentGroupId())
+        repo.findUserGroupById(body.parentUserGroupId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Parent group not found"));
-        for (var existingParent : repo.listContainingGroups(groupId)) {
-            repo.removeGroupFromGroup(groupId, existingParent.id());
+        for (var existingParent : repo.listContainingUserGroups(groupId)) {
+            repo.removeUserGroupFromUserGroup(groupId, existingParent.id());
         }
         try {
-            repo.addGroupToGroup(groupId, body.parentGroupId());
+            repo.addUserGroupToUserGroup(groupId, body.parentUserGroupId());
         } catch (IllegalArgumentException e) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
         }
         return toView(group);
     }
 
-    private GroupView toView(SecurityRepository.GroupRow g) {
-        var parentIds = repo.listContainingGroups(g.id()).stream().map(SecurityRepository.GroupRow::id).toList();
-        return new GroupView(g.id(), g.name(), repo.listGroupMembers(g.id()).size(), parentIds);
+    private UserGroupView toView(SecurityRepository.UserGroupRow g) {
+        var parentIds = repo.listContainingUserGroups(g.id()).stream().map(SecurityRepository.UserGroupRow::id).toList();
+        return new UserGroupView(g.id(), g.name(), repo.listUserGroupMembers(g.id()).size(), parentIds);
     }
 
     @DeleteMapping("/{groupId}")
-    ResponseEntity<Void> deleteGroup(@PathVariable("groupId") UUID groupId,
+    ResponseEntity<Void> deleteUserGroup(@PathVariable("groupId") UUID groupId,
                                      ServerHttpRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
-        if (groupId.equals(defaultGroupInitializer.getDefaultGroupId())) {
+        if (groupId.equals(defaultUserGroupInitializer.getDefaultUserGroupId())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Cannot delete the default group");
         }
-        repo.findGroupById(groupId)
+        repo.findUserGroupById(groupId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, GROUP_NOT_FOUND));
-        repo.deleteGroup(groupId);
+        repo.deleteUserGroup(groupId);
         return ResponseEntity.noContent().build();
     }
 
@@ -148,9 +148,9 @@ public class GroupAdminController {
     List<MemberView> listMembers(@PathVariable("groupId") UUID groupId,
                                  ServerHttpRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
-        repo.findGroupById(groupId)
+        repo.findUserGroupById(groupId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, GROUP_NOT_FOUND));
-        return repo.listGroupMembers(groupId).stream()
+        return repo.listUserGroupMembers(groupId).stream()
                 .map(u -> new MemberView(u.id(), u.externalId(), u.displayName(), u.email(), u.isSuperuser()))
                 .toList();
     }
@@ -159,9 +159,9 @@ public class GroupAdminController {
     ResponseEntity<Void> addMember(@PathVariable("groupId") UUID groupId, @RequestBody AddMemberRequest body,
                                    ServerHttpRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
-        repo.findGroupById(groupId)
+        repo.findUserGroupById(groupId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, GROUP_NOT_FOUND));
-        repo.addUserToGroup(body.userId(), groupId);
+        repo.addUserToUserGroup(body.userId(), groupId);
         return ResponseEntity.noContent().build();
     }
 
@@ -169,7 +169,7 @@ public class GroupAdminController {
     ResponseEntity<Void> removeMember(@PathVariable("groupId") UUID groupId, @PathVariable("userId") UUID userId,
                                       ServerHttpRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
-        repo.removeUserFromGroup(userId, groupId);
+        repo.removeUserFromUserGroup(userId, groupId);
         return ResponseEntity.noContent().build();
     }
 

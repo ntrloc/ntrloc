@@ -1,6 +1,6 @@
 package org.ntrloc.graph.db.partition.authorization.repository;
 
-import org.ntrloc.graph.db.partition.authorization.DefaultGroupInitializer;
+import org.ntrloc.graph.db.partition.authorization.DefaultUserGroupInitializer;
 import org.ntrloc.graph.db.partition.authorization.PermissionService;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateItemDefinitionMutation;
@@ -28,16 +28,16 @@ public class AuthorizationTestDataInitializer implements ApplicationRunner {
     private final SecurityRepository securityRepo;
     private final AuthorizationRepository authorizationRepo;
     private final JdbcClient jdbcClient;
-    private final DefaultGroupInitializer defaultGroupInitializer;
+    private final DefaultUserGroupInitializer defaultUserGroupInitializer;
 
     public AuthorizationTestDataInitializer(SchemaManager schemaManager, SecurityRepository securityRepo,
                                              AuthorizationRepository authorizationRepo, JdbcClient jdbcClient,
-                                             DefaultGroupInitializer defaultGroupInitializer) {
+                                             DefaultUserGroupInitializer defaultUserGroupInitializer) {
         this.schemaManager = schemaManager;
         this.securityRepo = securityRepo;
         this.authorizationRepo = authorizationRepo;
         this.jdbcClient = jdbcClient;
-        this.defaultGroupInitializer = defaultGroupInitializer;
+        this.defaultUserGroupInitializer = defaultUserGroupInitializer;
     }
 
     // Not @PostConstruct: applyMutations() below publishes SchemaChangeEvent, and
@@ -62,7 +62,7 @@ public class AuthorizationTestDataInitializer implements ApplicationRunner {
         UUID confidentialDocId = itemsByName.get("AclTestConfidentialDoc");
         UUID unmarkedDocId = itemsByName.get("AclTestUnmarkedDoc");
 
-        // DefaultGroupInitializer.onItemTypeCreated reacts to the CreateItemDefinitionMutation
+        // DefaultUserGroupInitializer.onItemTypeCreated reacts to the CreateItemDefinitionMutation
         // above by immediately granting the "everyone" group read on each of these three types
         // (nothing covers them yet at that instant) -- by design, so newly created item types
         // are readable by default until something more specific takes over. These three exist
@@ -76,29 +76,29 @@ public class AuthorizationTestDataInitializer implements ApplicationRunner {
         var bob = securityRepo.createUser("bob", "Bob (viewer group member)", null, false);
         var carol = securityRepo.createUser("carol", "Carol (direct grant, no group)", null, false);
         var root = securityRepo.createUser("root", "Root (superuser)", null, true);
-        defaultGroupInitializer.addUserToDefaultGroup(alice.id());
-        defaultGroupInitializer.addUserToDefaultGroup(bob.id());
-        defaultGroupInitializer.addUserToDefaultGroup(carol.id());
-        defaultGroupInitializer.addUserToDefaultGroup(root.id());
+        defaultUserGroupInitializer.addUserToDefaultUserGroup(alice.id());
+        defaultUserGroupInitializer.addUserToDefaultUserGroup(bob.id());
+        defaultUserGroupInitializer.addUserToDefaultUserGroup(carol.id());
+        defaultUserGroupInitializer.addUserToDefaultUserGroup(root.id());
 
-        var viewers = securityRepo.createGroup("viewers");
-        securityRepo.addUserToGroup(alice.id(), viewers.id());
-        securityRepo.addUserToGroup(bob.id(), viewers.id());
+        var viewers = securityRepo.createUserGroup("viewers");
+        securityRepo.addUserToUserGroup(alice.id(), viewers.id());
+        securityRepo.addUserToUserGroup(bob.id(), viewers.id());
 
-        authorizationRepo.grantItemType(publicDocId, "GROUP", viewers.id(), PermissionService.ITEM_TYPE_READ);
+        authorizationRepo.grantItemType(publicDocId, "USER_GROUP", viewers.id(), PermissionService.ITEM_TYPE_READ);
         authorizationRepo.grantItemType(confidentialDocId, "USER", carol.id(), PermissionService.ITEM_TYPE_READ);
     }
 
     private void revokeDefaultReadGrant(UUID itemTypeId) {
-        UUID everyoneGroupId = securityRepo.findGroupByName(DefaultGroupInitializer.DEFAULT_GROUP_NAME).orElseThrow().id();
+        UUID everyoneUserGroupId = securityRepo.findUserGroupByName(DefaultUserGroupInitializer.DEFAULT_GROUP_NAME).orElseThrow().id();
         jdbcClient.sql("""
                 DELETE FROM authorization_item_type_grant
                 WHERE item_type_id = :itemTypeId AND permission = :permission
-                  AND principal_type = 'GROUP' AND principal_id = :groupId
+                  AND principal_type = 'USER_GROUP' AND principal_id = :groupId
                 """)
                 .param("itemTypeId", itemTypeId)
                 .param("permission", PermissionService.ITEM_TYPE_READ)
-                .param("groupId", everyoneGroupId)
+                .param("groupId", everyoneUserGroupId)
                 .update();
     }
 }

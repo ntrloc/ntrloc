@@ -1,7 +1,7 @@
 package org.ntrloc.graph.db.partition.security;
 
 import jakarta.annotation.PostConstruct;
-import org.ntrloc.graph.db.partition.authorization.DefaultGroupInitializer;
+import org.ntrloc.graph.db.partition.authorization.DefaultUserGroupInitializer;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.sql.init.dependency.DependsOnDatabaseInitialization;
@@ -14,14 +14,14 @@ import org.springframework.stereotype.Component;
 public class LocalAccountSeeder {
 
     private final SecurityRepository repo;
-    private final DefaultGroupInitializer defaultGroupInitializer;
+    private final DefaultUserGroupInitializer defaultUserGroupInitializer;
 
-    // Constructor-injecting DefaultGroupInitializer (rather than just calling a static constant)
-    // is what guarantees ensureGroupExists()'s @PostConstruct has already run by the time init()
-    // below fires -- see addUserToDefaultGroup's own comment.
-    public LocalAccountSeeder(SecurityRepository repo, DefaultGroupInitializer defaultGroupInitializer) {
+    // Constructor-injecting DefaultUserGroupInitializer (rather than just calling a static constant)
+    // is what guarantees ensureUserGroupExists()'s @PostConstruct has already run by the time init()
+    // below fires -- see addUserToDefaultUserGroup's own comment.
+    public LocalAccountSeeder(SecurityRepository repo, DefaultUserGroupInitializer defaultUserGroupInitializer) {
         this.repo = repo;
-        this.defaultGroupInitializer = defaultGroupInitializer;
+        this.defaultUserGroupInitializer = defaultUserGroupInitializer;
     }
 
     @PostConstruct
@@ -36,6 +36,6 @@ public class LocalAccountSeeder {
         var user = repo.createUser(externalId, displayName, email, isSuperuser);
         String passwordHash = "{bcrypt}" + new BCryptPasswordEncoder().encode(rawPassword);
         repo.createLocalCredentials(user.id(), externalId, passwordHash, role);
-        defaultGroupInitializer.addUserToDefaultGroup(user.id());
+        defaultUserGroupInitializer.addUserToDefaultUserGroup(user.id());
     }
 }

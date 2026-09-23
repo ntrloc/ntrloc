@@ -13,6 +13,7 @@ import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateItemDefini
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateLinkDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePerspectiveDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePropertyDefinitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePropertyGroupDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DeleteItemDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DeletePropertyDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.UpdateItemDefinitionMutation;
@@ -278,7 +279,7 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
         // the way deleting a scalar property (no such FK) already does.
         String itemTypeName = "DeletePropTest-" + UUID.randomUUID();
         schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(itemTypeName, "d", List.of(
-                new CreatePropertyDefinitionMutation("attachment", "d", PropertyType.BINARY, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false, java.util.List.of())),
+                new CreatePropertyDefinitionMutation("attachment", "d", PropertyType.BINARY, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)),
                 null, false, null)));
         UUID propertyId = schemaManager.getAdminSchema().items().stream()
                 .filter(i -> i.name().equals(itemTypeName)).findFirst().orElseThrow()
@@ -303,8 +304,8 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
                 .extracting(p -> p.name()).doesNotContain("attachment");
     }
 
-    // Regression test for the reported symptom exactly: a BINARY property nested inside an OBJECT
-    // property (e.g. file.content) came back as a top-level sibling of its container on
+    // Regression test for the reported symptom exactly: a BINARY property nested inside a property
+    // group (e.g. file.content) came back as a top-level sibling of its container on
     // projection ("content" alongside "file", not nested inside it) instead of at its actual
     // schema-nested location -- assembleProjectedItem's binary-value merge flattened to the leaf's
     // own bare name instead of walking its schema path the way every other property type's merge
@@ -313,10 +314,11 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
     void nestedBinaryProperty_projectsAtItsSchemaNestedLocation_notFlattenedToTopLevel() {
         String itemTypeName = "NestedBinaryTest-" + UUID.randomUUID();
         schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(itemTypeName, "d", List.of(
-                new CreatePropertyDefinitionMutation("file", "d", PropertyType.OBJECT, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false, List.of(
-                        new CreatePropertyDefinitionMutation("name", "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false, java.util.List.of()),
-                        new CreatePropertyDefinitionMutation("content", "d", PropertyType.BINARY, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false, java.util.List.of())))),
-                null, false, null)));
+                new CreatePropertyDefinitionMutation("placeholder", "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)),
+                null, false, null, List.of(), List.of(
+                new CreatePropertyGroupDefinitionMutation("file", "d", List.of(
+                        new CreatePropertyDefinitionMutation("name", "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false),
+                        new CreatePropertyDefinitionMutation("content", "d", PropertyType.BINARY, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)), List.of())))));
         UUID itemTypeId = schemaManager.getAdminSchema().items().stream()
                 .filter(i -> i.name().equals(itemTypeName)).findFirst().orElseThrow().id();
 
@@ -467,8 +469,10 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
         assertThat(item.properties().get("extra")).isEqualTo(Map.of("nested", "changed", "second", "keep-me"));
     }
 
+    // A group is structure with no value of its own, so there is nothing for null to clear -- it is
+    // a validation error, and no bulk-clear primitive exists. Clearing means naming each leaf.
     @Test
-    void objectProperty_updateWithNull_clearsEntireSubtree() {
+    void propertyUserGroup_updateWithNull_isAValidationError() {
         MutationResponse createResponse = processor.process(new MutationRequest(
                 List.of(new ItemCreateMutation(null, "MutReqProcA",
                         Map.of("extra", Map.of("nested", "a", "second", "b")))), List.of()),
@@ -477,8 +481,25 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
 
         Map<String, Object> clearDiff = new HashMap<>();
         clearDiff.put("extra", null);
+        assertThatThrownBy(() -> processor.process(new MutationRequest(
+                List.of(new ItemUpdateMutation(itemId, clearDiff)), List.of()), SOME_PRINCIPAL))
+                .isInstanceOf(MutationValidationException.class)
+                .hasMessageContaining("Mutation request failed validation");
+    }
+
+    @Test
+    void propertyUserGroup_updateWithEachLeafSetToNull_clearsThem() {
+        MutationResponse createResponse = processor.process(new MutationRequest(
+                List.of(new ItemCreateMutation(null, "MutReqProcA",
+                        Map.of("extra", Map.of("nested", "a", "second", "b")))), List.of()),
+                SOME_PRINCIPAL);
+        UUID itemId = createResponse.items().get(0).itemId();
+
+        Map<String, Object> leaves = new HashMap<>();
+        leaves.put("nested", null);
+        leaves.put("second", null);
         processor.process(new MutationRequest(
-                List.of(new ItemUpdateMutation(itemId, clearDiff)), List.of()),
+                List.of(new ItemUpdateMutation(itemId, Map.of("extra", leaves))), List.of()),
                 SOME_PRINCIPAL);
 
         var item = registerPartitionManager.projectOne(fixture.aTypeId(), itemId, "http://binary").orElseThrow();
@@ -587,7 +608,7 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void linkUpdateMutation_withObjectPropertySetToNull_clearsEntireSubtree() {
+    void linkUpdateMutation_withPropertyGroupSetToNull_isAValidationError() {
         UUID cId = createItem("MutReqProcC");
         UUID dId = createItem("MutReqProcD");
         MutationResponse createResponse = processor.process(new MutationRequest(List.of(), List.of(
@@ -599,12 +620,8 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
 
         Map<String, Object> clearDiff = new HashMap<>();
         clearDiff.put("linkExtra", null);
-        processor.process(new MutationRequest(List.of(), List.of(new LinkUpdateMutation(linkId, clearDiff))), SOME_PRINCIPAL);
-
-        var item = registerPartitionManager.projectOne(fixture.cTypeId(), cId, "http://binary").orElseThrow();
-        var link = item.links().values().stream().flatMap(List::stream)
-                .filter(l -> l.linkId().equals(linkId)).findFirst().orElseThrow();
-        assertThat(link.properties()).doesNotContainKey("linkExtra");
+        assertThatThrownBy(() -> processor.process(new MutationRequest(List.of(), List.of(new LinkUpdateMutation(linkId, clearDiff))), SOME_PRINCIPAL))
+                .isInstanceOf(MutationValidationException.class);
     }
 
     @Test
@@ -644,7 +661,7 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
     void itemCreateMutation_forASubtype_canSetAnInheritedPropertyFromItsSupertype() {
         String supertypeName = "MutReqProcSuper-" + UUID.randomUUID();
         schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(supertypeName, "d", List.of(
-                new CreatePropertyDefinitionMutation("inheritedProp", "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false, java.util.List.of())), null, false, null)));
+                new CreatePropertyDefinitionMutation("inheritedProp", "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)), null, false, null)));
         UUID supertypeId = schemaManager.getAdminSchema().items().stream()
                 .filter(i -> i.name().equals(supertypeName)).findFirst().orElseThrow().id();
 

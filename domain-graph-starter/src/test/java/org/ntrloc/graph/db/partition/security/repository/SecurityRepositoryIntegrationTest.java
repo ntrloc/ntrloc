@@ -13,7 +13,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 // Covers SecurityRepository's admin-facing listing/update/delete methods -- the ones
 // AuthorizationTestDataInitializer/AccessAdminControllerIntegrationTest's fixture setup never
 // exercises, since that only ever creates users/groups and reads them back, never lists, updates,
-// or deletes. security_user/security_group are shared tables, so every test here gives its own
+// or deletes. security_user/security_user_group are shared tables, so every test here gives its own
 // rows a UUID-suffixed externalId/name/email and filters on that, never a shared literal.
 class SecurityRepositoryIntegrationTest extends AbstractIntegrationTest {
 
@@ -41,146 +41,146 @@ class SecurityRepositoryIntegrationTest extends AbstractIntegrationTest {
         assertThat(reloaded.isSuperuser()).isTrue();
     }
 
-    // --- Groups ---
+    // --- UserGroups ---
 
     @Test
-    void listGroups_includesCreatedGroups() {
-        var group = securityRepo.createGroup("group-" + UUID.randomUUID());
+    void listUserGroups_includesCreatedUserGroups() {
+        var group = securityRepo.createUserGroup("group-" + UUID.randomUUID());
 
-        assertThat(securityRepo.listGroups()).contains(group);
+        assertThat(securityRepo.listUserGroups()).contains(group);
     }
 
     @Test
-    void updateGroup_persistsNewName() {
-        var group = securityRepo.createGroup("group-" + UUID.randomUUID());
+    void updateUserGroup_persistsNewName() {
+        var group = securityRepo.createUserGroup("group-" + UUID.randomUUID());
 
-        securityRepo.updateGroup(group.id(), "renamed-" + UUID.randomUUID());
+        securityRepo.updateUserGroup(group.id(), "renamed-" + UUID.randomUUID());
 
-        assertThat(securityRepo.findGroupById(group.id())).isPresent().get()
+        assertThat(securityRepo.findUserGroupById(group.id())).isPresent().get()
                 .satisfies(g -> assertThat(g.name()).startsWith("renamed-"));
     }
 
     @Test
-    void deleteGroup_removesIt() {
-        var group = securityRepo.createGroup("group-" + UUID.randomUUID());
+    void deleteUserGroup_removesIt() {
+        var group = securityRepo.createUserGroup("group-" + UUID.randomUUID());
 
-        securityRepo.deleteGroup(group.id());
+        securityRepo.deleteUserGroup(group.id());
 
-        assertThat(securityRepo.findGroupById(group.id())).isEmpty();
+        assertThat(securityRepo.findUserGroupById(group.id())).isEmpty();
     }
 
     @Test
-    void listGroupMembers_returnsOnlyMembersOfThatGroup() {
-        var group = securityRepo.createGroup("group-" + UUID.randomUUID());
+    void listUserGroupMembers_returnsOnlyMembersOfThatUserGroup() {
+        var group = securityRepo.createUserGroup("group-" + UUID.randomUUID());
         var member = securityRepo.createUser("user-" + UUID.randomUUID(), "Member", null, false);
         var nonMember = securityRepo.createUser("user-" + UUID.randomUUID(), "Non-Member", null, false);
-        securityRepo.addUserToGroup(member.id(), group.id());
+        securityRepo.addUserToUserGroup(member.id(), group.id());
 
-        assertThat(securityRepo.listGroupMembers(group.id()))
+        assertThat(securityRepo.listUserGroupMembers(group.id()))
                 .extracting(SecurityRepository.UserRow::id)
                 .contains(member.id())
                 .doesNotContain(nonMember.id());
     }
 
     @Test
-    void removeUserFromGroup_removesMembership() {
-        var group = securityRepo.createGroup("group-" + UUID.randomUUID());
+    void removeUserFromUserGroup_removesMembership() {
+        var group = securityRepo.createUserGroup("group-" + UUID.randomUUID());
         var user = securityRepo.createUser("user-" + UUID.randomUUID(), "Member", null, false);
-        securityRepo.addUserToGroup(user.id(), group.id());
+        securityRepo.addUserToUserGroup(user.id(), group.id());
 
-        securityRepo.removeUserFromGroup(user.id(), group.id());
+        securityRepo.removeUserFromUserGroup(user.id(), group.id());
 
-        assertThat(securityRepo.getGroupIdsForUser(user.id())).doesNotContain(group.id());
+        assertThat(securityRepo.getUserGroupIdsForUser(user.id())).doesNotContain(group.id());
     }
 
-    // --- Group nesting ---
+    // --- UserGroup nesting ---
 
     @Test
-    void getGroupIdsForUser_includesGroupsTransitivelyContainingTheUsersDirectGroup() {
-        var outer = securityRepo.createGroup("outer-" + UUID.randomUUID());
-        var inner = securityRepo.createGroup("inner-" + UUID.randomUUID());
+    void getUserGroupIdsForUser_includesUserGroupsTransitivelyContainingTheUsersDirectUserGroup() {
+        var outer = securityRepo.createUserGroup("outer-" + UUID.randomUUID());
+        var inner = securityRepo.createUserGroup("inner-" + UUID.randomUUID());
         var user = securityRepo.createUser("user-" + UUID.randomUUID(), "Member", null, false);
-        securityRepo.addGroupToGroup(inner.id(), outer.id());
-        securityRepo.addUserToGroup(user.id(), inner.id());
+        securityRepo.addUserGroupToUserGroup(inner.id(), outer.id());
+        securityRepo.addUserToUserGroup(user.id(), inner.id());
 
-        assertThat(securityRepo.getGroupIdsForUser(user.id())).contains(inner.id(), outer.id());
-    }
-
-    @Test
-    void getGroupIdsForUser_resolvesMultipleLevelsOfNesting() {
-        var grandparent = securityRepo.createGroup("grandparent-" + UUID.randomUUID());
-        var parent = securityRepo.createGroup("parent-" + UUID.randomUUID());
-        var child = securityRepo.createGroup("child-" + UUID.randomUUID());
-        var user = securityRepo.createUser("user-" + UUID.randomUUID(), "Member", null, false);
-        securityRepo.addGroupToGroup(parent.id(), grandparent.id());
-        securityRepo.addGroupToGroup(child.id(), parent.id());
-        securityRepo.addUserToGroup(user.id(), child.id());
-
-        assertThat(securityRepo.getGroupIdsForUser(user.id())).contains(child.id(), parent.id(), grandparent.id());
+        assertThat(securityRepo.getUserGroupIdsForUser(user.id())).contains(inner.id(), outer.id());
     }
 
     @Test
-    void addGroupToGroup_rejectsSelfMembership() {
-        var group = securityRepo.createGroup("group-" + UUID.randomUUID());
+    void getUserGroupIdsForUser_resolvesMultipleLevelsOfNesting() {
+        var grandparent = securityRepo.createUserGroup("grandparent-" + UUID.randomUUID());
+        var parent = securityRepo.createUserGroup("parent-" + UUID.randomUUID());
+        var child = securityRepo.createUserGroup("child-" + UUID.randomUUID());
+        var user = securityRepo.createUser("user-" + UUID.randomUUID(), "Member", null, false);
+        securityRepo.addUserGroupToUserGroup(parent.id(), grandparent.id());
+        securityRepo.addUserGroupToUserGroup(child.id(), parent.id());
+        securityRepo.addUserToUserGroup(user.id(), child.id());
 
-        assertThatThrownBy(() -> securityRepo.addGroupToGroup(group.id(), group.id()))
+        assertThat(securityRepo.getUserGroupIdsForUser(user.id())).contains(child.id(), parent.id(), grandparent.id());
+    }
+
+    @Test
+    void addUserGroupToUserGroup_rejectsSelfMembership() {
+        var group = securityRepo.createUserGroup("group-" + UUID.randomUUID());
+
+        assertThatThrownBy(() -> securityRepo.addUserGroupToUserGroup(group.id(), group.id()))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
-    void addGroupToGroup_rejectsACycle() {
-        var a = securityRepo.createGroup("a-" + UUID.randomUUID());
-        var b = securityRepo.createGroup("b-" + UUID.randomUUID());
-        securityRepo.addGroupToGroup(a.id(), b.id()); // a is a member of b
+    void addUserGroupToUserGroup_rejectsACycle() {
+        var a = securityRepo.createUserGroup("a-" + UUID.randomUUID());
+        var b = securityRepo.createUserGroup("b-" + UUID.randomUUID());
+        securityRepo.addUserGroupToUserGroup(a.id(), b.id()); // a is a member of b
 
-        assertThatThrownBy(() -> securityRepo.addGroupToGroup(b.id(), a.id())) // b member of a would close the loop
+        assertThatThrownBy(() -> securityRepo.addUserGroupToUserGroup(b.id(), a.id())) // b member of a would close the loop
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
-    void addGroupToGroup_rejectsAMultiLevelCycle() {
-        var a = securityRepo.createGroup("a-" + UUID.randomUUID());
-        var b = securityRepo.createGroup("b-" + UUID.randomUUID());
-        var c = securityRepo.createGroup("c-" + UUID.randomUUID());
-        securityRepo.addGroupToGroup(a.id(), b.id()); // a member of b
-        securityRepo.addGroupToGroup(b.id(), c.id()); // b member of c, so a is transitively a member of c
+    void addUserGroupToUserGroup_rejectsAMultiLevelCycle() {
+        var a = securityRepo.createUserGroup("a-" + UUID.randomUUID());
+        var b = securityRepo.createUserGroup("b-" + UUID.randomUUID());
+        var c = securityRepo.createUserGroup("c-" + UUID.randomUUID());
+        securityRepo.addUserGroupToUserGroup(a.id(), b.id()); // a member of b
+        securityRepo.addUserGroupToUserGroup(b.id(), c.id()); // b member of c, so a is transitively a member of c
 
-        assertThatThrownBy(() -> securityRepo.addGroupToGroup(c.id(), a.id())) // c member of a would close a->b->c->a
+        assertThatThrownBy(() -> securityRepo.addUserGroupToUserGroup(c.id(), a.id())) // c member of a would close a->b->c->a
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
-    void listMemberGroups_returnsOnlyDirectChildren() {
-        var outer = securityRepo.createGroup("outer-" + UUID.randomUUID());
-        var inner = securityRepo.createGroup("inner-" + UUID.randomUUID());
-        var innermost = securityRepo.createGroup("innermost-" + UUID.randomUUID());
-        securityRepo.addGroupToGroup(inner.id(), outer.id());
-        securityRepo.addGroupToGroup(innermost.id(), inner.id());
+    void listMemberUserGroups_returnsOnlyDirectChildren() {
+        var outer = securityRepo.createUserGroup("outer-" + UUID.randomUUID());
+        var inner = securityRepo.createUserGroup("inner-" + UUID.randomUUID());
+        var innermost = securityRepo.createUserGroup("innermost-" + UUID.randomUUID());
+        securityRepo.addUserGroupToUserGroup(inner.id(), outer.id());
+        securityRepo.addUserGroupToUserGroup(innermost.id(), inner.id());
 
         // innermost is a transitive, not direct, member of outer -- must not appear here.
-        assertThat(securityRepo.listMemberGroups(outer.id())).containsExactly(inner);
+        assertThat(securityRepo.listMemberUserGroups(outer.id())).containsExactly(inner);
     }
 
     @Test
-    void listContainingGroups_returnsOnlyDirectParents() {
-        var outer = securityRepo.createGroup("outer-" + UUID.randomUUID());
-        var inner = securityRepo.createGroup("inner-" + UUID.randomUUID());
-        securityRepo.addGroupToGroup(inner.id(), outer.id());
+    void listContainingUserGroups_returnsOnlyDirectParents() {
+        var outer = securityRepo.createUserGroup("outer-" + UUID.randomUUID());
+        var inner = securityRepo.createUserGroup("inner-" + UUID.randomUUID());
+        securityRepo.addUserGroupToUserGroup(inner.id(), outer.id());
 
-        assertThat(securityRepo.listContainingGroups(inner.id())).containsExactly(outer);
+        assertThat(securityRepo.listContainingUserGroups(inner.id())).containsExactly(outer);
     }
 
     @Test
-    void removeGroupFromGroup_removesTransitiveMembershipEffect() {
-        var outer = securityRepo.createGroup("outer-" + UUID.randomUUID());
-        var inner = securityRepo.createGroup("inner-" + UUID.randomUUID());
+    void removeUserGroupFromUserGroup_removesTransitiveMembershipEffect() {
+        var outer = securityRepo.createUserGroup("outer-" + UUID.randomUUID());
+        var inner = securityRepo.createUserGroup("inner-" + UUID.randomUUID());
         var user = securityRepo.createUser("user-" + UUID.randomUUID(), "Member", null, false);
-        securityRepo.addGroupToGroup(inner.id(), outer.id());
-        securityRepo.addUserToGroup(user.id(), inner.id());
+        securityRepo.addUserGroupToUserGroup(inner.id(), outer.id());
+        securityRepo.addUserToUserGroup(user.id(), inner.id());
 
-        securityRepo.removeGroupFromGroup(inner.id(), outer.id());
+        securityRepo.removeUserGroupFromUserGroup(inner.id(), outer.id());
 
-        assertThat(securityRepo.getGroupIdsForUser(user.id())).contains(inner.id()).doesNotContain(outer.id());
+        assertThat(securityRepo.getUserGroupIdsForUser(user.id())).contains(inner.id()).doesNotContain(outer.id());
     }
 
     // --- Local credentials ---

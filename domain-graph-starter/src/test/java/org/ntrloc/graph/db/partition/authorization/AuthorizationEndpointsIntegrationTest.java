@@ -21,7 +21,7 @@ class AuthorizationEndpointsIntegrationTest extends AbstractIntegrationTest {
     private WebTestClient webTestClient;
 
     @Test
-    void schemaViewShowsOnlyGrantedTypes_forGroupMember() {
+    void schemaViewShowsOnlyGrantedTypes_forUserGroupMember() {
         webTestClient.get().uri("/api/schema")
                 .header("X-Ntrloc-User", "alice")
                 .exchange()
@@ -78,7 +78,7 @@ class AuthorizationEndpointsIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void projectionAllowsQueryingGroupGrantedType() {
+    void projectionAllowsQueryingUserGroupGrantedType() {
         webTestClient.post().uri("/api/entity/projection")
                 .header("X-Ntrloc-User", "alice")
                 .contentType(MediaType.APPLICATION_JSON)

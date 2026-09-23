@@ -149,21 +149,15 @@ enum RenderingIntent {
 // Read-only - doesn't change the working image, so the pipeline continues unaffected. The result
 // is data, not pixels, so it comes back as a DataResult with content_type "application/json" rather
 // than an ImageResult - same shape already used for the video transcript below.
+//
+// No selection field here on purpose - earlier revisions had a MetadataKind allowlist (kinds),
+// but that required a proto change every time a new category of file fact turned out to matter
+// (EXIF/ICC/IPTC/XMP, then JPEG's own technical properties, then top-level image characteristics
+// like colorspace that don't even live in the same part of the underlying tool's output). The
+// server now returns everything it can tell about the file, admin-configurable exclusion trims
+// what a given deployment doesn't want (see ntrloc-media-processor's own metadata.exclude config) -
+// a caller wanting custom narrowing beyond that does so downstream, not via this message.
 message ExtractMetadata {
-  // Which kinds to extract. Empty (the default if none are specified) means "everything present in
-  // the file" - same convention as VideoMetadata.artifacts below. Expected to be the common case,
-  // so it's the default rather than requiring every kind to be named explicitly - and it stays
-  // correct automatically if a new MetadataKind is added later, unlike enumerating every value
-  // by hand would.
-  repeated MetadataKind kinds = 1;
-}
-
-enum MetadataKind {
-  METADATA_KIND_UNSPECIFIED = 0;
-  METADATA_KIND_EXIF = 1;
-  METADATA_KIND_ICC_PROFILE = 2;
-  METADATA_KIND_IPTC = 3;  // captions, keywords, byline/credit, copyright - the classic DAM/stock-photo standard
-  METADATA_KIND_XMP = 4;   // Adobe's XML/RDF metadata container; often wraps IPTC Core/Extension data in practice
 }
 
 // Removes EXIF/IPTC/XMP/ICC metadata from the working image going forward - e.g. EXIF GPS

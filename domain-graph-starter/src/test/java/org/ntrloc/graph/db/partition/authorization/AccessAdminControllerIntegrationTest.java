@@ -49,8 +49,8 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
                 .id();
     }
 
-    private UUID viewersGroupId() {
-        return securityRepo.findGroupByName("viewers").orElseThrow().id();
+    private UUID viewersUserGroupId() {
+        return securityRepo.findUserGroupByName("viewers").orElseThrow().id();
     }
 
     private UUID aliceId() {
@@ -72,17 +72,17 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void nonAdminCallerIsForbidden() {
-        webTestClient.get().uri("/api/admin/users/" + aliceId() + "/groups")
+        webTestClient.get().uri("/api/admin/users/" + aliceId() + "/user-groups")
                 .header("X-Ntrloc-User", "alice")
                 .exchange()
                 .expectStatus().isForbidden();
     }
 
-    // --- Group permissions ---
+    // --- UserGroup permissions ---
 
     @Test
-    void getGroupPermissions_showsTheStandingViewersGrant() {
-        List<Map<String, Object>> permissions = getAsRoot("/api/admin/groups/" + viewersGroupId() + "/permissions");
+    void getUserGroupPermissions_showsTheStandingViewersGrant() {
+        List<Map<String, Object>> permissions = getAsRoot("/api/admin/user-groups/" + viewersUserGroupId() + "/permissions");
 
         assertThat(permissions)
                 .filteredOn(p -> p.get("itemTypeName").equals("AclTestPublicDoc"))
@@ -91,12 +91,12 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void getGroupPermissions_groupsMultipleOperationsOnTheSameItemTypeIntoOneEntry() {
-        var group = securityRepo.createGroup("access-admin-test-" + UUID.randomUUID());
-        authRepo.grantItemTypeIfAbsent(publicDocId(), "GROUP", group.id(), "item-type:read");
-        authRepo.grantItemTypeIfAbsent(publicDocId(), "GROUP", group.id(), "item-type:create");
+    void getUserGroupPermissions_groupsMultipleOperationsOnTheSameItemTypeIntoOneEntry() {
+        var group = securityRepo.createUserGroup("access-admin-test-" + UUID.randomUUID());
+        authRepo.grantItemTypeIfAbsent(publicDocId(), "USER_GROUP", group.id(), "item-type:read");
+        authRepo.grantItemTypeIfAbsent(publicDocId(), "USER_GROUP", group.id(), "item-type:create");
 
-        List<Map<String, Object>> permissions = getAsRoot("/api/admin/groups/" + group.id() + "/permissions");
+        List<Map<String, Object>> permissions = getAsRoot("/api/admin/user-groups/" + group.id() + "/permissions");
 
         assertThat(permissions)
                 .filteredOn(p -> p.get("itemTypeName").equals("AclTestPublicDoc"))
@@ -105,31 +105,31 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void getGroupPermissions_forUnknownGroup_returnsNotFound() {
-        webTestClient.get().uri("/api/admin/groups/" + UUID.randomUUID() + "/permissions")
+    void getUserGroupPermissions_forUnknownUserGroup_returnsNotFound() {
+        webTestClient.get().uri("/api/admin/user-groups/" + UUID.randomUUID() + "/permissions")
                 .header("X-Ntrloc-User", "root")
                 .exchange()
                 .expectStatus().isNotFound();
     }
 
     @Test
-    void grantGroupPermission_addsAGrantThatWasNotPreviouslyThere() {
-        var group = securityRepo.createGroup("access-admin-test-" + UUID.randomUUID());
-        assertThat(authRepo.findItemTypeGrant(publicDocId(), "GROUP", group.id(), "item-type:read")).isEmpty();
+    void grantUserGroupPermission_addsAGrantThatWasNotPreviouslyThere() {
+        var group = securityRepo.createUserGroup("access-admin-test-" + UUID.randomUUID());
+        assertThat(authRepo.findItemTypeGrant(publicDocId(), "USER_GROUP", group.id(), "item-type:read")).isEmpty();
 
-        webTestClient.post().uri("/api/admin/groups/" + group.id() + "/permissions")
+        webTestClient.post().uri("/api/admin/user-groups/" + group.id() + "/permissions")
                 .header("X-Ntrloc-User", "root")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(Map.of("itemTypeId", publicDocId().toString(), "operation", "item-type:read"))
                 .exchange()
                 .expectStatus().isNoContent();
 
-        assertThat(authRepo.findItemTypeGrant(publicDocId(), "GROUP", group.id(), "item-type:read")).isPresent();
+        assertThat(authRepo.findItemTypeGrant(publicDocId(), "USER_GROUP", group.id(), "item-type:read")).isPresent();
     }
 
     @Test
-    void grantGroupPermission_forUnknownGroup_returnsNotFound() {
-        webTestClient.post().uri("/api/admin/groups/" + UUID.randomUUID() + "/permissions")
+    void grantUserGroupPermission_forUnknownUserGroup_returnsNotFound() {
+        webTestClient.post().uri("/api/admin/user-groups/" + UUID.randomUUID() + "/permissions")
                 .header("X-Ntrloc-User", "root")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(Map.of("itemTypeId", publicDocId().toString(), "operation", "item-type:read"))
@@ -138,10 +138,10 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void grantGroupPermission_withoutAnItemTypeId_returnsBadRequest() {
-        var group = securityRepo.createGroup("access-admin-test-" + UUID.randomUUID());
+    void grantUserGroupPermission_withoutAnItemTypeId_returnsBadRequest() {
+        var group = securityRepo.createUserGroup("access-admin-test-" + UUID.randomUUID());
 
-        webTestClient.post().uri("/api/admin/groups/" + group.id() + "/permissions")
+        webTestClient.post().uri("/api/admin/user-groups/" + group.id() + "/permissions")
                 .header("X-Ntrloc-User", "root")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(Map.of("operation", "item-type:read"))
@@ -150,10 +150,10 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void grantGroupPermission_withAnUnrecognizedOperation_returnsBadRequest() {
-        var group = securityRepo.createGroup("access-admin-test-" + UUID.randomUUID());
+    void grantUserGroupPermission_withAnUnrecognizedOperation_returnsBadRequest() {
+        var group = securityRepo.createUserGroup("access-admin-test-" + UUID.randomUUID());
 
-        webTestClient.post().uri("/api/admin/groups/" + group.id() + "/permissions")
+        webTestClient.post().uri("/api/admin/user-groups/" + group.id() + "/permissions")
                 .header("X-Ntrloc-User", "root")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(Map.of("itemTypeId", publicDocId().toString(), "operation", "item:read"))
@@ -162,25 +162,25 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void revokeGroupPermission_removesAnExistingGrant() {
-        var group = securityRepo.createGroup("access-admin-test-" + UUID.randomUUID());
-        authRepo.grantItemTypeIfAbsent(publicDocId(), "GROUP", group.id(), "item-type:read");
+    void revokeUserGroupPermission_removesAnExistingGrant() {
+        var group = securityRepo.createUserGroup("access-admin-test-" + UUID.randomUUID());
+        authRepo.grantItemTypeIfAbsent(publicDocId(), "USER_GROUP", group.id(), "item-type:read");
 
         webTestClient.method(org.springframework.http.HttpMethod.DELETE)
-                .uri("/api/admin/groups/" + group.id() + "/permissions")
+                .uri("/api/admin/user-groups/" + group.id() + "/permissions")
                 .header("X-Ntrloc-User", "root")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(Map.of("itemTypeId", publicDocId().toString(), "operation", "item-type:read"))
                 .exchange()
                 .expectStatus().isNoContent();
 
-        assertThat(authRepo.findItemTypeGrant(publicDocId(), "GROUP", group.id(), "item-type:read")).isEmpty();
+        assertThat(authRepo.findItemTypeGrant(publicDocId(), "USER_GROUP", group.id(), "item-type:read")).isEmpty();
     }
 
     @Test
-    void revokeGroupPermission_forUnknownGroup_returnsNotFound() {
+    void revokeUserGroupPermission_forUnknownUserGroup_returnsNotFound() {
         webTestClient.method(org.springframework.http.HttpMethod.DELETE)
-                .uri("/api/admin/groups/" + UUID.randomUUID() + "/permissions")
+                .uri("/api/admin/user-groups/" + UUID.randomUUID() + "/permissions")
                 .header("X-Ntrloc-User", "root")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(Map.of("itemTypeId", publicDocId().toString(), "operation", "item-type:read"))
@@ -189,11 +189,11 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void revokeGroupPermission_withoutAnItemTypeId_returnsBadRequest() {
-        var group = securityRepo.createGroup("access-admin-test-" + UUID.randomUUID());
+    void revokeUserGroupPermission_withoutAnItemTypeId_returnsBadRequest() {
+        var group = securityRepo.createUserGroup("access-admin-test-" + UUID.randomUUID());
 
         webTestClient.method(org.springframework.http.HttpMethod.DELETE)
-                .uri("/api/admin/groups/" + group.id() + "/permissions")
+                .uri("/api/admin/user-groups/" + group.id() + "/permissions")
                 .header("X-Ntrloc-User", "root")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(Map.of("operation", "item-type:read"))
@@ -202,11 +202,11 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void revokeGroupPermission_forAGrantThatDoesNotExist_returnsNotFound() {
-        var group = securityRepo.createGroup("access-admin-test-" + UUID.randomUUID());
+    void revokeUserGroupPermission_forAGrantThatDoesNotExist_returnsNotFound() {
+        var group = securityRepo.createUserGroup("access-admin-test-" + UUID.randomUUID());
 
         webTestClient.method(org.springframework.http.HttpMethod.DELETE)
-                .uri("/api/admin/groups/" + group.id() + "/permissions")
+                .uri("/api/admin/user-groups/" + group.id() + "/permissions")
                 .header("X-Ntrloc-User", "root")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(Map.of("itemTypeId", publicDocId().toString(), "operation", "item-type:read"))
@@ -217,7 +217,7 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
     // --- User effective permissions ---
 
     @Test
-    void getUserEffectivePermissions_showsAGrantInheritedFromAGroup() {
+    void getUserEffectivePermissions_showsAGrantInheritedFromAUserGroup() {
         List<Map<String, Object>> permissions = getAsRoot("/api/admin/users/" + aliceId() + "/permissions");
 
         assertThat(permissions).anySatisfy(p -> {
@@ -232,11 +232,11 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void getUserEffectivePermissions_groupsMultipleOperationsOnTheSameItemTypeIntoOneEntry() {
-        var group = securityRepo.createGroup("access-admin-test-" + UUID.randomUUID());
+        var group = securityRepo.createUserGroup("access-admin-test-" + UUID.randomUUID());
         var user = securityRepo.createUser("access-admin-test-" + UUID.randomUUID(), "Multi-Op User", null, false);
-        securityRepo.addUserToGroup(user.id(), group.id());
-        authRepo.grantItemTypeIfAbsent(publicDocId(), "GROUP", group.id(), "item-type:read");
-        authRepo.grantItemTypeIfAbsent(publicDocId(), "GROUP", group.id(), "item-type:create");
+        securityRepo.addUserToUserGroup(user.id(), group.id());
+        authRepo.grantItemTypeIfAbsent(publicDocId(), "USER_GROUP", group.id(), "item-type:read");
+        authRepo.grantItemTypeIfAbsent(publicDocId(), "USER_GROUP", group.id(), "item-type:create");
 
         List<Map<String, Object>> permissions = getAsRoot("/api/admin/users/" + user.id() + "/permissions");
 
@@ -249,8 +249,8 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void getUserEffectivePermissions_forAUserInNoGroups_returnsAnEmptyList() {
-        var user = securityRepo.createUser("access-admin-test-" + UUID.randomUUID(), "No Groups", null, false);
+    void getUserEffectivePermissions_forAUserInNoUserGroups_returnsAnEmptyList() {
+        var user = securityRepo.createUser("access-admin-test-" + UUID.randomUUID(), "No UserGroups", null, false);
 
         List<Map<String, Object>> permissions = getAsRoot("/api/admin/users/" + user.id() + "/permissions");
 
@@ -260,8 +260,8 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
     // --- User group memberships ---
 
     @Test
-    void getUserGroups_listsEveryGroupTheUserBelongsTo() {
-        List<Map<String, Object>> groups = getAsRoot("/api/admin/users/" + aliceId() + "/groups");
+    void getUserGroups_listsEveryUserGroupTheUserBelongsTo() {
+        List<Map<String, Object>> groups = getAsRoot("/api/admin/users/" + aliceId() + "/user-groups");
 
         assertThat(groups).extracting(g -> g.get("name")).contains("viewers");
     }

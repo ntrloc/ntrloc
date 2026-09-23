@@ -150,7 +150,7 @@ public class AuthorizationRepository {
                 .list();
     }
 
-    public List<GrantRow> getItemTypeGrantsForGroups(Set<UUID> groupIds) {
+    public List<GrantRow> getItemTypeGrantsForUserGroups(Set<UUID> groupIds) {
         if (groupIds.isEmpty()) {
             return List.of();
         }
@@ -158,7 +158,7 @@ public class AuthorizationRepository {
                 SELECT g.id AS grant_id, g.item_type_id, si.name AS item_type_name, g.permission
                 FROM authorization_item_type_grant g
                 JOIN schema_item si ON si.id = g.item_type_id
-                WHERE g.principal_type = 'GROUP' AND g.principal_id IN (:groupIds)
+                WHERE g.principal_type = 'USER_GROUP' AND g.principal_id IN (:groupIds)
                 ORDER BY si.name, g.permission
                 """)
                 .param("groupIds", groupIds)

@@ -1,6 +1,6 @@
 package org.ntrloc.graph.db.partition.security;
 
-import org.ntrloc.graph.db.partition.authorization.DefaultGroupInitializer;
+import org.ntrloc.graph.db.partition.authorization.DefaultUserGroupInitializer;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -43,15 +43,15 @@ public class UserAdminController {
     private final SecurityRepository repo;
     private final PersonalAccessTokenService patService;
     private final PrincipalResolver principalResolver;
-    private final DefaultGroupInitializer defaultGroupInitializer;
+    private final DefaultUserGroupInitializer defaultUserGroupInitializer;
     private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
 
     public UserAdminController(SecurityRepository repo, PersonalAccessTokenService patService,
-                               PrincipalResolver principalResolver, DefaultGroupInitializer defaultGroupInitializer) {
+                               PrincipalResolver principalResolver, DefaultUserGroupInitializer defaultUserGroupInitializer) {
         this.repo = repo;
         this.patService = patService;
         this.principalResolver = principalResolver;
-        this.defaultGroupInitializer = defaultGroupInitializer;
+        this.defaultUserGroupInitializer = defaultUserGroupInitializer;
     }
 
     @GetMapping
@@ -76,7 +76,7 @@ public class UserAdminController {
         var user = repo.createUser(body.externalId(), body.displayName(), body.email(), isSuperuser);
         String passwordHash = "{bcrypt}" + encoder.encode(body.password());
         repo.createLocalCredentials(user.id(), body.externalId(), passwordHash, role);
-        defaultGroupInitializer.addUserToDefaultGroup(user.id());
+        defaultUserGroupInitializer.addUserToDefaultUserGroup(user.id());
         return new UserView(user.id(), user.externalId(), user.displayName(), user.email(), user.isSuperuser());
     }
 

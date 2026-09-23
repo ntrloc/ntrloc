@@ -13,6 +13,7 @@ import org.ntrloc.graph.db.mutation.LinkEndpointReference;
 import org.ntrloc.graph.db.mutation.MutationRequest;
 import org.ntrloc.graph.db.mutation.MutationResponse;
 import org.ntrloc.graph.db.partition.authorization.RequestPermissionContext;
+import org.ntrloc.graph.db.partition.binary.BinaryPartitionManager;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateItemDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DeleteItemDefinitionMutation;
@@ -34,9 +35,11 @@ import org.ntrloc.graph.db.projection.TermsFacetFilter;
 import org.ntrloc.graph.db.partition.ledger.ItemUpdateEntry;
 import org.ntrloc.graph.domain.DomainInitializer;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.io.buffer.DefaultDataBufferFactory;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.web.reactive.server.WebTestClient;
+import reactor.core.publisher.Flux;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -78,6 +81,9 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
 
     @Autowired
     private JdbcClient jdbcClient;
+
+    @Autowired
+    private BinaryPartitionManager binaryPartitionManager;
 
     // Every book this test class creates gets this value stamped onto testMarker
     // (RegisterProjectionTestDomainInitializer's own comment on why that property exists), and
@@ -135,6 +141,33 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
         properties.put("testMarker", marker);
         properties.put("title", title);
         properties.put("dimensions", Map.of("material", material));
+
+        MutationResponse response = webTestClient.post().uri("/api/mutation")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(new MutationRequest(List.of(new ItemCreateMutation(null, BOOK_TYPE, properties)), List.of()))
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(MutationResponse.class)
+                .returnResult().getResponseBody();
+        return response.items().get(0).itemId();
+    }
+
+    private UUID storeBinary(byte[] content) {
+        var buffer = new DefaultDataBufferFactory().wrap(content);
+        return binaryPartitionManager.store(Flux.just(buffer)).block();
+    }
+
+    // Sets attachment to a binary of exactly contentLength bytes -- exists so
+    // RegisterPartitionManager.sortExpressionFor's binary-metadata-path resolution
+    // (File.content.metadata.length, here "attachment.metadata.length") has real, distinguishable
+    // content to sort/filter on. Content is filler bytes; only its length matters to these tests.
+    private UUID createBookWithAttachment(String title, int contentLength) {
+        Map<String, Object> properties = new HashMap<>();
+        properties.put("testMarker", marker);
+        properties.put("title", title);
+        if (contentLength >= 0) {
+            properties.put("attachment", storeBinary(new byte[contentLength]).toString());
+        }
 
         MutationResponse response = webTestClient.post().uri("/api/mutation")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -360,6 +393,85 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
         var spec = new CollectionProjectionSpec(BOOK_TYPE, "dimensions.widthCm", "ASC");
 
         assertThat(project(spec).titles()).containsExactly("Foundation", "Neuromancer", "Dune");
+    }
+
+    // --- Sorting by a binary property's intrinsic attributes (RegisterPartitionManager.sortExpressionFor) ---
+    //
+    // The sort field path is "attachment.metadata.length" -- the same path a client would walk in
+    // the projected response to find the same value (content.metadata.length, see
+    // RegisterPartitionManager.assembleBinaryValue), not a shorter stand-in for it. There's no
+    // "attachment.length" shortcut; see the dedicated rejection test below.
+
+    @Test
+    void sortField_onBinaryContentLength_sortsByAttachmentSizeAscending() {
+        createBookWithAttachment("Dune", 300);
+        createBookWithAttachment("Foundation", 100);
+        createBookWithAttachment("Neuromancer", 200);
+
+        var spec = new CollectionProjectionSpec(BOOK_TYPE, "attachment.metadata.length", "ASC");
+
+        assertThat(project(spec).titles()).containsExactly("Foundation", "Neuromancer", "Dune");
+    }
+
+    @Test
+    void sortField_onBinaryContentLength_sortsByAttachmentSizeDescending() {
+        createBookWithAttachment("Dune", 300);
+        createBookWithAttachment("Foundation", 100);
+        createBookWithAttachment("Neuromancer", 200);
+
+        var spec = new CollectionProjectionSpec(BOOK_TYPE, "attachment.metadata.length", "DESC");
+
+        assertThat(project(spec).titles()).containsExactly("Dune", "Neuromancer", "Foundation");
+    }
+
+    @Test
+    void sortField_onBinaryContentLength_itemsWithNoAttachmentSortLast() {
+        createBookWithAttachment("Foundation", 100);
+        createBookWithAttachment("No Attachment", -1);
+
+        var spec = new CollectionProjectionSpec(BOOK_TYPE, "attachment.metadata.length", "ASC");
+
+        assertThat(project(spec).titles()).containsExactly("Foundation", "No Attachment");
+    }
+
+    @Test
+    void sortField_onABareBinaryProperty_throwsIllegalArgumentExceptionNamingTheIntrinsicAttributeInstead() {
+        // "attachment" alone is binary content, not a leaf value with a single stored scalar --
+        // BINARY values are never in the register's flat properties JSONB at all, so this used to
+        // silently sort everything as NULL rather than fail; it must now be rejected outright.
+        // A book has to actually exist for this test's marker, or project() short-circuits on
+        // facetedCount == 0 before ever reaching orderByClause -- the resolution error only surfaces
+        // once the query is actually built.
+        createBook("Dune", 400, true, "Fiction");
+        var spec = new CollectionProjectionSpec(BOOK_TYPE, "attachment", "ASC");
+
+        assertThatThrownBy(() -> project(spec))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("attachment")
+                .hasMessageContaining("attachment.metadata.length");
+    }
+
+    @Test
+    void sortField_onAttachmentLengthWithoutTheMetadataSegment_throwsIllegalArgumentException() {
+        // "attachment.length" skips the literal "metadata" segment the response actually nests the
+        // value under (content.metadata.length) -- there's no shortcut form, precisely so the path
+        // used to address a value always matches the path used to find it in the response.
+        createBook("Dune", 400, true, "Fiction");
+        var spec = new CollectionProjectionSpec(BOOK_TYPE, "attachment.length", "ASC");
+
+        assertThatThrownBy(() -> project(spec))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("attachment.length");
+    }
+
+    @Test
+    void sortField_onAnUnknownBinaryAttribute_throwsIllegalArgumentExceptionNamingTheFullPath() {
+        createBook("Dune", 400, true, "Fiction");
+        var spec = new CollectionProjectionSpec(BOOK_TYPE, "attachment.metadata.bogus", "ASC");
+
+        assertThatThrownBy(() -> project(spec))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("attachment.metadata.bogus");
     }
 
     @Test
@@ -906,9 +1018,13 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
         setState(bookId, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE,
                 RegisterProjectionTestDomainInitializer.OUT_OF_STOCK);
 
-        var spec = new CollectionProjectionSpec("RegisterProjectionTestBook", null, null, null);
-        var result = registerPartitionManager.project(fixture.bookTypeId(), spec, "http://binary");
-        var book = result.items().stream().filter(i -> i.itemId().equals(bookId)).findFirst().orElseThrow();
+        // Scoped via the project(spec) helper (testMarker), not a raw, unfiltered
+        // registerPartitionManager.project(...) call -- unscoped, this queries every
+        // RegisterProjectionTestBook row ever created across the whole suite's shared container,
+        // and the default page size can cut off before reaching this test's own book once enough
+        // other tests have created rows of their own.
+        var spec = new CollectionProjectionSpec(BOOK_TYPE, null, null, null);
+        var book = project(spec).result().items().stream().filter(i -> i.itemId().equals(bookId)).findFirst().orElseThrow();
 
         assertThat(book.permissions()).isNull();
         assertThat(book.states()).isNull();

@@ -9,7 +9,7 @@ public interface BinaryStorageAdapter {
 
     BinaryContentInfo close(HashingBinaryDataWriter writer) throws IOException;
 
-    InputStream openReader(String sha256Hash, String md5Hash) throws IOException;
+    InputStream openReader(String sha256Hash, String md5Hash, long length) throws IOException;
 
     void abandon(HashingBinaryDataWriter writer);
 }
