@@ -195,11 +195,10 @@ public class AccessAdminController {
         return new ItemTypeGrantPrincipalsView(groups, users);
     }
 
-    // --- Which markers a group has its own grant row for (regardless of what's actually granted
-    // under it -- same "has a row" semantics as MarkerAdminController.getMarkerGrantPrincipals) --
-    // used by the UserGroup perspective's own Permissions tab to build its default "Granted markers"
-    // list without walking every marker in the schema one at a time. ---
-
+    /* Which markers a group has its own grant row for, regardless of what's actually granted
+       under it, same "has a row" semantics as MarkerAdminController.getMarkerGrantPrincipals().
+       Used by the UserGroup perspective's own Permissions tab to build its default "Granted markers"
+       list without walking every marker in the schema one at a time. */
     @GetMapping("/user-groups/{groupId}/markers")
     List<UUID> getUserGroupGrantedMarkerIds(@PathVariable("groupId") UUID groupId,
                                          ServerHttpRequest request, Authentication authentication) {
