@@ -126,6 +126,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
     private static final String STATE_CURRENT_STATE_ID = "currentStateId";
     private static final String PARAM_OLD_ID = "oldId";
     private static final String SQL_AND_FALSE = "AND FALSE";
+    private static final String PARAM_REGISTER_ITEM_ID = "registerItemId";
 
     private static final Map<String, String> SYSTEM_SORT_COLUMNS = Map.of(
             PARAM_ITEM_ID,          "ri.item_id",
@@ -370,8 +371,8 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                 .findFirst()
                 .map(AdminItemDefinitionView::stateMachines)
                 .orElse(null);
-        var items = assembleProjectedItems(rawItems, ownPropertyNames, stateMachines, binaryBaseUrl, spec.links(), permissions,
-                Boolean.TRUE.equals(spec.includePermissions()), Boolean.TRUE.equals(spec.includeStates()));
+        var items = assembleProjectedItems(rawItems, ownPropertyNames, stateMachines, binaryBaseUrl,
+                new RenderOptions(spec.links(), permissions, Boolean.TRUE.equals(spec.includePermissions()), Boolean.TRUE.equals(spec.includeStates())));
         return new ProjectionResult(items, totalCount, facetedCount, facets, stateMachineFacets);
     }
 
@@ -494,8 +495,8 @@ public class RegisterPartitionManager implements SchemaChangeListener {
         }
 
         var items = assembleProjectedItems(rawItems, mergedPropertyNames,
-                mergedStateMachines.isEmpty() ? null : mergedStateMachines, binaryBaseUrl, spec.links(), permissions,
-                Boolean.TRUE.equals(spec.includePermissions()), Boolean.TRUE.equals(spec.includeStates()));
+                mergedStateMachines.isEmpty() ? null : mergedStateMachines, binaryBaseUrl,
+                new RenderOptions(spec.links(), permissions, Boolean.TRUE.equals(spec.includePermissions()), Boolean.TRUE.equals(spec.includeStates())));
         return new ProjectionResult(items, totalCount, facetedCount, facets, stateMachineFacets);
     }
 
@@ -675,10 +676,10 @@ public class RegisterPartitionManager implements SchemaChangeListener {
             UUID current = frontier.poll();
             int nextDistance = distanceByStateId.get(current) + 1;
             for (UUID next : outgoingByStateId.getOrDefault(current, List.of())) {
-                if (!distanceByStateId.containsKey(next)) {
-                    distanceByStateId.put(next, nextDistance);
-                    frontier.add(next);
-                }
+                distanceByStateId.computeIfAbsent(next, k -> {
+                    frontier.add(k);
+                    return nextDistance;
+                });
             }
         }
         return distanceByStateId;
@@ -791,8 +792,8 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                 .findFirst()
                 .map(AdminItemDefinitionView::stateMachines)
                 .orElse(null);
-        return Optional.of(assembleProjectedItems(rawItems, ownPropertyNames, stateMachines, binaryBaseUrl, requestedLinks, permissions,
-                includePermissions, includeStates).get(0));
+        return Optional.of(assembleProjectedItems(rawItems, ownPropertyNames, stateMachines, binaryBaseUrl,
+                new RenderOptions(requestedLinks, permissions, includePermissions, includeStates)).get(0));
     }
 
     // --- Write side: staged at prepare (UNCOMMITTED), flipped/cleaned up at commit/abort ---
@@ -924,7 +925,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
     private Map<UUID, UUID> currentBinaryPropertyValues(UUID registerItemId) {
         Map<UUID, UUID> result = new HashMap<>();
         jdbcClient.sql("SELECT property_id, binary_id FROM register_binary_property WHERE register_item_id = :registerItemId")
-                .param("registerItemId", registerItemId)
+                .param(PARAM_REGISTER_ITEM_ID, registerItemId)
                 .query((rs, n) -> Map.entry(rs.getObject("property_id", UUID.class), rs.getObject("binary_id", UUID.class)))
                 .list()
                 .forEach(e -> result.put(e.getKey(), e.getValue()));
@@ -934,7 +935,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
     private void insertBinaryProperties(UUID registerItemId, Map<UUID, UUID> binaryIdsByPropertyId) {
         binaryIdsByPropertyId.forEach((propertyId, binaryId) ->
                 jdbcClient.sql("INSERT INTO register_binary_property (register_item_id, property_id, binary_id) VALUES (:registerItemId, :propertyId, :binaryId)")
-                        .param("registerItemId", registerItemId)
+                        .param(PARAM_REGISTER_ITEM_ID, registerItemId)
                         .param("propertyId", propertyId)
                         .param("binaryId", binaryId)
                         .update());
@@ -954,7 +955,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
 
         jdbcClient.sql("INSERT INTO %s (register_item_id, properties, states) VALUES (:registerItemId, :properties::jsonb, :states::jsonb)"
                 .formatted(tableNameFor(itemTypeId)))
-                .param("registerItemId", registerItemId)
+                .param(PARAM_REGISTER_ITEM_ID, registerItemId)
                 .param(COL_PROPERTIES, writeProperties(properties))
                 .param(COL_STATES, writeProperties(states))
                 .update();
@@ -1131,7 +1132,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                     """)
                     .param("registerLinkId", registerLinkId)
                     .param("perspectiveId", endpoint.perspectiveId())
-                    .param("registerItemId", registerItemId)
+                    .param(PARAM_REGISTER_ITEM_ID, registerItemId)
                     .update();
         }
     }
@@ -1841,96 +1842,145 @@ public class RegisterPartitionManager implements SchemaChangeListener {
             return Map.of();
         }
 
-        // Mode-2, in-memory: link:read/create/delete are anchored to the *source* item's own
-        // marker via the specific perspective traversed here (rilp_mine/silp_mine), never to a
-        // marker on the link itself (link markers don't exist -- see
-        // docs/ntrloc-marker-admin-ui-design-notes.md). This can't be a SQL semi-join the way
-        // item:read is: it's a two-dimensional check (marker AND perspective together), and links
-        // aren't independently paginated the way top-level items are, so there's no
-        // pagination/totalCount correctness reason it has to be.
-        Map<UUID, Set<UUID>> sourceItemMarkerIds = permissions.superuser() ? Map.of()
-                : getMarkerIdsForRegisterItems(allLinkRows.stream().map(LinkRow::myRegisterItemId).distinct().toList());
-        List<LinkRow> linkRows = permissions.superuser() ? allLinkRows : allLinkRows.stream()
-                .filter(row -> !Collections.disjoint(
-                        unionGrantedIds(sourceItemMarkerIds.getOrDefault(row.myRegisterItemId(), Set.of()), permissions.linkPerspectiveReadGrantsByMarker()),
-                        Set.of(row.perspectiveId())))
-                .toList();
-
+        LinkVisibility visibility = filterLinkRowsByReadPermission(allLinkRows, permissions);
+        List<LinkRow> linkRows = visibility.visibleLinkRows();
         if (linkRows.isEmpty()) {
             return Map.of();
         }
+        Map<UUID, Set<UUID>> sourceItemMarkerIds = visibility.sourceItemMarkerIds();
 
-        // Linked item's own properties use property:read/write (it's still an item, just reached
-        // via a link); the link's own properties use link_property:read/write -- distinct grant
-        // maps even though both may reference the same underlying schema_property ids. Link
-        // properties aren't perspective-scoped (symmetric regardless of viewing side), so they're
-        // gated by the source item's markers directly, same shape as an item's own properties --
-        // merged (union) across every row reaching a given link, for the rare case the same link is
-        // reachable from more than one source item in this same batch (e.g. a polymorphic page
-        // containing both of a link's endpoints).
-        Map<UUID, Set<UUID>> linkedItemMarkerIds = permissions.superuser() ? Map.of()
-                : getMarkerIdsForRegisterItems(linkRows.stream().map(LinkRow::linkedRegisterItemId).distinct().toList());
-        Map<UUID, Set<UUID>> linkOwnerMarkerIds = permissions.superuser() ? Map.of()
-                : linkRows.stream().collect(Collectors.groupingBy(LinkRow::registerLinkId,
-                        Collectors.flatMapping(row -> sourceItemMarkerIds.getOrDefault(row.myRegisterItemId(), Set.of()).stream(), Collectors.toSet())));
+        LinkedItemMarkerContext markerContext = resolveLinkedItemMarkerContext(linkRows, sourceItemMarkerIds, permissions);
 
         Map<UUID, Map<String, Object>> linkedItemProperties = fetchPropertiesByRegisterItemId(
                 linkRows.stream().collect(Collectors.groupingBy(
                         LinkRow::linkedItemTypeId,
                         Collectors.mapping(LinkRow::linkedRegisterItemId, Collectors.toList()))),
-                COL_REGISTER_ITEM_ID, linkedItemMarkerIds, permissions.superuser() ? null
-                        : readImpliedByWrite(permissions.propertyReadGrantsByMarker(), permissions.propertyWriteGrantsByMarker()));
+                COL_REGISTER_ITEM_ID, markerContext.linkedItemMarkerIds(),
+                effectiveReadGrants(permissions, permissions.propertyReadGrantsByMarker(), permissions.propertyWriteGrantsByMarker()));
 
         Map<UUID, Map<String, Object>> linkProperties = fetchPropertiesByRegisterItemId(
                 linkRows.stream().collect(Collectors.groupingBy(
                         LinkRow::linkDefinitionId,
                         Collectors.mapping(LinkRow::registerLinkId, Collectors.toList()))),
-                COL_REGISTER_LINK_ID, linkOwnerMarkerIds, permissions.superuser() ? null
-                        : readImpliedByWrite(permissions.linkPropertyReadGrantsByMarker(), permissions.linkPropertyWriteGrantsByMarker()));
+                COL_REGISTER_LINK_ID, markerContext.linkOwnerMarkerIds(),
+                effectiveReadGrants(permissions, permissions.linkPropertyReadGrantsByMarker(), permissions.linkPropertyWriteGrantsByMarker()));
 
         Map<UUID, Map<String, List<ProjectedLink>>> nestedLinksByLinkedRegisterItemId = requestedLinks != null
                 ? fetchNestedLinksForRequestedPerspectives(linkRows, requestedLinks, permissions, includePermissions)
                 : Map.of();
 
-        Map<String, String> displayLabelPatterns = resolveEffectiveDisplayLabelPatterns();
-        Map<UUID, Map<String, List<ProjectedLink>>> finalNestedLinks = nestedLinksByLinkedRegisterItemId;
+        LinkProjectionContext resultContext = new LinkProjectionContext(linkedItemProperties, linkProperties,
+                sourceItemMarkerIds, markerContext.linkedItemMarkerIds(), nestedLinksByLinkedRegisterItemId,
+                resolveEffectiveDisplayLabelPatterns(), permissions, includePermissions);
+        return buildLinksResultMap(linkRows, resultContext);
+    }
+
+    // Extracted from fetchLinksByItem purely to keep that method's own cognitive complexity down.
+    private record LinkVisibility(Map<UUID, Set<UUID>> sourceItemMarkerIds, List<LinkRow> visibleLinkRows) {}
+
+    // Mode-2, in-memory: link:read/create/delete are anchored to the *source* item's own
+    // marker via the specific perspective traversed here (rilp_mine/silp_mine), never to a
+    // marker on the link itself (link markers don't exist -- see
+    // docs/ntrloc-marker-admin-ui-design-notes.md). This can't be a SQL semi-join the way
+    // item:read is: it's a two-dimensional check (marker AND perspective together), and links
+    // aren't independently paginated the way top-level items are, so there's no
+    // pagination/totalCount correctness reason it has to be.
+    private LinkVisibility filterLinkRowsByReadPermission(List<LinkRow> allLinkRows, RequestPermissionContext permissions) {
+        if (permissions.superuser()) {
+            return new LinkVisibility(Map.of(), allLinkRows);
+        }
+        Map<UUID, Set<UUID>> sourceItemMarkerIds = getMarkerIdsForRegisterItems(
+                allLinkRows.stream().map(LinkRow::myRegisterItemId).distinct().toList());
+        List<LinkRow> visibleLinkRows = allLinkRows.stream()
+                .filter(row -> !Collections.disjoint(
+                        unionGrantedIds(sourceItemMarkerIds.getOrDefault(row.myRegisterItemId(), Set.of()), permissions.linkPerspectiveReadGrantsByMarker()),
+                        Set.of(row.perspectiveId())))
+                .toList();
+        return new LinkVisibility(sourceItemMarkerIds, visibleLinkRows);
+    }
+
+    // Extracted from fetchLinksByItem for the same reason as filterLinkRowsByReadPermission above.
+    private record LinkedItemMarkerContext(Map<UUID, Set<UUID>> linkedItemMarkerIds, Map<UUID, Set<UUID>> linkOwnerMarkerIds) {}
+
+    // Linked item's own properties use property:read/write (it's still an item, just reached
+    // via a link); the link's own properties use link_property:read/write -- distinct grant
+    // maps even though both may reference the same underlying schema_property ids. Link
+    // properties aren't perspective-scoped (symmetric regardless of viewing side), so they're
+    // gated by the source item's markers directly, same shape as an item's own properties --
+    // merged (union) across every row reaching a given link, for the rare case the same link is
+    // reachable from more than one source item in this same batch (e.g. a polymorphic page
+    // containing both of a link's endpoints).
+    private LinkedItemMarkerContext resolveLinkedItemMarkerContext(List<LinkRow> linkRows, Map<UUID, Set<UUID>> sourceItemMarkerIds,
+                                                                     RequestPermissionContext permissions) {
+        if (permissions.superuser()) {
+            return new LinkedItemMarkerContext(Map.of(), Map.of());
+        }
+        Map<UUID, Set<UUID>> linkedItemMarkerIds = getMarkerIdsForRegisterItems(
+                linkRows.stream().map(LinkRow::linkedRegisterItemId).distinct().toList());
+        Map<UUID, Set<UUID>> linkOwnerMarkerIds = linkRows.stream().collect(Collectors.groupingBy(LinkRow::registerLinkId,
+                Collectors.flatMapping(row -> sourceItemMarkerIds.getOrDefault(row.myRegisterItemId(), Set.of()).stream(), Collectors.toSet())));
+        return new LinkedItemMarkerContext(linkedItemMarkerIds, linkOwnerMarkerIds);
+    }
+
+    // A write grant implies read (see readImpliedByWrite's own comment); superuser needs no grant
+    // map at all -- fetchPropertiesByRegisterItemId treats null as "don't filter."
+    private Map<UUID, Set<UUID>> effectiveReadGrants(RequestPermissionContext permissions, Map<UUID, Set<UUID>> readGrants,
+                                                       Map<UUID, Set<UUID>> writeGrants) {
+        return permissions.superuser() ? null : readImpliedByWrite(readGrants, writeGrants);
+    }
+
+    // Everything toProjectedLink/buildLinksResultMap need beyond the row itself -- bundled into one
+    // record (same idea as AssemblyContext above) rather than an 8-9 parameter method signature.
+    private record LinkProjectionContext(
+            Map<UUID, Map<String, Object>> linkedItemProperties, Map<UUID, Map<String, Object>> linkProperties,
+            Map<UUID, Set<UUID>> sourceItemMarkerIds, Map<UUID, Set<UUID>> linkedItemMarkerIds,
+            Map<UUID, Map<String, List<ProjectedLink>>> nestedLinksByLinkedRegisterItemId,
+            Map<String, String> displayLabelPatterns, RequestPermissionContext permissions, boolean includePermissions) {}
+
+    // Extracted from fetchLinksByItem purely to keep that method's own cognitive complexity down --
+    // assembles the final perspective-name-keyed, then register-item-id-keyed result map once every
+    // input (properties, marker ids, nested links, display labels) has already been resolved above.
+    private Map<UUID, Map<String, List<ProjectedLink>>> buildLinksResultMap(List<LinkRow> linkRows, LinkProjectionContext ctx) {
         return linkRows.stream()
                 .collect(Collectors.groupingBy(
                         LinkRow::myRegisterItemId,
                         Collectors.groupingBy(
                                 LinkRow::perspectiveName,
-                                Collectors.mapping(row -> {
-                                    Map<String, Object> linkedProps = linkedItemProperties.getOrDefault(row.linkedRegisterItemId(), Map.of());
-                                    Set<UUID> linkedItemOwnMarkerIds = linkedItemMarkerIds.getOrDefault(row.linkedRegisterItemId(), Set.of());
-                                    Set<UUID> mySourceMarkerIds = sourceItemMarkerIds.getOrDefault(row.myRegisterItemId(), Set.of());
-                                    return new ProjectedLink(
-                                        row.linkId(),
-                                        linkProperties.getOrDefault(row.registerLinkId(), Map.of()),
-                                        // states is left null for a linked item -- a projection's link expansion has
-                                        // never fetched a linked item's full state (matching binary properties'
-                                        // own scope, which the linked item also doesn't get); this is about the
-                                        // top-level projected item's state, not every item reachable through it.
-                                        new ProjectedItem(
-                                                row.linkedItemId(),
-                                                row.linkedItemType(),
-                                                linkedProps,
-                                                finalNestedLinks.getOrDefault(row.linkedRegisterItemId(), Map.of()),
-                                                null,
-                                                includePermissions
-                                                        ? buildPermissions(permissions, linkedItemOwnMarkerIds,
-                                                                permissions.propertyWriteGrantsByMarker(), permissions.itemDeleteGrantedMarkerIds(),
-                                                                rootPropertiesForItemType(row.linkedItemTypeId()),
-                                                                linkPerspectivesForItemType(row.linkedItemTypeId()))
-                                                        : null,
-                                                computeDisplayLabel(row.linkedItemId(), linkedProps, displayLabelPatterns.get(row.linkedItemType())),
-                                                null), // markers: not populated for a linked item yet -- see ProjectedItem's own comment
-                                        includePermissions
-                                                ? buildLinkPermissions(permissions, mySourceMarkerIds, row.perspectiveId(),
-                                                        rootPropertiesForLinkType(row.linkDefinitionId()))
-                                                : null
-                                    );
-                                },
-                                Collectors.toList()))));
+                                Collectors.mapping(row -> toProjectedLink(row, ctx), Collectors.toList()))));
+    }
+
+    private ProjectedLink toProjectedLink(LinkRow row, LinkProjectionContext ctx) {
+        Map<String, Object> linkedProps = ctx.linkedItemProperties().getOrDefault(row.linkedRegisterItemId(), Map.of());
+        Set<UUID> linkedItemOwnMarkerIds = ctx.linkedItemMarkerIds().getOrDefault(row.linkedRegisterItemId(), Set.of());
+        Set<UUID> mySourceMarkerIds = ctx.sourceItemMarkerIds().getOrDefault(row.myRegisterItemId(), Set.of());
+        RequestPermissionContext permissions = ctx.permissions();
+        boolean includePermissions = ctx.includePermissions();
+        return new ProjectedLink(
+            row.linkId(),
+            ctx.linkProperties().getOrDefault(row.registerLinkId(), Map.of()),
+            // states is left null for a linked item -- a projection's link expansion has
+            // never fetched a linked item's full state (matching binary properties'
+            // own scope, which the linked item also doesn't get); this is about the
+            // top-level projected item's state, not every item reachable through it.
+            new ProjectedItem(
+                    row.linkedItemId(),
+                    row.linkedItemType(),
+                    linkedProps,
+                    ctx.nestedLinksByLinkedRegisterItemId().getOrDefault(row.linkedRegisterItemId(), Map.of()),
+                    null,
+                    includePermissions
+                            ? buildPermissions(permissions, linkedItemOwnMarkerIds,
+                                    permissions.propertyWriteGrantsByMarker(), permissions.itemDeleteGrantedMarkerIds(),
+                                    rootPropertiesForItemType(row.linkedItemTypeId()),
+                                    linkPerspectivesForItemType(row.linkedItemTypeId()))
+                            : null,
+                    computeDisplayLabel(row.linkedItemId(), linkedProps, ctx.displayLabelPatterns().get(row.linkedItemType())),
+                    null), // markers: not populated for a linked item yet -- see ProjectedItem's own comment
+            includePermissions
+                    ? buildLinkPermissions(permissions, mySourceMarkerIds, row.perspectiveId(),
+                            rootPropertiesForLinkType(row.linkDefinitionId()))
+                    : null
+        );
     }
 
 
@@ -1964,19 +2014,25 @@ public class RegisterPartitionManager implements SchemaChangeListener {
     // ids are globally unique across the whole schema, so a plain union of each branch's own
     // lookup is a safe, unambiguous merge -- an over-inclusive stateMachines list is likewise safe,
     // since buildProjectedItemStates already skips any machine a given row's states don't mention).
+    // requestedLinks/permissions/includePermissions/includeStates travel together as one unit (the
+    // same quad appears on projectOne's own 7-arg overload) -- bundled here to keep this method's
+    // own parameter count within S107's limit, private to this method's three call sites only.
+    private record RenderOptions(@Nullable Map<String, LinkProjectionSpec> requestedLinks, RequestPermissionContext permissions,
+                                  boolean includePermissions, boolean includeStates) {}
+
     private List<ProjectedItem> assembleProjectedItems(List<RawItem> rawItems, Map<UUID, List<String>> ownPropertyNames,
                                                          List<AdminStateMachineView> stateMachines, String binaryBaseUrl,
-                                                         @Nullable Map<String, LinkProjectionSpec> requestedLinks,
-                                                         RequestPermissionContext permissions,
-                                                         boolean includePermissions, boolean includeStates) {
+                                                         RenderOptions options) {
         // Nothing to assemble -- and every batch fetch below binds `... IN (:ids)`, which Postgres
         // rejects as a syntax error when the list is empty. A page whose offset lands past the last
         // row (offset >= totalCount) reaches here with an empty list; it must come back as [], not 500.
         if (rawItems.isEmpty()) return List.of();
+        RequestPermissionContext permissions = options.permissions();
+        boolean includePermissions = options.includePermissions();
         List<UUID> rawItemIds = rawItems.stream().map(RawItem::registerItemId).toList();
         Map<String, String> displayLabelPatterns = resolveEffectiveDisplayLabelPatterns();
 
-        Map<UUID, Map<String, List<ProjectedLink>>> linksByItem = fetchLinksByItem(rawItemIds, requestedLinks, permissions, includePermissions);
+        Map<UUID, Map<String, List<ProjectedLink>>> linksByItem = fetchLinksByItem(rawItemIds, options.requestedLinks(), permissions, includePermissions);
         // A superuser used to skip this fetch entirely (nothing to filter by), but now also needs
         // it to populate ProjectedItem.markers -- so it's unconditional regardless of who's asking.
         Map<UUID, Set<UUID>> markerIdsByRegisterItemId = getMarkerIdsForRegisterItems(rawItemIds);
@@ -2022,7 +2078,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
 
         AssemblyContext ctx = new AssemblyContext(ownPropertyNames, stateMachines, displayLabelPatterns,
                 linksByItem, markerIdsByRegisterItemId, binaryPropsByItem, effectiveReadGrants,
-                markerNamesById, permissions, includePermissions, includeStates);
+                markerNamesById, permissions, includePermissions, options.includeStates());
         return rawItems.stream().map(raw -> assembleProjectedItem(raw, ctx)).toList();
     }
 
@@ -2043,23 +2099,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
         Set<UUID> markerIds = ctx.markerIdsByRegisterItemId().getOrDefault(raw.registerItemId(), Set.of());
         Map<String, Object> readableProps = filterPropertiesByReadGrant(raw.properties(), markerIds, ctx.effectiveReadGrants());
         Map<String, Object> props = new HashMap<>(namesForIds(readableProps, ctx.ownPropertyNames()));
-        // Binary properties are gated by property:read exactly like scalar ones -- there is no
-        // separate download grant; read is equivalent to download.
-        List<AssembledBinary> bins = ctx.binaryPropsByItem().get(raw.registerItemId());
-        if (bins != null) {
-            Set<UUID> readableBinaryIds = ctx.effectiveReadGrants() == null ? null
-                    : unionGrantedIds(markerIds, ctx.effectiveReadGrants());
-            for (var b : bins) {
-                if (readableBinaryIds == null || readableBinaryIds.contains(b.propertyId())) {
-                    // Same path-walking merge namesForIds uses for every other property type -- a
-                    // BINARY leaf can live inside a property group (e.g. file.content) just like
-                    // any other leaf, so it needs to land at its schema-nested location, not always
-                    // flattened to the top level under its own bare name.
-                    List<String> path = ctx.ownPropertyNames().get(b.propertyId());
-                    if (path != null) putAtPath(props, path, b.value());
-                }
-            }
-        }
+        mergeReadableBinaryProperties(props, raw.registerItemId(), markerIds, ctx);
         var itemPermissions = ctx.includePermissions()
                 ? buildPermissions(ctx.permissions(), markerIds,
                         ctx.permissions().propertyWriteGrantsByMarker(), ctx.permissions().itemDeleteGrantedMarkerIds(),
@@ -2082,6 +2122,25 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                 itemPermissions,
                 computeDisplayLabel(raw.itemId(), props, ctx.displayLabelPatterns().get(raw.itemType())),
                 markerNames);
+    }
+
+    // Extracted from assembleProjectedItem purely to keep that method's own cognitive complexity
+    // down. Binary properties are gated by property:read exactly like scalar ones -- there is no
+    // separate download grant; read is equivalent to download.
+    private void mergeReadableBinaryProperties(Map<String, Object> props, UUID registerItemId, Set<UUID> markerIds, AssemblyContext ctx) {
+        List<AssembledBinary> bins = ctx.binaryPropsByItem().get(registerItemId);
+        if (bins == null) return;
+        Set<UUID> readableBinaryIds = ctx.effectiveReadGrants() == null ? null
+                : unionGrantedIds(markerIds, ctx.effectiveReadGrants());
+        for (var b : bins) {
+            if (readableBinaryIds != null && !readableBinaryIds.contains(b.propertyId())) continue;
+            // Same path-walking merge namesForIds uses for every other property type -- a
+            // BINARY leaf can live inside a property group (e.g. file.content) just like
+            // any other leaf, so it needs to land at its schema-nested location, not always
+            // flattened to the top level under its own bare name.
+            List<String> path = ctx.ownPropertyNames().get(b.propertyId());
+            if (path != null) putAtPath(props, path, b.value());
+        }
     }
 
     // One ProjectedItemState per state machine that's either active on this item, or inactive but

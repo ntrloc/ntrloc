@@ -18,6 +18,7 @@ public class SecurityRepository {
     private static final String COL_IS_SUPERUSER = "is_superuser";
     private static final String PARAM_USER_ID = "userId";
     private static final String PARAM_GROUP_ID = "groupId";
+    private static final String PARAM_EXTERNAL_ID = "externalId";
 
     public record UserRow(UUID id, String externalId, String displayName, String email, boolean isSuperuser) {}
 
@@ -37,7 +38,7 @@ public class SecurityRepository {
 
     public Optional<UserRow> findUserByExternalId(String externalId) {
         return jdbcClient.sql("SELECT id, external_id, display_name, email, is_superuser FROM security_user WHERE external_id = :externalId")
-                .param("externalId", externalId)
+                .param(PARAM_EXTERNAL_ID, externalId)
                 .query((rs, n) -> new UserRow(
                         rs.getObject("id", UUID.class),
                         rs.getString(COL_EXTERNAL_ID),
@@ -99,7 +100,7 @@ public class SecurityRepository {
                 INSERT INTO security_user (external_id, display_name, email, is_superuser)
                 VALUES (:externalId, :displayName, :email, :isSuperuser) RETURNING id
                 """)
-                .param("externalId", externalId).param("displayName", displayName)
+                .param(PARAM_EXTERNAL_ID, externalId).param("displayName", displayName)
                 .param(COL_EMAIL, email).param("isSuperuser", isSuperuser)
                 .query(UUID.class).single();
         return new UserRow(id, externalId, displayName, email, isSuperuser);
@@ -255,7 +256,7 @@ public class SecurityRepository {
 
     public void updateUser(UUID userId, String externalId, String displayName, String email, boolean isSuperuser) {
         jdbcClient.sql("UPDATE security_user SET external_id = :externalId, display_name = :displayName, email = :email, is_superuser = :isSuperuser WHERE id = :userId")
-                .param("externalId", externalId)
+                .param(PARAM_EXTERNAL_ID, externalId)
                 .param("displayName", displayName)
                 .param(COL_EMAIL, email)
                 .param("isSuperuser", isSuperuser)
@@ -276,7 +277,7 @@ public class SecurityRepository {
     // that's edited, or the user would be silently locked out under their new username.
     public void updateLocalCredentialsLogin(UUID userId, String externalId) {
         jdbcClient.sql("UPDATE security_local_credentials SET email = :externalId WHERE user_id = :userId")
-                .param("externalId", externalId)
+                .param(PARAM_EXTERNAL_ID, externalId)
                 .param(PARAM_USER_ID, userId)
                 .update();
     }

@@ -22,6 +22,9 @@ public class StaticResourceOffloadFilter implements WebFilter {
     }
 
     @Override
+    @SuppressWarnings("java:S1075") // "/" here is the URL path separator (always this character per
+                                     // the HTTP spec), not a filesystem separator -- File.separator
+                                     // would be the actually wrong, OS-dependent choice.
     public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
         String path = exchange.getRequest().getPath().value();
 

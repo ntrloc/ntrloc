@@ -178,7 +178,7 @@ public class AccessAdminController {
         var groupNames = securityRepo.listUserGroups().stream()
                 .collect(Collectors.toMap(g -> g.id(), g -> g.name()));
         var userNames = securityRepo.listUsers().stream()
-                .collect(Collectors.toMap(u -> u.id(), u -> u.displayName()));
+                .collect(Collectors.toMap(SecurityRepository.UserRow::id, SecurityRepository.UserRow::displayName));
 
         Set<UUID> groupIds = new LinkedHashSet<>();
         Set<UUID> userIds = new LinkedHashSet<>();

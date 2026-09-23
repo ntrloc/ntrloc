@@ -110,7 +110,7 @@ public class MarkerAdminController {
         var groupNames = securityRepo.listUserGroups().stream()
                 .collect(Collectors.toMap(g -> g.id(), g -> g.name()));
         var userNames = securityRepo.listUsers().stream()
-                .collect(Collectors.toMap(u -> u.id(), u -> u.displayName()));
+                .collect(Collectors.toMap(SecurityRepository.UserRow::id, SecurityRepository.UserRow::displayName));
 
         List<PrincipalRef> groups = new ArrayList<>();
         List<PrincipalRef> users = new ArrayList<>();

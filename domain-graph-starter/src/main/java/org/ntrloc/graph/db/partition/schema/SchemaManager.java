@@ -40,7 +40,8 @@ public class SchemaManager {
     private static final String SCHEMA_CHANGED_TOPIC = "schemaChanged";
 
     private final ControlledListManager controlledListManager;
-    private final SchemaViewBuilder viewBuilder;
+    private final SchemaAdminViewBuilder adminViewBuilder;
+    private final SchemaCalculatedViewBuilder calculatedViewBuilder;
     private final ItemMutationApplier itemMutationApplier;
     private final TraitMutationApplier traitMutationApplier;
     private final PropertyMutationApplier propertyMutationApplier;
@@ -59,13 +60,15 @@ public class SchemaManager {
     private final AtomicReference<AdminSchemaView> cachedAdminSchema = new AtomicReference<>();
     private final AtomicReference<SchemaView> cachedSchema = new AtomicReference<>();
 
-    public SchemaManager(ControlledListManager controlledListManager, SchemaViewBuilder viewBuilder,
+    public SchemaManager(ControlledListManager controlledListManager, SchemaAdminViewBuilder adminViewBuilder,
+                          SchemaCalculatedViewBuilder calculatedViewBuilder,
                           ItemMutationApplier itemMutationApplier, TraitMutationApplier traitMutationApplier,
                           PropertyMutationApplier propertyMutationApplier, LinkMutationApplier linkMutationApplier,
                           StateMutationApplier stateMutationApplier, ControlledListMutationApplier controlledListMutationApplier,
                           PermissionService permissionService, ClusterService clusterService) {
         this.controlledListManager = controlledListManager;
-        this.viewBuilder = viewBuilder;
+        this.adminViewBuilder = adminViewBuilder;
+        this.calculatedViewBuilder = calculatedViewBuilder;
         this.itemMutationApplier = itemMutationApplier;
         this.traitMutationApplier = traitMutationApplier;
         this.propertyMutationApplier = propertyMutationApplier;
@@ -85,8 +88,8 @@ public class SchemaManager {
     }
 
     private void rebuildCache() {
-        cachedAdminSchema.set(viewBuilder.buildAdminSchema());
-        cachedSchema.set(viewBuilder.buildSchema());
+        cachedAdminSchema.set(adminViewBuilder.buildAdminSchema());
+        cachedSchema.set(calculatedViewBuilder.buildSchema());
     }
 
     public void applyMutations(List<DefinitionMutation> mutations) {

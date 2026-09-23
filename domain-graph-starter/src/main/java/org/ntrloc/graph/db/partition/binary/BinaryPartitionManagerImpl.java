@@ -34,6 +34,9 @@ public class BinaryPartitionManagerImpl implements BinaryPartitionManager {
 
     private static final Logger LOG = LoggerFactory.getLogger(BinaryPartitionManagerImpl.class);
 
+    private static final String COL_SHA256 = "sha256";
+    private static final String COL_LENGTH = "length";
+
     private final JdbcClient jdbcClient;
     private final BinaryStorageAdapter storageAdapter;
     private final ObjectMapper objectMapper;
@@ -89,17 +92,19 @@ public class BinaryPartitionManagerImpl implements BinaryPartitionManager {
     // publishEvent below runs -- "after the creating transaction has committed" needs nothing extra.
     private record InsertResult(UUID id, boolean inserted) {}
 
+    private static final String INSERT_BINARY_CONTENT_SQL = """
+            INSERT INTO binary_content (sha256, md5, mime_type, length, metadata)
+            VALUES (:sha256, :md5, :mimeType, :length, :metadata::jsonb)
+            ON CONFLICT (sha256, md5, length) DO UPDATE SET sha256 = EXCLUDED.sha256
+            RETURNING id, (xmax = 0) AS inserted
+            """;
+
     private Mono<UUID> insert(BinaryContentInfo info) {
-        return Mono.fromCallable(() -> jdbcClient.sql("""
-                        INSERT INTO binary_content (sha256, md5, mime_type, length, metadata)
-                        VALUES (:sha256, :md5, :mimeType, :length, :metadata::jsonb)
-                        ON CONFLICT (sha256, md5, length) DO UPDATE SET sha256 = EXCLUDED.sha256
-                        RETURNING id, (xmax = 0) AS inserted
-                        """)
-                        .param("sha256", info.getSha256Hash())
+        return Mono.fromCallable(() -> jdbcClient.sql(INSERT_BINARY_CONTENT_SQL)
+                        .param(COL_SHA256, info.getSha256Hash())
                         .param("md5", info.getMd5Hash())
                         .param("mimeType", info.getMimeType())
-                        .param("length", info.getLength())
+                        .param(COL_LENGTH, info.getLength())
                         .param("metadata", metadataJson(info))
                         .query((rs, n) -> new InsertResult(rs.getObject("id", UUID.class), rs.getBoolean("inserted")))
                         .single())
@@ -119,9 +124,9 @@ public class BinaryPartitionManagerImpl implements BinaryPartitionManager {
     // write-once, and binary_content rows are never updated after this insert.
     private String metadataJson(BinaryContentInfo info) {
         Map<String, Object> metadata = new LinkedHashMap<>();
-        metadata.put("length", info.getLength());
+        metadata.put(COL_LENGTH, info.getLength());
         if (info.getMimeType() != null) metadata.put("mimeType", info.getMimeType());
-        metadata.put("hashes", Map.of("sha256", info.getSha256Hash(), "md5", info.getMd5Hash()));
+        metadata.put("hashes", Map.of(COL_SHA256, info.getSha256Hash(), "md5", info.getMd5Hash()));
         return objectMapper.writeValueAsString(metadata);
     }
 
@@ -165,10 +170,10 @@ public class BinaryPartitionManagerImpl implements BinaryPartitionManager {
         Map<String, Object> metadata = parseMetadata(metadataJson);
         return new BinaryPropertyObject(
                 rs.getObject("id", UUID.class),
-                rs.getString("sha256"),
+                rs.getString(COL_SHA256),
                 rs.getString("md5"),
                 rs.getString("mime_type"),
-                rs.getLong("length"),
+                rs.getLong(COL_LENGTH),
                 metadata
         );
     }

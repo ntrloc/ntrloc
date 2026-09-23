@@ -20,6 +20,8 @@ import java.util.stream.Collectors;
 // own mutation family without duplicating these checks.
 final class SchemaMutationValidation {
 
+    private static final String THIS_ITEM_TYPE = "this item type";
+
     private SchemaMutationValidation() {
     }
 
@@ -147,14 +149,14 @@ final class SchemaMutationValidation {
         NameSets added = new NameSets(Set.of(name), Set.of());
 
         requireNoCollision(added, new NameSets(Set.of(), nameSetsOf(repo, traitNames, traitIdsByItem, itemId).traits()),
-                "this item type", "a trait this item type implements");
+                THIS_ITEM_TYPE, "a trait this item type implements");
         for (UUID ancestor : ancestorsOf(supertypeById, itemId)) {
             requireNoCollision(added, nameSetsOf(repo, traitNames, traitIdsByItem, ancestor),
-                    "this item type", "supertype '" + itemName(repo, ancestor) + "'");
+                    THIS_ITEM_TYPE, "supertype '" + itemName(repo, ancestor) + "'");
         }
         for (UUID descendant : descendantsOf(supertypeById, itemId)) {
             requireNoCollision(added, nameSetsOf(repo, traitNames, traitIdsByItem, descendant),
-                    "this item type", "subtype '" + itemName(repo, descendant) + "'");
+                    THIS_ITEM_TYPE, "subtype '" + itemName(repo, descendant) + "'");
         }
     }
 
@@ -189,7 +191,7 @@ final class SchemaMutationValidation {
             throw new IllegalArgumentException("'" + own.iterator().next() + "' is used both as a property or group and as a trait name on this item type");
         }
         if (supertypeId == null) return;
-        checkAgainstAncestors(repo, supertypeId, new NameSets(ownNames, ownTraitNames), "this item type");
+        checkAgainstAncestors(repo, supertypeId, new NameSets(ownNames, ownTraitNames), THIS_ITEM_TYPE);
     }
 
     // Re-parenting: the item type's own namespace, plus every descendant's (they all inherit the new
@@ -203,7 +205,7 @@ final class SchemaMutationValidation {
         moving.add(itemId);
         moving.addAll(descendantsOf(supertypeById, itemId));
         for (UUID member : moving) {
-            String label = member.equals(itemId) ? "this item type" : "subtype '" + itemName(repo, member) + "'";
+            String label = member.equals(itemId) ? THIS_ITEM_TYPE : "subtype '" + itemName(repo, member) + "'";
             checkAgainstAncestors(repo, proposedSupertypeId, nameSetsOf(repo, traitNames, traitIdsByItem, member), label);
         }
     }
