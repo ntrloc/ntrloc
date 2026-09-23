@@ -111,15 +111,22 @@ class DecisionAdminControllerIntegrationTest extends AbstractIntegrationTest {
         String key = "referencedDecisionTest-" + UUID.randomUUID();
         deploy(key, "v1");
         String ruleName = "delete-guard-rule-" + UUID.randomUUID();
-        authRepo.createMarkerRule(ruleName, fixture.productTypeId(), key);
+        var rule = authRepo.createMarkerRule(ruleName, fixture.productTypeId(), key);
 
-        webTestClient.delete().uri("/api/admin/dmn/decisions/{key}", key)
-                .exchange()
-                .expectStatus().isEqualTo(409)
-                .expectBody()
-                .jsonPath("$.message").value(m -> assertThat((String) m).contains(ruleName));
+        try {
+            webTestClient.delete().uri("/api/admin/dmn/decisions/{key}", key)
+                    .exchange()
+                    .expectStatus().isEqualTo(409)
+                    .expectBody()
+                    .jsonPath("$.message").value(m -> assertThat((String) m).contains(ruleName));
 
-        assertThat(fetchDecisions()).anyMatch(d -> d.key().equals(key));
+            assertThat(fetchDecisions()).anyMatch(d -> d.key().equals(key));
+        } finally {
+            // fixture.productTypeId() is a shared fixture item type used across this whole (shared,
+            // never-reset) test database -- leaving this rule enabled would make MarkerRuleEvaluationService
+            // evaluate it against every other test's items of that type for the rest of the JVM run.
+            authRepo.deleteMarkerRule(rule.id());
+        }
     }
 
     private DecisionDefinitionView deploy(String key, String labelSuffix) {
