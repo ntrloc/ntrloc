@@ -1,14 +1,73 @@
-/* Sizing/positioning within the page (width, flex) is owned by LayoutView.css, its container --
-   this file only governs how layout-sidebar arranges/styles its own content. */
+/* Sizing/positioning within the page (flex) is still owned by LayoutView.css, its container --
+   but layout-sidebar's own *width* is intrinsic to its locked/collapsed state, not an external
+   constant, so unlike other components it's set here rather than there. */
 layout-sidebar {
+  position: relative;
+  flex: none;
+  width: 220px;
+  transition: width 150ms ease;
+}
+
+layout-sidebar[data-collapsed] {
+  width: 56px;
+}
+
+/* Always absolutely positioned within layout-sidebar, even when not floating, so that collapsed
+   -> floating only ever changes this panel's own width -- never the space layout-sidebar reserves
+   in the page's flex layout. Floating is an overlay on top of content, not a reflow of it.
+
+   Width is its own literal target (220/56), not a percentage of layout-sidebar's current width --
+   a percentage would recompute against the parent's own in-flight transition value (e.g. falling
+   back to 56 the instant floating turns off mid-lock-animation, before the parent has finished
+   growing to 220), producing a visible shrink-then-expand double-motion. Literal targets let both
+   elements transition from their own current rendered value to the same destination in lockstep. */
+sidebar-panel {
+  position: absolute;
+  inset: 0;
+  width: 220px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
   padding: 16px;
+  background: var(--bg);
   border-right: 1px solid var(--border);
+  overflow: hidden;
+  transition: width 150ms ease, box-shadow 150ms ease;
+}
+
+layout-sidebar[data-collapsed]:not([data-floating]) sidebar-panel {
+  width: 56px;
+}
+
+layout-sidebar[data-floating] sidebar-panel {
+  box-shadow: var(--shadow);
+  z-index: 20;
+}
+
+.sidebar-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  align-self: flex-start;
+  margin-bottom: 16px;
+  padding: 6px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.sidebar-toggle:hover {
+  background: var(--primary-bg);
+  color: var(--text-h);
 }
 
 .sidebar-nav {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  min-width: 0;
 }
 
 .sidebar-nav-item {
@@ -25,6 +84,11 @@ layout-sidebar {
   text-align: left;
   text-decoration: none;
   cursor: pointer;
+  white-space: nowrap;
+}
+
+.sidebar-nav-item svg {
+  flex: none;
 }
 
 .sidebar-nav-item:hover {
@@ -36,4 +100,22 @@ layout-sidebar {
   background: var(--primary-bg);
   color: var(--primary);
   font-weight: 500;
+}
+
+/* Collapsed-and-not-floating is the only state too narrow for labels -- every label but the
+   active section's disappears; the active one rotates in place instead, so the rail always shows
+   which section is currently open (both locked and floating are full width, so neither needs
+   this). */
+layout-sidebar[data-collapsed]:not([data-floating]) .sidebar-nav-item:not(.active) .sidebar-nav-label {
+  display: none;
+}
+
+layout-sidebar[data-collapsed]:not([data-floating]) .sidebar-nav-item.active {
+  flex-direction: column;
+  padding-block: 10px;
+}
+
+layout-sidebar[data-collapsed]:not([data-floating]) .sidebar-nav-item.active .sidebar-nav-label {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
 }
