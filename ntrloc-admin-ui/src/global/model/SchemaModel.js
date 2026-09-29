@@ -59,6 +59,37 @@ function toItemTypes(adminSchema) {
   }))
 }
 
+function toItemTypeDetail(adminSchema, itemTypeId) {
+  const item = adminSchema.items.find((it) => it.id === itemTypeId)
+  if (!item) return null
+  return {
+    id: item.id,
+    name: item.name,
+    description: item.description,
+    abstractType: item.abstractType,
+  }
+}
+
+// Only the item type's own top-level properties/groups -- a property group's own nested
+// properties/groups are that group's own concern once property editing exists, not something this
+// first pass needs to walk into.
+function toItemTypeProperties(adminSchema, itemTypeId) {
+  const item = adminSchema.items.find((it) => it.id === itemTypeId)
+  if (!item) return []
+  const properties = item.properties.map((property) => ({
+    id: property.id,
+    name: property.name,
+    kind: 'property',
+    type: property.type,
+  }))
+  const groups = item.groups.map((group) => ({
+    id: group.id,
+    name: group.name,
+    kind: 'group',
+  }))
+  return [...properties, ...groups]
+}
+
 function toTraits(adminSchema) {
   return adminSchema.traits.map((trait) => ({
     id: trait.id,
@@ -102,6 +133,8 @@ export function useSchemaModel() {
   return {
     status,
     getItemTypes: () => (cachedSchema ? toItemTypes(cachedSchema) : []),
+    getItemType: (itemTypeId) => (cachedSchema ? toItemTypeDetail(cachedSchema, itemTypeId) : null),
+    getItemTypeProperties: (itemTypeId) => (cachedSchema ? toItemTypeProperties(cachedSchema, itemTypeId) : []),
     getConcreteItemTypes: () => (cachedSchema ? concreteItemTypes(toItemTypes(cachedSchema)) : []),
     getProjectableProperties: (itemTypeId) => (cachedSchema ? projectableProperties(cachedSchema, itemTypeId) : []),
     getTraits: () => (cachedSchema ? toTraits(cachedSchema) : []),

@@ -1,0 +1,11 @@
+/* Inactive views stay mounted (not routed in/out via <Routes>) so their state -- open search
+   panes, the schema editor's selected item type, etc. -- survives switching away and back. Only
+   display toggles; nothing here ever unmounts. */
+view-gate {
+  display: none;
+  height: 100%;
+}
+
+view-gate[data-active] {
+  display: block;
+}

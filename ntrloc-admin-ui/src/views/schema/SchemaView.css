@@ -20,9 +20,24 @@ schema-view-nav {
 
 schema-view-content {
   flex: 1;
+  min-height: 0;
   padding: 16px;
+  display: flex;
+  flex-direction: column;
+
+  /* Sizing of schema-view-content's own child lives here since it's the container -- lets
+     ItemTypeDetailView's TabView fill the remaining height so its own content area can scroll
+     internally instead of growing the whole page. */
+  item-type-detail-view {
+    flex: 1;
+    min-height: 0;
+  }
 }
 
 .schema-view-error {
   color: var(--danger, #e05252);
+}
+
+.schema-view-placeholder {
+  color: var(--text);
 }

@@ -1,0 +1,48 @@
+tab-view {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+
+  /* Scoped rather than global -- shared by the active tab's background and the panel's border so
+     the two always match (the panel reads as a continuation of the active tab), without tying
+     this control to a global color token meant for other things. */
+  --tab-active-bg: color-mix(in srgb, var(--code-bg) 85%, white 15%);
+}
+
+tab-view-tabs {
+  display: flex;
+  flex: none;
+  gap: 8px;
+}
+
+.tab-view-tab {
+  flex: none;
+  padding: 10px 20px;
+  border: none;
+  /* Top corners only -- the bottom edge butts directly against tab-view-panel's border below,
+     which would look broken with rounding there too. */
+  border-radius: 8px 8px 0 0;
+  background: var(--code-bg);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.tab-view-tab:hover {
+  background: var(--primary-bg);
+  color: var(--text-h);
+}
+
+.tab-view-tab[aria-selected='true'] {
+  background: var(--tab-active-bg);
+  color: var(--text-h);
+  font-weight: 500;
+}
+
+tab-view-panel {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid var(--tab-active-bg);
+}
