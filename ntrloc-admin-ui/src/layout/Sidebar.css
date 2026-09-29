@@ -29,7 +29,7 @@ sidebar-panel {
   display: flex;
   flex-direction: column;
   padding: 16px;
-  background: var(--bg);
+  background: var(--bg-sidebar);
   border-right: 1px solid var(--border);
   overflow: hidden;
   transition: width 150ms ease, box-shadow 150ms ease;

@@ -4,6 +4,7 @@ layout-navbar {
   display: flex;
   align-items: center;
   padding-inline: 20px;
+  background: var(--bg-nav);
   border-bottom: 1px solid var(--border);
 }
 
