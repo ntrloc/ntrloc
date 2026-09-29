@@ -186,9 +186,9 @@ class BinaryPartitionManagerImplIntegrationTest extends AbstractIntegrationTest 
         assertThat(((Number) property.metadata().get("length")).longValue()).isEqualTo(content.length);
         assertThat(property.metadata()).containsKey("mimeType");
         @SuppressWarnings("unchecked")
-        var hashes = (Map<String, Object>) property.metadata().get("hashes");
-        assertThat(hashes).containsEntry("sha256", sha256Hex(content));
-        assertThat(hashes).containsEntry("md5", property.md5());
+        var hash = (Map<String, Object>) property.metadata().get("hash");
+        assertThat(hash).containsEntry("sha256", sha256Hex(content));
+        assertThat(hash).containsEntry("md5", property.md5());
     }
 
     // A real upload can't be made to produce two matching hashes with a different length -- that

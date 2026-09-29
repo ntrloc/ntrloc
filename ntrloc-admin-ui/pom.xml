@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.ntrloc</groupId>
+        <artifactId>ntrloc</artifactId>
+        <version>1.0.2-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>ntrloc-admin-ui</artifactId>
+    <packaging>pom</packaging>
+
+    <properties>
+        <!-- No Java here: packaging=pom keeps the inherited compiler/surefire/jacoco/source-plugin
+             executions from the root pom harmless no-ops, the same way release already
+             coexists with them. Set to true (e.g. -Dfrontend.skip=true) to skip the frontend build
+             for fast local iteration when the Vite dev server (npm run dev) is already handling it
+             separately. -->
+        <frontend.skip>false</frontend.skip>
+    </properties>
+
+    <build>
+        <plugins>
+            <!-- Installs Node/npm local to this build (node/, gitignored) rather than assuming the
+                 machine running the build already has them, then npm install + npm run build. No
+                 backend consumes this module's output yet (it's a standalone experiment for now):
+                 vite.config.js still builds to its own default dist/, not copied anywhere. -->
+            <plugin>
+                <groupId>com.github.eirslett</groupId>
+                <artifactId>frontend-maven-plugin</artifactId>
+                <version>1.15.1</version>
+                <configuration>
+                    <workingDirectory>.</workingDirectory>
+                    <skip>${frontend.skip}</skip>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>install node and npm</id>
+                        <goals>
+                            <goal>install-node-and-npm</goal>
+                        </goals>
+                        <configuration>
+                            <!-- Vite 8's own stated minimum is 22.12+; matches
+                                 ntrloc-experimental/ntrloc-dam's own pin for the same reason. -->
+                            <nodeVersion>v22.14.0</nodeVersion>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>npm install</id>
+                        <goals>
+                            <goal>npm</goal>
+                        </goals>
+                        <configuration>
+                            <arguments>install</arguments>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>npm build</id>
+                        <goals>
+                            <goal>npm</goal>
+                        </goals>
+                        <configuration>
+                            <arguments>run build</arguments>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

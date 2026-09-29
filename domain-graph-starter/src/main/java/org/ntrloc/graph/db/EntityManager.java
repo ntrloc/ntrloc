@@ -1,12 +1,12 @@
 package org.ntrloc.graph.db;
 
-import org.ntrloc.graph.db.mutation.MutationRequest;
-import org.ntrloc.graph.db.mutation.MutationResponse;
+import org.ntrloc.graph.mutation.MutationRequest;
+import org.ntrloc.graph.mutation.MutationResponse;
 import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
-import org.ntrloc.graph.db.projection.CollectionProjectionSpec;
-import org.ntrloc.graph.db.projection.ProjectedItem;
-import org.ntrloc.graph.db.projection.ProjectionResult;
-import org.ntrloc.graph.db.projection.SingleItemProjectionSpec;
+import org.ntrloc.graph.projection.CollectionProjectionSpec;
+import org.ntrloc.graph.projection.ProjectedItem;
+import org.ntrloc.graph.projection.ProjectionResult;
+import org.ntrloc.graph.projection.ItemProjectionSpec;
 import org.springframework.lang.Nullable;
 
 import java.util.Optional;
@@ -20,7 +20,7 @@ import java.util.UUID;
 // this method exists now so callers have one seam to depend on regardless.
 public interface EntityManager {
 
-    Optional<ProjectedItem> project(SingleItemProjectionSpec spec, String binaryBaseUrl, NtrlocPrincipal principal);
+    Optional<ProjectedItem> project(ItemProjectionSpec spec, String binaryBaseUrl, NtrlocPrincipal principal);
 
     ProjectionResult project(CollectionProjectionSpec spec, String binaryBaseUrl, NtrlocPrincipal principal);
 

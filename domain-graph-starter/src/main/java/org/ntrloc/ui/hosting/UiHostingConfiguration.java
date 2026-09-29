@@ -37,5 +37,14 @@ public class UiHostingConfiguration implements WebFluxConfigurer {
                     .resourceChain(true)
                     .addResolver(new SpaFallbackResourceResolver());
         }
+
+        // Plain static serving for AdminUiExtensionScanner's discoveries -- no SPA fallback here,
+        // unlike the mounts above: an extension bundle is a single file loaded into the core admin
+        // UI's own page, never its own standalone page with client-side sub-routes of its own.
+        // classpath: (not classpath*:) still aggregates across every JAR for an ordinary resource
+        // lookup like this -- only a wildcard *pattern* scan (AdminUiExtensionScanner's own) needs
+        // the classpath*: form.
+        registry.addResourceHandler("/admin-ui-extensions/**")
+                .addResourceLocations("classpath:/static/admin-ui-extensions/");
     }
 }

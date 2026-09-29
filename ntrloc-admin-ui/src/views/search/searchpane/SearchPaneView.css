@@ -1,0 +1,11 @@
+/* Sizing of SearchPaneView's own body children (flex: none/1, min-height) lives here since it's
+   their container -- each child's own appearance stays with its own rule/file. PaneView owns the
+   shell/header these sit below. */
+search-pane-controls-view {
+  flex: none;
+}
+
+search-pane-results-view {
+  flex: 1;
+  min-height: 0;
+}

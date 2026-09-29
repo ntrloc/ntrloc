@@ -150,9 +150,9 @@ function predicateHasErrors(predicate) {
   }
 }
 
-// Builder for org.ntrloc.graph.db.projection.Predicate trees (AND/OR/NOT/PROPERTY_EXISTS/
+// Builder for org.ntrloc.graph.projection.Predicate trees (AND/OR/NOT/PROPERTY_EXISTS/
 // PROPERTY_VALUE -- see Predicate.java's @JsonSubTypes) -- the same predicate language the
-// /api/entity/projection endpoint already executes. Built decoupled from schemaViewModel/any other
+// /api/projection/collection endpoint already executes. Built decoupled from schemaViewModel/any other
 // global store on purpose: it's driven purely by `.data = { predicate, properties, onChange }` and
 // mutates/replaces its own `predicate` value, calling `onChange(newPredicateOrNull)` on every edit
 // instead of reaching for a global notify function, so the exact same element can be dropped into

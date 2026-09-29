@@ -1,0 +1,22 @@
+/* Grid, not flex-wrap: a wrapped flex line's cross-size (height, for this row-direction container)
+   is computed from its tallest item's content size regardless of min-height: 0 -- that override
+   only applies along the flex container's main axis (width here), a well-known flexbox asymmetry
+   Grid doesn't have. grid-auto-rows: 1fr correctly distributes this container's own definite height
+   across rows and lets a min-height: 0 item (pane-view) actually shrink to its track's size instead
+   of forcing the row to grow to fit its content. */
+search-contents-view {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+  grid-auto-rows: 1fr;
+  gap: 16px;
+  padding: 16px;
+  min-height: 0;
+
+  /* Simple grid for now -- the old admin's more deliberate horizontal/vertical space-dividing
+     algorithm (see ntrloc-search.js) is a distinct, later step, not this one. Targets pane-view
+     generically since both SearchPaneView and ItemPaneView render one as their root. */
+  pane-view {
+    min-height: 0;
+    min-width: 0;
+  }
+}

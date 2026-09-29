@@ -1,0 +1,39 @@
+package org.ntrloc.graph.projection;
+
+import org.springframework.lang.Nullable;
+
+import java.util.List;
+import java.util.Map;
+
+// edit mirrors ProjectedItem.properties' own nested shape exactly (Map<String,Object>, a leaf
+// value or a further nested Map) rather than a flat dotted-path list, so a client already walking
+// properties can walk edit the same way. Each node carries two independently-optional keys:
+// "scalars" -- a List<String> of this node's own directly-writable scalar leaf names, or the
+// single literal "*" (never a real property name -- see the property-name grammar) meaning every
+// scalar leaf at this level is writable; and "groups" -- a Map<String, Object> from a child
+// property group's name (a trait's contributions appear as a group named for the trait) to its own same-shaped node, present only for a child that has *some*
+// writable property (scalar or nested) beneath it. A node with neither key is never emitted --
+// omission from edit means "not writable," the same convention filterPropertiesByReadGrant already
+// uses for read. Deliberately NOT collapsed further than this (no "groups": "*" shortcut for a
+// fully-writable subtree, even though the tree-walk needed to discover that is identical either
+// way) -- a value's shape (string vs. further object) would otherwise depend on how *complete* a
+// grant happens to be, which is exactly the ambiguity this shape exists to avoid.
+//
+// No separate superuser flag: a superuser's edit is the real, fully-enumerated tree (every node's
+// "scalars" is "*", every group child present), same code path as everyone else -- one shape for
+// every principal, at the cost of walking (and returning) the whole schema tree even though the
+// answer is always "everything." Chosen deliberately over a cheaper wildcard/flag shortcut,
+// consistent with the rest of this design: a value's meaning should never depend on which
+// principal is asking.
+//
+// createLinks is a third, independent capability, not part of the edit tree -- it names the link
+// perspectives (by name) this item type defines that this principal may originate a *new* link
+// through, from this item, anchored to the item's own marker via marker_grant_link_perspective.
+// can_create (see docs/ntrloc-marker-admin-ui-design-notes.md, the link:create section). Unlike
+// edit/delete, this has no meaning at all on a link's own permissions (a link doesn't originate
+// further links) -- it's always null there. Null (not empty) when nothing is creatable, same
+// omission convention as edit and ProjectedItemState. This is advisory, same as
+// ProjectedItemState.startable: it tells a client which perspectives are worth trying, not a
+// guarantee -- an actual link-create mutation still needs a valid, readable target item, which
+// can't be known generically here (see RegisterPartitionManager.creatableLinkPerspectiveNames).
+public record ProjectedItemPermissions(@Nullable Map<String, Object> edit, boolean delete, @Nullable List<String> createLinks) {}

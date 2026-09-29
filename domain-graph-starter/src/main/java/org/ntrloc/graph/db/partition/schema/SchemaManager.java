@@ -9,6 +9,7 @@ import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemDefin
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminSchemaView;
 import org.ntrloc.graph.db.partition.schema.definition.view.calculated.SchemaView;
 import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
+import org.ntrloc.graph.events.ClusterEventBroadcaster;
 import org.springframework.boot.sql.init.dependency.DependsOnDatabaseInitialization;
 import org.springframework.stereotype.Service;
 
@@ -51,6 +52,9 @@ public class SchemaManager {
     private final PermissionService permissionService;
     private final ClusterService clusterService;
     private final ITopic<String> schemaChangedTopic;
+    // New, parallel signal -- see ClusterEventBroadcaster's own comment. Published alongside
+    // schemaChangedTopic above, not instead of it, while the new SSE relay is proven out.
+    private final ClusterEventBroadcaster clusterEventBroadcaster;
 
     // AtomicReference, not a plain volatile field: rebuildCache() can now run on the Hazelcast
     // message-listener thread (a remote node's change arriving) as well as on whatever thread
@@ -65,7 +69,8 @@ public class SchemaManager {
                           ItemMutationApplier itemMutationApplier, TraitMutationApplier traitMutationApplier,
                           PropertyMutationApplier propertyMutationApplier, LinkMutationApplier linkMutationApplier,
                           StateMutationApplier stateMutationApplier, ControlledListMutationApplier controlledListMutationApplier,
-                          PermissionService permissionService, ClusterService clusterService) {
+                          PermissionService permissionService, ClusterService clusterService,
+                          ClusterEventBroadcaster clusterEventBroadcaster) {
         this.controlledListManager = controlledListManager;
         this.adminViewBuilder = adminViewBuilder;
         this.calculatedViewBuilder = calculatedViewBuilder;
@@ -77,6 +82,7 @@ public class SchemaManager {
         this.controlledListMutationApplier = controlledListMutationApplier;
         this.permissionService = permissionService;
         this.clusterService = clusterService;
+        this.clusterEventBroadcaster = clusterEventBroadcaster;
         rebuildCache();
 
         this.schemaChangedTopic = clusterService.getTopic(SCHEMA_CHANGED_TOPIC);
@@ -109,6 +115,7 @@ public class SchemaManager {
     public void refreshCache() {
         rebuildCache();
         schemaChangedTopic.publish(UUID.randomUUID().toString());
+        clusterEventBroadcaster.publish("schemaChanged", UUID.randomUUID().toString());
     }
 
     // Dispatches to one applier per mutation family (item, trait, property, link, state machine)

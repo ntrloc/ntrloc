@@ -19,6 +19,15 @@ import reactor.core.publisher.Sinks;
 // redundant -- but a local admin's own edit should still refresh their own other browser tabs/
 // panes, not just other cluster nodes, so this listener reacts to every message, including ones
 // published by this same node.
+//
+// DEPRECATED, pending removal: superseded by org.ntrloc.graph.events.ClusterEventBroadcaster.
+// SchemaManager.refreshCache() now ALSO publishes to ClusterEventBroadcaster in parallel (see its
+// own comment) -- proven working end to end against the React admin UI's SchemaView. Left alone
+// deliberately for now, unmodified, alongside its existing consumer (SchemaAdminController.
+// schemaEvents / schema-events.js in the vanilla admin UI). Remove this class, SchemaManager's own
+// schemaChangedTopic field, and the /api/admin/schema/events endpoint once both admin UIs have
+// fully moved onto the new shared /api/events endpoint; see TaskEventBroadcaster for the same
+// deprecation, same reasoning.
 @Component
 public class SchemaChangeBroadcaster {
 

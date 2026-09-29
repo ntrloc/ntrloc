@@ -1199,7 +1199,7 @@ class NtrlocSearch extends HTMLElement {
   }
 
   // AND-ed PROPERTY_VALUE/EQUALS predicates, one per filter row that has both a field and a
-  // non-empty value -- matches org.ntrloc.graph.db.projection's Predicate/PropertyValuePredicate/
+  // non-empty value -- matches org.ntrloc.graph.projection's Predicate/PropertyValuePredicate/
   // AndPredicate JSON shape exactly (Jackson's @JsonTypeInfo "type" discriminator). A single
   // qualifying row is sent unwrapped rather than as a one-element AND, purely to keep the payload
   // minimal; the backend would accept either shape identically.
@@ -1256,7 +1256,7 @@ class NtrlocSearch extends HTMLElement {
     this.render();
     const start = performance.now();
     try {
-      const response = await fetch('/api/entity/projection', {
+      const response = await fetch('/api/projection/collection', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -1510,7 +1510,7 @@ class NtrlocSearch extends HTMLElement {
 
   async startStateMachineForItem(id, itemId, machineName) {
     try {
-      const response = await fetch(`/api/entity/${itemId}/state-machines/${encodeURIComponent(machineName)}/start`, {
+      const response = await fetch(`/api/item/${itemId}/state-machines/${encodeURIComponent(machineName)}/start`, {
         method: 'POST', credentials: 'include',
       });
       if (!response.ok) throw new Error((await response.text()) || 'Start failed: ' + response.status);
@@ -1522,7 +1522,7 @@ class NtrlocSearch extends HTMLElement {
 
   async executeTransitionForItem(id, itemId, machineName, transitionId) {
     try {
-      const response = await fetch(`/api/entity/${itemId}/state-machines/${encodeURIComponent(machineName)}/transitions/${transitionId}`, {
+      const response = await fetch(`/api/item/${itemId}/state-machines/${encodeURIComponent(machineName)}/transitions/${transitionId}`, {
         method: 'POST', credentials: 'include',
       });
       if (!response.ok) throw new Error((await response.text()) || 'Transition failed: ' + response.status);
@@ -2291,7 +2291,7 @@ class NtrlocSearch extends HTMLElement {
   // (LIST/SET cardinality) and binary refs are objects in JS but render as plain values, same as
   // any scalar, so both count as "scalar" for ordering purposes too.
   isObjectProperty(val) {
-    return !!(val && typeof val === 'object' && !Array.isArray(val) && !(val.metadata && val.url));
+    return !!(val && typeof val === 'object' && !Array.isArray(val) && !(val.id && val.url));
   }
 
   // Scalar properties before OBJECT ones, alphabetical within each group -- so display order
@@ -2425,11 +2425,11 @@ class NtrlocSearch extends HTMLElement {
 
   renderPropertyValue(val) {
     if (val == null || val === '') return '<span class="value-null">(empty)</span>';
-    if (val && typeof val === 'object' && val.metadata && val.url) {
-      if (val.metadata.mimeType && val.metadata.mimeType.startsWith('image/')) {
+    if (val && typeof val === 'object' && val.id && val.url) {
+      if (val.mimeType && val.mimeType.startsWith('image/')) {
         return `<img class="prop-image" src="${escapeHtml(val.url)}" alt="image">`;
       }
-      return `<span class="value-text">${escapeHtml(val.metadata.mimeType || 'unknown type')} (${Math.round((val.metadata.length || 0) / 1024)}KB)</span>`;
+      return `<span class="value-text">${escapeHtml(val.mimeType || 'unknown type')} (${Math.round((val.length || 0) / 1024)}KB)</span>`;
     }
     if (val && typeof val === 'object') {
       return `<span class="value-text">${escapeHtml(JSON.stringify(val))}</span>`;

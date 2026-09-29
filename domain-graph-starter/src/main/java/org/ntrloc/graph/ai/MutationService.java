@@ -1,9 +1,9 @@
 package org.ntrloc.graph.ai;
 
 import org.ntrloc.graph.db.EntityManager;
-import org.ntrloc.graph.db.mutation.MutationRequest;
-import org.ntrloc.graph.db.mutation.MutationResponse;
-import org.ntrloc.graph.db.mutation.MutationValidationException;
+import org.ntrloc.graph.mutation.MutationRequest;
+import org.ntrloc.graph.mutation.MutationResponse;
+import org.ntrloc.graph.mutation.MutationValidationException;
 import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
 import org.ntrloc.graph.db.partition.security.PersonalAccessTokenService;
 import org.slf4j.Logger;

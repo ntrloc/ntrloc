@@ -773,3 +773,275 @@ non-empty, and per-request narrowing is superseded by the exclusion config; a ca
 post-processing beyond that does so downstream (BPMN/delegate), not via new gRPC surface. See §8's
 own "Revised 2026-09-22" note for the storage-side half of this (the `embedded` key renamed to
 `metadata`) and the current final JSON shape.
+
+---
+
+## 10. Binary dynamic properties: a registry, and what it unlocks (2026-09-26)
+
+Prompted by a concrete bug, not a speculative concern: the admin UI's new property-selection control
+let a caller ask for `File.content.metadata.length`, and the response came back with the *entire*
+binary object (id/url/full `extracted`/`derived` tree) instead of anything resembling a narrow
+selection — and the dropdown offered `length` as the *only* addressable metadata field, despite the
+real, live metadata blob (ImageMagick output plus EXIF) having 80-100+ distinct leaf paths on a single
+photo. Both symptoms trace to the same root cause: `.metadata.<path>` addressing
+(`BINARY_METADATA_PATH_TYPES`, §8) was built for sort/filter, where "narrow" is inherent (one typed
+scalar for comparison) — it was never designed for property-*selection*, and got reused there anyway.
+Chasing that bug back far enough arrives at exactly the unresolved question §8 already flagged:
+`metadata.<path>` is deliberately open-ended, and nothing gives a client, in advance of a query, a way
+to know what's actually addressable. That is the same problem §6's dynamic-property registry exists to
+solve for item-level dynamic roots — this section works out why that design doesn't transfer directly,
+and what does.
+
+**Rejected: denormalizing metadata into the referencing item's own register row.** Considered because
+it would let ordinary JSONB-path restriction/sort/filter (already built for every other property) just
+work, with no BINARY-specific code at all. Rejected on inspection: binaries are content-addressed
+specifically so identical bytes are stored once and shared by any number of items — denormalizing
+metadata into every referencing item's row throws that away for metadata specifically. Worse,
+`register_item` rows are immutable-per-version (delete-old-committed/insert-new-committed, never
+patched in place), so an update to shared content's metadata (re-extraction, an extractor upgrade)
+would mean re-materializing a new row version for every item that happens to reference it, rather than
+one `binary_content` update instantly visible via the existing join. It also worsens the existing
+extraction-vs-attachment race (§8, "still open," cache-vs-record): today the join always reflects
+whatever's currently in `binary_content.metadata`, live; a denormalized copy would go stale the moment
+extraction completes after attachment, with no propagation-on-completion mechanism built. And it
+doesn't solve the actual problem anyway — knowing *where the data lives* doesn't tell a client, in
+advance, which paths are valid to ask for.
+
+**Why §6's registry shape doesn't transfer.** An item-level dynamic root is parented to one item type
+(or trait, or static group) — a fixed, known scope to register discoveries against. A binary has no
+such scope: it's independent of any item, and the same `binary_content` row (deduped by hash) can back
+any number of (item type, property) pairs simultaneously — the same JPEG bytes could be `Photo.propA`
+for one item and `Person.avatar` for another, at once. There is no single item type to hang a registry
+off of.
+
+**The registry, as built out here.** Keyed by the *binary property's own schema id* (e.g.
+`File.content`'s id), not `(itemTypeId, propertyId)` — a property id already belongs to exactly one
+declaring item type or trait, so the type is implied, not a separate key component. Two tables, not
+one:
+
+- `binary_dynamic_property` — a global catalog: id, dot-path (`extracted.exif.colorspace`), and an
+  observed/hinted type, mirroring §6's dynamic-property type handling (first-observed wins unless an
+  admin hint is set, later mismatches fall back to text). Global, not scoped per property, because the
+  same path string means the same thing regardless of which property happens to reference a binary
+  carrying it — and where type genuinely could vary, it varies with the *source data*, not with which
+  property/item type references it. Concrete evidence, not a hypothetical: a real captured photo's
+  EXIF has `"FNumber":"9/5"` — a rational-notation *string*, not a native number. Any such divergence
+  would be scattered across whichever binaries happen to be attached to whichever properties, with no
+  correlation to property boundaries — so type belongs on the path, not on a per-property join.
+- A join table, `(binary_property_id, dynamic_property_id, reference_count)` — **not** a
+  `(binary_content_id, dynamic_property_id)` mapping, which was considered and rejected for scale: a
+  single real photo flattens to 80-100+ leaf paths, so a per-binary mapping would mean tens to hundreds
+  of millions of rows at real DAM scale, written on every upload, with no natural pruning of its own.
+  The counter table's size is bounded by (distinct properties) × (distinct paths ever observed under
+  each) — orders of magnitude smaller.
+
+**Permissions: none needed.** §8 already established that reading a binary implies reading all of its
+intrinsic facts — no per-fact grant is enforceable or meaningful. That holds here unchanged: unlike
+item-level dynamic properties (§7), which need their own auto-grant-at-discovery machinery because a
+freshly-discovered one starts with zero grants, binary dynamic properties need no grant table and no
+auto-grant step at all.
+
+**Identity, and why it's lighter than §6's.** The catalog row still needs a real id (it's the join
+table's FK target, and what sort/filter would key a type lookup off), but it doesn't carry §6's
+rename-stability pressure — item-level dynamic properties mint permanent ids specifically because
+grants target ids and a rename must not silently disconnect one. With no grants here at all, that
+pressure doesn't exist; the id is structural, not a stability guarantee anything else depends on.
+
+**Population: three triggers, one shared reconciliation path.**
+1. *Attach* — an item's property gets set to a binary (create or update). Flatten the binary's current
+   `metadata`; for each path, upsert the catalog row if new, then upsert-or-increment the
+   `(binary_property_id, dynamic_property_id)` counter.
+2. *Detach/repoint* — an item's property changes away from a binary (repointed, cleared, or the item
+   deleted). Flatten the *departing* binary's metadata; decrement each path's counter; delete the join
+   row if it hits zero. A shared binary falls out correctly for free: if two items both currently point
+   the same property at the same binary, one detaching doesn't zero the count, because the other's
+   reference still holds it up.
+3. *Re-extraction of an already-connected binary* (config change, extractor upgrade) — not an item
+   mutation at all, so it can't reuse triggers 1-2 as-is. Requires: (a) reading the *old* metadata
+   before it's overwritten, in the same transaction as the write; (b) diffing old vs. new into
+   `addedPaths`/`removedPaths`; (c) finding every distinct property currently referencing that binary
+   (`register_binary_property` by `binary_id` — possibly more than one property or item type sharing
+   the content); (d) for each such property, adjusting the counter not by ±1 but by the actual current
+   reference count for that specific `(property, binary)` pair (`COUNT(*) ... WHERE property_id=X AND
+   binary_id=Y`), since multiple items can share one binary under one property. Getting this last part
+   wrong (assuming ±1 always) would desynchronize the counters the first time a shared binary is
+   reprocessed.
+
+Triggers 1-2 run inside the same database transaction as the register mutation itself — verified
+directly, not assumed: `LedgerRegisterCoordinatorImpl.prepare()`/`.commit()`/`.abort()` are already
+`@Transactional`, and `prepare()` is what calls `stageItemCreate`/`stageItemChange` (which write
+`register_binary_property`), so the counter adjustments piggyback on that existing boundary with no
+separate transactional fix needed. Catalog-row inserts need the same minting-concurrency discipline §6
+already uses for item-level dynamic properties — a unique constraint on the path column with
+`INSERT ... ON CONFLICT (path) DO NOTHING`, not a cluster lock — to avoid two concurrent
+first-observations of a brand-new path racing into duplicate catalog rows.
+
+Trigger 3's diff also requires the extraction write itself to become a real replace of `extracted`/
+`derived`, not the shallow JSONB merge (`metadata = metadata || :response::jsonb`) currently in
+`ExtractBinaryMetadataDelegate.writeMetadata` — a merge only sets/overwrites keys present in the new
+response, it never removes one absent from it, so a narrowed exclusion config would never actually
+cause fields to disappear under a merge regardless of the registry. **Decided:** move this write (plus
+the new diff/reconciliation logic) out of the delegate and into `BinaryPartitionManager` — e.g. a new
+`updateMetadata(UUID binaryContentId, String responseJson)` — since the diff needs transactional
+read-then-write access to the current value, and actual partition/storage writes belong there, not in
+a BPMN delegate. The delegate correspondingly shrinks to "call the media processor, hand the JSON to
+`BinaryPartitionManager`" — a first, concrete step toward addressing that the delegate currently does
+too much, though the fuller split (separating the gRPC-calling concern from everything else) stays
+explicitly deferred. Housekeeping decided alongside this: `ExtractBinaryMetadataDelegate` (and
+`HelloWorldDelegate`, now redundant as a reference stub) move out of `org.ntrloc.graph.db.partition.*`
+into `org.ntrloc.graph.process.delegate` — `db.partition.*` is for actual partition/storage
+interaction, and a process delegate isn't that. Trigger 3's own *invocation* mechanism — how/when
+re-extraction of existing content actually gets kicked off — is still the deferred "cache vs. record"
+question from §8; this section only fixes what the reconciliation logic must do once that trigger
+exists, not the trigger itself.
+
+**Schema representation.** The instinct to keep discovered paths out of the cached, broadcast admin
+schema (mirroring §6's "`SchemaManager` never loads dynamic tables") turned out to be solving the wrong
+layer of the problem. The actual cost being avoided — a full schema rebuild plus a cluster-wide
+broadcast — is a property of the *current, naive* mechanism for *structural* schema changes, which
+legitimately have wide blast radius through trait/supertype inheritance (`SchemaAdminViewBuilder`
+re-derives effective views across the whole chain). A newly-observed dynamic path has none of that: no
+inheritance implications, purely local and additive to one property. **Decided:** build a second,
+lighter-weight update path alongside the existing full `reload()`/broadcast mechanism — a distinct
+broadcast message carrying just the delta (which property, which path, added or removed), applied by
+each node as a small, targeted copy-with-one-field-changed patch to its cached
+`AtomicReference<AdminSchema>`, not a full re-derive from Postgres. With that in place, there's no
+remaining reason to keep the data out of the schema itself — clients read it the same way they already
+read `sortableFields`, no separate lookup API.
+
+Concrete shape: `AdminPropertyDefinitionView` becomes a sealed interface; a new
+`AdminBinaryPropertyDefinitionView` record variant (meaningful only when `type() == BINARY`) carries a
+`dynamicFields` list (path + type), populated from every join row with `reference_count > 0` for that
+property. This is a variant of the *same* property hierarchy, not a wholly separate kind of schema node
+the way `PropertyGroup` had to become when `PropertyType.OBJECT` was retired (§4) — appropriate because
+a BINARY property remains a genuine property (valued, grantable), unlike OBJECT, which had neither.
+Blast radius, to account for during implementation: every existing `property.type() == PropertyType.
+BINARY` call site (at least in `SchemaContentResolver`) needs to become an `instanceof`/pattern-match
+to actually reach `dynamicFields`; the `withDefinedIn`-style copy helper used by trait/supertype
+inheritance-tagging needs an equivalent on the binary variant, or `dynamicFields` could be silently
+dropped the first time a BINARY property is copied during effective-view resolution.
+
+**What the registry unlocks, and the resulting request grammar.** Once a path is in `dynamicFields`,
+its full dotted path becomes usable both for sort/filter and for property-selection in projection
+requests — but the two have different realistic shapes. Sort/filter is expected to stay narrow in
+practice — a single typed comparison, e.g. "Photos where `File.content.metadata.extracted.exif.
+colorspace == 'CMYK'`" — and needs the existing sort mechanism (`sortExpressionFor`/
+`metadataJsonExtraction`, today hardcoded to `BINARY_METADATA_PATH_TYPES`'s tiny fixed map) to become
+fully generic: walk however many JSON levels the *requested* path names, cast using whatever type the
+*registry* recorded, rather than a small fixed map. Filter/facet on binary attributes was already
+flagged in §8 as "not yet extended to `translatePredicate`/`buildTermsFacetFilterFragment`" — still
+true, now with the same genericization requirement as sort.
+
+Property-selection is expected to be broader, and can legitimately ask for everything under a subtree
+(`File.content.metadata`) or one specific deep leaf (`File.content.metadata.extracted.exif.
+FocalLength`). Requesting a specific leaf means genuine per-field response slicing — new work, since
+`assembleBinaryValue`/`mergeReadableBinaryProperties` today only know "return the whole binary object or
+nothing." For consistency, the existing small hardcoded set (`length`, `mimeType`, `hashes.*`) gets the
+same slicing treatment once it exists — there's no principled reason a discovered field slices narrowly
+while a built-in one doesn't; this supersedes the live stopgap fix that currently returns the whole
+binary object for any `.metadata.*` property-selection request. **Decided:** `id`/`url` are always
+included in a binary's response regardless of what's requested — they're structural facts about the
+binary value, not opt-in "properties" a caller selects among; only the `metadata` subtree is subject to
+slicing.
+
+**Decided: bare prefix, not a glob.** Naming a non-leaf prefix (`File.content.metadata`, no trailing
+wildcard character) means "everything under this subtree" — unambiguous the same way a bare property
+*group* name already is (a group is never itself a leaf), and consistent with §8's existing
+"address exactly what you see, no shortcut forms" rule rather than introducing a new syntax element.
+Implemented as returning the raw stored value verbatim, unsliced — the registry is never consulted for
+this case (its job is discovery, and resolving one *specific* narrow path into a JSON walk and a type
+for slicing or casting), which also means "everything" always reflects exactly what's actually stored,
+with no risk of drifting from the counter/removal bookkeeping's own eventual consistency. **Also
+decided:** the same bare-prefix-means-whole-subtree rule extends to ordinary (non-binary) property
+groups, which have an identical, pre-existing gap today — `restrictToRequestedProperties` only ever
+compares against full *leaf* paths, so requesting a bare group name like `dimensions` (no leaf suffix)
+currently matches nothing at all, silently returning no properties under it.
+
+**Implementation checkpoint (2026-09-26): backend built and live-verified end to end.** Everything
+this section describes above is implemented, covered by tests (`BinaryDynamicPropertyRegistrar`'s own
+unit-style integration tests, `RegisterPartitionManager`'s attach/detach/delete/re-extraction
+reconciliation tests, the schema-representation test proving `dynamicFields` actually reaches
+`AdminBinaryPropertyDefinitionView`, and the projection tests proving bare/prefix/specific-path
+selection all behave as designed), and confirmed live against a real running `domain-1` with real
+EXIF-bearing photos uploaded earlier in development: creating an item against an already-processed
+binary immediately (no manual cache refresh) surfaced all ~58 of that binary's discovered paths —
+every top-level ImageMagick attribute, the full `properties.exif.*`/`properties.jpeg.*` tree, and
+`hashes`/`length`/`mimeType` — in `projectableFields`, in the admin UI's property-selection dropdown,
+and requesting one specific deep path (`File.content.metadata.extracted.properties.exif.Make`) through
+that same dropdown returned exactly `{"Make":"Canon"}` nested correctly, `id`/`url` unconditionally
+included, nothing else — while photos backed by different binaries lacking that field correctly came
+back with an empty `metadata: {}}` rather than an error. One deployment note from getting this far:
+this pass edited the baseline migration in place (per this repo's own "single baseline, no incremental
+migrations" convention) rather than adding a new migration file — fine for a disposable test
+container, but it desyncs Flyway's checksum against any already-migrated persistent dev database, and
+must be reconciled there by hand (apply the new DDL directly, then update `flyway_schema_history`'s
+recorded checksum) rather than by dropping and recreating it.
+
+The specific pieces built:
+- `binary_dynamic_property` (catalog) + `binary_property_dynamic_property` (counted join), per the
+  shape above.
+- `BinaryDynamicPropertyRegistrar`: `onAttach`/`onDetach` (triggers 1-2) and `onMetadataChanged`
+  (trigger 3, scaled by live reference count per property).
+- `RegisterPartitionManager.reconcileBinaryDynamicProperties`, wired into `stageItemCreate`,
+  `stageItemChange`, and `deleteItem` (the last reads the about-to-cascade-delete binary properties
+  before issuing the delete, since `register_binary_property` cascades with the item).
+- `BinaryPartitionManager.updateMetadata`: reads the current row `FOR UPDATE`, diffs old vs. new
+  `extracted`/`derived`, replaces (not merges) them, and calls `onMetadataChanged`.
+  `ExtractBinaryMetadataDelegate` is now a thin caller of it, moved (with `BinaryMetadataExtractionTrigger`
+  and their tests) out of `db.partition.process` into `org.ntrloc.graph.process.delegate`, since a BPMN
+  delegate isn't partition-interaction code.
+- `AdminPropertyDefinitionView` is now a sealed interface (`AdminScalarPropertyDefinitionView` /
+  `AdminBinaryPropertyDefinitionView`), the latter carrying `dynamicFields` populated from the registry
+  at schema-build time (`SchemaRepository.dynamicFieldsFor`) — one extra query per BINARY property
+  found, never on the read/projection hot path.
+- The schema-refresh gap this section originally left open turned out not to be optional: without it,
+  sort/filter against a newly (or no-longer) discovered path silently used a stale cached schema —
+  caught by the existing binary-content-length sort tests failing the moment genericization (below)
+  shipped. Fixed with `scheduleSchemaRefreshAfterCommit`: deduplicated per transaction, deferred until
+  after commit via `TransactionSynchronizationManager` (never mid-transaction, which would broadcast to
+  other cluster nodes before the row they'd re-read is visible to them), and only for a *structural*
+  change (a join row actually created or deleted via Postgres's `xmax = 0` / delete-row-count checks),
+  not every reference-count increment/decrement. The partial-*schema-tree* patch (copy-with-one-field-
+  changed instead of a full rebuild) that this section originally proposed alongside it turned out to
+  be separable and was **not** built — `SchemaManager.refreshCache()`'s existing full rebuild is what
+  actually runs today, just triggered at the right, newly-added moment; that's a pure schema-cache-
+  rebuild cost on the write path, not something touching read/projection performance.
+- `RegisterPartitionManager.resolvePropertyPath`/`sortExpressionFor`: `BINARY_METADATA_PATH_TYPES` (the
+  hardcoded `{length -> LONG}` map) is deleted entirely, superseded by resolving against the leaf's own
+  `dynamicFields`. Since ordinary attach/detach already discovers `length`/`mimeType`/`hashes.*` as real
+  registry entries (they're always present in every binary's own metadata), the registry fully subsumes
+  what the hardcoded map used to hand-maintain.
+- `RegisterPartitionManager.restrictToRequestedProperties`/`assembleBinaryValue`: property-selection now
+  supports all three request shapes decided above for a BINARY leaf — bare name or bare
+  `<name>.metadata` (whole value, unsliced), and any registry-known deep path (sliced to just that
+  value, multiple such paths merging into one combined partial tree). `propertyViewsById` (a sibling
+  walk to the existing `propertyPaths`) threads the actual `AdminPropertyDefinitionView` objects through
+  so inclusion-checking can consult a BINARY leaf's `dynamicFields`.
+- `SchemaContentResolver.appendProjectableFields` also emits one flat entry per registered dynamic
+  path (`"<name>.metadata.<path>"`) alongside the bare property name, so the existing flat,
+  single-choice property-selection UI needs no frontend code change at all to offer them.
+
+**Still open, not resolved in this pass:**
+- The partial-*schema-tree* patch (avoid a full `refreshCache()` rebuild on every newly-discovered
+  path) — deliberately not pursued once the correctness fix above shipped; a pure performance
+  refinement on the write path, decoupled from the correctness fix itself, and not yet warranted
+  without evidence the full rebuild is actually a real cost in practice.
+- Trigger 3's own invocation mechanism (bulk re-extraction of existing content) — still §8's deferred
+  "cache vs. record" question; `BinaryPartitionManager.updateMetadata` is ready to be called once
+  something exists to call it.
+- Filter/facet genericization for binary attributes — sort is done; filter/facet
+  (`translatePredicate`/`buildTermsFacetFilterFragment`) still need the equivalent registry-driven
+  path resolution.
+- Whether `dynamicFields` presents the small, always-present intrinsic set (`length`, `mimeType`,
+  `hashes.*`) and the open-ended `extracted`/`derived` set uniformly, or distinguishes them somehow —
+  today they're uniform (both just entries in the same list), which live verification confirmed reads
+  fine in the admin UI dropdown even at ~58 entries for one property, but a UI grouping them visually
+  is a reasonable later refinement, not required.
+- The fuller split of `ExtractBinaryMetadataDelegate`'s remaining responsibilities (separating the
+  gRPC-calling concern from the rest) beyond the `updateMetadata` move — explicitly deferred.
+- Registry cleanup/backfill for data that predates the registry tables' existence: this pass's own live
+  verification hit exactly this — existing `register_binary_property` rows from before the tables
+  existed have no registry entries until their property is genuinely re-attached (a new create/update
+  touching that binary). No backfill job exists; not needed for a fresh deployment (baselined from
+  scratch), only relevant when evolving an existing populated database, as this pass's own local dev
+  environment was.

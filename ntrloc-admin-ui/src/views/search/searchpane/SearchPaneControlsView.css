@@ -1,0 +1,9 @@
+/* Sizing/positioning within SearchPane (flex: none) is owned by SearchPane.css, its container --
+   this file only governs how search-pane-controls-view arranges/styles its own content. */
+search-pane-controls-view {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border-bottom: 1px solid var(--border);
+}

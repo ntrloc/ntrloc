@@ -1,9 +1,9 @@
 package org.ntrloc.graph.db;
 
 import org.ntrloc.graph.db.coordinator.LedgerRegisterCoordinator;
-import org.ntrloc.graph.db.mutation.MutationRequest;
-import org.ntrloc.graph.db.mutation.MutationRequestProcessor;
-import org.ntrloc.graph.db.mutation.MutationResponse;
+import org.ntrloc.graph.mutation.MutationRequest;
+import org.ntrloc.graph.mutation.MutationRequestProcessor;
+import org.ntrloc.graph.mutation.MutationResponse;
 import org.ntrloc.graph.db.partition.ledger.ItemUpdateEntry;
 import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
 import org.ntrloc.graph.db.partition.authorization.PermissionService;
@@ -14,11 +14,11 @@ import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemDefin
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminStateMachineView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminStateView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminTransitionView;
-import org.ntrloc.graph.db.projection.CollectionProjectionSpec;
-import org.ntrloc.graph.db.projection.PredicateEvaluator;
-import org.ntrloc.graph.db.projection.ProjectedItem;
-import org.ntrloc.graph.db.projection.ProjectionResult;
-import org.ntrloc.graph.db.projection.SingleItemProjectionSpec;
+import org.ntrloc.graph.projection.CollectionProjectionSpec;
+import org.ntrloc.graph.projection.PredicateEvaluator;
+import org.ntrloc.graph.projection.ProjectedItem;
+import org.ntrloc.graph.projection.ProjectionResult;
+import org.ntrloc.graph.projection.ItemProjectionSpec;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -60,7 +60,7 @@ public class EntityManagerImpl implements EntityManager {
     // the item's *actual* type, not the queried name -- what matters is whether this principal can
     // read the concrete data being returned, not the root of however it was searched for.
     @Override
-    public Optional<ProjectedItem> project(SingleItemProjectionSpec spec, String binaryBaseUrl, NtrlocPrincipal principal) {
+    public Optional<ProjectedItem> project(ItemProjectionSpec spec, String binaryBaseUrl, NtrlocPrincipal principal) {
         UUID rootItemTypeId = resolveItemTypeId(spec.itemTypeName());
         Set<UUID> allowedItemTypeIds = schemaManager.resolveSupertypeInclusiveItemTypeIds(rootItemTypeId);
 
@@ -77,8 +77,8 @@ public class EntityManagerImpl implements EntityManager {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown item type: " + spec.itemTypeName());
         }
         var permissionContext = permissionService.buildContext(principal);
-        return registerPartitionManager.projectOne(actualItemTypeId.get(), spec.itemId(), binaryBaseUrl, spec.links(), permissionContext,
-                Boolean.TRUE.equals(spec.includePermissions()), Boolean.TRUE.equals(spec.includeStates()));
+        return registerPartitionManager.projectOne(actualItemTypeId.get(), spec.itemId(), binaryBaseUrl, spec.links(), spec.properties(),
+                permissionContext, Boolean.TRUE.equals(spec.includePermissions()), Boolean.TRUE.equals(spec.includeStates()));
     }
 
     @Override

@@ -4,6 +4,7 @@ import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
 import org.ntrloc.graph.db.partition.schema.definition.view.DefinedInView;
 import org.ntrloc.graph.db.partition.schema.definition.view.SortableFieldView;
+import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminBinaryPropertyDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyGroupView;
 import org.ntrloc.graph.db.partition.schema.repository.SchemaRepository;
@@ -63,21 +64,60 @@ class SchemaContentResolver {
     // stored in the register's flat properties JSONB, so it isn't itself a sort target (see
     // RegisterPartitionManager.sortExpressionFor's own rejection of a bare BINARY leaf) -- instead
     // its intrinsic attributes are offered, each addressed the same way it reads in the projected
-    // response (content.metadata.length, not content.length -- see assembleBinaryValue), currently
-    // just ".metadata.length" (mirrors RegisterPartitionManager.BINARY_METADATA_PATH_TYPES; extend
-    // both together).
+    // response (content.length, not content.metadata.length -- see assembleBinaryValue), currently
+    // just ".length" (extend alongside RegisterPartitionManager.resolvePropertyPath's own binary-field
+    // resolution if this ever grows beyond that one field).
     private void appendSortableFields(List<AdminPropertyDefinitionView> properties, List<AdminPropertyGroupView> groups,
                                       String pathPrefix, List<SortableFieldView> result) {
         for (var p : properties) {
             if (p.cardinality() != PropertyCardinality.SINGLE) continue;
             if (p.type() == PropertyType.BINARY) {
-                result.add(new SortableFieldView(pathPrefix + p.name() + ".metadata.length", false));
+                result.add(new SortableFieldView(pathPrefix + p.name() + ".length", false));
             } else {
                 result.add(new SortableFieldView(pathPrefix + p.name(), false));
             }
         }
         for (var g : groups) {
             appendSortableFields(g.properties(), g.groups(), pathPrefix + g.name() + ".", result);
+        }
+    }
+
+    List<String> projectableFieldsFor(Contents contents) {
+        List<String> result = new ArrayList<>();
+        appendProjectableFields(contents.properties(), contents.groups(), "", result);
+        return List.copyOf(result);
+    }
+
+    // Property-selection's own field list -- distinct from sortableFieldsFor's, and much simpler: a
+    // leaf is always addressed by its own real dot-path, cardinality doesn't matter (unlike sorting,
+    // selecting a LIST/SET property for return is perfectly meaningful), and a BINARY leaf is offered
+    // by its bare name (e.g. "File.content") -- selecting it returns the whole binary value -- plus
+    // one additional entry per path AdminBinaryPropertyDefinitionView.dynamicFields currently records
+    // for it (e.g. "File.content.metadata.exif.Make", "File.content.hash.md5") -- field.path() is
+    // already the field's full path within the binary's own fields document (no separate "metadata."
+    // prefix to splice in; see BinaryPartitionManagerImpl's fixed top-level keys), each of which
+    // narrows the response to just that value (RegisterPartitionManager.assembleBinaryValue's slicing,
+    // design-notes section 10) -- never the ".length"-style synthetic path sortableFieldsFor still
+    // uses for sort/filter's narrower need (one typed scalar, not a response shape). System fields are
+    // excluded entirely, unlike sortableFieldsFor: they're item metadata, never entries in
+    // ProjectedItem.properties(), so selecting one wouldn't restrict anything meaningful. Bare group
+    // names (e.g. "dimensions", selecting the whole group) are a valid request today --
+    // restrictToRequestedProperties accepts them -- but deliberately not enumerated here: this list
+    // stays leaf-granularity to match the current flat, single-choice property-selection UI; offering
+    // "select a whole group" is a separate, later UI question.
+    private void appendProjectableFields(List<AdminPropertyDefinitionView> properties, List<AdminPropertyGroupView> groups,
+                                          String pathPrefix, List<String> result) {
+        for (var p : properties) {
+            String path = pathPrefix + p.name();
+            result.add(path);
+            if (p instanceof AdminBinaryPropertyDefinitionView binaryProperty) {
+                for (var field : binaryProperty.dynamicFields()) {
+                    result.add(path + "." + field.path());
+                }
+            }
+        }
+        for (var g : groups) {
+            appendProjectableFields(g.properties(), g.groups(), pathPrefix + g.name() + ".", result);
         }
     }
 

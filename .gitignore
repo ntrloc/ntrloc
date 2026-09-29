@@ -26,3 +26,5 @@ terraform/terraform.tfstate*
 
 .claude
 .mcp.json
+
+docs/graph-structure-revised.key

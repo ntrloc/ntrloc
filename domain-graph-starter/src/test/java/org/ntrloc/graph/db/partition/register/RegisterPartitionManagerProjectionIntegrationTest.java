@@ -4,34 +4,34 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.coordinator.LedgerRegisterCoordinator;
-import org.ntrloc.graph.db.mutation.ExistingItemReference;
-import org.ntrloc.graph.db.mutation.ItemCreateMutation;
-import org.ntrloc.graph.db.mutation.ItemDeleteMutation;
-import org.ntrloc.graph.db.mutation.ItemMutation;
-import org.ntrloc.graph.db.mutation.LinkCreateMutation;
-import org.ntrloc.graph.db.mutation.LinkEndpointReference;
-import org.ntrloc.graph.db.mutation.MutationRequest;
-import org.ntrloc.graph.db.mutation.MutationResponse;
+import org.ntrloc.graph.mutation.ExistingItemReference;
+import org.ntrloc.graph.mutation.ItemCreateMutation;
+import org.ntrloc.graph.mutation.ItemDeleteMutation;
+import org.ntrloc.graph.mutation.ItemMutation;
+import org.ntrloc.graph.mutation.LinkCreateMutation;
+import org.ntrloc.graph.mutation.LinkEndpointReference;
+import org.ntrloc.graph.mutation.MutationRequest;
+import org.ntrloc.graph.mutation.MutationResponse;
 import org.ntrloc.graph.db.partition.authorization.RequestPermissionContext;
 import org.ntrloc.graph.db.partition.binary.BinaryPartitionManager;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateItemDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DeleteItemDefinitionMutation;
-import org.ntrloc.graph.db.projection.AndPredicate;
-import org.ntrloc.graph.db.projection.CollectionProjectionSpec;
-import org.ntrloc.graph.db.projection.DateRangeFacetFilter;
-import org.ntrloc.graph.db.projection.FacetBucket;
-import org.ntrloc.graph.db.projection.LinkProjectionSpec;
-import org.ntrloc.graph.db.projection.NotPredicate;
-import org.ntrloc.graph.db.projection.Operator;
-import org.ntrloc.graph.db.projection.OrPredicate;
-import org.ntrloc.graph.db.projection.Predicate;
-import org.ntrloc.graph.db.projection.ProjectionResult;
-import org.ntrloc.graph.db.projection.PropertyExistencePredicate;
-import org.ntrloc.graph.db.projection.PropertyValuePredicate;
-import org.ntrloc.graph.db.projection.RangeFacetFilter;
-import org.ntrloc.graph.db.projection.StateValuePredicate;
-import org.ntrloc.graph.db.projection.TermsFacetFilter;
+import org.ntrloc.graph.projection.AndPredicate;
+import org.ntrloc.graph.projection.CollectionProjectionSpec;
+import org.ntrloc.graph.projection.DateRangeFacetFilter;
+import org.ntrloc.graph.projection.FacetBucket;
+import org.ntrloc.graph.projection.LinkProjectionSpec;
+import org.ntrloc.graph.projection.NotPredicate;
+import org.ntrloc.graph.projection.Operator;
+import org.ntrloc.graph.projection.OrPredicate;
+import org.ntrloc.graph.projection.Predicate;
+import org.ntrloc.graph.projection.ProjectionResult;
+import org.ntrloc.graph.projection.PropertyExistencePredicate;
+import org.ntrloc.graph.projection.PropertyValuePredicate;
+import org.ntrloc.graph.projection.RangeFacetFilter;
+import org.ntrloc.graph.projection.StateValuePredicate;
+import org.ntrloc.graph.projection.TermsFacetFilter;
 import org.ntrloc.graph.db.partition.ledger.ItemUpdateEntry;
 import org.ntrloc.graph.domain.DomainInitializer;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -197,7 +197,8 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
                 ? scopedToThisTest
                 : new AndPredicate(List.of(scopedToThisTest, spec.filter()));
         var scopedSpec = new CollectionProjectionSpec(spec.itemTypeName(), spec.traitName(), spec.sortField(), spec.sortDirection(),
-                combinedFilter, spec.facets(), spec.facetFilters(), spec.stateMachineFacets(), spec.offset(), spec.limit(), spec.links());
+                combinedFilter, spec.facets(), spec.facetFilters(), spec.stateMachineFacets(), spec.offset(), spec.limit(), spec.links(),
+                spec.properties(), spec.includePermissions(), spec.includeStates());
         var result = registerPartitionManager.project(fixture.bookTypeId(), scopedSpec, "http://binary");
         return new ProjectedItemsAndFacets(result);
     }
@@ -397,10 +398,9 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
 
     // --- Sorting by a binary property's intrinsic attributes (RegisterPartitionManager.sortExpressionFor) ---
     //
-    // The sort field path is "attachment.metadata.length" -- the same path a client would walk in
-    // the projected response to find the same value (content.metadata.length, see
-    // RegisterPartitionManager.assembleBinaryValue), not a shorter stand-in for it. There's no
-    // "attachment.length" shortcut; see the dedicated rejection test below.
+    // The sort field path is "attachment.length" -- the same path a client would walk in the
+    // projected response to find the same value (content.length, see
+    // RegisterPartitionManager.assembleBinaryValue), not a shorter stand-in for it.
 
     @Test
     void sortField_onBinaryContentLength_sortsByAttachmentSizeAscending() {
@@ -408,7 +408,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
         createBookWithAttachment("Foundation", 100);
         createBookWithAttachment("Neuromancer", 200);
 
-        var spec = new CollectionProjectionSpec(BOOK_TYPE, "attachment.metadata.length", "ASC");
+        var spec = new CollectionProjectionSpec(BOOK_TYPE, "attachment.length", "ASC");
 
         assertThat(project(spec).titles()).containsExactly("Foundation", "Neuromancer", "Dune");
     }
@@ -419,7 +419,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
         createBookWithAttachment("Foundation", 100);
         createBookWithAttachment("Neuromancer", 200);
 
-        var spec = new CollectionProjectionSpec(BOOK_TYPE, "attachment.metadata.length", "DESC");
+        var spec = new CollectionProjectionSpec(BOOK_TYPE, "attachment.length", "DESC");
 
         assertThat(project(spec).titles()).containsExactly("Dune", "Neuromancer", "Foundation");
     }
@@ -429,7 +429,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
         createBookWithAttachment("Foundation", 100);
         createBookWithAttachment("No Attachment", -1);
 
-        var spec = new CollectionProjectionSpec(BOOK_TYPE, "attachment.metadata.length", "ASC");
+        var spec = new CollectionProjectionSpec(BOOK_TYPE, "attachment.length", "ASC");
 
         assertThat(project(spec).titles()).containsExactly("Foundation", "No Attachment");
     }
@@ -448,19 +448,6 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
         assertThatThrownBy(() -> project(spec))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("attachment")
-                .hasMessageContaining("attachment.metadata.length");
-    }
-
-    @Test
-    void sortField_onAttachmentLengthWithoutTheMetadataSegment_throwsIllegalArgumentException() {
-        // "attachment.length" skips the literal "metadata" segment the response actually nests the
-        // value under (content.metadata.length) -- there's no shortcut form, precisely so the path
-        // used to address a value always matches the path used to find it in the response.
-        createBook("Dune", 400, true, "Fiction");
-        var spec = new CollectionProjectionSpec(BOOK_TYPE, "attachment.length", "ASC");
-
-        assertThatThrownBy(() -> project(spec))
-                .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("attachment.length");
     }
 
@@ -961,6 +948,184 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
         assertThat(author.links().get("publisher"))
                 .extracting(link -> link.item().properties().get("name"))
                 .containsExactly("Ace Books");
+    }
+
+    // --- requested properties ---
+
+    @Test
+    void requestedProperties_null_returnsEveryProperty() {
+        createBook("Dune", 400, true, "Fiction");
+
+        var spec = new CollectionProjectionSpec(BOOK_TYPE, null, null, null, null, null, null, null, null, null, null,
+                null, null, null);
+
+        var item = project(spec).result().items().get(0);
+        assertThat(item.properties()).containsEntry("title", "Dune").containsEntry("pageCount", 400)
+                .containsEntry("genre", "Fiction");
+    }
+
+    @Test
+    void requestedProperties_namedSubset_returnsOnlyThoseProperties() {
+        createBook("Dune", 400, true, "Fiction");
+
+        var spec = new CollectionProjectionSpec(BOOK_TYPE, null, null, null, null, null, null, null, null, null, null,
+                List.of("title"), null, null);
+
+        var item = project(spec).result().items().get(0);
+        assertThat(item.properties()).containsOnlyKeys("title");
+        assertThat(item.properties().get("title")).isEqualTo("Dune");
+    }
+
+    @Test
+    void requestedProperties_emptyList_returnsNoProperties() {
+        createBook("Dune", 400, true, "Fiction");
+
+        var spec = new CollectionProjectionSpec(BOOK_TYPE, null, null, null, null, null, null, null, null, null, null,
+                List.of(), null, null);
+
+        var item = project(spec).result().items().get(0);
+        assertThat(item.properties()).isEmpty();
+    }
+
+    @Test
+    void requestedProperties_dotPath_restrictsToTheNamedNestedProperty() {
+        createBook("Dune", 400, true, "Fiction", 20, null);
+
+        var spec = new CollectionProjectionSpec(BOOK_TYPE, null, null, null, null, null, null, null, null, null, null,
+                List.of("dimensions.widthCm"), null, null);
+
+        var item = project(spec).result().items().get(0);
+        assertThat(item.properties()).containsOnlyKeys("dimensions");
+        @SuppressWarnings("unchecked")
+        var dimensions = (Map<String, Object>) item.properties().get("dimensions");
+        assertThat(dimensions).containsEntry("widthCm", 20);
+    }
+
+    @Test
+    void requestedProperties_bareGroupName_returnsEveryLeafUnderTheGroup() {
+        Map<String, Object> properties = new HashMap<>();
+        properties.put("testMarker", marker);
+        properties.put("title", "Dune");
+        properties.put("dimensions", Map.of("widthCm", 20, "material", "hardcover"));
+        webTestClient.post().uri("/api/mutation")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(new MutationRequest(List.of(new ItemCreateMutation(null, BOOK_TYPE, properties)), List.of()))
+                .exchange()
+                .expectStatus().isOk();
+
+        var spec = new CollectionProjectionSpec(BOOK_TYPE, null, null, null, null, null, null, null, null, null, null,
+                List.of("dimensions"), null, null);
+
+        var item = project(spec).result().items().get(0);
+        // A bare group name (no leaf suffix) is unambiguous -- a group is never itself a leaf, so
+        // it can only mean "everything under here," unlike requestedProperties_dotPath_... above,
+        // which names one specific leaf and gets only that one back.
+        assertThat(item.properties()).containsOnlyKeys("dimensions");
+        @SuppressWarnings("unchecked")
+        var dimensions = (Map<String, Object>) item.properties().get("dimensions");
+        assertThat(dimensions).containsEntry("widthCm", 20).containsEntry("material", "hardcover");
+    }
+
+    @Test
+    void requestedProperties_bareBinaryPropertyName_returnsTheWholeBinaryValue() {
+        createBookWithAttachment("Dune", 42);
+
+        var spec = new CollectionProjectionSpec(BOOK_TYPE, null, null, null, null, null, null, null, null, null, null,
+                List.of("attachment"), null, null);
+
+        var item = project(spec).result().items().get(0);
+        // A BINARY leaf's own bare name needs no special-casing -- it's an exact match on a plain
+        // leaf path like any other, and its value is always returned whole (id/url plus every one of
+        // its fields -- hash/length/mimeType/metadata/calculated -- as direct siblings), since
+        // there's no plumbing to slice out a single field.
+        assertThat(item.properties()).containsOnlyKeys("attachment");
+        @SuppressWarnings("unchecked")
+        var attachment = (Map<String, Object>) item.properties().get("attachment");
+        assertThat(((Number) attachment.get("length")).intValue()).isEqualTo(42);
+    }
+
+    @Test
+    void requestedProperties_specificRegisteredDynamicPath_slicesToJustThatValue() {
+        // "length" is registered automatically the moment any item attaches a binary (every binary's
+        // own fields document always has it -- see BinaryPartitionManagerImpl.metadataJson), so this
+        // is a real, currently-valid dynamic path, not a made-up one.
+        createBookWithAttachment("Dune", 42);
+
+        var spec = new CollectionProjectionSpec(BOOK_TYPE, null, null, null, null, null, null, null, null, null, null,
+                List.of("attachment.length"), null, null);
+
+        var item = project(spec).result().items().get(0);
+        assertThat(item.properties()).containsOnlyKeys("attachment");
+        @SuppressWarnings("unchecked")
+        var attachment = (Map<String, Object>) item.properties().get("attachment");
+        // id/url are unconditional regardless of what was requested -- they're structural facts about
+        // the binary, not opt-in properties.
+        assertThat(attachment).containsOnlyKeys("id", "url", "length");
+        assertThat(((Number) attachment.get("length")).intValue()).isEqualTo(42);
+    }
+
+    @Test
+    void requestedProperties_dynamicBranchPrefix_returnsTheWholeSubObjectUnderneathIt() {
+        // "hash" is itself a registered leaf's *parent* (hash.sha256, hash.md5 are the actual
+        // registered dynamic paths) -- requesting the bare branch "hash" should return everything
+        // beneath it, the same bare-prefix-means-everything rule ordinary static groups already get,
+        // just checked against the registry instead of a real AdminPropertyGroupView.
+        createBookWithAttachment("Dune", 42);
+
+        var spec = new CollectionProjectionSpec(BOOK_TYPE, null, null, null, null, null, null, null, null, null, null,
+                List.of("attachment.hash"), null, null);
+
+        var item = project(spec).result().items().get(0);
+        @SuppressWarnings("unchecked")
+        var attachment = (Map<String, Object>) item.properties().get("attachment");
+        assertThat(attachment).containsOnlyKeys("id", "url", "hash");
+        @SuppressWarnings("unchecked")
+        var hash = (Map<String, Object>) attachment.get("hash");
+        assertThat(hash).containsKeys("md5", "sha256");
+    }
+
+    @Test
+    void requestedProperties_multipleSpecificDynamicPathsUnderTheSameBinary_mergeIntoOnePartialTree() {
+        createBookWithAttachment("Dune", 42);
+
+        var spec = new CollectionProjectionSpec(BOOK_TYPE, null, null, null, null, null, null, null, null, null, null,
+                List.of("attachment.length", "attachment.hash.sha256"), null, null);
+
+        var item = project(spec).result().items().get(0);
+        @SuppressWarnings("unchecked")
+        var attachment = (Map<String, Object>) item.properties().get("attachment");
+        assertThat(attachment).containsOnlyKeys("id", "url", "length", "hash");
+        @SuppressWarnings("unchecked")
+        var hash = (Map<String, Object>) attachment.get("hash");
+        assertThat(hash).containsOnlyKeys("sha256");
+    }
+
+    @Test
+    void requestedProperties_unregisteredMetadataSubPath_stillMatchesNothing() {
+        createBookWithAttachment("Dune", 42);
+
+        var spec = new CollectionProjectionSpec(BOOK_TYPE, null, null, null, null, null, null, null, null, null, null,
+                List.of("attachment.metadata.thisWasNeverObserved"), null, null);
+
+        var item = project(spec).result().items().get(0);
+        assertThat(item.properties()).isEmpty();
+    }
+
+    @Test
+    void requestedProperties_appliesOnlyToTheTopLevelItem_linkedItemStillReturnsAllOfItsOwnProperties() {
+        UUID bookId = createBook("Dune", 400, true, "Fiction");
+        createAuthorLinkedToBook(bookId, "Frank Herbert");
+
+        var requestedLinks = Map.of("authors", new LinkProjectionSpec(null));
+        var book = registerPartitionManager.projectOne(fixture.bookTypeId(), bookId, "http://binary",
+                requestedLinks, List.of("title"), RequestPermissionContext.forSuperuser(), true, true).orElseThrow();
+
+        assertThat(book.properties()).containsOnlyKeys("title");
+        var author = book.links().get("authors").get(0).item();
+        // The top-level restriction to "title" must not leak into the linked author's own
+        // properties -- LinkProjectionSpec has no properties override of its own, so a linked item
+        // always returns everything, same as before this feature existed.
+        assertThat(author.properties()).containsEntry("name", "Frank Herbert");
     }
 
     // --- state-change projection ---

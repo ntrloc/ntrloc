@@ -46,7 +46,7 @@ jobs:
             -Dsonar.organization=ntrloc
             -Dsonar.java.binaries=**/target/classes
             -Dsonar.coverage.jacoco.xmlReportPaths=**/target/site/jacoco/jacoco.xml
-            -Dsonar.exclusions=.github/**/*,runtimes/**/*,**/*Test.java,**/*Configuration.java,**/*ConfigurationFactory.java,domain-graph-starter/**/*.js,domain-graph-starter/**/*.html,domain-graph-starter/src/test/**/*
+            -Dsonar.exclusions=.github/**/*,runtimes/**/*,release/**/*,**/*Test.java,**/*Configuration.java,**/*ConfigurationFactory.java,domain-graph-starter/**/*.js,domain-graph-starter/**/*.html,domain-graph-starter/src/test/**/*
             -Dsonar.plsql.file.suffixes=
             -Dsonar.postgres.file.suffixes=sql,pgsql,psql
 

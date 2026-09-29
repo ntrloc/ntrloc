@@ -1,0 +1,28 @@
+schema-view {
+  display: flex;
+  height: 100%;
+}
+
+schema-view-nav {
+  flex: none;
+  width: 240px;
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+
+  /* Sizing of schema-view-nav's own child lives here since it's the container -- Accordion stays
+     agnostic about whatever context it's placed in. */
+  accordion-view {
+    flex: 1;
+    min-height: 0;
+  }
+}
+
+schema-view-content {
+  flex: 1;
+  padding: 16px;
+}
+
+.schema-view-error {
+  color: var(--danger, #e05252);
+}

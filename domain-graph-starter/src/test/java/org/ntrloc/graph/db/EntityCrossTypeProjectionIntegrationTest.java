@@ -2,16 +2,16 @@ package org.ntrloc.graph.db;
 
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
-import org.ntrloc.graph.db.mutation.ItemCreateMutation;
-import org.ntrloc.graph.db.mutation.MutationRequest;
-import org.ntrloc.graph.db.mutation.MutationRequestProcessor;
-import org.ntrloc.graph.db.mutation.MutationResponse;
+import org.ntrloc.graph.mutation.ItemCreateMutation;
+import org.ntrloc.graph.mutation.MutationRequest;
+import org.ntrloc.graph.mutation.MutationRequestProcessor;
+import org.ntrloc.graph.mutation.MutationResponse;
 import org.ntrloc.graph.db.partition.authorization.DefaultUserGroupInitializer;
 import org.ntrloc.graph.db.partition.authorization.MarkerAssignmentService;
 import org.ntrloc.graph.db.partition.authorization.repository.AuthorizationRepository;
 import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
-import org.ntrloc.graph.db.projection.SingleItemProjectionSpec;
+import org.ntrloc.graph.projection.ItemProjectionSpec;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyUsage;
@@ -36,7 +36,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 // Phase 2 of item-type inheritance: the cross-type query engine (RegisterPartitionManager.
 // projectAcrossTypes, SchemaManager's supertype-inclusive/trait-implementer resolvers, and
 // EntityManagerImpl's dispatch between the single-table and cross-type paths), driven end to end
-// through the real /api/entity/projection HTTP endpoint against a real Postgres, matching
+// through the real /api/projection/collection HTTP endpoint against a real Postgres, matching
 // AuthorizationEndpointsIntegrationTest's own style for the permission-scoped case.
 class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
 
@@ -107,7 +107,7 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
         UUID vehicleItemId = createItem(vehicleName);
         UUID carItemId = createItem(carName);
 
-        var body = webTestClient.post().uri("/api/entity/projection")
+        var body = webTestClient.post().uri("/api/projection/collection")
                 .header("X-Ntrloc-User", "root")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("{\"itemTypeName\":\"" + vehicleName + "\"}")
@@ -128,7 +128,7 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
         schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(leafName, "d", List.of(), null, false, null)));
         UUID leafItemId = createItem(leafName);
 
-        var body = webTestClient.post().uri("/api/entity/projection")
+        var body = webTestClient.post().uri("/api/projection/collection")
                 .header("X-Ntrloc-User", "root")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("{\"itemTypeName\":\"" + leafName + "\"}")
@@ -156,7 +156,7 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
         UUID carItemId = createItem(carName);
         UUID sportsCarItemId = createItem(sportsCarName);
 
-        var body = webTestClient.post().uri("/api/entity/projection")
+        var body = webTestClient.post().uri("/api/projection/collection")
                 .header("X-Ntrloc-User", "root")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("{\"itemTypeName\":\"" + vehicleName + "\"}")
@@ -193,7 +193,7 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
         UUID carItemId = createItem(carName);
         createItem(unrelatedName);
 
-        var body = webTestClient.post().uri("/api/entity/projection")
+        var body = webTestClient.post().uri("/api/projection/collection")
                 .header("X-Ntrloc-User", "root")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("{\"traitName\":\"" + traitName + "\"}")
@@ -221,7 +221,7 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
 
         // Sort ascending by the inherited property, resolved against the query root (Vehicle) but
         // applied across both branches.
-        var sortedBody = webTestClient.post().uri("/api/entity/projection")
+        var sortedBody = webTestClient.post().uri("/api/projection/collection")
                 .header("X-Ntrloc-User", "root")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("{\"itemTypeName\":\"" + vehicleName + "\",\"sortField\":\"wheels\",\"sortDirection\":\"ASC\"}")
@@ -232,7 +232,7 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
         assertThat(itemIdsOf(sortedBody)).containsExactly(car2.toString(), vehicle4.toString(), car6.toString());
 
         // Filter across branches: only the Car with wheels=6 should match.
-        var filteredBody = webTestClient.post().uri("/api/entity/projection")
+        var filteredBody = webTestClient.post().uri("/api/projection/collection")
                 .header("X-Ntrloc-User", "root")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("""
@@ -261,7 +261,7 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
         createItem(carName, Map.of("electric", true));
 
         // facets: auto-populated across the whole polymorphic result set.
-        var facetBody = webTestClient.post().uri("/api/entity/projection")
+        var facetBody = webTestClient.post().uri("/api/projection/collection")
                 .header("X-Ntrloc-User", "root")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("{\"itemTypeName\":\"" + vehicleName + "\",\"facets\":[]}")
@@ -272,7 +272,7 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
 
         // facetFilters: narrows facetedCount but leaves totalCount alone, same contract as the
         // single-table path -- here spanning both branches.
-        var filteredBody = webTestClient.post().uri("/api/entity/projection")
+        var filteredBody = webTestClient.post().uri("/api/projection/collection")
                 .header("X-Ntrloc-User", "root")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("""
@@ -296,7 +296,7 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
         UUID vehicleItemId = createItem(vehicleName);
         UUID carItemId = createItem(carName);
 
-        var body = webTestClient.post().uri("/api/entity/projection")
+        var body = webTestClient.post().uri("/api/projection/collection")
                 .header("X-Ntrloc-User", "root")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("{\"itemTypeName\":\"" + vehicleName + "\",\"sortField\":\"itemId\",\"sortDirection\":\"ASC\"}")
@@ -344,7 +344,7 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
         markerAssignmentService.addItemMarker(vehicleItemId, marker.id(), "test-actor", "test reason");
         authRepo.setItemPermissions(authRepo.ensureMarkerGrant(marker.id(), "USER_GROUP", defaultUserGroupInitializer.getDefaultUserGroupId()), true, false);
 
-        var body = webTestClient.post().uri("/api/entity/projection")
+        var body = webTestClient.post().uri("/api/projection/collection")
                 .header("X-Ntrloc-User", restrictedUser.externalId())
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("{\"itemTypeName\":\"" + vehicleName + "\"}")
@@ -357,7 +357,7 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void collectionProjection_withNeitherOrBothOfItemTypeNameAndTraitName_isRejected() {
-        webTestClient.post().uri("/api/entity/projection")
+        webTestClient.post().uri("/api/projection/collection")
                 .header("X-Ntrloc-User", "root")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("{}")
@@ -367,7 +367,7 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void collectionProjection_byAnUnknownTraitName_returnsNotFound() {
-        webTestClient.post().uri("/api/entity/projection")
+        webTestClient.post().uri("/api/projection/collection")
                 .header("X-Ntrloc-User", "root")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("{\"traitName\":\"NoSuchTrait-" + UUID.randomUUID() + "\"}")
@@ -375,9 +375,9 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
                 .expectStatus().isNotFound();
     }
 
-    // --- SingleItemProjectionSpec (not JSON-bound, used internally/by process scripts -- see
-    // EntityController, which has no endpoint for it) -- exercised directly via the bean rather
-    // than HTTP, same polymorphic-by-default resolution as the collection path above.
+    // --- ItemProjectionSpec (also reachable over HTTP via ProjectionController's /api/projection/item,
+    // and used internally/by process scripts) -- exercised directly via the bean rather than HTTP
+    // here, same polymorphic-by-default resolution as the collection path above.
 
     @Test
     void singleItemProjection_byASupertypeName_findsASubtypeInstance() {
@@ -390,7 +390,7 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
 
         UUID carItemId = createItem(carName);
 
-        var result = entityManager.project(new SingleItemProjectionSpec(vehicleName, carItemId), "http://binary", SOME_PRINCIPAL);
+        var result = entityManager.project(new ItemProjectionSpec(vehicleName, carItemId), "http://binary", SOME_PRINCIPAL);
 
         assertThat(result).isPresent();
         assertThat(result.get().itemId()).isEqualTo(carItemId);
@@ -407,7 +407,7 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
         UUID unrelatedItemId = createItem(unrelatedName);
 
         // unrelatedItemId genuinely exists, but its type isn't Vehicle or a descendant of it.
-        var result = entityManager.project(new SingleItemProjectionSpec(vehicleName, unrelatedItemId), "http://binary", SOME_PRINCIPAL);
+        var result = entityManager.project(new ItemProjectionSpec(vehicleName, unrelatedItemId), "http://binary", SOME_PRINCIPAL);
 
         assertThat(result).isEmpty();
     }
@@ -426,7 +426,7 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
         NtrlocPrincipal restrictedPrincipal = new ResolvedPrincipal(restrictedUser.id(), restrictedUser.externalId(), "Restricted", null, Set.of(), false);
 
         org.assertj.core.api.Assertions.assertThatThrownBy(() ->
-                        entityManager.project(new SingleItemProjectionSpec(vehicleName, vehicleItemId), "http://binary", restrictedPrincipal))
+                        entityManager.project(new ItemProjectionSpec(vehicleName, vehicleItemId), "http://binary", restrictedPrincipal))
                 .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
                 .hasMessageContaining("404");
     }

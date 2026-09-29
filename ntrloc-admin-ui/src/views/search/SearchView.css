@@ -1,0 +1,18 @@
+search-view {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+
+  /* Sizing/positioning of SearchView's own children lives here, since it's their container --
+     each child's own CSS still governs how it arranges/styles its own content, not its own size
+     or position within the page. */
+  search-header-view {
+    flex: none;
+    padding: 10px;
+  }
+
+  search-contents-view {
+    flex: 1;
+    min-height: 0;
+  }
+}

@@ -10,6 +10,15 @@ import reactor.core.publisher.Sinks;
 // Replicating that filtering here, per-connection, would be a second copy of the same logic with
 // real risk of drifting from the first -- not worth it for what's ultimately just a "something
 // changed, go check" tap on the shoulder.
+//
+// DEPRECATED, pending removal: superseded by org.ntrloc.graph.events.ClusterEventBroadcaster, which
+// fixes this class's real gap (local-JVM-only Sinks.Many -- a client connected to a different node
+// in a multi-pod deployment never hears about a change made on this one). Left alone deliberately
+// for now, unmodified, alongside its existing caller (TaskEventListener) and consumer
+// (TaskAdminController.taskEvents) -- TaskEventListener now ALSO publishes to ClusterEventBroadcaster
+// in parallel (see its own comment). Remove this class and its /tasks/events endpoint once the admin
+// UI(s) have fully moved onto the new shared /api/events endpoint; see SchemaChangeBroadcaster for
+// the same deprecation, same reasoning.
 @Component
 public class TaskEventBroadcaster {
 

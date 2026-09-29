@@ -27,7 +27,7 @@ jobs:
       - name: Resolve project version
         id: version
         run: |
-          VERSION=$(mvn -q -pl runtimes/release help:evaluate -Dexpression=project.version -DforceStdout)
+          VERSION=$(mvn -q -pl release help:evaluate -Dexpression=project.version -DforceStdout)
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       # Fails before any build/push work starts -- main should never carry a SNAPSHOT version,
@@ -71,7 +71,7 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build and push ${{ matrix.arch }} image
-        run: mvn -pl runtimes/release -DskipTests -Pbuild-${{ matrix.arch }} spring-boot:build-image
+        run: mvn -pl release -DskipTests -Pbuild-${{ matrix.arch }} spring-boot:build-image
 
       - name: Push ${{ matrix.arch }} image
         run: docker push docker.io/ntrloc/ntrloc:${{ needs.guard-version.outputs.version }}-${{ matrix.arch }}

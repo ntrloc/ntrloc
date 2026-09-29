@@ -2,22 +2,25 @@ package org.ntrloc.graph.db.partition.register;
 
 import tools.jackson.databind.ObjectMapper;
 import org.ntrloc.graph.db.partition.authorization.RequestPermissionContext;
+import org.ntrloc.graph.db.partition.binary.BinaryDynamicPropertyRegistrar;
 import org.ntrloc.graph.db.partition.binary.BinaryPartitionManager;
 import org.ntrloc.graph.db.partition.binary.BinaryPropertyObject;
-import org.ntrloc.graph.db.projection.AndPredicate;
-import org.ntrloc.graph.db.projection.AvailableTransition;
-import org.ntrloc.graph.db.projection.CollectionProjectionSpec;
-import org.ntrloc.graph.db.projection.FacetBucket;
-import org.ntrloc.graph.db.projection.FacetFilter;
-import org.ntrloc.graph.db.projection.LinkProjectionSpec;
-import org.ntrloc.graph.db.projection.NotPredicate;
-import org.ntrloc.graph.db.projection.Predicate;
+import org.ntrloc.graph.projection.AndPredicate;
+import org.ntrloc.graph.projection.AvailableTransition;
+import org.ntrloc.graph.projection.CollectionProjectionSpec;
+import org.ntrloc.graph.projection.FacetBucket;
+import org.ntrloc.graph.projection.FacetFilter;
+import org.ntrloc.graph.projection.LinkProjectionSpec;
+import org.ntrloc.graph.projection.NotPredicate;
+import org.ntrloc.graph.projection.Predicate;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
+import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminBinaryPropertyDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminLinkView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyDefinitionView;
+import org.ntrloc.graph.db.partition.schema.definition.view.admin.DynamicFieldView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminSchemaView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemLinkPerspectiveView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminStateMachineView;
@@ -33,18 +36,18 @@ import org.springframework.context.expression.MapAccessor;
 import org.springframework.expression.Expression;
 import org.springframework.expression.spel.standard.SpelExpressionParser;
 import org.springframework.expression.spel.support.SimpleEvaluationContext;
-import org.ntrloc.graph.db.projection.ProjectedItem;
-import org.ntrloc.graph.db.projection.ProjectedItemPermissions;
-import org.ntrloc.graph.db.projection.ProjectedItemState;
-import org.ntrloc.graph.db.projection.ProjectedLink;
-import org.ntrloc.graph.db.projection.OrPredicate;
-import org.ntrloc.graph.db.projection.ProjectionResult;
-import org.ntrloc.graph.db.projection.PropertyExistencePredicate;
-import org.ntrloc.graph.db.projection.PropertyValuePredicate;
-import org.ntrloc.graph.db.projection.RangeFacetFilter;
-import org.ntrloc.graph.db.projection.DateRangeFacetFilter;
-import org.ntrloc.graph.db.projection.StateValuePredicate;
-import org.ntrloc.graph.db.projection.TermsFacetFilter;
+import org.ntrloc.graph.projection.ProjectedItem;
+import org.ntrloc.graph.projection.ProjectedItemPermissions;
+import org.ntrloc.graph.projection.ProjectedItemState;
+import org.ntrloc.graph.projection.ProjectedLink;
+import org.ntrloc.graph.projection.OrPredicate;
+import org.ntrloc.graph.projection.ProjectionResult;
+import org.ntrloc.graph.projection.PropertyExistencePredicate;
+import org.ntrloc.graph.projection.PropertyValuePredicate;
+import org.ntrloc.graph.projection.RangeFacetFilter;
+import org.ntrloc.graph.projection.DateRangeFacetFilter;
+import org.ntrloc.graph.projection.StateValuePredicate;
+import org.ntrloc.graph.projection.TermsFacetFilter;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Component;
@@ -79,6 +82,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
     private final JdbcClient jdbcClient;
     private final ObjectMapper objectMapper;
     private final BinaryPartitionManager binaryPartitionManager;
+    private final BinaryDynamicPropertyRegistrar binaryDynamicPropertyRegistrar;
     private final SchemaManager schemaManager;
 
     // Keyed by pattern *string*, not item type -- a pure function cache (the same SpEL text always
@@ -103,10 +107,12 @@ public class RegisterPartitionManager implements SchemaChangeListener {
             new AtomicReference<>(new DisplayLabelPatternsCache(null, Map.of()));
 
     public RegisterPartitionManager(JdbcClient jdbcClient, ObjectMapper objectMapper,
-                                    BinaryPartitionManager binaryPartitionManager, SchemaManager schemaManager) {
+                                    BinaryPartitionManager binaryPartitionManager,
+                                    BinaryDynamicPropertyRegistrar binaryDynamicPropertyRegistrar, SchemaManager schemaManager) {
         this.jdbcClient = jdbcClient;
         this.objectMapper = objectMapper;
         this.binaryPartitionManager = binaryPartitionManager;
+        this.binaryDynamicPropertyRegistrar = binaryDynamicPropertyRegistrar;
         this.schemaManager = schemaManager;
     }
 
@@ -225,37 +231,39 @@ public class RegisterPartitionManager implements SchemaChangeListener {
     }
 
     // Ordinary leaf -> the existing rt.properties->>'<id>' extraction, cast per the property's own
-    // declared type. A metadata path -> a correlated subquery into binary_content, its JSON walked
-    // the same number of levels the path names, cast per BINARY_METADATA_PATH_TYPES' entry for that
-    // exact path -- the same castedText dispatch either way, just sourced from a different place
-    // (a real schema property vs. a fixed map) since a binary's intrinsic facts have no
-    // schema_property row of their own to carry a type. A bare BINARY leaf (no trailing metadata
-    // path) is rejected outright rather than silently sorting everything as NULL, which is what it
-    // did before this method existed -- BINARY values are never stored in rt.properties at all.
+    // declared type. A binary field path -> a correlated subquery into binary_content, its JSON
+    // walked the same number of levels the path names, cast per whatever type the binary
+    // dynamic-property registry recorded for that exact path (resolvePropertyPath already resolved
+    // and attached it) -- the same castedText dispatch either way, just sourced from a different
+    // place (a real schema property vs. the registry) since a binary's intrinsic facts have no
+    // schema_property row of their own to carry a type. A bare BINARY leaf (no trailing field path)
+    // is rejected outright rather than silently sorting everything as NULL, which is what it did
+    // before this method existed -- BINARY values are never stored in rt.properties at all.
     private static String sortExpressionFor(PropertyPathResolution resolution, String fullPath) {
-        if (resolution.metadataPath().isEmpty()) {
+        if (resolution.binaryFieldPath().isEmpty()) {
             if (resolution.property().type() == PropertyType.BINARY) {
                 throw new IllegalArgumentException("'" + fullPath
                         + "' is binary content -- sort by an intrinsic attribute instead, e.g. '"
-                        + fullPath + ".metadata.length'");
+                        + fullPath + ".length'");
             }
             return typedSortExpression("rt.properties", resolution.property());
         }
-        String text = "(SELECT " + metadataJsonExtraction(resolution.metadataPath()) + " FROM register_binary_property rbp "
+        String text = "(SELECT " + binaryFieldJsonExtraction(resolution.binaryFieldPath()) + " FROM register_binary_property rbp "
                 + "JOIN binary_content bc ON bc.id = rbp.binary_id "
                 + "WHERE rbp.register_item_id = ri.id AND rbp.property_id = '" + resolution.property().id() + "')";
-        return castedText(text, BINARY_METADATA_PATH_TYPES.get(resolution.metadataPath()));
+        return castedText(text, resolution.binaryFieldType());
     }
 
-    // Walks a JSON path inside binary_content.metadata -- ->'segment' for every level but the last,
-    // ->>'segment' (text extraction) for the last, e.g. ["length"] -> metadata->>'length'; a future
-    // ["hashes","sha256"] -> metadata->'hashes'->>'sha256'.
-    private static String metadataJsonExtraction(List<String> metadataPath) {
+    // Walks a JSON path inside binary_content.metadata (the physical column -- still named that
+    // regardless of the wire-level "metadata"/"calculated" bucket keys within it) -- ->'segment' for
+    // every level but the last, ->>'segment' (text extraction) for the last, e.g. ["length"] ->
+    // metadata->>'length'; ["hash","sha256"] -> metadata->'hash'->>'sha256'.
+    private static String binaryFieldJsonExtraction(List<String> binaryFieldPath) {
         StringBuilder sql = new StringBuilder("bc.metadata");
-        for (int i = 0; i < metadataPath.size() - 1; i++) {
-            sql.append("->'").append(metadataPath.get(i)).append("'");
+        for (int i = 0; i < binaryFieldPath.size() - 1; i++) {
+            sql.append("->'").append(binaryFieldPath.get(i)).append("'");
         }
-        return sql.append("->>'").append(metadataPath.get(metadataPath.size() - 1)).append("'").toString();
+        return sql.append("->>'").append(binaryFieldPath.get(binaryFieldPath.size() - 1)).append("'").toString();
     }
 
     // `->>` always yields text, so an unqualified ORDER BY on it sorts an INT property as "1", "10",
@@ -365,14 +373,15 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                         parseJsonb(rs.getString(COL_STATES))))
                 .list();
 
-        Map<UUID, List<String>> ownPropertyNames = propertyPathsByIdForItemType(itemTypeId);
+        Map<UUID, List<String>> ownPropertyNames = restrictToRequestedProperties(
+                propertyPathsByIdForItemType(itemTypeId), propertyViewsByIdForItemType(itemTypeId), spec.properties());
         List<AdminStateMachineView> stateMachines = schemaManager.getAdminSchema().items().stream()
                 .filter(item -> item.id().equals(itemTypeId))
                 .findFirst()
                 .map(AdminItemDefinitionView::stateMachines)
                 .orElse(null);
         var items = assembleProjectedItems(rawItems, ownPropertyNames, stateMachines, binaryBaseUrl,
-                new RenderOptions(spec.links(), permissions, Boolean.TRUE.equals(spec.includePermissions()), Boolean.TRUE.equals(spec.includeStates())));
+                new RenderOptions(spec.links(), permissions, Boolean.TRUE.equals(spec.includePermissions()), Boolean.TRUE.equals(spec.includeStates()), spec.properties()));
         return new ProjectionResult(items, totalCount, facetedCount, facets, stateMachineFacets);
     }
 
@@ -484,9 +493,11 @@ public class RegisterPartitionManager implements SchemaChangeListener {
         // merge -- see assembleProjectedItems' own comment on why an over-inclusive stateMachines
         // list is equally safe.
         Map<UUID, List<String>> mergedPropertyNames = new HashMap<>();
+        Map<UUID, AdminPropertyDefinitionView> mergedPropertyViews = new HashMap<>();
         List<AdminStateMachineView> mergedStateMachines = new ArrayList<>();
         for (UUID branchId : branches) {
             mergedPropertyNames.putAll(propertyPathsByIdForItemType(branchId));
+            mergedPropertyViews.putAll(propertyViewsByIdForItemType(branchId));
             schemaManager.getAdminSchema().items().stream()
                     .filter(item -> item.id().equals(branchId))
                     .findFirst()
@@ -494,9 +505,10 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                     .ifPresent(mergedStateMachines::addAll);
         }
 
-        var items = assembleProjectedItems(rawItems, mergedPropertyNames,
+        var items = assembleProjectedItems(rawItems,
+                restrictToRequestedProperties(mergedPropertyNames, mergedPropertyViews, spec.properties()),
                 mergedStateMachines.isEmpty() ? null : mergedStateMachines, binaryBaseUrl,
-                new RenderOptions(spec.links(), permissions, Boolean.TRUE.equals(spec.includePermissions()), Boolean.TRUE.equals(spec.includeStates())));
+                new RenderOptions(spec.links(), permissions, Boolean.TRUE.equals(spec.includePermissions()), Boolean.TRUE.equals(spec.includeStates()), spec.properties()));
         return new ProjectionResult(items, totalCount, facetedCount, facets, stateMachineFacets);
     }
 
@@ -751,7 +763,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
     public Optional<ProjectedItem> projectOne(UUID itemTypeId, UUID itemId, String binaryBaseUrl,
                                                @Nullable Map<String, LinkProjectionSpec> requestedLinks,
                                                RequestPermissionContext permissions) {
-        return projectOne(itemTypeId, itemId, binaryBaseUrl, requestedLinks, permissions, true, true);
+        return projectOne(itemTypeId, itemId, binaryBaseUrl, requestedLinks, null, permissions, true, true);
     }
 
     // permissions here only filters this item's *links* (see fetchLinksByItem) -- the item's own
@@ -762,6 +774,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
     // since a denied request never pays for fetching the item's own (possibly large) properties.
     public Optional<ProjectedItem> projectOne(UUID itemTypeId, UUID itemId, String binaryBaseUrl,
                                                @Nullable Map<String, LinkProjectionSpec> requestedLinks,
+                                               @Nullable List<String> requestedProperties,
                                                RequestPermissionContext permissions,
                                                boolean includePermissions, boolean includeStates) {
         List<RawItem> rawItems = jdbcClient.sql("""
@@ -786,14 +799,15 @@ public class RegisterPartitionManager implements SchemaChangeListener {
         if (rawItems.isEmpty()) {
             return Optional.empty();
         }
-        Map<UUID, List<String>> ownPropertyNames = propertyPathsByIdForItemType(itemTypeId);
+        Map<UUID, List<String>> ownPropertyNames = restrictToRequestedProperties(
+                propertyPathsByIdForItemType(itemTypeId), propertyViewsByIdForItemType(itemTypeId), requestedProperties);
         List<AdminStateMachineView> stateMachines = schemaManager.getAdminSchema().items().stream()
                 .filter(item -> item.id().equals(itemTypeId))
                 .findFirst()
                 .map(AdminItemDefinitionView::stateMachines)
                 .orElse(null);
         return Optional.of(assembleProjectedItems(rawItems, ownPropertyNames, stateMachines, binaryBaseUrl,
-                new RenderOptions(requestedLinks, permissions, includePermissions, includeStates)).get(0));
+                new RenderOptions(requestedLinks, permissions, includePermissions, includeStates, requestedProperties)).get(0));
     }
 
     // --- Write side: staged at prepare (UNCOMMITTED), flipped/cleaned up at commit/abort ---
@@ -807,7 +821,9 @@ public class RegisterPartitionManager implements SchemaChangeListener {
         Set<UUID> binaryPropertyIds = binaryPropertyIdsForItemType(itemTypeId);
         UUID registerItemId = insertItemRow(itemId, itemTypeId, keysToStrings(excludeKeys(properties, binaryPropertyIds)), states, transactionId);
         if (!binaryPropertyIds.isEmpty()) {
-            insertBinaryProperties(registerItemId, toBinaryValues(filterKeys(properties, binaryPropertyIds)));
+            Map<UUID, UUID> binaryValues = toBinaryValues(filterKeys(properties, binaryPropertyIds));
+            insertBinaryProperties(registerItemId, binaryValues);
+            reconcileBinaryDynamicProperties(Map.of(), binaryValues);
         }
         return registerItemId;
     }
@@ -865,15 +881,44 @@ public class RegisterPartitionManager implements SchemaChangeListener {
         // just carried forward from the prior register_item row instead of the jsonb blob, since
         // there's no jsonb to read them back out of.
         if (!binaryPropertyIds.isEmpty()) {
-            Map<UUID, UUID> mergedBinaryValues = currentBinaryPropertyValues(current.registerItemId());
+            Map<UUID, UUID> oldBinaryValues = currentBinaryPropertyValues(current.registerItemId());
+            Map<UUID, UUID> mergedBinaryValues = new HashMap<>(oldBinaryValues);
             filterKeys(propertiesDiff, binaryPropertyIds).forEach((propertyId, value) -> {
                 if (value == null) mergedBinaryValues.remove(propertyId);
                 else mergedBinaryValues.put(propertyId, UUID.fromString((String) value));
             });
             insertBinaryProperties(registerItemId, mergedBinaryValues);
+            reconcileBinaryDynamicProperties(oldBinaryValues, mergedBinaryValues);
         }
 
         return registerItemId;
+    }
+
+    // Diffs a binary property's old vs new value per property id and drives the dynamic-property
+    // registry accordingly -- a changed value is a detach of the old binary (if any) plus an attach
+    // of the new one (if any); an unchanged value (including "still absent") is a no-op. Runs inside
+    // the same @Transactional boundary as the register mutation that triggered it
+    // (LedgerRegisterCoordinatorImpl.prepare()), confirmed directly on that method -- so the
+    // registry's counters can never observe a staged-but-not-yet-committed change independently of
+    // the mutation itself.
+    private void reconcileBinaryDynamicProperties(Map<UUID, UUID> oldValues, Map<UUID, UUID> newValues) {
+        Set<UUID> propertyIds = new HashSet<>(oldValues.keySet());
+        propertyIds.addAll(newValues.keySet());
+        for (UUID propertyId : propertyIds) {
+            UUID oldBinaryId = oldValues.get(propertyId);
+            UUID newBinaryId = newValues.get(propertyId);
+            if (Objects.equals(oldBinaryId, newBinaryId)) continue;
+            if (oldBinaryId != null) {
+                binaryDynamicPropertyRegistrar.onDetach(propertyId, metadataFor(oldBinaryId));
+            }
+            if (newBinaryId != null) {
+                binaryDynamicPropertyRegistrar.onAttach(propertyId, metadataFor(newBinaryId));
+            }
+        }
+    }
+
+    private Map<String, Object> metadataFor(UUID binaryId) {
+        return binaryPartitionManager.getBinaryProperty(binaryId).map(BinaryPropertyObject::metadata).orElse(null);
     }
 
     private record CurrentItemRowContent(UUID registerItemId, Map<String, Object> properties, Map<String, Object> states) {}
@@ -1047,6 +1092,16 @@ public class RegisterPartitionManager implements SchemaChangeListener {
     }
 
     public void deleteItem(UUID itemId) {
+        // Read the about-to-be-deleted row's binary properties first: register_binary_property rows
+        // cascade-delete with it (ON DELETE CASCADE on register_item_id), so there'd be nothing left
+        // to reconcile against afterward -- a deleted item is a detach of every binary property it
+        // held, same as any other property-value removal.
+        jdbcClient.sql("SELECT id FROM register_item WHERE item_id = :itemId AND state = 'COMMITTED'")
+                .param(PARAM_ITEM_ID, itemId)
+                .query(UUID.class)
+                .optional()
+                .ifPresent(registerItemId -> reconcileBinaryDynamicProperties(currentBinaryPropertyValues(registerItemId), Map.of()));
+
         jdbcClient.sql("DELETE FROM register_item WHERE item_id = :itemId AND state = 'COMMITTED'")
                 .param(PARAM_ITEM_ID, itemId)
                 .update();
@@ -1501,6 +1556,95 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                 .orElse(Map.of());
     }
 
+    // Sibling to propertyPathsByIdForItemType/propertyPaths, collecting the view objects themselves
+    // instead of their paths -- restrictToRequestedProperties needs these to recognize a request for
+    // a BINARY leaf's *registered dynamic path* (e.g. "File.content.metadata.extracted.exif.Make"),
+    // which requires checking that leaf's own AdminBinaryPropertyDefinitionView.dynamicFields, not
+    // just its static path.
+    private Map<UUID, AdminPropertyDefinitionView> propertyViewsByIdForItemType(UUID itemTypeId) {
+        return schemaManager.getAdminSchema().items().stream()
+                .filter(item -> item.id().equals(itemTypeId))
+                .findFirst()
+                .map(item -> propertyViewsById(item.properties(), item.groups()))
+                .orElse(Map.of());
+    }
+
+    private Map<UUID, AdminPropertyDefinitionView> propertyViewsById(List<AdminPropertyDefinitionView> properties, List<AdminPropertyGroupView> groups) {
+        Map<UUID, AdminPropertyDefinitionView> result = new HashMap<>();
+        for (AdminPropertyDefinitionView p : properties) {
+            result.put(p.id(), p);
+        }
+        for (AdminPropertyGroupView g : groups) {
+            result.putAll(propertyViewsById(g.properties(), g.groups()));
+        }
+        return result;
+    }
+
+    // Restricts a full property-path map down to just the caller-requested subset (dot-notation
+    // paths matching the same names ItemDefinitionView.projectableFields already exposes, e.g.
+    // "File.name") -- null means unfiltered (today's behavior); non-null, even empty, keeps only
+    // matches. Applied once, up front, rather than inside assembleProjectedItem: namesForIds
+    // already silently skips any propertyId absent from the map handed to it, so trimming the map
+    // here is sufficient to restrict the final response with no other change to assembly. Only ever
+    // applied to a top-level item's own property map -- never to a linked item's (see
+    // ProjectionSpec.properties()'s own comment on why that's out of scope for now).
+    //
+    // A match is either exact, or the requested string names a *prefix* of the leaf's path (e.g.
+    // requesting "dimensions" keeps a leaf whose path is "dimensions.widthCm") -- unambiguous the
+    // same way a bare group name already is elsewhere: a group is never itself a leaf, so there's no
+    // competing "return this as a scalar value" reading to collide with. This is also what makes a
+    // bare BINARY leaf's own name (e.g. "File.content") work as a plain exact match -- it needs no
+    // special-casing, since a binary's path is just another leaf path like any other.
+    //
+    // A BINARY leaf is *also* kept when a request names one of its own registered dynamic paths
+    // (e.g. "File.content.metadata.extracted.exif.Make", checked against
+    // AdminBinaryPropertyDefinitionView.dynamicFields) -- the reverse direction from the prefix rule
+    // above, since here the *request* extends past the leaf's own static path, not the other way
+    // round. Assembly (mergeReadableBinaryProperties/assembleBinaryValue) still decides separately
+    // whether that means the whole binary or a slice of it -- this method only decides inclusion.
+    private Map<UUID, List<String>> restrictToRequestedProperties(Map<UUID, List<String>> ownPropertyNames,
+                                                                     Map<UUID, AdminPropertyDefinitionView> propertyViewsById,
+                                                                     @Nullable List<String> requestedProperties) {
+        if (requestedProperties == null) {
+            return ownPropertyNames;
+        }
+        Set<String> requested = Set.copyOf(requestedProperties);
+        Map<UUID, List<String>> filtered = new HashMap<>();
+        ownPropertyNames.forEach((id, path) -> {
+            String joined = String.join(".", path);
+            boolean matches = requested.stream().anyMatch(r -> joined.equals(r) || joined.startsWith(r + "."))
+                    || requestsRegisteredDynamicPathOf(requested, joined, propertyViewsById.get(id));
+            if (matches) {
+                filtered.put(id, path);
+            }
+        });
+        return filtered;
+    }
+
+    // A requested path into a binary's own fields can name an exact registered leaf (e.g.
+    // "...metadata.exif.Make"), or a *prefix* of one or more registered leaves (e.g. "...metadata"
+    // alone, matching every leaf currently registered under that bucket) -- the same
+    // bare-prefix-means-everything-beneath rule restrictToRequestedProperties already applies to
+    // ordinary static paths, just checked against the registry instead of the static schema tree,
+    // since a dynamically-discovered branch like "metadata.exif" has no AdminPropertyGroupView of its
+    // own. getAtPath/putAtPath in slicedMetadata already handle returning a whole intermediate
+    // sub-object correctly once this method includes the property at all -- this is purely the
+    // inclusion-gate half of the fix. No special marker segment needed (there's no wrapper key): any
+    // path continuing past the leaf's own name is checked directly against the registry's own
+    // recorded paths, whether it starts with "metadata", "calculated", "hash", or a bare "length"/
+    // "mimeType".
+    private boolean requestsRegisteredDynamicPathOf(Set<String> requested, String binaryLeafPath, @Nullable AdminPropertyDefinitionView property) {
+        if (!(property instanceof AdminBinaryPropertyDefinitionView binaryProperty) || binaryProperty.dynamicFields().isEmpty()) {
+            return false;
+        }
+        String prefix = binaryLeafPath + ".";
+        return requested.stream().anyMatch(r -> r.startsWith(prefix)
+                && binaryProperty.dynamicFields().stream().anyMatch(f -> {
+                    String suffix = r.substring(prefix.length());
+                    return f.path().equals(suffix) || f.path().startsWith(suffix + ".");
+                }));
+    }
+
     private Map<UUID, List<String>> propertyPathsByIdForLinkType(UUID linkTypeId) {
         return schemaManager.getAdminSchema().links().stream()
                 .filter(link -> link.id().equals(linkTypeId))
@@ -1538,29 +1682,21 @@ public class RegisterPartitionManager implements SchemaChangeListener {
     // nested under different groups can share a name (dimensions.length vs
     // packagingDimensions.length), so only the full path is unambiguous.
     // A property path resolves either to an ordinary schema property (the common case) or, when the
-    // path continues past a BINARY leaf via a literal "metadata" segment, to that leaf plus the
-    // JSON path within its metadata (e.g. "File.content.metadata.length" -> metadataPath
-    // ["length"]) -- that path isn't schema structure (a binary's own facts need no grants of their
-    // own, see design-notes section 8), so it can't be represented as further properties/groups.
-    // metadataPath is empty for the ordinary case.
-    private record PropertyPathResolution(AdminPropertyDefinitionView property, List<String> metadataPath) {
+    // path continues past a BINARY leaf, to that leaf plus the path within its own fields document
+    // (e.g. "File.content.length" -> binaryFieldPath ["length"], "File.content.metadata.exif.Make"
+    // -> ["metadata", "exif", "Make"]) and the PropertyType the binary dynamic-property registry
+    // recorded for that exact path (see AdminBinaryPropertyDefinitionView.dynamicFields, design-notes
+    // section 10) -- that path isn't schema structure (a binary's own facts need no grants of their
+    // own, see design-notes section 8), so it can't be represented as further properties/groups, and
+    // has no schema_property row of its own to read a type off the ordinary way. "id"/"url" behave
+    // like any other unregistered path here -- never resolvable this way, same as before ("id"/"url"
+    // are resolved only via assembleBinaryValue's own projection response, not sort/filter/facet).
+    // binaryFieldPath/binaryFieldType are empty/null for the ordinary case.
+    private record PropertyPathResolution(AdminPropertyDefinitionView property, List<String> binaryFieldPath, @Nullable PropertyType binaryFieldType) {
         static PropertyPathResolution ofProperty(AdminPropertyDefinitionView property) {
-            return new PropertyPathResolution(property, List.of());
+            return new PropertyPathResolution(property, List.of(), null);
         }
     }
-
-    // Metadata JSON paths a sort/filter target may address past a BINARY leaf, each with the
-    // PropertyType its value should be treated as -- mirrors how an ordinary property's own
-    // declared type drives typedSortExpression's cast (see castedText, which this shares), just
-    // keyed by path instead of by a schema property, since a binary's intrinsic facts have no
-    // schema_property row of their own to read a type off. The path is exactly the one a client
-    // would walk in the response to find the same value (content.metadata.length), not a shorter
-    // stand-in for it -- "the path to address a value is the path to find it," no exceptions.
-    // Deliberately just "length" for now; "mimeType" (STRING) and "hashes.sha256"/"hashes.md5"
-    // (STRING) extend this the same way, each keyed by its own full path under "metadata".
-    private static final Map<List<String>, PropertyType> BINARY_METADATA_PATH_TYPES = Map.of(
-            List.of("length"), PropertyType.LONG
-    );
 
     private UUID resolvePropertyId(UUID itemTypeId, String propertyName) {
         return resolveProperty(itemTypeId, propertyName).id();
@@ -1572,7 +1708,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
     // before path resolution knew about BINARY leaves at all.
     private AdminPropertyDefinitionView resolveProperty(UUID itemTypeId, String propertyName) {
         PropertyPathResolution resolution = resolvePropertyPath(itemTypeId, propertyName);
-        if (!resolution.metadataPath().isEmpty()) {
+        if (!resolution.binaryFieldPath().isEmpty()) {
             throw new IllegalArgumentException(
                     "'" + propertyName + "' names a binary content attribute, not supported in this context");
         }
@@ -1601,28 +1737,40 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                                     ? "Property is a group, not a leaf value: " + fullPath
                                     : "Unknown property: " + fullPath));
         }
-        // A path continuing past a BINARY leaf addresses one of its intrinsic attributes, not
-        // further schema structure -- checked before falling through to the group lookup below.
-        // The next segment must literally be "metadata", matching assembleBinaryValue's own
-        // response shape (content.metadata.length, not content.length) -- see
-        // BINARY_METADATA_PATH_TYPES' own comment on why the two are kept in lockstep.
+        // A path continuing past a BINARY leaf addresses one of its own fields, not further schema
+        // structure -- checked before falling through to the group lookup below. No special marker
+        // segment is required (there's no wrapper key): the whole remainder is looked up directly
+        // against the registry's own recorded paths -- see AdminBinaryPropertyDefinitionView's own
+        // comment. "id"/"url" simply never match anything there (they're resolved only via
+        // assembleBinaryValue's projection response, never through the registry), so they still fall
+        // through to the same "unknown attribute" error as any other unregistered path.
         Optional<AdminPropertyDefinitionView> binaryLeaf = properties.stream()
                 .filter(p -> p.name().equals(pathSegments[0]) && p.type() == PropertyType.BINARY)
                 .findFirst();
         if (binaryLeaf.isPresent()) {
             List<String> rest = List.of(Arrays.copyOfRange(pathSegments, 1, pathSegments.length));
-            List<String> metadataPath = rest.size() >= 2 && "metadata".equals(rest.get(0))
-                    ? rest.subList(1, rest.size()) : null;
-            if (metadataPath == null || !BINARY_METADATA_PATH_TYPES.containsKey(metadataPath)) {
+            PropertyType binaryFieldType = dynamicFieldType((AdminBinaryPropertyDefinitionView) binaryLeaf.get(), rest);
+            if (binaryFieldType == null) {
                 throw new IllegalArgumentException("Unknown binary content attribute: " + fullPath);
             }
-            return new PropertyPathResolution(binaryLeaf.get(), metadataPath);
+            return new PropertyPathResolution(binaryLeaf.get(), rest, binaryFieldType);
         }
         AdminPropertyGroupView group = groups.stream()
                 .filter(g -> g.name().equals(pathSegments[0]))
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("Unknown property: " + fullPath));
         return resolvePropertyPath(group.properties(), group.groups(), Arrays.copyOfRange(pathSegments, 1, pathSegments.length), fullPath);
+    }
+
+    // null (not found) rather than throwing -- the caller already has a clearer, fullPath-specific
+    // error message to raise for that case.
+    private PropertyType dynamicFieldType(AdminBinaryPropertyDefinitionView binaryLeaf, List<String> binaryFieldPath) {
+        String joined = String.join(".", binaryFieldPath);
+        return binaryLeaf.dynamicFields().stream()
+                .filter(f -> f.path().equals(joined))
+                .map(DynamicFieldView::type)
+                .findFirst()
+                .orElse(null);
     }
 
     // Same "translate name to id, never store the name" rule as resolvePropertyId, one level up:
@@ -1791,7 +1939,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
     // or with a spec whose own `links` is null/empty, simply doesn't recurse further.
     private Map<UUID, Map<String, List<ProjectedLink>>> fetchLinksByItem(
             List<UUID> myRegisterItemIds, @Nullable Map<String, LinkProjectionSpec> requestedLinks,
-            RequestPermissionContext permissions, boolean includePermissions) {
+            RequestPermissionContext permissions, boolean includePermissions, String binaryBaseUrl) {
         if (myRegisterItemIds.isEmpty() || (requestedLinks != null && requestedLinks.isEmpty())) {
             return Map.of();
         }
@@ -1856,17 +2004,19 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                         LinkRow::linkedItemTypeId,
                         Collectors.mapping(LinkRow::linkedRegisterItemId, Collectors.toList()))),
                 COL_REGISTER_ITEM_ID, markerContext.linkedItemMarkerIds(),
-                effectiveReadGrants(permissions, permissions.propertyReadGrantsByMarker(), permissions.propertyWriteGrantsByMarker()));
+                effectiveReadGrants(permissions, permissions.propertyReadGrantsByMarker(), permissions.propertyWriteGrantsByMarker()),
+                binaryBaseUrl);
 
         Map<UUID, Map<String, Object>> linkProperties = fetchPropertiesByRegisterItemId(
                 linkRows.stream().collect(Collectors.groupingBy(
                         LinkRow::linkDefinitionId,
                         Collectors.mapping(LinkRow::registerLinkId, Collectors.toList()))),
                 COL_REGISTER_LINK_ID, markerContext.linkOwnerMarkerIds(),
-                effectiveReadGrants(permissions, permissions.linkPropertyReadGrantsByMarker(), permissions.linkPropertyWriteGrantsByMarker()));
+                effectiveReadGrants(permissions, permissions.linkPropertyReadGrantsByMarker(), permissions.linkPropertyWriteGrantsByMarker()),
+                binaryBaseUrl);
 
         Map<UUID, Map<String, List<ProjectedLink>>> nestedLinksByLinkedRegisterItemId = requestedLinks != null
-                ? fetchNestedLinksForRequestedPerspectives(linkRows, requestedLinks, permissions, includePermissions)
+                ? fetchNestedLinksForRequestedPerspectives(linkRows, requestedLinks, permissions, includePermissions, binaryBaseUrl)
                 : Map.of();
 
         LinkProjectionContext resultContext = new LinkProjectionContext(linkedItemProperties, linkProperties,
@@ -1989,7 +2139,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
     // never per item (fetchLinksByItem's own comment on why that's the scaling property that matters).
     private Map<UUID, Map<String, List<ProjectedLink>>> fetchNestedLinksForRequestedPerspectives(
             List<LinkRow> linkRows, Map<String, LinkProjectionSpec> requestedLinks, RequestPermissionContext permissions,
-            boolean includePermissions) {
+            boolean includePermissions, String binaryBaseUrl) {
         Map<String, List<LinkRow>> rowsByPerspective = linkRows.stream()
                 .collect(Collectors.groupingBy(LinkRow::perspectiveName));
         Map<UUID, Map<String, List<ProjectedLink>>> nested = new HashMap<>();
@@ -2003,7 +2153,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                     .map(LinkRow::linkedRegisterItemId).distinct().toList();
             // registerItemId is globally unique across every item type, so merging per-perspective
             // results here is safe even if two requested perspectives happened to reach the same item.
-            nested.putAll(fetchLinksByItem(childRegisterItemIds, childLinks, permissions, includePermissions));
+            nested.putAll(fetchLinksByItem(childRegisterItemIds, childLinks, permissions, includePermissions, binaryBaseUrl));
         }
         return nested;
     }
@@ -2017,8 +2167,12 @@ public class RegisterPartitionManager implements SchemaChangeListener {
     // requestedLinks/permissions/includePermissions/includeStates travel together as one unit (the
     // same quad appears on projectOne's own 7-arg overload) -- bundled here to keep this method's
     // own parameter count within S107's limit, private to this method's three call sites only.
+    // requestedProperties is carried through unprocessed (not just as the already-filtered
+    // ownPropertyNames map) because slicing a BINARY leaf's metadata needs the caller's *exact*
+    // requested strings -- restrictToRequestedProperties already decided *whether* to include the
+    // leaf at all, but not which of its dynamic paths (if any) to narrow the response to.
     private record RenderOptions(@Nullable Map<String, LinkProjectionSpec> requestedLinks, RequestPermissionContext permissions,
-                                  boolean includePermissions, boolean includeStates) {}
+                                  boolean includePermissions, boolean includeStates, @Nullable List<String> requestedProperties) {}
 
     private List<ProjectedItem> assembleProjectedItems(List<RawItem> rawItems, Map<UUID, List<String>> ownPropertyNames,
                                                          List<AdminStateMachineView> stateMachines, String binaryBaseUrl,
@@ -2032,7 +2186,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
         List<UUID> rawItemIds = rawItems.stream().map(RawItem::registerItemId).toList();
         Map<String, String> displayLabelPatterns = resolveEffectiveDisplayLabelPatterns();
 
-        Map<UUID, Map<String, List<ProjectedLink>>> linksByItem = fetchLinksByItem(rawItemIds, options.requestedLinks(), permissions, includePermissions);
+        Map<UUID, Map<String, List<ProjectedLink>>> linksByItem = fetchLinksByItem(rawItemIds, options.requestedLinks(), permissions, includePermissions, binaryBaseUrl);
         // A superuser used to skip this fetch entirely (nothing to filter by), but now also needs
         // it to populate ProjectedItem.markers -- so it's unconditional regardless of who's asking.
         Map<UUID, Set<UUID>> markerIdsByRegisterItemId = getMarkerIdsForRegisterItems(rawItemIds);
@@ -2045,31 +2199,8 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                 : permissions.grantedItemReadMarkerIds();
         Map<UUID, String> markerNamesById = resolveMarkerNames(markerIdsToName);
 
-        List<BinaryPropertyRow> binaryRows = jdbcClient.sql("""
-                SELECT rbp.register_item_id, rbp.property_id, sp.name AS property_name, rbp.binary_id
-                FROM register_binary_property rbp
-                JOIN schema_property sp ON sp.id = rbp.property_id
-                WHERE rbp.register_item_id IN (:ids)
-                """)
-                .param("ids", rawItemIds)
-                .query((rs, n) -> new BinaryPropertyRow(
-                        rs.getObject(COL_REGISTER_ITEM_ID, UUID.class),
-                        rs.getObject("property_id", UUID.class),
-                        rs.getString("property_name"),
-                        rs.getObject("binary_id", UUID.class)))
-                .list();
-
-        Set<UUID> binaryIds = binaryRows.stream().map(BinaryPropertyRow::binaryId).collect(Collectors.toSet());
-        Map<UUID, BinaryPropertyObject> binaryObjects = binaryPartitionManager.getBinaryProperties(binaryIds);
-
-        Map<UUID, List<AssembledBinary>> binaryPropsByItem = new HashMap<>();
-        for (var row : binaryRows) {
-            BinaryPropertyObject obj = binaryObjects.get(row.binaryId());
-            if (obj == null) continue;
-            binaryPropsByItem
-                    .computeIfAbsent(row.registerItemId(), k -> new ArrayList<>())
-                    .add(new AssembledBinary(row.propertyId(), row.propertyName(), assembleBinaryValue(obj, binaryBaseUrl)));
-        }
+        Map<UUID, List<AssembledBinary>> binaryPropsByItem = fetchBinaryPropsByItem(
+                rawItemIds, binaryBaseUrl, ownPropertyNames, options.requestedProperties());
 
         // Null for a superuser (no filtering); otherwise the read-granted (write implies read)
         // property-id grant map, resolved per item against that item's markers below.
@@ -2099,7 +2230,8 @@ public class RegisterPartitionManager implements SchemaChangeListener {
         Set<UUID> markerIds = ctx.markerIdsByRegisterItemId().getOrDefault(raw.registerItemId(), Set.of());
         Map<String, Object> readableProps = filterPropertiesByReadGrant(raw.properties(), markerIds, ctx.effectiveReadGrants());
         Map<String, Object> props = new HashMap<>(namesForIds(readableProps, ctx.ownPropertyNames()));
-        mergeReadableBinaryProperties(props, raw.registerItemId(), markerIds, ctx);
+        mergeReadableBinaryProperties(props, raw.registerItemId(), markerIds,
+                ctx.binaryPropsByItem(), ctx.effectiveReadGrants(), ctx.ownPropertyNames());
         var itemPermissions = ctx.includePermissions()
                 ? buildPermissions(ctx.permissions(), markerIds,
                         ctx.permissions().propertyWriteGrantsByMarker(), ctx.permissions().itemDeleteGrantedMarkerIds(),
@@ -2124,21 +2256,68 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                 markerNames);
     }
 
+    // Batches the register_binary_property lookup + BinaryPartitionManager resolution for a set of
+    // register item ids, keyed by property id/path via ownPropertyNames -- the one place binary
+    // values get assembled, shared by assembleProjectedItems (the top-level item(s) in a projection)
+    // and fetchPropertiesByRegisterItemId (every linked item, at any nesting depth), so the two
+    // paths can't drift: a linked item gets exactly the same binary-property treatment a top-level
+    // one does. requestedProperties is null for every linked-item caller (see ProjectionSpec's own
+    // comment: properties() only restricts the top-level item; a linked item always returns
+    // everything), which assembleBinaryValue already treats as "no slicing, return everything."
+    private Map<UUID, List<AssembledBinary>> fetchBinaryPropsByItem(List<UUID> registerItemIds, String binaryBaseUrl,
+            Map<UUID, List<String>> ownPropertyNames, @Nullable List<String> requestedProperties) {
+        if (registerItemIds.isEmpty()) return Map.of();
+
+        List<BinaryPropertyRow> binaryRows = jdbcClient.sql("""
+                SELECT rbp.register_item_id, rbp.property_id, sp.name AS property_name, rbp.binary_id
+                FROM register_binary_property rbp
+                JOIN schema_property sp ON sp.id = rbp.property_id
+                WHERE rbp.register_item_id IN (:ids)
+                """)
+                .param("ids", registerItemIds)
+                .query((rs, n) -> new BinaryPropertyRow(
+                        rs.getObject(COL_REGISTER_ITEM_ID, UUID.class),
+                        rs.getObject("property_id", UUID.class),
+                        rs.getString("property_name"),
+                        rs.getObject("binary_id", UUID.class)))
+                .list();
+        if (binaryRows.isEmpty()) return Map.of();
+
+        Set<UUID> binaryIds = binaryRows.stream().map(BinaryPropertyRow::binaryId).collect(Collectors.toSet());
+        Map<UUID, BinaryPropertyObject> binaryObjects = binaryPartitionManager.getBinaryProperties(binaryIds);
+
+        Map<UUID, List<AssembledBinary>> binaryPropsByItem = new HashMap<>();
+        for (var row : binaryRows) {
+            BinaryPropertyObject obj = binaryObjects.get(row.binaryId());
+            if (obj == null) continue;
+            Map<String, Object> value = assembleBinaryValue(obj, binaryBaseUrl,
+                    ownPropertyNames.get(row.propertyId()), requestedProperties);
+            binaryPropsByItem
+                    .computeIfAbsent(row.registerItemId(), k -> new ArrayList<>())
+                    .add(new AssembledBinary(row.propertyId(), row.propertyName(), value));
+        }
+        return binaryPropsByItem;
+    }
+
     // Extracted from assembleProjectedItem purely to keep that method's own cognitive complexity
     // down. Binary properties are gated by property:read exactly like scalar ones -- there is no
-    // separate download grant; read is equivalent to download.
-    private void mergeReadableBinaryProperties(Map<String, Object> props, UUID registerItemId, Set<UUID> markerIds, AssemblyContext ctx) {
-        List<AssembledBinary> bins = ctx.binaryPropsByItem().get(registerItemId);
+    // separate download grant; read is equivalent to download. Takes its pieces explicitly (not an
+    // AssemblyContext) so fetchPropertiesByRegisterItemId can call it too, for a linked item's own
+    // binary properties.
+    private void mergeReadableBinaryProperties(Map<String, Object> props, UUID registerItemId, Set<UUID> markerIds,
+            Map<UUID, List<AssembledBinary>> binaryPropsByItem, @Nullable Map<UUID, Set<UUID>> effectiveReadGrants,
+            Map<UUID, List<String>> ownPropertyNames) {
+        List<AssembledBinary> bins = binaryPropsByItem.get(registerItemId);
         if (bins == null) return;
-        Set<UUID> readableBinaryIds = ctx.effectiveReadGrants() == null ? null
-                : unionGrantedIds(markerIds, ctx.effectiveReadGrants());
+        Set<UUID> readableBinaryIds = effectiveReadGrants == null ? null
+                : unionGrantedIds(markerIds, effectiveReadGrants);
         for (var b : bins) {
             if (readableBinaryIds != null && !readableBinaryIds.contains(b.propertyId())) continue;
             // Same path-walking merge namesForIds uses for every other property type -- a
             // BINARY leaf can live inside a property group (e.g. file.content) just like
             // any other leaf, so it needs to land at its schema-nested location, not always
             // flattened to the top level under its own bare name.
-            List<String> path = ctx.ownPropertyNames().get(b.propertyId());
+            List<String> path = ownPropertyNames.get(b.propertyId());
             if (path != null) putAtPath(props, path, b.value());
         }
     }
@@ -2197,17 +2376,65 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                 .findFirst();
     }
 
-    // sha256/md5/mimeType/length live only inside metadata now, not also as top-level siblings --
-    // binary_content.insert already mirrors them there (see that method's own comment), so
-    // returning them twice would just be the same values under two names for no reason. id and url
-    // aren't stored facts (id is formatted, url is built per-request from binaryBaseUrl), so they
-    // stay top-level alongside metadata rather than folded into it.
-    private Map<String, Object> assembleBinaryValue(BinaryPropertyObject obj, String binaryBaseUrl) {
+    // id and url are always included regardless of what was requested -- they're structural facts
+    // about the binary value, not opt-in "properties" a caller selects among (design-notes section
+    // 10), and never part of the binary's own fields document (obj.metadata()) at all. That document's
+    // own top-level keys (hash, length, mimeType, metadata, calculated) are merged in directly as
+    // siblings of id/url, not nested under an extra wrapper key -- so "File.content.hash.md5",
+    // "File.content.length", and "File.content.metadata.exif.Make" are all resolved the same
+    // generic way, with no "metadata" special case anywhere in this method.
+    private Map<String, Object> assembleBinaryValue(BinaryPropertyObject obj, String binaryBaseUrl,
+                                                       @Nullable List<String> propertyPath, @Nullable List<String> requestedProperties) {
         Map<String, Object> value = new HashMap<>();
         value.put("id", obj.id().toString());
         value.put("url", binaryBaseUrl + "/api/binary/" + obj.id());
-        if (obj.metadata() != null) value.put("metadata", obj.metadata());
+        if (obj.metadata() != null) {
+            value.putAll(slicedBinaryFields(obj.metadata(), propertyPath, requestedProperties));
+        }
         return value;
+    }
+
+    // requestedProperties == null means no restriction at all (today's default: everything, unsliced).
+    // Otherwise, a *broad* request for this property -- its bare name alone -- wins and returns every
+    // one of its fields too (see restrictToRequestedProperties' own comment on why that's the wildcard
+    // case, not a glob). Only when every matching request names a specific registered path (e.g.
+    // "<name>.metadata.exif.Make", "<name>.hash.md5", or a bare "<name>.length") does this narrow the
+    // response to just those paths, merged into one partial tree -- restrictToRequestedProperties
+    // already guaranteed at least one such path exists whenever this property was included at all, so
+    // the specificPaths-empty branch here is a defensive fallback, not an expected outcome.
+    private Map<String, Object> slicedBinaryFields(Map<String, Object> fields, @Nullable List<String> propertyPath,
+                                                 @Nullable List<String> requestedProperties) {
+        if (requestedProperties == null || propertyPath == null) return fields;
+        String joined = String.join(".", propertyPath);
+        Set<String> requested = Set.copyOf(requestedProperties);
+        boolean broad = requested.contains(joined);
+        if (broad) return fields;
+
+        String prefix = joined + ".";
+        List<List<String>> specificPaths = requested.stream()
+                .filter(r -> r.startsWith(prefix))
+                .map(r -> List.of(r.substring(prefix.length()).split("\\.")))
+                .toList();
+        if (specificPaths.isEmpty()) return fields;
+
+        Map<String, Object> sliced = new HashMap<>();
+        for (List<String> path : specificPaths) {
+            Object leafValue = getAtPath(fields, path);
+            if (leafValue != null) putAtPath(sliced, path, leafValue);
+        }
+        return sliced;
+    }
+
+    // Read counterpart to putAtPath -- walks a nested map by path, returning null (not throwing) if
+    // any segment is missing or isn't itself a map, e.g. a stale registered path whose binary no
+    // longer actually has it.
+    private Object getAtPath(Map<String, Object> source, List<String> path) {
+        Object cursor = source;
+        for (String segment : path) {
+            if (!(cursor instanceof Map<?, ?> map)) return null;
+            cursor = map.get(segment);
+        }
+        return cursor;
     }
 
     private record SqlFragment(String sql, Map<String, Object> params) {
@@ -2318,9 +2545,22 @@ public class RegisterPartitionManager implements SchemaChangeListener {
     // markerIdsByRegisterId/propertyReadGrantsByMarker: the mode-2 property-read filter, applied
     // at the ID level before namesForIds resolves names (namesForIds has no concept of
     // permission). propertyReadGrantsByMarker == null means "don't filter" (superuser).
+    //
+    // binaryBaseUrl is only actually used for an item lookup (isLinkTable false) -- a link's own
+    // properties can never be BINARY-typed (register_binary_property only ever references
+    // register_item_id, never a link row), so the merge below is skipped entirely for link
+    // properties, matching fetchBinaryPropsByItem's own item-only scope. This is the caller used for
+    // every linked item, at any nesting depth (fetchLinksByItem recurses back into itself for nested
+    // perspectives) -- merging binary properties here, via the exact same fetchBinaryPropsByItem/
+    // mergeReadableBinaryProperties helpers assembleProjectedItems uses for the top-level item, is
+    // what keeps property retrieval identical between the two rather than two logic paths that could
+    // drift. requestedProperties is passed as null (see fetchBinaryPropsByItem's own comment: a
+    // linked item always returns every property, unsliced, regardless of what the top-level item's
+    // own projection requested).
     private Map<UUID, Map<String, Object>> fetchPropertiesByRegisterItemId(
             Map<UUID, List<UUID>> typeOrDefIdToRegisterIds, String idColumn,
-            Map<UUID, Set<UUID>> markerIdsByRegisterId, @Nullable Map<UUID, Set<UUID>> propertyReadGrantsByMarker) {
+            Map<UUID, Set<UUID>> markerIdsByRegisterId, @Nullable Map<UUID, Set<UUID>> propertyReadGrantsByMarker,
+            String binaryBaseUrl) {
         boolean isLinkTable = idColumn.equals(COL_REGISTER_LINK_ID);
         Map<UUID, Map<String, Object>> result = new HashMap<>();
         for (var entry : typeOrDefIdToRegisterIds.entrySet()) {
@@ -2329,13 +2569,21 @@ public class RegisterPartitionManager implements SchemaChangeListener {
             Map<UUID, List<String>> idToPath = isLinkTable
                     ? propertyPathsByIdForLinkType(typeOrDefId)
                     : propertyPathsByIdForItemType(typeOrDefId);
+            Map<UUID, List<AssembledBinary>> binaryPropsByItem = isLinkTable ? Map.of()
+                    : fetchBinaryPropsByItem(entry.getValue(), binaryBaseUrl, idToPath, null);
             jdbcClient.sql("SELECT " + idColumn + ", properties::text FROM " + table + " WHERE " + idColumn + " IN (:ids)")
                     .param("ids", entry.getValue())
                     .query((rs, n) -> {
                         UUID registerId = rs.getObject(idColumn, UUID.class);
+                        Set<UUID> markerIds = markerIdsByRegisterId.getOrDefault(registerId, Set.of());
                         Map<String, Object> readable = filterPropertiesByReadGrant(parseJsonb(rs.getString(COL_PROPERTIES)),
-                                markerIdsByRegisterId.getOrDefault(registerId, Set.of()), propertyReadGrantsByMarker);
-                        return Map.entry(registerId, namesForIds(readable, idToPath));
+                                markerIds, propertyReadGrantsByMarker);
+                        Map<String, Object> props = namesForIds(readable, idToPath);
+                        if (!isLinkTable) {
+                            mergeReadableBinaryProperties(props, registerId, markerIds,
+                                    binaryPropsByItem, propertyReadGrantsByMarker, idToPath);
+                        }
+                        return Map.entry(registerId, props);
                     })
                     .list()
                     .forEach(e -> result.put(e.getKey(), e.getValue()));

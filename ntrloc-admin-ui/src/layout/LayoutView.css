@@ -1,0 +1,48 @@
+/* Formerly #root's rules in index.css -- LayoutView now owns its own outer shell instead of
+   relying on the page's mount point to establish it, since #root itself renders no markup of its
+   own (index.html's empty <div id="root">) and has nothing else that would need these.
+   Element selector, not a class: LayoutView's own root is a literal <layout-view> custom element
+   (see LayoutView.jsx), so its tag name alone is enough to target it. */
+layout-view {
+  /* height, not min-height: this needs to be a hard cap, not just a floor, or nothing below it
+     (however many levels of flex: 1; min-height: 0 deep) is ever actually clipped -- min-height
+     only stops things from being smaller than the viewport, it doesn't stop the whole page from
+     growing past it to fit oversized content, which defeats every internal-scroll region relying
+     on min-height: 0 further down the tree (see SearchPaneResultsView, whose own overflow: auto
+     had nothing to actually overflow *against* until this was capped). */
+  height: 100svh;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+
+  /* Sizing/positioning of LayoutView's own children lives here, since it's their container -- each
+   component's own CSS still governs how it arranges/styles its own content, not its own size or
+   position within the page. */
+  layout-navbar {
+    flex: none;
+    height: 56px;
+  }
+
+  layout-view-body {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+
+    layout-sidebar {
+      flex: none;
+      width: 220px;
+    }
+
+    layout-content {
+      flex: 1;
+      /* Without this, a flex item's default min-height:auto lets it grow to fit its content
+         instead of respecting its allocated space -- exactly what's needed now that content
+         (SearchPaneResultsView) can genuinely overflow and should scroll internally instead of
+         growing the whole page. */
+      min-height: 0;
+    }
+
+  }
+
+}
+

@@ -38,13 +38,18 @@ graph:
     mounts:
       - path: /admin
         location: "file:///Users/michaelcoddington/Documents/Projects/ntrloc/domain-graph-starter/src/main/resources/static/admin-ui/"
+      # Experimental React admin UI (ntrloc-admin-ui) -- served from its own build output, not
+      # copied anywhere, so `npm run build` there is the only step needed to refresh it here.
+      # Matches vite.config.js's base: '/react-admin/' for the production build.
+      - path: /react-admin
+        location: "file:///Users/michaelcoddington/Documents/Projects/ntrloc/ntrloc-admin-ui/dist/"
   process:
     script:
       # Packages a process script (Groovy or JavaScript) can reference a class from by simple
       # name, e.g. "new SingleItemProjectionSpec(...)" instead of the fully-qualified name.
       import-packages:
-        - org.ntrloc.graph.db.projection
-        - org.ntrloc.graph.db.mutation
+        - org.ntrloc.graph.projection
+        - org.ntrloc.graph.mutation
   telemetry:
     # Set true to actually transmit OTel traces/metrics/logs (e.g. to a local Grafana stack).
     enabled: false

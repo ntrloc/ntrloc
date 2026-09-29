@@ -1,0 +1,35 @@
+/* Fixed, not a portal -- nothing in this app transforms an ancestor, so this stays positioned
+   against the viewport same as TreeSelect's own popover does without one. */
+modal-popup-backdrop {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 100;
+}
+
+modal-popup-view {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 320px;
+  max-width: 480px;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  box-shadow: var(--shadow);
+}
+
+.modal-popup-message {
+  margin: 0;
+  color: var(--text-h);
+}
+
+modal-popup-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}

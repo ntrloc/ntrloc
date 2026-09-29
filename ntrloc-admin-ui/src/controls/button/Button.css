@@ -1,0 +1,32 @@
+.btn {
+  /* Override per-instance via style={{ '--btn-padding': '...' }}. */
+  --btn-padding: 7px;
+  padding: var(--btn-padding);
+  border: none;
+  border-radius: 8px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.btn-primary {
+  background: var(--primary);
+  color: var(--bg);
+}
+
+.btn-primary:hover:not(:disabled) {
+  filter: brightness(0.92);
+}
+
+.btn-secondary {
+  background: var(--secondary);
+  color: var(--bg);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  filter: brightness(0.92);
+}

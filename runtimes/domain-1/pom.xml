@@ -41,6 +41,50 @@
                     </execution>
                 </executions>
             </plugin>
+
+            <!-- admin-ui-extensions/example: a sample admin UI extension, discovered by
+                 domain-graph-starter's AdminUiExtensionScanner via classpath convention once built.
+                 Builds straight into target/classes/static/admin-ui-extensions/example (see its own
+                 vite.config.js): no manual copy step, nothing generated checked into src/. Node/npm
+                 are installed local to this build (admin-ui-extensions/example/node, gitignored)
+                 rather than assumed to already be on the machine running the build. -->
+            <plugin>
+                <groupId>com.github.eirslett</groupId>
+                <artifactId>frontend-maven-plugin</artifactId>
+                <version>1.15.1</version>
+                <configuration>
+                    <workingDirectory>admin-ui-extensions/example</workingDirectory>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>install node and npm (admin-ui-extensions/example)</id>
+                        <goals>
+                            <goal>install-node-and-npm</goal>
+                        </goals>
+                        <configuration>
+                            <nodeVersion>v22.14.0</nodeVersion>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>npm install (admin-ui-extensions/example)</id>
+                        <goals>
+                            <goal>npm</goal>
+                        </goals>
+                        <configuration>
+                            <arguments>install</arguments>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>npm build (admin-ui-extensions/example)</id>
+                        <goals>
+                            <goal>npm</goal>
+                        </goals>
+                        <configuration>
+                            <arguments>run build</arguments>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
         </plugins>
     </build>
 

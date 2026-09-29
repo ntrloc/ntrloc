@@ -146,7 +146,7 @@ const VALUE_TYPES = ['STRING', 'INT', 'LONG', 'DOUBLE', 'DATE', 'DATETIME', 'BOO
 // ntrloc-save-confirm-dialog.js/ntrloc-controlled-list-dialog.js's open*Dialog functions. Handles
 // both item creation (mode: 'create', no `item`) and editing an existing item's properties
 // (mode: 'edit', item: { itemId, itemType, properties } -- ProjectedItem's own shape, see
-// EntityController's /api/entity/projection) through the same POST /api/mutation endpoint
+// ProjectionController's /api/projection/collection) through the same POST /api/mutation endpoint
 // (ItemCreateMutation vs ItemUpdateMutation), but with genuinely different property-editing UIs
 // for the two modes now (see renderContent): edit mode keeps the original "add one property at a
 // time" row list (state.rows/addableProperties), since an existing item typically only has a

@@ -21,6 +21,10 @@ public class StaticResourceOffloadFilter implements WebFilter {
         this.properties = properties;
     }
 
+    // Same blocking-resolution concern as a graph.ui.mounts entry -- see AdminUiExtensionScanner/
+    // UiHostingConfiguration's own registration of this path, just not itself a configurable mount.
+    private static final String ADMIN_UI_EXTENSIONS_PATH = "/admin-ui-extensions/";
+
     @Override
     @SuppressWarnings("java:S1075") // "/" here is the URL path separator (always this character per
                                      // the HTTP spec), not a filesystem separator -- File.separator
@@ -28,7 +32,7 @@ public class StaticResourceOffloadFilter implements WebFilter {
     public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
         String path = exchange.getRequest().getPath().value();
 
-        boolean isMountedAsset = properties.mounts().stream().anyMatch(mount -> {
+        boolean isMountedAsset = path.startsWith(ADMIN_UI_EXTENSIONS_PATH) || properties.mounts().stream().anyMatch(mount -> {
             String mountPath = mount.path().endsWith("/") ? mount.path() : mount.path() + "/";
             return path.startsWith(mountPath);
         });

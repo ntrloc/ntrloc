@@ -1,0 +1,13 @@
+/* Sizing/positioning within the page (height, flex) is owned by LayoutView.css, its container --
+   this file only governs how layout-navbar arranges/styles its own content. */
+layout-navbar {
+  display: flex;
+  align-items: center;
+  padding-inline: 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.navbar-brand {
+  font-weight: 600;
+  color: var(--text-h);
+}

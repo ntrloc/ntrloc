@@ -457,6 +457,42 @@ CREATE TABLE binary_content (
     UNIQUE (sha256, md5, length)
 );
 
+-- === binary_dynamic_property / binary_property_dynamic_property (registry) ===
+-- See docs/ntrloc-dynamic-properties-design-notes.md section 10. binary_dynamic_property is a
+-- global catalog of dot-paths observed inside binary_content.metadata (e.g.
+-- "extracted.exif.colorspace") -- not scoped per property, since the same path string means the
+-- same thing regardless of which property happens to reference a binary carrying it; type is
+-- first-observed-wins, mirroring dynamic-property type handling elsewhere, since a discovered path
+-- has no schema row of its own to declare one.
+CREATE TABLE binary_dynamic_property (
+    id   UUID PRIMARY KEY DEFAULT uuidv7(),
+    path TEXT NOT NULL UNIQUE,
+    type TEXT NOT NULL
+);
+
+-- Links a binary PROPERTY (schema_property.id, e.g. File.content's own id) to each dynamic path
+-- currently exhibited by binaries currently referenced through it. reference_count, not a plain
+-- boolean row: it's how many current (item, binary) attachments contribute that path, so a shared
+-- binary (two items pointing the same property at the same content) or a path also reachable via a
+-- different binary under the same property doesn't get pruned just because one reference leaves.
+-- Deliberately not a (binary_content_id, dynamic_property_id) mapping -- that would be one row per
+-- leaf path per binary (80-100+ for a single real photo) at real DAM scale; this table's size is
+-- bounded by (distinct binary properties) x (distinct paths ever seen under each) instead. A row is
+-- inserted the first time a property gains a binary exhibiting a path, and deleted once
+-- reference_count returns to zero -- see RegisterPartitionManager's attach/detach reconciliation.
+-- No CHECK (reference_count > 0): decrementing to zero and deleting the row are deliberately two
+-- separate statements in the same transaction (BinaryDynamicPropertyRegistrar), and Postgres checks
+-- a CHECK constraint immediately per-statement, not deferred to commit -- an immediate constraint
+-- here would reject the decrement itself before the delete ever ran. The transient zero row is never
+-- visible outside that one transaction.
+CREATE TABLE binary_property_dynamic_property (
+    property_id         UUID NOT NULL REFERENCES schema_property(id) ON DELETE CASCADE,
+    dynamic_property_id UUID NOT NULL REFERENCES binary_dynamic_property(id) ON DELETE CASCADE,
+    reference_count      INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (property_id, dynamic_property_id)
+);
+CREATE INDEX binary_property_dynamic_property_dynamic_idx ON binary_property_dynamic_property (dynamic_property_id);
+
 -- === ledger_entry (LedgerInitializer) ===
 
 CREATE TABLE ledger_entry (

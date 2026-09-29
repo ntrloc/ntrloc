@@ -8,7 +8,10 @@ import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyContainerKind;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyUsage;
+import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminBinaryPropertyDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyDefinitionView;
+import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminScalarPropertyDefinitionView;
+import org.ntrloc.graph.db.partition.schema.definition.view.admin.DynamicFieldView;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 
@@ -601,17 +604,39 @@ public class SchemaRepository {
     // --- Row mappers ---
 
     private AdminPropertyDefinitionView mapProperty(ResultSet rs, int n) throws SQLException {
-        return new AdminPropertyDefinitionView(
-                rs.getObject("id", UUID.class),
-                rs.getString("name"),
-                rs.getString(PARAM_DESCRIPTION),
-                PropertyType.valueOf(rs.getString("type")),
-                PropertyCardinality.valueOf(rs.getString(PARAM_CARDINALITY)),
-                PropertyUsage.valueOf(rs.getString(PARAM_USAGE)),
-                null,
-                rs.getObject("controlled_list_id", UUID.class),
-                rs.getBoolean(COL_FACETABLE)
-        );
+        UUID id = rs.getObject("id", UUID.class);
+        String name = rs.getString("name");
+        String description = rs.getString(PARAM_DESCRIPTION);
+        PropertyType type = PropertyType.valueOf(rs.getString("type"));
+        PropertyCardinality cardinality = PropertyCardinality.valueOf(rs.getString(PARAM_CARDINALITY));
+        PropertyUsage usage = PropertyUsage.valueOf(rs.getString(PARAM_USAGE));
+        UUID controlledListId = rs.getObject("controlled_list_id", UUID.class);
+        boolean facetable = rs.getBoolean(COL_FACETABLE);
+
+        if (type == PropertyType.BINARY) {
+            return new AdminBinaryPropertyDefinitionView(id, name, description, cardinality, usage, null,
+                    controlledListId, facetable, dynamicFieldsFor(id));
+        }
+        return new AdminScalarPropertyDefinitionView(id, name, description, type, cardinality, usage, null,
+                controlledListId, facetable);
+    }
+
+    // Every path currently observed under this BINARY property's binaries' metadata, with a live
+    // reference (reference_count > 0) -- see docs/ntrloc-dynamic-properties-design-notes.md section
+    // 10. One extra query per BINARY property found while building the admin schema, not per
+    // projection/search request: SchemaManager caches the whole built schema and only rebuilds it on
+    // a schema change, so this never runs on the read/query hot path. BINARY properties are also rare
+    // relative to the schema as a whole, so this isn't a real N+1 concern in practice.
+    private List<DynamicFieldView> dynamicFieldsFor(UUID propertyId) {
+        return jdbcClient.sql("""
+                SELECT bdp.path, bdp.type FROM binary_property_dynamic_property bpdp
+                JOIN binary_dynamic_property bdp ON bdp.id = bpdp.dynamic_property_id
+                WHERE bpdp.property_id = :propertyId
+                ORDER BY bdp.path
+                """)
+                .param("propertyId", propertyId)
+                .query((rs, n) -> new DynamicFieldView(rs.getString("path"), PropertyType.valueOf(rs.getString("type"))))
+                .list();
     }
 
     private GroupRow mapGroup(ResultSet rs) throws SQLException {

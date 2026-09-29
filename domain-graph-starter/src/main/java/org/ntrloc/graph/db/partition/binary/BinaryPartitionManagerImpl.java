@@ -12,6 +12,7 @@ import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.core.io.buffer.DataBufferUtils;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
@@ -36,18 +37,29 @@ public class BinaryPartitionManagerImpl implements BinaryPartitionManager {
 
     private static final String COL_SHA256 = "sha256";
     private static final String COL_LENGTH = "length";
+    // Wire keys for a binary's own fields document -- these five (hash, length, mimeType, metadata,
+    // calculated) are the only top-level keys that ever exist there, all developer-chosen: an
+    // extractor's own field names always land nested one level inside "metadata" or "calculated",
+    // never as new top-level siblings, so there's no risk of them ever colliding with "id"/"url"
+    // (the two structural facts assembleBinaryValue adds outside this document entirely) or with
+    // each other. "metadata" is what the media processor extracted directly off the file; "calculated"
+    // is what it derived/computed from that (e.g. GPS coordinates combined into decimal degrees).
+    private static final String KEY_METADATA = "metadata";
+    private static final String KEY_CALCULATED = "calculated";
 
     private final JdbcClient jdbcClient;
     private final BinaryStorageAdapter storageAdapter;
     private final ObjectMapper objectMapper;
     private final ApplicationEventPublisher eventPublisher;
+    private final BinaryDynamicPropertyRegistrar dynamicPropertyRegistrar;
 
     public BinaryPartitionManagerImpl(JdbcClient jdbcClient, BinaryStorageAdapter storageAdapter, ObjectMapper objectMapper,
-                                       ApplicationEventPublisher eventPublisher) {
+                                       ApplicationEventPublisher eventPublisher, BinaryDynamicPropertyRegistrar dynamicPropertyRegistrar) {
         this.jdbcClient = jdbcClient;
         this.storageAdapter = storageAdapter;
         this.objectMapper = objectMapper;
         this.eventPublisher = eventPublisher;
+        this.dynamicPropertyRegistrar = dynamicPropertyRegistrar;
     }
 
     // Consumes the upload as a reactive chunk stream rather than a blocking InputStream: a prior
@@ -117,17 +129,18 @@ public class BinaryPartitionManagerImpl implements BinaryPartitionManager {
                 .map(InsertResult::id);
     }
 
-    // Mirrors sha256/md5/length/mimeType into metadata (alongside, later, embedded EXIF/IPTC under an
-    // "embedded" key) so filter/sort/facet resolution has one uniform mechanism for every intrinsic
-    // binary fact, real-column-backed or not -- see docs/ntrloc-dynamic-properties-design-notes.md
-    // section 8. Safe to write once, here, alongside the real columns: these four values are
-    // write-once, and binary_content rows are never updated after this insert.
+    // Mirrors sha256/md5/length/mimeType into the binary's own fields document (alongside, once
+    // extracted, the "metadata"/"calculated" buckets updateMetadata below writes) so filter/sort/facet
+    // resolution has one uniform mechanism for every intrinsic binary fact, real-column-backed or not
+    // -- see docs/ntrloc-dynamic-properties-design-notes.md section 8. Safe to write once, here,
+    // alongside the real columns: these four values are write-once, and binary_content rows are never
+    // updated after this insert (except by updateMetadata's own later, narrower field replacement).
     private String metadataJson(BinaryContentInfo info) {
-        Map<String, Object> metadata = new LinkedHashMap<>();
-        metadata.put(COL_LENGTH, info.getLength());
-        if (info.getMimeType() != null) metadata.put("mimeType", info.getMimeType());
-        metadata.put("hashes", Map.of(COL_SHA256, info.getSha256Hash(), "md5", info.getMd5Hash()));
-        return objectMapper.writeValueAsString(metadata);
+        Map<String, Object> fields = new LinkedHashMap<>();
+        fields.put(COL_LENGTH, info.getLength());
+        if (info.getMimeType() != null) fields.put("mimeType", info.getMimeType());
+        fields.put("hash", Map.of(COL_SHA256, info.getSha256Hash(), "md5", info.getMd5Hash()));
+        return objectMapper.writeValueAsString(fields);
     }
 
     @Override
@@ -187,5 +200,45 @@ public class BinaryPartitionManagerImpl implements BinaryPartitionManager {
             LOG.warn("Failed to parse binary metadata JSON", e);
             return null;
         }
+    }
+
+    // FOR UPDATE locks the row for the rest of this transaction -- two concurrent re-extractions of
+    // the same shared binary_content row (the actual race design-notes section 8 left as an open
+    // "cache vs. record" question) at least can't interleave their own read-diff-write sequence here;
+    // the second waits for the first's transaction to commit before reading. That's a narrower
+    // guarantee than a real answer to the cache-vs-record question -- it just stops one specific,
+    // avoidable lost-update within a single call, not the broader "which extraction result should
+    // win" policy question.
+    @Override
+    @Transactional
+    public void updateMetadata(UUID binaryContentId, Map<String, Object> extracted, Map<String, Object> derived) {
+        String currentJson = jdbcClient.sql("SELECT metadata::text FROM binary_content WHERE id = :id FOR UPDATE")
+                .param("id", binaryContentId)
+                .query(String.class)
+                .optional()
+                .orElse(null);
+        if (currentJson == null) return;
+
+        Map<String, Object> oldFields = parseMetadata(currentJson);
+        Map<String, Object> oldExtracted = asMap(oldFields.get(KEY_METADATA));
+        Map<String, Object> oldDerived = asMap(oldFields.get(KEY_CALCULATED));
+
+        Map<String, Object> newFields = new LinkedHashMap<>(oldFields);
+        newFields.put(KEY_METADATA, extracted);
+        newFields.put(KEY_CALCULATED, derived);
+
+        jdbcClient.sql("UPDATE binary_content SET metadata = :metadata::jsonb WHERE id = :id")
+                .param("metadata", objectMapper.writeValueAsString(newFields))
+                .param("id", binaryContentId)
+                .update();
+
+        dynamicPropertyRegistrar.onMetadataChanged(binaryContentId,
+                Map.of(KEY_METADATA, oldExtracted, KEY_CALCULATED, oldDerived),
+                Map.of(KEY_METADATA, extracted, KEY_CALCULATED, derived));
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> asMap(Object value) {
+        return value instanceof Map<?, ?> map ? (Map<String, Object>) map : Map.of();
     }
 }

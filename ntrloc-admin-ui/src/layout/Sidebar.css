@@ -1,0 +1,39 @@
+/* Sizing/positioning within the page (width, flex) is owned by LayoutView.css, its container --
+   this file only governs how layout-sidebar arranges/styles its own content. */
+layout-sidebar {
+  padding: 16px;
+  border-right: 1px solid var(--border);
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sidebar-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.sidebar-nav-item:hover {
+  background: var(--primary-bg);
+  color: var(--text-h);
+}
+
+.sidebar-nav-item.active {
+  background: var(--primary-bg);
+  color: var(--primary);
+  font-weight: 500;
+}

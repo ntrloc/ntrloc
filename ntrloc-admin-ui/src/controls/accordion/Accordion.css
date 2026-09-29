@@ -1,0 +1,70 @@
+/* Divided into full-width bars -- not a nav-item list (no left indent, no per-item rounding, no
+   expand/collapse glyph): each tab is its own solid pane spanning the accordion's full width,
+   matching the "stack of labeled boxes" look this replaces a tree-like appearance with. */
+accordion-view {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Each section is its own flex column (tab then, if active, its panel) so the active section's
+   flex-grow below can expand it to fill whatever vertical space this accordion itself has been
+   given -- inactive sections stay at flex-grow: 0, only as tall as their own tab (the default
+   min-height: auto stops them shrinking below that -- deliberately NOT given overflow: hidden here,
+   since that would void auto's content-based minimum per the flexbox spec and collapse an inactive
+   section to zero instead), so they collect at whichever end the active one isn't pushing them
+   toward. flex-basis/flex-shrink stay fixed across both states (only flex-grow itself changes)
+   specifically so the transition below has a single animatable number to interpolate -- toggling
+   the whole `flex` shorthand between "none" and "1" would jump between incompatible flex-basis
+   keywords (auto vs. 0%) with nothing to smoothly animate between them. The panel's own
+   overflow: auto (below) is what clips its reveal as the section grows -- no separate
+   height/opacity animation needed on the panel itself. */
+accordion-section {
+  display: flex;
+  flex-direction: column;
+  flex: 0 1 0%;
+  border-bottom: 1px solid var(--border);
+  transition: flex-grow 200ms ease;
+}
+
+accordion-section:last-child {
+  border-bottom: none;
+}
+
+accordion-section[data-active] {
+  flex-grow: 1;
+  min-height: 0;
+}
+
+.accordion-tab {
+  flex: none;
+  display: block;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  background: var(--code-bg);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.accordion-tab:hover {
+  background: var(--primary-bg);
+  color: var(--text-h);
+}
+
+accordion-section[data-active] > .accordion-tab {
+  background: var(--primary-bg);
+  color: var(--primary);
+  font-weight: 500;
+}
+
+accordion-panel {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: block;
+  padding: 12px;
+  border-top: 1px solid var(--border);
+}

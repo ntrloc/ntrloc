@@ -1,0 +1,101 @@
+/* ItemPaneView is PaneView's only body child, so (unlike SearchPaneView, which has two children
+   needing different flex values) it owns its own top-level sizing here rather than leaving it to a
+   parent -- flex: 1 fills the remaining height below PaneView's header, and it scrolls internally. */
+item-pane-view {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  gap: 12px;
+  padding: 12px;
+  overflow: auto;
+}
+
+.item-pane-type {
+  color: var(--text);
+}
+
+item-pane-section {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.item-pane-section-title {
+  font-weight: 600;
+  color: var(--text-h);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+}
+
+.item-pane-section-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: none;
+  padding: 0;
+  margin-bottom: 4px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.item-pane-section-toggle .item-pane-section-title {
+  margin-bottom: 0;
+}
+
+.item-pane-section-toggle-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  flex: none;
+  color: var(--text);
+}
+
+.item-pane-property {
+  display: flex;
+  gap: 8px;
+  color: var(--text);
+}
+
+.item-pane-property-name {
+  font-weight: 600;
+}
+
+.item-pane-link-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--text);
+}
+
+.item-pane-link-perspective {
+  font-weight: 600;
+}
+
+.item-pane-link-target {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 12px;
+}
+
+.item-pane-link-target-label {
+  color: var(--text-h);
+}
+
+.item-pane-state {
+  display: flex;
+  gap: 8px;
+  color: var(--text);
+}
+
+.item-pane-state-machine {
+  font-weight: 600;
+}
+
+.item-pane-markers {
+  color: var(--text);
+}

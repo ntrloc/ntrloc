@@ -10,9 +10,10 @@
 
     <modules>
         <module>runtimes/domain-1</module>
-        <module>runtimes/release</module>
+        <module>release</module>
         <module>media-processor-api</module>
         <module>domain-graph-starter</module>
+        <module>ntrloc-admin-ui</module>
     </modules>
 
     <properties>

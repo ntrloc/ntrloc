@@ -79,7 +79,7 @@ class AuthorizationEndpointsIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void projectionAllowsQueryingUserGroupGrantedType() {
-        webTestClient.post().uri("/api/entity/projection")
+        webTestClient.post().uri("/api/projection/collection")
                 .header("X-Ntrloc-User", "alice")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("""
@@ -91,7 +91,7 @@ class AuthorizationEndpointsIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void projectionMasksInaccessibleTypeAsNotFound() {
-        webTestClient.post().uri("/api/entity/projection")
+        webTestClient.post().uri("/api/projection/collection")
                 .header("X-Ntrloc-User", "alice")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("""
@@ -103,7 +103,7 @@ class AuthorizationEndpointsIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void projectionAllowsDirectUserGrantedType() {
-        webTestClient.post().uri("/api/entity/projection")
+        webTestClient.post().uri("/api/projection/collection")
                 .header("X-Ntrloc-User", "carol")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("""
@@ -115,7 +115,7 @@ class AuthorizationEndpointsIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void projectionMasksTypeNotGrantedToDirectUser() {
-        webTestClient.post().uri("/api/entity/projection")
+        webTestClient.post().uri("/api/projection/collection")
                 .header("X-Ntrloc-User", "carol")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("""
@@ -141,7 +141,7 @@ class AuthorizationEndpointsIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void projectionAllowsSuperuserOnUnmarkedType() {
-        webTestClient.post().uri("/api/entity/projection")
+        webTestClient.post().uri("/api/projection/collection")
                 .header("X-Ntrloc-User", "root")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("""
@@ -153,7 +153,7 @@ class AuthorizationEndpointsIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void projectionMasksUnmarkedTypeForNonSuperuser() {
-        webTestClient.post().uri("/api/entity/projection")
+        webTestClient.post().uri("/api/projection/collection")
                 .header("X-Ntrloc-User", "alice")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("""

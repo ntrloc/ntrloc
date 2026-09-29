@@ -1,0 +1,13 @@
+.select {
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text-h);
+  font: inherit;
+}
+
+.select:disabled {
+  opacity: 0.6;
+  cursor: default;
+}

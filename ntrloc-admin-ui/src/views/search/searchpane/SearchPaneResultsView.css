@@ -1,0 +1,23 @@
+search-pane-results-view {
+  display: flex;
+  flex-direction: column;
+
+  /* Sizing/positioning of this view's own children lives here, since it's their container -- the
+     list scrolls independently; the pager stays fixed below it rather than scrolling away. */
+  search-pane-results-list {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    display: flex;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 8px 12px;
+  }
+
+  .pager {
+    flex: none;
+    border-top: 1px solid var(--border);
+  }
+}

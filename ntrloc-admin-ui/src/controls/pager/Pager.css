@@ -1,0 +1,56 @@
+.pager {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+}
+
+.pager-prev-btn,
+.pager-next-btn {
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+
+/* Explicit grid-column on all three (not relying on source-order auto-placement) so the current-page
+   display stays centered even when prev and/or next is conditionally absent. */
+.pager-prev-btn {
+  grid-column: 1;
+  justify-self: start;
+}
+
+.pager-next-btn {
+  grid-column: 3;
+  justify-self: end;
+}
+
+.pager-prev-btn:hover,
+.pager-next-btn:hover {
+  background: var(--primary-bg);
+  color: var(--text-h);
+}
+
+.pager-current {
+  grid-column: 2;
+  justify-self: center;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+}
+
+.pager-current-input {
+  width: 3ch;
+  text-align: center;
+  padding: 2px 4px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text-h);
+  font: inherit;
+}

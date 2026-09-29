@@ -1,0 +1,50 @@
+pane-view {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+pane-view-header {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--code-bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.pane-view-title {
+  font-weight: 600;
+  color: var(--text-h);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.pane-view-header-controls {
+  display: flex;
+  gap: 4px;
+}
+
+.pane-view-control-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.pane-view-control-btn:hover {
+  background: var(--primary-bg);
+  color: var(--text-h);
+}

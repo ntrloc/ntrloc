@@ -13,9 +13,9 @@ import org.ntrloc.graph.db.partition.ledger.LinkEndpoint;
 import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
 import org.ntrloc.graph.db.partition.security.ResolvedPrincipal;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
-import org.ntrloc.graph.db.projection.CollectionProjectionSpec;
-import org.ntrloc.graph.db.projection.LinkProjectionSpec;
-import org.ntrloc.graph.db.projection.SingleItemProjectionSpec;
+import org.ntrloc.graph.projection.CollectionProjectionSpec;
+import org.ntrloc.graph.projection.LinkProjectionSpec;
+import org.ntrloc.graph.projection.ItemProjectionSpec;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -170,7 +170,7 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
         // requireReadAccess's existing type-level behavior) -- Optional.empty() is reserved for a
         // genuinely nonexistent item, a distinct case EntityManagerImpl already handles earlier.
         assertThatThrownBy(() ->
-                        entityManager.project(new SingleItemProjectionSpec("CoordinatorTestProduct", productId), "http://binary", principal))
+                        entityManager.project(new ItemProjectionSpec("CoordinatorTestProduct", productId), "http://binary", principal))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("404");
     }
@@ -181,7 +181,7 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
         var principal = newUserInEveryoneUserGroup();
         grantItemRead(productId, principal);
 
-        var result = entityManager.project(new SingleItemProjectionSpec("CoordinatorTestProduct", productId), "http://binary", principal);
+        var result = entityManager.project(new ItemProjectionSpec("CoordinatorTestProduct", productId), "http://binary", principal);
 
         assertThat(result).isPresent();
         assertThat(result.get().itemId()).isEqualTo(productId);
@@ -198,7 +198,7 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
         grantItemRead(productId, principal);
 
         var result = entityManager.project(
-                new SingleItemProjectionSpec("CoordinatorTestProduct", productId, Map.of("products", new LinkProjectionSpec(null))),
+                new ItemProjectionSpec("CoordinatorTestProduct", productId, Map.of("products", new LinkProjectionSpec(null))),
                 "http://binary", principal);
 
         assertThat(result).isPresent();
@@ -216,7 +216,7 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
         // Deliberately no grantLinkRead(...) -- link:read is a separate, still-required condition.
 
         var result = entityManager.project(
-                new SingleItemProjectionSpec("CoordinatorTestProduct", productId, Map.of("products", new LinkProjectionSpec(null))),
+                new ItemProjectionSpec("CoordinatorTestProduct", productId, Map.of("products", new LinkProjectionSpec(null))),
                 "http://binary", principal);
 
         assertThat(result.get().links().values().stream().flatMap(List::stream)).isEmpty();
@@ -233,7 +233,7 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
         grantLinkRead(productId, fixture.productPerspectiveId(), principal);
 
         var result = entityManager.project(
-                new SingleItemProjectionSpec("CoordinatorTestProduct", productId, Map.of("products", new LinkProjectionSpec(null))),
+                new ItemProjectionSpec("CoordinatorTestProduct", productId, Map.of("products", new LinkProjectionSpec(null))),
                 "http://binary", principal);
 
         assertThat(result.get().links().values().stream().flatMap(List::stream))
@@ -247,7 +247,7 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
         createLink(productId, contributorId);
 
         var result = entityManager.project(
-                new SingleItemProjectionSpec("CoordinatorTestProduct", productId, Map.of("products", new LinkProjectionSpec(null))),
+                new ItemProjectionSpec("CoordinatorTestProduct", productId, Map.of("products", new LinkProjectionSpec(null))),
                 "http://binary", SUPERUSER);
 
         assertThat(result.get().links().values().stream().flatMap(List::stream))

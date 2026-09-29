@@ -4,6 +4,7 @@ import org.flowable.common.engine.api.delegate.event.AbstractFlowableEventListen
 import org.flowable.common.engine.api.delegate.event.FlowableEngineEventType;
 import org.flowable.common.engine.api.delegate.event.FlowableEvent;
 import org.flowable.common.engine.api.delegate.event.FlowableEventType;
+import org.ntrloc.graph.events.ClusterEventBroadcaster;
 import org.springframework.stereotype.Component;
 
 import java.util.Collection;
@@ -20,9 +21,14 @@ public class TaskEventListener extends AbstractFlowableEventListener {
             FlowableEngineEventType.TASK_COMPLETED);
 
     private final TaskEventBroadcaster broadcaster;
+    // New, parallel signal -- see ClusterEventBroadcaster's own comment. Published alongside
+    // broadcaster above, not instead of it, while the new SSE relay is proven out (mirrors
+    // SchemaManager.refreshCache()'s same additive change for schemaChanged).
+    private final ClusterEventBroadcaster clusterEventBroadcaster;
 
-    public TaskEventListener(TaskEventBroadcaster broadcaster) {
+    public TaskEventListener(TaskEventBroadcaster broadcaster, ClusterEventBroadcaster clusterEventBroadcaster) {
         this.broadcaster = broadcaster;
+        this.clusterEventBroadcaster = clusterEventBroadcaster;
     }
 
     @Override
@@ -34,6 +40,7 @@ public class TaskEventListener extends AbstractFlowableEventListener {
     public void onEvent(FlowableEvent event) {
         if (TYPES.contains(event.getType())) {
             broadcaster.publish(event.getType().toString());
+            clusterEventBroadcaster.publish("taskChanged", event.getType().toString());
         }
     }
 

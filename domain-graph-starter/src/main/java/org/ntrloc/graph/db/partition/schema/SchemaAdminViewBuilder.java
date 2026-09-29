@@ -93,7 +93,8 @@ class SchemaAdminViewBuilder {
             var stateMachineViews = effectiveStateMachinesAdmin(item, itemById, stateMachinesByItem, statesByStateMachine, transitionsByFromState);
 
             return new AdminItemDefinitionView(item.id(), item.name(), item.description(), traitRefs, allContents.properties(), allContents.groups(), allLinks,
-                    contentResolver.sortableFieldsFor(allContents), stateMachineViews.isEmpty() ? null : stateMachineViews,
+                    contentResolver.sortableFieldsFor(allContents), contentResolver.projectableFieldsFor(allContents),
+                    stateMachineViews.isEmpty() ? null : stateMachineViews,
                     item.supertypeId(), item.abstractType(), item.displayLabelPattern());
         }).toList();
 
@@ -101,7 +102,7 @@ class SchemaAdminViewBuilder {
             var contents = ownerContents.byTrait().getOrDefault(trait.id(), Contents.EMPTY);
             var links = buildPerspectiveAdminViews(trait.id(), perspectivesByEntity, entityNameMap, itemEntityIds, null);
             return new AdminTraitDefinitionView(trait.id(), trait.name(), trait.description(), contents.properties(), contents.groups(), links,
-                    contentResolver.sortableFieldsFor(contents));
+                    contentResolver.sortableFieldsFor(contents), contentResolver.projectableFieldsFor(contents));
         }).toList();
 
         var linkViews = repo.getAllLinkIds().stream()

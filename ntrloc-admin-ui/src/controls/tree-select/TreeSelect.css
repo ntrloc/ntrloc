@@ -1,0 +1,44 @@
+tree-select {
+  position: relative;
+  display: inline-block;
+}
+
+.tree-select-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 160px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text-h);
+  font: inherit;
+  cursor: pointer;
+}
+
+.tree-select-trigger:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.tree-select-trigger-caret {
+  color: var(--text);
+}
+
+tree-select-popover {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 20;
+  display: block;
+  min-width: 320px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 8px 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}

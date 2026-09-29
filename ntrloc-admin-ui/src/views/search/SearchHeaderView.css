@@ -1,0 +1,7 @@
+/* Sizing/positioning within SearchView (height, flex) is owned by SearchView.css, its container --
+   this file only governs how search-header-view arranges/styles its own content. */
+search-header-view {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+}
