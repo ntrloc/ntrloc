@@ -1,4 +1,4 @@
-import Button from '../../controls/button/Button'
+import Button from '../../../controls/button/Button'
 import { useSchemaItemTypesViewModel } from './SchemaItemTypesViewModel'
 import './SchemaItemTypesView.css'
 

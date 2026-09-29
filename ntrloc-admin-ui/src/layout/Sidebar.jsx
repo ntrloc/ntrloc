@@ -28,7 +28,8 @@ function ChevronIcon({ direction }) {
 // out as an overlay, without reflowing content, so the user can switch views without committing
 // to re-locking). Which of the three is active lives in useSidebarViewModel, not here.
 function Sidebar({ extensions = [] }) {
-  const { locked, collapsed, floating, toggleLocked, onMouseEnter, onMouseLeave } = useSidebarViewModel()
+  const { locked, collapsed, floating, toggleLocked, onMouseEnter, onMouseLeave, schemaPath, isSchemaActive } =
+    useSidebarViewModel()
 
   return (
     <layout-sidebar
@@ -65,7 +66,12 @@ function Sidebar({ extensions = [] }) {
             </svg>
             <span className="sidebar-nav-label">Search</span>
           </NavLink>
-          <NavLink to="/schema" className={navItemClassName}>
+          {/* to is a remembered path (possibly deep, e.g. /schema/item-types/<id>), not a fixed
+              "/schema" -- NavLink's own active-matching is prefix-based against that same `to`
+              value, so it would only highlight while sitting on that exact remembered sub-path.
+              Overriding isActive with our own "any /schema/* path" check keeps the link highlighted
+              correctly regardless of which schema sub-route is actually current. */}
+          <NavLink to={schemaPath} className={() => navItemClassName({ isActive: isSchemaActive })}>
             <svg
               viewBox="0 0 24 24"
               width="18"

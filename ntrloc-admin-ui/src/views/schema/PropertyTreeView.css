@@ -1,0 +1,124 @@
+.property-tree-table {
+  width: 100%;
+  border-collapse: collapse;
+  /* Needed for the column widths below to actually be respected -- auto layout (the default)
+     sizes columns from cell content instead. */
+  table-layout: fixed;
+}
+
+.property-tree-table th,
+.property-tree-table td {
+  padding: 6px 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+
+.property-tree-table th {
+  color: var(--text-h);
+  font-weight: 500;
+}
+
+.property-tree-table td {
+  color: var(--text);
+}
+
+/* Group, Name, Description, Type, Cardinality, Usage -- adjustable, just a reasonable starting
+   split now that Group has joined the other five. */
+.property-tree-table th:nth-child(1) {
+  width: 15%;
+}
+
+.property-tree-table th:nth-child(2) {
+  width: 20%;
+}
+
+.property-tree-table th:nth-child(3) {
+  width: 30%;
+}
+
+.property-tree-table th:nth-child(4),
+.property-tree-table th:nth-child(5),
+.property-tree-table th:nth-child(6) {
+  width: 11.67%;
+}
+
+.property-tree-group-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.property-tree-group-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-h);
+  font: inherit;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+
+.property-tree-group-toggle:hover {
+  color: var(--primary);
+}
+
+.property-tree-group-chevron {
+  flex: none;
+  transition: transform 150ms ease;
+}
+
+.property-tree-group-chevron[data-expanded] {
+  transform: rotate(90deg);
+}
+
+.property-tree-group-label {
+  flex: none;
+  color: var(--text-h);
+  font-weight: 500;
+}
+
+.property-tree-group-via {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  font-weight: normal;
+}
+
+.property-tree-trait-link {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--primary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.property-tree-trait-link:hover {
+  text-decoration: underline;
+}
+
+.property-tree-no-matches {
+  color: var(--text);
+}
+
+.property-tree-header-with-filter {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.property-tree-header-with-filter span {
+  flex: none;
+}
+
+.property-tree-header-with-filter filter-view {
+  flex: 1;
+  min-width: 0;
+}

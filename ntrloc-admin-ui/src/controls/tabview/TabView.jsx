@@ -5,8 +5,8 @@ import './TabView.css'
 // Distinct from Accordion (vertical, every tab always visible as a full-width bar, the active
 // section's panel expands in place beneath it): TabView's tabs sit in a single row and only the
 // active section's view is ever rendered.
-function TabView({ sections }) {
-  const { activeKey, activeSection, selectTab } = useTabViewModel(sections)
+function TabView({ sections, activeKey: controlledActiveKey, onActiveKeyChange }) {
+  const { activeKey, activeSection, selectTab } = useTabViewModel(sections, controlledActiveKey, onActiveKeyChange)
 
   return (
     <tab-view>

@@ -5,7 +5,7 @@
   /* Lightened off of --bg rather than hardcoded, so both automatically track whichever --bg is
      active (light/dark) without needing their own dark-mode overrides -- color-mix() resolves
      var(--bg) at compute time, after the cascade has already picked the right one. */
-  --bg-nav: color-mix(in srgb, var(--bg) 95%, white 5%);
+  --bg-nav: color-mix(in srgb, var(--bg) 97%, white 3%);
   --bg-sidebar: color-mix(in srgb, var(--bg) 98%, white 2%);
   --border: #e5e4e7;
   --code-bg: #f4f3ec;

@@ -39,7 +39,7 @@ function App({ extensions = [] }) {
       <ViewGate active={path === '/' || path === '/search'}>
         <SearchView />
       </ViewGate>
-      <ViewGate active={path === '/schema'}>
+      <ViewGate active={path.startsWith('/schema')}>
         <SchemaView />
       </ViewGate>
       {extensions.map(({ navPath, Component }) => (

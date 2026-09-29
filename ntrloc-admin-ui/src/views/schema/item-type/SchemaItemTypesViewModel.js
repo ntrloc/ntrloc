@@ -1,4 +1,4 @@
-import { useSchemaModel } from '../../global/model/SchemaModel'
+import { useSchemaModel } from '../../../global/model/SchemaModel'
 
 // Alphabetical order is this view's own presentation concern, not baked into SchemaModel's plain
 // getItemTypes() -- unlike getConcreteItemTypes (sorted for a search-target picker), this list

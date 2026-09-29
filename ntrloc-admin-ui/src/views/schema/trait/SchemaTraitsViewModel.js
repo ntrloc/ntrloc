@@ -1,4 +1,4 @@
-import { useSchemaModel } from '../../global/model/SchemaModel'
+import { useSchemaModel } from '../../../global/model/SchemaModel'
 
 export function useSchemaTraitsViewModel() {
   const { status, getTraits } = useSchemaModel()
