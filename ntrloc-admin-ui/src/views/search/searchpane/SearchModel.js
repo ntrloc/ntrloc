@@ -4,7 +4,7 @@ import { toSearchResultItemModel } from './SearchResultItemModel'
 const DEFAULT_LIMIT = 50
 
 // Owns this pane's search execution -- the only thing that talks to SearchDelegate. One instance
-// per pane (see SearchPaneViewModel), not a shared/global singleton like SchemaModel: each pane has
+// per pane (see SearchPaneViewModel), not a shared/global singleton like SchemaCache: each pane has
 // its own independent query and results, with nothing to share across panes.
 //
 // Deliberately has no concept of "page" -- the wire protocol doesn't either (CollectionProjectionSpec

@@ -2,13 +2,13 @@ import TabView from '../../../controls/tabview/TabView'
 import PropertyTreeView from '../PropertyTreeView'
 import ItemTypeOverviewView from './ItemTypeOverviewView'
 import ItemTypeLinksView from './ItemTypeLinksView'
-import { useSchemaModel } from '../../../global/model/SchemaModel'
+import { useItemTypeModel } from '../../../global/model/ItemTypeModel'
 import { useItemTypeDetailViewModel } from './ItemTypeDetailViewModel'
 import './ItemTypeDetailView.css'
 
 function ItemTypeDetailView({ itemTypeId, onSelectItemType, onSelectTrait, detailTabKey, onDetailTabKeyChange }) {
   const { itemType } = useItemTypeDetailViewModel(itemTypeId)
-  const { getItemTypePropertyTree } = useSchemaModel()
+  const { getItemTypePropertyTree } = useItemTypeModel()
 
   if (!itemType) return <p>Item type not found.</p>
 

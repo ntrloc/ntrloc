@@ -100,7 +100,7 @@ function PropertyTreeView({ tree, onSelectTrait }) {
                   )}
                   {/* traitNamespace groups aren't real groups the container declared -- they're a
                       stand-in for everything a trait it implements contributes, and their id is
-                      literally that trait's own id (see SchemaModel's own toGroupNode comment). */}
+                      literally that trait's own id (see propertyTreeShaping's own toGroupNode comment). */}
                   {row.traitNamespace && (
                     <span className="property-tree-group-via">
                       (via{' '}

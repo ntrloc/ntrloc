@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react'
-import { useSchemaModel } from '../../../global/model/SchemaModel'
+import { useSchemaStatus } from '../../../global/model/SchemaCache'
+import { useItemTypeModel } from '../../../global/model/ItemTypeModel'
 import { useDelayedLoading } from '../../../global/viewmodel/useDelayedLoading'
 import { ALL_PROPERTIES_KEY, buildPropertyTree } from './propertyTree'
 
 // Owns this pane's item-type and property selection -- the schema itself comes from the shared
-// global SchemaModel (fetched/cached/reloaded-on-change there, not here).
+// global SchemaCache (fetched/cached/reloaded-on-change there, not here).
 export function useSearchPaneControlsViewModel() {
-  const { status: schemaStatus, getConcreteItemTypes, getProjectableProperties } = useSchemaModel()
+  const schemaStatus = useSchemaStatus()
+  const { getConcreteItemTypes, getProjectableProperties } = useItemTypeModel()
   const [selectedItemTypeId, setSelectedItemTypeId] = useState('')
   const [selectedPropertyKeys, setSelectedPropertyKeys] = useState(() => new Set([ALL_PROPERTIES_KEY]))
   const showSchemaSpinner = useDelayedLoading(schemaStatus === 'loading')

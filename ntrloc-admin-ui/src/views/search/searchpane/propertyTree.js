@@ -1,5 +1,5 @@
 // Turns a flat list of dot-notation property paths (e.g. "File.content.metadata.length", as returned
-// by SchemaModel.getProjectableProperties) into the recursive { key, label, children } shape
+// by ItemTypeModel.getProjectableProperties) into the recursive { key, label, children } shape
 // CheckboxTree expects, with one synthetic root node standing in for "everything."
 //
 // The root is a real, meaningful choice, not just a UI convenience: checking it means "send no

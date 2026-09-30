@@ -54,7 +54,7 @@ function matchProperties(properties, groups, nameFilter, descriptionFilter, grou
 // Shared by both the item type and trait editors' Properties tab -- takes whichever tree its caller
 // already fetched (getItemTypePropertyTree/getTraitPropertyTree) rather than knowing where trees
 // come from itself. Which groups are collapsed, and the current name/description filter text, both
-// live here rather than in SchemaModel -- neither has a counterpart in the schema itself, it's
+// live here rather than in the Model layer -- neither has a counterpart in the schema itself, it's
 // purely how this view is currently looking at whatever tree it was handed. Starts with everything
 // expanded (an empty set) and no filter, same "start open" precedent as Accordion/CollapsibleSection.
 export function usePropertyTreeViewModel(tree) {

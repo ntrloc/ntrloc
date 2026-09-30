@@ -2,7 +2,7 @@ import TabView from '../../../controls/tabview/TabView'
 import PropertyTreeView from '../PropertyTreeView'
 import LinkListView from '../LinkListView'
 import TraitOverviewView from './TraitOverviewView'
-import { useSchemaModel } from '../../../global/model/SchemaModel'
+import { useTraitModel } from '../../../global/model/TraitModel'
 import { useTraitDetailViewModel } from './TraitDetailViewModel'
 import './TraitDetailView.css'
 
@@ -12,7 +12,7 @@ import './TraitDetailView.css'
 // a trait doesn't get instantiated on its own, so neither applies here.
 function TraitDetailView({ traitId, onSelectItemType, onSelectTrait, detailTabKey, onDetailTabKeyChange }) {
   const { trait } = useTraitDetailViewModel(traitId)
-  const { getTraitPropertyTree, getTraitLinks } = useSchemaModel()
+  const { getTraitPropertyTree, getTraitLinks } = useTraitModel()
 
   if (!trait) return <p>Trait not found.</p>
 

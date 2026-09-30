@@ -1,7 +1,7 @@
-import { useSchemaModel } from '../../../global/model/SchemaModel'
+import { useTraitModel } from '../../../global/model/TraitModel'
 
 export function useTraitDetailViewModel(traitId) {
-  const { getTrait } = useSchemaModel()
+  const { getTrait } = useTraitModel()
 
   return { trait: getTrait(traitId) }
 }

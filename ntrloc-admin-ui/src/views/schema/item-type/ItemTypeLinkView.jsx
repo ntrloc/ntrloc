@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import ChevronIcon from '../../../controls/chevron-icon/ChevronIcon'
 import PropertyTreeView from '../PropertyTreeView'
-import { useSchemaModel } from '../../../global/model/SchemaModel'
+import { useLinkModel } from '../../../global/model/LinkModel'
 import './ItemTypeLinkView.css'
 
 // max unset means "any" -- nothing meaningful to show alongside min then except the range itself.
@@ -17,7 +17,7 @@ function formatCardinality({ min, max }) {
 // table used for an item type/trait's own Properties tab) is a first pass, not a final call -- a
 // full filterable table may turn out heavier than a single link card wants.
 function ItemTypeLinkView({ sourceName, link, onSelectTrait }) {
-  const { getLinkPropertyTree } = useSchemaModel()
+  const { getLinkPropertyTree } = useLinkModel()
   const [propertiesExpanded, setPropertiesExpanded] = useState(true)
   const targetName = link.target?.name ?? 'Unknown'
   const propertyTree = getLinkPropertyTree(link.linkId)

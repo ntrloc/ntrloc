@@ -1,5 +1,5 @@
 import Accordion from '../../controls/accordion/Accordion'
-import { useSchemaModel } from '../../global/model/SchemaModel'
+import { useSchemaStatus } from '../../global/model/SchemaCache'
 import { useSchemaViewModel } from './SchemaViewModel'
 import SchemaItemTypesView from './item-type/SchemaItemTypesView'
 import ItemTypeDetailView from './item-type/ItemTypeDetailView'
@@ -9,7 +9,7 @@ import SchemaControlledListsView from './controlled-list/SchemaControlledListsVi
 import './SchemaView.css'
 
 function SchemaView() {
-  const { status } = useSchemaModel()
+  const status = useSchemaStatus()
   const {
     activeSection,
     setActiveSection,
