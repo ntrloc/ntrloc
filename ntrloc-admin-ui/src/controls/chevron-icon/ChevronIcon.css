@@ -1,0 +1,8 @@
+.chevron-icon {
+  flex: none;
+  transition: transform 150ms ease;
+}
+
+.chevron-icon[data-expanded] {
+  transform: rotate(90deg);
+}

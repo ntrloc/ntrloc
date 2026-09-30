@@ -22,8 +22,7 @@
   color: var(--text);
 }
 
-/* Group, Name, Description, Type, Cardinality, Usage -- adjustable, just a reasonable starting
-   split now that Group has joined the other five. */
+/* Group, Name, Description, Type -- adjustable, just a reasonable starting split. */
 .property-tree-table th:nth-child(1) {
   width: 15%;
 }
@@ -33,13 +32,11 @@
 }
 
 .property-tree-table th:nth-child(3) {
-  width: 30%;
+  width: 45%;
 }
 
-.property-tree-table th:nth-child(4),
-.property-tree-table th:nth-child(5),
-.property-tree-table th:nth-child(6) {
-  width: 11.67%;
+.property-tree-table th:nth-child(4) {
+  width: 20%;
 }
 
 .property-tree-group-cell {
@@ -66,15 +63,6 @@
 
 .property-tree-group-toggle:hover {
   color: var(--primary);
-}
-
-.property-tree-group-chevron {
-  flex: none;
-  transition: transform 150ms ease;
-}
-
-.property-tree-group-chevron[data-expanded] {
-  transform: rotate(90deg);
 }
 
 .property-tree-group-label {

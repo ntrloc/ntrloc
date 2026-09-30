@@ -1,26 +1,41 @@
 import Filter from '../../controls/filter/Filter'
+import ChevronIcon from '../../controls/chevron-icon/ChevronIcon'
 import { usePropertyTreeViewModel } from './PropertyTreeViewModel'
 import './PropertyTreeView.css'
 
 const INDENT_PX = 20
 
-function ChevronIcon({ expanded }) {
-  return (
-    <svg
-      className="property-tree-group-chevron"
-      data-expanded={expanded || undefined}
-      viewBox="0 0 24 24"
-      width="14"
-      height="14"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <polyline points="9 18 15 12 9 6" />
-    </svg>
-  )
+const TYPE_LABELS = {
+  STRING: 'String',
+  INT: 'Integer',
+  LONG: 'Long',
+  DOUBLE: 'Double',
+  DATE: 'Date',
+  DATETIME: 'Date/Time',
+  BOOLEAN: 'Boolean',
+  BINARY: 'Binary',
+}
+
+const CARDINALITY_SUFFIXES = {
+  SINGLE: '',
+  LIST: ' List',
+  SET: ' Set',
+}
+
+const USAGE_LABELS = {
+  OPTIONAL: 'optional',
+  REQUIRED: 'required',
+  DEPRECATED: 'deprecated',
+}
+
+// A single-glance summary in place of separate Type/Cardinality/Usage columns -- a prior granular,
+// per-value table (meant to double as an editor) turned out not worth it for a read-only view.
+// e.g. "String (required)", "Integer List (optional)".
+function formatPropertyType(property) {
+  const type = TYPE_LABELS[property.type] ?? property.type
+  const cardinality = CARDINALITY_SUFFIXES[property.cardinality] ?? ''
+  const usage = USAGE_LABELS[property.usage] ?? property.usage
+  return `${type}${cardinality} (${usage})`
 }
 
 // Shared by both the item type and trait editors' Properties tab -- first pass, display only
@@ -60,14 +75,12 @@ function PropertyTreeView({ tree, onSelectTrait }) {
             </div>
           </th>
           <th>Type</th>
-          <th>Cardinality</th>
-          <th>Usage</th>
         </tr>
       </thead>
       <tbody>
         {rows.length === 0 && (
           <tr>
-            <td className="property-tree-no-matches" colSpan={6}>
+            <td className="property-tree-no-matches" colSpan={4}>
               No matching properties.
             </td>
           </tr>
@@ -106,17 +119,13 @@ function PropertyTreeView({ tree, onSelectTrait }) {
               <td />
               <td />
               <td />
-              <td />
-              <td />
             </tr>
           ) : (
             <tr key={row.id}>
               <td>{row.groupName}</td>
               <td>{row.name}</td>
               <td>{row.description}</td>
-              <td>{row.type}</td>
-              <td>{row.cardinality}</td>
-              <td>{row.usage}</td>
+              <td>{formatPropertyType(row)}</td>
             </tr>
           ),
         )}

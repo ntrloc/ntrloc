@@ -1,3 +1,5 @@
+import { useState } from 'react'
+import ChevronIcon from '../../../controls/chevron-icon/ChevronIcon'
 import PropertyTreeView from '../PropertyTreeView'
 import { useSchemaModel } from '../../../global/model/SchemaModel'
 import './ItemTypeLinkView.css'
@@ -16,6 +18,7 @@ function formatCardinality({ min, max }) {
 // full filterable table may turn out heavier than a single link card wants.
 function ItemTypeLinkView({ sourceName, link, onSelectTrait }) {
   const { getLinkPropertyTree } = useSchemaModel()
+  const [propertiesExpanded, setPropertiesExpanded] = useState(true)
   const targetName = link.target?.name ?? 'Unknown'
   const propertyTree = getLinkPropertyTree(link.linkId)
 
@@ -41,7 +44,17 @@ function ItemTypeLinkView({ sourceName, link, onSelectTrait }) {
         </div>
         <div className="item-type-link-box">{targetName}</div>
       </div>
-      <PropertyTreeView tree={propertyTree} onSelectTrait={onSelectTrait} />
+      <div className="item-type-link-properties">
+        <button
+          type="button"
+          className="item-type-link-properties-toggle"
+          onClick={() => setPropertiesExpanded((current) => !current)}
+        >
+          <ChevronIcon expanded={propertiesExpanded} />
+          Properties
+        </button>
+        {propertiesExpanded && <PropertyTreeView tree={propertyTree} onSelectTrait={onSelectTrait} />}
+      </div>
     </item-type-link-view>
   )
 }

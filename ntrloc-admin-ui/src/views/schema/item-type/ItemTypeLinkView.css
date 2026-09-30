@@ -13,6 +13,30 @@ item-type-link-view {
   gap: 16px;
 }
 
+.item-type-link-properties {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.item-type-link-properties-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-h);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.item-type-link-properties-toggle:hover {
+  color: var(--primary);
+}
+
 .item-type-link-box {
   flex: none;
   padding: 10px 20px;
