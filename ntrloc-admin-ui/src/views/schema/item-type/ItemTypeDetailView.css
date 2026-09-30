@@ -3,12 +3,14 @@ item-type-detail-view {
   flex-direction: column;
   gap: 16px;
   min-height: 0;
+  min-width: 0;
 
   /* Sizing of item-type-detail-view's own child lives here since it's the container -- TabView
      stays agnostic about whatever context it's placed in (same convention as Accordion). */
   tab-view {
     flex: 1;
     min-height: 0;
+    min-width: 0;
   }
 }
 

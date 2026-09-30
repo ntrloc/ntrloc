@@ -39,8 +39,12 @@ layout-view {
       /* Without this, a flex item's default min-height:auto lets it grow to fit its content
          instead of respecting its allocated space -- exactly what's needed now that content
          (SearchPaneResultsView) can genuinely overflow and should scroll internally instead of
-         growing the whole page. */
+         growing the whole page. min-width:0 is the same fix for the other axis -- needed once
+         content can genuinely overflow horizontally too (a zoomed-in state machine diagram), or
+         the same default min-width:auto lets it grow the whole page wider instead of letting its
+         own descendant's overflow:auto (deep inside SchemaView's tab-view-panel) scroll it. */
       min-height: 0;
+      min-width: 0;
     }
 
   }

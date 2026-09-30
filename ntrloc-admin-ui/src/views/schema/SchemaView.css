@@ -21,17 +21,22 @@ schema-view-nav {
 schema-view-content {
   flex: 1;
   min-height: 0;
+  min-width: 0;
   padding: 16px;
   display: flex;
   flex-direction: column;
 
   /* Sizing of schema-view-content's own child lives here since it's the container -- lets
      ItemTypeDetailView/TraitDetailView's own TabView fill the remaining height so its content
-     area can scroll internally instead of growing the whole page. */
+     area can scroll internally instead of growing the whole page. min-width:0 is the same fix
+     along the other axis -- without it, wide content (e.g. a zoomed-in state machine diagram)
+     would push this element (and everything above it) wider instead of letting its own
+     tab-view-panel's overflow:auto scroll it. */
   item-type-detail-view,
   trait-detail-view {
     flex: 1;
     min-height: 0;
+    min-width: 0;
   }
 }
 

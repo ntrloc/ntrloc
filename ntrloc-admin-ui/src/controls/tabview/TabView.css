@@ -2,6 +2,7 @@ tab-view {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  min-width: 0;
 
   /* Scoped rather than global -- shared by the active tab's background and the panel's border so
      the two always match (the panel reads as a continuation of the active tab), without tying
@@ -42,6 +43,7 @@ tab-view-tabs {
 tab-view-panel {
   flex: 1;
   min-height: 0;
+  min-width: 0;
   overflow: auto;
   padding: 12px;
   border: 1px solid var(--tab-active-bg);
