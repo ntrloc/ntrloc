@@ -1,27 +1,33 @@
 import TabView from '../../../controls/tabview/TabView'
 import PropertyTreeView from '../PropertyTreeView'
+import LinkListView from '../LinkListView'
+import TraitOverviewView from './TraitOverviewView'
 import { useSchemaModel } from '../../../global/model/SchemaModel'
 import { useTraitDetailViewModel } from './TraitDetailViewModel'
 import './TraitDetailView.css'
 
-// Same shape as ItemTypeDetailView -- header plus a TabView, the Properties tab being the exact
-// same shared PropertyTreeView an item type uses, fed this trait's own tree -- just with the
+// Same shape as ItemTypeDetailView -- header plus a TabView, the Properties/Links tabs being the
+// exact same shared components an item type uses, fed this trait's own data -- just with the
 // subset of tabs a trait actually has. State Machines/Access Control are item-type-only concerns:
 // a trait doesn't get instantiated on its own, so neither applies here.
-function TraitDetailView({ traitId, onSelectTrait, detailTabKey, onDetailTabKeyChange }) {
+function TraitDetailView({ traitId, onSelectItemType, onSelectTrait, detailTabKey, onDetailTabKeyChange }) {
   const { trait } = useTraitDetailViewModel(traitId)
-  const { getTraitPropertyTree } = useSchemaModel()
+  const { getTraitPropertyTree, getTraitLinks } = useSchemaModel()
 
   if (!trait) return <p>Trait not found.</p>
 
   const sections = [
-    { key: 'overview', label: 'Overview', view: <p>Overview coming soon.</p> },
+    {
+      key: 'overview',
+      label: 'Overview',
+      view: <TraitOverviewView trait={trait} onSelectItemType={onSelectItemType} />,
+    },
     {
       key: 'properties',
       label: 'Properties',
       view: <PropertyTreeView tree={getTraitPropertyTree(trait.id)} onSelectTrait={onSelectTrait} />,
     },
-    { key: 'links', label: 'Links', view: <p>Links coming soon.</p> },
+    { key: 'links', label: 'Links', view: <LinkListView links={getTraitLinks(trait.id)} /> },
   ]
 
   return (

@@ -47,6 +47,7 @@ function SchemaView() {
         {activeSection === 'itemTypes' && selectedItemTypeId && (
           <ItemTypeDetailView
             itemTypeId={selectedItemTypeId}
+            onSelectItemType={selectItemType}
             onSelectTrait={selectTrait}
             detailTabKey={detailTabKey}
             onDetailTabKeyChange={setDetailTabKey}
@@ -55,6 +56,7 @@ function SchemaView() {
         {activeSection === 'traits' && selectedTraitId && (
           <TraitDetailView
             traitId={selectedTraitId}
+            onSelectItemType={selectItemType}
             onSelectTrait={selectTrait}
             detailTabKey={detailTabKey}
             onDetailTabKeyChange={setDetailTabKey}

@@ -1,0 +1,54 @@
+/* Shared by both the item type and trait editors' Overview tab -- a plain dt/dd list, some values
+   being links to another entity (a parent type, an implemented trait, an implementing item type). */
+.entity-overview-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+}
+
+.entity-overview-row {
+  display: flex;
+  gap: 16px;
+}
+
+.entity-overview-row dt {
+  flex: none;
+  width: 140px;
+  color: var(--text-h);
+  font-weight: 500;
+}
+
+.entity-overview-row dd {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  color: var(--text);
+}
+
+.entity-overview-empty {
+  color: var(--text);
+  opacity: 0.6;
+}
+
+.entity-overview-link-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.entity-overview-link {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--primary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.entity-overview-link:hover {
+  text-decoration: underline;
+}

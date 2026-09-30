@@ -108,11 +108,17 @@ function toItemTypes(adminSchema) {
 function toItemTypeDetail(adminSchema, itemTypeId) {
   const item = adminSchema.items.find((it) => it.id === itemTypeId)
   if (!item) return null
+  // supertypeId is just an id on the wire -- resolved to {id, name} here so a consumer never needs
+  // its own copy of "look up an item type by id" just to show/link to the parent.
+  const supertype = item.supertypeId ? adminSchema.items.find((it) => it.id === item.supertypeId) : null
   return {
     id: item.id,
     name: item.name,
     description: item.description,
     abstractType: item.abstractType,
+    displayLabelPattern: item.displayLabelPattern,
+    supertype: supertype ? { id: supertype.id, name: supertype.name } : null,
+    traits: item.traits.map((trait) => ({ id: trait.id, name: trait.name })),
   }
 }
 
@@ -166,6 +172,68 @@ function toTraitPropertyTree(adminSchema, traitId) {
   return trait ? toPropertyTree(trait) : { properties: [], groups: [] }
 }
 
+// A link's own properties/groups live in their own top-level list on the wire (one entry per
+// linkId, shared by both perspectives), not on either item type -- unlike an item type/trait's
+// properties, which live right on the container itself.
+function toLinkPropertyTree(adminSchema, linkId) {
+  const link = adminSchema.links.find((l) => l.id === linkId)
+  return link ? toPropertyTree(link) : { properties: [], groups: [] }
+}
+
+// Used by the trait editor's own Links tab (still just a plain list there) -- both item types and
+// traits have a links map on the wire, keyed by the link's own perspective name (e.g. "photos",
+// "creator"), null rather than an empty map when there are none. Item types get a richer view (see
+// toItemTypeLinkDetails below); a trait isn't one specific item type, so a trait's own link entry
+// has no single concrete "other side" to diagram the way an item type's does.
+function toLinkNames(container) {
+  if (!container.links) return []
+  return Object.keys(container.links).map((name) => ({ name }))
+}
+
+function toTraitLinks(adminSchema, traitId) {
+  const trait = adminSchema.traits.find((t) => t.id === traitId)
+  return trait ? toLinkNames(trait) : []
+}
+
+// Every link is really two perspectives (one on each side) sharing a linkId -- this item type's own
+// side is right there in its own links map, but the *reverse* perspective's own name/cardinality
+// only exists on the target item type's own links map. Found by scanning it for whichever entry
+// shares this perspective's linkId but isn't this exact perspective (id differs) -- the id check is
+// what keeps a self-link (an item type linking to its own kind) from matching itself as its own
+// reverse. Only the first target is resolved for now -- a link naming more than one possible target
+// type is a real (if rarer) case this doesn't yet have a diagram for.
+function toItemTypeLinkDetails(adminSchema, itemTypeId) {
+  const item = adminSchema.items.find((it) => it.id === itemTypeId)
+  if (!item || !item.links) return []
+
+  return Object.entries(item.links).flatMap(([name, perspectives]) =>
+    perspectives.map((perspective) => {
+      const target = perspective.targets[0] ?? null
+      const targetItem = target ? adminSchema.items.find((it) => it.name === target.name) : null
+
+      let reverse = null
+      if (targetItem?.links) {
+        for (const [reverseName, reversePerspectives] of Object.entries(targetItem.links)) {
+          const match = reversePerspectives.find((p) => p.linkId === perspective.linkId && p.id !== perspective.id)
+          if (match) {
+            reverse = { name: reverseName, cardinality: { min: match.minCardinality, max: match.maxCardinality } }
+            break
+          }
+        }
+      }
+
+      return {
+        id: perspective.id,
+        linkId: perspective.linkId,
+        name,
+        cardinality: { min: perspective.minCardinality, max: perspective.maxCardinality },
+        target: target ? { name: target.name } : null,
+        reverse,
+      }
+    }),
+  )
+}
+
 function toTraits(adminSchema) {
   return adminSchema.traits.map((trait) => ({
     id: trait.id,
@@ -176,10 +244,17 @@ function toTraits(adminSchema) {
 function toTraitDetail(adminSchema, traitId) {
   const trait = adminSchema.traits.find((t) => t.id === traitId)
   if (!trait) return null
+  // Not a field on the trait itself on the wire -- derived by scanning every item type's own
+  // traits list for a reference back to this one, the same relationship an item type's own
+  // "Implements" (see toItemTypeDetail) reads from the other direction.
+  const implementingItemTypes = adminSchema.items
+    .filter((item) => item.traits.some((t) => t.id === traitId))
+    .map((item) => ({ id: item.id, name: item.name }))
   return {
     id: trait.id,
     name: trait.name,
     description: trait.description,
+    implementingItemTypes,
   }
 }
 
@@ -227,12 +302,15 @@ export function useSchemaModel() {
     getItemType: (itemTypeId) => (cachedSchema ? toItemTypeDetail(cachedSchema, itemTypeId) : null),
     getItemTypePropertyTree: (itemTypeId) =>
       cachedSchema ? toItemTypePropertyTree(cachedSchema, itemTypeId) : { properties: [], groups: [] },
+    getItemTypeLinkDetails: (itemTypeId) => (cachedSchema ? toItemTypeLinkDetails(cachedSchema, itemTypeId) : []),
+    getLinkPropertyTree: (linkId) => (cachedSchema ? toLinkPropertyTree(cachedSchema, linkId) : { properties: [], groups: [] }),
     getConcreteItemTypes: () => (cachedSchema ? concreteItemTypes(toItemTypes(cachedSchema)) : []),
     getProjectableProperties: (itemTypeId) => (cachedSchema ? projectableProperties(cachedSchema, itemTypeId) : []),
     getTraits: () => (cachedSchema ? toTraits(cachedSchema) : []),
     getTrait: (traitId) => (cachedSchema ? toTraitDetail(cachedSchema, traitId) : null),
     getTraitPropertyTree: (traitId) =>
       cachedSchema ? toTraitPropertyTree(cachedSchema, traitId) : { properties: [], groups: [] },
+    getTraitLinks: (traitId) => (cachedSchema ? toTraitLinks(cachedSchema, traitId) : []),
     getControlledLists: () => (cachedSchema ? toControlledLists(cachedSchema) : []),
     // Escape hatch for ad-hoc/debugging use -- real features should use the shaped accessors above,
     // not this.

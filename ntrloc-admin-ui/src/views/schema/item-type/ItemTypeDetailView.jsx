@@ -1,23 +1,33 @@
 import TabView from '../../../controls/tabview/TabView'
 import PropertyTreeView from '../PropertyTreeView'
+import ItemTypeOverviewView from './ItemTypeOverviewView'
+import ItemTypeLinksView from './ItemTypeLinksView'
 import { useSchemaModel } from '../../../global/model/SchemaModel'
 import { useItemTypeDetailViewModel } from './ItemTypeDetailViewModel'
 import './ItemTypeDetailView.css'
 
-function ItemTypeDetailView({ itemTypeId, onSelectTrait, detailTabKey, onDetailTabKeyChange }) {
+function ItemTypeDetailView({ itemTypeId, onSelectItemType, onSelectTrait, detailTabKey, onDetailTabKeyChange }) {
   const { itemType } = useItemTypeDetailViewModel(itemTypeId)
   const { getItemTypePropertyTree } = useSchemaModel()
 
   if (!itemType) return <p>Item type not found.</p>
 
   const sections = [
-    { key: 'overview', label: 'Overview', view: <p>Overview coming soon.</p> },
+    {
+      key: 'overview',
+      label: 'Overview',
+      view: <ItemTypeOverviewView itemType={itemType} onSelectItemType={onSelectItemType} onSelectTrait={onSelectTrait} />,
+    },
     {
       key: 'properties',
       label: 'Properties',
       view: <PropertyTreeView tree={getItemTypePropertyTree(itemType.id)} onSelectTrait={onSelectTrait} />,
     },
-    { key: 'links', label: 'Links', view: <p>Links coming soon.</p> },
+    {
+      key: 'links',
+      label: 'Links',
+      view: <ItemTypeLinksView itemTypeId={itemType.id} itemTypeName={itemType.name} onSelectTrait={onSelectTrait} />,
+    },
     { key: 'stateMachines', label: 'State Machines', view: <p>State machines coming soon.</p> },
     { key: 'accessControl', label: 'Access Control', view: <p>Access control coming soon.</p> },
   ]
