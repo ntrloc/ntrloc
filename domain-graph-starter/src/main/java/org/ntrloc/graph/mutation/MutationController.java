@@ -6,10 +6,13 @@ import org.ntrloc.graph.db.partition.security.PrincipalResolver;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/mutation")
@@ -38,5 +41,18 @@ public class MutationController {
         } catch (MutationValidationException e) {
             return ResponseEntity.badRequest().body(new MutationErrorResponse(e.errors()));
         }
+    }
+
+    // Confirms a transaction previously submitted with commit=false. transactionId comes back from
+    // that earlier call's MutationResponse.
+    @PostMapping("/{transactionId}/commit")
+    ResponseEntity<?> commit(@PathVariable UUID transactionId) {
+        return ResponseEntity.ok(entityManager.confirmCommit(transactionId));
+    }
+
+    // Discards a transaction previously submitted with commit=false.
+    @PostMapping("/{transactionId}/abort")
+    ResponseEntity<?> abort(@PathVariable UUID transactionId) {
+        return ResponseEntity.ok(entityManager.confirmAbort(transactionId));
     }
 }

@@ -39,6 +39,7 @@ public class RegisterProjectionTestDomainInitializer implements DomainInitialize
     private UUID authorTypeId;
     private UUID publisherTypeId;
     private UUID titlePropertyId;
+    private UUID testMarkerPropertyId;
     private UUID pageCountPropertyId;
     private UUID inStockPropertyId;
     private UUID genrePropertyId;
@@ -93,6 +94,7 @@ public class RegisterProjectionTestDomainInitializer implements DomainInitialize
         AdminItemDefinitionView book = findItem("RegisterProjectionTestBook");
         bookTypeId = book.id();
         titlePropertyId = findProperty(book.properties(), "title");
+        testMarkerPropertyId = findProperty(book.properties(), "testMarker");
         pageCountPropertyId = findProperty(book.properties(), "pageCount");
         inStockPropertyId = findProperty(book.properties(), "inStock");
         genrePropertyId = findProperty(book.properties(), "genre");
@@ -198,6 +200,10 @@ public class RegisterProjectionTestDomainInitializer implements DomainInitialize
 
     public UUID titlePropertyId() {
         return titlePropertyId;
+    }
+
+    public UUID testMarkerPropertyId() {
+        return testMarkerPropertyId;
     }
 
     public UUID pageCountPropertyId() {

@@ -1506,7 +1506,10 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                 .single();
     }
 
-    public void discardStaged(UUID transactionId) {
+    // Named to match LedgerPartitionManager.abort() -- this and that together are what
+    // LedgerRegisterCoordinator.abort() calls to discard a prepared-but-not-yet-committed
+    // transaction's staged rows on both sides.
+    public void abort(UUID transactionId) {
         jdbcClient.sql("DELETE FROM register_item WHERE transaction_id = :transactionId AND state = 'UNCOMMITTED'")
                 .param(PARAM_TRANSACTION_ID, transactionId)
                 .update();
@@ -1946,6 +1949,12 @@ public class RegisterPartitionManager implements SchemaChangeListener {
 
         SqlFragment permissionFragment = buildLinkVisibilityPermissionFragment(permissions);
 
+        // ri_other's own COMMITTED filter, same as ri_mine's and rl's: an ordinary projection must
+        // only ever present committed data, for the linked item exactly as much as the item being
+        // projected or the link itself -- stated explicitly here rather than left to hold by
+        // accident (today it does, via rl.state already excluding brand-new links and the
+        // link-perspective repoint only ever happening inside commitItem's own transaction, but
+        // neither of those is a reason to leave this one unstated).
         List<LinkRow> allLinkRows = jdbcClient.sql("""
                 SELECT
                     rilp_mine.register_item_id  AS my_register_item_id,
@@ -1963,7 +1972,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                 JOIN schema_entity_link_perspective silp_mine  ON silp_mine.id = rilp_mine.perspective_id
                 JOIN register_link                 rl          ON rl.id = rilp_mine.register_link_id AND rl.state = 'COMMITTED'
                 JOIN register_item_link_perspective rilp_other ON rilp_other.register_link_id = rl.id AND rilp_other.id != rilp_mine.id
-                JOIN register_item                 ri_other    ON ri_other.id = rilp_other.register_item_id
+                JOIN register_item                 ri_other    ON ri_other.id = rilp_other.register_item_id AND ri_other.state = 'COMMITTED'
                 JOIN schema_item                   si_other    ON si_other.id = ri_other.item_type_id
                 WHERE ri_mine.id IN (:rawItemIds)
                   AND ri_mine.state = 'COMMITTED'

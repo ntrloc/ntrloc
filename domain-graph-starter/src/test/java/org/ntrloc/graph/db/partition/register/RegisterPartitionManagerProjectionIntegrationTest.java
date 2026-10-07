@@ -32,6 +32,7 @@ import org.ntrloc.graph.projection.PropertyValuePredicate;
 import org.ntrloc.graph.projection.RangeFacetFilter;
 import org.ntrloc.graph.projection.StateValuePredicate;
 import org.ntrloc.graph.projection.TermsFacetFilter;
+import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
 import org.ntrloc.graph.db.partition.ledger.ItemUpdateEntry;
 import org.ntrloc.graph.domain.DomainInitializer;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -1254,5 +1255,56 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
         assertThatThrownBy(() -> registerPartitionManager.projectOne(fixture.bookTypeId(), bookId, "http://binary"))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("Failed to parse properties JSONB");
+    }
+
+    // Foundational visibility guarantee, not previously covered anywhere: every projection method
+    // must ignore UNCOMMITTED register rows by default, with no exceptions and no method treated as
+    // more important than another. Stages (prepares, never commits) a book directly through the
+    // coordinator -- not createBook(), which always goes through the full HTTP mutation flow and
+    // commits immediately -- so there's a genuinely UNCOMMITTED row to try to see past.
+
+    @Test
+    void projectOne_ignoresAnUncommittedStagedRowByDefault() {
+        UUID bookId = UUID.randomUUID();
+        // Looked up by exact itemId below, same as createBook's own doc comment notes for
+        // projectOne/setState -- no testMarker needed to scope this to the current test.
+        coordinator.prepare(List.of(new ItemCreateEntry(bookId, fixture.bookTypeId(),
+                Map.of(fixture.titlePropertyId(), "Ghost Edition"), Map.of(), Set.of())), UUID.randomUUID(), null);
+
+        assertThat(registerPartitionManager.projectOne(fixture.bookTypeId(), bookId, "http://binary")).isEmpty();
+    }
+
+    @Test
+    void project_ignoresAnUncommittedStagedRowByDefault() {
+        UUID bookId = UUID.randomUUID();
+        coordinator.prepare(List.of(new ItemCreateEntry(bookId, fixture.bookTypeId(),
+                Map.of(fixture.titlePropertyId(), "Ghost Edition", fixture.testMarkerPropertyId(), marker), Map.of(), Set.of())),
+                UUID.randomUUID(), null);
+
+        // AndPredicate with the testMarker scope, same as the project() test helper above --
+        // belt-and-suspenders against cross-test pollution: a regression would have to leak past
+        // both predicates together, which can only mean this specific staged row, not an unrelated
+        // committed one.
+        var spec = new CollectionProjectionSpec(BOOK_TYPE, null, null, new AndPredicate(List.of(
+                new PropertyValuePredicate("testMarker", Operator.EQUALS, marker),
+                new PropertyValuePredicate("title", Operator.EQUALS, "Ghost Edition"))));
+        var result = registerPartitionManager.project(fixture.bookTypeId(), spec, "http://binary");
+
+        assertThat(result.items()).isEmpty();
+    }
+
+    @Test
+    void projectAcrossTypes_ignoresAnUncommittedStagedRowByDefault() {
+        UUID bookId = UUID.randomUUID();
+        coordinator.prepare(List.of(new ItemCreateEntry(bookId, fixture.bookTypeId(),
+                Map.of(fixture.titlePropertyId(), "Ghost Edition", fixture.testMarkerPropertyId(), marker), Map.of(), Set.of())),
+                UUID.randomUUID(), null);
+
+        var spec = new CollectionProjectionSpec(BOOK_TYPE, null, null, new AndPredicate(List.of(
+                new PropertyValuePredicate("testMarker", Operator.EQUALS, marker),
+                new PropertyValuePredicate("title", Operator.EQUALS, "Ghost Edition"))));
+        var result = registerPartitionManager.projectAcrossTypes(Set.of(fixture.bookTypeId()), spec, "http://binary");
+
+        assertThat(result.items()).isEmpty();
     }
 }

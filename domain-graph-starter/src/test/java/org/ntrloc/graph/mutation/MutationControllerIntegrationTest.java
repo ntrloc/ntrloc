@@ -4,9 +4,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.coordinator.CoordinatorTestDomainInitializer;
+import org.ntrloc.graph.db.partition.ledger.LedgerPartitionManager;
 import org.ntrloc.graph.db.partition.register.RegisterPartitionManager;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.web.reactive.server.WebTestClient;
 
 import java.util.List;
@@ -30,6 +32,12 @@ class MutationControllerIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private CoordinatorTestDomainInitializer fixture;
+
+    @Autowired
+    private LedgerPartitionManager ledgerPartitionManager;
+
+    @Autowired
+    private JdbcClient jdbcClient;
 
     // MutationController now resolves a principal for ledger attribution (EntityManager.mutate's
     // own note) -- with graph.security.enabled=false in test config, PrincipalResolver falls
@@ -294,5 +302,80 @@ class MutationControllerIntegrationTest extends AbstractIntegrationTest {
 
         assertThat(errorResponse.errors()).hasSize(1);
         assertThat(errorResponse.errors().get(0).path()).isEqualTo("items[0].properties.releaseDate");
+    }
+
+    // The three commit=false lifecycle scenarios: a mutation itself is implicitly just prepare()
+    // (see MutationRequestProcessor.process) -- commit=false stops there, leaving a durably prepared
+    // transaction (own database transaction, see LedgerRegisterCoordinatorImpl's REQUIRES_NEW) that
+    // must later be explicitly resolved via the commit or abort endpoint.
+
+    @Test
+    void mutationWithCommitFalse_leavesLedgerEntriesAndUncommittedRegisterRowsForThatTransaction() {
+        MutationRequest request = new MutationRequest(
+                List.of(new ItemCreateMutation(null, PRODUCT_TYPE, Map.of("name", "Prepared Widget"))), List.of(), false);
+
+        MutationResponse response = postMutation(request);
+        UUID itemId = response.items().get(0).itemId();
+
+        assertThat(ledgerPartitionManager.readTransaction(response.transactionId())).isNotEmpty();
+        assertThat(uncommittedRegisterItemCount(itemId, response.transactionId())).isEqualTo(1L);
+        assertThat(committedRegisterItemCount(itemId)).isEqualTo(0L);
+    }
+
+    @Test
+    void abortingAPreparedTransaction_removesBothLedgerAndRegisterEntries() {
+        MutationRequest request = new MutationRequest(
+                List.of(new ItemCreateMutation(null, PRODUCT_TYPE, Map.of("name", "Aborted Widget"))), List.of(), false);
+        MutationResponse response = postMutation(request);
+        UUID itemId = response.items().get(0).itemId();
+
+        webTestClient.post().uri("/api/mutation/{transactionId}/abort", response.transactionId())
+                .exchange()
+                .expectStatus().isOk();
+
+        assertThat(ledgerPartitionManager.readTransaction(response.transactionId())).isEmpty();
+        assertThat(registerItemRowCount(itemId, response.transactionId())).isEqualTo(0L);
+    }
+
+    @Test
+    void committingAPreparedTransaction_leavesCommittedRegisterRowsAndNoUncommittedOnes() {
+        MutationRequest request = new MutationRequest(
+                List.of(new ItemCreateMutation(null, PRODUCT_TYPE, Map.of("name", "Committed Widget"))), List.of(), false);
+        MutationResponse response = postMutation(request);
+        UUID itemId = response.items().get(0).itemId();
+
+        webTestClient.post().uri("/api/mutation/{transactionId}/commit", response.transactionId())
+                .exchange()
+                .expectStatus().isOk();
+
+        assertThat(ledgerPartitionManager.readTransaction(response.transactionId())).isNotEmpty();
+        assertThat(committedRegisterItemCount(itemId)).isEqualTo(1L);
+        assertThat(uncommittedRegisterItemCount(itemId, response.transactionId())).isEqualTo(0L);
+    }
+
+    private MutationResponse postMutation(MutationRequest request) {
+        return webTestClient.post().uri("/api/mutation")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(request)
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(MutationResponse.class)
+                .returnResult()
+                .getResponseBody();
+    }
+
+    private long registerItemRowCount(UUID itemId, UUID transactionId) {
+        return jdbcClient.sql("SELECT COUNT(*) FROM register_item WHERE item_id = :itemId AND transaction_id = :transactionId")
+                .param("itemId", itemId).param("transactionId", transactionId).query(Long.class).single();
+    }
+
+    private long uncommittedRegisterItemCount(UUID itemId, UUID transactionId) {
+        return jdbcClient.sql("SELECT COUNT(*) FROM register_item WHERE item_id = :itemId AND transaction_id = :transactionId AND state = 'UNCOMMITTED'")
+                .param("itemId", itemId).param("transactionId", transactionId).query(Long.class).single();
+    }
+
+    private long committedRegisterItemCount(UUID itemId) {
+        return jdbcClient.sql("SELECT COUNT(*) FROM register_item WHERE item_id = :itemId AND state = 'COMMITTED'")
+                .param("itemId", itemId).query(Long.class).single();
     }
 }

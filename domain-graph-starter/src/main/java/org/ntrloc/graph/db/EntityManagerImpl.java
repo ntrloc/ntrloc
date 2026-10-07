@@ -1,6 +1,8 @@
 package org.ntrloc.graph.db;
 
 import org.ntrloc.graph.db.coordinator.LedgerRegisterCoordinator;
+import org.ntrloc.graph.mutation.AbortResponse;
+import org.ntrloc.graph.mutation.CommitResponse;
 import org.ntrloc.graph.mutation.MutationRequest;
 import org.ntrloc.graph.mutation.MutationRequestProcessor;
 import org.ntrloc.graph.mutation.MutationResponse;
@@ -144,6 +146,16 @@ public class EntityManagerImpl implements EntityManager {
     @Override
     public MutationResponse mutate(MutationRequest request, NtrlocPrincipal principal) {
         return mutationRequestProcessor.process(request, principal);
+    }
+
+    @Override
+    public CommitResponse confirmCommit(UUID transactionId) {
+        return mutationRequestProcessor.confirmCommit(transactionId);
+    }
+
+    @Override
+    public AbortResponse confirmAbort(UUID transactionId) {
+        return mutationRequestProcessor.confirmAbort(transactionId);
     }
 
     @Override

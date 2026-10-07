@@ -260,6 +260,49 @@ class LedgerRegisterCoordinatorIntegrationTest extends AbstractIntegrationTest {
         assertThat(staged).isEqualTo(0L);
     }
 
+    // Foundational guarantee, not previously covered: an ordinary projection, outside any
+    // transaction, must only ever present COMMITTED data -- including for a LINKED item, not just
+    // the item being projected directly. The most adversarial case fetchLinksByItem's own query
+    // allows for: an existing, already-committed link to an item that's independently had a *new*
+    // update staged (prepared, never committed) in a separate transaction. If the guarantee held
+    // only by accident -- relying on the link-perspective repoint happening at commit time rather
+    // than stage time, rather than on an explicit state check -- this is exactly the case that
+    // would expose it.
+    @Test
+    void projectingThroughAnExistingLink_showsTheLinkedItemsOldCommittedPropertiesNotAConcurrentUnrelatedTransactionsStagedUpdate() {
+        UUID productId = UUID.randomUUID();
+        UUID contributorId = UUID.randomUUID();
+        UUID linkId = UUID.randomUUID();
+        UUID itemsTxn = UUID.randomUUID();
+        UUID linkTxn = UUID.randomUUID();
+        UUID staleUpdateTxn = UUID.randomUUID();
+
+        coordinator.prepare(List.of(
+                new ItemCreateEntry(productId, fixture.productTypeId(), Map.of(fixture.namePropertyId(), "Widget"), Map.of(), Set.of()),
+                new ItemCreateEntry(contributorId, fixture.contributorTypeId(), Map.of(fixture.contributorNamePropertyId(), "Ada"), Map.of(), Set.of())
+        ), itemsTxn, null);
+        coordinator.commit(itemsTxn, UUID.randomUUID());
+
+        coordinator.prepare(List.of(new LinkCreateEntry(linkId, fixture.linkTypeId(),
+                new LinkEndpoint(fixture.productPerspectiveId(), productId),
+                new LinkEndpoint(fixture.contributorPerspectiveId(), contributorId),
+                Map.of())), linkTxn, null);
+        coordinator.commit(linkTxn, UUID.randomUUID());
+
+        // Staged (prepared), deliberately never committed -- a separate, concurrent, still-open
+        // transaction independently updating the linked contributor.
+        coordinator.prepare(List.of(new ItemUpdateEntry(contributorId,
+                Map.of(fixture.contributorNamePropertyId(), "Ada (should not be visible)"), Map.of(), Set.of(), Set.of(), Set.of())),
+                staleUpdateTxn, null);
+
+        var product = registerPartitionManager.projectOne(fixture.productTypeId(), productId, "http://binary").orElseThrow();
+        var contributorLinks = product.links().values().stream().flatMap(List::stream).toList();
+
+        assertThat(contributorLinks).hasSize(1);
+        assertThat(contributorLinks.get(0).item().itemId()).isEqualTo(contributorId);
+        assertThat(contributorLinks.get(0).item().properties()).containsEntry("name", "Ada");
+    }
+
     private Map<String, Object> mapWithNull(String k1, Object v1, String k2, Object v2) {
         Map<String, Object> map = new java.util.HashMap<>();
         map.put(k1, v1);

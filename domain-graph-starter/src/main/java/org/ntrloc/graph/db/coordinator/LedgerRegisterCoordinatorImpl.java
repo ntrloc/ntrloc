@@ -15,6 +15,7 @@ import org.ntrloc.graph.db.partition.register.RegisterLinkEndpoint;
 import org.ntrloc.graph.db.partition.register.RegisterPartitionManager;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
@@ -48,8 +49,17 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
         this.stateMarkerDecisionService = stateMarkerDecisionService;
     }
 
+    // REQUIRES_NEW on prepare/commit/abort, not the default REQUIRED: each must durably commit (or
+    // roll back) as its own independent database transaction, never silently joining whatever
+    // transaction happened to already be open in the caller. That's the actual defining property of
+    // two-phase commit -- a prepared state has to survive on its own, confirmable or abortable by a
+    // later, separate transaction -- and it was missing before: MutationRequestProcessor.process()
+    // called prepare() then commit() from inside its own single @Transactional method, so both were
+    // just joining that one outer transaction and a crash between them would have rolled back the
+    // "already prepared" work right along with everything else. See the marker decision pipeline
+    // design notes for the fuller discussion of why this needed fixing.
     @Override
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void prepare(List<LedgerEntry> entries, UUID transactionId, String actorExternalId) {
         List<LedgerEntry> expanded = cascadeExpander.expand(entries);
         // Marker Assignment Rules fire here, before the ledger append below -- not in commit(),
@@ -91,7 +101,7 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
     }
 
     @Override
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void commit(UUID transactionId, UUID commitId) {
         List<LedgerEntry> entries = ledgerPartitionManager.readTransaction(transactionId);
 
@@ -156,9 +166,9 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
     }
 
     @Override
-    @Transactional
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void abort(UUID transactionId) {
-        registerPartitionManager.discardStaged(transactionId);
+        registerPartitionManager.abort(transactionId);
         ledgerPartitionManager.abort(transactionId);
     }
 

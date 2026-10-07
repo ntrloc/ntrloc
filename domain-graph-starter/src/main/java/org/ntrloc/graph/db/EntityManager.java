@@ -1,5 +1,7 @@
 package org.ntrloc.graph.db;
 
+import org.ntrloc.graph.mutation.AbortResponse;
+import org.ntrloc.graph.mutation.CommitResponse;
 import org.ntrloc.graph.mutation.MutationRequest;
 import org.ntrloc.graph.mutation.MutationResponse;
 import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
@@ -29,6 +31,14 @@ public interface EntityManager {
     // above). An unresolvable/absent principal is a real, displayable state, not a reason to
     // refuse the mutation.
     MutationResponse mutate(MutationRequest request, @Nullable NtrlocPrincipal principal);
+
+    // Confirms a transaction previously prepared with MutationRequest.commit() = false. See
+    // MutationRequestProcessor.confirmCommit.
+    CommitResponse confirmCommit(UUID transactionId);
+
+    // Discards a transaction previously prepared with MutationRequest.commit() = false. See
+    // MutationRequestProcessor.confirmAbort.
+    AbortResponse confirmAbort(UUID transactionId);
 
     // Begin an item's participation in a state machine: enters the state its START pseudostate
     // points at. Enforces state-machine:start (marker-scoped) and rejects if the machine is already

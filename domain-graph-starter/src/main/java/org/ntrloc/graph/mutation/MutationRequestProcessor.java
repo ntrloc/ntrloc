@@ -119,10 +119,33 @@ public class MutationRequestProcessor {
         // (ledger_entry.actor_external_id is nullable by design): an unresolvable/absent principal
         // is a real, displayable state ("Edited by" blank), not a reason to refuse the mutation.
         String actorExternalId = principal == null ? null : principal.externalId();
+        // prepare() now durably commits on its own (see LedgerRegisterCoordinatorImpl's
+        // REQUIRES_NEW) regardless of which branch runs next -- commit=false intentionally stops
+        // here, leaving a genuinely prepared, independently-recoverable transaction for a later
+        // confirmCommit() call, not a half-finished one.
         coordinator.prepare(entries, transactionId, actorExternalId);
-        coordinator.commit(transactionId, commitId);
+        if (request.commit() == null || request.commit()) {
+            coordinator.commit(transactionId, commitId);
+        }
 
-        return new MutationResponse(itemResults, linkResults);
+        return new MutationResponse(itemResults, linkResults, transactionId);
+    }
+
+    // Confirms a transaction previously prepared with commit=false. Generates its own commitId --
+    // callers never need to track one themselves, same as the synchronous path in process().
+    @Transactional
+    public CommitResponse confirmCommit(UUID transactionId) {
+        coordinator.commit(transactionId, UUID.randomUUID());
+        return new CommitResponse(transactionId);
+    }
+
+    // Discards a transaction previously prepared with commit=false -- its UNCOMMITTED ledger entries
+    // and staged register rows are deleted outright, not just marked aborted (see
+    // LedgerRegisterCoordinator.abort's own doc comment).
+    @Transactional
+    public AbortResponse confirmAbort(UUID transactionId) {
+        coordinator.abort(transactionId);
+        return new AbortResponse(transactionId);
     }
 
     private void processItemCreate(ItemCreateMutation m, String path, Map<String, UUID> refIdToItemId, Map<String, UUID> refIdToItemTypeId,
