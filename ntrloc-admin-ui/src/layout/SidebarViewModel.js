@@ -1,22 +1,14 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
+import { useCollapsiblePanel } from '../controls/collapsible-panel/useCollapsiblePanel'
 
-// Owns the sidebar's locked/collapsed/floating interaction state, kept out of Sidebar.jsx itself
-// for the same view/view-model split used elsewhere -- the state and its rules stay readable and
-// testable independent of the markup that renders them.
+// Owns the sidebar's own interaction state, kept out of Sidebar.jsx itself for the same
+// view/view-model split used elsewhere. The locked/collapsed/floating state machine itself now
+// lives in useCollapsiblePanel (shared with any other CollapsiblePanel usage) -- this composes
+// that plus the nav-specific bits (schemaPath/isSchemaActive) that don't belong in a generic
+// control.
 export function useSidebarViewModel() {
-  const [locked, setLocked] = useState(true)
-  const [hovering, setHovering] = useState(false)
-  const floating = !locked && hovering
-
-  function toggleLocked() {
-    setLocked((prev) => !prev)
-    // Reset hover tracking on every toggle -- otherwise collapsing while the cursor happens to
-    // still be over the (now-narrower) rail immediately re-triggers floating, producing a
-    // shrink-then-expand flicker right after the click. This makes floating only ever the result
-    // of a deliberate hover that starts after the toggle, never a side effect of it.
-    setHovering(false)
-  }
+  const { locked, collapsed, floating, toggleLocked, onMouseEnter, onMouseLeave } = useCollapsiblePanel(true)
 
   // The schema editor's own selection (which item type/trait is open) lives in the URL as real
   // sub-routes (/schema/item-types/:id, /schema/traits/:id) so browser back/forward can walk
@@ -33,11 +25,11 @@ export function useSidebarViewModel() {
 
   return {
     locked,
-    collapsed: !locked,
+    collapsed,
     floating,
     toggleLocked,
-    onMouseEnter: () => setHovering(true),
-    onMouseLeave: () => setHovering(false),
+    onMouseEnter,
+    onMouseLeave,
     schemaPath: lastSchemaPathRef.current,
     isSchemaActive: location.pathname.startsWith('/schema'),
   }

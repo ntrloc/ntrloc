@@ -1,0 +1,91 @@
+/* Width/collapsed-width are CSS custom properties, not literals, so a usage site can override them
+   by setting --collapsible-panel-width/--collapsible-panel-collapsed-width on an ancestor -- the
+   nav Sidebar's own 220/56 become this control's defaults, not a nav-specific constant baked in
+   here. Positioning within the page is still owned by whatever contains this. */
+collapsible-panel {
+  --collapsible-panel-width: 220px;
+  --collapsible-panel-collapsed-width: 56px;
+  position: relative;
+  flex: none;
+  width: var(--collapsible-panel-width);
+  transition: width 150ms ease;
+}
+
+collapsible-panel[data-collapsed] {
+  width: var(--collapsible-panel-collapsed-width);
+}
+
+/* Always absolutely positioned within collapsible-panel, even when not floating, so that
+   collapsed -> floating only ever changes this inner panel's own width -- never the space
+   collapsible-panel reserves in its container's layout. Floating is an overlay on top of
+   content, not a reflow of it.
+
+   Width is its own literal custom-property reference, not a percentage of collapsible-panel's
+   current width -- a percentage would recompute against the parent's own in-flight transition
+   value (e.g. falling back to the collapsed width the instant floating turns off mid-lock-
+   animation, before the parent has finished growing back), producing a visible shrink-then-expand
+   double-motion. Both elements transitioning from their own current rendered value to the same
+   target keeps them in lockstep. */
+collapsible-panel-content {
+  position: absolute;
+  inset: 0;
+  width: var(--collapsible-panel-width);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border);
+  overflow: hidden;
+  transition: width 150ms ease, box-shadow 150ms ease;
+}
+
+collapsible-panel[data-collapsed]:not([data-floating]) collapsible-panel-content {
+  width: var(--collapsible-panel-collapsed-width);
+}
+
+collapsible-panel[data-floating] collapsible-panel-content {
+  box-shadow: var(--shadow);
+  z-index: 20;
+}
+
+collapsible-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.collapsible-panel-title {
+  font-weight: 600;
+  color: var(--primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Collapsed-and-not-floating's rail is narrower than most titles -- without this, the title and
+   toggle button compete for the same cramped header row and the button (flex's second child,
+   pushed to the far side by justify-content: space-between) ends up clipped out of view entirely
+   by the panel's own overflow: hidden, leaving the toggle unreachable. Hiding the title there
+   keeps the toggle the one thing the rail always guarantees room for. */
+collapsible-panel[data-collapsed]:not([data-floating]) .collapsible-panel-title {
+  display: none;
+}
+
+.collapsible-panel-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.collapsible-panel-toggle:hover {
+  background: var(--primary-bg);
+  color: var(--text-h);
+}

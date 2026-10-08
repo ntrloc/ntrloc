@@ -1,7 +1,23 @@
 access-markers-view {
   display: flex;
-  flex-direction: column;
-  gap: 12px;
+  height: 100%;
+  min-height: 400px;
+}
+
+.access-markers-new-button {
+  width: 100%;
+  margin-bottom: 12px;
+}
+
+/* Collapsed-and-not-floating is too narrow for any of this to render sensibly -- same idea as
+   Sidebar.css's own collapsed handling of its nav items, just hiding outright here instead of a
+   rotated-label rail, since there's no single "active" marker to privilege the way the nav always
+   has an active section. */
+collapsible-panel[data-collapsed]:not([data-floating]) .access-markers-new-button,
+collapsible-panel[data-collapsed]:not([data-floating]) .access-markers-list,
+collapsible-panel[data-collapsed]:not([data-floating]) .access-markers-error,
+collapsible-panel[data-collapsed]:not([data-floating]) .status {
+  display: none;
 }
 
 .access-markers-list {
@@ -13,6 +29,7 @@ access-markers-view {
 .access-markers-list li {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
   padding: 6px 0;
   font-size: 13px;
@@ -21,22 +38,21 @@ access-markers-view {
 
 .access-marker-name {
   font-weight: 500;
-}
-
-.access-marker-description {
-  color: var(--muted);
-  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .access-marker-actions {
   display: flex;
   gap: 6px;
+  flex: none;
 }
 
 .access-marker-action {
   background: none;
   border: none;
-  color: var(--accent);
+  color: var(--primary);
   cursor: pointer;
   font-size: 12px;
   padding: 2px 6px;
@@ -50,5 +66,16 @@ access-markers-view {
 .access-markers-error {
   color: #f85149;
   font-size: 13px;
-  margin: 0;
+  margin: 8px 0 0;
+}
+
+access-markers-pipeline-area {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--code-bg);
+  border-radius: 8px;
+  margin: 2px;
 }

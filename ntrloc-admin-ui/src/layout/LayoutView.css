@@ -28,11 +28,8 @@ layout-view {
     flex: 1;
     min-height: 0;
 
-    /* layout-sidebar's own width is set in Sidebar.css, not here -- it's intrinsic to the
-       sidebar's own locked/collapsed state rather than an external constant. */
-    layout-sidebar {
-      flex: none;
-    }
+    /* The sidebar's own width/flex-none is set by CollapsiblePanel.css, not here -- it's
+       intrinsic to its own locked/collapsed state rather than an external constant. */
 
     layout-content {
       flex: 1;
