@@ -99,12 +99,6 @@ const schemaViewModel = {
   // ntrloc-item-detail.js's own "Access Markers" panel, filtered to whichever item is selected --
   // see markersForItem below.
   markers: [],
-  // Marker assignment rules (authorization_marker_rule) -- read-only here (see marker-service.js's
-  // getMarkerRules and MarkerAdminController's own comment on why there's no create/edit yet),
-  // loaded the same best-effort way as markers/processDefinitions. Rendered in ntrloc-item-detail.js's
-  // "Access Control" panel, second subsection, filtered to the selected item type -- see
-  // markerRulesForItem below.
-  markerRules: [],
   propertyTypes: [],
   // Flowable's deployed process definitions -- fetched alongside the schema purely to populate
   // the entry/exit/transition/init process pickers in the states editor. Best-effort: a failure
@@ -140,12 +134,6 @@ const schemaViewModel = {
   // aren't included yet).
   markersForItem(itemId) {
     return this.markers.filter((m) => m.scopeKind === 'ITEM_TYPE' && m.scopeId === itemId);
-  },
-
-  // Rules target an item type directly (MarkerRuleAdminRow.itemTypeId), no scope-kind indirection
-  // the way markers have.
-  markerRulesForItem(itemId) {
-    return this.markerRules.filter((r) => r.itemTypeId === itemId);
   },
 
   get isDirty() {
@@ -199,7 +187,7 @@ const schemaViewModel = {
 
   load() {
     if (this._loaded) return Promise.resolve();
-    return Promise.all([schemaModel.load(), this._loadProcessDefinitions(), this._loadMarkers(), this._loadMarkerRules()])
+    return Promise.all([schemaModel.load(), this._loadProcessDefinitions(), this._loadMarkers()])
       .then(([schema]) => this._applySchema(schema, null, null, null, null, null, null));
   },
 
@@ -215,7 +203,7 @@ const schemaViewModel = {
     this.selectedTrait = null;
     this.selectedControlledList = null;
     this.pendingNewLinks = [];
-    return Promise.all([schemaModel.reload(), this._loadProcessDefinitions(), this._loadMarkers(), this._loadMarkerRules()])
+    return Promise.all([schemaModel.reload(), this._loadProcessDefinitions(), this._loadMarkers()])
       .then(([schema]) => this._applySchema(schema, selectedItemId, selectedItemName, selectedTraitId, selectedTraitName, selectedListId, selectedListName));
   },
 
@@ -239,15 +227,6 @@ const schemaViewModel = {
       .catch((e) => {
         console.error('[schema] failed to load markers:', e);
         this.markers = [];
-      });
-  },
-
-  _loadMarkerRules() {
-    return markerService.getMarkerRules()
-      .then((rules) => { this.markerRules = rules; })
-      .catch((e) => {
-        console.error('[schema] failed to load marker rules:', e);
-        this.markerRules = [];
       });
   },
 
@@ -278,24 +257,6 @@ const schemaViewModel = {
     notifySchemaViewModelChange();
   },
 
-  // Same immediate-write shape as createMarker -- see marker-service.js's own comment on why
-  // there's no local draft stage for either.
-  async createMarkerRule({ name, itemTypeId, decisionKey }) {
-    const rule = await markerService.createMarkerRule({ name, itemTypeId, decisionKey });
-    this.markerRules = [...this.markerRules, rule].sort((a, b) => a.name.localeCompare(b.name));
-    this.sectionsExpanded.accessControl = true;
-    notifySchemaViewModelChange();
-    return rule;
-  },
-
-  // Immediate write, same as createMarkerRule/deleteMarker -- no local draft stage, not part of
-  // the schema-mutation batch.
-  async deleteMarkerRule(id) {
-    await markerService.deleteMarkerRule(id);
-    this.markerRules = this.markerRules.filter((r) => r.id !== id);
-    notifySchemaViewModelChange();
-  },
-
   // Traits/States start collapsed the moment an item/trait is selected if that section would
   // otherwise be empty -- nothing worth showing open by default. Called only from
   // selectItem/selectTrait (a real selection change), never from a render cycle -- every field
@@ -318,7 +279,7 @@ const schemaViewModel = {
       traits: hasTraits,
       states: isItem ? entity.stateMachines.some((m) => !m.isDeleted) : this.sectionsExpanded.states,
       accessControl: isItem
-        ? (this.markersForItem(entity.id).length > 0 || this.markerRulesForItem(entity.id).length > 0)
+        ? this.markersForItem(entity.id).length > 0
         : this.sectionsExpanded.accessControl,
     };
   },

@@ -8,7 +8,7 @@ import './TraitDetailView.css'
 
 // Same shape as ItemTypeDetailView -- header plus a TabView, the Properties/Links tabs being the
 // exact same shared components an item type uses, fed this trait's own data -- just with the
-// subset of tabs a trait actually has. State Machines/Access Control are item-type-only concerns:
+// subset of tabs a trait actually has. State Machines/Access Markers are item-type-only concerns:
 // a trait doesn't get instantiated on its own, so neither applies here.
 function TraitDetailView({ traitId, onSelectItemType, onSelectTrait, detailTabKey, onDetailTabKeyChange }) {
   const { trait } = useTraitDetailViewModel(traitId)

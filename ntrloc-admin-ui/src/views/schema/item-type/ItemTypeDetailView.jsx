@@ -3,6 +3,7 @@ import PropertyTreeView from '../PropertyTreeView'
 import ItemTypeOverviewView from './ItemTypeOverviewView'
 import ItemTypeLinksView from './ItemTypeLinksView'
 import ItemTypeStateMachinesView from './ItemTypeStateMachinesView'
+import AccessMarkersView from './AccessMarkersView'
 import { useItemTypeModel } from '../../../global/model/ItemTypeModel'
 import { useItemTypeDetailViewModel } from './ItemTypeDetailViewModel'
 import './ItemTypeDetailView.css'
@@ -30,7 +31,7 @@ function ItemTypeDetailView({ itemTypeId, onSelectItemType, onSelectTrait, detai
       view: <ItemTypeLinksView itemTypeId={itemType.id} itemTypeName={itemType.name} onSelectTrait={onSelectTrait} />,
     },
     { key: 'stateMachines', label: 'State Machines', view: <ItemTypeStateMachinesView itemTypeId={itemType.id} /> },
-    { key: 'accessControl', label: 'Access Control', view: <p>Access control coming soon.</p> },
+    { key: 'accessMarkers', label: 'Access Markers', view: <AccessMarkersView itemTypeId={itemType.id} itemTypeName={itemType.name} /> },
   ]
 
   return (

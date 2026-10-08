@@ -1,0 +1,70 @@
+marker-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 100;
+}
+
+marker-dialog-view {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 320px;
+  max-width: 480px;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  box-shadow: var(--shadow);
+}
+
+.marker-dialog-title {
+  margin: 0;
+  color: var(--text-h);
+}
+
+.marker-dialog-field label,
+.marker-dialog-field-label {
+  display: block;
+  font-size: 11px;
+  font-weight: bold;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.marker-dialog-field input {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 8px 10px;
+  font-size: 14px;
+}
+
+.marker-dialog-field input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.marker-dialog-scope-readout {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.marker-dialog-error {
+  color: #f85149;
+  font-size: 13px;
+  margin: 0;
+}
+
+marker-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}

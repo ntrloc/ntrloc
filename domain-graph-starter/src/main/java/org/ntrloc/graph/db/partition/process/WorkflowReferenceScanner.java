@@ -8,10 +8,9 @@ import java.util.List;
 
 // "Is this process / decision key still pointed at from somewhere in the schema?" -- the delete
 // guard for ProcessAdminController / DecisionAdminController. Both a process id and a decision key
-// are stored as plain strings (not FKs -- see the schema tables and authorization_marker_rule's
-// own migration comment), so nothing in the DB stops a definition being deleted out from under a
-// state machine or a marker rule; this scanner is what makes those deletes a hard "not in use"
-// gate instead, matching how schema item-type / trait deletion already works.
+// are stored as plain strings (not FKs), so nothing in the DB stops a definition being deleted out
+// from under a state machine; this scanner is what makes those deletes a hard "not in use" gate
+// instead, matching how schema item-type / trait deletion already works.
 //
 // Read-only, and deliberately cross-partition (schema_* + authorization_*) via one JdbcClient:
 // this is a short reference lookup for a delete check, not domain logic that belongs to either
@@ -70,10 +69,6 @@ public class WorkflowReferenceScanner {
                 .param("key", decisionKey)
                 .query((rs, n) -> "state \"" + rs.getString("state") + IN_STATE_MACHINE
                         + rs.getString(COL_MACHINE) + "\" (entry-marker decision)")
-                .list().forEach(refs::add);
-        jdbcClient.sql("SELECT name FROM authorization_marker_rule WHERE decision_key = :key")
-                .param("key", decisionKey)
-                .query((rs, n) -> "marker rule \"" + rs.getString("name") + "\"")
                 .list().forEach(refs::add);
         return refs;
     }

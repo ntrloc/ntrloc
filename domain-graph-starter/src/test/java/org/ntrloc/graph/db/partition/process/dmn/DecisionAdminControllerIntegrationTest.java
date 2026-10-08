@@ -3,8 +3,12 @@ package org.ntrloc.graph.db.partition.process.dmn;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.coordinator.CoordinatorTestDomainInitializer;
-import org.ntrloc.graph.db.partition.authorization.repository.AuthorizationRepository;
 import org.ntrloc.graph.db.partition.process.dmn.DecisionAdminController.DecisionDefinitionView;
+import org.ntrloc.graph.db.partition.register.RegisterPartitionManager;
+import org.ntrloc.graph.db.partition.schema.SchemaManager;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateStateMachineMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateStateMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.DefinitionMutation;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.reactive.server.WebTestClient;
@@ -29,10 +33,13 @@ class DecisionAdminControllerIntegrationTest extends AbstractIntegrationTest {
     private WebTestClient webTestClient;
 
     @Autowired
-    private AuthorizationRepository authRepo;
+    private CoordinatorTestDomainInitializer fixture;
 
     @Autowired
-    private CoordinatorTestDomainInitializer fixture;
+    private SchemaManager schemaManager;
+
+    @Autowired
+    private RegisterPartitionManager registerPartitionManager;
 
     @Test
     void listsDeployedDecisionsIncludingApprovalDecision() {
@@ -107,26 +114,23 @@ class DecisionAdminControllerIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void deletingADecisionStillReferencedByAMarkerRuleIsBlockedWithA409() {
+    void deletingADecisionStillReferencedByAStatesEntryMarkerDecisionIsBlockedWithA409() {
         String key = "referencedDecisionTest-" + UUID.randomUUID();
         deploy(key, "v1");
-        String ruleName = "delete-guard-rule-" + UUID.randomUUID();
-        var rule = authRepo.createMarkerRule(ruleName, fixture.productTypeId(), key);
+        String machineName = "decision-delete-guard-machine-" + UUID.randomUUID();
+        schemaManager.applyMutations(List.<DefinitionMutation>of(
+                new CreateStateMachineMutation(fixture.productTypeId(), machineName, null)));
+        UUID smId = registerPartitionManager.resolveStateMachineId(fixture.productTypeId(), machineName);
+        schemaManager.applyMutations(List.<DefinitionMutation>of(
+                new CreateStateMutation(smId, "Guarded", null, null, null, key)));
 
-        try {
-            webTestClient.delete().uri("/api/admin/dmn/decisions/{key}", key)
-                    .exchange()
-                    .expectStatus().isEqualTo(409)
-                    .expectBody()
-                    .jsonPath("$.message").value(m -> assertThat((String) m).contains(ruleName));
+        webTestClient.delete().uri("/api/admin/dmn/decisions/{key}", key)
+                .exchange()
+                .expectStatus().isEqualTo(409)
+                .expectBody()
+                .jsonPath("$.message").value(m -> assertThat((String) m).contains("Guarded"));
 
-            assertThat(fetchDecisions()).anyMatch(d -> d.key().equals(key));
-        } finally {
-            // fixture.productTypeId() is a shared fixture item type used across this whole (shared,
-            // never-reset) test database -- leaving this rule enabled would make MarkerRuleEvaluationService
-            // evaluate it against every other test's items of that type for the rest of the JVM run.
-            authRepo.deleteMarkerRule(rule.id());
-        }
+        assertThat(fetchDecisions()).anyMatch(d -> d.key().equals(key));
     }
 
     private DecisionDefinitionView deploy(String key, String labelSuffix) {

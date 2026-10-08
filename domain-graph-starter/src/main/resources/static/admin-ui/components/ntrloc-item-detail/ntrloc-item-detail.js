@@ -121,58 +121,6 @@ injectStyles('ntrloc-item-detail-styles', `
     text-transform: uppercase;
     color: var(--muted);
   }
-  .marker-rules-list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-  }
-  .marker-rules-list li {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 0;
-    font-size: 13px;
-    border-bottom: 1px solid var(--border);
-  }
-  .marker-rule-name {
-    font-weight: 500;
-  }
-  .marker-rule-key {
-    color: var(--muted);
-    font-family: monospace;
-    font-size: 12px;
-    flex: 1;
-  }
-  .marker-rule-status {
-    font-size: 11px;
-    font-weight: 600;
-    padding: 2px 8px;
-    border-radius: 999px;
-    text-transform: uppercase;
-    letter-spacing: 0.02em;
-  }
-  .marker-rule-status.enabled {
-    color: #3fb950;
-    background: rgba(63, 185, 80, 0.12);
-  }
-  .marker-rule-status.disabled {
-    color: var(--muted);
-    background: rgba(255, 255, 255, 0.06);
-  }
-  .marker-rule-open-button,
-  .marker-rule-delete-button {
-    background: none;
-    border: none;
-    color: var(--accent);
-    cursor: pointer;
-    font-size: 12px;
-    padding: 2px 6px;
-    white-space: nowrap;
-  }
-  .marker-rule-open-button:hover,
-  .marker-rule-delete-button:hover {
-    text-decoration: underline;
-  }
   .field-row {
     display: flex;
     align-items: center;
@@ -624,47 +572,12 @@ class NtrlocItemDetail extends HTMLElement {
     return `${listHtml}${addAffordance}${this._markerError ? `<p class="marker-error">${escapeHtml(this._markerError)}</p>` : ''}`;
   }
 
-  // These are the DMN-backed rules that apply this item type's markers automatically on
-  // create/update (MarkerRuleEvaluationService), as distinct from the markers themselves above.
-  // Create + delete only -- enable/disable toggling from here is a smaller follow-up (see
-  // MarkerAdminController's own comment); the decision-key text field lets a rule be created
-  // before its DMN table is deployed (see openCreateMarkerRuleDialog's own comment), so a fresh
-  // rule commonly shows up here with nothing to "open" yet until that table exists.
-  markerRulesBody() {
-    const item = this._item;
-    const rules = schemaViewModel.markerRulesForItem(item.id);
-
-    const listHtml = rules.length > 0
-      ? `<ul class="marker-rules-list">${rules.map((r) => `
-          <li data-marker-rule-id="${r.id}">
-            <span class="marker-rule-name">${escapeHtml(r.name)}</span>
-            <span class="marker-rule-key">${escapeHtml(r.decisionKey)}</span>
-            <span class="marker-rule-status ${r.enabled ? 'enabled' : 'disabled'}">${r.enabled ? 'Enabled' : 'Disabled'}</span>
-            <button class="marker-rule-open-button" type="button" title="Open this rule's DMN decision table">Open DMN</button>
-            <button class="marker-rule-delete-button" type="button" title="Delete this assignment rule">Delete</button>
-          </li>
-        `).join('')}</ul>`
-      : '<p class="status">No marker assignment rules defined for this item type.</p>';
-
-    // Same "save this first" guard as Access Markers/Links/States -- a rule's item_type_id has to
-    // be a real item type id, which a not-yet-saved item type doesn't have yet.
-    const addAffordance = item.isNew
-      ? '<p class="status">Save this item type before adding assignment rules.</p>'
-      : '<md-outlined-button class="add-marker-rule-button">+ New Assignment Rule</md-outlined-button>';
-
-    return `${listHtml}${addAffordance}${this._markerRuleError ? `<p class="marker-error">${escapeHtml(this._markerRuleError)}</p>` : ''}`;
-  }
-
   accessControlBody() {
     return `
       <div class="access-control-body">
         <div class="access-control-subsection">
           <h4 class="subsection-header">Access Markers</h4>
           ${this.markersBody()}
-        </div>
-        <div class="access-control-subsection">
-          <h4 class="subsection-header">Marker Assignment Rules</h4>
-          ${this.markerRulesBody()}
         </div>
       </div>
     `;
@@ -732,81 +645,6 @@ class NtrlocItemDetail extends HTMLElement {
     }
   }
 
-  // Immediate write, not staged into Save -- see schema-view-model.js's createMarkerRule comment.
-  // Item type is fixed to this item type, not picked in the dialog (see
-  // openCreateMarkerRuleDialog's own comment on why), mirroring onNewMarker.
-  async onNewMarkerRule() {
-    const item = this._item;
-    let existingKeys = [];
-    try {
-      const decisions = await fetch('/api/admin/dmn/decisions', { credentials: 'include' }).then((r) => (r.ok ? r.json() : []));
-      existingKeys = [...new Set(decisions.map((d) => d.key))].sort();
-    } catch {
-      // Best-effort only -- the dialog still works fine with an empty datalist if this fails.
-    }
-    const result = await openCreateMarkerRuleDialog({
-      itemTypeId: item.id,
-      itemTypeLabel: item.name || '(unnamed)',
-      existingKeys,
-    });
-    if (!result) return;
-    this._markerRuleError = null;
-    try {
-      await schemaViewModel.createMarkerRule(result);
-    } catch (e) {
-      console.error('[item-detail] failed to create marker rule:', e);
-      this._markerRuleError = e.message || 'Failed to create assignment rule.';
-      this.render();
-    }
-  }
-
-  // openConfirmDialog, same as onDeleteMarker above. A deleted rule stops firing on future
-  // create/update evaluations; markers it already applied stay on their items (see
-  // AuthorizationRepository.deleteMarkerRule) -- worth naming so the admin isn't surprised.
-  async onDeleteMarkerRule(rule) {
-    const confirmed = await openConfirmDialog({
-      title: 'Delete Assignment Rule',
-      message: `Delete assignment rule "${rule.name}"? It will stop assigning markers on future changes. Markers it has already applied stay in place.`,
-      confirmLabel: 'Delete',
-      destructive: true,
-    });
-    if (!confirmed) return;
-    this._markerRuleError = null;
-    try {
-      await schemaViewModel.deleteMarkerRule(rule.id);
-    } catch (e) {
-      console.error('[item-detail] failed to delete marker rule:', e);
-      this._markerRuleError = e.message || 'Failed to delete assignment rule.';
-      this.render();
-    }
-  }
-
-  // Cross-tab navigation into the Processes screen -- see ntrloc-processes.js's own
-  // openDecisionByKey comment for how a decision *key* (all a rule row stores) resolves to a
-  // specific deployed decision table to open. The <ntrloc-processes> element is a permanent
-  // singleton (index.html mounts every route once and toggles visibility, never recreating them),
-  // so grabbing it straight off the document and calling into it directly is safe and simpler than
-  // inventing a cross-component event/router-param scheme for a single call site.
-  //
-  // applyRoute() (index.html's own hash router, a plain global function) is called explicitly
-  // rather than left to the 'hashchange' listener alone -- that event dispatches as a separate
-  // task, not synchronously with the location.hash assignment above, and without it the Processes
-  // element would still be display:none the moment openDecisionByKey runs.
-  //
-  // Known cosmetic wrinkle: opening a decision table this way (route switch + tab-open in the same
-  // gesture) logs two harmless "<rect> attribute width/height: Expected length, NaN" console
-  // errors from diagram-js's initial background-rect sizing, which the same decision table does
-  // NOT produce when opened by clicking it directly from an already-visible Processes tab. Neither
-  // an explicit applyRoute() before the call nor deferring the call past a render pass (nested
-  // requestAnimationFrame, tried and removed) prevents it, and the diagram still renders and
-  // functions correctly either way -- verified visually, not just assumed. Left as a known,
-  // non-blocking artifact rather than chased further into diagram-js internals.
-  onOpenMarkerRule(rule) {
-    location.hash = '#/processes';
-    applyRoute();
-    const markerNames = schemaViewModel.markersForItem(this._item.id).map((m) => m.name);
-    document.querySelector('ntrloc-processes')?.openDecisionByKey(rule.decisionKey, rule.name, markerNames);
-  }
 
   linksBody() {
     const item = this._item;
@@ -1192,17 +1030,6 @@ class NtrlocItemDetail extends HTMLElement {
       if (!marker) return;
       row.querySelector('.marker-edit-button').addEventListener('click', () => this.onEditMarker(marker));
       row.querySelector('.marker-delete-button').addEventListener('click', () => this.onDeleteMarker(marker));
-    });
-
-    const addMarkerRuleButton = this.querySelector('.add-marker-rule-button');
-    if (addMarkerRuleButton) addMarkerRuleButton.addEventListener('click', () => this.onNewMarkerRule());
-
-    const markerRules = schemaViewModel.markerRulesForItem(item.id);
-    this.querySelectorAll('.marker-rules-list li').forEach((row) => {
-      const rule = markerRules.find((r) => r.id === row.dataset.markerRuleId);
-      if (!rule) return;
-      row.querySelector('.marker-rule-open-button').addEventListener('click', () => this.onOpenMarkerRule(rule));
-      row.querySelector('.marker-rule-delete-button').addEventListener('click', () => this.onDeleteMarkerRule(rule));
     });
 
     const addLinkButton = this.querySelector('.add-link-button');

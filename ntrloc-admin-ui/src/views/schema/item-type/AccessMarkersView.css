@@ -1,0 +1,54 @@
+access-markers-view {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.access-markers-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.access-markers-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  font-size: 13px;
+  border-bottom: 1px solid var(--border);
+}
+
+.access-marker-name {
+  font-weight: 500;
+}
+
+.access-marker-description {
+  color: var(--muted);
+  flex: 1;
+}
+
+.access-marker-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.access-marker-action {
+  background: none;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 6px;
+  white-space: nowrap;
+}
+
+.access-marker-action:hover {
+  text-decoration: underline;
+}
+
+.access-markers-error {
+  color: #f85149;
+  font-size: 13px;
+  margin: 0;
+}

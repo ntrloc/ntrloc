@@ -257,6 +257,36 @@ CREATE TABLE authorization_marker (
     scope_id    UUID NOT NULL
 );
 
+-- A marker decision pipeline, bound to one item type. The pipeline graph itself (signals,
+-- predicates, carrier blocks, routes) is stored opaquely as JSONB -- it's org.ntrloc.graph.access's
+-- own object model, serialized via its sealed-interface Jackson annotations, not something this
+-- schema needs to understand structurally. Replaces authorization_marker_rule's role for the
+-- pipeline model (see PipelineMarkerDecisionService, the successor to the retired
+-- MarkerRuleEvaluationService/StateMarkerDecisionService).
+CREATE TABLE marker_decision_pipeline (
+    id            UUID PRIMARY KEY DEFAULT uuidv7(),
+    name          TEXT NOT NULL,
+    item_type_id  UUID NOT NULL REFERENCES schema_item(id) ON DELETE CASCADE,
+    enabled       BOOLEAN NOT NULL DEFAULT TRUE,
+    pipeline      JSONB NOT NULL
+);
+CREATE INDEX idx_marker_decision_pipeline_item_type ON marker_decision_pipeline(item_type_id);
+
+-- A pipeline's watch set (org.ntrloc.graph.access.WatchDerivation), computed once when the
+-- pipeline is created/updated and persisted here -- never recomputed at mutation time. fact_id is
+-- a property, link perspective, or state machine id (whichever this pipeline's own signal graph
+-- actually references); it's deliberately not FK-constrained to any one of those three tables,
+-- same reasoning as authorization_marker.scope_id's polymorphic reference. Lets
+-- PipelineMarkerDecisionService ask "which pipelines for this item type care about what just
+-- changed" as a single indexed EXISTS lookup instead of walking every bound pipeline's graph on
+-- every mutation.
+CREATE TABLE marker_decision_pipeline_watch (
+    pipeline_id UUID NOT NULL REFERENCES marker_decision_pipeline(id) ON DELETE CASCADE,
+    fact_id     UUID NOT NULL,
+    PRIMARY KEY (pipeline_id, fact_id)
+);
+CREATE INDEX idx_marker_decision_pipeline_watch_fact ON marker_decision_pipeline_watch(fact_id);
+
 -- Type visibility is a direct (principal, item_type, permission) grant, not marker-mediated. See
 -- docs/ntrloc-security-projections-summary.md "Type Visibility".
 CREATE TABLE authorization_item_type_grant (
@@ -273,15 +303,6 @@ CREATE TABLE authorization_item_type_grant (
 -- statically restricted to one marker; safety for removal comes from ledger provenance at
 -- evaluation time (see MarkerRuleEvaluationService). decision_key is a Flowable DMN decision key,
 -- not a foreign key -- decisions are deployed/versioned independently via /api/admin/dmn.
-CREATE TABLE authorization_marker_rule (
-    id            UUID PRIMARY KEY DEFAULT uuidv7(),
-    name          TEXT NOT NULL,
-    item_type_id  UUID NOT NULL REFERENCES schema_item(id) ON DELETE CASCADE,
-    decision_key  TEXT NOT NULL,
-    enabled       BOOLEAN NOT NULL DEFAULT TRUE
-);
-CREATE INDEX idx_authorization_marker_rule_item_type ON authorization_marker_rule(item_type_id);
-
 -- One marker_grant per (marker, principal) pair, plus one child table per object kind a grant can
 -- reference. Whether an object kind needs its own join table depends on whether it has real
 -- multiplicity for a given grant: item-level verbs (view/delete the item that carries the marker)

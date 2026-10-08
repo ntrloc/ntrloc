@@ -1,5 +1,8 @@
 package org.ntrloc.graph.access;
 
+import com.fasterxml.jackson.annotation.JsonSubTypes;
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
+
 // Split per base type only where the operator set carries real type-safety risk (string, list
 // membership/presence, boolean, state machine, identity); collapsed to one fielded class wherever
 // every operator is safely interchangeable (number, date, and any list/link reduced to a size, count,
@@ -7,6 +10,46 @@ package org.ntrloc.graph.access;
 // decision pipeline design notes, "Signals: reading facts" / "Object shape", for the full reasoning.
 //
 // A predicate never has an output pin of its own except as a member of a PredicateSignal -- see Pin.
+//
+// @JsonSubTypes lists every concrete leaf directly, skipping the intermediate sealed interfaces
+// (StringPredicate, NumberListPredicate, etc.) -- those exist for Java-level type safety among
+// PredicateEvaluator's own dispatch, but no field anywhere in this model is ever declared as one of
+// them (always the bare Predicate), so there's nothing for a second JSON discriminator level to do.
+@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
+@JsonSubTypes({
+        @JsonSubTypes.Type(value = StringEqualsPredicate.class, name = "STRING_EQUALS"),
+        @JsonSubTypes.Type(value = StringNotEqualsPredicate.class, name = "STRING_NOT_EQUALS"),
+        @JsonSubTypes.Type(value = StringLikePredicate.class, name = "STRING_LIKE"),
+        @JsonSubTypes.Type(value = StringStartsWithPredicate.class, name = "STRING_STARTS_WITH"),
+        @JsonSubTypes.Type(value = StringExistsPredicate.class, name = "STRING_EXISTS"),
+        @JsonSubTypes.Type(value = StringNotExistsPredicate.class, name = "STRING_NOT_EXISTS"),
+        @JsonSubTypes.Type(value = NumberPredicate.class, name = "NUMBER"),
+        @JsonSubTypes.Type(value = DatePredicate.class, name = "DATE"),
+        @JsonSubTypes.Type(value = IsTruePredicate.class, name = "IS_TRUE"),
+        @JsonSubTypes.Type(value = IsFalsePredicate.class, name = "IS_FALSE"),
+        @JsonSubTypes.Type(value = StringListIncludesPredicate.class, name = "STRING_LIST_INCLUDES"),
+        @JsonSubTypes.Type(value = StringListExcludesPredicate.class, name = "STRING_LIST_EXCLUDES"),
+        @JsonSubTypes.Type(value = StringListIsEmptyPredicate.class, name = "STRING_LIST_IS_EMPTY"),
+        @JsonSubTypes.Type(value = StringListIsNotEmptyPredicate.class, name = "STRING_LIST_IS_NOT_EMPTY"),
+        @JsonSubTypes.Type(value = StringListSizePredicate.class, name = "STRING_LIST_SIZE"),
+        @JsonSubTypes.Type(value = NumberListIsEmptyPredicate.class, name = "NUMBER_LIST_IS_EMPTY"),
+        @JsonSubTypes.Type(value = NumberListIsNotEmptyPredicate.class, name = "NUMBER_LIST_IS_NOT_EMPTY"),
+        @JsonSubTypes.Type(value = NumberListSizePredicate.class, name = "NUMBER_LIST_SIZE"),
+        @JsonSubTypes.Type(value = NumberListSumPredicate.class, name = "NUMBER_LIST_SUM"),
+        @JsonSubTypes.Type(value = NumberListAvgPredicate.class, name = "NUMBER_LIST_AVG"),
+        @JsonSubTypes.Type(value = NumberListMinPredicate.class, name = "NUMBER_LIST_MIN"),
+        @JsonSubTypes.Type(value = NumberListMaxPredicate.class, name = "NUMBER_LIST_MAX"),
+        @JsonSubTypes.Type(value = DateListIsEmptyPredicate.class, name = "DATE_LIST_IS_EMPTY"),
+        @JsonSubTypes.Type(value = DateListIsNotEmptyPredicate.class, name = "DATE_LIST_IS_NOT_EMPTY"),
+        @JsonSubTypes.Type(value = DateListSizePredicate.class, name = "DATE_LIST_SIZE"),
+        @JsonSubTypes.Type(value = DateListMinPredicate.class, name = "DATE_LIST_MIN"),
+        @JsonSubTypes.Type(value = DateListMaxPredicate.class, name = "DATE_LIST_MAX"),
+        @JsonSubTypes.Type(value = LinkIsPresentPredicate.class, name = "LINK_IS_PRESENT"),
+        @JsonSubTypes.Type(value = LinkCountPredicate.class, name = "LINK_COUNT"),
+        @JsonSubTypes.Type(value = StateEqualsPredicate.class, name = "STATE_EQUALS"),
+        @JsonSubTypes.Type(value = NoStatePredicate.class, name = "NO_STATE"),
+        @JsonSubTypes.Type(value = EqualsSelfPredicate.class, name = "EQUALS_SELF")
+})
 public sealed interface Predicate
         permits StringPredicate, NumberPredicate, DatePredicate, BooleanPredicate,
         StringListPredicate, NumberListPredicate, DateListPredicate,

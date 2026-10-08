@@ -13,8 +13,8 @@ import java.util.UUID;
 
 // Minimal, direct marker assignment -- ledgered and posted to the register like any other
 // mutation, but deliberately decoupled from the mutation-validation pipeline and from *how*
-// markers get assigned via rules (a rule engine is still unbuilt; see RuleAppliedMarker for that
-// shape once it exists). Every marker change made through this service is manual by construction --
+// markers get assigned automatically (see the marker decision pipeline / PipelineAppliedMarker for
+// that). Every marker change made through this service is manual by construction --
 // ManuallyAppliedMarker requires both who did it and why, so both are required parameters here too.
 //
 // Items only -- markers never apply to links (see docs/ntrloc-marker-admin-ui-design-notes.md,

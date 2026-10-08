@@ -56,17 +56,6 @@ public class AuthorizationRepository {
 
     public record PropertyAccessRow(UUID propertyId, boolean canRead, boolean canWrite) {}
 
-    // decisionKey is a Flowable DMN decision key (see MarkerRuleEvaluationService) -- deployed/
-    // versioned independently, not a foreign key. No markerId here: a rule's DMN output declares
-    // which marker(s) apply by name; which of an item's *current* markers a rule may remove is
-    // decided at evaluation time via ledger provenance, not a static ownership column.
-    public record MarkerRuleRow(UUID id, String name, UUID itemTypeId, String decisionKey) {}
-
-    // Admin-listing variant of MarkerRuleRow -- carries `enabled` (irrelevant to the rule engine's
-    // own query above, which only ever wants enabled rows) for the Schema editor's read-only
-    // "Marker Assignment Rules" display (see MarkerAdminController).
-    public record MarkerRuleAdminRow(UUID id, String name, UUID itemTypeId, String decisionKey, boolean enabled) {}
-
     public record LinkPerspectiveAccessRow(UUID perspectiveId, boolean canCreate, boolean canRead, boolean canDelete) {}
 
     // The marker grant's own item-level verbs (item_can_read / item_can_delete live directly on
@@ -219,81 +208,6 @@ public class AuthorizationRepository {
                         rs.getString("scope_kind"),
                         rs.getObject("scope_id", UUID.class)))
                 .list();
-    }
-
-    // --- Marker assignment rules (tracer bullet) ---
-
-    public List<MarkerRuleRow> getEnabledMarkerRulesForItemType(UUID itemTypeId) {
-        return jdbcClient.sql("""
-                SELECT id, name, item_type_id, decision_key
-                FROM authorization_marker_rule
-                WHERE item_type_id = :itemTypeId AND enabled = true
-                """)
-                .param(PARAM_ITEM_TYPE_ID, itemTypeId)
-                .query((rs, n) -> new MarkerRuleRow(
-                        rs.getObject("id", UUID.class),
-                        rs.getString("name"),
-                        rs.getObject(COL_ITEM_TYPE_ID, UUID.class),
-                        rs.getString("decision_key")))
-                .list();
-    }
-
-    // enabled defaults true (not left to the column's own DEFAULT TRUE, spelled out here so it's
-    // obvious at the call site) -- safe to leave on immediately even before a decision table exists
-    // under decisionKey, since MarkerDecisionSupport.evaluateDecisionToMarkerIds() treats an
-    // undeployed key as "no markers this evaluation," not a failure. An admin can wire up the actual
-    // DMN table afterward (Processes tab) without a separate enable step.
-    public MarkerRuleAdminRow createMarkerRule(String name, UUID itemTypeId, String decisionKey) {
-        UUID id = jdbcClient.sql("""
-                INSERT INTO authorization_marker_rule (name, item_type_id, decision_key, enabled)
-                VALUES (:name, :itemTypeId, :decisionKey, true) RETURNING id
-                """)
-                .param("name", name).param(PARAM_ITEM_TYPE_ID, itemTypeId).param("decisionKey", decisionKey)
-                .query(UUID.class).single();
-        return new MarkerRuleAdminRow(id, name, itemTypeId, decisionKey, true);
-    }
-
-    // Plain delete, no cascade. A rule owns no markers statically (see MarkerRuleRow's own
-    // comment): any markers it applied are recorded in the ledger as RuleAppliedMarker carrying
-    // this rule's id and stay put on the items that have them -- future re-evaluations simply stop
-    // including this rule. Reconciling those already-applied markers away is the same cascading-
-    // re-evaluation gap MarkerRuleEvaluationService's class comment already flags, out of scope
-    // here. Not cache-affecting: AuthorizationCacheManager never reads rules (they're queried
-    // fresh at evaluation time), same as createMarkerRule above.
-    public void deleteMarkerRule(UUID id) {
-        jdbcClient.sql("DELETE FROM authorization_marker_rule WHERE id = :id").param("id", id).update();
-    }
-
-    // All rules regardless of item type/enabled state -- the admin surface filters client-side by
-    // item type the same way getAllMarkers()/MarkerAdminController's own listing does.
-    public List<MarkerRuleAdminRow> getAllMarkerRules() {
-        return jdbcClient.sql("""
-                SELECT id, name, item_type_id, decision_key, enabled
-                FROM authorization_marker_rule
-                ORDER BY name
-                """)
-                .query((rs, n) -> new MarkerRuleAdminRow(
-                        rs.getObject("id", UUID.class),
-                        rs.getString("name"),
-                        rs.getObject(COL_ITEM_TYPE_ID, UUID.class),
-                        rs.getString("decision_key"),
-                        rs.getBoolean("enabled")))
-                .list();
-    }
-
-    // Resolves a marker by name within an item type's own ITEM_TYPE-scoped markers -- the only
-    // scope a marker-assignment rule can target. Unresolved (wrong scope, or absent) returns
-    // empty; the caller (MarkerRuleEvaluationService) treats that as "no such marker" rather than
-    // failing the whole evaluation, since a typo'd DMN output shouldn't block a valid mutation.
-    public Optional<UUID> findItemTypeScopedMarkerByName(UUID itemTypeId, String name) {
-        return jdbcClient.sql("""
-                SELECT id FROM authorization_marker
-                WHERE scope_kind = 'ITEM_TYPE' AND scope_id = :itemTypeId AND name = :name
-                """)
-                .param(PARAM_ITEM_TYPE_ID, itemTypeId)
-                .param("name", name)
-                .query(UUID.class)
-                .optional();
     }
 
     /** Every marker id assigned to this item, for the batched per-page lookup used to resolve mode-2 (property/capability) checks. */

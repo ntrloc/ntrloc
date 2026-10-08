@@ -923,7 +923,8 @@ public class RegisterPartitionManager implements SchemaChangeListener {
 
     private record CurrentItemRowContent(UUID registerItemId, Map<String, Object> properties, Map<String, Object> states) {}
 
-    private Set<UUID> binaryPropertyIdsForItemType(UUID itemTypeId) {
+    /** Which of this item type's own properties are BINARY-typed -- never stored in the properties JSONB (see stageItemCreate/stageItemChange's own exclusion), so NoOpMutationFilter can't compare a diff against a "current value" that's never actually there. */
+    public Set<UUID> binaryPropertyIdsForItemType(UUID itemTypeId) {
         return schemaManager.getAdminSchema().items().stream()
                 .filter(item -> item.id().equals(itemTypeId))
                 .findFirst()
@@ -1015,20 +1016,25 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                 .optional();
     }
 
-    // --- Marker-rule support: resolve a mutation's property values by name, for DMN input
-    // variables. Both called from MarkerRuleEvaluationService during prepare(), before the
-    // mutation's own ledger entry is appended -- see that class's own comment on why.
-
-    /** A create's properties are already the complete set -- no current-row merge needed. */
-    public Map<String, Object> resolvePropertiesByName(UUID itemTypeId, Map<UUID, Object> propertiesById) {
-        return namesForIds(keysToStrings(propertiesById), propertyPathsByIdForItemType(itemTypeId));
+    // Merges an update's property diff onto the item's current committed properties, keyed by
+    // property id (not name) -- what ContextResolver needs to evaluate a marker decision pipeline's
+    // own-property signals against this item's about-to-be-committed state. No name-resolution step
+    // (unlike the now-retired DMN-input-map helpers this replaces), so an empty diff still needs the
+    // current row read rather than skipping straight to an empty result.
+    public Map<UUID, Object> resolveMergedPropertiesById(UUID itemId, UUID itemTypeId, Map<UUID, Object> propertiesDiff) {
+        Map<String, Object> currentById = currentPropertiesByIdString(itemId, itemTypeId);
+        Map<String, Object> mergedById = propertiesDiff.isEmpty()
+                ? currentById
+                : mergeProperties(currentById, keysToStrings(propertiesDiff));
+        return toUuidKeyedMap(mergedById);
     }
 
-    // An update's properties() is a diff; DMN evaluation needs the item's full resulting property
-    // set. Reads the same current-committed-row query stageItemChange uses internally and applies
-    // the same merge -- duplicated rather than threaded through stageItemChange's own call, to
-    // avoid restructuring that already-tested path for this first slice.
-    public Map<String, Object> resolveMergedPropertiesByName(UUID itemId, UUID itemTypeId, Map<UUID, Object> propertiesDiff) {
+    /** This item's current committed properties, keyed by property id -- what NoOpMutationFilter compares an incoming diff against. */
+    public Map<UUID, Object> currentPropertiesById(UUID itemId, UUID itemTypeId) {
+        return toUuidKeyedMap(currentPropertiesByIdString(itemId, itemTypeId));
+    }
+
+    private Map<String, Object> currentPropertiesByIdString(UUID itemId, UUID itemTypeId) {
         String currentJson = jdbcClient.sql("""
                 SELECT rt.properties::text AS properties
                 FROM register_item ri
@@ -1038,11 +1044,60 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                 .param(PARAM_ITEM_ID, itemId)
                 .query(String.class)
                 .single();
-        Map<String, Object> currentById = parseJsonb(currentJson);
-        Map<String, Object> mergedById = propertiesDiff.isEmpty()
-                ? currentById
-                : mergeProperties(currentById, keysToStrings(propertiesDiff));
-        return namesForIds(mergedById, propertyPathsByIdForItemType(itemTypeId));
+        return parseJsonb(currentJson);
+    }
+
+    /** This link's current committed properties, keyed by property id -- the link counterpart to currentPropertiesById. */
+    public Map<UUID, Object> currentLinkPropertiesById(UUID linkId, UUID linkTypeId) {
+        String currentJson = jdbcClient.sql("""
+                SELECT rt.properties::text AS properties
+                FROM register_link rl
+                JOIN %s rt ON rt.register_link_id = rl.id
+                WHERE rl.link_id = :linkId AND rl.state = 'COMMITTED'
+                """.formatted(linkTableNameFor(linkTypeId)))
+                .param(PARAM_LINK_ID, linkId)
+                .query(String.class)
+                .single();
+        return toUuidKeyedMap(parseJsonb(currentJson));
+    }
+
+    // Does a COMMITTED link already exist between these exact two endpoints (same perspectives,
+    // same items)? Matching on both perspective ids already pins down the link type -- a
+    // perspective id belongs to exactly one schema_link definition -- so no separate link-type
+    // filter is needed.
+    public Optional<UUID> findExistingLinkId(RegisterLinkEndpoint endpointA, RegisterLinkEndpoint endpointB) {
+        return jdbcClient.sql("""
+                SELECT rl.link_id
+                FROM register_link rl
+                JOIN register_item_link_perspective rilp_a ON rilp_a.register_link_id = rl.id
+                JOIN register_item ri_a ON ri_a.id = rilp_a.register_item_id
+                JOIN register_item_link_perspective rilp_b ON rilp_b.register_link_id = rl.id
+                JOIN register_item ri_b ON ri_b.id = rilp_b.register_item_id
+                WHERE rl.state = 'COMMITTED'
+                  AND rilp_a.perspective_id = :perspectiveA AND ri_a.item_id = :itemA
+                  AND rilp_b.perspective_id = :perspectiveB AND ri_b.item_id = :itemB
+                """)
+                .param("perspectiveA", endpointA.perspectiveId())
+                .param("itemA", endpointA.itemId())
+                .param("perspectiveB", endpointB.perspectiveId())
+                .param("itemB", endpointB.itemId())
+                .query(UUID.class)
+                .optional();
+    }
+
+    /** Does a COMMITTED link currently exist under this id? */
+    public boolean linkExists(UUID linkId) {
+        return jdbcClient.sql("SELECT 1 FROM register_link WHERE link_id = :linkId AND state = 'COMMITTED'")
+                .param(PARAM_LINK_ID, linkId)
+                .query(Integer.class)
+                .optional()
+                .isPresent();
+    }
+
+    private Map<UUID, Object> toUuidKeyedMap(Map<String, Object> byIdString) {
+        Map<UUID, Object> result = new HashMap<>();
+        byIdString.forEach((id, value) -> result.put(UUID.fromString(id), value));
+        return result;
     }
 
     public void commitItem(UUID itemId, UUID transactionId, UUID commitId) {

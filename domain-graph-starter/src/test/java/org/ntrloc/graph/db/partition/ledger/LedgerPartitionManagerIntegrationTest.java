@@ -91,15 +91,13 @@ class LedgerPartitionManagerIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void itemUpdateEntry_roundTripsRuleAppliedMarkerAttributionThroughTheLedger() {
-        // Proves the ledger actually preserves rule attribution, not just a bare marker id -- no
-        // rule engine exists yet to produce this, but the shape (and its polymorphic Jackson
-        // discriminator) has to survive the JSONB payload round trip once one does.
+    void itemUpdateEntry_roundTripsManuallyAppliedMarkerAttributionThroughTheLedger() {
+        // Same proof for the other MarkerAttribution variant -- both have to survive the same
+        // polymorphic discriminator, not just whichever one happens to be exercised elsewhere.
         UUID itemId = UUID.randomUUID();
         UUID markerId = UUID.randomUUID();
-        UUID ruleId = UUID.randomUUID();
         UUID txn = UUID.randomUUID();
-        RuleAppliedMarker attributed = new RuleAppliedMarker(markerId, ruleId, 3);
+        ManuallyAppliedMarker attributed = new ManuallyAppliedMarker(markerId, "some-user", "flagged by pre-production naming rule");
 
         ledgerPartitionManager.append(List.of(new ItemUpdateEntry(itemId, Map.of(), Map.of(), Set.of(), Set.of(attributed), Set.of())), txn, null);
         ledgerPartitionManager.commit(txn, UUID.randomUUID());
@@ -110,13 +108,13 @@ class LedgerPartitionManagerIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void itemUpdateEntry_roundTripsManuallyAppliedMarkerAttributionThroughTheLedger() {
-        // Same proof for the other MarkerAttribution variant -- both have to survive the same
-        // polymorphic discriminator, not just whichever one happens to be exercised elsewhere.
+    void itemUpdateEntry_roundTripsPipelineAppliedMarkerAttributionThroughTheLedger() {
+        // Same proof for the marker decision pipeline's own MarkerAttribution variant.
         UUID itemId = UUID.randomUUID();
         UUID markerId = UUID.randomUUID();
+        UUID pipelineId = UUID.randomUUID();
         UUID txn = UUID.randomUUID();
-        ManuallyAppliedMarker attributed = new ManuallyAppliedMarker(markerId, "some-user", "flagged by pre-production naming rule");
+        PipelineAppliedMarker attributed = new PipelineAppliedMarker(markerId, pipelineId);
 
         ledgerPartitionManager.append(List.of(new ItemUpdateEntry(itemId, Map.of(), Map.of(), Set.of(), Set.of(attributed), Set.of())), txn, null);
         ledgerPartitionManager.commit(txn, UUID.randomUUID());
