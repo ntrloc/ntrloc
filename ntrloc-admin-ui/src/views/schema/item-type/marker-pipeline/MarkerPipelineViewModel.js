@@ -28,13 +28,20 @@ function blockLabel(block, markerNamesById) {
   }
 }
 
-export function useMarkerPipelineViewModel(pipelineView, itemTypeId) {
+export function useMarkerPipelineViewModel(pipelineView, itemTypeId, saveLayout) {
   const { getMarkersForItemType } = useMarkerModel()
   const markerNamesById = new Map(getMarkersForItemType(itemTypeId).map((m) => [m.id, m.name]))
 
-  const positions = new Map(Object.entries(pipelineView.layout?.positions ?? {}).map(([id, p]) => [id, p]))
+  // savedPositions: whatever's currently persisted (from pipelineView.layout). draftPositions: a
+  // working copy an edit session drags around, null outside edit mode -- see startEditing/
+  // cancelEditing/saveEditing below. Layout is always computed off whichever of the two is live, so
+  // a drag in progress renders exactly like a saved one would, with no separate "preview" code path.
+  const savedPositions = new Map(Object.entries(pipelineView.layout?.positions ?? {}).map(([id, p]) => [id, p]))
+  const [draftPositions, setDraftPositions] = useState(null)
+  const effectivePositions = draftPositions ?? savedPositions
+
   const blocks = new Map(pipelineView.pipeline.carrierBlocks.map((b) => [b.id, blockLabel(b, markerNamesById)]))
-  const layout = computeLayout(pipelineView.pipeline, positions, blocks)
+  const layout = computeLayout(pipelineView.pipeline, effectivePositions, blocks)
 
   // Pan/zoom -- an infinite canvas (viewBox window into the diagram's own coordinate space), not
   // native container scrolling. useStateMachineDiagramViewModel's own pan (scrollLeft/scrollTop
@@ -72,6 +79,82 @@ export function useMarkerPipelineViewModel(pipelineView, itemTypeId) {
 
   function closeContextMenu() {
     setContextMenu(null)
+  }
+
+  // Edit mode -- owned here rather than as local View state, same reasoning as pan/zoom and the
+  // context menu above: it's "how this diagram is currently being interacted with," not something
+  // the View has any logic of its own around.
+  const [isEditing, setIsEditing] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+  const [saveError, setSaveError] = useState(null)
+  const nodeDragRef = useRef(null)
+
+  function startEditing() {
+    // A fresh clone, not a reference to savedPositions -- dragging mutates this copy freely without
+    // ever touching what's actually persisted until Save.
+    setDraftPositions(new Map(savedPositions))
+    setSaveError(null)
+    setIsEditing(true)
+  }
+
+  function cancelEditing() {
+    setDraftPositions(null)
+    setSaveError(null)
+    setIsEditing(false)
+  }
+
+  async function saveEditing() {
+    setIsSaving(true)
+    setSaveError(null)
+    try {
+      await saveLayout({ positions: Object.fromEntries(draftPositions ?? savedPositions) })
+      setDraftPositions(null)
+      setIsEditing(false)
+    } catch (error) {
+      setSaveError(error.message || 'Failed to save pipeline layout.')
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  // Dragging a node (block or pseudostate) while in edit mode -- same pointer-capture mechanics as
+  // the canvas's own pan above, just scoped to one node's position instead of the whole view, and
+  // stopping propagation so the container's own onPointerDown (pan-start) never also engages for the
+  // same gesture (same reasoning as the edit bar's own stopPropagation -- see MarkerPipelineView.jsx).
+  function onNodePointerDown(event, nodeId) {
+    if (!isEditing) return
+    if (event.button !== 0) return
+    if (!view) return
+    event.preventDefault()
+    event.stopPropagation()
+    // Falls back to the node's current *rendered* position (effectivePositions might not have an
+    // entry yet -- e.g. a node still sitting at its rank-based fallback spot, never dragged before)
+    // rather than requiring draftPositions to already know about every node up front.
+    const current = effectivePositions.get(nodeId) ?? layout.rects.get(nodeId)
+    nodeDragRef.current = { nodeId, startX: event.clientX, startY: event.clientY, startPos: { x: current.x, y: current.y } }
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }
+
+  function onNodePointerMove(event) {
+    if (!nodeDragRef.current) return
+    event.stopPropagation()
+    const { nodeId, startX, startY, startPos } = nodeDragRef.current
+    const dx = (event.clientX - startX) / view.zoom
+    const dy = (event.clientY - startY) / view.zoom
+    setDraftPositions((prev) => {
+      const next = new Map(prev)
+      next.set(nodeId, { x: startPos.x + dx, y: startPos.y + dy })
+      return next
+    })
+  }
+
+  function onNodePointerUp(event) {
+    nodeDragRef.current = null
+    event.stopPropagation()
+    // Same guard as the canvas's own onPointerUp -- releasing a capture that was never set throws.
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
   }
 
   useLayoutEffect(() => {
@@ -173,5 +256,14 @@ export function useMarkerPipelineViewModel(pipelineView, itemTypeId) {
     contextMenu,
     onBlockContextMenu,
     closeContextMenu,
+    isEditing,
+    isSaving,
+    saveError,
+    startEditing,
+    saveEditing,
+    cancelEditing,
+    onNodePointerDown,
+    onNodePointerMove,
+    onNodePointerUp,
   }
 }

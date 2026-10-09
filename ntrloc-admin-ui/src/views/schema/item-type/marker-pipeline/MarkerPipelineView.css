@@ -66,6 +66,12 @@ marker-pipeline-view {
   stroke-width: 1;
 }
 
+/* Only applied while the diagram is in edit mode (see MarkerPipelineViewModel's onNodePointerDown) --
+   signals a node can be dragged, same as the canvas's own grab/grabbing cursor signals panning. */
+.mp-node-editable {
+  cursor: move;
+}
+
 .mp-node-title {
   fill: var(--mp-text);
   font-size: 13px;
@@ -177,4 +183,25 @@ marker-pipeline-view {
 
 .mp-context-menu-item-destructive {
   color: #f85149;
+}
+
+/* The Edit/Save/Cancel control -- floats over the canvas, fixed to the container rather than the
+   diagram itself (plain HTML outside the SVG's viewBox, same technique as the context menu above),
+   so panning/zooming never moves or scales it. Bottom-center, per the design discussion this was
+   built from. */
+.mp-edit-bar {
+  position: absolute;
+  left: 50%;
+  bottom: 20px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transform: translateX(-50%);
+}
+
+.mp-edit-error {
+  color: #f85149;
+  font-size: 13px;
+  white-space: nowrap;
 }

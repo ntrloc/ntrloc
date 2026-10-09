@@ -1,5 +1,5 @@
 import { useEffect, useSyncExternalStore } from 'react'
-import { fetchPipelineForItemType } from '../delegate/PipelineDelegate'
+import { fetchPipelineForItemType, updatePipeline as updatePipelineRequest } from '../delegate/PipelineDelegate'
 
 // Keyed by itemTypeId, not a flat list -- an item type has at most one pipeline (see
 // MarkerDecisionPipelineRepository's own comment), so "the pipeline for this item type" is the only
@@ -47,5 +47,17 @@ export function usePipelineForItemType(itemTypeId) {
     if (!cache.has(itemTypeId)) load(itemTypeId)
   }, [itemTypeId])
 
-  return entry ?? { status: 'loading', pipeline: null }
+  // The diagram editor's own save -- pipeline/enabled are carried through unchanged from whatever's
+  // currently cached (see PipelineDelegate's updatePipeline comment), only layout actually changes.
+  // Mutates the cache from the response directly, same as MarkerModel's own create/update do, rather
+  // than refetching.
+  async function saveLayout(layout) {
+    const current = cache.get(itemTypeId)?.pipeline
+    const updated = await updatePipelineRequest(current.id, { pipeline: current.pipeline, enabled: current.enabled, layout })
+    cache.set(itemTypeId, { status: 'ready', pipeline: updated })
+    notify()
+    return updated
+  }
+
+  return { ...(entry ?? { status: 'loading', pipeline: null }), saveLayout }
 }

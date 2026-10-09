@@ -1,6 +1,7 @@
 import { usePipelineForItemType } from '../../../../global/model/PipelineModel'
 import { useMarkerPipelineViewModel } from './MarkerPipelineViewModel'
 import { STRIP_WIDTH, bodyMidY, chipLayout } from './markerPipelineLayout'
+import Button from '../../../../controls/button/Button'
 import './MarkerPipelineView.css'
 
 const PIN_RING_R = 7
@@ -22,13 +23,21 @@ function Pin({ cx, cy }) {
 // angle depends on where the connected block ends up (rank/sibling layout, or a saved position later)
 // -- the two didn't reliably line up, which read as a stray triangle rather than an opening. Plain
 // and unambiguous beats a decoration that can't stay aligned with what it's decorating.
-function PseudoStateNode({ rect, kind }) {
+// editable + the three pointer handlers: present only while the diagram is in edit mode (see
+// MarkerPipelineDiagram), letting Start/End be dragged around like any other node -- PipelineLayout
+// itself makes no distinction between a pseudostate's position and a carrier block's.
+function PseudoStateNode({ rect, kind, editable, onPointerDown, onPointerMove, onPointerUp }) {
   const cx = rect.x + rect.width / 2
   const cy = rect.y + rect.height / 2
   const r = rect.width / 2
 
   return (
-    <g className="mp-node">
+    <g
+      className={editable ? 'mp-node mp-node-editable' : 'mp-node'}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+    >
       {kind === 'END' && <circle className="mp-pseudo-ring" cx={cx} cy={cy} r={r} />}
       <circle className="mp-pseudo-fill" cx={cx} cy={cy} r={kind === 'END' ? r * 0.55 : r} />
     </g>
@@ -44,13 +53,19 @@ function PseudoStateNode({ rect, kind }) {
 // they need individual labels a shared strip has no room for. Only <add>/<remove>/<set> are rendered
 // today (single input, single output, no ports to label) -- <filter>'s inline-row shape is sized for
 // but not exercised yet, since our one real pipeline has no gates.
-function CarrierBlockNode({ rect, label, onContextMenu }) {
+function CarrierBlockNode({ rect, label, editable, onContextMenu, onPointerDown, onPointerMove, onPointerUp }) {
   const rightStripX = rect.x + rect.width - STRIP_WIDTH
   const midY = bodyMidY(rect)
   const { centerX, titleY, headerBottom, chips } = chipLayout(rect, label.markerNames)
 
   return (
-    <g className="mp-node" onContextMenu={onContextMenu}>
+    <g
+      className={editable ? 'mp-node mp-node-editable' : 'mp-node'}
+      onContextMenu={onContextMenu}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+    >
       <rect className="mp-node-rect" x={rect.x} y={rect.y} width={rect.width} height={rect.height} />
       <line className="mp-node-divider" x1={rect.x} y1={headerBottom} x2={rect.x + rect.width} y2={headerBottom} />
       <line className="mp-node-divider" x1={rect.x + STRIP_WIDTH} y1={headerBottom} x2={rect.x + STRIP_WIDTH} y2={rect.y + rect.height} />
@@ -79,13 +94,14 @@ function PipelineEdge({ edge }) {
   return <path className="mp-edge-path" d={`M ${edge.from.x} ${edge.from.y} L ${edge.to.x} ${edge.to.y}`} />
 }
 
-// Read-only diagram for the item type's one pipeline -- shape only, same deliberate restraint
+// Diagram for the item type's one pipeline -- shape only, same deliberate restraint
 // StateMachineDiagramView's own comment describes (no gate/condition detail surfaced here beyond
 // what's already structurally visible; that's what opening the pipeline in its own editor will be
-// for, once one exists). No click-to-select yet either, for the same reason: nothing built yet to
-// select *for*. No name/title shown -- a pipeline has none; it's identified by its item type, which
-// is already this whole tab's own heading.
-function MarkerPipelineDiagram({ pipelineView, itemTypeId }) {
+// for, once one exists). Editable only in the sense of repositioning nodes (see the Edit/Save/Cancel
+// bar below and MarkerPipelineViewModel's drag handlers) -- no click-to-select, no editing the
+// pipeline's own structure yet. No name/title shown -- a pipeline has none; it's identified by its
+// item type, which is already this whole tab's own heading.
+function MarkerPipelineDiagram({ pipelineView, itemTypeId, saveLayout }) {
   const {
     layout,
     blocks,
@@ -99,7 +115,16 @@ function MarkerPipelineDiagram({ pipelineView, itemTypeId }) {
     contextMenu,
     onBlockContextMenu,
     closeContextMenu,
-  } = useMarkerPipelineViewModel(pipelineView, itemTypeId)
+    isEditing,
+    isSaving,
+    saveError,
+    startEditing,
+    saveEditing,
+    cancelEditing,
+    onNodePointerDown,
+    onNodePointerMove,
+    onNodePointerUp,
+  } = useMarkerPipelineViewModel(pipelineView, itemTypeId, saveLayout)
 
   // An SVG viewBox is an infinite-canvas window into the diagram's fixed coordinate space: (x, y)
   // is its top-left corner, (width/zoom, height/zoom) is how much of the diagram it shows. Panning
@@ -121,16 +146,34 @@ function MarkerPipelineDiagram({ pipelineView, itemTypeId }) {
           {/* Nodes first, edges last: a connector is always fully visible crossing over a block or a
               pseudostate's own shape, never the other way around. */}
           <g>
-            <PseudoStateNode rect={layout.rects.get(start.id)} kind="START" />
+            <PseudoStateNode
+              rect={layout.rects.get(start.id)}
+              kind="START"
+              editable={isEditing}
+              onPointerDown={(event) => onNodePointerDown(event, start.id)}
+              onPointerMove={onNodePointerMove}
+              onPointerUp={onNodePointerUp}
+            />
             {pipelineView.pipeline.carrierBlocks.map((block) => (
               <CarrierBlockNode
                 key={block.id}
                 rect={layout.rects.get(block.id)}
                 label={blocks.get(block.id)}
+                editable={isEditing}
                 onContextMenu={(event) => onBlockContextMenu(event, block.id)}
+                onPointerDown={(event) => onNodePointerDown(event, block.id)}
+                onPointerMove={onNodePointerMove}
+                onPointerUp={onNodePointerUp}
               />
             ))}
-            <PseudoStateNode rect={layout.rects.get(end.id)} kind="END" />
+            <PseudoStateNode
+              rect={layout.rects.get(end.id)}
+              kind="END"
+              editable={isEditing}
+              onPointerDown={(event) => onNodePointerDown(event, end.id)}
+              onPointerMove={onNodePointerMove}
+              onPointerUp={onNodePointerUp}
+            />
           </g>
           <g>
             {layout.edges.map((edge) => (
@@ -176,12 +219,32 @@ function MarkerPipelineDiagram({ pipelineView, itemTypeId }) {
           </div>
         </>
       )}
+      {/* Plain HTML, same reasoning as the context menu above: floats over the canvas, fixed to the
+          container rather than the diagram, so panning/zooming never moves or scales it.
+          stopPropagation on pointerdown for the same reason as the context menu above: without it,
+          the container's own onPointerDown (pan-start) fires first on the way up, calling
+          preventDefault()/setPointerCapture() before this button's click is ever synthesized -- which
+          suppresses the click in some browsers/input paths even though hit-testing alone would have
+          landed on the button correctly. */}
+      <div className="mp-edit-bar" onPointerDown={(event) => event.stopPropagation()}>
+        {saveError && <span className="mp-edit-error">{saveError}</span>}
+        {isEditing ? (
+          <>
+            <Button variant="secondary" onClick={cancelEditing} disabled={isSaving}>Cancel</Button>
+            <Button variant="primary" onClick={saveEditing} disabled={isSaving}>
+              {isSaving ? 'Saving…' : 'Save'}
+            </Button>
+          </>
+        ) : (
+          <Button variant="primary" onClick={startEditing}>Edit</Button>
+        )}
+      </div>
     </div>
   )
 }
 
 function MarkerPipelineView({ itemTypeId }) {
-  const { status, pipeline } = usePipelineForItemType(itemTypeId)
+  const { status, pipeline, saveLayout } = usePipelineForItemType(itemTypeId)
 
   if (status === 'loading') return null
   if (!pipeline) {
@@ -190,7 +253,7 @@ function MarkerPipelineView({ itemTypeId }) {
 
   return (
     <marker-pipeline-view>
-      <MarkerPipelineDiagram pipelineView={pipeline} itemTypeId={itemTypeId} />
+      <MarkerPipelineDiagram pipelineView={pipeline} itemTypeId={itemTypeId} saveLayout={saveLayout} />
     </marker-pipeline-view>
   )
 }
