@@ -1,4 +1,4 @@
-package org.ntrloc.graph.db.partition.authorization;
+package org.ntrloc.graph.db.coordinator;
 
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
@@ -6,6 +6,7 @@ import org.ntrloc.graph.access.AddMarkers;
 import org.ntrloc.graph.access.End;
 import org.ntrloc.graph.access.LinkIsPresentPredicate;
 import org.ntrloc.graph.access.Pipeline;
+import org.ntrloc.graph.access.PipelineLayout;
 import org.ntrloc.graph.access.Route;
 import org.ntrloc.graph.access.Self;
 import org.ntrloc.graph.access.Signal;
@@ -13,8 +14,6 @@ import org.ntrloc.graph.access.Start;
 import org.ntrloc.graph.access.StepToLink;
 import org.ntrloc.graph.access.StepToProperty;
 import org.ntrloc.graph.access.StringEqualsPredicate;
-import org.ntrloc.graph.db.coordinator.CoordinatorTestDomainInitializer;
-import org.ntrloc.graph.db.coordinator.LedgerRegisterCoordinator;
 import org.ntrloc.graph.db.partition.authorization.repository.AuthorizationRepository;
 import org.ntrloc.graph.db.partition.authorization.repository.MarkerDecisionPipelineRepository;
 import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
@@ -64,8 +63,8 @@ class PipelineMarkerDecisionIntegrationTest extends AbstractIntegrationTest {
     @Test
     void creatingAnItemWhosePropertyMatchesTheGate_appliesThePipelinesMarker() {
         UUID markerId = authRepo.createMarker("pmd-red-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId()).id();
-        UUID pipelineId = pipelineRepository.createPipeline("red-color", fixture.productTypeId(),
-                colorEqualsPipeline("red", markerId)).id();
+        UUID pipelineId = pipelineRepository.createPipeline(fixture.productTypeId(),
+                colorEqualsPipeline("red", markerId), new PipelineLayout(Map.of())).id();
 
         try {
             UUID itemId = UUID.randomUUID();
@@ -83,8 +82,8 @@ class PipelineMarkerDecisionIntegrationTest extends AbstractIntegrationTest {
     @Test
     void creatingAnItemWhosePropertyDoesNotMatchTheGate_appliesNoMarker() {
         UUID markerId = authRepo.createMarker("pmd-red-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId()).id();
-        UUID pipelineId = pipelineRepository.createPipeline("red-color", fixture.productTypeId(),
-                colorEqualsPipeline("red", markerId)).id();
+        UUID pipelineId = pipelineRepository.createPipeline(fixture.productTypeId(),
+                colorEqualsPipeline("red", markerId), new PipelineLayout(Map.of())).id();
 
         try {
             UUID itemId = UUID.randomUUID();
@@ -102,8 +101,8 @@ class PipelineMarkerDecisionIntegrationTest extends AbstractIntegrationTest {
     @Test
     void updatingAnItemsPropertyToMatchTheGate_addsThePipelinesMarker() {
         UUID markerId = authRepo.createMarker("pmd-red-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId()).id();
-        UUID pipelineId = pipelineRepository.createPipeline("red-color", fixture.productTypeId(),
-                colorEqualsPipeline("red", markerId)).id();
+        UUID pipelineId = pipelineRepository.createPipeline(fixture.productTypeId(),
+                colorEqualsPipeline("red", markerId), new PipelineLayout(Map.of())).id();
 
         try {
             UUID itemId = UUID.randomUUID();
@@ -128,8 +127,8 @@ class PipelineMarkerDecisionIntegrationTest extends AbstractIntegrationTest {
     @Test
     void updatingAnItemsPropertyAwayFromTheGate_removesTheMarkerThePipelineHadApplied() {
         UUID markerId = authRepo.createMarker("pmd-red-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId()).id();
-        UUID pipelineId = pipelineRepository.createPipeline("red-color", fixture.productTypeId(),
-                colorEqualsPipeline("red", markerId)).id();
+        UUID pipelineId = pipelineRepository.createPipeline(fixture.productTypeId(),
+                colorEqualsPipeline("red", markerId), new PipelineLayout(Map.of())).id();
 
         try {
             UUID itemId = UUID.randomUUID();
@@ -154,8 +153,8 @@ class PipelineMarkerDecisionIntegrationTest extends AbstractIntegrationTest {
     @Test
     void aManuallyAppliedMarker_survivesAPipelineReEvaluationThatWouldOtherwiseDropIt() {
         UUID markerId = authRepo.createMarker("pmd-red-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId()).id();
-        UUID pipelineId = pipelineRepository.createPipeline("red-color", fixture.productTypeId(),
-                colorEqualsPipeline("red", markerId)).id();
+        UUID pipelineId = pipelineRepository.createPipeline(fixture.productTypeId(),
+                colorEqualsPipeline("red", markerId), new PipelineLayout(Map.of())).id();
 
         try {
             UUID itemId = UUID.randomUUID();
@@ -204,28 +203,34 @@ class PipelineMarkerDecisionIntegrationTest extends AbstractIntegrationTest {
                 new Route(add.id(), List.of(end.id()))));
     }
 
+    // Bound to a *different* item type than the color pipeline below -- an item type has at most one
+    // pipeline (see MarkerDecisionPipelineRepository's own comment), so two pipelines can no longer
+    // coexist on the same type the way this test originally proved fact-level discrimination. Type
+    // scoping is a hard SQL filter either way (pipelinesWatching's own WHERE item_type_id = ...), so
+    // this still decisively proves a mutation to one item type never reaches another type's pipeline
+    // -- it just does it across types now instead of within one.
     @Test
-    void aPipelineWatchingTheChangedPropertyRuns_whileAPipelineWatchingSomethingElseIsNeverEvaluated() {
+    void aPipelineWatchingTheChangedPropertyRuns_whileAPipelineOnAnotherItemTypeIsNeverEvaluated() {
         UUID colorMarkerId = authRepo.createMarker("pmd-color-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId()).id();
-        UUID tripwireMarkerId = authRepo.createMarker("pmd-tripwire-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId()).id();
-        UUID colorPipelineId = pipelineRepository.createPipeline("red-color", fixture.productTypeId(),
-                colorEqualsPipeline("red", colorMarkerId)).id();
-        UUID tripwirePipelineId = pipelineRepository.createPipeline("tripwire", fixture.productTypeId(),
-                tripwirePipeline(tripwireMarkerId)).id();
+        UUID tripwireMarkerId = authRepo.createMarker("pmd-tripwire-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.contributorTypeId()).id();
+        UUID colorPipelineId = pipelineRepository.createPipeline(fixture.productTypeId(),
+                colorEqualsPipeline("red", colorMarkerId), new PipelineLayout(Map.of())).id();
+        UUID tripwirePipelineId = pipelineRepository.createPipeline(fixture.contributorTypeId(),
+                tripwirePipeline(tripwireMarkerId), new PipelineLayout(Map.of())).id();
 
         try {
             UUID itemId = UUID.randomUUID();
             UUID createTxn = UUID.randomUUID();
-            // Creating only sets color -- no link is touched. If the tripwire pipeline were
-            // (incorrectly) evaluated here just because it's bound to the same item type, this
-            // throws and the test fails outright, not just with a wrong assertion.
+            // A product item, not a contributor -- if the tripwire pipeline were (incorrectly)
+            // evaluated here, this throws and the test fails outright, not just with a wrong
+            // assertion.
             coordinator.prepare(List.of(new ItemCreateEntry(itemId, fixture.productTypeId(),
                     Map.of(fixture.colorPropertyId(), "blue"), Map.of(), Set.of())), createTxn, null);
             coordinator.commit(createTxn, UUID.randomUUID());
             assertThat(authRepo.getMarkerIdsForItem(itemId)).doesNotContain(colorMarkerId, tripwireMarkerId);
 
             // Updating color -- a fact the color pipeline watches -- runs it and applies its
-            // marker, while the tripwire pipeline (watching an unrelated link perspective) is
+            // marker, while the tripwire pipeline (bound to a different item type entirely) is
             // still never evaluated.
             UUID updateTxn = UUID.randomUUID();
             Map<UUID, Object> diff = new HashMap<>();
@@ -237,6 +242,67 @@ class PipelineMarkerDecisionIntegrationTest extends AbstractIntegrationTest {
         } finally {
             pipelineRepository.deletePipeline(colorPipelineId);
             pipelineRepository.deletePipeline(tripwirePipelineId);
+        }
+    }
+
+    // No gate anywhere -- zero signal blocks, so WatchDerivation gives it exactly one watch,
+    // WatchDerivation.ITEM_CREATED, rather than nothing.
+    private Pipeline unconditionalPipeline(UUID markerId) {
+        AddMarkers add = new AddMarkers(UUID.randomUUID(), null, List.of(markerId));
+        Start start = new Start(UUID.randomUUID());
+        End end = new End(UUID.randomUUID());
+        return new Pipeline(UUID.randomUUID(), List.of(), List.of(add), start, end, List.of(
+                new Route(start.id(), List.of(add.id())),
+                new Route(add.id(), List.of(end.id()))));
+    }
+
+    @Test
+    void creatingAnItem_appliesAnUnconditionalPipelinesMarkerEvenThoughNothingWasSetThatItWatches() {
+        UUID markerId = authRepo.createMarker("pmd-unconditional-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId()).id();
+        UUID pipelineId = pipelineRepository.createPipeline(fixture.productTypeId(),
+                unconditionalPipeline(markerId), new PipelineLayout(Map.of())).id();
+
+        try {
+            UUID itemId = UUID.randomUUID();
+            UUID txn = UUID.randomUUID();
+            // No properties at all -- an unconditional pipeline has nothing to gate on, so its only
+            // possible trigger is the creation itself, not any particular property being set.
+            coordinator.prepare(List.of(new ItemCreateEntry(itemId, fixture.productTypeId(),
+                    Map.of(), Map.of(), Set.of())), txn, null);
+            coordinator.commit(txn, UUID.randomUUID());
+
+            assertThat(authRepo.getMarkerIdsForItem(itemId)).contains(markerId);
+        } finally {
+            pipelineRepository.deletePipeline(pipelineId);
+        }
+    }
+
+    @Test
+    void anUnconditionalPipelinesMarker_survivesAnUnrelatedUpdateWithoutBeingReEvaluated() {
+        UUID markerId = authRepo.createMarker("pmd-unconditional-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId()).id();
+        UUID pipelineId = pipelineRepository.createPipeline(fixture.productTypeId(),
+                unconditionalPipeline(markerId), new PipelineLayout(Map.of())).id();
+
+        try {
+            UUID itemId = UUID.randomUUID();
+            UUID createTxn = UUID.randomUUID();
+            coordinator.prepare(List.of(new ItemCreateEntry(itemId, fixture.productTypeId(),
+                    Map.of(), Map.of(), Set.of())), createTxn, null);
+            coordinator.commit(createTxn, UUID.randomUUID());
+            assertThat(authRepo.getMarkerIdsForItem(itemId)).contains(markerId);
+
+            // An unrelated property update -- changedFacts(ItemUpdateEntry) never includes
+            // ITEM_CREATED, so this pipeline (which only watches that sentinel) isn't even fetched
+            // here. The marker simply remains from the create.
+            UUID updateTxn = UUID.randomUUID();
+            Map<UUID, Object> diff = new HashMap<>();
+            diff.put(fixture.colorPropertyId(), "red");
+            coordinator.prepare(List.of(new ItemUpdateEntry(itemId, diff, Map.of(), Set.of(), Set.of(), Set.of())), updateTxn, null);
+            coordinator.commit(updateTxn, UUID.randomUUID());
+
+            assertThat(authRepo.getMarkerIdsForItem(itemId)).contains(markerId);
+        } finally {
+            pipelineRepository.deletePipeline(pipelineId);
         }
     }
 

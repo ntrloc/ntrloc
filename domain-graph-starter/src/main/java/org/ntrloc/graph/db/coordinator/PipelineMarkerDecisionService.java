@@ -1,8 +1,9 @@
-package org.ntrloc.graph.db.partition.authorization;
+package org.ntrloc.graph.db.coordinator;
 
 import org.ntrloc.graph.access.Pipeline;
 import org.ntrloc.graph.access.PipelineEvaluator;
 import org.ntrloc.graph.access.PipelineSource;
+import org.ntrloc.graph.access.WatchDerivation;
 import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
 import org.ntrloc.graph.db.partition.ledger.ItemUpdateEntry;
 import org.ntrloc.graph.db.partition.ledger.LedgerEntry;
@@ -59,10 +60,14 @@ public class PipelineMarkerDecisionService {
     }
 
     // Everything a create sets is, by definition, newly "changed" -- there's no prior state to
-    // diff against.
+    // diff against. ITEM_CREATED is always included too, so an unconditional pipeline (no real
+    // signals at all, see WatchDerivation) -- which only ever watches that sentinel -- gets its one
+    // and only trigger here. An update never includes it (see changedFacts(ItemUpdateEntry) below):
+    // such a pipeline has nothing that could ever change its decision after creation.
     private Set<UUID> changedFacts(ItemCreateEntry e) {
         Set<UUID> facts = new HashSet<>(e.properties().keySet());
         facts.addAll(e.initialStates().keySet());
+        facts.add(WatchDerivation.ITEM_CREATED);
         return facts;
     }
 

@@ -1,6 +1,7 @@
 package org.ntrloc.graph.access;
 
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
@@ -17,12 +18,27 @@ import java.util.UUID;
 // "Pipeline-level watches" in the marker decision pipeline design notes.
 public final class WatchDerivation {
 
+    // Reserved sentinel, not a real property/link/state-machine id -- stands for "this item was
+    // just created." Added only when a pipeline has no signal blocks at all (see derive() below): a
+    // pipeline built from nothing but unconditional marker actions (e.g. a bare <set> with no gate)
+    // can never be triggered by a fact change, since it doesn't reference any fact, but it still
+    // needs exactly one trigger to ever run -- item creation. A pipeline that has a real signal is
+    // never touched by this, even one whose own watch set happens to come out empty (e.g. a bare
+    // Self context with no steps) -- that pipeline was deliberately gated on something, just not on
+    // anything WatchDerivation can currently identify, which is a different situation from having no
+    // gate at all and must not be papered over by this sentinel.
+    public static final UUID ITEM_CREATED = UUID.fromString("00000000-0000-0000-0000-000000000001");
+
     private WatchDerivation() {
     }
 
     public static Set<UUID> derive(Pipeline pipeline) {
+        List<SignalBlock> signalBlocks = pipeline.allSignalBlocks();
+        if (signalBlocks.isEmpty()) {
+            return Set.of(ITEM_CREATED);
+        }
         Set<UUID> watchedIds = new HashSet<>();
-        for (SignalBlock block : pipeline.allSignalBlocks()) {
+        for (SignalBlock block : signalBlocks) {
             Context context = contextOf(block);
             if (context != null) {
                 collectReferencedIds(context, watchedIds);

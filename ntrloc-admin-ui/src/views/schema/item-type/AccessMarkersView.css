@@ -73,9 +73,11 @@ access-markers-pipeline-area {
   flex: 1;
   min-width: 0;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--code-bg);
-  border-radius: 8px;
   margin: 2px;
+}
+
+/* The empty-state status message is the one case this area still wants centered -- everything else
+   (MarkerPipelineView's own root) fills and scrolls on its own. */
+access-markers-pipeline-area > .status {
+  margin: auto;
 }

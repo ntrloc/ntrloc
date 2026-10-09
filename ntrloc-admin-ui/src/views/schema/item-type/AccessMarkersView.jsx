@@ -4,14 +4,15 @@ import ModalPopupView from '../../../controls/modal/ModalPopupView'
 import CollapsiblePanel from '../../../controls/collapsible-panel/CollapsiblePanel'
 import { useCollapsiblePanel } from '../../../controls/collapsible-panel/useCollapsiblePanel'
 import MarkerDialog from './MarkerDialog'
+import MarkerPipelineView from './marker-pipeline/MarkerPipelineView'
 import { useAccessMarkersViewModel } from './AccessMarkersViewModel'
 import './AccessMarkersView.css'
 
 // Two panes: a collapsible marker list (own lock/collapse/float state, independent of the page
-// nav sidebar's) and a main area reserved for the marker decision pipeline display -- not built
-// yet. There's no marker-to-pipeline relationship decided yet either (a pipeline isn't owned by
-// one marker -- it's bound to an item type, and its own carrier blocks can each reference several
-// markers), so selecting a marker here doesn't drive the main area yet.
+// nav sidebar's) and a main area showing every marker decision pipeline bound to this item type
+// (read-only; see MarkerPipelineView). There's no marker-to-pipeline relationship decided yet
+// (a pipeline isn't owned by one marker -- it's bound to an item type, and its own carrier blocks
+// can each reference several markers), so selecting a marker here doesn't drive the main area yet.
 function AccessMarkersView({ itemTypeId, itemTypeName }) {
   const { markers, createMarker, updateMarker, deleteMarker } = useAccessMarkersViewModel(itemTypeId)
   const panel = useCollapsiblePanel(true)
@@ -78,7 +79,7 @@ function AccessMarkersView({ itemTypeId, itemTypeName }) {
       </CollapsiblePanel>
 
       <access-markers-pipeline-area>
-        <p className="status">Read-only pipeline display coming soon.</p>
+        <MarkerPipelineView itemTypeId={itemTypeId} />
       </access-markers-pipeline-area>
 
       {dialogState && (

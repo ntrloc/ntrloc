@@ -1,0 +1,180 @@
+/* This diagram's own fixed palette -- deliberately independent of the host app's --bg/--code-bg
+   light/dark tokens (see the design discussion this was built from). Colors are the "where to look"
+   cue for an admin, so they're kept explicit and local to this component rather than aliased from
+   app-wide tokens that could drift for unrelated reasons. The canvas itself has no background of its
+   own (see .marker-pipeline-diagram-scroll below) -- only a block's own interior is painted.
+   -- mp-carrier-amber: pins, Start/End, carrier-flow edges, marker-content chips -- the carrier
+     domain (markers actually being added/removed/set).
+   -- mp-signal-yellow: reserved for signal blocks (<signal>/<counted signal>/<predicate signal>) --
+     not rendered yet (our one real pipeline has no gates), defined now so the two domains' colors
+     are decided together, not patched in later as an afterthought. */
+marker-pipeline-view {
+  --mp-block-bg: #000;
+  --mp-block-border: #cfcfcf;
+  --mp-carrier-amber: #e8952f;
+  --mp-signal-yellow: #e8d44a;
+  --mp-text: #f3f4f6;
+
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* Fills the whole display area -- an infinite canvas (see the ViewModel: pan/zoom move an SVG
+   viewBox window, not this element's own scroll position), so overflow stays hidden rather than
+   auto; there's never anything here for the browser's own scrollbars to react to. user-select:none
+   is needed because a real mouse drag starting over any of the diagram's <text> content would
+   otherwise begin a native text-selection gesture instead of a pan (see the ViewModel's
+   onPointerDown for the other half of this fix). */
+.marker-pipeline-diagram-scroll {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.marker-pipeline-diagram-scroll:active {
+  cursor: grabbing;
+}
+
+/* Always exactly fills the container -- its own size never changes; only the viewBox (the window
+   it's looking at) does. */
+.marker-pipeline-diagram-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* Carrier blocks (<add>/<remove>/<set>/<filter>/<select>) -- neutral border, black interior, square
+   corners. Amber is reserved for pins/content/edges, never the block's own border, so the border
+   never competes with those as the "where to look" signal. */
+.mp-node-rect {
+  fill: var(--mp-block-bg);
+  stroke: var(--mp-block-border);
+  stroke-width: 1.5;
+}
+
+.mp-node-divider {
+  stroke: var(--mp-block-border);
+  stroke-width: 1;
+}
+
+.mp-node-title {
+  fill: var(--mp-text);
+  font-size: 13px;
+  font-weight: 700;
+  text-anchor: middle;
+}
+
+/* A port row's own label (e.g. "input"/"if") inside a multi-port block -- see MarkerPipelineView.jsx
+   on when a port gets a labeled inline row vs. its own side strip. */
+.mp-port-label {
+  fill: var(--mp-carrier-amber);
+  font-size: 12px;
+}
+
+/* A pin: the same small ring+dot "bullseye" motif as End, just smaller -- one consistent shape
+   family for "a connection point," sized by role (pin < Start < End). */
+.mp-pin-ring {
+  fill: none;
+  stroke: var(--mp-carrier-amber);
+  stroke-width: 1.5;
+}
+
+.mp-pin-fill {
+  fill: var(--mp-carrier-amber);
+}
+
+/* The literal marker name(s) a carrier block adds/removes/sets -- a dashed chip, visually distinct
+   from the block's own solid border, since it's content flowing through the block, not the block
+   itself. */
+.mp-marker-chip-rect {
+  fill: none;
+  stroke: var(--mp-carrier-amber);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+  rx: 4;
+}
+
+.mp-marker-chip-text {
+  fill: var(--mp-text);
+  font-size: 12px;
+  text-anchor: middle;
+}
+
+/* START = a plain filled dot, END = a ring around a filled dot -- both amber, both bigger than an
+   ordinary pin (same shape family, different scale: pin < Start < End). See MarkerPipelineView.jsx's
+   own comment on why Start lost its notch. */
+.mp-pseudo-fill {
+  fill: var(--mp-carrier-amber);
+}
+
+.mp-pseudo-ring {
+  fill: none;
+  stroke: var(--mp-carrier-amber);
+  stroke-width: 2;
+}
+
+/* Carrier-flow edges (pushed) -- solid amber, no arrowhead: pin anatomy (left = in, right = out)
+   already shows direction, so an arrowhead would be redundant clutter here, unlike the state machine
+   diagram where edges can run in much less predictable directions. */
+.mp-edge-path {
+  fill: none;
+  stroke: var(--mp-carrier-amber);
+  stroke-width: 1.5;
+}
+
+.mp-edge-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 14;
+}
+
+/* A block's right-click menu -- plain app chrome (same border/bg/shadow convention as
+   ModalPopupView), not diagram content, so it deliberately does NOT use any --mp-* token above: it
+   sits outside the SVG's viewBox entirely and is never affected by the canvas's own zoom. */
+.mp-context-menu-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+
+.mp-context-menu {
+  position: absolute;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  min-width: 160px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  box-shadow: var(--shadow);
+  cursor: default;
+}
+
+.mp-context-menu-item {
+  padding: 6px 10px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--text-h);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mp-context-menu-item:hover {
+  background: var(--code-bg);
+}
+
+.mp-context-menu-item-destructive {
+  color: #f85149;
+}

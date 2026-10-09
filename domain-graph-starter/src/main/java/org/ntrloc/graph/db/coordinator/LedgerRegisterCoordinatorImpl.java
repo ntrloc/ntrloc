@@ -1,6 +1,5 @@
 package org.ntrloc.graph.db.coordinator;
 
-import org.ntrloc.graph.db.partition.authorization.PipelineMarkerDecisionService;
 import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
 import org.ntrloc.graph.db.partition.ledger.ItemDeleteEntry;
 import org.ntrloc.graph.db.partition.ledger.ItemUpdateEntry;

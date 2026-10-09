@@ -96,10 +96,16 @@ class WatchDerivationTest {
         assertThat(watches).containsExactly(genres);
     }
 
+    // A pipeline with no signals at all (e.g. a bare <set> with no gate) can never be triggered by
+    // a fact change, since it references no fact -- but it still needs exactly one trigger to ever
+    // run. ITEM_CREATED is that trigger; see WatchDerivation's own comment on the sentinel. This is
+    // deliberately distinct from selfContextWithNoStepsWatchesNothing above: that pipeline DOES have
+    // a real, admin-authored gate (a bare Self context that just doesn't resolve to a watchable id),
+    // and must stay watching nothing rather than being mistaken for unconditional.
     @Test
-    void aPipelineWithNoSignalsWatchesNothing() {
+    void aPipelineWithNoSignalsWatchesOnlyItemCreated() {
         Pipeline pipeline = new Pipeline(UUID.randomUUID(), List.of(), List.of(),
                 new Start(UUID.randomUUID()), new End(UUID.randomUUID()), List.of());
-        assertThat(WatchDerivation.derive(pipeline)).isEmpty();
+        assertThat(WatchDerivation.derive(pipeline)).containsExactly(WatchDerivation.ITEM_CREATED);
     }
 }

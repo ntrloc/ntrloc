@@ -257,20 +257,26 @@ CREATE TABLE authorization_marker (
     scope_id    UUID NOT NULL
 );
 
--- A marker decision pipeline, bound to one item type. The pipeline graph itself (signals,
--- predicates, carrier blocks, routes) is stored opaquely as JSONB -- it's org.ntrloc.graph.access's
--- own object model, serialized via its sealed-interface Jackson annotations, not something this
--- schema needs to understand structurally. Replaces authorization_marker_rule's role for the
--- pipeline model (see PipelineMarkerDecisionService, the successor to the retired
--- MarkerRuleEvaluationService/StateMarkerDecisionService).
+-- A marker decision pipeline, bound one-to-one with the item type it evaluates against -- enforced
+-- by the unique index below, not just a convention. No name column: a pipeline is identified by its
+-- item type, the same way a state machine or a trait is, never by an admin-chosen label. The
+-- pipeline graph itself (signals, predicates, carrier blocks, routes) is stored opaquely as JSONB --
+-- it's org.ntrloc.graph.access's own object model, serialized via its sealed-interface Jackson
+-- annotations, not something this schema needs to understand structurally. Replaces
+-- authorization_marker_rule's role for the pipeline model (see PipelineMarkerDecisionService, the
+-- successor to the retired MarkerRuleEvaluationService/StateMarkerDecisionService).
 CREATE TABLE marker_decision_pipeline (
     id            UUID PRIMARY KEY DEFAULT uuidv7(),
-    name          TEXT NOT NULL,
     item_type_id  UUID NOT NULL REFERENCES schema_item(id) ON DELETE CASCADE,
     enabled       BOOLEAN NOT NULL DEFAULT TRUE,
-    pipeline      JSONB NOT NULL
+    pipeline      JSONB NOT NULL,
+    -- The pipeline's own diagram (org.ntrloc.graph.access.PipelineLayout) -- see that class's own
+    -- comment for why this is a separate column, not folded into `pipeline` itself. Never read by
+    -- anything that evaluates a pipeline (PipelineSource/PipelineEvaluator), only by the admin
+    -- editor.
+    layout        JSONB NOT NULL DEFAULT '{"positions":{}}'::jsonb
 );
-CREATE INDEX idx_marker_decision_pipeline_item_type ON marker_decision_pipeline(item_type_id);
+CREATE UNIQUE INDEX idx_marker_decision_pipeline_item_type ON marker_decision_pipeline(item_type_id);
 
 -- A pipeline's watch set (org.ntrloc.graph.access.WatchDerivation), computed once when the
 -- pipeline is created/updated and persisted here -- never recomputed at mutation time. fact_id is

@@ -9,6 +9,7 @@ import org.ntrloc.graph.access.End;
 import org.ntrloc.graph.access.Filter;
 import org.ntrloc.graph.access.IsTruePredicate;
 import org.ntrloc.graph.access.Pipeline;
+import org.ntrloc.graph.access.PipelineLayout;
 import org.ntrloc.graph.access.RemoveMarkers;
 import org.ntrloc.graph.access.Route;
 import org.ntrloc.graph.access.Self;
@@ -18,12 +19,15 @@ import org.ntrloc.graph.access.StepToProperty;
 import org.ntrloc.graph.access.StringEqualsPredicate;
 import org.ntrloc.graph.db.coordinator.CoordinatorTestDomainInitializer;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DuplicateKeyException;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 // Proves the JSONB round trip itself -- a pipeline exercising every structural shape the model
 // offers (a CompoundSignal over two Signals, AddMarkers/RemoveMarkers/Filter, multi-step routing)
@@ -63,7 +67,7 @@ class MarkerDecisionPipelineRepositoryIntegrationTest extends AbstractIntegratio
     @Test
     void createPipeline_roundTripsTheFullGraphStructureThroughJsonb() {
         Pipeline original = buildStructurallyRichPipeline();
-        var created = repository.createPipeline("round-trip-test", fixture.productTypeId(), original);
+        var created = repository.createPipeline(fixture.productTypeId(), original, new PipelineLayout(Map.of()));
 
         try {
             assertThat(created.pipeline()).isEqualTo(original);
@@ -79,7 +83,7 @@ class MarkerDecisionPipelineRepositoryIntegrationTest extends AbstractIntegratio
         // buildStructurallyRichPipeline watches both colorPropertyId (colorIsRed) and
         // namePropertyId (nameIsSet) -- either one changing is independently a reason to run it.
         Pipeline pipeline = buildStructurallyRichPipeline();
-        var created = repository.createPipeline("watch-lookup-test", fixture.productTypeId(), pipeline);
+        var created = repository.createPipeline(fixture.productTypeId(), pipeline, new PipelineLayout(Map.of()));
 
         try {
             assertThat(repository.pipelinesWatching(fixture.productTypeId(), Set.of(fixture.colorPropertyId())))
@@ -94,7 +98,7 @@ class MarkerDecisionPipelineRepositoryIntegrationTest extends AbstractIntegratio
     @Test
     void pipelinesWatching_excludesAPipelineThatDoesNotWatchAnyOfTheChangedFacts() {
         Pipeline pipeline = buildStructurallyRichPipeline();
-        var created = repository.createPipeline("watch-exclude-test", fixture.productTypeId(), pipeline);
+        var created = repository.createPipeline(fixture.productTypeId(), pipeline, new PipelineLayout(Map.of()));
 
         try {
             assertThat(repository.pipelinesWatching(fixture.productTypeId(), Set.of(fixture.dimensionsWidthPropertyId())))
@@ -107,7 +111,7 @@ class MarkerDecisionPipelineRepositoryIntegrationTest extends AbstractIntegratio
     @Test
     void pipelinesWatching_excludesAPipelineBoundToADifferentItemType() {
         Pipeline pipeline = buildStructurallyRichPipeline();
-        var created = repository.createPipeline("watch-wrong-type-test", fixture.productTypeId(), pipeline);
+        var created = repository.createPipeline(fixture.productTypeId(), pipeline, new PipelineLayout(Map.of()));
 
         try {
             assertThat(repository.pipelinesWatching(fixture.contributorTypeId(), Set.of(fixture.colorPropertyId())))
@@ -120,10 +124,10 @@ class MarkerDecisionPipelineRepositoryIntegrationTest extends AbstractIntegratio
     @Test
     void pipelinesWatching_excludesADisabledPipeline() {
         Pipeline pipeline = buildStructurallyRichPipeline();
-        var created = repository.createPipeline("watch-disabled-test", fixture.productTypeId(), pipeline);
+        var created = repository.createPipeline(fixture.productTypeId(), pipeline, new PipelineLayout(Map.of()));
 
         try {
-            repository.updatePipeline(created.id(), created.name(), pipeline, false);
+            repository.updatePipeline(created.id(), pipeline, false, new PipelineLayout(Map.of()));
             assertThat(repository.pipelinesWatching(fixture.productTypeId(), Set.of(fixture.colorPropertyId())))
                     .doesNotContain(pipeline);
         } finally {
@@ -145,7 +149,7 @@ class MarkerDecisionPipelineRepositoryIntegrationTest extends AbstractIntegratio
                 new Route(start.id(), List.of(colorAdd.id())),
                 new Route(colorAdd.id(), List.of(end.id()))));
 
-        var created = repository.createPipeline("watch-update-test", fixture.productTypeId(), colorPipeline);
+        var created = repository.createPipeline(fixture.productTypeId(), colorPipeline, new PipelineLayout(Map.of()));
         try {
             assertThat(repository.pipelinesWatching(fixture.productTypeId(), Set.of(fixture.colorPropertyId())))
                     .contains(colorPipeline);
@@ -156,7 +160,7 @@ class MarkerDecisionPipelineRepositoryIntegrationTest extends AbstractIntegratio
             Pipeline namePipeline = new Pipeline(colorPipeline.id(), List.of(nameGate), List.of(nameAdd), start, end, List.of(
                     new Route(start.id(), List.of(nameAdd.id())),
                     new Route(nameAdd.id(), List.of(end.id()))));
-            repository.updatePipeline(created.id(), created.name(), namePipeline, true);
+            repository.updatePipeline(created.id(), namePipeline, true, new PipelineLayout(Map.of()));
 
             assertThat(repository.pipelinesWatching(fixture.productTypeId(), Set.of(fixture.colorPropertyId())))
                     .isEmpty();
@@ -170,10 +174,10 @@ class MarkerDecisionPipelineRepositoryIntegrationTest extends AbstractIntegratio
     @Test
     void getAllPipelines_includesDisabledOnes() {
         Pipeline pipeline = buildStructurallyRichPipeline();
-        var created = repository.createPipeline("list-all-test", fixture.productTypeId(), pipeline);
+        var created = repository.createPipeline(fixture.productTypeId(), pipeline, new PipelineLayout(Map.of()));
 
         try {
-            repository.updatePipeline(created.id(), created.name(), pipeline, false);
+            repository.updatePipeline(created.id(), pipeline, false, new PipelineLayout(Map.of()));
 
             assertThat(repository.getAllPipelines()).extracting(MarkerDecisionPipelineRepository.PipelineRow::id)
                     .contains(created.id());
@@ -185,10 +189,38 @@ class MarkerDecisionPipelineRepositoryIntegrationTest extends AbstractIntegratio
     @Test
     void deletePipeline_removesIt() {
         Pipeline pipeline = buildStructurallyRichPipeline();
-        var created = repository.createPipeline("delete-test", fixture.productTypeId(), pipeline);
+        var created = repository.createPipeline(fixture.productTypeId(), pipeline, new PipelineLayout(Map.of()));
 
         repository.deletePipeline(created.id());
 
         assertThat(repository.findById(created.id())).isEmpty();
+    }
+
+    @Test
+    void findByItemTypeId_returnsThePipelineBoundToThatType() {
+        Pipeline pipeline = buildStructurallyRichPipeline();
+        var created = repository.createPipeline(fixture.productTypeId(), pipeline, new PipelineLayout(Map.of()));
+
+        try {
+            assertThat(repository.findByItemTypeId(fixture.productTypeId())).contains(created);
+            assertThat(repository.findByItemTypeId(fixture.contributorTypeId())).isEmpty();
+        } finally {
+            repository.deletePipeline(created.id());
+        }
+    }
+
+    // One pipeline per item type, enforced by a unique index (see the baseline migration), not just
+    // a convention a caller could accidentally violate.
+    @Test
+    void createPipeline_rejectsASecondPipelineForAnItemTypeThatAlreadyHasOne() {
+        Pipeline pipeline = buildStructurallyRichPipeline();
+        var created = repository.createPipeline(fixture.productTypeId(), pipeline, new PipelineLayout(Map.of()));
+
+        try {
+            assertThatThrownBy(() -> repository.createPipeline(fixture.productTypeId(), buildStructurallyRichPipeline(), new PipelineLayout(Map.of())))
+                    .isInstanceOf(DuplicateKeyException.class);
+        } finally {
+            repository.deletePipeline(created.id());
+        }
     }
 }
