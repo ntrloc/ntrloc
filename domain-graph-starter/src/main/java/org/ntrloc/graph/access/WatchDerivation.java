@@ -11,7 +11,7 @@ import java.util.UUID;
 // watches from that graph is just reading back out exactly what was already, consciously authored,
 // not inferring from looser logic the way the original "never derived" decision was guarding against.
 //
-// The atomic unit is each individual "thing" referenced anywhere in any signal's context chain -- a
+// The atomic unit is each individual "thing" referenced anywhere in any condition's subject chain -- a
 // specific property, link, or state machine, by id -- not the chain as a whole: a change to any one of
 // them is independently a reason to re-run the pipeline. `each` doesn't matter for identity: it's
 // about how a step gets consumed within one particular chain, not what's being referenced. See
@@ -22,9 +22,9 @@ public final class WatchDerivation {
     // just created." Added only when a pipeline has no signal blocks at all (see derive() below): a
     // pipeline built from nothing but unconditional marker actions (e.g. a bare <set> with no gate)
     // can never be triggered by a fact change, since it doesn't reference any fact, but it still
-    // needs exactly one trigger to ever run -- item creation. A pipeline that has a real signal is
+    // needs exactly one trigger to ever run -- item creation. A pipeline that has a real condition is
     // never touched by this, even one whose own watch set happens to come out empty (e.g. a bare
-    // Self context with no steps) -- that pipeline was deliberately gated on something, just not on
+    // Self subject with no steps) -- that pipeline was deliberately gated on something, just not on
     // anything WatchDerivation can currently identify, which is a different situation from having no
     // gate at all and must not be papered over by this sentinel.
     public static final UUID ITEM_CREATED = UUID.fromString("00000000-0000-0000-0000-000000000001");
@@ -33,27 +33,50 @@ public final class WatchDerivation {
     }
 
     public static Set<UUID> derive(Pipeline pipeline) {
-        List<SignalBlock> signalBlocks = pipeline.allSignalBlocks();
-        if (signalBlocks.isEmpty()) {
+        List<SignalBlock> blocks = pipeline.topLevelSignals();
+        if (blocks.isEmpty()) {
             return Set.of(ITEM_CREATED);
         }
         Set<UUID> watchedIds = new HashSet<>();
-        for (SignalBlock block : signalBlocks) {
-            Context context = contextOf(block);
-            if (context != null) {
-                collectReferencedIds(context, watchedIds);
+        for (SignalBlock block : blocks) {
+            if (block instanceof Condition c) {
+                collectConditionWatches(c, null, watchedIds);
+            } else if (block instanceof ConditionGroup g) {
+                // Each member condition inherits the group's own subject when it has none of its
+                // own -- the same relationship SignalEvaluator resolves at evaluation time; watch
+                // derivation has to follow the identical inheritance chain or it under-counts exactly
+                // the facts a condition actually reads.
+                for (Condition c : g.conditions()) {
+                    collectConditionWatches(c, g.subject(), watchedIds);
+                }
             }
         }
         return watchedIds;
     }
 
-    // CompoundSignal has no context of its own -- it only combines sub-signals, each of which is
-    // separately visited by Pipeline.allSignalBlocks()'s own recursion.
-    private static Context contextOf(SignalBlock block) {
-        if (block instanceof Signal s) return s.context();
-        if (block instanceof PredicateSignal s) return s.context();
-        if (block instanceof CountedSignal s) return s.context();
-        return null;
+    private static void collectConditionWatches(Condition condition, Context inherited, Set<UUID> ids) {
+        Context subject = condition.subject() != null ? condition.subject() : inherited;
+        collectPredicateWatches(condition.predicate(), subject, ids);
+    }
+
+    // Walks a predicate's own tree collecting every *effective* subject at any depth -- a leaf value
+    // predicate's own subject, or (when it has none) whatever it would inherit from its parent; a
+    // TotalityPredicate/CountedPredicate's own effective subject, plus everything nested inside it,
+    // each resolving the same way. Self (or an entirely absent chain) contributes nothing, same as
+    // collectReferencedIds below.
+    private static void collectPredicateWatches(Predicate predicate, Context inherited, Set<UUID> ids) {
+        Context subject = predicate.subject() != null ? predicate.subject() : inherited;
+        if (subject != null) {
+            collectReferencedIds(subject, ids);
+        }
+        if (predicate instanceof TotalityPredicate t) {
+            for (Predicate sub : t.subPredicates()) {
+                collectPredicateWatches(sub, subject, ids);
+            }
+        } else if (predicate instanceof CountedPredicate c) {
+            collectPredicateWatches(c.subPredicate(), subject, ids);
+            collectPredicateWatches(c.countPredicate(), subject, ids);
+        }
     }
 
     private static void collectReferencedIds(Context context, Set<UUID> ids) {

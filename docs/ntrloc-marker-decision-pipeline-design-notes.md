@@ -99,95 +99,157 @@ only ever valid for a fact the schema allows to be absent.
 made this a structural non-issue rather than a semantic one; what's left of the controlled/uncontrolled
 distinction is a narrow authoring convenience (`(Otherwise)`), not a correctness rule.
 
-## Signals: reading facts
+## Conditions: reading facts
 
+Revises the `Signal`/`PredicateSignal`/`CompoundSignal`/`CountedSignal` split this section used to
+describe (previously called "signals") down to one node kind, `<condition>`, plus one grouping wrapper,
+`<condition group>`. Two realizations drove this, reached independently and found to converge: (1)
+"signal" reads as something that actively propagates, which isn't what these are — they're pulled and
+evaluated on demand, never pushed; "condition" doesn't carry that connotation. (2) The four-way split
+was never actually four different *shapes* — `CompoundSignal` and `CountedSignal` were both just "a
+block that wraps something and reduces it to one boolean," which is exactly what a predicate already
+does. Once `any`/`all`/`none` and "counted" are recognized as *kinds of predicate* rather than *kinds of
+wrapping block*, a condition never needed more than one shape: a subject, and exactly one predicate.
 Supersedes the `<decision>`/`<select>`/`<match>`/`<switch>`/`<filter>`/`<aggregate signal>` line of
 exploration referenced in **Visual / authoring language** above, for the specific job of *reading a
-fact*. Arrived at by stress-testing against worked scenarios covering single/multi-valued properties,
+fact*, arrived at by stress-testing against worked scenarios covering single/multi-valued properties,
 state machines, link existence, link properties, multi-hop traversal, aggregate-of-values, and a
-self-referential "coincidence" case (see **Facts beyond item properties** below, now resolved). A
-**signal** is the pipeline's only mechanism for turning a fact, or combination of facts, into a single
-boolean a decision step can act on. Markers themselves (`<add>`/`<set>`/`<remove>`, fork/join, the
-terminal) are a separate concern, still using the node vocabulary below — signals only ever produce a
-pin to gate those nodes, never a marker directly.
+self-referential "coincidence" case (see **Facts beyond item properties** below, now resolved).
 
-**Implicit context.** Every signal reads relative to a current context, which defaults to the item the
-pipeline belongs to ("self") until something establishes a different one. A context changes when a
-signal steps to a linked item, steps to a link itself, or iterates a to-many relationship with
-`each(...)` — each of those establishes a new current context for everything nested inside it. Nesting
-is what guarantees correlation: two conditions nested inside the same established context are
-automatically evaluated against the same instance, with no separate mechanism needed to keep them in
-sync. `self` is the one context name that's always available without being established explicitly,
-since the root is potentially reachable from any depth of nesting and nesting alone can never reach it
-on its own.
+**A condition is the pipeline's only mechanism for turning a fact, or combination of facts, into a
+single boolean a decision step can act on.** Markers themselves (`<add>`/`<set>`/`<remove>`, the
+terminal) are a separate concern, still using the node vocabulary in **Marker actions** below —
+conditions only ever produce a pin to gate those nodes, never a marker directly.
 
-**Four node kinds:**
+```
+Condition {
+  UUID id           // this condition's own output pin
+  Context? subject   // DRY-only; inherited from whatever contains this condition if absent
+  Predicate predicate
+}
+```
 
-- **`<signal>`** — the base case. Exposes exactly one output pin. Holds either a single predicate, or
-  several predicates explicitly combined with a nested, pin-less `any`/`all` (itself with no pin — only
-  the enclosing `<signal>` has one). A subject may be declared once (`property: X`, `link: X`, …) when
-  it would otherwise be repeated across predicates; a single predicate can just name its subject inline
-  and skip the separate declaration.
-- **`<predicate signal>`** — groups several predicates that share a declared (or implicit) subject but
-  are independently consequential — each predicate keeps its *own* pin, wired separately. This is the
-  shape for "one property, several distinct outcomes" (a single-valued property picking between several
-  different markers, or several independent conditions on a multi-valued property). Predicates, whether
-  inside a `<signal>` or a `<predicate signal>`, never have pins of their own except in this one case.
-- **`<compound signal>`** — a fixed-arity `any`/`all` across several *distinct*, named sub-signals, each
-  evaluated exactly once (never repeated). Combines different kinds of facts about one instance — e.g. a
-  flat predicate on a link's own property, combined with a nested sub-signal about the item on the other
-  end of that same link.
-- **`<counted signal>`** — wraps exactly *one* sub-signal, evaluated repeatedly (once per instance of a
-  to-many relationship via `each(...)`), and compares how many of those evaluations fired against how
-  many ran, via an ordinary predicate (`signal count > 0`, `all signals on`, `signal count > 5`, etc.).
-  This is how `any`/`all`/arbitrary-threshold quantification over a to-many link is expressed — not as
-  three separate combinator types, just different thresholds on the same count. The wrapped sub-signal
-  can itself be a `<compound signal>` or another `<counted signal>`, nested arbitrarily deep.
+The condition's own output is a pure passthrough of its one predicate's result — a condition never adds
+computation of its own beyond establishing (or inheriting) a subject. It always wraps exactly one
+predicate, never zero, never more than one.
 
-**Composability is what makes correlation work, not either node type alone.** A `<counted signal>`
-nested *inside* another `<counted signal>`'s per-instance scope stays correlated to the specific
-instance the outer one is currently evaluating; two independently-scoped top-level `<counted signal>`s
-combined by an outer `<compound signal>` are **not** correlated — each already collapsed to a boolean
-before the outer combinator ever sees them, so "both true" doesn't mean "true of the same instance."
+**Every predicate — value, totality, or counted, no exceptions by kind — carries the same optional
+`subject`, inherited from whatever contains it when absent.** This was the specific gap that drove this
+whole revision: the previous `PinnedPredicate` (a predicate's shape inside a `PredicateSignal`) had no
+subject of its own, which meant two predicates sharing one `PredicateSignal` could never address two
+different properties — `firstName is not null` and `photos is not empty` side by side was actually
+unrepresentable under the old shape. Making subject universal — present at every level, always optional,
+always inherited when absent — closes that gap without special-casing any one predicate kind, and is
+what makes nesting meaningful at all: a predicate nested inside another predicate (see **Predicate
+kinds** below) steps *further* from its parent's subject rather than replacing it from scratch, the same
+DRY/inheritance relationship a condition already has with whatever contains *it*.
+
+**Not every subject is valid underneath every other subject.** An item subject can step to a property, a
+link, or a state machine. A link subject can only step to an item (never directly to another link —
+links don't reference links; reaching another link from a link means stepping to its target item first,
+then from there to the next link). A property subject can only step to a nested property (for
+object-typed properties) or nothing further. A state machine subject is always terminal. This grammar
+needs to be structurally enforced, not left as a convention admins and the editor merely agree to follow
+— see **Open / undecided** below for where that currently stands against the actual `Context` object
+shape, and for the related, still-open question of tracking subjects in their own shared, addressable
+structure (so predicates reference a subject rather than embedding one inline — both so the grammar has
+one enforcement point, and so the editor can guide available subject/predicate choices).
+
+### Predicate kinds
+
+Three families, not a flat list — this is what let `CompoundSignal`/`CountedSignal` disappear as
+separate blocks:
+
+- **Value predicates** — the existing leaf predicates (`StringEqualsPredicate`, `NumberPredicate`,
+  `DatePredicate`, `BooleanPredicate`, the list/link/state-machine/identity families — see **Object
+  shape** below), unchanged in shape, each now carrying the universal optional subject described above
+  instead of relying entirely on a parent block's shared one.
+- **`TotalityPredicate`** (replaces `CompoundSignal`) — `any`/`all`/`none` across 2..n sub-predicates,
+  each itself any predicate kind (value, totality, or counted — nests arbitrarily deep). Ordered
+  deliberately: evaluation proceeds left to right and short-circuits as soon as the result is
+  determined, same as ordinary boolean short-circuiting. Named for reflecting how *fully* the totality
+  of its sub-predicates was satisfied (`all` = completely, `any` = at least partially, `none` = not at
+  all) — deliberately not called "boolean predicate," which would collide with the existing
+  `BooleanPredicate` (`IsTruePredicate`/`IsFalsePredicate`, a *value* predicate testing a boolean-typed
+  subject — an unrelated concept that happens to want the same word).
+- **Counted predicate** (replaces `CountedSignal`) — wraps exactly one sub-predicate, evaluated
+  repeatedly (once per instance of a to-many relationship via an `each` step somewhere in its subject),
+  and compares how many of those evaluations fired against how many ran, via an ordinary predicate
+  (`count > 0`, `all matched`, `count > 5`, etc.). This is how `any`/`all`/arbitrary-threshold
+  quantification over a to-many link is expressed — not as separate combinator kinds, just different
+  thresholds on the same count, same reasoning `CountedSignal` already had. Its own subject must include
+  an `each` step somewhere in the chain (same validation `CountedSignal` already enforces). The wrapped
+  sub-predicate can itself be a `TotalityPredicate` or another counted predicate, nested arbitrarily
+  deep.
+
+**Composability is what makes correlation work, not either predicate kind alone.** A counted predicate
+nested *inside* another counted predicate's per-instance scope stays correlated to the specific instance
+the outer one is currently evaluating; two independently-scoped counted predicates sitting as siblings
+inside the same `TotalityPredicate` are **not** correlated — each already collapsed to a boolean before
+the totality predicate ever sees them, so "both true" doesn't mean "true of the same instance."
 Concretely: a photographer's photo-link `createDate` and that *same* photo's portfolio-link `dateAdded`
-has to be expressed as a `<counted signal>` (`link: photos`) whose per-photo scope holds a
-`<compound signal>` combining the flat `createDate` predicate with a *nested* `<counted signal>`
-(`link: item.portfolios`) — stepping through `item` to stay tied to the current photo, not flattening to
-`photos.portfolios` from the top. Two independent `<counted signal>`s side by side will silently produce
+has to be expressed as a counted predicate (`link: photos`, `each`) whose per-photo subject holds a
+`TotalityPredicate` combining the flat `createDate` predicate with a *nested* counted predicate (`link:
+item.portfolios`) — stepping through `item` to stay tied to the current photo, not flattening to
+`photos.portfolios` from the top. Two independent counted predicates side by side will silently produce
 false positives (two different instances, each satisfying one half) rather than an error, so getting the
-nesting right matters.
+nesting right matters exactly as much as it always did.
 
-**Link properties vs. linked-item properties** are disambiguated by context, not by a separate node
-type: a predicate declared directly against a link's own subject (`link: photos`) reads the link's own
+**Link properties vs. linked-item properties** are disambiguated by subject, not by a separate predicate
+kind: a predicate declared directly against a link's own subject (`link: photos`) reads the link's own
 properties; stepping to `item` first reads the properties of the item the link points to. The same
-`<signal>`/`<predicate signal>`/`<compound signal>`/`<counted signal>` vocabulary applies either way.
+`Condition`/`ConditionGroup`/predicate vocabulary applies either way.
 
 **Aggregate-of-values** (`sum`, presumably `avg`/`min`/`max`) is a distinct operation from counting
-matching instances — it has no `any`/`all` ambiguity to resolve (there's no "any" or "all" version of a
-sum), so it's expressed as an aggregate function directly inside a predicate against a context
-established with or without `each(...)`: binding with `each` keeps per-group structure ("every catalog
-individually holds $10,000 of its own products"), omitting it flattens to one combined figure ("all
-catalogs' products combined exceed $10,000") — same underlying mechanism as everywhere else, just
-without a quantifier predicate layered on top, since `sum` doesn't need one.
+matching instances — it has no `any`/`all`/`none` ambiguity to resolve, so it's expressed as an
+aggregate value predicate directly against a subject established with or without `each`: binding with
+`each` keeps per-group structure ("every catalog individually holds $10,000 of its own products"),
+omitting it flattens to one combined figure ("all catalogs' products combined exceed $10,000") — same
+underlying mechanism as everywhere else, just without a quantifier layered on top, since `sum` doesn't
+need one.
 
 **`self` as a comparand**, not just a literal, closes the Featured Portfolio / "coincidence" scenario in
-**Facts beyond item properties** below.
+**Facts beyond item properties** below — unaffected by this revision.
 
-**Named contexts were considered and found unnecessary.** Every case that seemed to need one (notably
-disambiguating link vs. item properties) turned out resolvable by nesting position alone; `self` remains
-the only context ever referenced by a fixed name rather than by position.
+### `<condition group>`
 
-**Status:** this is settled for *reading a fact*. See **Marker actions: carriers and virtual blocks**
-below for how a signal's output actually drives marker mutation.
+Replaces `PredicateSignal`. Groups 2..n conditions that share a declared (or implicit) subject but are
+independently consequential — each condition keeps its own output pin, since each is a full `Condition`
+in its own right.
+
+```
+ConditionGroup {
+  Context? subject           // DRY-only, shared across every contained condition unless one overrides it
+  Condition[2..n] conditions
+}
+```
+
+No row-wrapper type of its own — a `Condition` already carries everything a grouped entry needs (its own
+output, its own optional subject, its own predicate), unlike the old `PinnedPredicate` it replaces, which
+existed purely to bolt an `id` onto a bare `Predicate` that had none. `ConditionGroup` itself has no
+output pin — nothing to expose, since every condition inside it already has its own. Its entire value is
+authoring convenience, not expressive power: everything a `ConditionGroup` can do is already reachable
+with N independent top-level `Condition`s; it just saves repeating a shared subject across them, or
+simply keeps related conditions together visually. **`<switch>`** (a condition group with exactly two
+conditions, `IsTruePredicate` and `IsFalsePredicate`, sharing one subject) is a highly specific instance
+of this shape, not a concept of its own — see **Virtual blocks** below.
+
+**Status:** this is settled for *reading a fact*, revising the previous `Signal`/`PredicateSignal`/
+`CompoundSignal`/`CountedSignal` split. See **Marker actions: carriers and virtual blocks** below for how
+a condition's output actually drives marker mutation, and for `<select>`'s own shape — now a real carrier
+block built on `ConditionGroup`, not a virtual composition (see **`Select`** below).
 
 ### Object shape
 
-Formalizes the above into concrete structures. Four context kinds (item, link, property, state
-machine), fully-typed predicates split only where an operator set carries real type-safety risk, four
-signal-block kinds with a strict arity table, and pins as plain outgoing-reference lists.
+Formalizes the above into concrete structures. `Context` is unchanged from before; `Predicate` gains the
+universal `subject` field plus the two new kinds (`TotalityPredicate`, counted predicate); `Condition`/
+`ConditionGroup` replace the old four-block arity table entirely.
 
 **Context** — recursive, each step wrapping its own continuation; state machine is structurally
-terminal (no `next` field), rather than enforced by a validation rule:
+terminal (no `next` field), rather than enforced by a validation rule. **Not yet enforced:** the
+item→{property, link, state machine}, link→item-only, property→property-or-terminal grammar described
+above still relies on `next` being typed as the unrestricted `Context` interface on every step — see
+**Open / undecided**.
 
 ```
 Context =
@@ -198,18 +260,25 @@ Context =
   | StepToStateMachine   { UUID stateMachineId }   // no `next` — always terminal
 ```
 
+**Named contexts were considered and found unnecessary.** Every case that seemed to need one (notably
+disambiguating link vs. item properties) turned out resolvable by nesting position alone; `self` remains
+the only subject ever referenced by a fixed name rather than by position.
+
 **Predicate** — split per base type only where the operator set isn't uniformly safe (string, list
 membership/presence, boolean, state machine, identity); collapsed to one fielded class wherever every
 operator is safely interchangeable (number, date, and any list/link reduced to a size, count, sum, avg,
-min, or max — all of which are themselves just numbers or dates):
+min, or max — all of which are themselves just numbers or dates). Every predicate, regardless of kind,
+carries the same optional `subject` (see **Conditions: reading facts** above):
 
 ```
-Predicate = StringPredicate | NumberPredicate | DatePredicate | BooleanPredicate
+Predicate = ValuePredicate | TotalityPredicate | CountedPredicate
+
+ValuePredicate = StringPredicate | NumberPredicate | DatePredicate | BooleanPredicate
           | StringListPredicate | NumberListPredicate | DateListPredicate
           | LinkPredicate | StateMachinePredicate | IdentityPredicate
 
-NumberPredicate { ComparisonOperator operator, Number value }   // =, >, <, >=, <=, between
-DatePredicate   { ComparisonOperator operator, Date value }      // =, before, after, between
+NumberPredicate { Context? subject, ComparisonOperator operator, Number value }   // =, >, <, >=, <=, between
+DatePredicate   { Context? subject, ComparisonOperator operator, Date value }      // =, before, after, between
 
 StringPredicate = StringEqualsPredicate | StringNotEqualsPredicate | StringLikePredicate
                  | StringStartsWithPredicate | StringExistsPredicate | StringNotExistsPredicate
@@ -229,55 +298,48 @@ NumberListPredicate = NumberListIsEmptyPredicate | NumberListIsNotEmptyPredicate
                       | NumberListMaxPredicate  { ComparisonOperator operator, Number value }
 
 LinkPredicate = LinkIsPresentPredicate | LinkCountPredicate { ComparisonOperator operator, Number value }
+
+TotalityPredicate {
+  Context? subject
+  Quantity quantity                // ANY | ALL | NONE
+  Predicate[2..n] subPredicates    // ordered; evaluated left to right, short-circuits
+}
+
+CountedPredicate {
+  Context subject                  // required, not optional — must include an `each` step somewhere in the chain
+  Predicate subPredicate
+  Predicate countPredicate         // "count > N", "all matched", etc. — compares against the total
+}
 ```
 
 `DateListPredicate` mirrors `NumberListPredicate` (size/min/max meaningful; sum/avg less so). `like`/
 `startsWith` stay distinct rather than collapsing into one general pattern operator (avoids forcing an
 admin to write `like "test%"` for the common prefix case), and `includes` (list membership) stays
 distinct from `like` (string substring) despite both reading as "contains" in plain English — same
-word, different operand types, different semantics.
+word, different operand types, different semantics. The `subject` field (shown above only on
+`NumberPredicate`/`DatePredicate` for brevity) applies uniformly across the whole `ValuePredicate`
+family.
 
-**Signal blocks** — a strict arity table, no overlap between the four kinds:
+**`Quantity` is standalone** (`ANY | ALL | NONE`), not nested inside `TotalityPredicate` — it turned out
+to have a second, structurally different use (see **`Gate`** under **Marker actions** below: combining
+several already-resolved *condition* pins to decide whether a carrier block fires, as opposed to
+combining several *predicates* within one condition's own fact-reading). The two mechanisms never
+substitute for each other — they operate at different layers — but both needed the same vocabulary, so
+`Quantity` lives on its own rather than implying one borrowed it from the other.
 
-| Block | Predicates | Sub-signals | Pin (top-level) | Pin (nested) |
-|---|---|---|---|---|
-| `Signal` | exactly 1 | 0 | yes | no |
-| `PredicateSignal` | 2..n (each has own pin) | 0 | no (predicates do) | no (predicates do) |
-| `CompoundSignal` | 0 | 2..n | yes | no |
-| `CountedSignal` | 0 | exactly 1 | yes | no |
+**`Condition`/`ConditionGroup`** — see **Conditions: reading facts** above for the full shape; restated
+here for the arity table these replace:
 
-```
-// anything reducible to exactly one boolean; PredicateSignal is excluded — it's multi-pin and can't
-// stand in wherever "a signal" is expected, so it's only ever valid as a top-level block.
-SingleOutputSignal = Signal | CompoundSignal | CountedSignal
-
-// No signal block has an input pin of any kind — see "Pull, not push" below.
-Signal {
-  Context context
-  String? subject        // DRY-only declaration; a lone predicate can just name its subject inline
-  Predicate predicate
-}
-PredicateSignal {
-  Context context
-  String? subject
-  Predicate[2..n] predicates
-}
-CompoundSignal {
-  Combinator combinator          // ANY | ALL
-  SingleOutputSignal[2..n] subSignals   // ordered; evaluated left to right, short-circuits
-}
-CountedSignal {
-  Context context                 // must include an `each` step somewhere in the chain
-  SingleOutputSignal subSignal
-  Predicate countPredicate        // "signal count > N", "all signals on", etc. — compares against the total
-}
-```
+| Block | Predicates | Subject | Output |
+|---|---|---|---|
+| `Condition` | exactly 1 | optional, DRY | yes — its one predicate's result |
+| `ConditionGroup` | n/a (holds `Condition[2..n]`) | optional, DRY, shared | no — each contained condition has its own |
 
 **Pins** — pure identifiers, not owners of their own wiring; connectivity lives in one flat,
 pipeline-level list instead of being embedded in each block, which separates block definitions
-(inherently tree-shaped — `CompoundSignal`/`CountedSignal` embed their sub-signals directly) from
-pipeline connectivity (inherently graph-shaped, crossing between top-level blocks). Fan-out (one pin,
-many consumers) and fan-in (several sources feeding one gate) both fall out of this for free:
+(inherently tree-shaped — `TotalityPredicate`/`CountedPredicate` embed their sub-predicates directly)
+from pipeline connectivity (inherently graph-shaped, crossing between top-level blocks). Fan-out (one
+pin, many consumers) and fan-in (several sources feeding one gate) both fall out of this for free:
 
 ```
 OutputPin { UUID id, PinKind kind }
@@ -286,6 +348,9 @@ PinKind = CARRIER | SIGNAL   // see Marker actions below — a route's kind must
 
 Route { UUID outputPinId, UUID[] inputPinIds }   // one entry per output pin
 ```
+
+A carrier block's own point of contact with a signal pin was always going to be more than "exactly one" —
+see **`Gate`** under **Marker actions** below.
 
 ## Marker actions: carriers and virtual blocks
 
@@ -306,21 +371,40 @@ why the carrier's flow has to be unconditional: if the carrier can stop, there c
 which this design can't allow any more than it can allow a silently-skipped watch.
 
 **This splits every block in the pipeline into exactly two domains that never blend.** Signal blocks
-(`Signal`/`PredicateSignal`/`CompoundSignal`/`CountedSignal`) carry `Context`/`Predicate`-shaped fields
-and never touch a carrier. Carrier blocks (`Add`/`Remove`/`Set`/`Filter`, start, end) carry carrier
-fields and an optional incoming gate, and never read a fact directly. The only point of contact anywhere
-in the model is a signal block's output pin wiring into a carrier block's gate input — never the
-reverse. This is the same split an earlier pass at this design tried to draw (as "signal blocks" vs.
-"marker blocks") and couldn't quite make hold, because `<select>`/`<filter>` as *real* primitives back
-then were genuine hybrids straddling both. The hybrids didn't get resolved, they got eliminated —
-`<select>`/`<switch>` reduced to virtual compositions, `<filter>` reclassified as pure carrier-domain —
-which is what makes the split total now instead of leaky.
+(`Condition`/`ConditionGroup`) carry `Context`/`Predicate`-shaped fields
+and never touch a carrier. Carrier blocks (`Add`/`Remove`/`Set`/`Filter`/`Select`, start, end) carry
+carrier fields and a `Gate` (optional on most, mandatory on `Filter`), and never read a fact directly.
+The only point of contact anywhere in the model is a signal block's output pin wiring into a carrier
+block's `Gate` — never the reverse.
+This is the same split an earlier pass at this design tried to draw (as "signal blocks" vs. "marker
+blocks") and couldn't quite make hold, because `<select>`/`<filter>` as *real* primitives back then were
+genuine hybrids straddling both. The hybrids didn't get resolved, they got eliminated — `<filter>`
+reclassified as pure carrier-domain, `<switch>` reduced to a virtual composition, and `<select>`
+rebuilt as a real carrier block that only ever *references* the signal domain via its own `Gate`, the
+same as every other carrier block — which is what makes the split total now instead of leaky.
 
-**Action blocks always have both carrier pins; the signal pin is optional.** A carrier input and a
-carrier output are mandatory — a block missing either is invalid, which is what structurally enforces
-the existing "every step leads to another step or a result, no dangling paths" completeness rule at the
-block level rather than leaving it as a separate check. The signal/gate input is optional per block;
-many blocks don't use it and simply always fire.
+**Action blocks always have both carrier pins; the signal side is a `Gate`, optional on most blocks.** A
+carrier input and a carrier output are mandatory — a block missing either is invalid, which is what
+structurally enforces the existing "every step leads to another step or a result, no dangling paths"
+completeness rule at the block level rather than leaving it as a separate check.
+
+**`Gate`** — a carrier block's own point of contact with the signal domain. This was always going to be
+more than "exactly one optional pin": a gate combines *several* condition pins directly, by quantity,
+the same `ANY`/`ALL`/`NONE` vocabulary `TotalityPredicate` uses but applied at a different layer —
+`TotalityPredicate` combines several *predicates* nested inside one condition's own fact-reading
+(producing that condition's single boolean); `Gate` combines several already-resolved *condition* pin
+values to decide whether a carrier block fires. These never substitute for each other, but share
+`Quantity` (see **Object shape** above) since the vocabulary is identical:
+
+```
+Gate {
+  UUID[] conditionOutputPinIds   // empty means unconditional -- always fires, quantity unconsulted
+  Quantity quantity               // default ALL
+}
+```
+
+A single-condition gate (the only case that existed before) is just the trivial case of this —
+`conditionOutputPinIds = [oneId], quantity = ALL` — not a separate shape.
 
 **`Add`** — the first real action block:
 
@@ -328,18 +412,18 @@ many blocks don't use it and simply always fire.
 Add {
   Pin carrierIn          // mandatory
   Pin carrierOut         // mandatory
-  Pin? gate              // optional signal input
+  Gate gate               // conditionOutputPinIds empty means this always fires
   MarkerRef[1..n] markers
 }
 ```
 
-Minimum is `1..n`, not `2..n` like `<compound signal>`/`<predicate signal>` — adding a single marker is
+Minimum is `1..n`, not `2..n` like `TotalityPredicate`/`<condition group>` — adding a single marker is
 already a complete, meaningful operation, not a trivial case of "combining" something.
 
 **`Remove`** — same shape as `Add`, opposite operation (set difference instead of union):
 
 ```
-Remove { Pin carrierIn, Pin carrierOut, Pin? gate, MarkerRef[1..n] markers }
+Remove { Pin carrierIn, Pin carrierOut, Gate gate, MarkerRef[1..n] markers }
 ```
 
 **`Set`** — same shape again, but a meaningfully different role: it discards whatever carrier it
@@ -357,19 +441,22 @@ doing. There's no case where that's ambiguous. The restriction has been dropped 
 goes fork/join's last remaining job (see **Fork/join** below).
 
 ```
-Set { Pin carrierIn, Pin carrierOut, Pin? gate, MarkerRef[1..n] markers }
+Set { Pin carrierIn, Pin carrierOut, Gate gate, MarkerRef[1..n] markers }
 ```
 
 **`Filter`** — structurally distinct from the other three, not just a variant: no `markers` field at
 all (it never touches the carrier's content), and its signal input is *mandatory* rather than optional
 — a `<filter>` with no signal would just be a meaningless straight wire, so forcing one keeps it from
-existing in a degenerate form, same principle as `<compound signal>`/`<predicate signal>` requiring 2+.
-It always fires and always produces a carrier — never conditionally skipped — passing its carrier
-through unchanged when the signal is on, or producing an empty carrier (same sink-and-become-a-source
-role as `Set`, just with an empty marker list) when it's off. No transform either way, purely binary.
+existing in a degenerate form, same principle as `TotalityPredicate`/`<condition group>` requiring 2+
+(enforced here as `signal.conditionOutputPinIds` non-empty). Kept named `signal`, not `gate` like every
+other carrier block's optional point of contact, precisely because it isn't optional here — the name
+itself signals that distinction. It always fires and always produces a carrier — never conditionally
+skipped — passing its carrier through unchanged when the signal is on, or producing an empty carrier
+(same sink-and-become-a-source role as `Set`, just with an empty marker list) when it's off. No
+transform either way, purely binary.
 
 ```
-Filter { Pin carrierIn, Pin carrierOut, Pin signal }   // carrierOut = carrierIn if signal else empty
+Filter { Pin carrierIn, Pin carrierOut, Gate signal }   // carrierOut = carrierIn if signal else empty
 ```
 
 An empty carrier isn't a special "stop" value needing its own handling — it just merges as a no-op
@@ -378,6 +465,35 @@ resolves the original doc's "how does a path terminate without adding or changin
 without needing a dedicated terminal/"stop here" node: an off `Filter` already does exactly that, and
 the universal "every block always fires, always produces a carrier" invariant never needs a carve-out
 for the empty case.
+
+**`Select`** — a real carrier block, not a virtual composition: it has a genuine carrier input and
+output of its own, pushed into like every other carrier block (this is the one thing that distinguishes
+it from `<switch>` below, which stays virtual). Routes one shared carrier input to several
+independently-consequential branches (`adds`), each an *ordinary* `Add` with its own ordinary `Gate` —
+nothing special about how a row fires, it's the exact same mechanism any standalone `Add` already has.
+Each row's own id doubles as that row's own carrier output pin, addressable by `Route` the same way any
+other carrier block's id is — something downstream can wire to one branch's own output specifically, not
+just the block's primary one:
+
+```
+Select { Pin carrierIn, Pin carrierOut, Gate gate, Add[1..n] adds }
+```
+
+`id()` is this block's primary pin — both carrier-in and the universal carrier-out every carrier block
+has — and it doubles as `(Otherwise)`. It is **not** an unconditional passthrough: it's gated by `gate`,
+ordinarily authored as `NONE` over the same condition pins the rows themselves gate on — carrierIn
+passes through only when none of the rows matched, empty otherwise. Nothing here enforces that
+relationship structurally; `gate` is just an ordinary `Gate` like any other carrier block has, authored
+by convention to mean "otherwise," not a special case the evaluator treats differently. Every row is fed
+the same carrier `Select` itself received — a broadcast, not something an admin wires with an explicit
+`Route`: nothing ever routes to a row from outside.
+
+`Select`'s conditions are never embedded privately inside it — every one it references (typically via a
+`ConditionGroup` sharing one subject, e.g. `property: genres`) lives in the pipeline's ordinary
+top-level signals, exactly like anything else a `Gate` could reference. This matters beyond tidiness: it
+means watch derivation (see **Watches** below) needs zero `Select`-specific handling — a condition
+`Select` depends on is already walked because it's an ordinary top-level signal, not because anything
+had to go looking inside carrier blocks for hidden ones.
 
 **Start / end.** Exactly one implicit start per pipeline — a pure carrier source (no carrier input,
 only output), feeding the first action block(s) with the empty marker set. Exactly one end, too —
@@ -395,90 +511,69 @@ end, or any other block) with no combining node in between — marker-set union 
 idempotent, so there's never a transformation the merge itself needs to perform. This is what let the
 old `<sum>` node disappear entirely (see **Virtual blocks** below).
 
-**Pull, not push: no signal block has an input pin, not even a gate.** A signal isn't "triggered" by an
-incoming connection — it's a pure, self-contained computation over its own `Context`/`Predicate`, which
-only ever gets evaluated because something downstream needs its value: a `CompoundSignal` combining it
-with others, a `CountedSignal` iterating it, a carrier block reading its gate. This corrects an earlier
-version of this doc, which gave `Signal`/`PredicateSignal`/`CompoundSignal`/`CountedSignal` an optional
-`gate` field, treating "signal X gates signal Y" as Y receiving X through a wire. That has it backwards
-— Y receives nothing. What's actually happening is that whatever *consumes* Y also needs X, pulls X
-first, and short-circuits before touching Y's internals if X is false. `CompoundSignal.subSignals` is
-ordered specifically so this works with no extra field: evaluation proceeds left to right and stops as
-soon as the `ANY`/`ALL` result is determined, the same way ordinary boolean short-circuiting works
-anywhere else. The performance motivation from before still holds exactly as stated — full re-run on
-every watched-fact change means the only lever against an expensive nested `<counted signal>`'s cost is
-making sure it's skipped outright, not computed and discarded — it's just that the mechanism is ordering
-within a consumer, not a pin on the thing being skipped.
+**Pull, not push: no signal block has an input pin, not even a gate.** A condition isn't "triggered" by
+an incoming connection — it's a pure, self-contained computation over its own `Context`/`Predicate`,
+which only ever gets evaluated because something downstream needs its value: a `TotalityPredicate`
+combining it with others, a counted predicate iterating it, a carrier block reading its gate. This
+corrects an earlier version of this doc, which gave `Signal`/`PredicateSignal`/`CompoundSignal`/
+`CountedSignal` (the predecessors of today's `Condition`/`ConditionGroup`/`TotalityPredicate`/counted
+predicate) an optional `gate` field, treating "signal X gates signal Y" as Y receiving X through a wire.
+That has it backwards — Y receives nothing. What's actually happening is that whatever *consumes* Y also
+needs X, pulls X first, and short-circuits before touching Y's internals if X is false.
+`TotalityPredicate.subPredicates` is ordered specifically so this works with no extra field: evaluation
+proceeds left to right and stops as soon as the `ANY`/`ALL`/`NONE` result is determined, the same way
+ordinary boolean short-circuiting works anywhere else. The performance motivation from before still holds
+exactly as stated — full re-run on every watched-fact change means the only lever against an expensive
+nested counted predicate's cost is making sure it's skipped outright, not computed and discarded — it's
+just that the mechanism is ordering within a consumer, not a pin on the thing being skipped.
 
 This sharpens the two-domain split into push vs. pull, too: carrier blocks are genuinely pushed
 (a carrier arrives through a real wire, unconditionally), while signals are genuinely pulled (computed
-on demand, never pushed into). Carrier blocks' own `gate` pins (`Add`/`Remove`/`Set`'s optional `gate`,
+on demand, never pushed into). Carrier blocks' own `Gate`s (`Add`/`Remove`/`Set`/`Select`'s own `gate`,
 `Filter`'s mandatory `signal`) are unaffected by this correction and stay exactly as specified — they're
 the one legitimate boundary where a pull-computed signal's already-resolved result enters the push-based
 carrier domain, consistent with "the only point of contact... is a signal block's output pin wiring into
-a carrier block's gate input." One line summarizes the whole execution model: **carriers push into
-carrier blocks; carrier blocks pull signals on demand.** Carrier blocks are the only place the two
-domains touch — pushed into from upstream carrier flow, and the ones who initiate a pull into the signal
-domain, at the exact moment they need a gate's value to decide what to do with the carrier that just
-arrived. Signals never push anything; nothing on the signal side ever initiates contact with the carrier
-side.
+a carrier block's `Gate`." One line summarizes the whole execution model: **carriers push into carrier
+blocks; carrier blocks pull signals on demand.** Carrier blocks are the only place the two domains touch
+— pushed into from upstream carrier flow, and the ones who initiate a pull into the signal domain, at
+the exact moment they need a gate's value to decide what to do with the carrier that just arrived.
+Signals never push anything; nothing on the signal side ever initiates contact with the carrier side.
 
-**A signal runs at most once per evaluation, possibly never, and its result is reused by every
-consumer.** Not an optimization added on top — a direct, necessary consequence of a signal block having
+**A condition runs at most once per evaluation, possibly never, and its result is reused by every
+consumer.** Not an optimization added on top — a direct, necessary consequence of a condition having
 exactly one output pin, pulled on first demand. Once computed, that *is* the pin's value for the rest of
 this evaluation; every consumer wired to its Route (fan-out) reads the same resolved value rather than
-separately triggering the work again — concretely, when one `<counted signal>` gates two different
-`<filter>` blocks (as in the embargo example), it still only ever runs once. If nothing downstream ever
-demands a given signal's value — a short-circuit upstream, an unreachable branch — it simply never runs
-at all. Scope is strictly one evaluation: this has nothing to do with, and doesn't soften, "full re-run,
-not partial" (**Key architectural decisions** above) — the next trigger re-evaluates everything from
-scratch, pulled fresh. This is about not repeating work *within* one pass, never about caching across
-passes.
+separately triggering the work again — concretely, when one `<condition>` (its predicate a counted
+predicate) gates two different `<filter>` blocks (as in the embargo example), it still only ever runs
+once. If nothing downstream ever demands a given condition's value — a short-circuit upstream, an
+unreachable branch — it simply never runs at all. Scope is strictly one evaluation: this has nothing to
+do with, and doesn't soften, "full re-run, not partial" (**Key architectural decisions** above) — the
+next trigger re-evaluates everything from scratch, pulled fresh. This is about not repeating work
+*within* one pass, never about caching across passes.
 
 ### Virtual blocks
 
 A **virtual block** has no runtime or execution identity — the pipeline engine only ever evaluates real
-primitives (`Signal`/`PredicateSignal`/`CompoundSignal`/`CountedSignal`, `Add`/…). A virtual block is a
-named, recognized shorthand that expands to a fixed arrangement of real primitives the moment it's
-placed, sparing the admin from hand-wiring something extremely common. It may need to persist at the
-authoring/UI layer (so the tool can recognize an expanded cluster and re-collapse it for editing), but
-that's a tooling convenience, not a second implementation living alongside the real one. Two identified
-so far, both arising from re-deriving the original `<select>`/`<switch>`/`<filter>`/`<sum>` embargo
-example entirely in terms of signals and `Add`:
+primitives (`Condition`/`ConditionGroup`, `Add`/…, and now `Select` — see its own entry above). A
+virtual block is a named, recognized shorthand that expands to a fixed arrangement of real primitives
+the moment it's placed, sparing the admin from hand-wiring something extremely common. It may need to
+persist at the authoring/UI layer (so the tool can recognize an expanded cluster and re-collapse it for
+editing), but that's a tooling convenience, not a second implementation living alongside the real one.
 
-- **`<select>`** = a `PredicateSignal` wired to *N* single-marker `Add` blocks, one per branch, each
-  carrying a different literal marker. This was `<select>`'s entire job as an independent primitive —
-  "read a property, emit a different marker depending on which value matched" — now just a recognized
-  composite of two things that already exist, not a third thing. Two carrier-output modes: **shared**
-  (every branch's `Add` converges on one output for the whole block) or **per-branch** (each branch gets
-  its own independent output, needed when different branches require genuinely different downstream
-  treatment). This also retired the old asymmetric exhaustiveness rule (see **Visual / authoring
-  language** above): the carrier-continues-unconditionally principle makes "did we handle every value"
-  a structural non-issue rather than a semantic one. In shared mode it's automatic — every branch
-  converges on the one output regardless, matched or not. In per-branch mode, an optional `(Otherwise)`
-  branch exists purely as an authoring convenience (never a structural requirement — an admin can always
-  enumerate every remaining value explicitly instead) to avoid forcing full enumeration; `(Otherwise)`
-  is meaningless/forbidden in shared mode, since there's nothing left for it to catch. The
-  controlled-vs-uncontrolled distinction survives only as a matter of how *useful* that convenience is
-  (close to indispensable for an uncontrolled property, merely tedious to skip for a controlled list),
-  not as a correctness rule.
-- **`<switch>`** = even more minimal — just a bare `PredicateSignal` on a boolean-typed property with
-  exactly two predicates (`IsTruePredicate`, `IsFalsePredicate`). No second primitive gets combined in;
-  `<switch>` *is* a `PredicateSignal`, and its "virtual block" status is purely a naming/legibility
-  convention for a common shape, not a template over two different things.
+`<select>` **used to live here and no longer does** — it graduated to a real carrier block (see
+**`Select`** above), once it became clear it genuinely has a carrier input and output of its own, not
+just a presentational grouping of other things. One virtual block remains, re-derived the same way
+`<select>` originally was, entirely in terms of conditions and `Add`:
 
-Redrawing the original embargo example with both virtual blocks in place, with each branch's predicate
-pin pulled directly as the `Add` it gates needs it, and implicit carrier merge, needs no `<filter>` at
-all for this simple case (the branch pins already gate their `Add`s directly) and no `<sum>` entirely
-(covered by implicit merge) —
-collapsing four separate real node kinds down to two virtual blocks built from nothing but `Signal`
-primitives and `Add`. The result is maximally expressive where it needs to be and no more complex than
-the problem actually requires anywhere else.
+- **`<switch>`** = a bare `ConditionGroup` on a boolean-typed subject with exactly two conditions
+  (`IsTruePredicate`, `IsFalsePredicate`). No second primitive gets combined in; `<switch>` *is* a
+  `ConditionGroup`, and its "virtual block" status is purely a naming/legibility convention for a common
+  shape, not a template over two different things.
 
-**Convenience, not handcuffs.** Every virtual block and authoring convenience here (`<select>`,
-`<switch>`, `(Otherwise)`) is strictly additive — it never narrows what's expressible, only saves effort
-on the common case. If a situation doesn't fit the shortcut's assumptions, the admin drops to the fully
-decomposed, explicit primitive form (a `PredicateSignal` wired to individual `Add`/`Filter`/`Set` blocks
+**Convenience, not handcuffs.** Every virtual block and authoring convenience here (`<switch>`,
+`(Otherwise)`) is strictly additive — it never narrows what's expressible, only saves effort on the
+common case. If a situation doesn't fit the shortcut's assumptions, the admin drops to the fully
+decomposed, explicit primitive form (a `ConditionGroup` wired to individual `Add`/`Filter`/`Set` blocks
 by hand) and loses nothing. This is the same "expressivity first, concision only within that constraint"
 principle that's governed this entire design, now holding up at the authoring-convenience layer too.
 
@@ -495,9 +590,11 @@ sibling branches, with no validation rule required. Nothing fork/join did was ev
 a boundary drawn around capabilities (fan-out, merge) that already existed implicitly, plus a
 restriction that turned out not to be necessary. Full retirement, not a pending question.
 
-**Status:** `Add`/`Remove`/`Set`/`Filter`, start/end (single, not multiple), virtual blocks, implicit
-merge, and the push/pull execution model are all settled. Fork/join is retired. Nothing from the
-original node list remains open — this whole area of the design is closed.
+**Status:** `Add`/`Remove`/`Set`/`Filter`/`Select`, `Gate`, start/end (single, not multiple), the one
+remaining virtual block (`<switch>`), implicit merge, and the push/pull execution model are all settled.
+Fork/join is retired. Nothing from the original node list remains open — this whole area of the design
+is closed. Not settled: `Select`'s row evaluation and `Gate`'s combination logic are both implemented
+and tested; `CountedPredicate` evaluation (multi-instance traversal) is not — see **Open / undecided**.
 
 ## Watches
 
@@ -706,13 +803,39 @@ creation — is a caller of this same filter, not a one-off.
   branch always resolves independently to its own terminal with nothing reconverging — and whether
   `<fork>`/`<join>` nesting (a fork inside a fork) needs explicit handling for the "`overwrite` invalid
   inside any open fork/join" rule, not just one level of nesting.
-- **The fact-reading side of the node vocabulary is now settled** — see **Signals: reading facts**
+- **The fact-reading side of the node vocabulary is now settled** — see **Conditions: reading facts**
   (includes "coincidence" facts, resolved there and in **Facts beyond item properties** above).
-  **Marker actions: carriers and virtual blocks** settles `Add`/`Remove`/`Set`/`Filter`, single
-  start/single end, virtual blocks (`<select>`/`<switch>`), implicit carrier merge, the push/pull
-  execution model, and the carrier-is-the-decision principle. `<fork>`/`<join>` is fully retired
+  **Marker actions: carriers and virtual blocks** settles `Add`/`Remove`/`Set`/`Filter`/`Select`,
+  `Gate`, single start/single end, the one remaining virtual block (`<switch>`), implicit carrier merge,
+  the push/pull execution model, and the carrier-is-the-decision principle. `<fork>`/`<join>` is fully retired
   (fan-out, implicit merge, and single-end already cover everything it did). Nothing from the original
   node list in **Visual / authoring language** remains open.
+- **Making the subject-validity grammar structurally impossible to violate**, rather than a convention
+  (item → property/link/state machine; link → item only, never directly to another link; property →
+  nested property or terminal; state machine → always terminal). Candidates: narrow each step's `next`
+  field to only the types validly reachable from it (the stronger option — invalid trees become
+  unconstructible), or leave `next: Context` as-is and add save-time validation (weaker, but avoids
+  narrowing a field three other step types all currently share generically). Not decided.
+- **The concrete object shape for tracking subjects in their own shared, addressable structure**, so
+  predicates/conditions reference a subject by id rather than embed one inline. Agreed as a requirement
+  (see **Conditions: reading facts**) — it's what makes the subject-validity grammar enforceable in one
+  place and lets the editor offer only valid subject choices/extensions at each point — but the actual
+  shape (a literal tree keyed by id, something else) hasn't been designed yet.
+- **Final field name: "subject" vs. "context."** Used interchangeably through the conversation that
+  produced this revision; settled on "subject" for this doc, but not firmly locked in — low-stakes,
+  easy to rename later if a reason turns up.
+- ~~`TotalityPredicate`'s `NONE` quantity's precise evaluation semantics~~ — resolved and implemented:
+  "zero of the 2..n sub-predicates matched," short-circuiting left to right the same way `ANY`/`ALL` do
+  (the first sub-predicate that matches already disproves `NONE`). `Gate`'s own `NONE` works identically,
+  one layer up, over condition pins instead of predicates.
+- **`CountedPredicate` evaluation (multi-instance traversal) is not yet implemented** — attempting to
+  evaluate one throws `UnsupportedOperationException`, same gap `CountedSignal` always had under its old
+  name. Everything *around* it (the type itself, watch derivation walking its subject correctly, `Select`
+  rows gating on an ordinary condition) works today; only the actual "run this sub-predicate once per
+  instance of a to-many relationship and compare the count" mechanism is missing. `ContextResolver` has
+  the same gap one level down — it only resolves "one of this item's own scalar properties" so far,
+  everything else (link traversal, nested object properties, state machine lookups, `each`-iteration)
+  throws the same way.
 
 ## Parked, tracked separately
 

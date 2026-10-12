@@ -3,13 +3,14 @@ package org.ntrloc.graph.db.coordinator;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.access.AddMarkers;
+import org.ntrloc.graph.access.Condition;
 import org.ntrloc.graph.access.End;
+import org.ntrloc.graph.access.Gate;
 import org.ntrloc.graph.access.LinkIsPresentPredicate;
 import org.ntrloc.graph.access.Pipeline;
 import org.ntrloc.graph.access.PipelineLayout;
 import org.ntrloc.graph.access.Route;
 import org.ntrloc.graph.access.Self;
-import org.ntrloc.graph.access.Signal;
 import org.ntrloc.graph.access.Start;
 import org.ntrloc.graph.access.StepToLink;
 import org.ntrloc.graph.access.StepToProperty;
@@ -50,9 +51,9 @@ class PipelineMarkerDecisionIntegrationTest extends AbstractIntegrationTest {
     private CoordinatorTestDomainInitializer fixture;
 
     private Pipeline colorEqualsPipeline(String matchValue, UUID markerId) {
-        Signal gate = new Signal(UUID.randomUUID(), new StepToProperty(fixture.colorPropertyId(), false, new Self()),
-                null, new StringEqualsPredicate(matchValue));
-        AddMarkers add = new AddMarkers(UUID.randomUUID(), gate.id(), List.of(markerId));
+        Condition gate = new Condition(UUID.randomUUID(), new StepToProperty(fixture.colorPropertyId(), false, new Self()),
+                new StringEqualsPredicate(null, matchValue));
+        AddMarkers add = new AddMarkers(UUID.randomUUID(), Gate.of(gate.id()), List.of(markerId));
         Start start = new Start(UUID.randomUUID());
         End end = new End(UUID.randomUUID());
         return new Pipeline(UUID.randomUUID(), List.of(gate), List.of(add), start, end, List.of(
@@ -193,9 +194,9 @@ class PipelineMarkerDecisionIntegrationTest extends AbstractIntegrationTest {
     // pipeline was never even invoked" from outside: no exception means it was correctly skipped,
     // not just that it happened to decide nothing.
     private Pipeline tripwirePipeline(UUID markerId) {
-        Signal gate = new Signal(UUID.randomUUID(), new StepToLink(fixture.productPerspectiveId(), false, new Self()),
-                null, new LinkIsPresentPredicate());
-        AddMarkers add = new AddMarkers(UUID.randomUUID(), gate.id(), List.of(markerId));
+        Condition gate = new Condition(UUID.randomUUID(), new StepToLink(fixture.productPerspectiveId(), false, new Self()),
+                new LinkIsPresentPredicate(null));
+        AddMarkers add = new AddMarkers(UUID.randomUUID(), Gate.of(gate.id()), List.of(markerId));
         Start start = new Start(UUID.randomUUID());
         End end = new End(UUID.randomUUID());
         return new Pipeline(UUID.randomUUID(), List.of(gate), List.of(add), start, end, List.of(

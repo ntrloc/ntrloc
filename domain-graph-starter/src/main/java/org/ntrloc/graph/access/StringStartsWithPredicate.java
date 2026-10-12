@@ -1,4 +1,4 @@
 package org.ntrloc.graph.access;
 
-public record StringStartsWithPredicate(String prefix) implements StringPredicate {
+public record StringStartsWithPredicate(Context subject, String prefix) implements StringPredicate {
 }

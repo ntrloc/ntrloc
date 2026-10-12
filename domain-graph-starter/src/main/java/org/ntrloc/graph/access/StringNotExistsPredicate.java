@@ -1,4 +1,4 @@
 package org.ntrloc.graph.access;
 
-public record StringNotExistsPredicate() implements StringPredicate {
+public record StringNotExistsPredicate(Context subject) implements StringPredicate {
 }

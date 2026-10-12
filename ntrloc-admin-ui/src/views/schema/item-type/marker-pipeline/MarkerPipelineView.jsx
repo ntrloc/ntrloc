@@ -1,6 +1,6 @@
 import { usePipelineForItemType } from '../../../../global/model/PipelineModel'
 import { useMarkerPipelineViewModel } from './MarkerPipelineViewModel'
-import { STRIP_WIDTH, bodyMidY, chipLayout } from './markerPipelineLayout'
+import { STRIP_WIDTH, bodyMidY, chipLayout, selectRowLayout, signalRowLayout, signalConditionLayout, filterPortLayout, PSEUDO_LABEL_GAP } from './markerPipelineLayout'
 import Button from '../../../../controls/button/Button'
 import './MarkerPipelineView.css'
 
@@ -8,11 +8,30 @@ const PIN_RING_R = 7
 const PIN_FILL_R = 3.5
 
 // A pin: ring + dot, the same bullseye motif as End, scaled down -- see MarkerPipelineView.css.
-function Pin({ cx, cy }) {
+// variant: 'signal' recolors it amber->yellow for a Condition/ConditionGroup's own pins, the same
+// domain split the carrier/signal edge colors already make.
+function Pin({ cx, cy, variant }) {
   return (
-    <g className="mp-pin">
+    <g className={variant ? `mp-pin mp-pin-${variant}` : 'mp-pin'}>
       <circle className="mp-pin-ring" cx={cx} cy={cy} r={PIN_RING_R} />
       <circle className="mp-pin-fill" cx={cx} cy={cy} r={PIN_FILL_R} />
+    </g>
+  )
+}
+
+// A subject ('linked item: X', 'property: X') or predicate ('= APPROVED', 'any match') chip -- see
+// textChip in markerPipelineLayout.js. kind drives which of the two pill styles it renders as (see
+// MarkerPipelineView.css): a filled green rounded rect for a subject, an unfilled magenta one for a
+// predicate.
+function TextChip({ chip }) {
+  const rectClass = chip.kind === 'subject' ? 'mp-subject-chip-rect' : 'mp-predicate-chip-rect'
+  const textClass = chip.kind === 'subject' ? 'mp-subject-chip-text' : 'mp-predicate-chip-text'
+  return (
+    <g>
+      <rect className={rectClass} x={chip.x} y={chip.y} width={chip.width} height={chip.height} />
+      <text className={textClass} x={chip.x + chip.width / 2} y={chip.y + chip.height / 2 + 4}>
+        {chip.text}
+      </text>
     </g>
   )
 }
@@ -22,7 +41,10 @@ function Pin({ cx, cy }) {
 // notch bitten out toward its outgoing edge, but a notch is a fixed direction while an edge's actual
 // angle depends on where the connected block ends up (rank/sibling layout, or a saved position later)
 // -- the two didn't reliably line up, which read as a stray triangle rather than an opening. Plain
-// and unambiguous beats a decoration that can't stay aligned with what it's decorating.
+// and unambiguous beats a decoration that can't stay aligned with what it's decorating. Its own
+// "start"/"end" label sits outside the shape, on whichever side carrier flow isn't pointing --
+// before Start (nothing flows in from further left), after End (nothing flows out further right) --
+// so it never has to compete with an edge landing on the shape itself.
 // editable + the three pointer handlers: present only while the diagram is in edit mode (see
 // MarkerPipelineDiagram), letting Start/End be dragged around like any other node -- PipelineLayout
 // itself makes no distinction between a pseudostate's position and a carrier block's.
@@ -30,6 +52,8 @@ function PseudoStateNode({ rect, kind, editable, onPointerDown, onPointerMove, o
   const cx = rect.x + rect.width / 2
   const cy = rect.y + rect.height / 2
   const r = rect.width / 2
+  const isStart = kind !== 'END'
+  const labelX = isStart ? rect.x - PSEUDO_LABEL_GAP : rect.x + rect.width + PSEUDO_LABEL_GAP
 
   return (
     <g
@@ -40,19 +64,19 @@ function PseudoStateNode({ rect, kind, editable, onPointerDown, onPointerMove, o
     >
       {kind === 'END' && <circle className="mp-pseudo-ring" cx={cx} cy={cy} r={r} />}
       <circle className="mp-pseudo-fill" cx={cx} cy={cy} r={kind === 'END' ? r * 0.55 : r} />
+      <text className="mp-pseudo-label" x={labelX} y={cy + 4} textAnchor={isStart ? 'end' : 'start'}>
+        {isStart ? 'start' : 'end'}
+      </text>
     </g>
   )
 }
 
 // A block is a full-width header band (its "<add>"-style title, divided from the rest by a
 // full-width rule) over a body band. The body's single output port always gets its own divided strip
-// on the right, unlabeled -- there's only ever one. The input side differs: a block with exactly one
-// input port gets the same treatment, symmetric, on the left (e.g. <add>/<set>/<remove>); a block
-// with several distinct input ports (e.g. <filter>'s carrier "input" + its "if" gate reference) gets
-// no left strip at all -- each of those ports is instead an inline labeled row in the body, since
-// they need individual labels a shared strip has no room for. Only <add>/<remove>/<set> are rendered
-// today (single input, single output, no ports to label) -- <filter>'s inline-row shape is sized for
-// but not exercised yet, since our one real pipeline has no gates.
+// on the right, unlabeled -- there's only ever one. The input side is the same, symmetric, on the
+// left, for a block with exactly one input port (<add>/<set>/<remove>). A block with several
+// distinct input ports -- just <filter>, carrier "input" plus its "if" gate reference -- gets its
+// own FilterNode below instead, with each port its own labeled row.
 function CarrierBlockNode({ rect, label, editable, onContextMenu, onPointerDown, onPointerMove, onPointerUp }) {
   const rightStripX = rect.x + rect.width - STRIP_WIDTH
   const midY = bodyMidY(rect)
@@ -87,6 +111,181 @@ function CarrierBlockNode({ rect, label, editable, onContextMenu, onPointerDown,
   )
 }
 
+// <filter> is 3 sections: a full-width title band on top, then exactly 2 below it, divided by one
+// vertical rule -- the lower-left section holds both input ports (carrier "input", then "if") with
+// their own labels, the lower-right section holds nothing but the single output pin, the same shape
+// every other carrier block's own right-side strip has. No separate strip carved out around the left
+// pins themselves -- that would read as a third, empty-looking middle area, which is exactly the
+// "central area" this shape deliberately has none of. The "if" pin is drawn in the signal domain's
+// own color, since it's literally where a dashed signal-reference edge lands (see
+// SignalReferenceEdge).
+function FilterNode({ rect, label, editable, onContextMenu, onPointerDown, onPointerMove, onPointerUp }) {
+  const rightStripX = rect.x + rect.width - STRIP_WIDTH
+  const midY = bodyMidY(rect)
+  const { centerX, titleY, headerBottom, input, ifPort } = filterPortLayout(rect)
+
+  return (
+    <g
+      className={editable ? 'mp-node mp-node-editable' : 'mp-node'}
+      onContextMenu={onContextMenu}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+    >
+      <rect className="mp-node-rect" x={rect.x} y={rect.y} width={rect.width} height={rect.height} />
+      <line className="mp-node-divider" x1={rect.x} y1={headerBottom} x2={rect.x + rect.width} y2={headerBottom} />
+      <line className="mp-node-divider" x1={rightStripX} y1={headerBottom} x2={rightStripX} y2={rect.y + rect.height} />
+      <line className="mp-node-divider" x1={rect.x} y1={ifPort.top} x2={rightStripX} y2={ifPort.top} />
+      <text className="mp-node-title" x={centerX} y={titleY}>
+        {label.title}
+      </text>
+      <text className="mp-port-label" x={input.labelX} y={input.labelY}>
+        input
+      </text>
+      <text className="mp-port-label mp-port-label-signal" x={ifPort.labelX} y={ifPort.labelY}>
+        if
+      </text>
+      <Pin cx={input.x} cy={input.y} />
+      <Pin cx={ifPort.x} cy={ifPort.y} variant="signal" />
+      <Pin cx={rightStripX + STRIP_WIDTH / 2} cy={midY} />
+    </g>
+  )
+}
+
+// <select>'s own shape: one shared input pin (centered on the whole body, same as any other block --
+// it broadcasts internally to every row, see Select.java's own doc comment), then a stack of
+// independently-gated rows sharing one open content area -- no divider between them, the same as the
+// stacked chips in an ordinary CarrierBlockNode -- each still with its own output pin at its own
+// row's y even though nothing visually marks where one row ends and the next begins. The last row is
+// always the synthetic Otherwise branch -- no chips, just the "(Otherwise)" text (see
+// MarkerPipelineViewModel's blockLabel) -- a plain routing pin, not a marker-adding action, so it's
+// rendered distinctly from a real row's dashed marker chips.
+function SelectNode({ rect, label, editable, onContextMenu, onPointerDown, onPointerMove, onPointerUp }) {
+  const rightStripX = rect.x + rect.width - STRIP_WIDTH
+  const midY = bodyMidY(rect)
+  const { centerX, titleY, headerBottom, propertyChip, rows } = selectRowLayout(rect, label.rows, label.propertyLabel)
+
+  return (
+    <g
+      className={editable ? 'mp-node mp-node-editable' : 'mp-node'}
+      onContextMenu={onContextMenu}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+    >
+      <rect className="mp-node-rect" x={rect.x} y={rect.y} width={rect.width} height={rect.height} />
+      <line className="mp-node-divider" x1={rect.x} y1={headerBottom} x2={rect.x + rect.width} y2={headerBottom} />
+      <line className="mp-node-divider" x1={rect.x + STRIP_WIDTH} y1={headerBottom} x2={rect.x + STRIP_WIDTH} y2={rect.y + rect.height} />
+      <line className="mp-node-divider" x1={rightStripX} y1={headerBottom} x2={rightStripX} y2={rect.y + rect.height} />
+      <text className="mp-node-title" x={centerX} y={titleY}>
+        {label.title}
+      </text>
+      {propertyChip && <TextChip chip={propertyChip} />}
+      {rows.map((row) =>
+        row.otherwise ? (
+          <text key={row.id} className="mp-select-otherwise-text" x={centerX} y={row.labelY}>
+            (Otherwise)
+          </text>
+        ) : (
+          <g key={row.id}>
+            {row.conditionChip && <TextChip chip={row.conditionChip} />}
+            {row.chips.map((chip) => (
+              <g key={chip.name}>
+                <rect className="mp-marker-chip-rect" x={chip.x} y={chip.y} width={chip.width} height={chip.height} />
+                <text className="mp-marker-chip-text" x={chip.x + chip.width / 2} y={chip.y + chip.height / 2 + 4}>
+                  {chip.name}
+                </text>
+              </g>
+            ))}
+          </g>
+        )
+      )}
+      <Pin cx={rect.x + STRIP_WIDTH / 2} cy={midY} />
+      {rows.map((row) => (
+        <Pin key={row.id} cx={rightStripX + STRIP_WIDTH / 2} cy={row.midY} />
+      ))}
+    </g>
+  )
+}
+
+// A top-level Condition/ConditionGroup -- read, not routed, so it gets no left input strip at all
+// (see signalNodeDimensions' own comment). Two different internal shapes, matching
+// signalNodeDimensions/signalRowLayout/signalConditionLayout: a ConditionGroup (more than one pin)
+// is a title over a stacked pin-row per member Condition, each with its own short label; a bare
+// Condition (always exactly one pin) is a title over stacked description lines, with an optional
+// nested "count" sub-box for a COUNTED predicate (see describeCondition) and one pin centered on the
+// whole body.
+function SignalNode({ rect, node, description, editable, onPointerDown, onPointerMove, onPointerUp }) {
+  const bodyRight = rect.x + rect.width - STRIP_WIDTH
+  const isGroup = node.pinIds.length > 1
+
+  const groupLayout = isGroup ? signalRowLayout(rect, node.pinIds, description) : null
+  const conditionLayout = isGroup ? null : signalConditionLayout(rect, description)
+  const { centerX, titleY, headerBottom } = groupLayout ?? conditionLayout
+
+  return (
+    <g
+      className={editable ? 'mp-node mp-node-editable' : 'mp-node'}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+    >
+      <rect className="mp-signal-node-rect" x={rect.x} y={rect.y} width={rect.width} height={rect.height} />
+      <line className="mp-signal-node-divider" x1={rect.x} y1={headerBottom} x2={rect.x + rect.width} y2={headerBottom} />
+      <line className="mp-signal-node-divider" x1={bodyRight} y1={headerBottom} x2={bodyRight} y2={rect.y + rect.height} />
+      <text className="mp-signal-node-title" x={centerX} y={titleY}>
+        {node.title}
+      </text>
+      {isGroup ? (
+        <>
+          {groupLayout.propertyChip && <TextChip chip={groupLayout.propertyChip} />}
+          {groupLayout.rows.slice(1).map((row) => (
+            <line key={`div-${row.id}`} className="mp-signal-node-divider" x1={rect.x} y1={row.top} x2={bodyRight} y2={row.top} />
+          ))}
+          {groupLayout.rows.map((row) => (
+            <g key={row.id}>
+              {row.labelChip && <TextChip chip={row.labelChip} />}
+              <Pin cx={bodyRight + STRIP_WIDTH / 2} cy={row.midY} variant="signal" />
+            </g>
+          ))}
+        </>
+      ) : (
+        <>
+          {conditionLayout.lines.map((chip, i) => (
+            <TextChip key={i} chip={chip} />
+          ))}
+          {conditionLayout.nested && (
+            <g>
+              <rect
+                className="mp-signal-nested-rect"
+                x={conditionLayout.nested.rect.x}
+                y={conditionLayout.nested.rect.y}
+                width={conditionLayout.nested.rect.width}
+                height={conditionLayout.nested.rect.height}
+              />
+              <text className="mp-signal-nested-title" x={conditionLayout.nested.rect.x + conditionLayout.nested.rect.width / 2} y={conditionLayout.nested.titleY}>
+                {conditionLayout.nested.title}
+              </text>
+              {conditionLayout.nested.lines.map((chip, i) => (
+                <TextChip key={i} chip={chip} />
+              ))}
+            </g>
+          )}
+          <Pin cx={bodyRight + STRIP_WIDTH / 2} cy={conditionLayout.pinY} variant="signal" />
+        </>
+      )}
+    </g>
+  )
+}
+
+// A "pulled" reference from a Condition's own pin to whatever gate reads it -- dashed and yellow
+// (see MarkerPipelineView.css), distinct from a solid amber carrier-flow edge, since nothing is
+// actually pushed along it: see rankByLongestPath's own comment on why signal references carry no
+// Route at all.
+function SignalReferenceEdge({ edge }) {
+  return <path className="mp-signal-edge-path" d={`M ${edge.from.x} ${edge.from.y} L ${edge.to.x} ${edge.to.y}`} />
+}
+
 // Carrier-flow edges are drawn as plain straight lines, pin center to pin center -- no orthogonal
 // routing, no arrowhead (see MarkerPipelineView.css's own comment on why an arrowhead would be
 // redundant here).
@@ -94,17 +293,19 @@ function PipelineEdge({ edge }) {
   return <path className="mp-edge-path" d={`M ${edge.from.x} ${edge.from.y} L ${edge.to.x} ${edge.to.y}`} />
 }
 
-// Diagram for the item type's one pipeline -- shape only, same deliberate restraint
-// StateMachineDiagramView's own comment describes (no gate/condition detail surfaced here beyond
-// what's already structurally visible; that's what opening the pipeline in its own editor will be
-// for, once one exists). Editable only in the sense of repositioning nodes (see the Edit/Save/Cancel
-// bar below and MarkerPipelineViewModel's drag handlers) -- no click-to-select, no editing the
-// pipeline's own structure yet. No name/title shown -- a pipeline has none; it's identified by its
-// item type, which is already this whole tab's own heading.
+// Diagram for the item type's one pipeline -- condition/predicate text is the one place this diagram
+// does surface gate detail (see pipelineConditionText.js), since a Condition has no admin-authored
+// name of its own the way a marker or a block's title does; everywhere else stays the same shape-only
+// restraint StateMachineDiagramView's own comment describes. Editable only in the sense of
+// repositioning nodes (see the Edit/Save/Cancel bar below and MarkerPipelineViewModel's drag
+// handlers) -- no click-to-select, no editing the pipeline's own structure yet. No name/title shown
+// -- a pipeline has none; it's identified by its item type, which is already this whole tab's own
+// heading.
 function MarkerPipelineDiagram({ pipelineView, itemTypeId, saveLayout }) {
   const {
     layout,
     blocks,
+    signalDescriptions,
     start,
     end,
     containerRef,
@@ -154,18 +355,22 @@ function MarkerPipelineDiagram({ pipelineView, itemTypeId, saveLayout }) {
               onPointerMove={onNodePointerMove}
               onPointerUp={onNodePointerUp}
             />
-            {pipelineView.pipeline.carrierBlocks.map((block) => (
-              <CarrierBlockNode
-                key={block.id}
-                rect={layout.rects.get(block.id)}
-                label={blocks.get(block.id)}
-                editable={isEditing}
-                onContextMenu={(event) => onBlockContextMenu(event, block.id)}
-                onPointerDown={(event) => onNodePointerDown(event, block.id)}
-                onPointerMove={onNodePointerMove}
-                onPointerUp={onNodePointerUp}
-              />
-            ))}
+            {pipelineView.pipeline.carrierBlocks.map((block) => {
+              const label = blocks.get(block.id)
+              const Node = label.isFilter ? FilterNode : label.rows ? SelectNode : CarrierBlockNode
+              return (
+                <Node
+                  key={block.id}
+                  rect={layout.rects.get(block.id)}
+                  label={label}
+                  editable={isEditing}
+                  onContextMenu={(event) => onBlockContextMenu(event, block.id)}
+                  onPointerDown={(event) => onNodePointerDown(event, block.id)}
+                  onPointerMove={onNodePointerMove}
+                  onPointerUp={onNodePointerUp}
+                />
+              )
+            })}
             <PseudoStateNode
               rect={layout.rects.get(end.id)}
               kind="END"
@@ -174,10 +379,25 @@ function MarkerPipelineDiagram({ pipelineView, itemTypeId, saveLayout }) {
               onPointerMove={onNodePointerMove}
               onPointerUp={onNodePointerUp}
             />
+            {layout.signalNodes.map((node) => (
+              <SignalNode
+                key={node.id}
+                rect={layout.rects.get(node.id)}
+                node={node}
+                description={signalDescriptions.get(node.id)}
+                editable={isEditing}
+                onPointerDown={(event) => onNodePointerDown(event, node.id)}
+                onPointerMove={onNodePointerMove}
+                onPointerUp={onNodePointerUp}
+              />
+            ))}
           </g>
           <g>
             {layout.edges.map((edge) => (
               <PipelineEdge key={edge.key} edge={edge} />
+            ))}
+            {layout.signalEdges.map((edge) => (
+              <SignalReferenceEdge key={edge.key} edge={edge} />
             ))}
           </g>
         </svg>

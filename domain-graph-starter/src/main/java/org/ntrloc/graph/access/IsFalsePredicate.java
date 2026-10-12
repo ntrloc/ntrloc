@@ -1,4 +1,4 @@
 package org.ntrloc.graph.access;
 
-public record IsFalsePredicate() implements BooleanPredicate {
+public record IsFalsePredicate(Context subject) implements BooleanPredicate {
 }

@@ -20,23 +20,23 @@ class PipelineEvaluatorTest {
     private final UUID markerId = UUID.randomUUID();
     private final UUID selfId = UUID.randomUUID();
 
-    private Signal propertyEquals(String value) {
-        return new Signal(UUID.randomUUID(), new StepToProperty(propertyId, false, new Self()),
-                null, new StringEqualsPredicate(value));
+    private Condition propertyEquals(String value) {
+        return new Condition(UUID.randomUUID(), new StepToProperty(propertyId, false, new Self()),
+                new StringEqualsPredicate(null, value));
     }
 
-    private Pipeline singleGatedCarrier(Signal gateSignal, CarrierBlock carrier) {
+    private Pipeline singleGatedCarrier(Condition gateCondition, CarrierBlock carrier) {
         Start start = new Start(UUID.randomUUID());
         End end = new End(UUID.randomUUID());
-        return new Pipeline(UUID.randomUUID(), List.of(gateSignal), List.of(carrier), start, end, List.of(
+        return new Pipeline(UUID.randomUUID(), List.of(gateCondition), List.of(carrier), start, end, List.of(
                 new Route(start.id(), List.of(carrier.id())),
                 new Route(carrier.id(), List.of(end.id()))));
     }
 
     @Test
     void addMarkers_firesWhenItsOwnPropertyMatchesTheGate() {
-        Signal gate = propertyEquals("OUT_OF_STOCK");
-        AddMarkers add = new AddMarkers(UUID.randomUUID(), gate.id(), List.of(markerId));
+        Condition gate = propertyEquals("OUT_OF_STOCK");
+        AddMarkers add = new AddMarkers(UUID.randomUUID(), Gate.of(gate.id()), List.of(markerId));
         Pipeline pipeline = singleGatedCarrier(gate, add);
 
         Set<UUID> result = PipelineEvaluator.evaluate(pipeline, Map.of(propertyId, "OUT_OF_STOCK"), selfId);
@@ -46,8 +46,8 @@ class PipelineEvaluatorTest {
 
     @Test
     void addMarkers_doesNotFireWhenItsOwnPropertyDoesNotMatchTheGate() {
-        Signal gate = propertyEquals("OUT_OF_STOCK");
-        AddMarkers add = new AddMarkers(UUID.randomUUID(), gate.id(), List.of(markerId));
+        Condition gate = propertyEquals("OUT_OF_STOCK");
+        AddMarkers add = new AddMarkers(UUID.randomUUID(), Gate.of(gate.id()), List.of(markerId));
         Pipeline pipeline = singleGatedCarrier(gate, add);
 
         Set<UUID> result = PipelineEvaluator.evaluate(pipeline, Map.of(propertyId, "IN_STOCK"), selfId);
@@ -57,10 +57,10 @@ class PipelineEvaluatorTest {
 
     @Test
     void removeMarkers_dropsTheMarkerWhenItsGateFires() {
-        Signal gate = propertyEquals("IN_STOCK");
+        Condition gate = propertyEquals("IN_STOCK");
         UUID otherMarker = UUID.randomUUID();
         AddMarkers seed = new AddMarkers(UUID.randomUUID(), null, List.of(markerId, otherMarker));
-        RemoveMarkers remove = new RemoveMarkers(UUID.randomUUID(), gate.id(), List.of(markerId));
+        RemoveMarkers remove = new RemoveMarkers(UUID.randomUUID(), Gate.of(gate.id()), List.of(markerId));
         Start start = new Start(UUID.randomUUID());
         End end = new End(UUID.randomUUID());
         Pipeline pipeline = new Pipeline(UUID.randomUUID(), List.of(gate), List.of(seed, remove), start, end, List.of(
@@ -75,10 +75,10 @@ class PipelineEvaluatorTest {
 
     @Test
     void setMarkers_replacesWhateverCarrierItReceivesWhenItsGateFires() {
-        Signal gate = propertyEquals("DISCONTINUED");
+        Condition gate = propertyEquals("DISCONTINUED");
         UUID discontinuedMarker = UUID.randomUUID();
         AddMarkers seed = new AddMarkers(UUID.randomUUID(), null, List.of(markerId));
-        SetMarkers set = new SetMarkers(UUID.randomUUID(), gate.id(), List.of(discontinuedMarker));
+        SetMarkers set = new SetMarkers(UUID.randomUUID(), Gate.of(gate.id()), List.of(discontinuedMarker));
         Start start = new Start(UUID.randomUUID());
         End end = new End(UUID.randomUUID());
         Pipeline pipeline = new Pipeline(UUID.randomUUID(), List.of(gate), List.of(seed, set), start, end, List.of(
@@ -107,9 +107,9 @@ class PipelineEvaluatorTest {
 
     @Test
     void filter_passesItsCarrierThroughUnchangedWhenItsSignalIsOn() {
-        Signal gate = propertyEquals("IN_STOCK");
+        Condition gate = propertyEquals("IN_STOCK");
         AddMarkers seed = new AddMarkers(UUID.randomUUID(), null, List.of(markerId));
-        Filter filter = new Filter(UUID.randomUUID(), gate.id());
+        Filter filter = new Filter(UUID.randomUUID(), Gate.of(gate.id()));
         Start start = new Start(UUID.randomUUID());
         End end = new End(UUID.randomUUID());
         Pipeline pipeline = new Pipeline(UUID.randomUUID(), List.of(gate), List.of(seed, filter), start, end, List.of(
@@ -124,9 +124,9 @@ class PipelineEvaluatorTest {
 
     @Test
     void filter_producesAnEmptyCarrierWhenItsSignalIsOff() {
-        Signal gate = propertyEquals("IN_STOCK");
+        Condition gate = propertyEquals("IN_STOCK");
         AddMarkers seed = new AddMarkers(UUID.randomUUID(), null, List.of(markerId));
-        Filter filter = new Filter(UUID.randomUUID(), gate.id());
+        Filter filter = new Filter(UUID.randomUUID(), Gate.of(gate.id()));
         Start start = new Start(UUID.randomUUID());
         End end = new End(UUID.randomUUID());
         Pipeline pipeline = new Pipeline(UUID.randomUUID(), List.of(gate), List.of(seed, filter), start, end, List.of(
@@ -183,13 +183,12 @@ class PipelineEvaluatorTest {
     }
 
     @Test
-    void compoundSignalAll_gatesOnlyWhenEveryPropertyConditionHolds() {
+    void totalityPredicateAll_gatesOnlyWhenEveryPropertyConditionHolds() {
         UUID otherPropertyId = UUID.randomUUID();
-        Signal inStock = propertyEquals("IN_STOCK");
-        Signal featured = new Signal(UUID.randomUUID(), new StepToProperty(otherPropertyId, false, new Self()),
-                null, new IsTruePredicate());
-        CompoundSignal both = new CompoundSignal(UUID.randomUUID(), Combinator.ALL, List.of(inStock, featured));
-        AddMarkers add = new AddMarkers(UUID.randomUUID(), both.id(), List.of(markerId));
+        Predicate inStock = new StringEqualsPredicate(new StepToProperty(propertyId, false, new Self()), "IN_STOCK");
+        Predicate featured = new IsTruePredicate(new StepToProperty(otherPropertyId, false, new Self()));
+        Condition both = new Condition(UUID.randomUUID(), null, new TotalityPredicate(null, Quantity.ALL, List.of(inStock, featured)));
+        AddMarkers add = new AddMarkers(UUID.randomUUID(), Gate.of(both.id()), List.of(markerId));
         Start start = new Start(UUID.randomUUID());
         End end = new End(UUID.randomUUID());
         Pipeline pipeline = new Pipeline(UUID.randomUUID(), List.of(both), List.of(add), start, end, List.of(
@@ -201,5 +200,111 @@ class PipelineEvaluatorTest {
 
         assertThat(PipelineEvaluator.evaluate(pipeline, bothTrue, selfId)).containsExactly(markerId);
         assertThat(PipelineEvaluator.evaluate(pipeline, onlyOneTrue, selfId)).isEmpty();
+    }
+
+    @Test
+    void select_rowFiresAndAddsItsMarkerIndependently() {
+        UUID genrePropertyId = UUID.randomUUID();
+        UUID natureMarker = UUID.randomUUID();
+        UUID weddingsMarker = UUID.randomUUID();
+
+        Condition isNature = new Condition(UUID.randomUUID(), null, new StringListIncludesPredicate(null, "NATURE"));
+        Condition isWeddings = new Condition(UUID.randomUUID(), null, new StringListIncludesPredicate(null, "WEDDINGS"));
+        ConditionGroup genres = new ConditionGroup(new StepToProperty(genrePropertyId, false, new Self()), List.of(isNature, isWeddings));
+
+        AddMarkers natureRow = new AddMarkers(UUID.randomUUID(), Gate.of(isNature.id()), List.of(natureMarker));
+        AddMarkers weddingsRow = new AddMarkers(UUID.randomUUID(), Gate.of(isWeddings.id()), List.of(weddingsMarker));
+        Select select = new Select(UUID.randomUUID(), new Gate(List.of(isNature.id(), isWeddings.id()), Quantity.NONE),
+                List.of(natureRow, weddingsRow));
+
+        Start start = new Start(UUID.randomUUID());
+        End end = new End(UUID.randomUUID());
+        // Only the nature row's own output is routed anywhere -- isolating that each row is its own
+        // independently addressable carrier pin, not just reachable via the block's primary one.
+        Pipeline pipeline = new Pipeline(UUID.randomUUID(), List.of(genres), List.of(select), start, end, List.of(
+                new Route(start.id(), List.of(select.id())),
+                new Route(natureRow.id(), List.of(end.id()))));
+
+        Set<UUID> result = PipelineEvaluator.evaluate(pipeline, Map.of(genrePropertyId, List.of("NATURE")), selfId);
+
+        assertThat(result).containsExactly(natureMarker);
+    }
+
+    @Test
+    void select_primaryPinIsOtherwise_emptyWhenARowMatched_passthroughWhenNoneDid() {
+        UUID genrePropertyId = UUID.randomUUID();
+        UUID baselineMarker = UUID.randomUUID();
+
+        Condition isNature = new Condition(UUID.randomUUID(), null, new StringListIncludesPredicate(null, "NATURE"));
+        Condition isWeddings = new Condition(UUID.randomUUID(), null, new StringListIncludesPredicate(null, "WEDDINGS"));
+        ConditionGroup genres = new ConditionGroup(new StepToProperty(genrePropertyId, false, new Self()), List.of(isNature, isWeddings));
+
+        AddMarkers natureRow = new AddMarkers(UUID.randomUUID(), Gate.of(isNature.id()), List.of(UUID.randomUUID()));
+        AddMarkers weddingsRow = new AddMarkers(UUID.randomUUID(), Gate.of(isWeddings.id()), List.of(UUID.randomUUID()));
+        // Authored the way an admin naturally would: NONE over the same two conditions the rows
+        // themselves gate on -- nothing structurally special, just an ordinary Gate (see Select's own
+        // comment on why this isn't enforced as a relationship, just a convention).
+        Select select = new Select(UUID.randomUUID(), new Gate(List.of(isNature.id(), isWeddings.id()), Quantity.NONE),
+                List.of(natureRow, weddingsRow));
+
+        AddMarkers seed = new AddMarkers(UUID.randomUUID(), null, List.of(baselineMarker));
+        Start start = new Start(UUID.randomUUID());
+        End end = new End(UUID.randomUUID());
+        // Only Select's own primary pin routes to End here -- the rows' own outputs are deliberately
+        // unrouted, isolating exactly what (Otherwise) alone carries.
+        Pipeline pipeline = new Pipeline(UUID.randomUUID(), List.of(genres), List.of(seed, select), start, end, List.of(
+                new Route(start.id(), List.of(seed.id())),
+                new Route(seed.id(), List.of(select.id())),
+                new Route(select.id(), List.of(end.id()))));
+
+        Set<UUID> matched = PipelineEvaluator.evaluate(pipeline, Map.of(genrePropertyId, List.of("NATURE")), selfId);
+        Set<UUID> unmatched = PipelineEvaluator.evaluate(pipeline, Map.of(genrePropertyId, List.of("PORTRAIT")), selfId);
+
+        assertThat(matched).isEmpty();
+        assertThat(unmatched).containsExactly(baselineMarker);
+    }
+
+    @Test
+    void select_rowsEachFeedTheirOwnFilterGatedByASharedCondition_evaluatedOnceReusedTwice() {
+        // Mirrors the actual Photographer pipeline shape: <select> on genres routes whichever marker
+        // matched through its own <filter>, both filters sharing one condition, pulled once and reused
+        // -- see SignalEvaluator's own "a condition runs at most once per evaluation" comment. The
+        // shared condition here is a plain property check, standing in for "has an approved portfolio
+        // photo" (that one needs CountedPredicate, not yet evaluatable -- see SignalEvaluator's own
+        // UnsupportedOperationException) -- this isolates the wiring/fan-out-reuse behavior instead.
+        UUID genrePropertyId = UUID.randomUUID();
+        UUID approvedPropertyId = UUID.randomUUID();
+        UUID natureMarker = UUID.randomUUID();
+        UUID weddingsMarker = UUID.randomUUID();
+
+        Condition isNature = new Condition(UUID.randomUUID(), null, new StringListIncludesPredicate(null, "NATURE"));
+        Condition isWeddings = new Condition(UUID.randomUUID(), null, new StringListIncludesPredicate(null, "WEDDINGS"));
+        ConditionGroup genres = new ConditionGroup(new StepToProperty(genrePropertyId, false, new Self()), List.of(isNature, isWeddings));
+        Condition approved = new Condition(UUID.randomUUID(), new StepToProperty(approvedPropertyId, false, new Self()), new IsTruePredicate(null));
+
+        AddMarkers natureRow = new AddMarkers(UUID.randomUUID(), Gate.of(isNature.id()), List.of(natureMarker));
+        AddMarkers weddingsRow = new AddMarkers(UUID.randomUUID(), Gate.of(isWeddings.id()), List.of(weddingsMarker));
+        Select select = new Select(UUID.randomUUID(), new Gate(List.of(isNature.id(), isWeddings.id()), Quantity.NONE),
+                List.of(natureRow, weddingsRow));
+        Filter natureFilter = new Filter(UUID.randomUUID(), Gate.of(approved.id()));
+        Filter weddingsFilter = new Filter(UUID.randomUUID(), Gate.of(approved.id()));
+
+        Start start = new Start(UUID.randomUUID());
+        End end = new End(UUID.randomUUID());
+        Pipeline pipeline = new Pipeline(UUID.randomUUID(), List.of(genres, approved), List.of(select, natureFilter, weddingsFilter),
+                start, end, List.of(
+                new Route(start.id(), List.of(select.id())),
+                new Route(natureRow.id(), List.of(natureFilter.id())),
+                new Route(weddingsRow.id(), List.of(weddingsFilter.id())),
+                new Route(natureFilter.id(), List.of(end.id())),
+                new Route(weddingsFilter.id(), List.of(end.id()))));
+
+        Map<UUID, Object> natureApproved = Map.of(genrePropertyId, List.of("NATURE"), approvedPropertyId, true);
+        Map<UUID, Object> natureNotApproved = Map.of(genrePropertyId, List.of("NATURE"), approvedPropertyId, false);
+        Map<UUID, Object> neitherGenre = Map.of(genrePropertyId, List.of("PORTRAIT"), approvedPropertyId, true);
+
+        assertThat(PipelineEvaluator.evaluate(pipeline, natureApproved, selfId)).containsExactly(natureMarker);
+        assertThat(PipelineEvaluator.evaluate(pipeline, natureNotApproved, selfId)).isEmpty();
+        assertThat(PipelineEvaluator.evaluate(pipeline, neitherGenre, selfId)).isEmpty();
     }
 }

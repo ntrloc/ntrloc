@@ -1,4 +1,4 @@
 package org.ntrloc.graph.access;
 
-public record StringListSizePredicate(ComparisonOperator operator, int value, int valueTo) implements StringListPredicate {
+public record StringListSizePredicate(Context subject, ComparisonOperator operator, int value, int valueTo) implements StringListPredicate {
 }

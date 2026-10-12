@@ -3,13 +3,14 @@ package org.ntrloc.graph.db.partition.authorization;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.access.AddMarkers;
+import org.ntrloc.graph.access.Condition;
 import org.ntrloc.graph.access.End;
+import org.ntrloc.graph.access.Gate;
 import org.ntrloc.graph.access.Pipeline;
 import org.ntrloc.graph.access.PipelineLayout;
 import org.ntrloc.graph.access.Point;
 import org.ntrloc.graph.access.Route;
 import org.ntrloc.graph.access.Self;
-import org.ntrloc.graph.access.Signal;
 import org.ntrloc.graph.access.Start;
 import org.ntrloc.graph.access.StepToProperty;
 import org.ntrloc.graph.access.StringEqualsPredicate;
@@ -39,9 +40,9 @@ class MarkerDecisionPipelineAdminControllerIntegrationTest extends AbstractInteg
     private CoordinatorTestDomainInitializer fixture;
 
     private Pipeline simplePipeline(UUID markerId) {
-        Signal gate = new Signal(UUID.randomUUID(), new StepToProperty(fixture.colorPropertyId(), false, new Self()),
-                null, new StringEqualsPredicate("red"));
-        AddMarkers add = new AddMarkers(UUID.randomUUID(), gate.id(), List.of(markerId));
+        Condition gate = new Condition(UUID.randomUUID(), new StepToProperty(fixture.colorPropertyId(), false, new Self()),
+                new StringEqualsPredicate(null, "red"));
+        AddMarkers add = new AddMarkers(UUID.randomUUID(), Gate.of(gate.id()), List.of(markerId));
         Start start = new Start(UUID.randomUUID());
         End end = new End(UUID.randomUUID());
         return new Pipeline(UUID.randomUUID(), List.of(gate), List.of(add), start, end, List.of(

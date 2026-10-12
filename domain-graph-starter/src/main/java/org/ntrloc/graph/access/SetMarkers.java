@@ -11,10 +11,11 @@ import java.util.UUID;
 // execution-order model this architecture never had -- SetMarkers only ever looks at its own single,
 // always-well-defined incoming pin, regardless of what any other branch is doing. See "Marker
 // actions" in the design notes for the full reasoning.
-public record SetMarkers(UUID id, UUID gate, List<UUID> markerIds) implements CarrierBlock {
+public record SetMarkers(UUID id, Gate gate, List<UUID> markerIds) implements CarrierBlock {
 
     public SetMarkers {
         if (id == null) throw new IllegalArgumentException("SetMarkers requires an id");
+        gate = gate == null ? Gate.UNCONDITIONAL : gate;
         if (markerIds == null || markerIds.isEmpty()) {
             throw new IllegalArgumentException("SetMarkers requires at least 1 marker");
         }

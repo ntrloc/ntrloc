@@ -138,10 +138,12 @@ public final class PredicateEvaluator {
         if (p instanceof DateListIsNotEmptyPredicate) return !v.isEmpty();
         if (p instanceof DateListSizePredicate e) return compareNumber(e.operator(), v.size(), e.value(), e.valueTo());
         if (p instanceof DateListMinPredicate e) {
-            return evaluateDate(new DatePredicate(e.operator(), e.value(), e.valueTo()), minInstant(v));
+            // subject is irrelevant here -- evaluateDate never reads it, this is just reusing the
+            // operator/value/valueTo comparison logic against an already-reduced Instant.
+            return evaluateDate(new DatePredicate(null, e.operator(), e.value(), e.valueTo()), minInstant(v));
         }
         if (p instanceof DateListMaxPredicate e) {
-            return evaluateDate(new DatePredicate(e.operator(), e.value(), e.valueTo()), maxInstant(v));
+            return evaluateDate(new DatePredicate(null, e.operator(), e.value(), e.valueTo()), maxInstant(v));
         }
         throw new IllegalArgumentException("Unsupported DateListPredicate: " + p);
     }

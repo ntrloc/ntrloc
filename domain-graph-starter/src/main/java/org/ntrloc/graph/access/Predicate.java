@@ -7,9 +7,18 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
 // membership/presence, boolean, state machine, identity); collapsed to one fielded class wherever
 // every operator is safely interchangeable (number, date, and any list/link reduced to a size, count,
 // sum, avg, min, or max -- all of which are themselves just numbers or dates). See the marker
-// decision pipeline design notes, "Signals: reading facts" / "Object shape", for the full reasoning.
+// decision pipeline design notes, "Conditions: reading facts" / "Object shape", for the full reasoning.
 //
-// A predicate never has an output pin of its own except as a member of a PredicateSignal -- see Pin.
+// Every predicate -- a leaf value test, a TotalityPredicate, or a CountedPredicate, no exceptions by
+// kind -- carries its own `subject`, nullable, inherited from whatever contains it when absent (the
+// enclosing Condition, or an enclosing TotalityPredicate/CountedPredicate's own effective subject).
+// This is what lets two predicates nested in the same group address two different properties (see
+// ConditionGroup's own comment), and what makes a TotalityPredicate/CountedPredicate's sub-predicates
+// meaningfully composable instead of all being forced to share one subject declared only at the top.
+//
+// A predicate never has an output pin of its own -- only a Condition does (see Condition's own
+// comment); TotalityPredicate/CountedPredicate nest other predicates directly, never by reference to a
+// separately-pinned block.
 //
 // @JsonSubTypes lists every concrete leaf directly, skipping the intermediate sealed interfaces
 // (StringPredicate, NumberListPredicate, etc.) -- those exist for Java-level type safety among
@@ -48,10 +57,15 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
         @JsonSubTypes.Type(value = LinkCountPredicate.class, name = "LINK_COUNT"),
         @JsonSubTypes.Type(value = StateEqualsPredicate.class, name = "STATE_EQUALS"),
         @JsonSubTypes.Type(value = NoStatePredicate.class, name = "NO_STATE"),
-        @JsonSubTypes.Type(value = EqualsSelfPredicate.class, name = "EQUALS_SELF")
+        @JsonSubTypes.Type(value = EqualsSelfPredicate.class, name = "EQUALS_SELF"),
+        @JsonSubTypes.Type(value = TotalityPredicate.class, name = "TOTALITY"),
+        @JsonSubTypes.Type(value = CountedPredicate.class, name = "COUNTED")
 })
 public sealed interface Predicate
         permits StringPredicate, NumberPredicate, DatePredicate, BooleanPredicate,
         StringListPredicate, NumberListPredicate, DateListPredicate,
-        LinkPredicate, StateMachinePredicate, IdentityPredicate {
+        LinkPredicate, StateMachinePredicate, IdentityPredicate,
+        TotalityPredicate, CountedPredicate {
+
+    Context subject();
 }

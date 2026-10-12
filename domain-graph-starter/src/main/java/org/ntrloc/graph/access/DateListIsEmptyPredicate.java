@@ -1,4 +1,4 @@
 package org.ntrloc.graph.access;
 
-public record DateListIsEmptyPredicate() implements DateListPredicate {
+public record DateListIsEmptyPredicate(Context subject) implements DateListPredicate {
 }

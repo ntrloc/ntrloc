@@ -8,7 +8,7 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
 // StepToStateMachine has no `next` -- it's structurally terminal, so "a state machine leads somewhere
 // else" is impossible to construct rather than a rule enforced elsewhere. `each` on the three
 // steppable variants marks whether a to-many step is iterated (correlated per instance) or flattened;
-// see the marker decision pipeline design notes, "Signals: reading facts", for the full reasoning.
+// see the marker decision pipeline design notes, "Conditions: reading facts", for the full reasoning.
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
 @JsonSubTypes({
         @JsonSubTypes.Type(value = Self.class, name = "SELF"),

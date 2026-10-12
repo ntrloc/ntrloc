@@ -10,7 +10,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 // Pins down the watch-derivation rule worked through in "Pipeline-level watches": the atomic unit is
 // each individually-referenced thing (a specific property/link/state machine id) anywhere in any
-// signal's context, not the chain as a whole and not `each`.
+// condition's subject chain, not the chain as a whole and not `each`.
 class WatchDerivationTest {
 
     private static Pipeline pipelineOf(SignalBlock... signals) {
@@ -19,20 +19,20 @@ class WatchDerivationTest {
     }
 
     @Test
-    void aFlatSignalWatchesJustItsOwnReferencedThing() {
+    void aFlatConditionWatchesJustItsOwnReferencedThing() {
         UUID firstName = UUID.randomUUID();
-        Signal signal = new Signal(UUID.randomUUID(),
-                new StepToProperty(firstName, false, new Self()), null, new StringExistsPredicate());
+        Condition condition = new Condition(UUID.randomUUID(),
+                new StepToProperty(firstName, false, new Self()), new StringExistsPredicate(null));
 
-        Set<UUID> watches = WatchDerivation.derive(pipelineOf(signal));
+        Set<UUID> watches = WatchDerivation.derive(pipelineOf(condition));
 
         assertThat(watches).containsExactly(firstName);
     }
 
     @Test
-    void selfContextWithNoStepsWatchesNothing() {
-        Signal signal = new Signal(UUID.randomUUID(), new Self(), "firstName", new StringExistsPredicate());
-        assertThat(WatchDerivation.derive(pipelineOf(signal))).isEmpty();
+    void selfSubjectWithNoStepsWatchesNothing() {
+        Condition condition = new Condition(UUID.randomUUID(), new Self(), new StringExistsPredicate(null));
+        assertThat(WatchDerivation.derive(pipelineOf(condition))).isEmpty();
     }
 
     @Test
@@ -46,24 +46,25 @@ class WatchDerivationTest {
         Context chain = new StepToItem(photos, true,
                 new StepToItem(portfolios, true,
                         new StepToStateMachine(approvedStatus)));
-        CountedSignal signal = new CountedSignal(UUID.randomUUID(), chain,
-                new Signal(UUID.randomUUID(), new Self(), null, new StateEqualsPredicate(UUID.randomUUID())),
-                new NumberPredicate(ComparisonOperator.GREATER_THAN, 0, null));
+        CountedPredicate counted = new CountedPredicate(chain,
+                new StateEqualsPredicate(null, UUID.randomUUID()),
+                new NumberPredicate(null, ComparisonOperator.GREATER_THAN, 0, null));
+        Condition condition = new Condition(UUID.randomUUID(), null, counted);
 
-        Set<UUID> watches = WatchDerivation.derive(pipelineOf(signal));
+        Set<UUID> watches = WatchDerivation.derive(pipelineOf(condition));
 
         assertThat(watches).containsExactlyInAnyOrder(photos, portfolios, approvedStatus);
     }
 
     @Test
     void eachFlagDoesNotAffectWatchIdentity() {
-        // Two signals referencing the same link, one iterated and one flattened, still produce one
+        // Two conditions referencing the same link, one iterated and one flattened, still produce one
         // watch -- each is about consumption within a chain, not about what's being watched.
         UUID photosLink = UUID.randomUUID();
-        Signal iterated = new Signal(UUID.randomUUID(),
-                new StepToItem(photosLink, true, new Self()), null, new IsTruePredicate());
-        Signal flattened = new Signal(UUID.randomUUID(),
-                new StepToItem(photosLink, false, new Self()), null, new IsTruePredicate());
+        Condition iterated = new Condition(UUID.randomUUID(),
+                new StepToItem(photosLink, true, new Self()), new IsTruePredicate(null));
+        Condition flattened = new Condition(UUID.randomUUID(),
+                new StepToItem(photosLink, false, new Self()), new IsTruePredicate(null));
 
         Set<UUID> watches = WatchDerivation.derive(pipelineOf(iterated, flattened));
 
@@ -71,27 +72,50 @@ class WatchDerivationTest {
     }
 
     @Test
-    void compoundSignalContributesNoContextOfItsOwnButItsSubSignalsDo() {
+    void totalityPredicateContributesNoSubjectOfItsOwnByDefaultButItsSubPredicatesDo() {
         UUID hireDate = UUID.randomUUID();
         UUID firstName = UUID.randomUUID();
-        Signal a = new Signal(UUID.randomUUID(), new StepToProperty(hireDate, false, new Self()), null, new IsTruePredicate());
-        Signal b = new Signal(UUID.randomUUID(), new StepToProperty(firstName, false, new Self()), null, new StringExistsPredicate());
-        CompoundSignal compound = new CompoundSignal(UUID.randomUUID(), Combinator.ALL, List.of(a, b));
+        Predicate a = new IsTruePredicate(new StepToProperty(hireDate, false, new Self()));
+        Predicate b = new StringExistsPredicate(new StepToProperty(firstName, false, new Self()));
+        TotalityPredicate totality = new TotalityPredicate(null, Quantity.ALL, List.of(a, b));
+        Condition condition = new Condition(UUID.randomUUID(), null, totality);
 
-        Set<UUID> watches = WatchDerivation.derive(pipelineOf(compound));
+        Set<UUID> watches = WatchDerivation.derive(pipelineOf(condition));
 
         assertThat(watches).containsExactlyInAnyOrder(hireDate, firstName);
     }
 
     @Test
-    void predicateSignalsContextIsWatchedLikeAnyOtherSignal() {
+    void conditionGroupsSubjectIsWatchedLikeAnyOtherCondition() {
         UUID genres = UUID.randomUUID();
-        PredicateSignal predicateSignal = new PredicateSignal(
-                new StepToProperty(genres, false, new Self()), "genres", List.of(
-                new PinnedPredicate(UUID.randomUUID(), new StringListIncludesPredicate("NATURE")),
-                new PinnedPredicate(UUID.randomUUID(), new StringListIncludesPredicate("WEDDINGS"))));
+        Condition nature = new Condition(UUID.randomUUID(), null, new StringListIncludesPredicate(null, "NATURE"));
+        Condition weddings = new Condition(UUID.randomUUID(), null, new StringListIncludesPredicate(null, "WEDDINGS"));
+        ConditionGroup group = new ConditionGroup(new StepToProperty(genres, false, new Self()), List.of(nature, weddings));
 
-        Set<UUID> watches = WatchDerivation.derive(pipelineOf(predicateSignal));
+        Set<UUID> watches = WatchDerivation.derive(pipelineOf(group));
+
+        assertThat(watches).containsExactly(genres);
+    }
+
+    @Test
+    void aSelectsReferencedConditionsAreWatched_noSelectAwarenessNeededInWatchDerivation() {
+        // Select never embeds a private signal graph -- every condition it references already lives in
+        // topLevelSignals like any other, so WatchDerivation needs zero Select-specific handling to
+        // correctly watch what a <select>-based pipeline actually depends on.
+        UUID genres = UUID.randomUUID();
+        Condition nature = new Condition(UUID.randomUUID(), null, new StringListIncludesPredicate(null, "NATURE"));
+        Condition weddings = new Condition(UUID.randomUUID(), null, new StringListIncludesPredicate(null, "WEDDINGS"));
+        ConditionGroup group = new ConditionGroup(new StepToProperty(genres, false, new Self()), List.of(nature, weddings));
+
+        AddMarkers natureRow = new AddMarkers(UUID.randomUUID(), Gate.of(nature.id()), List.of(UUID.randomUUID()));
+        AddMarkers weddingsRow = new AddMarkers(UUID.randomUUID(), Gate.of(weddings.id()), List.of(UUID.randomUUID()));
+        Select select = new Select(UUID.randomUUID(), new Gate(List.of(nature.id(), weddings.id()), Quantity.NONE),
+                List.of(natureRow, weddingsRow));
+
+        Pipeline pipeline = new Pipeline(UUID.randomUUID(), List.of(group), List.of(select),
+                new Start(UUID.randomUUID()), new End(UUID.randomUUID()), List.of());
+
+        Set<UUID> watches = WatchDerivation.derive(pipeline);
 
         assertThat(watches).containsExactly(genres);
     }
@@ -99,8 +123,8 @@ class WatchDerivationTest {
     // A pipeline with no signals at all (e.g. a bare <set> with no gate) can never be triggered by
     // a fact change, since it references no fact -- but it still needs exactly one trigger to ever
     // run. ITEM_CREATED is that trigger; see WatchDerivation's own comment on the sentinel. This is
-    // deliberately distinct from selfContextWithNoStepsWatchesNothing above: that pipeline DOES have
-    // a real, admin-authored gate (a bare Self context that just doesn't resolve to a watchable id),
+    // deliberately distinct from selfSubjectWithNoStepsWatchesNothing above: that pipeline DOES have
+    // a real, admin-authored gate (a bare Self subject that just doesn't resolve to a watchable id),
     // and must stay watching nothing rather than being mistaken for unconditional.
     @Test
     void aPipelineWithNoSignalsWatchesOnlyItemCreated() {

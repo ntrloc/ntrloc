@@ -1,4 +1,4 @@
 package org.ntrloc.graph.access;
 
-public record NumberListAvgPredicate(ComparisonOperator operator, Number value, Number valueTo) implements NumberListPredicate {
+public record NumberListAvgPredicate(Context subject, ComparisonOperator operator, Number value, Number valueTo) implements NumberListPredicate {
 }

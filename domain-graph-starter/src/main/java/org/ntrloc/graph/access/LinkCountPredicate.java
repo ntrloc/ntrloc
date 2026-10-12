@@ -1,4 +1,4 @@
 package org.ntrloc.graph.access;
 
-public record LinkCountPredicate(ComparisonOperator operator, int value, int valueTo) implements LinkPredicate {
+public record LinkCountPredicate(Context subject, ComparisonOperator operator, int value, int valueTo) implements LinkPredicate {
 }

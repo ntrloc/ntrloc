@@ -13,28 +13,28 @@ class SignalEvaluatorTest {
 
     private final UUID selfId = UUID.randomUUID();
 
-    private Signal propertySignal(UUID propertyId, String equalsValue) {
-        return new Signal(UUID.randomUUID(), new StepToProperty(propertyId, false, new Self()),
-                null, new StringEqualsPredicate(equalsValue));
+    private Condition propertyCondition(UUID propertyId, String equalsValue) {
+        return new Condition(UUID.randomUUID(), new StepToProperty(propertyId, false, new Self()),
+                new StringEqualsPredicate(null, equalsValue));
     }
 
     @Test
-    void evaluatesABareSignalPinDirectly() {
+    void evaluatesABareConditionPinDirectly() {
         UUID propertyId = UUID.randomUUID();
-        Signal signal = propertySignal(propertyId, "IN_STOCK");
+        Condition condition = propertyCondition(propertyId, "IN_STOCK");
 
-        boolean result = SignalEvaluator.evaluatePin(signal.id(), List.of(signal), Map.of(propertyId, "IN_STOCK"), selfId);
+        boolean result = SignalEvaluator.evaluatePin(condition.id(), List.of(condition), Map.of(propertyId, "IN_STOCK"), selfId);
 
         assertThat(result).isTrue();
     }
 
     @Test
-    void evaluatesACompoundSignalsOwnPin_anyShortCircuitsOnTheFirstTrue() {
+    void evaluatesATotalityPredicatesCondition_anyShortCircuitsOnTheFirstTrue() {
         UUID propertyA = UUID.randomUUID();
         UUID propertyB = UUID.randomUUID();
-        Signal a = propertySignal(propertyA, "X");
-        Signal b = propertySignal(propertyB, "Y");
-        CompoundSignal any = new CompoundSignal(UUID.randomUUID(), Combinator.ANY, List.of(a, b));
+        Predicate a = new StringEqualsPredicate(new StepToProperty(propertyA, false, new Self()), "X");
+        Predicate b = new StringEqualsPredicate(new StepToProperty(propertyB, false, new Self()), "Y");
+        Condition any = new Condition(UUID.randomUUID(), null, new TotalityPredicate(null, Quantity.ANY, List.of(a, b)));
 
         boolean result = SignalEvaluator.evaluatePin(any.id(), List.of(any), Map.of(propertyA, "X", propertyB, "nope"), selfId);
 
@@ -42,29 +42,83 @@ class SignalEvaluatorTest {
     }
 
     @Test
-    void evaluatesANestedSubSignalsPin_notJustTheCompoundsOwnPin() {
+    void aPredicatesOwnSubjectOverridesWhatItWouldOtherwiseInherit() {
         UUID propertyA = UUID.randomUUID();
         UUID propertyB = UUID.randomUUID();
-        Signal a = propertySignal(propertyA, "X");
-        Signal b = propertySignal(propertyB, "Y");
-        CompoundSignal compound = new CompoundSignal(UUID.randomUUID(), Combinator.ALL, List.of(a, b));
+        // The condition establishes propertyA, but its one predicate declares its own subject
+        // (propertyB) instead -- that override must win, not the inherited one.
+        Condition condition = new Condition(UUID.randomUUID(), new StepToProperty(propertyA, false, new Self()),
+                new StringEqualsPredicate(new StepToProperty(propertyB, false, new Self()), "Y"));
 
-        boolean result = SignalEvaluator.evaluatePin(b.id(), List.of(compound), Map.of(propertyB, "Y"), selfId);
+        boolean result = SignalEvaluator.evaluatePin(condition.id(), List.of(condition),
+                Map.of(propertyA, "Y", propertyB, "Y"), selfId);
+
+        assertThat(result).isTrue();
+        boolean usesPropertyB = SignalEvaluator.evaluatePin(condition.id(), List.of(condition),
+                Map.of(propertyA, "Y", propertyB, "not Y"), selfId);
+        assertThat(usesPropertyB).isFalse();
+    }
+
+    @Test
+    void totalityPredicatesSubPredicatesCanEachDeclareADifferentSubject() {
+        // The motivating gap this whole model revision closed: "firstName is not null" and "photos is
+        // not empty" as siblings, each addressing a different property, grouped under one condition.
+        UUID firstName = UUID.randomUUID();
+        UUID photos = UUID.randomUUID();
+        Predicate firstNameIsNotNull = new StringExistsPredicate(new StepToProperty(firstName, false, new Self()));
+        Predicate photosIsNotEmpty = new StringListIsNotEmptyPredicate(new StepToProperty(photos, false, new Self()));
+        Condition condition = new Condition(UUID.randomUUID(), null,
+                new TotalityPredicate(null, Quantity.ALL, List.of(firstNameIsNotNull, photosIsNotEmpty)));
+
+        boolean result = SignalEvaluator.evaluatePin(condition.id(), List.of(condition),
+                Map.of(firstName, "Ada", photos, List.of("photo1")), selfId);
 
         assertThat(result).isTrue();
     }
 
     @Test
-    void evaluatesOnePinnedPredicateInsideAPredicateSignal_independentlyOfItsSiblings() {
+    void evaluatesOneConditionInsideAConditionGroup_independentlyOfItsSiblings() {
         UUID propertyId = UUID.randomUUID();
-        PinnedPredicate low = new PinnedPredicate(UUID.randomUUID(), new NumberPredicate(ComparisonOperator.LESS_THAN, 10, null));
-        PinnedPredicate high = new PinnedPredicate(UUID.randomUUID(), new NumberPredicate(ComparisonOperator.GREATER_THAN_OR_EQUAL, 10, null));
-        PredicateSignal signal = new PredicateSignal(new StepToProperty(propertyId, false, new Self()), null, List.of(low, high));
+        Condition low = new Condition(UUID.randomUUID(), null, new NumberPredicate(null, ComparisonOperator.LESS_THAN, 10, null));
+        Condition high = new Condition(UUID.randomUUID(), null, new NumberPredicate(null, ComparisonOperator.GREATER_THAN_OR_EQUAL, 10, null));
+        ConditionGroup group = new ConditionGroup(new StepToProperty(propertyId, false, new Self()), List.of(low, high));
 
         Map<UUID, Object> props = Map.of(propertyId, 25);
 
-        assertThat(SignalEvaluator.evaluatePin(low.id(), List.of(signal), props, selfId)).isFalse();
-        assertThat(SignalEvaluator.evaluatePin(high.id(), List.of(signal), props, selfId)).isTrue();
+        assertThat(SignalEvaluator.evaluatePin(low.id(), List.of(group), props, selfId)).isFalse();
+        assertThat(SignalEvaluator.evaluatePin(high.id(), List.of(group), props, selfId)).isTrue();
+    }
+
+    @Test
+    void evaluateGate_unconditionalAlwaysFiresWithoutConsultingAnyPin() {
+        assertThat(SignalEvaluator.evaluateGate(Gate.UNCONDITIONAL, List.of(), Map.of(), selfId)).isTrue();
+    }
+
+    @Test
+    void evaluateGate_combinesSeveralConditionPinsByQuantity_notJustOne() {
+        // A gate was always going to be able to combine more than one condition pin directly, without
+        // needing a TotalityPredicate wrapping them purely to produce one combined pin -- that
+        // mechanism solves a different problem (predicates within one condition's own fact-reading),
+        // not this one (several already-resolved conditions deciding whether a carrier block fires).
+        UUID propertyA = UUID.randomUUID();
+        UUID propertyB = UUID.randomUUID();
+        Condition a = propertyCondition(propertyA, "X");
+        Condition b = propertyCondition(propertyB, "Y");
+        List<SignalBlock> signals = List.of(a, b);
+        Gate all = new Gate(List.of(a.id(), b.id()), Quantity.ALL);
+        Gate any = new Gate(List.of(a.id(), b.id()), Quantity.ANY);
+        Gate none = new Gate(List.of(a.id(), b.id()), Quantity.NONE);
+
+        Map<UUID, Object> bothMatch = Map.of(propertyA, "X", propertyB, "Y");
+        Map<UUID, Object> onlyOneMatches = Map.of(propertyA, "X", propertyB, "nope");
+        Map<UUID, Object> neitherMatches = Map.of(propertyA, "nope", propertyB, "nope");
+
+        assertThat(SignalEvaluator.evaluateGate(all, signals, bothMatch, selfId)).isTrue();
+        assertThat(SignalEvaluator.evaluateGate(all, signals, onlyOneMatches, selfId)).isFalse();
+        assertThat(SignalEvaluator.evaluateGate(any, signals, onlyOneMatches, selfId)).isTrue();
+        assertThat(SignalEvaluator.evaluateGate(any, signals, neitherMatches, selfId)).isFalse();
+        assertThat(SignalEvaluator.evaluateGate(none, signals, neitherMatches, selfId)).isTrue();
+        assertThat(SignalEvaluator.evaluateGate(none, signals, onlyOneMatches, selfId)).isFalse();
     }
 
     @Test

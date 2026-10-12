@@ -15,14 +15,14 @@ class PipelineTest {
 
     @Test
     void constructsASimpleGatedAddMarkersPipeline() {
-        UUID signalId = UUID.randomUUID();
-        Signal embargoed = new Signal(signalId, new Self(), null, new IsTruePredicate());
+        UUID conditionId = UUID.randomUUID();
+        Condition embargoed = new Condition(conditionId, new Self(), new IsTruePredicate(null));
 
         UUID startId = UUID.randomUUID();
         UUID addId = UUID.randomUUID();
         UUID endId = UUID.randomUUID();
         Start start = new Start(startId);
-        AddMarkers add = new AddMarkers(addId, signalId, List.of(UUID.randomUUID()));
+        AddMarkers add = new AddMarkers(addId, Gate.of(conditionId), List.of(UUID.randomUUID()));
         End end = new End(endId);
 
         Pipeline pipeline = new Pipeline(
@@ -40,7 +40,7 @@ class PipelineTest {
     void rejectsAGateReferencingAnUnknownSignalPin() {
         Start start = new Start(UUID.randomUUID());
         End end = new End(UUID.randomUUID());
-        AddMarkers danglingGate = new AddMarkers(UUID.randomUUID(), UUID.randomUUID(), List.of(UUID.randomUUID()));
+        AddMarkers danglingGate = new AddMarkers(UUID.randomUUID(), Gate.of(UUID.randomUUID()), List.of(UUID.randomUUID()));
 
         assertThatIllegalArgumentException().isThrownBy(() ->
                 new Pipeline(UUID.randomUUID(), List.of(), List.of(danglingGate), start, end, List.of()));
@@ -60,17 +60,45 @@ class PipelineTest {
     void filterSignalReferenceIsValidatedTheSameWayAsAGate() {
         Start start = new Start(UUID.randomUUID());
         End end = new End(UUID.randomUUID());
-        Filter danglingSignal = new Filter(UUID.randomUUID(), UUID.randomUUID());
+        Filter danglingSignal = new Filter(UUID.randomUUID(), Gate.of(UUID.randomUUID()));
 
         assertThatIllegalArgumentException().isThrownBy(() ->
                 new Pipeline(UUID.randomUUID(), List.of(), List.of(danglingSignal), start, end, List.of()));
     }
 
     @Test
-    void collectSignalPinIdsReachesPredicateSignalsPinnedPredicates() {
-        PinnedPredicate nature = new PinnedPredicate(UUID.randomUUID(), new StringListIncludesPredicate("NATURE"));
-        PinnedPredicate weddings = new PinnedPredicate(UUID.randomUUID(), new StringListIncludesPredicate("WEDDINGS"));
-        PredicateSignal genres = new PredicateSignal(new Self(), "genres", List.of(nature, weddings));
+    void rejectsASelectRowGateReferencingAnUnknownSignalPin() {
+        Start start = new Start(UUID.randomUUID());
+        End end = new End(UUID.randomUUID());
+        AddMarkers danglingRow = new AddMarkers(UUID.randomUUID(), Gate.of(UUID.randomUUID()), List.of(UUID.randomUUID()));
+        Select select = new Select(UUID.randomUUID(), null, List.of(danglingRow));
+
+        assertThatIllegalArgumentException().isThrownBy(() ->
+                new Pipeline(UUID.randomUUID(), List.of(), List.of(select), start, end, List.of()));
+    }
+
+    @Test
+    void aSelectsRowIdsAreValidRouteTargetsInTheirOwnRight() {
+        // Nothing routes to a row from outside (see Select's own comment -- it's fed internally), but
+        // something downstream absolutely can route *from* one, same as any other carrier block's id.
+        Condition isNature = new Condition(UUID.randomUUID(), null, new StringListIncludesPredicate(null, "NATURE"));
+        AddMarkers natureRow = new AddMarkers(UUID.randomUUID(), Gate.of(isNature.id()), List.of(UUID.randomUUID()));
+        Select select = new Select(UUID.randomUUID(), null, List.of(natureRow));
+        Start start = new Start(UUID.randomUUID());
+        End end = new End(UUID.randomUUID());
+
+        Pipeline pipeline = new Pipeline(UUID.randomUUID(), List.of(isNature), List.of(select), start, end, List.of(
+                new Route(start.id(), List.of(select.id())),
+                new Route(natureRow.id(), List.of(end.id()))));
+
+        assertThat(pipeline.carrierBlocks()).containsExactly(select);
+    }
+
+    @Test
+    void collectSignalPinIdsReachesEveryConditionInsideAConditionGroup() {
+        Condition nature = new Condition(UUID.randomUUID(), null, new StringListIncludesPredicate(null, "NATURE"));
+        Condition weddings = new Condition(UUID.randomUUID(), null, new StringListIncludesPredicate(null, "WEDDINGS"));
+        ConditionGroup genres = new ConditionGroup(new Self(), List.of(nature, weddings));
 
         var ids = Pipeline.collectSignalPinIds(List.of(genres));
 
@@ -78,30 +106,20 @@ class PipelineTest {
     }
 
     @Test
-    void collectSignalPinIdsRecursesIntoCompoundAndCountedSignals() {
-        Signal createDate = new Signal(UUID.randomUUID(), new Self(), null, new IsTruePredicate());
-        Signal approvedStatus = new Signal(UUID.randomUUID(), new Self(), null, new IsTruePredicate());
-        CompoundSignal both = new CompoundSignal(UUID.randomUUID(), Combinator.ALL, List.of(createDate, approvedStatus));
-        CountedSignal counted = new CountedSignal(UUID.randomUUID(),
+    void collectSignalPinIdsNeverDescendsIntoAConditionsOwnPredicateTree() {
+        // A predicate -- even a TotalityPredicate/CountedPredicate nesting others -- never has a pin
+        // of its own; only the enclosing Condition does. So a condition built from a CountedPredicate
+        // wrapping a TotalityPredicate wrapping two leaves still contributes exactly one pin: its own.
+        Predicate createDate = new IsTruePredicate(null);
+        Predicate approvedStatus = new IsTruePredicate(null);
+        TotalityPredicate both = new TotalityPredicate(null, Quantity.ALL, List.of(createDate, approvedStatus));
+        CountedPredicate counted = new CountedPredicate(
                 new StepToItem(UUID.randomUUID(), true, new Self()), both,
-                new NumberPredicate(ComparisonOperator.GREATER_THAN, 0, null));
+                new NumberPredicate(null, ComparisonOperator.GREATER_THAN, 0, null));
+        Condition condition = new Condition(UUID.randomUUID(), null, counted);
 
-        var ids = Pipeline.collectSignalPinIds(List.of(counted));
+        var ids = Pipeline.collectSignalPinIds(List.of(condition));
 
-        assertThat(ids).containsExactlyInAnyOrder(counted.id(), both.id(), createDate.id(), approvedStatus.id());
-    }
-
-    @Test
-    void allSignalBlocksFlattensTheNestedTreeDepthFirst() {
-        Signal leaf = new Signal(UUID.randomUUID(), new Self(), null, new IsTruePredicate());
-        CountedSignal counted = new CountedSignal(UUID.randomUUID(),
-                new StepToItem(UUID.randomUUID(), true, new Self()), leaf,
-                new NumberPredicate(ComparisonOperator.GREATER_THAN, 0, null));
-
-        Start start = new Start(UUID.randomUUID());
-        End end = new End(UUID.randomUUID());
-        Pipeline pipeline = new Pipeline(UUID.randomUUID(), List.of(counted), List.of(), start, end, List.of());
-
-        assertThat(pipeline.allSignalBlocks()).containsExactly(counted, leaf);
+        assertThat(ids).containsExactly(condition.id());
     }
 }

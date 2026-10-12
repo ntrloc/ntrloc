@@ -8,13 +8,13 @@ import java.util.UUID;
 
 // One marker decision pipeline. Start/End are dedicated fields, not entries in carrierBlocks -- that
 // makes "exactly one start, exactly one end" true by construction rather than a count someone has to
-// check. topLevelSignals holds only the signal blocks a carrier block's gate can actually reach
-// (nested sub-signals inside a CompoundSignal/CountedSignal are reached transitively, not listed
-// separately here -- they're embedded in their parent's own tree). No watches field: watches are
-// derived from the signal graph, not separately authored -- see WatchDerivation.
+// check. topLevelSignals holds every Condition/ConditionGroup a carrier block's Gate can actually
+// reach -- a ConditionGroup's own conditions are listed inside it, not separately here, but each still
+// has its own addressable id (see Condition's own comment). No watches field: watches are derived from
+// the signal graph, not separately authored -- see WatchDerivation.
 //
-// Validates eagerly, at construction, that every gate/signal reference and every Route id actually
-// resolves against this pipeline's own graph. Deeper structural checks (every carrier block reachable
+// Validates eagerly, at construction, that every Gate's condition pins and every Route id actually
+// resolve against this pipeline's own graph. Deeper structural checks (every carrier block reachable
 // from start, every path reaching end) are a separate concern -- see PipelineValidation -- since they
 // need real graph traversal, not just a lookup.
 public record Pipeline(
@@ -36,10 +36,13 @@ public record Pipeline(
 
         Set<UUID> signalPinIds = collectSignalPinIds(topLevelSignals);
         for (CarrierBlock block : carrierBlocks) {
-            UUID gate = gateOf(block);
-            if (gate != null && !signalPinIds.contains(gate)) {
-                throw new IllegalArgumentException(
-                        "Carrier block " + block.id() + " references unknown signal pin " + gate);
+            for (Gate gate : gatesOf(block)) {
+                for (UUID pin : gate.conditionOutputPinIds()) {
+                    if (!signalPinIds.contains(pin)) {
+                        throw new IllegalArgumentException(
+                                "Carrier block " + block.id() + " references unknown signal pin " + pin);
+                    }
+                }
             }
         }
 
@@ -48,6 +51,11 @@ public record Pipeline(
         carrierBlockIds.add(end.id());
         for (CarrierBlock block : carrierBlocks) {
             carrierBlockIds.add(block.id());
+            if (block instanceof Select s) {
+                for (AddMarkers row : s.adds()) {
+                    carrierBlockIds.add(row.id());
+                }
+            }
         }
         for (Route route : routes) {
             if (!carrierBlockIds.contains(route.outputPinId())) {
@@ -63,63 +71,40 @@ public record Pipeline(
         }
     }
 
-    // null for Start/End/AddMarkers|RemoveMarkers|SetMarkers-with-no-gate; Filter's signal is
-    // mandatory so it's never null there.
-    private static UUID gateOf(CarrierBlock block) {
-        if (block instanceof AddMarkers b) return b.gate();
-        if (block instanceof RemoveMarkers b) return b.gate();
-        if (block instanceof SetMarkers b) return b.gate();
-        if (block instanceof Filter b) return b.signal();
-        return null; // Start, End
+    // Every Gate this block owns -- its own, plus (for Select) each row's own, since a row's gate is
+    // just as real a point of contact with the signal domain as any standalone AddMarkers' is. Empty
+    // for Start/End, which have no Gate at all.
+    private static List<Gate> gatesOf(CarrierBlock block) {
+        if (block instanceof AddMarkers b) return List.of(b.gate());
+        if (block instanceof RemoveMarkers b) return List.of(b.gate());
+        if (block instanceof SetMarkers b) return List.of(b.gate());
+        if (block instanceof Filter b) return List.of(b.signal());
+        if (block instanceof Select s) {
+            List<Gate> gates = new ArrayList<>();
+            gates.add(s.gate());
+            for (AddMarkers row : s.adds()) {
+                gates.add(row.gate());
+            }
+            return gates;
+        }
+        return List.of(); // Start, End
     }
 
-    // Every addressable pin id reachable from this pipeline's top-level signals: a SingleOutputSignal's
-    // own id, recursing into CompoundSignal.subSignals / CountedSignal.subSignal, plus each
-    // PinnedPredicate's id inside a PredicateSignal.
+    // Every addressable pin id reachable from this pipeline's top-level signals: a standalone
+    // Condition's own id, or each Condition's id inside a ConditionGroup. A predicate (even a
+    // TotalityPredicate/CountedPredicate nesting others) never has a pin of its own -- see Predicate's
+    // own comment -- so no deeper recursion is needed here.
     static Set<UUID> collectSignalPinIds(List<SignalBlock> topLevelSignals) {
         Set<UUID> ids = new HashSet<>();
         for (SignalBlock block : topLevelSignals) {
-            collectSignalPinIds(block, ids);
+            if (block instanceof Condition c) {
+                ids.add(c.id());
+            } else if (block instanceof ConditionGroup g) {
+                for (Condition c : g.conditions()) {
+                    ids.add(c.id());
+                }
+            }
         }
         return ids;
-    }
-
-    private static void collectSignalPinIds(SignalBlock block, Set<UUID> ids) {
-        if (block instanceof Signal s) {
-            ids.add(s.id());
-        } else if (block instanceof CompoundSignal s) {
-            ids.add(s.id());
-            for (SingleOutputSignal sub : s.subSignals()) {
-                collectSignalPinIds(sub, ids);
-            }
-        } else if (block instanceof CountedSignal s) {
-            ids.add(s.id());
-            collectSignalPinIds(s.subSignal(), ids);
-        } else if (block instanceof PredicateSignal s) {
-            for (PinnedPredicate p : s.predicates()) {
-                ids.add(p.id());
-            }
-        }
-    }
-
-    // All top-level and nested signal blocks in this pipeline, depth-first -- used by watch
-    // derivation to walk every signal's context.
-    List<SignalBlock> allSignalBlocks() {
-        List<SignalBlock> all = new ArrayList<>();
-        for (SignalBlock block : topLevelSignals) {
-            collectSignalBlocks(block, all);
-        }
-        return all;
-    }
-
-    private static void collectSignalBlocks(SignalBlock block, List<SignalBlock> all) {
-        all.add(block);
-        if (block instanceof CompoundSignal s) {
-            for (SingleOutputSignal sub : s.subSignals()) {
-                collectSignalBlocks(sub, all);
-            }
-        } else if (block instanceof CountedSignal s) {
-            collectSignalBlocks(s.subSignal(), all);
-        }
     }
 }

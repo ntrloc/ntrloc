@@ -1,4 +1,4 @@
 package org.ntrloc.graph.access;
 
-public record StringListExcludesPredicate(String value) implements StringListPredicate {
+public record StringListExcludesPredicate(Context subject, String value) implements StringListPredicate {
 }

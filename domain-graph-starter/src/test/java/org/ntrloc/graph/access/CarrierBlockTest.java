@@ -9,7 +9,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 
 // Pins down the carrier side from "Marker actions: carriers and virtual blocks": AddMarkers/
-// RemoveMarkers/SetMarkers need at least 1 marker and an optional gate; Filter has no markers at all
+// RemoveMarkers/SetMarkers need at least 1 marker and an optional Gate; Filter has no markers at all
 // and a mandatory signal; Start/End are pure source/sink; Route is the one place carrier fan-out/
 // fan-in connectivity lives, separate from the (tree-shaped) block definitions themselves.
 class CarrierBlockTest {
@@ -23,12 +23,12 @@ class CarrierBlockTest {
     @Test
     void addMarkersGateIsOptional() {
         AddMarkers unconditional = new AddMarkers(UUID.randomUUID(), null, List.of(UUID.randomUUID()));
-        assertThat(unconditional.gate()).isNull();
+        assertThat(unconditional.gate().isUnconditional()).isTrue();
     }
 
     @Test
     void removeMarkersSameShapeAsAddMarkers() {
-        RemoveMarkers remove = new RemoveMarkers(UUID.randomUUID(), UUID.randomUUID(), List.of(UUID.randomUUID()));
+        RemoveMarkers remove = new RemoveMarkers(UUID.randomUUID(), Gate.of(UUID.randomUUID()), List.of(UUID.randomUUID()));
         assertThat(remove.markerIds()).hasSize(1);
     }
 
@@ -46,8 +46,48 @@ class CarrierBlockTest {
 
     @Test
     void filterConstructsWithAMandatorySignal() {
-        Filter filter = new Filter(UUID.randomUUID(), UUID.randomUUID());
+        Filter filter = new Filter(UUID.randomUUID(), Gate.of(UUID.randomUUID()));
         assertThat(filter.signal()).isNotNull();
+    }
+
+    @Test
+    void gateWithNoConditionPinsIsUnconditional() {
+        assertThat(Gate.UNCONDITIONAL.isUnconditional()).isTrue();
+        assertThat(new Gate(null, null).isUnconditional()).isTrue();
+    }
+
+    @Test
+    void gateOfASingleConditionDefaultsQuantityToAll() {
+        UUID conditionId = UUID.randomUUID();
+        Gate gate = Gate.of(conditionId);
+        assertThat(gate.conditionOutputPinIds()).containsExactly(conditionId);
+        assertThat(gate.quantity()).isEqualTo(Quantity.ALL);
+        assertThat(gate.isUnconditional()).isFalse();
+    }
+
+    @Test
+    void selectRequiresAtLeastOneAdd() {
+        assertThatIllegalArgumentException().isThrownBy(() ->
+                new Select(UUID.randomUUID(), null, List.of()));
+    }
+
+    @Test
+    void selectGateIsOptional_defaultingToUnconditional() {
+        AddMarkers row = new AddMarkers(UUID.randomUUID(), Gate.of(UUID.randomUUID()), List.of(UUID.randomUUID()));
+        Select select = new Select(UUID.randomUUID(), null, List.of(row));
+        assertThat(select.gate().isUnconditional()).isTrue();
+    }
+
+    @Test
+    void selectsRowsAreOrdinaryAddMarkersEachWithItsOwnId() {
+        // Nothing Select-specific about a row's own shape -- it's exactly the same AddMarkers any
+        // standalone carrier block already is, independently gated, independently addressable.
+        AddMarkers nature = new AddMarkers(UUID.randomUUID(), Gate.of(UUID.randomUUID()), List.of(UUID.randomUUID()));
+        AddMarkers weddings = new AddMarkers(UUID.randomUUID(), Gate.of(UUID.randomUUID()), List.of(UUID.randomUUID()));
+        Select select = new Select(UUID.randomUUID(), Gate.UNCONDITIONAL, List.of(nature, weddings));
+
+        assertThat(select.adds()).containsExactly(nature, weddings);
+        assertThat(nature.id()).isNotEqualTo(weddings.id());
     }
 
     @Test

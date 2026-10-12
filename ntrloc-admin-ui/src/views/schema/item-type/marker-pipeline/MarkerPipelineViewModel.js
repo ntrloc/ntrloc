@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { useMarkerModel } from '../../../../global/model/MarkerModel'
-import { computeLayout } from './markerPipelineLayout'
+import { useSchemaSnapshot } from '../../../../global/model/SchemaCache'
+import { computeLayout, inlinedConditionGroupFor, signalNodes } from './markerPipelineLayout'
+import { describeCondition, describeConditionGroupSubject, describeConditionShort } from './pipelineConditionText'
 
 const MIN_ZOOM = 0.3
 const MAX_ZOOM = 3
@@ -10,7 +12,12 @@ const MAX_ZOOM = 3
 // around). A pipeline's own carrier blocks only ever reference markers scoped to the same item type
 // it's bound to (same assumption AccessMarkersView makes), so resolving names via that item type's
 // own marker list is enough -- no need to search every marker in the system.
-function blockLabel(block, markerNamesById) {
+//
+// ctx: { markerNamesById, pipeline, schema, itemTypeId } -- schema/itemTypeId only matter for
+// SELECT's own propertyLabel/conditionLabel text (see pipelineConditionText.js); every other block
+// type only ever needs markerNamesById, the same as before condition text existed.
+function blockLabel(block, ctx) {
+  const { markerNamesById, pipeline, schema, itemTypeId } = ctx
   function markerNames(markerIds) {
     return markerIds.map((id) => markerNamesById.get(id) ?? id)
   }
@@ -22,15 +29,68 @@ function blockLabel(block, markerNamesById) {
     case 'SET_MARKERS':
       return { title: 'Set', markerNames: markerNames(block.markerIds) }
     case 'FILTER':
-      return { title: 'Filter', markerNames: [] }
+      // isFilter: true picks the two-port FilterNode rendering (own "input"/"if" ports) rather
+      // than the single shared-strip CarrierBlockNode every other block gets -- see
+      // filterNodeDimensions' own comment.
+      return { title: 'Filter', isFilter: true }
+    case 'SELECT': {
+      // A <select> whose rows are each gated by one member of a ConditionGroup it wholly owns
+      // (see inlinedConditionGroupFor) shows that group inline -- a "property: X" header plus each
+      // row's own branch caption (e.g. "NATURE") -- rather than as a separate standalone signal
+      // node purely referenced back in via dashed lines to the very rows that already say the same
+      // thing.
+      const group = inlinedConditionGroupFor(pipeline, block.id)
+      const propertyLabel = group ? describeConditionGroupSubject(schema, itemTypeId, group) : null
+      const shortLabelByConditionId = new Map((group?.conditions ?? []).map((c) => [c.id, describeConditionShort(c.predicate)]))
+      function conditionLabelFor(gate) {
+        const pinId = gate?.conditionOutputPinIds?.[0]
+        return pinId ? (shortLabelByConditionId.get(pinId) ?? null) : null
+      }
+      // rows: one per select.adds[i] (an ordinary AddMarkers, own id, own markers), plus a
+      // synthetic trailing row standing in for the block's own primary pin -- the (Otherwise)
+      // branch, which adds no markers of its own (see markerPipelineLayout's own comment on
+      // label.rows and Select.java's doc comment on why id() doubles as that pin).
+      return {
+        title: 'Select',
+        propertyLabel,
+        rows: [
+          ...block.adds.map((add) => ({
+            id: add.id,
+            markerNames: markerNames(add.markerIds),
+            otherwise: false,
+            conditionLabel: conditionLabelFor(add.gate),
+          })),
+          { id: block.id, markerNames: [], otherwise: true, conditionLabel: null },
+        ],
+      }
+    }
     default:
       return { title: block.type, markerNames: [] }
   }
 }
 
+// A standalone signal node's own text -- a ConditionGroup's shared subject plus each member's own
+// short label (same shape blockLabel's SELECT case builds for an *inlined* group, since the content
+// is the same either way, just drawn in a different place), or a bare Condition's full description
+// (see describeCondition -- stacked lines, or a nested "count" sub-box for a COUNTED predicate).
+function signalNodeLabel(schema, itemTypeId, signal) {
+  if (signal.type === 'CONDITION_GROUP') {
+    return {
+      propertyLabel: describeConditionGroupSubject(schema, itemTypeId, signal),
+      rowLabels: signal.conditions.map((c) => describeConditionShort(c.predicate)),
+    }
+  }
+  return describeCondition(schema, itemTypeId, signal)
+}
+
 export function useMarkerPipelineViewModel(pipelineView, itemTypeId, saveLayout) {
   const { getMarkersForItemType } = useMarkerModel()
   const markerNamesById = new Map(getMarkersForItemType(itemTypeId).map((m) => [m.id, m.name]))
+  // Reaches past the shaped per-concept Models (ItemTypeModel/LinkModel/StateMachineModel) straight
+  // to the raw schema snapshot -- condition text needs to resolve ids against *whatever item type a
+  // subject chain has stepped onto by then* (e.g. a linked item's own state machine), which none of
+  // those per-type-scoped Models can do; see pipelineConditionText.js's own comment.
+  const schema = useSchemaSnapshot()
 
   // savedPositions: whatever's currently persisted (from pipelineView.layout). draftPositions: a
   // working copy an edit session drags around, null outside edit mode -- see startEditing/
@@ -40,8 +100,12 @@ export function useMarkerPipelineViewModel(pipelineView, itemTypeId, saveLayout)
   const [draftPositions, setDraftPositions] = useState(null)
   const effectivePositions = draftPositions ?? savedPositions
 
-  const blocks = new Map(pipelineView.pipeline.carrierBlocks.map((b) => [b.id, blockLabel(b, markerNamesById)]))
-  const layout = computeLayout(pipelineView.pipeline, effectivePositions, blocks)
+  const blockCtx = { markerNamesById, pipeline: pipelineView.pipeline, schema, itemTypeId }
+  const blocks = new Map(pipelineView.pipeline.carrierBlocks.map((b) => [b.id, blockLabel(b, blockCtx)]))
+  const signalDescriptions = new Map(
+    signalNodes(pipelineView.pipeline).map((node) => [node.id, signalNodeLabel(schema, itemTypeId, node.signal)]),
+  )
+  const layout = computeLayout(pipelineView.pipeline, effectivePositions, blocks, signalDescriptions)
 
   // Pan/zoom -- an infinite canvas (viewBox window into the diagram's own coordinate space), not
   // native container scrolling. useStateMachineDiagramViewModel's own pan (scrollLeft/scrollTop
@@ -242,6 +306,7 @@ export function useMarkerPipelineViewModel(pipelineView, itemTypeId, saveLayout)
   return {
     layout,
     blocks,
+    signalDescriptions,
     start: pipelineView.pipeline.start,
     end: pipelineView.pipeline.end,
     containerRef,

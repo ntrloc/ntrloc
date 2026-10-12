@@ -1,4 +1,4 @@
 package org.ntrloc.graph.access;
 
-public record NumberListIsEmptyPredicate() implements NumberListPredicate {
+public record NumberListIsEmptyPredicate(Context subject) implements NumberListPredicate {
 }

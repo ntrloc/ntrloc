@@ -1,4 +1,4 @@
 package org.ntrloc.graph.access;
 
-public record StringNotEqualsPredicate(String value) implements StringPredicate {
+public record StringNotEqualsPredicate(Context subject, String value) implements StringPredicate {
 }
