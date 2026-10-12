@@ -22,6 +22,9 @@
 const PSEUDO_DIAMETER = 32
 const RANK_GAP = 90
 const SIBLING_GAP = 28
+// How far an orthogonal edge travels horizontally out of its source (or into its target) before it's
+// allowed to turn -- see orthogonalPath.
+const EDGE_STUB = 20
 // Margin around the whole diagram's own content -- the View fits/zooms the diagram to its display
 // area via the SVG's viewBox (see MarkerPipelineView.jsx), so this is the only padding that ends up
 // visible around the edges once that scaling happens.
@@ -417,6 +420,41 @@ export function signalConditionLayout(rect, description) {
   return { centerX, titleY, headerBottom, lines: laidOutLines, nested: nestedBox, pinY: bodyMidY(rect) }
 }
 
+// An edge always connects horizontally at both ends -- an output pin's own line always leaves it
+// heading right, an input pin's own line always arrives heading right too (approaching from its own
+// left side), no matter where the other end actually sits. When the target is comfortably to the
+// right, that's a single two-bend "S" path straight across, with exactly one adjustable bend: the
+// vertical run's own x. When it's at or behind the source -- the common case for a signal edge,
+// since the signal column sits to the right of whatever it's gating -- the path can't just zigzag:
+// it has to leave the source, double back below both ends, and come into the target from its own
+// left side the same as any other edge does, with exactly one adjustable bend: the detour lane's
+// own y. `bend` is that one saved override (a plain number, from PipelineLayout.edgeBends -- see
+// MarkerPipelineViewModel), undefined for an edge the admin never touched, in which case this picks
+// the same default it always has. No collision avoidance either way -- this stays a deliberately
+// cheap router, not the rank-distance one stateMachineLayout.js needed; an admin drags the one bend
+// each shape actually has, not an arbitrary polyline.
+//
+// Returns both the drawable `points` and the single draggable `handle` for that one bend -- its own
+// position, and which axis dragging it is allowed to move along -- so the View never has to
+// re-derive either from the path shape itself.
+function orthogonalPath(from, to, bend) {
+  const dx = to.x - from.x
+  if (dx >= 2 * EDGE_STUB) {
+    const midX = bend ?? from.x + dx / 2
+    return {
+      points: [from, { x: midX, y: from.y }, { x: midX, y: to.y }, to],
+      handle: { x: midX, y: (from.y + to.y) / 2, axis: 'x' },
+    }
+  }
+  const exitX = from.x + EDGE_STUB
+  const entryX = to.x - EDGE_STUB
+  const laneY = bend ?? Math.max(from.y, to.y) + EDGE_STUB
+  return {
+    points: [from, { x: exitX, y: from.y }, { x: exitX, y: laneY }, { x: entryX, y: laneY }, { x: entryX, y: to.y }, to],
+    handle: { x: (exitX + entryX) / 2, y: laneY, axis: 'y' },
+  }
+}
+
 // Longest-path rank from start, via carrier Routes only (never a signal gate -- gates are pulled,
 // not pushed, so they carry no carrier-flow edge; see Route's own comment). A node unreachable from
 // start (shouldn't happen in a valid pipeline, but drawn rather than dropped if it ever does) gets
@@ -461,8 +499,9 @@ function rankByLongestPath(pipeline) {
 // if nothing saved yet, never null). blocks: Map<UUID, {title, markerNames}> from
 // MarkerPipelineViewModel -- see nodeDimensions' own comment on why sizing needs this.
 // signalDescriptions: Map<signal node id, {propertyLabel, rowLabels} | {lines, nested}> from the same
-// place -- see signalNodeDimensions.
-export function computeLayout(pipeline, positions, blocks, signalDescriptions = new Map()) {
+// place -- see signalNodeDimensions. edgeBends: Map<edge key, number> decoded from
+// PipelineLayout.edgeBends (empty map if nothing saved yet, never null) -- see orthogonalPath.
+export function computeLayout(pipeline, positions, blocks, signalDescriptions = new Map(), edgeBends = new Map()) {
   const nodes = allNodes(pipeline)
   const rank = rankByLongestPath(pipeline)
 
@@ -553,8 +592,10 @@ export function computeLayout(pipeline, positions, blocks, signalDescriptions = 
   // gateAnchors is the pull-edge counterpart: one point per *gate owner* (an ordinary carrier
   // block's own id, or -- inside a <select> -- a specific row's own id, since each row carries its
   // own independent gate, including the synthetic Otherwise row standing in for the block's own
-  // gate) to land a reference edge on, landing top-center on an ordinary block and at a row's own
-  // divider inside a <select> -- see the signal-edges pass below.
+  // gate) to land a reference edge on. Always on the body's own left edge, the same side (and for a
+  // <select> row, the same y) its carrier input already enters from -- a reference edge connects
+  // horizontally at both ends the same as a carrier one does (see orthogonalPath), which a
+  // top-of-block or top-of-row point never could.
   const outputPinPositions = new Map()
   const inputPinPositions = new Map()
   const gateAnchors = new Map()
@@ -568,15 +609,15 @@ export function computeLayout(pipeline, positions, blocks, signalDescriptions = 
       outputPinPositions.set(node.id, outputPoint(rect, node))
     } else if (label?.rows) {
       inputPinPositions.set(node.id, inputPoint(rect, node))
-      const { centerX, rows } = selectRowLayout(rect, label.rows, label.propertyLabel)
+      const { rows } = selectRowLayout(rect, label.rows, label.propertyLabel)
       for (const row of rows) {
         outputPinPositions.set(row.id, { x: rect.x + rect.width - STRIP_WIDTH / 2, y: row.midY })
-        gateAnchors.set(row.id, { x: centerX, y: row.top })
+        gateAnchors.set(row.id, { x: rect.x + STRIP_WIDTH, y: row.midY })
       }
     } else {
       inputPinPositions.set(node.id, inputPoint(rect, node))
       outputPinPositions.set(node.id, outputPoint(rect, node))
-      if (!isPseudo(node)) gateAnchors.set(node.id, { x: rect.x + rect.width / 2, y: rect.y })
+      if (!isPseudo(node)) gateAnchors.set(node.id, { x: rect.x + STRIP_WIDTH, y: bodyMidY(rect) - PIN_DIAMETER })
     }
   }
   for (const node of signalNodesList) {
@@ -599,7 +640,8 @@ export function computeLayout(pipeline, positions, blocks, signalDescriptions = 
     for (const targetId of route.inputPinIds) {
       const to = inputPinPositions.get(targetId)
       if (!to) continue
-      edges.push({ key: `${route.outputPinId}->${targetId}`, from, to })
+      const key = `${route.outputPinId}->${targetId}`
+      edges.push({ key, ...orthogonalPath(from, to, edgeBends.get(key)) })
     }
   }
 
@@ -618,7 +660,8 @@ export function computeLayout(pipeline, positions, blocks, signalDescriptions = 
     for (const pinId of gate.conditionOutputPinIds ?? []) {
       const from = outputPinPositions.get(pinId)
       if (!from) continue
-      signalEdges.push({ key: `signal:${pinId}=>${ownerId}`, from, to })
+      const key = `signal:${pinId}=>${ownerId}`
+      signalEdges.push({ key, ...orthogonalPath(from, to, edgeBends.get(key)) })
     }
   }
   for (const block of pipeline.carrierBlocks) {

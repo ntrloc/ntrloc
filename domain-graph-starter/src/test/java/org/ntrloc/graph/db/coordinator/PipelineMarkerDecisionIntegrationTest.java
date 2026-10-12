@@ -65,7 +65,7 @@ class PipelineMarkerDecisionIntegrationTest extends AbstractIntegrationTest {
     void creatingAnItemWhosePropertyMatchesTheGate_appliesThePipelinesMarker() {
         UUID markerId = authRepo.createMarker("pmd-red-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId()).id();
         UUID pipelineId = pipelineRepository.createPipeline(fixture.productTypeId(),
-                colorEqualsPipeline("red", markerId), new PipelineLayout(Map.of())).id();
+                colorEqualsPipeline("red", markerId), new PipelineLayout(Map.of(), Map.of())).id();
 
         try {
             UUID itemId = UUID.randomUUID();
@@ -84,7 +84,7 @@ class PipelineMarkerDecisionIntegrationTest extends AbstractIntegrationTest {
     void creatingAnItemWhosePropertyDoesNotMatchTheGate_appliesNoMarker() {
         UUID markerId = authRepo.createMarker("pmd-red-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId()).id();
         UUID pipelineId = pipelineRepository.createPipeline(fixture.productTypeId(),
-                colorEqualsPipeline("red", markerId), new PipelineLayout(Map.of())).id();
+                colorEqualsPipeline("red", markerId), new PipelineLayout(Map.of(), Map.of())).id();
 
         try {
             UUID itemId = UUID.randomUUID();
@@ -103,7 +103,7 @@ class PipelineMarkerDecisionIntegrationTest extends AbstractIntegrationTest {
     void updatingAnItemsPropertyToMatchTheGate_addsThePipelinesMarker() {
         UUID markerId = authRepo.createMarker("pmd-red-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId()).id();
         UUID pipelineId = pipelineRepository.createPipeline(fixture.productTypeId(),
-                colorEqualsPipeline("red", markerId), new PipelineLayout(Map.of())).id();
+                colorEqualsPipeline("red", markerId), new PipelineLayout(Map.of(), Map.of())).id();
 
         try {
             UUID itemId = UUID.randomUUID();
@@ -129,7 +129,7 @@ class PipelineMarkerDecisionIntegrationTest extends AbstractIntegrationTest {
     void updatingAnItemsPropertyAwayFromTheGate_removesTheMarkerThePipelineHadApplied() {
         UUID markerId = authRepo.createMarker("pmd-red-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId()).id();
         UUID pipelineId = pipelineRepository.createPipeline(fixture.productTypeId(),
-                colorEqualsPipeline("red", markerId), new PipelineLayout(Map.of())).id();
+                colorEqualsPipeline("red", markerId), new PipelineLayout(Map.of(), Map.of())).id();
 
         try {
             UUID itemId = UUID.randomUUID();
@@ -155,7 +155,7 @@ class PipelineMarkerDecisionIntegrationTest extends AbstractIntegrationTest {
     void aManuallyAppliedMarker_survivesAPipelineReEvaluationThatWouldOtherwiseDropIt() {
         UUID markerId = authRepo.createMarker("pmd-red-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId()).id();
         UUID pipelineId = pipelineRepository.createPipeline(fixture.productTypeId(),
-                colorEqualsPipeline("red", markerId), new PipelineLayout(Map.of())).id();
+                colorEqualsPipeline("red", markerId), new PipelineLayout(Map.of(), Map.of())).id();
 
         try {
             UUID itemId = UUID.randomUUID();
@@ -215,9 +215,9 @@ class PipelineMarkerDecisionIntegrationTest extends AbstractIntegrationTest {
         UUID colorMarkerId = authRepo.createMarker("pmd-color-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId()).id();
         UUID tripwireMarkerId = authRepo.createMarker("pmd-tripwire-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.contributorTypeId()).id();
         UUID colorPipelineId = pipelineRepository.createPipeline(fixture.productTypeId(),
-                colorEqualsPipeline("red", colorMarkerId), new PipelineLayout(Map.of())).id();
+                colorEqualsPipeline("red", colorMarkerId), new PipelineLayout(Map.of(), Map.of())).id();
         UUID tripwirePipelineId = pipelineRepository.createPipeline(fixture.contributorTypeId(),
-                tripwirePipeline(tripwireMarkerId), new PipelineLayout(Map.of())).id();
+                tripwirePipeline(tripwireMarkerId), new PipelineLayout(Map.of(), Map.of())).id();
 
         try {
             UUID itemId = UUID.randomUUID();
@@ -261,7 +261,7 @@ class PipelineMarkerDecisionIntegrationTest extends AbstractIntegrationTest {
     void creatingAnItem_appliesAnUnconditionalPipelinesMarkerEvenThoughNothingWasSetThatItWatches() {
         UUID markerId = authRepo.createMarker("pmd-unconditional-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId()).id();
         UUID pipelineId = pipelineRepository.createPipeline(fixture.productTypeId(),
-                unconditionalPipeline(markerId), new PipelineLayout(Map.of())).id();
+                unconditionalPipeline(markerId), new PipelineLayout(Map.of(), Map.of())).id();
 
         try {
             UUID itemId = UUID.randomUUID();
@@ -282,7 +282,7 @@ class PipelineMarkerDecisionIntegrationTest extends AbstractIntegrationTest {
     void anUnconditionalPipelinesMarker_survivesAnUnrelatedUpdateWithoutBeingReEvaluated() {
         UUID markerId = authRepo.createMarker("pmd-unconditional-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId()).id();
         UUID pipelineId = pipelineRepository.createPipeline(fixture.productTypeId(),
-                unconditionalPipeline(markerId), new PipelineLayout(Map.of())).id();
+                unconditionalPipeline(markerId), new PipelineLayout(Map.of(), Map.of())).id();
 
         try {
             UUID itemId = UUID.randomUUID();

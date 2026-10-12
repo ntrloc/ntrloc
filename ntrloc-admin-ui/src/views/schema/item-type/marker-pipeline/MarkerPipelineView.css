@@ -121,6 +121,17 @@ marker-pipeline-view {
   fill: var(--mp-signal-yellow);
 }
 
+/* shape="arrow" (see MarkerPipelineView.jsx's Pin) -- a carrier block's own input port, hollow (its
+   own fill matches the block's interior, not a solid carrier-amber the way the bullseye's dot is) so
+   the filled arrowhead every carrier edge's own terminus draws (see .mp-edge-arrowhead) reads as
+   nesting inside it, not as two overlapping shapes. */
+.mp-pin-arrow {
+  fill: var(--mp-block-bg);
+  stroke: var(--mp-carrier-amber);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}
+
 /* A top-level Condition/ConditionGroup's own box -- same two-band shape as a carrier block (title
    over a body of stacked pin-rows), just in the signal domain's own color and with no left strip:
    it's read, not fed, so there's no input of its own to show (see signalNodeDimensions). */
@@ -151,6 +162,7 @@ marker-pipeline-view {
   stroke: var(--mp-signal-yellow);
   stroke-width: 1.5;
   stroke-dasharray: 5 4;
+  stroke-linejoin: round;
 }
 
 /* A nested "count" sub-box inside a standalone Condition node -- the one place this diagram nests
@@ -254,19 +266,56 @@ marker-pipeline-view {
   font-size: 12px;
 }
 
-/* Carrier-flow edges (pushed) -- solid amber, no arrowhead: pin anatomy (left = in, right = out)
-   already shows direction, so an arrowhead would be redundant clutter here, unlike the state machine
-   diagram where edges can run in much less predictable directions. */
+/* Carrier-flow edges (pushed) -- solid amber. */
 .mp-edge-path {
   fill: none;
   stroke: var(--mp-carrier-amber);
   stroke-width: 1.5;
+  stroke-linejoin: round;
+}
+
+/* A carrier edge's own terminal arrowhead -- filled solid (unlike the hollow pin it nests inside,
+   see .mp-pin-arrow), always the same carrier-amber. */
+.mp-edge-arrowhead {
+  fill: var(--mp-carrier-amber);
+}
+
+.mp-edge-arrowhead-dragging {
+  fill: var(--mp-text);
 }
 
 .mp-edge-hit {
   fill: none;
   stroke: transparent;
   stroke-width: 14;
+}
+
+/* An edge's own single adjustable bend -- only rendered while the diagram is in edit mode (see
+   MarkerPipelineView.jsx's EdgeHandle), same as a node's own cursor:move signals it can be dragged.
+   Neutral white rather than either edge color, since one handle shape serves both a carrier and a
+   signal edge -- the cursor (ew-resize/ns-resize) is what actually tells an admin which way it
+   moves, not the handle's own color. */
+.mp-edge-handle {
+  fill: var(--mp-text);
+  stroke: var(--mp-block-bg);
+  stroke-width: 1.5;
+}
+
+.mp-edge-handle-x {
+  cursor: ew-resize;
+}
+
+.mp-edge-handle-y {
+  cursor: ns-resize;
+}
+
+/* The one edge whose own bend handle is actively being dragged (see MarkerPipelineView.jsx's
+   isDragging) -- plain white, overriding whichever domain color (amber/yellow) it'd normally have,
+   so it's unambiguous which line is actually moving under the cursor. Stacked after
+   .mp-signal-edge-path/.mp-edge-path in source order so this wins on specificity ties without
+   needing !important. */
+.mp-edge-path-dragging {
+  stroke: var(--mp-text);
 }
 
 /* A block's right-click menu -- plain app chrome (same border/bg/shadow convention as

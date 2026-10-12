@@ -53,7 +53,7 @@ class MarkerDecisionPipelineAdminControllerIntegrationTest extends AbstractInteg
     @Test
     void createThenGet_roundTripsThePipelineAndLayoutThroughHttpJson() {
         Pipeline pipeline = simplePipeline(UUID.randomUUID());
-        PipelineLayout layout = new PipelineLayout(Map.of(pipeline.start().id(), new Point(10, 20), pipeline.end().id(), new Point(300, 20)));
+        PipelineLayout layout = new PipelineLayout(Map.of(pipeline.start().id(), new Point(10, 20), pipeline.end().id(), new Point(300, 20)), Map.of());
 
         PipelineView created = webTestClient.post().uri("/api/admin/marker-decision-pipelines")
                 .header("X-Ntrloc-User", "root")
@@ -186,7 +186,7 @@ class MarkerDecisionPipelineAdminControllerIntegrationTest extends AbstractInteg
                 .returnResult().getResponseBody();
 
         try {
-            PipelineLayout newLayout = new PipelineLayout(Map.of(pipeline.start().id(), new Point(5, 5)));
+            PipelineLayout newLayout = new PipelineLayout(Map.of(pipeline.start().id(), new Point(5, 5)), Map.of());
             PipelineView updated = webTestClient.put().uri("/api/admin/marker-decision-pipelines/{id}", created.id())
                     .header("X-Ntrloc-User", "root")
                     .bodyValue(new UpdatePipelineRequest(pipeline, false, newLayout))
@@ -251,7 +251,7 @@ class MarkerDecisionPipelineAdminControllerIntegrationTest extends AbstractInteg
 
         try {
             assertThat(created).isNotNull();
-            assertThat(created.layout()).isEqualTo(new PipelineLayout(Map.of()));
+            assertThat(created.layout()).isEqualTo(new PipelineLayout(Map.of(), Map.of()));
         } finally {
             webTestClient.delete().uri("/api/admin/marker-decision-pipelines/{id}", created.id())
                     .header("X-Ntrloc-User", "root")

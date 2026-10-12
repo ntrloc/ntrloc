@@ -113,7 +113,7 @@ public class MarkerDecisionPipelineAdminController {
     }
 
     private PipelineLayout orEmpty(PipelineLayout layout) {
-        return layout != null ? layout : new PipelineLayout(Map.of());
+        return layout != null ? layout : new PipelineLayout(Map.of(), Map.of());
     }
 
     private void requireAdmin(ServerHttpRequest request, Authentication authentication) {

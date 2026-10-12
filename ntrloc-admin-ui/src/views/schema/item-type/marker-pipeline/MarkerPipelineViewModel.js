@@ -100,12 +100,18 @@ export function useMarkerPipelineViewModel(pipelineView, itemTypeId, saveLayout)
   const [draftPositions, setDraftPositions] = useState(null)
   const effectivePositions = draftPositions ?? savedPositions
 
+  // savedEdgeBends/draftEdgeBends/effectiveEdgeBends: same pattern as positions above, one admin-
+  // adjusted number per edge (see orthogonalPath) instead of one {x,y} per node.
+  const savedEdgeBends = new Map(Object.entries(pipelineView.layout?.edgeBends ?? {}))
+  const [draftEdgeBends, setDraftEdgeBends] = useState(null)
+  const effectiveEdgeBends = draftEdgeBends ?? savedEdgeBends
+
   const blockCtx = { markerNamesById, pipeline: pipelineView.pipeline, schema, itemTypeId }
   const blocks = new Map(pipelineView.pipeline.carrierBlocks.map((b) => [b.id, blockLabel(b, blockCtx)]))
   const signalDescriptions = new Map(
     signalNodes(pipelineView.pipeline).map((node) => [node.id, signalNodeLabel(schema, itemTypeId, node.signal)]),
   )
-  const layout = computeLayout(pipelineView.pipeline, effectivePositions, blocks, signalDescriptions)
+  const layout = computeLayout(pipelineView.pipeline, effectivePositions, blocks, signalDescriptions, effectiveEdgeBends)
 
   // Pan/zoom -- an infinite canvas (viewBox window into the diagram's own coordinate space), not
   // native container scrolling. useStateMachineDiagramViewModel's own pan (scrollLeft/scrollTop
@@ -154,15 +160,18 @@ export function useMarkerPipelineViewModel(pipelineView, itemTypeId, saveLayout)
   const nodeDragRef = useRef(null)
 
   function startEditing() {
-    // A fresh clone, not a reference to savedPositions -- dragging mutates this copy freely without
-    // ever touching what's actually persisted until Save.
+    // A fresh clone, not a reference to savedPositions/savedEdgeBends -- dragging mutates this copy
+    // freely without ever touching what's actually persisted until Save.
     setDraftPositions(new Map(savedPositions))
+    setDraftEdgeBends(new Map(savedEdgeBends))
     setSaveError(null)
     setIsEditing(true)
   }
 
   function cancelEditing() {
     setDraftPositions(null)
+    setDraftEdgeBends(null)
+    setDraggingEdgeKey(null)
     setSaveError(null)
     setIsEditing(false)
   }
@@ -171,8 +180,13 @@ export function useMarkerPipelineViewModel(pipelineView, itemTypeId, saveLayout)
     setIsSaving(true)
     setSaveError(null)
     try {
-      await saveLayout({ positions: Object.fromEntries(draftPositions ?? savedPositions) })
+      await saveLayout({
+        positions: Object.fromEntries(draftPositions ?? savedPositions),
+        edgeBends: Object.fromEntries(draftEdgeBends ?? savedEdgeBends),
+      })
       setDraftPositions(null)
+      setDraftEdgeBends(null)
+      setDraggingEdgeKey(null)
       setIsEditing(false)
     } catch (error) {
       setSaveError(error.message || 'Failed to save pipeline layout.')
@@ -216,6 +230,49 @@ export function useMarkerPipelineViewModel(pipelineView, itemTypeId, saveLayout)
     nodeDragRef.current = null
     event.stopPropagation()
     // Same guard as the canvas's own onPointerUp -- releasing a capture that was never set throws.
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
+  }
+
+  // Dragging an edge's own bend handle -- same pointer-capture mechanics as a node drag above, but
+  // constrained to a single axis (see orthogonalPath's own `handle.axis`): a forward edge's bend is
+  // its vertical run's own x, a backward one's is its detour lane's own y, so only that one
+  // coordinate ever moves, never both.
+  const edgeDragRef = useRef(null)
+  // Reactive, unlike edgeDragRef -- the View needs to re-render the one edge actually being dragged
+  // in its own "active" color (see PipelineEdge/SignalReferenceEdge), which a ref mutation alone
+  // never triggers.
+  const [draggingEdgeKey, setDraggingEdgeKey] = useState(null)
+
+  function onEdgeHandlePointerDown(event, edgeKey, handle) {
+    if (!isEditing) return
+    if (event.button !== 0) return
+    if (!view) return
+    event.preventDefault()
+    event.stopPropagation()
+    const current = effectiveEdgeBends.get(edgeKey) ?? (handle.axis === 'x' ? handle.x : handle.y)
+    edgeDragRef.current = { edgeKey, axis: handle.axis, startX: event.clientX, startY: event.clientY, startValue: current }
+    setDraggingEdgeKey(edgeKey)
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }
+
+  function onEdgeHandlePointerMove(event) {
+    if (!edgeDragRef.current) return
+    event.stopPropagation()
+    const { edgeKey, axis, startX, startY, startValue } = edgeDragRef.current
+    const delta = axis === 'x' ? (event.clientX - startX) / view.zoom : (event.clientY - startY) / view.zoom
+    setDraftEdgeBends((prev) => {
+      const next = new Map(prev)
+      next.set(edgeKey, startValue + delta)
+      return next
+    })
+  }
+
+  function onEdgeHandlePointerUp(event) {
+    edgeDragRef.current = null
+    setDraggingEdgeKey(null)
+    event.stopPropagation()
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId)
     }
@@ -330,5 +387,9 @@ export function useMarkerPipelineViewModel(pipelineView, itemTypeId, saveLayout)
     onNodePointerDown,
     onNodePointerMove,
     onNodePointerUp,
+    onEdgeHandlePointerDown,
+    onEdgeHandlePointerMove,
+    onEdgeHandlePointerUp,
+    draggingEdgeKey,
   }
 }

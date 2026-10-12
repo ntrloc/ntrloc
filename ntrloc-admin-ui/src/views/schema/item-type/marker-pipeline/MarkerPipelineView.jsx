@@ -6,11 +6,42 @@ import './MarkerPipelineView.css'
 
 const PIN_RING_R = 7
 const PIN_FILL_R = 3.5
+// A carrier input's own arrowhead outline, and the smaller filled one every carrier edge's own
+// terminus draws to nest inside it -- see Pin's own `shape="arrow"` and PipelineEdge below. Both
+// always point the same way (+x, rightward) and never need to rotate: every edge this diagram draws
+// enters horizontally by construction (see orthogonalPath), the same invariant that makes a fixed
+// carrier-input pin shape meaningful in the first place. Symmetric (same half-width ahead of and
+// behind cx,cy), not just anchored at the same point -- a triangle's own visual weight sits toward
+// its wider back edge, not its tip, so an asymmetric one (tip further from cx than back) wouldn't
+// actually look centered on the pin even while technically sharing its anchor; this does.
+const PIN_ARROW_HALF_WIDTH = 7
+const PIN_ARROW_HALF_HEIGHT = 8
+const EDGE_ARROW_HALF_WIDTH = 4
+const EDGE_ARROW_HALF_HEIGHT = 5
+// Nudges the terminator left of the exact pin center it'd otherwise sit concentric on -- a deliberate
+// final offset on top of that centering, not a correction to it.
+const EDGE_ARROW_OFFSET_X = 1
+
+function arrowPoints(cx, cy, halfWidth, halfHeight) {
+  return `${cx + halfWidth},${cy} ${cx - halfWidth},${cy - halfHeight} ${cx - halfWidth},${cy + halfHeight}`
+}
 
 // A pin: ring + dot, the same bullseye motif as End, scaled down -- see MarkerPipelineView.css.
 // variant: 'signal' recolors it amber->yellow for a Condition/ConditionGroup's own pins, the same
-// domain split the carrier/signal edge colors already make.
-function Pin({ cx, cy, variant }) {
+// domain split the carrier/signal edge colors already make. shape: 'arrow' replaces the bullseye
+// with a hollow right-pointing triangle instead -- a carrier block's own input port only (never an
+// output, never a signal pin), giving carrier flow an explicit direction beyond "left is in, right
+// is out" alone. See PipelineEdge for the smaller filled arrow every carrier edge draws to nest
+// inside this one.
+function Pin({ cx, cy, variant, shape }) {
+  if (shape === 'arrow') {
+    return (
+      <polygon
+        className={variant ? `mp-pin-arrow mp-pin-arrow-${variant}` : 'mp-pin-arrow'}
+        points={arrowPoints(cx, cy, PIN_ARROW_HALF_WIDTH, PIN_ARROW_HALF_HEIGHT)}
+      />
+    )
+  }
   return (
     <g className={variant ? `mp-pin mp-pin-${variant}` : 'mp-pin'}>
       <circle className="mp-pin-ring" cx={cx} cy={cy} r={PIN_RING_R} />
@@ -105,7 +136,7 @@ function CarrierBlockNode({ rect, label, editable, onContextMenu, onPointerDown,
           </text>
         </g>
       ))}
-      <Pin cx={rect.x + STRIP_WIDTH / 2} cy={midY} />
+      <Pin cx={rect.x + STRIP_WIDTH / 2} cy={midY} shape="arrow" />
       <Pin cx={rightStripX + STRIP_WIDTH / 2} cy={midY} />
     </g>
   )
@@ -145,7 +176,7 @@ function FilterNode({ rect, label, editable, onContextMenu, onPointerDown, onPoi
       <text className="mp-port-label mp-port-label-signal" x={ifPort.labelX} y={ifPort.labelY}>
         if
       </text>
-      <Pin cx={input.x} cy={input.y} />
+      <Pin cx={input.x} cy={input.y} shape="arrow" />
       <Pin cx={ifPort.x} cy={ifPort.y} variant="signal" />
       <Pin cx={rightStripX + STRIP_WIDTH / 2} cy={midY} />
     </g>
@@ -200,7 +231,7 @@ function SelectNode({ rect, label, editable, onContextMenu, onPointerDown, onPoi
           </g>
         )
       )}
-      <Pin cx={rect.x + STRIP_WIDTH / 2} cy={midY} />
+      <Pin cx={rect.x + STRIP_WIDTH / 2} cy={midY} shape="arrow" />
       {rows.map((row) => (
         <Pin key={row.id} cx={rightStripX + STRIP_WIDTH / 2} cy={row.midY} />
       ))}
@@ -278,19 +309,59 @@ function SignalNode({ rect, node, description, editable, onPointerDown, onPointe
   )
 }
 
+// Every edge is a polyline (see orthogonalPath) that always connects horizontally at both ends --
+// turned into a plain "M x,y L x,y L x,y ..." path string, sharp corners, no rounding. Shared by
+// both edge kinds below so the two can never draw their own points differently.
+function edgePathD(points) {
+  return points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ')
+}
+
 // A "pulled" reference from a Condition's own pin to whatever gate reads it -- dashed and yellow
 // (see MarkerPipelineView.css), distinct from a solid amber carrier-flow edge, since nothing is
 // actually pushed along it: see rankByLongestPath's own comment on why signal references carry no
-// Route at all.
-function SignalReferenceEdge({ edge }) {
-  return <path className="mp-signal-edge-path" d={`M ${edge.from.x} ${edge.from.y} L ${edge.to.x} ${edge.to.y}`} />
+// Route at all. isDragging: true for the one edge whose own bend handle is actively being dragged
+// (see MarkerPipelineViewModel's draggingEdgeKey) -- drawn white instead of its own domain color so
+// it's unambiguous which edge is actually moving under the cursor, even where it crosses close by
+// another one.
+function SignalReferenceEdge({ edge, isDragging }) {
+  const className = isDragging ? 'mp-signal-edge-path mp-edge-path-dragging' : 'mp-signal-edge-path'
+  return <path className={className} d={edgePathD(edge.points)} />
 }
 
-// Carrier-flow edges are drawn as plain straight lines, pin center to pin center -- no orthogonal
-// routing, no arrowhead (see MarkerPipelineView.css's own comment on why an arrowhead would be
-// redundant here).
-function PipelineEdge({ edge }) {
-  return <path className="mp-edge-path" d={`M ${edge.from.x} ${edge.from.y} L ${edge.to.x} ${edge.to.y}`} />
+// Carrier-flow edges -- end in their own small filled arrowhead, always pointing +x (every edge
+// enters horizontally by construction -- see orthogonalPath), sized to nest inside the hollow one
+// its own carrier input pin draws at the exact same point (see Pin's own shape="arrow"). A signal
+// edge draws no such arrow (see SignalReferenceEdge) -- it's pulled, not pushed, so there's nothing
+// here for a "this is the direction it flows" cue to be about. isDragging: see SignalReferenceEdge's
+// own comment.
+function PipelineEdge({ edge, isDragging }) {
+  const className = isDragging ? 'mp-edge-path mp-edge-path-dragging' : 'mp-edge-path'
+  const arrowClassName = isDragging ? 'mp-edge-arrowhead mp-edge-arrowhead-dragging' : 'mp-edge-arrowhead'
+  const end = edge.points[edge.points.length - 1]
+  return (
+    <g>
+      <path className={className} d={edgePathD(edge.points)} />
+      <polygon className={arrowClassName} points={arrowPoints(end.x - EDGE_ARROW_OFFSET_X, end.y, EDGE_ARROW_HALF_WIDTH, EDGE_ARROW_HALF_HEIGHT)} />
+    </g>
+  )
+}
+
+// An edge's own single adjustable bend (see orthogonalPath) -- only rendered in edit mode, same as a
+// node becoming draggable. The cursor names which axis it's actually constrained to, since the
+// handle itself gives no other visual hint: ew-resize for a forward edge's vertical run (only its
+// own x ever moves), ns-resize for a backward edge's detour lane (only its own y ever moves).
+function EdgeHandle({ handle, onPointerDown, onPointerMove, onPointerUp }) {
+  return (
+    <circle
+      className={`mp-edge-handle mp-edge-handle-${handle.axis}`}
+      cx={handle.x}
+      cy={handle.y}
+      r={5}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+    />
+  )
 }
 
 // Diagram for the item type's one pipeline -- condition/predicate text is the one place this diagram
@@ -325,6 +396,10 @@ function MarkerPipelineDiagram({ pipelineView, itemTypeId, saveLayout }) {
     onNodePointerDown,
     onNodePointerMove,
     onNodePointerUp,
+    onEdgeHandlePointerDown,
+    onEdgeHandlePointerMove,
+    onEdgeHandlePointerUp,
+    draggingEdgeKey,
   } = useMarkerPipelineViewModel(pipelineView, itemTypeId, saveLayout)
 
   // An SVG viewBox is an infinite-canvas window into the diagram's fixed coordinate space: (x, y)
@@ -333,6 +408,11 @@ function MarkerPipelineDiagram({ pipelineView, itemTypeId, saveLayout }) {
   // of the container (see the stylesheet) -- nothing about its own size ever changes, only what
   // portion of the diagram it's looking at.
   const viewBox = view ? `${view.x} ${view.y} ${view.width / view.zoom} ${view.height / view.zoom}` : undefined
+
+  // At most one of these is ever set -- draggingEdgeKey names exactly one edge, which is either a
+  // carrier edge or a signal one, never both -- used to draw that one edge last (see below).
+  const draggingCarrierEdge = layout.edges.find((edge) => edge.key === draggingEdgeKey)
+  const draggingSignalEdge = layout.signalEdges.find((edge) => edge.key === draggingEdgeKey)
 
   return (
     <div
@@ -344,8 +424,10 @@ function MarkerPipelineDiagram({ pipelineView, itemTypeId, saveLayout }) {
     >
       {viewBox && (
         <svg className="marker-pipeline-diagram-svg" viewBox={viewBox}>
-          {/* Nodes first, edges last: a connector is always fully visible crossing over a block or a
-              pseudostate's own shape, never the other way around. */}
+          {/* Nodes first, edges next, each edge's own bend handle last (edit mode only): a connector
+              is always fully visible crossing over a block or a pseudostate's own shape, never the
+              other way around, and a handle is always reachable for dragging even where an edge
+              crosses close by it. */}
           <g>
             <PseudoStateNode
               rect={layout.rects.get(start.id)}
@@ -393,13 +475,32 @@ function MarkerPipelineDiagram({ pipelineView, itemTypeId, saveLayout }) {
             ))}
           </g>
           <g>
-            {layout.edges.map((edge) => (
-              <PipelineEdge key={edge.key} edge={edge} />
-            ))}
-            {layout.signalEdges.map((edge) => (
-              <SignalReferenceEdge key={edge.key} edge={edge} />
-            ))}
+            {/* The one edge actually being dragged is drawn last, after every other edge of either
+                kind -- SVG has no z-index, only draw order, so without this an edge that happened to
+                come earlier in the array could render *under* one it visually crosses, hiding the
+                very path an admin is trying to watch move. */}
+            {layout.edges.map((edge) =>
+              edge.key === draggingEdgeKey ? null : <PipelineEdge key={edge.key} edge={edge} />,
+            )}
+            {layout.signalEdges.map((edge) =>
+              edge.key === draggingEdgeKey ? null : <SignalReferenceEdge key={edge.key} edge={edge} />,
+            )}
+            {draggingCarrierEdge && <PipelineEdge key={draggingCarrierEdge.key} edge={draggingCarrierEdge} isDragging />}
+            {draggingSignalEdge && <SignalReferenceEdge key={draggingSignalEdge.key} edge={draggingSignalEdge} isDragging />}
           </g>
+          {isEditing && (
+            <g>
+              {[...layout.edges, ...layout.signalEdges].map((edge) => (
+                <EdgeHandle
+                  key={edge.key}
+                  handle={edge.handle}
+                  onPointerDown={(event) => onEdgeHandlePointerDown(event, edge.key, edge.handle)}
+                  onPointerMove={onEdgeHandlePointerMove}
+                  onPointerUp={onEdgeHandlePointerUp}
+                />
+              ))}
+            </g>
+          )}
         </svg>
       )}
       {/* Plain HTML, not SVG -- rendered outside the viewBox entirely, so it's never subject to the
