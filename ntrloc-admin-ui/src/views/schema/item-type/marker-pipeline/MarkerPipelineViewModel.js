@@ -83,7 +83,7 @@ function signalNodeLabel(schema, itemTypeId, signal) {
   return describeCondition(schema, itemTypeId, signal)
 }
 
-export function useMarkerPipelineViewModel(pipelineView, itemTypeId, saveLayout) {
+export function useMarkerPipelineViewModel(pipelineView, itemTypeId, saveLayout, initialView, onViewChange) {
   const { getMarkersForItemType } = useMarkerModel()
   const markerNamesById = new Map(getMarkersForItemType(itemTypeId).map((m) => [m.id, m.name]))
   // Reaches past the shaped per-concept Models (ItemTypeModel/LinkModel/StateMachineModel) straight
@@ -128,10 +128,13 @@ export function useMarkerPipelineViewModel(pipelineView, itemTypeId, saveLayout)
   // container's own CSS pixel size as of the last measurement, carried in state (rather than read
   // from the ref during render, which React refs don't support -- a ref mutation alone never
   // triggers a re-render) so the View can build a viewBox from plain state with no ref access of its
-  // own. null until the container's actual size is known, so the very first layout effect can set
-  // the real fit view before the browser ever paints a frame, rather than visibly snapping from some
-  // placeholder to the fit view.
-  const [view, setView] = useState(null)
+  // own. Seeded from initialView (the caller's own remembered pan/zoom for this item type, if any --
+  // see AccessMarkersView's viewByItemTypeIdRef) rather than always starting null, so switching back
+  // to a pipeline already visited this session resumes exactly where it was left; the fit-zoom effect
+  // below only ever computes a fresh fit when there's truly nothing to resume. Still null on a first
+  // visit, so the very first layout effect can set the real fit view before the browser ever paints a
+  // frame, rather than visibly snapping from some placeholder to the fit view.
+  const [view, setView] = useState(initialView ?? null)
   const containerRef = useRef(null)
   const dragRef = useRef(null)
 
@@ -285,11 +288,21 @@ export function useMarkerPipelineViewModel(pipelineView, itemTypeId, saveLayout)
     const clampedZoom = Math.max(MIN_ZOOM, zoom)
     // Centers the diagram within the container, the same centering preserveAspectRatio="xMidYMid
     // meet" used to give for free -- the container is usually a little wider or taller than the
-    // diagram's own aspect ratio, so one axis has slack to split evenly on both sides.
-    const x = layout.width / 2 - el.clientWidth / 2 / clampedZoom
-    const y = layout.height / 2 - el.clientHeight / 2 / clampedZoom
+    // diagram's own aspect ratio, so one axis has slack to split evenly on both sides. Anchored at
+    // layout.minX/minY, not (0, 0) -- content doesn't necessarily start there (an admin-dragged
+    // position can put a node, or Start's own label overhang, left of or above wherever the
+    // fallback layout ever would -- see computeLayout's own comment on minX).
+    const x = layout.minX + layout.width / 2 - el.clientWidth / 2 / clampedZoom
+    const y = layout.minY + layout.height / 2 - el.clientHeight / 2 / clampedZoom
     setView({ x, y, zoom: clampedZoom, width: el.clientWidth, height: el.clientHeight })
   }, [layout, view])
+
+  // Reports every view change back to the caller (see initialView above) -- the one piece of this
+  // hook's own state meant to outlive this component's remount, so whoever owns the per-item-type
+  // cache needs to hear about every pan/zoom, not just the initial fit.
+  useEffect(() => {
+    if (view) onViewChange?.(view)
+  }, [view, onViewChange])
 
   function onPointerDown(event) {
     if (event.button !== 0) return // left button only

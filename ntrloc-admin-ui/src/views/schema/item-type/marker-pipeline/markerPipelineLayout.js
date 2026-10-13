@@ -60,17 +60,48 @@ export const BODY_SIDE_MARGIN = STANDARD_PADDING
 // A block never shrinks below this even with a short marker name or a short title like "Filter" --
 // keeps the shape legibly a "block" rather than collapsing to a sliver.
 const MIN_BODY_WIDTH = 90
+// Every carrier block and signal node's own edit (left) and delete (right) icons, shown in its
+// header's own corners only while editing (see headerIcons below) -- but reserved in its own width
+// unconditionally (see bodyWidth/selectBodyWidth/filterNodeDimensions/signalNodeDimensions), whether
+// or not the diagram is currently in edit mode, so a node never resizes just because editing was
+// toggled. The title stays centered on the node's own *full* width regardless of the icons (see
+// chipLayout) -- never narrowed to center over just the space between them -- so a node whose width
+// the title alone drives (titleCandidateWidth) needs *two* of HEADER_ICON_SIDE_RESERVE, not one:
+// clearing one icon (plus HEADER_LABEL_ICON_GAP's own minimum breathing room) on each side while
+// staying centered means each side's own reserve has to hold regardless of which side's icon is
+// actually closer. <filter> in particular has no other content driving its width wider than its own
+// ports need (see filterNodeDimensions' own comment) -- it's the one block type a title's own
+// requirement most often actually decides.
+const HEADER_ICON_SIZE = 14
+// One icon's own footprint from whichever edge it sits at: the standard inset, plus the icon itself
+// -- each side of the header holds exactly one icon now (edit left, delete right), not two sharing
+// one side, so there's no second icon's own width/gap to add here the way there used to be.
+const HEADER_ICON_SIDE_RESERVE = STANDARD_PADDING + HEADER_ICON_SIZE
+// The closest a centered title is ever allowed to come to either icon -- titleCandidateWidth below
+// adds this (doubled, same reasoning as HEADER_ICON_SIDE_RESERVE's own comment) on top of the icons'
+// own footprint, so a title's own measured width alone never has to butt right up against either one.
+const HEADER_LABEL_ICON_GAP = 10
 // A <select> row's own vertical padding, and the floor every row (even an empty "(Otherwise)" one)
 // stays above -- same role as STRIP_WIDTH/BODY_SIDE_MARGIN above, just for rows instead of the
 // whole block. See selectRowLayout.
 const ROW_PADDING_Y = STANDARD_PADDING
 const ROW_MIN_HEIGHT = PIN_DIAMETER + 2 * STANDARD_PADDING
 // A subject/predicate chip's own height -- the same as a marker chip's (see chipLayout), just
-// auto-width instead of stretched to fill a shared strip (see textChip). The small mini-header a
-// nested "count" sub-box gets (see signalConditionLayout) is sized off it too.
+// auto-width instead of stretched to fill a shared strip (see textChip).
 const TEXT_CHIP_HEIGHT = CHIP_LINE_HEIGHT + CHIP_PADDING_Y
 const TEXT_CHIP_GAP = CHIP_GAP
-const NESTED_HEADER_HEIGHT = TEXT_CHIP_HEIGHT + 10
+// The vertical rhythm inside a predicate box specifically (see predicateBoxHeight/placePredicateBox):
+// label to its own context chip, context chip to whatever follows (a sub-predicate's own box, or this
+// box's own test chip when it has no children), and the last sub-predicate to this box's own test
+// chip. Deliberately its own constant, not TEXT_CHIP_GAP -- a predicate box's stacked pieces read as
+// distinct statements ("what's being read" / "what's nested under it" / "what the whole thing
+// resolves to"), not just a list of chips, so it gets a wider, independently-tunable gap.
+const BOX_CONTENT_GAP = 10
+// A predicate box's own label is one line of text, same height as a chip's own line (see
+// CHIP_LINE_HEIGHT) -- the header band is just that line plus one BOX_CONTENT_GAP before whatever
+// comes next, not a full chip-sized row.
+const BOX_LABEL_HEIGHT = CHIP_LINE_HEIGHT
+const BOX_HEADER_HEIGHT = BOX_LABEL_HEIGHT + BOX_CONTENT_GAP
 // The gap between a <select> row's own criteria (predicate) column and its marker column -- wider
 // than the ordinary CHIP_GAP rhythm everything else uses, so the two columns read as clearly
 // separate "cells" rather than crowding each other the way a plain content gap would.
@@ -93,6 +124,16 @@ export const PSEUDO_LABEL_GAP = 10
 const START_LABEL_OVERHANG = estimateLabelWidth('start') + PSEUDO_LABEL_GAP
 const END_LABEL_OVERHANG = estimateLabelWidth('end') + PSEUDO_LABEL_GAP
 
+// How far short of End's own circle an edge's input point lands -- not the line itself, but far
+// enough that the edge's own terminal arrowhead (see MarkerPipelineView.jsx's EDGE_ARROW_HALF_WIDTH/
+// EDGE_ARROW_OFFSET_X) lands with its tip exactly on the circle's own boundary, not short of it (a
+// visible gap) or past it (buried in the circle). Landing the line's own target exactly on the
+// boundary would do the burying -- the arrow is centered on its own terminal point, so half its own
+// width would land inside the circle -- hence this gap, sized to cancel exactly that: EDGE_ARROW_HALF_WIDTH
+// (how far the tip extends ahead of the terminal point) minus EDGE_ARROW_OFFSET_X (the terminal
+// point's own leftward nudge off center).
+const PSEUDO_INPUT_ARROW_GAP = 3
+
 // A bit more generous than estimateLabelWidth's own flat per-character estimate -- the longer
 // subject/predicate phrases this chip renders (e.g. "Approval status = APPROVED") compound that
 // estimate's own imprecision enough to visibly overflow the chip's rounded rect without it.
@@ -100,17 +141,35 @@ function textChipWidth(text) {
   return estimateLabelWidth(text) * 1.1 + 2 * CHIP_PADDING_X
 }
 
-// A subject ('linked item: X', 'property: X') or predicate ('= APPROVED', 'any match') chip -- the
-// two colored-pill shapes the design calls for a Condition's own text to render as (filled green for
-// a subject, unfilled magenta for a predicate -- see MarkerPipelineView.css), auto-sized to its own
-// text rather than stretched to fill a shared strip the way a marker chip is (see chipLayout). x is
-// the chip's own left edge; a centered caller passes centerX - width/2 instead.
+// A subject ('linked item: X', 'property: X'), predicate ('= NATURE', a <select> row's own branch
+// caption), or test ('= APPROVED', 'any match' -- a predicate box's own comparison, see
+// placePredicateBox) chip -- the colored-pill shapes the design calls for (filled green for a
+// subject, unfilled light-blue for predicate/test alike -- see MarkerPipelineView.css), auto-sized to
+// its own text rather than stretched to fill a shared strip the way a marker chip is (see chipLayout).
+// x is the chip's own left edge; a centered caller passes centerX - width/2 instead.
 function textChip(kind, text, x, y) {
   return { kind, text, x, y, width: textChipWidth(text), height: TEXT_CHIP_HEIGHT }
 }
 
 function isPseudo(node) {
   return node.type === 'START' || node.type === 'END'
+}
+
+// Where a node's own edit/delete icons land -- edit in its header's own STANDARD_PADDING-inset left
+// corner, delete in its right one (HEADER_ICON_SIDE_RESERVE each), both vertically centered in the
+// header band. null when not editable, so a caller can render conditionally off this one check
+// rather than its own `editable` prop a second time. Shared by chipLayout/filterPortLayout/
+// selectRowLayout/signalRowLayout/signalConditionLayout so every block/node shape places its own
+// icons the same way.
+function headerIcons(rect, editable) {
+  if (!editable) return null
+  const y = rect.y + (TITLE_AREA_HEIGHT - HEADER_ICON_SIZE) / 2
+  const editX = rect.x + STANDARD_PADDING
+  const deleteX = rect.x + rect.width - STANDARD_PADDING - HEADER_ICON_SIZE
+  return {
+    edit: { x: editX, y, size: HEADER_ICON_SIZE },
+    delete: { x: deleteX, y, size: HEADER_ICON_SIZE },
+  }
 }
 
 // The body band's own vertical center -- everything below the header rule, where ports/pins and
@@ -121,11 +180,23 @@ export function bodyMidY(rect) {
 }
 
 // markerNames: this block's own marker names, already resolved from ids (see
-// MarkerPipelineViewModel's blockLabel). Body width is driven by the widest single line among the
-// title and every marker chip -- there's never more than one line to measure per chip now.
+// MarkerPipelineViewModel's blockLabel). Body width is the wider of two independent requirements:
+// the marker chips' own (ordinary BODY_SIDE_MARGIN-padded) width, or the title's own -- and the
+// title's is 2 * (HEADER_ICON_SIDE_RESERVE + HEADER_LABEL_ICON_GAP), not one, because the title
+// centers on the block's full width (see chipLayout), not just the space between the icons: clearing
+// each side's own icon (plus HEADER_LABEL_ICON_GAP's own minimum breathing room) while staying
+// centered means both sides need the same reserve, regardless of which one actually binds (see
+// HEADER_ICON_SIDE_RESERVE's own comment, and titleCandidateWidth, shared with selectBodyWidth/
+// filterNodeDimensions/signalNodeDimensions so the four block/node shapes can't disagree on what
+// "enough room" means).
+function titleCandidateWidth(title) {
+  return estimateLabelWidth(title) + 2 * (HEADER_ICON_SIDE_RESERVE + HEADER_LABEL_ICON_GAP)
+}
+
 function bodyWidth(label) {
-  const widest = Math.max(estimateLabelWidth(label.title), ...label.markerNames.map((n) => estimateLabelWidth(n) + 2 * CHIP_PADDING_X), 0)
-  return Math.max(widest + 2 * BODY_SIDE_MARGIN, MIN_BODY_WIDTH)
+  const chipWidest = Math.max(0, ...label.markerNames.map((n) => estimateLabelWidth(n) + 2 * CHIP_PADDING_X))
+  const chipWidth = chipWidest + 2 * BODY_SIDE_MARGIN
+  return Math.max(titleCandidateWidth(label.title), chipWidth, MIN_BODY_WIDTH)
 }
 
 // A row's own content height: stacked marker chips, same formula as the ordinary chips-under-title
@@ -172,14 +243,14 @@ function rowRequiredWidth(row, predicateColWidth) {
 
 function selectBodyWidth(rows, title, propertyLabel) {
   const predicateColWidth = predicateColumnWidth(rows)
-  const widest = Math.max(
-    estimateLabelWidth(title),
+  const contentWidest = Math.max(
     propertyLabel ? textChipWidth(`property: ${propertyLabel}`) : 0,
     ...rows.map((row) => (row.otherwise ? 0 : rowRequiredWidth(row, predicateColWidth))),
     estimateLabelWidth('(Otherwise)'),
     0,
   )
-  return Math.max(widest + 2 * BODY_SIDE_MARGIN, MIN_BODY_WIDTH)
+  const contentWidth = contentWidest + 2 * BODY_SIDE_MARGIN
+  return Math.max(titleCandidateWidth(title), contentWidth, MIN_BODY_WIDTH)
 }
 
 // The gap a "property: X" header reserves above the rows it precedes -- one chip's own height plus
@@ -208,7 +279,11 @@ function selectHeight(rows, propertyLabel) {
 function filterNodeDimensions(label) {
   const labelWidth = Math.max(estimateLabelWidth('input'), estimateLabelWidth('if'))
   const leftSectionWidth = STRIP_WIDTH + labelWidth + STANDARD_PADDING
-  const width = Math.max(leftSectionWidth + STRIP_WIDTH, estimateLabelWidth(label.title) + 2 * BODY_SIDE_MARGIN)
+  const portWidth = leftSectionWidth + STRIP_WIDTH
+  // <filter> has nothing else (no marker chips, no rows) that could otherwise end up wider than its
+  // own title's requirement -- it's the one block type titleCandidateWidth alone usually decides
+  // (see that function's own comment, and bodyWidth's).
+  const width = Math.max(portWidth, titleCandidateWidth(label.title))
   // No separate BOTTOM_PADDING term here, unlike an ordinary block's chip stack -- each ROW_MIN_HEIGHT
   // row already bakes in its own 10px margin above *and* below its own pin (that's what centers the
   // pin within it), so the "if" row's own bottom margin already is the block's bottom margin. Adding
@@ -304,56 +379,75 @@ export function signalNodes(pipeline) {
     }))
 }
 
-// description: this node's own {propertyLabel, rowLabels} (a ConditionGroup) or {lines, nested} (a
-// bare Condition) from MarkerPipelineViewModel -- see pipelineConditionText.js. No predicate detail
-// at all when absent (schema still loading, or a shape this module doesn't know how to size yet) --
-// still a valid, if minimal, box. Only a right-side strip: unlike a carrier block, a signal block has
-// no input of its own to feed, so there's nothing on the left to reserve room for.
+// A predicate box's own minimum content width (see pipelineConditionText.describePredicateBox for the
+// {label, subjectText, testText, children} shape), bottom-up: the widest of its own subject/test chip
+// and its own children's boxes, each of which needs BODY_SIDE_MARGIN clear on every side of ITS
+// widest content just like this box does around its own (a child is itself a bordered box, not bare
+// content) -- it isn't enough to reserve only a child's own inner width, or that child's box ends up
+// exactly BODY_SIDE_MARGIN too narrow to actually contain itself.
+function predicateBoxMinWidth(box) {
+  if (!box) return 0
+  return Math.max(
+    box.subjectText ? textChipWidth(box.subjectText) : 0,
+    box.testText ? textChipWidth(box.testText) : 0,
+    ...box.children.map((child) => predicateBoxMinWidth(child) + 2 * BODY_SIDE_MARGIN),
+    0,
+  )
+}
+
+// A predicate box's own height, bottom-up: its header, an optional subject chip, each child's own box
+// stacked top to bottom, then an optional test chip for its own test -- last, since a compound
+// predicate's own test (e.g. CountedPredicate's count quantifier) describes the *result* of
+// everything above it, not a detail of any one child (see MarkerPipelineView.css's own comment).
+// BOX_CONTENT_GAP separates consecutive pieces only (never trails after the last one) -- the box's
+// own bottom padding is ROW_PADDING_Y alone, the same way every other block in this module reserves
+// exactly one bottom padding, not a padding plus a leftover inter-piece gap.
+function predicateBoxHeight(box) {
+  if (!box) return 0
+  const pieceCount = (box.subjectText ? 1 : 0) + box.children.length + (box.testText ? 1 : 0)
+  let height = BOX_HEADER_HEIGHT + Math.max(0, pieceCount - 1) * BOX_CONTENT_GAP
+  if (box.subjectText) height += TEXT_CHIP_HEIGHT
+  for (const child of box.children) height += predicateBoxHeight(child)
+  if (box.testText) height += TEXT_CHIP_HEIGHT
+  return height + ROW_PADDING_Y
+}
+
+// description: this node's own {propertyLabel, rowLabels} (a ConditionGroup) or a predicate box (a
+// bare Condition's own root box -- see pipelineConditionText.describeCondition) from
+// MarkerPipelineViewModel. No predicate detail at all when absent (schema still loading, or a shape
+// this module doesn't know how to size yet) -- still a valid, if minimal, box. Only a right-side
+// strip: unlike a carrier block, a signal block has no input of its own to feed, so there's nothing on
+// the left to reserve room for.
+// titleCandidateWidth (see its own comment) competes against the node's own content width in both
+// branches below, same as bodyWidth/selectBodyWidth/filterNodeDimensions -- the title's own
+// requirement is never just folded in as one more candidate alongside the content, nor added
+// unconditionally on top of it, since the two need different margins (2 * (HEADER_ICON_SIDE_RESERVE
+// + HEADER_LABEL_ICON_GAP) vs. 2 * BODY_SIDE_MARGIN) and only the wider actually has to win.
 function signalNodeDimensions(node, description) {
   if (node.pinIds.length > 1) {
     const height = TITLE_AREA_HEIGHT + propertyHeaderHeight(description?.propertyLabel) + node.pinIds.length * ROW_MIN_HEIGHT + BOTTOM_PADDING
     const labelWidths = (description?.rowLabels ?? []).map((l) => textChipWidth(l))
-    const widest = Math.max(
-      estimateLabelWidth(node.title),
+    const contentWidest = Math.max(
       description?.propertyLabel ? textChipWidth(`property: ${description.propertyLabel}`) : 0,
       ...labelWidths,
       0,
     )
-    return { width: STRIP_WIDTH + Math.max(widest + 2 * BODY_SIDE_MARGIN, MIN_BODY_WIDTH), height }
+    const contentWidth = contentWidest + 2 * BODY_SIDE_MARGIN
+    const width = STRIP_WIDTH + Math.max(titleCandidateWidth(node.title), contentWidth, MIN_BODY_WIDTH)
+    return { width, height }
   }
-  // lines/nested are mutually exclusive (see describeCondition -- a COUNTED predicate always sets
-  // nested with empty lines, everything else always sets lines with no nested), so there's never a
-  // gap to reserve between them.
-  const lines = description?.lines ?? []
-  const nested = description?.nested ?? null
-  const linesHeight = lines.length * (TEXT_CHIP_HEIGHT + TEXT_CHIP_GAP)
-  // The nested box is itself a piece of content at the outer level, needing BODY_SIDE_MARGIN clear
-  // on every side of its own widest chip just like the outer body does around its own content (see
-  // nestedBoxWidth, shared with signalConditionLayout so the two can't drift apart) -- it isn't
-  // enough to reserve only the nested chip's own width, or the nested box ends up exactly
-  // BODY_SIDE_MARGIN too narrow to actually contain that chip.
-  const nestedWidth = nested ? nestedBoxWidth(nested.lines) : 0
-  const nestedHeight = nested ? nestedBoxHeight(nested.lines) : 0
+  const box = description ?? null
+  // The root box is itself a piece of content at the outer level, needing BODY_SIDE_MARGIN clear on
+  // every side of its own content just like a nested box does within it -- see predicateBoxMinWidth.
+  const boxMinWidth = box ? predicateBoxMinWidth(box) + 2 * BODY_SIDE_MARGIN : 0
+  const boxWidth = boxMinWidth + 2 * BODY_SIDE_MARGIN
+  const boxHeight = box ? predicateBoxHeight(box) : 0
   const height = Math.max(
-    TITLE_AREA_HEIGHT + CONTENT_TOP_GAP + linesHeight + nestedHeight + BOTTOM_PADDING,
+    TITLE_AREA_HEIGHT + CONTENT_TOP_GAP + boxHeight + BOTTOM_PADDING,
     TITLE_AREA_HEIGHT + ROW_MIN_HEIGHT + BOTTOM_PADDING,
   )
-  const lineWidths = lines.map((l) => textChipWidth(l.text))
-  const widest = Math.max(estimateLabelWidth(node.title), ...lineWidths, nestedWidth, 0)
-  return { width: STRIP_WIDTH + Math.max(widest + 2 * BODY_SIDE_MARGIN, MIN_BODY_WIDTH), height }
-}
-
-// Shared by signalNodeDimensions (sizing the outer node) and signalConditionLayout (actually placing
-// the nested box) so the space reserved for it and its own real size can't drift apart -- see
-// signalNodeDimensions' own comment on why this needs its own BODY_SIDE_MARGIN on top of the nested
-// chips' own.
-function nestedBoxWidth(nestedLines) {
-  const contentWidth = Math.max(0, ...nestedLines.map((l) => textChipWidth(l.text)))
-  return contentWidth + 2 * BODY_SIDE_MARGIN
-}
-
-function nestedBoxHeight(nestedLines) {
-  return NESTED_HEADER_HEIGHT + nestedLines.length * (TEXT_CHIP_HEIGHT + TEXT_CHIP_GAP) + ROW_PADDING_Y
+  const width = STRIP_WIDTH + Math.max(titleCandidateWidth(node.title), boxWidth, MIN_BODY_WIDTH)
+  return { width, height }
 }
 
 // A standalone ConditionGroup's own stacked pin-rows -- same shape as before text existed (one row
@@ -362,11 +456,20 @@ function nestedBoxHeight(nestedLines) {
 // the group's own shared subject. Rare in practice -- our one real pipeline's only ConditionGroup is
 // inlined into its <select> (see inlinedConditionGroupOwner) -- but kept correct for a group that
 // ever is referenced from more than one place.
-export function signalRowLayout(rect, pinIds, description) {
+// editable: see headerIcons -- only governs whether the icons themselves are drawn, never this
+// node's own size or where anything centers (both are now constant regardless of edit state -- see
+// bodyWidth's own comment). centerX is full-width throughout, including the title (see chipLayout's
+// own comment on why that can never overlap the icons, via titleCandidateWidth in
+// signalNodeDimensions).
+export function signalRowLayout(rect, pinIds, description, editable) {
   const headerBottom = rect.y + TITLE_AREA_HEIGHT
   const titleY = rect.y + TITLE_AREA_HEIGHT / 2 + 4
-  const bodyRight = rect.x + rect.width - STRIP_WIDTH
-  const centerX = (rect.x + bodyRight) / 2
+  // Centered on the whole box, not just its body left of the output strip -- a signal node has a
+  // strip on its right only (no left input strip to balance it, unlike a carrier block's own
+  // symmetric two-strip body), so centering within the body alone would read as off-center against
+  // the box an admin actually sees (see CarrierBlockNode/chipLayout for the symmetric case this
+  // otherwise matches).
+  const centerX = rect.x + rect.width / 2
   let propertyChip = null
   if (description?.propertyLabel) {
     const text = `property: ${description.propertyLabel}`
@@ -380,44 +483,79 @@ export function signalRowLayout(rect, pinIds, description) {
     const labelChip = label ? textChip('predicate', label, rect.x + CHIP_PADDING_X, top + (ROW_MIN_HEIGHT - TEXT_CHIP_HEIGHT) / 2) : null
     return { id, top, midY: top + ROW_MIN_HEIGHT / 2, labelChip }
   })
-  return { centerX, titleY, headerBottom, propertyChip, rows }
+  return { centerX, titleY, headerBottom, propertyChip, rows, icons: headerIcons(rect, editable) }
 }
 
-// A standalone bare Condition's own content: stacked text lines (describeCondition's own `lines`),
-// and -- for a COUNTED predicate -- one nested "count" sub-box (describeCondition's own `nested`),
-// the one place this diagram nests one block's content inside another's, mirroring a CountedPredicate
-// own two-part structure (what's being counted, and how many must match). Exactly one output pin,
-// centered on the whole body the same way an ordinary carrier block's single pin is (see bodyMidY) --
-// a bare Condition is always exactly one addressable pin (see signalPinIds).
-export function signalConditionLayout(rect, description) {
+// Top-down: places one predicate box at (x, y), stretched to `width` -- already decided by the
+// outermost caller (signalConditionLayout, from the signal node's own established rect, which
+// signalNodeDimensions sized off this same box's own predicateBoxMinWidth) -- so every nested level
+// reads as a uniform-width frame inset from its parent by BODY_SIDE_MARGIN, not sized to its own
+// narrower content. Order matches the mockup this was built from: subject chip (what's being read),
+// then each child box (what's being tested on it), then this box's own test chip last (what the whole
+// box resolves to -- see predicateBoxHeight's own comment on why the test comes after the children).
+// BOX_CONTENT_GAP is only ever added *before* a piece that has a piece above it (mirroring
+// predicateBoxHeight's own pieceCount - 1 rule), never trailing after the last one. The test chip is
+// horizontally centered on the box's own width, unlike the subject chip and every nested child box
+// (both left-inset by BODY_SIDE_MARGIN) -- a box's own test is its single, standalone verdict, not
+// one more line of stacked content reading left-to-right with the rest.
+function placePredicateBox(box, x, y, width) {
+  const rect = { x, y, width, height: predicateBoxHeight(box) }
+  let cy = y + BOX_HEADER_HEIGHT
+  let hasPriorPiece = false
+
+  let subjectChip = null
+  if (box.subjectText) {
+    subjectChip = textChip('subject', box.subjectText, x + BODY_SIDE_MARGIN, cy)
+    cy += TEXT_CHIP_HEIGHT
+    hasPriorPiece = true
+  }
+
+  const childWidth = width - 2 * BODY_SIDE_MARGIN
+  const children = box.children.map((child) => {
+    if (hasPriorPiece) cy += BOX_CONTENT_GAP
+    const placed = placePredicateBox(child, x + BODY_SIDE_MARGIN, cy, childWidth)
+    cy += placed.rect.height
+    hasPriorPiece = true
+    return placed
+  })
+
+  let testChip = null
+  if (box.testText) {
+    if (hasPriorPiece) cy += BOX_CONTENT_GAP
+    const testWidth = textChipWidth(box.testText)
+    testChip = textChip('test', box.testText, x + width / 2 - testWidth / 2, cy)
+  }
+
+  return { rect, label: box.label, labelY: y + BOX_LABEL_HEIGHT / 2 + 6, subjectChip, children, testChip }
+}
+
+// A standalone bare Condition's own content: one recursive predicate box (see placePredicateBox),
+// rooted at headerBottom + CONTENT_TOP_GAP and stretched to the body's own available width (the same
+// width signalNodeDimensions already reserved for it via predicateBoxMinWidth, so the two can't drift
+// apart). Exactly one output pin, centered on the whole body the same way an ordinary carrier block's
+// single pin is (see bodyMidY) -- a bare Condition is always exactly one addressable pin (see
+// signalPinIds).
+// editable: see headerIcons -- only governs whether the icons are drawn. The predicate box below the
+// title sits well clear of the icons' own band regardless (same reasoning as chipLayout's own
+// comment), so its own width is untouched by titleCandidateWidth -- only signalNodeDimensions' own
+// sizing needs to know about it, not where this box is actually placed.
+export function signalConditionLayout(rect, description, editable) {
   const headerBottom = rect.y + TITLE_AREA_HEIGHT
   const titleY = rect.y + TITLE_AREA_HEIGHT / 2 + 4
   const bodyRight = rect.x + rect.width - STRIP_WIDTH
-  const centerX = (rect.x + bodyRight) / 2
-  const textX = rect.x + BODY_SIDE_MARGIN
-  const lines = description?.lines ?? []
-  const nested = description?.nested ?? null
+  // Centered on the whole box -- see signalRowLayout's own comment on why this can't be
+  // (rect.x + bodyRight) / 2 the way it used to be (a signal node's only strip is on the right, so
+  // that formula reads as off-center against the box itself).
+  const centerX = rect.x + rect.width / 2
 
-  let y = headerBottom + CONTENT_TOP_GAP
-  const laidOutLines = lines.map((line) => {
-    const chip = textChip(line.kind, line.text, textX, y)
-    y += TEXT_CHIP_HEIGHT + TEXT_CHIP_GAP
-    return chip
-  })
-
-  let nestedBox = null
-  if (nested) {
-    const nestedRect = { x: rect.x + BODY_SIDE_MARGIN, y, width: nestedBoxWidth(nested.lines), height: nestedBoxHeight(nested.lines) }
-    let ny = nestedRect.y + NESTED_HEADER_HEIGHT
-    const nestedLines = nested.lines.map((line) => {
-      const chip = textChip(line.kind, line.text, nestedRect.x + BODY_SIDE_MARGIN, ny)
-      ny += TEXT_CHIP_HEIGHT + TEXT_CHIP_GAP
-      return chip
-    })
-    nestedBox = { rect: nestedRect, title: nested.title, titleY: nestedRect.y + 13, lines: nestedLines }
+  let box = null
+  if (description) {
+    const boxX = rect.x + BODY_SIDE_MARGIN
+    const boxWidth = bodyRight - boxX - BODY_SIDE_MARGIN
+    box = placePredicateBox(description, boxX, headerBottom + CONTENT_TOP_GAP, boxWidth)
   }
 
-  return { centerX, titleY, headerBottom, lines: laidOutLines, nested: nestedBox, pinY: bodyMidY(rect) }
+  return { centerX, titleY, headerBottom, box, pinY: bodyMidY(rect), icons: headerIcons(rect, editable) }
 }
 
 // An edge always connects horizontally at both ends -- an output pin's own line always leaves it
@@ -501,6 +639,12 @@ function rankByLongestPath(pipeline) {
 // signalDescriptions: Map<signal node id, {propertyLabel, rowLabels} | {lines, nested}> from the same
 // place -- see signalNodeDimensions. edgeBends: Map<edge key, number> decoded from
 // PipelineLayout.edgeBends (empty map if nothing saved yet, never null) -- see orthogonalPath.
+// No `editable` param -- every node's own size always reserves room for its edit/delete icons (see
+// HEADER_ICON_SIDE_RESERVE), whether or not the diagram is currently in edit mode, so a block never
+// resizes just because editing was toggled. Edit mode only ever affects whether the icons themselves
+// are drawn (see headerIcons), decided where each node's own layout is actually placed (the View's
+// own chipLayout/filterPortLayout/selectRowLayout/signalRowLayout/signalConditionLayout calls), not
+// here.
 export function computeLayout(pipeline, positions, blocks, signalDescriptions = new Map(), edgeBends = new Map()) {
   const nodes = allNodes(pipeline)
   const rank = rankByLongestPath(pipeline)
@@ -527,7 +671,17 @@ export function computeLayout(pipeline, positions, blocks, signalDescriptions = 
     rankX.set(r, rankX.get(prevRank) + prevMaxWidth + RANK_GAP)
   }
 
+  // minX/minY track the tightest bounding box actually needed, the same way maxX/maxY always have --
+  // not just assumed to be 0. That assumption held while only the fallback layout existed (rank0
+  // always starts at PADDING, never negative), but an admin's own saved position can put a node
+  // anywhere, including left of or above where the fallback ever would -- and Start's own "start"
+  // label (see START_LABEL_OVERHANG) extends further left still, well past Start's own rect, exactly
+  // the same way End's "end" label extends right past its own rect (see maxX below). Without
+  // tracking this properly, the View's own fit-zoom -- which centers the viewport over exactly this
+  // box -- has no way to know content starts before 0, and clips whatever does.
   const rects = new Map()
+  let minX = Infinity
+  let minY = Infinity
   let maxX = 0
   let maxY = 0
   for (const [r, rankNodes] of sortedRanks) {
@@ -539,12 +693,17 @@ export function computeLayout(pipeline, positions, blocks, signalDescriptions = 
       const y = saved ? saved.y : fallbackY
       rects.set(node.id, { x, y, width, height })
       fallbackY = y + height + SIBLING_GAP
+      minX = Math.min(minX, x)
+      minY = Math.min(minY, y)
       maxX = Math.max(maxX, x + width)
       maxY = Math.max(maxY, y + height)
     }
   }
-  // End's own "end" label overhangs past its own rect on the right (see START_LABEL_OVERHANG's own
-  // comment) -- reserved explicitly here so the canvas's own bounding box actually contains it.
+  // Start/End's own "start"/"end" labels overhang past their own rects -- on the left for Start, on
+  // the right for End -- the only content in this diagram ever drawn outside its own node's rect,
+  // whether that rect came from the fallback layout or an admin's own saved position.
+  const startRect = rects.get(pipeline.start.id)
+  minX = Math.min(minX, startRect.x - START_LABEL_OVERHANG)
   const endRect = rects.get(pipeline.end.id)
   maxX = Math.max(maxX, endRect.x + endRect.width + END_LABEL_OVERHANG)
 
@@ -562,6 +721,8 @@ export function computeLayout(pipeline, positions, blocks, signalDescriptions = 
     const y = saved ? saved.y : signalFallbackY
     rects.set(node.id, { x, y, width, height })
     signalFallbackY = y + height + SIBLING_GAP
+    minX = Math.min(minX, x)
+    minY = Math.min(minY, y)
     maxX = Math.max(maxX, x + width)
     maxY = Math.max(maxY, y + height)
   }
@@ -576,9 +737,15 @@ export function computeLayout(pipeline, positions, blocks, signalDescriptions = 
     const y = isPseudo(node) ? rect.y + rect.height / 2 : bodyMidY(rect)
     return isPseudo(node) ? { x: rect.x + rect.width / 2, y } : { x: rect.x + rect.width - STRIP_WIDTH / 2, y }
   }
+  // A pseudostate's input point lands on its own left edge, not its center -- unlike its own output
+  // point (still dead center, since nothing ever targets Start and an edge leaving End doesn't
+  // exist), this one is a real edge's own target, and landing it at the circle's exact center used
+  // to bury the edge's own terminal arrowhead inside End's own filled dot instead of leaving it
+  // visible just before the shape it's entering, the same way any other carrier input pin's arrow
+  // already sits at its own block's own left edge rather than somewhere inside the block.
   function inputPoint(rect, node) {
     const y = isPseudo(node) ? rect.y + rect.height / 2 : bodyMidY(rect)
-    return isPseudo(node) ? { x: rect.x + rect.width / 2, y } : { x: rect.x + STRIP_WIDTH / 2, y }
+    return isPseudo(node) ? { x: rect.x - PSEUDO_INPUT_ARROW_GAP, y } : { x: rect.x + STRIP_WIDTH / 2, y }
   }
 
   // outputPinPositions has one entry per *pin*, not per node -- an ordinary block contributes one
@@ -680,16 +847,26 @@ export function computeLayout(pipeline, positions, blocks, signalDescriptions = 
     edges,
     signalNodes: signalNodesList,
     signalEdges,
-    width: maxX + PADDING,
-    height: maxY + PADDING,
+    // minX/minY: the top-left corner of the diagram's own bounding box, PADDING clear of the
+    // tightest content actually needs -- exported so the View's fit-zoom can center the viewport
+    // over exactly this box instead of assuming it starts at (0, 0), which a saved position is
+    // never guaranteed to produce (see minX's own comment above).
+    minX: minX - PADDING,
+    minY: minY - PADDING,
+    width: maxX - minX + 2 * PADDING,
+    height: maxY - minY + 2 * PADDING,
   }
 }
 
 // Body-relative geometry the View needs to place the title and each stacked chip inside a carrier
 // block's rect -- kept here so the pixel math backing "does this fit" (nodeDimensions, above) and
 // "where exactly do I draw it" (the View) can't drift apart. markerNames: this block's own marker
-// names (plain strings, already resolved from ids).
-export function chipLayout(rect, markerNames) {
+// names (plain strings, already resolved from ids). editable: see headerIcons -- governs only
+// whether the icons are drawn; the *title* centers on the body's own full width regardless (see
+// titleCandidateWidth -- the block is always wide enough that this can never overlap the icons,
+// rather than the title narrowing its own centering to dodge them), same as the chips below it,
+// which sit below the header band the icons live in and so never had to dodge them either.
+export function chipLayout(rect, markerNames, editable) {
   const bodyX = rect.x + STRIP_WIDTH
   const bodyWidthPx = rect.width - 2 * STRIP_WIDTH
   // A chip is inset from the body's own strip dividers by BODY_SIDE_MARGIN on each side -- the
@@ -711,7 +888,7 @@ export function chipLayout(rect, markerNames) {
     y += chipHeight + CHIP_GAP
     return chip
   })
-  return { centerX: bodyX + bodyWidthPx / 2, titleY, headerBottom, chips }
+  return { centerX: bodyX + bodyWidthPx / 2, titleY, headerBottom, chips, icons: headerIcons(rect, editable) }
 }
 
 // <filter>'s own port geometry: two stacked left-side pins (carrier "input", then "if") instead of
@@ -719,10 +896,13 @@ export function chipLayout(rect, markerNames) {
 // doubles as the gate anchor a dashed signal-reference edge lands on (see computeLayout), landing
 // precisely on the labeled port it actually belongs to instead of the block's top-center the way an
 // ordinary gated block's does.
-export function filterPortLayout(rect) {
+export function filterPortLayout(rect, editable) {
   const headerBottom = rect.y + TITLE_AREA_HEIGHT
   const titleY = rect.y + TITLE_AREA_HEIGHT / 2 + 4
   const rightStripX = rect.x + rect.width - STRIP_WIDTH
+  // Full-width centering -- see chipLayout's own comment (the same reasoning applies here: a
+  // <filter>'s own width always already has enough room for the title to center without reaching
+  // the icons, via titleCandidateWidth in filterNodeDimensions).
   const centerX = (rect.x + STRIP_WIDTH + rightStripX) / 2
   const inputTop = headerBottom
   const ifTop = headerBottom + ROW_MIN_HEIGHT
@@ -730,6 +910,7 @@ export function filterPortLayout(rect) {
     centerX,
     titleY,
     headerBottom,
+    icons: headerIcons(rect, editable),
     input: {
       x: rect.x + STRIP_WIDTH / 2,
       y: inputTop + ROW_MIN_HEIGHT / 2,
@@ -753,7 +934,10 @@ export function filterPortLayout(rect) {
 // (optional): the "property: X" header for a ConditionGroup this <select> wholly owns (see
 // inlinedConditionGroupFor) -- pushes every row down to make room, same as a signal node's own
 // property-label header (see signalRowLayout).
-export function selectRowLayout(rect, rows, propertyLabel) {
+// editable: see headerIcons -- governs only whether the icons are drawn. centerX is full-width
+// throughout, including the title (see chipLayout's own comment on why that can never overlap the
+// icons, via titleCandidateWidth in selectBodyWidth).
+export function selectRowLayout(rect, rows, propertyLabel, editable) {
   const bodyX = rect.x + STRIP_WIDTH
   const bodyWidthPx = rect.width - 2 * STRIP_WIDTH
   const chipX = bodyX + BODY_SIDE_MARGIN
@@ -798,5 +982,5 @@ export function selectRowLayout(rect, rows, propertyLabel) {
     top += height
     return laidOut
   })
-  return { centerX, titleY, headerBottom, propertyChip, rows: laidOutRows }
+  return { centerX, titleY, headerBottom, propertyChip, rows: laidOutRows, icons: headerIcons(rect, editable) }
 }

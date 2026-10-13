@@ -50,19 +50,44 @@ function Pin({ cx, cy, variant, shape }) {
   )
 }
 
-// A subject ('linked item: X', 'property: X') or predicate ('= APPROVED', 'any match') chip -- see
-// textChip in markerPipelineLayout.js. kind drives which of the two pill styles it renders as (see
-// MarkerPipelineView.css): a filled green rounded rect for a subject, an unfilled magenta one for a
-// predicate.
+// A subject ('linked item: X', 'property: X'), predicate ('= NATURE', a <select> row's own branch
+// caption), or test ('= APPROVED', 'any match' -- a predicate box's own comparison) chip -- see
+// textChip in markerPipelineLayout.js. kind drives which pill style it renders as (see
+// MarkerPipelineView.css): a filled green rounded rect for a subject, an unfilled light-blue one for
+// predicate/test alike -- the same content (a leaf predicate's own comparison text) read in two
+// different places, reached via two different CSS classes only because they're built by two
+// different layout call sites.
 function TextChip({ chip }) {
-  const rectClass = chip.kind === 'subject' ? 'mp-subject-chip-rect' : 'mp-predicate-chip-rect'
-  const textClass = chip.kind === 'subject' ? 'mp-subject-chip-text' : 'mp-predicate-chip-text'
+  const rectClass = chip.kind === 'subject' ? 'mp-subject-chip-rect' : chip.kind === 'test' ? 'mp-test-chip-rect' : 'mp-predicate-chip-rect'
+  const textClass = chip.kind === 'subject' ? 'mp-subject-chip-text' : chip.kind === 'test' ? 'mp-test-chip-text' : 'mp-predicate-chip-text'
   return (
     <g>
       <rect className={rectClass} x={chip.x} y={chip.y} width={chip.width} height={chip.height} />
       <text className={textClass} x={chip.x + chip.width / 2} y={chip.y + chip.height / 2 + 4}>
         {chip.text}
       </text>
+    </g>
+  )
+}
+
+// One predicate's own box (see markerPipelineLayout.placePredicateBox and
+// pipelineConditionText.describePredicateBox) -- a bordered rect labeled with the predicate's family
+// ('count', 'totality', 'value'), its own subject chip (if any), each child predicate's own box
+// (recursively -- a CountedPredicate/TotalityPredicate's own sub-predicate(s), nested arbitrarily
+// deep), then its own test chip (if any) last.
+function PredicateBox({ box }) {
+  if (!box) return null
+  return (
+    <g>
+      <rect className="mp-predicate-box-rect" x={box.rect.x} y={box.rect.y} width={box.rect.width} height={box.rect.height} />
+      <text className="mp-predicate-box-label" x={box.rect.x + box.rect.width / 2} y={box.labelY}>
+        {box.label}
+      </text>
+      {box.subjectChip && <TextChip chip={box.subjectChip} />}
+      {box.children.map((child, i) => (
+        <PredicateBox key={i} box={child} />
+      ))}
+      {box.testChip && <TextChip chip={box.testChip} />}
     </g>
   )
 }
@@ -102,6 +127,61 @@ function PseudoStateNode({ rect, kind, editable, onPointerDown, onPointerMove, o
   )
 }
 
+// A carrier block or signal node's own edit/delete icons (see markerPipelineLayout.headerIcons for
+// their position -- unconditionally reserved in the node's own width, drawn only while editing) --
+// same stroke-icon convention as ChevronIcon (viewBox 0 0 24 24, stroke=currentColor), just nested as
+// an SVG-in-SVG nested viewport instead of a standalone <svg> element, since these live inside a
+// node's own shape, not floating HTML chrome. onEdit/onDelete both currently just reopen the same
+// context menu a right-click on the node already opens (see MarkerPipelineDiagram's own "shell for
+// now" comment on that menu) -- a second, more discoverable entry point into the one place real
+// edit/delete actions will eventually live, not yet wired to any real behavior of their own.
+function HeaderIcons({ icons, onEdit, onDelete }) {
+  if (!icons) return null
+  return (
+    <g className="mp-header-icons">
+      <svg
+        className="mp-header-icon mp-header-icon-edit"
+        x={icons.edit.x}
+        y={icons.edit.y}
+        width={icons.edit.size}
+        height={icons.edit.size}
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={onEdit}
+      >
+        <title>Edit</title>
+        <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
+      </svg>
+      <svg
+        className="mp-header-icon mp-header-icon-delete"
+        x={icons.delete.x}
+        y={icons.delete.y}
+        width={icons.delete.size}
+        height={icons.delete.size}
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={onDelete}
+      >
+        <title>Delete</title>
+        <polyline points="3 6 5 6 21 6" />
+        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+        <line x1="10" y1="11" x2="10" y2="17" />
+        <line x1="14" y1="11" x2="14" y2="17" />
+      </svg>
+    </g>
+  )
+}
+
 // A block is a full-width header band (its "<add>"-style title, divided from the rest by a
 // full-width rule) over a body band. The body's single output port always gets its own divided strip
 // on the right, unlabeled -- there's only ever one. The input side is the same, symmetric, on the
@@ -111,7 +191,7 @@ function PseudoStateNode({ rect, kind, editable, onPointerDown, onPointerMove, o
 function CarrierBlockNode({ rect, label, editable, onContextMenu, onPointerDown, onPointerMove, onPointerUp }) {
   const rightStripX = rect.x + rect.width - STRIP_WIDTH
   const midY = bodyMidY(rect)
-  const { centerX, titleY, headerBottom, chips } = chipLayout(rect, label.markerNames)
+  const { centerX, titleY, headerBottom, chips, icons } = chipLayout(rect, label.markerNames, editable)
 
   return (
     <g
@@ -128,6 +208,7 @@ function CarrierBlockNode({ rect, label, editable, onContextMenu, onPointerDown,
       <text className="mp-node-title" x={centerX} y={titleY}>
         {label.title}
       </text>
+      <HeaderIcons icons={icons} onEdit={onContextMenu} onDelete={onContextMenu} />
       {chips.map((chip) => (
         <g key={chip.name}>
           <rect className="mp-marker-chip-rect" x={chip.x} y={chip.y} width={chip.width} height={chip.height} />
@@ -153,7 +234,7 @@ function CarrierBlockNode({ rect, label, editable, onContextMenu, onPointerDown,
 function FilterNode({ rect, label, editable, onContextMenu, onPointerDown, onPointerMove, onPointerUp }) {
   const rightStripX = rect.x + rect.width - STRIP_WIDTH
   const midY = bodyMidY(rect)
-  const { centerX, titleY, headerBottom, input, ifPort } = filterPortLayout(rect)
+  const { centerX, titleY, headerBottom, input, ifPort, icons } = filterPortLayout(rect, editable)
 
   return (
     <g
@@ -170,6 +251,7 @@ function FilterNode({ rect, label, editable, onContextMenu, onPointerDown, onPoi
       <text className="mp-node-title" x={centerX} y={titleY}>
         {label.title}
       </text>
+      <HeaderIcons icons={icons} onEdit={onContextMenu} onDelete={onContextMenu} />
       <text className="mp-port-label" x={input.labelX} y={input.labelY}>
         input
       </text>
@@ -194,7 +276,7 @@ function FilterNode({ rect, label, editable, onContextMenu, onPointerDown, onPoi
 function SelectNode({ rect, label, editable, onContextMenu, onPointerDown, onPointerMove, onPointerUp }) {
   const rightStripX = rect.x + rect.width - STRIP_WIDTH
   const midY = bodyMidY(rect)
-  const { centerX, titleY, headerBottom, propertyChip, rows } = selectRowLayout(rect, label.rows, label.propertyLabel)
+  const { centerX, titleY, headerBottom, propertyChip, rows, icons } = selectRowLayout(rect, label.rows, label.propertyLabel, editable)
 
   return (
     <g
@@ -211,6 +293,7 @@ function SelectNode({ rect, label, editable, onContextMenu, onPointerDown, onPoi
       <text className="mp-node-title" x={centerX} y={titleY}>
         {label.title}
       </text>
+      <HeaderIcons icons={icons} onEdit={onContextMenu} onDelete={onContextMenu} />
       {propertyChip && <TextChip chip={propertyChip} />}
       {rows.map((row) =>
         row.otherwise ? (
@@ -243,20 +326,20 @@ function SelectNode({ rect, label, editable, onContextMenu, onPointerDown, onPoi
 // (see signalNodeDimensions' own comment). Two different internal shapes, matching
 // signalNodeDimensions/signalRowLayout/signalConditionLayout: a ConditionGroup (more than one pin)
 // is a title over a stacked pin-row per member Condition, each with its own short label; a bare
-// Condition (always exactly one pin) is a title over stacked description lines, with an optional
-// nested "count" sub-box for a COUNTED predicate (see describeCondition) and one pin centered on the
-// whole body.
-function SignalNode({ rect, node, description, editable, onPointerDown, onPointerMove, onPointerUp }) {
+// Condition (always exactly one pin) is a title over its own root predicate box (see describeCondition
+// and PredicateBox), with one pin centered on the whole body.
+function SignalNode({ rect, node, description, editable, onContextMenu, onPointerDown, onPointerMove, onPointerUp }) {
   const bodyRight = rect.x + rect.width - STRIP_WIDTH
   const isGroup = node.pinIds.length > 1
 
-  const groupLayout = isGroup ? signalRowLayout(rect, node.pinIds, description) : null
-  const conditionLayout = isGroup ? null : signalConditionLayout(rect, description)
-  const { centerX, titleY, headerBottom } = groupLayout ?? conditionLayout
+  const groupLayout = isGroup ? signalRowLayout(rect, node.pinIds, description, editable) : null
+  const conditionLayout = isGroup ? null : signalConditionLayout(rect, description, editable)
+  const { centerX, titleY, headerBottom, icons } = groupLayout ?? conditionLayout
 
   return (
     <g
       className={editable ? 'mp-node mp-node-editable' : 'mp-node'}
+      onContextMenu={onContextMenu}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
@@ -267,6 +350,7 @@ function SignalNode({ rect, node, description, editable, onPointerDown, onPointe
       <text className="mp-signal-node-title" x={centerX} y={titleY}>
         {node.title}
       </text>
+      <HeaderIcons icons={icons} onEdit={onContextMenu} onDelete={onContextMenu} />
       {isGroup ? (
         <>
           {groupLayout.propertyChip && <TextChip chip={groupLayout.propertyChip} />}
@@ -282,26 +366,7 @@ function SignalNode({ rect, node, description, editable, onPointerDown, onPointe
         </>
       ) : (
         <>
-          {conditionLayout.lines.map((chip, i) => (
-            <TextChip key={i} chip={chip} />
-          ))}
-          {conditionLayout.nested && (
-            <g>
-              <rect
-                className="mp-signal-nested-rect"
-                x={conditionLayout.nested.rect.x}
-                y={conditionLayout.nested.rect.y}
-                width={conditionLayout.nested.rect.width}
-                height={conditionLayout.nested.rect.height}
-              />
-              <text className="mp-signal-nested-title" x={conditionLayout.nested.rect.x + conditionLayout.nested.rect.width / 2} y={conditionLayout.nested.titleY}>
-                {conditionLayout.nested.title}
-              </text>
-              {conditionLayout.nested.lines.map((chip, i) => (
-                <TextChip key={i} chip={chip} />
-              ))}
-            </g>
-          )}
+          <PredicateBox box={conditionLayout.box} />
           <Pin cx={bodyRight + STRIP_WIDTH / 2} cy={conditionLayout.pinY} variant="signal" />
         </>
       )}
@@ -309,11 +374,44 @@ function SignalNode({ rect, node, description, editable, onPointerDown, onPointe
   )
 }
 
+// How sharply an edge's own interior bends soften into a curve instead of a sharp right angle --
+// one named constant, easy to tune later, rather than a magic number buried in edgePathD below.
+const EDGE_CORNER_RADIUS = 16
+
 // Every edge is a polyline (see orthogonalPath) that always connects horizontally at both ends --
-// turned into a plain "M x,y L x,y L x,y ..." path string, sharp corners, no rounding. Shared by
+// turned into an SVG path string, M/L straight into and out of each endpoint, with every *interior*
+// bend (never the first or last point -- those are real pin terminals, not corners) rounded off by
+// EDGE_CORNER_RADIUS instead of left as a sharp right angle: each straight run is trimmed short by
+// the corner's own radius on both sides of it, joined by a quadratic curve through the original
+// corner point. The radius is clamped to half of whichever of that corner's own two segments is
+// shorter, so a short stub (e.g. a tight detour) never produces a curve bigger than the straight run
+// it has to fit on -- without that, two adjacent corners on a short segment could overlap. Shared by
 // both edge kinds below so the two can never draw their own points differently.
 function edgePathD(points) {
-  return points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ')
+  if (points.length < 3) {
+    return points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x} ${p.y}`).join(' ')
+  }
+  let d = `M ${points[0].x} ${points[0].y} `
+  for (let i = 1; i < points.length - 1; i++) {
+    const prev = points[i - 1]
+    const curr = points[i]
+    const next = points[i + 1]
+    const inLen = Math.hypot(curr.x - prev.x, curr.y - prev.y)
+    const outLen = Math.hypot(next.x - curr.x, next.y - curr.y)
+    if (inLen === 0 || outLen === 0) {
+      // A degenerate corner (e.g. a dead-straight edge, whose "bend" points coincide -- see
+      // orthogonalPath's own forward-path formula when from.y === to.y) -- nothing to round.
+      d += `L ${curr.x} ${curr.y} `
+      continue
+    }
+    const r = Math.min(EDGE_CORNER_RADIUS, inLen / 2, outLen / 2)
+    const before = { x: prev.x + ((curr.x - prev.x) * (inLen - r)) / inLen, y: prev.y + ((curr.y - prev.y) * (inLen - r)) / inLen }
+    const after = { x: curr.x + ((next.x - curr.x) * r) / outLen, y: curr.y + ((next.y - curr.y) * r) / outLen }
+    d += `L ${before.x} ${before.y} Q ${curr.x} ${curr.y} ${after.x} ${after.y} `
+  }
+  const last = points[points.length - 1]
+  d += `L ${last.x} ${last.y}`
+  return d
 }
 
 // A "pulled" reference from a Condition's own pin to whatever gate reads it -- dashed and yellow
@@ -372,7 +470,7 @@ function EdgeHandle({ handle, onPointerDown, onPointerMove, onPointerUp }) {
 // handlers) -- no click-to-select, no editing the pipeline's own structure yet. No name/title shown
 // -- a pipeline has none; it's identified by its item type, which is already this whole tab's own
 // heading.
-function MarkerPipelineDiagram({ pipelineView, itemTypeId, saveLayout }) {
+function MarkerPipelineDiagram({ pipelineView, itemTypeId, saveLayout, initialView, onViewChange }) {
   const {
     layout,
     blocks,
@@ -400,7 +498,7 @@ function MarkerPipelineDiagram({ pipelineView, itemTypeId, saveLayout }) {
     onEdgeHandlePointerMove,
     onEdgeHandlePointerUp,
     draggingEdgeKey,
-  } = useMarkerPipelineViewModel(pipelineView, itemTypeId, saveLayout)
+  } = useMarkerPipelineViewModel(pipelineView, itemTypeId, saveLayout, initialView, onViewChange)
 
   // An SVG viewBox is an infinite-canvas window into the diagram's fixed coordinate space: (x, y)
   // is its top-left corner, (width/zoom, height/zoom) is how much of the diagram it shows. Panning
@@ -468,6 +566,7 @@ function MarkerPipelineDiagram({ pipelineView, itemTypeId, saveLayout }) {
                 node={node}
                 description={signalDescriptions.get(node.id)}
                 editable={isEditing}
+                onContextMenu={(event) => onBlockContextMenu(event, node.id)}
                 onPointerDown={(event) => onNodePointerDown(event, node.id)}
                 onPointerMove={onNodePointerMove}
                 onPointerUp={onNodePointerUp}
@@ -564,7 +663,7 @@ function MarkerPipelineDiagram({ pipelineView, itemTypeId, saveLayout }) {
   )
 }
 
-function MarkerPipelineView({ itemTypeId }) {
+function MarkerPipelineView({ itemTypeId, initialView, onViewChange }) {
   const { status, pipeline, saveLayout } = usePipelineForItemType(itemTypeId)
 
   if (status === 'loading') return null
@@ -574,7 +673,13 @@ function MarkerPipelineView({ itemTypeId }) {
 
   return (
     <marker-pipeline-view>
-      <MarkerPipelineDiagram pipelineView={pipeline} itemTypeId={itemTypeId} saveLayout={saveLayout} />
+      <MarkerPipelineDiagram
+        pipelineView={pipeline}
+        itemTypeId={itemTypeId}
+        saveLayout={saveLayout}
+        initialView={initialView}
+        onViewChange={onViewChange}
+      />
     </marker-pipeline-view>
   )
 }

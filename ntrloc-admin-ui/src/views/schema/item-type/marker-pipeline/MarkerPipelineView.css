@@ -8,11 +8,16 @@
    -- mp-signal-yellow: a top-level Condition/ConditionGroup's own node/pins, and the dashed
      reference edges from one of its pins to every gate that reads it -- the signal domain (facts
      being read, never pushed; see MarkerPipelineView.jsx's own comment on SignalReferenceEdge).
-   -- mp-subject-green / mp-predicate-magenta: the two chip styles a Condition's own text renders as
-     (see TextChip) -- a subject (what's being read, e.g. "property: genres") is filled green, a
-     predicate (what it's tested against, e.g. "= NATURE") is an unfilled magenta outline. A
-     different pair of colors from the carrier/signal split above on purpose: this distinction is
-     about a chip's own grammatical role, not which domain (carrier vs. signal) it belongs to. */
+   -- mp-subject-green / mp-predicate-magenta / mp-test-blue: three chip/box styles a Condition's own
+     text renders as (see TextChip, PredicateBox) -- a subject (what's being read, e.g.
+     "property: genres") is filled green; every predicate's own box (see PredicateBox) is an unfilled
+     magenta outline, one step dimmer than full opacity so a deeply nested box doesn't outweigh the
+     outer node itself; a predicate's own test -- what it's tested against, whether that's a predicate
+     box's own test pill ("= APPROVED", "any match") or a <select>/ConditionGroup row's own branch
+     caption ("= NATURE", same content, just read inline next to a row instead of inside a box) -- is
+     unfilled light-blue, kept distinct from the magenta box it sits inside so the two don't visually
+     merge. A different set of colors from the carrier/signal split above on purpose: this distinction
+     is about a chip's own grammatical role, not which domain (carrier vs. signal) it belongs to. */
 marker-pipeline-view {
   --mp-block-bg: #000;
   --mp-block-border: #cfcfcf;
@@ -20,6 +25,7 @@ marker-pipeline-view {
   --mp-signal-yellow: #e8d44a;
   --mp-subject-green: #8fd4a0;
   --mp-predicate-magenta: #e06fd6;
+  --mp-test-blue: #6fb8e8;
   --mp-text: #f3f4f6;
 
   display: flex;
@@ -84,6 +90,35 @@ marker-pipeline-view {
   font-size: 13px;
   font-weight: 700;
   text-anchor: middle;
+}
+
+/* A carrier block's own edit/delete icons (see markerPipelineLayout.headerIcons) -- only ever
+   rendered while editing, so no separate editable-only selector is needed here the way
+   .mp-node-editable needs one for the whole node. Dimmed to start, same "quiet until you reach for
+   it" treatment a context menu item gets from its own :hover rule, rather than competing with the
+   title for attention at a glance. cursor: pointer (not inherited from .mp-node-editable's own
+   cursor: move) since clicking either icon is a click, not a drag. */
+.mp-header-icon {
+  cursor: pointer;
+  opacity: 0.6;
+  /* Both icons are stroke-only (fill="none") -- SVG's default pointer-events (visiblePainted) only
+     hit-tests actually-painted pixels, which for a thin outline shape is a sliver far smaller than
+     the icon's own clickable footprint (most of a pencil or trash can's own bounding box is empty
+     space between its strokes). `visible` hit-tests the whole element regardless of what's painted
+     inside it, the same way a filled shape already would. */
+  pointer-events: visible;
+}
+
+.mp-header-icon:hover {
+  opacity: 1;
+}
+
+.mp-header-icon-edit {
+  color: var(--mp-text);
+}
+
+.mp-header-icon-delete {
+  color: #f85149;
 }
 
 /* A port row's own label (e.g. "input"/"if") inside a multi-port block -- see MarkerPipelineView.jsx
@@ -165,31 +200,39 @@ marker-pipeline-view {
   stroke-linejoin: round;
 }
 
-/* A nested "count" sub-box inside a standalone Condition node -- the one place this diagram nests
-   one block's content inside another's, for a COUNTED predicate's own two-part structure (what's
-   counted, how many must match). Same signal-yellow border as the outer node, one step dimmer so the
-   outer box still reads as the primary shape. */
-.mp-signal-nested-rect {
+/* Every predicate's own box (see PredicateBox in MarkerPipelineView.jsx) -- a standalone Condition's
+   root predicate, and recursively, every nested sub-predicate a CountedPredicate/TotalityPredicate
+   wraps. Magenta border -- the same color a predicate's own test chip used to render in before the
+   box/pill split (see .mp-test-chip-rect below), now reserved for "this is a predicate's own
+   container" instead; one step dimmer than a fully-opaque border so a deeply nested box doesn't read
+   as more prominent than the outer node itself. */
+.mp-predicate-box-rect {
   fill: none;
-  stroke: var(--mp-signal-yellow);
+  stroke: var(--mp-predicate-magenta);
   stroke-width: 1;
-  opacity: 0.6;
+  opacity: 0.7;
   rx: 3;
 }
 
-.mp-signal-nested-title {
-  fill: var(--mp-signal-yellow);
+.mp-predicate-box-label {
+  fill: var(--mp-predicate-magenta);
   font-size: 11px;
   font-weight: 700;
   text-anchor: middle;
-  opacity: 0.85;
+  opacity: 0.9;
 }
 
-/* TextChip's own two pill styles (see MarkerPipelineView.jsx) -- what a Condition's own subject
-   reads as (a <select>'s "property: X" header, a Condition's "linked item: X" line) vs. what a
-   predicate tests it against ("= NATURE", "Approval status = APPROVED", "any match"). A subject is
-   filled so it reads as the anchor/source of the phrase; a predicate stays unfilled so it reads as a
-   qualifier attached to it, never competing with it for visual weight. */
+/* TextChip's own three pill styles (see MarkerPipelineView.jsx) -- what a Condition's own subject
+   reads as (a <select>'s "property: X" header, a Condition's "linked item: X" line), what a
+   <select>/ConditionGroup row's own branch caption reads as ("= NATURE"), or what a predicate box's
+   own test reads as ("= APPROVED", "any match"). A subject is filled so it reads as the anchor/source
+   of the phrase; the other two stay unfilled so they read as a qualifier attached to something else,
+   never competing with it for visual weight. 'predicate' and 'test' share the same light-blue border
+   (mp-test-blue) -- a row's own branch caption and a predicate box's own test are the same kind of
+   content (a leaf predicate's own comparison text), just read in two different places -- kept as two
+   CSS classes rather than one only because they're reached from two different layout call sites
+   (selectRowLayout/signalRowLayout vs. placePredicateBox), not because they're meant to look
+   different. */
 .mp-subject-chip-rect {
   fill: var(--mp-subject-green);
   stroke: var(--mp-subject-green);
@@ -206,12 +249,25 @@ marker-pipeline-view {
 
 .mp-predicate-chip-rect {
   fill: none;
-  stroke: var(--mp-predicate-magenta);
+  stroke: var(--mp-test-blue);
   stroke-width: 1.5;
   rx: 10;
 }
 
 .mp-predicate-chip-text {
+  fill: var(--mp-text);
+  font-size: 11px;
+  text-anchor: middle;
+}
+
+.mp-test-chip-rect {
+  fill: none;
+  stroke: var(--mp-test-blue);
+  stroke-width: 1.5;
+  rx: 10;
+}
+
+.mp-test-chip-text {
   fill: var(--mp-text);
   font-size: 11px;
   text-anchor: middle;

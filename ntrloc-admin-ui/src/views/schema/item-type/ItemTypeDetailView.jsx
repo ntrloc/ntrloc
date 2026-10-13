@@ -31,7 +31,12 @@ function ItemTypeDetailView({ itemTypeId, onSelectItemType, onSelectTrait, detai
       view: <ItemTypeLinksView itemTypeId={itemType.id} itemTypeName={itemType.name} onSelectTrait={onSelectTrait} />,
     },
     { key: 'stateMachines', label: 'State Machines', view: <ItemTypeStateMachinesView itemTypeId={itemType.id} /> },
-    { key: 'accessMarkers', label: 'Access Markers', view: <AccessMarkersView itemTypeId={itemType.id} itemTypeName={itemType.name} /> },
+    {
+      key: 'accessMarkers',
+      label: 'Access Markers',
+      view: <AccessMarkersView itemTypeId={itemType.id} itemTypeName={itemType.name} />,
+      padding: 0,
+    },
   ]
 
   return (
@@ -45,7 +50,7 @@ function ItemTypeDetailView({ itemTypeId, onSelectItemType, onSelectTrait, detai
           SchemaViewModel (not TabView's own internal state, and shared with TraitDetailView's own
           tab set) so it also survives this whole component unmounting when the accordion switches
           to a different section and back. */}
-      <TabView sections={sections} activeKey={detailTabKey} onActiveKeyChange={onDetailTabKeyChange} />
+      <TabView sections={sections} activeKey={detailTabKey} onActiveKeyChange={onDetailTabKeyChange} borderStyle="top" />
     </item-type-detail-view>
   )
 }

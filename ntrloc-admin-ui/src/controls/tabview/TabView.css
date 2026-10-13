@@ -45,6 +45,17 @@ tab-view-panel {
   min-height: 0;
   min-width: 0;
   overflow: auto;
-  padding: 12px;
+  /* padding is inline (see TabView.jsx's contentPadding/section.padding), not here -- it's a
+     per-instance, possibly per-section value, not a fixed look every TabView shares. */
+}
+
+/* data-border (see TabView.jsx): 'full' is today's only look, a border around the whole content
+   area; 'top' is just the one rule between the tab row and the content, flush against the tabs'
+   own bottom edge, with no border on the content's other three sides. */
+tab-view-panel[data-border='full'] {
   border: 1px solid var(--tab-active-bg);
+}
+
+tab-view-panel[data-border='top'] {
+  border-top: 1px solid var(--tab-active-bg);
 }

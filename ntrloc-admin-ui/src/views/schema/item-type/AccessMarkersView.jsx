@@ -16,6 +16,18 @@ import './AccessMarkersView.css'
 function AccessMarkersView({ itemTypeId, itemTypeName }) {
   const { markers, createMarker, updateMarker, deleteMarker } = useAccessMarkersViewModel(itemTypeId)
   const panel = useCollapsiblePanel(true)
+  // One remembered pan/zoom per item type, surviving MarkerPipelineView's own key={itemTypeId}
+  // remount below -- this component (unlike that one) never itself remounts just because
+  // itemTypeId changes (same instance across the whole accordion/tab's lifetime), so a stable Map
+  // outlives switching away and back. useState purely for the stable identity (never calling the
+  // setter -- mutated in place instead, via .set() in onViewChange below), not because its own
+  // value needs to drive a re-render here: a useRef would do the same job, but reading ref.current
+  // during render (for initialView below) is exactly the hazard that pattern warns against, where
+  // this is just a plain object read. Deliberately separate from MarkerPipelineView's own
+  // reset-on-remount state (edit mode, draft positions/edge bends) -- pan/zoom is just "where am I
+  // looking," worth remembering, while a draft edit is real pending state nobody would want
+  // silently following them to a different pipeline.
+  const [viewByItemTypeId] = useState(() => new Map())
   // null = no dialog, 'create', or the marker object being edited.
   const [dialogState, setDialogState] = useState(null)
   const [pendingDelete, setPendingDelete] = useState(null)
@@ -79,7 +91,18 @@ function AccessMarkersView({ itemTypeId, itemTypeName }) {
       </CollapsiblePanel>
 
       <access-markers-pipeline-area>
-        <MarkerPipelineView itemTypeId={itemTypeId} />
+        {/* key={itemTypeId} forces a fresh MarkerPipelineView (and its ViewModel) per item type --
+            without it, switching item types reuses the same component instance, so mid-edit draft
+            positions/edge bends (were someone to switch away mid-edit) would otherwise leak from
+            whichever pipeline was viewed previously. initialView/onViewChange thread pan/zoom
+            through viewByItemTypeIdRef above instead, so that one piece of state survives the
+            remount -- each pipeline comes back exactly where it was left, not re-fit from scratch. */}
+        <MarkerPipelineView
+          key={itemTypeId}
+          itemTypeId={itemTypeId}
+          initialView={viewByItemTypeId.get(itemTypeId) ?? null}
+          onViewChange={(view) => viewByItemTypeId.set(itemTypeId, view)}
+        />
       </access-markers-pipeline-area>
 
       {dialogState && (

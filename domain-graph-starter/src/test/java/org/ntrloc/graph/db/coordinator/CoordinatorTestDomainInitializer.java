@@ -1,5 +1,6 @@
 package org.ntrloc.graph.db.coordinator;
 
+import org.ntrloc.graph.db.partition.authorization.repository.MarkerDecisionPipelineRepository;
 import org.ntrloc.graph.db.partition.schema.ControlledListManager;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
@@ -35,6 +36,7 @@ public class CoordinatorTestDomainInitializer implements DomainInitializer, Appl
 
     private final SchemaManager schemaManager;
     private final ControlledListManager controlledListManager;
+    private final MarkerDecisionPipelineRepository pipelineRepository;
 
     private UUID productTypeId;
     private UUID contributorTypeId;
@@ -48,9 +50,11 @@ public class CoordinatorTestDomainInitializer implements DomainInitializer, Appl
     private UUID dimensionsWidthPropertyId;
     private UUID dimensionsHeightPropertyId;
 
-    public CoordinatorTestDomainInitializer(SchemaManager schemaManager, ControlledListManager controlledListManager) {
+    public CoordinatorTestDomainInitializer(SchemaManager schemaManager, ControlledListManager controlledListManager,
+                                             MarkerDecisionPipelineRepository pipelineRepository) {
         this.schemaManager = schemaManager;
         this.controlledListManager = controlledListManager;
+        this.pipelineRepository = pipelineRepository;
     }
 
     @Override
@@ -130,6 +134,17 @@ public class CoordinatorTestDomainInitializer implements DomainInitializer, Appl
                 .findFirst()
                 .map(AdminPropertyDefinitionView::id)
                 .orElseThrow();
+    }
+
+    // DefaultPipelineInitializer (see its own class comment) auto-creates a no-op pipeline for every
+    // item type the moment it exists, including productTypeId/contributorTypeId above -- call this
+    // from a test's own @BeforeEach before it creates its own pipeline against either, restoring the
+    // pristine, pipeline-less item type those tests were already written to assume. Idempotent (and
+    // cheap) past the first call: once a test's own pipeline replaces the auto-created one, there's
+    // nothing left for a later call to find.
+    public void removeAutoCreatedPipelines() {
+        pipelineRepository.findByItemTypeId(productTypeId).ifPresent(p -> pipelineRepository.deletePipeline(p.id()));
+        pipelineRepository.findByItemTypeId(contributorTypeId).ifPresent(p -> pipelineRepository.deletePipeline(p.id()));
     }
 
     public UUID productTypeId() {

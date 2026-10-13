@@ -1,5 +1,6 @@
 package org.ntrloc.graph.db.coordinator;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.access.AddMarkers;
@@ -49,6 +50,15 @@ class PipelineMarkerDecisionIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private CoordinatorTestDomainInitializer fixture;
+
+    // DefaultPipelineInitializer auto-creates a no-op pipeline for every item type the moment it's
+    // created, including fixture.productTypeId()/contributorTypeId() -- every test below assumes a
+    // pristine, pipeline-less item type to create its own pipeline against (see
+    // CoordinatorTestDomainInitializer's own comment on removeAutoCreatedPipelines).
+    @BeforeEach
+    void removeAutoCreatedPipelines() {
+        fixture.removeAutoCreatedPipelines();
+    }
 
     private Pipeline colorEqualsPipeline(String matchValue, UUID markerId) {
         Condition gate = new Condition(UUID.randomUUID(), new StepToProperty(fixture.colorPropertyId(), false, new Self()),

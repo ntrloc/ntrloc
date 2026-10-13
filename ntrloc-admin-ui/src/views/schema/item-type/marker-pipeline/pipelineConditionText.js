@@ -140,56 +140,62 @@ function describeCountQuantifier(countPredicate) {
   return `count ${operatorSymbol(operator)} ${value}`
 }
 
-// CountedPredicate's own sub/count-predicate both default to the CountedPredicate's own subject
-// chain's terminal when they declare none of their own (same own-or-inherited rule
-// SignalEvaluator.java enforces server-side) -- in practice that terminal is always the state machine
-// the chain just stepped onto, since a subPredicate with nothing else to read from a linked item is
-// almost always "what state is it in".
-//
-// Every line carries a `kind` ('subject' | 'predicate') -- what it reads vs. what it tests against --
-// so the diagram can render the two as the two distinct chip styles the design calls for (a filled
-// green chip for a subject, an unfilled magenta one for a predicate), rather than this module baking
-// any particular visual choice into plain text.
-function describeCountedPredicate(schema, itemTypeId, counted) {
-  const chain = describeConditionSubject(schema, itemTypeId, counted.subject)
-  const lines = [{ kind: 'subject', text: `linked item: ${chain.path.join('.')}` }]
-  if (chain.terminal.kind === 'stateMachine' && counted.subPredicate?.type === 'STATE_EQUALS') {
-    const stateName = resolveStateName(chain.terminal.machine, counted.subPredicate.stateId)
-    lines.push({ kind: 'predicate', text: `${chain.terminal.machine?.name ?? 'state'} = ${stateName}` })
-  } else {
-    lines.push({ kind: 'predicate', text: describeLeafPredicate(counted.subPredicate) })
-  }
-  lines.push({ kind: 'predicate', text: describeCountQuantifier(counted.countPredicate) })
-  return lines
-}
-
-function describeTotalityPredicate(totality) {
-  const qualifier = totality.quantity === 'ALL' ? 'all match' : totality.quantity === 'ANY' ? 'any match' : 'none match'
-  return [
-    { kind: 'predicate', text: qualifier },
-    ...totality.subPredicates.map((p) => ({ kind: 'predicate', text: describeLeafPredicate(p) })),
-  ]
-}
-
-// The full, standalone rendering of one Condition -- {lines} for a flat predicate (one subject chip
-// if it has a subject, one predicate chip always), or {nested} for a COUNTED one (shown as its own
-// "count" sub-box, the one place this diagram nests one block's content inside another's, matching a
-// CountedPredicate's own two-subject structure: what's being counted, and how many must match).
-export function describeCondition(schema, itemTypeId, condition) {
-  const predicate = condition.predicate
-  if (!predicate) return { lines: [], nested: null }
+// Every predicate -- leaf or compound, at any depth -- renders as its own bordered box, labeled with
+// a fixed, predicate-family label rather than its exact type: 'count' for a CountedPredicate,
+// 'totality' for a TotalityPredicate, 'value' for every leaf comparison type alike (there are ~30 of
+// those -- STRING_EQUALS, NUMBER, STATE_EQUALS, etc. -- and spelling out which one it is would be
+// noise; "value" already says "this is a comparison", which is all an admin needs to read it). A
+// box's own `testText` is its own associated comparison/quantifier phrase, when it has one directly --
+// every leaf does; CountedPredicate's is its own countPredicate (describeCountQuantifier); TOTALITY's
+// is its own ALL/ANY/NONE qualifier -- shown inside this box, never a child's. `children` is this
+// predicate's own nested sub-predicate(s) (TOTALITY's subPredicates, CountedPredicate's single
+// subPredicate), each its own recursively described box -- CountedPredicate.java's own doc comment
+// allows subPredicate to itself be another CountedPredicate or a TotalityPredicate, nested arbitrarily
+// deep, so this recurses rather than assuming a child is always a leaf.
+function describePredicateBox(schema, itemTypeId, predicate) {
+  if (!predicate) return null
   if (predicate.type === 'COUNTED') {
-    return { lines: [], nested: { title: 'count', lines: describeCountedPredicate(schema, itemTypeId, predicate) } }
+    const chain = describeConditionSubject(schema, itemTypeId, predicate.subject)
+    const subjectText = `linked item: ${chain.path.join('.')}`
+    const testText = describeCountQuantifier(predicate.countPredicate)
+    // The common case in practice: a subPredicate with nothing else to read from a linked item is
+    // almost always "what state is it in" (same own-or-inherited subject rule SignalEvaluator.java
+    // enforces server-side) -- special-cased for the nicer "<machine> = <state>" phrasing a generic
+    // leaf render can't produce (it has no access to the chain's own state-machine terminal).
+    if (chain.terminal.kind === 'stateMachine' && predicate.subPredicate?.type === 'STATE_EQUALS') {
+      const stateName = resolveStateName(chain.terminal.machine, predicate.subPredicate.stateId)
+      const child = { label: 'value', subjectText: null, testText: `${chain.terminal.machine?.name ?? 'state'} = ${stateName}`, children: [] }
+      return { label: 'count', subjectText, testText, children: [child] }
+    }
+    const child = describePredicateBox(schema, chain.itemTypeId, predicate.subPredicate)
+    return { label: 'count', subjectText, testText, children: child ? [child] : [] }
   }
   if (predicate.type === 'TOTALITY') {
-    return { lines: describeTotalityPredicate(predicate), nested: null }
+    const qualifier = predicate.quantity === 'ALL' ? 'all match' : predicate.quantity === 'ANY' ? 'any match' : 'none match'
+    const children = (predicate.subPredicates ?? []).map((p) => describePredicateBox(schema, itemTypeId, p)).filter(Boolean)
+    return { label: 'totality', subjectText: null, testText: qualifier, children }
+  }
+  return { label: 'value', subjectText: null, testText: describeLeafPredicate(predicate), children: [] }
+}
+
+// The full, standalone rendering of one Condition -- always one recursive predicate box (see
+// describePredicateBox), rooted either at the Condition's own leaf predicate (a 'value' box, carrying
+// a subject chip only if its chain actually traverses something beyond bare Self) or, for a COUNTED/
+// TOTALITY predicate, at that compound predicate's own box.
+export function describeCondition(schema, itemTypeId, condition) {
+  const predicate = condition.predicate
+  if (!predicate) return null
+  if (predicate.type === 'COUNTED' || predicate.type === 'TOTALITY') {
+    return describePredicateBox(schema, itemTypeId, predicate)
   }
   const effectiveSubject = predicate.subject ?? condition.subject ?? { type: 'SELF' }
   const chain = describeConditionSubject(schema, itemTypeId, effectiveSubject)
-  const lines = []
-  if (chain.path.length) lines.push({ kind: 'subject', text: chain.path.join('.') })
-  lines.push({ kind: 'predicate', text: describeLeafPredicate(predicate) })
-  return { lines, nested: null }
+  return {
+    label: 'value',
+    subjectText: chain.path.length ? chain.path.join('.') : null,
+    testText: describeLeafPredicate(predicate),
+    children: [],
+  }
 }
 
 // A ConditionGroup's own subject, as the "property: X" header shown once for the whole group (every

@@ -1,5 +1,6 @@
 package org.ntrloc.graph.db.partition.authorization;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.access.AddMarkers;
@@ -38,6 +39,15 @@ class MarkerDecisionPipelineAdminControllerIntegrationTest extends AbstractInteg
 
     @Autowired
     private CoordinatorTestDomainInitializer fixture;
+
+    // DefaultPipelineInitializer auto-creates a no-op pipeline for every item type the moment it's
+    // created, including fixture.productTypeId() -- every test below assumes a pristine, pipeline-
+    // less item type to POST its own pipeline against (see CoordinatorTestDomainInitializer's own
+    // comment on removeAutoCreatedPipelines).
+    @BeforeEach
+    void removeAutoCreatedPipelines() {
+        fixture.removeAutoCreatedPipelines();
+    }
 
     private Pipeline simplePipeline(UUID markerId) {
         Condition gate = new Condition(UUID.randomUUID(), new StepToProperty(fixture.colorPropertyId(), false, new Self()),
