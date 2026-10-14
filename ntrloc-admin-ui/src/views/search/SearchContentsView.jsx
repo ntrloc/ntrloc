@@ -12,6 +12,7 @@ function SearchContentsView({ panes = [], onRemovePane, onOpenItem, onItemDelete
             itemTypeName={pane.itemTypeName}
             itemId={pane.itemId}
             onClose={() => onRemovePane(pane.id)}
+            onItemDeleted={onItemDeleted}
             maximized={pane.id === maximizedPaneId}
             onToggleMaximize={() => onToggleMaximize(pane.id)}
           />

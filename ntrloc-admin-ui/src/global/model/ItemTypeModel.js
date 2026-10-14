@@ -63,6 +63,25 @@ function sortableFields(adminSchema, itemTypeId) {
   return item.sortableFields
 }
 
+// stateMachines (AdminItemDefinitionView's own field) is the *effective* list -- inherited ones
+// included, not just this type's own -- so this is really "can an item of this type ever have
+// states," not just "does this exact type declare one." By name, not id, since a projected item
+// only ever reports its own itemType as a name (see ProjectedItem), never the schema id.
+function hasStateMachines(adminSchema, itemTypeName) {
+  const item = adminSchema.items.find((it) => it.name === itemTypeName)
+  return Boolean(item?.stateMachines?.length)
+}
+
+// item.traits is this type's own directly-declared traits (see SchemaAdminViewBuilder's own
+// traitIdsByItem lookup) -- unlike stateMachines/properties/links above, not resolved through a
+// supertype chain, but that's fine here: File is never inherited in this schema today, and nothing
+// about trait-checking couldn't be extended the same "effective" way later if that changes. By
+// name, same reasoning as hasStateMachines above.
+function hasTrait(adminSchema, itemTypeName, traitName) {
+  const item = adminSchema.items.find((it) => it.name === itemTypeName)
+  return Boolean(item?.traits?.some((trait) => trait.name === traitName))
+}
+
 export function useItemTypeModel() {
   const schema = useSchemaSnapshot()
   return {
@@ -73,5 +92,7 @@ export function useItemTypeModel() {
     getConcreteItemTypes: () => (schema ? concreteItemTypes(toItemTypes(schema)) : []),
     getProjectableProperties: (itemTypeId) => (schema ? projectableProperties(schema, itemTypeId) : []),
     getSortableFields: (itemTypeId) => (schema ? sortableFields(schema, itemTypeId) : []),
+    getHasStateMachines: (itemTypeName) => (schema ? hasStateMachines(schema, itemTypeName) : false),
+    getHasTrait: (itemTypeName, traitName) => (schema ? hasTrait(schema, itemTypeName, traitName) : false),
   }
 }

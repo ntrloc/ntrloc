@@ -37,12 +37,18 @@ export function useSearchViewModel() {
     setMaximizedPaneId((current) => (current === id ? null : id))
   }
 
-  // Called after a search result's own delete succeeds -- an ItemPane is identified by which item
-  // it shows, not by the pane id a search result has no way to know, so this filters on itemId
-  // rather than reusing removePane. Closes every ItemPane showing this item, not just one -- "no
-  // dedup" on open (addItemPane's own comment) means more than one can exist for the same item.
+  // Called after an item's own delete succeeds, from either a search result or an ItemPane's own
+  // delete button -- an ItemPane is identified by which item it shows, not by the pane id a search
+  // result has no way to know, so this filters on itemId rather than reusing removePane. Closes
+  // every ItemPane showing this item, not just one -- "no dedup" on open (addItemPane's own
+  // comment) means more than one can exist for the same item. Same maximized-pane hygiene as
+  // removePane above -- one of the closed panes may have been the maximized one.
   function closeItemPanesFor(itemId) {
+    const closedIds = new Set(panes.filter((pane) => pane.kind === 'item' && pane.itemId === itemId).map((pane) => pane.id))
     setPanes((current) => current.filter((pane) => !(pane.kind === 'item' && pane.itemId === itemId)))
+    if (closedIds.size > 0) {
+      setMaximizedPaneId((current) => (closedIds.has(current) ? null : current))
+    }
   }
 
   return { panes, addSearchPane, addItemPane, removePane, closeItemPanesFor, maximizedPaneId, toggleMaximize }
