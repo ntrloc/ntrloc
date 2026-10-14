@@ -1,10 +1,10 @@
 /* ItemPaneView is PaneView's only body child, so (unlike SearchPaneView, which has two children
    needing different flex values) it owns its own top-level sizing here rather than leaving it to a
    parent -- flex: 1 fills the remaining height below PaneView's header. overflow: auto remains a
-   safety net (e.g. a long Markers line), but with tab-view itself now bounded below, TabView's own
-   panel is where a tab's content actually scrolls -- needed so the Preview tab's image has a real
-   height to fill (see ItemPanePreview's own CSS) rather than collapsing to its content size, same
-   convention ItemTypeDetailView.css already uses for its own TabView. */
+   safety net, but with tab-view itself now bounded below, TabView's own panel is where a tab's
+   content actually scrolls -- needed so the Preview tab's image has a real height to fill (see
+   ItemPanePreview's own CSS) rather than collapsing to its content size, same convention
+   ItemTypeDetailView.css already uses for its own TabView. */
 item-pane-view {
   display: flex;
   flex-direction: column;
@@ -54,20 +54,6 @@ item-pane-actions {
 .item-pane-action-delete:hover {
   background: var(--danger-bg, rgba(224, 82, 82, 0.15));
   color: var(--danger, #e05252);
-}
-
-item-pane-section {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.item-pane-section-title {
-  font-weight: 600;
-  color: var(--text-h);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  margin-bottom: 4px;
 }
 
 .item-pane-empty {

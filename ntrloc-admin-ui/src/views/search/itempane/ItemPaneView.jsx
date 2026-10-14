@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import PaneView from '../PaneView'
-import PropertyTreeView from '../PropertyTreeView'
+import ItemPanePropertyGroupsView from './ItemPanePropertyGroupsView'
 import TabView from '../../../controls/tabview/TabView'
 import ModalPopupView from '../../../controls/modal/ModalPopupView'
 import { flattenProperties } from '../flattenProperties'
@@ -10,7 +10,7 @@ import { useItemPaneViewModel } from './ItemPaneViewModel'
 import './ItemPaneView.css'
 
 function ItemPaneView({ itemTypeName, itemId, onClose, onItemDeleted, maximized, onToggleMaximize }) {
-  const { status, item } = useItemPaneViewModel(itemTypeName, itemId)
+  const { status, item, groupedProperties } = useItemPaneViewModel(itemTypeName, itemId)
   // "Photo: IMG_0988.JPG" -- the item type used to be shown as its own line in the content area;
   // folding it into the header leaves the content area free for just the tabs (see
   // ItemPaneContent) and matches how SearchResultItemView already pairs type + label.
@@ -21,12 +21,14 @@ function ItemPaneView({ itemTypeName, itemId, onClose, onItemDeleted, maximized,
       {status === 'loading' && <item-pane-view>Loading…</item-pane-view>}
       {status === 'notFound' && <item-pane-view>Item not found.</item-pane-view>}
       {status === 'error' && <item-pane-view>Failed to load item.</item-pane-view>}
-      {status === 'ready' && item && <ItemPaneContent item={item} onItemDeleted={onItemDeleted} />}
+      {status === 'ready' && item && (
+        <ItemPaneContent item={item} groupedProperties={groupedProperties} onItemDeleted={onItemDeleted} />
+      )}
     </PaneView>
   )
 }
 
-function ItemPaneContent({ item, onItemDeleted }) {
+function ItemPaneContent({ item, groupedProperties, onItemDeleted }) {
   const { getHasStateMachines, getHasTrait } = useItemTypeModel()
   const [confirmingDelete, setConfirmingDelete] = useState(false)
   const linkEntries = Object.entries(item.links ?? {})
@@ -45,22 +47,24 @@ function ItemPaneContent({ item, onItemDeleted }) {
   const fileContent = item.properties?.File?.content
   const canPreview = getHasTrait(item.itemType, 'File') && Boolean(fileContent?.url) && isPreviewableMimeType(fileContent?.mimeType)
 
-  // Properties/Links/States used to be always-visible, independently collapsible/plain sections; a
-  // tab view reads better now that Properties itself is a tree rather than a short flat list (see
-  // PropertyTreeView) -- only one of the three needs screen space at a time. Markers stays outside
-  // the tabs below -- a short inline summary, not a whole tab's worth of content the way the other
-  // three are. States is omitted entirely (not just shown empty) for an item type with no state
-  // machine defined -- unlike Links, which can always gain a link later, this item can never have
-  // states, so the tab would be permanently, not just currently, empty. Preview is the same kind of
-  // omission, and -- unlike every other tab -- goes first when present, since it's the thing most
-  // worth seeing immediately for a file whose content a browser can actually render.
+  // Properties/Links/States/Markers used to be always-visible, independently collapsible/plain
+  // sections; a tab view reads better now that each has real content worth its own screen space --
+  // only one needs to be visible at a time. States is omitted entirely (not just shown empty) for
+  // an item type with no state machine defined -- unlike Links/Markers, which can always gain a
+  // link/marker later, this item can never have states, so the tab would be permanently, not just
+  // currently, empty. Preview is the same kind of omission, and -- unlike every other tab -- goes
+  // first when present, since it's the thing most worth seeing immediately for a file whose content
+  // a browser can actually render. Properties itself is the flattened dot-path/grid layout
+  // (ItemPanePropertyGroupsView) rather than PropertyTreeView's indented tree -- an item-pane-only
+  // experiment for now; search results still use the indented tree.
   const sections = [
     ...(canPreview ? [{ key: 'preview', label: 'Preview', view: <ItemPanePreview url={fileContent.url} />, padding: 0 }] : []),
-    { key: 'properties', label: 'Properties', view: <PropertyTreeView properties={item.properties} /> },
+    { key: 'properties', label: 'Properties', view: <ItemPanePropertyGroupsView groups={groupedProperties} /> },
     { key: 'links', label: 'Links', view: <ItemPaneLinks linkEntries={linkEntries} /> },
     ...(getHasStateMachines(item.itemType)
       ? [{ key: 'states', label: 'States', view: <ItemPaneStates stateEntries={stateEntries} /> }]
       : []),
+    { key: 'markers', label: 'Markers', view: <ItemPaneMarkers markers={item.markers} /> },
   ]
 
   return (
@@ -91,13 +95,6 @@ function ItemPaneContent({ item, onItemDeleted }) {
       </item-pane-actions>
 
       <TabView sections={sections} borderStyle="top" />
-
-      {item.markers && item.markers.length > 0 && (
-        <item-pane-section>
-          <div className="item-pane-section-title">Markers</div>
-          <div className="item-pane-markers">{item.markers.join(', ')}</div>
-        </item-pane-section>
-      )}
 
       <ModalPopupView
         open={confirmingDelete}
@@ -163,6 +160,14 @@ function ItemPaneStates({ stateEntries }) {
       ))}
     </>
   )
+}
+
+function ItemPaneMarkers({ markers }) {
+  if (!markers || markers.length === 0) {
+    return <div className="item-pane-empty">No markers.</div>
+  }
+
+  return <div className="item-pane-markers">{markers.join(', ')}</div>
 }
 
 export default ItemPaneView

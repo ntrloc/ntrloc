@@ -1,0 +1,42 @@
+item-pane-property-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.item-pane-property-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.item-pane-property-group-path {
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+/* Flex, not a stretching grid -- a row of 2 leaves should stay the same compact width as a row of
+   5, not grow to fill the available width just because there's less company on that particular
+   row. flex: none (fixed basis, no grow/shrink) is what gets that: each leaf claims only the
+   column width it needs, up to its own basis, and a short row simply leaves the remaining space
+   empty instead of stretching to fill it. */
+.item-pane-property-group-leaves {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 32px;
+}
+
+.item-pane-property-group-leaf {
+  flex: none;
+  width: 160px;
+}
+
+.item-pane-property-group-leaf-name {
+  font-weight: 600;
+  color: var(--primary);
+}
+
+.item-pane-property-group-leaf-value {
+  color: var(--text);
+  overflow-wrap: break-word;
+}
