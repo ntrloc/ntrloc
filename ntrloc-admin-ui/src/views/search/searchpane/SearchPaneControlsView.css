@@ -3,7 +3,33 @@
 search-pane-controls-view {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   padding: 8px;
   border-bottom: 1px solid var(--border);
+}
+
+/* Matches .select's own box (src/controls/select/Select.css) so it sits flush in height/style
+   with the Select dropdowns stacked above it inside the filter PopoverButton's own popover --
+   there's no shared Input control to reuse yet (only Filter's free-text search box, which is a
+   different, wider shape). Full width to match the Selects' own column inside that popover, not
+   the fixed width it had back when this sat inline in the row. */
+.search-pane-filter-value {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text-h);
+  font: inherit;
+}
+
+.search-pane-filter-value::placeholder {
+  color: var(--text);
+}
+
+.search-pane-filter-value:disabled {
+  opacity: 0.6;
+  cursor: default;
 }

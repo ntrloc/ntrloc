@@ -2,7 +2,7 @@ import SearchPaneView from './searchpane/SearchPaneView'
 import ItemPaneView from './itempane/ItemPaneView'
 import './SearchContentsView.css'
 
-function SearchContentsView({ panes = [], onRemovePane, onOpenItem, onItemDeleted }) {
+function SearchContentsView({ panes = [], onRemovePane, onOpenItem, onItemDeleted, maximizedPaneId, onToggleMaximize }) {
   return (
     <search-contents-view>
       {panes.map((pane) =>
@@ -12,6 +12,8 @@ function SearchContentsView({ panes = [], onRemovePane, onOpenItem, onItemDelete
             itemTypeName={pane.itemTypeName}
             itemId={pane.itemId}
             onClose={() => onRemovePane(pane.id)}
+            maximized={pane.id === maximizedPaneId}
+            onToggleMaximize={() => onToggleMaximize(pane.id)}
           />
         ) : (
           <SearchPaneView
@@ -20,6 +22,8 @@ function SearchContentsView({ panes = [], onRemovePane, onOpenItem, onItemDelete
             onClose={() => onRemovePane(pane.id)}
             onOpenItem={onOpenItem}
             onItemDeleted={onItemDeleted}
+            maximized={pane.id === maximizedPaneId}
+            onToggleMaximize={() => onToggleMaximize(pane.id)}
           />
         ),
       )}

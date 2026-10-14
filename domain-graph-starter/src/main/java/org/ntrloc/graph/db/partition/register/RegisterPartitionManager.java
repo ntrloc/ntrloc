@@ -185,9 +185,19 @@ public class RegisterPartitionManager implements SchemaChangeListener {
         return names;
     }
 
-    private List<String> resolveRequestedFacets(CollectionProjectionSpec spec, UUID itemTypeId) {
+    // spec.facets() empty (not null) means "every facetable property" -- auto-populated, same
+    // "give me everything you can" semantics as an empty/null explicit properties list elsewhere,
+    // so an unreadable one is silently excluded here rather than rejected. A non-empty list is an
+    // explicit request naming specific fields, which has to be a loud rejection instead if any of
+    // them is unreadable -- same rule filter/sort already apply, via the same check.
+    private List<String> resolveRequestedFacets(CollectionProjectionSpec spec, UUID itemTypeId, RequestPermissionContext permissions) {
         if (spec.facets() == null) return List.of();
-        if (spec.facets().isEmpty()) return facetableFieldsFor(itemTypeId);
+        if (spec.facets().isEmpty()) {
+            return facetableFieldsFor(itemTypeId).stream()
+                    .filter(name -> isPropertyReadableByAnyMarker(permissions, resolvePropertyId(itemTypeId, name)))
+                    .toList();
+        }
+        spec.facets().forEach(field -> requirePropertyReadableByAnyMarker(permissions, resolvePropertyId(itemTypeId, sanitizeFieldName(field)), field));
         return spec.facets();
     }
 
@@ -221,12 +231,15 @@ public class RegisterPartitionManager implements SchemaChangeListener {
         return field;
     }
 
-    private String orderByClause(CollectionProjectionSpec spec, UUID itemTypeId) {
+    private String orderByClause(CollectionProjectionSpec spec, UUID itemTypeId, RequestPermissionContext permissions) {
         if (spec.sortField() == null || spec.sortField().isBlank()) return "ORDER BY ri.item_id ASC";
         String direction = "DESC".equalsIgnoreCase(spec.sortDirection()) ? "DESC" : "ASC";
-        String column = SYSTEM_SORT_COLUMNS.containsKey(spec.sortField())
-                ? SYSTEM_SORT_COLUMNS.get(spec.sortField())
-                : sortExpressionFor(resolvePropertyPath(itemTypeId, spec.sortField()), spec.sortField());
+        if (SYSTEM_SORT_COLUMNS.containsKey(spec.sortField())) {
+            return "ORDER BY " + SYSTEM_SORT_COLUMNS.get(spec.sortField()) + " " + direction + " NULLS LAST, ri.item_id ASC";
+        }
+        PropertyPathResolution resolution = resolvePropertyPath(itemTypeId, spec.sortField());
+        requirePropertyReadableByAnyMarker(permissions, resolution.property().id(), spec.sortField());
+        String column = sortExpressionFor(resolution, spec.sortField());
         return "ORDER BY " + column + " " + direction + " NULLS LAST, ri.item_id ASC";
     }
 
@@ -297,17 +310,17 @@ public class RegisterPartitionManager implements SchemaChangeListener {
     public ProjectionResult project(UUID itemTypeId, CollectionProjectionSpec spec, String binaryBaseUrl, RequestPermissionContext permissions) {
         String tableName = tableNameFor(itemTypeId);
         SqlFragment filterFragment = combineFragments(List.of(
-                buildPredicateFragment(spec.filter(), itemTypeId),
+                buildPredicateFragment(spec.filter(), itemTypeId, permissions),
                 buildItemReadPermissionFragment(permissions, "ri")));
 
         List<FacetFilter> activeFacetFilters = spec.facetFilters() != null ? spec.facetFilters() : List.of();
-        List<String> requestedFacets = resolveRequestedFacets(spec, itemTypeId);
+        List<String> requestedFacets = resolveRequestedFacets(spec, itemTypeId, permissions);
 
         // Build one SQL fragment per active facet filter, keyed by field
         AtomicInteger facetParamCounter = new AtomicInteger();
         Map<String, SqlFragment> facetFragmentsByField = new LinkedHashMap<>();
         for (FacetFilter ff : activeFacetFilters) {
-            facetFragmentsByField.put(ff.field(), buildFacetFilterFragment(ff, itemTypeId, facetParamCounter));
+            facetFragmentsByField.put(ff.field(), buildFacetFilterFragment(ff, itemTypeId, facetParamCounter, permissions));
         }
         SqlFragment allFacetFilters = combineFragments(facetFragmentsByField.values());
 
@@ -360,7 +373,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                   %s
                 %s
                 LIMIT :limit OFFSET :offset
-                """.formatted(tableName, filterFragment.sql(), allFacetFilters.sql(), orderByClause(spec, itemTypeId)))
+                """.formatted(tableName, filterFragment.sql(), allFacetFilters.sql(), orderByClause(spec, itemTypeId, permissions)))
                 .param(PARAM_ITEM_TYPE_ID, itemTypeId)
                 .params(mergeParams(filterFragment, allFacetFilters))
                 .param("limit", effectiveLimit(spec))
@@ -421,16 +434,16 @@ public class RegisterPartitionManager implements SchemaChangeListener {
         UUID representativeItemTypeId = branches.get(0);
 
         SqlFragment filterFragment = combineFragments(List.of(
-                buildPredicateFragment(spec.filter(), representativeItemTypeId),
+                buildPredicateFragment(spec.filter(), representativeItemTypeId, permissions),
                 buildItemReadPermissionFragment(permissions, "ri")));
 
         List<FacetFilter> activeFacetFilters = spec.facetFilters() != null ? spec.facetFilters() : List.of();
-        List<String> requestedFacets = resolveRequestedFacets(spec, representativeItemTypeId);
+        List<String> requestedFacets = resolveRequestedFacets(spec, representativeItemTypeId, permissions);
 
         AtomicInteger facetParamCounter = new AtomicInteger();
         Map<String, SqlFragment> facetFragmentsByField = new LinkedHashMap<>();
         for (FacetFilter ff : activeFacetFilters) {
-            facetFragmentsByField.put(ff.field(), buildFacetFilterFragment(ff, representativeItemTypeId, facetParamCounter));
+            facetFragmentsByField.put(ff.field(), buildFacetFilterFragment(ff, representativeItemTypeId, facetParamCounter, permissions));
         }
         SqlFragment allFacetFilters = combineFragments(facetFragmentsByField.values());
 
@@ -476,7 +489,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                 FROM (%s) combined
                 %s
                 LIMIT :limit OFFSET :offset
-                """.formatted(mainSource.sql(), orderByClauseAcrossTypes(spec, representativeItemTypeId)))
+                """.formatted(mainSource.sql(), orderByClauseAcrossTypes(spec, representativeItemTypeId, permissions)))
                 .params(mainSource.params())
                 .param("limit", effectiveLimit(spec))
                 .param("offset", effectiveOffset(spec))
@@ -563,13 +576,15 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                 .list();
     }
 
-    private String orderByClauseAcrossTypes(CollectionProjectionSpec spec, UUID representativeItemTypeId) {
+    private String orderByClauseAcrossTypes(CollectionProjectionSpec spec, UUID representativeItemTypeId, RequestPermissionContext permissions) {
         if (spec.sortField() == null || spec.sortField().isBlank()) return "ORDER BY combined.item_id ASC";
         String direction = "DESC".equalsIgnoreCase(spec.sortDirection()) ? "DESC" : "ASC";
-        String column = SYSTEM_SORT_COLUMNS_ACROSS_TYPES.containsKey(spec.sortField())
-                ? SYSTEM_SORT_COLUMNS_ACROSS_TYPES.get(spec.sortField())
-                : typedSortExpression("combined.properties", resolveProperty(representativeItemTypeId, spec.sortField()));
-        return "ORDER BY " + column + " " + direction + " NULLS LAST, combined.item_id ASC";
+        if (SYSTEM_SORT_COLUMNS_ACROSS_TYPES.containsKey(spec.sortField())) {
+            return "ORDER BY " + SYSTEM_SORT_COLUMNS_ACROSS_TYPES.get(spec.sortField()) + " " + direction + " NULLS LAST, combined.item_id ASC";
+        }
+        AdminPropertyDefinitionView property = resolveProperty(representativeItemTypeId, spec.sortField());
+        requirePropertyReadableByAnyMarker(permissions, property.id(), spec.sortField());
+        return "ORDER BY " + typedSortExpression("combined.properties", property) + " " + direction + " NULLS LAST, combined.item_id ASC";
     }
 
     private long runCount(String tableName, UUID itemTypeId, SqlFragment filter, SqlFragment additionalFilter) {
@@ -697,14 +712,14 @@ public class RegisterPartitionManager implements SchemaChangeListener {
         return distanceByStateId;
     }
 
-    private SqlFragment buildFacetFilterFragment(FacetFilter facetFilter, UUID itemTypeId, AtomicInteger counter) {
-        if (facetFilter instanceof TermsFacetFilter f) return buildTermsFacetFilterFragment(f, itemTypeId, counter);
+    private SqlFragment buildFacetFilterFragment(FacetFilter facetFilter, UUID itemTypeId, AtomicInteger counter, RequestPermissionContext permissions) {
+        if (facetFilter instanceof TermsFacetFilter f) return buildTermsFacetFilterFragment(f, itemTypeId, counter, permissions);
         if (facetFilter instanceof RangeFacetFilter) throw new UnsupportedOperationException("Range facet filters not yet supported");
         if (facetFilter instanceof DateRangeFacetFilter) throw new UnsupportedOperationException("Date range facet filters not yet supported");
         throw new IllegalArgumentException("Unsupported facet filter: " + facetFilter.getClass().getSimpleName());
     }
 
-    private SqlFragment buildTermsFacetFilterFragment(TermsFacetFilter f, UUID itemTypeId, AtomicInteger counter) {
+    private SqlFragment buildTermsFacetFilterFragment(TermsFacetFilter f, UUID itemTypeId, AtomicInteger counter, RequestPermissionContext permissions) {
         List<String> values = f.values() != null ? f.values() : List.of();
         boolean includeNull = f.includeNull();
 
@@ -712,7 +727,9 @@ public class RegisterPartitionManager implements SchemaChangeListener {
             return SqlFragment.empty();
         }
 
-        String propertyId = resolvePropertyId(itemTypeId, sanitizeFieldName(f.field())).toString();
+        UUID propertyUuid = resolvePropertyId(itemTypeId, sanitizeFieldName(f.field()));
+        requirePropertyReadableByAnyMarker(permissions, propertyUuid, f.field());
+        String propertyId = propertyUuid.toString();
         List<String> clauses = new ArrayList<>();
         Map<String, Object> params = new HashMap<>();
 
@@ -1049,6 +1066,10 @@ public class RegisterPartitionManager implements SchemaChangeListener {
 
     /** This link's current committed properties, keyed by property id -- the link counterpart to currentPropertiesById. */
     public Map<UUID, Object> currentLinkPropertiesById(UUID linkId, UUID linkTypeId) {
+        return toUuidKeyedMap(currentLinkPropertiesByIdString(linkId, linkTypeId));
+    }
+
+    private Map<String, Object> currentLinkPropertiesByIdString(UUID linkId, UUID linkTypeId) {
         String currentJson = jdbcClient.sql("""
                 SELECT rt.properties::text AS properties
                 FROM register_link rl
@@ -1058,7 +1079,17 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                 .param(PARAM_LINK_ID, linkId)
                 .query(String.class)
                 .single();
-        return toUuidKeyedMap(parseJsonb(currentJson));
+        return parseJsonb(currentJson);
+    }
+
+    // Link counterpart to resolveMergedPropertiesById -- merges an update's property diff onto the
+    // link's current committed properties, keyed by property id.
+    public Map<UUID, Object> resolveMergedLinkPropertiesById(UUID linkId, UUID linkTypeId, Map<UUID, Object> propertiesDiff) {
+        Map<String, Object> currentById = currentLinkPropertiesByIdString(linkId, linkTypeId);
+        Map<String, Object> mergedById = propertiesDiff.isEmpty()
+                ? currentById
+                : mergeProperties(currentById, keysToStrings(propertiesDiff));
+        return toUuidKeyedMap(mergedById);
     }
 
     // Does a COMMITTED link already exist between these exact two endpoints (same perspectives,
@@ -1174,6 +1205,43 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                 .param(PARAM_LINK_ID, linkId)
                 .query(UUID.class)
                 .optional();
+    }
+
+    // How many committed links currently use this perspective for this item -- what
+    // MutationRequestProcessor.checkLinkPerspectiveCardinality baselines a new delta against for an
+    // item that already existed before this request (a brand new item's own baseline is zero,
+    // never queried at all).
+    public int countLinksForPerspective(UUID itemId, UUID perspectiveId) {
+        return jdbcClient.sql("""
+                SELECT count(*) FROM register_item_link_perspective rilp
+                JOIN register_link rl ON rl.id = rilp.register_link_id
+                JOIN register_item ri ON ri.id = rilp.register_item_id
+                WHERE ri.item_id = :itemId AND ri.state = 'COMMITTED'
+                  AND rl.state = 'COMMITTED' AND rilp.perspective_id = :perspectiveId
+                """)
+                .param(PARAM_ITEM_ID, itemId)
+                .param("perspectiveId", perspectiveId)
+                .query(Integer.class)
+                .single();
+    }
+
+    // A link's two current endpoints, by (perspectiveId, itemId) -- what a LinkDeleteMutation needs
+    // to know which perspective-cardinality counts it's about to lower, since the mutation itself
+    // only ever carries the linkId. Mirrors the endpoint-lookup query stageLinkUpdate's own re-point
+    // step already runs, just against the link's own id instead of its about-to-be-replaced register row.
+    public List<RegisterLinkEndpoint> findLinkEndpoints(UUID linkId) {
+        return jdbcClient.sql("""
+                SELECT rilp.perspective_id, ri.item_id
+                FROM register_item_link_perspective rilp
+                JOIN register_link rl ON rl.id = rilp.register_link_id
+                JOIN register_item ri ON ri.id = rilp.register_item_id
+                WHERE rl.link_id = :linkId AND rl.state = 'COMMITTED' AND ri.state = 'COMMITTED'
+                """)
+                .param(PARAM_LINK_ID, linkId)
+                .query((rs, n) -> new RegisterLinkEndpoint(
+                        rs.getObject("perspective_id", UUID.class),
+                        rs.getObject(COL_ITEM_ID, UUID.class)))
+                .list();
     }
 
     public UUID stageLinkUpdate(UUID linkId, Map<UUID, Object> propertiesDiff, UUID transactionId) {
@@ -1338,6 +1406,26 @@ public class RegisterPartitionManager implements SchemaChangeListener {
         return result;
     }
 
+    // Unlike filterPropertiesByReadGrant (gated by a specific item's own markers), filter/sort
+    // resolution has no single item in play -- a query spans every instance of a type. So this asks
+    // the coarser question "could this principal ever read this property, via *any* marker they
+    // hold at all" rather than "can they read it on this one item." Rejecting a filter/sort target
+    // this way can't leak which instances exist or what's on them (the response is still reduced to
+    // whatever the real per-item checks allow); it only ever rejects a query shape the principal has
+    // no conceivable use for, same spirit as resolvePropertyPath's own "unknown property" rejection
+    // just above -- both are IllegalArgumentException, both map to 400 the same way.
+    private boolean isPropertyReadableByAnyMarker(RequestPermissionContext permissions, UUID propertyId) {
+        if (permissions.superuser()) return true;
+        return permissions.propertyReadGrantsByMarker().values().stream().anyMatch(ids -> ids.contains(propertyId))
+                || permissions.propertyWriteGrantsByMarker().values().stream().anyMatch(ids -> ids.contains(propertyId));
+    }
+
+    private void requirePropertyReadableByAnyMarker(RequestPermissionContext permissions, UUID propertyId, String propertyName) {
+        if (!isPropertyReadableByAnyMarker(permissions, propertyId)) {
+            throw new IllegalArgumentException("Not permitted to filter, sort, or facet on property: " + propertyName);
+        }
+    }
+
     // A write grant on a property implies read of it -- editing a value you can't see back is not a
     // coherent capability, and the admin UI already presents read as "implied by write". Callers
     // pass this merged (read UNION write) map into the read filter rather than the bare read map.
@@ -1347,6 +1435,26 @@ public class RegisterPartitionManager implements SchemaChangeListener {
         readGrants.forEach((markerId, ids) -> merged.computeIfAbsent(markerId, k -> new HashSet<>()).addAll(ids));
         writeGrants.forEach((markerId, ids) -> merged.computeIfAbsent(markerId, k -> new HashSet<>()).addAll(ids));
         return merged;
+    }
+
+    // Distinct from filterPropertiesByReadGrant's own silent redaction, which is the right behavior
+    // for a request that asked for "everything" -- a client that *explicitly* named a property
+    // (requestedProperties != null, the same convention restrictToRequestedProperties already
+    // uses) gets a loud rejection instead if any of what it asked for turns out unreadable, rather
+    // than a response that quietly omits it. ownPropertyNames is already narrowed to exactly the
+    // requested subset by the time this runs (restrictToRequestedProperties ran earlier), so every
+    // key in it was explicitly asked for -- this only needs to check readability, not re-match
+    // names. effectiveReadGrants == null means superuser (nothing to reject).
+    private void requireExplicitlyRequestedPropertiesAreReadable(Map<UUID, List<String>> ownPropertyNames, Set<UUID> markerIds,
+                                                                    @Nullable Map<UUID, Set<UUID>> effectiveReadGrants,
+                                                                    @Nullable List<String> requestedProperties) {
+        if (requestedProperties == null || effectiveReadGrants == null) return;
+        Set<UUID> readable = unionGrantedIds(markerIds, effectiveReadGrants);
+        for (Map.Entry<UUID, List<String>> entry : ownPropertyNames.entrySet()) {
+            if (!readable.contains(entry.getKey())) {
+                throw new IllegalArgumentException("Not permitted to read property: " + String.join(".", entry.getValue()));
+            }
+        }
     }
 
     // Filters a still-property-ID-keyed JSONB map down to what's readable, before namesForIds
@@ -2056,6 +2164,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
 
         LinkVisibility visibility = filterLinkRowsByReadPermission(allLinkRows, permissions);
         List<LinkRow> linkRows = visibility.visibleLinkRows();
+        requireExplicitlyRequestedLinksAreReadable(allLinkRows, linkRows, requestedLinks);
         if (linkRows.isEmpty()) {
             return Map.of();
         }
@@ -2111,6 +2220,24 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                         Set.of(row.perspectiveId())))
                 .toList();
         return new LinkVisibility(sourceItemMarkerIds, visibleLinkRows);
+    }
+
+    // Distinct from filterLinkRowsByReadPermission's own silent exclusion, same reasoning as
+    // requireExplicitlyRequestedPropertiesAreReadable: requestedLinks == null means "today's
+    // original single-hop behavior" (every direct link, unfiltered by name) -- nothing to reject
+    // there. requestedLinks naming a perspective that simply has no links at all stays silent too
+    // (there's genuinely nothing to reject, same as it would be without this check); only a row
+    // that *existed* in allLinkRows but was dropped by the permission filter, under an explicitly
+    // named perspective, is a loud rejection instead of a quietly thinner response.
+    private void requireExplicitlyRequestedLinksAreReadable(List<LinkRow> allLinkRows, List<LinkRow> visibleLinkRows,
+                                                               @Nullable Map<String, LinkProjectionSpec> requestedLinks) {
+        if (requestedLinks == null) return;
+        Set<LinkRow> visible = Set.copyOf(visibleLinkRows);
+        for (LinkRow row : allLinkRows) {
+            if (!visible.contains(row) && requestedLinks.containsKey(row.perspectiveName())) {
+                throw new IllegalArgumentException("Not permitted to read link via perspective: " + row.perspectiveName());
+            }
+        }
     }
 
     // Extracted from fetchLinksByItem for the same reason as filterLinkRowsByReadPermission above.
@@ -2273,7 +2400,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
 
         AssemblyContext ctx = new AssemblyContext(ownPropertyNames, stateMachines, displayLabelPatterns,
                 linksByItem, markerIdsByRegisterItemId, binaryPropsByItem, effectiveReadGrants,
-                markerNamesById, permissions, includePermissions, options.includeStates());
+                markerNamesById, permissions, includePermissions, options.includeStates(), options.requestedProperties());
         return rawItems.stream().map(raw -> assembleProjectedItem(raw, ctx)).toList();
     }
 
@@ -2288,10 +2415,12 @@ public class RegisterPartitionManager implements SchemaChangeListener {
             Map<UUID, String> markerNamesById,
             RequestPermissionContext permissions,
             boolean includePermissions,
-            boolean includeStates) {}
+            boolean includeStates,
+            @Nullable List<String> requestedProperties) {}
 
     private ProjectedItem assembleProjectedItem(RawItem raw, AssemblyContext ctx) {
         Set<UUID> markerIds = ctx.markerIdsByRegisterItemId().getOrDefault(raw.registerItemId(), Set.of());
+        requireExplicitlyRequestedPropertiesAreReadable(ctx.ownPropertyNames(), markerIds, ctx.effectiveReadGrants(), ctx.requestedProperties());
         Map<String, Object> readableProps = filterPropertiesByReadGrant(raw.properties(), markerIds, ctx.effectiveReadGrants());
         Map<String, Object> props = new HashMap<>(namesForIds(readableProps, ctx.ownPropertyNames()));
         mergeReadableBinaryProperties(props, raw.registerItemId(), markerIds,
@@ -2505,9 +2634,9 @@ public class RegisterPartitionManager implements SchemaChangeListener {
         static SqlFragment empty() { return new SqlFragment("", Map.of()); }
     }
 
-    private SqlFragment buildPredicateFragment(Predicate predicate, UUID itemTypeId) {
+    private SqlFragment buildPredicateFragment(Predicate predicate, UUID itemTypeId, RequestPermissionContext permissions) {
         if (predicate == null) return SqlFragment.empty();
-        var translated = translatePredicate(predicate, itemTypeId, new AtomicInteger());
+        var translated = translatePredicate(predicate, itemTypeId, new AtomicInteger(), permissions);
         return new SqlFragment("AND " + translated.sql(), translated.params());
     }
 
@@ -2557,10 +2686,10 @@ public class RegisterPartitionManager implements SchemaChangeListener {
         return combineFragments(List.of(targetTypeCheck, targetItemReadCheck));
     }
 
-    private SqlFragment translatePredicate(Predicate predicate, UUID itemTypeId, AtomicInteger counter) {
+    private SqlFragment translatePredicate(Predicate predicate, UUID itemTypeId, AtomicInteger counter, RequestPermissionContext permissions) {
         if (predicate instanceof AndPredicate and) {
             List<SqlFragment> children = and.predicates().stream()
-                    .map(p -> translatePredicate(p, itemTypeId, counter))
+                    .map(p -> translatePredicate(p, itemTypeId, counter, permissions))
                     .toList();
             String sql = children.stream()
                     .map(SqlFragment::sql)
@@ -2570,7 +2699,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
             return new SqlFragment(sql, params);
         } else if (predicate instanceof OrPredicate or) {
             List<SqlFragment> children = or.predicates().stream()
-                    .map(p -> translatePredicate(p, itemTypeId, counter))
+                    .map(p -> translatePredicate(p, itemTypeId, counter, permissions))
                     .toList();
             String sql = children.stream()
                     .map(SqlFragment::sql)
@@ -2579,11 +2708,15 @@ public class RegisterPartitionManager implements SchemaChangeListener {
             children.forEach(c -> params.putAll(c.params()));
             return new SqlFragment(sql, params);
         } else if (predicate instanceof NotPredicate not) {
-            var child = translatePredicate(not.predicate(), itemTypeId, counter);
+            var child = translatePredicate(not.predicate(), itemTypeId, counter, permissions);
             return new SqlFragment("NOT (" + child.sql() + ")", child.params());
         } else if (predicate instanceof PropertyExistencePredicate p) {
-            return new SqlFragment("jsonb_exists(rt.properties::jsonb, '" + resolvePropertyId(itemTypeId, p.propertyName()) + "')", Map.of());
+            UUID propertyId = resolvePropertyId(itemTypeId, p.propertyName());
+            requirePropertyReadableByAnyMarker(permissions, propertyId, p.propertyName());
+            return new SqlFragment("jsonb_exists(rt.properties::jsonb, '" + propertyId + "')", Map.of());
         } else if (predicate instanceof PropertyValuePredicate p) {
+            UUID propertyId = resolvePropertyId(itemTypeId, p.propertyName());
+            requirePropertyReadableByAnyMarker(permissions, propertyId, p.propertyName());
             String paramName = "pred_" + counter.getAndIncrement();
             String sqlOp = switch (p.operator()) {
                 case EQUALS              -> "=";
@@ -2595,7 +2728,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                 case LIKE                -> "ILIKE";
             };
             return new SqlFragment(
-                    "(rt.properties::jsonb)->>'" + resolvePropertyId(itemTypeId, p.propertyName()) + "' " + sqlOp + " :" + paramName,
+                    "(rt.properties::jsonb)->>'" + propertyId + "' " + sqlOp + " :" + paramName,
                     Map.of(paramName, p.value()));
         } else if (predicate instanceof StateValuePredicate p) {
             UUID stateMachineId = resolveStateMachineId(itemTypeId, p.stateMachineName());

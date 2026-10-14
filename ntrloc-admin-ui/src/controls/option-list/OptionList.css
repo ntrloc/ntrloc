@@ -1,0 +1,32 @@
+.option-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 160px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.option-list-option {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-h);
+  font: inherit;
+  cursor: pointer;
+}
+
+.option-list-option:hover {
+  background: var(--border);
+}
+
+.option-list-option-selected {
+  background: var(--primary);
+  color: var(--bg);
+}

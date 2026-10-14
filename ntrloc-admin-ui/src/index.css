@@ -18,6 +18,11 @@
   --social-bg: rgba(244, 243, 236, 0.5);
   --shadow:
     rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+  /* A subtle top-to-bottom sheen for a flat-colored bar (the accordion's own tabs, the nav header) --
+     layered as a second background image over whatever solid color that element already uses, same
+     fixed value in light and dark mode (it's calibrated to read as a highlight either way, not tied
+     to a particular --bg). */
+  --surface-sheen: linear-gradient(to bottom, rgb(255 255 255 / 5%), rgb(255 255 255 / 0%));
 
   --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
   --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
@@ -36,8 +41,15 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* System preference is the default, but AccountView's own light/dark switch (see useTheme) can
+   override it explicitly via data-theme on <html> -- :not([data-theme="light"]) here so an explicit
+   "light" pick suppresses this block even while the OS itself prefers dark, mirrored by the
+   unconditional :root[data-theme="dark"] block below for an explicit "dark" pick regardless of what
+   the OS prefers. Both apply the exact same values on purpose -- "the system happens to prefer dark"
+   and "the user explicitly chose dark" render identically, only which one wins when they disagree
+   differs. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme='light']) {
     --text: #9ca3af;
     --text-h: #f3f4f6;
     --bg: #161616;
@@ -54,9 +66,39 @@
       rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
   }
 
-  #social .button-icon {
+  :root:not([data-theme='light']) #social .button-icon {
     filter: invert(1) brightness(2);
   }
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --text: #9ca3af;
+  --text-h: #f3f4f6;
+  --bg: #161616;
+  --border: #2e2e2e;
+  --code-bg: #1f2028;
+  --primary: #3b9bdb;
+  --primary-bg: rgba(94, 155, 251, 0.15);
+  --primary-border: rgba(94, 155, 251, 0.5);
+  --secondary: #e8952f;
+  --secondary-bg: rgba(232, 149, 47, 0.15);
+  --secondary-border: rgba(232, 149, 47, 0.5);
+  --social-bg: rgba(47, 48, 58, 0.5);
+  --shadow:
+    rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
+}
+
+:root[data-theme='dark'] #social .button-icon {
+  filter: invert(1) brightness(2);
+}
+
+/* An explicit "light" pick needs its own color-scheme too -- without it, a system set to dark would
+   still render browser-native chrome (scrollbars, form controls) in dark style even though every
+   --variable above has switched back to light. :root's own base values (light) already apply here
+   unconditionally, so there's no variable block to repeat. */
+:root[data-theme='light'] {
+  color-scheme: light;
 }
 
 body {

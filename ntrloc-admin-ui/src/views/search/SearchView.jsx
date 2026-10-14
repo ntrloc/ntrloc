@@ -4,7 +4,8 @@ import SearchContentsView from './SearchContentsView'
 import './SearchView.css'
 
 function SearchView() {
-  const { panes, addSearchPane, addItemPane, removePane, closeItemPanesFor } = useSearchViewModel()
+  const { panes, addSearchPane, addItemPane, removePane, closeItemPanesFor, maximizedPaneId, toggleMaximize } =
+    useSearchViewModel()
 
   return (
     <search-view>
@@ -14,6 +15,8 @@ function SearchView() {
         onRemovePane={removePane}
         onOpenItem={(item) => addItemPane(item.itemType, item.itemId)}
         onItemDeleted={closeItemPanesFor}
+        maximizedPaneId={maximizedPaneId}
+        onToggleMaximize={toggleMaximize}
       />
     </search-view>
   )

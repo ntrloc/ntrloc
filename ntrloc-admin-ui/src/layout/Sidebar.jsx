@@ -64,11 +64,49 @@ function Sidebar({ extensions = [] }) {
           </svg>
           <span className="sidebar-nav-label">Schema</span>
         </NavLink>
+        <NavLink to="/access" className={navItemClassName}>
+          <svg
+            viewBox="0 0 24 24"
+            width="18"
+            height="18"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <rect x="3" y="11" width="18" height="11" rx="2" />
+            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+          </svg>
+          <span className="sidebar-nav-label">Access</span>
+        </NavLink>
         {extensions.map(({ navPath, navLabel }) => (
           <NavLink key={navPath} to={navPath} className={navItemClassName}>
             <span className="sidebar-nav-label">{navLabel}</span>
           </NavLink>
         ))}
+      </nav>
+      {/* A second top-level flex child of collapsible-panel-content (see CollapsiblePanel.jsx),
+          not a second group inside the nav above -- margin-top: auto (see Sidebar.css) only pushes
+          it to the bottom of the panel because it's a sibling flex item there, not nested inside
+          sidebar-nav's own column. */}
+      <nav className="sidebar-nav sidebar-nav-bottom">
+        <NavLink to="/account" className={navItemClassName}>
+          <svg
+            viewBox="0 0 24 24"
+            width="18"
+            height="18"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+            <circle cx="12" cy="7" r="4" />
+          </svg>
+          <span className="sidebar-nav-label">Account</span>
+        </NavLink>
       </nav>
     </CollapsiblePanel>
   )

@@ -1,11 +1,10 @@
 import { useState } from 'react'
 import ModalPopupView from '../../../controls/modal/ModalPopupView'
-import { flattenProperties } from '../flattenProperties'
+import PropertyTreeView from '../PropertyTreeView'
 import './SearchResultItemView.css'
 
 function SearchResultItemView({ item, onOpen, onDelete }) {
   const [confirmingDelete, setConfirmingDelete] = useState(false)
-  const flatProperties = flattenProperties(item.properties)
 
   function handleConfirmDelete() {
     setConfirmingDelete(false)
@@ -35,14 +34,7 @@ function SearchResultItemView({ item, onOpen, onDelete }) {
           </button>
         </search-result-item-actions>
       </search-result-item-header>
-      <search-result-item-properties>
-        {flatProperties.map(([path, value]) => (
-          <div key={path} className="search-result-item-property">
-            <span className="search-result-item-property-name">{path}</span>
-            <span className="search-result-item-property-value">{String(value)}</span>
-          </div>
-        ))}
-      </search-result-item-properties>
+      <PropertyTreeView properties={item.properties} />
       <ModalPopupView
         open={confirmingDelete}
         message={`Delete "${item.displayLabel}"? This can't be undone.`}

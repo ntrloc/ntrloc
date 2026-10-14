@@ -1,15 +1,16 @@
 import { useState } from 'react'
 import PaneView from '../PaneView'
+import PropertyTreeView from '../PropertyTreeView'
 import { flattenProperties } from '../flattenProperties'
 import { useItemPaneViewModel } from './ItemPaneViewModel'
 import './ItemPaneView.css'
 
-function ItemPaneView({ itemTypeName, itemId, onClose }) {
+function ItemPaneView({ itemTypeName, itemId, onClose, maximized, onToggleMaximize }) {
   const { status, item } = useItemPaneViewModel(itemTypeName, itemId)
   const title = item ? item.displayLabel : itemTypeName
 
   return (
-    <PaneView title={title} onClose={onClose}>
+    <PaneView title={title} onClose={onClose} maximized={maximized} onToggleMaximize={onToggleMaximize}>
       {status === 'loading' && <item-pane-view>Loading…</item-pane-view>}
       {status === 'notFound' && <item-pane-view>Item not found.</item-pane-view>}
       {status === 'error' && <item-pane-view>Failed to load item.</item-pane-view>}
@@ -19,7 +20,6 @@ function ItemPaneView({ itemTypeName, itemId, onClose }) {
 }
 
 function ItemPaneContent({ item }) {
-  const flatProperties = flattenProperties(item.properties)
   const linkEntries = Object.entries(item.links ?? {})
   const stateEntries = Object.entries(item.states ?? {})
 
@@ -28,12 +28,7 @@ function ItemPaneContent({ item }) {
       <div className="item-pane-type">{item.itemType}</div>
 
       <CollapsibleSection title="Properties">
-        {flatProperties.map(([path, value]) => (
-          <div key={path} className="item-pane-property">
-            <span className="item-pane-property-name">{path}</span>
-            <span className="item-pane-property-value">{String(value)}</span>
-          </div>
-        ))}
+        <PropertyTreeView properties={item.properties} />
       </CollapsibleSection>
 
       {linkEntries.length > 0 && (

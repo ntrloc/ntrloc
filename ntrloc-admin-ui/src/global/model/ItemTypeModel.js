@@ -50,6 +50,19 @@ function projectableProperties(adminSchema, itemTypeId) {
   return item.projectableFields
 }
 
+// sortableFields is what CollectionProjectionSpec.sortField/filter actually resolve against
+// server-side (see RegisterPartitionManager.resolveProperty) -- distinct from projectableFields
+// above, and the only list that's safe to offer for either control. `system` (itemId, createdAt,
+// ...) is sortable via SYSTEM_SORT_COLUMNS but NOT filterable -- translatePredicate's
+// PropertyExistencePredicate/PropertyValuePredicate branches resolve straight against real
+// properties with no system-field fallback the way sort has -- so a filter property picker needs
+// to exclude `system` entries itself; a sort property picker doesn't.
+function sortableFields(adminSchema, itemTypeId) {
+  const item = adminSchema.items.find((it) => it.id === itemTypeId)
+  if (!item) return []
+  return item.sortableFields
+}
+
 export function useItemTypeModel() {
   const schema = useSchemaSnapshot()
   return {
@@ -59,5 +72,6 @@ export function useItemTypeModel() {
       schema ? toItemTypePropertyTree(schema, itemTypeId) : { properties: [], groups: [] },
     getConcreteItemTypes: () => (schema ? concreteItemTypes(toItemTypes(schema)) : []),
     getProjectableProperties: (itemTypeId) => (schema ? projectableProperties(schema, itemTypeId) : []),
+    getSortableFields: (itemTypeId) => (schema ? sortableFields(schema, itemTypeId) : []),
   }
 }

@@ -110,6 +110,19 @@ public class ControlledListManager {
                 .list();
     }
 
+    // A value's own instance type at the JSON boundary doesn't always match the list's declared
+    // valueType -- e.g. Jackson hands LONG values through as Integer when they fit, same leniency
+    // validateScalar already allows -- so this normalizes before binding, rather than requiring the
+    // caller to.
+    public boolean containsValue(UUID listId, PropertyType valueType, Object value) {
+        Object normalized = valueType == PropertyType.LONG && value instanceof Integer i ? i.longValue() : value;
+        return jdbcClient.sql("SELECT 1 FROM %s WHERE value = :value LIMIT 1".formatted(tableNameFor(listId)))
+                .param(PARAM_VALUE, normalized)
+                .query(Integer.class)
+                .optional()
+                .isPresent();
+    }
+
     public List<ControlledList> getAllLists() {
         return jdbcClient.sql("SELECT id, name, value_type FROM schema_controlled_list ORDER BY name")
                 .query((rs, n) -> new ControlledList(

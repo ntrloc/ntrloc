@@ -21,6 +21,9 @@ export class SearchModel {
   #items = []
   #itemTypeName = null
   #propertyPaths = null
+  #sortField = null
+  #sortDirection = 'ASC'
+  #filter = null
   #offset = 0
   #limit = DEFAULT_LIMIT
   #totalCount = 0
@@ -31,9 +34,19 @@ export class SearchModel {
   // non-null (even empty) means only these" contract. Comes from SearchPaneControlsView's
   // property-selection tree, which can select whole branches, specific deep leaves, or a mix -- see
   // propertyTree.js/checkboxTreeSelection.js for what a selection actually means on the wire.
-  search = (itemTypeName, propertyPaths) => {
+  //
+  // sortField/filter/limit are criteria, not persistent model state of their own -- same reasoning
+  // as itemTypeName/propertyPaths above: SearchPaneControlsView(Model) owns the pending selection,
+  // this only remembers whatever was last submitted (so a later offset-only re-fetch, via
+  // fetchOffset, re-runs with the same criteria). null filter/sortField mean "none", matching
+  // CollectionProjectionSpec's own contract.
+  search = (itemTypeName, propertyPaths, { sortField = null, sortDirection = 'ASC', filter = null, limit = DEFAULT_LIMIT } = {}) => {
     this.#itemTypeName = itemTypeName
     this.#propertyPaths = propertyPaths
+    this.#sortField = sortField
+    this.#sortDirection = sortDirection
+    this.#filter = filter
+    this.#limit = limit
     this.#offset = 0
     return this.#fetch()
   }
@@ -60,6 +73,9 @@ export class SearchModel {
         offset: this.#offset,
         limit: this.#limit,
         properties: this.#propertyPaths,
+        sortField: this.#sortField,
+        sortDirection: this.#sortDirection,
+        filter: this.#filter,
         includePermissions: true,
       })
       this.#items = raw.items.map(toSearchResultItemModel)

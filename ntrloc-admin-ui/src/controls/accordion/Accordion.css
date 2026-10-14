@@ -42,7 +42,8 @@ accordion-section[data-active] {
   width: 100%;
   padding: 10px 12px;
   border: none;
-  background: var(--code-bg);
+  /* --surface-sheen (see index.css) layered over whatever solid color this state already uses. */
+  background: var(--surface-sheen), var(--code-bg);
   color: var(--text);
   font: inherit;
   text-align: left;
@@ -50,12 +51,12 @@ accordion-section[data-active] {
 }
 
 .accordion-tab:hover {
-  background: var(--primary-bg);
+  background: var(--surface-sheen), var(--primary-bg);
   color: var(--text-h);
 }
 
 accordion-section[data-active] > .accordion-tab {
-  background: var(--primary-bg);
+  background: var(--surface-sheen), var(--primary-bg);
   color: var(--primary);
   font-weight: 500;
 }

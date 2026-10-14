@@ -43,9 +43,14 @@ import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemDefin
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminTraitDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyGroupView;
+import org.ntrloc.graph.db.partition.authorization.PermissionService;
+import org.ntrloc.graph.db.partition.authorization.repository.AuthorizationRepository;
+import org.ntrloc.graph.db.partition.security.ResolvedPrincipal;
+import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -71,6 +76,12 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private ControlledListManager controlledListManager;
+
+    @Autowired
+    private AuthorizationRepository authRepo;
+
+    @Autowired
+    private SecurityRepository securityRepo;
 
     private UUID createItem(String name) {
         schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(name, "d", List.of(), null, false, null)));
@@ -1133,4 +1144,26 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     private static final org.ntrloc.graph.db.partition.security.ResolvedPrincipal SUPERUSER =
             new org.ntrloc.graph.db.partition.security.ResolvedPrincipal(
                     UUID.randomUUID(), "test-superuser", "Test Superuser", null, java.util.Set.of(), true);
+
+    // --- Schema-view filtering by item-type:read permission (SchemaManager.getSchema) ---
+    //
+    // A user not added to the default "everyone" group (which auto-grants item-type:read on every
+    // item type, existing or future -- see DefaultUserGroupInitializer.onItemTypeCreated) starts
+    // with zero item-type visibility; granting read on only one of two fresh types proves the
+    // filtering is genuinely per-type, not just "sees nothing."
+    @Test
+    void getSchema_forAUserLackingItemTypeReadOnOneType_hidesThatTypeButShowsAGrantedOne() {
+        String visibleTypeName = "Item-" + UUID.randomUUID();
+        String hiddenTypeName = "Item-" + UUID.randomUUID();
+        UUID visibleTypeId = createItem(visibleTypeName);
+        UUID hiddenTypeId = createItem(hiddenTypeName);
+
+        var user = securityRepo.createUser("sme-" + UUID.randomUUID(), "Restricted", null, false);
+        var principal = new ResolvedPrincipal(user.id(), user.externalId(), user.displayName(), null, Set.of(), false);
+        authRepo.grantItemType(visibleTypeId, "USER", user.id(), PermissionService.ITEM_TYPE_READ);
+
+        var visibleNames = schemaManager.getSchema(principal).items().stream().map(i -> i.name()).toList();
+        assertThat(visibleNames).contains(visibleTypeName);
+        assertThat(visibleNames).doesNotContain(hiddenTypeName);
+    }
 }

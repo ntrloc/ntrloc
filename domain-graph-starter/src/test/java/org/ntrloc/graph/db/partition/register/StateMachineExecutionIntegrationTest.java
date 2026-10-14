@@ -15,6 +15,7 @@ import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminTransitio
 import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
 import org.ntrloc.graph.db.partition.security.ResolvedPrincipal;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.mutation.MutationValidationException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.server.ResponseStatusException;
 import tools.jackson.databind.json.JsonMapper;
@@ -98,13 +99,14 @@ class StateMachineExecutionIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void startStateMachine_withoutTheStartGrant_throwsForbidden() {
+    void startStateMachine_withoutTheStartGrant_throwsMutationValidationException() {
         UUID book = createBook("Dune");
         NtrlocPrincipal user = nonSuperuser();
 
         assertThatThrownBy(() -> entityManager.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, user))
-                .isInstanceOf(ResponseStatusException.class)
-                .satisfies(e -> assertThat(status(e)).isEqualTo(403));
+                .isInstanceOf(MutationValidationException.class)
+                .satisfies(e -> assertThat(((MutationValidationException) e).errors())
+                        .anyMatch(err -> err.message().contains("Not permitted to start")));
     }
 
     @Test
@@ -133,8 +135,9 @@ class StateMachineExecutionIntegrationTest extends AbstractIntegrationTest {
         authRepo.revokeStateMachineStart(grantId, machineId());
 
         assertThatThrownBy(() -> entityManager.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, user))
-                .isInstanceOf(ResponseStatusException.class)
-                .satisfies(e -> assertThat(status(e)).isEqualTo(403));
+                .isInstanceOf(MutationValidationException.class)
+                .satisfies(e -> assertThat(((MutationValidationException) e).errors())
+                        .anyMatch(err -> err.message().contains("Not permitted to start")));
     }
 
     // --- execute ---
@@ -170,14 +173,15 @@ class StateMachineExecutionIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void executeTransition_withoutTheExecuteGrant_throwsForbidden() {
+    void executeTransition_withoutTheExecuteGrant_throwsMutationValidationException() {
         UUID book = createBook("Dune");
         entityManager.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, SUPERUSER);
         NtrlocPrincipal user = nonSuperuser();
 
         assertThatThrownBy(() -> entityManager.executeTransition(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, transitionId("MarkOutOfStock"), user))
-                .isInstanceOf(ResponseStatusException.class)
-                .satisfies(e -> assertThat(status(e)).isEqualTo(403));
+                .isInstanceOf(MutationValidationException.class)
+                .satisfies(e -> assertThat(((MutationValidationException) e).errors())
+                        .anyMatch(err -> err.message().contains("Not permitted to execute")));
     }
 
     @Test

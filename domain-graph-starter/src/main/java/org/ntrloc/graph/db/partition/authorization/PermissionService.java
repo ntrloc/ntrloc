@@ -109,6 +109,31 @@ public class PermissionService {
         return false;
     }
 
+    /** May this principal write {@code propertyId} on an item carrying {@code itemMarkerIds}? */
+    public boolean mayWriteProperty(RequestPermissionContext ctx, Set<UUID> itemMarkerIds, UUID propertyId) {
+        return ctx.superuser() || anyMarkerGrants(ctx.propertyWriteGrantsByMarker(), itemMarkerIds, propertyId);
+    }
+
+    /** May this principal delete an item carrying {@code itemMarkerIds}? Flat marker set, no secondary target (cf. mayWriteProperty). */
+    public boolean mayDeleteItem(RequestPermissionContext ctx, Set<UUID> itemMarkerIds) {
+        return ctx.superuser() || !Collections.disjoint(itemMarkerIds, ctx.itemDeleteGrantedMarkerIds());
+    }
+
+    /** May this principal create a link via {@code perspectiveId} from an item carrying {@code itemMarkerIds}? */
+    public boolean mayCreateLink(RequestPermissionContext ctx, Set<UUID> itemMarkerIds, UUID perspectiveId) {
+        return ctx.superuser() || anyMarkerGrants(ctx.linkPerspectiveCreateGrantsByMarker(), itemMarkerIds, perspectiveId);
+    }
+
+    /** May this principal delete a link via {@code perspectiveId} from an item carrying {@code itemMarkerIds}? */
+    public boolean mayDeleteLink(RequestPermissionContext ctx, Set<UUID> itemMarkerIds, UUID perspectiveId) {
+        return ctx.superuser() || anyMarkerGrants(ctx.linkPerspectiveDeleteGrantsByMarker(), itemMarkerIds, perspectiveId);
+    }
+
+    /** May this principal write {@code propertyId} on a link whose source item carries {@code itemMarkerIds}? */
+    public boolean mayWriteLinkProperty(RequestPermissionContext ctx, Set<UUID> itemMarkerIds, UUID propertyId) {
+        return ctx.superuser() || anyMarkerGrants(ctx.linkPropertyWriteGrantsByMarker(), itemMarkerIds, propertyId);
+    }
+
     /** The markers currently on this item -- data-sized, never cached (see class comment). */
     public Set<UUID> markerIdsForItem(UUID itemId) {
         return repo.getMarkerIdsForItem(itemId);

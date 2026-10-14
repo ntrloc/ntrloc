@@ -4,10 +4,11 @@ import { useRef, useState } from 'react'
 // either a search pane or an item pane (kind discriminates the two); SearchContentsView renders the
 // right component for each. Pane identity is a stable, ever-incrementing id (not array position), so
 // a pane's label/key never shifts if an earlier pane is later removed -- matches ntrloc-search.js's
-// own "Search {pane.id}" convention. No other pane state (windowState, ...) yet -- taking this one
-// small piece at a time.
+// own "Search {pane.id}" convention. maximizedPaneId is at most one pane at a time (a window-manager
+// "maximize", not a multi-select) -- null means none maximized.
 export function useSearchViewModel() {
   const [panes, setPanes] = useState([])
+  const [maximizedPaneId, setMaximizedPaneId] = useState(null)
   const nextPaneId = useRef(1)
 
   function addSearchPane() {
@@ -24,6 +25,16 @@ export function useSearchViewModel() {
 
   function removePane(id) {
     setPanes((current) => current.filter((pane) => pane.id !== id))
+    // A closed pane can't stay "the maximized one" -- otherwise every other pane would remain
+    // hidden behind a maximize that no longer has anything to restore.
+    setMaximizedPaneId((current) => (current === id ? null : current))
+  }
+
+  // Toggling the already-maximized pane restores it; toggling any other pane maximizes that one
+  // instead (and implicitly un-maximizes whatever was maximized before, since only one id is ever
+  // tracked) -- this is the whole of "maximize" behavior, no stack or z-order history needed.
+  function toggleMaximize(id) {
+    setMaximizedPaneId((current) => (current === id ? null : id))
   }
 
   // Called after a search result's own delete succeeds -- an ItemPane is identified by which item
@@ -34,5 +45,5 @@ export function useSearchViewModel() {
     setPanes((current) => current.filter((pane) => !(pane.kind === 'item' && pane.itemId === itemId)))
   }
 
-  return { panes, addSearchPane, addItemPane, removePane, closeItemPanesFor }
+  return { panes, addSearchPane, addItemPane, removePane, closeItemPanesFor, maximizedPaneId, toggleMaximize }
 }

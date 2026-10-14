@@ -1,5 +1,7 @@
 package org.ntrloc.graph.db;
 
+import org.ntrloc.graph.mutation.MutationErrorResponse;
+import org.ntrloc.graph.mutation.MutationValidationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -20,5 +22,15 @@ public class ApiExceptionHandler {
     @ExceptionHandler(IllegalArgumentException.class)
     ResponseEntity<ErrorResponse> handleIllegalArgument(IllegalArgumentException e) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ErrorResponse(e.getMessage()));
+    }
+
+    // Catches MutationValidationException for every caller that doesn't already handle it locally
+    // (MutationController does, inline) -- in particular EntityManagerImpl.startStateMachine/
+    // executeTransition via ItemController, which have no catch block of their own. Keeps every
+    // mutation rejection (validation or permission) on the one 400 + MutationErrorResponse shape,
+    // rather than a permission denial alone surfacing as a bare 500.
+    @ExceptionHandler(MutationValidationException.class)
+    ResponseEntity<MutationErrorResponse> handleMutationValidation(MutationValidationException e) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new MutationErrorResponse(e.errors()));
     }
 }

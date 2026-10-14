@@ -5,6 +5,18 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ntrloc-admin-ui</title>
+    <!-- Applies an explicit theme override (see useTheme.js) before first paint -- run here, not
+         from a React effect, so there's no flash of the system-preference theme on a reload when an
+         override is already stored. The localStorage key ('theme') must stay in sync with
+         useTheme.js's own STORAGE_KEY. -->
+    <script>
+      (function () {
+        var stored = localStorage.getItem('theme')
+        if (stored === 'light' || stored === 'dark') {
+          document.documentElement.setAttribute('data-theme', stored)
+        }
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

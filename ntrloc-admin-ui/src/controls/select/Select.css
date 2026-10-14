@@ -1,5 +1,14 @@
+select-control {
+  position: relative;
+  display: inline-block;
+}
+
 .select {
-  padding: 7px 10px;
+  /* Hides the browser's own native arrow (varies by browser/OS) in favor of the overlaid
+     ChevronDownIcon below -- extra right padding reserves room for it so option text never runs
+     underneath. */
+  appearance: none;
+  padding: 7px 28px 7px 10px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--bg);
@@ -10,4 +19,14 @@
 .select:disabled {
   opacity: 0.6;
   cursor: default;
+}
+
+.select-caret {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  transform: translateY(-50%);
+  color: var(--text);
+  /* The <select> beneath still needs to receive the click -- this is purely decorative. */
+  pointer-events: none;
 }

@@ -1,0 +1,34 @@
+property-tree-view {
+  display: block;
+}
+
+.property-tree-level {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* A nested level (one group's own children) steps in from its parent group's name above it --
+   targets the level only when it's actually nested, so the top-level list itself isn't indented. */
+.property-tree-node > .property-tree-level {
+  margin-top: 2px;
+  margin-left: 14px;
+}
+
+.property-tree-group-name {
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.property-tree-leaf {
+  display: flex;
+  gap: 8px;
+  color: var(--text);
+}
+
+.property-tree-leaf-name {
+  font-weight: 600;
+}

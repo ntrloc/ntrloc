@@ -9,6 +9,13 @@
   min-width: 0;
 }
 
+/* Pushed to the bottom of collapsible-panel-content's own flex column (see Sidebar.jsx's own
+   comment) -- the only nav group with this, so it reads as pinned rather than just the last item
+   in one continuous list. */
+.sidebar-nav-bottom {
+  margin-top: auto;
+}
+
 .sidebar-nav-item {
   display: flex;
   align-items: center;

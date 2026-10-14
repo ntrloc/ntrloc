@@ -6,11 +6,20 @@
    of forcing the row to grow to fit its content. */
 search-contents-view {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+  /* Each track's floor is the wider of 400px and "half the row" -- on a narrow viewport that
+     still wraps to a single column same as plain minmax(400px, 1fr) always did, but on a wide one
+     it caps auto-fit at 2 columns instead of letting it keep packing panes in (3+ side by side was
+     too cramped) -- a third pane simply doesn't fit a half-width track, so it wraps to the next
+     row. The single 16px gap in the subtraction accounts for the one gap between 2 columns. */
+  grid-template-columns: repeat(auto-fit, minmax(max(400px, calc((100% - 16px) / 2)), 1fr));
   grid-auto-rows: 1fr;
   gap: 16px;
   padding: 16px;
   min-height: 0;
+  /* Containing block for a maximized pane-view's own position: absolute below -- without this,
+     it would position against the next positioned ancestor up the tree instead (likely covering
+     far more than just this view's own content area). */
+  position: relative;
 
   /* Simple grid for now -- the old admin's more deliberate horizontal/vertical space-dividing
      algorithm (see ntrloc-search.js) is a distinct, later step, not this one. Targets pane-view
@@ -18,5 +27,14 @@ search-contents-view {
   pane-view {
     min-height: 0;
     min-width: 0;
+  }
+
+  /* A maximized pane leaves the grid flow and covers this view's whole content area instead,
+     stacked above every other (still-present, just hidden-behind) pane -- toggling it back off
+     (PaneView's own Restore button) drops both rules and the grid simply reclaims its slot. */
+  pane-view[data-maximized] {
+    position: absolute;
+    inset: 0;
+    z-index: 10;
   }
 }

@@ -3,6 +3,8 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import LayoutView from './layout/LayoutView'
 import SearchView from './views/search/SearchView'
 import SchemaView from './views/schema/SchemaView'
+import AccessView from './views/access/AccessView'
+import AccountView from './views/account/AccountView'
 import './App.css'
 
 // Every top-level view stays mounted forever once first activated -- visibility (not mounting)
@@ -41,6 +43,12 @@ function App({ extensions = [] }) {
       </ViewGate>
       <ViewGate active={path.startsWith('/schema')}>
         <SchemaView />
+      </ViewGate>
+      <ViewGate active={path.startsWith('/access')}>
+        <AccessView />
+      </ViewGate>
+      <ViewGate active={path === '/account'}>
+        <AccountView />
       </ViewGate>
       {extensions.map(({ navPath, Component }) => (
         <ViewGate key={navPath} active={path === navPath}>

@@ -1,6 +1,7 @@
 pane-view {
   display: flex;
   flex-direction: column;
+  background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 8px;
   overflow: hidden;

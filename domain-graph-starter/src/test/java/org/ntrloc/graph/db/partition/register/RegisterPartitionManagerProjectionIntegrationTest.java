@@ -1007,7 +1007,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
         Map<String, Object> properties = new HashMap<>();
         properties.put("testMarker", marker);
         properties.put("title", "Dune");
-        properties.put("dimensions", Map.of("widthCm", 20, "material", "hardcover"));
+        properties.put("dimensions", Map.of("widthCm", 20, "material", "Hardcover"));
         webTestClient.post().uri("/api/mutation")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(new MutationRequest(List.of(new ItemCreateMutation(null, BOOK_TYPE, properties)), List.of()))
@@ -1024,7 +1024,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
         assertThat(item.properties()).containsOnlyKeys("dimensions");
         @SuppressWarnings("unchecked")
         var dimensions = (Map<String, Object>) item.properties().get("dimensions");
-        assertThat(dimensions).containsEntry("widthCm", 20).containsEntry("material", "hardcover");
+        assertThat(dimensions).containsEntry("widthCm", 20).containsEntry("material", "Hardcover");
     }
 
     @Test

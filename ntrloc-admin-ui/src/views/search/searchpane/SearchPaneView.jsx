@@ -4,7 +4,7 @@ import SearchPaneResultsView from './SearchPaneResultsView'
 import { useSearchPaneViewModel } from './SearchPaneViewModel'
 import './SearchPaneView.css'
 
-function SearchPaneView({ label = 'Search', onClose, onOpenItem, onItemDeleted }) {
+function SearchPaneView({ label = 'Search', onClose, onOpenItem, onItemDeleted, maximized, onToggleMaximize }) {
   const { searchStatus, results, runSearch, deleteItem, pageable } = useSearchPaneViewModel()
 
   // Composes this pane's own delete (server call + re-fetch, see SearchModel) with the
@@ -16,7 +16,7 @@ function SearchPaneView({ label = 'Search', onClose, onOpenItem, onItemDeleted }
   }
 
   return (
-    <PaneView title={label} onClose={onClose}>
+    <PaneView title={label} onClose={onClose} maximized={maximized} onToggleMaximize={onToggleMaximize}>
       <SearchPaneControlsView onSearch={runSearch} />
       <SearchPaneResultsView
         searchStatus={searchStatus}

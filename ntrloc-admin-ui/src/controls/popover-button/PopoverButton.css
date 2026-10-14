@@ -1,0 +1,67 @@
+/* Identical shell to tree-select's own (src/controls/tree-select/TreeSelect.css) -- kept as two
+   copies rather than one shared class, since the two controls are independent and a future tweak
+   to one (e.g. tree-select's own min-width, sized for a property tree) shouldn't silently affect
+   the other (sized for a few form controls). */
+popover-button {
+  position: relative;
+  display: inline-block;
+}
+
+.popover-button-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  /* Just enough to keep a short summary ("Sort", "Filter") from looking cramped against the
+     caret -- callers with naturally longer summaries (item type names, "N properties selected")
+     size past this on their own via the label's own content, nothing forces them wider. */
+  min-width: 72px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text-h);
+  font: inherit;
+  cursor: pointer;
+}
+
+.popover-button-trigger:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.popover-button-trigger-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.popover-button-trigger-caret {
+  color: var(--text);
+  flex: none;
+}
+
+popover-button-popover {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+
+/* A nested PopoverButton (e.g. Sort's own field/direction pickers) is a flex item in the column
+   above, which already stretches it to the popover's full width -- but the trigger button inside
+   it still sizes to its own label unless told to fill that stretched box too, so "name" and
+   "Ascending" end up different widths otherwise. Scoped to nested triggers specifically: a
+   top-level trigger (item type, Sort, Filter, ...) sits in search-pane-controls-view's own row,
+   not inside a popover-button-popover, so it keeps sizing to its own content as before. */
+popover-button-popover .popover-button-trigger {
+  width: 100%;
+}

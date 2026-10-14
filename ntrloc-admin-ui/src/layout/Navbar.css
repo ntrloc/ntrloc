@@ -4,7 +4,9 @@ layout-navbar {
   display: flex;
   align-items: center;
   padding-inline: 20px;
-  background: var(--bg-nav);
+  /* --surface-sheen (see index.css) layered over the bar's own solid color -- same subtle top-to-
+     bottom highlight the accordion's own tabs use (see Accordion.css). */
+  background: var(--surface-sheen), var(--bg-nav);
   border-bottom: 1px solid var(--border);
 }
 

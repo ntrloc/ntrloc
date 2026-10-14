@@ -6,6 +6,8 @@ import org.ntrloc.graph.mutation.CommitResponse;
 import org.ntrloc.graph.mutation.MutationRequest;
 import org.ntrloc.graph.mutation.MutationRequestProcessor;
 import org.ntrloc.graph.mutation.MutationResponse;
+import org.ntrloc.graph.mutation.MutationValidationException;
+import org.ntrloc.graph.mutation.ValidationError;
 import org.ntrloc.graph.db.partition.ledger.ItemUpdateEntry;
 import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
 import org.ntrloc.graph.db.partition.authorization.PermissionService;
@@ -175,7 +177,11 @@ public class EntityManagerImpl implements EntityManager {
 
         var ctx = permissionService.buildContext(principal);
         if (!permissionService.mayStartStateMachine(ctx, permissionService.markerIdsForItem(itemId), smId)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Not permitted to start this state machine");
+            // A permission denial is a mutation rejection like any other -- same
+            // ValidationError/MutationValidationException vocabulary as MutationRequestProcessor's
+            // own checks, not a separate ResponseStatusException mechanism (see
+            // ApiExceptionHandler.handleMutationValidation for where this lands as a 400).
+            throw new MutationValidationException(List.of(new ValidationError("stateMachine", "Not permitted to start this state machine")));
         }
 
         commitStateEntry(new ItemUpdateEntry(itemId, Map.of(), Map.of(smId, startTransition.toStateId()), Set.of(), Set.of(), Set.of()), principal);
@@ -200,7 +206,9 @@ public class EntityManagerImpl implements EntityManager {
 
         var ctx = permissionService.buildContext(principal);
         if (!permissionService.mayExecuteTransition(ctx, permissionService.markerIdsForItem(itemId), transitionId)) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Not permitted to execute this transition");
+            // See startStateMachine's own comment on why this is a MutationValidationException, not
+            // a ResponseStatusException.
+            throw new MutationValidationException(List.of(new ValidationError("stateMachine", "Not permitted to execute this transition")));
         }
 
         if (hasGuard(transition) && !guardSatisfied(itemTypeId, itemId, transition)) {

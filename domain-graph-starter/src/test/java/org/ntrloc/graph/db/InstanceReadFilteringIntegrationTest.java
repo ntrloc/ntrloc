@@ -175,6 +175,24 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
                 .hasMessageContaining("404");
     }
 
+    // Covers requireReadAccess's own type-level gate (EntityManagerImpl line ~75) on the
+    // single-item projection path specifically -- AuthorizationEndpointsIntegrationTest already
+    // covers this same gate on the *collection* path, and the test above covers this path's
+    // separate *instance*-marker gate, but nothing yet proved the type-level gate also fires here
+    // (newUserInEveryoneUserGroup's own fixture user always has type-level read, by design, so it
+    // can't exercise this). A user never added to "everyone" at all has zero item-type:read.
+    @Test
+    void singleItemProjection_typeNotGrantedAtAll_throwsNotFound() {
+        UUID productId = createProduct();
+        var user = securityRepo.createUser("irf-" + UUID.randomUUID(), "Restricted", null, false);
+        var principal = new ResolvedPrincipal(user.id(), user.externalId(), user.displayName(), null, Set.of(), false);
+
+        assertThatThrownBy(() ->
+                        entityManager.project(new ItemProjectionSpec("CoordinatorTestProduct", productId), "http://binary", principal))
+                .isInstanceOf(ResponseStatusException.class)
+                .hasMessageContaining("404");
+    }
+
     @Test
     void singleItemProjection_itemWithGrantedMarker_returnsIt() {
         UUID productId = createProduct();
@@ -205,8 +223,33 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
         assertThat(result.get().links().values().stream().flatMap(List::stream)).isEmpty();
     }
 
+    // Naming "products" explicitly (a non-null links map) is an explicit request for that specific
+    // perspective, not the "give me every direct link" default (links == null) -- so an unreadable
+    // link under it is a loud rejection, not a silent exclusion (see
+    // RegisterPartitionManager.requireExplicitlyRequestedLinksAreReadable's own comment). This test
+    // used to assert the opposite (silent exclusion) before that check existed; the exclusion
+    // behavior itself still holds for the *default*, unnamed case -- see the sibling test below.
     @Test
-    void linkFiltering_linkWithoutLinkRead_isExcludedEvenWhenBothEndpointsAreVisible() {
+    void linkFiltering_explicitlyRequestedPerspectiveWithoutLinkRead_throwsIllegalArgumentException() {
+        UUID productId = createProduct();
+        UUID contributorId = createContributor();
+        createLink(productId, contributorId);
+        var principal = newUserInEveryoneUserGroup();
+        grantItemRead(productId, principal);
+        grantItemRead(contributorId, principal);
+        // Deliberately no grantLinkRead(...) -- link:read is a separate, still-required condition.
+
+        assertThatThrownBy(() -> entityManager.project(
+                new ItemProjectionSpec("CoordinatorTestProduct", productId, Map.of("products", new LinkProjectionSpec(null))),
+                "http://binary", principal))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("products");
+    }
+
+    // The default (links == null, "every direct link, one hop") still stays silent on a denial --
+    // only an *explicitly named* perspective (the sibling test above) is a loud rejection.
+    @Test
+    void linkFiltering_defaultLinksWithoutLinkRead_isExcludedEvenWhenBothEndpointsAreVisible() {
         UUID productId = createProduct();
         UUID contributorId = createContributor();
         createLink(productId, contributorId);
@@ -216,8 +259,7 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
         // Deliberately no grantLinkRead(...) -- link:read is a separate, still-required condition.
 
         var result = entityManager.project(
-                new ItemProjectionSpec("CoordinatorTestProduct", productId, Map.of("products", new LinkProjectionSpec(null))),
-                "http://binary", principal);
+                new ItemProjectionSpec("CoordinatorTestProduct", productId), "http://binary", principal);
 
         assertThat(result.get().links().values().stream().flatMap(List::stream)).isEmpty();
     }
