@@ -15,18 +15,42 @@ item-pane-property-groups {
   color: var(--text-h);
 }
 
-/* Flex, not a stretching grid -- a row of 2 leaves should stay the same compact width as a row of
-   5, not grow to fill the available width just because there's less company on that particular
-   row. flex: none (fixed basis, no grow/shrink) is what gets that: each leaf claims only the
-   column width it needs, up to its own basis, and a short row simply leaves the remaining space
-   empty instead of stretching to fill it. */
+/* Grid, not flex -- flex-wrap only lines up the items *within* one row; once any leaf needs to be
+   wider than the rest (a long name or value), every later item on that row, and every row after
+   it, drifts out of alignment with the rows above, which is what let cells visually overlap. A
+   grid with a fixed 160px column keeps every leaf aligned into real columns across every row
+   regardless of what's in any one cell. auto-fill + justify-content: start is what keeps a row of
+   2 leaves the same compact width as a row of 5 (same intent the old flex: none had) -- auto-fill
+   creates as many 160px tracks as the container has room for and leaves the unused ones empty
+   rather than stretching real content to fill them, and justify-content: start keeps those empty
+   trailing tracks after the real ones instead of redistributing space among them. */
 .item-pane-property-group-leaves {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 160px);
+  /* Deliberately NOT grid-auto-flow: dense -- dense backfills an earlier row's leftover gap with a
+     later, smaller leaf that fits it, but which leaf ends up filling which gap depends on how many
+     columns the container currently has room for, which depends on the pane's own width. Resizing
+     the pane changes column count, which changes which gaps open up where, which reshuffles the
+     *visual* order of same-sized leaves around the wide ones -- alphabetical one width, not another.
+     Plain "row" placement costs an occasional empty cell next to a wide leaf, but it's strictly
+     source-order: the same list, read top-to-bottom-then-left-to-right, regardless of pane width.
+     That stability matters more here than a fully gapless layout. */
+  justify-content: start;
   gap: 12px 32px;
 }
 
 .item-pane-property-group-leaf {
-  flex: none;
-  width: 160px;
+  /* Grid items get an implicit content-based minimum width, same as flex items -- without
+     overriding it to 0, a long unbroken name/value would still force its own column (and every
+     later column in the same auto-fill grid) wider than 160px instead of wrapping/ellipsizing
+     inside it. */
+  min-width: 0;
+}
+
+/* A leaf whose value is inherently multi-valued, or whose formatted text doesn't comfortably fit
+   one column (see ItemPaneViewModel.isWideLeaf), spans two tracks instead of cramming onto one --
+   grid-column: span N composes with the fixed-column grid above without breaking alignment for
+   any other leaf, on this row or any other. */
+.item-pane-property-group-leaf.wide {
+  grid-column: span 2;
 }

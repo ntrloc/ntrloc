@@ -9,11 +9,12 @@ input-control {
   padding-bottom: 10px;
   font-weight: 600;
   color: var(--primary);
+  overflow-wrap: anywhere;
 }
 
 .input-control-value {
   color: var(--text);
-  overflow-wrap: break-word;
+  overflow-wrap: anywhere;
 }
 
 /* Not a box -- no border/background/radius of its own, just the bottom rule, so edit mode reads as

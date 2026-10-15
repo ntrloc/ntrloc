@@ -61,6 +61,31 @@ function isGroup(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value) && !isControlledListValue(value)
 }
 
+// A leaf whose *name* doesn't fit comfortably on one line, or whose formatted display text simply
+// doesn't fit comfortably in one fixed-width grid column, spans two columns instead of wrapping
+// onto several cramped lines -- see ItemPanePropertyGroupsView.css's own comment on the grid this
+// feeds into. 20 is an approximate character count, not a measured pixel width -- there's no cheap
+// way to know a leaf's actual rendered width before layout, so this is a heuristic, not an exact
+// fit. Tuned against real EXIF property names (PascalCase, so heavier on wide capital letters than
+// typical prose): at 160px, ~20-21 characters is roughly where a name starts wrapping onto a
+// second line instead of fitting on one -- e.g. "formatDescription" (17) fits, "PhotographicSensitivity"
+// (23) wraps.
+//
+// Deliberately NOT keyed off cardinality/Array.isArray alone -- a SET/LIST property's *value* can
+// still be short ("WEDDINGS, NATURE" is 16 characters, well under the threshold below), and forcing
+// every multi-valued property to span two columns regardless of its actual formatted length is
+// what previously starved this grid of row-sharing opportunities: with stable (non-dense, see
+// ItemPanePropertyGroupsView.css) placement, an unnecessarily-wide leaf sandwiched between two
+// ordinary ones forces both onto their own separate rows instead of letting the narrow one before
+// it share a row. The formatted-text check below already widens a leaf whose *actual* combined
+// value is long, which is the only time a multi-valued property genuinely needs the extra room.
+const WIDE_TEXT_THRESHOLD = 20
+
+export function isWideLeaf(name, formattedText) {
+  if (typeof name === 'string' && name.length > WIDE_TEXT_THRESHOLD) return true
+  return typeof formattedText === 'string' && formattedText.length > WIDE_TEXT_THRESHOLD
+}
+
 // Reads a (possibly nested) properties object down to the object living at `path` -- the same
 // navigation resolveGroupValue performs server-side, just read-only here.
 function resolveGroupValue(properties, path) {

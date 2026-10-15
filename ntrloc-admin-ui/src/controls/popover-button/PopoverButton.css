@@ -34,6 +34,10 @@ popover-button {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  /* Without this, a flex item's implicit minimum width is its own content's full (unwrapped)
+     size, which silently defeats the ellipsis above -- the label would just keep growing instead
+     of ever actually truncating, however narrow the trigger itself is constrained to be. */
+  min-width: 0;
 }
 
 .popover-button-trigger-caret {
