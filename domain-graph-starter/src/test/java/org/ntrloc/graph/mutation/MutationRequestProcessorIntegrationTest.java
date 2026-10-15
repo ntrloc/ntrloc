@@ -20,6 +20,7 @@ import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePropertyDe
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePropertyGroupDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DeleteItemDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DeletePropertyDefinitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.ExistingControlledListReference;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.SetPropertyControlledListMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.UpdateItemDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.UpdatePropertyDefinitionMutation;
@@ -730,7 +731,8 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
         UUID propId = schemaManager.getAdminSchema().items().stream()
                 .filter(i -> i.name().equals(typeName)).findFirst().orElseThrow()
                 .properties().stream().filter(p -> p.name().equals("choice")).findFirst().orElseThrow().id();
-        schemaManager.applyMutations(List.of(new SetPropertyControlledListMutation(propId, createControlledList("A", "B"))));
+        schemaManager.applyMutations(List.of(new SetPropertyControlledListMutation(propId,
+                new ExistingControlledListReference(createControlledList("A", "B")))));
         return typeName;
     }
 
@@ -745,7 +747,8 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
                 .flatMap(l -> l.properties().stream())
                 .filter(p -> p.name().equals(propertyName))
                 .findFirst().orElseThrow().id();
-        schemaManager.applyMutations(List.of(new SetPropertyControlledListMutation(propId, createControlledList("A", "B"))));
+        schemaManager.applyMutations(List.of(new SetPropertyControlledListMutation(propId,
+                new ExistingControlledListReference(createControlledList("A", "B")))));
         return link;
     }
 

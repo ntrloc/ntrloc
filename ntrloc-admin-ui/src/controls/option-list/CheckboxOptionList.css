@@ -1,0 +1,15 @@
+.checkbox-option-list-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 10px;
+  border-radius: 6px;
+  color: var(--text-h);
+  font: inherit;
+  cursor: pointer;
+}
+
+.checkbox-option-list-option:hover {
+  background: var(--border);
+}

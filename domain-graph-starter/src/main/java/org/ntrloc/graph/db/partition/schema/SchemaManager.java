@@ -14,7 +14,9 @@ import org.springframework.boot.sql.init.dependency.DependsOnDatabaseInitializat
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Deque;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -98,20 +100,27 @@ public class SchemaManager {
         cachedSchema.set(calculatedViewBuilder.buildSchema());
     }
 
-    public void applyMutations(List<DefinitionMutation> mutations) {
+    // Returns one ControlledListMutationResult per CreateControlledListMutation the batch actually
+    // processed -- the caller's only way to learn a newly-created list's real id, same reasoning
+    // MutationResponse's own ItemMutationResult list serves on the item/link side. A
+    // SetPropertyControlledListMutation later in the *same* batch can reference that same create by
+    // its own refId (NewControlledListReference) rather than needing two separate round trips --
+    // refIdToListId is what makes that resolution possible, built up as the batch is walked.
+    public List<ControlledListMutationResult> applyMutations(List<DefinitionMutation> mutations) {
+        Map<String, UUID> refIdToListId = new HashMap<>();
+        List<ControlledListMutationResult> results = new ArrayList<>();
         for (DefinitionMutation mutation : mutations) {
-            applyMutation(mutation);
+            applyMutation(mutation, refIdToListId, results);
         }
         refreshCache();
+        return results;
     }
 
-    // Public because ControlledListManager writes (SchemaAdminController.createOrReplaceControlledList
-    // in particular) go straight to the DB via ControlledListManager, bypassing applyMutations/
-    // applyMutation entirely -- ReplaceControlledListMutation's own handler (below) can't cover that
-    // endpoint's "create a brand-new list" branch, since it requires a list to already exist
-    // (getListForProperty(...).orElseThrow()). Without calling this afterward, cachedAdminSchema
-    // keeps serving its pre-write snapshot (controlledListId still null, or the old value list)
-    // until something unrelated happens to call applyMutations and rebuild it as a side effect.
+    // Public because BinaryDynamicPropertyRegistrar's own writes (new dynamic field paths
+    // discovered while scanning binary content) go straight to the DB too, outside applyMutations
+    // entirely -- same reasoning ControlledListManager's own writes used to need this for, before
+    // CreateControlledListMutation grew a refId and SchemaAdminController's own PUT endpoint
+    // started going through applyMutations like every other schema write.
     public void refreshCache() {
         rebuildCache();
         schemaChangedTopic.publish(UUID.randomUUID().toString());
@@ -121,13 +130,13 @@ public class SchemaManager {
     // Dispatches to one applier per mutation family (item, trait, property, link, state machine)
     // -- see those classes' own history for why this isn't one flat if-instanceof chain over all
     // ~25 DefinitionMutation subtypes (that alone drove this class's dependency count sky-high).
-    private void applyMutation(DefinitionMutation mutation) {
+    private void applyMutation(DefinitionMutation mutation, Map<String, UUID> refIdToListId, List<ControlledListMutationResult> results) {
         if (itemMutationApplier.apply(mutation)) return;
         if (traitMutationApplier.apply(mutation)) return;
         if (propertyMutationApplier.apply(mutation)) return;
         if (linkMutationApplier.apply(mutation)) return;
         if (stateMutationApplier.apply(mutation)) return;
-        if (controlledListMutationApplier.apply(mutation)) return;
+        if (controlledListMutationApplier.apply(mutation, refIdToListId, results)) return;
         if (mutation instanceof ReplaceControlledListMutation m) {
             var list = controlledListManager.getListForProperty(m.propertyId())
                     .orElseThrow(() -> new IllegalArgumentException("No controlled list for property: " + m.propertyId()));

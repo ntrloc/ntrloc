@@ -32,8 +32,11 @@ import java.util.UUID;
 // fetched, deserialized, or evaluated -- "bound to the type" and "relevant to this change" are
 // different questions, and only the second one gates execution.
 //
-// Own-properties-only scope for this first slice -- no link/state-machine traversal yet
-// (ContextResolver doesn't support it), same limitation the retired mechanism had.
+// registerPartitionManager doubles as PipelineEvaluator's FactResolver -- a CountedPredicate whose
+// subject steps off a link (e.g. "do any of this item's photos have a portfolio in state X") now
+// resolves through the same real register reads every other traversal in this class already uses,
+// rather than ContextResolver's own still-standing StepToLink gap (reading a link's own properties,
+// not stepping past it to an item) throwing UnsupportedOperationException.
 @Service
 public class PipelineMarkerDecisionService {
 
@@ -88,7 +91,7 @@ public class PipelineMarkerDecisionService {
         // pipeline decision here can only ever be an add.
         Set<MarkerAttribution> toAdd = new HashSet<>();
         for (Pipeline pipeline : pipelines) {
-            for (UUID markerId : PipelineEvaluator.evaluate(pipeline, e.properties(), e.itemId())) {
+            for (UUID markerId : PipelineEvaluator.evaluate(pipeline, e.properties(), e.itemId(), registerPartitionManager)) {
                 toAdd.add(new PipelineAppliedMarker(markerId, pipeline.id()));
             }
         }
@@ -114,7 +117,7 @@ public class PipelineMarkerDecisionService {
         Set<MarkerAttribution> toAdd = new HashSet<>();
         Set<MarkerAttribution> toRemove = new HashSet<>();
         for (Pipeline pipeline : pipelines) {
-            Set<UUID> desired = PipelineEvaluator.evaluate(pipeline, merged, e.itemId());
+            Set<UUID> desired = PipelineEvaluator.evaluate(pipeline, merged, e.itemId(), registerPartitionManager);
             Set<UUID> currentlyHeld = new HashSet<>();
             currentPipelineAttribution.forEach((markerId, pipelineId) -> {
                 if (pipelineId.equals(pipeline.id())) currentlyHeld.add(markerId);

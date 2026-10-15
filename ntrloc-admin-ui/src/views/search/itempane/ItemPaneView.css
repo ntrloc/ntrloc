@@ -31,6 +31,7 @@ item-pane-actions {
 .item-pane-actions-left,
 .item-pane-actions-right {
   display: flex;
+  gap: 4px;
 }
 
 .item-pane-action-btn {
@@ -51,7 +52,25 @@ item-pane-actions {
   color: var(--text-h);
 }
 
+.item-pane-action-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+  pointer-events: none;
+}
+
 .item-pane-action-delete:hover {
+  background: var(--danger-bg, rgba(224, 82, 82, 0.15));
+  color: var(--danger, #e05252);
+}
+
+.item-pane-save-errors {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: none;
+  padding: 8px 10px;
+  border: 1px solid var(--danger, #e05252);
+  border-radius: 6px;
   background: var(--danger-bg, rgba(224, 82, 82, 0.15));
   color: var(--danger, #e05252);
 }

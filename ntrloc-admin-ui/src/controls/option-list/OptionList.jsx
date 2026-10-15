@@ -15,7 +15,10 @@ function OptionList({ options, value, onChange }) {
             className={`option-list-option${opt.value === value ? ' option-list-option-selected' : ''}`}
             onClick={() => onChange(opt.value)}
           >
-            {opt.label}
+            {/* A controlled list's own label is nullable server-side (AllowedValue.label) -- an
+                option with no label of its own falls back to showing its raw value rather than
+                rendering an empty, un-clickable-looking row. */}
+            {opt.label ?? opt.value}
           </button>
         </li>
       ))}

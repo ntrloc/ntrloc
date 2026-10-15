@@ -1,0 +1,35 @@
+input-control {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.input-control-name {
+  font-size: 0.9em;
+  padding-bottom: 10px;
+  font-weight: 600;
+  color: var(--primary);
+}
+
+.input-control-value {
+  color: var(--text);
+  overflow-wrap: break-word;
+}
+
+/* Not a box -- no border/background/radius of its own, just the bottom rule, so edit mode reads as
+   "this text became writable" rather than "a form field appeared." */
+.input-control-field {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 4px 0;
+  border: none;
+  border-bottom: 1px solid var(--border-light);
+  background: transparent;
+  color: var(--text-h);
+  font: inherit;
+}
+
+.input-control-field:focus {
+  outline: none;
+  border-bottom-color: var(--primary);
+}

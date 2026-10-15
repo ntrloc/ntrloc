@@ -197,7 +197,8 @@ class SchemaAdminControllerIntegrationTest extends AbstractIntegrationTest {
         UUID listId = schemaManager.getAdminSchema().controlledLists().stream()
                 .filter(l -> l.name().equals(listName)).findFirst().orElseThrow().id();
         String attach = """
-                [{"type":"SET_PROPERTY_CONTROLLED_LIST","propertyId":"%s","listId":"%s"}]
+                [{"type":"SET_PROPERTY_CONTROLLED_LIST","propertyId":"%s",
+                  "list":{"type":"EXISTING","listId":"%s"}}]
                 """.formatted(propertyId, listId);
         webTestClient.post().uri("/api/admin/schema/mutations")
                 .contentType(MediaType.APPLICATION_JSON).bodyValue(attach)

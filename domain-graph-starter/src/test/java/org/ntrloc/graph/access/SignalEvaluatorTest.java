@@ -126,4 +126,159 @@ class SignalEvaluatorTest {
         assertThatThrownBy(() -> SignalEvaluator.evaluatePin(UUID.randomUUID(), List.of(), Map.of(), selfId))
                 .isInstanceOf(IllegalArgumentException.class);
     }
+
+    // --- CountedPredicate: multi-instance traversal ---
+
+    @Test
+    void aCountedPredicate_withNoFactResolver_stillThrows_sameGapItAlwaysHad() {
+        // The legacy (FactResolver-less) overloads must keep throwing exactly as they always did --
+        // this is the literal exception the live Photographer pipeline surfaced before this round of
+        // work, reproduced here as a tripwire against ever silently regressing it.
+        UUID perspectiveId = UUID.randomUUID();
+        Predicate counted = new CountedPredicate(new StepToItem(perspectiveId, true, new Self()),
+                new EqualsSelfPredicate(null), new NumberPredicate(null, ComparisonOperator.GREATER_THAN, 0, null));
+        Condition condition = new Condition(UUID.randomUUID(), null, counted);
+
+        assertThatThrownBy(() -> SignalEvaluator.evaluatePin(condition.id(), List.of(condition), Map.of(), selfId))
+                .isInstanceOf(UnsupportedOperationException.class);
+    }
+
+    @Test
+    void aCountedPredicate_countsHowManyLinkedInstancesSatisfyTheSubPredicate() {
+        UUID perspectiveId = UUID.randomUUID();
+        UUID photoA = UUID.randomUUID();
+        UUID photoB = UUID.randomUUID();
+        UUID photoC = UUID.randomUUID();
+        UUID genre = UUID.randomUUID();
+        FactResolver facts = new InMemoryFactResolver()
+                .link(selfId, perspectiveId, photoA)
+                .link(selfId, perspectiveId, photoB)
+                .link(selfId, perspectiveId, photoC)
+                .properties(photoA, Map.of(genre, "NATURE"))
+                .properties(photoB, Map.of(genre, "PORTRAIT"))
+                .properties(photoC, Map.of(genre, "NATURE"));
+
+        // subPredicate has its own subject (a fresh property read on each linked photo, not an
+        // inherited terminal value) -- exercises evaluateAtInstance's "declares its own subject"
+        // branch, not just the common "inherits, use the leaf value directly" one.
+        Predicate counted = new CountedPredicate(new StepToItem(perspectiveId, true, new Self()),
+                new StringEqualsPredicate(new StepToProperty(genre, false, new Self()), "NATURE"),
+                new NumberPredicate(null, ComparisonOperator.GREATER_THAN, 0, null));
+        Condition condition = new Condition(UUID.randomUUID(), null, counted);
+
+        assertThat(SignalEvaluator.evaluatePin(condition.id(), List.of(condition), Map.of(), selfId, facts)).isTrue();
+    }
+
+    @Test
+    void aCountedPredicate_withNoInstancesSatisfyingTheSubPredicate_failsTheCountGreaterThanZero() {
+        UUID perspectiveId = UUID.randomUUID();
+        UUID photoA = UUID.randomUUID();
+        UUID genre = UUID.randomUUID();
+        FactResolver facts = new InMemoryFactResolver()
+                .link(selfId, perspectiveId, photoA)
+                .properties(photoA, Map.of(genre, "PORTRAIT"));
+
+        Predicate counted = new CountedPredicate(new StepToItem(perspectiveId, true, new Self()),
+                new StringEqualsPredicate(new StepToProperty(genre, false, new Self()), "NATURE"),
+                new NumberPredicate(null, ComparisonOperator.GREATER_THAN, 0, null));
+        Condition condition = new Condition(UUID.randomUUID(), null, counted);
+
+        assertThat(SignalEvaluator.evaluatePin(condition.id(), List.of(condition), Map.of(), selfId, facts)).isFalse();
+    }
+
+    @Test
+    void aCountedPredicate_withAnEmptyLink_countsZeroInstances_ratherThanThrowing() {
+        UUID perspectiveId = UUID.randomUUID();
+        Predicate counted = new CountedPredicate(new StepToItem(perspectiveId, true, new Self()),
+                new EqualsSelfPredicate(null), new NumberPredicate(null, ComparisonOperator.EQUALS, 0, null));
+        Condition condition = new Condition(UUID.randomUUID(), null, counted);
+
+        assertThat(SignalEvaluator.evaluatePin(condition.id(), List.of(condition), Map.of(), selfId, new InMemoryFactResolver())).isTrue();
+    }
+
+    @Test
+    void aCountedPredicate_withTwoNestedEachSteps_reproducesTheLivePhotographerScenario() {
+        // The exact shape the live Photographer marker-decision pipeline authored: self -> photos
+        // (each) -> portfolios (each) -> state machine, subPredicate STATE_EQUALS with no subject of
+        // its own (inherits the per-(photo,portfolio)-pair resolved state directly), countPredicate
+        // "count > 0". This is the scenario that threw UnsupportedOperationException in production
+        // before this round of work.
+        UUID photosPerspective = UUID.randomUUID();
+        UUID portfoliosPerspective = UUID.randomUUID();
+        UUID stateMachineId = UUID.randomUUID();
+        UUID publishedStateId = UUID.randomUUID();
+        UUID draftStateId = UUID.randomUUID();
+        UUID photoA = UUID.randomUUID();
+        UUID photoB = UUID.randomUUID();
+        UUID portfolio1 = UUID.randomUUID();
+        UUID portfolio2 = UUID.randomUUID();
+
+        FactResolver facts = new InMemoryFactResolver()
+                .link(selfId, photosPerspective, photoA)
+                .link(selfId, photosPerspective, photoB)
+                .link(photoA, portfoliosPerspective, portfolio1)
+                .link(photoB, portfoliosPerspective, portfolio2)
+                .state(portfolio1, stateMachineId, draftStateId)
+                .state(portfolio2, stateMachineId, publishedStateId);
+
+        Context subject = new StepToItem(photosPerspective, true,
+                new StepToItem(portfoliosPerspective, true, new StepToStateMachine(stateMachineId)));
+        Predicate counted = new CountedPredicate(subject, new StateEqualsPredicate(null, publishedStateId),
+                new NumberPredicate(null, ComparisonOperator.GREATER_THAN, 0, null));
+        Condition condition = new Condition(UUID.randomUUID(), null, counted);
+
+        assertThat(SignalEvaluator.evaluatePin(condition.id(), List.of(condition), Map.of(), selfId, facts)).isTrue();
+
+        // Neither portfolio published -- the same pipeline now correctly reports false, not an
+        // exception.
+        FactResolver noneMatch = new InMemoryFactResolver()
+                .link(selfId, photosPerspective, photoA)
+                .link(photoA, portfoliosPerspective, portfolio1)
+                .state(portfolio1, stateMachineId, draftStateId);
+        assertThat(SignalEvaluator.evaluatePin(condition.id(), List.of(condition), Map.of(), selfId, noneMatch)).isFalse();
+    }
+
+    @Test
+    void aCountedPredicate_withAnArbitraryThreshold_comparesTheFiredCountNotJustAnyOrNone() {
+        // subPredicate declares its own subject (a fresh property read on each linked photo) rather
+        // than inheriting a terminal value -- exercises evaluateAtInstance's "has its own subject"
+        // branch, same as the genre-NATURE test above, just with a threshold other than > 0.
+        UUID perspectiveId = UUID.randomUUID();
+        UUID tag = UUID.randomUUID();
+        UUID photoA = UUID.randomUUID();
+        UUID photoB = UUID.randomUUID();
+        UUID photoC = UUID.randomUUID();
+        FactResolver facts = new InMemoryFactResolver()
+                .link(selfId, perspectiveId, photoA)
+                .link(selfId, perspectiveId, photoB)
+                .link(selfId, perspectiveId, photoC)
+                .properties(photoA, Map.of(tag, "x"))
+                .properties(photoB, Map.of(tag, "x"))
+                .properties(photoC, Map.of(tag, "x"));
+        Predicate taggedOnEachPhoto = new StringExistsPredicate(new StepToProperty(tag, false, new Self()));
+
+        Predicate counted = new CountedPredicate(new StepToItem(perspectiveId, true, new Self()),
+                taggedOnEachPhoto, new NumberPredicate(null, ComparisonOperator.GREATER_THAN_OR_EQUAL, 3, null));
+        Condition condition = new Condition(UUID.randomUUID(), null, counted);
+
+        assertThat(SignalEvaluator.evaluatePin(condition.id(), List.of(condition), Map.of(), selfId, facts)).isTrue();
+
+        Predicate countedTooFew = new CountedPredicate(new StepToItem(perspectiveId, true, new Self()),
+                taggedOnEachPhoto, new NumberPredicate(null, ComparisonOperator.GREATER_THAN_OR_EQUAL, 4, null));
+        Condition conditionTooFew = new Condition(UUID.randomUUID(), null, countedTooFew);
+        assertThat(SignalEvaluator.evaluatePin(conditionTooFew.id(), List.of(conditionTooFew), Map.of(), selfId, facts)).isFalse();
+    }
+
+    @Test
+    void aValuePredicateWhoseSubjectResolvesToMoreThanOneInstance_outsideACountedPredicate_throws() {
+        UUID perspectiveId = UUID.randomUUID();
+        FactResolver facts = new InMemoryFactResolver()
+                .link(selfId, perspectiveId, UUID.randomUUID())
+                .link(selfId, perspectiveId, UUID.randomUUID());
+        Condition condition = new Condition(UUID.randomUUID(), new StepToItem(perspectiveId, true, new Self()),
+                new EqualsSelfPredicate(null));
+
+        assertThatThrownBy(() -> SignalEvaluator.evaluatePin(condition.id(), List.of(condition), Map.of(), selfId, facts))
+                .isInstanceOf(IllegalStateException.class);
+    }
 }

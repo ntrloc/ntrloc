@@ -8,6 +8,11 @@
   --bg-nav: color-mix(in srgb, var(--bg) 97%, white 3%);
   --bg-sidebar: color-mix(in srgb, var(--bg) 98%, white 2%);
   --border: #e5e4e7;
+  /* 30% brighter than --border, lightened the same color-mix way --bg-nav/--bg-sidebar are above --
+     tracks whichever --border is active (light/dark) without its own per-theme override. Used for
+     an editing field's own underline (Input.css), where plain --border reads too close to --bg to
+     register as "this is now editable." */
+  --border-light: color-mix(in srgb, var(--border) 70%, white 30%);
   --code-bg: #f4f3ec;
   --primary: #40b3ff;
   --primary-bg: rgba(94, 155, 251, 0.1);

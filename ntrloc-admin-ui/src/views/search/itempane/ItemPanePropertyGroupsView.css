@@ -30,13 +30,3 @@ item-pane-property-groups {
   flex: none;
   width: 160px;
 }
-
-.item-pane-property-group-leaf-name {
-  font-weight: 600;
-  color: var(--primary);
-}
-
-.item-pane-property-group-leaf-value {
-  color: var(--text);
-  overflow-wrap: break-word;
-}

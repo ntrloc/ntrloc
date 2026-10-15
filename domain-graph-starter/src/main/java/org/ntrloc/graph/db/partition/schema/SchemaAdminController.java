@@ -1,7 +1,11 @@
 package org.ntrloc.graph.db.partition.schema;
 
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateControlledListMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DefinitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.NewControlledListReference;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.SetPropertyControlledListMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.UpdateControlledListMutation;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminSchemaView;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -78,30 +82,33 @@ public class SchemaAdminController {
         public record Entry(String value, String label) {}
     }
 
+    // Goes through schemaManager.applyMutations like every other schema write now -- no more
+    // reaching around it straight to ControlledListManager (see CreateControlledListMutation's own
+    // refId and SchemaManager.applyMutations' own comment on why that bypass existed and what
+    // closed the gap). The "does this property already have a list" branch stays here, since it's
+    // this endpoint's own create-or-replace ergonomics, not a concern either mutation type owns --
+    // it just now ends in a real mutation batch either way instead of a direct manager call.
     @PutMapping("/properties/{propertyId}/controlled-list")
     ResponseEntity<ControlledListResponse> createOrReplaceControlledList(
             @PathVariable UUID propertyId, @RequestBody CreateControlledListRequest body) {
         var existing = controlledListManager.getListForProperty(propertyId);
-        UUID listId;
         if (existing.isPresent()) {
-            listId = existing.get().id();
-            controlledListManager.replaceValues(listId, existing.get().valueType(),
+            schemaManager.applyMutations(List.of(new UpdateControlledListMutation(existing.get().id(), null,
                     body.values().stream()
-                            .map(e -> new org.ntrloc.graph.db.partition.schema.definition.mutation.ReplaceControlledListMutation.Entry(e.value(), e.label()))
-                            .toList());
+                            .map(e -> new UpdateControlledListMutation.Entry(e.value(), e.label()))
+                            .toList())));
         } else {
-            var list = controlledListManager.createList(body.name(), PropertyType.STRING);
-            listId = list.id();
-            controlledListManager.addValues(listId, body.values().stream()
-                    .map(e -> new ControlledListManager.ValueEntry(e.value(), e.label()))
-                    .toList());
-            controlledListManager.setPropertyControlledList(propertyId, listId);
+            // Create and attach in the one batch -- the second mutation references the first by its
+            // own refId (NewControlledListReference) rather than this endpoint needing to look the
+            // new list back up by name in between, the way two separate applyMutations calls would.
+            String refId = UUID.randomUUID().toString();
+            schemaManager.applyMutations(List.of(
+                    new CreateControlledListMutation(refId, body.name(), PropertyType.STRING,
+                            body.values().stream()
+                                    .map(e -> new CreateControlledListMutation.Entry(e.value(), e.label()))
+                                    .toList()),
+                    new SetPropertyControlledListMutation(propertyId, new NewControlledListReference(refId))));
         }
-        // ControlledListManager writes go straight to the DB, bypassing schemaManager.applyMutations
-        // entirely -- without this, GET /api/admin/schema (and every connected admin UI tab's SSE
-        // refresh) would keep serving the pre-write schema snapshot indefinitely. See
-        // SchemaManager.refreshCache's own comment for the full story.
-        schemaManager.refreshCache();
         var finalList = controlledListManager.getListForProperty(propertyId).orElseThrow();
         var values = controlledListManager.getValues(finalList.id(), finalList.valueType());
         return ResponseEntity.status(HttpStatus.OK)

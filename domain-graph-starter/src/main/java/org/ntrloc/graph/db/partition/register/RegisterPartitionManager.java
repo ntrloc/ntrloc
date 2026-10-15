@@ -5,6 +5,7 @@ import org.ntrloc.graph.db.partition.authorization.RequestPermissionContext;
 import org.ntrloc.graph.db.partition.binary.BinaryDynamicPropertyRegistrar;
 import org.ntrloc.graph.db.partition.binary.BinaryPartitionManager;
 import org.ntrloc.graph.db.partition.binary.BinaryPropertyObject;
+import org.ntrloc.graph.access.FactResolver;
 import org.ntrloc.graph.projection.AndPredicate;
 import org.ntrloc.graph.projection.AvailableTransition;
 import org.ntrloc.graph.projection.CollectionProjectionSpec;
@@ -13,6 +14,7 @@ import org.ntrloc.graph.projection.FacetFilter;
 import org.ntrloc.graph.projection.LinkProjectionSpec;
 import org.ntrloc.graph.projection.NotPredicate;
 import org.ntrloc.graph.projection.Predicate;
+import org.ntrloc.graph.db.partition.schema.ControlledListManager;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
@@ -75,7 +77,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @Component
-public class RegisterPartitionManager implements SchemaChangeListener {
+public class RegisterPartitionManager implements SchemaChangeListener, FactResolver {
 
     private static final Logger LOG = LoggerFactory.getLogger(RegisterPartitionManager.class);
 
@@ -84,6 +86,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
     private final BinaryPartitionManager binaryPartitionManager;
     private final BinaryDynamicPropertyRegistrar binaryDynamicPropertyRegistrar;
     private final SchemaManager schemaManager;
+    private final ControlledListManager controlledListManager;
 
     // Keyed by pattern *string*, not item type -- a pure function cache (the same SpEL text always
     // compiles to the same Expression), so it needs no invalidation hook when a pattern is edited;
@@ -108,12 +111,14 @@ public class RegisterPartitionManager implements SchemaChangeListener {
 
     public RegisterPartitionManager(JdbcClient jdbcClient, ObjectMapper objectMapper,
                                     BinaryPartitionManager binaryPartitionManager,
-                                    BinaryDynamicPropertyRegistrar binaryDynamicPropertyRegistrar, SchemaManager schemaManager) {
+                                    BinaryDynamicPropertyRegistrar binaryDynamicPropertyRegistrar, SchemaManager schemaManager,
+                                    ControlledListManager controlledListManager) {
         this.jdbcClient = jdbcClient;
         this.objectMapper = objectMapper;
         this.binaryPartitionManager = binaryPartitionManager;
         this.binaryDynamicPropertyRegistrar = binaryDynamicPropertyRegistrar;
         this.schemaManager = schemaManager;
+        this.controlledListManager = controlledListManager;
     }
 
     private static final String PARAM_ITEM_ID = "itemId";
@@ -386,14 +391,15 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                         parseJsonb(rs.getString(COL_STATES))))
                 .list();
 
+        Map<UUID, AdminPropertyDefinitionView> propertyViewsById = propertyViewsByIdForItemType(itemTypeId);
         Map<UUID, List<String>> ownPropertyNames = restrictToRequestedProperties(
-                propertyPathsByIdForItemType(itemTypeId), propertyViewsByIdForItemType(itemTypeId), spec.properties());
+                propertyPathsByIdForItemType(itemTypeId), propertyViewsById, spec.properties());
         List<AdminStateMachineView> stateMachines = schemaManager.getAdminSchema().items().stream()
                 .filter(item -> item.id().equals(itemTypeId))
                 .findFirst()
                 .map(AdminItemDefinitionView::stateMachines)
                 .orElse(null);
-        var items = assembleProjectedItems(rawItems, ownPropertyNames, stateMachines, binaryBaseUrl,
+        var items = assembleProjectedItems(rawItems, ownPropertyNames, propertyViewsById, stateMachines, binaryBaseUrl,
                 new RenderOptions(spec.links(), permissions, Boolean.TRUE.equals(spec.includePermissions()), Boolean.TRUE.equals(spec.includeStates()), spec.properties()));
         return new ProjectionResult(items, totalCount, facetedCount, facets, stateMachineFacets);
     }
@@ -520,6 +526,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
 
         var items = assembleProjectedItems(rawItems,
                 restrictToRequestedProperties(mergedPropertyNames, mergedPropertyViews, spec.properties()),
+                mergedPropertyViews,
                 mergedStateMachines.isEmpty() ? null : mergedStateMachines, binaryBaseUrl,
                 new RenderOptions(spec.links(), permissions, Boolean.TRUE.equals(spec.includePermissions()), Boolean.TRUE.equals(spec.includeStates()), spec.properties()));
         return new ProjectionResult(items, totalCount, facetedCount, facets, stateMachineFacets);
@@ -560,7 +567,9 @@ public class RegisterPartitionManager implements SchemaChangeListener {
 
     private List<FacetBucket> runTermsFacetQueryAcrossTypes(List<UUID> branches, SqlFragment filter, SqlFragment otherFacetFilters,
                                                               String field, UUID representativeItemTypeId) {
-        String propertyId = resolvePropertyId(representativeItemTypeId, sanitizeFieldName(field)).toString();
+        AdminPropertyDefinitionView property = resolveProperty(representativeItemTypeId, sanitizeFieldName(field));
+        String propertyId = property.id().toString();
+        Map<String, String> labelsByValue = labelsForFacetProperty(property);
         SqlFragment source = buildUnionedBranchSource(branches, filter, otherFacetFilters);
         return jdbcClient.sql("""
                 SELECT combined.properties->>'%s' AS value, COUNT(*) AS count
@@ -571,7 +580,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                 .params(source.params())
                 .query((rs, n) -> {
                     String value = rs.getString(COL_FACET_VALUE);
-                    return new FacetBucket(value, value, rs.getLong(COL_FACET_COUNT));
+                    return new FacetBucket(value, labelFor(value, labelsByValue), rs.getLong(COL_FACET_COUNT));
                 })
                 .list();
     }
@@ -607,9 +616,11 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                                                   SqlFragment filter, SqlFragment otherFacetFilters,
                                                   String field) {
         // sanitizeFieldName no longer carries the injection-prevention weight it used to here --
-        // resolvePropertyId already rejects anything that isn't a real, known property name for
+        // resolveProperty already rejects anything that isn't a real, known property name for
         // this item type, which subsumes it. Left in as a cheap, redundant first check.
-        String propertyId = resolvePropertyId(itemTypeId, sanitizeFieldName(field)).toString();
+        AdminPropertyDefinitionView property = resolveProperty(itemTypeId, sanitizeFieldName(field));
+        String propertyId = property.id().toString();
+        Map<String, String> labelsByValue = labelsForFacetProperty(property);
         return jdbcClient.sql("""
                 SELECT rt.properties->>'%s' AS value, COUNT(*) AS count
                 FROM register_item ri
@@ -625,16 +636,29 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                 .params(mergeParams(filter, otherFacetFilters))
                 .query((rs, n) -> {
                     String value = rs.getString(COL_FACET_VALUE);
-                    return new FacetBucket(value, value, rs.getLong(COL_FACET_COUNT));
+                    return new FacetBucket(value, labelFor(value, labelsByValue), rs.getLong(COL_FACET_COUNT));
                 })
                 .list();
     }
 
+    // Shared by both runTermsFacetQuery variants -- empty when the property isn't controlled-list-
+    // backed, or its list has no labels at all (see ControlledListManager.getLabelsByValue).
+    private Map<String, String> labelsForFacetProperty(AdminPropertyDefinitionView property) {
+        return property.controlledListId() == null ? Map.of()
+                : controlledListManager.getLabelsByValue(property.controlledListId(), property.type());
+    }
+
+    private String labelFor(String value, Map<String, String> labelsByValue) {
+        return value == null ? null : labelsByValue.getOrDefault(value, value);
+    }
+
     // Unlike runTermsFacetQuery, a bucket's value (a state id) isn't human-readable on its own --
     // FacetBucket.value stays the id (stable, matches what a StateValuePredicate would need to
-    // filter back down to this bucket) while .label carries the resolved name for display, finally
-    // giving that value/label split real use (property facets today have identical value/label
-    // since a property's own value already *is* its display form).
+    // filter back down to this bucket) while .label carries the resolved name for display. The
+    // property-facet side has its own, newer use for that same split: a controlled-list-backed
+    // property's bucket value stays the raw stored value (still what a PropertyValuePredicate
+    // filters on) while .label carries the list's resolved label when one exists (labelFor);
+    // an unconstrained property's value and label are identical, same as before.
     //
     // Ordering isn't count-based (unlike runTermsFacetQuery) -- a state machine's states have a
     // meaningful workflow position, so buckets are sorted by rank-distance from the START
@@ -816,14 +840,15 @@ public class RegisterPartitionManager implements SchemaChangeListener {
         if (rawItems.isEmpty()) {
             return Optional.empty();
         }
+        Map<UUID, AdminPropertyDefinitionView> propertyViewsById = propertyViewsByIdForItemType(itemTypeId);
         Map<UUID, List<String>> ownPropertyNames = restrictToRequestedProperties(
-                propertyPathsByIdForItemType(itemTypeId), propertyViewsByIdForItemType(itemTypeId), requestedProperties);
+                propertyPathsByIdForItemType(itemTypeId), propertyViewsById, requestedProperties);
         List<AdminStateMachineView> stateMachines = schemaManager.getAdminSchema().items().stream()
                 .filter(item -> item.id().equals(itemTypeId))
                 .findFirst()
                 .map(AdminItemDefinitionView::stateMachines)
                 .orElse(null);
-        return Optional.of(assembleProjectedItems(rawItems, ownPropertyNames, stateMachines, binaryBaseUrl,
+        return Optional.of(assembleProjectedItems(rawItems, ownPropertyNames, propertyViewsById, stateMachines, binaryBaseUrl,
                 new RenderOptions(requestedLinks, permissions, includePermissions, includeStates, requestedProperties)).get(0));
     }
 
@@ -1630,6 +1655,39 @@ public class RegisterPartitionManager implements SchemaChangeListener {
         return new ProjectedItemPermissions(edit, canDelete, null);
     }
 
+    // FactResolver's own own item-traversal method -- see that interface's class comment for why
+    // this class implements it directly rather than through a separate adapter: every data access it
+    // needs already lives here. Same join shape as findLinksForItem just below, narrowed to one
+    // named perspective (as seen from itemId's own side) instead of every link the item has.
+    @Override
+    public List<UUID> linkedItemIds(UUID itemId, UUID linkPerspectiveId) {
+        return jdbcClient.sql("""
+                SELECT ri_other.item_id AS connected_item_id
+                FROM register_item ri_mine
+                JOIN register_item_link_perspective rilp_mine  ON rilp_mine.register_item_id = ri_mine.id
+                JOIN register_link                 rl          ON rl.id = rilp_mine.register_link_id AND rl.state = 'COMMITTED'
+                JOIN register_item_link_perspective rilp_other ON rilp_other.register_link_id = rl.id AND rilp_other.id != rilp_mine.id
+                JOIN register_item                 ri_other    ON ri_other.id = rilp_other.register_item_id
+                WHERE ri_mine.item_id = :itemId AND ri_mine.state = 'COMMITTED'
+                  AND rilp_mine.perspective_id = :perspectiveId
+                """)
+                .param(PARAM_ITEM_ID, itemId)
+                .param("perspectiveId", linkPerspectiveId)
+                .query(UUID.class)
+                .list();
+    }
+
+    @Override
+    public Map<UUID, Object> propertiesOfItem(UUID itemId) {
+        UUID itemTypeId = findItemTypeId(itemId).orElseThrow(() -> new IllegalArgumentException("Unknown item: " + itemId));
+        return currentPropertiesById(itemId, itemTypeId);
+    }
+
+    @Override
+    public UUID currentStateId(UUID itemId, UUID stateMachineId) {
+        return currentStateIds(itemId).get(stateMachineId);
+    }
+
     public record RegisterLinkedItem(UUID linkId, UUID connectedItemId) {
     }
 
@@ -1816,6 +1874,17 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                 .filter(link -> link.id().equals(linkTypeId))
                 .findFirst()
                 .map(link -> propertyPaths(link.properties(), link.groups()))
+                .orElse(Map.of());
+    }
+
+    // Sibling to propertyPathsByIdForLinkType, same reasoning as propertyViewsByIdForItemType's own
+    // comment -- fetchPropertiesByRegisterItemId needs the views themselves (not just paths) to
+    // resolve controlled-list labels for a link's own properties.
+    private Map<UUID, AdminPropertyDefinitionView> propertyViewsByIdForLinkType(UUID linkTypeId) {
+        return schemaManager.getAdminSchema().links().stream()
+                .filter(link -> link.id().equals(linkTypeId))
+                .findFirst()
+                .map(link -> propertyViewsById(link.properties(), link.groups()))
                 .orElse(Map.of());
     }
 
@@ -2024,6 +2093,62 @@ public class RegisterPartitionManager implements SchemaChangeListener {
             cursor = (Map<String, Object>) cursor.computeIfAbsent(path.get(i), k -> new HashMap<String, Object>());
         }
         cursor.put(path.get(path.size() - 1), value);
+    }
+
+    // Projection rule (4): resolved once per request against whatever properties the caller is
+    // actually about to receive (ownPropertyNames, already restricted by restrictToRequestedProperties
+    // where applicable) rather than per row -- a controlled-list label lookup is a real query, and a
+    // page of results shares the same schema, so paying for it once per property id here (not once
+    // per property id per row) is what keeps this from becoming an N+1. Only properties that are both
+    // controlled-list-backed AND whose list actually has labels (ControlledListManager.getLabelsByValue
+    // returns non-empty) end up with an entry -- an absent entry means applyControlledListLabels
+    // leaves that property's value exactly as namesForIds already produced it.
+    private Map<UUID, Map<String, String>> resolveControlledListLabels(
+            Map<UUID, List<String>> ownPropertyNames, Map<UUID, AdminPropertyDefinitionView> propertyViewsById) {
+        Map<UUID, Map<String, String>> result = new HashMap<>();
+        for (UUID propertyId : ownPropertyNames.keySet()) {
+            AdminPropertyDefinitionView view = propertyViewsById.get(propertyId);
+            if (view == null || view.controlledListId() == null) continue;
+            Map<String, String> labelsByValue = controlledListManager.getLabelsByValue(view.controlledListId(), view.type());
+            if (!labelsByValue.isEmpty()) {
+                result.put(propertyId, labelsByValue);
+            }
+        }
+        return result;
+    }
+
+    // Walks only the (typically tiny, or empty) set of properties resolveControlledListLabels found
+    // to actually need wrapping, overwriting each leaf namesForIds already placed -- never creates a
+    // new intermediate map (getAtPath returning non-null already proves the path exists), and skips a
+    // property whose value is absent from this particular item (getAtPath returns null) rather than
+    // writing one in.
+    private void applyControlledListLabels(Map<String, Object> props, Map<UUID, List<String>> idToPath,
+                                             Map<UUID, Map<String, String>> labelsByPropertyId) {
+        for (var entry : labelsByPropertyId.entrySet()) {
+            List<String> path = idToPath.get(entry.getKey());
+            if (path == null) continue;
+            Object current = getAtPath(props, path);
+            if (current != null) {
+                putAtPath(props, path, wrapControlledListValue(current, entry.getValue()));
+            }
+        }
+    }
+
+    // A SET/LIST-cardinality leaf stores a List<Object> rather than a single scalar -- each element
+    // is wrapped independently, though validateEntries' all-or-nothing labeling rule (rule 2 of the
+    // controlled-list design) means every element of a given property's list either has a label or
+    // none do in practice.
+    private Object wrapControlledListValue(Object rawValue, Map<String, String> labelsByValue) {
+        if (rawValue instanceof List<?> list) {
+            return list.stream().map(v -> wrapControlledListScalar(v, labelsByValue)).toList();
+        }
+        return wrapControlledListScalar(rawValue, labelsByValue);
+    }
+
+    private Object wrapControlledListScalar(Object value, Map<String, String> labelsByValue) {
+        if (value == null) return null;
+        String label = labelsByValue.get(String.valueOf(value));
+        return label == null ? value : Map.of("value", value, "label", label);
     }
 
     private record LinkRow(UUID myRegisterItemId, String perspectiveName, UUID perspectiveId,
@@ -2366,6 +2491,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                                   boolean includePermissions, boolean includeStates, @Nullable List<String> requestedProperties) {}
 
     private List<ProjectedItem> assembleProjectedItems(List<RawItem> rawItems, Map<UUID, List<String>> ownPropertyNames,
+                                                         Map<UUID, AdminPropertyDefinitionView> propertyViewsById,
                                                          List<AdminStateMachineView> stateMachines, String binaryBaseUrl,
                                                          RenderOptions options) {
         // Nothing to assemble -- and every batch fetch below binds `... IN (:ids)`, which Postgres
@@ -2398,7 +2524,9 @@ public class RegisterPartitionManager implements SchemaChangeListener {
         Map<UUID, Set<UUID>> effectiveReadGrants = permissions.superuser() ? null
                 : readImpliedByWrite(permissions.propertyReadGrantsByMarker(), permissions.propertyWriteGrantsByMarker());
 
-        AssemblyContext ctx = new AssemblyContext(ownPropertyNames, stateMachines, displayLabelPatterns,
+        Map<UUID, Map<String, String>> controlledListLabelsByPropertyId = resolveControlledListLabels(ownPropertyNames, propertyViewsById);
+
+        AssemblyContext ctx = new AssemblyContext(ownPropertyNames, controlledListLabelsByPropertyId, stateMachines, displayLabelPatterns,
                 linksByItem, markerIdsByRegisterItemId, binaryPropsByItem, effectiveReadGrants,
                 markerNamesById, permissions, includePermissions, options.includeStates(), options.requestedProperties());
         return rawItems.stream().map(raw -> assembleProjectedItem(raw, ctx)).toList();
@@ -2406,6 +2534,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
 
     private record AssemblyContext(
             Map<UUID, List<String>> ownPropertyNames,
+            Map<UUID, Map<String, String>> controlledListLabelsByPropertyId,
             List<AdminStateMachineView> stateMachines,
             Map<String, String> displayLabelPatterns,
             Map<UUID, Map<String, List<ProjectedLink>>> linksByItem,
@@ -2423,6 +2552,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
         requireExplicitlyRequestedPropertiesAreReadable(ctx.ownPropertyNames(), markerIds, ctx.effectiveReadGrants(), ctx.requestedProperties());
         Map<String, Object> readableProps = filterPropertiesByReadGrant(raw.properties(), markerIds, ctx.effectiveReadGrants());
         Map<String, Object> props = new HashMap<>(namesForIds(readableProps, ctx.ownPropertyNames()));
+        applyControlledListLabels(props, ctx.ownPropertyNames(), ctx.controlledListLabelsByPropertyId());
         mergeReadableBinaryProperties(props, raw.registerItemId(), markerIds,
                 ctx.binaryPropsByItem(), ctx.effectiveReadGrants(), ctx.ownPropertyNames());
         var itemPermissions = ctx.includePermissions()
@@ -2766,6 +2896,10 @@ public class RegisterPartitionManager implements SchemaChangeListener {
             Map<UUID, List<String>> idToPath = isLinkTable
                     ? propertyPathsByIdForLinkType(typeOrDefId)
                     : propertyPathsByIdForItemType(typeOrDefId);
+            Map<UUID, AdminPropertyDefinitionView> propertyViewsById = isLinkTable
+                    ? propertyViewsByIdForLinkType(typeOrDefId)
+                    : propertyViewsByIdForItemType(typeOrDefId);
+            Map<UUID, Map<String, String>> controlledListLabelsByPropertyId = resolveControlledListLabels(idToPath, propertyViewsById);
             Map<UUID, List<AssembledBinary>> binaryPropsByItem = isLinkTable ? Map.of()
                     : fetchBinaryPropsByItem(entry.getValue(), binaryBaseUrl, idToPath, null);
             jdbcClient.sql("SELECT " + idColumn + ", properties::text FROM " + table + " WHERE " + idColumn + " IN (:ids)")
@@ -2776,6 +2910,7 @@ public class RegisterPartitionManager implements SchemaChangeListener {
                         Map<String, Object> readable = filterPropertiesByReadGrant(parseJsonb(rs.getString(COL_PROPERTIES)),
                                 markerIds, propertyReadGrantsByMarker);
                         Map<String, Object> props = namesForIds(readable, idToPath);
+                        applyControlledListLabels(props, idToPath, controlledListLabelsByPropertyId);
                         if (!isLinkTable) {
                             mergeReadableBinaryProperties(props, registerId, markerIds,
                                     binaryPropsByItem, propertyReadGrantsByMarker, idToPath);

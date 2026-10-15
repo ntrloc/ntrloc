@@ -43,6 +43,8 @@ public class RegisterProjectionTestDomainInitializer implements DomainInitialize
     private UUID pageCountPropertyId;
     private UUID inStockPropertyId;
     private UUID genrePropertyId;
+    private UUID conditionPropertyId;
+    private UUID formatPropertyId;
     private UUID dimensionsMaterialPropertyId;
     private UUID authorsPerspectiveId;
     private UUID attachmentPropertyId;
@@ -66,6 +68,17 @@ public class RegisterProjectionTestDomainInitializer implements DomainInitialize
                         property("pageCount", PropertyType.INT, PropertyCardinality.SINGLE),
                         property("inStock", PropertyType.BOOLEAN, PropertyCardinality.SINGLE, true),
                         property("genre", PropertyType.STRING, PropertyCardinality.SINGLE, true),
+                        // condition/format both back onto a controlled list, but deliberately differ from
+                        // genre/dimensions.material in whether that list's values carry a label distinct
+                        // from the value (condition) or no label at all (format) -- see rule (4) of the
+                        // controlled-list design: projection/facet label resolution only has real
+                        // behavior to exercise when label != value, and bare-scalar passthrough only has
+                        // real behavior to exercise when a list has no labels whatsoever. genre/material
+                        // happen to set label == value, which looks identical to "no label" in every
+                        // assertion that only checks FacetBucket.value() or a bare property value, so
+                        // neither of those actually covers either case on its own.
+                        property("condition", PropertyType.STRING, PropertyCardinality.SINGLE, true),
+                        property("format", PropertyType.STRING, PropertyCardinality.SINGLE, true),
                         // Not a domain property -- exists purely so the test class can scope every
                         // query down to one test method's own rows despite every test sharing the
                         // same singleton Postgres container and register table (AbstractIntegrationTest's
@@ -98,6 +111,8 @@ public class RegisterProjectionTestDomainInitializer implements DomainInitialize
         pageCountPropertyId = findProperty(book.properties(), "pageCount");
         inStockPropertyId = findProperty(book.properties(), "inStock");
         genrePropertyId = findProperty(book.properties(), "genre");
+        conditionPropertyId = findProperty(book.properties(), "condition");
+        formatPropertyId = findProperty(book.properties(), "format");
         attachmentPropertyId = findProperty(book.properties(), "attachment");
         var dimensions = book.groups().stream().filter(g -> g.name().equals("dimensions")).findFirst().orElseThrow();
         dimensionsMaterialPropertyId = findProperty(dimensions.properties(), "material");
@@ -116,6 +131,20 @@ public class RegisterProjectionTestDomainInitializer implements DomainInitialize
         controlledListManager.setPropertyControlledList(dimensionsMaterialPropertyId, materialList.id());
         controlledListManager.addValue(materialList.id(), "Hardcover", "Hardcover", 0);
         controlledListManager.addValue(materialList.id(), "Paperback", "Paperback", 1);
+
+        // Real, distinct labels -- the one fixture property where projection/facet label resolution
+        // (rule 4) has something actually observable to assert on.
+        var conditionList = controlledListManager.createList("RegisterProjectionTestCondition", PropertyType.STRING);
+        controlledListManager.setPropertyControlledList(conditionPropertyId, conditionList.id());
+        controlledListManager.addValue(conditionList.id(), "NEW", "Brand New", 0);
+        controlledListManager.addValue(conditionList.id(), "USED", "Pre-Owned", 1);
+
+        // No labels at all -- confirms a controlled-list-backed property whose list carries none
+        // still projects/facets as a bare scalar (rule 4's other half).
+        var formatList = controlledListManager.createList("RegisterProjectionTestFormat", PropertyType.STRING);
+        controlledListManager.setPropertyControlledList(formatPropertyId, formatList.id());
+        controlledListManager.addValue(formatList.id(), "Hardback", null, 0);
+        controlledListManager.addValue(formatList.id(), "Ebook", null, 1);
 
         initStateMachine(schemaManager, bookTypeId, AVAILABILITY_MACHINE,
                 List.of(

@@ -21,6 +21,8 @@ import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateTransition
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DeleteControlledListMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DeleteLinkDefinitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.ExistingControlledListReference;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.NewControlledListReference;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.AddPropertyDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DeletePropertyDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DeleteStateMachineMutation;
@@ -372,7 +374,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     void createControlledListMutation_createsAReusableList_withValues() {
         String name = "List-" + UUID.randomUUID();
 
-        schemaManager.applyMutations(List.of(new CreateControlledListMutation(name, PropertyType.STRING,
+        schemaManager.applyMutations(List.of(new CreateControlledListMutation(null, name, PropertyType.STRING,
                 List.of(new CreateControlledListMutation.Entry("A", "Alpha"),
                         new CreateControlledListMutation.Entry("B", "Beta")))));
 
@@ -385,10 +387,10 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void createControlledListMutation_withACaseInsensitivelyDuplicateName_throws() {
         String name = "Dup-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateControlledListMutation(name, PropertyType.STRING, List.of())));
+        schemaManager.applyMutations(List.of(new CreateControlledListMutation(null, name, PropertyType.STRING, List.of())));
 
         assertThatThrownBy(() -> schemaManager.applyMutations(List.of(
-                new CreateControlledListMutation(name.toUpperCase(), PropertyType.STRING, List.of()))))
+                new CreateControlledListMutation(null, name.toUpperCase(), PropertyType.STRING, List.of()))))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("already exists");
     }
@@ -436,7 +438,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         UUID propId = createStringProp(itemId, "genre");
         var list = controlledListManager.createList("List-" + UUID.randomUUID(), PropertyType.STRING);
 
-        schemaManager.applyMutations(List.of(new SetPropertyControlledListMutation(propId, list.id())));
+        schemaManager.applyMutations(List.of(new SetPropertyControlledListMutation(propId, new ExistingControlledListReference(list.id()))));
         assertThat(controlledListManager.getListForProperty(propId)).hasValueSatisfying(l -> assertThat(l.id()).isEqualTo(list.id()));
 
         schemaManager.applyMutations(List.of(new SetPropertyControlledListMutation(propId, null)));
@@ -452,7 +454,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
                 .properties().stream().filter(p -> p.name().equals("flag")).findFirst().orElseThrow().id();
         var list = controlledListManager.createList("List-" + UUID.randomUUID(), PropertyType.STRING);
 
-        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new SetPropertyControlledListMutation(propId, list.id()))))
+        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new SetPropertyControlledListMutation(propId, new ExistingControlledListReference(list.id())))))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("not supported");
     }
@@ -463,7 +465,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         UUID propId = createStringProp(itemId, "str");
         var intList = controlledListManager.createList("List-" + UUID.randomUUID(), PropertyType.INT);
 
-        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new SetPropertyControlledListMutation(propId, intList.id()))))
+        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new SetPropertyControlledListMutation(propId, new ExistingControlledListReference(intList.id())))))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
@@ -473,11 +475,11 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         UUID propId = createStringProp(itemId, "status");
         String listName = "List-" + UUID.randomUUID();
 
-        schemaManager.applyMutations(List.of(new CreateControlledListMutation(listName, PropertyType.STRING,
+        schemaManager.applyMutations(List.of(new CreateControlledListMutation(null, listName, PropertyType.STRING,
                 List.of(new CreateControlledListMutation.Entry("Open", "Open")))));
         UUID listId = controlledListManager.getAllLists().stream()
                 .filter(l -> l.name().equals(listName)).findFirst().orElseThrow().id();
-        schemaManager.applyMutations(List.of(new SetPropertyControlledListMutation(propId, listId)));
+        schemaManager.applyMutations(List.of(new SetPropertyControlledListMutation(propId, new ExistingControlledListReference(listId))));
 
         var schema = schemaManager.getAdminSchema();
         var prop = schema.items().stream().filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
@@ -487,6 +489,41 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         var listView = schema.controlledLists().stream().filter(l -> l.id().equals(listId)).findFirst().orElseThrow();
         assertThat(listView.valueCount()).isEqualTo(1);
         assertThat(listView.usedBy()).extracting(u -> u.propertyId()).contains(propId);
+    }
+
+    // CreateControlledListMutation's own refId, resolved by a NewControlledListReference later in
+    // the *same* batch -- the whole point of adding it: create-and-attach as one real mutation
+    // batch (what SchemaAdminController's own PUT endpoint now does) instead of the two-call,
+    // look-it-up-by-name-in-between dance the test above still demonstrates for the "list already
+    // has a real id" case.
+    @Test
+    void createControlledListMutation_withARefId_resolvesInTheSameBatch_viaNewControlledListReference() {
+        UUID itemId = createItem("Item-" + UUID.randomUUID());
+        UUID propId = createStringProp(itemId, "status");
+        String listName = "List-" + UUID.randomUUID();
+
+        List<ControlledListMutationResult> results = schemaManager.applyMutations(List.of(
+                new CreateControlledListMutation("new-list", listName, PropertyType.STRING,
+                        List.of(new CreateControlledListMutation.Entry("Open", "Open"))),
+                new SetPropertyControlledListMutation(propId, new NewControlledListReference("new-list"))));
+
+        assertThat(results).hasSize(1);
+        UUID listId = results.get(0).listId();
+        assertThat(results.get(0).refId()).isEqualTo("new-list");
+
+        assertThat(controlledListManager.getListForProperty(propId))
+                .hasValueSatisfying(l -> assertThat(l.id()).isEqualTo(listId));
+    }
+
+    @Test
+    void setPropertyControlledListMutation_withAnUnknownRefId_throws() {
+        UUID itemId = createItem("Item-" + UUID.randomUUID());
+        UUID propId = createStringProp(itemId, "status");
+
+        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(
+                new SetPropertyControlledListMutation(propId, new NewControlledListReference("never-created")))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Unknown controlled list refId");
     }
 
     // --- State machine / state / transition update+delete mutations ---

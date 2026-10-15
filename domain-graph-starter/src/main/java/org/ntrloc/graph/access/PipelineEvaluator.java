@@ -19,7 +19,14 @@ public final class PipelineEvaluator {
     private PipelineEvaluator() {
     }
 
+    // Legacy overload -- every existing caller (and its tests) keeps exactly the behavior it always
+    // had: a pipeline that actually needs multi-instance traversal still throws
+    // UnsupportedOperationException, since there's no resolver here to ask.
     public static Set<UUID> evaluate(Pipeline pipeline, Map<UUID, Object> selfProperties, UUID selfId) {
+        return evaluate(pipeline, selfProperties, selfId, FactResolver.unsupported());
+    }
+
+    public static Set<UUID> evaluate(Pipeline pipeline, Map<UUID, Object> selfProperties, UUID selfId, FactResolver facts) {
         Map<UUID, CarrierBlock> blocksById = new HashMap<>();
         blocksById.put(pipeline.start().id(), pipeline.start());
         blocksById.put(pipeline.end().id(), pipeline.end());
@@ -47,12 +54,12 @@ public final class PipelineEvaluator {
         }
 
         return carrierOut(pipeline.end().id(), blocksById, incomingByTarget, selectOwningRow, pipeline.topLevelSignals(),
-                selfProperties, selfId, new HashMap<>(), new HashSet<>());
+                selfProperties, selfId, facts, new HashMap<>(), new HashSet<>());
     }
 
     private static Set<UUID> carrierOut(UUID blockId, Map<UUID, CarrierBlock> blocksById, Map<UUID, List<UUID>> incomingByTarget,
                                          Map<UUID, Select> selectOwningRow, List<SignalBlock> topLevelSignals,
-                                         Map<UUID, Object> selfProperties, UUID selfId,
+                                         Map<UUID, Object> selfProperties, UUID selfId, FactResolver facts,
                                          Map<UUID, Set<UUID>> cache, Set<UUID> inProgress) {
         Set<UUID> cached = cache.get(blockId);
         if (cached != null) return cached;
@@ -67,16 +74,16 @@ public final class PipelineEvaluator {
             // itself, resolved via the owner's own id, never via blockId's own (nonexistent) Route
             // entries.
             Set<UUID> carrierIn = gatherIncoming(owner.id(), blocksById, incomingByTarget, selectOwningRow,
-                    topLevelSignals, selfProperties, selfId, cache, inProgress);
-            result = applyBlock(blocksById.get(blockId), carrierIn, topLevelSignals, selfProperties, selfId);
+                    topLevelSignals, selfProperties, selfId, facts, cache, inProgress);
+            result = applyBlock(blocksById.get(blockId), carrierIn, topLevelSignals, selfProperties, selfId, facts);
         } else {
             CarrierBlock block = blocksById.get(blockId);
             if (block instanceof Start) {
                 result = Set.of();
             } else {
                 Set<UUID> carrierIn = gatherIncoming(blockId, blocksById, incomingByTarget, selectOwningRow,
-                        topLevelSignals, selfProperties, selfId, cache, inProgress);
-                result = applyBlock(block, carrierIn, topLevelSignals, selfProperties, selfId);
+                        topLevelSignals, selfProperties, selfId, facts, cache, inProgress);
+                result = applyBlock(block, carrierIn, topLevelSignals, selfProperties, selfId, facts);
             }
         }
 
@@ -87,34 +94,34 @@ public final class PipelineEvaluator {
 
     private static Set<UUID> gatherIncoming(UUID targetId, Map<UUID, CarrierBlock> blocksById, Map<UUID, List<UUID>> incomingByTarget,
                                              Map<UUID, Select> selectOwningRow, List<SignalBlock> topLevelSignals,
-                                             Map<UUID, Object> selfProperties, UUID selfId,
+                                             Map<UUID, Object> selfProperties, UUID selfId, FactResolver facts,
                                              Map<UUID, Set<UUID>> cache, Set<UUID> inProgress) {
         Set<UUID> carrierIn = new LinkedHashSet<>();
         for (UUID sourceId : incomingByTarget.getOrDefault(targetId, List.of())) {
             carrierIn.addAll(carrierOut(sourceId, blocksById, incomingByTarget, selectOwningRow, topLevelSignals,
-                    selfProperties, selfId, cache, inProgress));
+                    selfProperties, selfId, facts, cache, inProgress));
         }
         return carrierIn;
     }
 
     private static Set<UUID> applyBlock(CarrierBlock block, Set<UUID> carrierIn, List<SignalBlock> topLevelSignals,
-                                         Map<UUID, Object> selfProperties, UUID selfId) {
+                                         Map<UUID, Object> selfProperties, UUID selfId, FactResolver facts) {
         if (block instanceof End) return carrierIn;
         if (block instanceof AddMarkers b) {
-            return applyAddMarkers(b, fires(b.gate(), topLevelSignals, selfProperties, selfId), carrierIn);
+            return applyAddMarkers(b, fires(b.gate(), topLevelSignals, selfProperties, selfId, facts), carrierIn);
         }
         if (block instanceof RemoveMarkers b) {
-            if (!fires(b.gate(), topLevelSignals, selfProperties, selfId)) return carrierIn;
+            if (!fires(b.gate(), topLevelSignals, selfProperties, selfId, facts)) return carrierIn;
             Set<UUID> out = new LinkedHashSet<>(carrierIn);
             out.removeAll(b.markerIds());
             return out;
         }
         if (block instanceof SetMarkers b) {
-            if (!fires(b.gate(), topLevelSignals, selfProperties, selfId)) return carrierIn;
+            if (!fires(b.gate(), topLevelSignals, selfProperties, selfId, facts)) return carrierIn;
             return new LinkedHashSet<>(b.markerIds());
         }
         if (block instanceof Filter f) {
-            return fires(f.signal(), topLevelSignals, selfProperties, selfId) ? carrierIn : Set.of();
+            return fires(f.signal(), topLevelSignals, selfProperties, selfId, facts) ? carrierIn : Set.of();
         }
         if (block instanceof Select s) {
             // The block's own primary pin doubles as (Otherwise) -- see Select's own comment: it's
@@ -122,7 +129,7 @@ public final class PipelineEvaluator {
             // Each row is independently gated too, via the exact same ordinary AddMarkers path every
             // standalone AddMarkers already uses -- nothing Select-specific about how a row fires,
             // only about where its carrierIn comes from (see carrierOut's own handling of this).
-            return fires(s.gate(), topLevelSignals, selfProperties, selfId) ? carrierIn : Set.of();
+            return fires(s.gate(), topLevelSignals, selfProperties, selfId, facts) ? carrierIn : Set.of();
         }
         throw new IllegalArgumentException("Unsupported carrier block: " + block);
     }
@@ -136,7 +143,7 @@ public final class PipelineEvaluator {
 
     // gate.isUnconditional() always fires without ever consulting topLevelSignals -- see Gate's own
     // comment.
-    private static boolean fires(Gate gate, List<SignalBlock> topLevelSignals, Map<UUID, Object> selfProperties, UUID selfId) {
-        return SignalEvaluator.evaluateGate(gate, topLevelSignals, selfProperties, selfId);
+    private static boolean fires(Gate gate, List<SignalBlock> topLevelSignals, Map<UUID, Object> selfProperties, UUID selfId, FactResolver facts) {
+        return SignalEvaluator.evaluateGate(gate, topLevelSignals, selfProperties, selfId, facts);
     }
 }

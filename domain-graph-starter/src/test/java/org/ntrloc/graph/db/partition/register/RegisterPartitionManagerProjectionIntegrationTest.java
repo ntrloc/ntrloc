@@ -153,6 +153,45 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
         return response.items().get(0).itemId();
     }
 
+    // condition's controlled list carries real, distinct labels (NEW -> "Brand New", USED ->
+    // "Pre-Owned") -- the one fixture property where rule (4)'s {value,label} wrapping is actually
+    // observable, as opposed to genre/dimensions.material where label == value makes the wrapped
+    // and unwrapped shapes look deceptively similar at a glance.
+    private UUID createBookWithCondition(String title, String condition) {
+        Map<String, Object> properties = new HashMap<>();
+        properties.put("testMarker", marker);
+        properties.put("title", title);
+        properties.put("condition", condition);
+
+        MutationResponse response = webTestClient.post().uri("/api/mutation")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(new MutationRequest(List.of(new ItemCreateMutation(null, BOOK_TYPE, properties)), List.of()))
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(MutationResponse.class)
+                .returnResult().getResponseBody();
+        return response.items().get(0).itemId();
+    }
+
+    // format's controlled list carries no labels at all -- confirms rule (4)'s other half: a
+    // controlled-list-backed property whose list has no labels still projects/facets as a bare
+    // scalar, same as an unconstrained property always has.
+    private UUID createBookWithFormat(String title, String format) {
+        Map<String, Object> properties = new HashMap<>();
+        properties.put("testMarker", marker);
+        properties.put("title", title);
+        properties.put("format", format);
+
+        MutationResponse response = webTestClient.post().uri("/api/mutation")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(new MutationRequest(List.of(new ItemCreateMutation(null, BOOK_TYPE, properties)), List.of()))
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(MutationResponse.class)
+                .returnResult().getResponseBody();
+        return response.items().get(0).itemId();
+    }
+
     private UUID storeBinary(byte[] content) {
         var buffer = new DefaultDataBufferFactory().wrap(content);
         return binaryPartitionManager.store(Flux.just(buffer)).block();
@@ -543,18 +582,52 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
     }
 
     @Test
+    void termsFacet_onControlledListBackedProperty_withDistinctLabels_resolvesTheLabel() {
+        createBookWithCondition("Dune", "NEW");
+        createBookWithCondition("Foundation", "NEW");
+        createBookWithCondition("Neuromancer", "USED");
+
+        var spec = new CollectionProjectionSpec(BOOK_TYPE, null, null, null, null,
+                List.of("condition"), null, null, null, null);
+
+        Map<String, List<FacetBucket>> facets = project(spec).result().facets();
+        assertThat(facets.get("condition"))
+                .extracting(FacetBucket::value, FacetBucket::label, FacetBucket::count)
+                .containsExactlyInAnyOrder(
+                        tuple("NEW", "Brand New", 2L),
+                        tuple("USED", "Pre-Owned", 1L));
+    }
+
+    @Test
+    void termsFacet_onControlledListBackedProperty_withNoLabelsAtAll_labelFallsBackToValue() {
+        createBookWithFormat("Dune", "Hardback");
+        createBookWithFormat("Foundation", "Ebook");
+
+        var spec = new CollectionProjectionSpec(BOOK_TYPE, null, null, null, null,
+                List.of("format"), null, null, null, null);
+
+        Map<String, List<FacetBucket>> facets = project(spec).result().facets();
+        assertThat(facets.get("format"))
+                .extracting(FacetBucket::value, FacetBucket::label, FacetBucket::count)
+                .containsExactlyInAnyOrder(
+                        tuple("Hardback", "Hardback", 1L),
+                        tuple("Ebook", "Ebook", 1L));
+    }
+
+    @Test
     void requestedFacetsAsEmptyList_autoPopulatesFromEveryFacetableProperty() {
         createBook("Dune", 400, true, "Fiction");
 
         // Empty list (not null) means "every facetable property on this item type" --
         // facetableFieldsFor's own contract. title/pageCount aren't facetable (title has no
-        // controlled list, pageCount isn't STRING/BOOLEAN), so only inStock, genre, and the nested
-        // dimensions.material should show up here -- the last one specifically exercises
+        // controlled list, pageCount isn't STRING/BOOLEAN), so inStock, genre, condition, format, and
+        // the nested dimensions.material should show up here -- the last one specifically exercises
         // collectFacetableFieldNames' recursion into an OBJECT property, not just top-level fields.
         var spec = new CollectionProjectionSpec(BOOK_TYPE, null, null, null, null,
                 List.of(), null, null, null, null);
 
-        assertThat(project(spec).result().facets().keySet()).containsExactlyInAnyOrder("inStock", "genre", "dimensions.material");
+        assertThat(project(spec).result().facets().keySet())
+                .containsExactlyInAnyOrder("inStock", "genre", "condition", "format", "dimensions.material");
     }
 
     @Test
@@ -962,7 +1035,29 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
 
         var item = project(spec).result().items().get(0);
         assertThat(item.properties()).containsEntry("title", "Dune").containsEntry("pageCount", 400)
-                .containsEntry("genre", "Fiction");
+                // genre's controlled list sets label == value (see fixture's own comment on why that's
+                // still a real label, not "no label") -- rule 4 wraps it as {value,label} regardless.
+                .containsEntry("genre", Map.of("value", "Fiction", "label", "Fiction"));
+    }
+
+    @Test
+    void controlledListBackedProperty_withDistinctLabels_projectsAsValueLabelObject() {
+        createBookWithCondition("Dune", "NEW");
+
+        var item = project(new CollectionProjectionSpec(BOOK_TYPE, null, null, null, null,
+                null, null, null, null, null)).result().items().get(0);
+
+        assertThat(item.properties()).containsEntry("condition", Map.of("value", "NEW", "label", "Brand New"));
+    }
+
+    @Test
+    void controlledListBackedProperty_withNoLabelsAtAll_projectsAsBareScalar() {
+        createBookWithFormat("Dune", "Hardback");
+
+        var item = project(new CollectionProjectionSpec(BOOK_TYPE, null, null, null, null,
+                null, null, null, null, null)).result().items().get(0);
+
+        assertThat(item.properties()).containsEntry("format", "Hardback");
     }
 
     @Test
@@ -1024,7 +1119,10 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
         assertThat(item.properties()).containsOnlyKeys("dimensions");
         @SuppressWarnings("unchecked")
         var dimensions = (Map<String, Object>) item.properties().get("dimensions");
-        assertThat(dimensions).containsEntry("widthCm", 20).containsEntry("material", "Hardcover");
+        // dimensions.material's controlled list sets label == value (see fixture's own comment) --
+        // still a real label, so rule 4 wraps it as {value,label} regardless.
+        assertThat(dimensions).containsEntry("widthCm", 20)
+                .containsEntry("material", Map.of("value", "Hardcover", "label", "Hardcover"));
     }
 
     @Test

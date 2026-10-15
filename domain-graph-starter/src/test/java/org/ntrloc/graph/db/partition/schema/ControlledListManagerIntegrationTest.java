@@ -7,6 +7,7 @@ import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyUsage;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateItemDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.AddPropertyDefinitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.ReplaceControlledListMutation;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyContainerKind;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -90,6 +91,90 @@ class ControlledListManagerIntegrationTest extends AbstractIntegrationTest {
         controlledListManager.clearPropertyControlledList(propertyId);
 
         assertThat(controlledListManager.getListForProperty(propertyId)).isEmpty();
+    }
+
+    // --- addValues' own value/label invariants ---
+    //
+    // replaceValues (UpdateControlledListMutation, the admin-UI's own "replace" flow) delegates
+    // straight to addValues after its own DELETE, so these only need covering through addValues
+    // itself -- there's no separate code path to duplicate coverage for.
+
+    @Test
+    void addValues_withADuplicateValue_throws() {
+        var list = controlledListManager.createList("List-" + UUID.randomUUID(), PropertyType.STRING);
+
+        assertThatThrownBy(() -> controlledListManager.addValues(list.id(), List.of(
+                new ControlledListManager.ValueEntry("A", "Alpha"),
+                new ControlledListManager.ValueEntry("A", "Alpha Two"))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Duplicate controlled list value");
+    }
+
+    @Test
+    void addValues_withSomeValuesLabeledAndOthersNot_throws() {
+        var list = controlledListManager.createList("List-" + UUID.randomUUID(), PropertyType.STRING);
+
+        assertThatThrownBy(() -> controlledListManager.addValues(list.id(), List.of(
+                new ControlledListManager.ValueEntry("A", "Alpha"),
+                new ControlledListManager.ValueEntry("B", null))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("either all have a label or all have none");
+    }
+
+    @Test
+    void addValues_withABlankLabelAmongRealLabels_isTreatedAsUnlabeled_andThrows() {
+        var list = controlledListManager.createList("List-" + UUID.randomUUID(), PropertyType.STRING);
+
+        assertThatThrownBy(() -> controlledListManager.addValues(list.id(), List.of(
+                new ControlledListManager.ValueEntry("A", "Alpha"),
+                new ControlledListManager.ValueEntry("B", "   "))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("either all have a label or all have none");
+    }
+
+    @Test
+    void addValues_withADuplicateLabel_throws() {
+        var list = controlledListManager.createList("List-" + UUID.randomUUID(), PropertyType.STRING);
+
+        assertThatThrownBy(() -> controlledListManager.addValues(list.id(), List.of(
+                new ControlledListManager.ValueEntry("A", "Same"),
+                new ControlledListManager.ValueEntry("B", "Same"))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Duplicate controlled list label");
+    }
+
+    @Test
+    void addValues_allUnlabeled_succeeds() {
+        var list = controlledListManager.createList("List-" + UUID.randomUUID(), PropertyType.STRING);
+
+        controlledListManager.addValues(list.id(), List.of(
+                new ControlledListManager.ValueEntry("A", null),
+                new ControlledListManager.ValueEntry("B", null)));
+
+        assertThat(controlledListManager.countValues(list.id())).isEqualTo(2);
+    }
+
+    @Test
+    void addValues_allLabeledWithDistinctValuesAndLabels_succeeds() {
+        var list = controlledListManager.createList("List-" + UUID.randomUUID(), PropertyType.STRING);
+
+        controlledListManager.addValues(list.id(), List.of(
+                new ControlledListManager.ValueEntry("A", "Alpha"),
+                new ControlledListManager.ValueEntry("B", "Beta")));
+
+        assertThat(controlledListManager.countValues(list.id())).isEqualTo(2);
+    }
+
+    @Test
+    void replaceValues_withADuplicateValue_throws() {
+        var list = controlledListManager.createList("List-" + UUID.randomUUID(), PropertyType.STRING);
+        controlledListManager.addValues(list.id(), List.of(new ControlledListManager.ValueEntry("A", null)));
+
+        assertThatThrownBy(() -> controlledListManager.replaceValues(list.id(), PropertyType.STRING, List.of(
+                new ReplaceControlledListMutation.Entry("X", null),
+                new ReplaceControlledListMutation.Entry("X", null))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Duplicate controlled list value");
     }
 
     @Test

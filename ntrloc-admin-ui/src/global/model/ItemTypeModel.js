@@ -82,6 +82,43 @@ function hasTrait(adminSchema, itemTypeName, traitName) {
   return Boolean(item?.traits?.some((trait) => trait.name === traitName))
 }
 
+// Same { path, leaves } flattened shape ItemPaneViewModel.groupProperties produces for a *data*
+// object, but walked from the item type's own schema instead -- every property the type defines,
+// whether or not this particular item has a value for it, which is the whole point when editing
+// (see ItemPaneViewModel's own merge of this against an item's current properties). Same two-band
+// ordering (leaves before subgroups, each band alphabetical) for the same reason: direct values
+// read like a summary of a group before drilling into what it nests.
+function editablePropertyGroups(adminSchema, itemTypeName) {
+  const item = adminSchema.items.find((it) => it.name === itemTypeName)
+  return item ? walkSchemaGroup(item.properties, item.groups, null) : []
+}
+
+function walkSchemaGroup(properties, groups, path) {
+  const leaves = [...properties].sort((a, b) => a.name.localeCompare(b.name))
+  const subgroups = [...groups].sort((a, b) => a.name.localeCompare(b.name))
+
+  const result = []
+  if (leaves.length > 0) {
+    result.push({
+      path,
+      leaves: leaves.map((p) => ({
+        name: p.name,
+        type: p.type,
+        cardinality: p.cardinality,
+        usage: p.usage,
+        controlledListId: p.controlledListId,
+        // A BINARY value is an uploaded blob's id plus server-computed metadata, not something a
+        // plain input can round-trip -- shown but not editable until there's a real upload flow.
+        editable: p.type !== 'BINARY',
+      })),
+    })
+  }
+  for (const group of subgroups) {
+    result.push(...walkSchemaGroup(group.properties, group.groups, path ? `${path}.${group.name}` : group.name))
+  }
+  return result
+}
+
 export function useItemTypeModel() {
   const schema = useSchemaSnapshot()
   return {
@@ -94,5 +131,6 @@ export function useItemTypeModel() {
     getSortableFields: (itemTypeId) => (schema ? sortableFields(schema, itemTypeId) : []),
     getHasStateMachines: (itemTypeName) => (schema ? hasStateMachines(schema, itemTypeName) : false),
     getHasTrait: (itemTypeName, traitName) => (schema ? hasTrait(schema, itemTypeName, traitName) : false),
+    getEditablePropertyGroups: (itemTypeName) => (schema ? editablePropertyGroups(schema, itemTypeName) : []),
   }
 }

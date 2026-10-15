@@ -1,3 +1,4 @@
+import { controlledListDisplayValue, isControlledListValue } from '../../global/model/ControlledListValue'
 import './PropertyTreeView.css'
 
 // Displays a projected item's (possibly nested) properties as a tree grouped by dot path, rather
@@ -38,7 +39,7 @@ function PropertyTreeLevel({ properties }) {
             ) : (
               <div className="property-tree-leaf">
                 <span className="property-tree-leaf-name">{key}</span>
-                <span className="property-tree-leaf-value">{String(value)}</span>
+                <span className="property-tree-leaf-value">{formatLeafValue(value)}</span>
               </div>
             )}
           </li>
@@ -49,9 +50,17 @@ function PropertyTreeLevel({ properties }) {
 }
 
 // Same leaf/group split flattenProperties.js already uses: a plain object is a nested group to
-// recurse into, everything else (including arrays) is a leaf value as-is.
+// recurse into, everything else (including arrays) is a leaf value as-is -- except a
+// {value,label} controlled-list leaf, which is a leaf's own value, not a group (see
+// ControlledListValue.js's own comment).
 function isGroup(value) {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
+  return value !== null && typeof value === 'object' && !Array.isArray(value) && !isControlledListValue(value)
+}
+
+// A SET/LIST controlled-list leaf is an array of {value,label} objects; a SINGLE one is just one.
+function formatLeafValue(value) {
+  if (Array.isArray(value)) return value.map((v) => controlledListDisplayValue(v)).join(', ')
+  return String(controlledListDisplayValue(value))
 }
 
 export default PropertyTreeView

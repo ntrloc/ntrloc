@@ -33,6 +33,27 @@ export async function deleteItem(itemId) {
   return res.json()
 }
 
+// An UPDATE mutation, same endpoint. `properties` is the diff ItemUpdateMutation itself expects --
+// an absent key leaves that property unchanged, a null value clears it, nested groups are nested
+// objects (see ItemPaneViewModel.buildPropertyDiff, which is the one place that actually builds
+// this shape). Unlike deleteItem, a 400 here is a real, expected outcome -- a validation failure
+// the user can see and fix -- so it comes back as { ok: false, errors } rather than throwing; only
+// an unexpected failure (network, 5xx) throws.
+export async function updateItem(itemId, properties) {
+  const res = await fetch('/api/mutation', {
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ items: [{ type: 'UPDATE', itemId, properties }], links: [] }),
+  })
+  if (res.status === 400) {
+    const body = await res.json()
+    return { ok: false, errors: body.errors }
+  }
+  if (!res.ok) throw new Error(`Failed to update item (${res.status})`)
+  return { ok: true }
+}
+
 async function postProjection(url, spec) {
   const res = await fetch(url, {
     method: 'POST',
