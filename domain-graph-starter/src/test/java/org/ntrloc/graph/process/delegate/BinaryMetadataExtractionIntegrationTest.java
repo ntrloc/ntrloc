@@ -4,11 +4,9 @@ import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.partition.binary.BinaryPartitionManager;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.core.io.buffer.DataBuffer;
-import org.springframework.core.io.buffer.DefaultDataBufferFactory;
 import org.springframework.jdbc.core.simple.JdbcClient;
-import reactor.core.publisher.Flux;
 
+import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.HashSet;
 import java.util.Set;
@@ -51,16 +49,12 @@ class BinaryMetadataExtractionIntegrationTest extends AbstractIntegrationTest {
     @Autowired
     private JdbcClient jdbcClient;
 
-    private static Flux<DataBuffer> bufferFlux(byte[] content) {
-        return Flux.just(new DefaultDataBufferFactory().wrap(content));
-    }
-
     @Test
-    void store_forNewContent_startsTheExtractionProcess() {
+    void store_forNewContent_startsTheExtractionProcess() throws Exception {
         Set<String> jobsBefore = jobIds();
         byte[] content = ("extraction trigger test " + UUID.randomUUID()).getBytes(StandardCharsets.UTF_8);
 
-        binaryPartitionManager.store(bufferFlux(content)).block();
+        binaryPartitionManager.store(new ByteArrayInputStream(content));
 
         Set<String> newJobs = new HashSet<>(jobIds());
         newJobs.removeAll(jobsBefore);

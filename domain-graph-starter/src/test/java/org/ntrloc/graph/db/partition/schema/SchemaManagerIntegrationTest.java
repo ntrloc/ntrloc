@@ -47,7 +47,7 @@ import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminTraitDefi
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyGroupView;
 import org.ntrloc.graph.db.partition.authorization.PermissionService;
 import org.ntrloc.graph.db.partition.authorization.repository.AuthorizationRepository;
-import org.ntrloc.graph.db.partition.security.ResolvedPrincipal;
+import org.ntrloc.graph.db.partition.security.TestPrincipals;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -1178,8 +1178,8 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         assertThat(itemView(itemId).groups()).extracting(AdminPropertyGroupView::name).doesNotContain("dimensions");
     }
 
-    private static final org.ntrloc.graph.db.partition.security.ResolvedPrincipal SUPERUSER =
-            new org.ntrloc.graph.db.partition.security.ResolvedPrincipal(
+    private static final org.ntrloc.graph.db.partition.security.NtrlocPrincipal SUPERUSER =
+            org.ntrloc.graph.db.partition.security.TestPrincipals.of(
                     UUID.randomUUID(), "test-superuser", "Test Superuser", null, java.util.Set.of(), true);
 
     // --- Schema-view filtering by item-type:read permission (SchemaManager.getSchema) ---
@@ -1196,7 +1196,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         UUID hiddenTypeId = createItem(hiddenTypeName);
 
         var user = securityRepo.createUser("sme-" + UUID.randomUUID(), "Restricted", null, false);
-        var principal = new ResolvedPrincipal(user.id(), user.externalId(), user.displayName(), null, Set.of(), false);
+        var principal = TestPrincipals.of(user.id(), user.externalId(), user.displayName(), null, Set.of(), false);
         authRepo.grantItemType(visibleTypeId, "USER", user.id(), PermissionService.ITEM_TYPE_READ);
 
         var visibleNames = schemaManager.getSchema(principal).items().stream().map(i -> i.name()).toList();

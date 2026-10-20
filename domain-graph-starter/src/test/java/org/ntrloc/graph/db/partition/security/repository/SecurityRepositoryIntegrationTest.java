@@ -30,6 +30,19 @@ class SecurityRepositoryIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void findUserById_returnsTheMatchingUser() {
+        var user = securityRepo.createUser("user-" + UUID.randomUUID(), "Display Name", null, false);
+
+        var found = securityRepo.findUserById(user.id()).orElseThrow();
+        assertThat(found).isEqualTo(user);
+    }
+
+    @Test
+    void findUserById_returnsEmptyForAnUnknownId() {
+        assertThat(securityRepo.findUserById(UUID.randomUUID())).isEmpty();
+    }
+
+    @Test
     void updateUser_persistsChanges() {
         var user = securityRepo.createUser("user-" + UUID.randomUUID(), "Original Name", "original@example.com", false);
 

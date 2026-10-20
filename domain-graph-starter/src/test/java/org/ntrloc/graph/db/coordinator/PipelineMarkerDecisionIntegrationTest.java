@@ -21,8 +21,10 @@ import org.ntrloc.graph.db.partition.authorization.repository.MarkerDecisionPipe
 import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
 import org.ntrloc.graph.db.partition.ledger.ItemUpdateEntry;
 import org.ntrloc.graph.db.partition.ledger.ManuallyAppliedMarker;
+import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 
+import java.time.OffsetDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -51,6 +53,13 @@ class PipelineMarkerDecisionIntegrationTest extends AbstractIntegrationTest {
     @Autowired
     private CoordinatorTestDomainInitializer fixture;
 
+    @Autowired
+    private SecurityRepository securityRepo;
+
+    // ledger_entry.created_by/register_item.created_by (Part E) are NOT NULL FKs to
+    // security_user.id -- every coordinator.prepare call below needs a real, backed actor.
+    private SecurityRepository.UserRow actor;
+
     // DefaultPipelineInitializer auto-creates a no-op pipeline for every item type the moment it's
     // created, including fixture.productTypeId()/contributorTypeId() -- every test below assumes a
     // pristine, pipeline-less item type to create its own pipeline against (see
@@ -58,6 +67,7 @@ class PipelineMarkerDecisionIntegrationTest extends AbstractIntegrationTest {
     @BeforeEach
     void removeAutoCreatedPipelines() {
         fixture.removeAutoCreatedPipelines();
+        actor = securityRepo.createUser("pmd-actor-" + UUID.randomUUID(), "Pipeline Test Actor", null, true);
     }
 
     private Pipeline colorEqualsPipeline(String matchValue, UUID markerId) {
@@ -81,7 +91,7 @@ class PipelineMarkerDecisionIntegrationTest extends AbstractIntegrationTest {
             UUID itemId = UUID.randomUUID();
             UUID txn = UUID.randomUUID();
             coordinator.prepare(List.of(new ItemCreateEntry(itemId, fixture.productTypeId(),
-                    Map.of(fixture.colorPropertyId(), "red"), Map.of(), Set.of())), txn, null);
+                    Map.of(fixture.colorPropertyId(), "red"), Map.of(), Set.of())), txn, actor.id(), OffsetDateTime.now());
             coordinator.commit(txn, UUID.randomUUID());
 
             assertThat(authRepo.getMarkerIdsForItem(itemId)).contains(markerId);
@@ -100,7 +110,7 @@ class PipelineMarkerDecisionIntegrationTest extends AbstractIntegrationTest {
             UUID itemId = UUID.randomUUID();
             UUID txn = UUID.randomUUID();
             coordinator.prepare(List.of(new ItemCreateEntry(itemId, fixture.productTypeId(),
-                    Map.of(fixture.colorPropertyId(), "blue"), Map.of(), Set.of())), txn, null);
+                    Map.of(fixture.colorPropertyId(), "blue"), Map.of(), Set.of())), txn, actor.id(), OffsetDateTime.now());
             coordinator.commit(txn, UUID.randomUUID());
 
             assertThat(authRepo.getMarkerIdsForItem(itemId)).doesNotContain(markerId);
@@ -119,14 +129,14 @@ class PipelineMarkerDecisionIntegrationTest extends AbstractIntegrationTest {
             UUID itemId = UUID.randomUUID();
             UUID createTxn = UUID.randomUUID();
             coordinator.prepare(List.of(new ItemCreateEntry(itemId, fixture.productTypeId(),
-                    Map.of(fixture.colorPropertyId(), "blue"), Map.of(), Set.of())), createTxn, null);
+                    Map.of(fixture.colorPropertyId(), "blue"), Map.of(), Set.of())), createTxn, actor.id(), OffsetDateTime.now());
             coordinator.commit(createTxn, UUID.randomUUID());
             assertThat(authRepo.getMarkerIdsForItem(itemId)).doesNotContain(markerId);
 
             UUID updateTxn = UUID.randomUUID();
             Map<UUID, Object> diff = new HashMap<>();
             diff.put(fixture.colorPropertyId(), "red");
-            coordinator.prepare(List.of(new ItemUpdateEntry(itemId, diff, Map.of(), Set.of(), Set.of(), Set.of())), updateTxn, null);
+            coordinator.prepare(List.of(new ItemUpdateEntry(itemId, diff, Map.of(), Set.of(), Set.of(), Set.of())), updateTxn, actor.id(), OffsetDateTime.now());
             coordinator.commit(updateTxn, UUID.randomUUID());
 
             assertThat(authRepo.getMarkerIdsForItem(itemId)).contains(markerId);
@@ -145,14 +155,14 @@ class PipelineMarkerDecisionIntegrationTest extends AbstractIntegrationTest {
             UUID itemId = UUID.randomUUID();
             UUID createTxn = UUID.randomUUID();
             coordinator.prepare(List.of(new ItemCreateEntry(itemId, fixture.productTypeId(),
-                    Map.of(fixture.colorPropertyId(), "red"), Map.of(), Set.of())), createTxn, null);
+                    Map.of(fixture.colorPropertyId(), "red"), Map.of(), Set.of())), createTxn, actor.id(), OffsetDateTime.now());
             coordinator.commit(createTxn, UUID.randomUUID());
             assertThat(authRepo.getMarkerIdsForItem(itemId)).contains(markerId);
 
             UUID updateTxn = UUID.randomUUID();
             Map<UUID, Object> diff = new HashMap<>();
             diff.put(fixture.colorPropertyId(), "blue");
-            coordinator.prepare(List.of(new ItemUpdateEntry(itemId, diff, Map.of(), Set.of(), Set.of(), Set.of())), updateTxn, null);
+            coordinator.prepare(List.of(new ItemUpdateEntry(itemId, diff, Map.of(), Set.of(), Set.of(), Set.of())), updateTxn, actor.id(), OffsetDateTime.now());
             coordinator.commit(updateTxn, UUID.randomUUID());
 
             assertThat(authRepo.getMarkerIdsForItem(itemId)).doesNotContain(markerId);
@@ -171,12 +181,12 @@ class PipelineMarkerDecisionIntegrationTest extends AbstractIntegrationTest {
             UUID itemId = UUID.randomUUID();
             UUID createTxn = UUID.randomUUID();
             coordinator.prepare(List.of(new ItemCreateEntry(itemId, fixture.productTypeId(),
-                    Map.of(fixture.colorPropertyId(), "blue"), Map.of(), Set.of())), createTxn, null);
+                    Map.of(fixture.colorPropertyId(), "blue"), Map.of(), Set.of())), createTxn, actor.id(), OffsetDateTime.now());
             coordinator.commit(createTxn, UUID.randomUUID());
 
             UUID manualTxn = UUID.randomUUID();
             coordinator.prepare(List.of(new ItemUpdateEntry(itemId, Map.of(), Map.of(), Set.of(),
-                    Set.of(new ManuallyAppliedMarker(markerId, "tester", "pinned by hand")), Set.of())), manualTxn, null);
+                    Set.of(new ManuallyAppliedMarker(markerId, "tester", "pinned by hand")), Set.of())), manualTxn, actor.id(), OffsetDateTime.now());
             coordinator.commit(manualTxn, UUID.randomUUID());
             assertThat(authRepo.getMarkerIdsForItem(itemId)).contains(markerId);
 
@@ -188,7 +198,7 @@ class PipelineMarkerDecisionIntegrationTest extends AbstractIntegrationTest {
             UUID unrelatedTxn = UUID.randomUUID();
             Map<UUID, Object> diff = new HashMap<>();
             diff.put(fixture.colorPropertyId(), "green");
-            coordinator.prepare(List.of(new ItemUpdateEntry(itemId, diff, Map.of(), Set.of(), Set.of(), Set.of())), unrelatedTxn, null);
+            coordinator.prepare(List.of(new ItemUpdateEntry(itemId, diff, Map.of(), Set.of(), Set.of(), Set.of())), unrelatedTxn, actor.id(), OffsetDateTime.now());
             coordinator.commit(unrelatedTxn, UUID.randomUUID());
 
             assertThat(authRepo.getMarkerIdsForItem(itemId)).contains(markerId);
@@ -236,7 +246,7 @@ class PipelineMarkerDecisionIntegrationTest extends AbstractIntegrationTest {
             // evaluated here, this throws and the test fails outright, not just with a wrong
             // assertion.
             coordinator.prepare(List.of(new ItemCreateEntry(itemId, fixture.productTypeId(),
-                    Map.of(fixture.colorPropertyId(), "blue"), Map.of(), Set.of())), createTxn, null);
+                    Map.of(fixture.colorPropertyId(), "blue"), Map.of(), Set.of())), createTxn, actor.id(), OffsetDateTime.now());
             coordinator.commit(createTxn, UUID.randomUUID());
             assertThat(authRepo.getMarkerIdsForItem(itemId)).doesNotContain(colorMarkerId, tripwireMarkerId);
 
@@ -246,7 +256,7 @@ class PipelineMarkerDecisionIntegrationTest extends AbstractIntegrationTest {
             UUID updateTxn = UUID.randomUUID();
             Map<UUID, Object> diff = new HashMap<>();
             diff.put(fixture.colorPropertyId(), "red");
-            coordinator.prepare(List.of(new ItemUpdateEntry(itemId, diff, Map.of(), Set.of(), Set.of(), Set.of())), updateTxn, null);
+            coordinator.prepare(List.of(new ItemUpdateEntry(itemId, diff, Map.of(), Set.of(), Set.of(), Set.of())), updateTxn, actor.id(), OffsetDateTime.now());
             coordinator.commit(updateTxn, UUID.randomUUID());
 
             assertThat(authRepo.getMarkerIdsForItem(itemId)).contains(colorMarkerId).doesNotContain(tripwireMarkerId);
@@ -279,7 +289,7 @@ class PipelineMarkerDecisionIntegrationTest extends AbstractIntegrationTest {
             // No properties at all -- an unconditional pipeline has nothing to gate on, so its only
             // possible trigger is the creation itself, not any particular property being set.
             coordinator.prepare(List.of(new ItemCreateEntry(itemId, fixture.productTypeId(),
-                    Map.of(), Map.of(), Set.of())), txn, null);
+                    Map.of(), Map.of(), Set.of())), txn, actor.id(), OffsetDateTime.now());
             coordinator.commit(txn, UUID.randomUUID());
 
             assertThat(authRepo.getMarkerIdsForItem(itemId)).contains(markerId);
@@ -298,7 +308,7 @@ class PipelineMarkerDecisionIntegrationTest extends AbstractIntegrationTest {
             UUID itemId = UUID.randomUUID();
             UUID createTxn = UUID.randomUUID();
             coordinator.prepare(List.of(new ItemCreateEntry(itemId, fixture.productTypeId(),
-                    Map.of(), Map.of(), Set.of())), createTxn, null);
+                    Map.of(), Map.of(), Set.of())), createTxn, actor.id(), OffsetDateTime.now());
             coordinator.commit(createTxn, UUID.randomUUID());
             assertThat(authRepo.getMarkerIdsForItem(itemId)).contains(markerId);
 
@@ -308,7 +318,7 @@ class PipelineMarkerDecisionIntegrationTest extends AbstractIntegrationTest {
             UUID updateTxn = UUID.randomUUID();
             Map<UUID, Object> diff = new HashMap<>();
             diff.put(fixture.colorPropertyId(), "red");
-            coordinator.prepare(List.of(new ItemUpdateEntry(itemId, diff, Map.of(), Set.of(), Set.of(), Set.of())), updateTxn, null);
+            coordinator.prepare(List.of(new ItemUpdateEntry(itemId, diff, Map.of(), Set.of(), Set.of(), Set.of())), updateTxn, actor.id(), OffsetDateTime.now());
             coordinator.commit(updateTxn, UUID.randomUUID());
 
             assertThat(authRepo.getMarkerIdsForItem(itemId)).contains(markerId);
@@ -322,7 +332,7 @@ class PipelineMarkerDecisionIntegrationTest extends AbstractIntegrationTest {
         UUID itemId = UUID.randomUUID();
         UUID txn = UUID.randomUUID();
         coordinator.prepare(List.of(new ItemCreateEntry(itemId, fixture.productTypeId(),
-                Map.of(fixture.colorPropertyId(), "red"), Map.of(), Set.of())), txn, null);
+                Map.of(fixture.colorPropertyId(), "red"), Map.of(), Set.of())), txn, actor.id(), OffsetDateTime.now());
         coordinator.commit(txn, UUID.randomUUID());
 
         assertThat(authRepo.getMarkerIdsForItem(itemId)).isEmpty();

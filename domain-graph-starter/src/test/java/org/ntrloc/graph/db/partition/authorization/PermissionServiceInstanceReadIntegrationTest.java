@@ -1,5 +1,6 @@
 package org.ntrloc.graph.db.partition.authorization;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.coordinator.CoordinatorTestDomainInitializer;
@@ -7,10 +8,11 @@ import org.ntrloc.graph.db.coordinator.LedgerRegisterCoordinator;
 import org.ntrloc.graph.db.partition.authorization.repository.AuthorizationRepository;
 import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
 import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
-import org.ntrloc.graph.db.partition.security.ResolvedPrincipal;
+import org.ntrloc.graph.db.partition.security.TestPrincipals;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -33,7 +35,7 @@ class PermissionServiceInstanceReadIntegrationTest extends AbstractIntegrationTe
     private AuthorizationRepository authRepo;
 
     @Autowired
-    private MarkerAssignmentService markerAssignmentService;
+    private ManualMarkerAssignmentService markerAssignmentService;
 
     @Autowired
     private SecurityRepository securityRepo;
@@ -44,10 +46,21 @@ class PermissionServiceInstanceReadIntegrationTest extends AbstractIntegrationTe
     @Autowired
     private CoordinatorTestDomainInitializer fixture;
 
+    // Not static/final: needs a real, backed security_user row now that ledger_entry.created_by
+    // (Part E) has a NOT NULL FK to security_user.id -- created fresh per test in setUp() via the
+    // already-autowired securityRepo, which a static initializer can't reach.
+    private NtrlocPrincipal actor;
+
+    @BeforeEach
+    void setUpActor() {
+        var user = securityRepo.createUser("pisr-actor-" + UUID.randomUUID(), "Permission Test Actor", null, true);
+        actor = TestPrincipals.of(user.id(), user.externalId(), user.displayName(), null, Set.of(), true);
+    }
+
     private UUID createItem() {
         UUID itemId = UUID.randomUUID();
         UUID txn = UUID.randomUUID();
-        coordinator.prepare(List.of(new ItemCreateEntry(itemId, fixture.productTypeId(), Map.of(fixture.namePropertyId(), "Widget"), Map.of(), Set.of())), txn, null);
+        coordinator.prepare(List.of(new ItemCreateEntry(itemId, fixture.productTypeId(), Map.of(fixture.namePropertyId(), "Widget"), Map.of(), Set.of())), txn, actor.id(), OffsetDateTime.now());
         coordinator.commit(txn, UUID.randomUUID());
         return itemId;
     }
@@ -61,7 +74,7 @@ class PermissionServiceInstanceReadIntegrationTest extends AbstractIntegrationTe
     }
 
     private NtrlocPrincipal principal(UUID id, String externalId, Set<UUID> groupIds, boolean isSuperuser) {
-        return new ResolvedPrincipal(id, externalId, externalId, null, groupIds, isSuperuser);
+        return TestPrincipals.of(id, externalId, externalId, null, groupIds, isSuperuser);
     }
 
     @Test
@@ -83,7 +96,7 @@ class PermissionServiceInstanceReadIntegrationTest extends AbstractIntegrationTe
     void itemWithUserGroupGrantedMarker_isReadableForUserGroupMemberOnly() {
         UUID itemId = createItem();
         UUID marker = createMarker();
-        markerAssignmentService.addItemMarker(itemId, marker, "test-actor", "test reason");
+        markerAssignmentService.addItemMarker(itemId, marker, actor, "test reason");
         var group = securityRepo.createUserGroup("pisr-" + UUID.randomUUID());
         grantItemRead(marker, "USER_GROUP", group.id());
 
@@ -98,7 +111,7 @@ class PermissionServiceInstanceReadIntegrationTest extends AbstractIntegrationTe
     void itemWithUserDirectGrantedMarker_isReadableForThatUserOnly() {
         UUID itemId = createItem();
         UUID marker = createMarker();
-        markerAssignmentService.addItemMarker(itemId, marker, "test-actor", "test reason");
+        markerAssignmentService.addItemMarker(itemId, marker, actor, "test reason");
         var grantedUser = securityRepo.createUser("pisr-" + UUID.randomUUID(), "Granted", null, false);
         var otherUser = securityRepo.createUser("pisr-" + UUID.randomUUID(), "Other", null, false);
         grantItemRead(marker, "USER", grantedUser.id());
@@ -111,7 +124,7 @@ class PermissionServiceInstanceReadIntegrationTest extends AbstractIntegrationTe
     void revokingGrant_removesReadAccess() {
         UUID itemId = createItem();
         UUID marker = createMarker();
-        markerAssignmentService.addItemMarker(itemId, marker, "test-actor", "test reason");
+        markerAssignmentService.addItemMarker(itemId, marker, actor, "test reason");
         var user = securityRepo.createUser("pisr-" + UUID.randomUUID(), "User", null, false);
         UUID grantId = authRepo.ensureMarkerGrant(marker, "USER", user.id());
         authRepo.setItemPermissions(grantId, true, false);
@@ -127,13 +140,13 @@ class PermissionServiceInstanceReadIntegrationTest extends AbstractIntegrationTe
     void removingMarkerFromItem_removesReadAccessEvenIfGrantStillExists() {
         UUID itemId = createItem();
         UUID marker = createMarker();
-        markerAssignmentService.addItemMarker(itemId, marker, "test-actor", "test reason");
+        markerAssignmentService.addItemMarker(itemId, marker, actor, "test reason");
         var user = securityRepo.createUser("pisr-" + UUID.randomUUID(), "User", null, false);
         grantItemRead(marker, "USER", user.id());
         var userPrincipal = principal(user.id(), user.externalId(), Set.of(), false);
         assertThat(permissionService.canReadItem(userPrincipal, itemId)).isTrue();
 
-        markerAssignmentService.removeItemMarker(itemId, marker, "test-actor", "test reason");
+        markerAssignmentService.removeItemMarker(itemId, marker, actor, "test reason");
 
         assertThat(permissionService.canReadItem(userPrincipal, itemId)).isFalse();
     }

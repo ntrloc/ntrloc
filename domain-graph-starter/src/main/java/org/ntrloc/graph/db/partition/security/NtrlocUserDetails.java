@@ -18,14 +18,19 @@ import java.util.UUID;
 // usable NtrlocPrincipal from then on -- PrincipalResolver.resolve() can return it directly
 // instead of re-querying SecurityRepository on every single request just to reconstruct what was
 // already known at login time.
-public class NtrlocUserDetails implements UserDetails, NtrlocPrincipal {
+// final: a direct implementer of a sealed interface must be final, sealed, or non-sealed --
+// this one has no subclasses, so final is correct.
+public final class NtrlocUserDetails implements UserDetails, NtrlocPrincipal {
 
     private final NtrlocPrincipal principal;
     private final String passwordHash;
     private final String role;
     private final boolean active;
 
-    public NtrlocUserDetails(NtrlocPrincipal principal, String passwordHash, String role, boolean active) {
+    // Package-private: only LocalUserDetailsService (same package) constructs one of these,
+    // same restriction rationale as ResolvedPrincipal's canonical constructor -- see
+    // NtrlocPrincipal's own comment.
+    NtrlocUserDetails(NtrlocPrincipal principal, String passwordHash, String role, boolean active) {
         this.principal = principal;
         this.passwordHash = passwordHash;
         this.role = role;

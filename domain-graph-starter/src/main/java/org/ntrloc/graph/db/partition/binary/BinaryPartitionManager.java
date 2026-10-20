@@ -1,9 +1,5 @@
 package org.ntrloc.graph.db.partition.binary;
 
-import org.springframework.core.io.buffer.DataBuffer;
-import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Collection;
@@ -13,7 +9,13 @@ import java.util.UUID;
 
 public interface BinaryPartitionManager {
 
-    Mono<UUID> store(Flux<DataBuffer> content);
+    // Plain blocking read loop, not a reactive chunk stream: a blocking InputStream.read(...) call
+    // naturally ties "pull the next chunk off the wire" to "the previous chunk's write finished,"
+    // the same memory-bounded property the old Flux<DataBuffer>-based implementation went out of
+    // its way to construct by hand (publishOn(..., 1) + doOnNext). Nothing to reconstruct here --
+    // a blocking read/write loop already has that property for free. See BinaryController.upload
+    // for where content comes from (JakartaServletFileUpload's streaming item iterator).
+    UUID store(InputStream content) throws IOException;
 
     Optional<BinaryContentStream> retrieve(UUID id) throws IOException;
 

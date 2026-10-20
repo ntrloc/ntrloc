@@ -25,22 +25,23 @@ public class LedgerPartitionManagerImpl implements LedgerPartitionManager {
     }
 
     @Override
-    public void append(List<LedgerEntry> entries, UUID transactionId, String actorExternalId) {
-        entries.forEach(entry -> insert(entry, transactionId, actorExternalId));
+    public void append(List<LedgerEntry> entries, UUID transactionId, UUID createdBy, OffsetDateTime createdDate) {
+        entries.forEach(entry -> insert(entry, transactionId, createdBy, createdDate));
     }
 
-    private void insert(LedgerEntry entry, UUID transactionId, String actorExternalId) {
+    private void insert(LedgerEntry entry, UUID transactionId, UUID createdBy, OffsetDateTime createdDate) {
         TargetRef target = targetOf(entry);
         jdbcClient.sql("""
-                INSERT INTO ledger_entry (target_type, target_id, entry_type, payload, transaction_id, state, actor_external_id)
-                VALUES (:targetType, :targetId, :entryType, :payload::jsonb, :transactionId, 'UNCOMMITTED', :actorExternalId)
+                INSERT INTO ledger_entry (target_type, target_id, entry_type, payload, transaction_id, state, created_by, created_date)
+                VALUES (:targetType, :targetId, :entryType, :payload::jsonb, :transactionId, 'UNCOMMITTED', :createdBy, :createdDate)
                 """)
                 .param("targetType", target.type())
                 .param("targetId", target.id())
                 .param("entryType", entryTypeOf(entry))
                 .param(COL_PAYLOAD, writeEntry(entry))
                 .param(PARAM_TRANSACTION_ID, transactionId)
-                .param("actorExternalId", actorExternalId)
+                .param("createdBy", createdBy)
+                .param("createdDate", createdDate)
                 .update();
     }
 
@@ -75,15 +76,15 @@ public class LedgerPartitionManagerImpl implements LedgerPartitionManager {
     @Override
     public List<LedgerEntryRecord> readItemStreamWithMetadata(UUID itemId) {
         return jdbcClient.sql("""
-                SELECT payload::text AS payload, created_at, actor_external_id FROM ledger_entry
+                SELECT payload::text AS payload, created_date, created_by FROM ledger_entry
                 WHERE target_type = 'ITEM' AND target_id = :itemId AND state = 'COMMITTED'
                 ORDER BY sequence_number
                 """)
                 .param("itemId", itemId)
                 .query((rs, n) -> new LedgerEntryRecord(
                         readEntry(rs.getString(COL_PAYLOAD)),
-                        rs.getObject("created_at", OffsetDateTime.class),
-                        rs.getString("actor_external_id")))
+                        rs.getObject("created_date", OffsetDateTime.class),
+                        rs.getObject("created_by", UUID.class)))
                 .list();
     }
 

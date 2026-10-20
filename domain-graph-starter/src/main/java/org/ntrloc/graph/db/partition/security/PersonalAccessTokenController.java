@@ -2,7 +2,7 @@ package org.ntrloc.graph.db.partition.security;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.http.server.reactive.ServerHttpRequest;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -35,7 +35,7 @@ public class PersonalAccessTokenController {
     }
 
     @PostMapping
-    public ResponseEntity<CreatedTokenResponse> create(@RequestBody CreateTokenRequest body, ServerHttpRequest request, Authentication authentication) {
+    public ResponseEntity<CreatedTokenResponse> create(@RequestBody CreateTokenRequest body, HttpServletRequest request, Authentication authentication) {
         var principal = principalResolver.resolve(request, authentication);
         var issued = tokenService.issue(principal, body.name(), body.expiresInDays());
         return ResponseEntity.status(HttpStatus.CREATED)
@@ -43,7 +43,7 @@ public class PersonalAccessTokenController {
     }
 
     @GetMapping
-    public List<TokenSummaryResponse> list(ServerHttpRequest request, Authentication authentication) {
+    public List<TokenSummaryResponse> list(HttpServletRequest request, Authentication authentication) {
         var principal = principalResolver.resolve(request, authentication);
         return tokenService.list(principal).stream()
                 .map(t -> new TokenSummaryResponse(t.id(), t.name(), t.createdAt(), t.expiresAt()))
@@ -51,7 +51,7 @@ public class PersonalAccessTokenController {
     }
 
     @DeleteMapping("/{tokenId}")
-    public ResponseEntity<Void> revoke(@PathVariable("tokenId") UUID tokenId, ServerHttpRequest request, Authentication authentication) {
+    public ResponseEntity<Void> revoke(@PathVariable("tokenId") UUID tokenId, HttpServletRequest request, Authentication authentication) {
         var principal = principalResolver.resolve(request, authentication);
         tokenService.revoke(principal, tokenId);
         return ResponseEntity.noContent().build();

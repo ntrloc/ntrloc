@@ -1,15 +1,15 @@
 package org.ntrloc.ui.hosting;
 
+import jakarta.servlet.Filter;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.web.reactive.config.ResourceHandlerRegistry;
-import org.springframework.web.reactive.config.WebFluxConfigurer;
-import org.springframework.web.server.WebFilter;
+import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
+import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 @Configuration
 @EnableConfigurationProperties(UiHostingProperties.class)
-public class UiHostingConfiguration implements WebFluxConfigurer {
+public class UiHostingConfiguration implements WebMvcConfigurer {
 
     private final UiHostingProperties properties;
 
@@ -18,13 +18,8 @@ public class UiHostingConfiguration implements WebFluxConfigurer {
     }
 
     @Bean
-    WebFilter mountWelcomePageFilter() {
+    Filter mountWelcomePageFilter() {
         return new MountWelcomePageFilter(properties);
-    }
-
-    @Bean
-    WebFilter staticResourceOffloadFilter() {
-        return new StaticResourceOffloadFilter(properties);
     }
 
     @Override
@@ -35,7 +30,8 @@ public class UiHostingConfiguration implements WebFluxConfigurer {
             registry.addResourceHandler(path + "**")
                     .addResourceLocations(location)
                     .resourceChain(true)
-                    .addResolver(new SpaFallbackResourceResolver());
+                    .addResolver(new SpaFallbackResourceResolver())
+                    .addTransformer(new MountBasePathResourceTransformer(path));
         }
 
         // Plain static serving for AdminUiExtensionScanner's discoveries -- no SPA fallback here,

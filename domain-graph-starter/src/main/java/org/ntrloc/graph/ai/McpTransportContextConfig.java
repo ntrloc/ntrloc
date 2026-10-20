@@ -2,7 +2,7 @@ package org.ntrloc.graph.ai;
 
 import io.modelcontextprotocol.common.McpTransportContext;
 import org.springframework.http.HttpHeaders;
-import org.springframework.web.reactive.function.server.ServerRequest;
+import org.springframework.web.servlet.function.ServerRequest;
 
 import java.util.Map;
 

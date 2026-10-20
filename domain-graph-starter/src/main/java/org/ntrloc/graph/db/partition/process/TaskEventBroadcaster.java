@@ -1,8 +1,8 @@
 package org.ntrloc.graph.db.partition.process;
 
+import org.ntrloc.graph.events.SseEmitterRegistry;
 import org.springframework.stereotype.Component;
-import reactor.core.publisher.Flux;
-import reactor.core.publisher.Sinks;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 // A trivial broadcast signal, not a data channel: every connected SSE client (TaskAdminController)
 // gets every published event and just re-fetches GET /api/admin/process/tasks, which already does
@@ -12,9 +12,10 @@ import reactor.core.publisher.Sinks;
 // changed, go check" tap on the shoulder.
 //
 // DEPRECATED, pending removal: superseded by org.ntrloc.graph.events.ClusterEventBroadcaster, which
-// fixes this class's real gap (local-JVM-only Sinks.Many -- a client connected to a different node
+// fixes this class's real gap (local-JVM-only delivery -- a client connected to a different node
 // in a multi-pod deployment never hears about a change made on this one). Left alone deliberately
-// for now, unmodified, alongside its existing caller (TaskEventListener) and consumer
+// for now, unmodified in behavior (still converted off WebFlux below, same as everything else in
+// this app), alongside its existing caller (TaskEventListener) and consumer
 // (TaskAdminController.taskEvents) -- TaskEventListener now ALSO publishes to ClusterEventBroadcaster
 // in parallel (see its own comment). Remove this class and its /tasks/events endpoint once the admin
 // UI(s) have fully moved onto the new shared /api/events endpoint; see SchemaChangeBroadcaster for
@@ -22,23 +23,18 @@ import reactor.core.publisher.Sinks;
 @Component
 public class TaskEventBroadcaster {
 
-    // directBestEffort(), not onBackpressureBuffer(): this is a live tap, not a history replay --
+    // SseEmitterRegistry's own direct-delivery, drop-on-failure semantics are what
+    // Sinks.Many.directBestEffort() used to provide here: a live tap, not a history replay --
     // clients always do their own fetch on connect/mount, so there's nothing to gain from
-    // buffering events for a subscriber
-    // that hasn't connected yet, and real cost to doing so. onBackpressureBuffer() queues events
-    // for exactly that "replay to future subscribers" case, with a bounded default capacity --
-    // confirmed empirically: after a few hundred published events (this session's own testing)
-    // with the buffer never fully drained by a live subscriber, tryEmitNext started silently
-    // failing (ignored return value) and the stream went dead for every subscriber, old and new.
-    // directBestEffort() delivers only to whichever subscribers are live *right now* and drops the
-    // rest -- exactly the semantics this signal actually needs, and not something that can overflow.
-    private final Sinks.Many<String> sink = Sinks.many().multicast().directBestEffort();
+    // buffering events for a subscriber that hasn't connected yet, and real cost to doing so (see
+    // SseEmitterRegistry's own comment on the old onBackpressureBuffer() failure mode this avoids).
+    private final SseEmitterRegistry<String> registry = new SseEmitterRegistry<>(type -> SseEmitter.event().data(type));
 
     public void publish(String eventType) {
-        sink.tryEmitNext(eventType);
+        registry.publish(eventType);
     }
 
-    public Flux<String> events() {
-        return sink.asFlux();
+    public SseEmitter register() {
+        return registry.register();
     }
 }

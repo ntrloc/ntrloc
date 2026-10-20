@@ -28,6 +28,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -47,15 +48,17 @@ public class EntityManagerImpl implements EntityManager {
     private final PermissionService permissionService;
     private final MutationRequestProcessor mutationRequestProcessor;
     private final LedgerRegisterCoordinator coordinator;
+    private final ProjectedUserInfoEnricher userInfoEnricher;
 
     public EntityManagerImpl(RegisterPartitionManager registerPartitionManager, SchemaManager schemaManager,
                               PermissionService permissionService, MutationRequestProcessor mutationRequestProcessor,
-                              LedgerRegisterCoordinator coordinator) {
+                              LedgerRegisterCoordinator coordinator, ProjectedUserInfoEnricher userInfoEnricher) {
         this.registerPartitionManager = registerPartitionManager;
         this.schemaManager = schemaManager;
         this.permissionService = permissionService;
         this.mutationRequestProcessor = mutationRequestProcessor;
         this.coordinator = coordinator;
+        this.userInfoEnricher = userInfoEnricher;
     }
 
     // Polymorphic by default: itemTypeName resolves to itself plus every descendant (see
@@ -81,8 +84,8 @@ public class EntityManagerImpl implements EntityManager {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown item type: " + spec.itemTypeName());
         }
         var permissionContext = permissionService.buildContext(principal);
-        return registerPartitionManager.projectOne(actualItemTypeId.get(), spec.itemId(), binaryBaseUrl, spec.links(), spec.properties(),
-                permissionContext, Boolean.TRUE.equals(spec.includePermissions()), Boolean.TRUE.equals(spec.includeStates()));
+        return userInfoEnricher.enrich(registerPartitionManager.projectOne(actualItemTypeId.get(), spec.itemId(), binaryBaseUrl, spec.links(), spec.properties(),
+                permissionContext, Boolean.TRUE.equals(spec.includePermissions()), Boolean.TRUE.equals(spec.includeStates())));
     }
 
     @Override
@@ -110,9 +113,9 @@ public class EntityManagerImpl implements EntityManager {
         // The common case (a type with no descendants, queried by name) goes through the existing,
         // proven single-table path unchanged -- projectAcrossTypes only engages once polymorphism
         // is actually in play, not on every request.
-        return readableItemTypeIds.size() == 1
+        return userInfoEnricher.enrich(readableItemTypeIds.size() == 1
                 ? registerPartitionManager.project(readableItemTypeIds.iterator().next(), spec, binaryBaseUrl, permissionContext)
-                : registerPartitionManager.projectAcrossTypes(readableItemTypeIds, spec, binaryBaseUrl, permissionContext);
+                : registerPartitionManager.projectAcrossTypes(readableItemTypeIds, spec, binaryBaseUrl, permissionContext));
     }
 
     // Exactly one of itemTypeName/traitName must be set; resolves to the set of concrete item-type
@@ -138,13 +141,9 @@ public class EntityManagerImpl implements EntityManager {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown trait: " + traitName));
     }
 
-    // Pure passthrough -- no permission check, matching MutationRequestProcessor's own documented
-    // gap (its class comment: "Permission checks are a separate, not-yet-built component").
-    // Deliberately not bundled into this change; see project()'s own requireReadAccess for the
-    // write-side equivalent this will eventually need.
-    // principal here is @Nullable and purely for ledger attribution (who made this change), not a
-    // permission gate the way project()'s principal is -- see MutationRequestProcessor.process's
-    // own note.
+    // Pure passthrough: MutationRequestProcessor does its own permission checks per mutation (see
+    // its class comment), and the interface's @PreAuthorize already guarantees principal is
+    // non-null by the time this runs.
     @Override
     public MutationResponse mutate(MutationRequest request, NtrlocPrincipal principal) {
         return mutationRequestProcessor.process(request, principal);
@@ -258,8 +257,9 @@ public class EntityManagerImpl implements EntityManager {
 
     private void commitStateEntry(ItemUpdateEntry entry, NtrlocPrincipal principal) {
         UUID transactionId = UUID.randomUUID();
-        String actor = principal == null ? null : principal.externalId();
-        coordinator.prepare(List.of(entry), transactionId, actor);
+        // principal is guaranteed non-null here -- both callers (startStateMachine,
+        // executeTransition) carry the interface's @PreAuthorize guard.
+        coordinator.prepare(List.of(entry), transactionId, principal.id(), OffsetDateTime.now());
         coordinator.commit(transactionId, UUID.randomUUID());
     }
 

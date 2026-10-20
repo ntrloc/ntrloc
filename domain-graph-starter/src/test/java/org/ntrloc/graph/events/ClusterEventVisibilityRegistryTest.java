@@ -2,7 +2,7 @@ package org.ntrloc.graph.events;
 
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
-import org.ntrloc.graph.db.partition.security.ResolvedPrincipal;
+import org.ntrloc.graph.db.partition.security.TestPrincipals;
 
 import java.util.List;
 import java.util.Set;
@@ -16,7 +16,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ClusterEventVisibilityRegistryTest {
 
     private static NtrlocPrincipal principal(UUID id) {
-        return new ResolvedPrincipal(id, id.toString(), "Test User", "test@example.com", Set.of(), false);
+        return TestPrincipals.of(id, id.toString(), "Test User", "test@example.com", Set.of(), false);
     }
 
     @Test

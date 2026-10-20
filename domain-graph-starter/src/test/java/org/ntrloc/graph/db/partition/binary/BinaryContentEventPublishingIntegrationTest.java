@@ -8,10 +8,8 @@ import org.springframework.context.ApplicationEvent;
 import org.springframework.context.ApplicationListener;
 import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.PayloadApplicationEvent;
-import org.springframework.core.io.buffer.DataBuffer;
-import org.springframework.core.io.buffer.DefaultDataBufferFactory;
-import reactor.core.publisher.Flux;
 
+import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.UUID;
@@ -45,27 +43,23 @@ class BinaryContentEventPublishingIntegrationTest extends AbstractIntegrationTes
     @Autowired
     private ConfigurableApplicationContext applicationContext;
 
-    private static Flux<DataBuffer> bufferFlux(byte[] content) {
-        return Flux.just(new DefaultDataBufferFactory().wrap(content));
-    }
-
     @Test
-    void store_forNewContent_publishesBinaryContentEventCreatedExactlyOnce() {
+    void store_forNewContent_publishesBinaryContentEventCreatedExactlyOnce() throws Exception {
         List<BinaryContentEvent.Created> events = recordCreatedEvents();
         byte[] content = ("event publish test " + UUID.randomUUID()).getBytes(StandardCharsets.UTF_8);
 
-        binaryPartitionManager.store(bufferFlux(content)).block();
+        binaryPartitionManager.store(new ByteArrayInputStream(content));
 
         assertThat(events).hasSize(1);
     }
 
     @Test
-    void store_forIdenticalContentTwice_publishesTheEventOnlyOnce() {
+    void store_forIdenticalContentTwice_publishesTheEventOnlyOnce() throws Exception {
         List<BinaryContentEvent.Created> events = recordCreatedEvents();
         byte[] content = ("dedup event publish test " + UUID.randomUUID()).getBytes(StandardCharsets.UTF_8);
 
-        binaryPartitionManager.store(bufferFlux(content)).block();
-        binaryPartitionManager.store(bufferFlux(content)).block();
+        binaryPartitionManager.store(new ByteArrayInputStream(content));
+        binaryPartitionManager.store(new ByteArrayInputStream(content));
 
         assertThat(events).hasSize(1);
     }

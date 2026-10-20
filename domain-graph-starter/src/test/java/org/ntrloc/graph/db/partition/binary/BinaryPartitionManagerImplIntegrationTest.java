@@ -3,12 +3,11 @@ package org.ntrloc.graph.db.partition.binary;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.core.io.buffer.DataBuffer;
-import org.springframework.core.io.buffer.DefaultDataBufferFactory;
 import org.springframework.jdbc.core.simple.JdbcClient;
-import reactor.core.publisher.Flux;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.HexFormat;
@@ -43,28 +42,11 @@ class BinaryPartitionManagerImplIntegrationTest extends AbstractIntegrationTest 
         return HexFormat.of().formatHex(digest.digest(content));
     }
 
-    // Splits into 8192-byte DataBuffer chunks (matching a typical network read size) rather than
-    // handing store() the whole byte array as one buffer, so tests exercise the same multi-chunk
-    // path production traffic does.
-    private static Flux<DataBuffer> bufferFlux(byte[] content) {
-        var factory = new DefaultDataBufferFactory();
-        var chunks = new java.util.ArrayList<DataBuffer>();
-        int chunkSize = 8192;
-        for (int offset = 0; offset < content.length; offset += chunkSize) {
-            int len = Math.min(chunkSize, content.length - offset);
-            chunks.add(factory.wrap(java.util.Arrays.copyOfRange(content, offset, offset + len)));
-        }
-        if (chunks.isEmpty()) {
-            chunks.add(factory.wrap(new byte[0]));
-        }
-        return Flux.fromIterable(chunks);
-    }
-
     @Test
     void store_thenRetrieve_returnsTheSameBytes() throws Exception {
         byte[] content = ("hello world " + UUID.randomUUID()).getBytes(StandardCharsets.UTF_8);
 
-        UUID id = binaryPartitionManager.store(bufferFlux(content)).block();
+        UUID id = binaryPartitionManager.store(new ByteArrayInputStream(content));
 
         var retrieved = binaryPartitionManager.retrieve(id).orElseThrow();
         assertThat(retrieved.stream().readAllBytes()).isEqualTo(content);
@@ -72,12 +54,14 @@ class BinaryPartitionManagerImplIntegrationTest extends AbstractIntegrationTest 
         assertThat(retrieved.info().sha256()).isEqualTo(sha256Hex(content));
     }
 
+    // Bigger than store()'s own 8192-byte read buffer, so this exercises the multi-read loop
+    // rather than a single read() call.
     @Test
     void store_forContentLargerThanOneBufferChunk_isWrittenAndReadBackIntact() throws Exception {
         byte[] content = new byte[8192 * 3 + 100];
         new java.util.Random(42).nextBytes(content);
 
-        UUID id = binaryPartitionManager.store(bufferFlux(content)).block();
+        UUID id = binaryPartitionManager.store(new ByteArrayInputStream(content));
 
         var retrieved = binaryPartitionManager.retrieve(id).orElseThrow();
         assertThat(retrieved.stream().readAllBytes()).isEqualTo(content);
@@ -87,19 +71,24 @@ class BinaryPartitionManagerImplIntegrationTest extends AbstractIntegrationTest 
     void store_forIdenticalContentTwice_returnsTheSameId_contentIsDeduplicatedByHash() throws Exception {
         byte[] content = ("duplicate content " + UUID.randomUUID()).getBytes(StandardCharsets.UTF_8);
 
-        UUID firstId = binaryPartitionManager.store(bufferFlux(content)).block();
-        UUID secondId = binaryPartitionManager.store(bufferFlux(content)).block();
+        UUID firstId = binaryPartitionManager.store(new ByteArrayInputStream(content));
+        UUID secondId = binaryPartitionManager.store(new ByteArrayInputStream(content));
 
         assertThat(secondId).isEqualTo(firstId);
     }
 
     @Test
     void store_whenTheSourceStreamErrors_abandonsTheWriterAndPropagatesTheException() {
-        Flux<DataBuffer> failingContent = Flux.error(new IOException("simulated read failure"));
+        InputStream failingContent = new InputStream() {
+            @Override
+            public int read() throws IOException {
+                throw new IOException("simulated read failure");
+            }
+        };
 
-        org.assertj.core.api.Assertions.assertThatThrownBy(() -> binaryPartitionManager.store(failingContent).block())
-                .hasCauseInstanceOf(IOException.class)
-                .cause().hasMessageContaining("simulated read failure");
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> binaryPartitionManager.store(failingContent))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("simulated read failure");
     }
 
     @Test
@@ -116,7 +105,7 @@ class BinaryPartitionManagerImplIntegrationTest extends AbstractIntegrationTest 
     void getBinaryProperty_returnsTheStoredMetadata() throws Exception {
         byte[] content = ("metadata test " + UUID.randomUUID()).getBytes(StandardCharsets.UTF_8);
 
-        UUID id = binaryPartitionManager.store(bufferFlux(content)).block();
+        UUID id = binaryPartitionManager.store(new ByteArrayInputStream(content));
 
         var property = binaryPartitionManager.getBinaryProperty(id).orElseThrow();
         assertThat(property.id()).isEqualTo(id);
@@ -131,10 +120,10 @@ class BinaryPartitionManagerImplIntegrationTest extends AbstractIntegrationTest 
 
     @Test
     void getBinaryProperties_returnsEveryRequestedIdThatExists() throws Exception {
-        UUID id1 = binaryPartitionManager.store(bufferFlux(
-                ("content-a-" + UUID.randomUUID()).getBytes(StandardCharsets.UTF_8))).block();
-        UUID id2 = binaryPartitionManager.store(bufferFlux(
-                ("content-b-" + UUID.randomUUID()).getBytes(StandardCharsets.UTF_8))).block();
+        UUID id1 = binaryPartitionManager.store(new ByteArrayInputStream(
+                ("content-a-" + UUID.randomUUID()).getBytes(StandardCharsets.UTF_8)));
+        UUID id2 = binaryPartitionManager.store(new ByteArrayInputStream(
+                ("content-b-" + UUID.randomUUID()).getBytes(StandardCharsets.UTF_8)));
         UUID unknownId = UUID.randomUUID();
 
         Map<UUID, BinaryPropertyObject> found = binaryPartitionManager.getBinaryProperties(Set.of(id1, id2, unknownId));
@@ -144,8 +133,8 @@ class BinaryPartitionManagerImplIntegrationTest extends AbstractIntegrationTest 
 
     @Test
     void getBinaryProperties_acceptsAListDirectlyWithoutCopying() throws Exception {
-        UUID id = binaryPartitionManager.store(bufferFlux(
-                ("content-" + UUID.randomUUID()).getBytes(StandardCharsets.UTF_8))).block();
+        UUID id = binaryPartitionManager.store(new ByteArrayInputStream(
+                ("content-" + UUID.randomUUID()).getBytes(StandardCharsets.UTF_8)));
 
         Map<UUID, BinaryPropertyObject> found = binaryPartitionManager.getBinaryProperties(List.of(id));
 
@@ -160,8 +149,8 @@ class BinaryPartitionManagerImplIntegrationTest extends AbstractIntegrationTest 
     // Map.class" instead. Exists as a defensive fallback, not a documented possibility.
     @Test
     void getBinaryProperty_whenMetadataIsNotAJsonObject_returnsNullMetadataInsteadOfThrowing() throws Exception {
-        UUID id = binaryPartitionManager.store(bufferFlux(
-                ("content-" + UUID.randomUUID()).getBytes(StandardCharsets.UTF_8))).block();
+        UUID id = binaryPartitionManager.store(new ByteArrayInputStream(
+                ("content-" + UUID.randomUUID()).getBytes(StandardCharsets.UTF_8)));
         jdbcClient.sql("UPDATE binary_content SET metadata = '[1, 2, 3]'::jsonb WHERE id = :id")
                 .param("id", id)
                 .update();
@@ -179,7 +168,7 @@ class BinaryPartitionManagerImplIntegrationTest extends AbstractIntegrationTest 
     void store_mirrorsLengthMimeTypeAndHashesIntoMetadata() throws Exception {
         byte[] content = ("metadata shape test " + UUID.randomUUID()).getBytes(StandardCharsets.UTF_8);
 
-        UUID id = binaryPartitionManager.store(bufferFlux(content)).block();
+        UUID id = binaryPartitionManager.store(new ByteArrayInputStream(content));
 
         var property = binaryPartitionManager.getBinaryProperty(id).orElseThrow();
         assertThat(property.metadata()).isNotNull();

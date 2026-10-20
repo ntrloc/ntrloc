@@ -27,6 +27,9 @@
         <hazelcast.version>5.5.0</hazelcast.version>
         <!-- Matches media-processor-api's own pinned version, which matches ntrloc-media-processor's -->
         <grpc.version>1.68.2</grpc.version>
+        <!-- Set to true (e.g. -Dfrontend.skip=true) to skip the React admin UI build when
+             iterating purely on Java; same flag name/purpose as ntrloc-admin-ui's own pom. -->
+        <frontend.skip>false</frontend.skip>
     </properties>
 
     <dependencies>
@@ -34,7 +37,7 @@
         <!-- Spring -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-webflux</artifactId>
+            <artifactId>spring-boot-starter-web</artifactId>
             <version>${spring.boot.version}</version>
             <exclusions>
                 <exclusion>
@@ -46,6 +49,22 @@
                     <artifactId>log4j-to-slf4j</artifactId>
                 </exclusion>
             </exclusions>
+        </dependency>
+
+        <!-- No dependencyManagement/BOM import exists in this pom; every Spring Boot artifact is
+             pinned individually via ${spring.boot.version} above instead. That only controls this
+             project's own direct dependencies, not what third-party libraries pull in
+             transitively: springdoc-openapi-starter-webmvc-scalar's own dependency chain drags in
+             spring-boot-web-server:4.0.5, which Maven's "nearest wins" conflict resolution was
+             picking over this project's 4.1.0 (shallower tree depth via that path), causing a
+             real, observed NoClassDefFoundError at context startup (TomcatServletWebServerFactory
+             introspection failing on a 4.1.0-only inner class against the 4.0.5 jar). Declaring it
+             directly here, at depth 1, forces the correct version to win regardless of what any
+             transitive dependency asks for. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-web-server</artifactId>
+            <version>${spring.boot.version}</version>
         </dependency>
 
         <!-- UI hosting (org.ntrloc.ui.hosting): configurable multi-mount static-file serving,
@@ -255,16 +274,35 @@
         <!-- Scalar -->
         <dependency>
             <groupId>org.springdoc</groupId>
-            <artifactId>springdoc-openapi-starter-webflux-scalar</artifactId>
+            <artifactId>springdoc-openapi-starter-webmvc-scalar</artifactId>
             <version>${scalar.version}</version>
         </dependency>
 
-        <!-- MCP (org.ntrloc.graph.ai): same starter domain-graph-starter already uses; auto-
-             configures an MCP server over WebFlux and exposes any @McpTool-annotated bean method
-             as a tool, no further config needed. -->
+        <!-- Streaming multipart parsing for BinaryController.upload (org.ntrloc.graph.db.partition.
+             binary): Spring MVC's own multipart resolution (spring.servlet.multipart.enabled=true,
+             the default) fully parses request.getParts() before any controller method runs, which
+             defeats the whole point here: uploads must never be buffered, not even to a temp
+             file, regardless of size. spring.servlet.multipart.enabled is forced to false for
+             every application built on this module (BinaryUploadMultipartEnvironmentPostProcessor,
+             registered in META-INF/spring.factories; not something each consuming application's
+             own application.yml needs to know to set) specifically so BinaryController gets the
+             raw, still-unconsumed HttpServletRequest instead, and parses it with this library's
+             low-level streaming API (JakartaServletFileUpload.getItemIterator): bytes are read
+             directly off the request body as they arrive, the same property Flux<PartEvent> gave
+             under WebFlux. Pinned to 2.0.0-M5 deliberately: as of this writing it is the only
+             published version of the Jakarta Servlet 6 variant, a milestone rather than a GA
+             release, a known accepted tradeoff, not an oversight. -->
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-fileupload2-jakarta-servlet6</artifactId>
+            <version>2.0.0-M5</version>
+        </dependency>
+
+        <!-- MCP (org.ntrloc.graph.ai): auto-configures an MCP server over Spring MVC and exposes
+             any @McpTool-annotated bean method as a tool, no further config needed. -->
         <dependency>
             <groupId>org.springframework.ai</groupId>
-            <artifactId>spring-ai-starter-mcp-server-webflux</artifactId>
+            <artifactId>spring-ai-starter-mcp-server-webmvc</artifactId>
             <version>${spring-ai.version}</version>
         </dependency>
 
@@ -327,6 +365,94 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.5.2</version>
+            </plugin>
+
+            <!-- Builds the React admin UI (ntrloc-admin-ui, a sibling module, not a Maven
+                 dependency of this one; it's packaging=pom with no jar artifact to depend on)
+                 as part of THIS module's own build, then copies its output into this module's own
+                 packaged resources below; so `mvn -pl domain-graph-starter -am ...` alone (this
+                 session's own standing build command) rebuilds the UI too, not just a full
+                 root-reactor build. workingDirectory/installDirectory point at ntrloc-admin-ui's
+                 own node/ (gitignored there), the same directory its own standalone pom already
+                 installs into; building there first (or not at all) is harmless either way, and
+                 the two builds share one Node install rather than each getting their own. -->
+            <plugin>
+                <groupId>com.github.eirslett</groupId>
+                <artifactId>frontend-maven-plugin</artifactId>
+                <version>1.15.1</version>
+                <configuration>
+                    <workingDirectory>${project.basedir}/../ntrloc-admin-ui</workingDirectory>
+                    <installDirectory>${project.basedir}/../ntrloc-admin-ui</installDirectory>
+                    <skip>${frontend.skip}</skip>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>install node and npm</id>
+                        <goals>
+                            <goal>install-node-and-npm</goal>
+                        </goals>
+                        <configuration>
+                            <nodeVersion>v22.14.0</nodeVersion>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>npm install</id>
+                        <goals>
+                            <goal>npm</goal>
+                        </goals>
+                        <configuration>
+                            <arguments>install</arguments>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>npm build</id>
+                        <goals>
+                            <goal>npm</goal>
+                        </goals>
+                        <configuration>
+                            <!-- No per-consumer parameterization needed here any more; this
+                                 build is mount-path-agnostic (see vite.config.js's own comment
+                                 and MountBasePathResourceTransformer): the real mount path is
+                                 resolved server-side, at serve time, from whatever
+                                 runtimes/domain-1/application.yml's graph.ui.mounts entry says,
+                                 not baked into the build. The exact same dist/ this produces would
+                                 work unmodified for ntrloc-dam's own, different mount path too. -->
+                            <arguments>run build</arguments>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- Copies the just-built dist/ into this module's own packaged resources, at the
+                 classpath location UiHostingConfiguration's /admin-react mount serves from
+                 (runtimes/domain-1's application.yml); so the React UI is genuinely bundled
+                 into this jar, same as the existing vanilla-JS admin-ui already is, rather than
+                 served from an external file:// path that only exists on this one checkout.
+                 copy-resources defaults to the process-resources phase, which already runs after
+                 generate-resources (frontend-maven-plugin's own default binding above), so the
+                 npm build is guaranteed to have already produced dist/ by the time this runs. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-resources-plugin</artifactId>
+                <version>3.3.1</version>
+                <executions>
+                    <execution>
+                        <id>copy react admin ui build output</id>
+                        <phase>process-resources</phase>
+                        <goals>
+                            <goal>copy-resources</goal>
+                        </goals>
+                        <configuration>
+                            <skip>${frontend.skip}</skip>
+                            <outputDirectory>${project.build.outputDirectory}/static/admin-react</outputDirectory>
+                            <resources>
+                                <resource>
+                                    <directory>${project.basedir}/../ntrloc-admin-ui/dist</directory>
+                                </resource>
+                            </resources>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
         </plugins>
     </build>

@@ -1,5 +1,6 @@
 package org.ntrloc.graph.db;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.mutation.ItemCreateMutation;
@@ -7,7 +8,7 @@ import org.ntrloc.graph.mutation.MutationRequest;
 import org.ntrloc.graph.mutation.MutationRequestProcessor;
 import org.ntrloc.graph.mutation.MutationResponse;
 import org.ntrloc.graph.db.partition.authorization.DefaultUserGroupInitializer;
-import org.ntrloc.graph.db.partition.authorization.MarkerAssignmentService;
+import org.ntrloc.graph.db.partition.authorization.ManualMarkerAssignmentService;
 import org.ntrloc.graph.db.partition.authorization.repository.AuthorizationRepository;
 import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
@@ -19,7 +20,8 @@ import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateItemDefini
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePropertyDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateTraitDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.ImplementTraitMutation;
-import org.ntrloc.graph.db.partition.security.ResolvedPrincipal;
+import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
+import org.ntrloc.graph.db.partition.security.TestPrincipals;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
@@ -40,8 +42,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 // AuthorizationEndpointsIntegrationTest's own style for the permission-scoped case.
 class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
 
-    private static final ResolvedPrincipal SOME_PRINCIPAL =
-            new ResolvedPrincipal(UUID.randomUUID(), "test-user", "Test User", null, Set.of(), true);
+    // Not static/final: needs a real, backed security_user row now that ledger_entry.created_by
+    // (Part E) has a NOT NULL FK to security_user.id -- created fresh per test in setUp() via the
+    // already-autowired securityRepo, which a static initializer can't reach.
+    private NtrlocPrincipal SOME_PRINCIPAL;
+
+    @BeforeEach
+    void setUpSomePrincipal() {
+        var user = securityRepo.createUser("ectp-test-user-" + UUID.randomUUID(), "Test User", null, true);
+        SOME_PRINCIPAL = TestPrincipals.of(user.id(), user.externalId(), user.displayName(), null, Set.of(), true);
+    }
 
     @Autowired
     private SchemaManager schemaManager;
@@ -59,7 +69,7 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
     private DefaultUserGroupInitializer defaultUserGroupInitializer;
 
     @Autowired
-    private MarkerAssignmentService markerAssignmentService;
+    private ManualMarkerAssignmentService markerAssignmentService;
 
     @Autowired
     private AuthorizationRepository authRepo;
@@ -341,7 +351,7 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
         // test keeps exercising type-level partial-branch-drop, the thing it's actually about,
         // without being blocked by the orthogonal instance-level check.
         var marker = authRepo.createMarker("cross-type-vehicle-read-" + UUID.randomUUID(), "test fixture", "ITEM_TYPE", idOf(vehicleName));
-        markerAssignmentService.addItemMarker(vehicleItemId, marker.id(), "test-actor", "test reason");
+        markerAssignmentService.addItemMarker(vehicleItemId, marker.id(), SOME_PRINCIPAL, "test reason");
         authRepo.setItemPermissions(authRepo.ensureMarkerGrant(marker.id(), "USER_GROUP", defaultUserGroupInitializer.getDefaultUserGroupId()), true, false);
 
         var body = webTestClient.post().uri("/api/projection/collection")
@@ -423,7 +433,7 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
 
         var restrictedUser = securityRepo.createUser("restricted-" + UUID.randomUUID(), "Restricted", null, false);
         securityRepo.addUserToUserGroup(restrictedUser.id(), defaultUserGroupInitializer.getDefaultUserGroupId());
-        NtrlocPrincipal restrictedPrincipal = new ResolvedPrincipal(restrictedUser.id(), restrictedUser.externalId(), "Restricted", null, Set.of(), false);
+        NtrlocPrincipal restrictedPrincipal = TestPrincipals.of(restrictedUser.id(), restrictedUser.externalId(), "Restricted", null, Set.of(), false);
 
         org.assertj.core.api.Assertions.assertThatThrownBy(() ->
                         entityManager.project(new ItemProjectionSpec(vehicleName, vehicleItemId), "http://binary", restrictedPrincipal))

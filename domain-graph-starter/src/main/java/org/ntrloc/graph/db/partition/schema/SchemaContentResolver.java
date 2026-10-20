@@ -38,8 +38,10 @@ class SchemaContentResolver {
     private static final List<SortableFieldView> SYSTEM_SORTABLE_FIELDS = List.of(
             new SortableFieldView("itemId",          true),
             new SortableFieldView("itemType",        true),
-            new SortableFieldView("createdAt",       true),
-            new SortableFieldView("updatedAt",       true),
+            new SortableFieldView("createdDate",     true),
+            new SortableFieldView("createdBy",       true),
+            new SortableFieldView("updatedDate",     true),
+            new SortableFieldView("updatedBy",       true),
             new SortableFieldView("visibilityState", true)
     );
 

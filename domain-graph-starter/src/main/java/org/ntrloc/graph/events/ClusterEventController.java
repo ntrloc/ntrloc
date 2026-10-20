@@ -3,15 +3,13 @@ package org.ntrloc.graph.events;
 import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
 import org.ntrloc.graph.db.partition.security.PrincipalResolver;
 import org.springframework.http.MediaType;
-import org.springframework.http.codec.ServerSentEvent;
-import org.springframework.http.server.reactive.ServerHttpRequest;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import reactor.core.publisher.Flux;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
-import java.time.Duration;
 import java.util.List;
 import java.util.Set;
 
@@ -21,16 +19,15 @@ import java.util.Set;
 // before anything is written to that client's stream -- no scoping predicate needed yet since
 // schemaChanged carries no client-specific scope (every authenticated user sees it).
 //
-// No explicit security config: falls under SecurityConfig's default .anyExchange().authenticated()
+// No explicit security config: falls under SecurityConfig's default .anyRequest().authenticated()
 // same as every other endpoint not under /admin/** or the open paths.
+//
+// The heartbeat used to be built here, merged per-connection into each subscriber's own Flux --
+// it's now ClusterEventBroadcaster's concern instead (one shared scheduled task for every current
+// connection, see that class's own comment), since filtering is the only thing actually specific
+// to a given connection.
 @RestController
 public class ClusterEventController {
-
-    // Comfortably under the common ~60s default idle-connection timeout used by most reverse
-    // proxies/load balancers/Kubernetes Ingress controllers -- an SSE comment line (ignored by
-    // EventSource's message/named-event handling, so it never reaches application listeners) is
-    // enough to keep those from treating this connection as idle and killing it.
-    private static final Duration HEARTBEAT_INTERVAL = Duration.ofSeconds(30);
 
     private final ClusterEventBroadcaster broadcaster;
     private final ClusterEventVisibilityRegistry visibilityRegistry;
@@ -44,16 +41,10 @@ public class ClusterEventController {
     }
 
     @GetMapping(value = "/api/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    Flux<ServerSentEvent<String>> events(@RequestParam List<String> types, ServerHttpRequest request,
-                                          Authentication authentication) {
+    SseEmitter events(@RequestParam List<String> types, HttpServletRequest request, Authentication authentication) {
         Set<String> requestedTypes = Set.copyOf(types);
         NtrlocPrincipal principal = principalResolver.resolve(request, authentication);
-        Flux<ServerSentEvent<String>> eventStream = broadcaster.events()
-                .filter(event -> requestedTypes.contains(event.type()))
-                .filter(event -> visibilityRegistry.isVisible(event, principal))
-                .map(event -> ServerSentEvent.<String>builder(event.payload()).event(event.type()).build());
-        Flux<ServerSentEvent<String>> heartbeat = Flux.interval(HEARTBEAT_INTERVAL)
-                .map(tick -> ServerSentEvent.<String>builder().comment("heartbeat").build());
-        return Flux.merge(eventStream, heartbeat);
+        return broadcaster.register(event -> requestedTypes.contains(event.type())
+                && visibilityRegistry.isVisible(event, principal));
     }
 }

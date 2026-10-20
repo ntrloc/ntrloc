@@ -1,9 +1,12 @@
 package org.ntrloc.graph.db.partition.ledger;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
+import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -16,6 +19,18 @@ class LedgerPartitionManagerIntegrationTest extends AbstractIntegrationTest {
     @Autowired
     private LedgerPartitionManager ledgerPartitionManager;
 
+    @Autowired
+    private SecurityRepository securityRepo;
+
+    // ledger_entry.created_by (Part E) is a NOT NULL FK to security_user.id -- every append call
+    // below needs a real, backed actor.
+    private UUID actor;
+
+    @BeforeEach
+    void setUpActor() {
+        actor = securityRepo.createUser("lpm-actor-" + UUID.randomUUID(), "Ledger Test Actor", null, true).id();
+    }
+
     @Test
     void committedItemEntriesAreVisibleInAppendOrder() {
         UUID itemId = UUID.randomUUID();
@@ -24,10 +39,10 @@ class LedgerPartitionManagerIntegrationTest extends AbstractIntegrationTest {
         UUID txn1 = UUID.randomUUID();
         UUID txn2 = UUID.randomUUID();
 
-        ledgerPartitionManager.append(List.of(new ItemCreateEntry(itemId, itemTypeId, Map.of(namePropertyId, "Widget"), Map.of(), Set.of())), txn1, null);
+        ledgerPartitionManager.append(List.of(new ItemCreateEntry(itemId, itemTypeId, Map.of(namePropertyId, "Widget"), Map.of(), Set.of())), txn1, actor, OffsetDateTime.now());
         ledgerPartitionManager.commit(txn1, UUID.randomUUID());
 
-        ledgerPartitionManager.append(List.of(new ItemUpdateEntry(itemId, Map.of(namePropertyId, "Widget Pro"), Map.of(), Set.of(), Set.of(), Set.of())), txn2, null);
+        ledgerPartitionManager.append(List.of(new ItemUpdateEntry(itemId, Map.of(namePropertyId, "Widget Pro"), Map.of(), Set.of(), Set.of(), Set.of())), txn2, actor, OffsetDateTime.now());
         ledgerPartitionManager.commit(txn2, UUID.randomUUID());
 
         assertThat(ledgerPartitionManager.readItemStream(itemId)).containsExactly(
@@ -41,7 +56,7 @@ class LedgerPartitionManagerIntegrationTest extends AbstractIntegrationTest {
         UUID itemId = UUID.randomUUID();
         UUID txn = UUID.randomUUID();
 
-        ledgerPartitionManager.append(List.of(new ItemCreateEntry(itemId, UUID.randomUUID(), Map.of(UUID.randomUUID(), "Ghost"), Map.of(), Set.of())), txn, null);
+        ledgerPartitionManager.append(List.of(new ItemCreateEntry(itemId, UUID.randomUUID(), Map.of(UUID.randomUUID(), "Ghost"), Map.of(), Set.of())), txn, actor, OffsetDateTime.now());
 
         assertThat(ledgerPartitionManager.readItemStream(itemId)).isEmpty();
     }
@@ -51,7 +66,7 @@ class LedgerPartitionManagerIntegrationTest extends AbstractIntegrationTest {
         UUID itemId = UUID.randomUUID();
         UUID txn = UUID.randomUUID();
 
-        ledgerPartitionManager.append(List.of(new ItemCreateEntry(itemId, UUID.randomUUID(), Map.of(UUID.randomUUID(), "Ghost"), Map.of(), Set.of())), txn, null);
+        ledgerPartitionManager.append(List.of(new ItemCreateEntry(itemId, UUID.randomUUID(), Map.of(UUID.randomUUID(), "Ghost"), Map.of(), Set.of())), txn, actor, OffsetDateTime.now());
         ledgerPartitionManager.abort(txn);
         ledgerPartitionManager.commit(txn, UUID.randomUUID());
 
@@ -67,7 +82,7 @@ class LedgerPartitionManagerIntegrationTest extends AbstractIntegrationTest {
         ledgerPartitionManager.append(List.of(
                 new ItemCreateEntry(itemId, UUID.randomUUID(), Map.of(), Map.of(), Set.of()),
                 new LinkDeleteEntry(linkId)
-        ), txn, null);
+        ), txn, actor, OffsetDateTime.now());
         ledgerPartitionManager.commit(txn, UUID.randomUUID());
 
         assertThat(ledgerPartitionManager.readItemStream(itemId)).hasSize(1);
@@ -84,7 +99,7 @@ class LedgerPartitionManagerIntegrationTest extends AbstractIntegrationTest {
                 new LinkEndpoint(UUID.randomUUID(), UUID.randomUUID()),
                 Map.of(UUID.randomUUID(), "2026"));
 
-        ledgerPartitionManager.append(List.of(entry), txn, null);
+        ledgerPartitionManager.append(List.of(entry), txn, actor, OffsetDateTime.now());
         ledgerPartitionManager.commit(txn, UUID.randomUUID());
 
         assertThat(ledgerPartitionManager.readLinkStream(linkId)).containsExactly(entry);
@@ -99,7 +114,7 @@ class LedgerPartitionManagerIntegrationTest extends AbstractIntegrationTest {
         UUID txn = UUID.randomUUID();
         ManuallyAppliedMarker attributed = new ManuallyAppliedMarker(markerId, "some-user", "flagged by pre-production naming rule");
 
-        ledgerPartitionManager.append(List.of(new ItemUpdateEntry(itemId, Map.of(), Map.of(), Set.of(), Set.of(attributed), Set.of())), txn, null);
+        ledgerPartitionManager.append(List.of(new ItemUpdateEntry(itemId, Map.of(), Map.of(), Set.of(), Set.of(attributed), Set.of())), txn, actor, OffsetDateTime.now());
         ledgerPartitionManager.commit(txn, UUID.randomUUID());
 
         assertThat(ledgerPartitionManager.readItemStream(itemId)).containsExactly(
@@ -116,7 +131,7 @@ class LedgerPartitionManagerIntegrationTest extends AbstractIntegrationTest {
         UUID txn = UUID.randomUUID();
         PipelineAppliedMarker attributed = new PipelineAppliedMarker(markerId, pipelineId);
 
-        ledgerPartitionManager.append(List.of(new ItemUpdateEntry(itemId, Map.of(), Map.of(), Set.of(), Set.of(attributed), Set.of())), txn, null);
+        ledgerPartitionManager.append(List.of(new ItemUpdateEntry(itemId, Map.of(), Map.of(), Set.of(), Set.of(attributed), Set.of())), txn, actor, OffsetDateTime.now());
         ledgerPartitionManager.commit(txn, UUID.randomUUID());
 
         assertThat(ledgerPartitionManager.readItemStream(itemId)).containsExactly(
@@ -129,7 +144,7 @@ class LedgerPartitionManagerIntegrationTest extends AbstractIntegrationTest {
         UUID itemId = UUID.randomUUID();
         UUID txn = UUID.randomUUID();
 
-        ledgerPartitionManager.append(List.of(new ItemDeleteEntry(itemId)), txn, null);
+        ledgerPartitionManager.append(List.of(new ItemDeleteEntry(itemId)), txn, actor, OffsetDateTime.now());
         ledgerPartitionManager.commit(txn, UUID.randomUUID());
 
         assertThat(ledgerPartitionManager.readItemStream(itemId)).containsExactly(new ItemDeleteEntry(itemId));

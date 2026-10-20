@@ -1,2 +1,3 @@
 org.springframework.boot.EnvironmentPostProcessor=\
-org.ntrloc.telemetry.NtrlocTelemetryEnvironmentPostProcessor
+org.ntrloc.telemetry.NtrlocTelemetryEnvironmentPostProcessor,\
+org.ntrloc.graph.db.partition.binary.BinaryUploadMultipartEnvironmentPostProcessor

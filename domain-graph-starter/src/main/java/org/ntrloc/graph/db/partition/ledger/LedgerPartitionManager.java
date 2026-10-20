@@ -1,16 +1,19 @@
 package org.ntrloc.graph.db.partition.ledger;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
 public interface LedgerPartitionManager {
 
     // Writes entries as UNCOMMITTED under transactionId. Not visible via readItemStream/
-    // readLinkStream until commit(transactionId) is called. actorExternalId is a single value for
-    // the whole batch, not per-entry -- everything appended together in one call came from one
-    // mutate() request, so it shares one actor; may be null (actor_external_id is nullable by
-    // design).
-    void append(List<LedgerEntry> entries, UUID transactionId, String actorExternalId);
+    // readLinkStream until commit(transactionId) is called. createdBy/createdDate are single
+    // values for the whole batch, not per-entry -- everything appended together in one call came
+    // from one mutate() request, so it shares one actor and one moment. createdDate is supplied
+    // explicitly by the caller (not a DB-generated NOW()) so it can be the exact same value
+    // threaded into the register row(s) this batch causes (LedgerRegisterCoordinatorImpl.prepare)
+    // -- byte-for-byte identical provenance, not two independently-generated timestamps.
+    void append(List<LedgerEntry> entries, UUID transactionId, UUID createdBy, OffsetDateTime createdDate);
 
     void commit(UUID transactionId, UUID commitId);
 
@@ -22,7 +25,7 @@ public interface LedgerPartitionManager {
     List<LedgerEntry> readLinkStream(UUID linkId);
 
     // Same committed item stream as readItemStream, but with the per-row metadata
-    // (createdAt/actorExternalId) readItemStream itself discards -- needed for per-property edit
+    // (createdDate/createdBy) readItemStream itself discards -- needed for per-property edit
     // history (LedgerPropertyHistoryService), not for anything readItemStream's existing callers
     // (register materialization) ever needed.
     List<LedgerEntryRecord> readItemStreamWithMetadata(UUID itemId);

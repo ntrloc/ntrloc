@@ -6,7 +6,7 @@ import org.ntrloc.graph.db.partition.security.PrincipalResolver;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.http.server.reactive.ServerHttpRequest;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -85,7 +85,7 @@ public class AccessAdminController {
 
     @GetMapping("/user-groups/{groupId}/permissions")
     List<UserGroupPermissionView> getUserGroupPermissions(@PathVariable("groupId") UUID groupId,
-                                                  ServerHttpRequest request, Authentication authentication) {
+                                                  HttpServletRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
         requireUserGroupExists(groupId);
         return getOwnPermissions(GROUP_PRINCIPAL_TYPE, groupId);
@@ -94,7 +94,7 @@ public class AccessAdminController {
     @PostMapping("/user-groups/{groupId}/permissions")
     ResponseEntity<Void> grantUserGroupPermission(@PathVariable("groupId") UUID groupId,
                                                @RequestBody PermissionRequest body,
-                                               ServerHttpRequest request, Authentication authentication) {
+                                               HttpServletRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
         requireUserGroupExists(groupId);
         requireValidPermissionRequest(body);
@@ -105,7 +105,7 @@ public class AccessAdminController {
     @DeleteMapping("/user-groups/{groupId}/permissions")
     ResponseEntity<Void> revokeUserGroupPermission(@PathVariable("groupId") UUID groupId,
                                                 @RequestBody PermissionRequest body,
-                                                ServerHttpRequest request, Authentication authentication) {
+                                                HttpServletRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
         requireUserGroupExists(groupId);
         revokePermission(GROUP_PRINCIPAL_TYPE, groupId, body);
@@ -117,7 +117,7 @@ public class AccessAdminController {
     // user's own direct grants only, the shape the Item Type perspective's detail pane needs.
     @GetMapping("/users/{userId}/permissions/own")
     List<UserGroupPermissionView> getUserOwnPermissions(@PathVariable("userId") UUID userId,
-                                                    ServerHttpRequest request, Authentication authentication) {
+                                                    HttpServletRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
         return getOwnPermissions(USER_PRINCIPAL_TYPE, userId);
     }
@@ -125,7 +125,7 @@ public class AccessAdminController {
     @PostMapping("/users/{userId}/permissions")
     ResponseEntity<Void> grantUserPermission(@PathVariable("userId") UUID userId,
                                              @RequestBody PermissionRequest body,
-                                             ServerHttpRequest request, Authentication authentication) {
+                                             HttpServletRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
         requireValidPermissionRequest(body);
         authRepo.grantItemTypeIfAbsent(body.itemTypeId(), USER_PRINCIPAL_TYPE, userId, body.operation());
@@ -135,7 +135,7 @@ public class AccessAdminController {
     @DeleteMapping("/users/{userId}/permissions")
     ResponseEntity<Void> revokeUserPermission(@PathVariable("userId") UUID userId,
                                               @RequestBody PermissionRequest body,
-                                              ServerHttpRequest request, Authentication authentication) {
+                                              HttpServletRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
         revokePermission(USER_PRINCIPAL_TYPE, userId, body);
         return ResponseEntity.noContent().build();
@@ -173,7 +173,7 @@ public class AccessAdminController {
 
     @GetMapping("/schema/item-types/{itemTypeId}/grants")
     ItemTypeGrantPrincipalsView getItemTypeGrantPrincipals(@PathVariable("itemTypeId") UUID itemTypeId,
-                                                            ServerHttpRequest request, Authentication authentication) {
+                                                            HttpServletRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
         var groupNames = securityRepo.listUserGroups().stream()
                 .collect(Collectors.toMap(g -> g.id(), g -> g.name()));
@@ -201,7 +201,7 @@ public class AccessAdminController {
        list without walking every marker in the schema one at a time. */
     @GetMapping("/user-groups/{groupId}/markers")
     List<UUID> getUserGroupGrantedMarkerIds(@PathVariable("groupId") UUID groupId,
-                                         ServerHttpRequest request, Authentication authentication) {
+                                         HttpServletRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
         requireUserGroupExists(groupId);
         return authRepo.getAllMarkerGrants().stream()
@@ -215,7 +215,7 @@ public class AccessAdminController {
     // the same reverse index for a user principal.
     @GetMapping("/users/{userId}/markers")
     List<UUID> getUserGrantedMarkerIds(@PathVariable("userId") UUID userId,
-                                        ServerHttpRequest request, Authentication authentication) {
+                                        HttpServletRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
         return authRepo.getAllMarkerGrants().stream()
                 .filter(g -> USER_PRINCIPAL_TYPE.equals(g.principalType()) && g.principalId().equals(userId))
@@ -237,7 +237,7 @@ public class AccessAdminController {
     @GetMapping("/user-groups/{groupId}/markers/{markerId}/properties")
     List<MarkerPropertyGrantView> getGroupMarkerPropertyGrants(@PathVariable("groupId") UUID groupId,
                                                                 @PathVariable("markerId") UUID markerId,
-                                                                ServerHttpRequest request, Authentication authentication) {
+                                                                HttpServletRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
         requireUserGroupExists(groupId);
         return getMarkerPropertyGrants(GROUP_PRINCIPAL_TYPE, groupId, markerId);
@@ -248,7 +248,7 @@ public class AccessAdminController {
                                                       @PathVariable("markerId") UUID markerId,
                                                       @PathVariable("propertyId") UUID propertyId,
                                                       @RequestBody MarkerPropertyGrantRequest body,
-                                                      ServerHttpRequest request, Authentication authentication) {
+                                                      HttpServletRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
         requireUserGroupExists(groupId);
         setMarkerPropertyGrant(GROUP_PRINCIPAL_TYPE, groupId, markerId, propertyId, body);
@@ -258,7 +258,7 @@ public class AccessAdminController {
     @GetMapping("/users/{userId}/markers/{markerId}/properties")
     List<MarkerPropertyGrantView> getUserMarkerPropertyGrants(@PathVariable("userId") UUID userId,
                                                                @PathVariable("markerId") UUID markerId,
-                                                               ServerHttpRequest request, Authentication authentication) {
+                                                               HttpServletRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
         return getMarkerPropertyGrants(USER_PRINCIPAL_TYPE, userId, markerId);
     }
@@ -268,7 +268,7 @@ public class AccessAdminController {
                                                      @PathVariable("markerId") UUID markerId,
                                                      @PathVariable("propertyId") UUID propertyId,
                                                      @RequestBody MarkerPropertyGrantRequest body,
-                                                     ServerHttpRequest request, Authentication authentication) {
+                                                     HttpServletRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
         setMarkerPropertyGrant(USER_PRINCIPAL_TYPE, userId, markerId, propertyId, body);
         return ResponseEntity.noContent().build();
@@ -291,7 +291,7 @@ public class AccessAdminController {
     @GetMapping("/user-groups/{groupId}/markers/{markerId}/item-permissions")
     MarkerItemGrantView getUserGroupMarkerItemGrant(@PathVariable("groupId") UUID groupId,
                                                 @PathVariable("markerId") UUID markerId,
-                                                ServerHttpRequest request, Authentication authentication) {
+                                                HttpServletRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
         requireUserGroupExists(groupId);
         return getMarkerItemGrant(GROUP_PRINCIPAL_TYPE, groupId, markerId);
@@ -301,7 +301,7 @@ public class AccessAdminController {
     ResponseEntity<Void> setUserGroupMarkerItemGrant(@PathVariable("groupId") UUID groupId,
                                                  @PathVariable("markerId") UUID markerId,
                                                  @RequestBody MarkerItemGrantRequest body,
-                                                 ServerHttpRequest request, Authentication authentication) {
+                                                 HttpServletRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
         requireUserGroupExists(groupId);
         setMarkerItemGrant(GROUP_PRINCIPAL_TYPE, groupId, markerId, body);
@@ -311,7 +311,7 @@ public class AccessAdminController {
     @GetMapping("/users/{userId}/markers/{markerId}/item-permissions")
     MarkerItemGrantView getUserMarkerItemGrant(@PathVariable("userId") UUID userId,
                                                @PathVariable("markerId") UUID markerId,
-                                               ServerHttpRequest request, Authentication authentication) {
+                                               HttpServletRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
         return getMarkerItemGrant(USER_PRINCIPAL_TYPE, userId, markerId);
     }
@@ -320,7 +320,7 @@ public class AccessAdminController {
     ResponseEntity<Void> setUserMarkerItemGrant(@PathVariable("userId") UUID userId,
                                                 @PathVariable("markerId") UUID markerId,
                                                 @RequestBody MarkerItemGrantRequest body,
-                                                ServerHttpRequest request, Authentication authentication) {
+                                                HttpServletRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
         setMarkerItemGrant(USER_PRINCIPAL_TYPE, userId, markerId, body);
         return ResponseEntity.noContent().build();
@@ -342,7 +342,7 @@ public class AccessAdminController {
     @GetMapping("/user-groups/{groupId}/markers/{markerId}/link-properties")
     List<MarkerPropertyGrantView> getGroupMarkerLinkPropertyGrants(@PathVariable("groupId") UUID groupId,
                                                                     @PathVariable("markerId") UUID markerId,
-                                                                    ServerHttpRequest request, Authentication authentication) {
+                                                                    HttpServletRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
         requireUserGroupExists(groupId);
         return getMarkerLinkPropertyGrants(GROUP_PRINCIPAL_TYPE, groupId, markerId);
@@ -353,7 +353,7 @@ public class AccessAdminController {
                                                           @PathVariable("markerId") UUID markerId,
                                                           @PathVariable("propertyId") UUID propertyId,
                                                           @RequestBody MarkerPropertyGrantRequest body,
-                                                          ServerHttpRequest request, Authentication authentication) {
+                                                          HttpServletRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
         requireUserGroupExists(groupId);
         setMarkerLinkPropertyGrant(GROUP_PRINCIPAL_TYPE, groupId, markerId, propertyId, body);
@@ -363,7 +363,7 @@ public class AccessAdminController {
     @GetMapping("/users/{userId}/markers/{markerId}/link-properties")
     List<MarkerPropertyGrantView> getUserMarkerLinkPropertyGrants(@PathVariable("userId") UUID userId,
                                                                    @PathVariable("markerId") UUID markerId,
-                                                                   ServerHttpRequest request, Authentication authentication) {
+                                                                   HttpServletRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
         return getMarkerLinkPropertyGrants(USER_PRINCIPAL_TYPE, userId, markerId);
     }
@@ -373,7 +373,7 @@ public class AccessAdminController {
                                                          @PathVariable("markerId") UUID markerId,
                                                          @PathVariable("propertyId") UUID propertyId,
                                                          @RequestBody MarkerPropertyGrantRequest body,
-                                                         ServerHttpRequest request, Authentication authentication) {
+                                                         HttpServletRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
         setMarkerLinkPropertyGrant(USER_PRINCIPAL_TYPE, userId, markerId, propertyId, body);
         return ResponseEntity.noContent().build();
@@ -395,7 +395,7 @@ public class AccessAdminController {
     @GetMapping("/user-groups/{groupId}/markers/{markerId}/link-perspectives")
     List<LinkPerspectiveGrantView> getUserGroupMarkerLinkPerspectiveGrants(@PathVariable("groupId") UUID groupId,
                                                                         @PathVariable("markerId") UUID markerId,
-                                                                        ServerHttpRequest request, Authentication authentication) {
+                                                                        HttpServletRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
         requireUserGroupExists(groupId);
         return getMarkerLinkPerspectiveGrants(GROUP_PRINCIPAL_TYPE, groupId, markerId);
@@ -406,7 +406,7 @@ public class AccessAdminController {
                                                              @PathVariable("markerId") UUID markerId,
                                                              @PathVariable("perspectiveId") UUID perspectiveId,
                                                              @RequestBody LinkPerspectiveGrantRequest body,
-                                                             ServerHttpRequest request, Authentication authentication) {
+                                                             HttpServletRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
         requireUserGroupExists(groupId);
         setMarkerLinkPerspectiveGrant(GROUP_PRINCIPAL_TYPE, groupId, markerId, perspectiveId, body);
@@ -416,7 +416,7 @@ public class AccessAdminController {
     @GetMapping("/users/{userId}/markers/{markerId}/link-perspectives")
     List<LinkPerspectiveGrantView> getUserMarkerLinkPerspectiveGrants(@PathVariable("userId") UUID userId,
                                                                        @PathVariable("markerId") UUID markerId,
-                                                                       ServerHttpRequest request, Authentication authentication) {
+                                                                       HttpServletRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
         return getMarkerLinkPerspectiveGrants(USER_PRINCIPAL_TYPE, userId, markerId);
     }
@@ -426,7 +426,7 @@ public class AccessAdminController {
                                                             @PathVariable("markerId") UUID markerId,
                                                             @PathVariable("perspectiveId") UUID perspectiveId,
                                                             @RequestBody LinkPerspectiveGrantRequest body,
-                                                            ServerHttpRequest request, Authentication authentication) {
+                                                            HttpServletRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
         setMarkerLinkPerspectiveGrant(USER_PRINCIPAL_TYPE, userId, markerId, perspectiveId, body);
         return ResponseEntity.noContent().build();
@@ -449,7 +449,7 @@ public class AccessAdminController {
     @GetMapping("/user-groups/{groupId}/markers/{markerId}/transitions")
     Set<UUID> getUserGroupMarkerTransitionGrants(@PathVariable("groupId") UUID groupId,
                                               @PathVariable("markerId") UUID markerId,
-                                              ServerHttpRequest request, Authentication authentication) {
+                                              HttpServletRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
         requireUserGroupExists(groupId);
         return authRepo.getTransitionGrantsForMarker(markerId, GROUP_PRINCIPAL_TYPE, groupId);
@@ -459,7 +459,7 @@ public class AccessAdminController {
     ResponseEntity<Void> grantUserGroupMarkerTransition(@PathVariable("groupId") UUID groupId,
                                                      @PathVariable("markerId") UUID markerId,
                                                      @PathVariable("transitionId") UUID transitionId,
-                                                     ServerHttpRequest request, Authentication authentication) {
+                                                     HttpServletRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
         requireUserGroupExists(groupId);
         grantMarkerTransition(GROUP_PRINCIPAL_TYPE, groupId, markerId, transitionId);
@@ -470,7 +470,7 @@ public class AccessAdminController {
     ResponseEntity<Void> revokeUserGroupMarkerTransition(@PathVariable("groupId") UUID groupId,
                                                       @PathVariable("markerId") UUID markerId,
                                                       @PathVariable("transitionId") UUID transitionId,
-                                                      ServerHttpRequest request, Authentication authentication) {
+                                                      HttpServletRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
         requireUserGroupExists(groupId);
         revokeMarkerTransition(GROUP_PRINCIPAL_TYPE, groupId, markerId, transitionId);
@@ -480,7 +480,7 @@ public class AccessAdminController {
     @GetMapping("/users/{userId}/markers/{markerId}/transitions")
     Set<UUID> getUserMarkerTransitionGrants(@PathVariable("userId") UUID userId,
                                              @PathVariable("markerId") UUID markerId,
-                                             ServerHttpRequest request, Authentication authentication) {
+                                             HttpServletRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
         return authRepo.getTransitionGrantsForMarker(markerId, USER_PRINCIPAL_TYPE, userId);
     }
@@ -489,7 +489,7 @@ public class AccessAdminController {
     ResponseEntity<Void> grantUserMarkerTransition(@PathVariable("userId") UUID userId,
                                                     @PathVariable("markerId") UUID markerId,
                                                     @PathVariable("transitionId") UUID transitionId,
-                                                    ServerHttpRequest request, Authentication authentication) {
+                                                    HttpServletRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
         grantMarkerTransition(USER_PRINCIPAL_TYPE, userId, markerId, transitionId);
         return ResponseEntity.noContent().build();
@@ -499,7 +499,7 @@ public class AccessAdminController {
     ResponseEntity<Void> revokeUserMarkerTransition(@PathVariable("userId") UUID userId,
                                                      @PathVariable("markerId") UUID markerId,
                                                      @PathVariable("transitionId") UUID transitionId,
-                                                     ServerHttpRequest request, Authentication authentication) {
+                                                     HttpServletRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
         revokeMarkerTransition(USER_PRINCIPAL_TYPE, userId, markerId, transitionId);
         return ResponseEntity.noContent().build();
@@ -520,7 +520,7 @@ public class AccessAdminController {
     @GetMapping("/user-groups/{groupId}/markers/{markerId}/state-machines/start")
     Set<UUID> getUserGroupMarkerStateMachineStartGrants(@PathVariable("groupId") UUID groupId,
                                                      @PathVariable("markerId") UUID markerId,
-                                                     ServerHttpRequest request, Authentication authentication) {
+                                                     HttpServletRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
         requireUserGroupExists(groupId);
         return authRepo.getStateMachineStartGrantsForMarker(markerId, GROUP_PRINCIPAL_TYPE, groupId);
@@ -530,7 +530,7 @@ public class AccessAdminController {
     ResponseEntity<Void> grantUserGroupMarkerStateMachineStart(@PathVariable("groupId") UUID groupId,
                                                             @PathVariable("markerId") UUID markerId,
                                                             @PathVariable("stateMachineId") UUID stateMachineId,
-                                                            ServerHttpRequest request, Authentication authentication) {
+                                                            HttpServletRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
         requireUserGroupExists(groupId);
         grantMarkerStateMachineStart(GROUP_PRINCIPAL_TYPE, groupId, markerId, stateMachineId);
@@ -541,7 +541,7 @@ public class AccessAdminController {
     ResponseEntity<Void> revokeUserGroupMarkerStateMachineStart(@PathVariable("groupId") UUID groupId,
                                                              @PathVariable("markerId") UUID markerId,
                                                              @PathVariable("stateMachineId") UUID stateMachineId,
-                                                             ServerHttpRequest request, Authentication authentication) {
+                                                             HttpServletRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
         requireUserGroupExists(groupId);
         revokeMarkerStateMachineStart(GROUP_PRINCIPAL_TYPE, groupId, markerId, stateMachineId);
@@ -551,7 +551,7 @@ public class AccessAdminController {
     @GetMapping("/users/{userId}/markers/{markerId}/state-machines/start")
     Set<UUID> getUserMarkerStateMachineStartGrants(@PathVariable("userId") UUID userId,
                                                     @PathVariable("markerId") UUID markerId,
-                                                    ServerHttpRequest request, Authentication authentication) {
+                                                    HttpServletRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
         return authRepo.getStateMachineStartGrantsForMarker(markerId, USER_PRINCIPAL_TYPE, userId);
     }
@@ -560,7 +560,7 @@ public class AccessAdminController {
     ResponseEntity<Void> grantUserMarkerStateMachineStart(@PathVariable("userId") UUID userId,
                                                            @PathVariable("markerId") UUID markerId,
                                                            @PathVariable("stateMachineId") UUID stateMachineId,
-                                                           ServerHttpRequest request, Authentication authentication) {
+                                                           HttpServletRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
         grantMarkerStateMachineStart(USER_PRINCIPAL_TYPE, userId, markerId, stateMachineId);
         return ResponseEntity.noContent().build();
@@ -570,7 +570,7 @@ public class AccessAdminController {
     ResponseEntity<Void> revokeUserMarkerStateMachineStart(@PathVariable("userId") UUID userId,
                                                             @PathVariable("markerId") UUID markerId,
                                                             @PathVariable("stateMachineId") UUID stateMachineId,
-                                                            ServerHttpRequest request, Authentication authentication) {
+                                                            HttpServletRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
         revokeMarkerStateMachineStart(USER_PRINCIPAL_TYPE, userId, markerId, stateMachineId);
         return ResponseEntity.noContent().build();
@@ -593,7 +593,7 @@ public class AccessAdminController {
     @DeleteMapping("/user-groups/{groupId}/markers/{markerId}")
     ResponseEntity<Void> deleteUserGroupMarkerGrant(@PathVariable("groupId") UUID groupId,
                                                 @PathVariable("markerId") UUID markerId,
-                                                ServerHttpRequest request, Authentication authentication) {
+                                                HttpServletRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
         requireUserGroupExists(groupId);
         authRepo.findMarkerGrant(markerId, GROUP_PRINCIPAL_TYPE, groupId).ifPresent(authRepo::deleteMarkerGrant);
@@ -603,7 +603,7 @@ public class AccessAdminController {
     @DeleteMapping("/users/{userId}/markers/{markerId}")
     ResponseEntity<Void> deleteUserMarkerGrant(@PathVariable("userId") UUID userId,
                                                @PathVariable("markerId") UUID markerId,
-                                               ServerHttpRequest request, Authentication authentication) {
+                                               HttpServletRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
         authRepo.findMarkerGrant(markerId, USER_PRINCIPAL_TYPE, userId).ifPresent(authRepo::deleteMarkerGrant);
         return ResponseEntity.noContent().build();
@@ -613,7 +613,7 @@ public class AccessAdminController {
 
     @GetMapping("/users/{userId}/permissions")
     List<UserPermissionView> getUserEffectivePermissions(@PathVariable("userId") UUID userId,
-                                                         ServerHttpRequest request, Authentication authentication) {
+                                                         HttpServletRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
 
         // Get all groups user belongs to
@@ -665,7 +665,7 @@ public class AccessAdminController {
 
     @GetMapping("/users/{userId}/user-groups")
     List<UserGroupMembershipView> getUserGroups(@PathVariable("userId") UUID userId,
-                                            ServerHttpRequest request, Authentication authentication) {
+                                            HttpServletRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
         return securityRepo.getUserGroupsForUser(userId).stream()
                 .map(g -> new UserGroupMembershipView(g.id(), g.name()))
@@ -675,7 +675,7 @@ public class AccessAdminController {
     // --- Schema item types listing ---
 
     @GetMapping("/schema/item-types")
-    List<ItemTypeView> listItemTypes(ServerHttpRequest request, Authentication authentication) {
+    List<ItemTypeView> listItemTypes(HttpServletRequest request, Authentication authentication) {
         requireAdmin(request, authentication);
         return schemaRepo.getAllItems().stream()
                 .map(item -> new ItemTypeView(item.id(), item.name()))
@@ -685,7 +685,7 @@ public class AccessAdminController {
 
     // --- Helpers ---
 
-    private void requireAdmin(ServerHttpRequest request, Authentication authentication) {
+    private void requireAdmin(HttpServletRequest request, Authentication authentication) {
         var principal = principalResolver.resolve(request, authentication);
         if (!principal.isSuperuser()) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only admins can manage access");

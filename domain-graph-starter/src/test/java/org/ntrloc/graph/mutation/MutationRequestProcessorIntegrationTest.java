@@ -1,9 +1,10 @@
 package org.ntrloc.graph.mutation;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.coordinator.CoordinatorTestDomainInitializer;
-import org.ntrloc.graph.db.partition.authorization.MarkerAssignmentService;
+import org.ntrloc.graph.db.partition.authorization.ManualMarkerAssignmentService;
 import org.ntrloc.graph.db.partition.authorization.PermissionService;
 import org.ntrloc.graph.db.partition.authorization.repository.AuthorizationRepository;
 import org.ntrloc.graph.db.partition.binary.BinaryPartitionManager;
@@ -24,14 +25,17 @@ import org.ntrloc.graph.db.partition.schema.definition.mutation.ExistingControll
 import org.ntrloc.graph.db.partition.schema.definition.mutation.SetPropertyControlledListMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.UpdateItemDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.UpdatePropertyDefinitionMutation;
-import org.ntrloc.graph.db.partition.security.ResolvedPrincipal;
+import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
+import org.ntrloc.graph.db.partition.security.TestPrincipals;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.ntrloc.graph.projection.ProjectedLink;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.core.io.buffer.DefaultDataBufferFactory;
 import org.springframework.jdbc.core.simple.JdbcClient;
-import reactor.core.publisher.Flux;
+import org.springframework.security.authorization.AuthorizationDeniedException;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -59,8 +63,10 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
     private static final String PRODUCT_PERSPECTIVE = "products";
     private static final String CONTRIBUTOR_PERSPECTIVE = "contributors";
 
-    private static final ResolvedPrincipal SOME_PRINCIPAL =
-            new ResolvedPrincipal(UUID.randomUUID(), "test-user", "Test User", null, Set.of(), true);
+    // Not static/final: needs a real, backed security_user row now that ledger_entry.created_by
+    // (Part E) has a NOT NULL FK to security_user.id -- created fresh per test in setUp() via the
+    // already-autowired securityRepo, which a static initializer can't reach.
+    private NtrlocPrincipal SOME_PRINCIPAL;
 
     @Autowired
     private MutationRequestProcessor processor;
@@ -93,11 +99,20 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
     private SecurityRepository securityRepo;
 
     @Autowired
-    private MarkerAssignmentService markerAssignmentService;
+    private ManualMarkerAssignmentService markerAssignmentService;
+
+    @BeforeEach
+    void setUpSomePrincipal() {
+        var user = securityRepo.createUser("test-user-" + UUID.randomUUID(), "Test User", null, true);
+        SOME_PRINCIPAL = TestPrincipals.of(user.id(), user.externalId(), user.displayName(), null, Set.of(), true);
+    }
 
     private UUID storeBinary(byte[] content) {
-        var buffer = new DefaultDataBufferFactory().wrap(content);
-        return binaryPartitionManager.store(Flux.just(buffer)).block();
+        try {
+            return binaryPartitionManager.store(new ByteArrayInputStream(content));
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     private UUID createItem(String itemTypeName) {
@@ -117,11 +132,17 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
         assertThat(response.links()).isEmpty();
     }
 
+    // Was nullPrincipal_isAcceptedAndAttributesNothing_attributionIsBestEffortNotRequired: process()
+    // used to tolerate a null principal, treating an unresolvable caller as a displayable ledger
+    // state rather than a reason to refuse. SEV-0 lockdown (see
+    // docs/ntrloc-principal-enforcement-plan.md, Part C) decided there is no legitimate anonymous
+    // mutation -- process() now demands a real principal via @PreAuthorize, enforced by Spring,
+    // not a scattered null-check. AuthorizationDeniedException, not NullPointerException, is what
+    // proves the guard fired before the method body ever ran.
     @Test
-    void nullPrincipal_isAcceptedAndAttributesNothing_attributionIsBestEffortNotRequired() {
-        MutationResponse response = processor.process(new MutationRequest(null, null), null);
-
-        assertThat(response.items()).isEmpty();
+    void nullPrincipal_isRejectedBeforeTheMethodBodyRuns() {
+        assertThatThrownBy(() -> processor.process(new MutationRequest(null, null), null))
+                .isInstanceOf(AuthorizationDeniedException.class);
     }
 
     // --- Link update/delete top-level dispatch ---
@@ -1552,7 +1573,7 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
         String typeName = "MutReqProcCreatePerm-" + UUID.randomUUID();
         schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(typeName, "d", List.of(), null, false, null)));
         var user = securityRepo.createUser("sme-" + UUID.randomUUID(), "Restricted", null, false);
-        var principal = new ResolvedPrincipal(user.id(), user.externalId(), user.displayName(), null, Set.of(), false);
+        var principal = TestPrincipals.of(user.id(), user.externalId(), user.displayName(), null, Set.of(), false);
 
         assertThatThrownBy(() -> processor.process(new MutationRequest(
                 List.of(new ItemCreateMutation(null, typeName, Map.of())), List.of()), principal))
@@ -1568,25 +1589,13 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
         UUID typeId = schemaManager.getAdminSchema().items().stream()
                 .filter(i -> i.name().equals(typeName)).findFirst().orElseThrow().id();
         var user = securityRepo.createUser("sme-" + UUID.randomUUID(), "Restricted", null, false);
-        var principal = new ResolvedPrincipal(user.id(), user.externalId(), user.displayName(), null, Set.of(), false);
+        var principal = TestPrincipals.of(user.id(), user.externalId(), user.displayName(), null, Set.of(), false);
         authRepo.grantItemType(typeId, "USER", user.id(), PermissionService.ITEM_TYPE_CREATE);
 
         MutationResponse response = processor.process(new MutationRequest(
                 List.of(new ItemCreateMutation(null, typeName, Map.of())), List.of()), principal);
 
         assertThat(response.items()).hasSize(1);
-    }
-
-    @Test
-    void itemCreateMutation_withANullPrincipal_reportsAValidationError() {
-        String typeName = "MutReqProcCreatePermNull-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(typeName, "d", List.of(), null, false, null)));
-
-        assertThatThrownBy(() -> processor.process(new MutationRequest(
-                List.of(new ItemCreateMutation(null, typeName, Map.of())), List.of()), null))
-                .isInstanceOf(MutationValidationException.class)
-                .satisfies(e -> assertThat(((MutationValidationException) e).errors())
-                        .anyMatch(err -> err.message().toLowerCase().contains("not permitted")));
     }
 
     // --- Item property-write permission (property:write, marker-mediated) ---
@@ -1607,9 +1616,9 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
                 .items().get(0).itemId();
 
         var user = securityRepo.createUser("sme-" + UUID.randomUUID(), "Restricted", null, false);
-        var principal = new ResolvedPrincipal(user.id(), user.externalId(), user.displayName(), null, Set.of(), false);
+        var principal = TestPrincipals.of(user.id(), user.externalId(), user.displayName(), null, Set.of(), false);
         var marker = authRepo.createMarker("sme-" + UUID.randomUUID(), "test", "ITEM_TYPE", typeId);
-        markerAssignmentService.addItemMarker(itemId, marker.id(), "test", "test");
+        markerAssignmentService.addItemMarker(itemId, marker.id(), SOME_PRINCIPAL, "test");
         authRepo.ensureMarkerGrant(marker.id(), "USER", user.id());
         // Deliberately no property:write grant for "notes".
 
@@ -1636,9 +1645,9 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
                 .items().get(0).itemId();
 
         var user = securityRepo.createUser("sme-" + UUID.randomUUID(), "Restricted", null, false);
-        var principal = new ResolvedPrincipal(user.id(), user.externalId(), user.displayName(), null, Set.of(), false);
+        var principal = TestPrincipals.of(user.id(), user.externalId(), user.displayName(), null, Set.of(), false);
         var marker = authRepo.createMarker("sme-" + UUID.randomUUID(), "test", "ITEM_TYPE", typeId);
-        markerAssignmentService.addItemMarker(itemId, marker.id(), "test", "test");
+        markerAssignmentService.addItemMarker(itemId, marker.id(), SOME_PRINCIPAL, "test");
         UUID grantId = authRepo.ensureMarkerGrant(marker.id(), "USER", user.id());
         authRepo.grantPropertyAccess(grantId, notesPropertyId, false, true);
 
@@ -1646,23 +1655,6 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
                 List.of(new ItemUpdateMutation(itemId, Map.of("notes", "hello"))), List.of()), principal);
 
         assertThat(response.items()).hasSize(1);
-    }
-
-    @Test
-    void itemUpdateMutation_withANullPrincipal_reportsAValidationError() {
-        String typeName = "MutReqProcWritePermNull-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(typeName, "d", List.of(
-                new CreatePropertyDefinitionMutation("notes", "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)),
-                null, false, null)));
-        UUID itemId = processor.process(new MutationRequest(
-                List.of(new ItemCreateMutation(null, typeName, Map.of())), List.of()), SOME_PRINCIPAL)
-                .items().get(0).itemId();
-
-        assertThatThrownBy(() -> processor.process(new MutationRequest(
-                List.of(new ItemUpdateMutation(itemId, Map.of("notes", "hello"))), List.of()), null))
-                .isInstanceOf(MutationValidationException.class)
-                .satisfies(e -> assertThat(((MutationValidationException) e).errors())
-                        .anyMatch(err -> err.message().toLowerCase().contains("not permitted")));
     }
 
     // --- Item-delete permission (item:delete, marker-mediated) ---
@@ -1678,9 +1670,9 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
                 .items().get(0).itemId();
 
         var user = securityRepo.createUser("sme-" + UUID.randomUUID(), "Restricted", null, false);
-        var principal = new ResolvedPrincipal(user.id(), user.externalId(), user.displayName(), null, Set.of(), false);
+        var principal = TestPrincipals.of(user.id(), user.externalId(), user.displayName(), null, Set.of(), false);
         var marker = authRepo.createMarker("sme-" + UUID.randomUUID(), "test", "ITEM_TYPE", typeId);
-        markerAssignmentService.addItemMarker(itemId, marker.id(), "test", "test");
+        markerAssignmentService.addItemMarker(itemId, marker.id(), SOME_PRINCIPAL, "test");
         UUID grantId = authRepo.ensureMarkerGrant(marker.id(), "USER", user.id());
         authRepo.setItemPermissions(grantId, true, false); // item:read only, no item:delete
 
@@ -1702,9 +1694,9 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
                 .items().get(0).itemId();
 
         var user = securityRepo.createUser("sme-" + UUID.randomUUID(), "Restricted", null, false);
-        var principal = new ResolvedPrincipal(user.id(), user.externalId(), user.displayName(), null, Set.of(), false);
+        var principal = TestPrincipals.of(user.id(), user.externalId(), user.displayName(), null, Set.of(), false);
         var marker = authRepo.createMarker("sme-" + UUID.randomUUID(), "test", "ITEM_TYPE", typeId);
-        markerAssignmentService.addItemMarker(itemId, marker.id(), "test", "test");
+        markerAssignmentService.addItemMarker(itemId, marker.id(), SOME_PRINCIPAL, "test");
         UUID grantId = authRepo.ensureMarkerGrant(marker.id(), "USER", user.id());
         authRepo.setItemPermissions(grantId, true, true); // item:read + item:delete
 
@@ -1712,21 +1704,6 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
                 List.of(new ItemDeleteMutation(itemId)), List.of()), principal);
 
         assertThat(response.items()).extracting(r -> r.operation().name()).containsExactly("DELETE");
-    }
-
-    @Test
-    void itemDeleteMutation_withANullPrincipal_reportsAValidationError() {
-        String typeName = "MutReqProcDeletePermNull-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(typeName, "d", List.of(), null, false, null)));
-        UUID itemId = processor.process(new MutationRequest(
-                List.of(new ItemCreateMutation(null, typeName, Map.of())), List.of()), SOME_PRINCIPAL)
-                .items().get(0).itemId();
-
-        assertThatThrownBy(() -> processor.process(new MutationRequest(
-                List.of(new ItemDeleteMutation(itemId)), List.of()), null))
-                .isInstanceOf(MutationValidationException.class)
-                .satisfies(e -> assertThat(((MutationValidationException) e).errors())
-                        .anyMatch(err -> err.message().toLowerCase().contains("not permitted")));
     }
 
     // --- Link-create permission (link:create, marker-mediated, per perspective) ---
@@ -1746,9 +1723,9 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
         UUID perspectiveAId = perspectiveIdFor(link.aItemId(), link.perspectiveA());
 
         var user = securityRepo.createUser("sme-" + UUID.randomUUID(), "Restricted", null, false);
-        var principal = new ResolvedPrincipal(user.id(), user.externalId(), user.displayName(), null, Set.of(), false);
+        var principal = TestPrincipals.of(user.id(), user.externalId(), user.displayName(), null, Set.of(), false);
         var marker = authRepo.createMarker("sme-" + UUID.randomUUID(), "test", "ITEM_TYPE", registerPartitionManager.findItemTypeId(link.aItemId()).orElseThrow());
-        markerAssignmentService.addItemMarker(link.aItemId(), marker.id(), "test", "test");
+        markerAssignmentService.addItemMarker(link.aItemId(), marker.id(), SOME_PRINCIPAL, "test");
         UUID grantId = authRepo.ensureMarkerGrant(marker.id(), "USER", user.id());
         authRepo.grantLinkPerspectiveAccess(grantId, perspectiveAId, true, false, false); // link:create on side A only
 
@@ -1766,13 +1743,13 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
         UUID perspectiveBId = perspectiveIdFor(link.bItemId(), link.perspectiveB());
 
         var user = securityRepo.createUser("sme-" + UUID.randomUUID(), "Restricted", null, false);
-        var principal = new ResolvedPrincipal(user.id(), user.externalId(), user.displayName(), null, Set.of(), false);
+        var principal = TestPrincipals.of(user.id(), user.externalId(), user.displayName(), null, Set.of(), false);
         var markerA = authRepo.createMarker("sme-" + UUID.randomUUID(), "test", "ITEM_TYPE", registerPartitionManager.findItemTypeId(link.aItemId()).orElseThrow());
-        markerAssignmentService.addItemMarker(link.aItemId(), markerA.id(), "test", "test");
+        markerAssignmentService.addItemMarker(link.aItemId(), markerA.id(), SOME_PRINCIPAL, "test");
         UUID grantIdA = authRepo.ensureMarkerGrant(markerA.id(), "USER", user.id());
         authRepo.grantLinkPerspectiveAccess(grantIdA, perspectiveAId, true, false, false);
         var markerB = authRepo.createMarker("sme-" + UUID.randomUUID(), "test", "ITEM_TYPE", registerPartitionManager.findItemTypeId(link.bItemId()).orElseThrow());
-        markerAssignmentService.addItemMarker(link.bItemId(), markerB.id(), "test", "test");
+        markerAssignmentService.addItemMarker(link.bItemId(), markerB.id(), SOME_PRINCIPAL, "test");
         UUID grantIdB = authRepo.ensureMarkerGrant(markerB.id(), "USER", user.id());
         authRepo.grantLinkPerspectiveAccess(grantIdB, perspectiveBId, true, false, false);
 
@@ -1780,17 +1757,6 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
                 List.of(link.create(Map.of()))), principal);
 
         assertThat(response.links()).hasSize(1);
-    }
-
-    @Test
-    void linkCreateMutation_withANullPrincipal_reportsAValidationError() {
-        FreshLinkFixture link = createFreshLinkType(List.of());
-
-        assertThatThrownBy(() -> processor.process(new MutationRequest(List.of(),
-                List.of(link.create(Map.of()))), null))
-                .isInstanceOf(MutationValidationException.class)
-                .satisfies(e -> assertThat(((MutationValidationException) e).errors())
-                        .anyMatch(err -> err.message().toLowerCase().contains("not permitted")));
     }
 
     // --- Link-delete permission (link:delete, marker-mediated, per perspective) ---
@@ -1806,9 +1772,9 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
         UUID perspectiveAId = perspectiveIdFor(link.aItemId(), link.perspectiveA());
 
         var user = securityRepo.createUser("sme-" + UUID.randomUUID(), "Restricted", null, false);
-        var principal = new ResolvedPrincipal(user.id(), user.externalId(), user.displayName(), null, Set.of(), false);
+        var principal = TestPrincipals.of(user.id(), user.externalId(), user.displayName(), null, Set.of(), false);
         var marker = authRepo.createMarker("sme-" + UUID.randomUUID(), "test", "ITEM_TYPE", registerPartitionManager.findItemTypeId(link.aItemId()).orElseThrow());
-        markerAssignmentService.addItemMarker(link.aItemId(), marker.id(), "test", "test");
+        markerAssignmentService.addItemMarker(link.aItemId(), marker.id(), SOME_PRINCIPAL, "test");
         UUID grantId = authRepo.ensureMarkerGrant(marker.id(), "USER", user.id());
         authRepo.grantLinkPerspectiveAccess(grantId, perspectiveAId, false, false, true); // link:delete on side A only
 
@@ -1829,13 +1795,13 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
         UUID perspectiveBId = perspectiveIdFor(link.bItemId(), link.perspectiveB());
 
         var user = securityRepo.createUser("sme-" + UUID.randomUUID(), "Restricted", null, false);
-        var principal = new ResolvedPrincipal(user.id(), user.externalId(), user.displayName(), null, Set.of(), false);
+        var principal = TestPrincipals.of(user.id(), user.externalId(), user.displayName(), null, Set.of(), false);
         var markerA = authRepo.createMarker("sme-" + UUID.randomUUID(), "test", "ITEM_TYPE", registerPartitionManager.findItemTypeId(link.aItemId()).orElseThrow());
-        markerAssignmentService.addItemMarker(link.aItemId(), markerA.id(), "test", "test");
+        markerAssignmentService.addItemMarker(link.aItemId(), markerA.id(), SOME_PRINCIPAL, "test");
         UUID grantIdA = authRepo.ensureMarkerGrant(markerA.id(), "USER", user.id());
         authRepo.grantLinkPerspectiveAccess(grantIdA, perspectiveAId, false, false, true);
         var markerB = authRepo.createMarker("sme-" + UUID.randomUUID(), "test", "ITEM_TYPE", registerPartitionManager.findItemTypeId(link.bItemId()).orElseThrow());
-        markerAssignmentService.addItemMarker(link.bItemId(), markerB.id(), "test", "test");
+        markerAssignmentService.addItemMarker(link.bItemId(), markerB.id(), SOME_PRINCIPAL, "test");
         UUID grantIdB = authRepo.ensureMarkerGrant(markerB.id(), "USER", user.id());
         authRepo.grantLinkPerspectiveAccess(grantIdB, perspectiveBId, false, false, true);
 
@@ -1843,20 +1809,6 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
                 List.of(new LinkDeleteMutation(linkId))), principal);
 
         assertThat(response.links()).extracting(r -> r.operation().name()).containsExactly("DELETE");
-    }
-
-    @Test
-    void linkDeleteMutation_withANullPrincipal_reportsAValidationError() {
-        FreshLinkFixture link = createFreshLinkType(List.of());
-        UUID linkId = processor.process(new MutationRequest(List.of(),
-                List.of(link.create(Map.of()))), SOME_PRINCIPAL)
-                .links().get(0).linkId();
-
-        assertThatThrownBy(() -> processor.process(new MutationRequest(List.of(),
-                List.of(new LinkDeleteMutation(linkId))), null))
-                .isInstanceOf(MutationValidationException.class)
-                .satisfies(e -> assertThat(((MutationValidationException) e).errors())
-                        .anyMatch(err -> err.message().toLowerCase().contains("not permitted")));
     }
 
     // --- Link property-write permission (link_property:write, marker-mediated) ---
@@ -1891,9 +1843,9 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
                 .links().get(0).linkId();
 
         var user = securityRepo.createUser("sme-" + UUID.randomUUID(), "Restricted", null, false);
-        var principal = new ResolvedPrincipal(user.id(), user.externalId(), user.displayName(), null, Set.of(), false);
+        var principal = TestPrincipals.of(user.id(), user.externalId(), user.displayName(), null, Set.of(), false);
         var markerA = authRepo.createMarker("sme-" + UUID.randomUUID(), "test", "ITEM_TYPE", registerPartitionManager.findItemTypeId(link.aItemId()).orElseThrow());
-        markerAssignmentService.addItemMarker(link.aItemId(), markerA.id(), "test", "test");
+        markerAssignmentService.addItemMarker(link.aItemId(), markerA.id(), SOME_PRINCIPAL, "test");
         UUID grantIdA = authRepo.ensureMarkerGrant(markerA.id(), "USER", user.id());
         authRepo.grantLinkPropertyAccess(grantIdA, notePropertyId, false, true); // write on side A only
 
@@ -1914,13 +1866,13 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
                 .links().get(0).linkId();
 
         var user = securityRepo.createUser("sme-" + UUID.randomUUID(), "Restricted", null, false);
-        var principal = new ResolvedPrincipal(user.id(), user.externalId(), user.displayName(), null, Set.of(), false);
+        var principal = TestPrincipals.of(user.id(), user.externalId(), user.displayName(), null, Set.of(), false);
         var markerA = authRepo.createMarker("sme-" + UUID.randomUUID(), "test", "ITEM_TYPE", registerPartitionManager.findItemTypeId(link.aItemId()).orElseThrow());
-        markerAssignmentService.addItemMarker(link.aItemId(), markerA.id(), "test", "test");
+        markerAssignmentService.addItemMarker(link.aItemId(), markerA.id(), SOME_PRINCIPAL, "test");
         UUID grantIdA = authRepo.ensureMarkerGrant(markerA.id(), "USER", user.id());
         authRepo.grantLinkPropertyAccess(grantIdA, notePropertyId, false, true);
         var markerB = authRepo.createMarker("sme-" + UUID.randomUUID(), "test", "ITEM_TYPE", registerPartitionManager.findItemTypeId(link.bItemId()).orElseThrow());
-        markerAssignmentService.addItemMarker(link.bItemId(), markerB.id(), "test", "test");
+        markerAssignmentService.addItemMarker(link.bItemId(), markerB.id(), SOME_PRINCIPAL, "test");
         UUID grantIdB = authRepo.ensureMarkerGrant(markerB.id(), "USER", user.id());
         authRepo.grantLinkPropertyAccess(grantIdB, notePropertyId, false, true);
 
@@ -1928,21 +1880,6 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
                 List.of(new LinkUpdateMutation(linkId, Map.of(propertyName, "hello")))), principal);
 
         assertThat(response.links()).extracting(r -> r.operation().name()).containsExactly("UPDATE");
-    }
-
-    @Test
-    void linkUpdateMutation_withANullPrincipal_reportsAValidationError() {
-        String propertyName = "note-" + UUID.randomUUID();
-        FreshLinkFixture link = createFreshLinkTypeWithProperty(propertyName);
-        UUID linkId = processor.process(new MutationRequest(List.of(),
-                List.of(link.create(Map.of()))), SOME_PRINCIPAL)
-                .links().get(0).linkId();
-
-        assertThatThrownBy(() -> processor.process(new MutationRequest(List.of(),
-                List.of(new LinkUpdateMutation(linkId, Map.of(propertyName, "hello")))), null))
-                .isInstanceOf(MutationValidationException.class)
-                .satisfies(e -> assertThat(((MutationValidationException) e).errors())
-                        .anyMatch(err -> err.message().toLowerCase().contains("not permitted")));
     }
 
     // Isolates the NEW create-time link-property-write check from the already-covered
@@ -1956,13 +1893,13 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
         UUID perspectiveBId = perspectiveIdFor(link.bItemId(), link.perspectiveB());
 
         var user = securityRepo.createUser("sme-" + UUID.randomUUID(), "Restricted", null, false);
-        var principal = new ResolvedPrincipal(user.id(), user.externalId(), user.displayName(), null, Set.of(), false);
+        var principal = TestPrincipals.of(user.id(), user.externalId(), user.displayName(), null, Set.of(), false);
         var markerA = authRepo.createMarker("sme-" + UUID.randomUUID(), "test", "ITEM_TYPE", registerPartitionManager.findItemTypeId(link.aItemId()).orElseThrow());
-        markerAssignmentService.addItemMarker(link.aItemId(), markerA.id(), "test", "test");
+        markerAssignmentService.addItemMarker(link.aItemId(), markerA.id(), SOME_PRINCIPAL, "test");
         UUID grantIdA = authRepo.ensureMarkerGrant(markerA.id(), "USER", user.id());
         authRepo.grantLinkPerspectiveAccess(grantIdA, perspectiveAId, true, false, false);
         var markerB = authRepo.createMarker("sme-" + UUID.randomUUID(), "test", "ITEM_TYPE", registerPartitionManager.findItemTypeId(link.bItemId()).orElseThrow());
-        markerAssignmentService.addItemMarker(link.bItemId(), markerB.id(), "test", "test");
+        markerAssignmentService.addItemMarker(link.bItemId(), markerB.id(), SOME_PRINCIPAL, "test");
         UUID grantIdB = authRepo.ensureMarkerGrant(markerB.id(), "USER", user.id());
         authRepo.grantLinkPerspectiveAccess(grantIdB, perspectiveBId, true, false, false);
         // Deliberately no link_property:write grant for this property on either side.

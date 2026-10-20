@@ -6,7 +6,7 @@ import org.springframework.ai.mcp.server.common.autoconfigure.McpServerAutoConfi
 import org.springframework.ai.mcp.server.common.autoconfigure.McpServerStdioDisabledCondition;
 import org.springframework.ai.mcp.server.common.autoconfigure.properties.McpServerProperties;
 import org.springframework.ai.mcp.server.common.autoconfigure.properties.McpServerStreamableHttpProperties;
-import org.springframework.ai.mcp.server.webflux.transport.WebFluxStreamableServerTransportProvider;
+import org.springframework.ai.mcp.server.webmvc.transport.WebMvcStreamableServerTransportProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -16,7 +16,7 @@ import org.springframework.context.annotation.Conditional;
 import org.springframework.context.annotation.Configuration;
 import tools.jackson.databind.json.JsonMapper;
 
-// Overrides McpServerStreamableHttpWebFluxAutoConfiguration's own transport-provider bean (that
+// Overrides McpServerStreamableHttpWebMvcAutoConfiguration's own transport-provider bean (that
 // one is @ConditionalOnMissingBean, exactly for this kind of extension) purely to add a
 // contextExtractor -- see McpTransportContextConfig's own comment for why, and
 // MutationService.executeMutation for where it actually gets used.
@@ -35,6 +35,10 @@ import tools.jackson.databind.json.JsonMapper;
 // belt-and-suspenders @ConditionalOnMissingBean(McpServerTransportProvider.class) additionally
 // checks against (see McpSseTransportContextConfig) -- but getting the phase right here is what
 // actually makes that check see the right thing.
+//
+// One API difference from the WebFlux builder, confirmed by decompiling both: this builder's
+// endpoint setter is named mcpEndpoint(String), not messageEndpoint(String) -- same underlying
+// field name (mcpEndpoint) on both, but only the WebFlux builder exposes it as messageEndpoint().
 @Configuration
 @ConditionalOnClass(McpSchema.class)
 @EnableConfigurationProperties({ McpServerProperties.class, McpServerStreamableHttpProperties.class })
@@ -43,12 +47,12 @@ public class McpStreamableTransportContextConfig {
 
     @Bean
     @ConditionalOnMissingBean
-    public WebFluxStreamableServerTransportProvider webFluxStreamableServerTransportProvider(
+    public WebMvcStreamableServerTransportProvider webMvcStreamableServerTransportProvider(
             @Qualifier("mcpServerJsonMapper") JsonMapper jsonMapper,
             McpServerStreamableHttpProperties serverProperties) {
-        return WebFluxStreamableServerTransportProvider.builder()
+        return WebMvcStreamableServerTransportProvider.builder()
                 .jsonMapper(new JacksonMcpJsonMapper(jsonMapper))
-                .messageEndpoint(serverProperties.getMcpEndpoint())
+                .mcpEndpoint(serverProperties.getMcpEndpoint())
                 .keepAliveInterval(serverProperties.getKeepAliveInterval())
                 .disallowDelete(serverProperties.isDisallowDelete())
                 .contextExtractor(McpTransportContextConfig::extractAuthorizationHeader)

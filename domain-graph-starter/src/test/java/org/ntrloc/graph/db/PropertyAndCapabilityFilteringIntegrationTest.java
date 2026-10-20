@@ -1,17 +1,18 @@
 package org.ntrloc.graph.db;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.coordinator.CoordinatorTestDomainInitializer;
 import org.ntrloc.graph.db.coordinator.LedgerRegisterCoordinator;
 import org.ntrloc.graph.db.partition.authorization.DefaultUserGroupInitializer;
-import org.ntrloc.graph.db.partition.authorization.MarkerAssignmentService;
+import org.ntrloc.graph.db.partition.authorization.ManualMarkerAssignmentService;
 import org.ntrloc.graph.db.partition.authorization.repository.AuthorizationRepository;
 import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
 import org.ntrloc.graph.db.partition.ledger.LinkCreateEntry;
 import org.ntrloc.graph.db.partition.ledger.LinkEndpoint;
 import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
-import org.ntrloc.graph.db.partition.security.ResolvedPrincipal;
+import org.ntrloc.graph.db.partition.security.TestPrincipals;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.ntrloc.graph.db.partition.authorization.repository.AuthorizationRepository.MarkerRow;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
@@ -29,6 +30,7 @@ import org.ntrloc.graph.projection.PropertyValuePredicate;
 import org.ntrloc.graph.projection.TermsFacetFilter;
 import org.springframework.beans.factory.annotation.Autowired;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -60,7 +62,7 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
     private CoordinatorTestDomainInitializer fixture;
 
     @Autowired
-    private MarkerAssignmentService markerAssignmentService;
+    private ManualMarkerAssignmentService markerAssignmentService;
 
     @Autowired
     private AuthorizationRepository authRepo;
@@ -74,11 +76,22 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
     @Autowired
     private SchemaManager schemaManager;
 
+    // Not static/final: needs a real, backed security_user row now that ledger_entry.created_by
+    // (Part E) has a NOT NULL FK to security_user.id -- created fresh per test in setUp() via the
+    // already-autowired securityRepo, which a static initializer can't reach.
+    private NtrlocPrincipal SUPERUSER;
+
+    @BeforeEach
+    void setUpSuperuser() {
+        var user = securityRepo.createUser("pcf-root-" + UUID.randomUUID(), "Root", null, true);
+        SUPERUSER = TestPrincipals.of(user.id(), user.externalId(), user.displayName(), null, Set.of(), true);
+    }
+
     private UUID createProduct(String name, String color) {
         UUID itemId = UUID.randomUUID();
         UUID txn = UUID.randomUUID();
         coordinator.prepare(List.of(new ItemCreateEntry(itemId, fixture.productTypeId(),
-                Map.of(fixture.namePropertyId(), name, fixture.colorPropertyId(), color), Map.of(), Set.of())), txn, null);
+                Map.of(fixture.namePropertyId(), name, fixture.colorPropertyId(), color), Map.of(), Set.of())), txn, SUPERUSER.id(), OffsetDateTime.now());
         coordinator.commit(txn, UUID.randomUUID());
         return itemId;
     }
@@ -87,7 +100,7 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
         UUID id = UUID.randomUUID();
         UUID txn = UUID.randomUUID();
         coordinator.prepare(List.of(new ItemCreateEntry(id, fixture.contributorTypeId(),
-                Map.of(fixture.contributorNamePropertyId(), "Ada"), Map.of(), Set.of())), txn, null);
+                Map.of(fixture.contributorNamePropertyId(), "Ada"), Map.of(), Set.of())), txn, SUPERUSER.id(), OffsetDateTime.now());
         coordinator.commit(txn, UUID.randomUUID());
         return id;
     }
@@ -98,7 +111,7 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
         coordinator.prepare(List.of(new LinkCreateEntry(linkId, fixture.linkTypeId(),
                 new LinkEndpoint(fixture.productPerspectiveId(), productId),
                 new LinkEndpoint(fixture.contributorPerspectiveId(), contributorId),
-                Map.of(fixture.rolePropertyId(), role))), txn, null);
+                Map.of(fixture.rolePropertyId(), role))), txn, SUPERUSER.id(), OffsetDateTime.now());
         coordinator.commit(txn, UUID.randomUUID());
         return linkId;
     }
@@ -107,15 +120,12 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
         var user = securityRepo.createUser("pcf-" + UUID.randomUUID(), "Restricted", null, false);
         UUID everyoneUserGroupId = defaultUserGroupInitializer.getDefaultUserGroupId();
         securityRepo.addUserToUserGroup(user.id(), everyoneUserGroupId);
-        return new ResolvedPrincipal(user.id(), user.externalId(), user.externalId(), null, Set.of(everyoneUserGroupId), false);
+        return TestPrincipals.of(user.id(), user.externalId(), user.externalId(), null, Set.of(everyoneUserGroupId), false);
     }
-
-    private static final NtrlocPrincipal SUPERUSER =
-            new ResolvedPrincipal(UUID.randomUUID(), "pcf-root", "Root", null, Set.of(), true);
 
     private MarkerRow markerOnItem(UUID itemId) {
         var marker = authRepo.createMarker("pcf-" + UUID.randomUUID(), "test fixture", "ITEM_TYPE", fixture.productTypeId());
-        markerAssignmentService.addItemMarker(itemId, marker.id(), "test-actor", "test reason");
+        markerAssignmentService.addItemMarker(itemId, marker.id(), SUPERUSER, "test reason");
         return marker;
     }
 
@@ -625,7 +635,7 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
         UUID txn = UUID.randomUUID();
         UUID typeId = schemaManager.getAdminSchema().items().stream()
                 .filter(i -> i.name().equals(typeName)).findFirst().orElseThrow().id();
-        coordinator.prepare(List.of(new ItemCreateEntry(itemId, typeId, Map.of(activePropertyId, true), Map.of(), Set.of())), txn, null);
+        coordinator.prepare(List.of(new ItemCreateEntry(itemId, typeId, Map.of(activePropertyId, true), Map.of(), Set.of())), txn, SUPERUSER.id(), OffsetDateTime.now());
         coordinator.commit(txn, UUID.randomUUID());
         UUID grantId = grantId(markerOnItem(itemId).id(), principal);
         authRepo.setItemPermissions(grantId, true, false);

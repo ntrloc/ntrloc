@@ -1,5 +1,6 @@
 package org.ntrloc.graph.db.coordinator;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
@@ -9,9 +10,11 @@ import org.ntrloc.graph.db.partition.ledger.LinkCreateEntry;
 import org.ntrloc.graph.db.partition.ledger.LinkEndpoint;
 import org.ntrloc.graph.db.partition.ledger.LinkUpdateEntry;
 import org.ntrloc.graph.db.partition.register.RegisterPartitionManager;
+import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -33,12 +36,24 @@ class LedgerRegisterCoordinatorIntegrationTest extends AbstractIntegrationTest {
     @Autowired
     private JdbcClient jdbcClient;
 
+    @Autowired
+    private SecurityRepository securityRepo;
+
+    // ledger_entry.created_by/register_item.created_by (Part E) are NOT NULL FKs to
+    // security_user.id -- every coordinator.prepare call below needs a real, backed actor.
+    private SecurityRepository.UserRow actor;
+
+    @BeforeEach
+    void setUpActor() {
+        actor = securityRepo.createUser("lrc-actor-" + UUID.randomUUID(), "Coordinator Test Actor", null, true);
+    }
+
     @Test
     void createItemThenCommit_isVisibleInRegister() {
         UUID itemId = UUID.randomUUID();
         UUID txn = UUID.randomUUID();
 
-        coordinator.prepare(List.of(new ItemCreateEntry(itemId, fixture.productTypeId(), Map.of(fixture.namePropertyId(), "Widget"), Map.of(), Set.of())), txn, null);
+        coordinator.prepare(List.of(new ItemCreateEntry(itemId, fixture.productTypeId(), Map.of(fixture.namePropertyId(), "Widget"), Map.of(), Set.of())), txn, actor.id(), OffsetDateTime.now());
         coordinator.commit(txn, UUID.randomUUID());
 
         var projected = registerPartitionManager.projectOne(fixture.productTypeId(), itemId, "http://binary").orElseThrow();
@@ -52,13 +67,13 @@ class LedgerRegisterCoordinatorIntegrationTest extends AbstractIntegrationTest {
         UUID updateTxn = UUID.randomUUID();
 
         coordinator.prepare(List.of(new ItemCreateEntry(itemId, fixture.productTypeId(),
-                Map.of(fixture.namePropertyId(), "Widget", fixture.colorPropertyId(), "red"), Map.of(), Set.of())), createTxn, null);
+                Map.of(fixture.namePropertyId(), "Widget", fixture.colorPropertyId(), "red"), Map.of(), Set.of())), createTxn, actor.id(), OffsetDateTime.now());
         coordinator.commit(createTxn, UUID.randomUUID());
 
         Map<UUID, Object> diff = new java.util.HashMap<>();
         diff.put(fixture.namePropertyId(), "Widget Pro");
         diff.put(fixture.colorPropertyId(), null);
-        coordinator.prepare(List.of(new ItemUpdateEntry(itemId, diff, Map.of(), Set.of(), Set.of(), Set.of())), updateTxn, null);
+        coordinator.prepare(List.of(new ItemUpdateEntry(itemId, diff, Map.of(), Set.of(), Set.of(), Set.of())), updateTxn, actor.id(), OffsetDateTime.now());
         coordinator.commit(updateTxn, UUID.randomUUID());
 
         var projected = registerPartitionManager.projectOne(fixture.productTypeId(), itemId, "http://binary").orElseThrow();
@@ -76,10 +91,10 @@ class LedgerRegisterCoordinatorIntegrationTest extends AbstractIntegrationTest {
         UUID createTxn = UUID.randomUUID();
         UUID deleteTxn = UUID.randomUUID();
 
-        coordinator.prepare(List.of(new ItemCreateEntry(itemId, fixture.productTypeId(), Map.of(fixture.namePropertyId(), "Widget"), Map.of(), Set.of())), createTxn, null);
+        coordinator.prepare(List.of(new ItemCreateEntry(itemId, fixture.productTypeId(), Map.of(fixture.namePropertyId(), "Widget"), Map.of(), Set.of())), createTxn, actor.id(), OffsetDateTime.now());
         coordinator.commit(createTxn, UUID.randomUUID());
 
-        coordinator.prepare(List.of(new ItemDeleteEntry(itemId)), deleteTxn, null);
+        coordinator.prepare(List.of(new ItemDeleteEntry(itemId)), deleteTxn, actor.id(), OffsetDateTime.now());
         coordinator.commit(deleteTxn, UUID.randomUUID());
 
         assertThat(registerPartitionManager.projectOne(fixture.productTypeId(), itemId, "http://binary")).isEmpty();
@@ -96,14 +111,14 @@ class LedgerRegisterCoordinatorIntegrationTest extends AbstractIntegrationTest {
         coordinator.prepare(List.of(
                 new ItemCreateEntry(productId, fixture.productTypeId(), Map.of(fixture.namePropertyId(), "Widget"), Map.of(), Set.of()),
                 new ItemCreateEntry(contributorId, fixture.contributorTypeId(), Map.of(fixture.contributorNamePropertyId(), "Ada"), Map.of(), Set.of())
-        ), itemsTxn, null);
+        ), itemsTxn, actor.id(), OffsetDateTime.now());
         coordinator.commit(itemsTxn, UUID.randomUUID());
 
         LinkCreateEntry linkCreate = new LinkCreateEntry(linkId, fixture.linkTypeId(),
                 new LinkEndpoint(fixture.productPerspectiveId(), productId),
                 new LinkEndpoint(fixture.contributorPerspectiveId(), contributorId),
                 Map.of(fixture.rolePropertyId(), "author"));
-        coordinator.prepare(List.of(linkCreate), linkTxn, null);
+        coordinator.prepare(List.of(linkCreate), linkTxn, actor.id(), OffsetDateTime.now());
         coordinator.commit(linkTxn, UUID.randomUUID());
 
         var product = registerPartitionManager.projectOne(fixture.productTypeId(), productId, "http://binary").orElseThrow();
@@ -127,16 +142,16 @@ class LedgerRegisterCoordinatorIntegrationTest extends AbstractIntegrationTest {
         coordinator.prepare(List.of(
                 new ItemCreateEntry(productId, fixture.productTypeId(), Map.of(fixture.namePropertyId(), "Widget"), Map.of(), Set.of()),
                 new ItemCreateEntry(contributorId, fixture.contributorTypeId(), Map.of(fixture.contributorNamePropertyId(), "Ada"), Map.of(), Set.of())
-        ), itemsTxn, null);
+        ), itemsTxn, actor.id(), OffsetDateTime.now());
         coordinator.commit(itemsTxn, UUID.randomUUID());
 
         coordinator.prepare(List.of(new LinkCreateEntry(linkId, fixture.linkTypeId(),
                 new LinkEndpoint(fixture.productPerspectiveId(), productId),
                 new LinkEndpoint(fixture.contributorPerspectiveId(), contributorId),
-                Map.of(fixture.rolePropertyId(), "author"))), linkCreateTxn, null);
+                Map.of(fixture.rolePropertyId(), "author"))), linkCreateTxn, actor.id(), OffsetDateTime.now());
         coordinator.commit(linkCreateTxn, UUID.randomUUID());
 
-        coordinator.prepare(List.of(new LinkUpdateEntry(linkId, Map.of(fixture.rolePropertyId(), "editor"))), linkUpdateTxn, null);
+        coordinator.prepare(List.of(new LinkUpdateEntry(linkId, Map.of(fixture.rolePropertyId(), "editor"))), linkUpdateTxn, actor.id(), OffsetDateTime.now());
         coordinator.commit(linkUpdateTxn, UUID.randomUUID());
 
         var product = registerPartitionManager.projectOne(fixture.productTypeId(), productId, "http://binary").orElseThrow();
@@ -156,20 +171,20 @@ class LedgerRegisterCoordinatorIntegrationTest extends AbstractIntegrationTest {
         coordinator.prepare(List.of(
                 new ItemCreateEntry(productId, fixture.productTypeId(), Map.of(fixture.namePropertyId(), "Widget"), Map.of(), Set.of()),
                 new ItemCreateEntry(contributorId, fixture.contributorTypeId(), Map.of(fixture.contributorNamePropertyId(), "Ada"), Map.of(), Set.of())
-        ), itemsTxn, null);
+        ), itemsTxn, actor.id(), OffsetDateTime.now());
         coordinator.commit(itemsTxn, UUID.randomUUID());
 
         coordinator.prepare(List.of(new LinkCreateEntry(linkId, fixture.linkTypeId(),
                 new LinkEndpoint(fixture.productPerspectiveId(), productId),
                 new LinkEndpoint(fixture.contributorPerspectiveId(), contributorId),
-                Map.of())), linkTxn, null);
+                Map.of())), linkTxn, actor.id(), OffsetDateTime.now());
         coordinator.commit(linkTxn, UUID.randomUUID());
 
         // Only the ItemDeleteEntry is submitted -- the coordinator must discover productId's
         // existing link itself, delete it (before deleting productId, since the FK from
         // register_item_link_perspective to register_item has no cascade), and leave
         // contributorId as a normal surviving item with no dangling link.
-        coordinator.prepare(List.of(new ItemDeleteEntry(productId)), cascadeTxn, null);
+        coordinator.prepare(List.of(new ItemDeleteEntry(productId)), cascadeTxn, actor.id(), OffsetDateTime.now());
         coordinator.commit(cascadeTxn, UUID.randomUUID());
 
         assertThat(registerPartitionManager.projectOne(fixture.productTypeId(), productId, "http://binary")).isEmpty();
@@ -189,19 +204,19 @@ class LedgerRegisterCoordinatorIntegrationTest extends AbstractIntegrationTest {
         coordinator.prepare(List.of(
                 new ItemCreateEntry(productId, fixture.productTypeId(), Map.of(fixture.namePropertyId(), "Widget"), Map.of(), Set.of()),
                 new ItemCreateEntry(contributorId, fixture.contributorTypeId(), Map.of(fixture.contributorNamePropertyId(), "Ada"), Map.of(), Set.of())
-        ), itemsTxn, null);
+        ), itemsTxn, actor.id(), OffsetDateTime.now());
         coordinator.commit(itemsTxn, UUID.randomUUID());
 
         coordinator.prepare(List.of(new LinkCreateEntry(linkId, fixture.linkTypeId(),
                 new LinkEndpoint(fixture.productPerspectiveId(), productId),
                 new LinkEndpoint(fixture.contributorPerspectiveId(), contributorId),
-                Map.of())), linkTxn, null);
+                Map.of())), linkTxn, actor.id(), OffsetDateTime.now());
         coordinator.commit(linkTxn, UUID.randomUUID());
 
         // Both sides of the shared link are deleted in the same batch -- expansion must dedupe
         // the link (not attempt to delete it twice) and must not add a ripple ItemUpdateEntry
         // for either side, since both are themselves being deleted.
-        coordinator.prepare(List.of(new ItemDeleteEntry(productId), new ItemDeleteEntry(contributorId)), cascadeTxn, null);
+        coordinator.prepare(List.of(new ItemDeleteEntry(productId), new ItemDeleteEntry(contributorId)), cascadeTxn, actor.id(), OffsetDateTime.now());
         coordinator.commit(cascadeTxn, UUID.randomUUID());
 
         assertThat(registerPartitionManager.projectOne(fixture.productTypeId(), productId, "http://binary")).isEmpty();
@@ -220,19 +235,19 @@ class LedgerRegisterCoordinatorIntegrationTest extends AbstractIntegrationTest {
         coordinator.prepare(List.of(
                 new ItemCreateEntry(productId, fixture.productTypeId(), Map.of(fixture.namePropertyId(), "Widget"), Map.of(), Set.of()),
                 new ItemCreateEntry(contributorId, fixture.contributorTypeId(), Map.of(fixture.contributorNamePropertyId(), "Ada"), Map.of(), Set.of())
-        ), itemsTxn, null);
+        ), itemsTxn, actor.id(), OffsetDateTime.now());
         coordinator.commit(itemsTxn, UUID.randomUUID());
 
         coordinator.prepare(List.of(new LinkCreateEntry(linkId, fixture.linkTypeId(),
                 new LinkEndpoint(fixture.productPerspectiveId(), productId),
                 new LinkEndpoint(fixture.contributorPerspectiveId(), contributorId),
-                Map.of())), linkTxn, null);
+                Map.of())), linkTxn, actor.id(), OffsetDateTime.now());
         coordinator.commit(linkTxn, UUID.randomUUID());
 
         // productId's register_item row gets swapped out for a new one on update -- the
         // existing perspective row from the link created above must be repointed at the new
         // row, or this delete-old-committed-row step would hit an FK violation.
-        coordinator.prepare(List.of(new ItemUpdateEntry(productId, Map.of(fixture.namePropertyId(), "Widget Pro"), Map.of(), Set.of(), Set.of(), Set.of())), updateTxn, null);
+        coordinator.prepare(List.of(new ItemUpdateEntry(productId, Map.of(fixture.namePropertyId(), "Widget Pro"), Map.of(), Set.of(), Set.of(), Set.of())), updateTxn, actor.id(), OffsetDateTime.now());
         coordinator.commit(updateTxn, UUID.randomUUID());
 
         var product = registerPartitionManager.projectOne(fixture.productTypeId(), productId, "http://binary").orElseThrow();
@@ -250,7 +265,7 @@ class LedgerRegisterCoordinatorIntegrationTest extends AbstractIntegrationTest {
         UUID itemId = UUID.randomUUID();
         UUID txn = UUID.randomUUID();
 
-        coordinator.prepare(List.of(new ItemCreateEntry(itemId, fixture.productTypeId(), Map.of(fixture.namePropertyId(), "Ghost"), Map.of(), Set.of())), txn, null);
+        coordinator.prepare(List.of(new ItemCreateEntry(itemId, fixture.productTypeId(), Map.of(fixture.namePropertyId(), "Ghost"), Map.of(), Set.of())), txn, actor.id(), OffsetDateTime.now());
         coordinator.abort(txn);
 
         assertThat(registerPartitionManager.projectOne(fixture.productTypeId(), itemId, "http://binary")).isEmpty();
@@ -280,20 +295,20 @@ class LedgerRegisterCoordinatorIntegrationTest extends AbstractIntegrationTest {
         coordinator.prepare(List.of(
                 new ItemCreateEntry(productId, fixture.productTypeId(), Map.of(fixture.namePropertyId(), "Widget"), Map.of(), Set.of()),
                 new ItemCreateEntry(contributorId, fixture.contributorTypeId(), Map.of(fixture.contributorNamePropertyId(), "Ada"), Map.of(), Set.of())
-        ), itemsTxn, null);
+        ), itemsTxn, actor.id(), OffsetDateTime.now());
         coordinator.commit(itemsTxn, UUID.randomUUID());
 
         coordinator.prepare(List.of(new LinkCreateEntry(linkId, fixture.linkTypeId(),
                 new LinkEndpoint(fixture.productPerspectiveId(), productId),
                 new LinkEndpoint(fixture.contributorPerspectiveId(), contributorId),
-                Map.of())), linkTxn, null);
+                Map.of())), linkTxn, actor.id(), OffsetDateTime.now());
         coordinator.commit(linkTxn, UUID.randomUUID());
 
         // Staged (prepared), deliberately never committed -- a separate, concurrent, still-open
         // transaction independently updating the linked contributor.
         coordinator.prepare(List.of(new ItemUpdateEntry(contributorId,
                 Map.of(fixture.contributorNamePropertyId(), "Ada (should not be visible)"), Map.of(), Set.of(), Set.of(), Set.of())),
-                staleUpdateTxn, null);
+                staleUpdateTxn, actor.id(), OffsetDateTime.now());
 
         var product = registerPartitionManager.projectOne(fixture.productTypeId(), productId, "http://binary").orElseThrow();
         var contributorLinks = product.links().values().stream().flatMap(List::stream).toList();

@@ -1,42 +1,47 @@
 package org.ntrloc.graph.security;
 
 import jakarta.annotation.PostConstruct;
+import jakarta.servlet.DispatcherType;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import org.ntrloc.graph.db.partition.security.LocalUserDetailsService;
+import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
 import org.ntrloc.graph.db.partition.security.PersonalAccessTokenService;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpHeaders;
 import org.springframework.ldap.core.support.LdapContextSource;
-import org.springframework.security.authentication.BadCredentialsException;
-import org.springframework.security.authentication.DelegatingReactiveAuthenticationManager;
-import org.springframework.security.authentication.ReactiveAuthenticationManager;
-import org.springframework.security.authentication.UserDetailsRepositoryReactiveAuthenticationManager;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.AuthenticationProvider;
+import org.springframework.security.authentication.ProviderManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.config.Customizer;
-import org.springframework.security.config.annotation.web.reactive.EnableWebFluxSecurity;
-import org.springframework.security.config.web.server.ServerHttpSecurity;
-import org.springframework.security.config.web.server.SecurityWebFiltersOrder;
+import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.ldap.authentication.BindAuthenticator;
 import org.springframework.security.ldap.authentication.LdapAuthenticationProvider;
 import org.springframework.security.ldap.userdetails.DefaultLdapAuthoritiesPopulator;
-import org.springframework.security.web.server.SecurityWebFilterChain;
-import org.springframework.security.web.server.ServerAuthenticationEntryPoint;
-import org.springframework.security.web.server.authentication.AuthenticationWebFilter;
-import org.springframework.security.web.server.authentication.RedirectServerAuthenticationEntryPoint;
-import org.springframework.security.web.server.authentication.ServerAuthenticationConverter;
-import org.springframework.security.web.server.authentication.logout.RedirectServerLogoutSuccessHandler;
-import org.springframework.security.web.server.authentication.logout.ServerLogoutSuccessHandler;
-import org.springframework.security.web.server.util.matcher.ServerWebExchangeMatchers;
-import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
+import org.springframework.security.web.AuthenticationEntryPoint;
+import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
+import org.springframework.security.web.authentication.logout.LogoutSuccessHandler;
+import org.springframework.security.web.authentication.logout.SimpleUrlLogoutSuccessHandler;
+import org.springframework.security.web.authentication.www.BasicAuthenticationFilter;
+import org.springframework.web.filter.OncePerRequestFilter;
 
-import java.net.URI;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 @Configuration
-@EnableWebFluxSecurity
+@EnableWebSecurity
 @ConditionalOnProperty(name = "graph.security.enabled", havingValue = "true", matchIfMissing = true)
 public class SecurityConfig {
 
@@ -65,21 +70,35 @@ public class SecurityConfig {
     }
 
     @Bean
-    public SecurityWebFilterChain springSecurityFilterChain(
-            ServerHttpSecurity http,
-            ServerAuthenticationEntryPoint entryPoint) {
+    public SecurityFilterChain securityFilterChain(
+            HttpSecurity http,
+            AuthenticationEntryPoint entryPoint) throws Exception {
+        // Shared by httpBasic() and formLogin() below -- without this explicit wiring, HttpSecurity
+        // builds its own AuthenticationManagerBuilder from auto-detected beans instead of picking up
+        // compositeAuthenticationManager() the way WebFlux's equivalent auto-wired a lone
+        // ReactiveAuthenticationManager bean (the servlet side has no equivalent implicit pickup).
         http
+                .authenticationManager(compositeAuthenticationManager())
                 .csrf(csrf -> csrf.disable())
-                .authorizeExchange(auth -> auth
-                        .pathMatchers(openPathPatterns()).permitAll()
-                        .pathMatchers("/admin/**").hasRole("ADMIN")
-                        .anyExchange().authenticated()
+                .authorizeHttpRequests(auth -> auth
+                        // An error response from any filter below (e.g. patFilter()'s
+                        // sendError(401) on an invalid bearer token) triggers Boot's own /error
+                        // forward, which is a second, internal dispatch back through this same
+                        // chain -- without this, that forward has no Authentication either, gets
+                        // denied too, and the AuthenticationEntryPoint below (a redirect to
+                        // /login) fires on it, turning the client's real response into a 302
+                        // instead of the original 401. Found empirically: three PAT rejection
+                        // tests returned 302 instead of the expected 4xx until this was added.
+                        .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
+                        .requestMatchers(openPathPatterns()).permitAll()
+                        .requestMatchers("/admin/**").hasRole("ADMIN")
+                        .anyRequest().authenticated()
                 )
                 .exceptionHandling(exceptions -> exceptions
                         .authenticationEntryPoint(entryPoint)
                 )
                 .logout(logout -> logout
-                        .requiresLogout(ServerWebExchangeMatchers.pathMatchers("/logout"))
+                        .logoutUrl("/logout")
                         .logoutSuccessHandler(logoutSuccessHandler())
                 );
 
@@ -89,10 +108,11 @@ public class SecurityConfig {
 
         if (authProperties.getLocal().isEnabled() ||
                 authProperties.getLdap().isEnabled()) {
-            http.formLogin(form -> form
-                    .loginPage(LOGIN_PATH)
-                    .authenticationManager(compositeAuthenticationManager())
-            );
+            // No per-mechanism .authenticationManager(...) override here (FormLoginConfigurer
+            // doesn't expose one in this Spring Security version, confirmed by compile error when
+            // one was tried) -- the top-level http.authenticationManager(...) call above already
+            // covers this filter too, same shared manager.
+            http.formLogin(form -> form.loginPage(LOGIN_PATH));
         }
 
         http.httpBasic(Customizer.withDefaults());
@@ -101,12 +121,8 @@ public class SecurityConfig {
         // no session involved — a different shape than form login, so it gets its own filter
         // rather than folding into compositeAuthenticationManager() (which is specifically for
         // the POST /login form submission). Unconditional, same as httpBasic() above: PATs are
-        // always available once security is enabled, no AuthProperties toggle. The converter
-        // returns empty when there's no Bearer header, so ordinary session-based requests pass
-        // through untouched.
-        AuthenticationWebFilter patFilter = new AuthenticationWebFilter(personalAccessTokenAuthenticationManager());
-        patFilter.setServerAuthenticationConverter(bearerTokenConverter());
-        http.addFilterAt(patFilter, SecurityWebFiltersOrder.HTTP_BASIC);
+        // always available once security is enabled, no AuthProperties toggle.
+        http.addFilterAt(patFilter(), BasicAuthenticationFilter.class);
 
         return http.build();
     }
@@ -124,100 +140,80 @@ public class SecurityConfig {
     }
 
     @Bean
-    public ServerAuthenticationEntryPoint authenticationEntryPoint() {
-        return new RedirectServerAuthenticationEntryPoint(LOGIN_PATH);
+    public AuthenticationEntryPoint authenticationEntryPoint() {
+        return new LoginUrlAuthenticationEntryPoint(LOGIN_PATH);
     }
 
     @Bean
-    public ServerLogoutSuccessHandler logoutSuccessHandler() {
-        RedirectServerLogoutSuccessHandler handler =
-                new RedirectServerLogoutSuccessHandler();
-        handler.setLogoutSuccessUrl(URI.create(LOGIN_PATH));
+    public LogoutSuccessHandler logoutSuccessHandler() {
+        SimpleUrlLogoutSuccessHandler handler = new SimpleUrlLogoutSuccessHandler();
+        handler.setDefaultTargetUrl(LOGIN_PATH);
         return handler;
     }
 
-    @Bean
-    public ReactiveAuthenticationManager compositeAuthenticationManager() {
-        List<ReactiveAuthenticationManager> managers = new ArrayList<>();
+    private AuthenticationManager compositeAuthenticationManager() {
+        List<AuthenticationProvider> providers = new ArrayList<>();
 
         if (authProperties.getLdap().isEnabled()) {
-            managers.add(ldapAuthenticationManager());
+            providers.add(ldapAuthenticationProvider());
         }
         if (authProperties.getLocal().isEnabled()) {
-            managers.add(new UserDetailsRepositoryReactiveAuthenticationManager(
-                    localUserDetailsService));
+            DaoAuthenticationProvider daoProvider = new DaoAuthenticationProvider(localUserDetailsService);
+            providers.add(daoProvider);
         }
 
-        return new DelegatingReactiveAuthenticationManager(managers);
+        // ProviderManager tries each provider in turn, moving to the next on an
+        // AuthenticationException (e.g. BadCredentialsException) rather than requiring every
+        // provider to "know" about every other one -- the direct servlet equivalent of
+        // DelegatingReactiveAuthenticationManager's "empty means try the next" contract, just
+        // signaled by exception instead of an empty result.
+        return new ProviderManager(providers);
     }
 
-    private ReactiveAuthenticationManager ldapAuthenticationManager() {
-        return authentication -> Mono.fromCallable(() -> {
-                    LdapContextSource contextSource = new LdapContextSource();
-                    contextSource.setUrl(authProperties.getLdap().getUrl());
-                    contextSource.setBase(authProperties.getLdap().getBase());
-                    contextSource.setUserDn(authProperties.getLdap().getUsername());
-                    contextSource.setPassword(authProperties.getLdap().getPassword());
-                    contextSource.afterPropertiesSet();
+    private AuthenticationProvider ldapAuthenticationProvider() {
+        LdapContextSource contextSource = new LdapContextSource();
+        contextSource.setUrl(authProperties.getLdap().getUrl());
+        contextSource.setBase(authProperties.getLdap().getBase());
+        contextSource.setUserDn(authProperties.getLdap().getUsername());
+        contextSource.setPassword(authProperties.getLdap().getPassword());
+        contextSource.afterPropertiesSet();
 
-                    BindAuthenticator authenticator = new BindAuthenticator(contextSource);
-                    authenticator.setUserDnPatterns(new String[]{authProperties.getLdap().getUserDnPattern()});
+        BindAuthenticator authenticator = new BindAuthenticator(contextSource);
+        authenticator.setUserDnPatterns(new String[]{authProperties.getLdap().getUserDnPattern()});
 
-                    DefaultLdapAuthoritiesPopulator authoritiesPopulator =
-                            new DefaultLdapAuthoritiesPopulator(contextSource, "ou=people");
-                    authoritiesPopulator.setDefaultRole("USER");
-                    authoritiesPopulator.setIgnorePartialResultException(true);
+        DefaultLdapAuthoritiesPopulator authoritiesPopulator =
+                new DefaultLdapAuthoritiesPopulator(contextSource, "ou=people");
+        authoritiesPopulator.setDefaultRole("USER");
+        authoritiesPopulator.setIgnorePartialResultException(true);
 
-                    LdapAuthenticationProvider provider =
-                            new LdapAuthenticationProvider(authenticator, authoritiesPopulator);
+        return new LdapAuthenticationProvider(authenticator, authoritiesPopulator);
+    }
 
-                    try {
-                        return provider.authenticate(
-                                new UsernamePasswordAuthenticationToken(
-                                        authentication.getPrincipal(),
-                                        authentication.getCredentials()
-                                )
-                        );
-                    } catch (BadCredentialsException e) {
-                        return null;  // signal empty to fall through
+    // The principal set here is the full NtrlocPrincipal PersonalAccessTokenService.authenticate
+    // already resolved (id, groupIds, isSuperuser, displayName included) -- not just an externalId
+    // string. Same "already-resolved, no second SecurityRepository round-trip" shape as
+    // NtrlocUserDetails gives local-credential logins; PrincipalResolver's fast path picks either
+    // up identically via instanceof NtrlocPrincipal. The converter returns without setting anything
+    // when there's no Bearer header, so ordinary session-based requests pass through untouched.
+    private OncePerRequestFilter patFilter() {
+        return new OncePerRequestFilter() {
+            @Override
+            protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
+                    throws ServletException, IOException {
+                String header = request.getHeader(HttpHeaders.AUTHORIZATION);
+                if (header != null && header.startsWith("Bearer ")) {
+                    String token = header.substring("Bearer ".length());
+                    Optional<NtrlocPrincipal> principal = personalAccessTokenService.authenticate(token);
+                    if (principal.isPresent()) {
+                        Authentication auth = UsernamePasswordAuthenticationToken.authenticated(principal.get(), null, List.of());
+                        SecurityContextHolder.getContext().setAuthentication(auth);
+                    } else {
+                        response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Invalid or expired personal access token");
+                        return;
                     }
-                })
-                .subscribeOn(Schedulers.boundedElastic())
-                .flatMap(auth -> auth != null
-                        ? Mono.just(auth)
-                        : Mono.empty()  // empty Mono causes DelegatingReactiveAuthenticationManager to try next
-                );
-    }
-
-    private ReactiveAuthenticationManager personalAccessTokenAuthenticationManager() {
-        // Unlike ldapAuthenticationManager() above, this manager runs standalone in its own
-        // AuthenticationWebFilter rather than inside a DelegatingReactiveAuthenticationManager —
-        // "empty means try the next manager" doesn't apply here, so failure must be signaled by
-        // erroring, not by completing empty (which AuthenticationWebFilter does not treat as a
-        // normal rejection when used this way).
-        // The principal set here is the full NtrlocPrincipal PersonalAccessTokenService.authenticate
-        // already resolved (id, groupIds, isSuperuser, displayName included) -- not just the
-        // externalId string this used to pass. Same "already-resolved, no second SecurityRepository
-        // round-trip" shape as NtrlocUserDetails gives local-credential logins; PrincipalResolver's
-        // fast path picks either up identically via instanceof NtrlocPrincipal.
-        return authentication -> Mono.fromCallable(() ->
-                        personalAccessTokenService.authenticate((String) authentication.getCredentials()))
-                .subscribeOn(Schedulers.boundedElastic())
-                .flatMap(opt -> opt
-                        .<org.springframework.security.core.Authentication>map(principal ->
-                                UsernamePasswordAuthenticationToken.authenticated(principal, null, List.of()))
-                        .map(Mono::just)
-                        .orElseGet(() -> Mono.error(new BadCredentialsException("Invalid or expired personal access token"))));
-    }
-
-    private ServerAuthenticationConverter bearerTokenConverter() {
-        return exchange -> {
-            String header = exchange.getRequest().getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
-            if (header == null || !header.startsWith("Bearer ")) {
-                return Mono.empty();
+                }
+                chain.doFilter(request, response);
             }
-            String token = header.substring("Bearer ".length());
-            return Mono.just(UsernamePasswordAuthenticationToken.unauthenticated(token, token));
         };
     }
 }

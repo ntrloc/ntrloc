@@ -2,36 +2,27 @@ package org.ntrloc.graph.ai;
 
 import org.ntrloc.graph.db.EntityManager;
 import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
-import org.ntrloc.graph.db.partition.security.ResolvedPrincipal;
 import org.ntrloc.graph.projection.CollectionProjectionSpec;
 import org.ntrloc.graph.projection.ProjectionResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.mcp.annotation.McpTool;
+import org.springframework.ai.mcp.annotation.context.McpSyncRequestContext;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Service;
-
-import java.util.Set;
-import java.util.UUID;
+import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class ProjectionService {
 
     private static final Logger LOG = LoggerFactory.getLogger(ProjectionService.class);
 
-    // Read-only first pass: an MCP tool call doesn't carry a real per-caller identity through
-    // Spring's reactive Authentication/ServerHttpRequest the way an ordinary REST request does
-    // (PrincipalResolver needs both, resolved as controller-method parameters), so this runs as
-    // a fixed superuser principal for now. Real per-caller MCP authorization -- distinguishing
-    // which external caller is invoking the tool and enforcing their actual permissions -- is a
-    // deferred follow-up, not yet designed.
-    private static final NtrlocPrincipal MCP_PRINCIPAL =
-            new ResolvedPrincipal(UUID.randomUUID(), "mcp-tool-caller", "MCP Tool Caller", null, Set.of(), true);
-
     private final EntityManager entityManager;
+    private final McpPrincipalResolver principalResolver;
 
-    public ProjectionService(EntityManager entityManager) {
+    public ProjectionService(EntityManager entityManager, McpPrincipalResolver principalResolver) {
         this.entityManager = entityManager;
+        this.principalResolver = principalResolver;
     }
 
     @McpTool(description = """
@@ -41,8 +32,8 @@ public class ProjectionService {
 
             Consult the schema (getSchema) first: itemTypeName must exactly match an item type
             name from the schema, and any sort field or filtered property must be one of that
-            item type's own properties or one of the system fields (itemId, itemType, createdAt,
-            updatedAt, visibilityState).
+            item type's own properties or one of the system fields (itemId, itemType, createdDate,
+            createdBy, updatedDate, updatedBy, visibilityState).
 
             A property nested inside a property group is addressed by dot-separated path
             (e.g. "dimensions.widthCm"), one segment per level of nesting -- this applies to a
@@ -58,12 +49,15 @@ public class ProjectionService {
     public ProjectionResult projectItems(@ToolParam(description = """
             The collection projection specification: item type name, optional sort field/
             direction, optional filter/facets, optional offset/limit (default limit 50, max 500).
-            """) CollectionProjectionSpec spec) {
+            """) CollectionProjectionSpec spec, McpSyncRequestContext requestContext) {
         try {
-            LOG.info("Projecting items with spec {}", spec);
-            ProjectionResult result = entityManager.project(spec, "", MCP_PRINCIPAL);
+            NtrlocPrincipal principal = principalResolver.requirePrincipal(requestContext);
+            LOG.info("Projecting items with spec {} as {}", spec, principal.externalId());
+            ProjectionResult result = entityManager.project(spec, "", principal);
             LOG.info("Projected {} item(s)", result.items().size());
             return result;
+        } catch (ResponseStatusException e) {
+            throw e;
         } catch (Exception e) {
             LOG.error("Error while projecting items", e);
             throw new RuntimeException("Error while projecting items", e);

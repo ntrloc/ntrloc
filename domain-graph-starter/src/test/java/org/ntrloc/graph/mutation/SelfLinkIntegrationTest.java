@@ -1,5 +1,6 @@
 package org.ntrloc.graph.mutation;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.partition.register.RegisterPartitionManager;
@@ -7,7 +8,9 @@ import org.ntrloc.graph.db.partition.schema.SchemaManager;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateItemDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateLinkDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePerspectiveDefinitionMutation;
-import org.ntrloc.graph.db.partition.security.ResolvedPrincipal;
+import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
+import org.ntrloc.graph.db.partition.security.TestPrincipals;
+import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 
 import java.util.List;
@@ -27,8 +30,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 // definition that uses it for a given entity.
 class SelfLinkIntegrationTest extends AbstractIntegrationTest {
 
-    private static final ResolvedPrincipal SOME_PRINCIPAL =
-            new ResolvedPrincipal(UUID.randomUUID(), "test-user", "Test User", null, Set.of(), true);
+    // Not static/final: needs a real, backed security_user row now that ledger_entry.created_by
+    // (Part E) has a NOT NULL FK to security_user.id -- created fresh per test in setUp() via the
+    // already-autowired securityRepo, which a static initializer can't reach.
+    private NtrlocPrincipal SOME_PRINCIPAL;
 
     @Autowired
     private MutationRequestProcessor processor;
@@ -41,6 +46,15 @@ class SelfLinkIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private SelfLinkTestDomainInitializer fixture;
+
+    @Autowired
+    private SecurityRepository securityRepo;
+
+    @BeforeEach
+    void setUpSomePrincipal() {
+        var user = securityRepo.createUser("sli-test-user-" + UUID.randomUUID(), "Test User", null, true);
+        SOME_PRINCIPAL = TestPrincipals.of(user.id(), user.externalId(), user.displayName(), null, Set.of(), true);
+    }
 
     private UUID createPerson() {
         MutationResponse response = processor.process(

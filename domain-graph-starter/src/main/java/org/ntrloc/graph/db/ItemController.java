@@ -2,7 +2,7 @@ package org.ntrloc.graph.db;
 
 import org.ntrloc.graph.db.partition.security.PrincipalResolver;
 import org.springframework.http.ResponseEntity;
-import org.springframework.http.server.reactive.ServerHttpRequest;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -26,7 +26,7 @@ public class ItemController {
     // Begin the item's participation in a state machine (enters the START target state).
     @PostMapping("/state-machines/{stateMachineName}/start")
     ResponseEntity<Void> startStateMachine(@PathVariable UUID itemId, @PathVariable String stateMachineName,
-                                            ServerHttpRequest request, Authentication authentication) {
+                                            HttpServletRequest request, Authentication authentication) {
         entityManager.startStateMachine(itemId, stateMachineName, principalResolver.resolve(request, authentication));
         return ResponseEntity.noContent().build();
     }
@@ -35,7 +35,7 @@ public class ItemController {
     @PostMapping("/state-machines/{stateMachineName}/transitions/{transitionId}")
     ResponseEntity<Void> executeTransition(@PathVariable UUID itemId, @PathVariable String stateMachineName,
                                             @PathVariable UUID transitionId,
-                                            ServerHttpRequest request, Authentication authentication) {
+                                            HttpServletRequest request, Authentication authentication) {
         entityManager.executeTransition(itemId, stateMachineName, transitionId, principalResolver.resolve(request, authentication));
         return ResponseEntity.noContent().build();
     }

@@ -11,6 +11,7 @@ import org.ntrloc.graph.db.partition.schema.definition.view.calculated.SchemaVie
 import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
 import org.ntrloc.graph.events.ClusterEventBroadcaster;
 import org.springframework.boot.sql.init.dependency.DependsOnDatabaseInitialization;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayDeque;
@@ -150,6 +151,10 @@ public class SchemaManager {
         return cachedAdminSchema.get();
     }
 
+    // Top-level component, independently reachable (SchemaController) -- demands a real principal
+    // via @PreAuthorize, same as EntityManager/PermissionService/MutationRequestProcessor (see
+    // docs/ntrloc-principal-enforcement-plan.md, Part C).
+    @PreAuthorize("#principal != null")
     public SchemaView getSchema(NtrlocPrincipal principal) {
         SchemaView schema = cachedSchema.get();
         if (principal.isSuperuser()) {

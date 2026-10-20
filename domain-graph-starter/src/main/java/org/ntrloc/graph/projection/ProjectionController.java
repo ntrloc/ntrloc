@@ -1,9 +1,9 @@
 package org.ntrloc.graph.projection;
 
+import jakarta.servlet.http.HttpServletRequest;
 import org.ntrloc.graph.db.EntityManager;
 import org.ntrloc.graph.db.partition.security.PrincipalResolver;
 import org.springframework.http.ResponseEntity;
-import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -23,14 +23,14 @@ public class ProjectionController {
     }
 
     @PostMapping("/collection")
-    ResponseEntity<ProjectionResult> collection(@RequestBody CollectionProjectionSpec spec, ServerHttpRequest request, Authentication authentication) {
+    ResponseEntity<ProjectionResult> collection(@RequestBody CollectionProjectionSpec spec, HttpServletRequest request, Authentication authentication) {
         var principal = principalResolver.resolve(request, authentication);
         String binaryBaseUrl = extractBaseUrl(request);
         return ResponseEntity.ok(entityManager.project(spec, binaryBaseUrl, principal));
     }
 
     @PostMapping("/item")
-    ResponseEntity<ProjectedItem> item(@RequestBody ItemProjectionSpec spec, ServerHttpRequest request, Authentication authentication) {
+    ResponseEntity<ProjectedItem> item(@RequestBody ItemProjectionSpec spec, HttpServletRequest request, Authentication authentication) {
         var principal = principalResolver.resolve(request, authentication);
         String binaryBaseUrl = extractBaseUrl(request);
         return entityManager.project(spec, binaryBaseUrl, principal)
@@ -38,11 +38,10 @@ public class ProjectionController {
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
-    private String extractBaseUrl(ServerHttpRequest request) {
-        var uri = request.getURI();
-        int port = uri.getPort();
-        String scheme = uri.getScheme();
-        String host = uri.getHost();
+    private String extractBaseUrl(HttpServletRequest request) {
+        String scheme = request.getScheme();
+        String host = request.getServerName();
+        int port = request.getServerPort();
         if (port == -1 || ("https".equals(scheme) && port == 443) || ("http".equals(scheme) && port == 80)) {
             return scheme + "://" + host;
         }

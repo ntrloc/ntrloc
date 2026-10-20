@@ -1,9 +1,9 @@
 package org.ntrloc.graph.db.partition.schema;
 
 import org.ntrloc.graph.cluster.ClusterService;
+import org.ntrloc.graph.events.SseEmitterRegistry;
 import org.springframework.stereotype.Component;
-import reactor.core.publisher.Flux;
-import reactor.core.publisher.Sinks;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 // A trivial broadcast signal, not a data channel -- mirrors TaskEventBroadcaster exactly. Every
 // connected SSE client (SchemaAdminController) gets every published event and just re-fetches
@@ -23,7 +23,8 @@ import reactor.core.publisher.Sinks;
 // DEPRECATED, pending removal: superseded by org.ntrloc.graph.events.ClusterEventBroadcaster.
 // SchemaManager.refreshCache() now ALSO publishes to ClusterEventBroadcaster in parallel (see its
 // own comment) -- proven working end to end against the React admin UI's SchemaView. Left alone
-// deliberately for now, unmodified, alongside its existing consumer (SchemaAdminController.
+// deliberately for now, unmodified in behavior (still converted off WebFlux below, same as
+// everything else in this app), alongside its existing consumer (SchemaAdminController.
 // schemaEvents / schema-events.js in the vanilla admin UI). Remove this class, SchemaManager's own
 // schemaChangedTopic field, and the /api/admin/schema/events endpoint once both admin UIs have
 // fully moved onto the new shared /api/events endpoint; see TaskEventBroadcaster for the same
@@ -33,17 +34,17 @@ public class SchemaChangeBroadcaster {
 
     private static final String SCHEMA_CHANGED_TOPIC = "schemaChanged";
 
-    // directBestEffort(), not onBackpressureBuffer(): see TaskEventBroadcaster's own comment --
-    // this is a live tap, not a history replay, and buffering risks the same silent stream-death
-    // failure mode confirmed there under sustained event volume with no draining subscriber.
-    private final Sinks.Many<String> sink = Sinks.many().multicast().directBestEffort();
+    // SseEmitterRegistry's own direct-delivery, drop-on-failure semantics are what
+    // Sinks.Many.directBestEffort() used to provide here -- see TaskEventBroadcaster's own comment
+    // for why this is a live tap, not a history replay.
+    private final SseEmitterRegistry<String> registry = new SseEmitterRegistry<>(type -> SseEmitter.event().data(type));
 
     public SchemaChangeBroadcaster(ClusterService clusterService) {
         clusterService.<String>getTopic(SCHEMA_CHANGED_TOPIC)
-                .addMessageListener(message -> sink.tryEmitNext(message.getMessageObject()));
+                .addMessageListener(message -> registry.publish(message.getMessageObject()));
     }
 
-    public Flux<String> events() {
-        return sink.asFlux();
+    public SseEmitter register() {
+        return registry.register();
     }
 }

@@ -12,6 +12,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
+import org.springframework.ai.mcp.annotation.context.McpSyncRequestContext;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -22,22 +23,28 @@ public class ProcessService {
 
     private static final Logger LOG = LoggerFactory.getLogger(ProcessService.class);
 
-    // Same reasoning as ProjectionService.MCP_PRINCIPAL: an MCP tool call has no real per-caller
-    // identity threaded through it the way a REST request does (TaskAdminController's principal-
-    // based filtering needs both a ServerHttpRequest and an Authentication, resolved as controller-
-    // method parameters). listTasks below deliberately returns every task unfiltered rather than
-    // pretending to filter by a caller identity that doesn't exist yet -- claimTask/completeTask
-    // still take an explicit assignee/userId parameter, matching Flowable's own
-    // TaskService.claim()/complete() signatures, so the caller (or the agent driving this tool)
-    // says who they're acting as rather than this service guessing.
+    // Every method here now requires a real, resolvable principal (Part D) before doing
+    // anything else, same floor as the other three MCP tool services -- but, same as
+    // SchemaService, that's as far as Part D goes: the resolved principal isn't used for
+    // anything beyond existence-checking. These task operations still don't go through ntrloc's
+    // own marker/permission system at all (TaskAdminController's principal-based filtering needs
+    // both an HttpServletRequest and an Authentication, resolved as controller-method
+    // parameters, which an MCP tool call doesn't have) -- listTasks still returns every task
+    // unfiltered, and claimTask/completeTask still take an explicit assignee/userId parameter
+    // rather than inferring one from the resolved principal. That's a separate, still-open gap
+    // (see docs/ntrloc-principal-enforcement-plan.md, Part D's own note on why it's deliberately
+    // not folded into this pass), not something this change fixes.
     private final RepositoryService repositoryService;
     private final RuntimeService runtimeService;
     private final TaskService taskService;
+    private final McpPrincipalResolver principalResolver;
 
-    public ProcessService(RepositoryService repositoryService, RuntimeService runtimeService, TaskService taskService) {
+    public ProcessService(RepositoryService repositoryService, RuntimeService runtimeService, TaskService taskService,
+                           McpPrincipalResolver principalResolver) {
         this.repositoryService = repositoryService;
         this.runtimeService = runtimeService;
         this.taskService = taskService;
+        this.principalResolver = principalResolver;
     }
 
     @McpTool(description = """
@@ -47,7 +54,8 @@ public class ProcessService {
             version, and a generated suffix (e.g. "helloWorld:1:1"), and multiple versions of the
             same key can be deployed at once.
             """)
-    public List<ProcessAdminController.ProcessDefinitionView> listProcesses() {
+    public List<ProcessAdminController.ProcessDefinitionView> listProcesses(McpSyncRequestContext requestContext) {
+        principalResolver.requirePrincipal(requestContext);
         try {
             LOG.info("Listing process definitions");
             return repositoryService.createProcessDefinitionQuery().list().stream()
@@ -66,7 +74,8 @@ public class ProcessService {
             """)
     public ProcessAdminController.ProcessInstanceView runProcess(@McpToolParam(description = """
             The process definition id, exactly as returned by listProcesses (not just the key).
-            """) String definitionId) {
+            """) String definitionId, McpSyncRequestContext requestContext) {
+        principalResolver.requirePrincipal(requestContext);
         try {
             LOG.info("Starting process instance for definition {}", definitionId);
             ProcessInstance instance = runtimeService.startProcessInstanceById(definitionId);
@@ -81,7 +90,8 @@ public class ProcessService {
             Lists every runtime User Task currently awaiting action, across all process instances:
             id, name, process instance id, current assignee (null if unclaimed), and created time.
             """)
-    public List<TaskAdminController.TaskView> listTasks() {
+    public List<TaskAdminController.TaskView> listTasks(McpSyncRequestContext requestContext) {
+        principalResolver.requirePrincipal(requestContext);
         try {
             LOG.info("Listing tasks");
             return taskService.createTaskQuery().list().stream()
@@ -99,7 +109,9 @@ public class ProcessService {
             """)
     public TaskAdminController.TaskView claimTask(
             @McpToolParam(description = "The task id, exactly as returned by listTasks.") String taskId,
-            @McpToolParam(description = "The external id (username) of the user claiming the task.") String assignee) {
+            @McpToolParam(description = "The external id (username) of the user claiming the task.") String assignee,
+            McpSyncRequestContext requestContext) {
+        principalResolver.requirePrincipal(requestContext);
         try {
             LOG.info("Claiming task {} for {}", taskId, assignee);
             taskService.claim(taskId, assignee);
@@ -117,7 +129,9 @@ public class ProcessService {
             """)
     public String completeTask(
             @McpToolParam(description = "The task id, exactly as returned by listTasks.") String taskId,
-            @McpToolParam(description = "Optional process variables to set on completion.", required = false) Map<String, Object> variables) {
+            @McpToolParam(description = "Optional process variables to set on completion.", required = false) Map<String, Object> variables,
+            McpSyncRequestContext requestContext) {
+        principalResolver.requirePrincipal(requestContext);
         try {
             LOG.info("Completing task {}", taskId);
             taskService.complete(taskId, variables == null ? Map.of() : variables);

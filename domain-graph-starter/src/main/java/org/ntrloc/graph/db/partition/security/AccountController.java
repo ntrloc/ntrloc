@@ -3,7 +3,7 @@ package org.ntrloc.graph.db.partition.security;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.http.server.reactive.ServerHttpRequest;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -31,14 +31,14 @@ public class AccountController {
     }
 
     @GetMapping("/me")
-    public MeResponse me(ServerHttpRequest request, Authentication authentication) {
+    public MeResponse me(HttpServletRequest request, Authentication authentication) {
         var principal = principalResolver.resolve(request, authentication);
         return new MeResponse(principal.externalId(), principal.displayName(), principal.email(), principal.isSuperuser());
     }
 
     @PutMapping("/password")
     public ResponseEntity<Void> changePassword(@RequestBody ChangePasswordRequest body,
-                                                ServerHttpRequest request, Authentication authentication) {
+                                                HttpServletRequest request, Authentication authentication) {
         var principal = principalResolver.resolve(request, authentication);
 
         var credentials = repo.findCredentialsByEmail(principal.externalId())

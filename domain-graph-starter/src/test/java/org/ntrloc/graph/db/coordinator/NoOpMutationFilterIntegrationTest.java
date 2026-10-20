@@ -1,5 +1,6 @@
 package org.ntrloc.graph.db.coordinator;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
@@ -14,9 +15,11 @@ import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateItemDefini
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateLinkDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePerspectiveDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemDefinitionView;
+import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
+import java.time.OffsetDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -47,6 +50,18 @@ class NoOpMutationFilterIntegrationTest extends AbstractIntegrationTest {
     @Autowired
     private JdbcClient jdbcClient;
 
+    @Autowired
+    private SecurityRepository securityRepo;
+
+    // ledger_entry.created_by/register_item.created_by (Part E) are NOT NULL FKs to
+    // security_user.id -- every coordinator.prepare call below needs a real, backed actor.
+    private SecurityRepository.UserRow actor;
+
+    @BeforeEach
+    void setUpActor() {
+        actor = securityRepo.createUser("nomf-actor-" + UUID.randomUUID(), "NoOp Test Actor", null, true);
+    }
+
     private long itemLedgerRowCount(UUID itemId) {
         return jdbcClient.sql("SELECT COUNT(*) FROM ledger_entry WHERE target_type = 'ITEM' AND target_id = :itemId")
                 .param("itemId", itemId).query(Long.class).single();
@@ -65,7 +80,7 @@ class NoOpMutationFilterIntegrationTest extends AbstractIntegrationTest {
     private UUID createProduct(Map<UUID, Object> properties) {
         UUID itemId = UUID.randomUUID();
         UUID txn = UUID.randomUUID();
-        coordinator.prepare(List.of(new ItemCreateEntry(itemId, fixture.productTypeId(), properties, Map.of(), Set.of())), txn, null);
+        coordinator.prepare(List.of(new ItemCreateEntry(itemId, fixture.productTypeId(), properties, Map.of(), Set.of())), txn, actor.id(), OffsetDateTime.now());
         coordinator.commit(txn, UUID.randomUUID());
         return itemId;
     }
@@ -78,7 +93,7 @@ class NoOpMutationFilterIntegrationTest extends AbstractIntegrationTest {
         Map<UUID, Object> diff = new HashMap<>();
         diff.put(fixture.colorPropertyId(), "red");
         UUID txn = UUID.randomUUID();
-        coordinator.prepare(List.of(new ItemUpdateEntry(itemId, diff, Map.of(), Set.of(), Set.of(), Set.of())), txn, null);
+        coordinator.prepare(List.of(new ItemUpdateEntry(itemId, diff, Map.of(), Set.of(), Set.of(), Set.of())), txn, actor.id(), OffsetDateTime.now());
         coordinator.commit(txn, UUID.randomUUID());
 
         assertThat(itemLedgerRowCount(itemId)).isEqualTo(before);
@@ -92,7 +107,7 @@ class NoOpMutationFilterIntegrationTest extends AbstractIntegrationTest {
         Map<UUID, Object> diff = new HashMap<>();
         diff.put(fixture.colorPropertyId(), "blue");
         UUID txn = UUID.randomUUID();
-        coordinator.prepare(List.of(new ItemUpdateEntry(itemId, diff, Map.of(), Set.of(), Set.of(), Set.of())), txn, null);
+        coordinator.prepare(List.of(new ItemUpdateEntry(itemId, diff, Map.of(), Set.of(), Set.of(), Set.of())), txn, actor.id(), OffsetDateTime.now());
         coordinator.commit(txn, UUID.randomUUID());
 
         assertThat(itemLedgerRowCount(itemId)).isGreaterThan(before);
@@ -106,7 +121,7 @@ class NoOpMutationFilterIntegrationTest extends AbstractIntegrationTest {
         diff.put(fixture.colorPropertyId(), "red"); // no-op
         diff.put(fixture.namePropertyId(), "Widget Pro"); // real change
         UUID txn = UUID.randomUUID();
-        coordinator.prepare(List.of(new ItemUpdateEntry(itemId, diff, Map.of(), Set.of(), Set.of(), Set.of())), txn, null);
+        coordinator.prepare(List.of(new ItemUpdateEntry(itemId, diff, Map.of(), Set.of(), Set.of(), Set.of())), txn, actor.id(), OffsetDateTime.now());
         coordinator.commit(txn, UUID.randomUUID());
 
         var projected = registerPartitionManager.projectOne(fixture.productTypeId(), itemId, "http://binary").orElseThrow();
@@ -123,7 +138,7 @@ class NoOpMutationFilterIntegrationTest extends AbstractIntegrationTest {
         Map<UUID, UUID> stateChanges = new HashMap<>();
         stateChanges.put(smId, currentStateId);
         UUID txn = UUID.randomUUID();
-        coordinator.prepare(List.of(new ItemUpdateEntry(itemId, Map.of(), stateChanges, Set.of(), Set.of(), Set.of())), txn, null);
+        coordinator.prepare(List.of(new ItemUpdateEntry(itemId, Map.of(), stateChanges, Set.of(), Set.of(), Set.of())), txn, actor.id(), OffsetDateTime.now());
         coordinator.commit(txn, UUID.randomUUID());
 
         assertThat(itemLedgerRowCount(itemId)).isEqualTo(before);
@@ -136,7 +151,7 @@ class NoOpMutationFilterIntegrationTest extends AbstractIntegrationTest {
         long before = itemLedgerRowCount(itemId);
 
         UUID txn = UUID.randomUUID();
-        coordinator.prepare(List.of(new ItemUpdateEntry(itemId, Map.of(), Map.of(), Set.of(smId), Set.of(), Set.of())), txn, null);
+        coordinator.prepare(List.of(new ItemUpdateEntry(itemId, Map.of(), Map.of(), Set.of(smId), Set.of(), Set.of())), txn, actor.id(), OffsetDateTime.now());
         coordinator.commit(txn, UUID.randomUUID());
 
         assertThat(itemLedgerRowCount(itemId)).isEqualTo(before);
@@ -152,7 +167,7 @@ class NoOpMutationFilterIntegrationTest extends AbstractIntegrationTest {
         UUID createTxn = UUID.randomUUID();
         coordinator.prepare(List.of(new LinkCreateEntry(linkId, linkFixture.linkTypeId(),
                 new LinkEndpoint(linkFixture.perspectiveA(), itemA), new LinkEndpoint(linkFixture.perspectiveB(), itemB),
-                Map.of())), createTxn, null);
+                Map.of())), createTxn, actor.id(), OffsetDateTime.now());
         coordinator.commit(createTxn, UUID.randomUUID());
         assertThat(committedLinkRowCount(linkId)).isEqualTo(1);
 
@@ -160,7 +175,7 @@ class NoOpMutationFilterIntegrationTest extends AbstractIntegrationTest {
         UUID duplicateTxn = UUID.randomUUID();
         coordinator.prepare(List.of(new LinkCreateEntry(duplicateLinkId, linkFixture.linkTypeId(),
                 new LinkEndpoint(linkFixture.perspectiveA(), itemA), new LinkEndpoint(linkFixture.perspectiveB(), itemB),
-                Map.of())), duplicateTxn, null);
+                Map.of())), duplicateTxn, actor.id(), OffsetDateTime.now());
         coordinator.commit(duplicateTxn, UUID.randomUUID());
 
         assertThat(linkLedgerRowCount(duplicateLinkId)).isZero();
@@ -178,14 +193,14 @@ class NoOpMutationFilterIntegrationTest extends AbstractIntegrationTest {
         UUID firstTxn = UUID.randomUUID();
         coordinator.prepare(List.of(new LinkCreateEntry(firstLinkId, fixture.linkTypeId(),
                 new LinkEndpoint(fixture.productPerspectiveId(), productId), new LinkEndpoint(fixture.contributorPerspectiveId(), contributorId),
-                Map.of())), firstTxn, null);
+                Map.of())), firstTxn, actor.id(), OffsetDateTime.now());
         coordinator.commit(firstTxn, UUID.randomUUID());
 
         UUID secondLinkId = UUID.randomUUID();
         UUID secondTxn = UUID.randomUUID();
         coordinator.prepare(List.of(new LinkCreateEntry(secondLinkId, fixture.linkTypeId(),
                 new LinkEndpoint(fixture.productPerspectiveId(), productId), new LinkEndpoint(fixture.contributorPerspectiveId(), contributorId),
-                Map.of())), secondTxn, null);
+                Map.of())), secondTxn, actor.id(), OffsetDateTime.now());
         coordinator.commit(secondTxn, UUID.randomUUID());
 
         assertThat(committedLinkRowCount(firstLinkId)).isEqualTo(1);
@@ -198,7 +213,7 @@ class NoOpMutationFilterIntegrationTest extends AbstractIntegrationTest {
         long before = linkLedgerRowCount(neverExistedLinkId);
 
         UUID txn = UUID.randomUUID();
-        coordinator.prepare(List.of(new LinkDeleteEntry(neverExistedLinkId)), txn, null);
+        coordinator.prepare(List.of(new LinkDeleteEntry(neverExistedLinkId)), txn, actor.id(), OffsetDateTime.now());
         coordinator.commit(txn, UUID.randomUUID());
 
         assertThat(linkLedgerRowCount(neverExistedLinkId)).isEqualTo(before);
@@ -214,14 +229,14 @@ class NoOpMutationFilterIntegrationTest extends AbstractIntegrationTest {
         UUID createTxn = UUID.randomUUID();
         coordinator.prepare(List.of(new LinkCreateEntry(linkId, fixture.linkTypeId(),
                 new LinkEndpoint(fixture.productPerspectiveId(), productId), new LinkEndpoint(fixture.contributorPerspectiveId(), contributorId),
-                initial)), createTxn, null);
+                initial)), createTxn, actor.id(), OffsetDateTime.now());
         coordinator.commit(createTxn, UUID.randomUUID());
         long before = linkLedgerRowCount(linkId);
 
         Map<UUID, Object> diff = new HashMap<>();
         diff.put(fixture.rolePropertyId(), "editor");
         UUID txn = UUID.randomUUID();
-        coordinator.prepare(List.of(new LinkUpdateEntry(linkId, diff)), txn, null);
+        coordinator.prepare(List.of(new LinkUpdateEntry(linkId, diff)), txn, actor.id(), OffsetDateTime.now());
         coordinator.commit(txn, UUID.randomUUID());
 
         assertThat(linkLedgerRowCount(linkId)).isEqualTo(before);
@@ -234,7 +249,7 @@ class NoOpMutationFilterIntegrationTest extends AbstractIntegrationTest {
 
         Map<UUID, Object> diff = new HashMap<>();
         diff.put(fixture.colorPropertyId(), "red");
-        coordinator.prepare(List.of(new ItemUpdateEntry(itemId, diff, Map.of(), Set.of(), Set.of(), Set.of())), txn, null);
+        coordinator.prepare(List.of(new ItemUpdateEntry(itemId, diff, Map.of(), Set.of(), Set.of(), Set.of())), txn, actor.id(), OffsetDateTime.now());
         coordinator.commit(txn, UUID.randomUUID());
 
         var projected = registerPartitionManager.projectOne(fixture.productTypeId(), itemId, "http://binary").orElseThrow();
@@ -247,7 +262,7 @@ class NoOpMutationFilterIntegrationTest extends AbstractIntegrationTest {
         UUID itemId = UUID.randomUUID();
         UUID txn = UUID.randomUUID();
         coordinator.prepare(List.of(new ItemCreateEntry(itemId, fixture.contributorTypeId(),
-                Map.of(fixture.contributorNamePropertyId(), "Contributor"), Map.of(), Set.of())), txn, null);
+                Map.of(fixture.contributorNamePropertyId(), "Contributor"), Map.of(), Set.of())), txn, actor.id(), OffsetDateTime.now());
         coordinator.commit(txn, UUID.randomUUID());
         return itemId;
     }
@@ -291,7 +306,7 @@ class NoOpMutationFilterIntegrationTest extends AbstractIntegrationTest {
     private UUID createThrowawayItem(UUID itemTypeId) {
         UUID itemId = UUID.randomUUID();
         UUID txn = UUID.randomUUID();
-        coordinator.prepare(List.of(new ItemCreateEntry(itemId, itemTypeId, Map.of(), Map.of(), Set.of())), txn, null);
+        coordinator.prepare(List.of(new ItemCreateEntry(itemId, itemTypeId, Map.of(), Map.of(), Set.of())), txn, actor.id(), OffsetDateTime.now());
         coordinator.commit(txn, UUID.randomUUID());
         return itemId;
     }
@@ -316,7 +331,7 @@ class NoOpMutationFilterIntegrationTest extends AbstractIntegrationTest {
         Map<UUID, UUID> stateChanges = new HashMap<>();
         stateChanges.put(smId, s1);
         UUID txn = UUID.randomUUID();
-        coordinator.prepare(List.of(new ItemUpdateEntry(itemId, Map.of(), stateChanges, Set.of(), Set.of(), Set.of())), txn, null);
+        coordinator.prepare(List.of(new ItemUpdateEntry(itemId, Map.of(), stateChanges, Set.of(), Set.of(), Set.of())), txn, actor.id(), OffsetDateTime.now());
         coordinator.commit(txn, UUID.randomUUID());
         return smId;
     }

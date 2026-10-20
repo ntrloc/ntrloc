@@ -1,10 +1,11 @@
 package org.ntrloc.graph.db.partition.register;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.EntityManager;
 import org.ntrloc.graph.db.coordinator.LedgerRegisterCoordinator;
-import org.ntrloc.graph.db.partition.authorization.MarkerAssignmentService;
+import org.ntrloc.graph.db.partition.authorization.ManualMarkerAssignmentService;
 import org.ntrloc.graph.db.partition.authorization.repository.AuthorizationRepository;
 import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
@@ -13,13 +14,14 @@ import org.ntrloc.graph.db.partition.schema.definition.mutation.DefinitionMutati
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminStateMachineView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminTransitionView;
 import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
-import org.ntrloc.graph.db.partition.security.ResolvedPrincipal;
+import org.ntrloc.graph.db.partition.security.TestPrincipals;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.ntrloc.graph.mutation.MutationValidationException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.server.ResponseStatusException;
 import tools.jackson.databind.json.JsonMapper;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -38,18 +40,26 @@ class StateMachineExecutionIntegrationTest extends AbstractIntegrationTest {
     @Autowired private RegisterPartitionManager registerPartitionManager;
     @Autowired private SchemaManager schemaManager;
     @Autowired private AuthorizationRepository authRepo;
-    @Autowired private MarkerAssignmentService markerAssignmentService;
+    @Autowired private ManualMarkerAssignmentService markerAssignmentService;
     @Autowired private SecurityRepository securityRepo;
     @Autowired private RegisterProjectionTestDomainInitializer fixture;
 
-    private static final NtrlocPrincipal SUPERUSER =
-            new ResolvedPrincipal(UUID.randomUUID(), "sme-root", "Root", null, Set.of(), true);
+    // Not static/final: needs a real, backed security_user row now that ledger_entry.created_by
+    // (Part E) has a NOT NULL FK to security_user.id -- created fresh per test in setUp() via the
+    // already-autowired securityRepo, which a static initializer can't reach.
+    private NtrlocPrincipal SUPERUSER;
+
+    @BeforeEach
+    void setUpSuperuser() {
+        var user = securityRepo.createUser("sme-root-" + UUID.randomUUID(), "Root", null, true);
+        SUPERUSER = TestPrincipals.of(user.id(), user.externalId(), user.displayName(), null, Set.of(), true);
+    }
 
     private UUID createBook(String title) {
         UUID itemId = UUID.randomUUID();
         UUID txn = UUID.randomUUID();
         coordinator.prepare(List.of(new ItemCreateEntry(itemId, fixture.bookTypeId(),
-                Map.of(fixture.titlePropertyId(), title), Map.of(), Set.of())), txn, null);
+                Map.of(fixture.titlePropertyId(), title), Map.of(), Set.of())), txn, SUPERUSER.id(), OffsetDateTime.now());
         coordinator.commit(txn, UUID.randomUUID());
         return itemId;
     }
@@ -114,7 +124,7 @@ class StateMachineExecutionIntegrationTest extends AbstractIntegrationTest {
         UUID book = createBook("Dune");
         NtrlocPrincipal user = nonSuperuser();
         var marker = authRepo.createMarker("sme-" + UUID.randomUUID(), "fixture", "ITEM_TYPE", fixture.bookTypeId());
-        markerAssignmentService.addItemMarker(book, marker.id(), "test", "test");
+        markerAssignmentService.addItemMarker(book, marker.id(), SUPERUSER, "test");
         UUID grantId = authRepo.ensureMarkerGrant(marker.id(), "USER", user.id());
         authRepo.grantStateMachineStart(grantId, machineId());
         assertThat(authRepo.getStateMachineStartGrantsForMarker(marker.id(), "USER", user.id())).contains(machineId());
@@ -221,6 +231,6 @@ class StateMachineExecutionIntegrationTest extends AbstractIntegrationTest {
 
     private NtrlocPrincipal nonSuperuser() {
         var user = securityRepo.createUser("sme-" + UUID.randomUUID(), "User", null, false);
-        return new ResolvedPrincipal(user.id(), user.externalId(), user.externalId(), null, Set.of(), false);
+        return TestPrincipals.of(user.id(), user.externalId(), user.externalId(), null, Set.of(), false);
     }
 }

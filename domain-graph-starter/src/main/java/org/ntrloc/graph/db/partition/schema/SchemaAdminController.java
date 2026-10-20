@@ -10,7 +10,6 @@ import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminSchemaVie
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -18,7 +17,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import reactor.core.publisher.Flux;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.List;
 import java.util.UUID;
@@ -48,8 +47,8 @@ public class SchemaAdminController {
     // A trivial "something changed" signal, not a data channel -- every connected client just
     // re-fetches GET /api/admin/schema (see SchemaChangeBroadcaster for why).
     @GetMapping(value = "/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    Flux<ServerSentEvent<String>> schemaEvents() {
-        return broadcaster.events().map(type -> ServerSentEvent.builder(type).build());
+    SseEmitter schemaEvents() {
+        return broadcaster.register();
     }
 
     // Fetch one list's values by list id -- the schema editor's controlled-list detail pane

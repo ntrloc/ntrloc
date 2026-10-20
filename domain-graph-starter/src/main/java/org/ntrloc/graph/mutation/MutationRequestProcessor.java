@@ -24,7 +24,7 @@ import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemDefin
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemLinkPerspectiveView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyGroupView;
-import org.springframework.lang.Nullable;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -52,8 +52,15 @@ import java.util.stream.Collectors;
 // the complete list and the coordinator is never called -- nothing has been written yet at that
 // point (schema lookups are all against SchemaManager's in-memory cache), so there's nothing to
 // roll back. Permission checks live in this same accumulation (see checkCanCreateItemType and
-// friends) -- a denial is a mutation rejection like any other, not a separate mechanism; a null
-// principal is treated as having no grants at all (fails closed), never a bypass.
+// friends) -- a denial is a mutation rejection like any other, not a separate mechanism.
+//
+// process() demands a real, non-null principal via @PreAuthorize (see
+// docs/ntrloc-principal-enforcement-plan.md, Part C) -- this is a top-level component
+// independently reachable from EntityManagerImpl, so it carries its own guard. Every private
+// helper below that threads a principal through (processItemCreate, checkCanWriteItemProperties,
+// etc.) is only ever reachable from process() itself (confirmed: no other caller exists), so a
+// null principal can never reach them -- they take a plain NtrlocPrincipal, not @Nullable, and
+// have no null-check of their own; the guard upstream is the only one that exists or needs to.
 @Component
 public class MutationRequestProcessor {
 
@@ -82,7 +89,8 @@ public class MutationRequestProcessor {
     }
 
     @Transactional
-    public MutationResponse process(MutationRequest request, @Nullable NtrlocPrincipal principal) {
+    @PreAuthorize("#principal != null")
+    public MutationResponse process(MutationRequest request, NtrlocPrincipal principal) {
         List<ValidationError> errors = new ArrayList<>();
         Map<String, UUID> refIdToItemId = new HashMap<>();
         Map<String, UUID> refIdToItemTypeId = new HashMap<>();
@@ -135,16 +143,18 @@ public class MutationRequestProcessor {
 
         UUID transactionId = UUID.randomUUID();
         UUID commitId = UUID.randomUUID();
-        // principal is @Nullable, same as it is on EntityManager.mutate() -- unlike project()'s
-        // principal (a hard permission-check requirement), this one is attribution-only
-        // (ledger_entry.actor_external_id is nullable by design): an unresolvable/absent principal
-        // is a real, displayable state ("Edited by" blank), not a reason to refuse the mutation.
-        String actorExternalId = principal == null ? null : principal.externalId();
+        // principal is guaranteed non-null here (process()'s own @PreAuthorize guard) -- this is
+        // also ledger attribution (who made this change), not just a permission-check artifact.
+        // One OffsetDateTime generated here, not left to each write's own NOW(): this exact value
+        // becomes both the ledger entries' created_date and the register rows' resulting
+        // created_date/updated_date (see LedgerRegisterCoordinatorImpl.prepare).
+        UUID actorUserId = principal.id();
+        OffsetDateTime createdDate = OffsetDateTime.now();
         // prepare() now durably commits on its own (see LedgerRegisterCoordinatorImpl's
         // REQUIRES_NEW) regardless of which branch runs next -- commit=false intentionally stops
         // here, leaving a genuinely prepared, independently-recoverable transaction for a later
         // confirmCommit() call, not a half-finished one.
-        coordinator.prepare(entries, transactionId, actorExternalId);
+        coordinator.prepare(entries, transactionId, actorUserId, createdDate);
         if (request.commit() == null || request.commit()) {
             coordinator.commit(transactionId, commitId);
         }
@@ -169,7 +179,7 @@ public class MutationRequestProcessor {
         return new AbortResponse(transactionId);
     }
 
-    private void processItemCreate(ItemCreateMutation m, String path, @Nullable NtrlocPrincipal principal,
+    private void processItemCreate(ItemCreateMutation m, String path, NtrlocPrincipal principal,
                                     Map<String, UUID> refIdToItemId, Map<String, UUID> refIdToItemTypeId,
                                     Map<UUID, NewItemInfo> newItems,
                                     List<LedgerEntry> entries, List<ItemMutationResult> itemResults, List<ValidationError> errors) {
@@ -182,7 +192,7 @@ public class MutationRequestProcessor {
             errors.add(new ValidationError(path + ".itemTypeName", "Cannot create an instance of abstract item type: " + m.itemTypeName()));
             return;
         }
-        if (principal == null || !permissionService.canCreateItemType(principal, itemTypeId.get())) {
+        if (!permissionService.canCreateItemType(principal, itemTypeId.get())) {
             errors.add(new ValidationError(path + ".itemTypeName", "Not permitted to create items of type: " + m.itemTypeName()));
             return;
         }
@@ -204,7 +214,7 @@ public class MutationRequestProcessor {
         itemResults.add(new ItemMutationResult(m.refId(), itemId, MutationOperation.CREATE));
     }
 
-    private void processItemUpdate(ItemUpdateMutation m, String path, @Nullable NtrlocPrincipal principal, List<LedgerEntry> entries,
+    private void processItemUpdate(ItemUpdateMutation m, String path, NtrlocPrincipal principal, List<LedgerEntry> entries,
                                     List<ItemMutationResult> itemResults, List<ValidationError> errors) {
         Optional<UUID> itemTypeId = registerPartitionManager.findItemTypeId(m.itemId());
         if (itemTypeId.isEmpty()) {
@@ -227,9 +237,9 @@ public class MutationRequestProcessor {
         itemResults.add(new ItemMutationResult(null, m.itemId(), MutationOperation.UPDATE));
     }
 
-    private void processItemDelete(ItemDeleteMutation m, String path, @Nullable NtrlocPrincipal principal,
+    private void processItemDelete(ItemDeleteMutation m, String path, NtrlocPrincipal principal,
                                     List<LedgerEntry> entries, List<ItemMutationResult> itemResults, List<ValidationError> errors) {
-        if (principal == null || !canDeleteItem(principal, m.itemId())) {
+        if (!canDeleteItem(principal, m.itemId())) {
             errors.add(new ValidationError(path, "Not permitted to delete this item"));
             return;
         }
@@ -243,14 +253,13 @@ public class MutationRequestProcessor {
         return permissionService.mayDeleteItem(ctx, permissionService.markerIdsForItem(itemId));
     }
 
-    private boolean canCreateLink(@Nullable NtrlocPrincipal principal, LinkEndpoint endpoint) {
-        if (principal == null) return false;
+    private boolean canCreateLink(NtrlocPrincipal principal, LinkEndpoint endpoint) {
         if (principal.isSuperuser()) return true;
         var ctx = permissionService.buildContext(principal);
         return permissionService.mayCreateLink(ctx, permissionService.markerIdsForItem(endpoint.itemId()), endpoint.perspectiveId());
     }
 
-    private void processLinkCreate(LinkCreateMutation m, String path, @Nullable NtrlocPrincipal principal,
+    private void processLinkCreate(LinkCreateMutation m, String path, NtrlocPrincipal principal,
                                     Map<String, UUID> refIdToItemId, Map<String, UUID> refIdToItemTypeId,
                                     Map<LinkPerspectiveKey, Integer> perspectiveDelta, Map<LinkPerspectiveKey, String> lastLinkMutationPath,
                                     List<LedgerEntry> entries, List<LinkMutationResult> linkResults, List<ValidationError> errors) {
@@ -280,7 +289,7 @@ public class MutationRequestProcessor {
         linkResults.add(new LinkMutationResult(linkId, MutationOperation.CREATE));
     }
 
-    private void processLinkUpdate(LinkUpdateMutation m, String path, @Nullable NtrlocPrincipal principal, List<LedgerEntry> entries,
+    private void processLinkUpdate(LinkUpdateMutation m, String path, NtrlocPrincipal principal, List<LedgerEntry> entries,
                                     List<LinkMutationResult> linkResults, List<ValidationError> errors) {
         Optional<UUID> linkTypeId = registerPartitionManager.findLinkTypeId(m.linkId());
         if (linkTypeId.isEmpty()) {
@@ -298,7 +307,7 @@ public class MutationRequestProcessor {
 
     // An update never changes endpoints (Section 8 -- see stageLinkUpdate's own comment), so unlike
     // create/delete there is no perspective-cardinality delta to record here.
-    private void processLinkDelete(LinkDeleteMutation m, String path, @Nullable NtrlocPrincipal principal,
+    private void processLinkDelete(LinkDeleteMutation m, String path, NtrlocPrincipal principal,
                                     Map<LinkPerspectiveKey, Integer> perspectiveDelta, Map<LinkPerspectiveKey, String> lastLinkMutationPath,
                                     List<LedgerEntry> entries, List<LinkMutationResult> linkResults, List<ValidationError> errors) {
         List<RegisterLinkEndpoint> endpoints = registerPartitionManager.findLinkEndpoints(m.linkId());
@@ -315,8 +324,7 @@ public class MutationRequestProcessor {
         linkResults.add(new LinkMutationResult(m.linkId(), MutationOperation.DELETE));
     }
 
-    private boolean canDeleteLink(@Nullable NtrlocPrincipal principal, List<RegisterLinkEndpoint> endpoints) {
-        if (principal == null) return false;
+    private boolean canDeleteLink(NtrlocPrincipal principal, List<RegisterLinkEndpoint> endpoints) {
         if (principal.isSuperuser()) return true;
         var ctx = permissionService.buildContext(principal);
         for (RegisterLinkEndpoint endpoint : endpoints) {
@@ -661,16 +669,12 @@ public class MutationRequestProcessor {
     }
 
     // Update only -- see processItemUpdate's own comment on why property:write can't apply to
-    // create. A null principal fails closed, same as checkCanCreateItemType. Walks the payload's
-    // own keys (the way checkDeprecatedProperties does), recursing into groups the same way, since
-    // a property's write grant is per-leaf regardless of how deep it's nested.
-    private void checkCanWriteItemProperties(@Nullable NtrlocPrincipal principal, UUID itemTypeId, UUID itemId,
+    // create. Walks the payload's own keys (the way checkDeprecatedProperties does), recursing
+    // into groups the same way, since a property's write grant is per-leaf regardless of how deep
+    // it's nested.
+    private void checkCanWriteItemProperties(NtrlocPrincipal principal, UUID itemTypeId, UUID itemId,
                                               Map<String, Object> propertiesByName, String path, List<ValidationError> errors) {
         if (propertiesByName == null || propertiesByName.isEmpty()) return;
-        if (principal == null) {
-            errors.add(new ValidationError(path, "Not permitted to write these properties"));
-            return;
-        }
         if (principal.isSuperuser()) return;
         var ctx = permissionService.buildContext(principal);
         Set<UUID> itemMarkerIds = permissionService.markerIdsForItem(itemId);
@@ -702,13 +706,9 @@ public class MutationRequestProcessor {
     // *any* link mutation runs, including create, since an endpoint is always either an existing
     // item or one created earlier in this same request. Both endpoints' own link_property:write
     // grant are required, same symmetric reasoning as link:create/delete.
-    private void checkCanWriteLinkProperties(@Nullable NtrlocPrincipal principal, List<UUID> endpointItemIds, UUID linkTypeId,
+    private void checkCanWriteLinkProperties(NtrlocPrincipal principal, List<UUID> endpointItemIds, UUID linkTypeId,
                                               Map<String, Object> propertiesByName, String path, List<ValidationError> errors) {
         if (propertiesByName == null || propertiesByName.isEmpty()) return;
-        if (principal == null) {
-            errors.add(new ValidationError(path, "Not permitted to write these link properties"));
-            return;
-        }
         if (principal.isSuperuser()) return;
         var ctx = permissionService.buildContext(principal);
         List<Set<UUID>> endpointMarkerSets = endpointItemIds.stream().map(permissionService::markerIdsForItem).toList();

@@ -4,6 +4,11 @@ server:
 spring:
   application:
     name: ntrloc
+  servlet:
+    multipart:
+      # BinaryController.upload needs the raw, unconsumed request body (parsed itself via
+      # JakartaServletFileUpload's streaming API) -- see the dependency's own comment in pom.xml.
+      enabled: false
   web:
     resources:
       # Spring Boot's own default static-resource handler otherwise serves classpath:/static/**

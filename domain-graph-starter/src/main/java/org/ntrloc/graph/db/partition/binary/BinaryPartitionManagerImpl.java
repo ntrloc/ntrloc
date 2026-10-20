@@ -8,19 +8,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.sql.init.dependency.DependsOnDatabaseInitialization;
 import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.core.io.buffer.DataBuffer;
-import org.springframework.core.io.buffer.DataBufferUtils;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
-import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
 import tools.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.UncheckedIOException;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -62,35 +56,29 @@ public class BinaryPartitionManagerImpl implements BinaryPartitionManager {
         this.dynamicPropertyRegistrar = dynamicPropertyRegistrar;
     }
 
-    // Consumes the upload as a reactive chunk stream rather than a blocking InputStream: a prior
-    // InputStream-bridging approach (pulling chunks via Flux.toIterable) let a slow consumer race
-    // ahead of backpressure and OOM on large uploads. Writing each chunk synchronously inside
-    // doOnNext, downstream of a single-item-prefetch publishOn, ties consumption of the next network
-    // chunk directly to this write finishing, which is what actually keeps memory bounded regardless
-    // of upload size.
-    @Override
-    public Mono<UUID> store(Flux<DataBuffer> content) {
-        return Mono.fromCallable(storageAdapter::openWriter)
-                .subscribeOn(Schedulers.boundedElastic())
-                .flatMap(writer -> content
-                        .publishOn(Schedulers.boundedElastic(), 1)
-                        .doOnNext(buffer -> writeChunk(writer, buffer))
-                        .then(Mono.fromCallable(() -> storageAdapter.close(writer)))
-                        .flatMap(this::insert)
-                        .onErrorResume(e -> Mono.fromRunnable(() -> storageAdapter.abandon(writer))
-                                .subscribeOn(Schedulers.boundedElastic())
-                                .then(Mono.error(e))));
-    }
+    // Plain blocking read/write loop: content.read(buffer) only returns once the servlet
+    // container has bytes ready, and writer.write(...) only returns once they're flushed to the
+    // underlying storage adapter's own stream -- the chunk size here is just a read buffer size,
+    // not a memory ceiling, since nothing is retained once written. This has the same
+    // memory-bounded property the old reactive version built by hand (publishOn(..., 1) +
+    // doOnNext), for free, because a blocking read naturally can't race ahead of the write it's
+    // feeding.
+    private static final int READ_BUFFER_SIZE = 8192;
 
-    private void writeChunk(HashingBinaryDataWriter writer, DataBuffer buffer) {
+    @Override
+    public UUID store(InputStream content) throws IOException {
+        HashingBinaryDataWriter writer = storageAdapter.openWriter();
         try {
-            byte[] bytes = new byte[buffer.readableByteCount()];
-            buffer.read(bytes);
-            writer.write(bytes);
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
-        } finally {
-            DataBufferUtils.release(buffer);
+            byte[] buffer = new byte[READ_BUFFER_SIZE];
+            int bytesRead;
+            while ((bytesRead = content.read(buffer)) != -1) {
+                writer.write(bytesRead == buffer.length ? buffer : java.util.Arrays.copyOf(buffer, bytesRead));
+            }
+            BinaryContentInfo info = storageAdapter.close(writer);
+            return insert(info);
+        } catch (IOException | RuntimeException e) {
+            storageAdapter.abandon(writer);
+            throw e;
         }
     }
 
@@ -111,22 +99,19 @@ public class BinaryPartitionManagerImpl implements BinaryPartitionManager {
             RETURNING id, (xmax = 0) AS inserted
             """;
 
-    private Mono<UUID> insert(BinaryContentInfo info) {
-        return Mono.fromCallable(() -> jdbcClient.sql(INSERT_BINARY_CONTENT_SQL)
-                        .param(COL_SHA256, info.getSha256Hash())
-                        .param("md5", info.getMd5Hash())
-                        .param("mimeType", info.getMimeType())
-                        .param(COL_LENGTH, info.getLength())
-                        .param("metadata", metadataJson(info))
-                        .query((rs, n) -> new InsertResult(rs.getObject("id", UUID.class), rs.getBoolean("inserted")))
-                        .single())
-                .subscribeOn(Schedulers.boundedElastic())
-                .doOnNext(result -> {
-                    if (result.inserted()) {
-                        eventPublisher.publishEvent(new BinaryContentEvent.Created(result.id()));
-                    }
-                })
-                .map(InsertResult::id);
+    private UUID insert(BinaryContentInfo info) {
+        InsertResult result = jdbcClient.sql(INSERT_BINARY_CONTENT_SQL)
+                .param(COL_SHA256, info.getSha256Hash())
+                .param("md5", info.getMd5Hash())
+                .param("mimeType", info.getMimeType())
+                .param(COL_LENGTH, info.getLength())
+                .param("metadata", metadataJson(info))
+                .query((rs, n) -> new InsertResult(rs.getObject("id", UUID.class), rs.getBoolean("inserted")))
+                .single();
+        if (result.inserted()) {
+            eventPublisher.publishEvent(new BinaryContentEvent.Created(result.id()));
+        }
+        return result.id();
     }
 
     // Mirrors sha256/md5/length/mimeType into the binary's own fields document (alongside, once

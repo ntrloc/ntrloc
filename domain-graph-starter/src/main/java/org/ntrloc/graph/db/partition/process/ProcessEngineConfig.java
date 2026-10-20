@@ -14,7 +14,6 @@ import org.ntrloc.graph.db.partition.process.persistence.ExecutionDataManagerImp
 import org.ntrloc.graph.db.partition.process.persistence.IdentityLinkServiceConfigurator;
 import org.ntrloc.graph.db.partition.process.persistence.JobServiceConfigurator;
 import org.ntrloc.graph.db.partition.process.persistence.ModelDataManagerImpl;
-import org.ntrloc.graph.db.partition.process.persistence.NtrlocPrincipalVariableType;
 import org.ntrloc.graph.db.partition.process.persistence.ProcessDefinitionDataManagerImpl;
 import org.ntrloc.graph.db.partition.process.persistence.ProcessDefinitionInfoDataManagerImpl;
 import org.ntrloc.graph.db.partition.process.persistence.ProcessSessionFactory;
@@ -92,13 +91,6 @@ public class ProcessEngineConfig {
         // ${...} in a script task. ProcessAccessibleBeansMap closes that off to @ProcessAccessible
         // beans only, and also covers the DMN engine's own expression resolution.
         config.setBeans(new ProcessAccessibleBeansMap(applicationContext));
-        // customPre-, not customPost-: ProcessEngineConfigurationImpl.initVariableTypes() tries
-        // types in registration order and uses the first one whose isAbleToStore() matches, so
-        // registering before the ~20 built-in types guarantees an NtrlocPrincipal value is never
-        // even offered to them (moot today -- ResolvedPrincipal isn't Serializable, so
-        // SerializableType wouldn't claim it either -- but pre- is the position that stays correct
-        // regardless of what that type happens to be).
-        config.setCustomPreVariableTypes(List.of(new NtrlocPrincipalVariableType()));
         // Pre-set before buildEngine() runs, same reasoning as setBeans() above -- Spring's default
         // script engine build is guarded the same way, and the real bean-resolver/variable bindings
         // still get composed around whatever engine is set here. See ProcessScriptEngineFactory for

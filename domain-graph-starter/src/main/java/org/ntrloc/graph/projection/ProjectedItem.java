@@ -1,7 +1,9 @@
 package org.ntrloc.graph.projection;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import org.springframework.lang.Nullable;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -23,5 +25,27 @@ import java.util.UUID;
 // any item reached through a link's own nested ProjectedItem -- a real follow-up, not an oversight
 // (RegisterPartitionManager.fetchLinksByItem skips fetching marker ids at all for a superuser
 // today, purely as a filtering-cost optimization that predates this field existing).
-public record ProjectedItem(UUID itemId, String itemType, Map<String, Object> properties, Map<String, List<ProjectedLink>> links, @Nullable Map<String, ProjectedItemState> states, @Nullable ProjectedItemPermissions permissions, String displayLabel, @Nullable List<String> markers) {
+//
+// createdDate/createdBy read straight off the register row -- that row already carries the
+// authoritative values (set at staging/commit time by LedgerRegisterCoordinatorImpl, see
+// RegisterPartitionManager.insertItemRow's own comment), so this is never a ledger read at
+// projection time. createdDate/createdBy never change after the item's first commit, no matter
+// how many updates follow.
+//
+// updatedDate/updatedBy are @Nullable and genuinely null for an item that's only ever been
+// created -- there is no "updated" until a real update happens, not an updated equal to the
+// item's own creation. Once the item has been updated at least once, they reflect the most
+// recent update's actor/time, same as createdDate/createdBy do for creation.
+//
+// createdBy/updatedBy are UserInfo, resolved from the register row's own raw
+// createdByUserId/updatedByUserId -- RegisterPartitionManager populates only the *UserId fields
+// (register must never import the security partition, directly or via an injected resolver: it
+// has no way to produce a real UserInfo), leaving createdBy/updatedBy null; EntityManagerImpl
+// (which already legitimately crosses partition boundaries) resolves them afterward, batched
+// across the whole page, before anything reaches a controller. createdByUserId/updatedByUserId
+// are @JsonIgnore -- an implementation seam for that enrichment step, never part of the actual
+// wire response. updatedBy is additionally null whenever updatedByUserId itself is null.
+public record ProjectedItem(UUID itemId, String itemType, Map<String, Object> properties, Map<String, List<ProjectedLink>> links, @Nullable Map<String, ProjectedItemState> states, @Nullable ProjectedItemPermissions permissions, String displayLabel, @Nullable List<String> markers,
+                             OffsetDateTime createdDate, @JsonIgnore UUID createdByUserId, @Nullable UserInfo createdBy,
+                             @Nullable OffsetDateTime updatedDate, @JsonIgnore @Nullable UUID updatedByUserId, @Nullable UserInfo updatedBy) {
 }

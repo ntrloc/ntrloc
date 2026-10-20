@@ -1,15 +1,19 @@
 package org.ntrloc.graph.db.partition.authorization.repository;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.coordinator.CoordinatorTestDomainInitializer;
 import org.ntrloc.graph.db.coordinator.LedgerRegisterCoordinator;
-import org.ntrloc.graph.db.partition.authorization.MarkerAssignmentService;
+import org.ntrloc.graph.db.partition.authorization.ManualMarkerAssignmentService;
 import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
+import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
+import org.ntrloc.graph.db.partition.security.TestPrincipals;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -31,7 +35,7 @@ class AuthorizationRepositoryMarkerIntegrationTest extends AbstractIntegrationTe
     private SecurityRepository securityRepo;
 
     @Autowired
-    private MarkerAssignmentService markerAssignmentService;
+    private ManualMarkerAssignmentService markerAssignmentService;
 
     @Autowired
     private LedgerRegisterCoordinator coordinator;
@@ -42,10 +46,21 @@ class AuthorizationRepositoryMarkerIntegrationTest extends AbstractIntegrationTe
     @Autowired
     private JdbcClient jdbcClient;
 
+    // Not static/final: needs a real, backed security_user row now that ledger_entry.created_by
+    // (Part E) has a NOT NULL FK to security_user.id -- created fresh per test in setUp() via the
+    // already-autowired securityRepo, which a static initializer can't reach.
+    private NtrlocPrincipal actor;
+
+    @BeforeEach
+    void setUpActor() {
+        var user = securityRepo.createUser("arm-actor-" + UUID.randomUUID(), "Authorization Test Actor", null, true);
+        actor = TestPrincipals.of(user.id(), user.externalId(), user.displayName(), null, Set.of(), true);
+    }
+
     private UUID createItem() {
         UUID itemId = UUID.randomUUID();
         UUID txn = UUID.randomUUID();
-        coordinator.prepare(List.of(new ItemCreateEntry(itemId, fixture.productTypeId(), Map.of(fixture.namePropertyId(), "Widget"), Map.of(), Set.of())), txn, null);
+        coordinator.prepare(List.of(new ItemCreateEntry(itemId, fixture.productTypeId(), Map.of(fixture.namePropertyId(), "Widget"), Map.of(), Set.of())), txn, actor.id(), OffsetDateTime.now());
         coordinator.commit(txn, UUID.randomUUID());
         return itemId;
     }
@@ -171,7 +186,7 @@ class AuthorizationRepositoryMarkerIntegrationTest extends AbstractIntegrationTe
     void getMarkerIdsForItem_returnsAssignedMarkers() {
         UUID itemId = createItem();
         var marker = authRepo.createMarker("arm-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId());
-        markerAssignmentService.addItemMarker(itemId, marker.id(), "test-actor", "test reason");
+        markerAssignmentService.addItemMarker(itemId, marker.id(), actor, "test reason");
 
         assertThat(authRepo.getMarkerIdsForItem(itemId)).containsExactly(marker.id());
     }
@@ -182,8 +197,8 @@ class AuthorizationRepositoryMarkerIntegrationTest extends AbstractIntegrationTe
         UUID item2 = createItem();
         var marker1 = authRepo.createMarker("arm-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId());
         var marker2 = authRepo.createMarker("arm-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId());
-        markerAssignmentService.addItemMarker(item1, marker1.id(), "test-actor", "test reason");
-        markerAssignmentService.addItemMarker(item2, marker2.id(), "test-actor", "test reason");
+        markerAssignmentService.addItemMarker(item1, marker1.id(), actor, "test reason");
+        markerAssignmentService.addItemMarker(item2, marker2.id(), actor, "test reason");
 
         Map<UUID, Set<UUID>> byItem = authRepo.getMarkerIdsForItems(Set.of(item1, item2));
 

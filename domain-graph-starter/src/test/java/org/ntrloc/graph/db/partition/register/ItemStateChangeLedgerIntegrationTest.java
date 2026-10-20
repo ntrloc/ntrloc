@@ -1,13 +1,16 @@
 package org.ntrloc.graph.db.partition.register;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.coordinator.LedgerRegisterCoordinator;
 import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
 import org.ntrloc.graph.db.partition.ledger.ItemUpdateEntry;
+import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -37,11 +40,23 @@ class ItemStateChangeLedgerIntegrationTest extends AbstractIntegrationTest {
     @Autowired
     private JdbcClient jdbcClient;
 
+    @Autowired
+    private SecurityRepository securityRepo;
+
+    // ledger_entry.created_by/register_item.created_by (Part E) are NOT NULL FKs to
+    // security_user.id -- every coordinator.prepare call below needs a real, backed actor.
+    private UUID actor;
+
+    @BeforeEach
+    void setUpActor() {
+        actor = securityRepo.createUser("iscl-actor-" + UUID.randomUUID(), "State Change Test Actor", null, true).id();
+    }
+
     private UUID createBook(String title) {
         UUID itemId = UUID.randomUUID();
         UUID txn = UUID.randomUUID();
         coordinator.prepare(List.of(new ItemCreateEntry(itemId, fixture.bookTypeId(),
-                Map.of(fixture.titlePropertyId(), title), Map.of(), Set.of())), txn, null);
+                Map.of(fixture.titlePropertyId(), title), Map.of(), Set.of())), txn, actor, OffsetDateTime.now());
         coordinator.commit(txn, UUID.randomUUID());
         return itemId;
     }
@@ -50,7 +65,7 @@ class ItemStateChangeLedgerIntegrationTest extends AbstractIntegrationTest {
         UUID smId = registerPartitionManager.resolveStateMachineId(fixture.bookTypeId(), machineName);
         UUID stateId = registerPartitionManager.resolveStateId(smId, stateName);
         UUID txn = UUID.randomUUID();
-        coordinator.prepare(List.of(new ItemUpdateEntry(itemId, Map.of(), Map.of(smId, stateId), Set.of(), Set.of(), Set.of())), txn, null);
+        coordinator.prepare(List.of(new ItemUpdateEntry(itemId, Map.of(), Map.of(smId, stateId), Set.of(), Set.of(), Set.of())), txn, actor, OffsetDateTime.now());
         coordinator.commit(txn, UUID.randomUUID());
     }
 
@@ -80,7 +95,7 @@ class ItemStateChangeLedgerIntegrationTest extends AbstractIntegrationTest {
                 RegisterProjectionTestDomainInitializer.OUT_OF_STOCK);
 
         UUID updateTxn = UUID.randomUUID();
-        coordinator.prepare(List.of(new ItemUpdateEntry(bookId, Map.of(fixture.pageCountPropertyId(), 250), Map.of(), Set.of(), Set.of(), Set.of())), updateTxn, null);
+        coordinator.prepare(List.of(new ItemUpdateEntry(bookId, Map.of(fixture.pageCountPropertyId(), 250), Map.of(), Set.of(), Set.of(), Set.of())), updateTxn, actor, OffsetDateTime.now());
         coordinator.commit(updateTxn, UUID.randomUUID());
 
         var book = registerPartitionManager.projectOne(fixture.bookTypeId(), bookId, "http://binary").orElseThrow();
@@ -93,7 +108,7 @@ class ItemStateChangeLedgerIntegrationTest extends AbstractIntegrationTest {
     void stateChangeAfterPropertyUpdate_doesNotWipeExistingProperties() {
         UUID bookId = createBook("Symmetric Test Book");
         UUID updateTxn = UUID.randomUUID();
-        coordinator.prepare(List.of(new ItemUpdateEntry(bookId, Map.of(fixture.pageCountPropertyId(), 400), Map.of(), Set.of(), Set.of(), Set.of())), updateTxn, null);
+        coordinator.prepare(List.of(new ItemUpdateEntry(bookId, Map.of(fixture.pageCountPropertyId(), 400), Map.of(), Set.of(), Set.of(), Set.of())), updateTxn, actor, OffsetDateTime.now());
         coordinator.commit(updateTxn, UUID.randomUUID());
 
         setState(bookId, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE,
@@ -119,7 +134,7 @@ class ItemStateChangeLedgerIntegrationTest extends AbstractIntegrationTest {
 
         UUID txn = UUID.randomUUID();
         coordinator.prepare(List.of(new ItemUpdateEntry(bookId, Map.of(fixture.pageCountPropertyId(), 500),
-                Map.of(stateMachineId, stateId), Set.of(), Set.of(), Set.of())), txn, null);
+                Map.of(stateMachineId, stateId), Set.of(), Set.of(), Set.of())), txn, actor, OffsetDateTime.now());
         coordinator.commit(txn, UUID.randomUUID());
 
         var book = registerPartitionManager.projectOne(fixture.bookTypeId(), bookId, "http://binary").orElseThrow();

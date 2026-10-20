@@ -4,6 +4,11 @@ server:
 spring:
   application:
     name: domain-1
+  # spring.servlet.multipart.enabled=false (BinaryController.upload needs the raw, unconsumed
+  # request body) is no longer set here -- domain-graph-starter's own
+  # BinaryUploadMultipartEnvironmentPostProcessor now forces it for every application built on
+  # it, not just this one. Explicitly NOT re-declared here, so this file can't accidentally drift
+  # from, or look like a model to copy for, the thing that's now actually enforced one level down.
   web:
     resources:
       # Spring Boot's own default static-resource handler otherwise serves classpath:/static/**
@@ -38,11 +43,14 @@ graph:
     mounts:
       - path: /admin
         location: "file:///Users/michaelcoddington/Documents/Projects/ntrloc/domain-graph-starter/src/main/resources/static/admin-ui/"
-      # Experimental React admin UI (ntrloc-admin-ui) -- served from its own build output, not
-      # copied anywhere, so `npm run build` there is the only step needed to refresh it here.
-      # Matches vite.config.js's base: '/react-admin/' for the production build.
-      - path: /react-admin
-        location: "file:///Users/michaelcoddington/Documents/Projects/ntrloc/ntrloc-admin-ui/dist/"
+      # Experimental React admin UI (ntrloc-admin-ui) -- genuinely bundled into
+      # domain-graph-starter's own jar now (see that module's pom.xml: frontend-maven-plugin runs
+      # ntrloc-admin-ui's npm build, maven-resources-plugin copies dist/ into this module's own
+      # classpath resources), not served from an external file:// path -- refreshing it needs a
+      # domain-graph-starter rebuild, not just `npm run build` in ntrloc-admin-ui. Matches
+      # vite.config.js's base: '/admin-react/' for the production build.
+      - path: /admin-react
+        location: "classpath:/static/admin-react/"
   process:
     script:
       # Packages a process script (Groovy or JavaScript) can reference a class from by simple

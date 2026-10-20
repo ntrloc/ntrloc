@@ -25,10 +25,10 @@ public class LedgerPropertyHistoryService {
 
     // displayName is resolved best-effort at read time, not stored -- a user's display name can
     // change after the edit it's shown against, and this always reflects the current one, same as
-    // any other "who did this" attribution. Blank (not an error) when actorExternalId is null
-    // (ledger_entry.actor_external_id is nullable by design: a real, displayable state) or no
-    // longer resolves to a user.
-    public record PropertyHistoryEntry(OffsetDateTime editedOn, String editedByExternalId, String editedByDisplayName, Object value) {
+    // any other "who did this" attribution. Blank (not an error) if the actor no longer resolves
+    // to a user (ledger_entry.created_by is NOT NULL now, see Part E, but a user row can still be
+    // deleted after the fact).
+    public record PropertyHistoryEntry(OffsetDateTime editedOn, UUID editedByUserId, String editedByDisplayName, Object value) {
     }
 
     private final LedgerPartitionManager ledgerPartitionManager;
@@ -43,7 +43,7 @@ public class LedgerPropertyHistoryService {
     // itself is oldest-first (sequence_number ascending), the order the register's own
     // materialization needs.
     public List<PropertyHistoryEntry> history(UUID itemId, UUID propertyId) {
-        Map<String, String> displayNameCache = new HashMap<>();
+        Map<UUID, String> displayNameCache = new HashMap<>();
         List<PropertyHistoryEntry> entries = ledgerPartitionManager.readItemStreamWithMetadata(itemId).stream()
                 .filter(ledgerRecord -> touchesProperty(ledgerRecord.entry(), propertyId))
                 .map(ledgerRecord -> toHistoryEntry(ledgerRecord, propertyId, displayNameCache))
@@ -63,15 +63,15 @@ public class LedgerPropertyHistoryService {
         return Map.of();
     }
 
-    private PropertyHistoryEntry toHistoryEntry(LedgerEntryRecord ledgerRecord, UUID propertyId, Map<String, String> displayNameCache) {
+    private PropertyHistoryEntry toHistoryEntry(LedgerEntryRecord ledgerRecord, UUID propertyId, Map<UUID, String> displayNameCache) {
         Object value = propertiesOf(ledgerRecord.entry()).get(propertyId);
-        String actorExternalId = ledgerRecord.actorExternalId();
-        String displayName = actorExternalId == null ? null : displayNameCache.computeIfAbsent(actorExternalId, this::resolveDisplayName);
-        return new PropertyHistoryEntry(ledgerRecord.createdAt(), actorExternalId, displayName, value);
+        UUID createdBy = ledgerRecord.createdBy();
+        String displayName = displayNameCache.computeIfAbsent(createdBy, this::resolveDisplayName);
+        return new PropertyHistoryEntry(ledgerRecord.createdDate(), createdBy, displayName, value);
     }
 
-    private String resolveDisplayName(String externalId) {
-        return securityRepository.findUserByExternalId(externalId)
+    private String resolveDisplayName(UUID userId) {
+        return securityRepository.findUserById(userId)
                 .map(SecurityRepository.UserRow::displayName)
                 .orElse(null);
     }

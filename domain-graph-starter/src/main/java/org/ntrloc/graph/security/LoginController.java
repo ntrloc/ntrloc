@@ -5,7 +5,6 @@ import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import reactor.core.publisher.Mono;
 
 @RestController
 public class LoginController {
@@ -19,7 +18,7 @@ public class LoginController {
     }
 
     @GetMapping(value = "/login", produces = MediaType.TEXT_HTML_VALUE)
-    public Mono<String> loginPage(
+    public String loginPage(
             @RequestParam(required = false) String error) {
 
         String displayName = brandingProperties.displayName();
@@ -128,6 +127,6 @@ public class LoginController {
         }
 
         html.append("</div></body></html>");
-        return Mono.just(html.toString());
+        return html.toString();
     }
 }

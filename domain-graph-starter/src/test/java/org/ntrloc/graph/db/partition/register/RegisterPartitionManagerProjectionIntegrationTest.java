@@ -34,15 +34,18 @@ import org.ntrloc.graph.projection.StateValuePredicate;
 import org.ntrloc.graph.projection.TermsFacetFilter;
 import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
 import org.ntrloc.graph.db.partition.ledger.ItemUpdateEntry;
+import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.ntrloc.graph.domain.DomainInitializer;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.core.io.buffer.DefaultDataBufferFactory;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.web.reactive.server.WebTestClient;
-import reactor.core.publisher.Flux;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -86,6 +89,15 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
     @Autowired
     private BinaryPartitionManager binaryPartitionManager;
 
+    @Autowired
+    private SecurityRepository securityRepo;
+
+    // ledger_entry.created_by/register_item.created_by (Part E) are NOT NULL FKs to
+    // security_user.id -- setState's/the raw ItemCreateEntry tests' direct coordinator.prepare
+    // calls need a real, backed actor (the webTestClient-driven mutations above go through the
+    // real "X-Ntrloc-User: root" stand-in auth path instead, already backed, untouched here).
+    private UUID actor;
+
     // Every book this test class creates gets this value stamped onto testMarker
     // (RegisterProjectionTestDomainInitializer's own comment on why that property exists), and
     // project() below always ANDs a "testMarker = this test's marker" predicate into whatever
@@ -101,6 +113,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
         // comment on why "root" specifically.
         webTestClient = webTestClient.mutate().defaultHeader("X-Ntrloc-User", "root").build();
         marker = UUID.randomUUID().toString();
+        actor = securityRepo.createUser("rpmp-actor-" + UUID.randomUUID(), "Projection Test Actor", null, true).id();
     }
 
     private UUID createBook(String title, Integer pageCount, Boolean inStock, String genre) {
@@ -193,8 +206,11 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
     }
 
     private UUID storeBinary(byte[] content) {
-        var buffer = new DefaultDataBufferFactory().wrap(content);
-        return binaryPartitionManager.store(Flux.just(buffer)).block();
+        try {
+            return binaryPartitionManager.store(new ByteArrayInputStream(content));
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     // Sets attachment to a binary of exactly contentLength bytes -- exists so
@@ -227,7 +243,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
         UUID smId = registerPartitionManager.resolveStateMachineId(fixture.bookTypeId(), machineName);
         UUID stateId = registerPartitionManager.resolveStateId(smId, stateName);
         UUID txn = UUID.randomUUID();
-        coordinator.prepare(List.of(new ItemUpdateEntry(itemId, Map.of(), Map.of(smId, stateId), Set.of(), Set.of(), Set.of())), txn, null);
+        coordinator.prepare(List.of(new ItemUpdateEntry(itemId, Map.of(), Map.of(smId, stateId), Set.of(), Set.of(), Set.of())), txn, actor, OffsetDateTime.now());
         coordinator.commit(txn, UUID.randomUUID());
     }
 
@@ -800,7 +816,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
         UUID smId = registerPartitionManager.resolveStateMachineId(itemTypeId, machineName);
         UUID stateId = registerPartitionManager.resolveStateId(smId, stateName);
         UUID txn = UUID.randomUUID();
-        coordinator.prepare(List.of(new ItemUpdateEntry(itemId, Map.of(), Map.of(smId, stateId), Set.of(), Set.of(), Set.of())), txn, null);
+        coordinator.prepare(List.of(new ItemUpdateEntry(itemId, Map.of(), Map.of(smId, stateId), Set.of(), Set.of(), Set.of())), txn, actor, OffsetDateTime.now());
         coordinator.commit(txn, UUID.randomUUID());
     }
 
@@ -1367,7 +1383,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
         // Looked up by exact itemId below, same as createBook's own doc comment notes for
         // projectOne/setState -- no testMarker needed to scope this to the current test.
         coordinator.prepare(List.of(new ItemCreateEntry(bookId, fixture.bookTypeId(),
-                Map.of(fixture.titlePropertyId(), "Ghost Edition"), Map.of(), Set.of())), UUID.randomUUID(), null);
+                Map.of(fixture.titlePropertyId(), "Ghost Edition"), Map.of(), Set.of())), UUID.randomUUID(), actor, OffsetDateTime.now());
 
         assertThat(registerPartitionManager.projectOne(fixture.bookTypeId(), bookId, "http://binary")).isEmpty();
     }
@@ -1377,7 +1393,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
         UUID bookId = UUID.randomUUID();
         coordinator.prepare(List.of(new ItemCreateEntry(bookId, fixture.bookTypeId(),
                 Map.of(fixture.titlePropertyId(), "Ghost Edition", fixture.testMarkerPropertyId(), marker), Map.of(), Set.of())),
-                UUID.randomUUID(), null);
+                UUID.randomUUID(), actor, OffsetDateTime.now());
 
         // AndPredicate with the testMarker scope, same as the project() test helper above --
         // belt-and-suspenders against cross-test pollution: a regression would have to leak past
@@ -1396,7 +1412,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
         UUID bookId = UUID.randomUUID();
         coordinator.prepare(List.of(new ItemCreateEntry(bookId, fixture.bookTypeId(),
                 Map.of(fixture.titlePropertyId(), "Ghost Edition", fixture.testMarkerPropertyId(), marker), Map.of(), Set.of())),
-                UUID.randomUUID(), null);
+                UUID.randomUUID(), actor, OffsetDateTime.now());
 
         var spec = new CollectionProjectionSpec(BOOK_TYPE, null, null, new AndPredicate(List.of(
                 new PropertyValuePredicate("testMarker", Operator.EQUALS, marker),

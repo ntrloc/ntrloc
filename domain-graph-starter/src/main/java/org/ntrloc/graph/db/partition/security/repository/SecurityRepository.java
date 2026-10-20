@@ -48,6 +48,39 @@ public class SecurityRepository {
                 .optional();
     }
 
+    // Mirrors findUserByExternalId, keyed by the stable internal id instead -- what a long-lived
+    // reference (a Flowable process variable, surviving well past the HTTP session that started it)
+    // should resolve against, rather than external_id, which can legitimately change over a user's
+    // lifetime. See PrincipalResolver.resolveById's own comment.
+    public Optional<UserRow> findUserById(UUID id) {
+        return jdbcClient.sql("SELECT id, external_id, display_name, email, is_superuser FROM security_user WHERE id = :userId")
+                .param(PARAM_USER_ID, id)
+                .query((rs, n) -> new UserRow(
+                        rs.getObject("id", UUID.class),
+                        rs.getString(COL_EXTERNAL_ID),
+                        rs.getString(COL_DISPLAY_NAME),
+                        rs.getString(COL_EMAIL),
+                        rs.getBoolean(COL_IS_SUPERUSER)))
+                .optional();
+    }
+
+    // Batched id lookup -- what RegisterPartitionManager resolves a page's worth of
+    // createdBy/updatedBy UUIDs against in one round trip (UserInfo), rather than one
+    // findUserById call per row. Empty input short-circuits rather than issuing "IN ()", which
+    // Postgres rejects as a syntax error.
+    public List<UserRow> findUsersByIds(Set<UUID> ids) {
+        if (ids.isEmpty()) return List.of();
+        return jdbcClient.sql("SELECT id, external_id, display_name, email, is_superuser FROM security_user WHERE id IN (:ids)")
+                .param("ids", ids)
+                .query((rs, n) -> new UserRow(
+                        rs.getObject("id", UUID.class),
+                        rs.getString(COL_EXTERNAL_ID),
+                        rs.getString(COL_DISPLAY_NAME),
+                        rs.getString(COL_EMAIL),
+                        rs.getBoolean(COL_IS_SUPERUSER)))
+                .list();
+    }
+
     // Used by UserAdminController to populate assignee pickers (e.g. a User Task's assignee
     // select in the process editor) -- not part of principal resolution, just a plain listing.
     public List<UserRow> listUsers() {

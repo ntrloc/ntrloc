@@ -9,7 +9,6 @@ import org.flowable.common.engine.api.delegate.event.FlowableEventType;
 import org.flowable.engine.RepositoryService;
 import org.flowable.engine.delegate.event.FlowableProcessStartedEvent;
 import org.flowable.engine.impl.persistence.entity.ExecutionEntity;
-import org.ntrloc.graph.db.partition.process.persistence.NtrlocPrincipalVariableType;
 import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
 import org.ntrloc.graph.db.partition.security.PrincipalResolver;
 import org.springframework.context.annotation.Lazy;
@@ -71,7 +70,7 @@ public class ProcessRunAsUserListener extends AbstractFlowableEventListener {
         // map -- exactly what a timer/signal/message start does, and exactly the case this
         // listener exists for.
         if (startedEvent.getVariables() != null
-                && startedEvent.getVariables().containsKey(NtrlocPrincipalVariableType.PRINCIPAL_VARIABLE)) {
+                && startedEvent.getVariables().containsKey(PrincipalResolver.PRINCIPAL_VARIABLE)) {
             return;
         }
 
@@ -93,7 +92,11 @@ public class ProcessRunAsUserListener extends AbstractFlowableEventListener {
                         "Process '" + processDefinitionId + "' declares runAsUser '"
                                 + runAsUserExternalId + "', which does not resolve to a known user"));
 
-        execution.setVariable(NtrlocPrincipalVariableType.PRINCIPAL_VARIABLE, principal);
+        // Stored as a bare UUID string, not the resolved principal object -- see
+        // PrincipalResolver.resolveById's own comment: a long-running process instance should
+        // re-resolve the declared user's *current* state on each read, not act on a snapshot of
+        // whatever was true at start time.
+        execution.setVariable(PrincipalResolver.PRINCIPAL_VARIABLE, principal.id().toString());
     }
 
     // A misconfigured runAsUser (declared but unresolvable) should fail the process start loudly,

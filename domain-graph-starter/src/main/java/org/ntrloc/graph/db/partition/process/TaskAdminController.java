@@ -6,8 +6,7 @@ import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
 import org.ntrloc.graph.db.partition.security.PrincipalResolver;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.http.codec.ServerSentEvent;
-import org.springframework.http.server.reactive.ServerHttpRequest;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -15,7 +14,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import reactor.core.publisher.Flux;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.Date;
 import java.util.List;
@@ -52,8 +51,8 @@ public class TaskAdminController {
     // re-fetches GET /tasks (see TaskEventBroadcaster for why), so this needs no per-principal
     // filtering of its own.
     @GetMapping(value = "/tasks/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    Flux<ServerSentEvent<String>> taskEvents() {
-        return broadcaster.events().map(type -> ServerSentEvent.builder(type).build());
+    SseEmitter taskEvents() {
+        return broadcaster.register();
     }
 
     // Superusers see every task (useful with only a couple of seed accounts to test with);
@@ -61,7 +60,7 @@ public class TaskAdminController {
     // directly, or via a process_group they belong to -- see ProcessGroupRepository, deliberately
     // not Flowable's own unwired IdentityService).
     @GetMapping("/tasks")
-    List<TaskView> listTasks(ServerHttpRequest request, Authentication authentication) {
+    List<TaskView> listTasks(HttpServletRequest request, Authentication authentication) {
         NtrlocPrincipal principal = principalResolver.resolve(request, authentication);
         var query = taskService.createTaskQuery();
         if (!principal.isSuperuser()) {
@@ -78,7 +77,7 @@ public class TaskAdminController {
     }
 
     @PostMapping("/tasks/{id}/claim")
-    ResponseEntity<?> claim(@PathVariable String id, ServerHttpRequest request, Authentication authentication) {
+    ResponseEntity<?> claim(@PathVariable String id, HttpServletRequest request, Authentication authentication) {
         NtrlocPrincipal principal = principalResolver.resolve(request, authentication);
         try {
             taskService.claim(id, principal.externalId());

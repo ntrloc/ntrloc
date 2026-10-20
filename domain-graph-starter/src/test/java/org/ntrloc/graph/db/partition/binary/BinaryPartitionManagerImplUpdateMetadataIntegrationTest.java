@@ -7,13 +7,13 @@ import org.ntrloc.graph.mutation.MutationRequest;
 import org.ntrloc.graph.mutation.MutationResponse;
 import org.ntrloc.graph.db.partition.register.RegisterProjectionTestDomainInitializer;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.core.io.buffer.DataBuffer;
-import org.springframework.core.io.buffer.DefaultDataBufferFactory;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.web.reactive.server.WebTestClient;
-import reactor.core.publisher.Flux;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -43,8 +43,11 @@ class BinaryPartitionManagerImplUpdateMetadataIntegrationTest extends AbstractIn
 
     private UUID storeBinary() {
         byte[] content = ("update-metadata test " + UUID.randomUUID()).getBytes();
-        var buffer = new DefaultDataBufferFactory().wrap(content);
-        return binaryPartitionManager.store(Flux.just(buffer)).block();
+        try {
+            return binaryPartitionManager.store(new ByteArrayInputStream(content));
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     @Test

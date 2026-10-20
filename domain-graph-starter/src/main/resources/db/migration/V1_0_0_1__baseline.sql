@@ -403,6 +403,16 @@ CREATE TABLE process_group_member (
 -- RegisterPartitionManager in response to SchemaChangeEvent -- not part of this baseline, since
 -- their names/count depend on runtime admin actions, not compile-time knowledge.
 
+-- created_date/created_by/updated_date/updated_by describe the ITEM this row represents, not the
+-- row itself: created_date/created_by are set once (from the ledger entry that first created this
+-- item) and carried forward unchanged across every later update's wholesale row replacement (see
+-- RegisterPartitionManager.stageItemChange). updated_date/updated_by are NULL until the item is
+-- actually updated for the first time -- an item that has only ever been created has no
+-- "updated", not an updated equal to its own creation. Once set, they take the exact values of
+-- whichever ledger entry's own created_date/created_by most recently caused a committed change.
+-- No DEFAULT NOW() on created_date: the app always supplies an explicit value (see
+-- LedgerRegisterCoordinatorImpl.prepare), so provenance never silently depends on the DB's own
+-- clock.
 CREATE TABLE register_item (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     item_id         UUID NOT NULL,
@@ -410,10 +420,14 @@ CREATE TABLE register_item (
     state           TEXT NOT NULL,
     transaction_id  UUID,
     commit_id       UUID,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_date    TIMESTAMPTZ NOT NULL,
+    created_by      UUID NOT NULL REFERENCES security_user(id),
+    updated_date    TIMESTAMPTZ,
+    updated_by      UUID REFERENCES security_user(id)
 );
 
+-- Same created_date/created_by/updated_date/updated_by semantics as register_item above, describing
+-- the LINK this row represents.
 CREATE TABLE register_link (
     id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     link_id             UUID NOT NULL,
@@ -421,8 +435,10 @@ CREATE TABLE register_link (
     state               TEXT NOT NULL,
     transaction_id      UUID,
     commit_id           UUID,
-    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_date        TIMESTAMPTZ NOT NULL,
+    created_by          UUID NOT NULL REFERENCES security_user(id),
+    updated_date        TIMESTAMPTZ,
+    updated_by          UUID REFERENCES security_user(id)
 );
 CREATE INDEX register_link_link_id_idx ON register_link (link_id);
 
@@ -521,6 +537,11 @@ CREATE TABLE binary_property_dynamic_property (
 CREATE INDEX binary_property_dynamic_property_dynamic_idx ON binary_property_dynamic_property (dynamic_property_id);
 
 -- === ledger_entry (LedgerInitializer) ===
+-- created_date/created_by describe the ledger entry itself: who created it, and when -- a ledger
+-- entry is append-only, so it only ever has a "created" pair, never an "updated" one. No DEFAULT
+-- NOW(): the app always supplies an explicit value (LedgerRegisterCoordinatorImpl.prepare), the
+-- same one threaded into the register row(s) this entry causes, so the two are byte-for-byte
+-- identical rather than two independently-generated timestamps that happen to be close.
 
 CREATE TABLE ledger_entry (
     id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -532,8 +553,8 @@ CREATE TABLE ledger_entry (
     transaction_id    UUID NOT NULL,
     state             TEXT NOT NULL,
     commit_id         UUID,
-    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    actor_external_id TEXT
+    created_date      TIMESTAMPTZ NOT NULL,
+    created_by        UUID NOT NULL REFERENCES security_user(id)
 );
 CREATE INDEX ledger_entry_target_idx ON ledger_entry (target_type, target_id, sequence_number);
 CREATE INDEX ledger_entry_transaction_idx ON ledger_entry (transaction_id);

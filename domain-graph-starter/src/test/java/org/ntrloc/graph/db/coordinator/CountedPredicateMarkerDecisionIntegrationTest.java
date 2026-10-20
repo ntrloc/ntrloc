@@ -31,10 +31,12 @@ import org.ntrloc.graph.mutation.LinkCreateMutation;
 import org.ntrloc.graph.mutation.LinkEndpointReference;
 import org.ntrloc.graph.mutation.MutationRequest;
 import org.ntrloc.graph.mutation.MutationResponse;
+import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.reactive.server.WebTestClient;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -66,12 +68,20 @@ class CountedPredicateMarkerDecisionIntegrationTest extends AbstractIntegrationT
     @Autowired
     private WebTestClient webTestClient;
 
+    @Autowired
+    private SecurityRepository securityRepo;
+
+    // ledger_entry.created_by/register_item.created_by (Part E) are NOT NULL FKs to
+    // security_user.id -- setState's direct coordinator.prepare call needs a real, backed actor.
+    private SecurityRepository.UserRow actor;
+
     @BeforeEach
     void setUp() {
         // Same stand-in mechanism as MutationControllerIntegrationTest -- see that class's own
         // comment on why "root" specifically.
         webTestClient = webTestClient.mutate().defaultHeader("X-Ntrloc-User", "root").build();
         fixture.removeAutoCreatedPipeline();
+        actor = securityRepo.createUser("cpmd-actor-" + UUID.randomUUID(), "Counted Predicate Test Actor", null, true);
     }
 
     // self -> photos (each) -> portfolios (each) -> state machine, subPredicate STATE_EQUALS with no
@@ -140,7 +150,7 @@ class CountedPredicateMarkerDecisionIntegrationTest extends AbstractIntegrationT
     // real START/transition wiring.
     private void setState(UUID itemId, UUID stateMachineId, UUID stateId) {
         UUID txn = UUID.randomUUID();
-        coordinator.prepare(List.of(new ItemUpdateEntry(itemId, Map.of(), Map.of(stateMachineId, stateId), Set.of(), Set.of(), Set.of())), txn, null);
+        coordinator.prepare(List.of(new ItemUpdateEntry(itemId, Map.of(), Map.of(stateMachineId, stateId), Set.of(), Set.of(), Set.of())), txn, actor.id(), OffsetDateTime.now());
         coordinator.commit(txn, UUID.randomUUID());
     }
 

@@ -5,13 +5,13 @@ import org.ntrloc.graph.mutation.MutationRequest;
 import org.ntrloc.graph.mutation.MutationResponse;
 import org.ntrloc.graph.mutation.MutationValidationException;
 import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
-import org.ntrloc.graph.db.partition.security.PersonalAccessTokenService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.context.McpSyncRequestContext;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.stream.Collectors;
 
@@ -19,17 +19,16 @@ import java.util.stream.Collectors;
 public class MutationService {
 
     private static final Logger LOG = LoggerFactory.getLogger(MutationService.class);
-    private static final String BEARER_PREFIX = "Bearer ";
 
     // Goes through EntityManager, not MutationRequestProcessor directly -- see
     // MutationController's identical comment; EntityManager is the one entry point for both
     // reads and writes now.
     private final EntityManager entityManager;
-    private final PersonalAccessTokenService personalAccessTokenService;
+    private final McpPrincipalResolver principalResolver;
 
-    public MutationService(EntityManager entityManager, PersonalAccessTokenService personalAccessTokenService) {
+    public MutationService(EntityManager entityManager, McpPrincipalResolver principalResolver) {
         this.entityManager = entityManager;
-        this.personalAccessTokenService = personalAccessTokenService;
+        this.principalResolver = principalResolver;
     }
 
     @McpTool(description = """
@@ -63,11 +62,13 @@ public class MutationService {
             together as one atomic transaction.
             """) MutationRequest request, McpSyncRequestContext requestContext) {
         try {
-            NtrlocPrincipal principal = resolvePrincipal(requestContext);
-            LOG.info("Executing mutation {} as {}", request, principal == null ? "<unresolved>" : principal.externalId());
+            NtrlocPrincipal principal = principalResolver.requirePrincipal(requestContext);
+            LOG.info("Executing mutation {} as {}", request, principal.externalId());
             MutationResponse response = entityManager.mutate(request, principal);
             LOG.info("Mutation applied: {} item(s), {} link(s)", response.items().size(), response.links().size());
             return response;
+        } catch (ResponseStatusException e) {
+            throw e;
         } catch (MutationValidationException e) {
             String detail = e.errors().stream()
                     .map(error -> error.path() + ": " + error.message())
@@ -78,22 +79,5 @@ public class MutationService {
             LOG.error("Error while executing mutation", e);
             throw new RuntimeException("Error while executing mutation", e);
         }
-    }
-
-    // The Authorization header McpTransportContextConfig captured from the underlying HTTP
-    // request, re-resolved the same way SecurityConfig's PAT bearer-auth filter would --
-    // MutationRequest.authenticate is a blocking JDBC call, safe here since Spring AI invokes a
-    // "Sync" @McpTool method's body off the event loop, unlike the transport-context extraction
-    // itself (see that class's own comment on why the raw header, not a resolved principal, is
-    // what gets captured there). Returns null, not an exception, when unresolvable -- a missing
-    // or invalid token here is a real, displayable state for the ledger ("Edited by" blank), not
-    // a reason to refuse the mutation (EntityManager.mutate's own note).
-    private NtrlocPrincipal resolvePrincipal(McpSyncRequestContext requestContext) {
-        Object header = requestContext.transportContext().get(McpTransportContextConfig.AUTHORIZATION_TRANSPORT_KEY);
-        if (!(header instanceof String authorization) || !authorization.startsWith(BEARER_PREFIX)) {
-            return null;
-        }
-        String rawToken = authorization.substring(BEARER_PREFIX.length());
-        return personalAccessTokenService.authenticate(rawToken).orElse(null);
     }
 }

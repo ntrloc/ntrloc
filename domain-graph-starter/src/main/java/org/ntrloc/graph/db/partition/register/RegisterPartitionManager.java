@@ -54,6 +54,7 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Component;
 
+import java.time.OffsetDateTime;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -142,8 +143,10 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
     private static final Map<String, String> SYSTEM_SORT_COLUMNS = Map.of(
             PARAM_ITEM_ID,          "ri.item_id",
             "itemType",        "si.name",
-            "createdAt",       "ri.created_at",
-            "updatedAt",       "ri.updated_at",
+            "createdDate",     "ri.created_date",
+            "createdBy",       "ri.created_by",
+            "updatedDate",     "ri.updated_date",
+            "updatedBy",       "ri.updated_by",
             "visibilityState", "ri.state"
     );
 
@@ -306,7 +309,8 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
         return "NULLIF(" + text + ", '')::" + pgType;
     }
 
-    private record RawItem(UUID registerItemId, UUID itemId, String itemType, Map<String, Object> properties, Map<String, Object> states) {}
+    private record RawItem(UUID registerItemId, UUID itemId, String itemType, Map<String, Object> properties, Map<String, Object> states,
+                            OffsetDateTime createdDate, UUID createdBy, OffsetDateTime updatedDate, UUID updatedBy) {}
 
     public ProjectionResult project(UUID itemTypeId, CollectionProjectionSpec spec, String binaryBaseUrl) {
         return project(itemTypeId, spec, binaryBaseUrl, RequestPermissionContext.forSuperuser());
@@ -368,7 +372,8 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
         }
 
         List<RawItem> rawItems = jdbcClient.sql("""
-                SELECT ri.id AS register_item_id, ri.item_id, si.name AS item_type, rt.properties::text AS properties, rt.states::text AS states
+                SELECT ri.id AS register_item_id, ri.item_id, si.name AS item_type, rt.properties::text AS properties, rt.states::text AS states,
+                       ri.created_date, ri.created_by, ri.updated_date, ri.updated_by
                 FROM register_item ri
                 JOIN %s rt ON rt.register_item_id = ri.id
                 JOIN schema_item si ON si.id = ri.item_type_id
@@ -388,7 +393,9 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                         rs.getObject(COL_ITEM_ID, UUID.class),
                         rs.getString(COL_ITEM_TYPE),
                         parseJsonb(rs.getString(COL_PROPERTIES)),
-                        parseJsonb(rs.getString(COL_STATES))))
+                        parseJsonb(rs.getString(COL_STATES)),
+                        rs.getObject("created_date", OffsetDateTime.class), rs.getObject("created_by", UUID.class),
+                        rs.getObject("updated_date", OffsetDateTime.class), rs.getObject("updated_by", UUID.class)))
                 .list();
 
         Map<UUID, AdminPropertyDefinitionView> propertyViewsById = propertyViewsByIdForItemType(itemTypeId);
@@ -409,8 +416,10 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
     private static final Map<String, String> SYSTEM_SORT_COLUMNS_ACROSS_TYPES = Map.of(
             PARAM_ITEM_ID,     "combined.item_id",
             "itemType",        "combined.item_type",
-            "createdAt",       "combined.created_at",
-            "updatedAt",       "combined.updated_at",
+            "createdDate",     "combined.created_date",
+            "createdBy",       "combined.created_by",
+            "updatedDate",     "combined.updated_date",
+            "updatedBy",       "combined.updated_by",
             "visibilityState", "combined.visibility_state"
     );
 
@@ -491,7 +500,8 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
         SqlFragment mainSource = buildUnionedBranchSource(branches, filterFragment, allFacetFilters);
         List<RawItem> rawItems = jdbcClient.sql("""
                 SELECT combined.register_item_id, combined.item_id, combined.item_type,
-                       combined.properties::text AS properties, combined.states::text AS states
+                       combined.properties::text AS properties, combined.states::text AS states,
+                       combined.created_date, combined.created_by, combined.updated_date, combined.updated_by
                 FROM (%s) combined
                 %s
                 LIMIT :limit OFFSET :offset
@@ -504,7 +514,9 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                         rs.getObject(COL_ITEM_ID, UUID.class),
                         rs.getString(COL_ITEM_TYPE),
                         parseJsonb(rs.getString(COL_PROPERTIES)),
-                        parseJsonb(rs.getString(COL_STATES))))
+                        parseJsonb(rs.getString(COL_STATES)),
+                        rs.getObject("created_date", OffsetDateTime.class), rs.getObject("created_by", UUID.class),
+                        rs.getObject("updated_date", OffsetDateTime.class), rs.getObject("updated_by", UUID.class)))
                 .list();
 
         // Merged, not per-row-resolved: property ids are globally unique across the whole schema
@@ -552,7 +564,8 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
             selects.add("""
                     SELECT ri.id AS register_item_id, ri.item_id, si.name AS item_type,
                            rt.properties AS properties, rt.states AS states,
-                           ri.created_at AS created_at, ri.updated_at AS updated_at, ri.state AS visibility_state
+                           ri.created_date AS created_date, ri.created_by AS created_by,
+                           ri.updated_date AS updated_date, ri.updated_by AS updated_by, ri.state AS visibility_state
                     FROM register_item ri
                     JOIN %s rt ON rt.register_item_id = ri.id
                     JOIN schema_item si ON si.id = ri.item_type_id
@@ -819,7 +832,8 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                                                RequestPermissionContext permissions,
                                                boolean includePermissions, boolean includeStates) {
         List<RawItem> rawItems = jdbcClient.sql("""
-                SELECT ri.id AS register_item_id, ri.item_id, si.name AS item_type, rt.properties::text AS properties, rt.states::text AS states
+                SELECT ri.id AS register_item_id, ri.item_id, si.name AS item_type, rt.properties::text AS properties, rt.states::text AS states,
+                       ri.created_date, ri.created_by, ri.updated_date, ri.updated_by
                 FROM register_item ri
                 JOIN %s rt ON rt.register_item_id = ri.id
                 JOIN schema_item si ON si.id = ri.item_type_id
@@ -834,7 +848,9 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                         rs.getObject(COL_ITEM_ID, UUID.class),
                         rs.getString(COL_ITEM_TYPE),
                         parseJsonb(rs.getString(COL_PROPERTIES)),
-                        parseJsonb(rs.getString(COL_STATES))))
+                        parseJsonb(rs.getString(COL_STATES)),
+                        rs.getObject("created_date", OffsetDateTime.class), rs.getObject("created_by", UUID.class),
+                        rs.getObject("updated_date", OffsetDateTime.class), rs.getObject("updated_by", UUID.class)))
                 .list();
 
         if (rawItems.isEmpty()) {
@@ -856,12 +872,17 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
     // Updates are never in-place: prepare stages a whole new row: commit deletes the old
     // committed row for the same business id and flips the new one to COMMITTED.
 
-    public UUID stageItemCreate(UUID itemId, UUID itemTypeId, Map<UUID, Object> properties, Map<UUID, UUID> initialStates, UUID transactionId) {
+    public UUID stageItemCreate(UUID itemId, UUID itemTypeId, Map<UUID, Object> properties, Map<UUID, UUID> initialStates,
+                                 UUID transactionId, UUID actorUserId, OffsetDateTime createdDate) {
         Map<String, Object> states = new HashMap<>();
         initialStates.forEach((stateMachineId, stateId) -> states.put(stateMachineId.toString(), Map.of(STATE_CURRENT_STATE_ID, stateId.toString())));
 
         Set<UUID> binaryPropertyIds = binaryPropertyIdsForItemType(itemTypeId);
-        UUID registerItemId = insertItemRow(itemId, itemTypeId, keysToStrings(excludeKeys(properties, binaryPropertyIds)), states, transactionId);
+        // updatedDate/updatedBy are null here, deliberately -- a brand-new item has no "updated"
+        // at all until it's actually updated (see insertItemRow's own comment); the creator is
+        // not treated as having also "updated" the item they just created.
+        UUID registerItemId = insertItemRow(itemId, itemTypeId, keysToStrings(excludeKeys(properties, binaryPropertyIds)), states, transactionId,
+                createdDate, actorUserId, null, null);
         if (!binaryPropertyIds.isEmpty()) {
             Map<UUID, UUID> binaryValues = toBinaryValues(filterKeys(properties, binaryPropertyIds));
             insertBinaryProperties(registerItemId, binaryValues);
@@ -890,11 +911,12 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
     // that a given stateId is actually reachable from the item's current state via a defined
     // transition. Transition validity/guard enforcement lives in EntityManagerImpl.executeTransition.
     public UUID stageItemChange(UUID itemId, Map<UUID, Object> propertiesDiff, Map<UUID, UUID> stateChanges,
-                                 Set<UUID> stateMachinesEnded, UUID transactionId) {
+                                 Set<UUID> stateMachinesEnded, UUID transactionId, UUID actorUserId, OffsetDateTime createdDate) {
         UUID itemTypeId = findItemTypeId(itemId).orElseThrow();
 
         var current = jdbcClient.sql("""
-                SELECT ri.id AS current_register_item_id, rt.properties::text AS properties, rt.states::text AS states
+                SELECT ri.id AS current_register_item_id, rt.properties::text AS properties, rt.states::text AS states,
+                       ri.created_date AS created_date, ri.created_by AS created_by
                 FROM register_item ri
                 JOIN %s rt ON rt.register_item_id = ri.id
                 WHERE ri.item_id = :itemId AND ri.state = 'COMMITTED'
@@ -902,7 +924,8 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                 .param(PARAM_ITEM_ID, itemId)
                 .query((rs, n) -> new CurrentItemRowContent(
                         rs.getObject("current_register_item_id", UUID.class),
-                        parseJsonb(rs.getString(COL_PROPERTIES)), parseJsonb(rs.getString(COL_STATES))))
+                        parseJsonb(rs.getString(COL_PROPERTIES)), parseJsonb(rs.getString(COL_STATES)),
+                        rs.getObject("created_date", OffsetDateTime.class), rs.getObject("created_by", UUID.class)))
                 .single();
 
         Set<UUID> binaryPropertyIds = binaryPropertyIdsForItemType(itemTypeId);
@@ -916,7 +939,12 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
         stateChanges.forEach((stateMachineId, stateId) -> mergedStates.put(stateMachineId.toString(), Map.of(STATE_CURRENT_STATE_ID, stateId.toString())));
         stateMachinesEnded.forEach(stateMachineId -> mergedStates.remove(stateMachineId.toString()));
 
-        UUID registerItemId = insertItemRow(itemId, itemTypeId, mergedProperties, mergedStates, transactionId);
+        // created_date/created_by carry forward unchanged from the superseded row -- this item's
+        // true creation provenance, never reset by an update even though the row itself is wholly
+        // replaced (see insertItemRow's own comment). updated_date/updated_by take this update's
+        // own values.
+        UUID registerItemId = insertItemRow(itemId, itemTypeId, mergedProperties, mergedStates, transactionId,
+                current.createdDate(), current.createdBy(), createdDate, actorUserId);
 
         // Binary properties live in their own table (register_binary_property), never in the jsonb
         // properties blob above -- same "fully re-materialize per version" shape as mergedProperties,
@@ -963,7 +991,8 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
         return binaryPartitionManager.getBinaryProperty(binaryId).map(BinaryPropertyObject::metadata).orElse(null);
     }
 
-    private record CurrentItemRowContent(UUID registerItemId, Map<String, Object> properties, Map<String, Object> states) {}
+    private record CurrentItemRowContent(UUID registerItemId, Map<String, Object> properties, Map<String, Object> states,
+                                          OffsetDateTime createdDate, UUID createdBy) {}
 
     /** Which of this item type's own properties are BINARY-typed -- never stored in the properties JSONB (see stageItemCreate/stageItemChange's own exclusion), so NoOpMutationFilter can't compare a diff against a "current value" that's never actually there. */
     public Set<UUID> binaryPropertyIdsForItemType(UUID itemTypeId) {
@@ -1029,15 +1058,29 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                         .update());
     }
 
-    private UUID insertItemRow(UUID itemId, UUID itemTypeId, Map<String, Object> properties, Map<String, Object> states, UUID transactionId) {
+    // createdDate/createdBy describe the ITEM, not this particular row version -- a create's
+    // caller passes its own entry's values; an update's caller carries the superseded row's
+    // values forward unchanged (see stageItemChange). updatedDate/updatedBy are @Nullable and
+    // genuinely null for a brand-new item (stageItemCreate passes null for both) -- an item that
+    // has only ever been created has no "updated", not an updated equal to its own creation;
+    // stageItemChange supplies real values once an actual update happens. Explicit ::timestamptz/
+    // ::uuid casts on the nullable pair: without a cast, the driver can't infer a SQL type for a
+    // bound null and this insert fails with "could not determine data type of parameter" on the
+    // create path.
+    private UUID insertItemRow(UUID itemId, UUID itemTypeId, Map<String, Object> properties, Map<String, Object> states, UUID transactionId,
+                                OffsetDateTime createdDate, UUID createdBy, @Nullable OffsetDateTime updatedDate, @Nullable UUID updatedBy) {
         UUID registerItemId = jdbcClient.sql("""
-                INSERT INTO register_item (item_id, item_type_id, state, transaction_id)
-                VALUES (:itemId, :itemTypeId, 'UNCOMMITTED', :transactionId)
+                INSERT INTO register_item (item_id, item_type_id, state, transaction_id, created_date, created_by, updated_date, updated_by)
+                VALUES (:itemId, :itemTypeId, 'UNCOMMITTED', :transactionId, :createdDate, :createdBy, :updatedDate::timestamptz, :updatedBy::uuid)
                 RETURNING id
                 """)
                 .param(PARAM_ITEM_ID, itemId)
                 .param(PARAM_ITEM_TYPE_ID, itemTypeId)
                 .param(PARAM_TRANSACTION_ID, transactionId)
+                .param("createdDate", createdDate)
+                .param("createdBy", createdBy)
+                .param("updatedDate", updatedDate)
+                .param("updatedBy", updatedBy)
                 .query(UUID.class)
                 .single();
 
@@ -1196,7 +1239,10 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                     .update();
         }
 
-        jdbcClient.sql("UPDATE register_item SET state = 'COMMITTED', commit_id = :commitId, updated_at = NOW() WHERE id = :stagedRegisterItemId")
+        // No updated_date/updated_by stamp here -- staging (insertItemRow) already wrote the
+        // correct final values, taken from the exact same prepare() call's actor/timestamp. A
+        // fresh NOW() here would silently drift from the ledger entry that actually caused this.
+        jdbcClient.sql("UPDATE register_item SET state = 'COMMITTED', commit_id = :commitId WHERE id = :stagedRegisterItemId")
                 .param("commitId", commitId)
                 .param("stagedRegisterItemId", stagedRegisterItemId)
                 .update();
@@ -1219,8 +1265,10 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
     }
 
     public UUID stageLinkCreate(UUID linkId, UUID linkTypeId, RegisterLinkEndpoint endpointA, RegisterLinkEndpoint endpointB,
-                                 Map<UUID, Object> properties, UUID transactionId) {
-        UUID registerLinkId = insertLinkRow(linkId, linkTypeId, keysToStrings(properties), transactionId);
+                                 Map<UUID, Object> properties, UUID transactionId, UUID actorUserId, OffsetDateTime createdDate) {
+        // updatedDate/updatedBy null -- see stageItemCreate's identical reasoning.
+        UUID registerLinkId = insertLinkRow(linkId, linkTypeId, keysToStrings(properties), transactionId,
+                createdDate, actorUserId, null, null);
         insertPerspectiveRows(registerLinkId, List.of(endpointA, endpointB), transactionId);
         return registerLinkId;
     }
@@ -1269,11 +1317,17 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                 .list();
     }
 
-    public UUID stageLinkUpdate(UUID linkId, Map<UUID, Object> propertiesDiff, UUID transactionId) {
-        UUID currentRegisterLinkId = jdbcClient.sql("SELECT id FROM register_link WHERE link_id = :linkId AND state = 'COMMITTED'")
+    public UUID stageLinkUpdate(UUID linkId, Map<UUID, Object> propertiesDiff, UUID transactionId, UUID actorUserId, OffsetDateTime createdDate) {
+        var current = jdbcClient.sql("""
+                SELECT id AS current_register_link_id, created_date, created_by
+                FROM register_link WHERE link_id = :linkId AND state = 'COMMITTED'
+                """)
                 .param(PARAM_LINK_ID, linkId)
-                .query(UUID.class)
+                .query((rs, n) -> new CurrentLinkRowContent(
+                        rs.getObject("current_register_link_id", UUID.class),
+                        rs.getObject("created_date", OffsetDateTime.class), rs.getObject("created_by", UUID.class)))
                 .single();
+        UUID currentRegisterLinkId = current.registerLinkId();
 
         UUID linkTypeId = findLinkTypeId(linkId).orElseThrow();
 
@@ -1284,7 +1338,9 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                 .single();
 
         Map<String, Object> merged = mergeProperties(currentProperties, keysToStrings(propertiesDiff));
-        UUID registerLinkId = insertLinkRow(linkId, linkTypeId, merged, transactionId);
+        // created_date/created_by carry forward unchanged, same reasoning as stageItemChange.
+        UUID registerLinkId = insertLinkRow(linkId, linkTypeId, merged, transactionId,
+                current.createdDate(), current.createdBy(), createdDate, actorUserId);
 
         // Endpoints don't change on an update (Section 8): re-resolve each one to whichever
         // register_item row currently represents it in this transaction, since an endpoint's
@@ -1305,15 +1361,24 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
         return registerLinkId;
     }
 
-    private UUID insertLinkRow(UUID linkId, UUID linkTypeId, Map<String, Object> properties, UUID transactionId) {
+    private record CurrentLinkRowContent(UUID registerLinkId, OffsetDateTime createdDate, UUID createdBy) {}
+
+    // createdDate/createdBy/updatedDate/updatedBy describe the LINK, not this particular row
+    // version -- same reasoning as insertItemRow's own comment, including the explicit casts.
+    private UUID insertLinkRow(UUID linkId, UUID linkTypeId, Map<String, Object> properties, UUID transactionId,
+                                OffsetDateTime createdDate, UUID createdBy, @Nullable OffsetDateTime updatedDate, @Nullable UUID updatedBy) {
         UUID registerLinkId = jdbcClient.sql("""
-                INSERT INTO register_link (link_id, link_definition_id, state, transaction_id)
-                VALUES (:linkId, :linkTypeId, 'UNCOMMITTED', :transactionId)
+                INSERT INTO register_link (link_id, link_definition_id, state, transaction_id, created_date, created_by, updated_date, updated_by)
+                VALUES (:linkId, :linkTypeId, 'UNCOMMITTED', :transactionId, :createdDate, :createdBy, :updatedDate::timestamptz, :updatedBy::uuid)
                 RETURNING id
                 """)
                 .param(PARAM_LINK_ID, linkId)
                 .param("linkTypeId", linkTypeId)
                 .param(PARAM_TRANSACTION_ID, transactionId)
+                .param("createdDate", createdDate)
+                .param("createdBy", createdBy)
+                .param("updatedDate", updatedDate)
+                .param("updatedBy", updatedBy)
                 .query(UUID.class)
                 .single();
 
@@ -1354,7 +1419,8 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                 .param("stagedRegisterLinkId", stagedRegisterLinkId)
                 .update();
 
-        jdbcClient.sql("UPDATE register_link SET state = 'COMMITTED', commit_id = :commitId, updated_at = NOW() WHERE id = :stagedRegisterLinkId")
+        // No updated_date/updated_by stamp here -- same reasoning as commitItem's own comment.
+        jdbcClient.sql("UPDATE register_link SET state = 'COMMITTED', commit_id = :commitId WHERE id = :stagedRegisterLinkId")
                 .param("commitId", commitId)
                 .param("stagedRegisterLinkId", stagedRegisterLinkId)
                 .update();
@@ -2153,7 +2219,9 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
 
     private record LinkRow(UUID myRegisterItemId, String perspectiveName, UUID perspectiveId,
                            UUID registerLinkId, UUID linkId, UUID linkDefinitionId,
-                           UUID linkedRegisterItemId, UUID linkedItemId, UUID linkedItemTypeId, String linkedItemType) {}
+                           UUID linkedRegisterItemId, UUID linkedItemId, UUID linkedItemTypeId, String linkedItemType,
+                           OffsetDateTime linkCreatedDate, UUID linkCreatedBy, OffsetDateTime linkUpdatedDate, UUID linkUpdatedBy,
+                           OffsetDateTime linkedItemCreatedDate, UUID linkedItemCreatedBy, OffsetDateTime linkedItemUpdatedDate, UUID linkedItemUpdatedBy) {}
 
     private record BinaryPropertyRow(UUID registerItemId, UUID propertyId, String propertyName, UUID binaryId) {}
 
@@ -2254,7 +2322,15 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                     ri_other.id                 AS linked_register_item_id,
                     ri_other.item_id            AS linked_item_id,
                     ri_other.item_type_id       AS linked_item_type_id,
-                    si_other.name               AS linked_item_type
+                    si_other.name               AS linked_item_type,
+                    rl.created_date             AS link_created_date,
+                    rl.created_by               AS link_created_by,
+                    rl.updated_date             AS link_updated_date,
+                    rl.updated_by               AS link_updated_by,
+                    ri_other.created_date       AS linked_item_created_date,
+                    ri_other.created_by         AS linked_item_created_by,
+                    ri_other.updated_date       AS linked_item_updated_date,
+                    ri_other.updated_by         AS linked_item_updated_by
                 FROM register_item ri_mine
                 JOIN register_item_link_perspective rilp_mine  ON rilp_mine.register_item_id = ri_mine.id
                 JOIN schema_entity_link_perspective silp_mine  ON silp_mine.id = rilp_mine.perspective_id
@@ -2280,7 +2356,11 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                         rs.getObject("linked_register_item_id", UUID.class),
                         rs.getObject("linked_item_id", UUID.class),
                         rs.getObject("linked_item_type_id", UUID.class),
-                        rs.getString("linked_item_type")))
+                        rs.getString("linked_item_type"),
+                        rs.getObject("link_created_date", OffsetDateTime.class), rs.getObject("link_created_by", UUID.class),
+                        rs.getObject("link_updated_date", OffsetDateTime.class), rs.getObject("link_updated_by", UUID.class),
+                        rs.getObject("linked_item_created_date", OffsetDateTime.class), rs.getObject("linked_item_created_by", UUID.class),
+                        rs.getObject("linked_item_updated_date", OffsetDateTime.class), rs.getObject("linked_item_updated_by", UUID.class)))
                 .list();
 
         if (allLinkRows.isEmpty()) {
@@ -2441,11 +2521,14 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                                     linkPerspectivesForItemType(row.linkedItemTypeId()))
                             : null,
                     computeDisplayLabel(row.linkedItemId(), linkedProps, ctx.displayLabelPatterns().get(row.linkedItemType())),
-                    null), // markers: not populated for a linked item yet -- see ProjectedItem's own comment
+                    null, // markers: not populated for a linked item yet -- see ProjectedItem's own comment
+                    // createdBy/updatedBy left null -- see assembleProjectedItem's own comment.
+                    row.linkedItemCreatedDate(), row.linkedItemCreatedBy(), null, row.linkedItemUpdatedDate(), row.linkedItemUpdatedBy(), null),
             includePermissions
                     ? buildLinkPermissions(permissions, mySourceMarkerIds, row.perspectiveId(),
                             rootPropertiesForLinkType(row.linkDefinitionId()))
-                    : null
+                    : null,
+            row.linkCreatedDate(), row.linkCreatedBy(), null, row.linkUpdatedDate(), row.linkUpdatedBy(), null
         );
     }
 
@@ -2576,7 +2659,11 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                 ctx.includeStates() ? buildProjectedItemStates(raw.states(), ctx.stateMachines(), markerIds, ctx.permissions()) : null,
                 itemPermissions,
                 computeDisplayLabel(raw.itemId(), props, ctx.displayLabelPatterns().get(raw.itemType())),
-                markerNames);
+                markerNames,
+                // createdBy/updatedBy are left null here -- RegisterPartitionManager must never
+                // resolve or import anything security-related; EntityManagerImpl fills these in
+                // afterward from createdByUserId/updatedByUserId, batched across the whole page.
+                raw.createdDate(), raw.createdBy(), null, raw.updatedDate(), raw.updatedBy(), null);
     }
 
     // Batches the register_binary_property lookup + BinaryPartitionManager resolution for a set of

@@ -7,18 +7,17 @@ import org.springframework.security.ldap.userdetails.LdapUserDetails;
 import org.springframework.security.oauth2.core.oidc.user.OidcUser;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
-import reactor.core.publisher.Mono;
 
 @RestController
 public class TestController {
 
     @GetMapping("/public")
-    public Mono<String> publicEndpoint() {
-        return Mono.just("This is public");
+    public String publicEndpoint() {
+        return "This is public";
     }
 
     @GetMapping(value = "/me", produces = MediaType.TEXT_HTML_VALUE)
-    public Mono<String> me(@AuthenticationPrincipal Object principal) {
+    public String me(@AuthenticationPrincipal Object principal) {
         String type;
         String username;
         String extra;
@@ -84,7 +83,7 @@ public class TestController {
                         "<div class='field'><div class='label'>Details</div>" +
                                 "<div class='value'>" + extra + "</div></div>");
 
-        return Mono.just(html);
+        return html;
     }
 
 }

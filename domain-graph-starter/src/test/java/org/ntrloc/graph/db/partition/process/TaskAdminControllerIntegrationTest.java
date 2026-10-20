@@ -8,15 +8,20 @@ import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.test.web.reactive.server.WebTestClient;
+import reactor.core.publisher.Flux;
 import reactor.test.StepVerifier;
 
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -47,9 +52,6 @@ class TaskAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private TaskEventBroadcaster broadcaster;
-
-    @Autowired
-    private TaskAdminController controller;
 
     // Filters by process instance in memory, not via .processInstanceId(instance.getId()) on the
     // query itself: TaskDataManagerImpl's whereClause() doesn't support that filter (only
@@ -222,19 +224,44 @@ class TaskAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
     // --- SSE events ---
 
-    // Called directly on the controller bean, not through WebTestClient/HTTP: broadcaster.events()
-    // is a live, never-completing multicast Flux (TaskEventBroadcaster's own comment on why --
-    // directBestEffort(), no replay buffer), so an HTTP round trip would have nothing to receive
-    // until something publishes, and WebTestClient's exchange() blocks waiting for a response
-    // before this test gets a chance to trigger one -- confirmed live, that ordering deadlocks
-    // into the client's own response timeout. Driving the Flux directly with StepVerifier sidesteps
-    // the ordering problem entirely: the publish happens only after the subscription is live.
+    // Through the real HTTP endpoint now, not the controller bean directly: SseEmitter (unlike the
+    // old Flux-returning version) has no public, cross-package seam for attaching a test
+    // subscriber directly to the controller method's return value -- ResponseBodyEmitter.Handler
+    // is package-private in Spring itself. WebTestClient's response body, read back as a
+    // Flux<ServerSentEvent<String>>, gives the same "drive a Publisher with StepVerifier" shape
+    // the old test used, just sourced from the real response stream instead.
+    //
+    // Confirmed empirically, not assumed: WebTestClient.exchange() itself never returns until the
+    // server writes something -- Spring MVC doesn't commit the response (status/headers) at the
+    // moment the controller method returns its SseEmitter, only once the first real write happens
+    // on it. That rules out triggering the publish from the same thread *after* exchange()
+    // (nothing to trigger it with -- the thread is blocked inside exchange() itself) and also
+    // rules out the old test's "publish once subscribed" trick (a client-side Flux subscription
+    // and the server actually registering the emitter are two different instants over a real
+    // network round trip, confirmed to race and time out when tried). A short delayed publish on
+    // a background thread is what breaks the deadlock: the main thread blocks inside exchange()
+    // exactly until that delayed publish causes the first write, which is also the point by which
+    // broadcaster.register() (synchronous, inside the controller method, well before any
+    // response is committed) is already guaranteed to have run.
     @Test
     void taskEvents_wrapsBroadcasterEventsAsServerSentEvents() {
-        StepVerifier.create(controller.taskEvents())
-                .then(() -> broadcaster.publish("task-changed"))
-                .assertNext(event -> assertThat(event.data()).isEqualTo("task-changed"))
-                .thenCancel()
-                .verify(Duration.ofSeconds(5));
+        ScheduledExecutorService delayedPublisher = Executors.newSingleThreadScheduledExecutor();
+        try {
+            delayedPublisher.schedule(() -> broadcaster.publish("task-changed"), 500, TimeUnit.MILLISECONDS);
+
+            Flux<ServerSentEvent<String>> body = webTestClient.get().uri("/api/admin/process/tasks/events")
+                    .accept(MediaType.TEXT_EVENT_STREAM)
+                    .exchange()
+                    .expectStatus().isOk()
+                    .returnResult(new ParameterizedTypeReference<ServerSentEvent<String>>() {})
+                    .getResponseBody();
+
+            StepVerifier.create(body)
+                    .assertNext(event -> assertThat(event.data()).isEqualTo("task-changed"))
+                    .thenCancel()
+                    .verify(Duration.ofSeconds(5));
+        } finally {
+            delayedPublisher.shutdownNow();
+        }
     }
 }

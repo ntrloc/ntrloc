@@ -2,12 +2,21 @@ package org.ntrloc.graph.db.partition.authorization;
 
 import org.ntrloc.graph.db.partition.authorization.repository.AuthorizationRepository;
 import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 
 import java.util.Collections;
 import java.util.Set;
 import java.util.UUID;
 
+// The five methods below that take an NtrlocPrincipal directly each demand a real, non-null one
+// via @PreAuthorize, enforced by Spring (see docs/ntrloc-principal-enforcement-plan.md, Part C) --
+// this is a top-level component independently reachable from EntityManagerImpl,
+// MutationRequestProcessor, and SchemaManager, so it carries its own guard rather than trusting
+// every caller to have already checked. The RequestPermissionContext-taking methods below that
+// don't (mayStartStateMachine, mayExecuteTransition, etc.) don't need their own guard: a
+// RequestPermissionContext can only ever have been built by buildContext(), which already demands
+// a real principal to produce one.
 @Service
 public class PermissionService {
 
@@ -29,6 +38,7 @@ public class PermissionService {
      * Single-item-type read check. Default deny: an item type with no direct item-type:read
      * grant is invisible to everyone — except superusers, who bypass authorization entirely.
      */
+    @PreAuthorize("#principal != null")
     public boolean canReadItemType(NtrlocPrincipal principal, UUID itemTypeId) {
         if (principal.isSuperuser()) {
             return true;
@@ -37,6 +47,7 @@ public class PermissionService {
     }
 
     /** Type-level create gate — a prerequisite for the (separate) hypothetical-instance create check. */
+    @PreAuthorize("#principal != null")
     public boolean canCreateItemType(NtrlocPrincipal principal, UUID itemTypeId) {
         if (principal.isSuperuser()) {
             return true;
@@ -45,6 +56,7 @@ public class PermissionService {
     }
 
     /** Every item type this principal can read, directly or via any group. Used to project the schema. */
+    @PreAuthorize("#principal != null")
     public Set<UUID> readableItemTypeIds(NtrlocPrincipal principal) {
         return cache.getGrantedItemTypeIds(principal.id(), principal.groupIds(), ITEM_TYPE_READ);
     }
@@ -53,6 +65,7 @@ public class PermissionService {
      * Single-item instance read check (used by projectOne, where a query-level semi-join isn't in
      * play). Default deny: an item carrying no marker the principal holds item:read on is invisible.
      */
+    @PreAuthorize("#principal != null")
     public boolean canReadItem(NtrlocPrincipal principal, UUID itemId) {
         if (principal.isSuperuser()) {
             return true;
@@ -70,6 +83,7 @@ public class PermissionService {
      * downstream should ever branch on those sets for a superuser context; callers must check
      * {@code superuser()} first, exactly like every other enforcement point in this class.
      */
+    @PreAuthorize("#principal != null")
     public RequestPermissionContext buildContext(NtrlocPrincipal principal) {
         if (principal.isSuperuser()) {
             return RequestPermissionContext.forSuperuser();

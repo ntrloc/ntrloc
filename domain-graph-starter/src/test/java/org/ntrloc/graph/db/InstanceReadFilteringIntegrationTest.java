@@ -1,17 +1,18 @@
 package org.ntrloc.graph.db;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.coordinator.CoordinatorTestDomainInitializer;
 import org.ntrloc.graph.db.coordinator.LedgerRegisterCoordinator;
 import org.ntrloc.graph.db.partition.authorization.DefaultUserGroupInitializer;
-import org.ntrloc.graph.db.partition.authorization.MarkerAssignmentService;
+import org.ntrloc.graph.db.partition.authorization.ManualMarkerAssignmentService;
 import org.ntrloc.graph.db.partition.authorization.repository.AuthorizationRepository;
 import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
 import org.ntrloc.graph.db.partition.ledger.LinkCreateEntry;
 import org.ntrloc.graph.db.partition.ledger.LinkEndpoint;
 import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
-import org.ntrloc.graph.db.partition.security.ResolvedPrincipal;
+import org.ntrloc.graph.db.partition.security.TestPrincipals;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.ntrloc.graph.projection.CollectionProjectionSpec;
 import org.ntrloc.graph.projection.LinkProjectionSpec;
@@ -19,6 +20,7 @@ import org.ntrloc.graph.projection.ItemProjectionSpec;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -45,7 +47,7 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
     private CoordinatorTestDomainInitializer fixture;
 
     @Autowired
-    private MarkerAssignmentService markerAssignmentService;
+    private ManualMarkerAssignmentService markerAssignmentService;
 
     @Autowired
     private AuthorizationRepository authRepo;
@@ -56,10 +58,21 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
     @Autowired
     private DefaultUserGroupInitializer defaultUserGroupInitializer;
 
+    // Not static/final: needs a real, backed security_user row now that ledger_entry.created_by
+    // (Part E) has a NOT NULL FK to security_user.id -- created fresh per test in setUp() via the
+    // already-autowired securityRepo, which a static initializer can't reach.
+    private NtrlocPrincipal SUPERUSER;
+
+    @BeforeEach
+    void setUpSuperuser() {
+        var user = securityRepo.createUser("irf-root-" + UUID.randomUUID(), "Root", null, true);
+        SUPERUSER = TestPrincipals.of(user.id(), user.externalId(), user.displayName(), null, Set.of(), true);
+    }
+
     private UUID createItem(UUID itemTypeId, UUID propertyId, Object value) {
         UUID itemId = UUID.randomUUID();
         UUID txn = UUID.randomUUID();
-        coordinator.prepare(List.of(new ItemCreateEntry(itemId, itemTypeId, Map.of(propertyId, value), Map.of(), Set.of())), txn, null);
+        coordinator.prepare(List.of(new ItemCreateEntry(itemId, itemTypeId, Map.of(propertyId, value), Map.of(), Set.of())), txn, SUPERUSER.id(), OffsetDateTime.now());
         coordinator.commit(txn, UUID.randomUUID());
         return itemId;
     }
@@ -78,7 +91,7 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
         coordinator.prepare(List.of(new LinkCreateEntry(linkId, fixture.linkTypeId(),
                 new LinkEndpoint(fixture.productPerspectiveId(), productId),
                 new LinkEndpoint(fixture.contributorPerspectiveId(), contributorId),
-                Map.of())), txn, null);
+                Map.of())), txn, SUPERUSER.id(), OffsetDateTime.now());
         coordinator.commit(txn, UUID.randomUUID());
         return linkId;
     }
@@ -90,15 +103,12 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
         // groupIds is carried directly on the principal, not re-resolved from the DB per check --
         // must match the membership just added above or every type-level (and instance-level
         // group-granted) check below fails as if the user were in no groups at all.
-        return new ResolvedPrincipal(user.id(), user.externalId(), user.externalId(), null, Set.of(everyoneUserGroupId), false);
+        return TestPrincipals.of(user.id(), user.externalId(), user.externalId(), null, Set.of(everyoneUserGroupId), false);
     }
-
-    private static final NtrlocPrincipal SUPERUSER =
-            new ResolvedPrincipal(UUID.randomUUID(), "irf-root", "Root", null, Set.of(), true);
 
     private void grantItemRead(UUID itemId, NtrlocPrincipal principal) {
         var marker = authRepo.createMarker("irf-" + UUID.randomUUID(), "test fixture", "ITEM_TYPE", fixture.productTypeId());
-        markerAssignmentService.addItemMarker(itemId, marker.id(), "test-actor", "test reason");
+        markerAssignmentService.addItemMarker(itemId, marker.id(), SUPERUSER, "test reason");
         authRepo.setItemPermissions(authRepo.ensureMarkerGrant(marker.id(), "USER", principal.id()), true, false);
     }
 
@@ -108,7 +118,7 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
     // with a link-perspective grant for the perspective the link is being traversed through.
     private void grantLinkRead(UUID sourceItemId, UUID perspectiveId, NtrlocPrincipal principal) {
         var marker = authRepo.createMarker("irf-" + UUID.randomUUID(), "test fixture", "ITEM_TYPE", fixture.productTypeId());
-        markerAssignmentService.addItemMarker(sourceItemId, marker.id(), "test-actor", "test reason");
+        markerAssignmentService.addItemMarker(sourceItemId, marker.id(), SUPERUSER, "test reason");
         UUID grantId = authRepo.ensureMarkerGrant(marker.id(), "USER", principal.id());
         authRepo.grantLinkPerspectiveAccess(grantId, perspectiveId, false, true, false);
     }
@@ -185,7 +195,7 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
     void singleItemProjection_typeNotGrantedAtAll_throwsNotFound() {
         UUID productId = createProduct();
         var user = securityRepo.createUser("irf-" + UUID.randomUUID(), "Restricted", null, false);
-        var principal = new ResolvedPrincipal(user.id(), user.externalId(), user.displayName(), null, Set.of(), false);
+        var principal = TestPrincipals.of(user.id(), user.externalId(), user.displayName(), null, Set.of(), false);
 
         assertThatThrownBy(() ->
                         entityManager.project(new ItemProjectionSpec("CoordinatorTestProduct", productId), "http://binary", principal))

@@ -15,6 +15,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -50,7 +51,7 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
     // design notes for the fuller discussion of why this needed fixing.
     @Override
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void prepare(List<LedgerEntry> entries, UUID transactionId, String actorExternalId) {
+    public void prepare(List<LedgerEntry> entries, UUID transactionId, UUID actorUserId, OffsetDateTime createdDate) {
         // No-op filtering runs first, before cascade expansion and before pipeline evaluation: a
         // mutation describes a desired state, and whatever's already true needs neither a cascade
         // nor a pipeline re-run, let alone a ledger row. See NoOpMutationFilter's own comment.
@@ -61,7 +62,7 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
         // prepare()'s job, not commit()'s. commit() needs no changes to apply what this produces:
         // it already reads markersAdded/Removed off whatever entries it's given.
         expanded = pipelineMarkerDecisionService.enrichWithPipelineDecisions(expanded);
-        ledgerPartitionManager.append(expanded, transactionId, actorExternalId);
+        ledgerPartitionManager.append(expanded, transactionId, actorUserId, createdDate);
 
         // Items before links: link endpoint resolution needs same-transaction item staging
         // to already exist so it can prefer the fresh row over the old committed one.
@@ -74,17 +75,17 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
         // so only properties/stateChanges gate whether there's a row to stage.
         for (LedgerEntry entry : expanded) {
             if (entry instanceof ItemCreateEntry e) {
-                registerPartitionManager.stageItemCreate(e.itemId(), e.itemTypeId(), e.properties(), e.initialStates(), transactionId);
+                registerPartitionManager.stageItemCreate(e.itemId(), e.itemTypeId(), e.properties(), e.initialStates(), transactionId, actorUserId, createdDate);
             } else if (entry instanceof ItemUpdateEntry e && hasRegisterEffect(e)) {
-                registerPartitionManager.stageItemChange(e.itemId(), e.properties(), e.stateChanges(), e.stateMachinesEnded(), transactionId);
+                registerPartitionManager.stageItemChange(e.itemId(), e.properties(), e.stateChanges(), e.stateMachinesEnded(), transactionId, actorUserId, createdDate);
             }
         }
         for (LedgerEntry entry : expanded) {
             if (entry instanceof LinkCreateEntry e) {
                 registerPartitionManager.stageLinkCreate(e.linkId(), e.linkTypeId(),
-                        toRegisterEndpoint(e.endpointA()), toRegisterEndpoint(e.endpointB()), e.properties(), transactionId);
+                        toRegisterEndpoint(e.endpointA()), toRegisterEndpoint(e.endpointB()), e.properties(), transactionId, actorUserId, createdDate);
             } else if (entry instanceof LinkUpdateEntry e && !e.properties().isEmpty()) {
-                registerPartitionManager.stageLinkUpdate(e.linkId(), e.properties(), transactionId);
+                registerPartitionManager.stageLinkUpdate(e.linkId(), e.properties(), transactionId, actorUserId, createdDate);
             }
         }
     }
