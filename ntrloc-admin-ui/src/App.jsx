@@ -31,7 +31,7 @@ function App({ extensions = [] }) {
   // Replaces <Navigate to="/search" replace /> from the old <Routes>-based setup -- "/" isn't a
   // view of its own, just a redirect to "/search".
   useEffect(() => {
-    if (location.pathname === '/') navigate('/search', { replace: true })
+    if (location.pathname === '/') void navigate('/search', { replace: true })
   }, [location.pathname, navigate])
 
   const path = location.pathname

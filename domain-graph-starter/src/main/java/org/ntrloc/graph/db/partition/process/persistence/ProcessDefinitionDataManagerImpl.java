@@ -155,7 +155,7 @@ public class ProcessDefinitionDataManagerImpl extends AbstractProcessDataManager
     private static final Map<String, String> ORDER_BY_COLUMN_ALIASES = Map.of(
             "RES.ID_", "id",
             "RES.KEY_", "process_key",
-            "RES.VERSION_", "version",
+            "RES.VERSION_", PARAM_VERSION,
             "RES.NAME_", "name",
             "RES.DEPLOYMENT_ID_", "deployment_id"
     );

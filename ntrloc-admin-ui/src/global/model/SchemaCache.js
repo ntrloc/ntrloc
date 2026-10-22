@@ -77,7 +77,7 @@ export function reload() {
 }
 
 const unsubscribeFromSchemaChanged = onSchemaChanged(() => {
-  reload()
+  void reload()
 })
 
 // Dev-only: Vite HMR re-evaluates this module's top-level code (including the subscription above)
@@ -98,7 +98,7 @@ if (import.meta.hot) {
 }
 
 function ensureLoadStarted() {
-  if (!hasStartedLoading) load()
+  if (!hasStartedLoading) void load()
 }
 
 // For a consumer that only needs to know whether the schema is loaded (e.g. to show a loading/error

@@ -16,7 +16,7 @@ export function useItemPaneViewModel(itemTypeName, itemId) {
   const { getEditablePropertyGroups } = useItemTypeModel()
 
   useEffect(() => {
-    model.load(itemTypeName, itemId)
+    void model.load(itemTypeName, itemId)
   }, [model, itemTypeName, itemId])
 
   return {

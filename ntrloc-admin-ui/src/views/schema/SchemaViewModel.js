@@ -42,15 +42,15 @@ export function useSchemaViewModel() {
 
   function setActiveSection(section) {
     if (section === activeSection) return
-    navigate(`/schema/${SECTION_PATHS[section]}`)
+    void navigate(`/schema/${SECTION_PATHS[section]}`)
   }
 
   function selectItemType(itemTypeId) {
-    navigate(`/schema/item-types/${itemTypeId}`)
+    void navigate(`/schema/item-types/${itemTypeId}`)
   }
 
   function selectTrait(traitId) {
-    navigate(`/schema/traits/${traitId}`)
+    void navigate(`/schema/traits/${traitId}`)
   }
 
   return {

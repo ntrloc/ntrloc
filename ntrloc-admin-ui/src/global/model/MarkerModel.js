@@ -60,7 +60,7 @@ function load() {
 }
 
 function ensureLoadStarted() {
-  if (!hasStartedLoading) load()
+  if (!hasStartedLoading) void load()
 }
 
 // Same Vite-HMR hand-off as SchemaCache's own dispose handler -- see that file's comment.

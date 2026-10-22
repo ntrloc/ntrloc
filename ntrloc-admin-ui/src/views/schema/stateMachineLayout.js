@@ -230,13 +230,103 @@ export function computeLayout(states, orientation = 'horizontal') {
   const byId = new Map(states.map((s) => [s.id, s]))
   const { forwardEdges, selfLoops } = classifyEdges(states)
   const rank = computeRanks(states, forwardEdges)
+  const selfLoopsByNode = groupSelfLoopsByNode(selfLoops)
+  const edgeDescriptors = buildEdgeDescriptors(states, byId, rank)
 
+  const { railEdges, leadingNestCount, trailingNestCount } = assignRailSides(edgeDescriptors, rank, vertical)
+  const selfLoopReserve = computeSelfLoopReserve(selfLoopsByNode, vertical)
+  const { outerLeadingMargin, outerTrailingMargin } = computeOuterMargins(railEdges, vertical)
+
+  const { byRank, siblingAxisNodeSize, rankAxisNodeSize, spanFor, maxRankSpan } = groupStatesByRank(
+    states,
+    rank,
+    vertical,
+    NODE_WIDTH,
+    NODE_HEIGHT,
+  )
+
+  const { railGap, leadingReserve, trailingReserve, rankGap } = computeAxisGaps(
+    vertical,
+    railEdges,
+    selfLoopReserve,
+    leadingNestCount,
+    trailingNestCount,
+    edgeDescriptors,
+  )
+
+  const { PSEUDO_SIZE, rankAxisSlot, rankCoordByRank } = computeRankCoordinates(
+    vertical,
+    NODE_WIDTH,
+    NODE_HEIGHT,
+    rankAxisNodeSize,
+    byRank,
+    edgeDescriptors,
+    rank,
+    rankGap,
+  )
+
+  const { rects, rankAxisSizeOf, rankAxisTotal, siblingAxisTotal } = computeNodeRects(
+    states,
+    byRank,
+    rank,
+    vertical,
+    NODE_WIDTH,
+    NODE_HEIGHT,
+    maxRankSpan,
+    spanFor,
+    siblingAxisNodeSize,
+    outerLeadingMargin,
+    leadingReserve,
+    rankCoordByRank,
+    rankAxisSlot,
+    PSEUDO_SIZE,
+    trailingReserve,
+    outerTrailingMargin,
+  )
+
+  const fractionByRequest = allocateRailFractions(railEdges, selfLoopsByNode)
+  const directGroups = groupDirectEdges(edgeDescriptors)
+
+  const edgeAxisHelpers = axisHelpers(vertical)
+  const globalLeadingEdge = outerLeadingMargin + leadingReserve
+  const globalTrailingEdge = outerLeadingMargin + leadingReserve + maxRankSpan
+
+  const edges = [
+    ...buildDirectEdges(directGroups, rank, rects, vertical, edgeAxisHelpers),
+    ...buildRailEdgeSegments(
+      railEdges,
+      rects,
+      fractionByRequest,
+      rankAxisSizeOf,
+      edgeAxisHelpers,
+      vertical,
+      globalLeadingEdge,
+      globalTrailingEdge,
+      selfLoopReserve,
+      railGap,
+    ),
+  ]
+  const selfLoopEdges = buildSelfLoopEdgeSegments(selfLoopsByNode, rects, edgeAxisHelpers, rankAxisNodeSize, vertical)
+
+  return {
+    rects,
+    edges,
+    selfLoopEdges,
+    width: vertical ? siblingAxisTotal : rankAxisTotal,
+    height: vertical ? rankAxisTotal : siblingAxisTotal,
+  }
+}
+
+function groupSelfLoopsByNode(selfLoops) {
   const selfLoopsByNode = new Map()
   for (const sl of selfLoops) {
     if (!selfLoopsByNode.has(sl.stateId)) selfLoopsByNode.set(sl.stateId, [])
     selfLoopsByNode.get(sl.stateId).push(sl.transition)
   }
+  return selfLoopsByNode
+}
 
+function buildEdgeDescriptors(states, byId, rank) {
   const edgeDescriptors = []
   for (const s of states) {
     for (const t of s.transitions ?? []) {
@@ -245,22 +335,25 @@ export function computeLayout(states, orientation = 'horizontal') {
       edgeDescriptors.push({ fromId: s.id, toId: t.toStateId, transition: t, distance, kind: distance <= 1 ? 'direct' : 'rail' })
     }
   }
+  return edgeDescriptors
+}
 
-  // Rail side selection: the leading side already hosts every self-loop (a fixed rule), so whether
-  // rails may *also* use it depends on how much physical room that edge actually has. A node's
-  // leading edge runs along the rank axis, so its length is the rank-axis node size (NODE_WIDTH for
-  // horizontal, NODE_HEIGHT for vertical). Kept as a fixed per-orientation choice rather than a live
-  // comparison of the two actual constants -- revisit if NODE_HEIGHT_VERTICAL is ever grown enough
-  // that vertical's leading edge is no longer meaningfully tighter than horizontal's.
-  //
-  // That preference is only a *default*, though -- it has to yield to a harder constraint: two rails
-  // sharing a side can only avoid crossing each other if their rank-spans are disjoint or one
-  // properly contains the other. Two spans that merely overlap (neither containing the other) are
-  // *interleaved*, and no choice of nesting depth for two rails on the same side can avoid a
-  // crossing between them. Side assignment below is therefore conflict-aware: an edge only uses its
-  // preferred side if nothing already placed there would interleave with it; otherwise it spills to
-  // the other side even if that side is normally disfavored for this orientation, since an actual
-  // crossing is a worse defect than a rail attaching to a tighter edge.
+// Rail side selection: the leading side already hosts every self-loop (a fixed rule), so whether
+// rails may *also* use it depends on how much physical room that edge actually has. A node's
+// leading edge runs along the rank axis, so its length is the rank-axis node size (NODE_WIDTH for
+// horizontal, NODE_HEIGHT for vertical). Kept as a fixed per-orientation choice rather than a live
+// comparison of the two actual constants -- revisit if NODE_HEIGHT_VERTICAL is ever grown enough
+// that vertical's leading edge is no longer meaningfully tighter than horizontal's.
+//
+// That preference is only a *default*, though -- it has to yield to a harder constraint: two rails
+// sharing a side can only avoid crossing each other if their rank-spans are disjoint or one
+// properly contains the other. Two spans that merely overlap (neither containing the other) are
+// *interleaved*, and no choice of nesting depth for two rails on the same side can avoid a
+// crossing between them. Side assignment below is therefore conflict-aware: an edge only uses its
+// preferred side if nothing already placed there would interleave with it; otherwise it spills to
+// the other side even if that side is normally disfavored for this orientation, since an actual
+// crossing is a worse defect than a rail attaching to a tighter edge.
+function assignRailSides(edgeDescriptors, rank, vertical) {
   const canSplitRails = !vertical
   const railEdges = edgeDescriptors.filter((e) => e.kind === 'rail').sort((a, b) => a.distance - b.distance)
   for (const e of railEdges) {
@@ -273,42 +366,40 @@ export function computeLayout(states, orientation = 'horizontal') {
     const bContainsA = b.span[0] <= a.span[0] && a.span[1] <= b.span[1]
     return !aContainsB && !bContainsA
   }
-  {
-    const placed = { leading: [], trailing: [] }
-    const conflicts = (edge, side) => placed[side].some((other) => spansInterleave(edge, other))
-    for (const e of railEdges) {
-      let side
-      if (canSplitRails) {
-        const leadingOk = !conflicts(e, 'leading')
-        const trailingOk = !conflicts(e, 'trailing')
-        side = leadingOk && trailingOk
-          ? placed.leading.length <= placed.trailing.length
-            ? 'leading'
-            : 'trailing'
-          : leadingOk
-            ? 'leading'
-            : trailingOk
-              ? 'trailing'
-              // Both sides conflict -- three or more mutually-interleaving edges, not seen in any
-              // reference example. No side avoids a crossing here; fall back to balancing, same as
-              // the no-conflict case, rather than leaving the edge unplaced.
-              : placed.leading.length <= placed.trailing.length
-                ? 'leading'
-                : 'trailing'
-      } else {
-        side = !conflicts(e, 'trailing') ? 'trailing' : !conflicts(e, 'leading') ? 'leading' : 'trailing'
-      }
-      e.side = side
-      placed[side].push(e)
+  const placed = { leading: [], trailing: [] }
+  const conflicts = (edge, side) => placed[side].some((other) => spansInterleave(edge, other))
+  for (const e of railEdges) {
+    let side
+    if (canSplitRails) {
+      const leadingOk = !conflicts(e, 'leading')
+      const trailingOk = !conflicts(e, 'trailing')
+      side = leadingOk && trailingOk
+        ? placed.leading.length <= placed.trailing.length
+          ? 'leading'
+          : 'trailing'
+        : leadingOk
+          ? 'leading'
+          : trailingOk
+            ? 'trailing'
+            // Both sides conflict -- three or more mutually-interleaving edges, not seen in any
+            // reference example. No side avoids a crossing here; fall back to balancing, same as
+            // the no-conflict case, rather than leaving the edge unplaced.
+            : placed.leading.length <= placed.trailing.length
+              ? 'leading'
+              : 'trailing'
+    } else {
+      side = !conflicts(e, 'trailing') ? 'trailing' : !conflicts(e, 'leading') ? 'leading' : 'trailing'
     }
-    for (const side of ['leading', 'trailing']) {
-      railEdges
-        .filter((e) => e.side === side)
-        .sort((a, b) => a.distance - b.distance)
-        .forEach((e, i) => {
-          e.nestIndex = i
-        })
-    }
+    e.side = side
+    placed[side].push(e)
+  }
+  for (const side of ['leading', 'trailing']) {
+    railEdges
+      .filter((e) => e.side === side)
+      .sort((a, b) => a.distance - b.distance)
+      .forEach((e, i) => {
+        e.nestIndex = i
+      })
   }
   const leadingNestCount = railEdges.filter((e) => e.side === 'leading').length
     ? Math.max(...railEdges.filter((e) => e.side === 'leading').map((e) => e.nestIndex)) + 1
@@ -316,41 +407,49 @@ export function computeLayout(states, orientation = 'horizontal') {
   const trailingNestCount = railEdges.filter((e) => e.side === 'trailing').length
     ? Math.max(...railEdges.filter((e) => e.side === 'trailing').map((e) => e.nestIndex)) + 1
     : 0
-  const hasAnySelfLoop = selfLoopsByNode.size > 0
+  return { railEdges, leadingNestCount, trailingNestCount }
+}
 
-  // A self-loop's own label sits centered at the tip of its bulge (SELF_LOOP_DEPTH out from the
-  // node edge) and reaches further out still by half its own extent -- height/2 (a fixed 8px) along
-  // the sibling axis for horizontal orientation, but *width*/2 (text-length-dependent, same
-  // reasoning as railGap and outermostLabelHalfWidth below) for vertical, since that's the axis a
-  // self-loop's label sits along there. Reserved once as a single combined depth so
-  // leadingReserve/the rail-level formula below don't need to separately track "the bulge" and "the
-  // label past the bulge."
+// A self-loop's own label sits centered at the tip of its bulge (SELF_LOOP_DEPTH out from the
+// node edge) and reaches further out still by half its own extent -- height/2 (a fixed 8px) along
+// the sibling axis for horizontal orientation, but *width*/2 (text-length-dependent, same
+// reasoning as railGap and outermostLabelHalfWidth below) for vertical, since that's the axis a
+// self-loop's label sits along there. Reserved once as a single combined depth so
+// leadingReserve/the rail-level formula below don't need to separately track "the bulge" and "the
+// label past the bulge."
+function computeSelfLoopReserve(selfLoopsByNode, vertical) {
+  const hasAnySelfLoop = selfLoopsByNode.size > 0
   const selfLoopOuterHalfExtent = hasAnySelfLoop
     ? vertical
       ? Math.max(8, ...[...selfLoopsByNode.values()].flat().map((t) => (t.name ? estimateLabelWidth(t.name) / 2 : 0)))
       : 8
     : 0
-  const selfLoopReserve = hasAnySelfLoop ? SELF_LOOP_DEPTH + selfLoopOuterHalfExtent : 0
+  return hasAnySelfLoop ? SELF_LOOP_DEPTH + selfLoopOuterHalfExtent : 0
+}
 
-  // A rail's label reaches back toward the node column by half its width (see railGap's own
-  // comment) -- but the *outermost* rail on a side reaches the same amount past the *other*
-  // direction too, out toward the page's own outer edge, where only the flat PADDING constant would
-  // otherwise be reserved. Only matters for vertical orientation, same as railGap -- horizontal's
-  // labels are a fixed 16px regardless of which nest level they're at.
+// A rail's label reaches back toward the node column by half its width (see railGap's own
+// comment) -- but the *outermost* rail on a side reaches the same amount past the *other*
+// direction too, out toward the page's own outer edge, where only the flat PADDING constant would
+// otherwise be reserved. Only matters for vertical orientation, same as railGap -- horizontal's
+// labels are a fixed 16px regardless of which nest level they're at.
+function computeOuterMargins(railEdges, vertical) {
   function outermostLabelHalfWidth(side) {
     const onSide = railEdges.filter((e) => e.side === side)
     if (onSide.length === 0) return 0
-    const outermost = onSide.reduce((a, b) => (a.nestIndex > b.nestIndex ? a : b))
+    const outermost = onSide.reduce((a, b) => (a.nestIndex > b.nestIndex ? a : b), onSide[0])
     return outermost.transition.name ? estimateLabelWidth(outermost.transition.name) / 2 : 0
   }
   const outerLeadingMargin = vertical ? Math.max(PADDING, outermostLabelHalfWidth('leading') + 8) : PADDING
   const outerTrailingMargin = vertical ? Math.max(PADDING, outermostLabelHalfWidth('trailing') + 8) : PADDING
+  return { outerLeadingMargin, outerTrailingMargin }
+}
 
-  // Sibling grouping (same-rank nodes) and centering -- a single state per rank (every reference
-  // example so far) reduces this to one row, unaffected by the multi-sibling case below; branching
-  // reuses this centered-stacking logic so it won't crash or look pathological, but the
-  // rail-nesting rule hasn't been designed against that case at all (see
-  // docs/ntrloc-diagram-rendering-principles.md's own "Open questions" section).
+// Sibling grouping (same-rank nodes) and centering -- a single state per rank (every reference
+// example so far) reduces this to one row, unaffected by the multi-sibling case below; branching
+// reuses this centered-stacking logic so it won't crash or look pathological, but the
+// rail-nesting rule hasn't been designed against that case at all (see
+// docs/ntrloc-diagram-rendering-principles.md's own "Open questions" section).
+function groupStatesByRank(states, rank, vertical, NODE_WIDTH, NODE_HEIGHT) {
   const byRank = new Map()
   for (const s of states) {
     const r = rank.get(s.id)
@@ -364,7 +463,10 @@ export function computeLayout(states, orientation = 'horizontal') {
   }
   const maxRankCount = Math.max(...[...byRank.values()].map((l) => l.length))
   const maxRankSpan = spanFor(maxRankCount)
+  return { byRank, siblingAxisNodeSize, rankAxisNodeSize, spanFor, maxRankSpan }
+}
 
+function computeAxisGaps(vertical, railEdges, selfLoopReserve, leadingNestCount, trailingNestCount, edgeDescriptors) {
   // A rail's label sits centered on the rail line itself, so half its width reaches back *toward*
   // the node column -- for horizontal orientation that's a fixed 16px (label height) regardless of
   // text length, already covered by RAIL_GAP, but for vertical orientation the rail line runs along
@@ -391,15 +493,18 @@ export function computeLayout(states, orientation = 'horizontal') {
       }
     }
   }
+  return { railGap, leadingReserve, trailingReserve, rankGap }
+}
 
-  // A START/END pseudostate draws as a small dot -- half a normal node's short side.
+// A START/END pseudostate draws as a small dot -- half a normal node's short side.
+//
+// Rank-axis placement: ranks sit at accumulated offsets rather than a single uniform stride, so a
+// pseudostate-only rank (START at rank 0, END at the last rank) can occupy just the dot's width
+// and sit a tight gap from its neighbour. Otherwise rankGap -- driven by the widest transition
+// label anywhere in the diagram -- leaves a large void beside the tiny dot. Horizontal only;
+// vertical already reads well and keeps its uniform stride and full-size slots.
+function computeRankCoordinates(vertical, NODE_WIDTH, NODE_HEIGHT, rankAxisNodeSize, byRank, edgeDescriptors, rank, rankGap) {
   const PSEUDO_SIZE = Math.round(Math.min(NODE_WIDTH, NODE_HEIGHT) * 0.5)
-
-  // Rank-axis placement: ranks sit at accumulated offsets rather than a single uniform stride, so a
-  // pseudostate-only rank (START at rank 0, END at the last rank) can occupy just the dot's width
-  // and sit a tight gap from its neighbour. Otherwise rankGap -- driven by the widest transition
-  // label anywhere in the diagram -- leaves a large void beside the tiny dot. Horizontal only;
-  // vertical already reads well and keeps its uniform stride and full-size slots.
   const tightenPseudo = !vertical
   const rankIsPseudo = (r) => (byRank.get(r) ?? []).every((s) => s.kind === 'START' || s.kind === 'END')
   const pseudoAdjacentLabelWidths = tightenPseudo
@@ -413,14 +518,35 @@ export function computeLayout(states, orientation = 'horizontal') {
 
   const sortedRanks = [...byRank.keys()].sort((a, b) => a - b)
   const rankCoordByRank = new Map()
-  {
-    let cursor = PADDING
-    sortedRanks.forEach((r, i) => {
-      rankCoordByRank.set(r, cursor)
-      if (i < sortedRanks.length - 1) cursor += rankAxisSlot(r) + gapAfterRank(r, sortedRanks[i + 1])
-    })
-  }
+  let cursor = PADDING
+  sortedRanks.forEach((r, i) => {
+    rankCoordByRank.set(r, cursor)
+    if (i < sortedRanks.length - 1) cursor += rankAxisSlot(r) + gapAfterRank(r, sortedRanks[i + 1])
+  })
+  return { PSEUDO_SIZE, rankAxisSlot, rankCoordByRank }
+}
 
+// The concrete drawn/attached-to rect per node. A pseudostate dot is centered on the sibling axis
+// of its slot; on the rank axis it hugs the slot's near edge when that rank was tightened to
+// PSEUDO_SIZE (so the small slot == the dot), else it centers there too.
+function computeNodeRects(
+  states,
+  byRank,
+  rank,
+  vertical,
+  NODE_WIDTH,
+  NODE_HEIGHT,
+  maxRankSpan,
+  spanFor,
+  siblingAxisNodeSize,
+  outerLeadingMargin,
+  leadingReserve,
+  rankCoordByRank,
+  rankAxisSlot,
+  PSEUDO_SIZE,
+  trailingReserve,
+  outerTrailingMargin,
+) {
   const positions = new Map()
   for (const [r, list] of byRank.entries()) {
     const centerOffset = (maxRankSpan - spanFor(list.length)) / 2
@@ -431,9 +557,6 @@ export function computeLayout(states, orientation = 'horizontal') {
     })
   }
 
-  // The concrete drawn/attached-to rect per node. A pseudostate dot is centered on the sibling axis
-  // of its slot; on the rank axis it hugs the slot's near edge when that rank was tightened to
-  // PSEUDO_SIZE (so the small slot == the dot), else it centers there too.
   const rects = new Map()
   for (const s of states) {
     const pos = positions.get(s.id)
@@ -457,10 +580,14 @@ export function computeLayout(states, orientation = 'horizontal') {
   const rankAxisTotal = rankCoordByRank.get(maxRank) + rankAxisSlot(maxRank) + PADDING
   const siblingAxisTotal = outerLeadingMargin + leadingReserve + maxRankSpan + trailingReserve + outerTrailingMargin
 
-  // Per-(node, side) attachment point allocation -- every rail edge needs one point on each of its
-  // two endpoints, on whichever side (leading/trailing) that edge was assigned to; a self-loop
-  // (leading side only) always reserves the 0.3-0.7 band on its own node first, and rail stubs at
-  // that node+side share whatever's left.
+  return { rects, rankAxisSizeOf, rankAxisTotal, siblingAxisTotal }
+}
+
+// Per-(node, side) attachment point allocation -- every rail edge needs one point on each of its
+// two endpoints, on whichever side (leading/trailing) that edge was assigned to; a self-loop
+// (leading side only) always reserves the 0.3-0.7 band on its own node first, and rail stubs at
+// that node+side share whatever's left.
+function allocateRailFractions(railEdges, selfLoopsByNode) {
   const slotRequests = new Map() // key `${nodeId}|${side}` -> array of {edge, endpoint: 'from'|'to'}
   function addSlotRequest(nodeId, side, edge, endpoint) {
     const key = `${nodeId}|${side}`
@@ -481,22 +608,24 @@ export function computeLayout(states, orientation = 'horizontal') {
       fractionByRequest.get(req.edge)[req.endpoint] = fractions[i]
     })
   }
+  return fractionByRequest
+}
 
-  // Direct (distance-1) edges grouped by their unordered node pair -- a reciprocal pair (both
-  // directions present) is exactly two edges sharing a group, offset into parallel lines rather
-  // than drawn on top of each other; a solitary direct edge is a group of one, centered.
+// Direct (distance-1) edges grouped by their unordered node pair -- a reciprocal pair (both
+// directions present) is exactly two edges sharing a group, offset into parallel lines rather
+// than drawn on top of each other; a solitary direct edge is a group of one, centered.
+function groupDirectEdges(edgeDescriptors) {
   const directGroups = new Map()
   for (const e of edgeDescriptors) {
     if (e.kind !== 'direct') continue
-    const key = [e.fromId, e.toId].sort().join('|')
+    const key = [e.fromId, e.toId].sort((a, b) => a.localeCompare(b)).join('|')
     if (!directGroups.has(key)) directGroups.set(key, [])
     directGroups.get(key).push(e)
   }
+  return directGroups
+}
 
-  const edgeAxisHelpers = axisHelpers(vertical)
-  const globalLeadingEdge = outerLeadingMargin + leadingReserve
-  const globalTrailingEdge = outerLeadingMargin + leadingReserve + maxRankSpan
-
+function buildDirectEdges(directGroups, rank, rects, vertical, edgeAxisHelpers) {
   const edges = []
   for (const [, group] of directGroups) {
     group.sort((a, b) => (a.transition.name ?? '').localeCompare(b.transition.name ?? ''))
@@ -524,7 +653,22 @@ export function computeLayout(states, orientation = 'horizontal') {
       })
     })
   }
+  return edges
+}
 
+function buildRailEdgeSegments(
+  railEdges,
+  rects,
+  fractionByRequest,
+  rankAxisSizeOf,
+  edgeAxisHelpers,
+  vertical,
+  globalLeadingEdge,
+  globalTrailingEdge,
+  selfLoopReserve,
+  railGap,
+) {
+  const edges = []
   for (const e of railEdges) {
     const fromRect = rects.get(e.fromId)
     const toRect = rects.get(e.toId)
@@ -548,7 +692,10 @@ export function computeLayout(states, orientation = 'horizontal') {
       labelY: (p1.y + p2.y) / 2,
     })
   }
+  return edges
+}
 
+function buildSelfLoopEdgeSegments(selfLoopsByNode, rects, edgeAxisHelpers, rankAxisNodeSize, vertical) {
   const selfLoopEdges = []
   for (const [nodeId, transitions] of selfLoopsByNode) {
     const rect = rects.get(nodeId)
@@ -569,12 +716,5 @@ export function computeLayout(states, orientation = 'horizontal') {
       })
     }
   }
-
-  return {
-    rects,
-    edges,
-    selfLoopEdges,
-    width: vertical ? siblingAxisTotal : rankAxisTotal,
-    height: vertical ? rankAxisTotal : siblingAxisTotal,
-  }
+  return selfLoopEdges
 }

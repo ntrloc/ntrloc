@@ -648,7 +648,48 @@ function rankByLongestPath(pipeline) {
 export function computeLayout(pipeline, positions, blocks, signalDescriptions = new Map(), edgeBends = new Map()) {
   const nodes = allNodes(pipeline)
   const rank = rankByLongestPath(pipeline)
+  const { sortedRanks, dimsByNodeId, rankX } = computeColumns(nodes, rank, blocks)
 
+  const { rects, ...carrierBounds } = layoutCarrierNodes(sortedRanks, dimsByNodeId, rankX, positions, pipeline)
+
+  // Signal nodes have no Route to derive a rank from (see rankByLongestPath's own comment), so they
+  // get one trailing column of their own, past every carrier rank -- stacked the same fallback way
+  // as any other same-rank column, with a saved position overriding it exactly like a carrier
+  // block's.
+  const signalNodesList = signalNodes(pipeline)
+  const bounds = layoutSignalNodes(signalNodesList, positions, signalDescriptions, rects, carrierBounds)
+
+  const { outputPinPositions, inputPinPositions, gateAnchors } = computePinPositions(
+    nodes,
+    signalNodesList,
+    rects,
+    blocks,
+    signalDescriptions,
+  )
+
+  const edges = computeRouteEdges(pipeline, outputPinPositions, inputPinPositions, edgeBends)
+  const signalEdges = computeSignalEdges(pipeline, outputPinPositions, gateAnchors, edgeBends)
+
+  return {
+    rects,
+    edges,
+    signalNodes: signalNodesList,
+    signalEdges,
+    // minX/minY: the top-left corner of the diagram's own bounding box, PADDING clear of the
+    // tightest content actually needs -- exported so the View's fit-zoom can center the viewport
+    // over exactly this box instead of assuming it starts at (0, 0), which a saved position is
+    // never guaranteed to produce (see layoutCarrierNodes' own comment on minX/minY).
+    minX: bounds.minX - PADDING,
+    minY: bounds.minY - PADDING,
+    width: bounds.maxX - bounds.minX + 2 * PADDING,
+    height: bounds.maxY - bounds.minY + 2 * PADDING,
+  }
+}
+
+// Column X per rank is cumulative off the widest node in every prior rank -- fixed-width columns
+// would either waste space or clip a wide block, now that width is content-driven instead of a
+// constant.
+function computeColumns(nodes, rank, blocks) {
   const byRank = new Map()
   for (const node of nodes) {
     const r = rank.get(node.id) ?? 0
@@ -656,9 +697,6 @@ export function computeLayout(pipeline, positions, blocks, signalDescriptions = 
   }
   const sortedRanks = [...byRank.entries()].sort((a, b) => a[0] - b[0])
 
-  // Column X per rank is cumulative off the widest node in every prior rank -- fixed-width columns
-  // would either waste space or clip a wide block, now that width is content-driven instead of a
-  // constant.
   const dimsByNodeId = new Map(nodes.map((n) => [n.id, nodeDimensions(n, blocks)]))
   // Rank 0 is always exactly Start alone (nothing ever routes back into it -- see rankByLongestPath),
   // so bumping its own starting x to clear the "start" label's own overhang (see its own comment)
@@ -670,15 +708,18 @@ export function computeLayout(pipeline, positions, blocks, signalDescriptions = 
     const prevMaxWidth = Math.max(...prevNodes.map((n) => dimsByNodeId.get(n.id).width))
     rankX.set(r, rankX.get(prevRank) + prevMaxWidth + RANK_GAP)
   }
+  return { sortedRanks, dimsByNodeId, rankX }
+}
 
-  // minX/minY track the tightest bounding box actually needed, the same way maxX/maxY always have --
-  // not just assumed to be 0. That assumption held while only the fallback layout existed (rank0
-  // always starts at PADDING, never negative), but an admin's own saved position can put a node
-  // anywhere, including left of or above where the fallback ever would -- and Start's own "start"
-  // label (see START_LABEL_OVERHANG) extends further left still, well past Start's own rect, exactly
-  // the same way End's "end" label extends right past its own rect (see maxX below). Without
-  // tracking this properly, the View's own fit-zoom -- which centers the viewport over exactly this
-  // box -- has no way to know content starts before 0, and clips whatever does.
+// minX/minY track the tightest bounding box actually needed, the same way maxX/maxY always have --
+// not just assumed to be 0. That assumption held while only the fallback layout existed (rank0
+// always starts at PADDING, never negative), but an admin's own saved position can put a node
+// anywhere, including left of or above where the fallback ever would -- and Start's own "start"
+// label (see START_LABEL_OVERHANG) extends further left still, well past Start's own rect, exactly
+// the same way End's "end" label extends right past its own rect (see maxX below). Without
+// tracking this properly, the View's own fit-zoom -- which centers the viewport over exactly this
+// box -- has no way to know content starts before 0, and clips whatever does.
+function layoutCarrierNodes(sortedRanks, dimsByNodeId, rankX, positions, pipeline) {
   const rects = new Map()
   let minX = Infinity
   let minY = Infinity
@@ -706,12 +747,11 @@ export function computeLayout(pipeline, positions, blocks, signalDescriptions = 
   minX = Math.min(minX, startRect.x - START_LABEL_OVERHANG)
   const endRect = rects.get(pipeline.end.id)
   maxX = Math.max(maxX, endRect.x + endRect.width + END_LABEL_OVERHANG)
+  return { rects, minX, minY, maxX, maxY }
+}
 
-  // Signal nodes have no Route to derive a rank from (see rankByLongestPath's own comment), so they
-  // get one trailing column of their own, past every carrier rank -- stacked the same fallback way
-  // as any other same-rank column, with a saved position overriding it exactly like a carrier
-  // block's.
-  const signalNodesList = signalNodes(pipeline)
+function layoutSignalNodes(signalNodesList, positions, signalDescriptions, rects, bounds) {
+  let { minX, minY, maxX, maxY } = bounds
   const signalX = maxX + RANK_GAP
   let signalFallbackY = PADDING
   for (const node of signalNodesList) {
@@ -726,43 +766,46 @@ export function computeLayout(pipeline, positions, blocks, signalDescriptions = 
     maxX = Math.max(maxX, x + width)
     maxY = Math.max(maxY, y + height)
   }
+  return { minX, minY, maxX, maxY }
+}
 
-  // A pseudostate's attach point is its own center (a circle has no header/body split). An ordinary
-  // carrier block's is its output/input pin center: STRIP_WIDTH/2 inset from that side's edge,
-  // vertically centered in the body band below the header (see bodyMidY), exactly where
-  // CarrierBlockNode draws the pin itself. The shared input pin uses this same formula even for a
-  // <select> block -- there's exactly one input, centered on the whole body, that broadcasts
-  // internally to every row (see Select's own doc comment).
-  function outputPoint(rect, node) {
-    const y = isPseudo(node) ? rect.y + rect.height / 2 : bodyMidY(rect)
-    return isPseudo(node) ? { x: rect.x + rect.width / 2, y } : { x: rect.x + rect.width - STRIP_WIDTH / 2, y }
-  }
-  // A pseudostate's input point lands on its own left edge, not its center -- unlike its own output
-  // point (still dead center, since nothing ever targets Start and an edge leaving End doesn't
-  // exist), this one is a real edge's own target, and landing it at the circle's exact center used
-  // to bury the edge's own terminal arrowhead inside End's own filled dot instead of leaving it
-  // visible just before the shape it's entering, the same way any other carrier input pin's arrow
-  // already sits at its own block's own left edge rather than somewhere inside the block.
-  function inputPoint(rect, node) {
-    const y = isPseudo(node) ? rect.y + rect.height / 2 : bodyMidY(rect)
-    return isPseudo(node) ? { x: rect.x - PSEUDO_INPUT_ARROW_GAP, y } : { x: rect.x + STRIP_WIDTH / 2, y }
-  }
+// A pseudostate's attach point is its own center (a circle has no header/body split). An ordinary
+// carrier block's is its output/input pin center: STRIP_WIDTH/2 inset from that side's edge,
+// vertically centered in the body band below the header (see bodyMidY), exactly where
+// CarrierBlockNode draws the pin itself. The shared input pin uses this same formula even for a
+// <select> block -- there's exactly one input, centered on the whole body, that broadcasts
+// internally to every row (see Select's own doc comment).
+function outputPoint(rect, node) {
+  const y = isPseudo(node) ? rect.y + rect.height / 2 : bodyMidY(rect)
+  return isPseudo(node) ? { x: rect.x + rect.width / 2, y } : { x: rect.x + rect.width - STRIP_WIDTH / 2, y }
+}
+// A pseudostate's input point lands on its own left edge, not its center -- unlike its own output
+// point (still dead center, since nothing ever targets Start and an edge leaving End doesn't
+// exist), this one is a real edge's own target, and landing it at the circle's exact center used
+// to bury the edge's own terminal arrowhead inside End's own filled dot instead of leaving it
+// visible just before the shape it's entering, the same way any other carrier input pin's arrow
+// already sits at its own block's own left edge rather than somewhere inside the block.
+function inputPoint(rect, node) {
+  const y = isPseudo(node) ? rect.y + rect.height / 2 : bodyMidY(rect)
+  return isPseudo(node) ? { x: rect.x - PSEUDO_INPUT_ARROW_GAP, y } : { x: rect.x + STRIP_WIDTH / 2, y }
+}
 
-  // outputPinPositions has one entry per *pin*, not per node -- an ordinary block contributes one
-  // (keyed by its own id), a <select> block contributes one per row (keyed by each row's own id,
-  // including the synthetic Otherwise row keyed by the Select's own id -- see nodeDimensions' own
-  // comment on label.rows), and a signal block contributes one per Condition it contains (see
-  // signalNodes above). inputPinPositions stays one-per-node: nothing ever routes to a select row
-  // from outside (it's fed internally), so a route's target is always an ordinary node id or a
-  // Select's own id, never a row id.
-  //
-  // gateAnchors is the pull-edge counterpart: one point per *gate owner* (an ordinary carrier
-  // block's own id, or -- inside a <select> -- a specific row's own id, since each row carries its
-  // own independent gate, including the synthetic Otherwise row standing in for the block's own
-  // gate) to land a reference edge on. Always on the body's own left edge, the same side (and for a
-  // <select> row, the same y) its carrier input already enters from -- a reference edge connects
-  // horizontally at both ends the same as a carrier one does (see orthogonalPath), which a
-  // top-of-block or top-of-row point never could.
+// outputPinPositions has one entry per *pin*, not per node -- an ordinary block contributes one
+// (keyed by its own id), a <select> block contributes one per row (keyed by each row's own id,
+// including the synthetic Otherwise row keyed by the Select's own id -- see nodeDimensions' own
+// comment on label.rows), and a signal block contributes one per Condition it contains (see
+// signalNodes above). inputPinPositions stays one-per-node: nothing ever routes to a select row
+// from outside (it's fed internally), so a route's target is always an ordinary node id or a
+// Select's own id, never a row id.
+//
+// gateAnchors is the pull-edge counterpart: one point per *gate owner* (an ordinary carrier
+// block's own id, or -- inside a <select> -- a specific row's own id, since each row carries its
+// own independent gate, including the synthetic Otherwise row standing in for the block's own
+// gate) to land a reference edge on. Always on the body's own left edge, the same side (and for a
+// <select> row, the same y) its carrier input already enters from -- a reference edge connects
+// horizontally at both ends the same as a carrier one does (see orthogonalPath), which a
+// top-of-block or top-of-row point never could.
+function computePinPositions(nodes, signalNodesList, rects, blocks, signalDescriptions) {
   const outputPinPositions = new Map()
   const inputPinPositions = new Map()
   const gateAnchors = new Map()
@@ -799,7 +842,10 @@ export function computeLayout(pipeline, positions, blocks, signalDescriptions = 
       outputPinPositions.set(node.pinIds[0], { x: rect.x + rect.width - STRIP_WIDTH / 2, y: pinY })
     }
   }
+  return { outputPinPositions, inputPinPositions, gateAnchors }
+}
 
+function computeRouteEdges(pipeline, outputPinPositions, inputPinPositions, edgeBends) {
   const edges = []
   for (const route of pipeline.routes) {
     const from = outputPinPositions.get(route.outputPinId)
@@ -811,14 +857,17 @@ export function computeLayout(pipeline, positions, blocks, signalDescriptions = 
       edges.push({ key, ...orthogonalPath(from, to, edgeBends.get(key)) })
     }
   }
+  return edges
+}
 
-  // Signal (pull) edges: dashed, drawn straight from everywhere a Condition's own pin is read, not
-  // from a Route -- a gate is consulted, never fed (see rankByLongestPath's own comment). Walks the
-  // raw carrierBlocks rather than `blocks`/labels, since gate data is already right there and this
-  // needs no marker-name resolution at all. A pin belonging to an inlined ConditionGroup (see
-  // inlinedConditionGroupOwner) has no entry in outputPinPositions at all -- it's shown inline inside
-  // its owning <select> instead -- so it's silently skipped here rather than drawing a dashed line to
-  // nowhere.
+// Signal (pull) edges: dashed, drawn straight from everywhere a Condition's own pin is read, not
+// from a Route -- a gate is consulted, never fed (see rankByLongestPath's own comment). Walks the
+// raw carrierBlocks rather than `blocks`/labels, since gate data is already right there and this
+// needs no marker-name resolution at all. A pin belonging to an inlined ConditionGroup (see
+// inlinedConditionGroupOwner) has no entry in outputPinPositions at all -- it's shown inline inside
+// its owning <select> instead -- so it's silently skipped here rather than drawing a dashed line to
+// nowhere.
+function computeSignalEdges(pipeline, outputPinPositions, gateAnchors, edgeBends) {
   const signalEdges = []
   function addGateEdges(gate, ownerId) {
     if (!gate) return
@@ -841,21 +890,7 @@ export function computeLayout(pipeline, positions, blocks, signalDescriptions = 
       addGateEdges(block.gate, block.id)
     }
   }
-
-  return {
-    rects,
-    edges,
-    signalNodes: signalNodesList,
-    signalEdges,
-    // minX/minY: the top-left corner of the diagram's own bounding box, PADDING clear of the
-    // tightest content actually needs -- exported so the View's fit-zoom can center the viewport
-    // over exactly this box instead of assuming it starts at (0, 0), which a saved position is
-    // never guaranteed to produce (see minX's own comment above).
-    minX: minX - PADDING,
-    minY: minY - PADDING,
-    width: maxX - minX + 2 * PADDING,
-    height: maxY - minY + 2 * PADDING,
-  }
+  return signalEdges
 }
 
 // Body-relative geometry the View needs to place the title and each stacked chip inside a carrier
