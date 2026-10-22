@@ -129,9 +129,7 @@ public class ProcessDefinitionDataManagerImpl extends AbstractProcessDataManager
     // (id/ids, deploymentId, key/keyLike, name/nameLike, version comparisons, latest-per-key) --
     // not full RepositoryService query-criteria parity. Category and tenant filters are silently
     // ignored: nothing in this app sets a category or a non-null tenant on a process definition, so
-    // there's no case where honoring them would currently change the result. No ORDER BY support
-    // (orderBy*() on the query builder is a no-op here) -- callers get id order; add real ordering
-    // if/when a caller needs a specific one.
+    // there's no case where honoring them would currently change the result.
     @Override
     public List<ProcessDefinition> findProcessDefinitionsByQueryCriteria(ProcessDefinitionQueryImpl query) {
         StringBuilder sql = new StringBuilder("""
@@ -139,11 +137,40 @@ public class ProcessDefinitionDataManagerImpl extends AbstractProcessDataManager
                 FROM process_definition
                 """);
         Map<String, Object> params = whereClause(query, sql);
+        sql.append(' ').append(orderByClause(query));
         var spec = jdbcClient().sql(sql.toString());
         for (var entry : params.entrySet()) {
             spec = spec.param(entry.getKey(), entry.getValue());
         }
         return new ArrayList<>(spec.query(this::cacheOrMap).list());
+    }
+
+    // Translates Flowable's own RES.<COLUMN>_ aliases (query.getOrderBy(), e.g. "order by RES.VERSION_
+    // asc") into this table's actual column names. id ASC is always appended as a final tiebreaker --
+    // two rows that tie on the requested column (or no ordering was requested at all) still need a
+    // fully deterministic order; relying on "whatever order the database happens to return with no
+    // ORDER BY at all" is undefined per the SQL standard, which was the actual cause of a real CI
+    // flake here: two definitions deployed back-to-back came back in a different physical scan order
+    // than they did locally, with no ORDER BY clause ever reaching the database to prevent it.
+    private static final Map<String, String> ORDER_BY_COLUMN_ALIASES = Map.of(
+            "RES.ID_", "id",
+            "RES.KEY_", "process_key",
+            "RES.VERSION_", "version",
+            "RES.NAME_", "name",
+            "RES.DEPLOYMENT_ID_", "deployment_id"
+    );
+
+    private static String orderByClause(ProcessDefinitionQueryImpl query) {
+        String requested = query.getOrderBy();
+        String columnsAndDirections = (requested == null || requested.isBlank())
+                ? ""
+                : requested.replaceFirst("(?i)^order by ", "");
+        for (var entry : ORDER_BY_COLUMN_ALIASES.entrySet()) {
+            columnsAndDirections = columnsAndDirections.replace(entry.getKey(), entry.getValue());
+        }
+        return columnsAndDirections.isEmpty()
+                ? "ORDER BY id ASC"
+                : "ORDER BY " + columnsAndDirections + ", id ASC";
     }
 
     @Override
