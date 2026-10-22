@@ -116,19 +116,7 @@ public class PipelineMarkerDecisionService {
 
         Set<MarkerAttribution> toAdd = new HashSet<>();
         Set<MarkerAttribution> toRemove = new HashSet<>();
-        for (Pipeline pipeline : pipelines) {
-            Set<UUID> desired = PipelineEvaluator.evaluate(pipeline, merged, e.itemId(), registerPartitionManager);
-            Set<UUID> currentlyHeld = new HashSet<>();
-            currentPipelineAttribution.forEach((markerId, pipelineId) -> {
-                if (pipelineId.equals(pipeline.id())) currentlyHeld.add(markerId);
-            });
-            for (UUID markerId : desired) {
-                if (!currentlyHeld.contains(markerId)) toAdd.add(new PipelineAppliedMarker(markerId, pipeline.id()));
-            }
-            for (UUID markerId : currentlyHeld) {
-                if (!desired.contains(markerId)) toRemove.add(new PipelineAppliedMarker(markerId, pipeline.id()));
-            }
-        }
+        collectPipelineDecisions(pipelines, merged, e.itemId(), currentPipelineAttribution, toAdd, toRemove);
         if (toAdd.isEmpty() && toRemove.isEmpty()) return e;
 
         Set<MarkerAttribution> markersAdded = new HashSet<>(e.markersAdded());
@@ -136,6 +124,29 @@ public class PipelineMarkerDecisionService {
         Set<MarkerAttribution> markersRemoved = new HashSet<>(e.markersRemoved());
         markersRemoved.addAll(toRemove);
         return new ItemUpdateEntry(e.itemId(), e.properties(), e.stateChanges(), e.stateMachinesEnded(), markersAdded, markersRemoved);
+    }
+
+    private void collectPipelineDecisions(List<Pipeline> pipelines, Map<UUID, Object> merged, UUID itemId,
+                                           Map<UUID, UUID> currentPipelineAttribution,
+                                           Set<MarkerAttribution> toAdd, Set<MarkerAttribution> toRemove) {
+        for (Pipeline pipeline : pipelines) {
+            Set<UUID> desired = PipelineEvaluator.evaluate(pipeline, merged, itemId, registerPartitionManager);
+            Set<UUID> currentlyHeld = currentlyHeldMarkers(currentPipelineAttribution, pipeline.id());
+            for (UUID markerId : desired) {
+                if (!currentlyHeld.contains(markerId)) toAdd.add(new PipelineAppliedMarker(markerId, pipeline.id()));
+            }
+            for (UUID markerId : currentlyHeld) {
+                if (!desired.contains(markerId)) toRemove.add(new PipelineAppliedMarker(markerId, pipeline.id()));
+            }
+        }
+    }
+
+    private static Set<UUID> currentlyHeldMarkers(Map<UUID, UUID> currentPipelineAttribution, UUID pipelineId) {
+        Set<UUID> currentlyHeld = new HashSet<>();
+        currentPipelineAttribution.forEach((markerId, pid) -> {
+            if (pid.equals(pipelineId)) currentlyHeld.add(markerId);
+        });
+        return currentlyHeld;
     }
 
     // Replays this item's committed ledger history to learn which pipeline (if any) currently

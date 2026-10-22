@@ -37,6 +37,9 @@ import java.util.UUID;
 @Component
 public class BinaryDynamicPropertyRegistrar {
 
+    private static final String PARAM_PROPERTY_ID = "propertyId";
+    private static final String PARAM_DYNAMIC_PROPERTY_ID = "dynamicPropertyId";
+
     private final JdbcClient jdbcClient;
     private final SchemaManager schemaManager;
 
@@ -184,8 +187,8 @@ public class BinaryDynamicPropertyRegistrar {
     private void incrementReferenceCount(UUID propertyId, DiscoveredPath discovered) {
         UUID dynamicPropertyId = ensureCatalogRow(discovered.path(), discovered.type());
         boolean insertedNewJoinRow = jdbcClient.sql(INCREMENT_SQL)
-                .param("propertyId", propertyId)
-                .param("dynamicPropertyId", dynamicPropertyId)
+                .param(PARAM_PROPERTY_ID, propertyId)
+                .param(PARAM_DYNAMIC_PROPERTY_ID, dynamicPropertyId)
                 .query(Boolean.class)
                 .single();
         if (insertedNewJoinRow) scheduleSchemaRefreshAfterCommit();
@@ -207,12 +210,12 @@ public class BinaryDynamicPropertyRegistrar {
     private void decrementReferenceCount(UUID propertyId, DiscoveredPath discovered) {
         UUID dynamicPropertyId = ensureCatalogRow(discovered.path(), discovered.type());
         jdbcClient.sql(DECREMENT_SQL)
-                .param("propertyId", propertyId)
-                .param("dynamicPropertyId", dynamicPropertyId)
+                .param(PARAM_PROPERTY_ID, propertyId)
+                .param(PARAM_DYNAMIC_PROPERTY_ID, dynamicPropertyId)
                 .update();
         int deletedRows = jdbcClient.sql(DELETE_IF_ZERO_SQL)
-                .param("propertyId", propertyId)
-                .param("dynamicPropertyId", dynamicPropertyId)
+                .param(PARAM_PROPERTY_ID, propertyId)
+                .param(PARAM_DYNAMIC_PROPERTY_ID, dynamicPropertyId)
                 .update();
         if (deletedRows > 0) scheduleSchemaRefreshAfterCommit();
     }

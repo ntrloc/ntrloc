@@ -125,7 +125,7 @@ public class SchemaManager {
     public void refreshCache() {
         rebuildCache();
         schemaChangedTopic.publish(UUID.randomUUID().toString());
-        clusterEventBroadcaster.publish("schemaChanged", UUID.randomUUID().toString());
+        clusterEventBroadcaster.publish(SCHEMA_CHANGED_TOPIC, UUID.randomUUID().toString());
     }
 
     // Dispatches to one applier per mutation family (item, trait, property, link, state machine)

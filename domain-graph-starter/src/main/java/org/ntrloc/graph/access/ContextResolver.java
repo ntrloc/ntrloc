@@ -47,39 +47,47 @@ public final class ContextResolver {
             return List.of(new Instance(itemId, itemId));
         }
         if (context instanceof StepToProperty step) {
-            if (step.each()) {
-                throw new UnsupportedOperationException("ContextResolver does not yet support each on " + context);
-            }
-            if (!(step.next() instanceof Self)) {
-                throw new UnsupportedOperationException("ContextResolver does not yet support " + context);
-            }
-            return List.of(new Instance(itemId, itemProperties.get(step.propertyId())));
+            return resolvePropertyStep(step, itemId, itemProperties);
         }
         if (context instanceof StepToStateMachine step) {
             return List.of(new Instance(itemId, facts.currentStateId(itemId, step.stateMachineId())));
         }
         if (context instanceof StepToItem step) {
-            List<UUID> targets = facts.linkedItemIds(itemId, step.linkPerspectiveId());
-            if (!step.each()) {
-                if (targets.size() > 1) {
-                    throw new UnsupportedOperationException(
-                            "Flattening a to-many step without `each` is not yet supported: " + context);
-                }
-                if (targets.isEmpty()) {
-                    return List.of();
-                }
-                UUID target = targets.get(0);
-                return resolveInstances(step.next(), target, facts.propertiesOfItem(target), facts);
-            }
-            List<Instance> results = new ArrayList<>();
-            for (UUID target : targets) {
-                results.addAll(resolveInstances(step.next(), target, facts.propertiesOfItem(target), facts));
-            }
-            return results;
+            return resolveItemStep(step, itemId, facts);
         }
         // StepToLink -- reading a link's own properties, rather than stepping past it to the item on
         // the far end -- is a deliberately separate, still-unsupported piece of work; see
         // FactResolver's own comment.
         throw new UnsupportedOperationException("ContextResolver does not yet support " + context);
+    }
+
+    private static List<Instance> resolvePropertyStep(StepToProperty step, UUID itemId, Map<UUID, Object> itemProperties) {
+        if (step.each()) {
+            throw new UnsupportedOperationException("ContextResolver does not yet support each on " + step);
+        }
+        if (!(step.next() instanceof Self)) {
+            throw new UnsupportedOperationException("ContextResolver does not yet support " + step);
+        }
+        return List.of(new Instance(itemId, itemProperties.get(step.propertyId())));
+    }
+
+    private static List<Instance> resolveItemStep(StepToItem step, UUID itemId, FactResolver facts) {
+        List<UUID> targets = facts.linkedItemIds(itemId, step.linkPerspectiveId());
+        if (!step.each()) {
+            if (targets.size() > 1) {
+                throw new UnsupportedOperationException(
+                        "Flattening a to-many step without `each` is not yet supported: " + step);
+            }
+            if (targets.isEmpty()) {
+                return List.of();
+            }
+            UUID target = targets.get(0);
+            return resolveInstances(step.next(), target, facts.propertiesOfItem(target), facts);
+        }
+        List<Instance> results = new ArrayList<>();
+        for (UUID target : targets) {
+            results.addAll(resolveInstances(step.next(), target, facts.propertiesOfItem(target), facts));
+        }
+        return results;
     }
 }

@@ -66,6 +66,7 @@ public class MutationRequestProcessor {
 
     private static final String PROPERTIES_PATH_SUFFIX = ".properties";
     private static final String PROPERTY_QUOTE_PREFIX = "Property '";
+    private static final String ITEM_TYPE_NAME_PATH_SUFFIX = ".itemTypeName";
 
     private final LedgerRegisterCoordinator coordinator;
     private final RegisterPartitionManager registerPartitionManager;
@@ -185,15 +186,15 @@ public class MutationRequestProcessor {
                                     List<LedgerEntry> entries, List<ItemMutationResult> itemResults, List<ValidationError> errors) {
         Optional<UUID> itemTypeId = findItemTypeIdByName(m.itemTypeName());
         if (itemTypeId.isEmpty()) {
-            errors.add(new ValidationError(path + ".itemTypeName", "Unknown item type: " + m.itemTypeName()));
+            errors.add(new ValidationError(path + ITEM_TYPE_NAME_PATH_SUFFIX, "Unknown item type: " + m.itemTypeName()));
             return;
         }
         if (isAbstractItemType(itemTypeId.get())) {
-            errors.add(new ValidationError(path + ".itemTypeName", "Cannot create an instance of abstract item type: " + m.itemTypeName()));
+            errors.add(new ValidationError(path + ITEM_TYPE_NAME_PATH_SUFFIX, "Cannot create an instance of abstract item type: " + m.itemTypeName()));
             return;
         }
         if (!permissionService.canCreateItemType(principal, itemTypeId.get())) {
-            errors.add(new ValidationError(path + ".itemTypeName", "Not permitted to create items of type: " + m.itemTypeName()));
+            errors.add(new ValidationError(path + ITEM_TYPE_NAME_PATH_SUFFIX, "Not permitted to create items of type: " + m.itemTypeName()));
             return;
         }
         UUID itemId = UUID.randomUUID();

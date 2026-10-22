@@ -31,6 +31,10 @@ public class BinaryPartitionManagerImpl implements BinaryPartitionManager {
 
     private static final String COL_SHA256 = "sha256";
     private static final String COL_LENGTH = "length";
+    // Deliberately distinct from KEY_METADATA below, despite sharing the same literal value -- this
+    // one names the binary_content.metadata *column*, the other names a JSON key *inside* it; reusing
+    // one constant for both would conflate two different things that only coincidentally share a name.
+    private static final String COL_METADATA = "metadata";
     // Wire keys for a binary's own fields document -- these five (hash, length, mimeType, metadata,
     // calculated) are the only top-level keys that ever exist there, all developer-chosen: an
     // extractor's own field names always land nested one level inside "metadata" or "calculated",
@@ -105,7 +109,7 @@ public class BinaryPartitionManagerImpl implements BinaryPartitionManager {
                 .param("md5", info.getMd5Hash())
                 .param("mimeType", info.getMimeType())
                 .param(COL_LENGTH, info.getLength())
-                .param("metadata", metadataJson(info))
+                .param(COL_METADATA, metadataJson(info))
                 .query((rs, n) -> new InsertResult(rs.getObject("id", UUID.class), rs.getBoolean("inserted")))
                 .single();
         if (result.inserted()) {
@@ -164,7 +168,7 @@ public class BinaryPartitionManagerImpl implements BinaryPartitionManager {
     }
 
     private BinaryPropertyObject mapRow(java.sql.ResultSet rs) throws java.sql.SQLException {
-        String metadataJson = rs.getString("metadata");
+        String metadataJson = rs.getString(COL_METADATA);
         Map<String, Object> metadata = parseMetadata(metadataJson);
         return new BinaryPropertyObject(
                 rs.getObject("id", UUID.class),
@@ -213,7 +217,7 @@ public class BinaryPartitionManagerImpl implements BinaryPartitionManager {
         newFields.put(KEY_CALCULATED, derived);
 
         jdbcClient.sql("UPDATE binary_content SET metadata = :metadata::jsonb WHERE id = :id")
-                .param("metadata", objectMapper.writeValueAsString(newFields))
+                .param(COL_METADATA, objectMapper.writeValueAsString(newFields))
                 .param("id", binaryContentId)
                 .update();
 

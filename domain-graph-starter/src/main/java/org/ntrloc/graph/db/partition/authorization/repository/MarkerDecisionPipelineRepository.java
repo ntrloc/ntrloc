@@ -38,6 +38,9 @@ public class MarkerDecisionPipelineRepository implements PipelineSource {
 
     private static final String PARAM_ITEM_TYPE_ID = "itemTypeId";
     private static final String COL_ITEM_TYPE_ID = "item_type_id";
+    private static final String COL_PIPELINE = "pipeline";
+    private static final String COL_LAYOUT = "layout";
+    private static final String COL_ENABLED = "enabled";
     private static final String SELECT_ROW = """
             SELECT id, item_type_id, enabled, pipeline::text AS pipeline, layout::text AS layout
             FROM marker_decision_pipeline
@@ -68,7 +71,7 @@ public class MarkerDecisionPipelineRepository implements PipelineSource {
                 """)
                 .param(PARAM_ITEM_TYPE_ID, itemTypeId)
                 .param("factIds", changedFactIds)
-                .query((rs, n) -> readPipeline(rs.getString("pipeline")))
+                .query((rs, n) -> readPipeline(rs.getString(COL_PIPELINE)))
                 .list();
     }
 
@@ -78,8 +81,8 @@ public class MarkerDecisionPipelineRepository implements PipelineSource {
                 VALUES (:itemTypeId, true, :pipeline::jsonb, :layout::jsonb) RETURNING id
                 """)
                 .param(PARAM_ITEM_TYPE_ID, itemTypeId)
-                .param("pipeline", writePipeline(pipeline))
-                .param("layout", writeLayout(layout))
+                .param(COL_PIPELINE, writePipeline(pipeline))
+                .param(COL_LAYOUT, writeLayout(layout))
                 .query(UUID.class).single();
         writeWatches(id, pipeline);
         return new PipelineRow(id, itemTypeId, true, pipeline, layout);
@@ -90,9 +93,9 @@ public class MarkerDecisionPipelineRepository implements PipelineSource {
                 UPDATE marker_decision_pipeline SET pipeline = :pipeline::jsonb, enabled = :enabled, layout = :layout::jsonb
                 WHERE id = :id
                 """)
-                .param("pipeline", writePipeline(pipeline))
-                .param("enabled", enabled)
-                .param("layout", writeLayout(layout))
+                .param(COL_PIPELINE, writePipeline(pipeline))
+                .param(COL_ENABLED, enabled)
+                .param(COL_LAYOUT, writeLayout(layout))
                 .param("id", id)
                 .update();
         writeWatches(id, pipeline);
@@ -125,9 +128,9 @@ public class MarkerDecisionPipelineRepository implements PipelineSource {
                 .query((rs, n) -> new PipelineRow(
                         rs.getObject("id", UUID.class),
                         rs.getObject(COL_ITEM_TYPE_ID, UUID.class),
-                        rs.getBoolean("enabled"),
-                        readPipeline(rs.getString("pipeline")),
-                        readLayout(rs.getString("layout"))))
+                        rs.getBoolean(COL_ENABLED),
+                        readPipeline(rs.getString(COL_PIPELINE)),
+                        readLayout(rs.getString(COL_LAYOUT))))
                 .list();
     }
 
@@ -137,9 +140,9 @@ public class MarkerDecisionPipelineRepository implements PipelineSource {
                 .query((rs, n) -> new PipelineRow(
                         rs.getObject("id", UUID.class),
                         rs.getObject(COL_ITEM_TYPE_ID, UUID.class),
-                        rs.getBoolean("enabled"),
-                        readPipeline(rs.getString("pipeline")),
-                        readLayout(rs.getString("layout"))))
+                        rs.getBoolean(COL_ENABLED),
+                        readPipeline(rs.getString(COL_PIPELINE)),
+                        readLayout(rs.getString(COL_LAYOUT))))
                 .optional();
     }
 
@@ -151,9 +154,9 @@ public class MarkerDecisionPipelineRepository implements PipelineSource {
                 .query((rs, n) -> new PipelineRow(
                         rs.getObject("id", UUID.class),
                         rs.getObject(COL_ITEM_TYPE_ID, UUID.class),
-                        rs.getBoolean("enabled"),
-                        readPipeline(rs.getString("pipeline")),
-                        readLayout(rs.getString("layout"))))
+                        rs.getBoolean(COL_ENABLED),
+                        readPipeline(rs.getString(COL_PIPELINE)),
+                        readLayout(rs.getString(COL_LAYOUT))))
                 .optional();
     }
 

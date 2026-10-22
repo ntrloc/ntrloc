@@ -139,14 +139,25 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
     private static final String PARAM_OLD_ID = "oldId";
     private static final String SQL_AND_FALSE = "AND FALSE";
     private static final String PARAM_REGISTER_ITEM_ID = "registerItemId";
+    private static final String PARAM_CREATED_DATE = "createdDate";
+    private static final String PARAM_CREATED_BY = "createdBy";
+    private static final String PARAM_UPDATED_DATE = "updatedDate";
+    private static final String PARAM_UPDATED_BY = "updatedBy";
+    private static final String ORDER_BY_PREFIX = "ORDER BY ";
+    private static final String COL_CREATED_DATE = "created_date";
+    private static final String COL_CREATED_BY = "created_by";
+    private static final String COL_UPDATED_DATE = "updated_date";
+    private static final String COL_UPDATED_BY = "updated_by";
+    private static final String PARAM_PERSPECTIVE_ID = "perspectiveId";
+    private static final String COL_PERSPECTIVE_ID = "perspective_id";
 
     private static final Map<String, String> SYSTEM_SORT_COLUMNS = Map.of(
             PARAM_ITEM_ID,          "ri.item_id",
             "itemType",        "si.name",
-            "createdDate",     "ri.created_date",
-            "createdBy",       "ri.created_by",
-            "updatedDate",     "ri.updated_date",
-            "updatedBy",       "ri.updated_by",
+            PARAM_CREATED_DATE,     "ri.created_date",
+            PARAM_CREATED_BY,       "ri.created_by",
+            PARAM_UPDATED_DATE,     "ri.updated_date",
+            PARAM_UPDATED_BY,       "ri.updated_by",
             "visibilityState", "ri.state"
     );
 
@@ -243,12 +254,12 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
         if (spec.sortField() == null || spec.sortField().isBlank()) return "ORDER BY ri.item_id ASC";
         String direction = "DESC".equalsIgnoreCase(spec.sortDirection()) ? "DESC" : "ASC";
         if (SYSTEM_SORT_COLUMNS.containsKey(spec.sortField())) {
-            return "ORDER BY " + SYSTEM_SORT_COLUMNS.get(spec.sortField()) + " " + direction + " NULLS LAST, ri.item_id ASC";
+            return ORDER_BY_PREFIX + SYSTEM_SORT_COLUMNS.get(spec.sortField()) + " " + direction + " NULLS LAST, ri.item_id ASC";
         }
         PropertyPathResolution resolution = resolvePropertyPath(itemTypeId, spec.sortField());
         requirePropertyReadableByAnyMarker(permissions, resolution.property().id(), spec.sortField());
         String column = sortExpressionFor(resolution, spec.sortField());
-        return "ORDER BY " + column + " " + direction + " NULLS LAST, ri.item_id ASC";
+        return ORDER_BY_PREFIX + column + " " + direction + " NULLS LAST, ri.item_id ASC";
     }
 
     // Ordinary leaf -> the existing rt.properties->>'<id>' extraction, cast per the property's own
@@ -394,8 +405,8 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                         rs.getString(COL_ITEM_TYPE),
                         parseJsonb(rs.getString(COL_PROPERTIES)),
                         parseJsonb(rs.getString(COL_STATES)),
-                        rs.getObject("created_date", OffsetDateTime.class), rs.getObject("created_by", UUID.class),
-                        rs.getObject("updated_date", OffsetDateTime.class), rs.getObject("updated_by", UUID.class)))
+                        rs.getObject(COL_CREATED_DATE, OffsetDateTime.class), rs.getObject(COL_CREATED_BY, UUID.class),
+                        rs.getObject(COL_UPDATED_DATE, OffsetDateTime.class), rs.getObject(COL_UPDATED_BY, UUID.class)))
                 .list();
 
         Map<UUID, AdminPropertyDefinitionView> propertyViewsById = propertyViewsByIdForItemType(itemTypeId);
@@ -416,10 +427,10 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
     private static final Map<String, String> SYSTEM_SORT_COLUMNS_ACROSS_TYPES = Map.of(
             PARAM_ITEM_ID,     "combined.item_id",
             "itemType",        "combined.item_type",
-            "createdDate",     "combined.created_date",
-            "createdBy",       "combined.created_by",
-            "updatedDate",     "combined.updated_date",
-            "updatedBy",       "combined.updated_by",
+            PARAM_CREATED_DATE,     "combined.created_date",
+            PARAM_CREATED_BY,       "combined.created_by",
+            PARAM_UPDATED_DATE,     "combined.updated_date",
+            PARAM_UPDATED_BY,       "combined.updated_by",
             "visibilityState", "combined.visibility_state"
     );
 
@@ -515,8 +526,8 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                         rs.getString(COL_ITEM_TYPE),
                         parseJsonb(rs.getString(COL_PROPERTIES)),
                         parseJsonb(rs.getString(COL_STATES)),
-                        rs.getObject("created_date", OffsetDateTime.class), rs.getObject("created_by", UUID.class),
-                        rs.getObject("updated_date", OffsetDateTime.class), rs.getObject("updated_by", UUID.class)))
+                        rs.getObject(COL_CREATED_DATE, OffsetDateTime.class), rs.getObject(COL_CREATED_BY, UUID.class),
+                        rs.getObject(COL_UPDATED_DATE, OffsetDateTime.class), rs.getObject(COL_UPDATED_BY, UUID.class)))
                 .list();
 
         // Merged, not per-row-resolved: property ids are globally unique across the whole schema
@@ -602,11 +613,11 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
         if (spec.sortField() == null || spec.sortField().isBlank()) return "ORDER BY combined.item_id ASC";
         String direction = "DESC".equalsIgnoreCase(spec.sortDirection()) ? "DESC" : "ASC";
         if (SYSTEM_SORT_COLUMNS_ACROSS_TYPES.containsKey(spec.sortField())) {
-            return "ORDER BY " + SYSTEM_SORT_COLUMNS_ACROSS_TYPES.get(spec.sortField()) + " " + direction + " NULLS LAST, combined.item_id ASC";
+            return ORDER_BY_PREFIX + SYSTEM_SORT_COLUMNS_ACROSS_TYPES.get(spec.sortField()) + " " + direction + " NULLS LAST, combined.item_id ASC";
         }
         AdminPropertyDefinitionView property = resolveProperty(representativeItemTypeId, spec.sortField());
         requirePropertyReadableByAnyMarker(permissions, property.id(), spec.sortField());
-        return "ORDER BY " + typedSortExpression("combined.properties", property) + " " + direction + " NULLS LAST, combined.item_id ASC";
+        return ORDER_BY_PREFIX + typedSortExpression("combined.properties", property) + " " + direction + " NULLS LAST, combined.item_id ASC";
     }
 
     private long runCount(String tableName, UUID itemTypeId, SqlFragment filter, SqlFragment additionalFilter) {
@@ -849,8 +860,8 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                         rs.getString(COL_ITEM_TYPE),
                         parseJsonb(rs.getString(COL_PROPERTIES)),
                         parseJsonb(rs.getString(COL_STATES)),
-                        rs.getObject("created_date", OffsetDateTime.class), rs.getObject("created_by", UUID.class),
-                        rs.getObject("updated_date", OffsetDateTime.class), rs.getObject("updated_by", UUID.class)))
+                        rs.getObject(COL_CREATED_DATE, OffsetDateTime.class), rs.getObject(COL_CREATED_BY, UUID.class),
+                        rs.getObject(COL_UPDATED_DATE, OffsetDateTime.class), rs.getObject(COL_UPDATED_BY, UUID.class)))
                 .list();
 
         if (rawItems.isEmpty()) {
@@ -925,7 +936,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                 .query((rs, n) -> new CurrentItemRowContent(
                         rs.getObject("current_register_item_id", UUID.class),
                         parseJsonb(rs.getString(COL_PROPERTIES)), parseJsonb(rs.getString(COL_STATES)),
-                        rs.getObject("created_date", OffsetDateTime.class), rs.getObject("created_by", UUID.class)))
+                        rs.getObject(COL_CREATED_DATE, OffsetDateTime.class), rs.getObject(COL_CREATED_BY, UUID.class)))
                 .single();
 
         Set<UUID> binaryPropertyIds = binaryPropertyIdsForItemType(itemTypeId);
@@ -1077,10 +1088,10 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                 .param(PARAM_ITEM_ID, itemId)
                 .param(PARAM_ITEM_TYPE_ID, itemTypeId)
                 .param(PARAM_TRANSACTION_ID, transactionId)
-                .param("createdDate", createdDate)
-                .param("createdBy", createdBy)
-                .param("updatedDate", updatedDate)
-                .param("updatedBy", updatedBy)
+                .param(PARAM_CREATED_DATE, createdDate)
+                .param(PARAM_CREATED_BY, createdBy)
+                .param(PARAM_UPDATED_DATE, updatedDate)
+                .param(PARAM_UPDATED_BY, updatedBy)
                 .query(UUID.class)
                 .single();
 
@@ -1293,7 +1304,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                   AND rl.state = 'COMMITTED' AND rilp.perspective_id = :perspectiveId
                 """)
                 .param(PARAM_ITEM_ID, itemId)
-                .param("perspectiveId", perspectiveId)
+                .param(PARAM_PERSPECTIVE_ID, perspectiveId)
                 .query(Integer.class)
                 .single();
     }
@@ -1312,7 +1323,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                 """)
                 .param(PARAM_LINK_ID, linkId)
                 .query((rs, n) -> new RegisterLinkEndpoint(
-                        rs.getObject("perspective_id", UUID.class),
+                        rs.getObject(COL_PERSPECTIVE_ID, UUID.class),
                         rs.getObject(COL_ITEM_ID, UUID.class)))
                 .list();
     }
@@ -1325,7 +1336,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                 .param(PARAM_LINK_ID, linkId)
                 .query((rs, n) -> new CurrentLinkRowContent(
                         rs.getObject("current_register_link_id", UUID.class),
-                        rs.getObject("created_date", OffsetDateTime.class), rs.getObject("created_by", UUID.class)))
+                        rs.getObject(COL_CREATED_DATE, OffsetDateTime.class), rs.getObject(COL_CREATED_BY, UUID.class)))
                 .single();
         UUID currentRegisterLinkId = current.registerLinkId();
 
@@ -1353,7 +1364,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                 """)
                 .param("oldLinkId", currentRegisterLinkId)
                 .query((rs, n) -> new RegisterLinkEndpoint(
-                        rs.getObject("perspective_id", UUID.class),
+                        rs.getObject(COL_PERSPECTIVE_ID, UUID.class),
                         rs.getObject(COL_ITEM_ID, UUID.class)))
                 .list();
         insertPerspectiveRows(registerLinkId, endpoints, transactionId);
@@ -1375,10 +1386,10 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                 .param(PARAM_LINK_ID, linkId)
                 .param("linkTypeId", linkTypeId)
                 .param(PARAM_TRANSACTION_ID, transactionId)
-                .param("createdDate", createdDate)
-                .param("createdBy", createdBy)
-                .param("updatedDate", updatedDate)
-                .param("updatedBy", updatedBy)
+                .param(PARAM_CREATED_DATE, createdDate)
+                .param(PARAM_CREATED_BY, createdBy)
+                .param(PARAM_UPDATED_DATE, updatedDate)
+                .param(PARAM_UPDATED_BY, updatedBy)
                 .query(UUID.class)
                 .single();
 
@@ -1399,7 +1410,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                     VALUES (:registerLinkId, :perspectiveId, :registerItemId)
                     """)
                     .param("registerLinkId", registerLinkId)
-                    .param("perspectiveId", endpoint.perspectiveId())
+                    .param(PARAM_PERSPECTIVE_ID, endpoint.perspectiveId())
                     .param(PARAM_REGISTER_ITEM_ID, registerItemId)
                     .update();
         }
@@ -1738,7 +1749,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                   AND rilp_mine.perspective_id = :perspectiveId
                 """)
                 .param(PARAM_ITEM_ID, itemId)
-                .param("perspectiveId", linkPerspectiveId)
+                .param(PARAM_PERSPECTIVE_ID, linkPerspectiveId)
                 .query(UUID.class)
                 .list();
     }
@@ -2214,7 +2225,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
     private Object wrapControlledListScalar(Object value, Map<String, String> labelsByValue) {
         if (value == null) return null;
         String label = labelsByValue.get(String.valueOf(value));
-        return label == null ? value : Map.of("value", value, "label", label);
+        return label == null ? value : Map.of(COL_FACET_VALUE, value, "label", label);
     }
 
     private record LinkRow(UUID myRegisterItemId, String perspectiveName, UUID perspectiveId,
@@ -2349,7 +2360,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                 .query((rs, n) -> new LinkRow(
                         rs.getObject("my_register_item_id", UUID.class),
                         rs.getString("perspective_name"),
-                        rs.getObject("perspective_id", UUID.class),
+                        rs.getObject(COL_PERSPECTIVE_ID, UUID.class),
                         rs.getObject(COL_REGISTER_LINK_ID, UUID.class),
                         rs.getObject("link_id", UUID.class),
                         rs.getObject("link_definition_id", UUID.class),

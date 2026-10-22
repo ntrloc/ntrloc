@@ -34,7 +34,11 @@ public record Pipeline(
         carrierBlocks = carrierBlocks == null ? List.of() : List.copyOf(carrierBlocks);
         routes = routes == null ? List.of() : List.copyOf(routes);
 
-        Set<UUID> signalPinIds = collectSignalPinIds(topLevelSignals);
+        validateSignalPinReferences(carrierBlocks, collectSignalPinIds(topLevelSignals));
+        validateRouteReferences(routes, collectCarrierBlockIds(start, end, carrierBlocks));
+    }
+
+    private static void validateSignalPinReferences(List<CarrierBlock> carrierBlocks, Set<UUID> signalPinIds) {
         for (CarrierBlock block : carrierBlocks) {
             for (Gate gate : gatesOf(block)) {
                 for (UUID pin : gate.conditionOutputPinIds()) {
@@ -45,7 +49,9 @@ public record Pipeline(
                 }
             }
         }
+    }
 
+    private static Set<UUID> collectCarrierBlockIds(Start start, End end, List<CarrierBlock> carrierBlocks) {
         Set<UUID> carrierBlockIds = new HashSet<>();
         carrierBlockIds.add(start.id());
         carrierBlockIds.add(end.id());
@@ -57,6 +63,10 @@ public record Pipeline(
                 }
             }
         }
+        return carrierBlockIds;
+    }
+
+    private static void validateRouteReferences(List<Route> routes, Set<UUID> carrierBlockIds) {
         for (Route route : routes) {
             if (!carrierBlockIds.contains(route.outputPinId())) {
                 throw new IllegalArgumentException(
