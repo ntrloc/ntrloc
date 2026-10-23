@@ -302,7 +302,10 @@ class AccessMarkersUiTest extends AbstractUiIntegrationTest {
 
         page.editLayout();
         assertThat(page.edgeHandleCount()).isEqualTo(2);
-        page.dragFirstEdgeHandle(30, 0).saveLayout();
+        double before = page.firstEdgeHandleX();
+        page.dragFirstEdgeHandle(30, 0);
+        assertThat(page.firstEdgeHandleX()).as("handle x after dragging it").isGreaterThan(before);
+        page.saveLayout();
 
         assertThat(savedLayout(type).edgeBends()).hasSize(1);
         assertThat(page.edgeHandleCount()).isZero();

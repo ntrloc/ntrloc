@@ -5,20 +5,28 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import java.util.regex.Pattern;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.TestInfo;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.extension.ExtensionContext;
+import org.junit.jupiter.api.extension.TestExecutionExceptionHandler;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.coordinator.LedgerRegisterCoordinator;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.openqa.selenium.By;
 import org.openqa.selenium.JavascriptExecutor;
+import org.openqa.selenium.OutputType;
+import org.openqa.selenium.TakesScreenshot;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.chrome.ChromeOptions;
+import org.openqa.selenium.logging.LogType;
 import org.openqa.selenium.remote.RemoteWebDriver;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.WebDriverWait;
@@ -43,7 +51,11 @@ import org.testcontainers.utility.DockerImageName;
  * /admin-react mount is in the test application.yml): a second context against the same Postgres
  * container would re-run startup seeding and break every integration test after it. The browser
  * container is a JVM-wide singleton for the same reason as the Postgres one.
+ *
+ * A failing test leaves a screenshot, the page's HTML and the browser console in
+ * target/ui-test-failures/ (see FailureCapture).
  */
+@ExtendWith(AbstractUiIntegrationTest.FailureCapture.class)
 public abstract class AbstractUiIntegrationTest extends AbstractIntegrationTest {
 
     protected static final String ADMIN_UI_PATH = "/admin-react";
@@ -51,6 +63,7 @@ public abstract class AbstractUiIntegrationTest extends AbstractIntegrationTest 
     private static final Path ADMIN_UI_DIR = Path.of("..", "ntrloc-admin-ui").toAbsolutePath().normalize();
     private static final Path INSTRUMENTED_BUILD_DIR = ADMIN_UI_DIR.resolve("target/dist-coverage");
     private static final Path COVERAGE_OUTPUT_DIR = ADMIN_UI_DIR.resolve("target/coverage-data");
+    private static final Path FAILURE_OUTPUT_DIR = Path.of("target", "ui-test-failures").toAbsolutePath();
 
     // Multi-arch (unlike selenium/standalone-chrome), so it runs natively on Apple Silicon too.
     private static final DockerImageName BROWSER_IMAGE = DockerImageName
@@ -96,7 +109,9 @@ public abstract class AbstractUiIntegrationTest extends AbstractIntegrationTest 
         Testcontainers.exposeHostPorts(port);
         // A typical desktop window; Chrome's default in the container is narrow enough to squeeze
         // table columns down to nothing.
-        driver = new RemoteWebDriver(BROWSER.getSeleniumAddress(), new ChromeOptions().addArguments("--window-size=1600,1000"));
+        ChromeOptions options = new ChromeOptions().addArguments("--window-size=1600,1000");
+        options.setCapability("goog:loggingPrefs", Map.of(LogType.BROWSER, "ALL"));
+        driver = new RemoteWebDriver(BROWSER.getSeleniumAddress(), options);
     }
 
     @AfterEach
@@ -156,6 +171,38 @@ public abstract class AbstractUiIntegrationTest extends AbstractIntegrationTest 
             Files.writeString(COVERAGE_OUTPUT_DIR.resolve(name + ".json"), coverage.toString());
         } catch (IOException e) {
             throw new UncheckedIOException(e);
+        }
+    }
+
+    /**
+     * Saves what the browser showed when a test failed. Runs before @AfterEach closes the browser,
+     * which a TestWatcher wouldn't.
+     */
+    static class FailureCapture implements TestExecutionExceptionHandler {
+
+        @Override
+        public void handleTestExecutionException(ExtensionContext context, Throwable failure) throws Throwable {
+            WebDriver driver = ((AbstractUiIntegrationTest) context.getRequiredTestInstance()).driver;
+            if (driver != null) {
+                try {
+                    capture(driver, FAILURE_OUTPUT_DIR.resolve(context.getRequiredTestClass().getSimpleName() + "-"
+                            + context.getRequiredTestMethod().getName()));
+                } catch (Exception e) {
+                    failure.addSuppressed(e);
+                }
+            }
+            throw failure;
+        }
+
+        private static void capture(WebDriver driver, Path dir) throws IOException {
+            Files.createDirectories(dir);
+            Files.write(dir.resolve("screenshot.png"), ((TakesScreenshot) driver).getScreenshotAs(OutputType.BYTES));
+            Files.writeString(dir.resolve("page.html"), driver.getPageSource());
+            Files.writeString(dir.resolve("browser.txt"), "URL: " + driver.getCurrentUrl()
+                    + "\nWindow: " + ((JavascriptExecutor) driver).executeScript("return innerWidth + 'x' + innerHeight") + "\n");
+            Files.writeString(dir.resolve("console.log"), driver.manage().logs().get(LogType.BROWSER).getAll().stream()
+                    .map(entry -> entry.getLevel() + " " + entry.getMessage())
+                    .collect(Collectors.joining("\n")));
         }
     }
 }

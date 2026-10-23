@@ -258,6 +258,11 @@ class AccessMarkersPage {
         return this;
     }
 
+    /** The first edge bend handle's x, in diagram units. */
+    double firstEdgeHandleX() {
+        return Double.parseDouble(diagram().findElement(By.cssSelector(".mp-edge-handle")).getDomAttribute("cx"));
+    }
+
     int edgeHandleCount() {
         return diagram().findElements(By.cssSelector(".mp-edge-handle")).size();
     }
