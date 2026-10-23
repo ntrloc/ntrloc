@@ -228,9 +228,10 @@ class AccessMarkersPage {
         return this;
     }
 
+    /** Saves, waiting for the save to finish: the Save button reads "Saving…" while the request is in flight. */
     AccessMarkersPage saveLayout() {
         editBar().findElement(By.xpath(".//button[.='Save']")).click();
-        await().until(d -> !isEditingLayout());
+        await().until(d -> !editBar().findElements(By.xpath(".//button[.='Edit']")).isEmpty());
         return this;
     }
 
