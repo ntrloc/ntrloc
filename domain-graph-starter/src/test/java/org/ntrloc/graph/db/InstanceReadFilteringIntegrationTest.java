@@ -17,6 +17,8 @@ import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.ntrloc.graph.projection.CollectionProjectionSpec;
 import org.ntrloc.graph.projection.LinkProjectionSpec;
 import org.ntrloc.graph.projection.ItemProjectionSpec;
+import org.ntrloc.graph.projection.Operator;
+import org.ntrloc.graph.projection.PropertyValuePredicate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -162,9 +164,13 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void collectionProjection_superuserSeesUnmarkedItems() {
-        UUID productId = createProduct();
+        String name = "Widget-" + UUID.randomUUID();
+        UUID productId = createItem(fixture.productTypeId(), fixture.namePropertyId(), name);
 
-        var result = entityManager.project(new CollectionProjectionSpec("CoordinatorTestProduct", null, null), "http://binary", SUPERUSER);
+        // Filtered to this item: a superuser sees every product other test classes have created in
+        // the shared database, so an unfiltered query's default first page may not include it.
+        var result = entityManager.project(new CollectionProjectionSpec("CoordinatorTestProduct", null, null,
+                new PropertyValuePredicate("name", Operator.EQUALS, name)), "http://binary", SUPERUSER);
 
         assertThat(result.items()).extracting(i -> i.itemId()).contains(productId);
     }

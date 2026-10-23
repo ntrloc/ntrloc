@@ -15,7 +15,9 @@ import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.ntrloc.graph.projection.CollectionProjectionSpec;
 import org.ntrloc.graph.projection.ItemProjectionSpec;
 import org.ntrloc.graph.projection.LinkProjectionSpec;
+import org.ntrloc.graph.projection.Operator;
 import org.ntrloc.graph.projection.ProjectedItem;
+import org.ntrloc.graph.projection.PropertyValuePredicate;
 import org.springframework.beans.factory.annotation.Autowired;
 
 import java.time.OffsetDateTime;
@@ -91,12 +93,16 @@ class ProjectedUserInfoIntegrationTest extends AbstractIntegrationTest {
         var creator = securityRepo.createUser("puiit-collection-creator-" + UUID.randomUUID(), "Collection Creator", "collection@example.com", false);
 
         UUID itemId = UUID.randomUUID();
+        String name = "Gadget-" + itemId;
         UUID txn = UUID.randomUUID();
         coordinator.prepare(List.of(new ItemCreateEntry(itemId, fixture.productTypeId(),
-                Map.of(fixture.namePropertyId(), "Gadget"), Map.of(), Set.of())), txn, creator.id(), OffsetDateTime.now());
+                Map.of(fixture.namePropertyId(), name), Map.of(), Set.of())), txn, creator.id(), OffsetDateTime.now());
         coordinator.commit(txn, UUID.randomUUID());
 
-        var result = entityManager.project(new CollectionProjectionSpec("CoordinatorTestProduct", null, null), "http://binary", SUPERUSER);
+        // Filtered to this item: other test classes share the database and add their own products,
+        // so an unfiltered query's default first page may not include it.
+        var result = entityManager.project(new CollectionProjectionSpec("CoordinatorTestProduct", null, null,
+                new PropertyValuePredicate("name", Operator.EQUALS, name)), "http://binary", SUPERUSER);
 
         var projected = result.items().stream().filter(i -> i.itemId().equals(itemId)).findFirst().orElseThrow();
         assertThat(projected.createdBy().username()).isEqualTo(creator.externalId());
