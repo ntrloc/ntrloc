@@ -10,7 +10,7 @@ import { toPropertyTree } from './propertyTreeShaping'
 // type is a real (if rarer) case this doesn't yet have a diagram for.
 function toItemTypeLinkDetails(adminSchema, itemTypeId) {
   const item = adminSchema.items.find((it) => it.id === itemTypeId)
-  if (!item || !item.links) return []
+  if (!item?.links) return []
 
   return Object.entries(item.links).flatMap(([name, perspectives]) =>
     perspectives.map((perspective) => {

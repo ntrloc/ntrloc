@@ -18,13 +18,13 @@ function systemPrefersDark() {
 // default" affordance because AccountView's own switch (see that file) doesn't offer one.
 export function useTheme() {
   const [theme, setTheme] = useState(
-    () => document.documentElement.getAttribute('data-theme') || (systemPrefersDark() ? 'dark' : 'light'),
+    () => document.documentElement.dataset.theme || (systemPrefersDark() ? 'dark' : 'light'),
   )
 
   const toggleTheme = useCallback(() => {
     setTheme((prev) => {
       const next = prev === 'dark' ? 'light' : 'dark'
-      document.documentElement.setAttribute('data-theme', next)
+      document.documentElement.dataset.theme = next
       localStorage.setItem(STORAGE_KEY, next)
       return next
     })

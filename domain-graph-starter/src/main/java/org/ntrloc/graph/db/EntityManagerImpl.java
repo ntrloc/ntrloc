@@ -29,6 +29,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -259,7 +260,7 @@ public class EntityManagerImpl implements EntityManager {
         UUID transactionId = UUID.randomUUID();
         // principal is guaranteed non-null here -- both callers (startStateMachine,
         // executeTransition) carry the interface's @PreAuthorize guard.
-        coordinator.prepare(List.of(entry), transactionId, principal.id(), OffsetDateTime.now());
+        coordinator.prepare(List.of(entry), transactionId, principal.id(), OffsetDateTime.now(ZoneOffset.UTC));
         coordinator.commit(transactionId, UUID.randomUUID());
     }
 

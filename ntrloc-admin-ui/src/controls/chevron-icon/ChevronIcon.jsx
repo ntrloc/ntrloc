@@ -4,6 +4,7 @@ import './ChevronIcon.css'
 function ChevronIcon({ expanded }) {
   return (
     <svg
+      aria-hidden="true"
       className="chevron-icon"
       data-expanded={expanded || undefined}
       viewBox="0 0 24 24"

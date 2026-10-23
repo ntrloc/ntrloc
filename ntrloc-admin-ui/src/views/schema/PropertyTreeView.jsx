@@ -110,8 +110,7 @@ function PropertyTreeView({ tree, onSelectTrait }) {
                         onClick={() => onSelectTrait(row.id)}
                       >
                         {row.name}
-                      </button>
-                      )
+                      </button>)
                     </span>
                   )}
                 </div>

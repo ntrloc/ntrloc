@@ -21,7 +21,7 @@ import java.util.UUID;
 // documents exactly which methods enforce what; a denial there surfaces as a MutationValidationException,
 // not a silent no-op). Every method here additionally demands a real, non-null principal via
 // @PreAuthorize, enforced by Spring (see docs/ntrloc-principal-enforcement-plan.md, Part C) --
-// not a scattered `if (principal == null)` check callers have to remember, and not optional: there
+// not a scattered null check callers have to remember, and not optional: there
 // is no legitimate anonymous call into this interface, full stop.
 public interface EntityManager {
 

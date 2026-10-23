@@ -80,6 +80,26 @@ export function useMarkerStatus() {
   return currentStatus
 }
 
+async function createMarker({ name, description, scopeKind, scopeId }) {
+  const marker = await createMarkerRequest({ name, description, scopeKind, scopeId })
+  cachedMarkers = [...(cachedMarkers ?? []), marker]
+  notify()
+  return marker
+}
+
+async function updateMarker(id, { name, description }) {
+  const marker = await updateMarkerRequest(id, { name, description })
+  cachedMarkers = (cachedMarkers ?? []).map((m) => (m.id === id ? marker : m))
+  notify()
+  return marker
+}
+
+async function deleteMarker(id) {
+  await deleteMarkerRequest(id)
+  cachedMarkers = (cachedMarkers ?? []).filter((m) => m.id !== id)
+  notify()
+}
+
 export function useMarkerModel() {
   const markers = useSyncExternalStore(subscribe, getSnapshot)
   useEffect(() => {
@@ -88,26 +108,6 @@ export function useMarkerModel() {
 
   function getMarkersForItemType(itemTypeId) {
     return (markers ?? []).filter((m) => m.scopeKind === 'ITEM_TYPE' && m.scopeId === itemTypeId)
-  }
-
-  async function createMarker({ name, description, scopeKind, scopeId }) {
-    const marker = await createMarkerRequest({ name, description, scopeKind, scopeId })
-    cachedMarkers = [...(cachedMarkers ?? []), marker]
-    notify()
-    return marker
-  }
-
-  async function updateMarker(id, { name, description }) {
-    const marker = await updateMarkerRequest(id, { name, description })
-    cachedMarkers = (cachedMarkers ?? []).map((m) => (m.id === id ? marker : m))
-    notify()
-    return marker
-  }
-
-  async function deleteMarker(id) {
-    await deleteMarkerRequest(id)
-    cachedMarkers = (cachedMarkers ?? []).filter((m) => m.id !== id)
-    notify()
   }
 
   return { getMarkersForItemType, createMarker, updateMarker, deleteMarker }

@@ -140,6 +140,8 @@ function describeCountQuantifier(countPredicate) {
   return `count ${operatorSymbol(operator)} ${value}`
 }
 
+const TOTALITY_QUALIFIERS = { ALL: 'all match', ANY: 'any match' }
+
 // Every predicate -- leaf or compound, at any depth -- renders as its own bordered box, labeled with
 // a fixed, predicate-family label rather than its exact type: 'count' for a CountedPredicate,
 // 'totality' for a TotalityPredicate, 'value' for every leaf comparison type alike (there are ~30 of
@@ -171,7 +173,7 @@ function describePredicateBox(schema, itemTypeId, predicate) {
     return { label: 'count', subjectText, testText, children: child ? [child] : [] }
   }
   if (predicate.type === 'TOTALITY') {
-    const qualifier = predicate.quantity === 'ALL' ? 'all match' : predicate.quantity === 'ANY' ? 'any match' : 'none match'
+    const qualifier = TOTALITY_QUALIFIERS[predicate.quantity] ?? 'none match'
     const children = (predicate.subPredicates ?? []).map((p) => describePredicateBox(schema, itemTypeId, p)).filter(Boolean)
     return { label: 'totality', subjectText: null, testText: qualifier, children }
   }

@@ -31,6 +31,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -150,7 +151,7 @@ public class MutationRequestProcessor {
         // becomes both the ledger entries' created_date and the register rows' resulting
         // created_date/updated_date (see LedgerRegisterCoordinatorImpl.prepare).
         UUID actorUserId = principal.id();
-        OffsetDateTime createdDate = OffsetDateTime.now();
+        OffsetDateTime createdDate = OffsetDateTime.now(ZoneOffset.UTC);
         // prepare() now durably commits on its own (see LedgerRegisterCoordinatorImpl's
         // REQUIRES_NEW) regardless of which branch runs next -- commit=false intentionally stops
         // here, leaving a genuinely prepared, independently-recoverable transaction for a later
@@ -381,9 +382,10 @@ public class MutationRequestProcessor {
 
         newItems.forEach((itemId, info) -> {
             for (PerspectiveLookup perspective : perspectivesFor(info.itemTypeId())) {
-                if (perspective.view().minCardinality() <= 0) continue;
-                if (perspectiveDelta.containsKey(new LinkPerspectiveKey(itemId, perspective.view().id()))) continue;
-                reportCardinalityViolation(perspective, 0, info.path() + ".links." + perspective.name(), errors);
+                boolean required = perspective.view().minCardinality() > 0;
+                if (required && !perspectiveDelta.containsKey(new LinkPerspectiveKey(itemId, perspective.view().id()))) {
+                    reportCardinalityViolation(perspective, 0, info.path() + ".links." + perspective.name(), errors);
+                }
             }
         });
     }

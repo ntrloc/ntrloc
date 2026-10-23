@@ -40,7 +40,7 @@ public class TestController {
             extra = "";
         }
 
-        String html = """
+        return """
         <!DOCTYPE html>
         <html>
         <head>
@@ -82,8 +82,6 @@ public class TestController {
                 extra.isEmpty() ? "" :
                         "<div class='field'><div class='label'>Details</div>" +
                                 "<div class='value'>" + extra + "</div></div>");
-
-        return html;
     }
 
 }

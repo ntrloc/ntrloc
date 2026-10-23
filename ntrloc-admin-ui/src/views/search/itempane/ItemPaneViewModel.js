@@ -116,28 +116,23 @@ export function buildDraft(editableGroups) {
   const draft = {}
   for (const group of editableGroups) {
     for (const leaf of group.leaves) {
-      if (!leaf.editable) continue
-      const key = leafKey(group.path, leaf.name)
-      // Every picker/input downstream (CheckboxOptionList's selectedValues, OptionList's value,
-      // a plain text input) works against raw values, never a {value,label} wrapper -- see
-      // ControlledListValue.js's own comment on why a labeled controlled list projects wrapped.
-      const value = controlledListRawValue(leaf.value)
-      if (leaf.cardinality !== 'SINGLE') {
-        draft[key] = leaf.controlledListId
-          ? Array.isArray(value)
-            ? [...value]
-            : []
-          : Array.isArray(value)
-            ? value.join(', ')
-            : ''
-      } else if (leaf.type === 'BOOLEAN') {
-        draft[key] = Boolean(value)
-      } else {
-        draft[key] = value ?? ''
-      }
+      if (leaf.editable) draft[leafKey(group.path, leaf.name)] = draftValue(leaf)
     }
   }
   return draft
+}
+
+function draftValue(leaf) {
+  // Every picker/input downstream (CheckboxOptionList's selectedValues, OptionList's value,
+  // a plain text input) works against raw values, never a {value,label} wrapper -- see
+  // ControlledListValue.js's own comment on why a labeled controlled list projects wrapped.
+  const value = controlledListRawValue(leaf.value)
+  if (leaf.cardinality !== 'SINGLE') {
+    if (leaf.controlledListId) return Array.isArray(value) ? [...value] : []
+    return Array.isArray(value) ? value.join(', ') : ''
+  }
+  if (leaf.type === 'BOOLEAN') return Boolean(value)
+  return value ?? ''
 }
 
 // Builds the nested properties diff ItemUpdateMutation expects (see SearchDelegate.updateItem's own

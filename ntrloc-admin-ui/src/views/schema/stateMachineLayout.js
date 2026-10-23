@@ -96,19 +96,22 @@ function classifyEdges(states) {
 // reads as a skip, not a same-rank shortcut. forwardEdges is already acyclic (back edges were
 // excluded by classifyEdges), so relaxing at most |states| times is guaranteed to reach a fixed
 // point (standard Bellman-Ford-over-a-DAG argument).
+function relaxRanks(rank, forwardEdges) {
+  let changed = false
+  for (const e of forwardEdges) {
+    const candidate = rank.get(e.fromId) + 1
+    if (candidate > rank.get(e.toId)) {
+      rank.set(e.toId, candidate)
+      changed = true
+    }
+  }
+  return changed
+}
+
 function computeRanks(states, forwardEdges) {
   const rank = new Map(states.map((s) => [s.id, 0]))
-  for (let i = 0; i < states.length; i++) {
-    let changed = false
-    for (const e of forwardEdges) {
-      const candidate = rank.get(e.fromId) + 1
-      if (candidate > rank.get(e.toId)) {
-        rank.set(e.toId, candidate)
-        changed = true
-      }
-    }
-    if (!changed) break
-  }
+  let passes = 0
+  while (passes < states.length && relaxRanks(rank, forwardEdges)) passes++
 
   // Pin the pseudostates: START is always the origin rank, END always sits one rank past every real
   // state -- even when END has no incoming transition yet, it belongs at the far end of the flow,
@@ -153,8 +156,14 @@ function packOffsets(widths) {
   for (let i = 1; i < widths.length; i++) {
     positions.push(positions[i - 1] + widths[i - 1] / 2 + widths[i] / 2 + LABEL_GAP)
   }
-  const center = positions[positions.length - 1] / 2
+  const center = positions.at(-1) / 2
   return positions.map((p) => p - center)
+}
+
+// A direct edge's label extent along the sibling axis -- see packOffsets.
+function directLabelExtent(transition, vertical) {
+  if (!vertical) return 16
+  return transition.name ? estimateLabelWidth(transition.name) : 24
 }
 
 function rectFor(position, width, height) {
@@ -353,45 +362,43 @@ function buildEdgeDescriptors(states, byId, rank) {
 // preferred side if nothing already placed there would interleave with it; otherwise it spills to
 // the other side even if that side is normally disfavored for this orientation, since an actual
 // crossing is a worse defect than a rail attaching to a tighter edge.
+function spansInterleave(a, b) {
+  const overlap = a.span[0] < b.span[1] && b.span[0] < a.span[1]
+  if (!overlap) return false
+  const aContainsB = a.span[0] <= b.span[0] && b.span[1] <= a.span[1]
+  const bContainsA = b.span[0] <= a.span[0] && a.span[1] <= b.span[1]
+  return !aContainsB && !bContainsA
+}
+
+function chooseRailSide(edge, placed, canSplitRails) {
+  const conflicts = (side) => placed[side].some((other) => spansInterleave(edge, other))
+  if (!canSplitRails) {
+    if (!conflicts('trailing')) return 'trailing'
+    return conflicts('leading') ? 'trailing' : 'leading'
+  }
+  const leadingOk = !conflicts('leading')
+  const trailingOk = !conflicts('trailing')
+  if (leadingOk !== trailingOk) return leadingOk ? 'leading' : 'trailing'
+  // Both sides free, or both conflict (three or more mutually-interleaving edges, not seen in any
+  // reference example -- no side avoids a crossing then): balance the two sides.
+  return placed.leading.length <= placed.trailing.length ? 'leading' : 'trailing'
+}
+
+function nestCount(railEdges, side) {
+  const onSide = railEdges.filter((e) => e.side === side)
+  return onSide.length ? Math.max(...onSide.map((e) => e.nestIndex)) + 1 : 0
+}
+
 function assignRailSides(edgeDescriptors, rank, vertical) {
   const canSplitRails = !vertical
   const railEdges = edgeDescriptors.filter((e) => e.kind === 'rail').sort((a, b) => a.distance - b.distance)
   for (const e of railEdges) {
     e.span = [Math.min(rank.get(e.fromId), rank.get(e.toId)), Math.max(rank.get(e.fromId), rank.get(e.toId))]
   }
-  function spansInterleave(a, b) {
-    const overlap = a.span[0] < b.span[1] && b.span[0] < a.span[1]
-    if (!overlap) return false
-    const aContainsB = a.span[0] <= b.span[0] && b.span[1] <= a.span[1]
-    const bContainsA = b.span[0] <= a.span[0] && a.span[1] <= b.span[1]
-    return !aContainsB && !bContainsA
-  }
   const placed = { leading: [], trailing: [] }
-  const conflicts = (edge, side) => placed[side].some((other) => spansInterleave(edge, other))
   for (const e of railEdges) {
-    let side
-    if (canSplitRails) {
-      const leadingOk = !conflicts(e, 'leading')
-      const trailingOk = !conflicts(e, 'trailing')
-      side = leadingOk && trailingOk
-        ? placed.leading.length <= placed.trailing.length
-          ? 'leading'
-          : 'trailing'
-        : leadingOk
-          ? 'leading'
-          : trailingOk
-            ? 'trailing'
-            // Both sides conflict -- three or more mutually-interleaving edges, not seen in any
-            // reference example. No side avoids a crossing here; fall back to balancing, same as
-            // the no-conflict case, rather than leaving the edge unplaced.
-            : placed.leading.length <= placed.trailing.length
-              ? 'leading'
-              : 'trailing'
-    } else {
-      side = !conflicts(e, 'trailing') ? 'trailing' : !conflicts(e, 'leading') ? 'leading' : 'trailing'
-    }
-    e.side = side
-    placed[side].push(e)
+    e.side = chooseRailSide(e, placed, canSplitRails)
+    placed[e.side].push(e)
   }
   for (const side of ['leading', 'trailing']) {
     railEdges
@@ -401,13 +408,7 @@ function assignRailSides(edgeDescriptors, rank, vertical) {
         e.nestIndex = i
       })
   }
-  const leadingNestCount = railEdges.filter((e) => e.side === 'leading').length
-    ? Math.max(...railEdges.filter((e) => e.side === 'leading').map((e) => e.nestIndex)) + 1
-    : 0
-  const trailingNestCount = railEdges.filter((e) => e.side === 'trailing').length
-    ? Math.max(...railEdges.filter((e) => e.side === 'trailing').map((e) => e.nestIndex)) + 1
-    : 0
-  return { railEdges, leadingNestCount, trailingNestCount }
+  return { railEdges, leadingNestCount: nestCount(railEdges, 'leading'), trailingNestCount: nestCount(railEdges, 'trailing') }
 }
 
 // A self-loop's own label sits centered at the tip of its bulge (SELF_LOOP_DEPTH out from the
@@ -418,13 +419,10 @@ function assignRailSides(edgeDescriptors, rank, vertical) {
 // leadingReserve/the rail-level formula below don't need to separately track "the bulge" and "the
 // label past the bulge."
 function computeSelfLoopReserve(selfLoopsByNode, vertical) {
-  const hasAnySelfLoop = selfLoopsByNode.size > 0
-  const selfLoopOuterHalfExtent = hasAnySelfLoop
-    ? vertical
-      ? Math.max(8, ...[...selfLoopsByNode.values()].flat().map((t) => (t.name ? estimateLabelWidth(t.name) / 2 : 0)))
-      : 8
-    : 0
-  return hasAnySelfLoop ? SELF_LOOP_DEPTH + selfLoopOuterHalfExtent : 0
+  if (selfLoopsByNode.size === 0) return 0
+  if (!vertical) return SELF_LOOP_DEPTH + 8
+  const labelHalfWidths = [...selfLoopsByNode.values()].flat().map((t) => (t.name ? estimateLabelWidth(t.name) / 2 : 0))
+  return SELF_LOOP_DEPTH + Math.max(8, ...labelHalfWidths)
 }
 
 // A rail's label reaches back toward the node column by half its width (see railGap's own
@@ -576,7 +574,7 @@ function computeNodeRects(
   }
   const rankAxisSizeOf = (id) => (vertical ? rects.get(id).height : rects.get(id).width)
 
-  const maxRank = Math.max(...[...rank.values()])
+  const maxRank = Math.max(...rank.values())
   const rankAxisTotal = rankCoordByRank.get(maxRank) + rankAxisSlot(maxRank) + PADDING
   const siblingAxisTotal = outerLeadingMargin + leadingReserve + maxRankSpan + trailingReserve + outerTrailingMargin
 
@@ -631,7 +629,7 @@ function buildDirectEdges(directGroups, rank, rects, vertical, edgeAxisHelpers) 
     group.sort((a, b) => (a.transition.name ?? '').localeCompare(b.transition.name ?? ''))
     // See packOffsets' own comment: horizontal offsets vertically (fixed 16px label height),
     // vertical offsets horizontally (actual, text-length-dependent label width).
-    const widths = group.map((e) => (vertical ? (e.transition.name ? estimateLabelWidth(e.transition.name) : 24) : 16))
+    const widths = group.map((e) => directLabelExtent(e.transition, vertical))
     const offsets = packOffsets(widths)
     group.forEach((e, i) => {
       // The lower-rank endpoint always attaches via its trailing (forward-facing) edge and the

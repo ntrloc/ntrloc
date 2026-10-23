@@ -806,43 +806,45 @@ function inputPoint(rect, node) {
 // horizontally at both ends the same as a carrier one does (see orthogonalPath), which a
 // top-of-block or top-of-row point never could.
 function computePinPositions(nodes, signalNodesList, rects, blocks, signalDescriptions) {
-  const outputPinPositions = new Map()
-  const inputPinPositions = new Map()
-  const gateAnchors = new Map()
+  const pins = { outputPinPositions: new Map(), inputPinPositions: new Map(), gateAnchors: new Map() }
   for (const node of nodes) {
-    const rect = rects.get(node.id)
-    const label = blocks.get(node.id)
-    if (label?.isFilter) {
-      const { input, ifPort } = filterPortLayout(rect)
-      inputPinPositions.set(node.id, input)
-      gateAnchors.set(node.id, ifPort)
-      outputPinPositions.set(node.id, outputPoint(rect, node))
-    } else if (label?.rows) {
-      inputPinPositions.set(node.id, inputPoint(rect, node))
-      const { rows } = selectRowLayout(rect, label.rows, label.propertyLabel)
-      for (const row of rows) {
-        outputPinPositions.set(row.id, { x: rect.x + rect.width - STRIP_WIDTH / 2, y: row.midY })
-        gateAnchors.set(row.id, { x: rect.x + STRIP_WIDTH, y: row.midY })
-      }
-    } else {
-      inputPinPositions.set(node.id, inputPoint(rect, node))
-      outputPinPositions.set(node.id, outputPoint(rect, node))
-      if (!isPseudo(node)) gateAnchors.set(node.id, { x: rect.x + STRIP_WIDTH, y: bodyMidY(rect) - PIN_DIAMETER })
-    }
+    placeCarrierNodePins(node, rects.get(node.id), blocks.get(node.id), pins)
   }
   for (const node of signalNodesList) {
-    const rect = rects.get(node.id)
-    if (node.pinIds.length > 1) {
-      const { rows } = signalRowLayout(rect, node.pinIds, signalDescriptions.get(node.id))
-      for (const row of rows) {
-        outputPinPositions.set(row.id, { x: rect.x + rect.width - STRIP_WIDTH / 2, y: row.midY })
-      }
-    } else {
-      const { pinY } = signalConditionLayout(rect, signalDescriptions.get(node.id))
-      outputPinPositions.set(node.pinIds[0], { x: rect.x + rect.width - STRIP_WIDTH / 2, y: pinY })
-    }
+    placeSignalNodePins(node, rects.get(node.id), signalDescriptions.get(node.id), pins.outputPinPositions)
   }
-  return { outputPinPositions, inputPinPositions, gateAnchors }
+  return pins
+}
+
+function placeCarrierNodePins(node, rect, label, { outputPinPositions, inputPinPositions, gateAnchors }) {
+  if (label?.isFilter) {
+    const { input, ifPort } = filterPortLayout(rect)
+    inputPinPositions.set(node.id, input)
+    gateAnchors.set(node.id, ifPort)
+    outputPinPositions.set(node.id, outputPoint(rect, node))
+  } else if (label?.rows) {
+    inputPinPositions.set(node.id, inputPoint(rect, node))
+    const { rows } = selectRowLayout(rect, label.rows, label.propertyLabel)
+    for (const row of rows) {
+      outputPinPositions.set(row.id, { x: rect.x + rect.width - STRIP_WIDTH / 2, y: row.midY })
+      gateAnchors.set(row.id, { x: rect.x + STRIP_WIDTH, y: row.midY })
+    }
+  } else {
+    inputPinPositions.set(node.id, inputPoint(rect, node))
+    outputPinPositions.set(node.id, outputPoint(rect, node))
+    if (!isPseudo(node)) gateAnchors.set(node.id, { x: rect.x + STRIP_WIDTH, y: bodyMidY(rect) - PIN_DIAMETER })
+  }
+}
+
+function placeSignalNodePins(node, rect, description, outputPinPositions) {
+  const pinX = rect.x + rect.width - STRIP_WIDTH / 2
+  if (node.pinIds.length > 1) {
+    for (const row of signalRowLayout(rect, node.pinIds, description).rows) {
+      outputPinPositions.set(row.id, { x: pinX, y: row.midY })
+    }
+  } else {
+    outputPinPositions.set(node.pinIds[0], { x: pinX, y: signalConditionLayout(rect, description).pinY })
+  }
 }
 
 function computeRouteEdges(pipeline, outputPinPositions, inputPinPositions, edgeBends) {

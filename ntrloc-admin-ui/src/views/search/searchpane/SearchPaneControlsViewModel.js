@@ -27,6 +27,16 @@ const DEFAULT_PAGE_SIZE = 50
 // Sort/filter/page-size are v1-scoped deliberately narrow: single sort field (no multi-key sort),
 // single filter condition -- no AND/OR/NOT nesting even though CollectionProjectionSpec.filter
 // supports a full predicate tree; see Filter's own comment in SearchPaneControlsView for why.
+function propertySelectionSummary(selectedPropertyKeys) {
+  if (selectedPropertyKeys.has(ALL_PROPERTIES_KEY)) return 'All properties'
+  const noun = selectedPropertyKeys.size === 1 ? 'property' : 'properties'
+  return `${selectedPropertyKeys.size} ${noun} selected`
+}
+
+function sortArrow(sortDirection) {
+  return sortDirection === 'DESC' ? '↓' : '↑'
+}
+
 export function useSearchPaneControlsViewModel() {
   const schemaStatus = useSchemaStatus()
   const { getConcreteItemTypes, getProjectableProperties, getSortableFields } = useItemTypeModel()
@@ -81,9 +91,7 @@ export function useSearchPaneControlsViewModel() {
 
   // TreeSelect's own closed-state label -- computed here, not inside TreeSelect itself, since only
   // this view model knows what the root key/selection actually means.
-  const selectedPropertySummary = selectedPropertyKeys.has(ALL_PROPERTIES_KEY)
-    ? 'All properties'
-    : `${selectedPropertyKeys.size} ${selectedPropertyKeys.size === 1 ? 'property' : 'properties'} selected`
+  const selectedPropertySummary = propertySelectionSummary(selectedPropertyKeys)
 
   // null (not an empty-string propertyName) when no property/value is chosen -- matches
   // CollectionProjectionSpec.filter's own "null means no filter" contract, same as
@@ -96,7 +104,7 @@ export function useSearchPaneControlsViewModel() {
 
   // Closed-state labels for the Sort/Filter PopoverButton triggers -- same reasoning as
   // selectedPropertySummary above: only this view model knows what the current selection means.
-  const sortSummary = sortField ? `${sortField} ${sortDirection === 'DESC' ? '↓' : '↑'}` : 'Sort'
+  const sortSummary = sortField ? `${sortField} ${sortArrow(sortDirection)}` : 'Sort'
   const filterOperatorLabel = FILTER_OPERATORS.find((op) => op.value === filterOperator)?.label ?? filterOperator
   const filterSummary = filterProperty && filterValue ? `${filterProperty} ${filterOperatorLabel} ${filterValue}` : 'Filter'
 

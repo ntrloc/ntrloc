@@ -677,7 +677,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
     // filter back down to this bucket) while .label carries the resolved name for display. The
     // property-facet side has its own, newer use for that same split: a controlled-list-backed
     // property's bucket value stays the raw stored value (still what a PropertyValuePredicate
-    // filters on) while .label carries the list's resolved label when one exists (labelFor);
+    // filters on) while .label carries the list's resolved label when one exists (see labelFor);
     // an unconstrained property's value and label are identical, same as before.
     //
     // Ordering isn't count-based (unlike runTermsFacetQuery) -- a state machine's states have a

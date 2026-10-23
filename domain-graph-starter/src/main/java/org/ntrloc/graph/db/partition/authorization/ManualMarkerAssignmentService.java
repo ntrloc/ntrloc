@@ -9,6 +9,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -55,7 +56,7 @@ public class ManualMarkerAssignmentService {
     private void commit(List<LedgerEntry> entries, NtrlocPrincipal principal) {
         UUID transactionId = UUID.randomUUID();
         UUID commitId = UUID.randomUUID();
-        coordinator.prepare(entries, transactionId, principal.id(), OffsetDateTime.now());
+        coordinator.prepare(entries, transactionId, principal.id(), OffsetDateTime.now(ZoneOffset.UTC));
         coordinator.commit(transactionId, commitId);
     }
 }

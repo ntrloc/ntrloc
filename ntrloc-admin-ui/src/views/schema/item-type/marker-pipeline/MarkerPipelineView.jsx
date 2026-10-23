@@ -57,13 +57,14 @@ function Pin({ cx, cy, variant, shape }) {
 // predicate/test alike -- the same content (a leaf predicate's own comparison text) read in two
 // different places, reached via two different CSS classes only because they're built by two
 // different layout call sites.
+const CHIP_KINDS = new Set(['subject', 'test', 'predicate'])
+
 function TextChip({ chip }) {
-  const rectClass = chip.kind === 'subject' ? 'mp-subject-chip-rect' : chip.kind === 'test' ? 'mp-test-chip-rect' : 'mp-predicate-chip-rect'
-  const textClass = chip.kind === 'subject' ? 'mp-subject-chip-text' : chip.kind === 'test' ? 'mp-test-chip-text' : 'mp-predicate-chip-text'
+  const kind = CHIP_KINDS.has(chip.kind) ? chip.kind : 'predicate'
   return (
     <g>
-      <rect className={rectClass} x={chip.x} y={chip.y} width={chip.width} height={chip.height} />
-      <text className={textClass} x={chip.x + chip.width / 2} y={chip.y + chip.height / 2 + 4}>
+      <rect className={`mp-${kind}-chip-rect`} x={chip.x} y={chip.y} width={chip.width} height={chip.height} />
+      <text className={`mp-${kind}-chip-text`} x={chip.x + chip.width / 2} y={chip.y + chip.height / 2 + 4}>
         {chip.text}
       </text>
     </g>
@@ -84,8 +85,8 @@ function PredicateBox({ box }) {
         {box.label}
       </text>
       {box.subjectChip && <TextChip chip={box.subjectChip} />}
-      {box.children.map((child, i) => (
-        <PredicateBox key={i} box={child} />
+      {box.children.map((child) => (
+        <PredicateBox key={`${child.rect.x},${child.rect.y}`} box={child} />
       ))}
       {box.testChip && <TextChip chip={box.testChip} />}
     </g>
@@ -521,7 +522,7 @@ function MarkerPipelineDiagram({ pipelineView, itemTypeId, saveLayout, initialVi
       onPointerUp={onPointerUp}
     >
       {viewBox && (
-        <svg className="marker-pipeline-diagram-svg" viewBox={viewBox}>
+        <svg className="marker-pipeline-diagram-svg" viewBox={viewBox} role="img" aria-label="Marker decision pipeline">
           {/* Nodes first, edges next, each edge's own bend handle last (edit mode only): a connector
               is always fully visible crossing over a block or a pseudostate's own shape, never the
               other way around, and a handle is always reachable for dragging even where an edge
@@ -537,7 +538,7 @@ function MarkerPipelineDiagram({ pipelineView, itemTypeId, saveLayout, initialVi
             />
             {pipelineView.pipeline.carrierBlocks.map((block) => {
               const label = blocks.get(block.id)
-              const Node = label.isFilter ? FilterNode : label.rows ? SelectNode : CarrierBlockNode
+              const Node = nodeComponentFor(label)
               return (
                 <Node
                   key={block.id}
@@ -661,6 +662,12 @@ function MarkerPipelineDiagram({ pipelineView, itemTypeId, saveLayout, initialVi
       </div>
     </div>
   )
+}
+
+function nodeComponentFor(label) {
+  if (label.isFilter) return FilterNode
+  if (label.rows) return SelectNode
+  return CarrierBlockNode
 }
 
 function MarkerPipelineView({ itemTypeId, initialView, onViewChange }) {

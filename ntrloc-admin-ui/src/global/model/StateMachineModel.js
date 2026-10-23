@@ -7,7 +7,7 @@ import { useSchemaSnapshot } from './SchemaCache'
 // a separate, not-yet-built piece of work.
 function toItemTypeStateMachines(adminSchema, itemTypeId) {
   const item = adminSchema.items.find((it) => it.id === itemTypeId)
-  if (!item || !item.stateMachines) return []
+  if (!item?.stateMachines) return []
 
   return item.stateMachines.map((machine) => ({
     id: machine.id,

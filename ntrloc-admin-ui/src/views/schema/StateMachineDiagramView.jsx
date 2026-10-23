@@ -60,11 +60,14 @@ function StateNode({ rect, state }) {
     <g className="sm-node">
       <rect className="sm-node-rect" x={rect.x} y={rect.y} width={rect.width} height={rect.height} />
       <text className="sm-node-label" x={centerX} y={startY}>
-        {lines.map((line, i) => (
-          <tspan key={i} x={centerX} dy={i > 0 ? NODE_LABEL_LINE_HEIGHT : undefined}>
-            {line}
-          </tspan>
-        ))}
+        {lines.map((line, i) => {
+          const lineY = startY + i * NODE_LABEL_LINE_HEIGHT
+          return (
+            <tspan key={lineY} x={centerX} y={lineY}>
+              {line}
+            </tspan>
+          )
+        })}
       </text>
     </g>
   )
@@ -99,6 +102,8 @@ function StateMachineDiagramView({ machine, orientation = 'horizontal' }) {
         width={layout.width * zoom}
         height={layout.height * zoom}
         viewBox={`0 0 ${layout.width} ${layout.height}`}
+        role="img"
+        aria-label={`${machine.name} state machine`}
       >
         <defs>
           <marker id={markerId} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">

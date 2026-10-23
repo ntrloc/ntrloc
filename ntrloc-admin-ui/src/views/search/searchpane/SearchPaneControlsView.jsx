@@ -6,6 +6,12 @@ import TreeSelect from '../../../controls/tree-select/TreeSelect'
 import { FILTER_OPERATORS, PAGE_SIZE_OPTIONS, useSearchPaneControlsViewModel } from './SearchPaneControlsViewModel'
 import './SearchPaneControlsView.css'
 
+function itemTypeSummaryFor(schemaStatus, showSchemaSpinner, selectedItemType) {
+  if (schemaStatus === 'loading') return showSchemaSpinner ? 'Loading…' : ''
+  if (schemaStatus === 'error') return 'Failed to load item types'
+  return selectedItemType?.name || 'Select item type'
+}
+
 // Item-type select, property-selection tree, sort, and filter are each a Select-like PopoverButton
 // trigger (collapsed behind a closed, compact button until clicked -- a "Sort"/"Filter" button
 // that reveals its own options panel, same shape TreeSelect's "Properties" trigger already uses),
@@ -69,14 +75,7 @@ function SearchPaneControlsView({ onSearch }) {
   const disabled = schemaStatus !== 'ready'
 
   const selectedItemType = itemTypes.find((it) => it.id === selectedItemTypeId)
-  const itemTypeSummary =
-    schemaStatus === 'loading'
-      ? showSchemaSpinner
-        ? 'Loading…'
-        : ''
-      : schemaStatus === 'error'
-        ? 'Failed to load item types'
-        : selectedItemType?.name || 'Select item type'
+  const itemTypeSummary = itemTypeSummaryFor(schemaStatus, showSchemaSpinner, selectedItemType)
   const itemTypeOptions = itemTypes.map((it) => ({ value: it.id, label: it.name }))
 
   return (

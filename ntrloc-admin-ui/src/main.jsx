@@ -24,15 +24,11 @@ function resolveBasename() {
   return href === '/' ? href : href.replace(/\/$/, '')
 }
 
-async function bootstrap() {
-  const extensions = await loadAdminUiExtensions()
-  createRoot(document.getElementById('root')).render(
-    <StrictMode>
-      <BrowserRouter basename={resolveBasename()}>
-        <App extensions={extensions} />
-      </BrowserRouter>
-    </StrictMode>,
-  )
-}
-
-bootstrap().catch(console.error)
+const extensions = await loadAdminUiExtensions()
+createRoot(document.getElementById('root')).render(
+  <StrictMode>
+    <BrowserRouter basename={resolveBasename()}>
+      <App extensions={extensions} />
+    </BrowserRouter>
+  </StrictMode>,
+)

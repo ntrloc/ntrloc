@@ -25,13 +25,13 @@ public class ClusterServiceImpl implements ClusterService, MembershipListener {
 
     private static final Logger LOG = LogManager.getLogger(ClusterServiceImpl.class);
 
-    private HazelcastInstance hazelcast;
+    private final HazelcastInstance hazelcast;
 
     private boolean isJoined = false;
 
     private Optional<Boolean> isLeaderOpt = Optional.empty();
 
-    private List<ClusterJoinReaction> joinReactions = new ArrayList<>();
+    private final List<ClusterJoinReaction> joinReactions = new ArrayList<>();
 
     public ClusterServiceImpl(Config config) {
         LOG.info("Joining cluster");

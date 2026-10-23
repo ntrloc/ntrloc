@@ -67,8 +67,10 @@ public final class SignalEvaluator {
         // Falls all the way back to Self only once nothing anywhere above actually supplied one -- the
         // one root default nothing could ever further inherit from, the same way an un-contexted
         // signal always resolved against the item itself.
-        Context subject = condition.subject() != null ? condition.subject()
-                : inherited != null ? inherited : new Self();
+        Context subject = condition.subject();
+        if (subject == null) {
+            subject = inherited != null ? inherited : new Self();
+        }
         return evaluatePredicate(condition.predicate(), subject, currentItemId, currentProperties, selfId, facts);
     }
 

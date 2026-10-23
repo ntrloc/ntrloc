@@ -25,8 +25,9 @@ function Sidebar({ extensions = [] }) {
       onMouseLeave={onMouseLeave}
     >
       <nav className="sidebar-nav">
-        <NavLink to="/search" className={navItemClassName}>
+        <NavLink to="/search" aria-label="Search" className={navItemClassName}>
           <svg
+            aria-hidden="true"
             viewBox="0 0 24 24"
             width="18"
             height="18"
@@ -46,8 +47,9 @@ function Sidebar({ extensions = [] }) {
             value, so it would only highlight while sitting on that exact remembered sub-path.
             Overriding isActive with our own "any /schema/* path" check keeps the link highlighted
             correctly regardless of which schema sub-route is actually current. */}
-        <NavLink to={schemaPath} className={() => navItemClassName({ isActive: isSchemaActive })}>
+        <NavLink to={schemaPath} aria-label="Schema" className={() => navItemClassName({ isActive: isSchemaActive })}>
           <svg
+            aria-hidden="true"
             viewBox="0 0 24 24"
             width="18"
             height="18"
@@ -64,8 +66,9 @@ function Sidebar({ extensions = [] }) {
           </svg>
           <span className="sidebar-nav-label">Schema</span>
         </NavLink>
-        <NavLink to="/access" className={navItemClassName}>
+        <NavLink to="/access" aria-label="Access" className={navItemClassName}>
           <svg
+            aria-hidden="true"
             viewBox="0 0 24 24"
             width="18"
             height="18"
@@ -81,7 +84,7 @@ function Sidebar({ extensions = [] }) {
           <span className="sidebar-nav-label">Access</span>
         </NavLink>
         {extensions.map(({ navPath, navLabel }) => (
-          <NavLink key={navPath} to={navPath} className={navItemClassName}>
+          <NavLink key={navPath} to={navPath} aria-label={navLabel} className={navItemClassName}>
             <span className="sidebar-nav-label">{navLabel}</span>
           </NavLink>
         ))}
@@ -91,8 +94,9 @@ function Sidebar({ extensions = [] }) {
           it to the bottom of the panel because it's a sibling flex item there, not nested inside
           sidebar-nav's own column. */}
       <nav className="sidebar-nav sidebar-nav-bottom">
-        <NavLink to="/account" className={navItemClassName}>
+        <NavLink to="/account" aria-label="Account" className={navItemClassName}>
           <svg
+            aria-hidden="true"
             viewBox="0 0 24 24"
             width="18"
             height="18"
