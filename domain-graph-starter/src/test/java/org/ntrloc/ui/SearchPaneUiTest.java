@@ -1,29 +1,19 @@
 package org.ntrloc.ui;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.ntrloc.ui.UiTestData.property;
+import static org.ntrloc.ui.UiTestData.propertyId;
 
-import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 import java.util.stream.IntStream;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.ntrloc.graph.db.coordinator.LedgerRegisterCoordinator;
-import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
-import org.ntrloc.graph.db.partition.schema.SchemaManager;
-import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
-import org.ntrloc.graph.db.partition.schema.definition.PropertyUsage;
-import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateItemDefinitionMutation;
-import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePropertyDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemDefinitionView;
-import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyDefinitionView;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.openqa.selenium.By;
-import org.springframework.beans.factory.annotation.Autowired;
 
 /**
  * The Search view's search pane, end to end: a real user signs in, picks an item type, and
@@ -41,16 +31,6 @@ class SearchPaneUiTest extends AbstractUiIntegrationTest {
 
     private static UUID scratchTypeId;
     private static UUID scratchNamePropertyId;
-    private static UUID fixtureActorId;
-
-    @Autowired
-    private SchemaManager schemaManager;
-
-    @Autowired
-    private LedgerRegisterCoordinator coordinator;
-
-    @Autowired
-    private SecurityRepository securityRepository;
 
     private SearchPanePage pane;
 
@@ -194,58 +174,28 @@ class SearchPaneUiTest extends AbstractUiIntegrationTest {
 
     private String createScratchItem() {
         String name = "Scratch " + UUID.randomUUID();
-        createItem(scratchTypeId, Map.of(scratchNamePropertyId, name));
+        testData.createItem(scratchTypeId, Map.of(scratchNamePropertyId, name));
         return name;
     }
 
     // The shared context lives for the whole test run, so the fixture is created once, by
     // whichever test runs first.
     private void createFixtureOnce() {
-        if (fixtureActorId != null) {
+        if (scratchTypeId != null) {
             return;
         }
-        fixtureActorId = securityRepository.createUser("ui-search-fixture-" + UUID.randomUUID(), "UI Search Fixture", null, true).id();
-
-        AdminItemDefinitionView widget = createItemType(WIDGET_TYPE,
-                property("name", PropertyType.STRING), property("rank", PropertyType.INT), property("color", PropertyType.STRING));
+        AdminItemDefinitionView widget = testData.createItemType(WIDGET_TYPE, "name",
+                List.of(property("name", PropertyType.STRING), property("rank", PropertyType.INT), property("color", PropertyType.STRING)),
+                List.of());
         UUID name = propertyId(widget, "name");
         UUID rank = propertyId(widget, "rank");
         UUID color = propertyId(widget, "color");
         for (int n = 1; n <= WIDGET_COUNT; n++) {
-            createItem(widget.id(), Map.of(name, widgetName(n), rank, n, color, n % 2 == 1 ? "red" : "blue"));
+            testData.createItem(widget.id(), Map.of(name, widgetName(n), rank, n, color, n % 2 == 1 ? "red" : "blue"));
         }
 
-        AdminItemDefinitionView scratch = createItemType(SCRATCH_TYPE, property("name", PropertyType.STRING));
-        scratchTypeId = scratch.id();
+        AdminItemDefinitionView scratch = testData.createItemType(SCRATCH_TYPE, "name", List.of(property("name", PropertyType.STRING)), List.of());
         scratchNamePropertyId = propertyId(scratch, "name");
-    }
-
-    private AdminItemDefinitionView createItemType(String typeName, CreatePropertyDefinitionMutation... properties) {
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(
-                typeName, "Search pane UI test fixture", List.of(properties), null, false, "name", List.of(), List.of())));
-        return schemaManager.getAdminSchema().items().stream()
-                .filter(item -> item.name().equals(typeName))
-                .findFirst()
-                .orElseThrow();
-    }
-
-    private static CreatePropertyDefinitionMutation property(String name, PropertyType type) {
-        return new CreatePropertyDefinitionMutation(name, "Search pane UI test fixture", type,
-                PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false);
-    }
-
-    private static UUID propertyId(AdminItemDefinitionView itemType, String name) {
-        return itemType.properties().stream()
-                .filter(p -> p.name().equals(name))
-                .findFirst()
-                .map(AdminPropertyDefinitionView::id)
-                .orElseThrow();
-    }
-
-    private void createItem(UUID itemTypeId, Map<UUID, Object> properties) {
-        UUID txn = UUID.randomUUID();
-        coordinator.prepare(List.of(new ItemCreateEntry(UUID.randomUUID(), itemTypeId, properties, Map.of(), Set.of())),
-                txn, fixtureActorId, OffsetDateTime.now());
-        coordinator.commit(txn, UUID.randomUUID());
+        scratchTypeId = scratch.id();
     }
 }

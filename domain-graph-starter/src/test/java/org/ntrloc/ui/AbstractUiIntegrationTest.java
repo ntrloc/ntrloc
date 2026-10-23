@@ -12,6 +12,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.TestInfo;
 import org.ntrloc.graph.AbstractIntegrationTest;
+import org.ntrloc.graph.db.coordinator.LedgerRegisterCoordinator;
+import org.ntrloc.graph.db.partition.schema.SchemaManager;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.openqa.selenium.By;
 import org.openqa.selenium.JavascriptExecutor;
@@ -76,10 +78,19 @@ public abstract class AbstractUiIntegrationTest extends AbstractIntegrationTest 
     @Autowired
     private SecurityRepository securityRepository;
 
+    @Autowired
+    private SchemaManager schemaManager;
+
+    @Autowired
+    private LedgerRegisterCoordinator coordinator;
+
     protected WebDriver driver;
+
+    protected UiTestData testData;
 
     @BeforeEach
     void openBrowser() {
+        testData = new UiTestData(schemaManager, coordinator, securityRepository);
         Testcontainers.exposeHostPorts(port);
         driver = new RemoteWebDriver(BROWSER.getSeleniumAddress(), new ChromeOptions());
     }
