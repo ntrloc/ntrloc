@@ -58,7 +58,9 @@ public abstract class AbstractUiIntegrationTest extends AbstractIntegrationTest 
             .asCompatibleSubstituteFor("selenium/standalone-chrome");
 
     protected static final BrowserWebDriverContainer BROWSER = new BrowserWebDriverContainer(BROWSER_IMAGE)
-            .withAccessToHost(true);
+            .withAccessToHost(true)
+            .withEnv("SE_SCREEN_WIDTH", "1600")
+            .withEnv("SE_SCREEN_HEIGHT", "1000");
 
     static {
         if (!Files.isRegularFile(INSTRUMENTED_BUILD_DIR.resolve("index.html"))) {
@@ -92,7 +94,9 @@ public abstract class AbstractUiIntegrationTest extends AbstractIntegrationTest 
     void openBrowser() {
         testData = new UiTestData(schemaManager, coordinator, securityRepository);
         Testcontainers.exposeHostPorts(port);
-        driver = new RemoteWebDriver(BROWSER.getSeleniumAddress(), new ChromeOptions());
+        // A typical desktop window; Chrome's default in the container is narrow enough to squeeze
+        // table columns down to nothing.
+        driver = new RemoteWebDriver(BROWSER.getSeleniumAddress(), new ChromeOptions().addArguments("--window-size=1600,1000"));
     }
 
     @AfterEach

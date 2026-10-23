@@ -24,7 +24,9 @@ import org.ntrloc.graph.db.partition.schema.definition.mutation.NewControlledLis
 import org.ntrloc.graph.db.partition.schema.definition.mutation.SetPropertyControlledListMutation;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemLinkPerspectiveView;
+import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminStateMachineView;
 import org.ntrloc.graph.db.partition.security.PrincipalResolver;
+import org.ntrloc.ui.UiTestData.Transition;
 import org.springframework.beans.factory.annotation.Autowired;
 
 /**
@@ -36,12 +38,14 @@ class ItemPaneUiTest extends AbstractUiIntegrationTest {
 
     private static final String GADGET_TYPE = "UiItemGadget";
     private static final String PART_TYPE = "UiItemPart";
+    private static final String TICKET_TYPE = "UiItemTicket";
 
     private static AdminItemDefinitionView gadgetType;
     private static UUID partTypeId;
     private static UUID linkTypeId;
     private static UUID gadgetPartsPerspectiveId;
     private static UUID partGadgetsPerspectiveId;
+    private static AdminStateMachineView ticketWorkflow;
 
     @Autowired
     private SchemaManager schemaManager;
@@ -242,6 +246,31 @@ class ItemPaneUiTest extends AbstractUiIntegrationTest {
 
     // --- helpers ---
 
+    @Test
+    void statesTabShowsTheStateEachMachineIsIn() {
+        String name = "Ticket " + UUID.randomUUID();
+        UUID ticketTypeId = testData.itemType(TICKET_TYPE).id();
+        testData.createItem(ticketTypeId, Map.of(propertyId(testData.itemType(TICKET_TYPE), "name"), name),
+                Map.of(ticketWorkflow.id(), UiTestData.stateIds(ticketWorkflow).get("Open")));
+
+        SearchPanePage.openNew(driver).selectItemType(TICKET_TYPE).filter("name", "EQUALS", name).search().openResult(name);
+        ItemPanePage item = ItemPanePage.titled(driver, TICKET_TYPE + ": " + name).awaitLoaded();
+
+        assertThat(item.tabs()).containsExactly("Properties", "Links", "States", "Markers");
+        assertThat(item.openTab("States").states()).containsExactly(Map.entry("Workflow", "Open"));
+    }
+
+    @Test
+    void statesTabShowsADashForAMachineTheItemHasNotEntered() {
+        String name = "Ticket " + UUID.randomUUID();
+        testData.createItem(testData.itemType(TICKET_TYPE).id(), Map.of(propertyId(testData.itemType(TICKET_TYPE), "name"), name));
+
+        SearchPanePage.openNew(driver).selectItemType(TICKET_TYPE).filter("name", "EQUALS", name).search().openResult(name);
+        ItemPanePage item = ItemPanePage.titled(driver, TICKET_TYPE + ": " + name).awaitLoaded();
+
+        assertThat(item.openTab("States").states()).containsExactly(Map.entry("Workflow", "—"));
+    }
+
     private SearchPanePage searchFor(String gadgetName) {
         return SearchPanePage.openNew(driver).selectItemType(GADGET_TYPE).filter("name", "EQUALS", gadgetName).search();
     }
@@ -303,6 +332,11 @@ class ItemPaneUiTest extends AbstractUiIntegrationTest {
         gadgetPartsPerspectiveId = parts.id();
         linkTypeId = parts.linkId();
         partGadgetsPerspectiveId = testData.itemType(PART_TYPE).links().get("gadgets").get(0).id();
+
+        testData.createItemType(TICKET_TYPE, "name", List.of(property("name", PropertyType.STRING)), List.of());
+        ticketWorkflow = testData.createStateMachine(TICKET_TYPE, "Workflow", List.of("Open", "Closed"), List.of(
+                new Transition("__start__", "Open", "Open"),
+                new Transition("Open", "Closed", "Close")));
 
         gadgetType = testData.itemType(GADGET_TYPE);
     }

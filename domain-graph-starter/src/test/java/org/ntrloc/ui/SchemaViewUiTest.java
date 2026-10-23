@@ -1,0 +1,267 @@
+package org.ntrloc.ui;
+
+import static java.util.Map.entry;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.ntrloc.ui.UiTestData.property;
+
+import java.util.List;
+import java.util.UUID;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.ntrloc.graph.db.partition.schema.SchemaManager;
+import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
+import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
+import org.ntrloc.graph.db.partition.schema.definition.PropertyUsage;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateControlledListMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateLinkDefinitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePerspectiveDefinitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePropertyDefinitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePropertyGroupDefinitionMutation;
+import org.ntrloc.ui.UiTestData.Transition;
+import org.openqa.selenium.WebElement;
+import org.springframework.beans.factory.annotation.Autowired;
+
+/**
+ * The Schema view, end to end: a real user signs in and browses item types, traits, and controlled
+ * lists -- each item type's overview, property tree, links, and state machine diagrams -- for a
+ * schema created through the same SchemaManager the application itself uses. Nothing here changes
+ * the schema, so the fixture is shared by every test.
+ */
+class SchemaViewUiTest extends AbstractUiIntegrationTest {
+
+    private static final String PUBLICATION_TYPE = "UiSchemaPublication";
+    private static final String BOOK_TYPE = "UiSchemaBook";
+    private static final String AUTHOR_TYPE = "UiSchemaAuthor";
+    private static final String TRACKED_TRAIT = "UiSchemaTracked";
+    private static final String GENRE_LIST = "UiSchemaGenre";
+
+    private static UUID bookTypeId;
+
+    @Autowired
+    private SchemaManager schemaManager;
+
+    private SchemaPage schema;
+
+    @BeforeEach
+    void signInAndOpenSchemaView() {
+        createFixtureOnce();
+        openAdminUiAs(createLocalAdmin(), "/schema");
+        schema = SchemaPage.of(driver);
+    }
+
+    @Test
+    void showsAPlaceholderUntilSomethingIsSelected() {
+        assertThat(schema.contentText()).isEqualTo("Select an item type, trait, or controlled list.");
+        assertThat(schema.itemTypeNames()).contains(PUBLICATION_TYPE, BOOK_TYPE, AUTHOR_TYPE);
+    }
+
+    @Test
+    void selectingAnItemTypeShowsItsOverview() {
+        schema.selectItemType(BOOK_TYPE);
+
+        assertThat(driver.getCurrentUrl()).endsWith("/schema/item-types/" + bookTypeId);
+        assertThat(schema.selectedListEntry()).isEqualTo(BOOK_TYPE);
+        assertThat(schema.tabs()).containsExactly("Overview", "Properties", "Links", "State Machines", "Access Markers");
+        assertThat(schema.overview()).containsExactly(
+                entry("Abstract type", "No"),
+                entry("Parent type", PUBLICATION_TYPE),
+                entry("Implements", TRACKED_TRAIT),
+                entry("Display label", "title"));
+    }
+
+    @Test
+    void overviewLinksOpenTheParentTypeAndTheTrait() {
+        schema.selectItemType(BOOK_TYPE).followOverviewLink(PUBLICATION_TYPE);
+        assertThat(schema.overview()).containsExactly(
+                entry("Abstract type", "Yes"),
+                entry("Parent type", "None"),
+                entry("Implements", "None"),
+                entry("Display label", "Default"));
+
+        // Each selection is its own history entry.
+        driver.navigate().back();
+        schema.awaitHeading(BOOK_TYPE).followOverviewLink(TRACKED_TRAIT);
+
+        assertThat(schema.tabs()).containsExactly("Overview", "Properties", "Links");
+        assertThat(schema.overview()).containsEntry("Implemented by", BOOK_TYPE);
+
+        schema.followOverviewLink(BOOK_TYPE);
+        assertThat(schema.heading()).isEqualTo(BOOK_TYPE);
+    }
+
+    @Test
+    void anUnknownItemTypeIsReportedAsNotFound() {
+        writeCoverage("SchemaViewUiTest-anUnknownItemTypeIsReportedAsNotFound-before");
+        driver.get(serverUrl(ADMIN_UI_PATH + "/schema/item-types/" + UUID.randomUUID()));
+
+        assertThat(SchemaPage.of(driver).contentText()).isEqualTo("Item type not found.");
+    }
+
+    @Test
+    void propertiesTabShowsPropertiesBeforeGroupsAtEveryLevel() {
+        schema.selectItemType(BOOK_TYPE).openTab("Properties");
+
+        assertThat(schema.propertyRows()).containsExactly(
+                List.of("", "keywords", "Search keywords", "String Set (optional)"),
+                List.of("", "pages", "Number of pages", "Integer (optional)"),
+                List.of("", "title", "The book's title", "String (required)"),
+                List.of("publication", "", "", ""),
+                List.of("", "year", "Year first published", "Integer (optional)"),
+                List.of("publisher", "", "", ""),
+                List.of("", "name", "Publisher's name", "String (optional)"),
+                List.of(TRACKED_TRAIT + "(via " + TRACKED_TRAIT + ")", "", "", ""),
+                List.of("", "trackingCode", "Internal tracking code", "String (optional)"));
+    }
+
+    @Test
+    void collapsingAGroupHidesEverythingInsideIt() {
+        schema.selectItemType(BOOK_TYPE).openTab("Properties");
+
+        schema.toggleGroup("publication");
+        assertThat(propertyNames()).containsExactly("keywords", "pages", "title", "", "", "trackingCode");
+
+        schema.toggleGroup("publication");
+        assertThat(propertyNames()).containsExactly("keywords", "pages", "title", "", "year", "", "name", "", "trackingCode");
+    }
+
+    @Test
+    void filteringPropertiesListsMatchesWithTheirOwnGroup() {
+        schema.selectItemType(BOOK_TYPE).openTab("Properties");
+
+        schema.filterPropertiesByName("NA");
+        assertThat(schema.propertyRows()).containsExactly(List.of("publisher", "name", "Publisher's name", "String (optional)"));
+
+        schema.filterPropertiesByName("no such property");
+        assertThat(schema.propertyRows()).containsExactly(List.of("No matching properties."));
+
+        schema.clearNameFilter().filterPropertiesByDescription("year");
+        assertThat(schema.propertyRows()).containsExactly(List.of("publication", "year", "Year first published", "Integer (optional)"));
+    }
+
+    @Test
+    void aTraitShowsItsOwnPropertiesAndLinks() {
+        schema.openSection("Traits").selectTrait(TRACKED_TRAIT).openTab("Properties");
+
+        assertThat(schema.propertyRows()).containsExactly(List.of("", "trackingCode", "Internal tracking code", "String (optional)"));
+        schema.openTab("Links");
+        assertThat(schema.tabText()).isEqualTo("No links yet.");
+    }
+
+    @Test
+    void linksTabShowsBothDirectionsOfEachLinkAndItsProperties() {
+        schema.selectItemType(BOOK_TYPE).openTab("Links");
+
+        assertThat(schema.linkDiagrams()).containsExactly(List.of(BOOK_TYPE, "authors (0-any)", "books (1)", AUTHOR_TYPE));
+        WebElement card = schema.linkCard("authors");
+        assertThat(SchemaPage.propertyRows(card)).containsExactly(List.of("", "role", "The author's role", "String (optional)"));
+
+        SchemaPage.toggleLinkProperties(card);
+        assertThat(SchemaPage.propertyRows(card)).isEmpty();
+
+        schema.selectItemType(AUTHOR_TYPE);
+        assertThat(schema.linkDiagrams()).containsExactly(List.of(AUTHOR_TYPE, "books (1)", "authors (0-any)", BOOK_TYPE));
+
+        schema.selectItemType(PUBLICATION_TYPE);
+        assertThat(schema.tabText()).isEqualTo("No links yet.");
+    }
+
+    @Test
+    void stateMachinesTabDrawsEachMachinesStatesAndTransitions() {
+        schema.selectItemType(BOOK_TYPE).openTab("State Machines");
+
+        assertThat(schema.stateMachineNames()).containsExactly("Lifecycle");
+        assertThat(schema.stateNames("Lifecycle")).containsExactlyInAnyOrder("Draft", "In review", "Published");
+        assertThat(schema.pseudoStateCount("Lifecycle")).isEqualTo(2);
+        assertThat(schema.transitionNames("Lifecycle"))
+                .containsExactlyInAnyOrder("Create", "Submit", "Revise", "Approve", "Reject", "Retract", "Retire");
+
+        schema.selectItemType(PUBLICATION_TYPE);
+        assertThat(schema.tabText()).isEqualTo("No state machines yet.");
+    }
+
+    @Test
+    void theOpenTabStaysOpenWhileBrowsing() {
+        schema.selectItemType(BOOK_TYPE).openTab("Properties");
+
+        schema.selectItemType(AUTHOR_TYPE);
+        assertThat(schema.activeTab()).isEqualTo("Properties");
+        assertThat(propertyNames()).containsExactly("name");
+
+        schema.openSection("Traits");
+        assertThat(driver.getCurrentUrl()).endsWith("/schema/traits");
+        schema.openSection("Item Types");
+        schema.selectItemType(BOOK_TYPE);
+        assertThat(schema.activeTab()).isEqualTo("Properties");
+    }
+
+    @Test
+    void sidebarListsTraitsAndControlledLists() {
+        schema.openSection("Traits");
+        assertThat(schema.traitNames()).contains(TRACKED_TRAIT);
+        schema.selectTrait(TRACKED_TRAIT);
+        assertThat(schema.selectedListEntry()).isEqualTo(TRACKED_TRAIT);
+
+        schema.openSection("Controlled Lists");
+        assertThat(driver.getCurrentUrl()).endsWith("/schema/controlled-lists");
+        assertThat(schema.controlledListNames()).contains(GENRE_LIST);
+        assertThat(schema.contentText()).isEqualTo("Select an item type, trait, or controlled list.");
+    }
+
+    private List<String> propertyNames() {
+        return schema.propertyRows().stream().map(row -> row.get(1)).toList();
+    }
+
+    private static CreatePropertyDefinitionMutation described(String name, PropertyType type, String description) {
+        return described(name, type, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, description);
+    }
+
+    private static CreatePropertyDefinitionMutation described(String name, PropertyType type, PropertyCardinality cardinality,
+                                                              PropertyUsage usage, String description) {
+        return new CreatePropertyDefinitionMutation(name, description, type, cardinality, usage, false);
+    }
+
+    // The shared context lives for the whole test run, so the schema is created once, by whichever
+    // test runs first.
+    private void createFixtureOnce() {
+        if (bookTypeId != null) {
+            return;
+        }
+        UUID trackedTraitId = testData.createTrait(TRACKED_TRAIT,
+                List.of(described("trackingCode", PropertyType.STRING, "Internal tracking code"))).id();
+        UUID publicationTypeId = testData.createItemType(PUBLICATION_TYPE, null, List.of(), List.of(), null, true, List.of()).id();
+        UUID bookId = testData.createItemType(BOOK_TYPE, "title",
+                List.of(
+                        described("title", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.REQUIRED, "The book's title"),
+                        described("pages", PropertyType.INT, "Number of pages"),
+                        described("keywords", PropertyType.STRING, PropertyCardinality.SET, PropertyUsage.OPTIONAL, "Search keywords")),
+                List.of(new CreatePropertyGroupDefinitionMutation("publication", "UI test fixture",
+                        List.of(described("year", PropertyType.INT, "Year first published")),
+                        List.of(new CreatePropertyGroupDefinitionMutation("publisher", "UI test fixture",
+                                List.of(described("name", PropertyType.STRING, "Publisher's name")), List.of())))),
+                publicationTypeId, false, List.of(trackedTraitId)).id();
+        UUID authorTypeId = testData.createItemType(AUTHOR_TYPE, "name", List.of(property("name", PropertyType.STRING)), List.of()).id();
+
+        schemaManager.applyMutations(List.of(
+                new CreateLinkDefinitionMutation(
+                        List.of(described("role", PropertyType.STRING, "The author's role")),
+                        List.of(
+                                new CreatePerspectiveDefinitionMutation(bookId, "authors", "UI test fixture", 0, null),
+                                new CreatePerspectiveDefinitionMutation(authorTypeId, "books", "UI test fixture", 1, 1)),
+                        List.of()),
+                new CreateControlledListMutation("genre", GENRE_LIST, PropertyType.STRING, List.of(
+                        new CreateControlledListMutation.Entry("FICTION", "Fiction"),
+                        new CreateControlledListMutation.Entry("REFERENCE", "Reference")))));
+
+        testData.createStateMachine(BOOK_TYPE, "Lifecycle", List.of("Draft", "In review", "Published"), List.of(
+                new Transition("__start__", "Draft", "Create"),
+                new Transition("Draft", "In review", "Submit"),
+                new Transition("Draft", "Draft", "Revise"),
+                new Transition("In review", "Published", "Approve"),
+                new Transition("In review", "Draft", "Reject"),
+                new Transition("Published", "Draft", "Retract"),
+                new Transition("Published", "__end__", "Retire")));
+
+        bookTypeId = bookId;
+    }
+}

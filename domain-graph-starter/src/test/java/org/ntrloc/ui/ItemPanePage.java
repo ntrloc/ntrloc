@@ -1,7 +1,9 @@
 package org.ntrloc.ui;
 
 import java.time.Duration;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.openqa.selenium.By;
 import org.openqa.selenium.Keys;
@@ -83,6 +85,15 @@ class ItemPanePage {
     /** The active tab's panel text, e.g. "No links." */
     String tabText() {
         return text(pane.findElement(By.cssSelector("tab-view-panel")));
+    }
+
+    /** The States tab's rows, state machine name to current state, in order. */
+    Map<String, String> states() {
+        Map<String, String> states = new LinkedHashMap<>();
+        for (WebElement row : pane.findElements(By.cssSelector(".item-pane-state"))) {
+            states.put(text(row.findElement(By.cssSelector(".item-pane-state-machine"))), text(row.findElement(By.cssSelector(".item-pane-state-value"))));
+        }
+        return states;
     }
 
     /** The group headers shown on the Properties tab, in order (the root group has none). */

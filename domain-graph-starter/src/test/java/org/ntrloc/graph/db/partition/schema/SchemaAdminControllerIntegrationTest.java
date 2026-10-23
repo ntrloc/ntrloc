@@ -33,7 +33,12 @@ class SchemaAdminControllerIntegrationTest extends AbstractIntegrationTest {
     // seeded superuser; a request that sets its own Authorization header still uses that one.
     @BeforeEach
     void authenticateAsRoot() {
-        webTestClient = webTestClient.mutate().defaultHeader(HttpHeaders.AUTHORIZATION, bearerTokenFor("root")).build();
+        // The whole admin schema holds every fixture of the shared test run, which can outgrow the
+        // client's default 256KB response buffer.
+        webTestClient = webTestClient.mutate()
+                .defaultHeader(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
+                .codecs(codecs -> codecs.defaultCodecs().maxInMemorySize(4 * 1024 * 1024))
+                .build();
     }
 
     @Autowired

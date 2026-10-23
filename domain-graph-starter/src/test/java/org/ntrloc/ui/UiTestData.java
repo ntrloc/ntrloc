@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import org.ntrloc.graph.db.coordinator.LedgerRegisterCoordinator;
 import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
@@ -17,8 +18,16 @@ import org.ntrloc.graph.db.partition.schema.definition.PropertyUsage;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateItemDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePropertyDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePropertyGroupDefinitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateStateMachineMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateStateMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateTraitDefinitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateTransitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.DefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyDefinitionView;
+import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminStateMachineView;
+import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminStateView;
+import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminTraitDefinitionView;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 
 /**
@@ -41,12 +50,56 @@ final class UiTestData {
         this.securityRepository = securityRepository;
     }
 
+    /** A transition between two states, by name; "__start__" and "__end__" are the pseudostates. */
+    record Transition(String from, String to, String name) {
+    }
+
     AdminItemDefinitionView createItemType(String name, String displayLabelPattern,
                                            List<CreatePropertyDefinitionMutation> properties,
                                            List<CreatePropertyGroupDefinitionMutation> groups) {
+        return createItemType(name, displayLabelPattern, properties, groups, null, false, List.of());
+    }
+
+    AdminItemDefinitionView createItemType(String name, String displayLabelPattern,
+                                           List<CreatePropertyDefinitionMutation> properties,
+                                           List<CreatePropertyGroupDefinitionMutation> groups,
+                                           UUID supertypeId, boolean abstractType, List<UUID> traitIds) {
         schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(
-                name, "UI test fixture", properties, null, false, displayLabelPattern, List.of(), groups)));
+                name, "UI test fixture", properties, supertypeId, abstractType, displayLabelPattern, traitIds, groups)));
         return itemType(name);
+    }
+
+    AdminTraitDefinitionView createTrait(String name, List<CreatePropertyDefinitionMutation> properties) {
+        schemaManager.applyMutations(List.of(new CreateTraitDefinitionMutation(name, "UI test fixture", properties, List.of())));
+        return schemaManager.getAdminSchema().traits().stream()
+                .filter(trait -> trait.name().equals(name))
+                .findFirst()
+                .orElseThrow();
+    }
+
+    /** Creates a state machine with the given NORMAL states, then the given transitions between them. */
+    AdminStateMachineView createStateMachine(String itemTypeName, String name, List<String> states, List<Transition> transitions) {
+        schemaManager.applyMutations(List.of(new CreateStateMachineMutation(itemType(itemTypeName).id(), name, null)));
+        UUID machineId = stateMachine(itemTypeName, name).id();
+        schemaManager.applyMutations(states.stream()
+                .<DefinitionMutation>map(state -> new CreateStateMutation(machineId, state, null, null, null, null))
+                .toList());
+        Map<String, UUID> stateIds = stateIds(stateMachine(itemTypeName, name));
+        schemaManager.applyMutations(transitions.stream()
+                .<DefinitionMutation>map(t -> new CreateTransitionMutation(stateIds.get(t.from()), stateIds.get(t.to()), t.name(), null, null, null))
+                .toList());
+        return stateMachine(itemTypeName, name);
+    }
+
+    AdminStateMachineView stateMachine(String itemTypeName, String name) {
+        return itemType(itemTypeName).stateMachines().stream()
+                .filter(machine -> machine.name().equals(name))
+                .findFirst()
+                .orElseThrow();
+    }
+
+    static Map<String, UUID> stateIds(AdminStateMachineView machine) {
+        return machine.states().stream().collect(Collectors.toMap(AdminStateView::name, AdminStateView::id));
     }
 
     AdminItemDefinitionView itemType(String name) {
@@ -83,9 +136,14 @@ final class UiTestData {
     }
 
     UUID createItem(UUID itemTypeId, Map<UUID, Object> properties) {
+        return createItem(itemTypeId, properties, Map.of());
+    }
+
+    /** initialStates maps a state machine's id to the id of the state the item starts in. */
+    UUID createItem(UUID itemTypeId, Map<UUID, Object> properties, Map<UUID, UUID> initialStates) {
         UUID itemId = UUID.randomUUID();
         UUID txn = UUID.randomUUID();
-        coordinator.prepare(List.of(new ItemCreateEntry(itemId, itemTypeId, properties, Map.of(), Set.of())),
+        coordinator.prepare(List.of(new ItemCreateEntry(itemId, itemTypeId, properties, initialStates, Set.of())),
                 txn, actorId(), OffsetDateTime.now());
         coordinator.commit(txn, UUID.randomUUID());
         return itemId;
