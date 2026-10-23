@@ -71,7 +71,7 @@ public class CoordinatorTestDomainInitializer implements DomainInitializer, Appl
                         property("color", PropertyType.STRING, PropertyCardinality.SINGLE),
                         property("tags", PropertyType.STRING, PropertyCardinality.SET),
                         property("releaseDate", PropertyType.DATE, PropertyCardinality.SINGLE)),
-                null, false, null, List.of(),
+                null, false, "name", List.of(),
                 List.of(group("dimensions",
                         property("width", PropertyType.STRING, PropertyCardinality.SINGLE),
                         property("height", PropertyType.STRING, PropertyCardinality.SINGLE))))));

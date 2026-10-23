@@ -37,6 +37,7 @@ import org.ntrloc.graph.db.partition.ledger.ItemUpdateEntry;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.ntrloc.graph.domain.DomainInitializer;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.web.reactive.server.WebTestClient;
@@ -95,7 +96,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
     // ledger_entry.created_by/register_item.created_by (Part E) are NOT NULL FKs to
     // security_user.id -- setState's/the raw ItemCreateEntry tests' direct coordinator.prepare
     // calls need a real, backed actor (the webTestClient-driven mutations above go through the
-    // real "X-Ntrloc-User: root" stand-in auth path instead, already backed, untouched here).
+    // real authenticated "root" user instead, already backed, untouched here).
     private UUID actor;
 
     // Every book this test class creates gets this value stamped onto testMarker
@@ -108,10 +109,9 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
     private String marker;
 
     @BeforeEach
-    void authenticateAsStandInUserAndGenerateUniqueMarker() {
-        // Same stand-in mechanism as MutationControllerIntegrationTest -- see that class's own
-        // comment on why "root" specifically.
-        webTestClient = webTestClient.mutate().defaultHeader("X-Ntrloc-User", "root").build();
+    void authenticateAsRootAndGenerateUniqueMarker() {
+        // Same "root" as MutationControllerIntegrationTest -- see that class's own comment.
+        webTestClient = webTestClient.mutate().defaultHeader(HttpHeaders.AUTHORIZATION, bearerTokenFor("root")).build();
         marker = UUID.randomUUID().toString();
         actor = securityRepo.createUser("rpmp-actor-" + UUID.randomUUID(), "Projection Test Actor", null, true).id();
     }
@@ -1224,6 +1224,52 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
 
         var item = project(spec).result().items().get(0);
         assertThat(item.properties()).isEmpty();
+    }
+
+    @Test
+    void displayLabel_followsTheItemTypesPattern() {
+        createBook("Dune", 400, true, "Fiction");
+
+        var item = project(new CollectionProjectionSpec(BOOK_TYPE, null, null)).result().items().get(0);
+
+        assertThat(item.displayLabel()).isEqualTo("Dune");
+    }
+
+    // The label identifies the item, so it's computed from the item's own properties, not from
+    // whichever subset the caller asked to see.
+    @Test
+    void displayLabel_usesThePatternsPropertyEvenWhenItIsNotRequested() {
+        createBook("Dune", 400, true, "Fiction");
+
+        var spec = new CollectionProjectionSpec(BOOK_TYPE, null, null, null, null, null, null, null, null, null, null,
+                List.of("pageCount"), null, null);
+
+        var item = project(spec).result().items().get(0);
+        assertThat(item.properties()).containsOnlyKeys("pageCount");
+        assertThat(item.displayLabel()).isEqualTo("Dune");
+    }
+
+    @Test
+    void displayLabel_isStillComputedWhenNoPropertiesAreRequested() {
+        createBook("Dune", 400, true, "Fiction");
+
+        var spec = new CollectionProjectionSpec(BOOK_TYPE, null, null, null, null, null, null, null, null, null, null,
+                List.of(), null, null);
+
+        var item = project(spec).result().items().get(0);
+        assertThat(item.properties()).isEmpty();
+        assertThat(item.displayLabel()).isEqualTo("Dune");
+    }
+
+    @Test
+    void displayLabel_singleItemProjection_usesThePatternsPropertyEvenWhenItIsNotRequested() {
+        UUID bookId = createBook("Dune", 400, true, "Fiction");
+
+        var book = registerPartitionManager.projectOne(fixture.bookTypeId(), bookId, "http://binary",
+                null, List.of("pageCount"), RequestPermissionContext.forSuperuser(), false, false).orElseThrow();
+
+        assertThat(book.properties()).containsOnlyKeys("pageCount");
+        assertThat(book.displayLabel()).isEqualTo("Dune");
     }
 
     @Test

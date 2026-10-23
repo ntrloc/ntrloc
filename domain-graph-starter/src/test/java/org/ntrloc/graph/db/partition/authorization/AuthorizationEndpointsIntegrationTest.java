@@ -3,9 +3,12 @@ package org.ntrloc.graph.db.partition.authorization;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.reactive.server.WebTestClient;
+
+import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Exercises the item-type direct-grant tracer bullet end-to-end against a real Postgres
@@ -23,7 +26,7 @@ class AuthorizationEndpointsIntegrationTest extends AbstractIntegrationTest {
     @Test
     void schemaViewShowsOnlyGrantedTypes_forUserGroupMember() {
         webTestClient.get().uri("/api/schema")
-                .header("X-Ntrloc-User", "alice")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("alice"))
                 .exchange()
                 .expectStatus().isOk()
                 .expectBody()
@@ -38,7 +41,7 @@ class AuthorizationEndpointsIntegrationTest extends AbstractIntegrationTest {
     @Test
     void schemaViewShowsOnlyGrantedTypes_forDirectUserGrant() {
         webTestClient.get().uri("/api/schema")
-                .header("X-Ntrloc-User", "carol")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("carol"))
                 .exchange()
                 .expectStatus().isOk()
                 .expectBody()
@@ -50,29 +53,27 @@ class AuthorizationEndpointsIntegrationTest extends AbstractIntegrationTest {
                 });
     }
 
+    // The old ?asUser= stand-in is gone: naming a user in the URL authenticates nobody.
     @Test
-    void schemaViewSupportsQueryParamFallback() {
+    void schemaViewIgnoresAsUserQueryParam() {
         webTestClient.get().uri("/api/schema?asUser=bob")
                 .exchange()
-                .expectStatus().isOk()
-                .expectBody()
-                .jsonPath("$.items[*].name").value(names -> {
-                    var list = (java.util.List<String>) names;
-                    org.assertj.core.api.Assertions.assertThat(list).contains("AclTestPublicDoc");
-                });
+                .expectStatus().is3xxRedirection()
+                .expectHeader().value(HttpHeaders.LOCATION, location -> assertThat(location).endsWith("/login"));
     }
 
     @Test
-    void schemaViewRejectsMissingPrincipal() {
+    void schemaViewRedirectsUnauthenticatedRequestToLogin() {
         webTestClient.get().uri("/api/schema")
                 .exchange()
-                .expectStatus().isEqualTo(HttpStatus.UNAUTHORIZED);
+                .expectStatus().is3xxRedirection()
+                .expectHeader().value(HttpHeaders.LOCATION, location -> assertThat(location).endsWith("/login"));
     }
 
     @Test
-    void schemaViewRejectsUnknownPrincipal() {
+    void schemaViewRejectsUnrecognizedBearerToken() {
         webTestClient.get().uri("/api/schema")
-                .header("X-Ntrloc-User", "nobody")
+                .header(HttpHeaders.AUTHORIZATION, "Bearer not-a-real-token")
                 .exchange()
                 .expectStatus().isEqualTo(HttpStatus.UNAUTHORIZED);
     }
@@ -80,7 +81,7 @@ class AuthorizationEndpointsIntegrationTest extends AbstractIntegrationTest {
     @Test
     void projectionAllowsQueryingUserGroupGrantedType() {
         webTestClient.post().uri("/api/projection/collection")
-                .header("X-Ntrloc-User", "alice")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("alice"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("""
                         {"itemTypeName":"AclTestPublicDoc"}
@@ -92,7 +93,7 @@ class AuthorizationEndpointsIntegrationTest extends AbstractIntegrationTest {
     @Test
     void projectionMasksInaccessibleTypeAsNotFound() {
         webTestClient.post().uri("/api/projection/collection")
-                .header("X-Ntrloc-User", "alice")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("alice"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("""
                         {"itemTypeName":"AclTestConfidentialDoc"}
@@ -104,7 +105,7 @@ class AuthorizationEndpointsIntegrationTest extends AbstractIntegrationTest {
     @Test
     void projectionAllowsDirectUserGrantedType() {
         webTestClient.post().uri("/api/projection/collection")
-                .header("X-Ntrloc-User", "carol")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("carol"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("""
                         {"itemTypeName":"AclTestConfidentialDoc"}
@@ -116,7 +117,7 @@ class AuthorizationEndpointsIntegrationTest extends AbstractIntegrationTest {
     @Test
     void projectionMasksTypeNotGrantedToDirectUser() {
         webTestClient.post().uri("/api/projection/collection")
-                .header("X-Ntrloc-User", "carol")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("carol"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("""
                         {"itemTypeName":"AclTestPublicDoc"}
@@ -128,7 +129,7 @@ class AuthorizationEndpointsIntegrationTest extends AbstractIntegrationTest {
     @Test
     void schemaViewShowsAllTypesForSuperuser() {
         webTestClient.get().uri("/api/schema")
-                .header("X-Ntrloc-User", "root")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                 .exchange()
                 .expectStatus().isOk()
                 .expectBody()
@@ -142,7 +143,7 @@ class AuthorizationEndpointsIntegrationTest extends AbstractIntegrationTest {
     @Test
     void projectionAllowsSuperuserOnUnmarkedType() {
         webTestClient.post().uri("/api/projection/collection")
-                .header("X-Ntrloc-User", "root")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("""
                         {"itemTypeName":"AclTestUnmarkedDoc"}
@@ -154,7 +155,7 @@ class AuthorizationEndpointsIntegrationTest extends AbstractIntegrationTest {
     @Test
     void projectionMasksUnmarkedTypeForNonSuperuser() {
         webTestClient.post().uri("/api/projection/collection")
-                .header("X-Ntrloc-User", "alice")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("alice"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("""
                         {"itemTypeName":"AclTestUnmarkedDoc"}

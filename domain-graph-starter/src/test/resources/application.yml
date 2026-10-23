@@ -3,7 +3,6 @@ cluster:
 
 graph:
   security:
-    enabled: false
     seed-test-data: true
   ui:
     mounts:

@@ -1,5 +1,6 @@
 package org.ntrloc.graph.db.partition.process;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.flowable.engine.RuntimeService;
 import org.flowable.engine.TaskService;
 import org.flowable.engine.runtime.ProcessInstance;
@@ -9,6 +10,7 @@ import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.test.web.reactive.server.WebTestClient;
@@ -37,6 +39,13 @@ class TaskAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private WebTestClient webTestClient;
+
+    // Every endpoint requires an authenticated caller. root is AuthorizationTestDataInitializer's
+    // seeded superuser; a request that sets its own Authorization header still uses that one.
+    @BeforeEach
+    void authenticateAsRoot() {
+        webTestClient = webTestClient.mutate().defaultHeader(HttpHeaders.AUTHORIZATION, bearerTokenFor("root")).build();
+    }
 
     @Autowired
     private RuntimeService runtimeService;
@@ -86,7 +95,7 @@ class TaskAdminControllerIntegrationTest extends AbstractIntegrationTest {
     @SuppressWarnings("unchecked")
     private List<Map<String, Object>> listTasksAs(String externalId) {
         return (List<Map<String, Object>>) (List<?>) webTestClient.get().uri("/api/admin/process/tasks")
-                .header("X-Ntrloc-User", externalId)
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor(externalId))
                 .exchange()
                 .expectStatus().isOk()
                 .expectBodyList(Map.class)
@@ -152,7 +161,7 @@ class TaskAdminControllerIntegrationTest extends AbstractIntegrationTest {
         Task task = startProcessAndGetReviewTask();
 
         webTestClient.post().uri("/api/admin/process/tasks/{id}/claim", task.getId())
-                .header("X-Ntrloc-User", "root")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                 .exchange()
                 .expectStatus().isOk()
                 .expectBody()
@@ -164,7 +173,7 @@ class TaskAdminControllerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void claim_forAnUnknownTaskId_returnsBadRequestWithAMessage() {
         webTestClient.post().uri("/api/admin/process/tasks/{id}/claim", "no-such-task")
-                .header("X-Ntrloc-User", "root")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                 .exchange()
                 .expectStatus().isBadRequest()
                 .expectBody()

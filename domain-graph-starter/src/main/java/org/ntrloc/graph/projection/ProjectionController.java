@@ -24,14 +24,14 @@ public class ProjectionController {
 
     @PostMapping("/collection")
     ResponseEntity<ProjectionResult> collection(@RequestBody CollectionProjectionSpec spec, HttpServletRequest request, Authentication authentication) {
-        var principal = principalResolver.resolve(request, authentication);
+        var principal = principalResolver.resolve(authentication);
         String binaryBaseUrl = extractBaseUrl(request);
         return ResponseEntity.ok(entityManager.project(spec, binaryBaseUrl, principal));
     }
 
     @PostMapping("/item")
     ResponseEntity<ProjectedItem> item(@RequestBody ItemProjectionSpec spec, HttpServletRequest request, Authentication authentication) {
-        var principal = principalResolver.resolve(request, authentication);
+        var principal = principalResolver.resolve(authentication);
         String binaryBaseUrl = extractBaseUrl(request);
         return entityManager.project(spec, binaryBaseUrl, principal)
                 .map(ResponseEntity::ok)

@@ -4,7 +4,6 @@ import org.ntrloc.graph.db.partition.authorization.DefaultUserGroupInitializer;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.transaction.annotation.Transactional;
@@ -62,8 +61,8 @@ public class UserAdminController {
     }
 
     @PostMapping
-    UserView createUser(@RequestBody CreateUserRequest body, HttpServletRequest request, Authentication authentication) {
-        var principal = principalResolver.resolve(request, authentication);
+    UserView createUser(@RequestBody CreateUserRequest body, Authentication authentication) {
+        var principal = principalResolver.resolve(authentication);
         if (!principal.isSuperuser()) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only admins can create users");
         }
@@ -87,8 +86,8 @@ public class UserAdminController {
     @Transactional
     @PutMapping("/{userId}")
     UserView updateUser(@PathVariable("userId") UUID userId, @RequestBody UpdateUserRequest body,
-                        HttpServletRequest request, Authentication authentication) {
-        var principal = principalResolver.resolve(request, authentication);
+                        Authentication authentication) {
+        var principal = principalResolver.resolve(authentication);
         if (!principal.isSuperuser()) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only admins can update users");
         }
@@ -112,8 +111,8 @@ public class UserAdminController {
     }
 
     @DeleteMapping("/{userId}")
-    ResponseEntity<Void> deleteUser(@PathVariable("userId") UUID userId, HttpServletRequest request, Authentication authentication) {
-        var principal = principalResolver.resolve(request, authentication);
+    ResponseEntity<Void> deleteUser(@PathVariable("userId") UUID userId, Authentication authentication) {
+        var principal = principalResolver.resolve(authentication);
         if (!principal.isSuperuser()) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only admins can delete users");
         }
@@ -126,8 +125,8 @@ public class UserAdminController {
 
     @PutMapping("/{userId}/password")
     ResponseEntity<Void> resetPassword(@PathVariable("userId") UUID userId, @RequestBody ResetPasswordRequest body,
-                                        HttpServletRequest request, Authentication authentication) {
-        var principal = principalResolver.resolve(request, authentication);
+                                        Authentication authentication) {
+        var principal = principalResolver.resolve(authentication);
         if (!principal.isSuperuser()) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only admins can reset passwords");
         }
@@ -138,8 +137,8 @@ public class UserAdminController {
 
     @GetMapping("/{userId}/tokens")
     List<TokenSummaryResponse> listTokens(@PathVariable("userId") UUID userId,
-                                           HttpServletRequest request, Authentication authentication) {
-        requireAdmin(request, authentication);
+                                           Authentication authentication) {
+        requireAdmin(authentication);
         return patService.listForUser(userId).stream()
                 .map(t -> new TokenSummaryResponse(t.id(), t.name(), t.createdAt(), t.expiresAt()))
                 .toList();
@@ -148,8 +147,8 @@ public class UserAdminController {
     @PostMapping("/{userId}/tokens")
     ResponseEntity<CreatedTokenResponse> createToken(@PathVariable("userId") UUID userId,
                                                       @RequestBody CreateTokenRequest body,
-                                                      HttpServletRequest request, Authentication authentication) {
-        requireAdmin(request, authentication);
+                                                      Authentication authentication) {
+        requireAdmin(authentication);
         var issued = patService.issueForUser(userId, body.name(), body.expiresInDays());
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(new CreatedTokenResponse(issued.id(), issued.name(), issued.rawToken(), issued.expiresAt()));
@@ -157,14 +156,14 @@ public class UserAdminController {
 
     @DeleteMapping("/{userId}/tokens/{tokenId}")
     ResponseEntity<Void> revokeToken(@PathVariable("userId") UUID userId, @PathVariable("tokenId") UUID tokenId,
-                                      HttpServletRequest request, Authentication authentication) {
-        requireAdmin(request, authentication);
+                                      Authentication authentication) {
+        requireAdmin(authentication);
         patService.revokeForUser(userId, tokenId);
         return ResponseEntity.noContent().build();
     }
 
-    private void requireAdmin(HttpServletRequest request, Authentication authentication) {
-        var principal = principalResolver.resolve(request, authentication);
+    private void requireAdmin(Authentication authentication) {
+        var principal = principalResolver.resolve(authentication);
         if (!principal.isSuperuser()) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only admins can manage tokens");
         }

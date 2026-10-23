@@ -33,6 +33,7 @@ import org.ntrloc.graph.mutation.MutationRequest;
 import org.ntrloc.graph.mutation.MutationResponse;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.reactive.server.WebTestClient;
 
@@ -77,9 +78,8 @@ class CountedPredicateMarkerDecisionIntegrationTest extends AbstractIntegrationT
 
     @BeforeEach
     void setUp() {
-        // Same stand-in mechanism as MutationControllerIntegrationTest -- see that class's own
-        // comment on why "root" specifically.
-        webTestClient = webTestClient.mutate().defaultHeader("X-Ntrloc-User", "root").build();
+        // Same "root" as MutationControllerIntegrationTest -- see that class's own comment.
+        webTestClient = webTestClient.mutate().defaultHeader(HttpHeaders.AUTHORIZATION, bearerTokenFor("root")).build();
         fixture.removeAutoCreatedPipeline();
         actor = securityRepo.createUser("cpmd-actor-" + UUID.randomUUID(), "Counted Predicate Test Actor", null, true);
     }

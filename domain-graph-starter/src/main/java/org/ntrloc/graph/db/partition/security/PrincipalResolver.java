@@ -1,6 +1,5 @@
 package org.ntrloc.graph.db.partition.security;
 
-import jakarta.servlet.http.HttpServletRequest;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
@@ -34,30 +33,19 @@ public class PrincipalResolver {
     public static final String PRINCIPAL_VARIABLE = "principal";
 
     private final SecurityRepository repo;
-    private final SecurityProperties properties;
 
-    public PrincipalResolver(SecurityRepository repo, SecurityProperties properties) {
+    public PrincipalResolver(SecurityRepository repo) {
         this.repo = repo;
-        this.properties = properties;
     }
 
     /**
-     * Resolves the real authenticated session first, falling back to the header/query-param
-     * stand-in only when no real session exists. This order is what keeps the stand-in safe:
-     * SecurityConfig's filter chain already requires authentication for every request once
-     * graph.security.enabled=true, so a real Authentication is guaranteed present by the time
-     * this runs in that mode — the stand-in can only ever be reached when security is disabled
-     * (permissive/test mode), never as a way to spoof a principal past real authentication.
-     *
-     * The Authentication is passed in (resolved by Spring as a controller method parameter,
-     * e.g. via a bare Authentication/@AuthenticationPrincipal parameter) rather than pulled
-     * from SecurityContextHolder here, purely for symmetry with how every caller already obtains
-     * it -- under Spring MVC, SecurityContextHolder's thread-local IS populated correctly per
-     * request (unlike the WebFlux-era concern this comment used to describe), so either would work.
+     * Resolves the request's authenticated user. SecurityConfig's filter chain requires
+     * authentication for every non-open path, so an Authentication is present by the time a
+     * controller calls this; the 401 is a safety net, never an expected path.
      */
-    public NtrlocPrincipal resolve(HttpServletRequest request, Authentication authentication) {
+    public NtrlocPrincipal resolve(Authentication authentication) {
         return resolveFromAuthenticatedSession(authentication)
-                .orElseGet(() -> resolveFromStandIn(request));
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Not authenticated"));
     }
 
     private Optional<NtrlocPrincipal> resolveFromAuthenticatedSession(Authentication auth) {
@@ -75,24 +63,7 @@ public class PrincipalResolver {
         return repo.findUserByExternalId(auth.getName()).map(this::toPrincipal);
     }
 
-    private NtrlocPrincipal resolveFromStandIn(HttpServletRequest request) {
-        String externalId = request.getHeader(properties.getHeaderName());
-        if (externalId == null || externalId.isBlank()) {
-            externalId = request.getParameter(properties.getParamName());
-        }
-        if (externalId == null || externalId.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,
-                    "Missing stand-in principal: supply '%s' header or '%s' query param"
-                            .formatted(properties.getHeaderName(), properties.getParamName()));
-        }
-        String resolvedId = externalId;
-        var user = repo.findUserByExternalId(resolvedId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED,
-                        "Unknown stand-in principal: " + resolvedId));
-        return toPrincipal(user);
-    }
-
-    // No HTTP-flavored exception here (unlike resolveFromStandIn) -- there's no request to attach
+    // No HTTP-flavored exception here (unlike resolve) -- there's no request to attach
     // a 401 to when this runs from an engine event listener at process-start time. Returns empty
     // for "unknown", leaving the caller to decide what an unresolvable declared user means for it.
     public Optional<NtrlocPrincipal> resolveByExternalId(String externalId) {

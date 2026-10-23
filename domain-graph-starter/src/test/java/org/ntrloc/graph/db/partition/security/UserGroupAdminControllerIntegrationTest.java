@@ -5,6 +5,7 @@ import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.partition.authorization.DefaultUserGroupInitializer;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.reactive.server.WebTestClient;
@@ -36,7 +37,7 @@ class UserGroupAdminControllerIntegrationTest extends AbstractIntegrationTest {
     @SuppressWarnings("unchecked")
     private List<Map<String, Object>> getAsRoot(String uri) {
         return (List<Map<String, Object>>) (List<?>) webTestClient.get().uri(uri)
-                .header("X-Ntrloc-User", "root")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                 .exchange()
                 .expectStatus().isOk()
                 .expectBodyList(Map.class)
@@ -61,7 +62,7 @@ class UserGroupAdminControllerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void listUserGroups_asNonAdmin_isForbidden() {
         webTestClient.get().uri("/api/admin/user-groups")
-                .header("X-Ntrloc-User", "alice")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("alice"))
                 .exchange()
                 .expectStatus().isForbidden();
     }
@@ -73,7 +74,7 @@ class UserGroupAdminControllerIntegrationTest extends AbstractIntegrationTest {
         String name = "group-" + UUID.randomUUID();
 
         webTestClient.post().uri("/api/admin/user-groups")
-                .header("X-Ntrloc-User", "root")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(Map.of("name", name, "parentUserGroupId", defaultUserGroupInitializer.getDefaultUserGroupId()))
                 .exchange()
@@ -88,7 +89,7 @@ class UserGroupAdminControllerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void createUserGroup_withABlankName_returnsBadRequest() {
         webTestClient.post().uri("/api/admin/user-groups")
-                .header("X-Ntrloc-User", "root")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(Map.of("name", "   "))
                 .exchange()
@@ -101,7 +102,7 @@ class UserGroupAdminControllerIntegrationTest extends AbstractIntegrationTest {
         securityRepo.createUserGroup(name);
 
         webTestClient.post().uri("/api/admin/user-groups")
-                .header("X-Ntrloc-User", "root")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(Map.of("name", name, "parentUserGroupId", defaultUserGroupInitializer.getDefaultUserGroupId()))
                 .exchange()
@@ -116,7 +117,7 @@ class UserGroupAdminControllerIntegrationTest extends AbstractIntegrationTest {
         String newName = "renamed-" + UUID.randomUUID();
 
         webTestClient.put().uri("/api/admin/user-groups/" + group.id())
-                .header("X-Ntrloc-User", "root")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(Map.of("name", newName))
                 .exchange()
@@ -131,7 +132,7 @@ class UserGroupAdminControllerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void updateUserGroup_forAnUnknownUserGroup_returnsNotFound() {
         webTestClient.put().uri("/api/admin/user-groups/" + UUID.randomUUID())
-                .header("X-Ntrloc-User", "root")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(Map.of("name", "new-name"))
                 .exchange()
@@ -143,7 +144,7 @@ class UserGroupAdminControllerIntegrationTest extends AbstractIntegrationTest {
         var group = securityRepo.createUserGroup("group-" + UUID.randomUUID());
 
         webTestClient.put().uri("/api/admin/user-groups/" + group.id())
-                .header("X-Ntrloc-User", "root")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(Map.of("name", ""))
                 .exchange()
@@ -157,7 +158,7 @@ class UserGroupAdminControllerIntegrationTest extends AbstractIntegrationTest {
         var group = securityRepo.createUserGroup("group-" + UUID.randomUUID());
 
         webTestClient.delete().uri("/api/admin/user-groups/" + group.id())
-                .header("X-Ntrloc-User", "root")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                 .exchange()
                 .expectStatus().isNoContent();
 
@@ -167,7 +168,7 @@ class UserGroupAdminControllerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void deleteUserGroup_forAnUnknownUserGroup_returnsNotFound() {
         webTestClient.delete().uri("/api/admin/user-groups/" + UUID.randomUUID())
-                .header("X-Ntrloc-User", "root")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                 .exchange()
                 .expectStatus().isNotFound();
     }
@@ -177,7 +178,7 @@ class UserGroupAdminControllerIntegrationTest extends AbstractIntegrationTest {
         UUID defaultUserGroupId = defaultUserGroupInitializer.getDefaultUserGroupId();
 
         webTestClient.delete().uri("/api/admin/user-groups/" + defaultUserGroupId)
-                .header("X-Ntrloc-User", "root")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                 .exchange()
                 .expectStatus().isForbidden();
     }
@@ -198,7 +199,7 @@ class UserGroupAdminControllerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void listMembers_forAnUnknownUserGroup_returnsNotFound() {
         webTestClient.get().uri("/api/admin/user-groups/" + UUID.randomUUID() + "/members")
-                .header("X-Ntrloc-User", "root")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                 .exchange()
                 .expectStatus().isNotFound();
     }
@@ -209,7 +210,7 @@ class UserGroupAdminControllerIntegrationTest extends AbstractIntegrationTest {
         var user = securityRepo.createUser("user-" + UUID.randomUUID(), "New Member", null, false);
 
         webTestClient.post().uri("/api/admin/user-groups/" + group.id() + "/members")
-                .header("X-Ntrloc-User", "root")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(Map.of("userId", user.id().toString()))
                 .exchange()
@@ -223,7 +224,7 @@ class UserGroupAdminControllerIntegrationTest extends AbstractIntegrationTest {
         var user = securityRepo.createUser("user-" + UUID.randomUUID(), "New Member", null, false);
 
         webTestClient.post().uri("/api/admin/user-groups/" + UUID.randomUUID() + "/members")
-                .header("X-Ntrloc-User", "root")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(Map.of("userId", user.id().toString()))
                 .exchange()
@@ -237,7 +238,7 @@ class UserGroupAdminControllerIntegrationTest extends AbstractIntegrationTest {
         securityRepo.addUserToUserGroup(user.id(), group.id());
 
         webTestClient.delete().uri("/api/admin/user-groups/" + group.id() + "/members/" + user.id())
-                .header("X-Ntrloc-User", "root")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                 .exchange()
                 .expectStatus().isNoContent();
 
@@ -250,7 +251,7 @@ class UserGroupAdminControllerIntegrationTest extends AbstractIntegrationTest {
         var user = securityRepo.createUser("user-" + UUID.randomUUID(), "Member", null, false);
 
         webTestClient.delete().uri("/api/admin/user-groups/" + group.id() + "/members/" + user.id())
-                .header("X-Ntrloc-User", "alice")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("alice"))
                 .exchange()
                 .expectStatus().isForbidden();
     }

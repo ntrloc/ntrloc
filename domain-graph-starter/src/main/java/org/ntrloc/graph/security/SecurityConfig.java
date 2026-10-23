@@ -9,7 +9,6 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.ntrloc.graph.db.partition.security.LocalUserDetailsService;
 import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
 import org.ntrloc.graph.db.partition.security.PersonalAccessTokenService;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpHeaders;
@@ -23,7 +22,10 @@ import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.web.context.RequestAttributeSecurityContextRepository;
+import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.security.ldap.authentication.BindAuthenticator;
 import org.springframework.security.ldap.authentication.LdapAuthenticationProvider;
 import org.springframework.security.ldap.userdetails.DefaultLdapAuthoritiesPopulator;
@@ -42,7 +44,6 @@ import java.util.Optional;
 
 @Configuration
 @EnableWebSecurity
-@ConditionalOnProperty(name = "graph.security.enabled", havingValue = "true", matchIfMissing = true)
 public class SecurityConfig {
 
     private static final String LOGIN_PATH = "/login";
@@ -195,6 +196,8 @@ public class SecurityConfig {
     // NtrlocUserDetails gives local-credential logins; PrincipalResolver's fast path picks either
     // up identically via instanceof NtrlocPrincipal. The converter returns without setting anything
     // when there's no Bearer header, so ordinary session-based requests pass through untouched.
+    private final SecurityContextRepository patSecurityContextRepository = new RequestAttributeSecurityContextRepository();
+
     private OncePerRequestFilter patFilter() {
         return new OncePerRequestFilter() {
             @Override
@@ -206,7 +209,13 @@ public class SecurityConfig {
                     Optional<NtrlocPrincipal> principal = personalAccessTokenService.authenticate(token);
                     if (principal.isPresent()) {
                         Authentication auth = UsernamePasswordAuthenticationToken.authenticated(principal.get(), null, List.of());
-                        SecurityContextHolder.getContext().setAuthentication(auth);
+                        SecurityContext context = SecurityContextHolder.createEmptyContext();
+                        context.setAuthentication(auth);
+                        SecurityContextHolder.setContext(context);
+                        // Saved, not just set: an endpoint that completes asynchronously (a Mono
+                        // or SseEmitter return) finishes on a second dispatch, which this
+                        // OncePerRequestFilter skips -- the context has to be restorable there.
+                        patSecurityContextRepository.saveContext(context, request, response);
                     } else {
                         response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Invalid or expired personal access token");
                         return;

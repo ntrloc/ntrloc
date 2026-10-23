@@ -10,6 +10,7 @@ import org.ntrloc.graph.mutation.MutationRequest;
 import org.ntrloc.graph.mutation.MutationResponse;
 import org.ntrloc.graph.db.partition.binary.BinaryPartitionManager;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.web.reactive.server.WebTestClient;
@@ -52,8 +53,8 @@ class RegisterPartitionManagerBinaryDynamicPropertyIntegrationTest extends Abstr
     private JdbcClient jdbcClient;
 
     @BeforeEach
-    void authenticateAsStandInUser() {
-        webTestClient = webTestClient.mutate().defaultHeader("X-Ntrloc-User", "root").build();
+    void authenticateAsRoot() {
+        webTestClient = webTestClient.mutate().defaultHeader(HttpHeaders.AUTHORIZATION, bearerTokenFor("root")).build();
     }
 
     private UUID storeBinary() {

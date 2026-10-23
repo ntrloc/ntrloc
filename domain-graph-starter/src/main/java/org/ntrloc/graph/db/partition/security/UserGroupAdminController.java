@@ -4,7 +4,6 @@ import org.ntrloc.graph.db.partition.authorization.DefaultUserGroupInitializer;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -52,8 +51,8 @@ public class UserGroupAdminController {
     }
 
     @GetMapping
-    List<UserGroupView> listUserGroups(HttpServletRequest request, Authentication authentication) {
-        requireAdmin(request, authentication);
+    List<UserGroupView> listUserGroups(Authentication authentication) {
+        requireAdmin(authentication);
         return repo.listUserGroups().stream()
                 .map(this::toView)
                 .toList();
@@ -65,8 +64,8 @@ public class UserGroupAdminController {
     // this check the admin UI's old parent picker ("(Top level)" alongside "everyone") could create
     // a second, sibling root that the tree had no sensible way to relate to "everyone".
     @PostMapping
-    UserGroupView createUserGroup(@RequestBody CreateUserGroupRequest body, HttpServletRequest request, Authentication authentication) {
-        requireAdmin(request, authentication);
+    UserGroupView createUserGroup(@RequestBody CreateUserGroupRequest body, Authentication authentication) {
+        requireAdmin(authentication);
         if (body.name() == null || body.name().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "UserGroup name is required");
         }
@@ -85,8 +84,8 @@ public class UserGroupAdminController {
 
     @PutMapping("/{groupId}")
     UserGroupView updateUserGroup(@PathVariable("groupId") UUID groupId, @RequestBody UpdateUserGroupRequest body,
-                          HttpServletRequest request, Authentication authentication) {
-        requireAdmin(request, authentication);
+                          Authentication authentication) {
+        requireAdmin(authentication);
         repo.findUserGroupById(groupId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, GROUP_NOT_FOUND));
         if (body.name() == null || body.name().isBlank()) {
@@ -106,8 +105,8 @@ public class UserGroupAdminController {
     // exactly what the DAG-shaped schema underneath allows, just used in a restricted way.
     @PutMapping("/{groupId}/parent")
     UserGroupView updateParent(@PathVariable("groupId") UUID groupId, @RequestBody UpdateParentRequest body,
-                           HttpServletRequest request, Authentication authentication) {
-        requireAdmin(request, authentication);
+                           Authentication authentication) {
+        requireAdmin(authentication);
         var group = repo.findUserGroupById(groupId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, GROUP_NOT_FOUND));
         if (body.parentUserGroupId() == null) {
@@ -133,8 +132,8 @@ public class UserGroupAdminController {
 
     @DeleteMapping("/{groupId}")
     ResponseEntity<Void> deleteUserGroup(@PathVariable("groupId") UUID groupId,
-                                     HttpServletRequest request, Authentication authentication) {
-        requireAdmin(request, authentication);
+                                     Authentication authentication) {
+        requireAdmin(authentication);
         if (groupId.equals(defaultUserGroupInitializer.getDefaultUserGroupId())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Cannot delete the default group");
         }
@@ -146,8 +145,8 @@ public class UserGroupAdminController {
 
     @GetMapping("/{groupId}/members")
     List<MemberView> listMembers(@PathVariable("groupId") UUID groupId,
-                                 HttpServletRequest request, Authentication authentication) {
-        requireAdmin(request, authentication);
+                                 Authentication authentication) {
+        requireAdmin(authentication);
         repo.findUserGroupById(groupId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, GROUP_NOT_FOUND));
         return repo.listUserGroupMembers(groupId).stream()
@@ -157,8 +156,8 @@ public class UserGroupAdminController {
 
     @PostMapping("/{groupId}/members")
     ResponseEntity<Void> addMember(@PathVariable("groupId") UUID groupId, @RequestBody AddMemberRequest body,
-                                   HttpServletRequest request, Authentication authentication) {
-        requireAdmin(request, authentication);
+                                   Authentication authentication) {
+        requireAdmin(authentication);
         repo.findUserGroupById(groupId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, GROUP_NOT_FOUND));
         repo.addUserToUserGroup(body.userId(), groupId);
@@ -167,14 +166,14 @@ public class UserGroupAdminController {
 
     @DeleteMapping("/{groupId}/members/{userId}")
     ResponseEntity<Void> removeMember(@PathVariable("groupId") UUID groupId, @PathVariable("userId") UUID userId,
-                                      HttpServletRequest request, Authentication authentication) {
-        requireAdmin(request, authentication);
+                                      Authentication authentication) {
+        requireAdmin(authentication);
         repo.removeUserFromUserGroup(userId, groupId);
         return ResponseEntity.noContent().build();
     }
 
-    private void requireAdmin(HttpServletRequest request, Authentication authentication) {
-        var principal = principalResolver.resolve(request, authentication);
+    private void requireAdmin(Authentication authentication) {
+        var principal = principalResolver.resolve(authentication);
         if (!principal.isSuperuser()) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only admins can manage groups");
         }

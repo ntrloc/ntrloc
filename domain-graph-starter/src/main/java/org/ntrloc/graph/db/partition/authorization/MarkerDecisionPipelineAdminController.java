@@ -7,7 +7,6 @@ import org.ntrloc.graph.db.partition.authorization.repository.MarkerDecisionPipe
 import org.ntrloc.graph.db.partition.security.PrincipalResolver;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
-import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -54,14 +53,14 @@ public class MarkerDecisionPipelineAdminController {
     }
 
     @GetMapping
-    List<PipelineView> listPipelines(HttpServletRequest request, Authentication authentication) {
-        requireAdmin(request, authentication);
+    List<PipelineView> listPipelines(Authentication authentication) {
+        requireAdmin(authentication);
         return repository.getAllPipelines().stream().map(this::toView).toList();
     }
 
     @GetMapping("/{id}")
-    PipelineView getPipeline(@PathVariable UUID id, HttpServletRequest request, Authentication authentication) {
-        requireAdmin(request, authentication);
+    PipelineView getPipeline(@PathVariable UUID id, Authentication authentication) {
+        requireAdmin(authentication);
         return repository.findById(id).map(this::toView)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such pipeline"));
     }
@@ -69,15 +68,15 @@ public class MarkerDecisionPipelineAdminController {
     // The admin UI's primary lookup -- an item type has at most one pipeline, so this is the
     // surface it actually uses, rather than fetching the full list and filtering client-side.
     @GetMapping("/by-item-type/{itemTypeId}")
-    PipelineView getPipelineForItemType(@PathVariable UUID itemTypeId, HttpServletRequest request, Authentication authentication) {
-        requireAdmin(request, authentication);
+    PipelineView getPipelineForItemType(@PathVariable UUID itemTypeId, Authentication authentication) {
+        requireAdmin(authentication);
         return repository.findByItemTypeId(itemTypeId).map(this::toView)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No pipeline for this item type"));
     }
 
     @PostMapping
-    PipelineView createPipeline(@RequestBody CreatePipelineRequest body, HttpServletRequest request, Authentication authentication) {
-        requireAdmin(request, authentication);
+    PipelineView createPipeline(@RequestBody CreatePipelineRequest body, Authentication authentication) {
+        requireAdmin(authentication);
         if (body.itemTypeId() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "itemTypeId is required");
         }
@@ -93,8 +92,8 @@ public class MarkerDecisionPipelineAdminController {
 
     @PutMapping("/{id}")
     PipelineView updatePipeline(@PathVariable UUID id, @RequestBody UpdatePipelineRequest body,
-                                 HttpServletRequest request, Authentication authentication) {
-        requireAdmin(request, authentication);
+                                 Authentication authentication) {
+        requireAdmin(authentication);
         if (body.pipeline() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "pipeline is required");
         }
@@ -103,8 +102,8 @@ public class MarkerDecisionPipelineAdminController {
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    void deletePipeline(@PathVariable UUID id, HttpServletRequest request, Authentication authentication) {
-        requireAdmin(request, authentication);
+    void deletePipeline(@PathVariable UUID id, Authentication authentication) {
+        requireAdmin(authentication);
         repository.deletePipeline(id);
     }
 
@@ -116,8 +115,8 @@ public class MarkerDecisionPipelineAdminController {
         return layout != null ? layout : new PipelineLayout(Map.of(), Map.of());
     }
 
-    private void requireAdmin(HttpServletRequest request, Authentication authentication) {
-        var principal = principalResolver.resolve(request, authentication);
+    private void requireAdmin(Authentication authentication) {
+        var principal = principalResolver.resolve(authentication);
         if (!principal.isSuperuser()) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only admins can manage marker decision pipelines");
         }

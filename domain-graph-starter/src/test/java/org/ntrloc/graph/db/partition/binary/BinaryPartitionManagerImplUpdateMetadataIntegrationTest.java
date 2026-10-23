@@ -7,6 +7,7 @@ import org.ntrloc.graph.mutation.MutationRequest;
 import org.ntrloc.graph.mutation.MutationResponse;
 import org.ntrloc.graph.db.partition.register.RegisterProjectionTestDomainInitializer;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.web.reactive.server.WebTestClient;
@@ -111,7 +112,7 @@ class BinaryPartitionManagerImplUpdateMetadataIntegrationTest extends AbstractIn
         Map<String, Object> properties = new HashMap<>();
         properties.put("title", "Dune");
         properties.put("attachment", binaryId.toString());
-        MutationResponse response = webTestClient.mutate().defaultHeader("X-Ntrloc-User", "root").build()
+        MutationResponse response = webTestClient.mutate().defaultHeader(HttpHeaders.AUTHORIZATION, bearerTokenFor("root")).build()
                 .post().uri("/api/mutation")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(new MutationRequest(List.of(new ItemCreateMutation(null, BOOK_TYPE, properties)), List.of()))

@@ -5,17 +5,24 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.UUID;
+import java.util.regex.Pattern;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.TestInfo;
 import org.ntrloc.graph.AbstractIntegrationTest;
+import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.openqa.selenium.By;
 import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.chrome.ChromeOptions;
 import org.openqa.selenium.remote.RemoteWebDriver;
+import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.WebDriverWait;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.testcontainers.Testcontainers;
 import org.testcontainers.selenium.BrowserWebDriverContainer;
 import org.testcontainers.utility.DockerImageName;
@@ -26,6 +33,9 @@ import org.testcontainers.utility.DockerImageName;
  * Istanbul-instrumented build in ntrloc-admin-ui/target/dist-coverage/ (npm run build:coverage),
  * and each test's window.__coverage__ is written to ntrloc-admin-ui/target/coverage-data/ for
  * npm run coverage:report to merge into an LCOV file.
+ *
+ * Every test signs in through the real login page as a real local user it creates
+ * (createLocalAdmin), exactly as a person would -- nothing about authentication is stubbed.
  *
  * Shares AbstractIntegrationTest's application context (TestApplication scans UI hosting, and the
  * /admin-react mount is in the test application.yml): a second context against the same Postgres
@@ -56,8 +66,15 @@ public abstract class AbstractUiIntegrationTest extends AbstractIntegrationTest 
         BROWSER.start();
     }
 
+    /** A real local account: what a person would type into the login form. */
+    protected record LocalUser(String username, String password) {
+    }
+
     @LocalServerPort
     private int port;
+
+    @Autowired
+    private SecurityRepository securityRepository;
 
     protected WebDriver driver;
 
@@ -75,6 +92,30 @@ public abstract class AbstractUiIntegrationTest extends AbstractIntegrationTest 
         } finally {
             driver.quit();
         }
+    }
+
+    /** Creates a real superuser with local credentials, the same way LocalAccountSeeder does. */
+    protected LocalUser createLocalAdmin() {
+        String username = "ui-admin-" + UUID.randomUUID();
+        String password = UUID.randomUUID().toString();
+        var user = securityRepository.createUser(username, "UI Test Admin", null, true);
+        securityRepository.createLocalCredentials(user.id(), username,
+                "{bcrypt}" + new BCryptPasswordEncoder().encode(password), "ADMIN");
+        return new LocalUser(username, password);
+    }
+
+    /**
+     * Requests an admin UI page, signs in on the login page the server redirects to, and waits to
+     * land back on the requested page.
+     */
+    protected void openAdminUiAs(LocalUser user, String path) {
+        String url = serverUrl(ADMIN_UI_PATH + path);
+        driver.get(url);
+        await().until(ExpectedConditions.visibilityOfElementLocated(By.name("username"))).sendKeys(user.username());
+        driver.findElement(By.name("password")).sendKeys(user.password());
+        driver.findElement(By.name("password")).submit();
+        // Spring Security returns to the saved request with "?continue" appended.
+        await().until(ExpectedConditions.urlMatches("^" + Pattern.quote(url) + "(\\?.*)?$"));
     }
 
     protected String serverUrl(String path) {

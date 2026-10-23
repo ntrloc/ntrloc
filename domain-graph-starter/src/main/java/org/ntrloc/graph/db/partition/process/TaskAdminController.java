@@ -6,7 +6,6 @@ import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
 import org.ntrloc.graph.db.partition.security.PrincipalResolver;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -60,8 +59,8 @@ public class TaskAdminController {
     // directly, or via a process_group they belong to -- see ProcessGroupRepository, deliberately
     // not Flowable's own unwired IdentityService).
     @GetMapping("/tasks")
-    List<TaskView> listTasks(HttpServletRequest request, Authentication authentication) {
-        NtrlocPrincipal principal = principalResolver.resolve(request, authentication);
+    List<TaskView> listTasks(Authentication authentication) {
+        NtrlocPrincipal principal = principalResolver.resolve(authentication);
         var query = taskService.createTaskQuery();
         if (!principal.isSuperuser()) {
             Set<String> groupNames = groupRepo.getGroupNamesForUser(principal.id());
@@ -77,8 +76,8 @@ public class TaskAdminController {
     }
 
     @PostMapping("/tasks/{id}/claim")
-    ResponseEntity<?> claim(@PathVariable String id, HttpServletRequest request, Authentication authentication) {
-        NtrlocPrincipal principal = principalResolver.resolve(request, authentication);
+    ResponseEntity<?> claim(@PathVariable String id, Authentication authentication) {
+        NtrlocPrincipal principal = principalResolver.resolve(authentication);
         try {
             taskService.claim(id, principal.externalId());
             return ResponseEntity.ok(toView(taskService.createTaskQuery().taskId(id).singleResult()));

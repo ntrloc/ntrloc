@@ -135,6 +135,42 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
 
     // --- Item property read filtering ---
 
+    // The display label is computed from every property the caller may read, not just the ones
+    // requested -- but never from one they may not read.
+    @Test
+    void displayLabel_usesAReadablePropertyThatWasNotRequested() {
+        UUID productId = createProduct("Widget", "red");
+        var principal = newUserInEveryoneUserGroup();
+        UUID grantId = grantId(markerOnItem(productId).id(), principal);
+        authRepo.setItemPermissions(grantId, true, false);
+        authRepo.grantPropertyAccess(grantId, fixture.namePropertyId(), true, false);
+        authRepo.grantPropertyAccess(grantId, fixture.colorPropertyId(), true, false);
+
+        var item = entityManager.project(new ItemProjectionSpec("CoordinatorTestProduct", productId, null, List.of("color"), false, false),
+                "http://binary", principal).orElseThrow();
+
+        assertThat(item.properties()).containsOnlyKeys("color");
+        assertThat(item.displayLabel()).isEqualTo("Widget");
+    }
+
+    @Test
+    void displayLabel_neverRevealsAnUnreadableProperty() {
+        UUID productId = createProduct("Secret Widget", "red");
+        var principal = newUserInEveryoneUserGroup();
+        UUID grantId = grantId(markerOnItem(productId).id(), principal);
+        authRepo.setItemPermissions(grantId, true, false);
+        authRepo.grantPropertyAccess(grantId, fixture.colorPropertyId(), true, false);
+        // name -- the property the label pattern reads -- deliberately not granted
+
+        var requestingAll = entityManager.project(new ItemProjectionSpec("CoordinatorTestProduct", productId, null, true, false),
+                "http://binary", principal).orElseThrow();
+        var requestingColor = entityManager.project(new ItemProjectionSpec("CoordinatorTestProduct", productId, null, List.of("color"), false, false),
+                "http://binary", principal).orElseThrow();
+
+        assertThat(requestingAll.displayLabel()).isEqualTo(productId.toString());
+        assertThat(requestingColor.displayLabel()).isEqualTo(productId.toString());
+    }
+
     @Test
     void propertyWithNoReadGrant_isAbsentFromResponse() {
         UUID productId = createProduct("Widget", "red");

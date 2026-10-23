@@ -36,7 +36,6 @@ graph:
     ldap:
       enabled: false
   security:
-    enabled: true
     seed-local-accounts: true
     seed-test-data: false
   ui:

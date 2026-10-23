@@ -7,6 +7,7 @@ import org.ntrloc.graph.db.coordinator.CoordinatorTestDomainInitializer;
 import org.ntrloc.graph.db.partition.ledger.LedgerPartitionManager;
 import org.ntrloc.graph.db.partition.register.RegisterPartitionManager;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.web.reactive.server.WebTestClient;
@@ -39,15 +40,13 @@ class MutationControllerIntegrationTest extends AbstractIntegrationTest {
     @Autowired
     private JdbcClient jdbcClient;
 
-    // MutationController now resolves a principal for ledger attribution (EntityManager.mutate's
-    // own note) -- with graph.security.enabled=false in test config, PrincipalResolver falls
-    // through to the header/query-param stand-in (its own javadoc: only reachable when security
-    // is disabled). "root" is AuthorizationTestDataInitializer's globally-seeded superuser
+    // MutationController resolves a principal for ledger attribution (EntityManager.mutate's own
+    // note). "root" is AuthorizationTestDataInitializer's globally-seeded superuser
     // (ProcessEngineIntegrationTest already relies on the same one), not a value invented for
     // this file specifically.
     @BeforeEach
-    void authenticateAsStandInUser() {
-        webTestClient = webTestClient.mutate().defaultHeader("X-Ntrloc-User", "root").build();
+    void authenticateAsRoot() {
+        webTestClient = webTestClient.mutate().defaultHeader(HttpHeaders.AUTHORIZATION, bearerTokenFor("root")).build();
     }
 
     @Test

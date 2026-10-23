@@ -6,6 +6,7 @@ import org.ntrloc.graph.db.partition.authorization.repository.AuthorizationRepos
 import org.ntrloc.graph.db.partition.schema.repository.SchemaRepository;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.reactive.server.WebTestClient;
 
@@ -60,7 +61,7 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
     @SuppressWarnings("unchecked")
     private List<Map<String, Object>> getAsRoot(String uri) {
         return (List<Map<String, Object>>) (List<?>) webTestClient.get().uri(uri)
-                .header("X-Ntrloc-User", "root")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                 .exchange()
                 .expectStatus().isOk()
                 .expectBodyList(Map.class)
@@ -73,7 +74,7 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void nonAdminCallerIsForbidden() {
         webTestClient.get().uri("/api/admin/users/" + aliceId() + "/user-groups")
-                .header("X-Ntrloc-User", "alice")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("alice"))
                 .exchange()
                 .expectStatus().isForbidden();
     }
@@ -107,7 +108,7 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void getUserGroupPermissions_forUnknownUserGroup_returnsNotFound() {
         webTestClient.get().uri("/api/admin/user-groups/" + UUID.randomUUID() + "/permissions")
-                .header("X-Ntrloc-User", "root")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                 .exchange()
                 .expectStatus().isNotFound();
     }
@@ -118,7 +119,7 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
         assertThat(authRepo.findItemTypeGrant(publicDocId(), "USER_GROUP", group.id(), "item-type:read")).isEmpty();
 
         webTestClient.post().uri("/api/admin/user-groups/" + group.id() + "/permissions")
-                .header("X-Ntrloc-User", "root")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(Map.of("itemTypeId", publicDocId().toString(), "operation", "item-type:read"))
                 .exchange()
@@ -130,7 +131,7 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void grantUserGroupPermission_forUnknownUserGroup_returnsNotFound() {
         webTestClient.post().uri("/api/admin/user-groups/" + UUID.randomUUID() + "/permissions")
-                .header("X-Ntrloc-User", "root")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(Map.of("itemTypeId", publicDocId().toString(), "operation", "item-type:read"))
                 .exchange()
@@ -142,7 +143,7 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
         var group = securityRepo.createUserGroup("access-admin-test-" + UUID.randomUUID());
 
         webTestClient.post().uri("/api/admin/user-groups/" + group.id() + "/permissions")
-                .header("X-Ntrloc-User", "root")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(Map.of("operation", "item-type:read"))
                 .exchange()
@@ -154,7 +155,7 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
         var group = securityRepo.createUserGroup("access-admin-test-" + UUID.randomUUID());
 
         webTestClient.post().uri("/api/admin/user-groups/" + group.id() + "/permissions")
-                .header("X-Ntrloc-User", "root")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(Map.of("itemTypeId", publicDocId().toString(), "operation", "item:read"))
                 .exchange()
@@ -168,7 +169,7 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
         webTestClient.method(org.springframework.http.HttpMethod.DELETE)
                 .uri("/api/admin/user-groups/" + group.id() + "/permissions")
-                .header("X-Ntrloc-User", "root")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(Map.of("itemTypeId", publicDocId().toString(), "operation", "item-type:read"))
                 .exchange()
@@ -181,7 +182,7 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
     void revokeUserGroupPermission_forUnknownUserGroup_returnsNotFound() {
         webTestClient.method(org.springframework.http.HttpMethod.DELETE)
                 .uri("/api/admin/user-groups/" + UUID.randomUUID() + "/permissions")
-                .header("X-Ntrloc-User", "root")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(Map.of("itemTypeId", publicDocId().toString(), "operation", "item-type:read"))
                 .exchange()
@@ -194,7 +195,7 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
         webTestClient.method(org.springframework.http.HttpMethod.DELETE)
                 .uri("/api/admin/user-groups/" + group.id() + "/permissions")
-                .header("X-Ntrloc-User", "root")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(Map.of("operation", "item-type:read"))
                 .exchange()
@@ -207,7 +208,7 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
         webTestClient.method(org.springframework.http.HttpMethod.DELETE)
                 .uri("/api/admin/user-groups/" + group.id() + "/permissions")
-                .header("X-Ntrloc-User", "root")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(Map.of("itemTypeId", publicDocId().toString(), "operation", "item-type:read"))
                 .exchange()

@@ -1,5 +1,6 @@
 package org.ntrloc.graph.db.partition.process;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.flowable.engine.TaskService;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
@@ -9,6 +10,7 @@ import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateItemDefini
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateStateMachineMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateStateMutation;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.reactive.server.WebTestClient;
 
@@ -26,6 +28,13 @@ class ProcessAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private WebTestClient webTestClient;
+
+    // Every endpoint requires an authenticated caller. root is AuthorizationTestDataInitializer's
+    // seeded superuser; a request that sets its own Authorization header still uses that one.
+    @BeforeEach
+    void authenticateAsRoot() {
+        webTestClient = webTestClient.mutate().defaultHeader(HttpHeaders.AUTHORIZATION, bearerTokenFor("root")).build();
+    }
 
     @Autowired
     private TaskService taskService;
@@ -166,7 +175,7 @@ class ProcessAdminControllerIntegrationTest extends AbstractIntegrationTest {
         // success path without also completing the process.
         var instance = webTestClient.post().uri(uriBuilder -> uriBuilder.path("/api/admin/process/definitions/start")
                         .queryParam("id", helloWorld.id()).build())
-                .header("X-Ntrloc-User", "root")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                 .exchange()
                 .expectStatus().isOk()
                 .expectBody(ProcessAdminController.ProcessInstanceView.class)
@@ -227,7 +236,7 @@ class ProcessAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
         webTestClient.post().uri(uriBuilder -> uriBuilder.path("/api/admin/process/definitions/start")
                         .queryParam("id", definition.id()).build())
-                .header("X-Ntrloc-User", "root")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                 .exchange()
                 .expectStatus().isBadRequest()
                 .expectBody()
@@ -240,7 +249,7 @@ class ProcessAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
         webTestClient.post().uri(uriBuilder -> uriBuilder.path("/api/admin/process/definitions/start")
                         .queryParam("id", definition.id()).build())
-                .header("X-Ntrloc-User", "root")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(Map.of("variables", Map.of("requiredVar", "some value")))
                 .exchange()
@@ -253,7 +262,7 @@ class ProcessAdminControllerIntegrationTest extends AbstractIntegrationTest {
     void startProcessInstance_forAnUnknownDefinitionId_returnsBadRequestWithAMessage() {
         webTestClient.post().uri(uriBuilder -> uriBuilder.path("/api/admin/process/definitions/start")
                         .queryParam("id", "no-such-definition:1:" + UUID.randomUUID()).build())
-                .header("X-Ntrloc-User", "root")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                 .exchange()
                 .expectStatus().isBadRequest()
                 .expectBody()

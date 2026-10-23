@@ -89,7 +89,9 @@ public class RegisterProjectionTestDomainInitializer implements DomainInitialize
                         // Lets RegisterPartitionManagerProjectionIntegrationTest exercise sorting by a
                         // binary property's intrinsic content length (RegisterPartitionManager.sortExpressionFor).
                         property("attachment", PropertyType.BINARY, PropertyCardinality.SINGLE)),
-                null, false, null, List.of(),
+                // Display label pattern: lets the projection tests check labels, including when
+                // "title" itself isn't among the requested properties.
+                null, false, "title", List.of(),
                 // Two property groups, deliberately sharing a leaf name ("widthCm"), so dot-path
                 // resolution/filtering tests can exercise a real group-scoped lookup
                 // (dimensions.widthCm vs packaging.widthCm), not just a single unambiguous nested

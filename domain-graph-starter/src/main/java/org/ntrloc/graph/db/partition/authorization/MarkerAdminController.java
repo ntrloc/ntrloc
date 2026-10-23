@@ -4,7 +4,6 @@ import org.ntrloc.graph.db.partition.authorization.repository.AuthorizationRepos
 import org.ntrloc.graph.db.partition.security.PrincipalResolver;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.springframework.http.HttpStatus;
-import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -58,16 +57,16 @@ public class MarkerAdminController {
     }
 
     @GetMapping
-    List<MarkerView> listMarkers(HttpServletRequest request, Authentication authentication) {
-        requireAdmin(request, authentication);
+    List<MarkerView> listMarkers(Authentication authentication) {
+        requireAdmin(authentication);
         return authRepo.getAllMarkers().stream()
                 .map(m -> new MarkerView(m.id(), m.name(), m.description(), m.scopeKind(), m.scopeId()))
                 .toList();
     }
 
     @PostMapping
-    MarkerView createMarker(@RequestBody CreateMarkerRequest body, HttpServletRequest request, Authentication authentication) {
-        requireAdmin(request, authentication);
+    MarkerView createMarker(@RequestBody CreateMarkerRequest body, Authentication authentication) {
+        requireAdmin(authentication);
         if (body.name() == null || body.name().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "name is required");
         }
@@ -82,8 +81,8 @@ public class MarkerAdminController {
     }
 
     @PutMapping("/{id}")
-    MarkerView updateMarker(@PathVariable UUID id, @RequestBody UpdateMarkerRequest body, HttpServletRequest request, Authentication authentication) {
-        requireAdmin(request, authentication);
+    MarkerView updateMarker(@PathVariable UUID id, @RequestBody UpdateMarkerRequest body, Authentication authentication) {
+        requireAdmin(authentication);
         if (body.name() == null || body.name().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "name is required");
         }
@@ -93,8 +92,8 @@ public class MarkerAdminController {
 
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    void deleteMarker(@PathVariable UUID id, HttpServletRequest request, Authentication authentication) {
-        requireAdmin(request, authentication);
+    void deleteMarker(@PathVariable UUID id, Authentication authentication) {
+        requireAdmin(authentication);
         authRepo.deleteMarker(id);
     }
 
@@ -105,8 +104,8 @@ public class MarkerAdminController {
     // hierarchy has no row here; it still renders, just with nothing of its own to show).
     @GetMapping("/{markerId}/grants")
     MarkerGrantPrincipalsView getMarkerGrantPrincipals(@PathVariable UUID markerId,
-                                                        HttpServletRequest request, Authentication authentication) {
-        requireAdmin(request, authentication);
+                                                        Authentication authentication) {
+        requireAdmin(authentication);
         var groupNames = securityRepo.listUserGroups().stream()
                 .collect(Collectors.toMap(g -> g.id(), g -> g.name()));
         var userNames = securityRepo.listUsers().stream()
@@ -125,8 +124,8 @@ public class MarkerAdminController {
         return new MarkerGrantPrincipalsView(groups, users);
     }
 
-    private void requireAdmin(HttpServletRequest request, Authentication authentication) {
-        var principal = principalResolver.resolve(request, authentication);
+    private void requireAdmin(Authentication authentication) {
+        var principal = principalResolver.resolve(authentication);
         if (!principal.isSuperuser()) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only admins can manage markers");
         }

@@ -4,7 +4,6 @@ import org.ntrloc.graph.db.EntityManager;
 import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
 import org.ntrloc.graph.db.partition.security.PrincipalResolver;
 import org.springframework.http.ResponseEntity;
-import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -30,14 +29,11 @@ public class MutationController {
     }
 
     @PostMapping
-    ResponseEntity<?> mutate(@RequestBody MutationRequest request, HttpServletRequest httpRequest, Authentication authentication) {
+    ResponseEntity<?> mutate(@RequestBody MutationRequest request, Authentication authentication) {
         try {
-            // Same resolve(request, authentication) ProcessAdminController.startProcessInstance
-            // already uses -- real session first, stand-in header/query-param fallback only when
-            // security is disabled. Never returns null (the stand-in path throws 401 if
-            // unresolvable), which is what entityManager.mutate() now demands via @PreAuthorize
-            // (see docs/ntrloc-principal-enforcement-plan.md, Part C).
-            NtrlocPrincipal principal = principalResolver.resolve(httpRequest, authentication);
+            // Never returns null (throws 401 instead), which entityManager.mutate() demands via
+            // @PreAuthorize (see docs/ntrloc-principal-enforcement-plan.md, Part C).
+            NtrlocPrincipal principal = principalResolver.resolve(authentication);
             return ResponseEntity.ok(entityManager.mutate(request, principal));
         } catch (MutationValidationException e) {
             return ResponseEntity.badRequest().body(new MutationErrorResponse(e.errors()));

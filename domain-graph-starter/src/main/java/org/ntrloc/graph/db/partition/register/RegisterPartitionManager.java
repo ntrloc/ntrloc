@@ -410,14 +410,12 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                 .list();
 
         Map<UUID, AdminPropertyDefinitionView> propertyViewsById = propertyViewsByIdForItemType(itemTypeId);
-        Map<UUID, List<String>> ownPropertyNames = restrictToRequestedProperties(
-                propertyPathsByIdForItemType(itemTypeId), propertyViewsById, spec.properties());
         List<AdminStateMachineView> stateMachines = schemaManager.getAdminSchema().items().stream()
                 .filter(item -> item.id().equals(itemTypeId))
                 .findFirst()
                 .map(AdminItemDefinitionView::stateMachines)
                 .orElse(null);
-        var items = assembleProjectedItems(rawItems, ownPropertyNames, propertyViewsById, stateMachines, binaryBaseUrl,
+        var items = assembleProjectedItems(rawItems, propertyPathsByIdForItemType(itemTypeId), propertyViewsById, stateMachines, binaryBaseUrl,
                 new RenderOptions(spec.links(), permissions, Boolean.TRUE.equals(spec.includePermissions()), Boolean.TRUE.equals(spec.includeStates()), spec.properties()));
         return new ProjectionResult(items, totalCount, facetedCount, facets, stateMachineFacets);
     }
@@ -547,9 +545,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                     .ifPresent(mergedStateMachines::addAll);
         }
 
-        var items = assembleProjectedItems(rawItems,
-                restrictToRequestedProperties(mergedPropertyNames, mergedPropertyViews, spec.properties()),
-                mergedPropertyViews,
+        var items = assembleProjectedItems(rawItems, mergedPropertyNames, mergedPropertyViews,
                 mergedStateMachines.isEmpty() ? null : mergedStateMachines, binaryBaseUrl,
                 new RenderOptions(spec.links(), permissions, Boolean.TRUE.equals(spec.includePermissions()), Boolean.TRUE.equals(spec.includeStates()), spec.properties()));
         return new ProjectionResult(items, totalCount, facetedCount, facets, stateMachineFacets);
@@ -868,14 +864,12 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
             return Optional.empty();
         }
         Map<UUID, AdminPropertyDefinitionView> propertyViewsById = propertyViewsByIdForItemType(itemTypeId);
-        Map<UUID, List<String>> ownPropertyNames = restrictToRequestedProperties(
-                propertyPathsByIdForItemType(itemTypeId), propertyViewsById, requestedProperties);
         List<AdminStateMachineView> stateMachines = schemaManager.getAdminSchema().items().stream()
                 .filter(item -> item.id().equals(itemTypeId))
                 .findFirst()
                 .map(AdminItemDefinitionView::stateMachines)
                 .orElse(null);
-        return Optional.of(assembleProjectedItems(rawItems, ownPropertyNames, propertyViewsById, stateMachines, binaryBaseUrl,
+        return Optional.of(assembleProjectedItems(rawItems, propertyPathsByIdForItemType(itemTypeId), propertyViewsById, stateMachines, binaryBaseUrl,
                 new RenderOptions(requestedLinks, permissions, includePermissions, includeStates, requestedProperties)).get(0));
     }
 
@@ -2584,7 +2578,10 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
     private record RenderOptions(@Nullable Map<String, LinkProjectionSpec> requestedLinks, RequestPermissionContext permissions,
                                   boolean includePermissions, boolean includeStates, @Nullable List<String> requestedProperties) {}
 
-    private List<ProjectedItem> assembleProjectedItems(List<RawItem> rawItems, Map<UUID, List<String>> ownPropertyNames,
+    // allPropertyNames is every property path of the item type(s), unrestricted: the response's
+    // properties are narrowed to options.requestedProperties() here, but each display label is
+    // computed from all of the item's readable properties (see assembleProjectedItem).
+    private List<ProjectedItem> assembleProjectedItems(List<RawItem> rawItems, Map<UUID, List<String>> allPropertyNames,
                                                          Map<UUID, AdminPropertyDefinitionView> propertyViewsById,
                                                          List<AdminStateMachineView> stateMachines, String binaryBaseUrl,
                                                          RenderOptions options) {
@@ -2592,6 +2589,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
         // rejects as a syntax error when the list is empty. A page whose offset lands past the last
         // row (offset >= totalCount) reaches here with an empty list; it must come back as [], not 500.
         if (rawItems.isEmpty()) return List.of();
+        Map<UUID, List<String>> ownPropertyNames = restrictToRequestedProperties(allPropertyNames, propertyViewsById, options.requestedProperties());
         RequestPermissionContext permissions = options.permissions();
         boolean includePermissions = options.includePermissions();
         List<UUID> rawItemIds = rawItems.stream().map(RawItem::registerItemId).toList();
@@ -2618,15 +2616,16 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
         Map<UUID, Set<UUID>> effectiveReadGrants = permissions.superuser() ? null
                 : readImpliedByWrite(permissions.propertyReadGrantsByMarker(), permissions.propertyWriteGrantsByMarker());
 
-        Map<UUID, Map<String, String>> controlledListLabelsByPropertyId = resolveControlledListLabels(ownPropertyNames, propertyViewsById);
+        Map<UUID, Map<String, String>> controlledListLabelsByPropertyId = resolveControlledListLabels(allPropertyNames, propertyViewsById);
 
-        AssemblyContext ctx = new AssemblyContext(ownPropertyNames, controlledListLabelsByPropertyId, stateMachines, displayLabelPatterns,
+        AssemblyContext ctx = new AssemblyContext(allPropertyNames, ownPropertyNames, controlledListLabelsByPropertyId, stateMachines, displayLabelPatterns,
                 linksByItem, markerIdsByRegisterItemId, binaryPropsByItem, effectiveReadGrants,
                 markerNamesById, permissions, includePermissions, options.includeStates(), options.requestedProperties());
         return rawItems.stream().map(raw -> assembleProjectedItem(raw, ctx)).toList();
     }
 
     private record AssemblyContext(
+            Map<UUID, List<String>> allPropertyNames,
             Map<UUID, List<String>> ownPropertyNames,
             Map<UUID, Map<String, String>> controlledListLabelsByPropertyId,
             List<AdminStateMachineView> stateMachines,
@@ -2640,6 +2639,18 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
             boolean includePermissions,
             boolean includeStates,
             @Nullable List<String> requestedProperties) {}
+
+    // The label identifies the item, so it reads every property the caller may see, not just the
+    // requested subset. With no restriction, props already is exactly that. (Binary properties
+    // aren't merged in for a restricted request -- a label pattern has no use for one.)
+    private Map<String, Object> displayLabelInput(Map<String, Object> props, Map<String, Object> readableProps, AssemblyContext ctx) {
+        if (ctx.requestedProperties() == null) {
+            return props;
+        }
+        Map<String, Object> all = namesForIds(readableProps, ctx.allPropertyNames());
+        applyControlledListLabels(all, ctx.allPropertyNames(), ctx.controlledListLabelsByPropertyId());
+        return all;
+    }
 
     private ProjectedItem assembleProjectedItem(RawItem raw, AssemblyContext ctx) {
         Set<UUID> markerIds = ctx.markerIdsByRegisterItemId().getOrDefault(raw.registerItemId(), Set.of());
@@ -2669,7 +2680,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                 ctx.linksByItem().getOrDefault(raw.registerItemId(), Map.of()),
                 ctx.includeStates() ? buildProjectedItemStates(raw.states(), ctx.stateMachines(), markerIds, ctx.permissions()) : null,
                 itemPermissions,
-                computeDisplayLabel(raw.itemId(), props, ctx.displayLabelPatterns().get(raw.itemType())),
+                computeDisplayLabel(raw.itemId(), displayLabelInput(props, readableProps, ctx), ctx.displayLabelPatterns().get(raw.itemType())),
                 markerNames,
                 // createdBy/updatedBy are left null here -- RegisterPartitionManager must never
                 // resolve or import anything security-related; EntityManagerImpl fills these in

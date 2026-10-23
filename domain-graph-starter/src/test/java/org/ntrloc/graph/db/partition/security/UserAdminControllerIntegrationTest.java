@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.reactive.server.WebTestClient;
 
@@ -30,7 +31,7 @@ class UserAdminControllerIntegrationTest extends AbstractIntegrationTest {
     @SuppressWarnings("unchecked")
     private List<Map<String, Object>> getAsRoot(String uri) {
         return (List<Map<String, Object>>) (List<?>) webTestClient.get().uri(uri)
-                .header("X-Ntrloc-User", "root")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                 .exchange()
                 .expectStatus().isOk()
                 .expectBodyList(Map.class)
@@ -52,7 +53,7 @@ class UserAdminControllerIntegrationTest extends AbstractIntegrationTest {
         String externalId = "user-" + UUID.randomUUID();
 
         webTestClient.post().uri("/api/admin/users")
-                .header("X-Ntrloc-User", "root")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(Map.of("externalId", externalId, "displayName", "New User",
                         "email", "new@example.com", "password", "s3cret!"))
@@ -72,7 +73,7 @@ class UserAdminControllerIntegrationTest extends AbstractIntegrationTest {
         String externalId = "user-" + UUID.randomUUID();
 
         webTestClient.post().uri("/api/admin/users")
-                .header("X-Ntrloc-User", "root")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(Map.of("externalId", externalId, "displayName", "New Admin",
                         "email", "newadmin@example.com", "password", "s3cret!", "role", "admin"))
@@ -85,7 +86,7 @@ class UserAdminControllerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void createUser_asNonAdmin_isForbidden() {
         webTestClient.post().uri("/api/admin/users")
-                .header("X-Ntrloc-User", "alice")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("alice"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(Map.of("externalId", "user-" + UUID.randomUUID(), "displayName", "X",
                         "email", "x@example.com", "password", "s3cret!"))
@@ -96,7 +97,7 @@ class UserAdminControllerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void createUser_forAnExternalIdThatAlreadyExists_returnsConflict() {
         webTestClient.post().uri("/api/admin/users")
-                .header("X-Ntrloc-User", "root")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(Map.of("externalId", "alice", "displayName", "Duplicate Alice",
                         "email", "dup@example.com", "password", "s3cret!"))
@@ -111,7 +112,7 @@ class UserAdminControllerIntegrationTest extends AbstractIntegrationTest {
         var user = securityRepo.createUser("user-" + UUID.randomUUID(), "Original Name", null, false);
 
         webTestClient.put().uri("/api/admin/users/" + user.id())
-                .header("X-Ntrloc-User", "root")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(Map.of("externalId", user.externalId(), "displayName", "Updated Name", "email", "updated@example.com", "role", "admin"))
                 .exchange()
@@ -130,7 +131,7 @@ class UserAdminControllerIntegrationTest extends AbstractIntegrationTest {
         var user = securityRepo.createUser("user-" + UUID.randomUUID(), "Original Name", null, false);
 
         webTestClient.put().uri("/api/admin/users/" + user.id())
-                .header("X-Ntrloc-User", "alice")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("alice"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(Map.of("displayName", "Updated Name", "email", "updated@example.com"))
                 .exchange()
@@ -146,7 +147,7 @@ class UserAdminControllerIntegrationTest extends AbstractIntegrationTest {
         securityRepo.createLocalCredentials(user.id(), email, "{bcrypt}old-hash", "USER");
 
         webTestClient.put().uri("/api/admin/users/" + user.id() + "/password")
-                .header("X-Ntrloc-User", "root")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(Map.of("newPassword", "new-s3cret!"))
                 .exchange()
@@ -161,7 +162,7 @@ class UserAdminControllerIntegrationTest extends AbstractIntegrationTest {
         var user = securityRepo.createUser("user-" + UUID.randomUUID(), "Local User", null, false);
 
         webTestClient.put().uri("/api/admin/users/" + user.id() + "/password")
-                .header("X-Ntrloc-User", "alice")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("alice"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(Map.of("newPassword", "new-s3cret!"))
                 .exchange()
@@ -175,14 +176,14 @@ class UserAdminControllerIntegrationTest extends AbstractIntegrationTest {
         var user = securityRepo.createUser("user-" + UUID.randomUUID(), "Token User", null, false);
 
         webTestClient.get().uri("/api/admin/users/" + user.id() + "/tokens")
-                .header("X-Ntrloc-User", "root")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                 .exchange()
                 .expectStatus().isOk()
                 .expectBodyList(Map.class)
                 .hasSize(0);
 
         var createResponse = webTestClient.post().uri("/api/admin/users/" + user.id() + "/tokens")
-                .header("X-Ntrloc-User", "root")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(Map.of("name", "My Token", "expiresInDays", 30))
                 .exchange()
@@ -196,19 +197,19 @@ class UserAdminControllerIntegrationTest extends AbstractIntegrationTest {
         UUID tokenId = UUID.fromString((String) createResponse.get("id"));
 
         webTestClient.get().uri("/api/admin/users/" + user.id() + "/tokens")
-                .header("X-Ntrloc-User", "root")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                 .exchange()
                 .expectStatus().isOk()
                 .expectBodyList(Map.class)
                 .hasSize(1);
 
         webTestClient.delete().uri("/api/admin/users/" + user.id() + "/tokens/" + tokenId)
-                .header("X-Ntrloc-User", "root")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                 .exchange()
                 .expectStatus().isNoContent();
 
         webTestClient.get().uri("/api/admin/users/" + user.id() + "/tokens")
-                .header("X-Ntrloc-User", "root")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                 .exchange()
                 .expectStatus().isOk()
                 .expectBodyList(Map.class)
@@ -220,7 +221,7 @@ class UserAdminControllerIntegrationTest extends AbstractIntegrationTest {
         var user = securityRepo.createUser("user-" + UUID.randomUUID(), "Token User", null, false);
 
         webTestClient.get().uri("/api/admin/users/" + user.id() + "/tokens")
-                .header("X-Ntrloc-User", "alice")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("alice"))
                 .exchange()
                 .expectStatus().isForbidden();
     }

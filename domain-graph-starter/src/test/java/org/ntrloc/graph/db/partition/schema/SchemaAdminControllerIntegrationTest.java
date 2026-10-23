@@ -1,5 +1,7 @@
 package org.ntrloc.graph.db.partition.schema;
 
+import org.springframework.http.HttpHeaders;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
@@ -17,9 +19,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-// Covers SchemaAdminController's schema/controlled-list/mutation endpoints. Unlike the other admin
-// controllers (Access/User/Group/Task), this one never calls PrincipalResolver -- no admin check
-// gates any of these endpoints -- so tests here don't set an X-Ntrloc-User header. Uses a fresh,
+// Covers SchemaAdminController's schema/controlled-list/mutation endpoints. Uses a fresh,
 // UUID-suffixed item type + property per test (via SchemaManager directly) rather than
 // CoordinatorTestDomainInitializer's shared fixture, since the controlled-list tests mutate a
 // specific property's controlled-list state and shouldn't risk perturbing another test class's
@@ -28,6 +28,13 @@ class SchemaAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private WebTestClient webTestClient;
+
+    // Every endpoint requires an authenticated caller. root is AuthorizationTestDataInitializer's
+    // seeded superuser; a request that sets its own Authorization header still uses that one.
+    @BeforeEach
+    void authenticateAsRoot() {
+        webTestClient = webTestClient.mutate().defaultHeader(HttpHeaders.AUTHORIZATION, bearerTokenFor("root")).build();
+    }
 
     @Autowired
     private SchemaManager schemaManager;

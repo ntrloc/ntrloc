@@ -13,7 +13,6 @@ import org.ntrloc.graph.db.partition.security.PrincipalResolver;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.lang.Nullable;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -211,7 +210,7 @@ public class ProcessAdminController {
     // updates in place as it runs, so isEnded() on it already reflects the final state.
     @PostMapping("/definitions/start")
     ResponseEntity<?> startProcessInstance(@RequestParam String id, @RequestBody(required = false) StartProcessRequest request,
-                                            HttpServletRequest httpRequest, Authentication authentication) {
+                                            Authentication authentication) {
         Map<String, Object> variables = request != null && request.variables() != null
                 ? new HashMap<>(request.variables())
                 : new HashMap<>();
@@ -238,7 +237,7 @@ public class ProcessAdminController {
         // serialized principal object -- see PrincipalResolver.resolveById's own comment: a process
         // instance that outlives this HTTP request should re-resolve the user's *current* state
         // later, not act on a snapshot cached at start time.
-        NtrlocPrincipal principal = principalResolver.resolve(httpRequest, authentication);
+        NtrlocPrincipal principal = principalResolver.resolve(authentication);
         variables.put(PrincipalResolver.PRINCIPAL_VARIABLE, principal.id().toString());
         try {
             ProcessInstance instance = runtimeService.startProcessInstanceById(id, variables);

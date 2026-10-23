@@ -1,5 +1,11 @@
 package org.ntrloc.graph;
 
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
+import org.ntrloc.graph.db.partition.security.PersonalAccessTokenService;
+import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webtestclient.autoconfigure.AutoConfigureWebTestClient;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -35,5 +41,26 @@ public abstract class AbstractIntegrationTest {
         registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
+    }
+
+    // One token per user for the whole JVM run, like the Postgres container and context above.
+    private static final Map<String, String> BEARER_TOKENS = new ConcurrentHashMap<>();
+
+    @Autowired
+    private SecurityRepository securityRepository;
+
+    @Autowired
+    private PersonalAccessTokenService personalAccessTokenService;
+
+    /**
+     * An Authorization header value that authenticates HTTP calls as the existing user with this
+     * externalId -- a real personal access token, checked by the real security filter chain.
+     */
+    protected String bearerTokenFor(String externalId) {
+        return BEARER_TOKENS.computeIfAbsent(externalId, id -> {
+            var user = securityRepository.findUserByExternalId(id)
+                    .orElseThrow(() -> new IllegalArgumentException("No user with externalId " + id));
+            return "Bearer " + personalAccessTokenService.issueForUser(user.id(), "integration-test", null).rawToken();
+        });
     }
 }

@@ -3,7 +3,6 @@ package org.ntrloc.graph.db.partition.security;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -31,15 +30,15 @@ public class AccountController {
     }
 
     @GetMapping("/me")
-    public MeResponse me(HttpServletRequest request, Authentication authentication) {
-        var principal = principalResolver.resolve(request, authentication);
+    public MeResponse me(Authentication authentication) {
+        var principal = principalResolver.resolve(authentication);
         return new MeResponse(principal.externalId(), principal.displayName(), principal.email(), principal.isSuperuser());
     }
 
     @PutMapping("/password")
     public ResponseEntity<Void> changePassword(@RequestBody ChangePasswordRequest body,
-                                                HttpServletRequest request, Authentication authentication) {
-        var principal = principalResolver.resolve(request, authentication);
+                                                Authentication authentication) {
+        var principal = principalResolver.resolve(authentication);
 
         var credentials = repo.findCredentialsByEmail(principal.externalId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "No local credentials for this account"));

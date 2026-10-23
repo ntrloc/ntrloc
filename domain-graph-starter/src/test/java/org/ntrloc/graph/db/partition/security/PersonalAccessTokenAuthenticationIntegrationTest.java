@@ -16,9 +16,7 @@ import org.testcontainers.postgresql.PostgreSQLContainer;
 import java.util.Set;
 
 /**
- * Exercises the bearer-token (PAT) authentication path with real Spring Security enabled —
- * unlike AuthorizationEndpointsIntegrationTest, which deliberately runs with security disabled
- * to test the marker/grant model via the stand-in header in isolation. Tokens are minted
+ * Exercises the bearer-token (PAT) authentication path. Tokens are minted
  * directly through PersonalAccessTokenService (bypassing the /pat endpoint's own auth
  * requirement) so each test only exercises the one thing it's meant to prove: does a bearer
  * token presented via the Authorization header authenticate as its owning user.
@@ -38,7 +36,6 @@ import java.util.Set;
 @SpringBootTest(classes = TestApplication.class, webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @AutoConfigureWebTestClient
 @TestPropertySource(properties = {
-        "graph.security.enabled=true",
         "graph.auth.oauth.enabled=false",
         "graph.auth.ldap.enabled=false"
 })

@@ -1,5 +1,7 @@
 package org.ntrloc.graph.db.partition.process.dmn;
 
+import org.springframework.http.HttpHeaders;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.coordinator.CoordinatorTestDomainInitializer;
@@ -31,6 +33,13 @@ class DecisionAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private WebTestClient webTestClient;
+
+    // Every endpoint requires an authenticated caller. root is AuthorizationTestDataInitializer's
+    // seeded superuser; a request that sets its own Authorization header still uses that one.
+    @BeforeEach
+    void authenticateAsRoot() {
+        webTestClient = webTestClient.mutate().defaultHeader(HttpHeaders.AUTHORIZATION, bearerTokenFor("root")).build();
+    }
 
     @Autowired
     private CoordinatorTestDomainInitializer fixture;

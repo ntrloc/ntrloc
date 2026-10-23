@@ -3,7 +3,6 @@ package org.ntrloc.graph.events;
 import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
 import org.ntrloc.graph.db.partition.security.PrincipalResolver;
 import org.springframework.http.MediaType;
-import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -41,9 +40,9 @@ public class ClusterEventController {
     }
 
     @GetMapping(value = "/api/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    SseEmitter events(@RequestParam List<String> types, HttpServletRequest request, Authentication authentication) {
+    SseEmitter events(@RequestParam List<String> types, Authentication authentication) {
         Set<String> requestedTypes = Set.copyOf(types);
-        NtrlocPrincipal principal = principalResolver.resolve(request, authentication);
+        NtrlocPrincipal principal = principalResolver.resolve(authentication);
         return broadcaster.register(event -> requestedTypes.contains(event.type())
                 && visibilityRegistry.isVisible(event, principal));
     }

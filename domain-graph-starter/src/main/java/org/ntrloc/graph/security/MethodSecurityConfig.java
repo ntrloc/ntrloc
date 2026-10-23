@@ -3,12 +3,9 @@ package org.ntrloc.graph.security;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 
-// Deliberately NOT on SecurityConfig, and deliberately NOT @ConditionalOnProperty: SecurityConfig
-// is conditional on graph.security.enabled, which is false in tests and in permissive/local mode.
-// Method-level principal enforcement must hold regardless of whether the *web* filter chain is
-// active -- a service demanding a principal is an invariant of the service, not a deployment
-// option. Putting this on SecurityConfig would silently drop every guard in exactly the
-// configurations where a bypass is easiest.
+// Method-level principal enforcement is an invariant of each service, independent of the web
+// filter chain -- it also guards calls that never pass through an HTTP request (process scripts,
+// MCP tools), so it lives here rather than on SecurityConfig.
 //
 // The servlet variant, not the reactive one: confirmed empirically (see
 // docs/ntrloc-principal-enforcement-plan.md, Part C) that @EnableReactiveMethodSecurity hard-fails

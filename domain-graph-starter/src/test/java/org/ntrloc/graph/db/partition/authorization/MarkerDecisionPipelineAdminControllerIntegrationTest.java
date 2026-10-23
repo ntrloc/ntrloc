@@ -1,5 +1,6 @@
 package org.ntrloc.graph.db.partition.authorization;
 
+import org.springframework.http.HttpHeaders;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
@@ -66,7 +67,7 @@ class MarkerDecisionPipelineAdminControllerIntegrationTest extends AbstractInteg
         PipelineLayout layout = new PipelineLayout(Map.of(pipeline.start().id(), new Point(10, 20), pipeline.end().id(), new Point(300, 20)), Map.of());
 
         PipelineView created = webTestClient.post().uri("/api/admin/marker-decision-pipelines")
-                .header("X-Ntrloc-User", "root")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                 .bodyValue(new CreatePipelineRequest(fixture.productTypeId(), pipeline, layout))
                 .exchange()
                 .expectStatus().isOk()
@@ -79,7 +80,7 @@ class MarkerDecisionPipelineAdminControllerIntegrationTest extends AbstractInteg
             assertThat(created.layout()).isEqualTo(layout);
 
             PipelineView fetched = webTestClient.get().uri("/api/admin/marker-decision-pipelines/{id}", created.id())
-                    .header("X-Ntrloc-User", "root")
+                    .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                     .exchange()
                     .expectStatus().isOk()
                     .expectBody(PipelineView.class)
@@ -90,7 +91,7 @@ class MarkerDecisionPipelineAdminControllerIntegrationTest extends AbstractInteg
             assertThat(fetched.layout()).isEqualTo(layout);
         } finally {
             webTestClient.delete().uri("/api/admin/marker-decision-pipelines/{id}", created.id())
-                    .header("X-Ntrloc-User", "root")
+                    .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                     .exchange()
                     .expectStatus().isNoContent();
         }
@@ -100,7 +101,7 @@ class MarkerDecisionPipelineAdminControllerIntegrationTest extends AbstractInteg
     void listIncludesACreatedPipeline() {
         Pipeline pipeline = simplePipeline(UUID.randomUUID());
         PipelineView created = webTestClient.post().uri("/api/admin/marker-decision-pipelines")
-                .header("X-Ntrloc-User", "root")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                 .bodyValue(new CreatePipelineRequest(fixture.productTypeId(), pipeline, null))
                 .exchange()
                 .expectStatus().isOk()
@@ -109,7 +110,7 @@ class MarkerDecisionPipelineAdminControllerIntegrationTest extends AbstractInteg
 
         try {
             List<PipelineView> all = webTestClient.get().uri("/api/admin/marker-decision-pipelines")
-                    .header("X-Ntrloc-User", "root")
+                    .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                     .exchange()
                     .expectStatus().isOk()
                     .expectBodyList(PipelineView.class)
@@ -118,7 +119,7 @@ class MarkerDecisionPipelineAdminControllerIntegrationTest extends AbstractInteg
             assertThat(all).extracting(PipelineView::id).contains(created.id());
         } finally {
             webTestClient.delete().uri("/api/admin/marker-decision-pipelines/{id}", created.id())
-                    .header("X-Ntrloc-User", "root")
+                    .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                     .exchange()
                     .expectStatus().isNoContent();
         }
@@ -128,7 +129,7 @@ class MarkerDecisionPipelineAdminControllerIntegrationTest extends AbstractInteg
     void getByItemType_returnsThePipelineBoundToThatType() {
         Pipeline pipeline = simplePipeline(UUID.randomUUID());
         PipelineView created = webTestClient.post().uri("/api/admin/marker-decision-pipelines")
-                .header("X-Ntrloc-User", "root")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                 .bodyValue(new CreatePipelineRequest(fixture.productTypeId(), pipeline, null))
                 .exchange()
                 .expectStatus().isOk()
@@ -137,7 +138,7 @@ class MarkerDecisionPipelineAdminControllerIntegrationTest extends AbstractInteg
 
         try {
             PipelineView fetched = webTestClient.get().uri("/api/admin/marker-decision-pipelines/by-item-type/{itemTypeId}", fixture.productTypeId())
-                    .header("X-Ntrloc-User", "root")
+                    .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                     .exchange()
                     .expectStatus().isOk()
                     .expectBody(PipelineView.class)
@@ -147,12 +148,12 @@ class MarkerDecisionPipelineAdminControllerIntegrationTest extends AbstractInteg
             assertThat(fetched.id()).isEqualTo(created.id());
 
             webTestClient.get().uri("/api/admin/marker-decision-pipelines/by-item-type/{itemTypeId}", fixture.contributorTypeId())
-                    .header("X-Ntrloc-User", "root")
+                    .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                     .exchange()
                     .expectStatus().isNotFound();
         } finally {
             webTestClient.delete().uri("/api/admin/marker-decision-pipelines/{id}", created.id())
-                    .header("X-Ntrloc-User", "root")
+                    .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                     .exchange()
                     .expectStatus().isNoContent();
         }
@@ -163,7 +164,7 @@ class MarkerDecisionPipelineAdminControllerIntegrationTest extends AbstractInteg
     @Test
     void creatingASecondPipelineForTheSameItemType_isConflict() {
         PipelineView created = webTestClient.post().uri("/api/admin/marker-decision-pipelines")
-                .header("X-Ntrloc-User", "root")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                 .bodyValue(new CreatePipelineRequest(fixture.productTypeId(), simplePipeline(UUID.randomUUID()), null))
                 .exchange()
                 .expectStatus().isOk()
@@ -172,13 +173,13 @@ class MarkerDecisionPipelineAdminControllerIntegrationTest extends AbstractInteg
 
         try {
             webTestClient.post().uri("/api/admin/marker-decision-pipelines")
-                    .header("X-Ntrloc-User", "root")
+                    .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                     .bodyValue(new CreatePipelineRequest(fixture.productTypeId(), simplePipeline(UUID.randomUUID()), null))
                     .exchange()
                     .expectStatus().isEqualTo(409);
         } finally {
             webTestClient.delete().uri("/api/admin/marker-decision-pipelines/{id}", created.id())
-                    .header("X-Ntrloc-User", "root")
+                    .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                     .exchange()
                     .expectStatus().isNoContent();
         }
@@ -188,7 +189,7 @@ class MarkerDecisionPipelineAdminControllerIntegrationTest extends AbstractInteg
     void update_changesEnabledFlagAndLayout() {
         Pipeline pipeline = simplePipeline(UUID.randomUUID());
         PipelineView created = webTestClient.post().uri("/api/admin/marker-decision-pipelines")
-                .header("X-Ntrloc-User", "root")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                 .bodyValue(new CreatePipelineRequest(fixture.productTypeId(), pipeline, null))
                 .exchange()
                 .expectStatus().isOk()
@@ -198,7 +199,7 @@ class MarkerDecisionPipelineAdminControllerIntegrationTest extends AbstractInteg
         try {
             PipelineLayout newLayout = new PipelineLayout(Map.of(pipeline.start().id(), new Point(5, 5)), Map.of());
             PipelineView updated = webTestClient.put().uri("/api/admin/marker-decision-pipelines/{id}", created.id())
-                    .header("X-Ntrloc-User", "root")
+                    .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                     .bodyValue(new UpdatePipelineRequest(pipeline, false, newLayout))
                     .exchange()
                     .expectStatus().isOk()
@@ -210,7 +211,7 @@ class MarkerDecisionPipelineAdminControllerIntegrationTest extends AbstractInteg
             assertThat(updated.layout()).isEqualTo(newLayout);
         } finally {
             webTestClient.delete().uri("/api/admin/marker-decision-pipelines/{id}", created.id())
-                    .header("X-Ntrloc-User", "root")
+                    .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                     .exchange()
                     .expectStatus().isNoContent();
         }
@@ -220,7 +221,7 @@ class MarkerDecisionPipelineAdminControllerIntegrationTest extends AbstractInteg
     void deletingAPipeline_removesIt() {
         Pipeline pipeline = simplePipeline(UUID.randomUUID());
         PipelineView created = webTestClient.post().uri("/api/admin/marker-decision-pipelines")
-                .header("X-Ntrloc-User", "root")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                 .bodyValue(new CreatePipelineRequest(fixture.productTypeId(), pipeline, null))
                 .exchange()
                 .expectStatus().isOk()
@@ -228,12 +229,12 @@ class MarkerDecisionPipelineAdminControllerIntegrationTest extends AbstractInteg
                 .returnResult().getResponseBody();
 
         webTestClient.delete().uri("/api/admin/marker-decision-pipelines/{id}", created.id())
-                .header("X-Ntrloc-User", "root")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                 .exchange()
                 .expectStatus().isNoContent();
 
         webTestClient.get().uri("/api/admin/marker-decision-pipelines/{id}", created.id())
-                .header("X-Ntrloc-User", "root")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                 .exchange()
                 .expectStatus().isNotFound();
     }
@@ -241,7 +242,7 @@ class MarkerDecisionPipelineAdminControllerIntegrationTest extends AbstractInteg
     @Test
     void creatingWithoutRequiredFields_isBadRequest() {
         webTestClient.post().uri("/api/admin/marker-decision-pipelines")
-                .header("X-Ntrloc-User", "root")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                 .bodyValue(new CreatePipelineRequest(null, simplePipeline(UUID.randomUUID()), null))
                 .exchange()
                 .expectStatus().isBadRequest();
@@ -252,7 +253,7 @@ class MarkerDecisionPipelineAdminControllerIntegrationTest extends AbstractInteg
         Pipeline pipeline = simplePipeline(UUID.randomUUID());
 
         PipelineView created = webTestClient.post().uri("/api/admin/marker-decision-pipelines")
-                .header("X-Ntrloc-User", "root")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                 .bodyValue(new CreatePipelineRequest(fixture.productTypeId(), pipeline, null))
                 .exchange()
                 .expectStatus().isOk()
@@ -264,7 +265,7 @@ class MarkerDecisionPipelineAdminControllerIntegrationTest extends AbstractInteg
             assertThat(created.layout()).isEqualTo(new PipelineLayout(Map.of(), Map.of()));
         } finally {
             webTestClient.delete().uri("/api/admin/marker-decision-pipelines/{id}", created.id())
-                    .header("X-Ntrloc-User", "root")
+                    .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
                     .exchange()
                     .expectStatus().isNoContent();
         }
