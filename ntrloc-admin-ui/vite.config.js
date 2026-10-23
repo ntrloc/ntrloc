@@ -1,5 +1,6 @@
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
+import istanbul from 'vite-plugin-istanbul'
 
 // Must match MountBasePathResourceTransformer.PLACEHOLDER
 // (domain-graph-starter/src/main/java/org/ntrloc/ui/hosting/) exactly -- that's the one place
@@ -26,7 +27,7 @@ function injectBaseHrefPlaceholder(command) {
 }
 
 // https://vite.dev/config/
-export default defineConfig(({ command }) => ({
+export default defineConfig(({ command, mode }) => ({
   // Dev server still serves from root ("npm run dev" at :5173, unaffected). The production build
   // uses relative asset paths (no leading slash) rather than any fixed absolute prefix -- there
   // is no one fixed prefix: this UI's built dist/ is consumed by more than one independent
@@ -41,7 +42,19 @@ export default defineConfig(({ command }) => ({
   // import.meta.env.BASE_URL, which would just be this literal relative string) for
   // BrowserRouter's basename, so the two never drift apart.
   base: command === 'build' ? './' : '/',
-  plugins: [react(), injectBaseHrefPlaceholder(command)],
+  // `--mode coverage` (npm run build:coverage) instruments src/ with Istanbul for the Selenium UI
+  // tests, which read window.__coverage__ back out. It builds to target/dist-coverage/, never the
+  // target/dist/ that domain-graph-starter bundles into its jar. Both live under target/ so
+  // `mvn clean` removes them, as for any other module.
+  plugins: [
+    react(),
+    injectBaseHrefPlaceholder(command),
+    mode === 'coverage' && istanbul({ include: 'src/**', forceBuildInstrument: true }),
+  ],
+  build: {
+    outDir: mode === 'coverage' ? 'target/dist-coverage' : 'target/dist',
+    sourcemap: mode === 'coverage',
+  },
   server: {
     // Vite binds to localhost only by default -- unreachable from another machine on the LAN
     // regardless of firewall rules, since it's not listening on that interface at all. true binds

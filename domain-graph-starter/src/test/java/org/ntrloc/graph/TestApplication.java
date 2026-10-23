@@ -9,9 +9,10 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 /**
  * Test-only entry point. Nothing under main/ depends on this — it exists purely so
  * integration tests in this module have a Spring Boot context to bootstrap, since the
- * module currently ships no production Application class of its own.
+ * module currently ships no production Application class of its own. Also scans UI hosting so
+ * the admin UI Selenium tests (AbstractUiIntegrationTest) share this one context.
  */
-@SpringBootApplication
+@SpringBootApplication(scanBasePackages = {"org.ntrloc.graph", "org.ntrloc.ui.hosting"})
 @EnableConfigurationProperties({AuthProperties.class, BinaryStorageAdapterConfiguration.class})
 public class TestApplication {
 

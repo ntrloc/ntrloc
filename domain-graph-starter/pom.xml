@@ -22,6 +22,7 @@
         <jackson.tools.version>3.1.4</jackson.tools.version>
         <scalar.version>3.0.3</scalar.version>
         <testcontainers.version>2.0.5</testcontainers.version>
+        <selenium.version>4.43.0</selenium.version>
         <opentelemetry.instrumentation.version>2.29.0</opentelemetry.instrumentation.version>
         <spring-ai.version>2.0.0</spring-ai.version>
         <hazelcast.version>5.5.0</hazelcast.version>
@@ -33,6 +34,17 @@
     </properties>
 
     <dependencies>
+
+        <!-- Build-order only: no classes, nothing on the classpath, not passed on to consumers.
+             Makes the reactor build ntrloc-admin-ui first, so its clean can't delete the UI test
+             coverage this module's build writes into ntrloc-admin-ui/target/ afterwards. -->
+        <dependency>
+            <groupId>org.ntrloc</groupId>
+            <artifactId>ntrloc-admin-ui</artifactId>
+            <version>${project.version}</version>
+            <type>pom</type>
+            <scope>provided</scope>
+        </dependency>
 
         <!-- Spring -->
         <dependency>
@@ -347,6 +359,37 @@
             <scope>test</scope>
         </dependency>
 
+        <!-- React admin UI tests (*UiTest, see the ui-tests profile): the browser runs in a container,
+             driven over RemoteWebDriver. Selenium itself is "provided" in testcontainers-selenium,
+             so it's declared here, pinned to what Spring Boot 4.1.0's BOM manages. -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers-selenium</artifactId>
+            <version>${testcontainers.version}</version>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.seleniumhq.selenium</groupId>
+            <artifactId>selenium-remote-driver</artifactId>
+            <version>${selenium.version}</version>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.seleniumhq.selenium</groupId>
+            <artifactId>selenium-chrome-driver</artifactId>
+            <version>${selenium.version}</version>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.seleniumhq.selenium</groupId>
+            <artifactId>selenium-support</artifactId>
+            <version>${selenium.version}</version>
+            <scope>test</scope>
+        </dependency>
+
         <dependency>
             <groupId>io.projectreactor</groupId>
             <artifactId>reactor-test</artifactId>
@@ -415,7 +458,7 @@
                                  and MountBasePathResourceTransformer): the real mount path is
                                  resolved server-side, at serve time, from whatever
                                  runtimes/domain-1/application.yml's graph.ui.mounts entry says,
-                                 not baked into the build. The exact same dist/ this produces would
+                                 not baked into the build. The exact same target/dist/ this produces would
                                  work unmodified for ntrloc-dam's own, different mount path too. -->
                             <arguments>run build</arguments>
                         </configuration>
@@ -423,14 +466,14 @@
                 </executions>
             </plugin>
 
-            <!-- Copies the just-built dist/ into this module's own packaged resources, at the
+            <!-- Copies the just-built target/dist/ into this module's own packaged resources, at the
                  classpath location UiHostingConfiguration's /admin-react mount serves from
                  (runtimes/domain-1's application.yml); so the React UI is genuinely bundled
                  into this jar, same as the existing vanilla-JS admin-ui already is, rather than
                  served from an external file:// path that only exists on this one checkout.
                  copy-resources defaults to the process-resources phase, which already runs after
                  generate-resources (frontend-maven-plugin's own default binding above), so the
-                 npm build is guaranteed to have already produced dist/ by the time this runs. -->
+                 npm build is guaranteed to have already produced target/dist/ by the time this runs. -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-resources-plugin</artifactId>
@@ -447,7 +490,7 @@
                             <outputDirectory>${project.build.outputDirectory}/static/admin-react</outputDirectory>
                             <resources>
                                 <resource>
-                                    <directory>${project.basedir}/../ntrloc-admin-ui/dist</directory>
+                                    <directory>${project.basedir}/../ntrloc-admin-ui/target/dist</directory>
                                 </resource>
                             </resources>
                         </configuration>
@@ -456,5 +499,75 @@
             </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <!-- Selenium tests for the React admin UI (*UiTest) run with the ordinary unit tests unless
+             -DskipUiTests is given. This profile builds an Istanbul-instrumented copy of the UI into
+             ntrloc-admin-ui/target/dist-coverage/ (never the target/dist/ bundled into this jar)
+             before the tests, then merges the window.__coverage__ dumps they write into
+             ntrloc-admin-ui/target/coverage/lcov.info for Sonar. The report runs in the test phase too,
+             after surefire, since surefire is declared ahead of frontend-maven-plugin above. -->
+        <profile>
+            <id>ui-tests</id>
+            <activation>
+                <property>
+                    <name>skipUiTests</name>
+                    <value>!true</value>
+                </property>
+            </activation>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>com.github.eirslett</groupId>
+                        <artifactId>frontend-maven-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>npm build coverage</id>
+                                <phase>generate-test-resources</phase>
+                                <goals>
+                                    <goal>npm</goal>
+                                </goals>
+                                <configuration>
+                                    <arguments>run build:coverage</arguments>
+                                </configuration>
+                            </execution>
+                            <execution>
+                                <id>npm coverage report</id>
+                                <phase>test</phase>
+                                <goals>
+                                    <goal>npm</goal>
+                                </goals>
+                                <configuration>
+                                    <arguments>run coverage:report</arguments>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+        <profile>
+            <id>skip-ui-tests</id>
+            <activation>
+                <property>
+                    <name>skipUiTests</name>
+                    <value>true</value>
+                </property>
+            </activation>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <configuration>
+                            <excludes>
+                                <exclude>**/*UiTest.java</exclude>
+                            </excludes>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 
 </project>
