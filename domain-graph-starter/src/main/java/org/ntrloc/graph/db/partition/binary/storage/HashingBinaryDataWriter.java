@@ -11,7 +11,11 @@ public class HashingBinaryDataWriter {
 
     private final String id;
     private final OutputStream hashingOutputStream;
+    // Fields only because close() reads them after streaming: one writer per upload, never shared
+    // across threads, so S9428's concern (a digest shared between callers) doesn't apply.
+    @SuppressWarnings("java:S9428")
     private final MessageDigest sha256Digest;
+    @SuppressWarnings("java:S9428")
     private final MessageDigest md5Digest;
 
     @SuppressWarnings("java:S4790")

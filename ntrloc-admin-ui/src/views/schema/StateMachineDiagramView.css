@@ -45,7 +45,7 @@
   fill: var(--code-bg);
   stroke: var(--border);
   stroke-width: 1.5;
-  rx: 8;
+  rx: 8px;
 }
 
 /* START = filled dot, END = ringed dot (UML initial/final pseudostate convention). */
