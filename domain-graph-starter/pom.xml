@@ -25,9 +25,9 @@
         <selenium.version>4.43.0</selenium.version>
         <opentelemetry.instrumentation.version>2.29.0</opentelemetry.instrumentation.version>
         <spring-ai.version>2.0.0</spring-ai.version>
-        <hazelcast.version>5.5.0</hazelcast.version>
-        <!-- Matches media-processor-api's own pinned version, which matches ntrloc-media-processor's -->
-        <grpc.version>1.68.2</grpc.version>
+        <hazelcast.version>5.7.0</hazelcast.version>
+        <!-- Must match media-processor-api's grpc.version: all io.grpc artifacts share one version -->
+        <grpc.version>1.85.1</grpc.version>
         <!-- Set to true (e.g. -Dfrontend.skip=true) to skip the React admin UI build when
              iterating purely on Java; same flag name/purpose as ntrloc-admin-ui's own pom. -->
         <frontend.skip>false</frontend.skip>
@@ -181,10 +181,10 @@
         </dependency>
 
         <!-- Both jackson worlds in this build (tools.jackson.core:jackson-databind for Jackson 3.x,
-             plus the root pom's legacy com.fasterxml.jackson stack, now on 2.21.5) share this one
+             plus the root pom's legacy com.fasterxml.jackson stack, now on 2.21.8) share this one
              artifact. Since Jackson 2.20, jackson-annotations deliberately dropped its patch
              segment and ships as a bare "2.21" for the whole 2.21.x line (see jackson-bom's
-             jackson.version.annotations), so this stays "2.21" even though databind is 2.21.5.
+             jackson.version.annotations), so this stays "2.21" even though databind is 2.21.8.
              Pinned directly here so Maven's depth-based mediation can't hand some consumer of this
              module a "nearer" transitive 2.19.x copy instead. -->
         <dependency>

@@ -23,9 +23,9 @@
         <maven.compiler.release>17</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
-        <!-- Matches ntrloc-media-processor's own versions exactly: both sides of the wire need
-             to agree, and this is the module that used to be compiled inside that project. -->
-        <grpc.version>1.68.2</grpc.version>
+        <!-- gRPC's wire protocol is version-tolerant, so this needn't match ntrloc-media-processor's
+             server-side gRPC; it was bumped ahead of it for CVE fixes (Netty MadeYouReset). -->
+        <grpc.version>1.85.1</grpc.version>
         <protobuf.version>4.28.3</protobuf.version>
     </properties>
 
