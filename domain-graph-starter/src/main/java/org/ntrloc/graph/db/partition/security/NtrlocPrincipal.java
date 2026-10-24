@@ -1,5 +1,6 @@
 package org.ntrloc.graph.db.partition.security;
 
+import java.io.Serializable;
 import java.security.Principal;
 import java.util.Objects;
 import java.util.Set;
@@ -13,8 +14,11 @@ import java.util.UUID;
 // record because a record's constructor can't be less visible than the record itself.
 //
 // Implements java.security.Principal (getName() is the email) so an Authentication whose principal
-// is an NtrlocPrincipal behaves sensibly under Spring Security's own getName() convention too.
-public final class NtrlocPrincipal implements Principal {
+// is an NtrlocPrincipal behaves sensibly under Spring Security's own getName() convention too, and
+// Serializable because a login session holds it.
+public final class NtrlocPrincipal implements Principal, Serializable {
+
+    private static final long serialVersionUID = 1L;
 
     private final UUID id;
     private final String displayName;

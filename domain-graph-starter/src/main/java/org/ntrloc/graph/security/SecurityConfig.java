@@ -10,13 +10,14 @@ import org.ntrloc.graph.db.partition.security.ExternalPrincipalResolver;
 import org.ntrloc.graph.db.partition.security.ExternalUserProvisioner;
 import org.ntrloc.graph.db.partition.security.LocalAuthenticationProvider;
 import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
+import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpHeaders;
 import org.springframework.ldap.core.support.LdapContextSource;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
-import org.springframework.security.authentication.ProviderManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.authorization.AuthorizationDecision;
 import org.springframework.security.config.Customizer;
@@ -29,6 +30,9 @@ import org.springframework.security.web.context.RequestAttributeSecurityContextR
 import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.security.ldap.authentication.BindAuthenticator;
 import org.springframework.security.ldap.search.FilterBasedLdapUserSearch;
+import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
+import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
+import org.springframework.security.oauth2.core.OAuth2Error;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
@@ -49,16 +53,19 @@ public class SecurityConfig {
     private static final String LOGIN_PATH = "/login";
 
     private final AuthProperties authProperties;
-    private final LocalAuthenticationProvider localAuthenticationProvider;
+    private final SecurityRepository securityRepository;
     private final ExternalPrincipalResolver principals;
     private final ExternalUserProvisioner provisioner;
+    private final ObjectProvider<ClientRegistrationRepository> clientRegistrations;
 
-    public SecurityConfig(AuthProperties authProperties, LocalAuthenticationProvider localAuthenticationProvider,
-                           ExternalPrincipalResolver principals, ExternalUserProvisioner provisioner) {
+    public SecurityConfig(AuthProperties authProperties, SecurityRepository securityRepository,
+                           ExternalPrincipalResolver principals, ExternalUserProvisioner provisioner,
+                           ObjectProvider<ClientRegistrationRepository> clientRegistrations) {
         this.authProperties = authProperties;
-        this.localAuthenticationProvider = localAuthenticationProvider;
+        this.securityRepository = securityRepository;
         this.principals = principals;
         this.provisioner = provisioner;
+        this.clientRegistrations = clientRegistrations;
     }
 
     @PostConstruct
@@ -70,18 +77,28 @@ public class SecurityConfig {
             throw new IllegalStateException(
                     "At least one authentication method must be enabled");
         }
+        if (authProperties.getOauth().isEnabled() && clientRegistrations.getIfAvailable() == null) {
+            throw new IllegalStateException("graph.auth.oauth.enabled is set, but no OpenID Connect provider is "
+                    + "configured under spring.security.oauth2.client.registration");
+        }
     }
 
     @Bean
     public SecurityFilterChain securityFilterChain(
             HttpSecurity http,
             AuthenticationEntryPoint entryPoint) throws Exception {
-        // Shared by httpBasic() and formLogin() below -- without this explicit wiring, HttpSecurity
-        // builds its own AuthenticationManagerBuilder from auto-detected beans instead of picking up
-        // compositeAuthenticationManager() the way WebFlux's equivalent auto-wired a lone
-        // ReactiveAuthenticationManager bean (the servlet side has no equivalent implicit pickup).
+        // Username/password providers, tried in this order by the one AuthenticationManager that
+        // HttpSecurity builds -- which also holds the OAuth2 login providers oauth2Login() registers
+        // (so this must never be replaced by an explicit http.authenticationManager(...)). A
+        // BadCredentialsException from one moves on to the next.
+        if (authProperties.getLdap().isEnabled()) {
+            http.authenticationProvider(ldapAuthenticationProvider());
+        }
+        if (authProperties.getLocal().isEnabled()) {
+            http.authenticationProvider(new LocalAuthenticationProvider(principals, securityRepository));
+        }
+
         http
-                .authenticationManager(compositeAuthenticationManager())
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth
                         // An error response from any filter below (e.g. patFilter()'s
@@ -98,7 +115,8 @@ public class SecurityConfig {
                         // principal like every controller's own admin check -- never from granted
                         // authorities.
                         .requestMatchers("/admin/**", "/admin-react/**").access((authentication, context) ->
-                                new AuthorizationDecision(isAdmin(authentication.get())))
+                                new AuthorizationDecision(principals.fromAuthentication(authentication.get())
+                                        .map(NtrlocPrincipal::isAdmin).orElse(false)))
                         .anyRequest().authenticated()
                 )
                 .exceptionHandling(exceptions -> exceptions
@@ -110,15 +128,19 @@ public class SecurityConfig {
                 );
 
         if (authProperties.getOauth().isEnabled()) {
-            http.oauth2Login(oauth -> oauth.loginPage(LOGIN_PATH));
+            // OpenID Connect only: a plain OAuth2 provider has no verified email to resolve a user by.
+            http.oauth2Login(oauth -> oauth
+                    .loginPage(LOGIN_PATH)
+                    .userInfoEndpoint(userInfo -> userInfo
+                            .oidcUserService(new NtrlocOidcUserService(principals, provisioner))
+                            .userService(request -> {
+                                throw new OAuth2AuthenticationException(new OAuth2Error("invalid_client"),
+                                        "Only OpenID Connect providers are supported (request the openid scope)");
+                            })));
         }
 
         if (authProperties.getLocal().isEnabled() ||
                 authProperties.getLdap().isEnabled()) {
-            // No per-mechanism .authenticationManager(...) override here (FormLoginConfigurer
-            // doesn't expose one in this Spring Security version, confirmed by compile error when
-            // one was tried) -- the top-level http.authenticationManager(...) call above already
-            // covers this filter too, same shared manager.
             http.formLogin(form -> form.loginPage(LOGIN_PATH));
         }
 
@@ -146,11 +168,6 @@ public class SecurityConfig {
         return patterns.toArray(new String[0]);
     }
 
-    private static boolean isAdmin(Authentication authentication) {
-        return authentication != null && authentication.getPrincipal() instanceof NtrlocPrincipal principal
-                && principal.isAdmin();
-    }
-
     @Bean
     public AuthenticationEntryPoint authenticationEntryPoint() {
         return new LoginUrlAuthenticationEntryPoint(LOGIN_PATH);
@@ -161,24 +178,6 @@ public class SecurityConfig {
         SimpleUrlLogoutSuccessHandler handler = new SimpleUrlLogoutSuccessHandler();
         handler.setDefaultTargetUrl(LOGIN_PATH);
         return handler;
-    }
-
-    private AuthenticationManager compositeAuthenticationManager() {
-        List<AuthenticationProvider> providers = new ArrayList<>();
-
-        if (authProperties.getLdap().isEnabled()) {
-            providers.add(ldapAuthenticationProvider());
-        }
-        if (authProperties.getLocal().isEnabled()) {
-            providers.add(localAuthenticationProvider);
-        }
-
-        // ProviderManager tries each provider in turn, moving to the next on an
-        // AuthenticationException (e.g. BadCredentialsException) rather than requiring every
-        // provider to "know" about every other one -- the direct servlet equivalent of
-        // DelegatingReactiveAuthenticationManager's "empty means try the next" contract, just
-        // signaled by exception instead of an empty result.
-        return new ProviderManager(providers);
     }
 
     // Search for the user's entry with the configured filter, then bind as it to check the password.

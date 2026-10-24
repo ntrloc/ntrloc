@@ -18,6 +18,12 @@ public interface ExternalPrincipalResolver {
     Optional<NtrlocPrincipal> byToken(String rawToken);
 
     /**
+     * The principal an authenticated request carries; empty for an anonymous or unauthenticated
+     * one. Never a lookup: every login resolves its principal once, when it happens.
+     */
+    Optional<NtrlocPrincipal> fromAuthentication(Authentication authentication);
+
+    /**
      * The principal of an authenticated request. SecurityConfig's filter chain requires
      * authentication for every non-open path, so this throws a 401 only as a safety net.
      */

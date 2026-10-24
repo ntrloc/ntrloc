@@ -1,0 +1,106 @@
+package org.ntrloc.graph.security;
+
+import org.junit.jupiter.api.Test;
+import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.MediaType;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import org.testcontainers.postgresql.PostgreSQLContainer;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+// OpenID Connect login with auto-provisioning off: the provider's verified email must already
+// belong to an ntrloc account, or the login is rejected. Each test uses its own Keycloak user (see
+// oidc/ntrloc-realm.json), so none depends on another's account.
+class OidcLoginIntegrationTest extends AbstractOidcIntegrationTest {
+
+    private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:18");
+
+    static {
+        POSTGRES.start();
+    }
+
+    @DynamicPropertySource
+    static void registerProperties(DynamicPropertyRegistry registry) {
+        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
+        registry.add("spring.datasource.username", POSTGRES::getUsername);
+        registry.add("spring.datasource.password", POSTGRES::getPassword);
+        registry.add("graph.security.auto-provision.enabled", () -> "false");
+    }
+
+    @Autowired
+    private SecurityRepository securityRepo;
+
+    @Test
+    void theLoginPage_offersEachConfiguredProvider() {
+        String page = webTestClient.get().uri("/login").accept(MediaType.TEXT_HTML)
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(String.class).returnResult().getResponseBody();
+
+        assertThat(page).contains("href=\"/oauth2/authorization/keycloak\"").contains("Sign In with Keycloak")
+                .doesNotContain("Local Account");
+    }
+
+    // With local login off, a local password is refused everywhere -- including HTTP Basic, which
+    // would otherwise reach Spring Security's global fallback AuthenticationManager.
+    @Test
+    void aLocalPassword_isRefused_whenLocalLoginIsOff() {
+        var user = securityRepo.createUser("Local Only", "local-only@example.org", false);
+        securityRepo.createLocalCredentials(user.id(), "{bcrypt}" + new BCryptPasswordEncoder().encode("local-secret"));
+
+        webTestClient.get().uri("/api/account/me")
+                .headers(headers -> headers.setBasicAuth("local-only@example.org", "local-secret"))
+                .exchange()
+                .expectStatus().isUnauthorized();
+    }
+
+    @Test
+    void aUserWithAnNtrlocAccount_logsInThroughOidcAsThatAccount() {
+        var account = securityRepo.createUser("Existing ntrloc User", "existing.user@example.org", false);
+
+        assertThat(me(logIn("existing.user")))
+                .containsEntry("email", account.email())
+                .containsEntry("displayName", "Existing ntrloc User");
+    }
+
+    @Test
+    void theProvidersEmail_matchesTheNtrlocAccountIgnoringCase() {
+        securityRepo.createUser("Mixed Case", "mixed.case@example.org", false);
+
+        assertThat(me(logIn("mixed.case"))).containsEntry("email", "mixed.case@example.org");
+    }
+
+    @Test
+    void aUserWithoutAnNtrlocAccount_isRejected_andNoAccountIsCreated() {
+        assertLoginFails("unprovisioned.user");
+
+        assertThat(securityRepo.findUserByEmail("unprovisioned.user@example.org")).isEmpty();
+    }
+
+    // An unverified email is never trusted, even when it matches an existing account -- otherwise
+    // anyone able to set an arbitrary email at the provider could sign in as that account.
+    @Test
+    void anUnverifiedEmail_isRejected_evenWhenItMatchesAnAccount() {
+        securityRepo.createUser("Unverified User", "unverified.user@example.org", false);
+
+        assertLoginFails("unverified.user");
+    }
+
+    // Admin comes from the ntrloc account, never from the provider.
+    @Test
+    void anNtrlocAdmin_canOpenTheAdminUi_afterAnOidcLogin() {
+        securityRepo.createUser("Admin User", "admin.user@example.org", true);
+
+        getAdminPage(logIn("admin.user")).expectStatus().isOk();
+    }
+
+    @Test
+    void aNonAdmin_isForbiddenFromTheAdminUi_afterAnOidcLogin() {
+        securityRepo.createUser("Plain User", "plain.user@example.org", false);
+
+        getAdminPage(logIn("plain.user")).expectStatus().isForbidden();
+    }
+}

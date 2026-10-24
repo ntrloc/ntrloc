@@ -37,17 +37,25 @@ class PrincipalResolverImpl implements ExternalPrincipalResolver, InternalPrinci
         return repo.findUserById(id).map(this::toPrincipal);
     }
 
-    // Local, LDAP and PAT logins carry their NtrlocPrincipal as the Authentication's principal.
-    // OAuth logins don't yet, so they fall back to an email lookup on the authenticated name.
+    // Local, LDAP and PAT logins carry their NtrlocPrincipal as the Authentication's principal;
+    // OIDC logins (whose principal must be an OidcUser) carry it via NtrlocPrincipalHolder.
     @Override
-    public NtrlocPrincipal resolve(Authentication auth) {
+    public Optional<NtrlocPrincipal> fromAuthentication(Authentication auth) {
         if (auth == null || !auth.isAuthenticated() || auth instanceof AnonymousAuthenticationToken) {
-            throw notAuthenticated();
+            return Optional.empty();
         }
         if (auth.getPrincipal() instanceof NtrlocPrincipal principal) {
-            return principal;
+            return Optional.of(principal);
         }
-        return byEmail(auth.getName()).orElseThrow(PrincipalResolverImpl::notAuthenticated);
+        if (auth.getPrincipal() instanceof NtrlocPrincipalHolder holder) {
+            return Optional.of(holder.ntrlocPrincipal());
+        }
+        return Optional.empty();
+    }
+
+    @Override
+    public NtrlocPrincipal resolve(Authentication auth) {
+        return fromAuthentication(auth).orElseThrow(PrincipalResolverImpl::notAuthenticated);
     }
 
     private static ResponseStatusException notAuthenticated() {

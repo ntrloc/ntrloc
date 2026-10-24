@@ -1,0 +1,165 @@
+{
+  "realm": "ntrloc",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "requiredActions": [
+    {
+      "alias": "VERIFY_PROFILE",
+      "name": "Verify Profile",
+      "providerId": "VERIFY_PROFILE",
+      "enabled": false,
+      "defaultAction": false,
+      "priority": 90,
+      "config": {}
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "ntrloc",
+      "name": "ntrloc",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "secret": "ntrloc-client-secret",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": [
+        "*"
+      ],
+      "webOrigins": [
+        "*"
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "existing.user",
+      "email": "existing.user@example.org",
+      "emailVerified": true,
+      "firstName": "Existing",
+      "lastName": "User",
+      "enabled": true,
+      "requiredActions": [],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "oidc-secret",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "mixed.case",
+      "email": "Mixed.Case@Example.org",
+      "emailVerified": true,
+      "firstName": "Mixed",
+      "lastName": "Case",
+      "enabled": true,
+      "requiredActions": [],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "oidc-secret",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "plain.user",
+      "email": "plain.user@example.org",
+      "emailVerified": true,
+      "firstName": "Plain",
+      "lastName": "User",
+      "enabled": true,
+      "requiredActions": [],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "oidc-secret",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "admin.user",
+      "email": "admin.user@example.org",
+      "emailVerified": true,
+      "firstName": "Admin",
+      "lastName": "User",
+      "enabled": true,
+      "requiredActions": [],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "oidc-secret",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "unprovisioned.user",
+      "email": "unprovisioned.user@example.org",
+      "emailVerified": true,
+      "firstName": "Unprovisioned",
+      "lastName": "User",
+      "enabled": true,
+      "requiredActions": [],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "oidc-secret",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "unverified.user",
+      "email": "unverified.user@example.org",
+      "emailVerified": false,
+      "firstName": "Unverified",
+      "lastName": "User",
+      "enabled": true,
+      "requiredActions": [],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "oidc-secret",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "new.user",
+      "email": "new.user@example.org",
+      "emailVerified": true,
+      "firstName": "New",
+      "lastName": "Person",
+      "enabled": true,
+      "requiredActions": [],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "oidc-secret",
+          "temporary": false
+        }
+      ]
+    },
+    {
+      "username": "resync.user",
+      "email": "resync.user@example.org",
+      "emailVerified": true,
+      "firstName": "Resync",
+      "lastName": "User",
+      "enabled": true,
+      "requiredActions": [],
+      "credentials": [
+        {
+          "type": "password",
+          "value": "oidc-secret",
+          "temporary": false
+        }
+      ]
+    }
+  ]
+}

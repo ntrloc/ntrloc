@@ -65,12 +65,10 @@ public class AuthProperties {
         }
     }
 
+    // OpenID Connect providers themselves are Spring Boot's own
+    // spring.security.oauth2.client.registration.* / provider.* properties; this only switches SSO on.
     public static class OAuthProperties {
         private boolean enabled = false;
-        private String issuerUri;
-        private String clientId;
-        private String clientSecret;
-        private String provider;
 
         public boolean isEnabled() {
             return enabled;
@@ -78,38 +76,6 @@ public class AuthProperties {
 
         public void setEnabled(boolean enabled) {
             this.enabled = enabled;
-        }
-
-        public String getIssuerUri() {
-            return issuerUri;
-        }
-
-        public void setIssuerUri(String issuerUri) {
-            this.issuerUri = issuerUri;
-        }
-
-        public String getClientId() {
-            return clientId;
-        }
-
-        public void setClientId(String clientId) {
-            this.clientId = clientId;
-        }
-
-        public String getClientSecret() {
-            return clientSecret;
-        }
-
-        public void setClientSecret(String clientSecret) {
-            this.clientSecret = clientSecret;
-        }
-
-        public String getProvider() {
-            return provider;
-        }
-
-        public void setProvider(String provider) {
-            this.provider = provider;
         }
     }
 

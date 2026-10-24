@@ -7,7 +7,6 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.factory.PasswordEncoderFactories;
 import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.Optional;
@@ -17,7 +16,10 @@ import java.util.Optional;
 // credentials, inactive account, wrong password -- is the same BadCredentialsException, and an
 // unknown email still pays for one hash comparison, so neither the message nor the timing reveals
 // which emails have accounts.
-@Component
+//
+// Deliberately not a Spring bean: Spring Security would put a lone AuthenticationProvider bean into
+// its global fallback AuthenticationManager, where it would accept local logins even with
+// graph.auth.local.enabled off. SecurityConfig constructs it only when local login is enabled.
 public class LocalAuthenticationProvider implements AuthenticationProvider {
 
     private final ExternalPrincipalResolver principals;

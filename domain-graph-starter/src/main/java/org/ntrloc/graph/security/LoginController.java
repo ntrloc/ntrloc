@@ -1,7 +1,14 @@
 package org.ntrloc.graph.security;
 
 import org.ntrloc.graph.branding.BrandingProperties;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.MediaType;
+import org.springframework.security.oauth2.client.registration.ClientRegistration;
+import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
+import org.springframework.web.util.HtmlUtils;
+import org.springframework.web.util.UriUtils;
+
+import java.nio.charset.StandardCharsets;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -11,10 +18,13 @@ public class LoginController {
 
     private final AuthProperties authProperties;
     private final BrandingProperties brandingProperties;
+    private final ObjectProvider<ClientRegistrationRepository> clientRegistrations;
 
-    public LoginController(AuthProperties authProperties, BrandingProperties brandingProperties) {
+    public LoginController(AuthProperties authProperties, BrandingProperties brandingProperties,
+                           ObjectProvider<ClientRegistrationRepository> clientRegistrations) {
         this.authProperties = authProperties;
         this.brandingProperties = brandingProperties;
+        this.clientRegistrations = clientRegistrations;
     }
 
     @GetMapping(value = "/login", produces = MediaType.TEXT_HTML_VALUE)
@@ -66,14 +76,21 @@ public class LoginController {
 
         boolean first = true;
 
-        // OAuth first
-        if (authProperties.getOauth().isEnabled()) {
+        // OAuth first: one button per configured OpenID Connect provider.
+        if (authProperties.getOauth().isEnabled()
+                && clientRegistrations.getIfAvailable() instanceof Iterable<?> registrations) {
             html.append("""
                 <div class="section-label">Single Sign-On</div>
-                <a href="/oauth2/authorization/keycloak" style="text-decoration:none">
-                    <button class="btn btn-oauth">Sign In with SSO</button>
-                </a>
                 """);
+            for (Object registration : registrations) {
+                ClientRegistration client = (ClientRegistration) registration;
+                html.append("""
+                    <a href="/oauth2/authorization/%s" style="text-decoration:none">
+                        <button class="btn btn-oauth">Sign In with %s</button>
+                    </a>
+                    """.formatted(UriUtils.encodePathSegment(client.getRegistrationId(), StandardCharsets.UTF_8),
+                        HtmlUtils.htmlEscape(client.getClientName())));
+            }
             first = false;
         }
 
