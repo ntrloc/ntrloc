@@ -1,0 +1,82 @@
+dn: dc=example,dc=org
+objectClass: dcObject
+objectClass: organization
+dc: example
+o: Example
+
+dn: ou=people,dc=example,dc=org
+objectClass: organizationalUnit
+ou: people
+
+dn: uid=existing.user,ou=people,dc=example,dc=org
+objectClass: inetOrgPerson
+uid: existing.user
+cn: Existing User
+sn: User
+mail: existing.user@example.org
+userPassword: ldap-secret
+
+dn: uid=mixed.case,ou=people,dc=example,dc=org
+objectClass: inetOrgPerson
+uid: mixed.case
+cn: Mixed Case
+sn: Case
+mail: Mixed.Case@Example.org
+userPassword: ldap-secret
+
+dn: uid=plain.user,ou=people,dc=example,dc=org
+objectClass: inetOrgPerson
+uid: plain.user
+cn: Plain User
+sn: User
+mail: plain.user@example.org
+userPassword: ldap-secret
+
+dn: uid=admin.user,ou=people,dc=example,dc=org
+objectClass: inetOrgPerson
+uid: admin.user
+cn: Admin User
+sn: User
+mail: admin.user@example.org
+userPassword: ldap-secret
+
+dn: uid=unprovisioned.user,ou=people,dc=example,dc=org
+objectClass: inetOrgPerson
+uid: unprovisioned.user
+cn: Unprovisioned User
+sn: User
+mail: unprovisioned.user@example.org
+userPassword: ldap-secret
+
+dn: uid=new.user,ou=people,dc=example,dc=org
+objectClass: inetOrgPerson
+uid: new.user
+cn: New User
+sn: User
+displayName: New Directory User
+mail: new.user@example.org
+userPassword: ldap-secret
+
+dn: uid=cn.only,ou=people,dc=example,dc=org
+objectClass: inetOrgPerson
+uid: cn.only
+cn: Cn Only
+sn: Only
+mail: cn.only@example.org
+userPassword: ldap-secret
+
+dn: uid=resync.user,ou=people,dc=example,dc=org
+objectClass: inetOrgPerson
+uid: resync.user
+cn: Resync User
+sn: User
+displayName: Directory Name
+mail: resync.user@example.org
+userPassword: ldap-secret
+
+dn: uid=no.mail,ou=people,dc=example,dc=org
+objectClass: inetOrgPerson
+uid: no.mail
+cn: No Mail
+sn: Mail
+userPassword: ldap-secret

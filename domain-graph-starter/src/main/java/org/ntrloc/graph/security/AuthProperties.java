@@ -117,9 +117,18 @@ public class AuthProperties {
         private boolean enabled = false;
         private String url;
         private String base;
+        // Bind DN and password for searching the directory; leave both unset to search anonymously.
         private String username;
         private String password;
-        private String userDnPattern = "uid={0},ou=people";
+        // Where users are searched for (relative to base), and how: {0} is what the person typed
+        // into the login form -- a uid by default, or an email with e.g. "(mail={0})".
+        private String userSearchBase = "ou=people";
+        private String userSearchFilter = "(uid={0})";
+        // The entry attribute holding the user's email, which is what an LDAP login resolves to.
+        private String emailAttribute = "mail";
+        // Display name for an auto-provisioned account (see graph.security.auto-provision); falls
+        // back to cn, then to the email.
+        private String displayNameAttribute = "displayName";
 
         public boolean isEnabled() {
             return enabled;
@@ -161,12 +170,36 @@ public class AuthProperties {
             this.password = password;
         }
 
-        public String getUserDnPattern() {
-            return userDnPattern;
+        public String getUserSearchBase() {
+            return userSearchBase;
         }
 
-        public void setUserDnPattern(String userDnPattern) {
-            this.userDnPattern = userDnPattern;
+        public void setUserSearchBase(String userSearchBase) {
+            this.userSearchBase = userSearchBase;
+        }
+
+        public String getUserSearchFilter() {
+            return userSearchFilter;
+        }
+
+        public void setUserSearchFilter(String userSearchFilter) {
+            this.userSearchFilter = userSearchFilter;
+        }
+
+        public String getEmailAttribute() {
+            return emailAttribute;
+        }
+
+        public void setEmailAttribute(String emailAttribute) {
+            this.emailAttribute = emailAttribute;
+        }
+
+        public String getDisplayNameAttribute() {
+            return displayNameAttribute;
+        }
+
+        public void setDisplayNameAttribute(String displayNameAttribute) {
+            this.displayNameAttribute = displayNameAttribute;
         }
     }
 }

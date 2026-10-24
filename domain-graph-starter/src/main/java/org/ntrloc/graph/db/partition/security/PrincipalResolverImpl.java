@@ -37,8 +37,8 @@ class PrincipalResolverImpl implements ExternalPrincipalResolver, InternalPrinci
         return repo.findUserById(id).map(this::toPrincipal);
     }
 
-    // Local logins and PATs already carry their NtrlocPrincipal as the Authentication's principal.
-    // LDAP and OAuth logins don't yet, so they fall back to an email lookup on the authenticated name.
+    // Local, LDAP and PAT logins carry their NtrlocPrincipal as the Authentication's principal.
+    // OAuth logins don't yet, so they fall back to an email lookup on the authenticated name.
     @Override
     public NtrlocPrincipal resolve(Authentication auth) {
         if (auth == null || !auth.isAuthenticated() || auth instanceof AnonymousAuthenticationToken) {

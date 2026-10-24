@@ -7,6 +7,7 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.ntrloc.graph.db.partition.security.ExternalPrincipalResolver;
+import org.ntrloc.graph.db.partition.security.ExternalUserProvisioner;
 import org.ntrloc.graph.db.partition.security.LocalAuthenticationProvider;
 import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
 import org.springframework.context.annotation.Bean;
@@ -27,8 +28,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.context.RequestAttributeSecurityContextRepository;
 import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.security.ldap.authentication.BindAuthenticator;
-import org.springframework.security.ldap.authentication.LdapAuthenticationProvider;
-import org.springframework.security.ldap.userdetails.DefaultLdapAuthoritiesPopulator;
+import org.springframework.security.ldap.search.FilterBasedLdapUserSearch;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
@@ -51,12 +51,14 @@ public class SecurityConfig {
     private final AuthProperties authProperties;
     private final LocalAuthenticationProvider localAuthenticationProvider;
     private final ExternalPrincipalResolver principals;
+    private final ExternalUserProvisioner provisioner;
 
     public SecurityConfig(AuthProperties authProperties, LocalAuthenticationProvider localAuthenticationProvider,
-                           ExternalPrincipalResolver principals) {
+                           ExternalPrincipalResolver principals, ExternalUserProvisioner provisioner) {
         this.authProperties = authProperties;
         this.localAuthenticationProvider = localAuthenticationProvider;
         this.principals = principals;
+        this.provisioner = provisioner;
     }
 
     @PostConstruct
@@ -92,9 +94,10 @@ public class SecurityConfig {
                         // tests returned 302 instead of the expected 4xx until this was added.
                         .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
                         .requestMatchers(openPathPatterns()).permitAll()
-                        // Admin comes only from security_user.is_admin, read off the principal
-                        // like every controller's own admin check -- never from granted authorities.
-                        .requestMatchers("/admin/**").access((authentication, context) ->
+                        // Both admin UIs. Admin comes only from security_user.is_admin, read off the
+                        // principal like every controller's own admin check -- never from granted
+                        // authorities.
+                        .requestMatchers("/admin/**", "/admin-react/**").access((authentication, context) ->
                                 new AuthorizationDecision(isAdmin(authentication.get())))
                         .anyRequest().authenticated()
                 )
@@ -178,23 +181,24 @@ public class SecurityConfig {
         return new ProviderManager(providers);
     }
 
+    // Search for the user's entry with the configured filter, then bind as it to check the password.
     private AuthenticationProvider ldapAuthenticationProvider() {
+        AuthProperties.LdapProperties ldap = authProperties.getLdap();
         LdapContextSource contextSource = new LdapContextSource();
-        contextSource.setUrl(authProperties.getLdap().getUrl());
-        contextSource.setBase(authProperties.getLdap().getBase());
-        contextSource.setUserDn(authProperties.getLdap().getUsername());
-        contextSource.setPassword(authProperties.getLdap().getPassword());
+        contextSource.setUrl(ldap.getUrl());
+        contextSource.setBase(ldap.getBase());
+        if (ldap.getUsername() == null || ldap.getUsername().isBlank()) {
+            contextSource.setAnonymousReadOnly(true);
+        } else {
+            contextSource.setUserDn(ldap.getUsername());
+            contextSource.setPassword(ldap.getPassword());
+        }
         contextSource.afterPropertiesSet();
 
         BindAuthenticator authenticator = new BindAuthenticator(contextSource);
-        authenticator.setUserDnPatterns(new String[]{authProperties.getLdap().getUserDnPattern()});
+        authenticator.setUserSearch(new FilterBasedLdapUserSearch(ldap.getUserSearchBase(), ldap.getUserSearchFilter(), contextSource));
 
-        DefaultLdapAuthoritiesPopulator authoritiesPopulator =
-                new DefaultLdapAuthoritiesPopulator(contextSource, "ou=people");
-        authoritiesPopulator.setDefaultRole("USER");
-        authoritiesPopulator.setIgnorePartialResultException(true);
-
-        return new LdapAuthenticationProvider(authenticator, authoritiesPopulator);
+        return new NtrlocLdapAuthenticationProvider(authenticator, ldap, principals, provisioner);
     }
 
     // The principal set here is the token owner's full NtrlocPrincipal, the same shape a local
