@@ -159,7 +159,7 @@ final class UiTestData {
 
     private synchronized UUID actorId() {
         if (actorId == null) {
-            actorId = securityRepository.createUser("ui-fixture-" + UUID.randomUUID(), "UI Test Fixture", null, true).id();
+            actorId = securityRepository.createUser("UI Test Fixture", "ui-fixture-" + UUID.randomUUID() + "@example.com", true).id();
         }
         return actorId;
     }

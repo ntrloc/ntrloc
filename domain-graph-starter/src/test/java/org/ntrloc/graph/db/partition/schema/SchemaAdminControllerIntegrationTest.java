@@ -36,7 +36,7 @@ class SchemaAdminControllerIntegrationTest extends AbstractIntegrationTest {
         // The whole admin schema holds every fixture of the shared test run, which can outgrow the
         // client's default 256KB response buffer.
         webTestClient = webTestClient.mutate()
-                .defaultHeader(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
+                .defaultHeader(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com"))
                 .codecs(codecs -> codecs.defaultCodecs().maxInMemorySize(4 * 1024 * 1024))
                 .build();
     }

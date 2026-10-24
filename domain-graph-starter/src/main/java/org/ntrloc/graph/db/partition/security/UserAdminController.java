@@ -25,11 +25,11 @@ import java.util.UUID;
 @RequestMapping("/api/admin/users")
 public class UserAdminController {
 
-    public record UserView(UUID id, String externalId, String displayName, String email, boolean isSuperuser) {}
+    public record UserView(UUID id, String displayName, String email, boolean isSuperuser) {}
 
-    public record CreateUserRequest(String externalId, String displayName, String email, String password, String role) {}
+    public record CreateUserRequest(String displayName, String email, String password, String role) {}
 
-    public record UpdateUserRequest(String externalId, String displayName, String email, String role) {}
+    public record UpdateUserRequest(String displayName, String email, String role) {}
 
     public record ResetPasswordRequest(String newPassword) {}
 
@@ -56,7 +56,7 @@ public class UserAdminController {
     @GetMapping
     List<UserView> listUsers() {
         return repo.listUsers().stream()
-                .map(u -> new UserView(u.id(), u.externalId(), u.displayName(), u.email(), u.isSuperuser()))
+                .map(u -> new UserView(u.id(), u.displayName(), u.email(), u.isSuperuser()))
                 .toList();
     }
 
@@ -66,23 +66,24 @@ public class UserAdminController {
         if (!principal.isSuperuser()) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only admins can create users");
         }
-        if (repo.findUserByExternalId(body.externalId()).isPresent()) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "User already exists: " + body.externalId());
+        requireIdentityFields(body.displayName(), body.email());
+        if (isBlank(body.password())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Password is required");
+        }
+        if (repo.findUserByEmail(body.email()).isPresent()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Email already in use: " + body.email());
         }
 
         String role = body.role() == null ? "USER" : body.role().toUpperCase();
         boolean isSuperuser = "ADMIN".equals(role);
-        var user = repo.createUser(body.externalId(), body.displayName(), body.email(), isSuperuser);
+        var user = repo.createUser(body.displayName(), body.email(), isSuperuser);
         String passwordHash = "{bcrypt}" + encoder.encode(body.password());
-        repo.createLocalCredentials(user.id(), body.externalId(), passwordHash, role);
+        repo.createLocalCredentials(user.id(), passwordHash, role);
         defaultUserGroupInitializer.addUserToDefaultUserGroup(user.id());
-        return new UserView(user.id(), user.externalId(), user.displayName(), user.email(), user.isSuperuser());
+        return new UserView(user.id(), user.displayName(), user.email(), user.isSuperuser());
     }
 
-    // @Transactional: three separate writes (security_user, security_local_credentials' login key,
-    // its role) that must all land together -- a partial failure here previously left external_id
-    // and security_local_credentials.email out of sync, which would silently lock the user out
-    // under their new username. See updateLocalCredentialsLogin's own comment.
+    // @Transactional: security_user and security_local_credentials' role must land together.
     @Transactional
     @PutMapping("/{userId}")
     UserView updateUser(@PathVariable("userId") UUID userId, @RequestBody UpdateUserRequest body,
@@ -91,23 +92,17 @@ public class UserAdminController {
         if (!principal.isSuperuser()) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only admins can update users");
         }
-        if (body.externalId() == null || body.externalId().isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Username is required");
-        }
-        if (body.displayName() == null || body.displayName().isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Display name is required");
-        }
-        repo.findUserByExternalId(body.externalId())
+        requireIdentityFields(body.displayName(), body.email());
+        repo.findUserByEmail(body.email())
                 .filter(existing -> !existing.id().equals(userId))
                 .ifPresent(existing -> {
-                    throw new ResponseStatusException(HttpStatus.CONFLICT, "Username already in use: " + body.externalId());
+                    throw new ResponseStatusException(HttpStatus.CONFLICT, "Email already in use: " + body.email());
                 });
         String role = body.role() == null ? "USER" : body.role().toUpperCase();
         boolean isSuperuser = "ADMIN".equals(role);
-        repo.updateUser(userId, body.externalId(), body.displayName(), body.email(), isSuperuser);
-        repo.updateLocalCredentialsLogin(userId, body.externalId());
+        repo.updateUser(userId, body.displayName(), body.email(), isSuperuser);
         repo.updateLocalCredentialsRole(userId, role);
-        return new UserView(userId, body.externalId(), body.displayName(), body.email(), isSuperuser);
+        return new UserView(userId, body.displayName(), body.email(), isSuperuser);
     }
 
     @DeleteMapping("/{userId}")
@@ -160,6 +155,19 @@ public class UserAdminController {
         requireAdmin(authentication);
         patService.revokeForUser(userId, tokenId);
         return ResponseEntity.noContent().build();
+    }
+
+    private static void requireIdentityFields(String displayName, String email) {
+        if (isBlank(email)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Email is required");
+        }
+        if (isBlank(displayName)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Display name is required");
+        }
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     private void requireAdmin(Authentication authentication) {

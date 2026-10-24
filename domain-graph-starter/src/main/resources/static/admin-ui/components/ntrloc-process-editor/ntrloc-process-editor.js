@@ -274,12 +274,12 @@ injectStyles('ntrloc-process-editor-styles', `
     white-space: nowrap;
   }
   /* md-outlined-select doesn't stretch to its container by default like a native <select> does. */
-  .assignee-select {
+  .assignee-select, .run-as-user-select {
     width: 100%;
   }
-  /* One md-checkbox per group -- Material has no multi-select dropdown, this is the idiomatic
+  /* One md-checkbox per group/user -- Material has no multi-select dropdown, this is the idiomatic
      equivalent for "pick multiple items from a list" (see renderUserTaskFields). */
-  .candidate-groups-list {
+  .candidate-groups-list, .candidate-users-list {
     display: flex;
     flex-direction: column;
     gap: 2px;
@@ -1006,7 +1006,7 @@ class NtrlocProcessEditor extends HTMLElement {
         <label>Candidate Groups</label>
         <div class="candidate-groups-list"></div>
         <label>Candidate Users</label>
-        <input type="text" class="candidate-users-input" placeholder="comma-separated, e.g. localuser,admin">
+        <div class="candidate-users-list"></div>
       ` : ''}
       ${isDmnTaskSelected ? `
         <label>Decision Table</label>
@@ -1081,8 +1081,11 @@ class NtrlocProcessEditor extends HTMLElement {
       <textarea class="process-description-input" rows="4"
                 placeholder="Notes about this process, saved as its BPMN documentation.">${escapeHtml(this._processDescription || '')}</textarea>
       <label>Run As User</label>
-      <input type="text" class="process-run-as-user-input" placeholder="external ID, e.g. admin -- leave blank if this process is only ever started by a caller"
-             value="${escapeHtml(this._processRunAsUser || '')}">
+      <md-outlined-select class="run-as-user-select">
+        <md-select-option value="">
+          <div slot="headline">(none)</div>
+        </md-select-option>
+      </md-outlined-select>
       <p class="status">Used only when this process starts with no caller to take a principal
         from (a timer, e.g.) and something in it needs one -- a caller-started run always uses the
         real caller instead, regardless of this setting.</p>
@@ -1127,10 +1130,30 @@ class NtrlocProcessEditor extends HTMLElement {
       this._processDescription = event.target.value;
       this.markDirty();
     });
-    panel.querySelector('.process-run-as-user-input').addEventListener('change', (event) => {
-      this._processRunAsUser = event.target.value.trim();
+    // runAsUser stores the user's id (UUID), never their email.
+    const runAsUserSelect = panel.querySelector('.run-as-user-select');
+    runAsUserSelect.addEventListener('change', (event) => {
+      this._processRunAsUser = event.target.value;
       this.markDirty();
     });
+    this.loadUsers()
+      .then((users) => {
+        const current = this._processRunAsUser || '';
+        runAsUserSelect.innerHTML = `
+          <md-select-option value="" ${!current ? 'selected' : ''}>
+            <div slot="headline">(none)</div>
+          </md-select-option>
+          ${users.map((user) => `
+            <md-select-option value="${escapeHtml(user.id)}" ${current === user.id ? 'selected' : ''}>
+              <div slot="headline">${escapeHtml(user.displayName)}</div>
+              <div slot="supporting-text">${escapeHtml(user.email)}</div>
+            </md-select-option>
+          `).join('')}
+        `;
+        // Same one-microtask delay as renderUserTaskFields' assignee-select.
+        queueMicrotask(() => { runAsUserSelect.value = current; });
+      })
+      .catch((e) => this.setStatus('Failed to load users: ' + e.message, true));
 
     panel.querySelectorAll('.variables-table tr[data-index]').forEach((row) => {
       const index = Number(row.dataset.index);
@@ -1200,12 +1223,6 @@ class NtrlocProcessEditor extends HTMLElement {
   renderUserTaskFields(panel, bo) {
     const attrs = bo.$attrs;
 
-    const candidateUsersInput = panel.querySelector('.candidate-users-input');
-    candidateUsersInput.value = attrs['flowable:candidateUsers'] || '';
-    candidateUsersInput.addEventListener('change', (event) => {
-      attrs['flowable:candidateUsers'] = event.target.value;
-      this.markDirty();
-    });
 
     // md-outlined-select mirrors ntrloc-search.js's own item-type/sort-field selects: options
     // are md-select-option elements with a slotted "headline" div, selection read the same way
@@ -1223,8 +1240,9 @@ class NtrlocProcessEditor extends HTMLElement {
             <div slot="headline">(unassigned)</div>
           </md-select-option>
           ${users.map((user) => `
-            <md-select-option value="${escapeHtml(user.externalId)}" ${current === user.externalId ? 'selected' : ''}>
+            <md-select-option value="${escapeHtml(user.id)}" ${current === user.id ? 'selected' : ''}>
               <div slot="headline">${escapeHtml(user.displayName)}</div>
+              <div slot="supporting-text">${escapeHtml(user.email)}</div>
             </md-select-option>
           `).join('')}
         `;
@@ -1261,6 +1279,30 @@ class NtrlocProcessEditor extends HTMLElement {
         });
       })
       .catch((e) => this.setStatus('Failed to load process groups: ' + e.message, true));
+
+    // Same checkbox list as candidate groups, keyed by user id (UUID), never email.
+    const usersList = panel.querySelector('.candidate-users-list');
+    this.loadUsers()
+      .then((users) => {
+        const selected = new Set(
+            (attrs['flowable:candidateUsers'] || '').split(',').map((s) => s.trim()).filter(Boolean));
+        usersList.innerHTML = users.map((user) => `
+          <label class="candidate-group-row">
+            <md-checkbox value="${escapeHtml(user.id)}" ${selected.has(user.id) ? 'checked' : ''}></md-checkbox>
+            ${escapeHtml(user.displayName)}
+          </label>
+        `).join('');
+        usersList.querySelectorAll('md-checkbox').forEach((checkbox) => {
+          checkbox.addEventListener('change', () => {
+            const checked = Array.from(usersList.querySelectorAll('md-checkbox'))
+                .filter((c) => c.checked)
+                .map((c) => c.value);
+            attrs['flowable:candidateUsers'] = checked.join(',');
+            this.markDirty();
+          });
+        });
+      })
+      .catch((e) => this.setStatus('Failed to load users: ' + e.message, true));
   }
 
   renderDmnTaskFields(panel, bo) {

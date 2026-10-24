@@ -52,8 +52,8 @@ class SelfLinkIntegrationTest extends AbstractIntegrationTest {
 
     @BeforeEach
     void setUpSomePrincipal() {
-        var user = securityRepo.createUser("sli-test-user-" + UUID.randomUUID(), "Test User", null, true);
-        SOME_PRINCIPAL = TestPrincipals.of(user.id(), user.externalId(), user.displayName(), null, Set.of(), true);
+        var user = securityRepo.createUser("Test User", "sli-test-user-" + UUID.randomUUID() + "@example.com", true);
+        SOME_PRINCIPAL = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), true);
     }
 
     private UUID createPerson() {

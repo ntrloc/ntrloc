@@ -21,11 +21,8 @@ public class LocalUserDetailsService implements UserDetailsService {
     // comment for why: it's what lets Authentication.getPrincipal() already carry the full
     // NtrlocPrincipal shape for a locally-authenticated session, closing the "every controller
     // re-queries SecurityRepository per request" gap PrincipalResolver.resolve() otherwise has.
-    // Both DB reads (credentials, then identity+groupIds) happen inline -- no reactive wrapping
-    // needed under Spring MVC, this runs on the request's own servlet thread like any other
-    // blocking call, and email/externalId are the same login identifier here (local credentials
-    // are keyed by email; security_user by external_id) so the second lookup only ever runs once
-    // the first has already confirmed the account exists.
+    // The login name is the user's email (case-insensitive); a user without local credentials
+    // (e.g. one who only signs in through LDAP or OAuth) can't log in this way.
     @Override
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
         return buildUserDetails(username)
@@ -33,16 +30,16 @@ public class LocalUserDetailsService implements UserDetailsService {
     }
 
     private Optional<UserDetails> buildUserDetails(String username) {
-        Optional<SecurityRepository.LocalCredentialsRow> credentials = repo.findCredentialsByEmail(username);
-        if (credentials.isEmpty()) {
-            return Optional.empty();
-        }
-        Optional<SecurityRepository.UserRow> user = repo.findUserByExternalId(username);
+        Optional<SecurityRepository.UserRow> user = repo.findUserByEmail(username);
         if (user.isEmpty()) {
             return Optional.empty();
         }
+        Optional<SecurityRepository.LocalCredentialsRow> credentials = repo.findCredentialsByUserId(user.get().id());
+        if (credentials.isEmpty()) {
+            return Optional.empty();
+        }
         NtrlocPrincipal principal = new ResolvedPrincipal(
-                user.get().id(), user.get().externalId(), user.get().displayName(), user.get().email(),
+                user.get().id(), user.get().displayName(), user.get().email(),
                 repo.getUserGroupIdsForUser(user.get().id()), user.get().isSuperuser());
         SecurityRepository.LocalCredentialsRow c = credentials.get();
         return Optional.of(new NtrlocUserDetails(principal, c.passwordHash(), c.role(), c.active()));

@@ -63,7 +63,7 @@ public class MutationService {
             """) MutationRequest request, McpSyncRequestContext requestContext) {
         try {
             NtrlocPrincipal principal = principalResolver.requirePrincipal(requestContext);
-            LOG.info("Executing mutation {} as {}", request, principal.externalId());
+            LOG.info("Executing mutation {} as {}", request, principal.email());
             MutationResponse response = entityManager.mutate(request, principal);
             LOG.info("Mutation applied: {} item(s), {} link(s)", response.items().size(), response.links().size());
             return response;

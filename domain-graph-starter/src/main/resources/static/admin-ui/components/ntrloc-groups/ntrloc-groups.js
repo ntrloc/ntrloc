@@ -391,9 +391,8 @@ class NtrlocGroups extends HTMLElement {
       const isDefault = g.name === 'everyone';
       const memberRows = this.members.map(m => `
         <tr>
-          <td>${this.escapeHtml(m.externalId)}</td>
+          <td>${this.escapeHtml(m.email)}</td>
           <td>${this.escapeHtml(m.displayName)}</td>
-          <td>${this.escapeHtml(m.email || '')}</td>
           <td><button class="btn-remove" data-user-id="${m.id}">Remove</button></td>
         </tr>
       `).join('');
@@ -401,7 +400,7 @@ class NtrlocGroups extends HTMLElement {
       const memberIds = new Set(this.members.map(m => m.id));
       const availableUsers = this.allUsers.filter(u => !memberIds.has(u.id));
       const userOptions = availableUsers.map(u =>
-        `<option value="${u.id}">${this.escapeHtml(u.displayName)} (${this.escapeHtml(u.externalId)})</option>`
+        `<option value="${u.id}">${this.escapeHtml(u.displayName)} (${this.escapeHtml(u.email)})</option>`
       ).join('');
 
       modalHtml = `
@@ -420,7 +419,7 @@ class NtrlocGroups extends HTMLElement {
             <div class="members-section">
               <h4>Members (${this.members.length})</h4>
               <table class="members-table">
-                <thead><tr><th>Username</th><th>Display Name</th><th>Email</th><th></th></tr></thead>
+                <thead><tr><th>Email</th><th>Display Name</th><th></th></tr></thead>
                 <tbody>${memberRows || '<tr><td colspan="4" class="status">No members</td></tr>'}</tbody>
               </table>
               ${availableUsers.length > 0 ? `

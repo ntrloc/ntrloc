@@ -41,7 +41,7 @@ class AuthorizationCacheManagerIntegrationTest extends AbstractIntegrationTest {
         UUID directMarker = createMarker();
         UUID groupMarker = createMarker();
         UUID ungrantedMarker = createMarker();
-        var user = securityRepo.createUser("acm-" + UUID.randomUUID(), "User", null, false);
+        var user = securityRepo.createUser("User", "acm-" + UUID.randomUUID() + "@example.com", false);
         var group = securityRepo.createUserGroup("acm-" + UUID.randomUUID());
 
         authRepo.setItemPermissions(authRepo.ensureMarkerGrant(directMarker, "USER", user.id()), true, false);
@@ -56,7 +56,7 @@ class AuthorizationCacheManagerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void getPropertyReadGrantsByMarker_scopesToSpecificProperties() {
         UUID marker = createMarker();
-        var user = securityRepo.createUser("acm-" + UUID.randomUUID(), "User", null, false);
+        var user = securityRepo.createUser("User", "acm-" + UUID.randomUUID() + "@example.com", false);
         UUID grantId = authRepo.ensureMarkerGrant(marker, "USER", user.id());
 
         authRepo.grantPropertyAccess(grantId, fixture.namePropertyId(), true, false);
@@ -70,7 +70,7 @@ class AuthorizationCacheManagerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void getLinkPerspectiveReadGrantsByMarker_scopesToSpecificPerspectives() {
         UUID marker = createMarker();
-        var user = securityRepo.createUser("acm-" + UUID.randomUUID(), "User", null, false);
+        var user = securityRepo.createUser("User", "acm-" + UUID.randomUUID() + "@example.com", false);
         UUID grantId = authRepo.ensureMarkerGrant(marker, "USER", user.id());
 
         authRepo.grantLinkPerspectiveAccess(grantId, fixture.productPerspectiveId(), false, true, false);
@@ -83,7 +83,7 @@ class AuthorizationCacheManagerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void grantingAMarker_isVisibleInTheCacheImmediately_noRestartNeeded() {
         UUID marker = createMarker();
-        var user = securityRepo.createUser("acm-" + UUID.randomUUID(), "User", null, false);
+        var user = securityRepo.createUser("User", "acm-" + UUID.randomUUID() + "@example.com", false);
         assertThat(cache.getGrantedItemReadMarkerIds(user.id(), Set.of())).doesNotContain(marker);
 
         authRepo.setItemPermissions(authRepo.ensureMarkerGrant(marker, "USER", user.id()), true, false);
@@ -94,7 +94,7 @@ class AuthorizationCacheManagerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void revokingAGrant_removesItFromTheCacheImmediately() {
         UUID marker = createMarker();
-        var user = securityRepo.createUser("acm-" + UUID.randomUUID(), "User", null, false);
+        var user = securityRepo.createUser("User", "acm-" + UUID.randomUUID() + "@example.com", false);
         UUID grantId = authRepo.ensureMarkerGrant(marker, "USER", user.id());
         authRepo.setItemPermissions(grantId, true, false);
         assertThat(cache.getGrantedItemReadMarkerIds(user.id(), Set.of())).contains(marker);
@@ -106,7 +106,7 @@ class AuthorizationCacheManagerIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void itemTypeGrants_areAlsoCached() {
-        var user = securityRepo.createUser("acm-" + UUID.randomUUID(), "User", null, false);
+        var user = securityRepo.createUser("User", "acm-" + UUID.randomUUID() + "@example.com", false);
         assertThat(cache.hasItemTypeGrant(user.id(), Set.of(), fixture.productTypeId(), PermissionService.ITEM_TYPE_READ)).isFalse();
 
         authRepo.grantItemType(fixture.productTypeId(), "USER", user.id(), PermissionService.ITEM_TYPE_READ);
@@ -125,7 +125,7 @@ class AuthorizationCacheManagerIntegrationTest extends AbstractIntegrationTest {
         // revoke fires afterward, so nothing re-triggers refreshCache(). If this still resolves
         // correctly, it's proof group membership is consulted at union-time (read time), not baked
         // into what's cached -- exactly the design point this table shape was chosen for.
-        var user = securityRepo.createUser("acm-" + UUID.randomUUID(), "User", null, false);
+        var user = securityRepo.createUser("User", "acm-" + UUID.randomUUID() + "@example.com", false);
         securityRepo.addUserToUserGroup(user.id(), group.id());
 
         assertThat(cache.getGrantedItemReadMarkerIds(user.id(), Set.of(group.id()))).contains(marker);

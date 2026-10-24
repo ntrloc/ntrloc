@@ -48,8 +48,8 @@ class SchemaServiceIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void getSchema_withAValidBearerToken_succeeds() {
-        var user = securityRepo.createUser("mcp-schema-user-" + UUID.randomUUID(), "MCP Schema Test User", null, true);
-        var principal = TestPrincipals.of(user.id(), user.externalId(), user.displayName(), null, Set.of(), true);
+        var user = securityRepo.createUser("MCP Schema Test User", "mcp-schema-user-" + UUID.randomUUID() + "@example.com", true);
+        var principal = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), true);
         var issued = tokenService.issue(principal, "schema-test-token", null);
 
         McpSyncRequestContext requestContext = mock(McpSyncRequestContext.class);

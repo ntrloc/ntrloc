@@ -103,8 +103,8 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
 
     @BeforeEach
     void setUpSomePrincipal() {
-        var user = securityRepo.createUser("test-user-" + UUID.randomUUID(), "Test User", null, true);
-        SOME_PRINCIPAL = TestPrincipals.of(user.id(), user.externalId(), user.displayName(), null, Set.of(), true);
+        var user = securityRepo.createUser("Test User", "test-user-" + UUID.randomUUID() + "@example.com", true);
+        SOME_PRINCIPAL = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), true);
     }
 
     private UUID storeBinary(byte[] content) {
@@ -1572,8 +1572,8 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
     void itemCreateMutation_byAUserLackingItemTypeCreatePermission_reportsAValidationError() {
         String typeName = "MutReqProcCreatePerm-" + UUID.randomUUID();
         schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(typeName, "d", List.of(), null, false, null)));
-        var user = securityRepo.createUser("sme-" + UUID.randomUUID(), "Restricted", null, false);
-        var principal = TestPrincipals.of(user.id(), user.externalId(), user.displayName(), null, Set.of(), false);
+        var user = securityRepo.createUser("Restricted", "sme-" + UUID.randomUUID() + "@example.com", false);
+        var principal = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), false);
 
         assertThatThrownBy(() -> processor.process(new MutationRequest(
                 List.of(new ItemCreateMutation(null, typeName, Map.of())), List.of()), principal))
@@ -1588,8 +1588,8 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
         schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(typeName, "d", List.of(), null, false, null)));
         UUID typeId = schemaManager.getAdminSchema().items().stream()
                 .filter(i -> i.name().equals(typeName)).findFirst().orElseThrow().id();
-        var user = securityRepo.createUser("sme-" + UUID.randomUUID(), "Restricted", null, false);
-        var principal = TestPrincipals.of(user.id(), user.externalId(), user.displayName(), null, Set.of(), false);
+        var user = securityRepo.createUser("Restricted", "sme-" + UUID.randomUUID() + "@example.com", false);
+        var principal = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), false);
         authRepo.grantItemType(typeId, "USER", user.id(), PermissionService.ITEM_TYPE_CREATE);
 
         MutationResponse response = processor.process(new MutationRequest(
@@ -1615,8 +1615,8 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
                 List.of(new ItemCreateMutation(null, typeName, Map.of())), List.of()), SOME_PRINCIPAL)
                 .items().get(0).itemId();
 
-        var user = securityRepo.createUser("sme-" + UUID.randomUUID(), "Restricted", null, false);
-        var principal = TestPrincipals.of(user.id(), user.externalId(), user.displayName(), null, Set.of(), false);
+        var user = securityRepo.createUser("Restricted", "sme-" + UUID.randomUUID() + "@example.com", false);
+        var principal = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), false);
         var marker = authRepo.createMarker("sme-" + UUID.randomUUID(), "test", "ITEM_TYPE", typeId);
         markerAssignmentService.addItemMarker(itemId, marker.id(), SOME_PRINCIPAL, "test");
         authRepo.ensureMarkerGrant(marker.id(), "USER", user.id());
@@ -1644,8 +1644,8 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
                 List.of(new ItemCreateMutation(null, typeName, Map.of())), List.of()), SOME_PRINCIPAL)
                 .items().get(0).itemId();
 
-        var user = securityRepo.createUser("sme-" + UUID.randomUUID(), "Restricted", null, false);
-        var principal = TestPrincipals.of(user.id(), user.externalId(), user.displayName(), null, Set.of(), false);
+        var user = securityRepo.createUser("Restricted", "sme-" + UUID.randomUUID() + "@example.com", false);
+        var principal = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), false);
         var marker = authRepo.createMarker("sme-" + UUID.randomUUID(), "test", "ITEM_TYPE", typeId);
         markerAssignmentService.addItemMarker(itemId, marker.id(), SOME_PRINCIPAL, "test");
         UUID grantId = authRepo.ensureMarkerGrant(marker.id(), "USER", user.id());
@@ -1669,8 +1669,8 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
                 List.of(new ItemCreateMutation(null, typeName, Map.of())), List.of()), SOME_PRINCIPAL)
                 .items().get(0).itemId();
 
-        var user = securityRepo.createUser("sme-" + UUID.randomUUID(), "Restricted", null, false);
-        var principal = TestPrincipals.of(user.id(), user.externalId(), user.displayName(), null, Set.of(), false);
+        var user = securityRepo.createUser("Restricted", "sme-" + UUID.randomUUID() + "@example.com", false);
+        var principal = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), false);
         var marker = authRepo.createMarker("sme-" + UUID.randomUUID(), "test", "ITEM_TYPE", typeId);
         markerAssignmentService.addItemMarker(itemId, marker.id(), SOME_PRINCIPAL, "test");
         UUID grantId = authRepo.ensureMarkerGrant(marker.id(), "USER", user.id());
@@ -1693,8 +1693,8 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
                 List.of(new ItemCreateMutation(null, typeName, Map.of())), List.of()), SOME_PRINCIPAL)
                 .items().get(0).itemId();
 
-        var user = securityRepo.createUser("sme-" + UUID.randomUUID(), "Restricted", null, false);
-        var principal = TestPrincipals.of(user.id(), user.externalId(), user.displayName(), null, Set.of(), false);
+        var user = securityRepo.createUser("Restricted", "sme-" + UUID.randomUUID() + "@example.com", false);
+        var principal = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), false);
         var marker = authRepo.createMarker("sme-" + UUID.randomUUID(), "test", "ITEM_TYPE", typeId);
         markerAssignmentService.addItemMarker(itemId, marker.id(), SOME_PRINCIPAL, "test");
         UUID grantId = authRepo.ensureMarkerGrant(marker.id(), "USER", user.id());
@@ -1722,8 +1722,8 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
         FreshLinkFixture link = createFreshLinkType(List.of());
         UUID perspectiveAId = perspectiveIdFor(link.aItemId(), link.perspectiveA());
 
-        var user = securityRepo.createUser("sme-" + UUID.randomUUID(), "Restricted", null, false);
-        var principal = TestPrincipals.of(user.id(), user.externalId(), user.displayName(), null, Set.of(), false);
+        var user = securityRepo.createUser("Restricted", "sme-" + UUID.randomUUID() + "@example.com", false);
+        var principal = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), false);
         var marker = authRepo.createMarker("sme-" + UUID.randomUUID(), "test", "ITEM_TYPE", registerPartitionManager.findItemTypeId(link.aItemId()).orElseThrow());
         markerAssignmentService.addItemMarker(link.aItemId(), marker.id(), SOME_PRINCIPAL, "test");
         UUID grantId = authRepo.ensureMarkerGrant(marker.id(), "USER", user.id());
@@ -1742,8 +1742,8 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
         UUID perspectiveAId = perspectiveIdFor(link.aItemId(), link.perspectiveA());
         UUID perspectiveBId = perspectiveIdFor(link.bItemId(), link.perspectiveB());
 
-        var user = securityRepo.createUser("sme-" + UUID.randomUUID(), "Restricted", null, false);
-        var principal = TestPrincipals.of(user.id(), user.externalId(), user.displayName(), null, Set.of(), false);
+        var user = securityRepo.createUser("Restricted", "sme-" + UUID.randomUUID() + "@example.com", false);
+        var principal = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), false);
         var markerA = authRepo.createMarker("sme-" + UUID.randomUUID(), "test", "ITEM_TYPE", registerPartitionManager.findItemTypeId(link.aItemId()).orElseThrow());
         markerAssignmentService.addItemMarker(link.aItemId(), markerA.id(), SOME_PRINCIPAL, "test");
         UUID grantIdA = authRepo.ensureMarkerGrant(markerA.id(), "USER", user.id());
@@ -1771,8 +1771,8 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
                 .links().get(0).linkId();
         UUID perspectiveAId = perspectiveIdFor(link.aItemId(), link.perspectiveA());
 
-        var user = securityRepo.createUser("sme-" + UUID.randomUUID(), "Restricted", null, false);
-        var principal = TestPrincipals.of(user.id(), user.externalId(), user.displayName(), null, Set.of(), false);
+        var user = securityRepo.createUser("Restricted", "sme-" + UUID.randomUUID() + "@example.com", false);
+        var principal = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), false);
         var marker = authRepo.createMarker("sme-" + UUID.randomUUID(), "test", "ITEM_TYPE", registerPartitionManager.findItemTypeId(link.aItemId()).orElseThrow());
         markerAssignmentService.addItemMarker(link.aItemId(), marker.id(), SOME_PRINCIPAL, "test");
         UUID grantId = authRepo.ensureMarkerGrant(marker.id(), "USER", user.id());
@@ -1794,8 +1794,8 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
         UUID perspectiveAId = perspectiveIdFor(link.aItemId(), link.perspectiveA());
         UUID perspectiveBId = perspectiveIdFor(link.bItemId(), link.perspectiveB());
 
-        var user = securityRepo.createUser("sme-" + UUID.randomUUID(), "Restricted", null, false);
-        var principal = TestPrincipals.of(user.id(), user.externalId(), user.displayName(), null, Set.of(), false);
+        var user = securityRepo.createUser("Restricted", "sme-" + UUID.randomUUID() + "@example.com", false);
+        var principal = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), false);
         var markerA = authRepo.createMarker("sme-" + UUID.randomUUID(), "test", "ITEM_TYPE", registerPartitionManager.findItemTypeId(link.aItemId()).orElseThrow());
         markerAssignmentService.addItemMarker(link.aItemId(), markerA.id(), SOME_PRINCIPAL, "test");
         UUID grantIdA = authRepo.ensureMarkerGrant(markerA.id(), "USER", user.id());
@@ -1842,8 +1842,8 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
                 List.of(link.create(Map.of()))), SOME_PRINCIPAL)
                 .links().get(0).linkId();
 
-        var user = securityRepo.createUser("sme-" + UUID.randomUUID(), "Restricted", null, false);
-        var principal = TestPrincipals.of(user.id(), user.externalId(), user.displayName(), null, Set.of(), false);
+        var user = securityRepo.createUser("Restricted", "sme-" + UUID.randomUUID() + "@example.com", false);
+        var principal = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), false);
         var markerA = authRepo.createMarker("sme-" + UUID.randomUUID(), "test", "ITEM_TYPE", registerPartitionManager.findItemTypeId(link.aItemId()).orElseThrow());
         markerAssignmentService.addItemMarker(link.aItemId(), markerA.id(), SOME_PRINCIPAL, "test");
         UUID grantIdA = authRepo.ensureMarkerGrant(markerA.id(), "USER", user.id());
@@ -1865,8 +1865,8 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
                 List.of(link.create(Map.of()))), SOME_PRINCIPAL)
                 .links().get(0).linkId();
 
-        var user = securityRepo.createUser("sme-" + UUID.randomUUID(), "Restricted", null, false);
-        var principal = TestPrincipals.of(user.id(), user.externalId(), user.displayName(), null, Set.of(), false);
+        var user = securityRepo.createUser("Restricted", "sme-" + UUID.randomUUID() + "@example.com", false);
+        var principal = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), false);
         var markerA = authRepo.createMarker("sme-" + UUID.randomUUID(), "test", "ITEM_TYPE", registerPartitionManager.findItemTypeId(link.aItemId()).orElseThrow());
         markerAssignmentService.addItemMarker(link.aItemId(), markerA.id(), SOME_PRINCIPAL, "test");
         UUID grantIdA = authRepo.ensureMarkerGrant(markerA.id(), "USER", user.id());
@@ -1892,8 +1892,8 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
         UUID perspectiveAId = perspectiveIdFor(link.aItemId(), link.perspectiveA());
         UUID perspectiveBId = perspectiveIdFor(link.bItemId(), link.perspectiveB());
 
-        var user = securityRepo.createUser("sme-" + UUID.randomUUID(), "Restricted", null, false);
-        var principal = TestPrincipals.of(user.id(), user.externalId(), user.displayName(), null, Set.of(), false);
+        var user = securityRepo.createUser("Restricted", "sme-" + UUID.randomUUID() + "@example.com", false);
+        var principal = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), false);
         var markerA = authRepo.createMarker("sme-" + UUID.randomUUID(), "test", "ITEM_TYPE", registerPartitionManager.findItemTypeId(link.aItemId()).orElseThrow());
         markerAssignmentService.addItemMarker(link.aItemId(), markerA.id(), SOME_PRINCIPAL, "test");
         UUID grantIdA = authRepo.ensureMarkerGrant(markerA.id(), "USER", user.id());

@@ -54,7 +54,7 @@ class RegisterPartitionManagerBinaryDynamicPropertyIntegrationTest extends Abstr
 
     @BeforeEach
     void authenticateAsRoot() {
-        webTestClient = webTestClient.mutate().defaultHeader(HttpHeaders.AUTHORIZATION, bearerTokenFor("root")).build();
+        webTestClient = webTestClient.mutate().defaultHeader(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com")).build();
     }
 
     private UUID storeBinary() {

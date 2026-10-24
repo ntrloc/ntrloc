@@ -1179,8 +1179,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     }
 
     private static final org.ntrloc.graph.db.partition.security.NtrlocPrincipal SUPERUSER =
-            org.ntrloc.graph.db.partition.security.TestPrincipals.of(
-                    UUID.randomUUID(), "test-superuser", "Test Superuser", null, java.util.Set.of(), true);
+            org.ntrloc.graph.db.partition.security.TestPrincipals.of(UUID.randomUUID(), "Test Superuser", null, java.util.Set.of(), true);
 
     // --- Schema-view filtering by item-type:read permission (SchemaManager.getSchema) ---
     //
@@ -1195,8 +1194,8 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         UUID visibleTypeId = createItem(visibleTypeName);
         UUID hiddenTypeId = createItem(hiddenTypeName);
 
-        var user = securityRepo.createUser("sme-" + UUID.randomUUID(), "Restricted", null, false);
-        var principal = TestPrincipals.of(user.id(), user.externalId(), user.displayName(), null, Set.of(), false);
+        var user = securityRepo.createUser("Restricted", "sme-" + UUID.randomUUID() + "@example.com", false);
+        var principal = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), false);
         authRepo.grantItemType(visibleTypeId, "USER", user.id(), PermissionService.ITEM_TYPE_READ);
 
         var visibleNames = schemaManager.getSchema(principal).items().stream().map(i -> i.name()).toList();

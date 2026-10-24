@@ -45,7 +45,7 @@ class LedgerRegisterCoordinatorIntegrationTest extends AbstractIntegrationTest {
 
     @BeforeEach
     void setUpActor() {
-        actor = securityRepo.createUser("lrc-actor-" + UUID.randomUUID(), "Coordinator Test Actor", null, true);
+        actor = securityRepo.createUser("Coordinator Test Actor", "lrc-actor-" + UUID.randomUUID() + "@example.com", true);
     }
 
     @Test

@@ -43,11 +43,6 @@ public final class NtrlocUserDetails implements UserDetails, NtrlocPrincipal {
     }
 
     @Override
-    public String externalId() {
-        return principal.externalId();
-    }
-
-    @Override
     public String displayName() {
         return principal.displayName();
     }
@@ -79,7 +74,7 @@ public final class NtrlocUserDetails implements UserDetails, NtrlocPrincipal {
 
     @Override
     public String getUsername() {
-        return principal.externalId();
+        return principal.email();
     }
 
     @Override

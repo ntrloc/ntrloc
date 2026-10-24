@@ -33,7 +33,7 @@ class ProcessAdminControllerIntegrationTest extends AbstractIntegrationTest {
     // seeded superuser; a request that sets its own Authorization header still uses that one.
     @BeforeEach
     void authenticateAsRoot() {
-        webTestClient = webTestClient.mutate().defaultHeader(HttpHeaders.AUTHORIZATION, bearerTokenFor("root")).build();
+        webTestClient = webTestClient.mutate().defaultHeader(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com")).build();
     }
 
     @Autowired
@@ -175,7 +175,7 @@ class ProcessAdminControllerIntegrationTest extends AbstractIntegrationTest {
         // success path without also completing the process.
         var instance = webTestClient.post().uri(uriBuilder -> uriBuilder.path("/api/admin/process/definitions/start")
                         .queryParam("id", helloWorld.id()).build())
-                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com"))
                 .exchange()
                 .expectStatus().isOk()
                 .expectBody(ProcessAdminController.ProcessInstanceView.class)
@@ -236,7 +236,7 @@ class ProcessAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
         webTestClient.post().uri(uriBuilder -> uriBuilder.path("/api/admin/process/definitions/start")
                         .queryParam("id", definition.id()).build())
-                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com"))
                 .exchange()
                 .expectStatus().isBadRequest()
                 .expectBody()
@@ -249,7 +249,7 @@ class ProcessAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
         webTestClient.post().uri(uriBuilder -> uriBuilder.path("/api/admin/process/definitions/start")
                         .queryParam("id", definition.id()).build())
-                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(Map.of("variables", Map.of("requiredVar", "some value")))
                 .exchange()
@@ -262,7 +262,7 @@ class ProcessAdminControllerIntegrationTest extends AbstractIntegrationTest {
     void startProcessInstance_forAnUnknownDefinitionId_returnsBadRequestWithAMessage() {
         webTestClient.post().uri(uriBuilder -> uriBuilder.path("/api/admin/process/definitions/start")
                         .queryParam("id", "no-such-definition:1:" + UUID.randomUUID()).build())
-                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com"))
                 .exchange()
                 .expectStatus().isBadRequest()
                 .expectBody()

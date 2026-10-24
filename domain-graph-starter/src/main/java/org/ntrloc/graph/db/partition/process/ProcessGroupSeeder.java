@@ -32,7 +32,7 @@ public class ProcessGroupSeeder {
         if (exists) return;
 
         var reviewers = groupRepo.createGroup("reviewers");
-        userRepo.findUserByExternalId("localuser")
+        userRepo.findUserByEmail("localuser@local")
                 .ifPresent(user -> groupRepo.addUserToGroup(user.id(), reviewers.id()));
     }
 }

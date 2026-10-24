@@ -52,7 +52,7 @@ public class ProjectionService {
             """) CollectionProjectionSpec spec, McpSyncRequestContext requestContext) {
         try {
             NtrlocPrincipal principal = principalResolver.requirePrincipal(requestContext);
-            LOG.info("Projecting items with spec {} as {}", spec, principal.externalId());
+            LOG.info("Projecting items with spec {} as {}", spec, principal.email());
             ProjectionResult result = entityManager.project(spec, "", principal);
             LOG.info("Projected {} item(s)", result.items().size());
             return result;

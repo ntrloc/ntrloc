@@ -3,6 +3,7 @@ package org.ntrloc.graph.db.partition.security.repository;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DuplicateKeyException;
 
 import java.time.OffsetDateTime;
 import java.util.UUID;
@@ -14,7 +15,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 // AuthorizationTestDataInitializer/AccessAdminControllerIntegrationTest's fixture setup never
 // exercises, since that only ever creates users/groups and reads them back, never lists, updates,
 // or deletes. security_user/security_user_group are shared tables, so every test here gives its own
-// rows a UUID-suffixed externalId/name/email and filters on that, never a shared literal.
+// rows a UUID-suffixed name/email and filters on that, never a shared literal.
 class SecurityRepositoryIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
@@ -24,14 +25,14 @@ class SecurityRepositoryIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void listUsers_includesCreatedUsers() {
-        var user = securityRepo.createUser("user-" + UUID.randomUUID(), "Display Name", null, false);
+        var user = securityRepo.createUser("Display Name", "user-" + UUID.randomUUID() + "@example.com", false);
 
         assertThat(securityRepo.listUsers()).contains(user);
     }
 
     @Test
     void findUserById_returnsTheMatchingUser() {
-        var user = securityRepo.createUser("user-" + UUID.randomUUID(), "Display Name", null, false);
+        var user = securityRepo.createUser("Display Name", "user-" + UUID.randomUUID() + "@example.com", false);
 
         var found = securityRepo.findUserById(user.id()).orElseThrow();
         assertThat(found).isEqualTo(user);
@@ -43,14 +44,38 @@ class SecurityRepositoryIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void findUserByEmail_ignoresCase() {
+        String email = "Mixed.Case-" + UUID.randomUUID() + "@Example.com";
+        var user = securityRepo.createUser("Display Name", email, false);
+
+        assertThat(securityRepo.findUserByEmail(email.toLowerCase())).contains(user);
+        assertThat(securityRepo.findUserByEmail(email.toUpperCase())).contains(user);
+    }
+
+    @Test
+    void findUserByEmail_returnsEmptyForAnUnknownEmail() {
+        assertThat(securityRepo.findUserByEmail("nobody-" + UUID.randomUUID() + "@example.com")).isEmpty();
+    }
+
+    @Test
+    void createUser_withAnEmailAlreadyInUseInAnotherCase_isRejected() {
+        String email = "dup-" + UUID.randomUUID() + "@example.com";
+        securityRepo.createUser("First", email, false);
+
+        assertThatThrownBy(() -> securityRepo.createUser("Second", email.toUpperCase(), false))
+                .isInstanceOf(DuplicateKeyException.class);
+    }
+
+    @Test
     void updateUser_persistsChanges() {
-        var user = securityRepo.createUser("user-" + UUID.randomUUID(), "Original Name", "original@example.com", false);
+        var user = securityRepo.createUser("Original Name", "original-" + UUID.randomUUID() + "@example.com", false);
+        String newEmail = "updated-" + UUID.randomUUID() + "@example.com";
 
-        securityRepo.updateUser(user.id(), user.externalId(), "Updated Name", "updated@example.com", true);
+        securityRepo.updateUser(user.id(), "Updated Name", newEmail, true);
 
-        var reloaded = securityRepo.findUserByExternalId(user.externalId()).orElseThrow();
+        var reloaded = securityRepo.findUserById(user.id()).orElseThrow();
         assertThat(reloaded.displayName()).isEqualTo("Updated Name");
-        assertThat(reloaded.email()).isEqualTo("updated@example.com");
+        assertThat(reloaded.email()).isEqualTo(newEmail);
         assertThat(reloaded.isSuperuser()).isTrue();
     }
 
@@ -85,8 +110,8 @@ class SecurityRepositoryIntegrationTest extends AbstractIntegrationTest {
     @Test
     void listUserGroupMembers_returnsOnlyMembersOfThatUserGroup() {
         var group = securityRepo.createUserGroup("group-" + UUID.randomUUID());
-        var member = securityRepo.createUser("user-" + UUID.randomUUID(), "Member", null, false);
-        var nonMember = securityRepo.createUser("user-" + UUID.randomUUID(), "Non-Member", null, false);
+        var member = securityRepo.createUser("Member", "user-" + UUID.randomUUID() + "@example.com", false);
+        var nonMember = securityRepo.createUser("Non-Member", "user-" + UUID.randomUUID() + "@example.com", false);
         securityRepo.addUserToUserGroup(member.id(), group.id());
 
         assertThat(securityRepo.listUserGroupMembers(group.id()))
@@ -98,7 +123,7 @@ class SecurityRepositoryIntegrationTest extends AbstractIntegrationTest {
     @Test
     void removeUserFromUserGroup_removesMembership() {
         var group = securityRepo.createUserGroup("group-" + UUID.randomUUID());
-        var user = securityRepo.createUser("user-" + UUID.randomUUID(), "Member", null, false);
+        var user = securityRepo.createUser("Member", "user-" + UUID.randomUUID() + "@example.com", false);
         securityRepo.addUserToUserGroup(user.id(), group.id());
 
         securityRepo.removeUserFromUserGroup(user.id(), group.id());
@@ -112,7 +137,7 @@ class SecurityRepositoryIntegrationTest extends AbstractIntegrationTest {
     void getUserGroupIdsForUser_includesUserGroupsTransitivelyContainingTheUsersDirectUserGroup() {
         var outer = securityRepo.createUserGroup("outer-" + UUID.randomUUID());
         var inner = securityRepo.createUserGroup("inner-" + UUID.randomUUID());
-        var user = securityRepo.createUser("user-" + UUID.randomUUID(), "Member", null, false);
+        var user = securityRepo.createUser("Member", "user-" + UUID.randomUUID() + "@example.com", false);
         securityRepo.addUserGroupToUserGroup(inner.id(), outer.id());
         securityRepo.addUserToUserGroup(user.id(), inner.id());
 
@@ -124,7 +149,7 @@ class SecurityRepositoryIntegrationTest extends AbstractIntegrationTest {
         var grandparent = securityRepo.createUserGroup("grandparent-" + UUID.randomUUID());
         var parent = securityRepo.createUserGroup("parent-" + UUID.randomUUID());
         var child = securityRepo.createUserGroup("child-" + UUID.randomUUID());
-        var user = securityRepo.createUser("user-" + UUID.randomUUID(), "Member", null, false);
+        var user = securityRepo.createUser("Member", "user-" + UUID.randomUUID() + "@example.com", false);
         securityRepo.addUserGroupToUserGroup(parent.id(), grandparent.id());
         securityRepo.addUserGroupToUserGroup(child.id(), parent.id());
         securityRepo.addUserToUserGroup(user.id(), child.id());
@@ -187,7 +212,7 @@ class SecurityRepositoryIntegrationTest extends AbstractIntegrationTest {
     void removeUserGroupFromUserGroup_removesTransitiveMembershipEffect() {
         var outer = securityRepo.createUserGroup("outer-" + UUID.randomUUID());
         var inner = securityRepo.createUserGroup("inner-" + UUID.randomUUID());
-        var user = securityRepo.createUser("user-" + UUID.randomUUID(), "Member", null, false);
+        var user = securityRepo.createUser("Member", "user-" + UUID.randomUUID() + "@example.com", false);
         securityRepo.addUserGroupToUserGroup(inner.id(), outer.id());
         securityRepo.addUserToUserGroup(user.id(), inner.id());
 
@@ -199,51 +224,50 @@ class SecurityRepositoryIntegrationTest extends AbstractIntegrationTest {
     // --- Local credentials ---
 
     @Test
-    void createLocalCredentials_thenFindCredentialsByEmail_returnsThem() {
-        var user = securityRepo.createUser("user-" + UUID.randomUUID(), "Local User", null, false);
-        String email = "local-" + UUID.randomUUID() + "@example.com";
+    void createLocalCredentials_thenFindCredentialsByUserId_returnsThem() {
+        var user = securityRepo.createUser("Local User", "user-" + UUID.randomUUID() + "@example.com", false);
 
-        securityRepo.createLocalCredentials(user.id(), email, "hashed-password", "USER");
+        securityRepo.createLocalCredentials(user.id(), "hashed-password", "USER");
 
-        var credentials = securityRepo.findCredentialsByEmail(email).orElseThrow();
+        var credentials = securityRepo.findCredentialsByUserId(user.id()).orElseThrow();
         assertThat(credentials.userId()).isEqualTo(user.id());
         assertThat(credentials.passwordHash()).isEqualTo("hashed-password");
         assertThat(credentials.role()).isEqualTo("USER");
     }
 
     @Test
-    void findCredentialsByEmail_forUnknownEmail_returnsEmpty() {
-        assertThat(securityRepo.findCredentialsByEmail("nobody-" + UUID.randomUUID() + "@example.com")).isEmpty();
+    void findCredentialsByUserId_forAUserWithoutLocalCredentials_returnsEmpty() {
+        var user = securityRepo.createUser("No Credentials", "user-" + UUID.randomUUID() + "@example.com", false);
+
+        assertThat(securityRepo.findCredentialsByUserId(user.id())).isEmpty();
     }
 
     @Test
     void updatePasswordHash_persistsChange() {
-        var user = securityRepo.createUser("user-" + UUID.randomUUID(), "Local User", null, false);
-        String email = "local-" + UUID.randomUUID() + "@example.com";
-        securityRepo.createLocalCredentials(user.id(), email, "old-hash", "USER");
+        var user = securityRepo.createUser("Local User", "user-" + UUID.randomUUID() + "@example.com", false);
+        securityRepo.createLocalCredentials(user.id(), "old-hash", "USER");
 
         securityRepo.updatePasswordHash(user.id(), "new-hash");
 
-        assertThat(securityRepo.findCredentialsByEmail(email).orElseThrow().passwordHash()).isEqualTo("new-hash");
+        assertThat(securityRepo.findCredentialsByUserId(user.id()).orElseThrow().passwordHash()).isEqualTo("new-hash");
     }
 
     @Test
     void updateLocalCredentialsRole_persistsChange() {
-        var user = securityRepo.createUser("user-" + UUID.randomUUID(), "Local User", null, false);
-        String email = "local-" + UUID.randomUUID() + "@example.com";
-        securityRepo.createLocalCredentials(user.id(), email, "hash", "USER");
+        var user = securityRepo.createUser("Local User", "user-" + UUID.randomUUID() + "@example.com", false);
+        securityRepo.createLocalCredentials(user.id(), "hash", "USER");
 
         securityRepo.updateLocalCredentialsRole(user.id(), "ADMIN");
 
-        assertThat(securityRepo.findCredentialsByEmail(email).orElseThrow().role()).isEqualTo("ADMIN");
+        assertThat(securityRepo.findCredentialsByUserId(user.id()).orElseThrow().role()).isEqualTo("ADMIN");
     }
 
     // --- Personal access tokens ---
 
     @Test
     void listTokensForUser_returnsOnlyThatUsersTokens() {
-        var user = securityRepo.createUser("user-" + UUID.randomUUID(), "Token User", null, false);
-        var otherUser = securityRepo.createUser("user-" + UUID.randomUUID(), "Other User", null, false);
+        var user = securityRepo.createUser("Token User", "user-" + UUID.randomUUID() + "@example.com", false);
+        var otherUser = securityRepo.createUser("Other User", "user-" + UUID.randomUUID() + "@example.com", false);
         UUID tokenId = securityRepo.createPersonalAccessToken(user.id(), "token-hash-" + UUID.randomUUID(), "My Token", null);
         securityRepo.createPersonalAccessToken(otherUser.id(), "token-hash-" + UUID.randomUUID(), "Other Token", OffsetDateTime.now().plusDays(1));
 

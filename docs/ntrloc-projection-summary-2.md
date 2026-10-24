@@ -12,8 +12,7 @@ Revise/refine in place as the thinking develops further.
 
 While implementing a `groupProperties` toggle (schema-level, properties-only — a group was a
 fixed, admin-curated grouping baked into the item type definition, assigned to individual
-properties only), a real production MDM screenshot (from the `pmdm-update-poc` reference
-project) surfaced two problems with that premise:
+properties only), a real production MDM screenshot surfaced two problems with that premise:
 
 1. **"Cloned From"** and **"Title Grouping Work"** are grouped sections in that UI, but both
    render as tables pointing at *other items* (a Product, a Work) — i.e. they are **links**, not

@@ -112,7 +112,7 @@ class BinaryPartitionManagerImplUpdateMetadataIntegrationTest extends AbstractIn
         Map<String, Object> properties = new HashMap<>();
         properties.put("title", "Dune");
         properties.put("attachment", binaryId.toString());
-        MutationResponse response = webTestClient.mutate().defaultHeader(HttpHeaders.AUTHORIZATION, bearerTokenFor("root")).build()
+        MutationResponse response = webTestClient.mutate().defaultHeader(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com")).build()
                 .post().uri("/api/mutation")
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(new MutationRequest(List.of(new ItemCreateMutation(null, BOOK_TYPE, properties)), List.of()))

@@ -70,7 +70,7 @@ public class PersonalAccessTokenService {
     public Optional<NtrlocPrincipal> authenticate(String rawToken) {
         return repo.findUserByValidTokenHash(hash(rawToken))
                 .map(user -> new ResolvedPrincipal(
-                        user.id(), user.externalId(), user.displayName(), user.email(),
+                        user.id(), user.displayName(), user.email(),
                         repo.getUserGroupIdsForUser(user.id()), user.isSuperuser()));
     }
 

@@ -191,7 +191,7 @@ class ItemPaneUiTest extends AbstractUiIntegrationTest {
         String markerName = "ui-item-marker-" + UUID.randomUUID();
         var marker = authorizationRepository.createMarker(markerName, "UI test fixture", "ITEM_TYPE", gadgetType.id());
         markerAssignmentService.addItemMarker(gadget.id(), marker.id(),
-                principalResolver.resolveByExternalId(admin.username()).orElseThrow(), "UI test");
+                principalResolver.resolveById(admin.id()).orElseThrow(), "UI test");
 
         ItemPanePage item = openItem(gadget.name()).openTab("Markers");
 

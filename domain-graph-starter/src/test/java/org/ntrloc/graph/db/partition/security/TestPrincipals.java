@@ -12,7 +12,7 @@ public final class TestPrincipals {
     private TestPrincipals() {
     }
 
-    public static NtrlocPrincipal of(UUID id, String externalId, String displayName, String email, Set<UUID> groupIds, boolean isSuperuser) {
-        return new ResolvedPrincipal(id, externalId, displayName, email, groupIds, isSuperuser);
+    public static NtrlocPrincipal of(UUID id, String displayName, String email, Set<UUID> groupIds, boolean isSuperuser) {
+        return new ResolvedPrincipal(id, displayName, email, groupIds, isSuperuser);
     }
 }

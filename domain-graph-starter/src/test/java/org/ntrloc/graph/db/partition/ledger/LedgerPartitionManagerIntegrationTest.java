@@ -28,7 +28,7 @@ class LedgerPartitionManagerIntegrationTest extends AbstractIntegrationTest {
 
     @BeforeEach
     void setUpActor() {
-        actor = securityRepo.createUser("lpm-actor-" + UUID.randomUUID(), "Ledger Test Actor", null, true).id();
+        actor = securityRepo.createUser("Ledger Test Actor", "lpm-actor-" + UUID.randomUUID() + "@example.com", true).id();
     }
 
     @Test
@@ -112,7 +112,7 @@ class LedgerPartitionManagerIntegrationTest extends AbstractIntegrationTest {
         UUID itemId = UUID.randomUUID();
         UUID markerId = UUID.randomUUID();
         UUID txn = UUID.randomUUID();
-        ManuallyAppliedMarker attributed = new ManuallyAppliedMarker(markerId, "some-user", "flagged by pre-production naming rule");
+        ManuallyAppliedMarker attributed = new ManuallyAppliedMarker(markerId, actor, "flagged by pre-production naming rule");
 
         ledgerPartitionManager.append(List.of(new ItemUpdateEntry(itemId, Map.of(), Map.of(), Set.of(), Set.of(attributed), Set.of())), txn, actor, OffsetDateTime.now());
         ledgerPartitionManager.commit(txn, UUID.randomUUID());

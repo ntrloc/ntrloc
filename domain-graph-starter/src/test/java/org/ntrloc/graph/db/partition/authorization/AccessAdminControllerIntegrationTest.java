@@ -55,13 +55,13 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
     }
 
     private UUID aliceId() {
-        return securityRepo.findUserByExternalId("alice").orElseThrow().id();
+        return securityRepo.findUserByEmail("alice@example.com").orElseThrow().id();
     }
 
     @SuppressWarnings("unchecked")
     private List<Map<String, Object>> getAsRoot(String uri) {
         return (List<Map<String, Object>>) (List<?>) webTestClient.get().uri(uri)
-                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com"))
                 .exchange()
                 .expectStatus().isOk()
                 .expectBodyList(Map.class)
@@ -74,7 +74,7 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void nonAdminCallerIsForbidden() {
         webTestClient.get().uri("/api/admin/users/" + aliceId() + "/user-groups")
-                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("alice"))
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("alice@example.com"))
                 .exchange()
                 .expectStatus().isForbidden();
     }
@@ -108,7 +108,7 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void getUserGroupPermissions_forUnknownUserGroup_returnsNotFound() {
         webTestClient.get().uri("/api/admin/user-groups/" + UUID.randomUUID() + "/permissions")
-                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com"))
                 .exchange()
                 .expectStatus().isNotFound();
     }
@@ -119,7 +119,7 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
         assertThat(authRepo.findItemTypeGrant(publicDocId(), "USER_GROUP", group.id(), "item-type:read")).isEmpty();
 
         webTestClient.post().uri("/api/admin/user-groups/" + group.id() + "/permissions")
-                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(Map.of("itemTypeId", publicDocId().toString(), "operation", "item-type:read"))
                 .exchange()
@@ -131,7 +131,7 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void grantUserGroupPermission_forUnknownUserGroup_returnsNotFound() {
         webTestClient.post().uri("/api/admin/user-groups/" + UUID.randomUUID() + "/permissions")
-                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(Map.of("itemTypeId", publicDocId().toString(), "operation", "item-type:read"))
                 .exchange()
@@ -143,7 +143,7 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
         var group = securityRepo.createUserGroup("access-admin-test-" + UUID.randomUUID());
 
         webTestClient.post().uri("/api/admin/user-groups/" + group.id() + "/permissions")
-                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(Map.of("operation", "item-type:read"))
                 .exchange()
@@ -155,7 +155,7 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
         var group = securityRepo.createUserGroup("access-admin-test-" + UUID.randomUUID());
 
         webTestClient.post().uri("/api/admin/user-groups/" + group.id() + "/permissions")
-                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(Map.of("itemTypeId", publicDocId().toString(), "operation", "item:read"))
                 .exchange()
@@ -169,7 +169,7 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
         webTestClient.method(org.springframework.http.HttpMethod.DELETE)
                 .uri("/api/admin/user-groups/" + group.id() + "/permissions")
-                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(Map.of("itemTypeId", publicDocId().toString(), "operation", "item-type:read"))
                 .exchange()
@@ -182,7 +182,7 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
     void revokeUserGroupPermission_forUnknownUserGroup_returnsNotFound() {
         webTestClient.method(org.springframework.http.HttpMethod.DELETE)
                 .uri("/api/admin/user-groups/" + UUID.randomUUID() + "/permissions")
-                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(Map.of("itemTypeId", publicDocId().toString(), "operation", "item-type:read"))
                 .exchange()
@@ -195,7 +195,7 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
         webTestClient.method(org.springframework.http.HttpMethod.DELETE)
                 .uri("/api/admin/user-groups/" + group.id() + "/permissions")
-                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(Map.of("operation", "item-type:read"))
                 .exchange()
@@ -208,7 +208,7 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
         webTestClient.method(org.springframework.http.HttpMethod.DELETE)
                 .uri("/api/admin/user-groups/" + group.id() + "/permissions")
-                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(Map.of("itemTypeId", publicDocId().toString(), "operation", "item-type:read"))
                 .exchange()
@@ -234,7 +234,7 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void getUserEffectivePermissions_groupsMultipleOperationsOnTheSameItemTypeIntoOneEntry() {
         var group = securityRepo.createUserGroup("access-admin-test-" + UUID.randomUUID());
-        var user = securityRepo.createUser("access-admin-test-" + UUID.randomUUID(), "Multi-Op User", null, false);
+        var user = securityRepo.createUser("Multi-Op User", "access-admin-test-" + UUID.randomUUID() + "@example.com", false);
         securityRepo.addUserToUserGroup(user.id(), group.id());
         authRepo.grantItemTypeIfAbsent(publicDocId(), "USER_GROUP", group.id(), "item-type:read");
         authRepo.grantItemTypeIfAbsent(publicDocId(), "USER_GROUP", group.id(), "item-type:create");
@@ -251,7 +251,7 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void getUserEffectivePermissions_forAUserInNoUserGroups_returnsAnEmptyList() {
-        var user = securityRepo.createUser("access-admin-test-" + UUID.randomUUID(), "No UserGroups", null, false);
+        var user = securityRepo.createUser("No UserGroups", "access-admin-test-" + UUID.randomUUID() + "@example.com", false);
 
         List<Map<String, Object>> permissions = getAsRoot("/api/admin/users/" + user.id() + "/permissions");
 

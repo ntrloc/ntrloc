@@ -44,7 +44,7 @@ class TaskAdminControllerIntegrationTest extends AbstractIntegrationTest {
     // seeded superuser; a request that sets its own Authorization header still uses that one.
     @BeforeEach
     void authenticateAsRoot() {
-        webTestClient = webTestClient.mutate().defaultHeader(HttpHeaders.AUTHORIZATION, bearerTokenFor("root")).build();
+        webTestClient = webTestClient.mutate().defaultHeader(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com")).build();
     }
 
     @Autowired
@@ -78,7 +78,7 @@ class TaskAdminControllerIntegrationTest extends AbstractIntegrationTest {
     }
 
     private SecurityRepository.UserRow createUser() {
-        return securityRepo.createUser("user-" + UUID.randomUUID(), "Test User", null, false);
+        return securityRepo.createUser("Test User", "user-" + UUID.randomUUID() + "@example.com", false);
     }
 
     // Every test that starts a process instance must reach this by its end: the reviewGreeting
@@ -93,9 +93,9 @@ class TaskAdminControllerIntegrationTest extends AbstractIntegrationTest {
     }
 
     @SuppressWarnings("unchecked")
-    private List<Map<String, Object>> listTasksAs(String externalId) {
+    private List<Map<String, Object>> listTasksAs(String email) {
         return (List<Map<String, Object>>) (List<?>) webTestClient.get().uri("/api/admin/process/tasks")
-                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor(externalId))
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor(email))
                 .exchange()
                 .expectStatus().isOk()
                 .expectBodyList(Map.class)
@@ -109,7 +109,7 @@ class TaskAdminControllerIntegrationTest extends AbstractIntegrationTest {
     void listTasks_asSuperuser_showsEveryTask() {
         Task task = startProcessAndGetReviewTask();
 
-        List<Map<String, Object>> tasks = listTasksAs("root");
+        List<Map<String, Object>> tasks = listTasksAs("root@example.com");
 
         assertThat(tasks).extracting(t -> t.get("id")).contains(task.getId());
         completeTask(task.getId());
@@ -120,7 +120,7 @@ class TaskAdminControllerIntegrationTest extends AbstractIntegrationTest {
         Task task = startProcessAndGetReviewTask();
         var unrelatedUser = createUser();
 
-        List<Map<String, Object>> tasks = listTasksAs(unrelatedUser.externalId());
+        List<Map<String, Object>> tasks = listTasksAs(unrelatedUser.email());
 
         assertThat(tasks).extracting(t -> t.get("id")).doesNotContain(task.getId());
         completeTask(task.getId());
@@ -130,11 +130,29 @@ class TaskAdminControllerIntegrationTest extends AbstractIntegrationTest {
     void listTasks_forTheAssignedUser_showsIt() {
         Task task = startProcessAndGetReviewTask();
         var assignee = createUser();
-        taskService.claim(task.getId(), assignee.externalId());
+        taskService.claim(task.getId(), assignee.id().toString());
 
-        List<Map<String, Object>> tasks = listTasksAs(assignee.externalId());
+        List<Map<String, Object>> tasks = listTasksAs(assignee.email());
 
         assertThat(tasks).extracting(t -> t.get("id")).contains(task.getId());
+        completeTask(task.getId());
+    }
+
+    // The assignee is stored as the user's id, so changing their email leaves the task theirs.
+    @Test
+    void listTasks_afterTheAssigneesEmailChanges_stillShowsItWithTheNewEmail() {
+        Task task = startProcessAndGetReviewTask();
+        var assignee = createUser();
+        taskService.claim(task.getId(), assignee.id().toString());
+        String newEmail = "renamed-" + UUID.randomUUID() + "@example.com";
+        securityRepo.updateUser(assignee.id(), assignee.displayName(), newEmail, false);
+
+        List<Map<String, Object>> tasks = listTasksAs(newEmail);
+
+        assertThat(tasks).filteredOn(t -> task.getId().equals(t.get("id")))
+                .singleElement()
+                .extracting(t -> ((Map<?, ?>) t.get("assignee")).get("email"))
+                .isEqualTo(newEmail);
         completeTask(task.getId());
     }
 
@@ -148,7 +166,7 @@ class TaskAdminControllerIntegrationTest extends AbstractIntegrationTest {
         var candidate = createUser();
         groupRepo.addUserToGroup(candidate.id(), reviewersGroup.id());
 
-        List<Map<String, Object>> tasks = listTasksAs(candidate.externalId());
+        List<Map<String, Object>> tasks = listTasksAs(candidate.email());
 
         assertThat(tasks).extracting(t -> t.get("id")).contains(task.getId());
         completeTask(task.getId());
@@ -157,15 +175,17 @@ class TaskAdminControllerIntegrationTest extends AbstractIntegrationTest {
     // --- Claim ---
 
     @Test
-    void claim_asAdmin_setsTheAssignee() {
+    void claim_asAdmin_setsTheAssigneeToTheirUserId() {
         Task task = startProcessAndGetReviewTask();
+        var root = securityRepo.findUserByEmail("root@example.com").orElseThrow();
 
         webTestClient.post().uri("/api/admin/process/tasks/{id}/claim", task.getId())
-                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com"))
                 .exchange()
                 .expectStatus().isOk()
                 .expectBody()
-                .jsonPath("$.assignee").isEqualTo("root")
+                .jsonPath("$.assignee.id").isEqualTo(root.id().toString())
+                .jsonPath("$.assignee.email").isEqualTo("root@example.com")
                 .jsonPath("$.id").isEqualTo(task.getId());
         completeTask(task.getId());
     }
@@ -173,7 +193,7 @@ class TaskAdminControllerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void claim_forAnUnknownTaskId_returnsBadRequestWithAMessage() {
         webTestClient.post().uri("/api/admin/process/tasks/{id}/claim", "no-such-task")
-                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com"))
                 .exchange()
                 .expectStatus().isBadRequest()
                 .expectBody()

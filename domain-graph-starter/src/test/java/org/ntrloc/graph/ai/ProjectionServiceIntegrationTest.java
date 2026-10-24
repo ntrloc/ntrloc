@@ -56,8 +56,8 @@ class ProjectionServiceIntegrationTest extends AbstractIntegrationTest {
     // method's own pre-existing null-check, neither of which touch EntityManager at all).
     @Test
     void projectItems_withAValidBearerToken_succeeds() {
-        var user = securityRepo.createUser("mcp-projection-user-" + UUID.randomUUID(), "MCP Projection Test User", null, true);
-        var principal = TestPrincipals.of(user.id(), user.externalId(), user.displayName(), null, Set.of(), true);
+        var user = securityRepo.createUser("MCP Projection Test User", "mcp-projection-user-" + UUID.randomUUID() + "@example.com", true);
+        var principal = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), true);
         var issued = tokenService.issue(principal, "projection-test-token", null);
 
         McpSyncRequestContext requestContext = mock(McpSyncRequestContext.class);

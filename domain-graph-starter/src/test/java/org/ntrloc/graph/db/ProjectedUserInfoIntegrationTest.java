@@ -52,14 +52,14 @@ class ProjectedUserInfoIntegrationTest extends AbstractIntegrationTest {
 
     @BeforeEach
     void setUpSuperuser() {
-        var user = securityRepo.createUser("puiit-root-" + UUID.randomUUID(), "Root", null, true);
-        SUPERUSER = TestPrincipals.of(user.id(), user.externalId(), user.displayName(), null, Set.of(), true);
+        var user = securityRepo.createUser("Root", "puiit-root-" + UUID.randomUUID() + "@example.com", true);
+        SUPERUSER = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), true);
     }
 
     @Test
     void itemProjection_resolvesCreatedByToRealUserInfo_andLeavesUpdatedByNullUntilActuallyUpdated() {
-        var creator = securityRepo.createUser("puiit-creator-" + UUID.randomUUID(), "Creator Person", "creator@example.com", false);
-        var editor = securityRepo.createUser("puiit-editor-" + UUID.randomUUID(), "Editor Person", "editor@example.com", false);
+        var creator = securityRepo.createUser("Creator Person", "creator-" + UUID.randomUUID() + "@example.com", false);
+        var editor = securityRepo.createUser("Editor Person", "editor-" + UUID.randomUUID() + "@example.com", false);
 
         UUID itemId = UUID.randomUUID();
         UUID txn = UUID.randomUUID();
@@ -70,8 +70,7 @@ class ProjectedUserInfoIntegrationTest extends AbstractIntegrationTest {
         ProjectedItem afterCreate = entityManager.project(new ItemProjectionSpec("CoordinatorTestProduct", itemId), "http://binary", SUPERUSER)
                 .orElseThrow();
 
-        assertThat(afterCreate.createdBy().username()).isEqualTo(creator.externalId());
-        assertThat(afterCreate.createdBy().email()).isEqualTo("creator@example.com");
+        assertThat(afterCreate.createdBy().email()).isEqualTo(creator.email());
         // Only ever created, never updated -- updatedBy must be absent, not a UserInfo for the
         // creator (see ProjectedItem's own comment on why create doesn't also count as "updated").
         assertThat(afterCreate.updatedBy()).isNull();
@@ -84,13 +83,12 @@ class ProjectedUserInfoIntegrationTest extends AbstractIntegrationTest {
         ProjectedItem afterUpdate = entityManager.project(new ItemProjectionSpec("CoordinatorTestProduct", itemId), "http://binary", SUPERUSER)
                 .orElseThrow();
 
-        assertThat(afterUpdate.updatedBy().username()).isEqualTo(editor.externalId());
-        assertThat(afterUpdate.updatedBy().email()).isEqualTo("editor@example.com");
+        assertThat(afterUpdate.updatedBy().email()).isEqualTo(editor.email());
     }
 
     @Test
     void collectionProjection_resolvesCreatedByForEveryItem() {
-        var creator = securityRepo.createUser("puiit-collection-creator-" + UUID.randomUUID(), "Collection Creator", "collection@example.com", false);
+        var creator = securityRepo.createUser("Collection Creator", "collection-" + UUID.randomUUID() + "@example.com", false);
 
         UUID itemId = UUID.randomUUID();
         String name = "Gadget-" + itemId;
@@ -105,8 +103,7 @@ class ProjectedUserInfoIntegrationTest extends AbstractIntegrationTest {
                 new PropertyValuePredicate("name", Operator.EQUALS, name)), "http://binary", SUPERUSER);
 
         var projected = result.items().stream().filter(i -> i.itemId().equals(itemId)).findFirst().orElseThrow();
-        assertThat(projected.createdBy().username()).isEqualTo(creator.externalId());
-        assertThat(projected.createdBy().email()).isEqualTo("collection@example.com");
+        assertThat(projected.createdBy().email()).isEqualTo(creator.email());
     }
 
     // The link's own createdBy/updatedBy are distinct from the linked item's -- different actors,
@@ -114,9 +111,9 @@ class ProjectedUserInfoIntegrationTest extends AbstractIntegrationTest {
     // UserInfo shows up somewhere in the tree."
     @Test
     void linkProjection_resolvesCreatedByForBothTheLinkItselfAndTheLinkedItem() {
-        var productCreator = securityRepo.createUser("puiit-product-creator-" + UUID.randomUUID(), "Product Creator", "product@example.com", false);
-        var contributorCreator = securityRepo.createUser("puiit-contributor-creator-" + UUID.randomUUID(), "Contributor Creator", "contributor@example.com", false);
-        var linkCreator = securityRepo.createUser("puiit-link-creator-" + UUID.randomUUID(), "Link Creator", "link@example.com", false);
+        var productCreator = securityRepo.createUser("Product Creator", "product-" + UUID.randomUUID() + "@example.com", false);
+        var contributorCreator = securityRepo.createUser("Contributor Creator", "contributor-" + UUID.randomUUID() + "@example.com", false);
+        var linkCreator = securityRepo.createUser("Link Creator", "link-" + UUID.randomUUID() + "@example.com", false);
 
         UUID productId = UUID.randomUUID();
         UUID contributorId = UUID.randomUUID();
@@ -145,7 +142,7 @@ class ProjectedUserInfoIntegrationTest extends AbstractIntegrationTest {
                 "http://binary", SUPERUSER).orElseThrow();
 
         var link = product.links().get("products").get(0);
-        assertThat(link.createdBy().username()).isEqualTo(linkCreator.externalId());
-        assertThat(link.item().createdBy().username()).isEqualTo(contributorCreator.externalId());
+        assertThat(link.createdBy().email()).isEqualTo(linkCreator.email());
+        assertThat(link.item().createdBy().email()).isEqualTo(contributorCreator.email());
     }
 }

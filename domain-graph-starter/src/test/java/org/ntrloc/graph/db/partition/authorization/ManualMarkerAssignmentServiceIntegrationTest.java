@@ -47,8 +47,8 @@ class ManualMarkerAssignmentServiceIntegrationTest extends AbstractIntegrationTe
     private SecurityRepository securityRepo;
 
     private NtrlocPrincipal testActor() {
-        var user = securityRepo.createUser("mast-actor-" + UUID.randomUUID(), "Marker Test Actor", null, true);
-        return TestPrincipals.of(user.id(), user.externalId(), user.displayName(), null, Set.of(), true);
+        var user = securityRepo.createUser("Marker Test Actor", "mast-actor-" + UUID.randomUUID() + "@example.com", true);
+        return TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), true);
     }
 
     private UUID createItem(NtrlocPrincipal actor) {
@@ -87,7 +87,7 @@ class ManualMarkerAssignmentServiceIntegrationTest extends AbstractIntegrationTe
                 .param("itemId", itemId).query(UUID.class).single();
         assertThat(createdBy).isEqualTo(actor.id());
 
-        // ManuallyAppliedMarker's userExternalId/reason are separate from the entry-level actor --
+        // ManuallyAppliedMarker's userId/reason are separate from the entry-level actor --
         // this proves both actually made it into the payload, not just the entry-level attribution.
         Long attributedRows = jdbcClient.sql("""
                 SELECT COUNT(*) FROM ledger_entry
@@ -95,12 +95,12 @@ class ManualMarkerAssignmentServiceIntegrationTest extends AbstractIntegrationTe
                   AND EXISTS (
                       SELECT 1 FROM jsonb_array_elements(payload::jsonb -> 'markersAdded') marker
                       WHERE marker ->> 'markerId' = :markerId
-                        AND marker ->> 'userExternalId' = :actorExternalId
+                        AND marker ->> 'userId' = :actorUserId
                         AND marker ->> 'reason' = 'flagged for review'
                   )
                 """)
                 .param("itemId", itemId).param("markerId", markerId.toString())
-                .param("actorExternalId", actor.externalId()).query(Long.class).single();
+                .param("actorUserId", actor.id().toString()).query(Long.class).single();
         assertThat(attributedRows).isEqualTo(1L);
     }
 

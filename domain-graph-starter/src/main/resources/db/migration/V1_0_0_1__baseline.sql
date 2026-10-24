@@ -185,15 +185,20 @@ CREATE TABLE schema_entity_link_perspective (
 
 -- is_superuser lives here (not on security_local_credentials) because it's an identity attribute
 -- independent of how the principal authenticated -- a superuser should bypass marker authorization
--- the same way whether they logged in locally, via LDAP, OAuth, or the stand-in header, per the
+-- the same way whether they logged in locally, via LDAP, or OAuth, per the
 -- design doc's "superusers bypass all policy" principle.
+--
+-- email is the user's unique identifier (case-insensitive, via the index below; the stored value
+-- keeps whatever case it was entered with). Anything that references a user stores
+-- security_user.id, never the email.
 CREATE TABLE security_user (
     id           UUID PRIMARY KEY DEFAULT uuidv7(),
-    external_id  TEXT NOT NULL UNIQUE,
     display_name TEXT NOT NULL,
-    email        TEXT,
+    email        TEXT NOT NULL,
     is_superuser BOOLEAN NOT NULL DEFAULT FALSE
 );
+
+CREATE UNIQUE INDEX security_user_email_lower_idx ON security_user (lower(email));
 
 CREATE TABLE security_user_group (
     id   UUID PRIMARY KEY DEFAULT uuidv7(),
@@ -219,9 +224,9 @@ CREATE TABLE security_user_group_member_group (
     CHECK (member_group_id != group_id)
 );
 
+-- Local logins look the user up by security_user.email; this table holds only the credentials.
 CREATE TABLE security_local_credentials (
     user_id       UUID PRIMARY KEY REFERENCES security_user(id) ON DELETE CASCADE,
-    email         TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
     role          TEXT NOT NULL CHECK (role IN ('ADMIN', 'USER')),
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),

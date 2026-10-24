@@ -53,8 +53,8 @@ class AuthorizationRepositoryMarkerIntegrationTest extends AbstractIntegrationTe
 
     @BeforeEach
     void setUpActor() {
-        var user = securityRepo.createUser("arm-actor-" + UUID.randomUUID(), "Authorization Test Actor", null, true);
-        actor = TestPrincipals.of(user.id(), user.externalId(), user.displayName(), null, Set.of(), true);
+        var user = securityRepo.createUser("Authorization Test Actor", "arm-actor-" + UUID.randomUUID() + "@example.com", true);
+        actor = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), true);
     }
 
     private UUID createItem() {

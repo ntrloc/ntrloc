@@ -63,7 +63,7 @@ class RegisterProvenanceIntegrationTest extends AbstractIntegrationTest {
     }
 
     private UUID createUser(String prefix) {
-        return securityRepo.createUser(prefix + "-" + UUID.randomUUID(), prefix + " display name", null, true).id();
+        return securityRepo.createUser(prefix + " display name", prefix + "-" + UUID.randomUUID() + "@example.com", true).id();
     }
 
     private ProjectedItem projectProduct(UUID itemId, Map<String, LinkProjectionSpec> requestedLinks) {

@@ -49,7 +49,7 @@ class ItemStateChangeLedgerIntegrationTest extends AbstractIntegrationTest {
 
     @BeforeEach
     void setUpActor() {
-        actor = securityRepo.createUser("iscl-actor-" + UUID.randomUUID(), "State Change Test Actor", null, true).id();
+        actor = securityRepo.createUser("State Change Test Actor", "iscl-actor-" + UUID.randomUUID() + "@example.com", true).id();
     }
 
     private UUID createBook(String title) {

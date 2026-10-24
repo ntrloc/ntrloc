@@ -16,7 +16,7 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/api/account")
 public class AccountController {
 
-    public record MeResponse(String username, String displayName, String email, boolean isSuperuser) {}
+    public record MeResponse(String displayName, String email, boolean isSuperuser) {}
 
     public record ChangePasswordRequest(String currentPassword, String newPassword) {}
 
@@ -32,7 +32,7 @@ public class AccountController {
     @GetMapping("/me")
     public MeResponse me(Authentication authentication) {
         var principal = principalResolver.resolve(authentication);
-        return new MeResponse(principal.externalId(), principal.displayName(), principal.email(), principal.isSuperuser());
+        return new MeResponse(principal.displayName(), principal.email(), principal.isSuperuser());
     }
 
     @PutMapping("/password")
@@ -40,7 +40,7 @@ public class AccountController {
                                                 Authentication authentication) {
         var principal = principalResolver.resolve(authentication);
 
-        var credentials = repo.findCredentialsByEmail(principal.externalId())
+        var credentials = repo.findCredentialsByUserId(principal.id())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "No local credentials for this account"));
 
         if (!encoder.matches(body.currentPassword(), credentials.passwordHash().replace("{bcrypt}", ""))) {

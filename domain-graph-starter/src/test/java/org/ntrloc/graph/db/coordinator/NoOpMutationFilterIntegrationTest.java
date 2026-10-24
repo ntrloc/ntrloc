@@ -59,7 +59,7 @@ class NoOpMutationFilterIntegrationTest extends AbstractIntegrationTest {
 
     @BeforeEach
     void setUpActor() {
-        actor = securityRepo.createUser("nomf-actor-" + UUID.randomUUID(), "NoOp Test Actor", null, true);
+        actor = securityRepo.createUser("NoOp Test Actor", "nomf-actor-" + UUID.randomUUID() + "@example.com", true);
     }
 
     private long itemLedgerRowCount(UUID itemId) {

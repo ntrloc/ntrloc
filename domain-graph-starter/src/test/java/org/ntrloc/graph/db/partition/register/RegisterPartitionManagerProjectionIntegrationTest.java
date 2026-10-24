@@ -112,9 +112,9 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
     @BeforeEach
     void authenticateAsRootAndGenerateUniqueMarker() {
         // Same "root" as MutationControllerIntegrationTest -- see that class's own comment.
-        webTestClient = webTestClient.mutate().defaultHeader(HttpHeaders.AUTHORIZATION, bearerTokenFor("root")).build();
+        webTestClient = webTestClient.mutate().defaultHeader(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com")).build();
         marker = UUID.randomUUID().toString();
-        actor = securityRepo.createUser("rpmp-actor-" + UUID.randomUUID(), "Projection Test Actor", null, true).id();
+        actor = securityRepo.createUser("Projection Test Actor", "rpmp-actor-" + UUID.randomUUID() + "@example.com", true).id();
     }
 
     private UUID createBook(String title, Integer pageCount, Boolean inStock, String genre) {

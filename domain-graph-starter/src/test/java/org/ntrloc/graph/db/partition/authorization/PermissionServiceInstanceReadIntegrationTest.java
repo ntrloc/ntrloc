@@ -53,8 +53,8 @@ class PermissionServiceInstanceReadIntegrationTest extends AbstractIntegrationTe
 
     @BeforeEach
     void setUpActor() {
-        var user = securityRepo.createUser("pisr-actor-" + UUID.randomUUID(), "Permission Test Actor", null, true);
-        actor = TestPrincipals.of(user.id(), user.externalId(), user.displayName(), null, Set.of(), true);
+        var user = securityRepo.createUser("Permission Test Actor", "pisr-actor-" + UUID.randomUUID() + "@example.com", true);
+        actor = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), true);
     }
 
     private UUID createItem() {
@@ -73,16 +73,16 @@ class PermissionServiceInstanceReadIntegrationTest extends AbstractIntegrationTe
         authRepo.setItemPermissions(authRepo.ensureMarkerGrant(markerId, principalType, principalId), true, false);
     }
 
-    private NtrlocPrincipal principal(UUID id, String externalId, Set<UUID> groupIds, boolean isSuperuser) {
-        return TestPrincipals.of(id, externalId, externalId, null, groupIds, isSuperuser);
+    private NtrlocPrincipal principal(UUID id, String email, Set<UUID> groupIds, boolean isSuperuser) {
+        return TestPrincipals.of(id, email, email, groupIds, isSuperuser);
     }
 
     @Test
     void itemWithNoMarker_isUnreadableForNonSuperuser() {
         UUID itemId = createItem();
-        var user = securityRepo.createUser("pisr-" + UUID.randomUUID(), "User", null, false);
+        var user = securityRepo.createUser("User", "pisr-" + UUID.randomUUID() + "@example.com", false);
 
-        assertThat(permissionService.canReadItem(principal(user.id(), user.externalId(), Set.of(), false), itemId)).isFalse();
+        assertThat(permissionService.canReadItem(principal(user.id(), user.email(), Set.of(), false), itemId)).isFalse();
     }
 
     @Test
@@ -100,11 +100,11 @@ class PermissionServiceInstanceReadIntegrationTest extends AbstractIntegrationTe
         var group = securityRepo.createUserGroup("pisr-" + UUID.randomUUID());
         grantItemRead(marker, "USER_GROUP", group.id());
 
-        var member = securityRepo.createUser("pisr-" + UUID.randomUUID(), "Member", null, false);
-        var nonMember = securityRepo.createUser("pisr-" + UUID.randomUUID(), "NonMember", null, false);
+        var member = securityRepo.createUser("Member", "pisr-" + UUID.randomUUID() + "@example.com", false);
+        var nonMember = securityRepo.createUser("NonMember", "pisr-" + UUID.randomUUID() + "@example.com", false);
 
-        assertThat(permissionService.canReadItem(principal(member.id(), member.externalId(), Set.of(group.id()), false), itemId)).isTrue();
-        assertThat(permissionService.canReadItem(principal(nonMember.id(), nonMember.externalId(), Set.of(), false), itemId)).isFalse();
+        assertThat(permissionService.canReadItem(principal(member.id(), member.email(), Set.of(group.id()), false), itemId)).isTrue();
+        assertThat(permissionService.canReadItem(principal(nonMember.id(), nonMember.email(), Set.of(), false), itemId)).isFalse();
     }
 
     @Test
@@ -112,12 +112,12 @@ class PermissionServiceInstanceReadIntegrationTest extends AbstractIntegrationTe
         UUID itemId = createItem();
         UUID marker = createMarker();
         markerAssignmentService.addItemMarker(itemId, marker, actor, "test reason");
-        var grantedUser = securityRepo.createUser("pisr-" + UUID.randomUUID(), "Granted", null, false);
-        var otherUser = securityRepo.createUser("pisr-" + UUID.randomUUID(), "Other", null, false);
+        var grantedUser = securityRepo.createUser("Granted", "pisr-" + UUID.randomUUID() + "@example.com", false);
+        var otherUser = securityRepo.createUser("Other", "pisr-" + UUID.randomUUID() + "@example.com", false);
         grantItemRead(marker, "USER", grantedUser.id());
 
-        assertThat(permissionService.canReadItem(principal(grantedUser.id(), grantedUser.externalId(), Set.of(), false), itemId)).isTrue();
-        assertThat(permissionService.canReadItem(principal(otherUser.id(), otherUser.externalId(), Set.of(), false), itemId)).isFalse();
+        assertThat(permissionService.canReadItem(principal(grantedUser.id(), grantedUser.email(), Set.of(), false), itemId)).isTrue();
+        assertThat(permissionService.canReadItem(principal(otherUser.id(), otherUser.email(), Set.of(), false), itemId)).isFalse();
     }
 
     @Test
@@ -125,10 +125,10 @@ class PermissionServiceInstanceReadIntegrationTest extends AbstractIntegrationTe
         UUID itemId = createItem();
         UUID marker = createMarker();
         markerAssignmentService.addItemMarker(itemId, marker, actor, "test reason");
-        var user = securityRepo.createUser("pisr-" + UUID.randomUUID(), "User", null, false);
+        var user = securityRepo.createUser("User", "pisr-" + UUID.randomUUID() + "@example.com", false);
         UUID grantId = authRepo.ensureMarkerGrant(marker, "USER", user.id());
         authRepo.setItemPermissions(grantId, true, false);
-        var userPrincipal = principal(user.id(), user.externalId(), Set.of(), false);
+        var userPrincipal = principal(user.id(), user.email(), Set.of(), false);
         assertThat(permissionService.canReadItem(userPrincipal, itemId)).isTrue();
 
         authRepo.deleteMarkerGrant(grantId);
@@ -141,9 +141,9 @@ class PermissionServiceInstanceReadIntegrationTest extends AbstractIntegrationTe
         UUID itemId = createItem();
         UUID marker = createMarker();
         markerAssignmentService.addItemMarker(itemId, marker, actor, "test reason");
-        var user = securityRepo.createUser("pisr-" + UUID.randomUUID(), "User", null, false);
+        var user = securityRepo.createUser("User", "pisr-" + UUID.randomUUID() + "@example.com", false);
         grantItemRead(marker, "USER", user.id());
-        var userPrincipal = principal(user.id(), user.externalId(), Set.of(), false);
+        var userPrincipal = principal(user.id(), user.email(), Set.of(), false);
         assertThat(permissionService.canReadItem(userPrincipal, itemId)).isTrue();
 
         markerAssignmentService.removeItemMarker(itemId, marker, actor, "test reason");

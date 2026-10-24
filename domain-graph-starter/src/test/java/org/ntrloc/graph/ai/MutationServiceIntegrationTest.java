@@ -61,8 +61,8 @@ class MutationServiceIntegrationTest extends AbstractIntegrationTest {
     // rejected -- proving the new guard doesn't break the one legitimate path into this tool.
     @Test
     void executeMutation_withAValidBearerToken_succeeds() {
-        var user = securityRepo.createUser("mcp-mutation-user-" + UUID.randomUUID(), "MCP Mutation Test User", null, true);
-        var principal = TestPrincipals.of(user.id(), user.externalId(), user.displayName(), null, Set.of(), true);
+        var user = securityRepo.createUser("MCP Mutation Test User", "mcp-mutation-user-" + UUID.randomUUID() + "@example.com", true);
+        var principal = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), true);
         var issued = tokenService.issue(principal, "mutation-test-token", null);
 
         McpSyncRequestContext requestContext = mock(McpSyncRequestContext.class);

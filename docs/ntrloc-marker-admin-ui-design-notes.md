@@ -20,7 +20,7 @@ design history; the short version:
   filtering is in-memory post-fetch; both are cached through `AuthorizationCacheManager`.
 - **Marker attribution**: `MarkerAttribution` is a sealed interface — `RuleAppliedMarker(markerId,
   ruleId, ruleVersion)` (all mandatory; no producer exists yet) and `ManuallyAppliedMarker(markerId,
-  userExternalId, reason)` (all mandatory; the only real producer today, via
+  userId, reason)` (all mandatory; userId is the actor's security_user.id; the only real producer today, via
   `MarkerAssignmentService`).
 
 Not built: anything that actually *produces* a `RuleAppliedMarker` (the rule engine itself),

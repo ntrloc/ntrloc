@@ -16,7 +16,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ClusterEventVisibilityRegistryTest {
 
     private static NtrlocPrincipal principal(UUID id) {
-        return TestPrincipals.of(id, id.toString(), "Test User", "test@example.com", Set.of(), false);
+        return TestPrincipals.of(id, "Test User", "test@example.com", Set.of(), false);
     }
 
     @Test

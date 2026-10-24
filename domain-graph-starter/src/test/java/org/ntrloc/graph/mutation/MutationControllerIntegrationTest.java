@@ -46,7 +46,7 @@ class MutationControllerIntegrationTest extends AbstractIntegrationTest {
     // this file specifically.
     @BeforeEach
     void authenticateAsRoot() {
-        webTestClient = webTestClient.mutate().defaultHeader(HttpHeaders.AUTHORIZATION, bearerTokenFor("root")).build();
+        webTestClient = webTestClient.mutate().defaultHeader(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com")).build();
     }
 
     @Test

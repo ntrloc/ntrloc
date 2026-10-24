@@ -83,8 +83,8 @@ public abstract class AbstractUiIntegrationTest extends AbstractIntegrationTest 
         BROWSER.start();
     }
 
-    /** A real local account: what a person would type into the login form. */
-    protected record LocalUser(String username, String password) {
+    /** A real local account: what a person would type into the login form, plus its user id. */
+    protected record LocalUser(UUID id, String email, String password) {
     }
 
     @LocalServerPort
@@ -126,12 +126,11 @@ public abstract class AbstractUiIntegrationTest extends AbstractIntegrationTest 
 
     /** Creates a real superuser with local credentials, the same way LocalAccountSeeder does. */
     protected LocalUser createLocalAdmin() {
-        String username = "ui-admin-" + UUID.randomUUID();
+        String email = "ui-admin-" + UUID.randomUUID() + "@example.com";
         String password = UUID.randomUUID().toString();
-        var user = securityRepository.createUser(username, "UI Test Admin", null, true);
-        securityRepository.createLocalCredentials(user.id(), username,
-                "{bcrypt}" + new BCryptPasswordEncoder().encode(password), "ADMIN");
-        return new LocalUser(username, password);
+        var user = securityRepository.createUser("UI Test Admin", email, true);
+        securityRepository.createLocalCredentials(user.id(), "{bcrypt}" + new BCryptPasswordEncoder().encode(password), "ADMIN");
+        return new LocalUser(user.id(), email, password);
     }
 
     /**
@@ -141,7 +140,7 @@ public abstract class AbstractUiIntegrationTest extends AbstractIntegrationTest 
     protected void openAdminUiAs(LocalUser user, String path) {
         String url = serverUrl(ADMIN_UI_PATH + path);
         driver.get(url);
-        await().until(ExpectedConditions.visibilityOfElementLocated(By.name("username"))).sendKeys(user.username());
+        await().until(ExpectedConditions.visibilityOfElementLocated(By.name("username"))).sendKeys(user.email());
         driver.findElement(By.name("password")).sendKeys(user.password());
         driver.findElement(By.name("password")).submit();
         // Spring Security returns to the saved request with "?continue" appended.

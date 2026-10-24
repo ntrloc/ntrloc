@@ -9,6 +9,6 @@ import java.util.UUID;
 // needs the concrete type anyway -- every caller holds an NtrlocPrincipal, which IS public.
 // Everything else goes through PrincipalResolver (or, in tests, TestPrincipals). See
 // NtrlocPrincipal's own comment and docs/ntrloc-principal-enforcement-plan.md, Part A.
-record ResolvedPrincipal(UUID id, String externalId, String displayName, String email, Set<UUID> groupIds, boolean isSuperuser)
+record ResolvedPrincipal(UUID id, String displayName, String email, Set<UUID> groupIds, boolean isSuperuser)
         implements NtrlocPrincipal {
 }

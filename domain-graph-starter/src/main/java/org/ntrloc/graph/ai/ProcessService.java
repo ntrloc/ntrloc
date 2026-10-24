@@ -5,9 +5,10 @@ import org.flowable.engine.RuntimeService;
 import org.flowable.engine.TaskService;
 import org.flowable.engine.repository.ProcessDefinition;
 import org.flowable.engine.runtime.ProcessInstance;
-import org.flowable.task.api.Task;
 import org.ntrloc.graph.db.partition.process.ProcessAdminController;
 import org.ntrloc.graph.db.partition.process.TaskAdminController;
+import org.ntrloc.graph.db.partition.process.TaskViewAssembler;
+import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.mcp.annotation.McpTool;
@@ -17,6 +18,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 @Service
 public class ProcessService {
@@ -38,13 +40,18 @@ public class ProcessService {
     private final RuntimeService runtimeService;
     private final TaskService taskService;
     private final McpPrincipalResolver principalResolver;
+    private final TaskViewAssembler taskViews;
+    private final SecurityRepository securityRepository;
 
     public ProcessService(RepositoryService repositoryService, RuntimeService runtimeService, TaskService taskService,
-                           McpPrincipalResolver principalResolver) {
+                           McpPrincipalResolver principalResolver, TaskViewAssembler taskViews,
+                           SecurityRepository securityRepository) {
         this.repositoryService = repositoryService;
         this.runtimeService = runtimeService;
         this.taskService = taskService;
         this.principalResolver = principalResolver;
+        this.taskViews = taskViews;
+        this.securityRepository = securityRepository;
     }
 
     @McpTool(description = """
@@ -94,9 +101,7 @@ public class ProcessService {
         principalResolver.requirePrincipal(requestContext);
         try {
             LOG.info("Listing tasks");
-            return taskService.createTaskQuery().list().stream()
-                    .map(ProcessService::toTaskView)
-                    .toList();
+            return taskViews.toViews(taskService.createTaskQuery().list());
         } catch (Exception e) {
             LOG.error("Error while listing tasks", e);
             throw new RuntimeException("Error while listing tasks: " + e.getMessage(), e);
@@ -109,13 +114,17 @@ public class ProcessService {
             """)
     public TaskAdminController.TaskView claimTask(
             @McpToolParam(description = "The task id, exactly as returned by listTasks.") String taskId,
-            @McpToolParam(description = "The external id (username) of the user claiming the task.") String assignee,
+            @McpToolParam(description = "The id (a UUID) of the user claiming the task.") String assignee,
             McpSyncRequestContext requestContext) {
         principalResolver.requirePrincipal(requestContext);
         try {
             LOG.info("Claiming task {} for {}", taskId, assignee);
-            taskService.claim(taskId, assignee);
-            return toTaskView(taskService.createTaskQuery().taskId(taskId).singleResult());
+            UUID userId = UUID.fromString(assignee.trim());
+            if (securityRepository.findUserById(userId).isEmpty()) {
+                throw new IllegalArgumentException("No user with id " + userId);
+            }
+            taskService.claim(taskId, userId.toString());
+            return taskViews.toView(taskService.createTaskQuery().taskId(taskId).singleResult());
         } catch (Exception e) {
             LOG.error("Error while claiming task", e);
             throw new RuntimeException("Error while claiming task: " + e.getMessage(), e);
@@ -146,10 +155,5 @@ public class ProcessService {
         return new ProcessAdminController.ProcessDefinitionView(
                 definition.getId(), definition.getKey(), definition.getName(),
                 definition.getVersion(), definition.getDeploymentId());
-    }
-
-    private static TaskAdminController.TaskView toTaskView(Task task) {
-        return new TaskAdminController.TaskView(
-                task.getId(), task.getName(), task.getProcessInstanceId(), task.getAssignee(), task.getCreateTime());
     }
 }

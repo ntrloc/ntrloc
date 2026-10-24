@@ -79,9 +79,9 @@ class CountedPredicateMarkerDecisionIntegrationTest extends AbstractIntegrationT
     @BeforeEach
     void setUp() {
         // Same "root" as MutationControllerIntegrationTest -- see that class's own comment.
-        webTestClient = webTestClient.mutate().defaultHeader(HttpHeaders.AUTHORIZATION, bearerTokenFor("root")).build();
+        webTestClient = webTestClient.mutate().defaultHeader(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com")).build();
         fixture.removeAutoCreatedPipeline();
-        actor = securityRepo.createUser("cpmd-actor-" + UUID.randomUUID(), "Counted Predicate Test Actor", null, true);
+        actor = securityRepo.createUser("Counted Predicate Test Actor", "cpmd-actor-" + UUID.randomUUID() + "@example.com", true);
     }
 
     // self -> photos (each) -> portfolios (each) -> state machine, subPredicate STATE_EQUALS with no

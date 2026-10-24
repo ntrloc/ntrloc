@@ -50,8 +50,8 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
 
     @BeforeEach
     void setUpSomePrincipal() {
-        var user = securityRepo.createUser("ectp-test-user-" + UUID.randomUUID(), "Test User", null, true);
-        SOME_PRINCIPAL = TestPrincipals.of(user.id(), user.externalId(), user.displayName(), null, Set.of(), true);
+        var user = securityRepo.createUser("Test User", "ectp-test-user-" + UUID.randomUUID() + "@example.com", true);
+        SOME_PRINCIPAL = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), true);
     }
 
     @Autowired
@@ -119,7 +119,7 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
         UUID carItemId = createItem(carName);
 
         var body = webTestClient.post().uri("/api/projection/collection")
-                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("{\"itemTypeName\":\"" + vehicleName + "\"}")
                 .exchange()
@@ -140,7 +140,7 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
         UUID leafItemId = createItem(leafName);
 
         var body = webTestClient.post().uri("/api/projection/collection")
-                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("{\"itemTypeName\":\"" + leafName + "\"}")
                 .exchange()
@@ -168,7 +168,7 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
         UUID sportsCarItemId = createItem(sportsCarName);
 
         var body = webTestClient.post().uri("/api/projection/collection")
-                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("{\"itemTypeName\":\"" + vehicleName + "\"}")
                 .exchange()
@@ -205,7 +205,7 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
         createItem(unrelatedName);
 
         var body = webTestClient.post().uri("/api/projection/collection")
-                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("{\"traitName\":\"" + traitName + "\"}")
                 .exchange()
@@ -233,7 +233,7 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
         // Sort ascending by the inherited property, resolved against the query root (Vehicle) but
         // applied across both branches.
         var sortedBody = webTestClient.post().uri("/api/projection/collection")
-                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("{\"itemTypeName\":\"" + vehicleName + "\",\"sortField\":\"wheels\",\"sortDirection\":\"ASC\"}")
                 .exchange()
@@ -244,7 +244,7 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
 
         // Filter across branches: only the Car with wheels=6 should match.
         var filteredBody = webTestClient.post().uri("/api/projection/collection")
-                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("""
                         {"itemTypeName":"%s","filter":{"type":"PROPERTY_VALUE","propertyName":"wheels","operator":"EQUALS","value":"6"}}
@@ -273,7 +273,7 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
 
         // facets: auto-populated across the whole polymorphic result set.
         var facetBody = webTestClient.post().uri("/api/projection/collection")
-                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("{\"itemTypeName\":\"" + vehicleName + "\",\"facets\":[]}")
                 .exchange()
@@ -284,7 +284,7 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
         // facetFilters: narrows facetedCount but leaves totalCount alone, same contract as the
         // single-table path -- here spanning both branches.
         var filteredBody = webTestClient.post().uri("/api/projection/collection")
-                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("""
                         {"itemTypeName":"%s","facetFilters":[{"type":"TERMS","field":"electric","values":["false"],"includeNull":false}]}
@@ -308,7 +308,7 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
         UUID carItemId = createItem(carName);
 
         var body = webTestClient.post().uri("/api/projection/collection")
-                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("{\"itemTypeName\":\"" + vehicleName + "\",\"sortField\":\"itemId\",\"sortDirection\":\"ASC\"}")
                 .exchange()
@@ -340,7 +340,7 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
         // ApplicationReadyEvent -- a user created here, mid-test, is never auto-added the way
         // alice/bob/carol/root were at boot, so joining explicitly is required to pick up
         // Vehicle's still-intact default read grant at all.
-        var restrictedUser = securityRepo.createUser("restricted-" + UUID.randomUUID(), "Restricted", null, false);
+        var restrictedUser = securityRepo.createUser("Restricted", "restricted-" + UUID.randomUUID() + "@example.com", false);
         securityRepo.addUserToUserGroup(restrictedUser.id(), defaultUserGroupInitializer.getDefaultUserGroupId());
 
         UUID vehicleItemId = createItem(vehicleName);
@@ -356,7 +356,7 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
         authRepo.setItemPermissions(authRepo.ensureMarkerGrant(marker.id(), "USER_GROUP", defaultUserGroupInitializer.getDefaultUserGroupId()), true, false);
 
         var body = webTestClient.post().uri("/api/projection/collection")
-                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor(restrictedUser.externalId()))
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor(restrictedUser.email()))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("{\"itemTypeName\":\"" + vehicleName + "\"}")
                 .exchange()
@@ -369,7 +369,7 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
     @Test
     void collectionProjection_withNeitherOrBothOfItemTypeNameAndTraitName_isRejected() {
         webTestClient.post().uri("/api/projection/collection")
-                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("{}")
                 .exchange()
@@ -379,7 +379,7 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
     @Test
     void collectionProjection_byAnUnknownTraitName_returnsNotFound() {
         webTestClient.post().uri("/api/projection/collection")
-                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root"))
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue("{\"traitName\":\"NoSuchTrait-" + UUID.randomUUID() + "\"}")
                 .exchange()
@@ -432,9 +432,9 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
 
         UUID vehicleItemId = createItem(vehicleName);
 
-        var restrictedUser = securityRepo.createUser("restricted-" + UUID.randomUUID(), "Restricted", null, false);
+        var restrictedUser = securityRepo.createUser("Restricted", "restricted-" + UUID.randomUUID() + "@example.com", false);
         securityRepo.addUserToUserGroup(restrictedUser.id(), defaultUserGroupInitializer.getDefaultUserGroupId());
-        NtrlocPrincipal restrictedPrincipal = TestPrincipals.of(restrictedUser.id(), restrictedUser.externalId(), "Restricted", null, Set.of(), false);
+        NtrlocPrincipal restrictedPrincipal = TestPrincipals.of(restrictedUser.id(), "Restricted", restrictedUser.email(), Set.of(), false);
 
         org.assertj.core.api.Assertions.assertThatThrownBy(() ->
                         entityManager.project(new ItemProjectionSpec(vehicleName, vehicleItemId), "http://binary", restrictedPrincipal))

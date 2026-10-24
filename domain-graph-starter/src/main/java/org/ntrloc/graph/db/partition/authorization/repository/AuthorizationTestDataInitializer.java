@@ -72,10 +72,10 @@ public class AuthorizationTestDataInitializer implements ApplicationRunner {
         revokeDefaultReadGrant(confidentialDocId);
         revokeDefaultReadGrant(unmarkedDocId);
 
-        var alice = securityRepo.createUser("alice", "Alice (viewer group member)", null, false);
-        var bob = securityRepo.createUser("bob", "Bob (viewer group member)", null, false);
-        var carol = securityRepo.createUser("carol", "Carol (direct grant, no group)", null, false);
-        var root = securityRepo.createUser("root", "Root (superuser)", null, true);
+        var alice = securityRepo.createUser("Alice (viewer group member)", "alice@example.com", false);
+        var bob = securityRepo.createUser("Bob (viewer group member)", "bob@example.com", false);
+        var carol = securityRepo.createUser("Carol (direct grant, no group)", "carol@example.com", false);
+        var root = securityRepo.createUser("Root (superuser)", "root@example.com", true);
         defaultUserGroupInitializer.addUserToDefaultUserGroup(alice.id());
         defaultUserGroupInitializer.addUserToDefaultUserGroup(bob.id());
         defaultUserGroupInitializer.addUserToDefaultUserGroup(carol.id());

@@ -38,7 +38,7 @@ class DecisionAdminControllerIntegrationTest extends AbstractIntegrationTest {
     // seeded superuser; a request that sets its own Authorization header still uses that one.
     @BeforeEach
     void authenticateAsRoot() {
-        webTestClient = webTestClient.mutate().defaultHeader(HttpHeaders.AUTHORIZATION, bearerTokenFor("root")).build();
+        webTestClient = webTestClient.mutate().defaultHeader(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com")).build();
     }
 
     @Autowired

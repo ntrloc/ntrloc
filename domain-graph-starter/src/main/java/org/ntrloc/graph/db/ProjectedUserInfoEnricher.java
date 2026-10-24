@@ -57,7 +57,7 @@ public class ProjectedUserInfoEnricher {
         }
         return securityRepository.findUsersByIds(userIds).stream()
                 .collect(Collectors.toMap(SecurityRepository.UserRow::id,
-                        row -> new UserInfo(row.externalId(), row.email())));
+                        row -> new UserInfo(row.email())));
     }
 
     // updatedByUserId is null for an item/link that's never been updated (see

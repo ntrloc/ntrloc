@@ -19,6 +19,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.Set;
 
 @RestController
 @RequestMapping("/api/admin/process")
@@ -27,7 +28,11 @@ import java.util.Set;
 @SuppressWarnings("java:S2143")
 public class TaskAdminController {
 
-    public record TaskView(String id, String name, String processInstanceId, String assignee, Date createTime) {}
+    public record TaskView(String id, String name, String processInstanceId, AssigneeView assignee, Date createTime) {}
+
+    // id is Flowable's stored assignee (a security_user.id string); displayName/email are null if it
+    // no longer resolves to a user.
+    public record AssigneeView(String id, String displayName, String email) {}
 
     public record ProcessGroupView(String name) {}
 
@@ -36,13 +41,16 @@ public class TaskAdminController {
     private final TaskService taskService;
     private final ProcessGroupRepository groupRepo;
     private final PrincipalResolver principalResolver;
+    private final TaskViewAssembler taskViews;
     private final TaskEventBroadcaster broadcaster;
 
     public TaskAdminController(TaskService taskService, ProcessGroupRepository groupRepo,
-            PrincipalResolver principalResolver, TaskEventBroadcaster broadcaster) {
+            PrincipalResolver principalResolver, TaskViewAssembler taskViews,
+            TaskEventBroadcaster broadcaster) {
         this.taskService = taskService;
         this.groupRepo = groupRepo;
         this.principalResolver = principalResolver;
+        this.taskViews = taskViews;
         this.broadcaster = broadcaster;
     }
 
@@ -55,7 +63,7 @@ public class TaskAdminController {
     }
 
     // Superusers see every task (useful with only a couple of seed accounts to test with);
-    // everyone else sees only tasks assigned to them or where they're a candidate (by external id
+    // everyone else sees only tasks assigned to them or where they're a candidate (by user id
     // directly, or via a process_group they belong to -- see ProcessGroupRepository, deliberately
     // not Flowable's own unwired IdentityService).
     @GetMapping("/tasks")
@@ -65,22 +73,22 @@ public class TaskAdminController {
         if (!principal.isSuperuser()) {
             Set<String> groupNames = groupRepo.getGroupNamesForUser(principal.id());
             var or = query.or()
-                    .taskAssignee(principal.externalId())
-                    .taskCandidateUser(principal.externalId());
+                    .taskAssignee(principal.id().toString())
+                    .taskCandidateUser(principal.id().toString());
             if (!groupNames.isEmpty()) {
                 or = or.taskCandidateGroupIn(List.copyOf(groupNames));
             }
             or.endOr();
         }
-        return query.list().stream().map(this::toView).toList();
+        return taskViews.toViews(query.list());
     }
 
     @PostMapping("/tasks/{id}/claim")
     ResponseEntity<?> claim(@PathVariable String id, Authentication authentication) {
         NtrlocPrincipal principal = principalResolver.resolve(authentication);
         try {
-            taskService.claim(id, principal.externalId());
-            return ResponseEntity.ok(toView(taskService.createTaskQuery().taskId(id).singleResult()));
+            taskService.claim(id, principal.id().toString());
+            return ResponseEntity.ok(taskViews.toView(taskService.createTaskQuery().taskId(id).singleResult()));
         } catch (RuntimeException e) {
             return ResponseEntity.badRequest()
                     .contentType(MediaType.APPLICATION_JSON)
@@ -105,9 +113,5 @@ public class TaskAdminController {
         return groupRepo.listGroups().stream()
                 .map(g -> new ProcessGroupView(g.name()))
                 .toList();
-    }
-
-    private TaskView toView(Task task) {
-        return new TaskView(task.getId(), task.getName(), task.getProcessInstanceId(), task.getAssignee(), task.getCreateTime());
     }
 }

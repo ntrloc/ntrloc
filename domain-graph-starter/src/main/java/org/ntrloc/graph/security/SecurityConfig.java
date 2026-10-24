@@ -191,7 +191,7 @@ public class SecurityConfig {
     }
 
     // The principal set here is the full NtrlocPrincipal PersonalAccessTokenService.authenticate
-    // already resolved (id, groupIds, isSuperuser, displayName included) -- not just an externalId
+    // already resolved (id, groupIds, isSuperuser, displayName included) -- not just a name
     // string. Same "already-resolved, no second SecurityRepository round-trip" shape as
     // NtrlocUserDetails gives local-credential logins; PrincipalResolver's fast path picks either
     // up identically via instanceof NtrlocPrincipal. The converter returns without setting anything

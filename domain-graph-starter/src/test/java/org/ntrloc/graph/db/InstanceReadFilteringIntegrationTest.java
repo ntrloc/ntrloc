@@ -67,8 +67,8 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
 
     @BeforeEach
     void setUpSuperuser() {
-        var user = securityRepo.createUser("irf-root-" + UUID.randomUUID(), "Root", null, true);
-        SUPERUSER = TestPrincipals.of(user.id(), user.externalId(), user.displayName(), null, Set.of(), true);
+        var user = securityRepo.createUser("Root", "irf-root-" + UUID.randomUUID() + "@example.com", true);
+        SUPERUSER = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), true);
     }
 
     private UUID createItem(UUID itemTypeId, UUID propertyId, Object value) {
@@ -99,13 +99,13 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
     }
 
     private NtrlocPrincipal newUserInEveryoneUserGroup() {
-        var user = securityRepo.createUser("irf-" + UUID.randomUUID(), "Restricted", null, false);
+        var user = securityRepo.createUser("Restricted", "irf-" + UUID.randomUUID() + "@example.com", false);
         UUID everyoneUserGroupId = defaultUserGroupInitializer.getDefaultUserGroupId();
         securityRepo.addUserToUserGroup(user.id(), everyoneUserGroupId);
         // groupIds is carried directly on the principal, not re-resolved from the DB per check --
         // must match the membership just added above or every type-level (and instance-level
         // group-granted) check below fails as if the user were in no groups at all.
-        return TestPrincipals.of(user.id(), user.externalId(), user.externalId(), null, Set.of(everyoneUserGroupId), false);
+        return TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(everyoneUserGroupId), false);
     }
 
     private void grantItemRead(UUID itemId, NtrlocPrincipal principal) {
@@ -200,8 +200,8 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
     @Test
     void singleItemProjection_typeNotGrantedAtAll_throwsNotFound() {
         UUID productId = createProduct();
-        var user = securityRepo.createUser("irf-" + UUID.randomUUID(), "Restricted", null, false);
-        var principal = TestPrincipals.of(user.id(), user.externalId(), user.displayName(), null, Set.of(), false);
+        var user = securityRepo.createUser("Restricted", "irf-" + UUID.randomUUID() + "@example.com", false);
+        var principal = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), false);
 
         assertThatThrownBy(() ->
                         entityManager.project(new ItemProjectionSpec("CoordinatorTestProduct", productId), "http://binary", principal))

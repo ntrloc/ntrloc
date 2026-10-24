@@ -62,6 +62,12 @@ injectStyles('ntrloc-tasks-styles', `
   }
 `);
 
+// assignee is { id, displayName, email }; displayName/email are null if the stored user id no
+// longer resolves, so fall back to showing the raw id.
+function assigneeLabel(assignee) {
+  return assignee ? (assignee.displayName ?? assignee.email ?? assignee.id) : '(unassigned)';
+}
+
 // Lists Flowable tasks visible to the current user (TaskAdminController filters to
 // assignee/candidate-user/candidate-group unless the caller is a superuser) and lets them claim
 // and complete one. Mirrors ntrloc-processes.js's list<->detail swap (an internal state switch,
@@ -197,7 +203,7 @@ class NtrlocTasks extends HTMLElement {
                   <tr data-id="${escapeHtml(t.id)}">
                     <td>${escapeHtml(t.name ?? t.id)}</td>
                     <td>${escapeHtml(t.processInstanceId)}</td>
-                    <td>${escapeHtml(t.assignee ?? '(unassigned)')}</td>
+                    <td>${escapeHtml(assigneeLabel(t.assignee))}</td>
                     <td>${t.createTime ? escapeHtml(new Date(t.createTime).toLocaleString()) : ''}</td>
                   </tr>
                 `).join('')}
@@ -239,7 +245,7 @@ class NtrlocTasks extends HTMLElement {
         </div>
         <div class="detail-field">
           <label>Assignee</label>
-          <div>${escapeHtml(task.assignee ?? '(unassigned)')}</div>
+          <div>${escapeHtml(assigneeLabel(task.assignee))}</div>
         </div>
         ${!task.assignee ? '<md-filled-button class="claim-button">Claim</md-filled-button>' : ''}
         <div class="detail-field" style="margin-top: 20px;">

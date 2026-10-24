@@ -989,8 +989,7 @@ class NtrlocAccess extends HTMLElement {
     if (!filter) return sorted;
     return sorted.filter(u =>
       u.displayName.toLowerCase().includes(filter) ||
-      u.externalId.toLowerCase().includes(filter) ||
-      (u.email || '').toLowerCase().includes(filter)
+      u.email.toLowerCase().includes(filter)
     );
   }
 
@@ -1207,11 +1206,11 @@ class NtrlocAccess extends HTMLElement {
   async createUser() {
     const get = name => this.querySelector(`[name="${name}"]`)?.value.trim();
     const body = {
-      externalId: get('externalId'), displayName: get('displayName'),
-      email: get('email'), password: get('password'), role: get('role'),
+      displayName: get('displayName'), email: get('email'),
+      password: get('password'), role: get('role'),
     };
-    if (!body.externalId || !body.displayName || !body.password) {
-      this.error = 'Username, display name, and password are required.';
+    if (!body.email || !body.displayName || !body.password) {
+      this.error = 'Email, display name, and password are required.';
       this.render();
       return;
     }
@@ -1220,7 +1219,7 @@ class NtrlocAccess extends HTMLElement {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         credentials: 'include', body: JSON.stringify(body)
       });
-      if (res.status === 409) throw new Error('A user with that username already exists.');
+      if (res.status === 409) throw new Error('A user with that email already exists.');
       if (!res.ok) throw new Error('Failed to create user.');
       const user = await res.json();
       this.modal = null;
@@ -1235,11 +1234,10 @@ class NtrlocAccess extends HTMLElement {
     const userId = this.modal.userId;
     const get = name => this.querySelector(`[name="${name}"]`)?.value.trim();
     const body = {
-      externalId: get('externalId'), displayName: get('displayName'),
-      email: get('email'), role: get('role'),
+      displayName: get('displayName'), email: get('email'), role: get('role'),
     };
-    if (!body.externalId || !body.displayName) {
-      this.error = 'Username and display name are required.';
+    if (!body.email || !body.displayName) {
+      this.error = 'Email and display name are required.';
       this.render();
       return;
     }
@@ -1248,7 +1246,7 @@ class NtrlocAccess extends HTMLElement {
         method: 'PUT', headers: { 'Content-Type': 'application/json' },
         credentials: 'include', body: JSON.stringify(body)
       });
-      if (res.status === 409) throw new Error('A user with that username already exists.');
+      if (res.status === 409) throw new Error('A user with that email already exists.');
       if (!res.ok) throw new Error((await res.text()) || 'Failed to update user.');
       this.modal = null;
       this.error = '';
@@ -2157,7 +2155,7 @@ class NtrlocAccess extends HTMLElement {
         <span class="axs-avatar">U</span>
         <span class="axs-directory-item-text">
           <span class="axs-directory-item-name">${this.escapeHtml(u.displayName)}</span>
-          <span class="axs-directory-item-sub">${this.escapeHtml(u.externalId)}</span>
+          <span class="axs-directory-item-sub">${this.escapeHtml(u.email)}</span>
         </span>
         ${u.isSuperuser ? '<span class="axs-badge-admin">Admin</span>' : ''}
       </div>
@@ -2226,9 +2224,8 @@ class NtrlocAccess extends HTMLElement {
       <div class="axs-section">
         <div class="axs-section-label">Profile</div>
         <table class="axs-profile-table">
-          <tr><td>Username</td><td>${this.escapeHtml(u.externalId)}</td></tr>
+          <tr><td>Email</td><td>${this.escapeHtml(u.email)}</td></tr>
           <tr><td>Display name</td><td>${this.escapeHtml(u.displayName)}</td></tr>
-          <tr><td>Email</td><td>${this.escapeHtml(u.email || '—')}</td></tr>
           <tr><td>Role</td><td>${u.isSuperuser ? 'Admin' : 'User'}</td></tr>
         </table>
       </div>
@@ -2355,12 +2352,10 @@ class NtrlocAccess extends HTMLElement {
           <div class="axs-modal-header">Add user</div>
           <div class="axs-modal-body">
             ${this.error ? `<div class="axs-error">${this.escapeHtml(this.error)}</div>` : ''}
-            <label>Username</label>
-            <input name="externalId" placeholder="Login ID" autocomplete="off">
+            <label>Email</label>
+            <input name="email" type="email" placeholder="Email (used to sign in)" autocomplete="off">
             <label>Display name</label>
             <input name="displayName" placeholder="Full name" autocomplete="off">
-            <label>Email</label>
-            <input name="email" type="email" placeholder="Email" autocomplete="off">
             <label>Password</label>
             <input name="password" type="password" placeholder="Password" autocomplete="new-password">
             <label>Role</label>
@@ -2378,10 +2373,9 @@ class NtrlocAccess extends HTMLElement {
     `;
   }
 
-  // Password isn't editable here -- Details tab's own "Reset" link covers that separately, same
-  // as it always has. Username/display name/email/role all round-trip through the one PUT
-  // endpoint (see UserAdminController.updateUser) that also keeps security_local_credentials'
-  // login key in sync when the username changes.
+  // Password isn't editable here -- Details tab's own "Reset" link covers that separately.
+  // Email/display name/role all round-trip through the one PUT endpoint
+  // (UserAdminController.updateUser).
   renderEditUserModal() {
     const u = this.users.find(x => x.id === this.modal.userId);
     if (!u) return '';
@@ -2391,12 +2385,10 @@ class NtrlocAccess extends HTMLElement {
           <div class="axs-modal-header">Edit user</div>
           <div class="axs-modal-body">
             ${this.error ? `<div class="axs-error">${this.escapeHtml(this.error)}</div>` : ''}
-            <label>Username</label>
-            <input name="externalId" placeholder="Login ID" autocomplete="off" value="${this.escapeHtml(u.externalId)}">
+            <label>Email</label>
+            <input name="email" type="email" placeholder="Email (used to sign in)" autocomplete="off" value="${this.escapeHtml(u.email)}">
             <label>Display name</label>
             <input name="displayName" placeholder="Full name" autocomplete="off" value="${this.escapeHtml(u.displayName)}">
-            <label>Email</label>
-            <input name="email" type="email" placeholder="Email" autocomplete="off" value="${this.escapeHtml(u.email || '')}">
             <label>Role</label>
             <select name="role">
               <option value="USER" ${!u.isSuperuser ? 'selected' : ''}>User</option>
@@ -2559,15 +2551,13 @@ class NtrlocAccess extends HTMLElement {
     const filter = this.groupMembershipFilter.trim().toLowerCase();
     const matchesFilter = (u) => !filter
       || u.displayName.toLowerCase().includes(filter)
-      || u.externalId.toLowerCase().includes(filter)
-      || (u.email || '').toLowerCase().includes(filter);
+      || u.email.toLowerCase().includes(filter);
 
     const userCell = (u) => `
       <div>
         <div class="axs-user-grid-cell-name">${this.escapeHtml(u.displayName)}</div>
-        <div class="axs-user-grid-cell-sub">${this.escapeHtml(u.externalId)}</div>
       </div>
-      <div class="axs-user-grid-cell-sub">${this.escapeHtml(u.email || '')}</div>
+      <div class="axs-user-grid-cell-sub">${this.escapeHtml(u.email)}</div>
       <div>${u.isSuperuser ? '<span class="axs-admin-chip">Admin</span>' : ''}</div>
     `;
 
@@ -3108,8 +3098,7 @@ class NtrlocAccess extends HTMLElement {
     const filter = this.addGroupMembersFilter.trim().toLowerCase();
     const filtered = candidates.filter(u => !filter
       || u.displayName.toLowerCase().includes(filter)
-      || u.externalId.toLowerCase().includes(filter)
-      || (u.email || '').toLowerCase().includes(filter));
+      || u.email.toLowerCase().includes(filter));
     return `
       <div class="axs-modal-overlay" data-action="close-modal-overlay">
         <div class="axs-modal" data-stop-overlay>
@@ -3119,7 +3108,7 @@ class NtrlocAccess extends HTMLElement {
             ${candidates.length ? `
               <input type="text" id="axs-add-group-members-filter" placeholder="Filter users…" value="${this.escapeHtml(this.addGroupMembersFilter)}">
               <div class="axs-modal-checkboxes">
-                ${filtered.map(u => `<label><input type="checkbox" value="${u.id}"> ${this.escapeHtml(u.displayName)} <span style="color:var(--muted);font-size: 14px;">${this.escapeHtml(u.externalId)}</span></label>`).join('') || '<div style="color:var(--muted);font-style:italic;font-size: 14px;">No users match.</div>'}
+                ${filtered.map(u => `<label><input type="checkbox" value="${u.id}"> ${this.escapeHtml(u.displayName)} <span style="color:var(--muted);font-size: 14px;">${this.escapeHtml(u.email)}</span></label>`).join('') || '<div style="color:var(--muted);font-style:italic;font-size: 14px;">No users match.</div>'}
               </div>
             ` : `<p style="color:var(--muted);font-style:italic;">Every user is already a member of ${this.escapeHtml(g.name)}.</p>`}
           </div>

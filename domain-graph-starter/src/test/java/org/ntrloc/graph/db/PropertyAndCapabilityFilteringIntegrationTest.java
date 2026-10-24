@@ -83,8 +83,8 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
 
     @BeforeEach
     void setUpSuperuser() {
-        var user = securityRepo.createUser("pcf-root-" + UUID.randomUUID(), "Root", null, true);
-        SUPERUSER = TestPrincipals.of(user.id(), user.externalId(), user.displayName(), null, Set.of(), true);
+        var user = securityRepo.createUser("Root", "pcf-root-" + UUID.randomUUID() + "@example.com", true);
+        SUPERUSER = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), true);
     }
 
     private UUID createProduct(String name, String color) {
@@ -117,10 +117,10 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
     }
 
     private NtrlocPrincipal newUserInEveryoneUserGroup() {
-        var user = securityRepo.createUser("pcf-" + UUID.randomUUID(), "Restricted", null, false);
+        var user = securityRepo.createUser("Restricted", "pcf-" + UUID.randomUUID() + "@example.com", false);
         UUID everyoneUserGroupId = defaultUserGroupInitializer.getDefaultUserGroupId();
         securityRepo.addUserToUserGroup(user.id(), everyoneUserGroupId);
-        return TestPrincipals.of(user.id(), user.externalId(), user.externalId(), null, Set.of(everyoneUserGroupId), false);
+        return TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(everyoneUserGroupId), false);
     }
 
     private MarkerRow markerOnItem(UUID itemId) {

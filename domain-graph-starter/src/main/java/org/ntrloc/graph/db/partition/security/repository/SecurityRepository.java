@@ -1,5 +1,6 @@
 package org.ntrloc.graph.db.partition.security.repository;
 
+import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 
@@ -12,21 +13,23 @@ import java.util.UUID;
 @Component
 public class SecurityRepository {
 
-    private static final String COL_EXTERNAL_ID = "external_id";
-    private static final String COL_DISPLAY_NAME = "display_name";
     private static final String COL_EMAIL = "email";
-    private static final String COL_IS_SUPERUSER = "is_superuser";
     private static final String PARAM_USER_ID = "userId";
     private static final String PARAM_GROUP_ID = "groupId";
-    private static final String PARAM_EXTERNAL_ID = "externalId";
 
-    public record UserRow(UUID id, String externalId, String displayName, String email, boolean isSuperuser) {}
+    public record UserRow(UUID id, String displayName, String email, boolean isSuperuser) {}
 
     public record UserGroupRow(UUID id, String name) {}
 
-    public record LocalCredentialsRow(UUID userId, String email, String passwordHash, String role, boolean active) {}
+    public record LocalCredentialsRow(UUID userId, String passwordHash, String role, boolean active) {}
 
     public record PersonalAccessTokenRow(UUID id, UUID userId, String name, OffsetDateTime createdAt, OffsetDateTime expiresAt) {}
+
+    private static final RowMapper<UserRow> USER_ROW = (rs, n) -> new UserRow(
+            rs.getObject("id", UUID.class),
+            rs.getString("display_name"),
+            rs.getString(COL_EMAIL),
+            rs.getBoolean("is_superuser"));
 
     private final JdbcClient jdbcClient;
 
@@ -36,31 +39,20 @@ public class SecurityRepository {
 
     // --- Principal resolution reads ---
 
-    public Optional<UserRow> findUserByExternalId(String externalId) {
-        return jdbcClient.sql("SELECT id, external_id, display_name, email, is_superuser FROM security_user WHERE external_id = :externalId")
-                .param(PARAM_EXTERNAL_ID, externalId)
-                .query((rs, n) -> new UserRow(
-                        rs.getObject("id", UUID.class),
-                        rs.getString(COL_EXTERNAL_ID),
-                        rs.getString(COL_DISPLAY_NAME),
-                        rs.getString(COL_EMAIL),
-                        rs.getBoolean(COL_IS_SUPERUSER)))
+    // Case-insensitive, matching the unique index on lower(email).
+    public Optional<UserRow> findUserByEmail(String email) {
+        return jdbcClient.sql("SELECT id, display_name, email, is_superuser FROM security_user WHERE lower(email) = lower(:email)")
+                .param(COL_EMAIL, email)
+                .query(USER_ROW)
                 .optional();
     }
 
-    // Mirrors findUserByExternalId, keyed by the stable internal id instead -- what a long-lived
-    // reference (a Flowable process variable, surviving well past the HTTP session that started it)
-    // should resolve against, rather than external_id, which can legitimately change over a user's
-    // lifetime. See PrincipalResolver.resolveById's own comment.
+    // What every stored user reference (ledger attribution, task assignee, process variable)
+    // resolves against -- never the email, which can change over a user's lifetime.
     public Optional<UserRow> findUserById(UUID id) {
-        return jdbcClient.sql("SELECT id, external_id, display_name, email, is_superuser FROM security_user WHERE id = :userId")
+        return jdbcClient.sql("SELECT id, display_name, email, is_superuser FROM security_user WHERE id = :userId")
                 .param(PARAM_USER_ID, id)
-                .query((rs, n) -> new UserRow(
-                        rs.getObject("id", UUID.class),
-                        rs.getString(COL_EXTERNAL_ID),
-                        rs.getString(COL_DISPLAY_NAME),
-                        rs.getString(COL_EMAIL),
-                        rs.getBoolean(COL_IS_SUPERUSER)))
+                .query(USER_ROW)
                 .optional();
     }
 
@@ -70,27 +62,17 @@ public class SecurityRepository {
     // Postgres rejects as a syntax error.
     public List<UserRow> findUsersByIds(Set<UUID> ids) {
         if (ids.isEmpty()) return List.of();
-        return jdbcClient.sql("SELECT id, external_id, display_name, email, is_superuser FROM security_user WHERE id IN (:ids)")
+        return jdbcClient.sql("SELECT id, display_name, email, is_superuser FROM security_user WHERE id IN (:ids)")
                 .param("ids", ids)
-                .query((rs, n) -> new UserRow(
-                        rs.getObject("id", UUID.class),
-                        rs.getString(COL_EXTERNAL_ID),
-                        rs.getString(COL_DISPLAY_NAME),
-                        rs.getString(COL_EMAIL),
-                        rs.getBoolean(COL_IS_SUPERUSER)))
+                .query(USER_ROW)
                 .list();
     }
 
     // Used by UserAdminController to populate assignee pickers (e.g. a User Task's assignee
     // select in the process editor) -- not part of principal resolution, just a plain listing.
     public List<UserRow> listUsers() {
-        return jdbcClient.sql("SELECT id, external_id, display_name, email, is_superuser FROM security_user ORDER BY display_name")
-                .query((rs, n) -> new UserRow(
-                        rs.getObject("id", UUID.class),
-                        rs.getString(COL_EXTERNAL_ID),
-                        rs.getString(COL_DISPLAY_NAME),
-                        rs.getString(COL_EMAIL),
-                        rs.getBoolean(COL_IS_SUPERUSER)))
+        return jdbcClient.sql("SELECT id, display_name, email, is_superuser FROM security_user ORDER BY display_name")
+                .query(USER_ROW)
                 .list();
     }
 
@@ -128,15 +110,15 @@ public class SecurityRepository {
 
     // --- Test-data seeding writes ---
 
-    public UserRow createUser(String externalId, String displayName, String email, boolean isSuperuser) {
+    public UserRow createUser(String displayName, String email, boolean isSuperuser) {
         UUID id = jdbcClient.sql("""
-                INSERT INTO security_user (external_id, display_name, email, is_superuser)
-                VALUES (:externalId, :displayName, :email, :isSuperuser) RETURNING id
+                INSERT INTO security_user (display_name, email, is_superuser)
+                VALUES (:displayName, :email, :isSuperuser) RETURNING id
                 """)
-                .param(PARAM_EXTERNAL_ID, externalId).param("displayName", displayName)
+                .param("displayName", displayName)
                 .param(COL_EMAIL, email).param("isSuperuser", isSuperuser)
                 .query(UUID.class).single();
-        return new UserRow(id, externalId, displayName, email, isSuperuser);
+        return new UserRow(id, displayName, email, isSuperuser);
     }
 
     public UserGroupRow createUserGroup(String name) {
@@ -240,19 +222,14 @@ public class SecurityRepository {
 
     public List<UserRow> listUserGroupMembers(UUID groupId) {
         return jdbcClient.sql("""
-                SELECT u.id, u.external_id, u.display_name, u.email, u.is_superuser
+                SELECT u.id, u.display_name, u.email, u.is_superuser
                 FROM security_user u
                 JOIN security_user_group_member gm ON gm.user_id = u.id
                 WHERE gm.group_id = :groupId
                 ORDER BY u.display_name
                 """)
                 .param(PARAM_GROUP_ID, groupId)
-                .query((rs, n) -> new UserRow(
-                        rs.getObject("id", UUID.class),
-                        rs.getString(COL_EXTERNAL_ID),
-                        rs.getString(COL_DISPLAY_NAME),
-                        rs.getString(COL_EMAIL),
-                        rs.getBoolean(COL_IS_SUPERUSER)))
+                .query(USER_ROW)
                 .list();
     }
 
@@ -270,12 +247,12 @@ public class SecurityRepository {
 
     // --- Local credentials ---
 
-    public void createLocalCredentials(UUID userId, String email, String passwordHash, String role) {
+    public void createLocalCredentials(UUID userId, String passwordHash, String role) {
         jdbcClient.sql("""
-                INSERT INTO security_local_credentials (user_id, email, password_hash, role)
-                VALUES (:userId, :email, :passwordHash, :role)
+                INSERT INTO security_local_credentials (user_id, password_hash, role)
+                VALUES (:userId, :passwordHash, :role)
                 """)
-                .param(PARAM_USER_ID, userId).param(COL_EMAIL, email)
+                .param(PARAM_USER_ID, userId)
                 .param("passwordHash", passwordHash).param("role", role)
                 .update();
     }
@@ -287,9 +264,8 @@ public class SecurityRepository {
                 .update();
     }
 
-    public void updateUser(UUID userId, String externalId, String displayName, String email, boolean isSuperuser) {
-        jdbcClient.sql("UPDATE security_user SET external_id = :externalId, display_name = :displayName, email = :email, is_superuser = :isSuperuser WHERE id = :userId")
-                .param(PARAM_EXTERNAL_ID, externalId)
+    public void updateUser(UUID userId, String displayName, String email, boolean isSuperuser) {
+        jdbcClient.sql("UPDATE security_user SET display_name = :displayName, email = :email, is_superuser = :isSuperuser WHERE id = :userId")
                 .param("displayName", displayName)
                 .param(COL_EMAIL, email)
                 .param("isSuperuser", isSuperuser)
@@ -304,17 +280,6 @@ public class SecurityRepository {
                 .update();
     }
 
-    // security_local_credentials.email is confusingly named -- it's actually the login lookup key
-    // (see LocalUserDetailsService/findCredentialsByEmail), populated from external_id at creation,
-    // not a real email address. It has to be kept in sync with security_user.external_id whenever
-    // that's edited, or the user would be silently locked out under their new username.
-    public void updateLocalCredentialsLogin(UUID userId, String externalId) {
-        jdbcClient.sql("UPDATE security_local_credentials SET email = :externalId WHERE user_id = :userId")
-                .param(PARAM_EXTERNAL_ID, externalId)
-                .param(PARAM_USER_ID, userId)
-                .update();
-    }
-
     // Cascades to security_user_group_member, security_local_credentials, security_personal_access_token,
     // and process_group_member (all ON DELETE CASCADE) -- nothing else references security_user via
     // a real FK, since authorization grant tables key principals by a plain UUID (GROUP or USER)
@@ -325,15 +290,14 @@ public class SecurityRepository {
                 .update();
     }
 
-    public Optional<LocalCredentialsRow> findCredentialsByEmail(String email) {
+    public Optional<LocalCredentialsRow> findCredentialsByUserId(UUID userId) {
         return jdbcClient.sql("""
-                SELECT user_id, email, password_hash, role, active
-                FROM security_local_credentials WHERE email = :email
+                SELECT user_id, password_hash, role, active
+                FROM security_local_credentials WHERE user_id = :userId
                 """)
-                .param(COL_EMAIL, email)
+                .param(PARAM_USER_ID, userId)
                 .query((rs, n) -> new LocalCredentialsRow(
                         rs.getObject("user_id", UUID.class),
-                        rs.getString(COL_EMAIL),
                         rs.getString("password_hash"),
                         rs.getString("role"),
                         rs.getBoolean("active")))
@@ -354,19 +318,14 @@ public class SecurityRepository {
 
     public Optional<UserRow> findUserByValidTokenHash(String tokenHash) {
         return jdbcClient.sql("""
-                SELECT u.id, u.external_id, u.display_name, u.email, u.is_superuser
+                SELECT u.id, u.display_name, u.email, u.is_superuser
                 FROM security_user u
                 JOIN security_personal_access_token t ON t.user_id = u.id
                 WHERE t.token_hash = :tokenHash
                   AND (t.expires_at IS NULL OR t.expires_at > NOW())
                 """)
                 .param("tokenHash", tokenHash)
-                .query((rs, n) -> new UserRow(
-                        rs.getObject("id", UUID.class),
-                        rs.getString(COL_EXTERNAL_ID),
-                        rs.getString(COL_DISPLAY_NAME),
-                        rs.getString(COL_EMAIL),
-                        rs.getBoolean(COL_IS_SUPERUSER)))
+                .query(USER_ROW)
                 .optional();
     }
 

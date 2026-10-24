@@ -258,13 +258,12 @@ class NtrlocUsers extends HTMLElement {
     this.success = '';
     const modal = this.querySelector('.user-modal');
     const body = {
-      externalId: modal.querySelector('[name="externalId"]').value.trim(),
       displayName: modal.querySelector('[name="displayName"]').value.trim(),
       email: modal.querySelector('[name="email"]').value.trim(),
       password: modal.querySelector('[name="password"]').value,
       role: modal.querySelector('[name="role"]').value
     };
-    if (!body.externalId || !body.displayName || !body.email || !body.password) {
+    if (!body.displayName || !body.email || !body.password) {
       this.error = 'All fields are required';
       this.render();
       return;
@@ -277,12 +276,12 @@ class NtrlocUsers extends HTMLElement {
         body: JSON.stringify(body)
       });
       if (res.status === 409) {
-        this.error = 'A user with that ID already exists';
+        this.error = 'A user with that email already exists';
         this.render();
         return;
       }
       if (!res.ok) throw new Error('Failed to create user');
-      this.success = `User "${body.externalId}" created`;
+      this.success = `User "${body.email}" created`;
       this.mode = 'list';
       await this.fetchUsers();
     } catch (e) {
@@ -312,8 +311,13 @@ class NtrlocUsers extends HTMLElement {
         credentials: 'include',
         body: JSON.stringify(body)
       });
+      if (res.status === 409) {
+        this.error = 'A user with that email already exists';
+        this.render();
+        return;
+      }
       if (!res.ok) throw new Error('Failed to update user');
-      this.success = `User "${this.editingUser.externalId}" updated`;
+      this.success = `User "${body.email}" updated`;
       this.mode = 'list';
       this.editingUser = null;
       await this.fetchUsers();
@@ -341,7 +345,7 @@ class NtrlocUsers extends HTMLElement {
         body: JSON.stringify({ newPassword })
       });
       if (!res.ok) throw new Error('Failed to reset password');
-      this.success = `Password reset for "${this.editingUser.externalId}"`;
+      this.success = `Password reset for "${this.editingUser.email}"`;
       this.mode = 'list';
       this.editingUser = null;
       this.render();
@@ -413,9 +417,8 @@ class NtrlocUsers extends HTMLElement {
   render() {
     const rows = this.users.map(u => `
       <tr class="clickable" data-user-id="${u.id}">
-        <td>${this.escapeHtml(u.externalId)}</td>
+        <td>${this.escapeHtml(u.email)}</td>
         <td>${this.escapeHtml(u.displayName)}</td>
-        <td>${this.escapeHtml(u.email || '')}</td>
         <td><span class="${u.isSuperuser ? 'badge-admin' : 'badge-user'}">${u.isSuperuser ? 'Admin' : 'User'}</span></td>
       </tr>
     `).join('');
@@ -427,12 +430,10 @@ class NtrlocUsers extends HTMLElement {
           <div class="user-modal">
             <h3>Create User</h3>
             ${this.error ? `<div class="users-error">${this.error}</div>` : ''}
-            <label>Username</label>
-            <input name="externalId" placeholder="Login ID" autocomplete="off">
+            <label>Email</label>
+            <input name="email" type="email" placeholder="Email (used to sign in)" autocomplete="off">
             <label>Display Name</label>
             <input name="displayName" placeholder="Full name" autocomplete="off">
-            <label>Email</label>
-            <input name="email" type="email" placeholder="Email" autocomplete="off">
             <label>Password</label>
             <input name="password" type="password" placeholder="Password" autocomplete="new-password">
             <label>Role</label>
@@ -473,12 +474,10 @@ class NtrlocUsers extends HTMLElement {
           <div class="user-modal">
             <h3>Edit User</h3>
             ${this.error ? `<div class="users-error">${this.error}</div>` : ''}
-            <label>Username</label>
-            <input name="externalId" value="${this.escapeHtml(u.externalId)}" disabled>
+            <label>Email</label>
+            <input name="email" type="email" value="${this.escapeHtml(u.email)}" autocomplete="off">
             <label>Display Name</label>
             <input name="displayName" value="${this.escapeHtml(u.displayName)}" autocomplete="off">
-            <label>Email</label>
-            <input name="email" type="email" value="${this.escapeHtml(u.email || '')}" autocomplete="off">
             <label>Role</label>
             <select name="role">
               <option value="USER" ${!u.isSuperuser ? 'selected' : ''}>User</option>
@@ -520,7 +519,7 @@ class NtrlocUsers extends HTMLElement {
       </div>
       ${this.mode === 'list' && this.success ? `<div class="users-success">${this.success}</div>` : ''}
       <table class="users-table">
-        <thead><tr><th>Username</th><th>Display Name</th><th>Email</th><th>Role</th></tr></thead>
+        <thead><tr><th>Email</th><th>Display Name</th><th>Role</th></tr></thead>
         <tbody>${rows || '<tr><td colspan="4" class="status">No users found</td></tr>'}</tbody>
       </table>
       ${modalHtml}

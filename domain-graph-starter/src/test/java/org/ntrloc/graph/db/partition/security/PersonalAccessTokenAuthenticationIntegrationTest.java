@@ -14,6 +14,7 @@ import org.springframework.test.web.reactive.server.WebTestClient;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.util.Set;
+import java.util.UUID;
 
 /**
  * Exercises the bearer-token (PAT) authentication path. Tokens are minted
@@ -65,8 +66,8 @@ class PersonalAccessTokenAuthenticationIntegrationTest {
 
     @Test
     void bearerTokenAuthenticatesAsTheOwningUser() {
-        var user = securityRepo.createUser("pat-user", "PAT Test User", null, false);
-        var principal = new ResolvedPrincipal(user.id(), user.externalId(), user.displayName(), user.email(), Set.of(), false);
+        var user = securityRepo.createUser("PAT Test User", "pat-user-" + UUID.randomUUID() + "@example.com", false);
+        var principal = new ResolvedPrincipal(user.id(), user.displayName(), user.email(), Set.of(), false);
         var issued = tokenService.issue(principal, "test-token", null);
 
         webTestClient.get().uri("/api/schema")
@@ -85,8 +86,8 @@ class PersonalAccessTokenAuthenticationIntegrationTest {
 
     @Test
     void revokedTokenNoLongerAuthenticates() {
-        var user = securityRepo.createUser("pat-revoke-user", "PAT Revoke User", null, false);
-        var principal = new ResolvedPrincipal(user.id(), user.externalId(), user.displayName(), user.email(), Set.of(), false);
+        var user = securityRepo.createUser("PAT Revoke User", "pat-revoke-user-" + UUID.randomUUID() + "@example.com", false);
+        var principal = new ResolvedPrincipal(user.id(), user.displayName(), user.email(), Set.of(), false);
         var issued = tokenService.issue(principal, "revoke-me", null);
 
         tokenService.revoke(principal, issued.id());
@@ -99,8 +100,8 @@ class PersonalAccessTokenAuthenticationIntegrationTest {
 
     @Test
     void expiredTokenIsRejected() {
-        var user = securityRepo.createUser("pat-expired-user", "PAT Expired User", null, false);
-        var principal = new ResolvedPrincipal(user.id(), user.externalId(), user.displayName(), user.email(), Set.of(), false);
+        var user = securityRepo.createUser("PAT Expired User", "pat-expired-user-" + UUID.randomUUID() + "@example.com", false);
+        var principal = new ResolvedPrincipal(user.id(), user.displayName(), user.email(), Set.of(), false);
         var issued = tokenService.issue(principal, "already-expired", -1);
 
         webTestClient.get().uri("/api/schema")

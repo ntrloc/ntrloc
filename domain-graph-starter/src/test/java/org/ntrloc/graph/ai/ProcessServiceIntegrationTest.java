@@ -48,8 +48,8 @@ class ProcessServiceIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void listProcesses_withAValidBearerToken_succeeds() {
-        var user = securityRepo.createUser("mcp-process-user-" + UUID.randomUUID(), "MCP Process Test User", null, true);
-        var principal = TestPrincipals.of(user.id(), user.externalId(), user.displayName(), null, Set.of(), true);
+        var user = securityRepo.createUser("MCP Process Test User", "mcp-process-user-" + UUID.randomUUID() + "@example.com", true);
+        var principal = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), true);
         var issued = tokenService.issue(principal, "process-test-token", null);
 
         McpSyncRequestContext requestContext = mock(McpSyncRequestContext.class);

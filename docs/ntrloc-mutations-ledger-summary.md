@@ -292,7 +292,7 @@ cross-domain ones will.
 
 ### Infrastructure already in place
 
-The *actual, already-built* `register_item` table (in real use by `domain-1`/`pmdm-server` today)
+The *actual, already-built* `register_item` table (in real use by `domain-1` today)
 already has `state`, `transaction_id`, and `commit_id` columns, and every existing query already
 filters reads to `state = 'COMMITTED'`. Nothing currently writes anything but a hardcoded
 `'COMMITTED'` state, since no mutation pipeline exists yet — but this is exactly the shape needed

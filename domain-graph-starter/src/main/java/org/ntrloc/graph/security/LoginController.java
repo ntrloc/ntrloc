@@ -114,8 +114,8 @@ public class LoginController {
                 <div class="section-label">Local Account</div>
                 <form action="/login" method="post">
                     <div class="form-group">
-                        <label>Username</label>
-                        <input type="text" name="username" required />
+                        <label>Email</label>
+                        <input type="text" name="username" autocomplete="username" required />
                     </div>
                     <div class="form-group">
                         <label>Password</label>

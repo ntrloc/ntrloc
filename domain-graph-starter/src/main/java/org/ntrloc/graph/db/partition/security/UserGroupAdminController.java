@@ -35,7 +35,7 @@ public class UserGroupAdminController {
 
     public record UpdateParentRequest(UUID parentUserGroupId) {}
 
-    public record MemberView(UUID id, String externalId, String displayName, String email, boolean isSuperuser) {}
+    public record MemberView(UUID id, String displayName, String email, boolean isSuperuser) {}
 
     public record AddMemberRequest(UUID userId) {}
 
@@ -150,7 +150,7 @@ public class UserGroupAdminController {
         repo.findUserGroupById(groupId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, GROUP_NOT_FOUND));
         return repo.listUserGroupMembers(groupId).stream()
-                .map(u -> new MemberView(u.id(), u.externalId(), u.displayName(), u.email(), u.isSuperuser()))
+                .map(u -> new MemberView(u.id(), u.displayName(), u.email(), u.isSuperuser()))
                 .toList();
     }
 

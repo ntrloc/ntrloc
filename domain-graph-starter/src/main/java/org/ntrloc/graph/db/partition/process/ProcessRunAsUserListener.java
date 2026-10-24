@@ -81,16 +81,18 @@ public class ProcessRunAsUserListener extends AbstractFlowableEventListener {
         String processDefinitionId = execution.getProcessDefinitionId();
 
         BpmnModel bpmnModel = repositoryService.getBpmnModel(processDefinitionId);
-        String runAsUserExternalId = bpmnModel.getMainProcess()
+        // runAsUser holds a security_user.id, never an email.
+        String runAsUser = bpmnModel.getMainProcess()
                 .getAttributeValue(BpmnXMLConstants.FLOWABLE_EXTENSIONS_NAMESPACE, "runAsUser");
-        if (runAsUserExternalId == null || runAsUserExternalId.isBlank()) {
+        if (runAsUser == null || runAsUser.isBlank()) {
             return;
         }
 
-        NtrlocPrincipal principal = principalResolver.resolveByExternalId(runAsUserExternalId)
+        NtrlocPrincipal principal = TaskViewAssembler.parseUserId(runAsUser)
+                .flatMap(principalResolver::resolveById)
                 .orElseThrow(() -> new IllegalStateException(
                         "Process '" + processDefinitionId + "' declares runAsUser '"
-                                + runAsUserExternalId + "', which does not resolve to a known user"));
+                                + runAsUser + "', which does not resolve to a known user"));
 
         // Stored as a bare UUID string, not the resolved principal object -- see
         // PrincipalResolver.resolveById's own comment: a long-running process instance should

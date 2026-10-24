@@ -54,12 +54,12 @@ public abstract class AbstractIntegrationTest {
 
     /**
      * An Authorization header value that authenticates HTTP calls as the existing user with this
-     * externalId -- a real personal access token, checked by the real security filter chain.
+     * email -- a real personal access token, checked by the real security filter chain.
      */
-    protected String bearerTokenFor(String externalId) {
-        return BEARER_TOKENS.computeIfAbsent(externalId, id -> {
-            var user = securityRepository.findUserByExternalId(id)
-                    .orElseThrow(() -> new IllegalArgumentException("No user with externalId " + id));
+    protected String bearerTokenFor(String email) {
+        return BEARER_TOKENS.computeIfAbsent(email, e -> {
+            var user = securityRepository.findUserByEmail(e)
+                    .orElseThrow(() -> new IllegalArgumentException("No user with email " + e));
             return "Bearer " + personalAccessTokenService.issueForUser(user.id(), "integration-test", null).rawToken();
         });
     }

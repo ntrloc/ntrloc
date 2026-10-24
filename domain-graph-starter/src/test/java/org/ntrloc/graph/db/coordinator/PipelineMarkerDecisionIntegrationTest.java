@@ -67,7 +67,7 @@ class PipelineMarkerDecisionIntegrationTest extends AbstractIntegrationTest {
     @BeforeEach
     void removeAutoCreatedPipelines() {
         fixture.removeAutoCreatedPipelines();
-        actor = securityRepo.createUser("pmd-actor-" + UUID.randomUUID(), "Pipeline Test Actor", null, true);
+        actor = securityRepo.createUser("Pipeline Test Actor", "pmd-actor-" + UUID.randomUUID() + "@example.com", true);
     }
 
     private Pipeline colorEqualsPipeline(String matchValue, UUID markerId) {
@@ -186,7 +186,7 @@ class PipelineMarkerDecisionIntegrationTest extends AbstractIntegrationTest {
 
             UUID manualTxn = UUID.randomUUID();
             coordinator.prepare(List.of(new ItemUpdateEntry(itemId, Map.of(), Map.of(), Set.of(),
-                    Set.of(new ManuallyAppliedMarker(markerId, "tester", "pinned by hand")), Set.of())), manualTxn, actor.id(), OffsetDateTime.now());
+                    Set.of(new ManuallyAppliedMarker(markerId, actor.id(), "pinned by hand")), Set.of())), manualTxn, actor.id(), OffsetDateTime.now());
             coordinator.commit(manualTxn, UUID.randomUUID());
             assertThat(authRepo.getMarkerIdsForItem(itemId)).contains(markerId);
 

@@ -1288,7 +1288,7 @@ own separate POC project will consume the endpoint directly instead. The endpoin
   5.5.0 added to its `pom.xml`. `domain-graph-starter` itself was left untouched rather than
   surgically fixed — it's on its way out, not worth more engineering investment — after confirming
   no real consumer outside it depends on the package (`runtimes/domain-2` is an empty scaffold
-  module with no source at all; `pmdm-update-poc` doesn't reference it). Its other two internal
+  module with no source at all). Its other two internal
   consumers, `GatewayRegistrar` and `GraphQLSchemaRegistrar`, were judged irrelevant and not
   replicated. There is now no dependency relationship between the two modules in either direction.
 - `ClusterService` gained one new method, `getTopic(String)`.

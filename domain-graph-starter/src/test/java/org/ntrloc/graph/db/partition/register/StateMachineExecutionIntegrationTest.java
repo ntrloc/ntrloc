@@ -51,8 +51,8 @@ class StateMachineExecutionIntegrationTest extends AbstractIntegrationTest {
 
     @BeforeEach
     void setUpSuperuser() {
-        var user = securityRepo.createUser("sme-root-" + UUID.randomUUID(), "Root", null, true);
-        SUPERUSER = TestPrincipals.of(user.id(), user.externalId(), user.displayName(), null, Set.of(), true);
+        var user = securityRepo.createUser("Root", "sme-root-" + UUID.randomUUID() + "@example.com", true);
+        SUPERUSER = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), true);
     }
 
     private UUID createBook(String title) {
@@ -230,7 +230,7 @@ class StateMachineExecutionIntegrationTest extends AbstractIntegrationTest {
     }
 
     private NtrlocPrincipal nonSuperuser() {
-        var user = securityRepo.createUser("sme-" + UUID.randomUUID(), "User", null, false);
-        return TestPrincipals.of(user.id(), user.externalId(), user.externalId(), null, Set.of(), false);
+        var user = securityRepo.createUser("User", "sme-" + UUID.randomUUID() + "@example.com", false);
+        return TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), false);
     }
 }

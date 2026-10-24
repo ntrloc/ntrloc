@@ -10,7 +10,7 @@ second has been explored in any depth so far.
 ## 1. Context
 
 Verified (using `docs/facets/facet-1.png` through `facet-4.png` — screenshots of ntrloc's actual
-faceting implementation in use via pmdm-ui, not a reference/legacy system) that the existing
+faceting implementation in use, not a reference/legacy system) that the existing
 terms-faceting behavior is correct and working as designed:
 
 - Facets AND together across different fields.

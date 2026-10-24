@@ -24,12 +24,11 @@ import java.util.UUID;
 // Items only -- markers never apply to links (see docs/ntrloc-marker-admin-ui-design-notes.md,
 // "Decision: markers apply to items only").
 //
-// Takes a real NtrlocPrincipal, not a bare actorExternalId string -- same reasoning as every
-// other top-level principal-accepting method (docs/ntrloc-principal-enforcement-plan.md, Part C):
-// the coordinator itself never reads SecurityContextHolder, so whoever calls this must already
-// hold a resolved principal. principal.id() feeds the ledger entry's own created_by (Part E);
-// principal.externalId() still feeds ManuallyAppliedMarker's own userExternalId, a separate,
-// payload-level attribution field this service's own reason/who-did-it contract has always had.
+// Takes a real NtrlocPrincipal, not a bare user id -- same reasoning as every other top-level
+// principal-accepting method (docs/ntrloc-principal-enforcement-plan.md, Part C): the coordinator
+// itself never reads SecurityContextHolder, so whoever calls this must already hold a resolved
+// principal. principal.id() feeds both the ledger entry's own created_by (Part E) and
+// ManuallyAppliedMarker's own payload-level userId.
 @Service
 public class ManualMarkerAssignmentService {
 
@@ -41,16 +40,16 @@ public class ManualMarkerAssignmentService {
 
     @PreAuthorize("#principal != null")
     public void addItemMarker(UUID itemId, UUID markerId, NtrlocPrincipal principal, String reason) {
-        commit(List.of(new ItemUpdateEntry(itemId, Map.of(), Map.of(), Set.of(), Set.of(manual(markerId, principal.externalId(), reason)), Set.of())), principal);
+        commit(List.of(new ItemUpdateEntry(itemId, Map.of(), Map.of(), Set.of(), Set.of(manual(markerId, principal.id(), reason)), Set.of())), principal);
     }
 
     @PreAuthorize("#principal != null")
     public void removeItemMarker(UUID itemId, UUID markerId, NtrlocPrincipal principal, String reason) {
-        commit(List.of(new ItemUpdateEntry(itemId, Map.of(), Map.of(), Set.of(), Set.of(), Set.of(manual(markerId, principal.externalId(), reason)))), principal);
+        commit(List.of(new ItemUpdateEntry(itemId, Map.of(), Map.of(), Set.of(), Set.of(), Set.of(manual(markerId, principal.id(), reason)))), principal);
     }
 
-    private ManuallyAppliedMarker manual(UUID markerId, String actorExternalId, String reason) {
-        return new ManuallyAppliedMarker(markerId, actorExternalId, reason);
+    private ManuallyAppliedMarker manual(UUID markerId, UUID actorUserId, String reason) {
+        return new ManuallyAppliedMarker(markerId, actorUserId, reason);
     }
 
     private void commit(List<LedgerEntry> entries, NtrlocPrincipal principal) {
