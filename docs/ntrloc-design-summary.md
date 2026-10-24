@@ -199,7 +199,7 @@ Traversals up to approximately 5 hops are handled efficiently via PostgreSQL rec
 2. **Union across markers** — effective permissions are the union of all grants across all markers applied to an item
 3. **Write implies read** — `property:write` cannot be granted without `property:read`; there are no write-only properties
 4. **All-or-nothing proposals** — if any property in a mutation fails a permission check, the entire proposal is rejected
-5. **Superusers bypass all policy** — system admins are not constrained by security policies; all actions are still fully audited
+5. **Admins bypass all policy** — system admins are not constrained by security policies; all actions are still fully audited
 
 ### Marker Assignment Rules
 
@@ -320,7 +320,7 @@ Domain: children-publishing
 Active frameworks: COPPA, GDPR
 ```
 
-Activation automatically enforces all framework constraints on classified properties. Hard walls on cross-domain exposure of classified data cannot be overridden by individual permission grants — not even by superusers in other domains.
+Activation automatically enforces all framework constraints on classified properties. Hard walls on cross-domain exposure of classified data cannot be overridden by individual permission grants — not even by admins in other domains.
 
 ### Consent Records
 

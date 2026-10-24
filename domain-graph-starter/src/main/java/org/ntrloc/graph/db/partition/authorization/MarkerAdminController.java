@@ -1,7 +1,7 @@
 package org.ntrloc.graph.db.partition.authorization;
 
 import org.ntrloc.graph.db.partition.authorization.repository.AuthorizationRepository;
-import org.ntrloc.graph.db.partition.security.PrincipalResolver;
+import org.ntrloc.graph.db.partition.security.ExternalPrincipalResolver;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
@@ -47,10 +47,10 @@ public class MarkerAdminController {
 
     private final AuthorizationRepository authRepo;
     private final SecurityRepository securityRepo;
-    private final PrincipalResolver principalResolver;
+    private final ExternalPrincipalResolver principalResolver;
 
     public MarkerAdminController(AuthorizationRepository authRepo, SecurityRepository securityRepo,
-                                  PrincipalResolver principalResolver) {
+                                  ExternalPrincipalResolver principalResolver) {
         this.authRepo = authRepo;
         this.securityRepo = securityRepo;
         this.principalResolver = principalResolver;
@@ -126,7 +126,7 @@ public class MarkerAdminController {
 
     private void requireAdmin(Authentication authentication) {
         var principal = principalResolver.resolve(authentication);
-        if (!principal.isSuperuser()) {
+        if (!principal.isAdmin()) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only admins can manage markers");
         }
     }

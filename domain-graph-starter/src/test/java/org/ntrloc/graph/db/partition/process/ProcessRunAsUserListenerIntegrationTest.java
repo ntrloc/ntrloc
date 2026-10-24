@@ -6,7 +6,7 @@ import org.flowable.engine.runtime.ProcessInstance;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
-import org.ntrloc.graph.db.partition.security.PrincipalResolver;
+import org.ntrloc.graph.db.partition.security.InternalPrincipalResolver;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -67,7 +67,7 @@ class ProcessRunAsUserListenerIntegrationTest extends AbstractIntegrationTest {
 
         ProcessInstance instance = runtimeService.startProcessInstanceByKey(key);
 
-        assertThat(runtimeService.getVariable(instance.getId(), PrincipalResolver.PRINCIPAL_VARIABLE))
+        assertThat(runtimeService.getVariable(instance.getId(), InternalPrincipalResolver.PRINCIPAL_VARIABLE))
                 .isEqualTo(user.id().toString());
     }
 

@@ -33,7 +33,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 // Slice B: the item/link existence semi-joins wired into RegisterPartitionManager's actual query
 // paths (project/projectAcrossTypes, projectOne, and fetchLinksByItem), driven through
-// EntityManager exactly the way the real HTTP endpoints do. Every non-superuser fixture user is
+// EntityManager exactly the way the real HTTP endpoints do. Every non-admin fixture user is
 // added to the default "everyone" group, which already holds type-level item-type:read on these
 // fixture types (DefaultUserGroupInitializer's default-open-until-narrowed grant) -- so every test
 // here is isolating the *instance*-level marker gate specifically, not type-level visibility.
@@ -63,18 +63,18 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
     // Not static/final: needs a real, backed security_user row now that ledger_entry.created_by
     // (Part E) has a NOT NULL FK to security_user.id -- created fresh per test in setUp() via the
     // already-autowired securityRepo, which a static initializer can't reach.
-    private NtrlocPrincipal SUPERUSER;
+    private NtrlocPrincipal ADMIN;
 
     @BeforeEach
-    void setUpSuperuser() {
+    void setUpAdmin() {
         var user = securityRepo.createUser("Root", "irf-root-" + UUID.randomUUID() + "@example.com", true);
-        SUPERUSER = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), true);
+        ADMIN = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), true);
     }
 
     private UUID createItem(UUID itemTypeId, UUID propertyId, Object value) {
         UUID itemId = UUID.randomUUID();
         UUID txn = UUID.randomUUID();
-        coordinator.prepare(List.of(new ItemCreateEntry(itemId, itemTypeId, Map.of(propertyId, value), Map.of(), Set.of())), txn, SUPERUSER.id(), OffsetDateTime.now());
+        coordinator.prepare(List.of(new ItemCreateEntry(itemId, itemTypeId, Map.of(propertyId, value), Map.of(), Set.of())), txn, ADMIN.id(), OffsetDateTime.now());
         coordinator.commit(txn, UUID.randomUUID());
         return itemId;
     }
@@ -93,7 +93,7 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
         coordinator.prepare(List.of(new LinkCreateEntry(linkId, fixture.linkTypeId(),
                 new LinkEndpoint(fixture.productPerspectiveId(), productId),
                 new LinkEndpoint(fixture.contributorPerspectiveId(), contributorId),
-                Map.of())), txn, SUPERUSER.id(), OffsetDateTime.now());
+                Map.of())), txn, ADMIN.id(), OffsetDateTime.now());
         coordinator.commit(txn, UUID.randomUUID());
         return linkId;
     }
@@ -110,7 +110,7 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
 
     private void grantItemRead(UUID itemId, NtrlocPrincipal principal) {
         var marker = authRepo.createMarker("irf-" + UUID.randomUUID(), "test fixture", "ITEM_TYPE", fixture.productTypeId());
-        markerAssignmentService.addItemMarker(itemId, marker.id(), SUPERUSER, "test reason");
+        markerAssignmentService.addItemMarker(itemId, marker.id(), ADMIN, "test reason");
         authRepo.setItemPermissions(authRepo.ensureMarkerGrant(marker.id(), "USER", principal.id()), true, false);
     }
 
@@ -120,7 +120,7 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
     // with a link-perspective grant for the perspective the link is being traversed through.
     private void grantLinkRead(UUID sourceItemId, UUID perspectiveId, NtrlocPrincipal principal) {
         var marker = authRepo.createMarker("irf-" + UUID.randomUUID(), "test fixture", "ITEM_TYPE", fixture.productTypeId());
-        markerAssignmentService.addItemMarker(sourceItemId, marker.id(), SUPERUSER, "test reason");
+        markerAssignmentService.addItemMarker(sourceItemId, marker.id(), ADMIN, "test reason");
         UUID grantId = authRepo.ensureMarkerGrant(marker.id(), "USER", principal.id());
         authRepo.grantLinkPerspectiveAccess(grantId, perspectiveId, false, true, false);
     }
@@ -128,7 +128,7 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
     // --- Collection projection ---
 
     @Test
-    void collectionProjection_itemWithNoMarker_isExcludedForNonSuperuser() {
+    void collectionProjection_itemWithNoMarker_isExcludedForNonAdmin() {
         createProduct(); // no marker assigned
         var principal = newUserInEveryoneUserGroup();
 
@@ -163,14 +163,14 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void collectionProjection_superuserSeesUnmarkedItems() {
+    void collectionProjection_adminSeesUnmarkedItems() {
         String name = "Widget-" + UUID.randomUUID();
         UUID productId = createItem(fixture.productTypeId(), fixture.namePropertyId(), name);
 
-        // Filtered to this item: a superuser sees every product other test classes have created in
+        // Filtered to this item: an admin sees every product other test classes have created in
         // the shared database, so an unfiltered query's default first page may not include it.
         var result = entityManager.project(new CollectionProjectionSpec("CoordinatorTestProduct", null, null,
-                new PropertyValuePredicate("name", Operator.EQUALS, name)), "http://binary", SUPERUSER);
+                new PropertyValuePredicate("name", Operator.EQUALS, name)), "http://binary", ADMIN);
 
         assertThat(result.items()).extracting(i -> i.itemId()).contains(productId);
     }
@@ -299,14 +299,14 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void linkFiltering_superuserSeesUnmarkedLinksAndTargets() {
+    void linkFiltering_adminSeesUnmarkedLinksAndTargets() {
         UUID productId = createProduct();
         UUID contributorId = createContributor();
         createLink(productId, contributorId);
 
         var result = entityManager.project(
                 new ItemProjectionSpec("CoordinatorTestProduct", productId, Map.of("products", new LinkProjectionSpec(null))),
-                "http://binary", SUPERUSER);
+                "http://binary", ADMIN);
 
         assertThat(result.get().links().values().stream().flatMap(List::stream))
                 .anyMatch(link -> link.item().itemId().equals(contributorId));

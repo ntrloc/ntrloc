@@ -13,7 +13,6 @@ import java.time.ZoneOffset;
 import java.util.Base64;
 import java.util.HexFormat;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -61,26 +60,14 @@ public class PersonalAccessTokenService {
         repo.revokeToken(tokenId, principal.id());
     }
 
-    // Returns the full NtrlocPrincipal, not just the UserRow -- SecurityConfig's PAT
-    // authentication manager sets this directly as the resulting Authentication's principal
-    // object, the same "already-resolved, no second SecurityRepository round-trip needed" shape
-    // NtrlocUserDetails gives local-credential logins (see that class's own comment, and
-    // PrincipalResolver.resolveFromAuthenticatedSession's fast path).
-    /** Resolves a presented raw token to its owning user's full principal, if the token is valid and hasn't expired. */
-    public Optional<NtrlocPrincipal> authenticate(String rawToken) {
-        return repo.findUserByValidTokenHash(hash(rawToken))
-                .map(user -> new ResolvedPrincipal(
-                        user.id(), user.displayName(), user.email(),
-                        repo.getUserGroupIdsForUser(user.id()), user.isSuperuser()));
-    }
-
     private static String generateToken() {
         byte[] bytes = new byte[32];
         RANDOM.nextBytes(bytes);
         return TOKEN_PREFIX + Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
 
-    private static String hash(String rawToken) {
+    // Package-private: ExternalPrincipalResolver.byToken looks a presented token up by this hash.
+    static String hash(String rawToken) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] hashed = digest.digest(rawToken.getBytes(StandardCharsets.UTF_8));

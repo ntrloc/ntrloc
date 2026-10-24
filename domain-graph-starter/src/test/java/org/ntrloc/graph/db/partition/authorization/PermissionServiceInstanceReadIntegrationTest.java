@@ -73,12 +73,12 @@ class PermissionServiceInstanceReadIntegrationTest extends AbstractIntegrationTe
         authRepo.setItemPermissions(authRepo.ensureMarkerGrant(markerId, principalType, principalId), true, false);
     }
 
-    private NtrlocPrincipal principal(UUID id, String email, Set<UUID> groupIds, boolean isSuperuser) {
-        return TestPrincipals.of(id, email, email, groupIds, isSuperuser);
+    private NtrlocPrincipal principal(UUID id, String email, Set<UUID> groupIds, boolean isAdmin) {
+        return TestPrincipals.of(id, email, email, groupIds, isAdmin);
     }
 
     @Test
-    void itemWithNoMarker_isUnreadableForNonSuperuser() {
+    void itemWithNoMarker_isUnreadableForNonAdmin() {
         UUID itemId = createItem();
         var user = securityRepo.createUser("User", "pisr-" + UUID.randomUUID() + "@example.com", false);
 
@@ -86,7 +86,7 @@ class PermissionServiceInstanceReadIntegrationTest extends AbstractIntegrationTe
     }
 
     @Test
-    void itemWithNoMarker_isReadableForSuperuser() {
+    void itemWithNoMarker_isReadableForAdmin() {
         UUID itemId = createItem();
 
         assertThat(permissionService.canReadItem(principal(UUID.randomUUID(), "root", Set.of(), true), itemId)).isTrue();

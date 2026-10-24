@@ -197,7 +197,7 @@ class PropertyValidator {
     void checkCanWriteItemProperties(NtrlocPrincipal principal, UUID itemTypeId, UUID itemId,
                                               Map<String, Object> propertiesByName, String path, List<ValidationError> errors) {
         if (propertiesByName == null || propertiesByName.isEmpty()) return;
-        if (principal.isSuperuser()) return;
+        if (principal.isAdmin()) return;
         var ctx = permissionService.buildContext(principal);
         Set<UUID> itemMarkerIds = permissionService.markerIdsForItem(itemId);
         checkCanWriteProperties(ctx, itemMarkerIds, itemScope(itemTypeId), propertiesByName, path, errors);
@@ -231,7 +231,7 @@ class PropertyValidator {
     void checkCanWriteLinkProperties(NtrlocPrincipal principal, List<UUID> endpointItemIds, UUID linkTypeId,
                                               Map<String, Object> propertiesByName, String path, List<ValidationError> errors) {
         if (propertiesByName == null || propertiesByName.isEmpty()) return;
-        if (principal.isSuperuser()) return;
+        if (principal.isAdmin()) return;
         var ctx = permissionService.buildContext(principal);
         List<Set<UUID>> endpointMarkerSets = endpointItemIds.stream().map(permissionService::markerIdsForItem).toList();
         checkCanWriteLinkProperties(ctx, endpointMarkerSets, linkScope(linkTypeId), propertiesByName, path, errors);

@@ -24,9 +24,9 @@ public class MutationService {
     // MutationController's identical comment; EntityManager is the one entry point for both
     // reads and writes now.
     private final EntityManager entityManager;
-    private final McpPrincipalResolver principalResolver;
+    private final McpPrincipalResolverAdapter principalResolver;
 
-    public MutationService(EntityManager entityManager, McpPrincipalResolver principalResolver) {
+    public MutationService(EntityManager entityManager, McpPrincipalResolverAdapter principalResolver) {
         this.entityManager = entityManager;
         this.principalResolver = principalResolver;
     }

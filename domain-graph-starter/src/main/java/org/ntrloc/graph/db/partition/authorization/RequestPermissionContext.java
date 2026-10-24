@@ -24,7 +24,7 @@ import java.util.UUID;
 // rather than a flat marker set, since link:read/create/delete are anchored to the *source* item's
 // marker via a specific perspective, not to a marker on the link itself.
 public record RequestPermissionContext(
-        boolean superuser,
+        boolean isAdmin,
         Set<UUID> readableItemTypeIds,
         Set<UUID> grantedItemReadMarkerIds,
         Set<UUID> itemDeleteGrantedMarkerIds,
@@ -40,7 +40,7 @@ public record RequestPermissionContext(
         Map<UUID, Set<UUID>> transitionExecuteGrantsByMarker,
         Map<UUID, Set<UUID>> stateMachineStartGrantsByMarker
 ) {
-    public static RequestPermissionContext forSuperuser() {
+    public static RequestPermissionContext forAdmin() {
         return new RequestPermissionContext(true, Set.of(), Set.of(), Set.of(),
                 Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of(), Map.of());
     }

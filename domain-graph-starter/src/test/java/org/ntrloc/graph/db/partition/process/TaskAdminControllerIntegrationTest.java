@@ -31,7 +31,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 // plus the SSE tasks/events endpoint's response headers. Reuses ProcessTestDomainInitializer's
 // deployed helloWorld process (its own "reviewGreeting" user task, candidateGroups="reviewers") --
 // same precedent as ProcessEngineIntegrationTest.userTaskClaimAndCompleteAdvancesProcessToCompletion.
-// Every non-superuser check below uses a freshly created, UUID-suffixed throwaway user rather than
+// Every non-admin check below uses a freshly created, UUID-suffixed throwaway user rather than
 // the standing alice/bob/carol fixture, since this class also needs "reviewers" process-group
 // membership (a distinct concept from security_group -- see ProcessGroupRepository's own comment)
 // and doesn't want to risk perturbing another test class's assumptions about those three.
@@ -41,7 +41,7 @@ class TaskAdminControllerIntegrationTest extends AbstractIntegrationTest {
     private WebTestClient webTestClient;
 
     // Every endpoint requires an authenticated caller. root is AuthorizationTestDataInitializer's
-    // seeded superuser; a request that sets its own Authorization header still uses that one.
+    // seeded admin; a request that sets its own Authorization header still uses that one.
     @BeforeEach
     void authenticateAsRoot() {
         webTestClient = webTestClient.mutate().defaultHeader(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com")).build();
@@ -106,7 +106,7 @@ class TaskAdminControllerIntegrationTest extends AbstractIntegrationTest {
     // --- Listing, with per-principal filtering ---
 
     @Test
-    void listTasks_asSuperuser_showsEveryTask() {
+    void listTasks_asAdmin_showsEveryTask() {
         Task task = startProcessAndGetReviewTask();
 
         List<Map<String, Object>> tasks = listTasksAs("root@example.com");

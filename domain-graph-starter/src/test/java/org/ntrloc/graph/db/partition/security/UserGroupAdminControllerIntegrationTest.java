@@ -17,7 +17,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 // Covers UserGroupAdminController's group CRUD and membership endpoints. Reuses
-// AuthorizationTestDataInitializer's standing fixture (root=superuser, alice=non-admin) for
+// AuthorizationTestDataInitializer's standing fixture (root=admin, alice=non-admin) for
 // admin-check tests -- see AccessAdminControllerIntegrationTest's own comment on why that's safe
 // to read without risking cross-test contamination. Every created group/user below gets a
 // UUID-suffixed name/email, so nothing here collides with that fixture or with other test

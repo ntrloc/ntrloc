@@ -150,7 +150,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         assertThat(reviewerAdminItem.links().get("reviewedTrait").get(0).targets())
                 .extracting(t -> t.kind()).contains("trait");
 
-        var calculatedItem = schemaManager.getSchema(SUPERUSER).items().stream()
+        var calculatedItem = schemaManager.getSchema(ADMIN).items().stream()
                 .filter(i -> i.name().equals(itemName)).findFirst().orElseThrow();
         assertThat(calculatedItem.groups()).filteredOn(g -> g.name().equals(traitName)).singleElement()
                 .satisfies(g -> assertThat(g.properties()).extracting(p -> p.name()).containsExactly("inheritedProp"));
@@ -721,7 +721,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         assertThat(car.properties()).filteredOn(p -> p.name().equals("doors"))
                 .allSatisfy(p -> assertThat(p.definedIn()).isNull());
 
-        var calculatedCar = schemaManager.getSchema(SUPERUSER).items().stream()
+        var calculatedCar = schemaManager.getSchema(ADMIN).items().stream()
                 .filter(i -> i.name().equals(carName)).findFirst().orElseThrow();
         assertThat(calculatedCar.properties()).extracting(p -> p.name()).contains("wheels", "doors");
         assertThat(calculatedCar.supertypeId()).isEqualTo(vehicleId);
@@ -1178,8 +1178,8 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         assertThat(itemView(itemId).groups()).extracting(AdminPropertyGroupView::name).doesNotContain("dimensions");
     }
 
-    private static final org.ntrloc.graph.db.partition.security.NtrlocPrincipal SUPERUSER =
-            org.ntrloc.graph.db.partition.security.TestPrincipals.of(UUID.randomUUID(), "Test Superuser", null, java.util.Set.of(), true);
+    private static final org.ntrloc.graph.db.partition.security.NtrlocPrincipal ADMIN =
+            org.ntrloc.graph.db.partition.security.TestPrincipals.of(UUID.randomUUID(), "Test Admin", null, java.util.Set.of(), true);
 
     // --- Schema-view filtering by item-type:read permission (SchemaManager.getSchema) ---
     //

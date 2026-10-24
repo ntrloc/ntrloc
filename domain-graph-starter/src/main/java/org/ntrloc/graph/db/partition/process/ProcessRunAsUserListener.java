@@ -10,7 +10,7 @@ import org.flowable.engine.RepositoryService;
 import org.flowable.engine.delegate.event.FlowableProcessStartedEvent;
 import org.flowable.engine.impl.persistence.entity.ExecutionEntity;
 import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
-import org.ntrloc.graph.db.partition.security.PrincipalResolver;
+import org.ntrloc.graph.db.partition.security.InternalPrincipalResolver;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 
@@ -41,7 +41,7 @@ public class ProcessRunAsUserListener extends AbstractFlowableEventListener {
     private static final Collection<FlowableEngineEventType> TYPES = EnumSet.of(FlowableEngineEventType.PROCESS_STARTED);
 
     private final RepositoryService repositoryService;
-    private final PrincipalResolver principalResolver;
+    private final InternalPrincipalResolver principalResolver;
 
     // @Lazy on RepositoryService specifically: this bean is itself wired into
     // ProcessEngineConfig.processEngineConfiguration(...) (config.setEventListeners(...)) so its
@@ -50,7 +50,7 @@ public class ProcessRunAsUserListener extends AbstractFlowableEventListener {
     // SpringProcessEngineConfiguration that method returns. A real circular dependency without
     // this: @Lazy defers resolving the actual RepositoryService bean behind a proxy until
     // onEvent() first uses it, by which point the whole engine is long since built.
-    public ProcessRunAsUserListener(@Lazy RepositoryService repositoryService, PrincipalResolver principalResolver) {
+    public ProcessRunAsUserListener(@Lazy RepositoryService repositoryService, InternalPrincipalResolver principalResolver) {
         this.repositoryService = repositoryService;
         this.principalResolver = principalResolver;
     }
@@ -70,7 +70,7 @@ public class ProcessRunAsUserListener extends AbstractFlowableEventListener {
         // map -- exactly what a timer/signal/message start does, and exactly the case this
         // listener exists for.
         if (startedEvent.getVariables() != null
-                && startedEvent.getVariables().containsKey(PrincipalResolver.PRINCIPAL_VARIABLE)) {
+                && startedEvent.getVariables().containsKey(InternalPrincipalResolver.PRINCIPAL_VARIABLE)) {
             return;
         }
 
@@ -89,16 +89,16 @@ public class ProcessRunAsUserListener extends AbstractFlowableEventListener {
         }
 
         NtrlocPrincipal principal = TaskViewAssembler.parseUserId(runAsUser)
-                .flatMap(principalResolver::resolveById)
+                .flatMap(principalResolver::byId)
                 .orElseThrow(() -> new IllegalStateException(
                         "Process '" + processDefinitionId + "' declares runAsUser '"
                                 + runAsUser + "', which does not resolve to a known user"));
 
         // Stored as a bare UUID string, not the resolved principal object -- see
-        // PrincipalResolver.resolveById's own comment: a long-running process instance should
+        // InternalPrincipalResolver.byId's own comment: a long-running process instance should
         // re-resolve the declared user's *current* state on each read, not act on a snapshot of
         // whatever was true at start time.
-        execution.setVariable(PrincipalResolver.PRINCIPAL_VARIABLE, principal.id().toString());
+        execution.setVariable(InternalPrincipalResolver.PRINCIPAL_VARIABLE, principal.id().toString());
     }
 
     // A misconfigured runAsUser (declared but unresolvable) should fail the process start loudly,

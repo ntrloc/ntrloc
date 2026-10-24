@@ -6,9 +6,9 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import org.ntrloc.graph.db.partition.security.LocalUserDetailsService;
+import org.ntrloc.graph.db.partition.security.ExternalPrincipalResolver;
+import org.ntrloc.graph.db.partition.security.LocalAuthenticationProvider;
 import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
-import org.ntrloc.graph.db.partition.security.PersonalAccessTokenService;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpHeaders;
@@ -17,7 +17,7 @@ import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.ProviderManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
+import org.springframework.security.authorization.AuthorizationDecision;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -49,14 +49,14 @@ public class SecurityConfig {
     private static final String LOGIN_PATH = "/login";
 
     private final AuthProperties authProperties;
-    private final LocalUserDetailsService localUserDetailsService;
-    private final PersonalAccessTokenService personalAccessTokenService;
+    private final LocalAuthenticationProvider localAuthenticationProvider;
+    private final ExternalPrincipalResolver principals;
 
-    public SecurityConfig(AuthProperties authProperties, LocalUserDetailsService localUserDetailsService,
-                           PersonalAccessTokenService personalAccessTokenService) {
+    public SecurityConfig(AuthProperties authProperties, LocalAuthenticationProvider localAuthenticationProvider,
+                           ExternalPrincipalResolver principals) {
         this.authProperties = authProperties;
-        this.localUserDetailsService = localUserDetailsService;
-        this.personalAccessTokenService = personalAccessTokenService;
+        this.localAuthenticationProvider = localAuthenticationProvider;
+        this.principals = principals;
     }
 
     @PostConstruct
@@ -92,7 +92,10 @@ public class SecurityConfig {
                         // tests returned 302 instead of the expected 4xx until this was added.
                         .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
                         .requestMatchers(openPathPatterns()).permitAll()
-                        .requestMatchers("/admin/**").hasRole("ADMIN")
+                        // Admin comes only from security_user.is_admin, read off the principal
+                        // like every controller's own admin check -- never from granted authorities.
+                        .requestMatchers("/admin/**").access((authentication, context) ->
+                                new AuthorizationDecision(isAdmin(authentication.get())))
                         .anyRequest().authenticated()
                 )
                 .exceptionHandling(exceptions -> exceptions
@@ -140,6 +143,11 @@ public class SecurityConfig {
         return patterns.toArray(new String[0]);
     }
 
+    private static boolean isAdmin(Authentication authentication) {
+        return authentication != null && authentication.getPrincipal() instanceof NtrlocPrincipal principal
+                && principal.isAdmin();
+    }
+
     @Bean
     public AuthenticationEntryPoint authenticationEntryPoint() {
         return new LoginUrlAuthenticationEntryPoint(LOGIN_PATH);
@@ -159,8 +167,7 @@ public class SecurityConfig {
             providers.add(ldapAuthenticationProvider());
         }
         if (authProperties.getLocal().isEnabled()) {
-            DaoAuthenticationProvider daoProvider = new DaoAuthenticationProvider(localUserDetailsService);
-            providers.add(daoProvider);
+            providers.add(localAuthenticationProvider);
         }
 
         // ProviderManager tries each provider in turn, moving to the next on an
@@ -190,12 +197,8 @@ public class SecurityConfig {
         return new LdapAuthenticationProvider(authenticator, authoritiesPopulator);
     }
 
-    // The principal set here is the full NtrlocPrincipal PersonalAccessTokenService.authenticate
-    // already resolved (id, groupIds, isSuperuser, displayName included) -- not just a name
-    // string. Same "already-resolved, no second SecurityRepository round-trip" shape as
-    // NtrlocUserDetails gives local-credential logins; PrincipalResolver's fast path picks either
-    // up identically via instanceof NtrlocPrincipal. The converter returns without setting anything
-    // when there's no Bearer header, so ordinary session-based requests pass through untouched.
+    // The principal set here is the token owner's full NtrlocPrincipal, the same shape a local
+    // login's Authentication carries. Requests without a Bearer header pass through untouched.
     private final SecurityContextRepository patSecurityContextRepository = new RequestAttributeSecurityContextRepository();
 
     private OncePerRequestFilter patFilter() {
@@ -206,7 +209,7 @@ public class SecurityConfig {
                 String header = request.getHeader(HttpHeaders.AUTHORIZATION);
                 if (header != null && header.startsWith("Bearer ")) {
                     String token = header.substring("Bearer ".length());
-                    Optional<NtrlocPrincipal> principal = personalAccessTokenService.authenticate(token);
+                    Optional<NtrlocPrincipal> principal = principals.byToken(token);
                     if (principal.isPresent()) {
                         Authentication auth = UsernamePasswordAuthenticationToken.authenticated(principal.get(), null, List.of());
                         SecurityContext context = SecurityContextHolder.createEmptyContext();

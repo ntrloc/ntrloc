@@ -324,7 +324,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                             OffsetDateTime createdDate, UUID createdBy, OffsetDateTime updatedDate, UUID updatedBy) {}
 
     public ProjectionResult project(UUID itemTypeId, CollectionProjectionSpec spec, String binaryBaseUrl) {
-        return project(itemTypeId, spec, binaryBaseUrl, RequestPermissionContext.forSuperuser());
+        return project(itemTypeId, spec, binaryBaseUrl, RequestPermissionContext.forAdmin());
     }
 
     public ProjectionResult project(UUID itemTypeId, CollectionProjectionSpec spec, String binaryBaseUrl, RequestPermissionContext permissions) {
@@ -438,7 +438,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
     // descendants. EntityManagerImpl only calls this once a resolved type set actually has more
     // than one member.
     public ProjectionResult projectAcrossTypes(Set<UUID> itemTypeIds, CollectionProjectionSpec spec, String binaryBaseUrl) {
-        return projectAcrossTypes(itemTypeIds, spec, binaryBaseUrl, RequestPermissionContext.forSuperuser());
+        return projectAcrossTypes(itemTypeIds, spec, binaryBaseUrl, RequestPermissionContext.forAdmin());
     }
 
     public ProjectionResult projectAcrossTypes(Set<UUID> itemTypeIds, CollectionProjectionSpec spec, String binaryBaseUrl, RequestPermissionContext permissions) {
@@ -797,12 +797,12 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
     }
 
     public Optional<ProjectedItem> projectOne(UUID itemTypeId, UUID itemId, String binaryBaseUrl) {
-        return projectOne(itemTypeId, itemId, binaryBaseUrl, null, RequestPermissionContext.forSuperuser());
+        return projectOne(itemTypeId, itemId, binaryBaseUrl, null, RequestPermissionContext.forAdmin());
     }
 
     public Optional<ProjectedItem> projectOne(UUID itemTypeId, UUID itemId, String binaryBaseUrl,
                                                @Nullable Map<String, LinkProjectionSpec> requestedLinks) {
-        return projectOne(itemTypeId, itemId, binaryBaseUrl, requestedLinks, RequestPermissionContext.forSuperuser());
+        return projectOne(itemTypeId, itemId, binaryBaseUrl, requestedLinks, RequestPermissionContext.forAdmin());
     }
 
     // Kept at "always include everything" -- unlike ProjectionSpec's HTTP-facing "default false"
@@ -1491,7 +1491,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
     // no conceivable use for, same spirit as resolvePropertyPath's own "unknown property" rejection
     // just above -- both are IllegalArgumentException, both map to 400 the same way.
     private boolean isPropertyReadableByAnyMarker(RequestPermissionContext permissions, UUID propertyId) {
-        if (permissions.superuser()) return true;
+        if (permissions.isAdmin()) return true;
         return permissions.propertyReadGrantsByMarker().values().stream().anyMatch(ids -> ids.contains(propertyId))
                 || permissions.propertyWriteGrantsByMarker().values().stream().anyMatch(ids -> ids.contains(propertyId));
     }
@@ -1520,7 +1520,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
     // than a response that quietly omits it. ownPropertyNames is already narrowed to exactly the
     // requested subset by the time this runs (restrictToRequestedProperties ran earlier), so every
     // key in it was explicitly asked for -- this only needs to check readability, not re-match
-    // names. effectiveReadGrants == null means superuser (nothing to reject).
+    // names. effectiveReadGrants == null means admin (nothing to reject).
     private void requireExplicitlyRequestedPropertiesAreReadable(Map<UUID, List<String>> ownPropertyNames, Set<UUID> markerIds,
                                                                     @Nullable Map<UUID, Set<UUID>> effectiveReadGrants,
                                                                     @Nullable List<String> requestedProperties) {
@@ -1535,7 +1535,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
 
     // Filters a still-property-ID-keyed JSONB map down to what's readable, before namesForIds
     // resolves it -- redaction has to happen at the ID level, namesForIds has no concept of
-    // permission. propertyReadGrantsByMarker == null means "don't filter at all" (superuser).
+    // permission. propertyReadGrantsByMarker == null means "don't filter at all" (admin).
     private Map<String, Object> filterPropertiesByReadGrant(Map<String, Object> propertiesById, Set<UUID> markerIds,
                                                               @Nullable Map<UUID, Set<UUID>> propertyReadGrantsByMarker) {
         if (propertyReadGrantsByMarker == null) return propertiesById;
@@ -1550,14 +1550,14 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
 
     // edit is a nested tree mirroring the item type's own property structure -- see
     // ProjectedItemPermissions' own comment for the exact shape and why. delete is a plain
-    // capability flag. Superuser goes through the same buildEditTree walk as everyone else
+    // capability flag. Admin goes through the same buildEditTree walk as everyone else
     // (buildFullEditTree just never has to check a granted-id set to know the answer is "yes") --
     // no shortcut, so edit's shape never depends on who's asking.
     private ProjectedItemPermissions buildPermissions(RequestPermissionContext permissions, Set<UUID> markerIds,
                                                         Map<UUID, Set<UUID>> writeGrantsByMarker, Set<UUID> deleteGrantedMarkerIds,
                                                         PropertyRoot rootProperties,
                                                         Map<String, List<AdminItemLinkPerspectiveView>> linkPerspectives) {
-        if (permissions.superuser()) {
+        if (permissions.isAdmin()) {
             List<String> allPerspectiveNames = linkPerspectives.isEmpty() ? null : List.copyOf(linkPerspectives.keySet());
             return new ProjectedItemPermissions(buildFullEditTree(rootProperties), true, allPerspectiveNames);
         }
@@ -1630,7 +1630,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
         return node;
     }
 
-    // Superuser's counterpart to buildEditTree -- every scalar is granted by definition, so this
+    // Admin's counterpart to buildEditTree -- every scalar is granted by definition, so this
     // never needs a granted-id set, but keeps the identical {scalars, groups} shape (always "*",
     // never a per-name list) so a client can't tell which principal it's looking at from edit's
     // shape alone. Only returns null for a node with nothing at all, which real schema content
@@ -1697,7 +1697,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
     // tree shape as buildPermissions, since link properties can sit inside groups too.
     private ProjectedItemPermissions buildLinkPermissions(RequestPermissionContext permissions, Set<UUID> sourceMarkerIds, UUID perspectiveId,
                                                             PropertyRoot linkRootProperties) {
-        if (permissions.superuser()) {
+        if (permissions.isAdmin()) {
             return new ProjectedItemPermissions(buildFullEditTree(linkRootProperties), true, null);
         }
         Set<UUID> grantedIds = unionGrantedIds(sourceMarkerIds, permissions.linkPropertyWriteGrantsByMarker());
@@ -2399,7 +2399,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
     // aren't independently paginated the way top-level items are, so there's no
     // pagination/totalCount correctness reason it has to be.
     private LinkVisibility filterLinkRowsByReadPermission(List<LinkRow> allLinkRows, RequestPermissionContext permissions) {
-        if (permissions.superuser()) {
+        if (permissions.isAdmin()) {
             return new LinkVisibility(Map.of(), allLinkRows);
         }
         Map<UUID, Set<UUID>> sourceItemMarkerIds = getMarkerIdsForRegisterItems(
@@ -2443,7 +2443,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
     // containing both of a link's endpoints).
     private LinkedItemMarkerContext resolveLinkedItemMarkerContext(List<LinkRow> linkRows, Map<UUID, Set<UUID>> sourceItemMarkerIds,
                                                                      RequestPermissionContext permissions) {
-        if (permissions.superuser()) {
+        if (permissions.isAdmin()) {
             return new LinkedItemMarkerContext(Map.of(), Map.of());
         }
         Map<UUID, Set<UUID>> linkedItemMarkerIds = getMarkerIdsForRegisterItems(
@@ -2453,11 +2453,11 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
         return new LinkedItemMarkerContext(linkedItemMarkerIds, linkOwnerMarkerIds);
     }
 
-    // A write grant implies read (see readImpliedByWrite's own comment); superuser needs no grant
+    // A write grant implies read (see readImpliedByWrite's own comment); admin needs no grant
     // map at all -- fetchPropertiesByRegisterItemId treats null as "don't filter."
     private Map<UUID, Set<UUID>> effectiveReadGrants(RequestPermissionContext permissions, Map<UUID, Set<UUID>> readGrants,
                                                        Map<UUID, Set<UUID>> writeGrants) {
-        return permissions.superuser() ? null : readImpliedByWrite(readGrants, writeGrants);
+        return permissions.isAdmin() ? null : readImpliedByWrite(readGrants, writeGrants);
     }
 
     // Everything toProjectedLink/buildLinksResultMap need beyond the row itself -- bundled into one
@@ -2574,14 +2574,14 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
         Map<String, String> displayLabelPatterns = resolveEffectiveDisplayLabelPatterns();
 
         Map<UUID, Map<String, List<ProjectedLink>>> linksByItem = fetchLinksByItem(rawItemIds, options.requestedLinks(), permissions, includePermissions, binaryBaseUrl);
-        // A superuser used to skip this fetch entirely (nothing to filter by), but now also needs
+        // An admin used to skip this fetch entirely (nothing to filter by), but now also needs
         // it to populate ProjectedItem.markers -- so it's unconditional regardless of who's asking.
         Map<UUID, Set<UUID>> markerIdsByRegisterItemId = getMarkerIdsForRegisterItems(rawItemIds);
-        // Names for every marker we might surface on a projected item: all of them for a superuser,
-        // or just the caller's item:read-granted subset for everyone else. A non-superuser only ever
+        // Names for every marker we might surface on a projected item: all of them for an admin,
+        // or just the caller's item:read-granted subset for everyone else. A non-admin only ever
         // sees an item because one of its markers is granted (buildItemReadPermissionFragment), so a
         // visible item's disclosable list is non-empty in practice.
-        Set<UUID> markerIdsToName = permissions.superuser()
+        Set<UUID> markerIdsToName = permissions.isAdmin()
                 ? markerIdsByRegisterItemId.values().stream().flatMap(Set::stream).collect(Collectors.toSet())
                 : permissions.grantedItemReadMarkerIds();
         Map<UUID, String> markerNamesById = resolveMarkerNames(markerIdsToName);
@@ -2589,9 +2589,9 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
         Map<UUID, List<AssembledBinary>> binaryPropsByItem = fetchBinaryPropsByItem(
                 rawItemIds, binaryBaseUrl, ownPropertyNames, options.requestedProperties());
 
-        // Null for a superuser (no filtering); otherwise the read-granted (write implies read)
+        // Null for an admin (no filtering); otherwise the read-granted (write implies read)
         // property-id grant map, resolved per item against that item's markers below.
-        Map<UUID, Set<UUID>> effectiveReadGrants = permissions.superuser() ? null
+        Map<UUID, Set<UUID>> effectiveReadGrants = permissions.isAdmin() ? null
                 : readImpliedByWrite(permissions.propertyReadGrantsByMarker(), permissions.propertyWriteGrantsByMarker());
 
         Map<UUID, Map<String, String>> controlledListLabelsByPropertyId = resolveControlledListLabels(allPropertyNames, propertyViewsById);
@@ -2644,9 +2644,9 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                         rootPropertiesForItemTypeName(raw.itemType()),
                         linkPerspectivesForItemTypeName(raw.itemType()))
                 : null;
-        // Superuser sees every marker on the item; anyone else sees only the ones they hold an
+        // Admin sees every marker on the item; anyone else sees only the ones they hold an
         // item:read grant on -- never the mere existence of markers they can't read.
-        Set<UUID> disclosableMarkerIds = ctx.permissions().superuser()
+        Set<UUID> disclosableMarkerIds = ctx.permissions().isAdmin()
                 ? markerIds
                 : markerIds.stream().filter(ctx.permissions().grantedItemReadMarkerIds()::contains).collect(Collectors.toSet());
         List<String> markerNames = disclosableMarkerIds.stream()
@@ -2744,9 +2744,9 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
             return null;
         }
         Map<String, Object> states = statesById == null ? Map.of() : statesById;
-        Set<UUID> startGrantedSmIds = permissions.superuser() ? Set.of()
+        Set<UUID> startGrantedSmIds = permissions.isAdmin() ? Set.of()
                 : unionGrantedIds(markerIds, permissions.stateMachineStartGrantsByMarker());
-        Set<UUID> executeGrantedTransitionIds = permissions.superuser() ? Set.of()
+        Set<UUID> executeGrantedTransitionIds = permissions.isAdmin() ? Set.of()
                 : unionGrantedIds(markerIds, permissions.transitionExecuteGrantsByMarker());
 
         Map<String, ProjectedItemState> result = new LinkedHashMap<>();
@@ -2757,13 +2757,13 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                 Map<UUID, String> kindByStateId = machine.states().stream()
                         .collect(Collectors.toMap(AdminStateView::id, AdminStateView::kind));
                 List<AvailableTransition> available = cs.transitions().stream()
-                        .filter(t -> permissions.superuser() || executeGrantedTransitionIds.contains(t.id()))
+                        .filter(t -> permissions.isAdmin() || executeGrantedTransitionIds.contains(t.id()))
                         .map(t -> new AvailableTransition(t.id(), t.name(), t.toStateName(),
                                 kindByStateId.getOrDefault(t.toStateId(), STATE_KIND_NORMAL)))
                         .toList();
                 result.put(machine.name(), new ProjectedItemState(cs.name(), null, false, available));
             } else {
-                boolean startable = permissions.superuser() || startGrantedSmIds.contains(machine.id());
+                boolean startable = permissions.isAdmin() || startGrantedSmIds.contains(machine.id());
                 if (!startable) continue;
                 result.put(machine.name(), new ProjectedItemState(null, null, startable, List.of()));
             }
@@ -2865,7 +2865,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
     // same fragment text is valid in both contexts. Empty granted set short-circuits to a literal
     // FALSE rather than "IN ()" (invalid SQL) -- correctly "nothing visible" without a query.
     private SqlFragment buildItemReadPermissionFragment(RequestPermissionContext permissions, String registerItemAlias) {
-        if (permissions.superuser()) {
+        if (permissions.isAdmin()) {
             return SqlFragment.empty();
         }
         if (permissions.grantedItemReadMarkerIds().isEmpty()) {
@@ -2889,7 +2889,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
     // and links aren't independently paginated, so there's no correctness reason it has to be a
     // semi-join).
     private SqlFragment buildLinkVisibilityPermissionFragment(RequestPermissionContext permissions) {
-        if (permissions.superuser()) {
+        if (permissions.isAdmin()) {
             return SqlFragment.empty();
         }
         SqlFragment targetTypeCheck = permissions.readableItemTypeIds().isEmpty()
@@ -2958,7 +2958,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
 
     // markerIdsByRegisterId/propertyReadGrantsByMarker: the mode-2 property-read filter, applied
     // at the ID level before namesForIds resolves names (namesForIds has no concept of
-    // permission). propertyReadGrantsByMarker == null means "don't filter" (superuser).
+    // permission). propertyReadGrantsByMarker == null means "don't filter" (admin).
     //
     // binaryBaseUrl is only actually used for an item lookup (isLinkTable false) -- a link's own
     // properties can never be BINARY-typed (register_binary_property only ever references

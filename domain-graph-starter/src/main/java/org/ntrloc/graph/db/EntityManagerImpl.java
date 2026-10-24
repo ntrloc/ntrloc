@@ -246,7 +246,7 @@ public class EntityManagerImpl implements EntityManager {
 
     private boolean guardSatisfied(UUID itemTypeId, UUID itemId, AdminTransitionView transition) {
         ProjectedItem item = registerPartitionManager
-                .projectOne(itemTypeId, itemId, "", null, RequestPermissionContext.forSuperuser())
+                .projectOne(itemTypeId, itemId, "", null, RequestPermissionContext.forAdmin())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown item: " + itemId));
         Map<String, String> currentStateByMachine = new java.util.HashMap<>();
         if (item.states() != null) {

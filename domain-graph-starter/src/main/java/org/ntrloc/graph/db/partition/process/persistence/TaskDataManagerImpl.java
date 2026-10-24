@@ -199,7 +199,7 @@ public class TaskDataManagerImpl extends AbstractProcessDataManager implements T
         // the same object. (An earlier version of this method ANDed same-object fields together,
         // which silently turned "assignee OR candidateUser OR candidateGroup" into "assignee AND
         // candidateUser AND candidateGroup" -- nothing ever matched all three at once, so every
-        // non-superuser task query returned empty.)
+        // non-admin task query returned empty.)
         List<TaskQueryImpl> orObjects = query.getOrQueryObjects();
         if (orObjects != null && !orObjects.isEmpty()) {
             List<String> orGroup = new ArrayList<>();

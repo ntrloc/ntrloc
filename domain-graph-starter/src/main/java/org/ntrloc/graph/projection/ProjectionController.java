@@ -2,7 +2,7 @@ package org.ntrloc.graph.projection;
 
 import jakarta.servlet.http.HttpServletRequest;
 import org.ntrloc.graph.db.EntityManager;
-import org.ntrloc.graph.db.partition.security.PrincipalResolver;
+import org.ntrloc.graph.db.partition.security.ExternalPrincipalResolver;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -15,9 +15,9 @@ import org.springframework.web.bind.annotation.RestController;
 public class ProjectionController {
 
     private final EntityManager entityManager;
-    private final PrincipalResolver principalResolver;
+    private final ExternalPrincipalResolver principalResolver;
 
-    public ProjectionController(EntityManager entityManager, PrincipalResolver principalResolver) {
+    public ProjectionController(EntityManager entityManager, ExternalPrincipalResolver principalResolver) {
         this.entityManager = entityManager;
         this.principalResolver = principalResolver;
     }

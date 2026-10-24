@@ -35,20 +35,20 @@ written as a design proposal is now real, implemented code, in four slices:
 See each section below for what changed between the original sketch and what actually got built —
 mostly matches, a few concrete corrections are called out inline.
 
-## Superuser bypass lives on the identity, not the authentication mechanism
+## Admin bypass lives on the identity, not the authentication mechanism
 
-`security_user.is_superuser` is the single source of truth for bypassing marker authorization
-entirely (per the original design doc's "superusers bypass all policy" principle), checked in
+`security_user.is_admin` is the single source of truth for bypassing marker authorization
+entirely (per the original design doc's "admins bypass all policy" principle), checked in
 `PermissionService.canReadItemType` and `SchemaManager.getSchema`. It deliberately does not live
-on `security_local_credentials.role` — a superuser should bypass policy the same way regardless
+on `security_local_credentials.role` — an admin should bypass policy the same way regardless
 of whether they authenticated locally, via LDAP, OAuth, or the stand-in header, since "admin" is
 a property of the identity, not of how that identity proved itself in a given request. The local
-credentials `role` column stays as descriptive/display data only; `is_superuser` is what's
+credentials `role` column stays as descriptive/display data only; `is_admin` is what's
 actually checked.
 
 Bypass is applied at each enforcement call site (`canReadItemType`, `getSchema`) rather than
 inside `effectiveMarkers` — that keeps the raw grant-resolution primitive a pure function of
-grants, with superuser semantics as a policy decision made by callers, not baked into the query
+grants, with admin semantics as a policy decision made by callers, not baked into the query
 that computes "what markers does this principal hold."
 
 ## Principal resolution: real session takes priority over the stand-in
@@ -140,7 +140,7 @@ link-context, so no second scope column is needed for links.
 once per request by `PermissionService.buildContext`:
 
 ```
-superuser                     : boolean                             -- short-circuits everything else
+admin                     : boolean                             -- short-circuits everything else
 readableItemTypeIds           : Set<itemTypeId>                     -- type-level, direct-grant (see Type Visibility)
 grantedItemReadMarkerIds      : Set<markerId>                       -- mode 1, reused by every semi-join
 grantedLinkReadMarkerIds      : Set<markerId>                       -- mode 1, reused by every semi-join
@@ -219,7 +219,7 @@ row filter rather than pruned before the query runs, which is a fine simplificat
 
 Verified end to end by `InstanceReadFilteringIntegrationTest`: target without `item:read` →
 excluded even with `link:read` granted; link without `link:read` → excluded even with both
-endpoints visible; all three conditions satisfied → included; superuser bypasses all three.
+endpoints visible; all three conditions satisfied → included; admin bypasses all three.
 
 ## Caching grant definitions, not item-marker assignments
 

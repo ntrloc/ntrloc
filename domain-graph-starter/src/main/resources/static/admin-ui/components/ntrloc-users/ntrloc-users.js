@@ -419,7 +419,7 @@ class NtrlocUsers extends HTMLElement {
       <tr class="clickable" data-user-id="${u.id}">
         <td>${this.escapeHtml(u.email)}</td>
         <td>${this.escapeHtml(u.displayName)}</td>
-        <td><span class="${u.isSuperuser ? 'badge-admin' : 'badge-user'}">${u.isSuperuser ? 'Admin' : 'User'}</span></td>
+        <td><span class="${u.isAdmin ? 'badge-admin' : 'badge-user'}">${u.isAdmin ? 'Admin' : 'User'}</span></td>
       </tr>
     `).join('');
 
@@ -480,8 +480,8 @@ class NtrlocUsers extends HTMLElement {
             <input name="displayName" value="${this.escapeHtml(u.displayName)}" autocomplete="off">
             <label>Role</label>
             <select name="role">
-              <option value="USER" ${!u.isSuperuser ? 'selected' : ''}>User</option>
-              <option value="ADMIN" ${u.isSuperuser ? 'selected' : ''}>Admin</option>
+              <option value="USER" ${!u.isAdmin ? 'selected' : ''}>User</option>
+              <option value="ADMIN" ${u.isAdmin ? 'selected' : ''}>Admin</option>
             </select>
             <div class="form-actions">
               <button type="button" class="btn btn-primary" data-action="submit-update">Save Changes</button>

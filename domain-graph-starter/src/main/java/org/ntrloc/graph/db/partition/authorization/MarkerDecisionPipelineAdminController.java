@@ -4,7 +4,7 @@ import org.ntrloc.graph.access.Pipeline;
 import org.ntrloc.graph.access.PipelineLayout;
 import org.ntrloc.graph.db.partition.authorization.repository.MarkerDecisionPipelineRepository;
 import org.ntrloc.graph.db.partition.authorization.repository.MarkerDecisionPipelineRepository.PipelineRow;
-import org.ntrloc.graph.db.partition.security.PrincipalResolver;
+import org.ntrloc.graph.db.partition.security.ExternalPrincipalResolver;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
@@ -45,9 +45,9 @@ public class MarkerDecisionPipelineAdminController {
     public record UpdatePipelineRequest(Pipeline pipeline, boolean enabled, PipelineLayout layout) {}
 
     private final MarkerDecisionPipelineRepository repository;
-    private final PrincipalResolver principalResolver;
+    private final ExternalPrincipalResolver principalResolver;
 
-    public MarkerDecisionPipelineAdminController(MarkerDecisionPipelineRepository repository, PrincipalResolver principalResolver) {
+    public MarkerDecisionPipelineAdminController(MarkerDecisionPipelineRepository repository, ExternalPrincipalResolver principalResolver) {
         this.repository = repository;
         this.principalResolver = principalResolver;
     }
@@ -117,7 +117,7 @@ public class MarkerDecisionPipelineAdminController {
 
     private void requireAdmin(Authentication authentication) {
         var principal = principalResolver.resolve(authentication);
-        if (!principal.isSuperuser()) {
+        if (!principal.isAdmin()) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only admins can manage marker decision pipelines");
         }
     }

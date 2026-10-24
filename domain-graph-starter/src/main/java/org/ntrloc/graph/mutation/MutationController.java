@@ -2,7 +2,7 @@ package org.ntrloc.graph.mutation;
 
 import org.ntrloc.graph.db.EntityManager;
 import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
-import org.ntrloc.graph.db.partition.security.PrincipalResolver;
+import org.ntrloc.graph.db.partition.security.ExternalPrincipalResolver;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -21,9 +21,9 @@ public class MutationController {
     // the single entry point for both directions of the entity system (reads via project(),
     // writes via mutate()); MutationRequestProcessor is an implementation detail behind it.
     private final EntityManager entityManager;
-    private final PrincipalResolver principalResolver;
+    private final ExternalPrincipalResolver principalResolver;
 
-    public MutationController(EntityManager entityManager, PrincipalResolver principalResolver) {
+    public MutationController(EntityManager entityManager, ExternalPrincipalResolver principalResolver) {
         this.entityManager = entityManager;
         this.principalResolver = principalResolver;
     }

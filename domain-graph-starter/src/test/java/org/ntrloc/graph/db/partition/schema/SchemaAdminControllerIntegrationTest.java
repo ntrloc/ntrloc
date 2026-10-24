@@ -30,7 +30,7 @@ class SchemaAdminControllerIntegrationTest extends AbstractIntegrationTest {
     private WebTestClient webTestClient;
 
     // Every endpoint requires an authenticated caller. root is AuthorizationTestDataInitializer's
-    // seeded superuser; a request that sets its own Authorization header still uses that one.
+    // seeded admin; a request that sets its own Authorization header still uses that one.
     @BeforeEach
     void authenticateAsRoot() {
         // The whole admin schema holds every fixture of the shared test run, which can outgrow the

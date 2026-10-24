@@ -25,7 +25,7 @@ import org.ntrloc.graph.db.partition.schema.definition.mutation.SetPropertyContr
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemLinkPerspectiveView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminStateMachineView;
-import org.ntrloc.graph.db.partition.security.PrincipalResolver;
+import org.ntrloc.graph.db.partition.security.InternalPrincipalResolver;
 import org.ntrloc.ui.UiTestData.Transition;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -57,7 +57,7 @@ class ItemPaneUiTest extends AbstractUiIntegrationTest {
     private ManualMarkerAssignmentService markerAssignmentService;
 
     @Autowired
-    private PrincipalResolver principalResolver;
+    private InternalPrincipalResolver principalResolver;
 
     private LocalUser admin;
 
@@ -191,7 +191,7 @@ class ItemPaneUiTest extends AbstractUiIntegrationTest {
         String markerName = "ui-item-marker-" + UUID.randomUUID();
         var marker = authorizationRepository.createMarker(markerName, "UI test fixture", "ITEM_TYPE", gadgetType.id());
         markerAssignmentService.addItemMarker(gadget.id(), marker.id(),
-                principalResolver.resolveById(admin.id()).orElseThrow(), "UI test");
+                principalResolver.byId(admin.id()).orElseThrow(), "UI test");
 
         ItemPanePage item = openItem(gadget.name()).openTab("Markers");
 

@@ -41,7 +41,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 // Slice C: mode-2 (field/capability-affecting) permission resolution -- property:read/write and
 // link_property:read/write filtering, plus item:delete/link:delete capability flags. Every
-// non-superuser fixture user is added to "everyone" (type-level read via DefaultUserGroupInitializer's
+// non-admin fixture user is added to "everyone" (type-level read via DefaultUserGroupInitializer's
 // default-open grant) and separately granted item:read/link:read on the specific instance under
 // test, so each test isolates the property/capability gate specifically -- the mode-1 existence
 // gate is a prerequisite, already covered by InstanceReadFilteringIntegrationTest.
@@ -79,19 +79,19 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
     // Not static/final: needs a real, backed security_user row now that ledger_entry.created_by
     // (Part E) has a NOT NULL FK to security_user.id -- created fresh per test in setUp() via the
     // already-autowired securityRepo, which a static initializer can't reach.
-    private NtrlocPrincipal SUPERUSER;
+    private NtrlocPrincipal ADMIN;
 
     @BeforeEach
-    void setUpSuperuser() {
+    void setUpAdmin() {
         var user = securityRepo.createUser("Root", "pcf-root-" + UUID.randomUUID() + "@example.com", true);
-        SUPERUSER = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), true);
+        ADMIN = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), true);
     }
 
     private UUID createProduct(String name, String color) {
         UUID itemId = UUID.randomUUID();
         UUID txn = UUID.randomUUID();
         coordinator.prepare(List.of(new ItemCreateEntry(itemId, fixture.productTypeId(),
-                Map.of(fixture.namePropertyId(), name, fixture.colorPropertyId(), color), Map.of(), Set.of())), txn, SUPERUSER.id(), OffsetDateTime.now());
+                Map.of(fixture.namePropertyId(), name, fixture.colorPropertyId(), color), Map.of(), Set.of())), txn, ADMIN.id(), OffsetDateTime.now());
         coordinator.commit(txn, UUID.randomUUID());
         return itemId;
     }
@@ -100,7 +100,7 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
         UUID id = UUID.randomUUID();
         UUID txn = UUID.randomUUID();
         coordinator.prepare(List.of(new ItemCreateEntry(id, fixture.contributorTypeId(),
-                Map.of(fixture.contributorNamePropertyId(), "Ada"), Map.of(), Set.of())), txn, SUPERUSER.id(), OffsetDateTime.now());
+                Map.of(fixture.contributorNamePropertyId(), "Ada"), Map.of(), Set.of())), txn, ADMIN.id(), OffsetDateTime.now());
         coordinator.commit(txn, UUID.randomUUID());
         return id;
     }
@@ -111,7 +111,7 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
         coordinator.prepare(List.of(new LinkCreateEntry(linkId, fixture.linkTypeId(),
                 new LinkEndpoint(fixture.productPerspectiveId(), productId),
                 new LinkEndpoint(fixture.contributorPerspectiveId(), contributorId),
-                Map.of(fixture.rolePropertyId(), role))), txn, SUPERUSER.id(), OffsetDateTime.now());
+                Map.of(fixture.rolePropertyId(), role))), txn, ADMIN.id(), OffsetDateTime.now());
         coordinator.commit(txn, UUID.randomUUID());
         return linkId;
     }
@@ -125,7 +125,7 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
 
     private MarkerRow markerOnItem(UUID itemId) {
         var marker = authRepo.createMarker("pcf-" + UUID.randomUUID(), "test fixture", "ITEM_TYPE", fixture.productTypeId());
-        markerAssignmentService.addItemMarker(itemId, marker.id(), SUPERUSER, "test reason");
+        markerAssignmentService.addItemMarker(itemId, marker.id(), ADMIN, "test reason");
         return marker;
     }
 
@@ -217,10 +217,10 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
     }
 
     @Test
-    void superuserSeesAllPropertiesRegardlessOfGrants() {
+    void adminSeesAllPropertiesRegardlessOfGrants() {
         UUID productId = createProduct("Widget", "red");
 
-        var result = entityManager.project(new ItemProjectionSpec("CoordinatorTestProduct", productId, null, true, false), "http://binary", SUPERUSER);
+        var result = entityManager.project(new ItemProjectionSpec("CoordinatorTestProduct", productId, null, true, false), "http://binary", ADMIN);
 
         assertThat(result.get().properties()).containsKeys("name", "color");
     }
@@ -253,13 +253,13 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
         assertThat(result.get().permissions().delete()).isTrue();
     }
 
-    // Superuser gets the real, fully-enumerated tree -- same shape as anyone else, just with every
+    // Admin gets the real, fully-enumerated tree -- same shape as anyone else, just with every
     // scalar wildcarded and every group child present, rather than a separate flag/shortcut.
     @Test
-    void superuserPermissions_fullyEnumeratedEditTreeAndDeleteTrue() {
+    void adminPermissions_fullyEnumeratedEditTreeAndDeleteTrue() {
         UUID productId = createProduct("Widget", "red");
 
-        var result = entityManager.project(new ItemProjectionSpec("CoordinatorTestProduct", productId, null, true, false), "http://binary", SUPERUSER);
+        var result = entityManager.project(new ItemProjectionSpec("CoordinatorTestProduct", productId, null, true, false), "http://binary", ADMIN);
 
         assertThat(result.get().permissions().edit()).isEqualTo(
                 Map.of("scalars", List.of("*"), "groups", Map.of("dimensions", Map.of("scalars", List.of("*")))));
@@ -671,7 +671,7 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
         UUID txn = UUID.randomUUID();
         UUID typeId = schemaManager.getAdminSchema().items().stream()
                 .filter(i -> i.name().equals(typeName)).findFirst().orElseThrow().id();
-        coordinator.prepare(List.of(new ItemCreateEntry(itemId, typeId, Map.of(activePropertyId, true), Map.of(), Set.of())), txn, SUPERUSER.id(), OffsetDateTime.now());
+        coordinator.prepare(List.of(new ItemCreateEntry(itemId, typeId, Map.of(activePropertyId, true), Map.of(), Set.of())), txn, ADMIN.id(), OffsetDateTime.now());
         coordinator.commit(txn, UUID.randomUUID());
         UUID grantId = grantId(markerOnItem(itemId).id(), principal);
         authRepo.setItemPermissions(grantId, true, false);

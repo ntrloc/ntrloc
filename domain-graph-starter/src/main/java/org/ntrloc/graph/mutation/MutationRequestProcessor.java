@@ -219,13 +219,13 @@ public class MutationRequestProcessor {
     }
 
     private boolean canDeleteItem(NtrlocPrincipal principal, UUID itemId) {
-        if (principal.isSuperuser()) return true;
+        if (principal.isAdmin()) return true;
         var ctx = permissionService.buildContext(principal);
         return permissionService.mayDeleteItem(ctx, permissionService.markerIdsForItem(itemId));
     }
 
     private boolean canCreateLink(NtrlocPrincipal principal, LinkEndpoint endpoint) {
-        if (principal.isSuperuser()) return true;
+        if (principal.isAdmin()) return true;
         var ctx = permissionService.buildContext(principal);
         return permissionService.mayCreateLink(ctx, permissionService.markerIdsForItem(endpoint.itemId()), endpoint.perspectiveId());
     }
@@ -290,7 +290,7 @@ public class MutationRequestProcessor {
     }
 
     private boolean canDeleteLink(NtrlocPrincipal principal, List<RegisterLinkEndpoint> endpoints) {
-        if (principal.isSuperuser()) return true;
+        if (principal.isAdmin()) return true;
         var ctx = permissionService.buildContext(principal);
         for (RegisterLinkEndpoint endpoint : endpoints) {
             if (!permissionService.mayDeleteLink(ctx, permissionService.markerIdsForItem(endpoint.itemId()), endpoint.perspectiveId())) {

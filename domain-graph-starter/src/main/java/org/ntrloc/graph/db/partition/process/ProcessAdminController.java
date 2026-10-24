@@ -9,7 +9,8 @@ import org.flowable.engine.repository.Deployment;
 import org.flowable.engine.repository.ProcessDefinition;
 import org.flowable.engine.runtime.ProcessInstance;
 import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
-import org.ntrloc.graph.db.partition.security.PrincipalResolver;
+import org.ntrloc.graph.db.partition.security.ExternalPrincipalResolver;
+import org.ntrloc.graph.db.partition.security.InternalPrincipalResolver;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -50,11 +51,11 @@ public class ProcessAdminController {
 
     private final RepositoryService repositoryService;
     private final RuntimeService runtimeService;
-    private final PrincipalResolver principalResolver;
+    private final ExternalPrincipalResolver principalResolver;
     private final WorkflowReferenceScanner referenceScanner;
 
     public ProcessAdminController(RepositoryService repositoryService, RuntimeService runtimeService,
-                                  PrincipalResolver principalResolver, WorkflowReferenceScanner referenceScanner) {
+                                  ExternalPrincipalResolver principalResolver, WorkflowReferenceScanner referenceScanner) {
         this.repositoryService = repositoryService;
         this.runtimeService = runtimeService;
         this.principalResolver = principalResolver;
@@ -234,11 +235,11 @@ public class ProcessAdminController {
         // whatever the caller sent under this key with the real authenticated principal, so
         // nothing reachable over the API can spoof "who ran this" by including their own
         // "principal" in the request body. Stored as a bare UUID string (security_user.id), not a
-        // serialized principal object -- see PrincipalResolver.resolveById's own comment: a process
+        // serialized principal object -- see InternalPrincipalResolver.byId's own comment: a process
         // instance that outlives this HTTP request should re-resolve the user's *current* state
         // later, not act on a snapshot cached at start time.
         NtrlocPrincipal principal = principalResolver.resolve(authentication);
-        variables.put(PrincipalResolver.PRINCIPAL_VARIABLE, principal.id().toString());
+        variables.put(InternalPrincipalResolver.PRINCIPAL_VARIABLE, principal.id().toString());
         try {
             ProcessInstance instance = runtimeService.startProcessInstanceById(id, variables);
             return ResponseEntity.ok(new ProcessInstanceView(instance.getId(), instance.isEnded()));

@@ -26,9 +26,9 @@ public class PersonalAccessTokenController {
     public record TokenSummaryResponse(UUID id, String name, OffsetDateTime createdAt, OffsetDateTime expiresAt) {}
 
     private final PersonalAccessTokenService tokenService;
-    private final PrincipalResolver principalResolver;
+    private final ExternalPrincipalResolver principalResolver;
 
-    public PersonalAccessTokenController(PersonalAccessTokenService tokenService, PrincipalResolver principalResolver) {
+    public PersonalAccessTokenController(PersonalAccessTokenService tokenService, ExternalPrincipalResolver principalResolver) {
         this.tokenService = tokenService;
         this.principalResolver = principalResolver;
     }

@@ -49,11 +49,11 @@ public class AuthorizationTestDataInitializer implements ApplicationRunner {
         // Test item types are created through the real mutation pipeline (not raw DDL) so
         // SchemaManager's cache stays consistent — it has no external invalidation hook
         // besides applyMutations. AclTestUnmarkedDoc deliberately gets no marker assignment at
-        // all, to prove superusers bypass the default-deny behavior that blocks everyone else.
+        // all, to prove admins bypass the default-deny behavior that blocks everyone else.
         schemaManager.applyMutations(List.of(
                 new CreateItemDefinitionMutation("AclTestPublicDoc", "ACL tracer bullet: group-granted type", List.of(), null, false, null),
                 new CreateItemDefinitionMutation("AclTestConfidentialDoc", "ACL tracer bullet: user-granted type", List.of(), null, false, null),
-                new CreateItemDefinitionMutation("AclTestUnmarkedDoc", "ACL tracer bullet: no marker assigned, superuser-only", List.of(), null, false, null)
+                new CreateItemDefinitionMutation("AclTestUnmarkedDoc", "ACL tracer bullet: no marker assigned, admin-only", List.of(), null, false, null)
         ));
 
         Map<String, UUID> itemsByName = schemaManager.getAdminSchema().items().stream()
@@ -75,7 +75,7 @@ public class AuthorizationTestDataInitializer implements ApplicationRunner {
         var alice = securityRepo.createUser("Alice (viewer group member)", "alice@example.com", false);
         var bob = securityRepo.createUser("Bob (viewer group member)", "bob@example.com", false);
         var carol = securityRepo.createUser("Carol (direct grant, no group)", "carol@example.com", false);
-        var root = securityRepo.createUser("Root (superuser)", "root@example.com", true);
+        var root = securityRepo.createUser("Root (admin)", "root@example.com", true);
         defaultUserGroupInitializer.addUserToDefaultUserGroup(alice.id());
         defaultUserGroupInitializer.addUserToDefaultUserGroup(bob.id());
         defaultUserGroupInitializer.addUserToDefaultUserGroup(carol.id());

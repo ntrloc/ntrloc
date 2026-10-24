@@ -48,12 +48,12 @@ class ProjectedUserInfoIntegrationTest extends AbstractIntegrationTest {
     @Autowired
     private SecurityRepository securityRepo;
 
-    private NtrlocPrincipal SUPERUSER;
+    private NtrlocPrincipal ADMIN;
 
     @BeforeEach
-    void setUpSuperuser() {
+    void setUpAdmin() {
         var user = securityRepo.createUser("Root", "puiit-root-" + UUID.randomUUID() + "@example.com", true);
-        SUPERUSER = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), true);
+        ADMIN = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), true);
     }
 
     @Test
@@ -67,7 +67,7 @@ class ProjectedUserInfoIntegrationTest extends AbstractIntegrationTest {
                 Map.of(fixture.namePropertyId(), "Widget"), Map.of(), Set.of())), txn, creator.id(), OffsetDateTime.now());
         coordinator.commit(txn, UUID.randomUUID());
 
-        ProjectedItem afterCreate = entityManager.project(new ItemProjectionSpec("CoordinatorTestProduct", itemId), "http://binary", SUPERUSER)
+        ProjectedItem afterCreate = entityManager.project(new ItemProjectionSpec("CoordinatorTestProduct", itemId), "http://binary", ADMIN)
                 .orElseThrow();
 
         assertThat(afterCreate.createdBy().email()).isEqualTo(creator.email());
@@ -80,7 +80,7 @@ class ProjectedUserInfoIntegrationTest extends AbstractIntegrationTest {
                 Map.of(), Set.of(), Set.of(), Set.of())), updateTxn, editor.id(), OffsetDateTime.now());
         coordinator.commit(updateTxn, UUID.randomUUID());
 
-        ProjectedItem afterUpdate = entityManager.project(new ItemProjectionSpec("CoordinatorTestProduct", itemId), "http://binary", SUPERUSER)
+        ProjectedItem afterUpdate = entityManager.project(new ItemProjectionSpec("CoordinatorTestProduct", itemId), "http://binary", ADMIN)
                 .orElseThrow();
 
         assertThat(afterUpdate.updatedBy().email()).isEqualTo(editor.email());
@@ -100,7 +100,7 @@ class ProjectedUserInfoIntegrationTest extends AbstractIntegrationTest {
         // Filtered to this item: other test classes share the database and add their own products,
         // so an unfiltered query's default first page may not include it.
         var result = entityManager.project(new CollectionProjectionSpec("CoordinatorTestProduct", null, null,
-                new PropertyValuePredicate("name", Operator.EQUALS, name)), "http://binary", SUPERUSER);
+                new PropertyValuePredicate("name", Operator.EQUALS, name)), "http://binary", ADMIN);
 
         var projected = result.items().stream().filter(i -> i.itemId().equals(itemId)).findFirst().orElseThrow();
         assertThat(projected.createdBy().email()).isEqualTo(creator.email());
@@ -139,7 +139,7 @@ class ProjectedUserInfoIntegrationTest extends AbstractIntegrationTest {
 
         ProjectedItem product = entityManager.project(
                 new ItemProjectionSpec("CoordinatorTestProduct", productId, Map.of("products", new LinkProjectionSpec(null))),
-                "http://binary", SUPERUSER).orElseThrow();
+                "http://binary", ADMIN).orElseThrow();
 
         var link = product.links().get("products").get(0);
         assertThat(link.createdBy().email()).isEqualTo(linkCreator.email());

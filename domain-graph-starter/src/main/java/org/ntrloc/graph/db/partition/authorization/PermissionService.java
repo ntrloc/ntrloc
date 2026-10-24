@@ -36,11 +36,11 @@ public class PermissionService {
 
     /**
      * Single-item-type read check. Default deny: an item type with no direct item-type:read
-     * grant is invisible to everyone — except superusers, who bypass authorization entirely.
+     * grant is invisible to everyone — except admins, who bypass authorization entirely.
      */
     @PreAuthorize("#principal != null")
     public boolean canReadItemType(NtrlocPrincipal principal, UUID itemTypeId) {
-        if (principal.isSuperuser()) {
+        if (principal.isAdmin()) {
             return true;
         }
         return cache.hasItemTypeGrant(principal.id(), principal.groupIds(), itemTypeId, ITEM_TYPE_READ);
@@ -49,7 +49,7 @@ public class PermissionService {
     /** Type-level create gate — a prerequisite for the (separate) hypothetical-instance create check. */
     @PreAuthorize("#principal != null")
     public boolean canCreateItemType(NtrlocPrincipal principal, UUID itemTypeId) {
-        if (principal.isSuperuser()) {
+        if (principal.isAdmin()) {
             return true;
         }
         return cache.hasItemTypeGrant(principal.id(), principal.groupIds(), itemTypeId, ITEM_TYPE_CREATE);
@@ -67,7 +67,7 @@ public class PermissionService {
      */
     @PreAuthorize("#principal != null")
     public boolean canReadItem(NtrlocPrincipal principal, UUID itemId) {
-        if (principal.isSuperuser()) {
+        if (principal.isAdmin()) {
             return true;
         }
         Set<UUID> granted = cache.getGrantedItemReadMarkerIds(principal.id(), principal.groupIds());
@@ -79,14 +79,14 @@ public class PermissionService {
 
     /**
      * Computed once per request, threaded through the whole projection response tree (see
-     * RequestPermissionContext's own comment). Superuser short-circuits to empty sets — nothing
-     * downstream should ever branch on those sets for a superuser context; callers must check
-     * {@code superuser()} first, exactly like every other enforcement point in this class.
+     * RequestPermissionContext's own comment). Admin short-circuits to empty sets — nothing
+     * downstream should ever branch on those sets for an admin context; callers must check
+     * {@code isAdmin()} first, exactly like every other enforcement point in this class.
      */
     @PreAuthorize("#principal != null")
     public RequestPermissionContext buildContext(NtrlocPrincipal principal) {
-        if (principal.isSuperuser()) {
-            return RequestPermissionContext.forSuperuser();
+        if (principal.isAdmin()) {
+            return RequestPermissionContext.forAdmin();
         }
         UUID userId = principal.id();
         Set<UUID> groupIds = principal.groupIds();
@@ -108,12 +108,12 @@ public class PermissionService {
 
     /** May this principal begin an item carrying {@code itemMarkerIds} in state machine {@code smId}? */
     public boolean mayStartStateMachine(RequestPermissionContext ctx, Set<UUID> itemMarkerIds, UUID smId) {
-        return ctx.superuser() || anyMarkerGrants(ctx.stateMachineStartGrantsByMarker(), itemMarkerIds, smId);
+        return ctx.isAdmin() || anyMarkerGrants(ctx.stateMachineStartGrantsByMarker(), itemMarkerIds, smId);
     }
 
     /** May this principal execute {@code transitionId} on an item carrying {@code itemMarkerIds}? */
     public boolean mayExecuteTransition(RequestPermissionContext ctx, Set<UUID> itemMarkerIds, UUID transitionId) {
-        return ctx.superuser() || anyMarkerGrants(ctx.transitionExecuteGrantsByMarker(), itemMarkerIds, transitionId);
+        return ctx.isAdmin() || anyMarkerGrants(ctx.transitionExecuteGrantsByMarker(), itemMarkerIds, transitionId);
     }
 
     private static boolean anyMarkerGrants(java.util.Map<UUID, Set<UUID>> grantsByMarker, Set<UUID> itemMarkerIds, UUID targetId) {
@@ -125,27 +125,27 @@ public class PermissionService {
 
     /** May this principal write {@code propertyId} on an item carrying {@code itemMarkerIds}? */
     public boolean mayWriteProperty(RequestPermissionContext ctx, Set<UUID> itemMarkerIds, UUID propertyId) {
-        return ctx.superuser() || anyMarkerGrants(ctx.propertyWriteGrantsByMarker(), itemMarkerIds, propertyId);
+        return ctx.isAdmin() || anyMarkerGrants(ctx.propertyWriteGrantsByMarker(), itemMarkerIds, propertyId);
     }
 
     /** May this principal delete an item carrying {@code itemMarkerIds}? Flat marker set, no secondary target (cf. mayWriteProperty). */
     public boolean mayDeleteItem(RequestPermissionContext ctx, Set<UUID> itemMarkerIds) {
-        return ctx.superuser() || !Collections.disjoint(itemMarkerIds, ctx.itemDeleteGrantedMarkerIds());
+        return ctx.isAdmin() || !Collections.disjoint(itemMarkerIds, ctx.itemDeleteGrantedMarkerIds());
     }
 
     /** May this principal create a link via {@code perspectiveId} from an item carrying {@code itemMarkerIds}? */
     public boolean mayCreateLink(RequestPermissionContext ctx, Set<UUID> itemMarkerIds, UUID perspectiveId) {
-        return ctx.superuser() || anyMarkerGrants(ctx.linkPerspectiveCreateGrantsByMarker(), itemMarkerIds, perspectiveId);
+        return ctx.isAdmin() || anyMarkerGrants(ctx.linkPerspectiveCreateGrantsByMarker(), itemMarkerIds, perspectiveId);
     }
 
     /** May this principal delete a link via {@code perspectiveId} from an item carrying {@code itemMarkerIds}? */
     public boolean mayDeleteLink(RequestPermissionContext ctx, Set<UUID> itemMarkerIds, UUID perspectiveId) {
-        return ctx.superuser() || anyMarkerGrants(ctx.linkPerspectiveDeleteGrantsByMarker(), itemMarkerIds, perspectiveId);
+        return ctx.isAdmin() || anyMarkerGrants(ctx.linkPerspectiveDeleteGrantsByMarker(), itemMarkerIds, perspectiveId);
     }
 
     /** May this principal write {@code propertyId} on a link whose source item carries {@code itemMarkerIds}? */
     public boolean mayWriteLinkProperty(RequestPermissionContext ctx, Set<UUID> itemMarkerIds, UUID propertyId) {
-        return ctx.superuser() || anyMarkerGrants(ctx.linkPropertyWriteGrantsByMarker(), itemMarkerIds, propertyId);
+        return ctx.isAdmin() || anyMarkerGrants(ctx.linkPropertyWriteGrantsByMarker(), itemMarkerIds, propertyId);
     }
 
     /** The markers currently on this item -- data-sized, never cached (see class comment). */

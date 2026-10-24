@@ -1267,7 +1267,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
         UUID bookId = createBook("Dune", 400, true, "Fiction");
 
         var book = registerPartitionManager.projectOne(fixture.bookTypeId(), bookId, "http://binary",
-                new RenderOptions(null, RequestPermissionContext.forSuperuser(), false, false, List.of("pageCount"))).orElseThrow();
+                new RenderOptions(null, RequestPermissionContext.forAdmin(), false, false, List.of("pageCount"))).orElseThrow();
 
         assertThat(book.properties()).containsOnlyKeys("pageCount");
         assertThat(book.displayLabel()).isEqualTo("Dune");
@@ -1280,7 +1280,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
 
         var requestedLinks = Map.of("authors", new LinkProjectionSpec(null));
         var book = registerPartitionManager.projectOne(fixture.bookTypeId(), bookId, "http://binary",
-                new RenderOptions(requestedLinks, RequestPermissionContext.forSuperuser(), true, true, List.of("title"))).orElseThrow();
+                new RenderOptions(requestedLinks, RequestPermissionContext.forAdmin(), true, true, List.of("title"))).orElseThrow();
 
         assertThat(book.properties()).containsOnlyKeys("title");
         var author = book.links().get("authors").get(0).item();
@@ -1312,13 +1312,13 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
         var s = book.states().get(RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE);
         assertThat(s).isNotNull();
         assertThat(s.currentState()).isNull();
-        assertThat(s.startable()).isTrue(); // superuser
+        assertThat(s.startable()).isTrue(); // admin
         assertThat(s.availableTransitions()).isEmpty();
     }
 
     // A machine that's neither active nor startable by the caller has nothing to report -- no
     // current state, no Start affordance -- so its entry is omitted entirely rather than surfacing
-    // as startable:false with nothing else useful in it. Non-superuser, zero grants of any kind:
+    // as startable:false with nothing else useful in it. Non-admin, zero grants of any kind:
     // this bypasses EntityManagerImpl's own item:read gate (see projectOne's own comment -- that
     // check happens one layer up, not here), which is fine since this test only cares about the
     // states filtering, not item-level visibility.
@@ -1336,7 +1336,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
 
     // ProjectionSpec.includePermissions/includeStates default to false -- a plain CollectionProjectionSpec
     // (via its legacy constructors, which don't expose these two fields at all) must come back with
-    // both null even for an active machine and a superuser, who would otherwise always get real
+    // both null even for an active machine and an admin, who would otherwise always get real
     // values for both. Distinct from the two tests above/below: this covers the opt-in mechanism
     // itself, not the content of what's returned once opted in.
     @Test

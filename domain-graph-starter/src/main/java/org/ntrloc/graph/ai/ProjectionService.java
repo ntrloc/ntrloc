@@ -18,9 +18,9 @@ public class ProjectionService {
     private static final Logger LOG = LoggerFactory.getLogger(ProjectionService.class);
 
     private final EntityManager entityManager;
-    private final McpPrincipalResolver principalResolver;
+    private final McpPrincipalResolverAdapter principalResolver;
 
-    public ProjectionService(EntityManager entityManager, McpPrincipalResolver principalResolver) {
+    public ProjectionService(EntityManager entityManager, McpPrincipalResolverAdapter principalResolver) {
         this.entityManager = entityManager;
         this.principalResolver = principalResolver;
     }

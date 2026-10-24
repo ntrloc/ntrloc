@@ -157,7 +157,7 @@ public class SchemaManager {
     @PreAuthorize("#principal != null")
     public SchemaView getSchema(NtrlocPrincipal principal) {
         SchemaView schema = cachedSchema.get();
-        if (principal.isSuperuser()) {
+        if (principal.isAdmin()) {
             return schema;
         }
         var readableItemTypeIds = permissionService.readableItemTypeIds(principal);

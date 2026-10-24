@@ -135,7 +135,7 @@ Link types have no independent type-visibility grant of their own — a link typ
 3. **Write implies read** — `property:write` cannot be granted without `property:read`; there are no write-only properties
 4. **Positive assertions only** — there are no explicit deny grants; permissions are additive
 5. **All-or-nothing proposals** — if any property in a mutation fails a permission check, the entire proposal is rejected
-6. **Superusers bypass all policy** — system admins are not constrained by security policies; all actions are still fully audited
+6. **Admins bypass all policy** — system admins are not constrained by security policies; all actions are still fully audited
 
 ---
 
@@ -291,7 +291,7 @@ PUBLIC               -- explicitly safe for unrestricted exposure
 
 Each regulatory framework declares which classifications it governs, cross-domain exposure constraints, retention limits, deletion semantics, and consent requirements. Domain admins activate frameworks for their domain — activation automatically enforces all constraints.
 
-**Hard walls on cross-domain exposure** of classified data cannot be overridden by individual permission grants, not even by superusers in other domains.
+**Hard walls on cross-domain exposure** of classified data cannot be overridden by individual permission grants, not even by admins in other domains.
 
 **Deletion semantics:** Purge, Anonymization, Redaction, or Suppression — each framework declares which mode satisfies its requirements. Every deletion produces a signed deletion certificate.
 

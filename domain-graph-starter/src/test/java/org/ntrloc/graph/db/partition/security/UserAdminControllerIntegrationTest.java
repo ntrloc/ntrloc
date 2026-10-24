@@ -16,7 +16,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 // Covers UserAdminController's user CRUD and personal-access-token endpoints. Reuses
-// AuthorizationTestDataInitializer's standing fixture (root=superuser, alice=non-admin) for
+// AuthorizationTestDataInitializer's standing fixture (root=admin, alice=non-admin) for
 // admin-check tests -- see AccessAdminControllerIntegrationTest's own comment on why that's safe
 // to read without risking cross-test contamination. Every created user/token below gets a
 // UUID-suffixed email, so nothing here collides with that fixture or with other test methods
@@ -66,7 +66,7 @@ class UserAdminControllerIntegrationTest extends AbstractIntegrationTest {
                 .expectStatus().isOk()
                 .expectBody()
                 .jsonPath("$.email").isEqualTo(email)
-                .jsonPath("$.isSuperuser").isEqualTo(false);
+                .jsonPath("$.isAdmin").isEqualTo(false);
 
         var user = securityRepo.findUserByEmail(email).orElseThrow();
         assertThat(securityRepo.findCredentialsByUserId(user.id())).isPresent();
@@ -74,7 +74,7 @@ class UserAdminControllerIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void createUser_withRoleAdmin_createsASuperuser() {
+    void createUser_withRoleAdmin_createsAAdmin() {
         webTestClient.post().uri("/api/admin/users")
                 .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com"))
                 .contentType(MediaType.APPLICATION_JSON)
@@ -83,7 +83,7 @@ class UserAdminControllerIntegrationTest extends AbstractIntegrationTest {
                 .exchange()
                 .expectStatus().isOk()
                 .expectBody()
-                .jsonPath("$.isSuperuser").isEqualTo(true);
+                .jsonPath("$.isAdmin").isEqualTo(true);
     }
 
     @Test
@@ -132,12 +132,12 @@ class UserAdminControllerIntegrationTest extends AbstractIntegrationTest {
                 .expectBody()
                 .jsonPath("$.displayName").isEqualTo("Updated Name")
                 .jsonPath("$.email").isEqualTo(newEmail)
-                .jsonPath("$.isSuperuser").isEqualTo(true);
+                .jsonPath("$.isAdmin").isEqualTo(true);
 
         var reloaded = securityRepo.findUserById(user.id()).orElseThrow();
         assertThat(reloaded.displayName()).isEqualTo("Updated Name");
         assertThat(reloaded.email()).isEqualTo(newEmail);
-        assertThat(reloaded.isSuperuser()).isTrue();
+        assertThat(reloaded.isAdmin()).isTrue();
     }
 
     @Test
@@ -169,7 +169,7 @@ class UserAdminControllerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void resetPassword_asAdmin_persistsANewHash() {
         var user = securityRepo.createUser("Local User", uniqueEmail(), false);
-        securityRepo.createLocalCredentials(user.id(), "{bcrypt}old-hash", "USER");
+        securityRepo.createLocalCredentials(user.id(), "{bcrypt}old-hash");
 
         webTestClient.put().uri("/api/admin/users/" + user.id() + "/password")
                 .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com"))

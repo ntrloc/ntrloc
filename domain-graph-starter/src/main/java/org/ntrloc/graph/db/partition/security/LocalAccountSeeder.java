@@ -26,16 +26,15 @@ public class LocalAccountSeeder {
 
     @PostConstruct
     void init() {
-        seedAccount("Local Admin", "admin@local", "admin", "ADMIN");
-        seedAccount("Local User", "localuser@local", "password", "USER");
+        seedAccount("Local Admin", "admin@local", "admin", true);
+        seedAccount("Local User", "localuser@local", "password", false);
     }
 
-    private void seedAccount(String displayName, String email, String rawPassword, String role) {
+    private void seedAccount(String displayName, String email, String rawPassword, boolean isAdmin) {
         if (repo.findUserByEmail(email).isPresent()) return;
-        boolean isSuperuser = "ADMIN".equals(role);
-        var user = repo.createUser(displayName, email, isSuperuser);
+        var user = repo.createUser(displayName, email, isAdmin);
         String passwordHash = "{bcrypt}" + new BCryptPasswordEncoder().encode(rawPassword);
-        repo.createLocalCredentials(user.id(), passwordHash, role);
+        repo.createLocalCredentials(user.id(), passwordHash);
         defaultUserGroupInitializer.addUserToDefaultUserGroup(user.id());
     }
 }

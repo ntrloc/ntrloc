@@ -69,7 +69,7 @@ function assigneeLabel(assignee) {
 }
 
 // Lists Flowable tasks visible to the current user (TaskAdminController filters to
-// assignee/candidate-user/candidate-group unless the caller is a superuser) and lets them claim
+// assignee/candidate-user/candidate-group unless the caller is an admin) and lets them claim
 // and complete one. Mirrors ntrloc-processes.js's list<->detail swap (an internal state switch,
 // not a route change), but the "detail" here is a claim/complete action pane, not a full editor.
 class NtrlocTasks extends HTMLElement {

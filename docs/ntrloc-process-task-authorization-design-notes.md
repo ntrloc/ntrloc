@@ -171,7 +171,7 @@ being asked at the wrong level of generality ("how should *a process* be authori
    staffing and was never pretending to be an access-control surface.
 5. **Un-anchored batch/report process** (no item at all — "run a projection, generate a report,
    email it"). Human/admin-initiated but with no natural item to anchor to; probably wants a
-   narrower default population than #4 (e.g. superuser-only) rather than inventing a new
+   narrower default population than #4 (e.g. admin-only) rather than inventing a new
    authorization concept.
 
 **Payoff**: task candidacy doesn't need a universal story because most roles never touch a human

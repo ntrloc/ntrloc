@@ -15,7 +15,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * (Testcontainers) and the fixture seeded by AuthorizationTestDataInitializer:
  *  - alice, bob -> group "viewers" -> item-type:read grant -> AclTestPublicDoc
  *  - carol -> direct user grant -> item-type:read grant -> AclTestConfidentialDoc
- *  - root -> superuser -> bypasses type-visibility authorization entirely, including
+ *  - root -> admin -> bypasses type-visibility authorization entirely, including
  *    AclTestUnmarkedDoc, which has no grant at all and is therefore invisible to everyone else
  */
 class AuthorizationEndpointsIntegrationTest extends AbstractIntegrationTest {
@@ -127,7 +127,7 @@ class AuthorizationEndpointsIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void schemaViewShowsAllTypesForSuperuser() {
+    void schemaViewShowsAllTypesForAdmin() {
         webTestClient.get().uri("/api/schema")
                 .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com"))
                 .exchange()
@@ -141,7 +141,7 @@ class AuthorizationEndpointsIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void projectionAllowsSuperuserOnUnmarkedType() {
+    void projectionAllowsAdminOnUnmarkedType() {
         webTestClient.post().uri("/api/projection/collection")
                 .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com"))
                 .contentType(MediaType.APPLICATION_JSON)
@@ -153,7 +153,7 @@ class AuthorizationEndpointsIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void projectionMasksUnmarkedTypeForNonSuperuser() {
+    void projectionMasksUnmarkedTypeForNonAdmin() {
         webTestClient.post().uri("/api/projection/collection")
                 .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("alice@example.com"))
                 .contentType(MediaType.APPLICATION_JSON)

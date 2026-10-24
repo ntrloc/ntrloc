@@ -39,12 +39,12 @@ public class ProcessService {
     private final RepositoryService repositoryService;
     private final RuntimeService runtimeService;
     private final TaskService taskService;
-    private final McpPrincipalResolver principalResolver;
+    private final McpPrincipalResolverAdapter principalResolver;
     private final TaskViewAssembler taskViews;
     private final SecurityRepository securityRepository;
 
     public ProcessService(RepositoryService repositoryService, RuntimeService runtimeService, TaskService taskService,
-                           McpPrincipalResolver principalResolver, TaskViewAssembler taskViews,
+                           McpPrincipalResolverAdapter principalResolver, TaskViewAssembler taskViews,
                            SecurityRepository securityRepository) {
         this.repositoryService = repositoryService;
         this.runtimeService = runtimeService;

@@ -1053,7 +1053,7 @@ row directly mid-flight (a live process parked on a timer wait state) before the
 re-wrap the incoming value into a bare `ResolvedPrincipal` — built from the five `NtrlocPrincipal`
 interface accessors only, never trusting whatever extra fields the concrete implementation happens to
 carry — before serializing. Re-verified live after the fix, querying the same row mid-flight: only
-`id`/`externalId`/`displayName`/`groupIds`/`isSuperuser` present. `NtrlocPrincipal.getName()` (the
+`id`/`externalId`/`displayName`/`groupIds`/`isAdmin` present. `NtrlocPrincipal.getName()` (the
 `java.security.Principal` default method) is separately `@JsonIgnore`d, since its `get`-prefixed shape
 would otherwise round-trip as a spurious `"name"` field no record component can absorb on read.
 

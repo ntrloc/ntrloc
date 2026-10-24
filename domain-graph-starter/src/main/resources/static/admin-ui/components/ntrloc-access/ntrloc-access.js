@@ -2157,7 +2157,7 @@ class NtrlocAccess extends HTMLElement {
           <span class="axs-directory-item-name">${this.escapeHtml(u.displayName)}</span>
           <span class="axs-directory-item-sub">${this.escapeHtml(u.email)}</span>
         </span>
-        ${u.isSuperuser ? '<span class="axs-badge-admin">Admin</span>' : ''}
+        ${u.isAdmin ? '<span class="axs-badge-admin">Admin</span>' : ''}
       </div>
     `).join('') || `<div class="axs-directory-empty">No users match.</div>`;
 
@@ -2190,7 +2190,7 @@ class NtrlocAccess extends HTMLElement {
           <div class="axs-detail-title-group">
             <h1>${this.escapeHtml(u.displayName)}</h1>
             <span class="axs-type-pill">User</span>
-            ${u.isSuperuser ? '<span class="axs-type-pill axs-pill-admin">Admin</span>' : ''}
+            ${u.isAdmin ? '<span class="axs-type-pill axs-pill-admin">Admin</span>' : ''}
           </div>
           <div class="axs-detail-actions-bar">
             <button class="axs-btn axs-btn-cancel" data-action="open-edit-user">Edit</button>
@@ -2226,7 +2226,7 @@ class NtrlocAccess extends HTMLElement {
         <table class="axs-profile-table">
           <tr><td>Email</td><td>${this.escapeHtml(u.email)}</td></tr>
           <tr><td>Display name</td><td>${this.escapeHtml(u.displayName)}</td></tr>
-          <tr><td>Role</td><td>${u.isSuperuser ? 'Admin' : 'User'}</td></tr>
+          <tr><td>Role</td><td>${u.isAdmin ? 'Admin' : 'User'}</td></tr>
         </table>
       </div>
 
@@ -2391,8 +2391,8 @@ class NtrlocAccess extends HTMLElement {
             <input name="displayName" placeholder="Full name" autocomplete="off" value="${this.escapeHtml(u.displayName)}">
             <label>Role</label>
             <select name="role">
-              <option value="USER" ${!u.isSuperuser ? 'selected' : ''}>User</option>
-              <option value="ADMIN" ${u.isSuperuser ? 'selected' : ''}>Admin</option>
+              <option value="USER" ${!u.isAdmin ? 'selected' : ''}>User</option>
+              <option value="ADMIN" ${u.isAdmin ? 'selected' : ''}>Admin</option>
             </select>
           </div>
           <div class="axs-modal-footer">
@@ -2558,7 +2558,7 @@ class NtrlocAccess extends HTMLElement {
         <div class="axs-user-grid-cell-name">${this.escapeHtml(u.displayName)}</div>
       </div>
       <div class="axs-user-grid-cell-sub">${this.escapeHtml(u.email)}</div>
-      <div>${u.isSuperuser ? '<span class="axs-admin-chip">Admin</span>' : ''}</div>
+      <div>${u.isAdmin ? '<span class="axs-admin-chip">Admin</span>' : ''}</div>
     `;
 
     const directRows = this.groupMembers.filter(matchesFilter).map(u => `

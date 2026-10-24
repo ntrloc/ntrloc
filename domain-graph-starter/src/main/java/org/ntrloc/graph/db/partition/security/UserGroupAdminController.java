@@ -35,15 +35,15 @@ public class UserGroupAdminController {
 
     public record UpdateParentRequest(UUID parentUserGroupId) {}
 
-    public record MemberView(UUID id, String displayName, String email, boolean isSuperuser) {}
+    public record MemberView(UUID id, String displayName, String email, boolean isAdmin) {}
 
     public record AddMemberRequest(UUID userId) {}
 
     private final SecurityRepository repo;
-    private final PrincipalResolver principalResolver;
+    private final ExternalPrincipalResolver principalResolver;
     private final DefaultUserGroupInitializer defaultUserGroupInitializer;
 
-    public UserGroupAdminController(SecurityRepository repo, PrincipalResolver principalResolver,
+    public UserGroupAdminController(SecurityRepository repo, ExternalPrincipalResolver principalResolver,
                                 DefaultUserGroupInitializer defaultUserGroupInitializer) {
         this.repo = repo;
         this.principalResolver = principalResolver;
@@ -150,7 +150,7 @@ public class UserGroupAdminController {
         repo.findUserGroupById(groupId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, GROUP_NOT_FOUND));
         return repo.listUserGroupMembers(groupId).stream()
-                .map(u -> new MemberView(u.id(), u.displayName(), u.email(), u.isSuperuser()))
+                .map(u -> new MemberView(u.id(), u.displayName(), u.email(), u.isAdmin()))
                 .toList();
     }
 
@@ -174,7 +174,7 @@ public class UserGroupAdminController {
 
     private void requireAdmin(Authentication authentication) {
         var principal = principalResolver.resolve(authentication);
-        if (!principal.isSuperuser()) {
+        if (!principal.isAdmin()) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only admins can manage groups");
         }
     }

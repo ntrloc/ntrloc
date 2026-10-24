@@ -3,7 +3,7 @@ package org.ntrloc.graph.db.partition.process;
 import org.flowable.engine.TaskService;
 import org.flowable.task.api.Task;
 import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
-import org.ntrloc.graph.db.partition.security.PrincipalResolver;
+import org.ntrloc.graph.db.partition.security.ExternalPrincipalResolver;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -40,12 +40,12 @@ public class TaskAdminController {
 
     private final TaskService taskService;
     private final ProcessGroupRepository groupRepo;
-    private final PrincipalResolver principalResolver;
+    private final ExternalPrincipalResolver principalResolver;
     private final TaskViewAssembler taskViews;
     private final TaskEventBroadcaster broadcaster;
 
     public TaskAdminController(TaskService taskService, ProcessGroupRepository groupRepo,
-            PrincipalResolver principalResolver, TaskViewAssembler taskViews,
+            ExternalPrincipalResolver principalResolver, TaskViewAssembler taskViews,
             TaskEventBroadcaster broadcaster) {
         this.taskService = taskService;
         this.groupRepo = groupRepo;
@@ -62,7 +62,7 @@ public class TaskAdminController {
         return broadcaster.register();
     }
 
-    // Superusers see every task (useful with only a couple of seed accounts to test with);
+    // Admins see every task (useful with only a couple of seed accounts to test with);
     // everyone else sees only tasks assigned to them or where they're a candidate (by user id
     // directly, or via a process_group they belong to -- see ProcessGroupRepository, deliberately
     // not Flowable's own unwired IdentityService).
@@ -70,7 +70,7 @@ public class TaskAdminController {
     List<TaskView> listTasks(Authentication authentication) {
         NtrlocPrincipal principal = principalResolver.resolve(authentication);
         var query = taskService.createTaskQuery();
-        if (!principal.isSuperuser()) {
+        if (!principal.isAdmin()) {
             Set<String> groupNames = groupRepo.getGroupNamesForUser(principal.id());
             var or = query.or()
                     .taskAssignee(principal.id().toString())

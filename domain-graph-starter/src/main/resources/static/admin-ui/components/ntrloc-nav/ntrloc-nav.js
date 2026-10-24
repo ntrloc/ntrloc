@@ -72,7 +72,7 @@ class NtrlocNav extends HTMLElement {
   constructor() {
     super();
     // "Tasks needing this user's attention" -- same count GET /api/admin/process/tasks already
-    // filters to (assignee/candidate, or everything for a superuser). Kept live via task-events.js
+    // filters to (assignee/candidate, or everything for an admin). Kept live via task-events.js
     // rather than polling: any task-created/assigned/completed signal triggers a re-fetch.
     this.taskCount = 0;
     this._refreshTimer = null;

@@ -16,15 +16,15 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/api/account")
 public class AccountController {
 
-    public record MeResponse(String displayName, String email, boolean isSuperuser) {}
+    public record MeResponse(String displayName, String email, boolean isAdmin) {}
 
     public record ChangePasswordRequest(String currentPassword, String newPassword) {}
 
     private final SecurityRepository repo;
-    private final PrincipalResolver principalResolver;
+    private final ExternalPrincipalResolver principalResolver;
     private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
 
-    public AccountController(SecurityRepository repo, PrincipalResolver principalResolver) {
+    public AccountController(SecurityRepository repo, ExternalPrincipalResolver principalResolver) {
         this.repo = repo;
         this.principalResolver = principalResolver;
     }
@@ -32,7 +32,7 @@ public class AccountController {
     @GetMapping("/me")
     public MeResponse me(Authentication authentication) {
         var principal = principalResolver.resolve(authentication);
-        return new MeResponse(principal.displayName(), principal.email(), principal.isSuperuser());
+        return new MeResponse(principal.displayName(), principal.email(), principal.isAdmin());
     }
 
     @PutMapping("/password")

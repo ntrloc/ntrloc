@@ -2,7 +2,7 @@ package org.ntrloc.graph.db.partition.authorization;
 
 import org.ntrloc.graph.db.partition.authorization.repository.AuthorizationRepository;
 import org.ntrloc.graph.db.partition.schema.repository.SchemaRepository;
-import org.ntrloc.graph.db.partition.security.PrincipalResolver;
+import org.ntrloc.graph.db.partition.security.ExternalPrincipalResolver;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -69,10 +69,10 @@ public class AccessAdminController {
     private final AuthorizationRepository authRepo;
     private final SecurityRepository securityRepo;
     private final SchemaRepository schemaRepo;
-    private final PrincipalResolver principalResolver;
+    private final ExternalPrincipalResolver principalResolver;
 
     public AccessAdminController(AuthorizationRepository authRepo, SecurityRepository securityRepo,
-                                 SchemaRepository schemaRepo, PrincipalResolver principalResolver) {
+                                 SchemaRepository schemaRepo, ExternalPrincipalResolver principalResolver) {
         this.authRepo = authRepo;
         this.securityRepo = securityRepo;
         this.schemaRepo = schemaRepo;
@@ -686,7 +686,7 @@ public class AccessAdminController {
 
     private void requireAdmin(Authentication authentication) {
         var principal = principalResolver.resolve(authentication);
-        if (!principal.isSuperuser()) {
+        if (!principal.isAdmin()) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only admins can manage access");
         }
     }

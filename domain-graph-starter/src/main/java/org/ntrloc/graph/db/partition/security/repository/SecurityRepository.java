@@ -17,11 +17,11 @@ public class SecurityRepository {
     private static final String PARAM_USER_ID = "userId";
     private static final String PARAM_GROUP_ID = "groupId";
 
-    public record UserRow(UUID id, String displayName, String email, boolean isSuperuser) {}
+    public record UserRow(UUID id, String displayName, String email, boolean isAdmin) {}
 
     public record UserGroupRow(UUID id, String name) {}
 
-    public record LocalCredentialsRow(UUID userId, String passwordHash, String role, boolean active) {}
+    public record LocalCredentialsRow(UUID userId, String passwordHash, boolean active) {}
 
     public record PersonalAccessTokenRow(UUID id, UUID userId, String name, OffsetDateTime createdAt, OffsetDateTime expiresAt) {}
 
@@ -29,7 +29,7 @@ public class SecurityRepository {
             rs.getObject("id", UUID.class),
             rs.getString("display_name"),
             rs.getString(COL_EMAIL),
-            rs.getBoolean("is_superuser"));
+            rs.getBoolean("is_admin"));
 
     private final JdbcClient jdbcClient;
 
@@ -41,7 +41,7 @@ public class SecurityRepository {
 
     // Case-insensitive, matching the unique index on lower(email).
     public Optional<UserRow> findUserByEmail(String email) {
-        return jdbcClient.sql("SELECT id, display_name, email, is_superuser FROM security_user WHERE lower(email) = lower(:email)")
+        return jdbcClient.sql("SELECT id, display_name, email, is_admin FROM security_user WHERE lower(email) = lower(:email)")
                 .param(COL_EMAIL, email)
                 .query(USER_ROW)
                 .optional();
@@ -50,7 +50,7 @@ public class SecurityRepository {
     // What every stored user reference (ledger attribution, task assignee, process variable)
     // resolves against -- never the email, which can change over a user's lifetime.
     public Optional<UserRow> findUserById(UUID id) {
-        return jdbcClient.sql("SELECT id, display_name, email, is_superuser FROM security_user WHERE id = :userId")
+        return jdbcClient.sql("SELECT id, display_name, email, is_admin FROM security_user WHERE id = :userId")
                 .param(PARAM_USER_ID, id)
                 .query(USER_ROW)
                 .optional();
@@ -62,7 +62,7 @@ public class SecurityRepository {
     // Postgres rejects as a syntax error.
     public List<UserRow> findUsersByIds(Set<UUID> ids) {
         if (ids.isEmpty()) return List.of();
-        return jdbcClient.sql("SELECT id, display_name, email, is_superuser FROM security_user WHERE id IN (:ids)")
+        return jdbcClient.sql("SELECT id, display_name, email, is_admin FROM security_user WHERE id IN (:ids)")
                 .param("ids", ids)
                 .query(USER_ROW)
                 .list();
@@ -71,7 +71,7 @@ public class SecurityRepository {
     // Used by UserAdminController to populate assignee pickers (e.g. a User Task's assignee
     // select in the process editor) -- not part of principal resolution, just a plain listing.
     public List<UserRow> listUsers() {
-        return jdbcClient.sql("SELECT id, display_name, email, is_superuser FROM security_user ORDER BY display_name")
+        return jdbcClient.sql("SELECT id, display_name, email, is_admin FROM security_user ORDER BY display_name")
                 .query(USER_ROW)
                 .list();
     }
@@ -110,15 +110,15 @@ public class SecurityRepository {
 
     // --- Test-data seeding writes ---
 
-    public UserRow createUser(String displayName, String email, boolean isSuperuser) {
+    public UserRow createUser(String displayName, String email, boolean isAdmin) {
         UUID id = jdbcClient.sql("""
-                INSERT INTO security_user (display_name, email, is_superuser)
-                VALUES (:displayName, :email, :isSuperuser) RETURNING id
+                INSERT INTO security_user (display_name, email, is_admin)
+                VALUES (:displayName, :email, :isAdmin) RETURNING id
                 """)
                 .param("displayName", displayName)
-                .param(COL_EMAIL, email).param("isSuperuser", isSuperuser)
+                .param(COL_EMAIL, email).param("isAdmin", isAdmin)
                 .query(UUID.class).single();
-        return new UserRow(id, displayName, email, isSuperuser);
+        return new UserRow(id, displayName, email, isAdmin);
     }
 
     public UserGroupRow createUserGroup(String name) {
@@ -222,7 +222,7 @@ public class SecurityRepository {
 
     public List<UserRow> listUserGroupMembers(UUID groupId) {
         return jdbcClient.sql("""
-                SELECT u.id, u.display_name, u.email, u.is_superuser
+                SELECT u.id, u.display_name, u.email, u.is_admin
                 FROM security_user u
                 JOIN security_user_group_member gm ON gm.user_id = u.id
                 WHERE gm.group_id = :groupId
@@ -247,13 +247,13 @@ public class SecurityRepository {
 
     // --- Local credentials ---
 
-    public void createLocalCredentials(UUID userId, String passwordHash, String role) {
+    public void createLocalCredentials(UUID userId, String passwordHash) {
         jdbcClient.sql("""
-                INSERT INTO security_local_credentials (user_id, password_hash, role)
-                VALUES (:userId, :passwordHash, :role)
+                INSERT INTO security_local_credentials (user_id, password_hash)
+                VALUES (:userId, :passwordHash)
                 """)
                 .param(PARAM_USER_ID, userId)
-                .param("passwordHash", passwordHash).param("role", role)
+                .param("passwordHash", passwordHash)
                 .update();
     }
 
@@ -264,18 +264,11 @@ public class SecurityRepository {
                 .update();
     }
 
-    public void updateUser(UUID userId, String displayName, String email, boolean isSuperuser) {
-        jdbcClient.sql("UPDATE security_user SET display_name = :displayName, email = :email, is_superuser = :isSuperuser WHERE id = :userId")
+    public void updateUser(UUID userId, String displayName, String email, boolean isAdmin) {
+        jdbcClient.sql("UPDATE security_user SET display_name = :displayName, email = :email, is_admin = :isAdmin WHERE id = :userId")
                 .param("displayName", displayName)
                 .param(COL_EMAIL, email)
-                .param("isSuperuser", isSuperuser)
-                .param(PARAM_USER_ID, userId)
-                .update();
-    }
-
-    public void updateLocalCredentialsRole(UUID userId, String role) {
-        jdbcClient.sql("UPDATE security_local_credentials SET role = :role WHERE user_id = :userId")
-                .param("role", role)
+                .param("isAdmin", isAdmin)
                 .param(PARAM_USER_ID, userId)
                 .update();
     }
@@ -292,14 +285,13 @@ public class SecurityRepository {
 
     public Optional<LocalCredentialsRow> findCredentialsByUserId(UUID userId) {
         return jdbcClient.sql("""
-                SELECT user_id, password_hash, role, active
+                SELECT user_id, password_hash, active
                 FROM security_local_credentials WHERE user_id = :userId
                 """)
                 .param(PARAM_USER_ID, userId)
                 .query((rs, n) -> new LocalCredentialsRow(
                         rs.getObject("user_id", UUID.class),
                         rs.getString("password_hash"),
-                        rs.getString("role"),
                         rs.getBoolean("active")))
                 .optional();
     }
@@ -318,7 +310,7 @@ public class SecurityRepository {
 
     public Optional<UserRow> findUserByValidTokenHash(String tokenHash) {
         return jdbcClient.sql("""
-                SELECT u.id, u.display_name, u.email, u.is_superuser
+                SELECT u.id, u.display_name, u.email, u.is_admin
                 FROM security_user u
                 JOIN security_personal_access_token t ON t.user_id = u.id
                 WHERE t.token_hash = :tokenHash

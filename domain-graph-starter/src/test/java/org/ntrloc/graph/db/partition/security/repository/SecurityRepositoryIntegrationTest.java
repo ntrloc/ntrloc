@@ -76,7 +76,7 @@ class SecurityRepositoryIntegrationTest extends AbstractIntegrationTest {
         var reloaded = securityRepo.findUserById(user.id()).orElseThrow();
         assertThat(reloaded.displayName()).isEqualTo("Updated Name");
         assertThat(reloaded.email()).isEqualTo(newEmail);
-        assertThat(reloaded.isSuperuser()).isTrue();
+        assertThat(reloaded.isAdmin()).isTrue();
     }
 
     // --- UserGroups ---
@@ -227,12 +227,11 @@ class SecurityRepositoryIntegrationTest extends AbstractIntegrationTest {
     void createLocalCredentials_thenFindCredentialsByUserId_returnsThem() {
         var user = securityRepo.createUser("Local User", "user-" + UUID.randomUUID() + "@example.com", false);
 
-        securityRepo.createLocalCredentials(user.id(), "hashed-password", "USER");
+        securityRepo.createLocalCredentials(user.id(), "hashed-password");
 
         var credentials = securityRepo.findCredentialsByUserId(user.id()).orElseThrow();
         assertThat(credentials.userId()).isEqualTo(user.id());
         assertThat(credentials.passwordHash()).isEqualTo("hashed-password");
-        assertThat(credentials.role()).isEqualTo("USER");
     }
 
     @Test
@@ -245,21 +244,11 @@ class SecurityRepositoryIntegrationTest extends AbstractIntegrationTest {
     @Test
     void updatePasswordHash_persistsChange() {
         var user = securityRepo.createUser("Local User", "user-" + UUID.randomUUID() + "@example.com", false);
-        securityRepo.createLocalCredentials(user.id(), "old-hash", "USER");
+        securityRepo.createLocalCredentials(user.id(), "old-hash");
 
         securityRepo.updatePasswordHash(user.id(), "new-hash");
 
         assertThat(securityRepo.findCredentialsByUserId(user.id()).orElseThrow().passwordHash()).isEqualTo("new-hash");
-    }
-
-    @Test
-    void updateLocalCredentialsRole_persistsChange() {
-        var user = securityRepo.createUser("Local User", "user-" + UUID.randomUUID() + "@example.com", false);
-        securityRepo.createLocalCredentials(user.id(), "hash", "USER");
-
-        securityRepo.updateLocalCredentialsRole(user.id(), "ADMIN");
-
-        assertThat(securityRepo.findCredentialsByUserId(user.id()).orElseThrow().role()).isEqualTo("ADMIN");
     }
 
     // --- Personal access tokens ---

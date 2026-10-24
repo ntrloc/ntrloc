@@ -20,11 +20,11 @@ it's still reachable. This file is the durable copy; trust this one if they ever
 
 ## The problem, in one paragraph
 
-`ProjectionService` (an MCP tool) hands every MCP caller a hardcoded superuser principal:
+`ProjectionService` (an MCP tool) hands every MCP caller a hardcoded admin principal:
 `new ResolvedPrincipal(UUID.randomUUID(), "mcp-tool-caller", "MCP Tool Caller", null, Set.of(), true)`.
 This isn't an unauthenticated-access gap — `SecurityConfig`'s filter chain already requires real
 authentication (session, PAT, or basic) to reach the MCP endpoint at all — it's **privilege
-escalation**: any authenticated caller gets full superuser read access through this one tool,
+escalation**: any authenticated caller gets full admin read access through this one tool,
 regardless of their own actual grants. Investigating *why this was even possible* led to a broader
 finding: `NtrlocPrincipal` can be fabricated by any code anywhere (see Part A) — the real fix is
 narrower and more structural than "patch this one service."
@@ -66,7 +66,7 @@ What changed:
 - `NtrlocPrincipal` sealed: `public sealed interface NtrlocPrincipal extends Principal permits ResolvedPrincipal, NtrlocUserDetails`.
 - `ResolvedPrincipal` is now package-private (`record ResolvedPrincipal(...)`, no `public`); its canonical constructor is the implicit one (now legal, since access levels match).
 - `NtrlocUserDetails` marked `final` (required: a direct implementer of a sealed interface must be `final`/`sealed`/`non-sealed`) and its constructor made package-private (only `LocalUserDetailsService`, same package, used it).
-- `ProjectionService.MCP_PRINCIPAL` (the hardcoded-superuser bug that started this whole investigation) is **gone**. This broke at compile time exactly as predicted once `ResolvedPrincipal` became package-private — fixing it required pulling a small piece of Part D forward (see note below), since the module had to compile.
+- `ProjectionService.MCP_PRINCIPAL` (the hardcoded-admin bug that started this whole investigation) is **gone**. This broke at compile time exactly as predicted once `ResolvedPrincipal` became package-private — fixing it required pulling a small piece of Part D forward (see note below), since the module had to compile.
 - New test helper `src/test/java/org/ntrloc/graph/db/partition/security/TestPrincipals.java` — same
   package as `ResolvedPrincipal`, so it has constructor access; exposes
   `public static NtrlocPrincipal of(UUID, String, String, String, Set<UUID>, boolean)`. Every test
@@ -75,7 +75,7 @@ What changed:
   `InstanceReadFilteringIntegrationTest`, `SchemaManagerIntegrationTest`,
   `StateMachineExecutionIntegrationTest`, `PermissionServiceInstanceReadIntegrationTest`,
   `ClusterEventVisibilityRegistryTest`) that used to call `new ResolvedPrincipal(...)` directly now
-  calls `TestPrincipals.of(...)` instead; declared-type fields (`SOME_PRINCIPAL`, `SUPERUSER`, etc.)
+  calls `TestPrincipals.of(...)` instead; declared-type fields (`SOME_PRINCIPAL`, `ADMIN`, etc.)
   changed from `ResolvedPrincipal` to `NtrlocPrincipal`.
 
 **Note on `ProjectionService` (Part D pulled forward, partially):** rather than just making it
@@ -83,7 +83,7 @@ compile, `ProjectionService.projectItems` now resolves the real calling principa
 `MutationService.resolvePrincipal` does (Authorization header off `McpTransportContext`, resolved
 via `PersonalAccessTokenService.authenticate`), and throws 401 when unresolvable — stricter than
 `MutationService`'s "null is a displayable ledger state" stance, which is correct here since this
-is a *read* tool and the old behavior handed any caller full superuser read access. This is **not**
+is a *read* tool and the old behavior handed any caller full admin read access. This is **not**
 the full Part D (that still needs `SchemaService`/`ProcessService` wired up, and a decision on
 whether this resolution logic becomes shared rather than copy-pasted across three services) —
 flagging that Part D's remaining scope is now "finish the other three tools, dedupe the resolution

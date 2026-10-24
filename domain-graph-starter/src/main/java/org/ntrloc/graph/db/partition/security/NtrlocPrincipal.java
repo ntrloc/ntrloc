@@ -1,37 +1,78 @@
 package org.ntrloc.graph.db.partition.security;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
-
 import java.security.Principal;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
-// Extends java.security.Principal (getName() defaulted to email()) so any Authentication
-// whose own principal object already IS an NtrlocPrincipal (NtrlocUserDetails today, for local
-// credential logins) behaves sensibly under Spring Security's own Authentication.getName()
-// convention too, not just when unwrapped through PrincipalResolver.
+// The authenticated user, as every authorization check sees them. The constructor is
+// package-private: an NtrlocPrincipal can only come from PrincipalResolverImpl, which resolves it
+// against security_user rather than fabricating identity, so a caller holding a non-null
+// NtrlocPrincipal can trust it came from a real resolution path (tests use TestPrincipals) -- see
+// docs/ntrloc-principal-enforcement-plan.md, Part A, for why this matters. A class rather than a
+// record because a record's constructor can't be less visible than the record itself.
 //
-// Sealed to exactly these two implementers, and both have a package-private canonical
-// constructor -- an NtrlocPrincipal can only ever come from code inside this package (in
-// practice, from PrincipalResolver/LocalUserDetailsService/PersonalAccessTokenService, all of
-// which resolve against security_user rather than fabricating identity). Nothing outside this
-// package can construct one, so a caller holding a non-null NtrlocPrincipal can trust it came
-// from a real resolution path, not an ad-hoc `new ResolvedPrincipal(...)` anywhere in the
-// codebase -- see docs/ntrloc-principal-enforcement-plan.md, Part A, for why this matters.
-public sealed interface NtrlocPrincipal extends Principal permits ResolvedPrincipal, NtrlocUserDetails {
-    UUID id();
-    String displayName();
-    String email();
-    Set<UUID> groupIds();
+// Implements java.security.Principal (getName() is the email) so an Authentication whose principal
+// is an NtrlocPrincipal behaves sensibly under Spring Security's own getName() convention too.
+public final class NtrlocPrincipal implements Principal {
 
-    /** Superusers bypass marker authorization entirely — not constrained by any policy. */
-    boolean isSuperuser();
+    private final UUID id;
+    private final String displayName;
+    private final String email;
+    private final Set<UUID> groupIds;
+    private final boolean isAdmin;
 
-    // @JsonIgnore: Jackson reads getName() as a bean getter and would emit a redundant "name"
-    // field alongside email(), which is what it delegates to.
-    @JsonIgnore
+    NtrlocPrincipal(UUID id, String displayName, String email, Set<UUID> groupIds, boolean isAdmin) {
+        this.id = id;
+        this.displayName = displayName;
+        this.email = email;
+        this.groupIds = Set.copyOf(groupIds);
+        this.isAdmin = isAdmin;
+    }
+
+    public UUID id() {
+        return id;
+    }
+
+    public String displayName() {
+        return displayName;
+    }
+
+    public String email() {
+        return email;
+    }
+
+    public Set<UUID> groupIds() {
+        return groupIds;
+    }
+
+    /** Admins bypass marker authorization entirely -- not constrained by any policy. */
+    public boolean isAdmin() {
+        return isAdmin;
+    }
+
     @Override
-    default String getName() {
-        return email();
+    public String getName() {
+        return email;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        return o instanceof NtrlocPrincipal other
+                && id.equals(other.id)
+                && Objects.equals(displayName, other.displayName)
+                && Objects.equals(email, other.email)
+                && groupIds.equals(other.groupIds)
+                && isAdmin == other.isAdmin;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(id, displayName, email, groupIds, isAdmin);
+    }
+
+    @Override
+    public String toString() {
+        return "NtrlocPrincipal[id=" + id + ", email=" + email + ", isAdmin=" + isAdmin + "]";
     }
 }

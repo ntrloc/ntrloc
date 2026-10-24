@@ -19,7 +19,7 @@ import java.util.Map;
 // way) -- a value's shape (string vs. further object) would otherwise depend on how *complete* a
 // grant happens to be, which is exactly the ambiguity this shape exists to avoid.
 //
-// No separate superuser flag: a superuser's edit is the real, fully-enumerated tree (every node's
+// No separate admin flag: an admin's edit is the real, fully-enumerated tree (every node's
 // "scalars" is "*", every group child present), same code path as everyone else -- one shape for
 // every principal, at the cost of walking (and returning) the whole schema tree even though the
 // answer is always "everything." Chosen deliberately over a cheaper wildcard/flag shortcut,

@@ -1,6 +1,6 @@
 package org.ntrloc.graph.db;
 
-import org.ntrloc.graph.db.partition.security.PrincipalResolver;
+import org.ntrloc.graph.db.partition.security.ExternalPrincipalResolver;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -15,9 +15,9 @@ import java.util.UUID;
 public class ItemController {
 
     private final EntityManager entityManager;
-    private final PrincipalResolver principalResolver;
+    private final ExternalPrincipalResolver principalResolver;
 
-    public ItemController(EntityManager entityManager, PrincipalResolver principalResolver) {
+    public ItemController(EntityManager entityManager, ExternalPrincipalResolver principalResolver) {
         this.entityManager = entityManager;
         this.principalResolver = principalResolver;
     }

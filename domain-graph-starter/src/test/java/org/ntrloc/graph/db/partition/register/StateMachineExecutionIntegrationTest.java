@@ -47,19 +47,19 @@ class StateMachineExecutionIntegrationTest extends AbstractIntegrationTest {
     // Not static/final: needs a real, backed security_user row now that ledger_entry.created_by
     // (Part E) has a NOT NULL FK to security_user.id -- created fresh per test in setUp() via the
     // already-autowired securityRepo, which a static initializer can't reach.
-    private NtrlocPrincipal SUPERUSER;
+    private NtrlocPrincipal ADMIN;
 
     @BeforeEach
-    void setUpSuperuser() {
+    void setUpAdmin() {
         var user = securityRepo.createUser("Root", "sme-root-" + UUID.randomUUID() + "@example.com", true);
-        SUPERUSER = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), true);
+        ADMIN = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), true);
     }
 
     private UUID createBook(String title) {
         UUID itemId = UUID.randomUUID();
         UUID txn = UUID.randomUUID();
         coordinator.prepare(List.of(new ItemCreateEntry(itemId, fixture.bookTypeId(),
-                Map.of(fixture.titlePropertyId(), title), Map.of(), Set.of())), txn, SUPERUSER.id(), OffsetDateTime.now());
+                Map.of(fixture.titlePropertyId(), title), Map.of(), Set.of())), txn, ADMIN.id(), OffsetDateTime.now());
         coordinator.commit(txn, UUID.randomUUID());
         return itemId;
     }
@@ -92,7 +92,7 @@ class StateMachineExecutionIntegrationTest extends AbstractIntegrationTest {
     @Test
     void startStateMachine_entersTheStartTargetState() {
         UUID book = createBook("Dune");
-        entityManager.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, SUPERUSER);
+        entityManager.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, ADMIN);
 
         UUID availableId = registerPartitionManager.resolveStateId(machineId(), RegisterProjectionTestDomainInitializer.AVAILABLE);
         assertThat(registerPartitionManager.currentStateIds(book)).containsEntry(machineId(), availableId);
@@ -101,9 +101,9 @@ class StateMachineExecutionIntegrationTest extends AbstractIntegrationTest {
     @Test
     void startStateMachine_whenAlreadyActive_throwsConflict() {
         UUID book = createBook("Dune");
-        entityManager.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, SUPERUSER);
+        entityManager.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, ADMIN);
 
-        assertThatThrownBy(() -> entityManager.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, SUPERUSER))
+        assertThatThrownBy(() -> entityManager.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, ADMIN))
                 .isInstanceOf(ResponseStatusException.class)
                 .satisfies(e -> assertThat(status(e)).isEqualTo(409));
     }
@@ -111,7 +111,7 @@ class StateMachineExecutionIntegrationTest extends AbstractIntegrationTest {
     @Test
     void startStateMachine_withoutTheStartGrant_throwsMutationValidationException() {
         UUID book = createBook("Dune");
-        NtrlocPrincipal user = nonSuperuser();
+        NtrlocPrincipal user = nonAdmin();
 
         assertThatThrownBy(() -> entityManager.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, user))
                 .isInstanceOf(MutationValidationException.class)
@@ -122,9 +122,9 @@ class StateMachineExecutionIntegrationTest extends AbstractIntegrationTest {
     @Test
     void startStateMachine_startGrantViaAMarker_isHonoredAndRevocable() {
         UUID book = createBook("Dune");
-        NtrlocPrincipal user = nonSuperuser();
+        NtrlocPrincipal user = nonAdmin();
         var marker = authRepo.createMarker("sme-" + UUID.randomUUID(), "fixture", "ITEM_TYPE", fixture.bookTypeId());
-        markerAssignmentService.addItemMarker(book, marker.id(), SUPERUSER, "test");
+        markerAssignmentService.addItemMarker(book, marker.id(), ADMIN, "test");
         UUID grantId = authRepo.ensureMarkerGrant(marker.id(), "USER", user.id());
         authRepo.grantStateMachineStart(grantId, machineId());
         assertThat(authRepo.getStateMachineStartGrantsForMarker(marker.id(), "USER", user.id())).contains(machineId());
@@ -132,15 +132,15 @@ class StateMachineExecutionIntegrationTest extends AbstractIntegrationTest {
         entityManager.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, user);
         assertThat(registerPartitionManager.currentStateIds(book)).containsKey(machineId());
 
-        // drive it (as superuser) to Discontinued -> END so the machine is inactive again, then
+        // drive it (as admin) to Discontinued -> END so the machine is inactive again, then
         // revoke the start grant -- re-start must now be forbidden.
         UUID discontinued = registerPartitionManager.resolveStateId(machineId(), RegisterProjectionTestDomainInitializer.DISCONTINUED);
         UUID endStateId = registerPartitionManager.resolveStateId(machineId(), "__end__");
         schemaManager.applyMutations(List.<DefinitionMutation>of(
                 new CreateTransitionMutation(discontinued, endStateId, "RevokeTestEnd", null, null, null)));
-        entityManager.executeTransition(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, transitionId("MarkOutOfStock"), SUPERUSER);
-        entityManager.executeTransition(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, transitionId("Discontinue"), SUPERUSER);
-        entityManager.executeTransition(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, transitionId("RevokeTestEnd"), SUPERUSER);
+        entityManager.executeTransition(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, transitionId("MarkOutOfStock"), ADMIN);
+        entityManager.executeTransition(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, transitionId("Discontinue"), ADMIN);
+        entityManager.executeTransition(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, transitionId("RevokeTestEnd"), ADMIN);
         assertThat(registerPartitionManager.currentStateIds(book)).doesNotContainKey(machineId());
         authRepo.revokeStateMachineStart(grantId, machineId());
 
@@ -155,9 +155,9 @@ class StateMachineExecutionIntegrationTest extends AbstractIntegrationTest {
     @Test
     void executeTransition_advancesToTheTargetState() {
         UUID book = createBook("Dune");
-        entityManager.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, SUPERUSER);
+        entityManager.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, ADMIN);
 
-        entityManager.executeTransition(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, transitionId("MarkOutOfStock"), SUPERUSER);
+        entityManager.executeTransition(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, transitionId("MarkOutOfStock"), ADMIN);
 
         UUID outOfStock = registerPartitionManager.resolveStateId(machineId(), RegisterProjectionTestDomainInitializer.OUT_OF_STOCK);
         assertThat(registerPartitionManager.currentStateIds(book)).containsEntry(machineId(), outOfStock);
@@ -166,10 +166,10 @@ class StateMachineExecutionIntegrationTest extends AbstractIntegrationTest {
     @Test
     void executeTransition_notAvailableFromTheCurrentState_throwsBadRequest() {
         UUID book = createBook("Dune");
-        entityManager.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, SUPERUSER);
+        entityManager.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, ADMIN);
 
         // Restock is OutOfStock -> Available; not reachable from Available
-        assertThatThrownBy(() -> entityManager.executeTransition(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, transitionId("Restock"), SUPERUSER))
+        assertThatThrownBy(() -> entityManager.executeTransition(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, transitionId("Restock"), ADMIN))
                 .isInstanceOf(ResponseStatusException.class)
                 .satisfies(e -> assertThat(status(e)).isEqualTo(400));
     }
@@ -177,7 +177,7 @@ class StateMachineExecutionIntegrationTest extends AbstractIntegrationTest {
     @Test
     void executeTransition_whenMachineNotActive_throwsConflict() {
         UUID book = createBook("Dune");
-        assertThatThrownBy(() -> entityManager.executeTransition(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, transitionId("MarkOutOfStock"), SUPERUSER))
+        assertThatThrownBy(() -> entityManager.executeTransition(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, transitionId("MarkOutOfStock"), ADMIN))
                 .isInstanceOf(ResponseStatusException.class)
                 .satisfies(e -> assertThat(status(e)).isEqualTo(409));
     }
@@ -185,8 +185,8 @@ class StateMachineExecutionIntegrationTest extends AbstractIntegrationTest {
     @Test
     void executeTransition_withoutTheExecuteGrant_throwsMutationValidationException() {
         UUID book = createBook("Dune");
-        entityManager.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, SUPERUSER);
-        NtrlocPrincipal user = nonSuperuser();
+        entityManager.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, ADMIN);
+        NtrlocPrincipal user = nonAdmin();
 
         assertThatThrownBy(() -> entityManager.executeTransition(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, transitionId("MarkOutOfStock"), user))
                 .isInstanceOf(MutationValidationException.class)
@@ -203,9 +203,9 @@ class StateMachineExecutionIntegrationTest extends AbstractIntegrationTest {
                 "{\"type\":\"PROPERTY_VALUE\",\"propertyName\":\"title\",\"operator\":\"EQUALS\",\"value\":\"NOPE\"}");
         schemaManager.applyMutations(List.<DefinitionMutation>of(
                 new CreateTransitionMutation(available, discontinued, "GuardedRetire", null, null, guard)));
-        entityManager.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, SUPERUSER);
+        entityManager.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, ADMIN);
 
-        assertThatThrownBy(() -> entityManager.executeTransition(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, transitionId("GuardedRetire"), SUPERUSER))
+        assertThatThrownBy(() -> entityManager.executeTransition(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, transitionId("GuardedRetire"), ADMIN))
                 .isInstanceOf(ResponseStatusException.class)
                 .satisfies(e -> assertThat(status(e)).isEqualTo(422));
     }
@@ -219,17 +219,17 @@ class StateMachineExecutionIntegrationTest extends AbstractIntegrationTest {
         UUID endStateId = registerPartitionManager.resolveStateId(machineId(), "__end__");
         schemaManager.applyMutations(List.<DefinitionMutation>of(
                 new CreateTransitionMutation(available, endStateId, "Archive", null, null, null)));
-        entityManager.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, SUPERUSER);
+        entityManager.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, ADMIN);
 
-        entityManager.executeTransition(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, transitionId("Archive"), SUPERUSER);
+        entityManager.executeTransition(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, transitionId("Archive"), ADMIN);
         assertThat(registerPartitionManager.currentStateIds(book)).doesNotContainKey(machineId());
 
         // re-entry
-        entityManager.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, SUPERUSER);
+        entityManager.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, ADMIN);
         assertThat(registerPartitionManager.currentStateIds(book)).containsEntry(machineId(), available);
     }
 
-    private NtrlocPrincipal nonSuperuser() {
+    private NtrlocPrincipal nonAdmin() {
         var user = securityRepo.createUser("User", "sme-" + UUID.randomUUID() + "@example.com", false);
         return TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), false);
     }

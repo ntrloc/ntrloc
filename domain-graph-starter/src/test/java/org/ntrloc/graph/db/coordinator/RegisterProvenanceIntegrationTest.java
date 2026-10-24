@@ -68,7 +68,7 @@ class RegisterProvenanceIntegrationTest extends AbstractIntegrationTest {
 
     private ProjectedItem projectProduct(UUID itemId, Map<String, LinkProjectionSpec> requestedLinks) {
         return registerPartitionManager
-                .projectOne(fixture.productTypeId(), itemId, "", requestedLinks, RequestPermissionContext.forSuperuser())
+                .projectOne(fixture.productTypeId(), itemId, "", requestedLinks, RequestPermissionContext.forAdmin())
                 .orElseThrow();
     }
 

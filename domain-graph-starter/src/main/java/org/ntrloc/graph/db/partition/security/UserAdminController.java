@@ -6,7 +6,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -25,7 +24,7 @@ import java.util.UUID;
 @RequestMapping("/api/admin/users")
 public class UserAdminController {
 
-    public record UserView(UUID id, String displayName, String email, boolean isSuperuser) {}
+    public record UserView(UUID id, String displayName, String email, boolean isAdmin) {}
 
     public record CreateUserRequest(String displayName, String email, String password, String role) {}
 
@@ -41,12 +40,12 @@ public class UserAdminController {
 
     private final SecurityRepository repo;
     private final PersonalAccessTokenService patService;
-    private final PrincipalResolver principalResolver;
+    private final ExternalPrincipalResolver principalResolver;
     private final DefaultUserGroupInitializer defaultUserGroupInitializer;
     private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
 
     public UserAdminController(SecurityRepository repo, PersonalAccessTokenService patService,
-                               PrincipalResolver principalResolver, DefaultUserGroupInitializer defaultUserGroupInitializer) {
+                               ExternalPrincipalResolver principalResolver, DefaultUserGroupInitializer defaultUserGroupInitializer) {
         this.repo = repo;
         this.patService = patService;
         this.principalResolver = principalResolver;
@@ -56,14 +55,14 @@ public class UserAdminController {
     @GetMapping
     List<UserView> listUsers() {
         return repo.listUsers().stream()
-                .map(u -> new UserView(u.id(), u.displayName(), u.email(), u.isSuperuser()))
+                .map(u -> new UserView(u.id(), u.displayName(), u.email(), u.isAdmin()))
                 .toList();
     }
 
     @PostMapping
     UserView createUser(@RequestBody CreateUserRequest body, Authentication authentication) {
         var principal = principalResolver.resolve(authentication);
-        if (!principal.isSuperuser()) {
+        if (!principal.isAdmin()) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only admins can create users");
         }
         requireIdentityFields(body.displayName(), body.email());
@@ -74,22 +73,19 @@ public class UserAdminController {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Email already in use: " + body.email());
         }
 
-        String role = body.role() == null ? "USER" : body.role().toUpperCase();
-        boolean isSuperuser = "ADMIN".equals(role);
-        var user = repo.createUser(body.displayName(), body.email(), isSuperuser);
+        boolean isAdmin = isAdminRole(body.role());
+        var user = repo.createUser(body.displayName(), body.email(), isAdmin);
         String passwordHash = "{bcrypt}" + encoder.encode(body.password());
-        repo.createLocalCredentials(user.id(), passwordHash, role);
+        repo.createLocalCredentials(user.id(), passwordHash);
         defaultUserGroupInitializer.addUserToDefaultUserGroup(user.id());
-        return new UserView(user.id(), user.displayName(), user.email(), user.isSuperuser());
+        return new UserView(user.id(), user.displayName(), user.email(), user.isAdmin());
     }
 
-    // @Transactional: security_user and security_local_credentials' role must land together.
-    @Transactional
     @PutMapping("/{userId}")
     UserView updateUser(@PathVariable("userId") UUID userId, @RequestBody UpdateUserRequest body,
                         Authentication authentication) {
         var principal = principalResolver.resolve(authentication);
-        if (!principal.isSuperuser()) {
+        if (!principal.isAdmin()) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only admins can update users");
         }
         requireIdentityFields(body.displayName(), body.email());
@@ -98,17 +94,15 @@ public class UserAdminController {
                 .ifPresent(existing -> {
                     throw new ResponseStatusException(HttpStatus.CONFLICT, "Email already in use: " + body.email());
                 });
-        String role = body.role() == null ? "USER" : body.role().toUpperCase();
-        boolean isSuperuser = "ADMIN".equals(role);
-        repo.updateUser(userId, body.displayName(), body.email(), isSuperuser);
-        repo.updateLocalCredentialsRole(userId, role);
-        return new UserView(userId, body.displayName(), body.email(), isSuperuser);
+        boolean isAdmin = isAdminRole(body.role());
+        repo.updateUser(userId, body.displayName(), body.email(), isAdmin);
+        return new UserView(userId, body.displayName(), body.email(), isAdmin);
     }
 
     @DeleteMapping("/{userId}")
     ResponseEntity<Void> deleteUser(@PathVariable("userId") UUID userId, Authentication authentication) {
         var principal = principalResolver.resolve(authentication);
-        if (!principal.isSuperuser()) {
+        if (!principal.isAdmin()) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only admins can delete users");
         }
         if (principal.id().equals(userId)) {
@@ -122,7 +116,7 @@ public class UserAdminController {
     ResponseEntity<Void> resetPassword(@PathVariable("userId") UUID userId, @RequestBody ResetPasswordRequest body,
                                         Authentication authentication) {
         var principal = principalResolver.resolve(authentication);
-        if (!principal.isSuperuser()) {
+        if (!principal.isAdmin()) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only admins can reset passwords");
         }
         String passwordHash = "{bcrypt}" + encoder.encode(body.newPassword());
@@ -166,13 +160,19 @@ public class UserAdminController {
         }
     }
 
+    // The request's "role" ("ADMIN" or "USER", any case) sets security_user.is_admin -- the
+    // only place admin comes from.
+    private static boolean isAdminRole(String role) {
+        return "ADMIN".equalsIgnoreCase(role);
+    }
+
     private static boolean isBlank(String value) {
         return value == null || value.isBlank();
     }
 
     private void requireAdmin(Authentication authentication) {
         var principal = principalResolver.resolve(authentication);
-        if (!principal.isSuperuser()) {
+        if (!principal.isAdmin()) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only admins can manage tokens");
         }
     }

@@ -1,7 +1,7 @@
 package org.ntrloc.graph.ai;
 
 import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
-import org.ntrloc.graph.db.partition.security.PersonalAccessTokenService;
+import org.ntrloc.graph.db.partition.security.ExternalPrincipalResolver;
 import org.springframework.ai.mcp.annotation.context.McpSyncRequestContext;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
@@ -14,21 +14,21 @@ import org.springframework.web.server.ResponseStatusException;
 // method its caller's identity automatically the way a servlet filter chain does for a controller
 // (method security guards a resolved principal, it doesn't produce one), so every tool has to
 // resolve it this same manual way -- the Authorization header McpTransportContextConfig captured
-// off the underlying HTTP request, re-resolved via PersonalAccessTokenService.authenticate -- and
+// off the underlying HTTP request, re-resolved via ExternalPrincipalResolver.byToken -- and
 // every tool must reject an unresolvable one the same way. There is no legitimate anonymous MCP
 // call (Part C): requirePrincipal is the one method every @McpTool method on every one of the
 // four services calls first, even the two (SchemaService, ProcessService) whose own responses
 // aren't filtered by identity today -- rejecting an unauthenticated caller is a floor, not
 // conditional on whether this particular tool's output happens to be scoped by who's asking.
 @Component
-public class McpPrincipalResolver {
+public class McpPrincipalResolverAdapter {
 
     private static final String BEARER_PREFIX = "Bearer ";
 
-    private final PersonalAccessTokenService personalAccessTokenService;
+    private final ExternalPrincipalResolver principals;
 
-    public McpPrincipalResolver(PersonalAccessTokenService personalAccessTokenService) {
-        this.personalAccessTokenService = personalAccessTokenService;
+    public McpPrincipalResolverAdapter(ExternalPrincipalResolver principals) {
+        this.principals = principals;
     }
 
     public NtrlocPrincipal requirePrincipal(McpSyncRequestContext requestContext) {
@@ -39,7 +39,7 @@ public class McpPrincipalResolver {
         return principal;
     }
 
-    // MutationRequest.authenticate is a blocking JDBC call, safe here since Spring AI invokes a
+    // byToken is a blocking JDBC call, safe here since Spring AI invokes a
     // "Sync" @McpTool method's body off the event loop, unlike the transport-context extraction
     // itself (see McpTransportContextConfig's own comment on why the raw header, not a resolved
     // principal, is what gets captured there).
@@ -49,6 +49,6 @@ public class McpPrincipalResolver {
             return null;
         }
         String rawToken = authorization.substring(BEARER_PREFIX.length());
-        return personalAccessTokenService.authenticate(rawToken).orElse(null);
+        return principals.byToken(rawToken).orElse(null);
     }
 }

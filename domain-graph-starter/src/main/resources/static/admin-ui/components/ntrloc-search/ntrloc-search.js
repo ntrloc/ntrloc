@@ -715,7 +715,7 @@ injectStyles('ntrloc-search-styles', `
     font-style: italic;
     font-size: 13px;
   }
-  /* Admin-only info (see ProjectedItem.markers -- null, not rendered at all, for a non-superuser),
+  /* Admin-only info (see ProjectedItem.markers -- null, not rendered at all, for a non-admin),
      so it reads as a distinct "system" affordance rather than another property: chips, not rows,
      below both properties and links since markers apply to the whole item rather than any one
      field. Reuses the same amber the decision-table editor uses for its own admin-facing accents. */
@@ -2075,7 +2075,7 @@ class NtrlocSearch extends HTMLElement {
     const title = item.displayLabel || item.itemType;
     const shortId = item.itemId.substring(0, 8) + '...';
     // permissions.edit is a tree (see ProjectedItemPermissions), not a flat list -- buildEditTree/
-    // buildFullEditTree never return an empty-but-non-null node (superuser included -- it gets the
+    // buildFullEditTree never return an empty-but-non-null node (admin included -- it gets the
     // real fully-enumerated tree, no separate flag), so a plain non-null check is enough to know
     // "something somewhere on this item is writable." Per-field filtering of which rows actually
     // render as editable is still TODO -- entering edit mode currently still offers every top-level
@@ -2140,9 +2140,9 @@ class NtrlocSearch extends HTMLElement {
     `;
   }
 
-  // item.markers is null for a non-superuser (see ProjectedItem's own comment) -- rendered as
+  // item.markers is null for a non-admin (see ProjectedItem's own comment) -- rendered as
   // nothing at all, not an empty section, so the formatted view doesn't hint that admin-only data
-  // exists. An empty array (superuser, item just has no markers) also renders nothing, same as
+  // exists. An empty array (admin, item just has no markers) also renders nothing, same as
   // link groups do for an item with no links.
   renderMarkerChips(item) {
     if (!item.markers || item.markers.length === 0) return '';

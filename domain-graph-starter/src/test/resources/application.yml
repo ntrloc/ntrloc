@@ -6,6 +6,10 @@ graph:
     seed-test-data: true
   ui:
     mounts:
+      # The vanilla-JS admin UI at the same /admin path the release runtime mounts it, so tests
+      # exercise SecurityConfig's /admin/** admin-only rule against real pages.
+      - path: /admin
+        location: "classpath:/static/admin-ui/"
       # Istanbul-instrumented React admin UI build for the Selenium tests (AbstractUiIntegrationTest);
       # relative to this module's directory, the working directory under Maven.
       - path: /admin-react

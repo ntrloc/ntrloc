@@ -1,7 +1,7 @@
 package org.ntrloc.graph.events;
 
 import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
-import org.ntrloc.graph.db.partition.security.PrincipalResolver;
+import org.ntrloc.graph.db.partition.security.ExternalPrincipalResolver;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -30,10 +30,10 @@ public class ClusterEventController {
 
     private final ClusterEventBroadcaster broadcaster;
     private final ClusterEventVisibilityRegistry visibilityRegistry;
-    private final PrincipalResolver principalResolver;
+    private final ExternalPrincipalResolver principalResolver;
 
     public ClusterEventController(ClusterEventBroadcaster broadcaster, ClusterEventVisibilityRegistry visibilityRegistry,
-                                   PrincipalResolver principalResolver) {
+                                   ExternalPrincipalResolver principalResolver) {
         this.broadcaster = broadcaster;
         this.visibilityRegistry = visibilityRegistry;
         this.principalResolver = principalResolver;
