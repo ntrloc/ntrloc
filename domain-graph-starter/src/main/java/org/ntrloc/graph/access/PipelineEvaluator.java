@@ -133,12 +133,12 @@ public final class PipelineEvaluator {
         private boolean fires(Gate gate) {
             return SignalEvaluator.evaluateGate(gate, topLevelSignals, selfProperties, selfId, facts);
         }
-    }
 
-    private static Set<UUID> applyAddMarkers(AddMarkers add, boolean fires, Set<UUID> carrierIn) {
-        if (!fires) return carrierIn;
-        Set<UUID> out = new LinkedHashSet<>(carrierIn);
-        out.addAll(add.markerIds());
-        return out;
+        private static Set<UUID> applyAddMarkers(AddMarkers add, boolean fires, Set<UUID> carrierIn) {
+            if (!fires) return carrierIn;
+            Set<UUID> out = new LinkedHashSet<>(carrierIn);
+            out.addAll(add.markerIds());
+            return out;
+        }
     }
 }

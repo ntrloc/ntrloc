@@ -14,6 +14,11 @@ const listenersByType = new Map()
 function connect() {
   if (eventSource) return
   eventSource = new EventSource(`/api/events?types=${EVENT_TYPES.join(',')}`)
+  // Events sent while not connected (before the first open, or while EventSource is reconnecting)
+  // are never replayed, so every (re)connect tells each listener to refresh, as if it had missed one.
+  eventSource.addEventListener('open', () => {
+    for (const listeners of listenersByType.values()) listeners.forEach((listener) => listener(null))
+  })
   for (const type of EVENT_TYPES) {
     eventSource.addEventListener(type, (event) => {
       const listeners = listenersByType.get(type)

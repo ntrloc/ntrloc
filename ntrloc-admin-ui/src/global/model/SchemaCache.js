@@ -18,6 +18,7 @@ let cachedSchema = import.meta.hot?.data?.cachedSchema ?? null
 let status = import.meta.hot?.data?.status ?? 'loading' // 'loading' | 'ready' | 'error'
 let hasStartedLoading = import.meta.hot?.data?.hasStartedLoading ?? false
 const listeners = new Set()
+let latestLoad = 0
 
 function notify() {
   listeners.forEach((listener) => listener())
@@ -56,13 +57,18 @@ function load() {
     status = 'loading'
     notify()
   }
+  // Loads can overlap (a schemaChanged arriving mid-fetch); only the most recently started one may
+  // land, so a slow older response can't overwrite a newer schema.
+  const thisLoad = ++latestLoad
   return fetchAdminSchema()
     .then((schema) => {
+      if (thisLoad !== latestLoad) return
       cachedSchema = schema
       status = 'ready'
       notify()
     })
     .catch((error) => {
+      if (thisLoad !== latestLoad) return
       if (isInitialLoad) {
         status = 'error'
         notify()
