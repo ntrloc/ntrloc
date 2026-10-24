@@ -11,6 +11,7 @@ import org.ntrloc.graph.db.partition.ledger.LinkEndpoint;
 import org.ntrloc.graph.db.partition.ledger.LinkUpdateEntry;
 import org.ntrloc.graph.db.partition.register.RegisterLinkEndpoint;
 import org.ntrloc.graph.db.partition.register.RegisterPartitionManager;
+import org.ntrloc.graph.db.partition.register.StagingContext;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -73,19 +74,20 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
         // entry type; see git history). markers never touch staging at all -- they apply directly
         // against the already-committed row at commit time (see postItemMarkerAdd's own comment),
         // so only properties/stateChanges gate whether there's a row to stage.
+        StagingContext staging = new StagingContext(transactionId, actorUserId, createdDate);
         for (LedgerEntry entry : expanded) {
             if (entry instanceof ItemCreateEntry e) {
-                registerPartitionManager.stageItemCreate(e.itemId(), e.itemTypeId(), e.properties(), e.initialStates(), transactionId, actorUserId, createdDate);
+                registerPartitionManager.stageItemCreate(e.itemId(), e.itemTypeId(), e.properties(), e.initialStates(), staging);
             } else if (entry instanceof ItemUpdateEntry e && hasRegisterEffect(e)) {
-                registerPartitionManager.stageItemChange(e.itemId(), e.properties(), e.stateChanges(), e.stateMachinesEnded(), transactionId, actorUserId, createdDate);
+                registerPartitionManager.stageItemChange(e.itemId(), e.properties(), e.stateChanges(), e.stateMachinesEnded(), staging);
             }
         }
         for (LedgerEntry entry : expanded) {
             if (entry instanceof LinkCreateEntry e) {
                 registerPartitionManager.stageLinkCreate(e.linkId(), e.linkTypeId(),
-                        toRegisterEndpoint(e.endpointA()), toRegisterEndpoint(e.endpointB()), e.properties(), transactionId, actorUserId, createdDate);
+                        toRegisterEndpoint(e.endpointA()), toRegisterEndpoint(e.endpointB()), e.properties(), staging);
             } else if (entry instanceof LinkUpdateEntry e && !e.properties().isEmpty()) {
-                registerPartitionManager.stageLinkUpdate(e.linkId(), e.properties(), transactionId, actorUserId, createdDate);
+                registerPartitionManager.stageLinkUpdate(e.linkId(), e.properties(), staging);
             }
         }
     }

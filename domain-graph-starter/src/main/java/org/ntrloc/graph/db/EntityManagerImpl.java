@@ -13,6 +13,7 @@ import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
 import org.ntrloc.graph.db.partition.authorization.PermissionService;
 import org.ntrloc.graph.db.partition.authorization.RequestPermissionContext;
 import org.ntrloc.graph.db.partition.register.RegisterPartitionManager;
+import org.ntrloc.graph.db.partition.register.RegisterPartitionManager.RenderOptions;
 import org.ntrloc.graph.db.partition.process.ProcessAccessible;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminStateMachineView;
@@ -85,8 +86,9 @@ public class EntityManagerImpl implements EntityManager {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown item type: " + spec.itemTypeName());
         }
         var permissionContext = permissionService.buildContext(principal);
-        return userInfoEnricher.enrich(registerPartitionManager.projectOne(actualItemTypeId.get(), spec.itemId(), binaryBaseUrl, spec.links(), spec.properties(),
-                permissionContext, Boolean.TRUE.equals(spec.includePermissions()), Boolean.TRUE.equals(spec.includeStates())));
+        return userInfoEnricher.enrich(registerPartitionManager.projectOne(actualItemTypeId.get(), spec.itemId(), binaryBaseUrl,
+                new RenderOptions(spec.links(), permissionContext, Boolean.TRUE.equals(spec.includePermissions()),
+                        Boolean.TRUE.equals(spec.includeStates()), spec.properties())));
     }
 
     @Override

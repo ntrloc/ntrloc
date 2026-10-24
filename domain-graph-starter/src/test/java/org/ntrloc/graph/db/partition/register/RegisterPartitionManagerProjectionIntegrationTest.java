@@ -4,6 +4,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.coordinator.LedgerRegisterCoordinator;
+import org.ntrloc.graph.db.partition.register.RegisterPartitionManager.RenderOptions;
 import org.ntrloc.graph.mutation.ExistingItemReference;
 import org.ntrloc.graph.mutation.ItemCreateMutation;
 import org.ntrloc.graph.mutation.ItemDeleteMutation;
@@ -1266,7 +1267,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
         UUID bookId = createBook("Dune", 400, true, "Fiction");
 
         var book = registerPartitionManager.projectOne(fixture.bookTypeId(), bookId, "http://binary",
-                null, List.of("pageCount"), RequestPermissionContext.forSuperuser(), false, false).orElseThrow();
+                new RenderOptions(null, RequestPermissionContext.forSuperuser(), false, false, List.of("pageCount"))).orElseThrow();
 
         assertThat(book.properties()).containsOnlyKeys("pageCount");
         assertThat(book.displayLabel()).isEqualTo("Dune");
@@ -1279,7 +1280,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
 
         var requestedLinks = Map.of("authors", new LinkProjectionSpec(null));
         var book = registerPartitionManager.projectOne(fixture.bookTypeId(), bookId, "http://binary",
-                requestedLinks, List.of("title"), RequestPermissionContext.forSuperuser(), true, true).orElseThrow();
+                new RenderOptions(requestedLinks, RequestPermissionContext.forSuperuser(), true, true, List.of("title"))).orElseThrow();
 
         assertThat(book.properties()).containsOnlyKeys("title");
         var author = book.links().get("authors").get(0).item();

@@ -672,20 +672,9 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
         return value == null ? null : labelsByValue.getOrDefault(value, value);
     }
 
-    // Unlike runTermsFacetQuery, a bucket's value (a state id) isn't human-readable on its own --
-    // FacetBucket.value stays the id (stable, matches what a StateValuePredicate would need to
-    // filter back down to this bucket) while .label carries the resolved name for display. The
-    // property-facet side has its own, newer use for that same split: a controlled-list-backed
-    // property's bucket value stays the raw stored value (still what a PropertyValuePredicate
-    // filters on) while .label carries the list's resolved label when one exists (see labelFor);
-    // an unconstrained property's value and label are identical, same as before.
-    //
-    // Ordering isn't count-based (unlike runTermsFacetQuery) -- a state machine's states have a
-    // meaningful workflow position, so buckets are sorted by rank-distance from the START
-    // pseudostate (rankStatesByDistanceFromStart), tiebroken alphabetically by state name. A state
-    // unreachable from START (should not normally happen, but the schema doesn't forbid an orphan)
-    // sorts after every reachable state. The null-value bucket -- items that have never entered this
-    // machine at all -- has no position in the graph, so it always sorts last, regardless of count.
+    // Each bucket's value is a state id, which a state predicate filters on; its label is the state's name.
+    // Buckets are ordered by distance from START, then by name. Unreachable states come after
+    // reachable ones, and the null bucket (items never in this machine) always comes last.
     private List<FacetBucket> runStateMachineFacetQuery(String tableName, UUID itemTypeId, SqlFragment filter, String stateMachineName) {
         UUID stateMachineId = resolveStateMachineId(itemTypeId, stateMachineName);
         AdminStateMachineView machine = stateMachineView(stateMachineId);
@@ -808,7 +797,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
     }
 
     public Optional<ProjectedItem> projectOne(UUID itemTypeId, UUID itemId, String binaryBaseUrl) {
-        return projectOne(itemTypeId, itemId, binaryBaseUrl, null);
+        return projectOne(itemTypeId, itemId, binaryBaseUrl, null, RequestPermissionContext.forSuperuser());
     }
 
     public Optional<ProjectedItem> projectOne(UUID itemTypeId, UUID itemId, String binaryBaseUrl,
@@ -820,11 +809,11 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
     // policy (see its own comment), this overload has no spec to consult and predates
     // includePermissions/includeStates entirely; it's what every direct-Java caller (mostly tests)
     // already relied on. EntityManagerImpl.projectOne, the real HTTP-facing caller, goes through
-    // the 7-arg overload below instead, with real flags read off the caller's own spec.
+    // the RenderOptions overload below instead, with real flags read off the caller's own spec.
     public Optional<ProjectedItem> projectOne(UUID itemTypeId, UUID itemId, String binaryBaseUrl,
                                                @Nullable Map<String, LinkProjectionSpec> requestedLinks,
                                                RequestPermissionContext permissions) {
-        return projectOne(itemTypeId, itemId, binaryBaseUrl, requestedLinks, null, permissions, true, true);
+        return projectOne(itemTypeId, itemId, binaryBaseUrl, new RenderOptions(requestedLinks, permissions, true, true, null));
     }
 
     // permissions here only filters this item's *links* (see fetchLinksByItem) -- the item's own
@@ -833,11 +822,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
     // so the caller (EntityManagerImpl) checks PermissionService.canReadItem before ever calling
     // this, exactly like it already does for the type-level requireReadAccess check -- cheaper,
     // since a denied request never pays for fetching the item's own (possibly large) properties.
-    public Optional<ProjectedItem> projectOne(UUID itemTypeId, UUID itemId, String binaryBaseUrl,
-                                               @Nullable Map<String, LinkProjectionSpec> requestedLinks,
-                                               @Nullable List<String> requestedProperties,
-                                               RequestPermissionContext permissions,
-                                               boolean includePermissions, boolean includeStates) {
+    public Optional<ProjectedItem> projectOne(UUID itemTypeId, UUID itemId, String binaryBaseUrl, RenderOptions options) {
         List<RawItem> rawItems = jdbcClient.sql("""
                 SELECT ri.id AS register_item_id, ri.item_id, si.name AS item_type, rt.properties::text AS properties, rt.states::text AS states,
                        ri.created_date, ri.created_by, ri.updated_date, ri.updated_by
@@ -870,7 +855,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                 .map(AdminItemDefinitionView::stateMachines)
                 .orElse(null);
         return Optional.of(assembleProjectedItems(rawItems, propertyPathsByIdForItemType(itemTypeId), propertyViewsById, stateMachines, binaryBaseUrl,
-                new RenderOptions(requestedLinks, permissions, includePermissions, includeStates, requestedProperties)).get(0));
+                options).get(0));
     }
 
     // --- Write side: staged at prepare (UNCOMMITTED), flipped/cleaned up at commit/abort ---
@@ -878,16 +863,13 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
     // committed row for the same business id and flips the new one to COMMITTED.
 
     public UUID stageItemCreate(UUID itemId, UUID itemTypeId, Map<UUID, Object> properties, Map<UUID, UUID> initialStates,
-                                 UUID transactionId, UUID actorUserId, OffsetDateTime createdDate) {
+                                 StagingContext staging) {
         Map<String, Object> states = new HashMap<>();
         initialStates.forEach((stateMachineId, stateId) -> states.put(stateMachineId.toString(), Map.of(STATE_CURRENT_STATE_ID, stateId.toString())));
 
         Set<UUID> binaryPropertyIds = binaryPropertyIdsForItemType(itemTypeId);
-        // updatedDate/updatedBy are null here, deliberately -- a brand-new item has no "updated"
-        // at all until it's actually updated (see insertItemRow's own comment); the creator is
-        // not treated as having also "updated" the item they just created.
-        UUID registerItemId = insertItemRow(itemId, itemTypeId, keysToStrings(excludeKeys(properties, binaryPropertyIds)), states, transactionId,
-                createdDate, actorUserId, null, null);
+        UUID registerItemId = insertItemRow(itemId, itemTypeId, keysToStrings(excludeKeys(properties, binaryPropertyIds)), states,
+                staging.transactionId(), RowAudit.created(staging));
         if (!binaryPropertyIds.isEmpty()) {
             Map<UUID, UUID> binaryValues = toBinaryValues(filterKeys(properties, binaryPropertyIds));
             insertBinaryProperties(registerItemId, binaryValues);
@@ -916,7 +898,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
     // that a given stateId is actually reachable from the item's current state via a defined
     // transition. Transition validity/guard enforcement lives in EntityManagerImpl.executeTransition.
     public UUID stageItemChange(UUID itemId, Map<UUID, Object> propertiesDiff, Map<UUID, UUID> stateChanges,
-                                 Set<UUID> stateMachinesEnded, UUID transactionId, UUID actorUserId, OffsetDateTime createdDate) {
+                                 Set<UUID> stateMachinesEnded, StagingContext staging) {
         UUID itemTypeId = findItemTypeId(itemId).orElseThrow();
 
         var current = jdbcClient.sql("""
@@ -944,12 +926,8 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
         stateChanges.forEach((stateMachineId, stateId) -> mergedStates.put(stateMachineId.toString(), Map.of(STATE_CURRENT_STATE_ID, stateId.toString())));
         stateMachinesEnded.forEach(stateMachineId -> mergedStates.remove(stateMachineId.toString()));
 
-        // created_date/created_by carry forward unchanged from the superseded row -- this item's
-        // true creation provenance, never reset by an update even though the row itself is wholly
-        // replaced (see insertItemRow's own comment). updated_date/updated_by take this update's
-        // own values.
-        UUID registerItemId = insertItemRow(itemId, itemTypeId, mergedProperties, mergedStates, transactionId,
-                current.createdDate(), current.createdBy(), createdDate, actorUserId);
+        UUID registerItemId = insertItemRow(itemId, itemTypeId, mergedProperties, mergedStates, staging.transactionId(),
+                RowAudit.updated(current.createdDate(), current.createdBy(), staging));
 
         // Binary properties live in their own table (register_binary_property), never in the jsonb
         // properties blob above -- same "fully re-materialize per version" shape as mergedProperties,
@@ -1063,17 +1041,10 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                         .update());
     }
 
-    // createdDate/createdBy describe the ITEM, not this particular row version -- a create's
-    // caller passes its own entry's values; an update's caller carries the superseded row's
-    // values forward unchanged (see stageItemChange). updatedDate/updatedBy are @Nullable and
-    // genuinely null for a brand-new item (stageItemCreate passes null for both) -- an item that
-    // has only ever been created has no "updated", not an updated equal to its own creation;
-    // stageItemChange supplies real values once an actual update happens. Explicit ::timestamptz/
-    // ::uuid casts on the nullable pair: without a cast, the driver can't infer a SQL type for a
-    // bound null and this insert fails with "could not determine data type of parameter" on the
-    // create path.
+    // The audit columns describe the item, not this row version (see RowAudit). The nullable pair
+    // needs explicit ::timestamptz/::uuid casts, or the driver can't type a bound null.
     private UUID insertItemRow(UUID itemId, UUID itemTypeId, Map<String, Object> properties, Map<String, Object> states, UUID transactionId,
-                                OffsetDateTime createdDate, UUID createdBy, @Nullable OffsetDateTime updatedDate, @Nullable UUID updatedBy) {
+                                RowAudit audit) {
         UUID registerItemId = jdbcClient.sql("""
                 INSERT INTO register_item (item_id, item_type_id, state, transaction_id, created_date, created_by, updated_date, updated_by)
                 VALUES (:itemId, :itemTypeId, 'UNCOMMITTED', :transactionId, :createdDate, :createdBy, :updatedDate::timestamptz, :updatedBy::uuid)
@@ -1082,10 +1053,10 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                 .param(PARAM_ITEM_ID, itemId)
                 .param(PARAM_ITEM_TYPE_ID, itemTypeId)
                 .param(PARAM_TRANSACTION_ID, transactionId)
-                .param(PARAM_CREATED_DATE, createdDate)
-                .param(PARAM_CREATED_BY, createdBy)
-                .param(PARAM_UPDATED_DATE, updatedDate)
-                .param(PARAM_UPDATED_BY, updatedBy)
+                .param(PARAM_CREATED_DATE, audit.createdDate())
+                .param(PARAM_CREATED_BY, audit.createdBy())
+                .param(PARAM_UPDATED_DATE, audit.updatedDate())
+                .param(PARAM_UPDATED_BY, audit.updatedBy())
                 .query(UUID.class)
                 .single();
 
@@ -1270,11 +1241,9 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
     }
 
     public UUID stageLinkCreate(UUID linkId, UUID linkTypeId, RegisterLinkEndpoint endpointA, RegisterLinkEndpoint endpointB,
-                                 Map<UUID, Object> properties, UUID transactionId, UUID actorUserId, OffsetDateTime createdDate) {
-        // updatedDate/updatedBy null -- see stageItemCreate's identical reasoning.
-        UUID registerLinkId = insertLinkRow(linkId, linkTypeId, keysToStrings(properties), transactionId,
-                createdDate, actorUserId, null, null);
-        insertPerspectiveRows(registerLinkId, List.of(endpointA, endpointB), transactionId);
+                                 Map<UUID, Object> properties, StagingContext staging) {
+        UUID registerLinkId = insertLinkRow(linkId, linkTypeId, keysToStrings(properties), staging.transactionId(), RowAudit.created(staging));
+        insertPerspectiveRows(registerLinkId, List.of(endpointA, endpointB), staging.transactionId());
         return registerLinkId;
     }
 
@@ -1322,7 +1291,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                 .list();
     }
 
-    public UUID stageLinkUpdate(UUID linkId, Map<UUID, Object> propertiesDiff, UUID transactionId, UUID actorUserId, OffsetDateTime createdDate) {
+    public UUID stageLinkUpdate(UUID linkId, Map<UUID, Object> propertiesDiff, StagingContext staging) {
         var current = jdbcClient.sql("""
                 SELECT id AS current_register_link_id, created_date, created_by
                 FROM register_link WHERE link_id = :linkId AND state = 'COMMITTED'
@@ -1343,9 +1312,8 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                 .single();
 
         Map<String, Object> merged = mergeProperties(currentProperties, keysToStrings(propertiesDiff));
-        // created_date/created_by carry forward unchanged, same reasoning as stageItemChange.
-        UUID registerLinkId = insertLinkRow(linkId, linkTypeId, merged, transactionId,
-                current.createdDate(), current.createdBy(), createdDate, actorUserId);
+        UUID registerLinkId = insertLinkRow(linkId, linkTypeId, merged, staging.transactionId(),
+                RowAudit.updated(current.createdDate(), current.createdBy(), staging));
 
         // Endpoints don't change on an update (Section 8): re-resolve each one to whichever
         // register_item row currently represents it in this transaction, since an endpoint's
@@ -1361,17 +1329,29 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                         rs.getObject(COL_PERSPECTIVE_ID, UUID.class),
                         rs.getObject(COL_ITEM_ID, UUID.class)))
                 .list();
-        insertPerspectiveRows(registerLinkId, endpoints, transactionId);
+        insertPerspectiveRows(registerLinkId, endpoints, staging.transactionId());
 
         return registerLinkId;
     }
 
     private record CurrentLinkRowContent(UUID registerLinkId, OffsetDateTime createdDate, UUID createdBy) {}
 
-    // createdDate/createdBy/updatedDate/updatedBy describe the LINK, not this particular row
-    // version -- same reasoning as insertItemRow's own comment, including the explicit casts.
-    private UUID insertLinkRow(UUID linkId, UUID linkTypeId, Map<String, Object> properties, UUID transactionId,
-                                OffsetDateTime createdDate, UUID createdBy, @Nullable OffsetDateTime updatedDate, @Nullable UUID updatedBy) {
+    // A row's audit columns. created* describe the item or link itself, so an update carries them
+    // forward from the row it supersedes. updated* stay null until the first real update: the
+    // creator hasn't also "updated" what they just created.
+    private record RowAudit(OffsetDateTime createdDate, UUID createdBy, @Nullable OffsetDateTime updatedDate, @Nullable UUID updatedBy) {
+
+        static RowAudit created(StagingContext staging) {
+            return new RowAudit(staging.createdDate(), staging.actorUserId(), null, null);
+        }
+
+        static RowAudit updated(OffsetDateTime createdDate, UUID createdBy, StagingContext staging) {
+            return new RowAudit(createdDate, createdBy, staging.createdDate(), staging.actorUserId());
+        }
+    }
+
+    // Same audit semantics and casts as insertItemRow.
+    private UUID insertLinkRow(UUID linkId, UUID linkTypeId, Map<String, Object> properties, UUID transactionId, RowAudit audit) {
         UUID registerLinkId = jdbcClient.sql("""
                 INSERT INTO register_link (link_id, link_definition_id, state, transaction_id, created_date, created_by, updated_date, updated_by)
                 VALUES (:linkId, :linkTypeId, 'UNCOMMITTED', :transactionId, :createdDate, :createdBy, :updatedDate::timestamptz, :updatedBy::uuid)
@@ -1380,10 +1360,10 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                 .param(PARAM_LINK_ID, linkId)
                 .param("linkTypeId", linkTypeId)
                 .param(PARAM_TRANSACTION_ID, transactionId)
-                .param(PARAM_CREATED_DATE, createdDate)
-                .param(PARAM_CREATED_BY, createdBy)
-                .param(PARAM_UPDATED_DATE, updatedDate)
-                .param(PARAM_UPDATED_BY, updatedBy)
+                .param(PARAM_CREATED_DATE, audit.createdDate())
+                .param(PARAM_CREATED_BY, audit.createdBy())
+                .param(PARAM_UPDATED_DATE, audit.updatedDate())
+                .param(PARAM_UPDATED_BY, audit.updatedBy())
                 .query(UUID.class)
                 .single();
 
@@ -2568,14 +2548,12 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
     // ids are globally unique across the whole schema, so a plain union of each branch's own
     // lookup is a safe, unambiguous merge -- an over-inclusive stateMachines list is likewise safe,
     // since buildProjectedItemStates already skips any machine a given row's states don't mention).
-    // requestedLinks/permissions/includePermissions/includeStates travel together as one unit (the
-    // same quad appears on projectOne's own 7-arg overload) -- bundled here to keep this method's
-    // own parameter count within S107's limit, private to this method's three call sites only.
-    // requestedProperties is carried through unprocessed (not just as the already-filtered
+    // RenderOptions: what the caller asked to see, shared by project(), projectAcrossTypes() and
+    // projectOne(). requestedProperties is carried through unprocessed (not just as the already-filtered
     // ownPropertyNames map) because slicing a BINARY leaf's metadata needs the caller's *exact*
     // requested strings -- restrictToRequestedProperties already decided *whether* to include the
     // leaf at all, but not which of its dynamic paths (if any) to narrow the response to.
-    private record RenderOptions(@Nullable Map<String, LinkProjectionSpec> requestedLinks, RequestPermissionContext permissions,
+    public record RenderOptions(@Nullable Map<String, LinkProjectionSpec> requestedLinks, RequestPermissionContext permissions,
                                   boolean includePermissions, boolean includeStates, @Nullable List<String> requestedProperties) {}
 
     // allPropertyNames is every property path of the item type(s), unrestricted: the response's

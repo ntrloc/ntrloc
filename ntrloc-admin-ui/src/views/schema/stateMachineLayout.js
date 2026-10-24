@@ -263,35 +263,19 @@ export function computeLayout(states, orientation = 'horizontal') {
     edgeDescriptors,
   )
 
-  const { PSEUDO_SIZE, rankAxisSlot, rankCoordByRank } = computeRankCoordinates(
-    vertical,
-    NODE_WIDTH,
-    NODE_HEIGHT,
-    rankAxisNodeSize,
-    byRank,
-    edgeDescriptors,
-    rank,
-    rankGap,
-  )
-
-  const { rects, rankAxisSizeOf, rankAxisTotal, siblingAxisTotal } = computeNodeRects(
-    states,
-    byRank,
-    rank,
-    vertical,
-    NODE_WIDTH,
-    NODE_HEIGHT,
+  const geometry = { vertical, NODE_WIDTH, NODE_HEIGHT }
+  const ranking = { rank, byRank }
+  const rankAxis = computeRankCoordinates(geometry, ranking, rankAxisNodeSize, edgeDescriptors, rankGap)
+  const siblingAxis = {
+    nodeSize: siblingAxisNodeSize,
     maxRankSpan,
     spanFor,
-    siblingAxisNodeSize,
     outerLeadingMargin,
     leadingReserve,
-    rankCoordByRank,
-    rankAxisSlot,
-    PSEUDO_SIZE,
     trailingReserve,
     outerTrailingMargin,
-  )
+  }
+  const { rects, rankAxisSizeOf, rankAxisTotal, siblingAxisTotal } = computeNodeRects(states, geometry, ranking, rankAxis, siblingAxis)
 
   const fractionByRequest = allocateRailFractions(railEdges, selfLoopsByNode)
   const directGroups = groupDirectEdges(edgeDescriptors)
@@ -302,18 +286,12 @@ export function computeLayout(states, orientation = 'horizontal') {
 
   const edges = [
     ...buildDirectEdges(directGroups, rank, rects, vertical, edgeAxisHelpers),
-    ...buildRailEdgeSegments(
-      railEdges,
-      rects,
-      fractionByRequest,
-      rankAxisSizeOf,
-      edgeAxisHelpers,
-      vertical,
+    ...buildRailEdgeSegments(railEdges, rects, fractionByRequest, rankAxisSizeOf, edgeAxisHelpers, vertical, {
       globalLeadingEdge,
       globalTrailingEdge,
       selfLoopReserve,
       railGap,
-    ),
+    }),
   ]
   const selfLoopEdges = buildSelfLoopEdgeSegments(selfLoopsByNode, rects, edgeAxisHelpers, rankAxisNodeSize, vertical)
 
@@ -501,7 +479,7 @@ function computeAxisGaps(vertical, railEdges, selfLoopReserve, leadingNestCount,
 // and sit a tight gap from its neighbour. Otherwise rankGap -- driven by the widest transition
 // label anywhere in the diagram -- leaves a large void beside the tiny dot. Horizontal only;
 // vertical already reads well and keeps its uniform stride and full-size slots.
-function computeRankCoordinates(vertical, NODE_WIDTH, NODE_HEIGHT, rankAxisNodeSize, byRank, edgeDescriptors, rank, rankGap) {
+function computeRankCoordinates({ vertical, NODE_WIDTH, NODE_HEIGHT }, { rank, byRank }, rankAxisNodeSize, edgeDescriptors, rankGap) {
   const PSEUDO_SIZE = Math.round(Math.min(NODE_WIDTH, NODE_HEIGHT) * 0.5)
   const tightenPseudo = !vertical
   const rankIsPseudo = (r) => (byRank.get(r) ?? []).every((s) => s.kind === 'START' || s.kind === 'END')
@@ -527,24 +505,17 @@ function computeRankCoordinates(vertical, NODE_WIDTH, NODE_HEIGHT, rankAxisNodeS
 // The concrete drawn/attached-to rect per node. A pseudostate dot is centered on the sibling axis
 // of its slot; on the rank axis it hugs the slot's near edge when that rank was tightened to
 // PSEUDO_SIZE (so the small slot == the dot), else it centers there too.
-function computeNodeRects(
-  states,
-  byRank,
-  rank,
-  vertical,
-  NODE_WIDTH,
-  NODE_HEIGHT,
-  maxRankSpan,
-  spanFor,
-  siblingAxisNodeSize,
-  outerLeadingMargin,
-  leadingReserve,
-  rankCoordByRank,
-  rankAxisSlot,
-  PSEUDO_SIZE,
-  trailingReserve,
-  outerTrailingMargin,
-) {
+function computeNodeRects(states, { vertical, NODE_WIDTH, NODE_HEIGHT }, { rank, byRank }, rankAxis, siblingAxis) {
+  const { PSEUDO_SIZE, rankAxisSlot, rankCoordByRank } = rankAxis
+  const {
+    nodeSize: siblingAxisNodeSize,
+    maxRankSpan,
+    spanFor,
+    outerLeadingMargin,
+    leadingReserve,
+    trailingReserve,
+    outerTrailingMargin,
+  } = siblingAxis
   const positions = new Map()
   for (const [r, list] of byRank.entries()) {
     const centerOffset = (maxRankSpan - spanFor(list.length)) / 2
@@ -654,18 +625,10 @@ function buildDirectEdges(directGroups, rank, rects, vertical, edgeAxisHelpers) 
   return edges
 }
 
-function buildRailEdgeSegments(
-  railEdges,
-  rects,
-  fractionByRequest,
-  rankAxisSizeOf,
-  edgeAxisHelpers,
-  vertical,
-  globalLeadingEdge,
-  globalTrailingEdge,
-  selfLoopReserve,
-  railGap,
-) {
+// rails: where the leading and trailing rails start (globalLeadingEdge/globalTrailingEdge) and how
+// far out they sit (selfLoopReserve, railGap).
+function buildRailEdgeSegments(railEdges, rects, fractionByRequest, rankAxisSizeOf, edgeAxisHelpers, vertical, rails) {
+  const { globalLeadingEdge, globalTrailingEdge, selfLoopReserve, railGap } = rails
   const edges = []
   for (const e of railEdges) {
     const fromRect = rects.get(e.fromId)

@@ -93,20 +93,7 @@ public class MutationRequestProcessor {
     @Transactional
     @PreAuthorize("#principal != null")
     public MutationResponse process(MutationRequest request, NtrlocPrincipal principal) {
-        List<ValidationError> errors = new ArrayList<>();
-        Map<String, UUID> refIdToItemId = new HashMap<>();
-        Map<String, UUID> refIdToItemTypeId = new HashMap<>();
-        List<LedgerEntry> entries = new ArrayList<>();
-        List<ItemMutationResult> itemResults = new ArrayList<>();
-        List<LinkMutationResult> linkResults = new ArrayList<>();
-        // Perspective cardinality can only be judged once the *whole* request has been walked -- a
-        // new item's own minCardinality can only ever be satisfied by link creates elsewhere in this
-        // same request (an ItemCreateMutation carries no links of its own), so this accumulates a net
-        // delta per (itemId, perspectiveId) across every link create/delete as they're processed, and
-        // checkLinkPerspectiveCardinality judges the total only after that loop finishes.
-        Map<UUID, NewItemInfo> newItems = new HashMap<>();
-        Map<LinkPerspectiveKey, Integer> perspectiveDelta = new HashMap<>();
-        Map<LinkPerspectiveKey, String> lastLinkMutationPath = new HashMap<>();
+        RequestState state = new RequestState();
 
         List<ItemMutation> items = request.items() == null ? List.of() : request.items();
         List<LinkMutation> links = request.links() == null ? List.of() : request.links();
@@ -117,11 +104,11 @@ public class MutationRequestProcessor {
             String path = "items[%d]".formatted(i);
             ItemMutation item = items.get(i);
             if (item instanceof ItemCreateMutation m) {
-                processItemCreate(m, path, principal, refIdToItemId, refIdToItemTypeId, newItems, entries, itemResults, errors);
+                processItemCreate(m, path, principal, state);
             } else if (item instanceof ItemUpdateMutation m) {
-                processItemUpdate(m, path, principal, entries, itemResults, errors);
+                processItemUpdate(m, path, principal, state);
             } else if (item instanceof ItemDeleteMutation m) {
-                processItemDelete(m, path, principal, entries, itemResults, errors);
+                processItemDelete(m, path, principal, state);
             }
         }
 
@@ -129,18 +116,18 @@ public class MutationRequestProcessor {
             String path = "links[%d]".formatted(i);
             LinkMutation link = links.get(i);
             if (link instanceof LinkCreateMutation m) {
-                processLinkCreate(m, path, principal, refIdToItemId, refIdToItemTypeId, perspectiveDelta, lastLinkMutationPath, entries, linkResults, errors);
+                processLinkCreate(m, path, principal, state);
             } else if (link instanceof LinkUpdateMutation m) {
-                processLinkUpdate(m, path, principal, entries, linkResults, errors);
+                processLinkUpdate(m, path, principal, state);
             } else if (link instanceof LinkDeleteMutation m) {
-                processLinkDelete(m, path, principal, perspectiveDelta, lastLinkMutationPath, entries, linkResults, errors);
+                processLinkDelete(m, path, principal, state);
             }
         }
 
-        checkLinkPerspectiveCardinality(perspectiveDelta, newItems, lastLinkMutationPath, errors);
+        checkLinkPerspectiveCardinality(state);
 
-        if (!errors.isEmpty()) {
-            throw new MutationValidationException(errors);
+        if (!state.errors.isEmpty()) {
+            throw new MutationValidationException(state.errors);
         }
 
         UUID transactionId = UUID.randomUUID();
@@ -156,12 +143,12 @@ public class MutationRequestProcessor {
         // REQUIRES_NEW) regardless of which branch runs next -- commit=false intentionally stops
         // here, leaving a genuinely prepared, independently-recoverable transaction for a later
         // confirmCommit() call, not a half-finished one.
-        coordinator.prepare(entries, transactionId, actorUserId, createdDate);
+        coordinator.prepare(state.entries, transactionId, actorUserId, createdDate);
         if (request.commit() == null || request.commit()) {
             coordinator.commit(transactionId, commitId);
         }
 
-        return new MutationResponse(itemResults, linkResults, transactionId);
+        return new MutationResponse(state.itemResults, state.linkResults, transactionId);
     }
 
     // Confirms a transaction previously prepared with commit=false. Generates its own commitId --
@@ -181,10 +168,8 @@ public class MutationRequestProcessor {
         return new AbortResponse(transactionId);
     }
 
-    private void processItemCreate(ItemCreateMutation m, String path, NtrlocPrincipal principal,
-                                    Map<String, UUID> refIdToItemId, Map<String, UUID> refIdToItemTypeId,
-                                    Map<UUID, NewItemInfo> newItems,
-                                    List<LedgerEntry> entries, List<ItemMutationResult> itemResults, List<ValidationError> errors) {
+    private void processItemCreate(ItemCreateMutation m, String path, NtrlocPrincipal principal, RequestState state) {
+        List<ValidationError> errors = state.errors;
         Optional<UUID> itemTypeId = findItemTypeIdByName(m.itemTypeName());
         if (itemTypeId.isEmpty()) {
             errors.add(new ValidationError(path + ITEM_TYPE_NAME_PATH_SUFFIX, "Unknown item type: " + m.itemTypeName()));
@@ -202,22 +187,22 @@ public class MutationRequestProcessor {
         // Tracked regardless of refId -- checkLinkPerspectiveCardinality needs to know this item has
         // no pre-existing links (baseline zero) even when nothing in this request ever references it
         // by refId (e.g. it's simply missing a link its own minCardinality requires).
-        newItems.put(itemId, new NewItemInfo(path, itemTypeId.get()));
+        state.newItems.put(itemId, new NewItemInfo(path, itemTypeId.get()));
         if (m.refId() != null) {
-            refIdToItemId.put(m.refId(), itemId);
-            refIdToItemTypeId.put(m.refId(), itemTypeId.get());
+            state.refIdToItemId.put(m.refId(), itemId);
+            state.refIdToItemTypeId.put(m.refId(), itemTypeId.get());
         }
         Map<UUID, Object> properties = resolveItemPropertyIds(itemTypeId.get(), m.properties(), path + PROPERTIES_PATH_SUFFIX, errors);
         // Create only, never update -- see checkRequiredItemProperties' own comment on why an
         // update's partial-diff payload can't be checked the same way.
         checkRequiredItemProperties(itemTypeId.get(), m.properties(), path + PROPERTIES_PATH_SUFFIX, errors);
         checkDeprecatedItemProperties(itemTypeId.get(), m.properties(), path + PROPERTIES_PATH_SUFFIX, errors);
-        entries.add(new ItemCreateEntry(itemId, itemTypeId.get(), properties, Map.of(), Set.of()));
-        itemResults.add(new ItemMutationResult(m.refId(), itemId, MutationOperation.CREATE));
+        state.entries.add(new ItemCreateEntry(itemId, itemTypeId.get(), properties, Map.of(), Set.of()));
+        state.itemResults.add(new ItemMutationResult(m.refId(), itemId, MutationOperation.CREATE));
     }
 
-    private void processItemUpdate(ItemUpdateMutation m, String path, NtrlocPrincipal principal, List<LedgerEntry> entries,
-                                    List<ItemMutationResult> itemResults, List<ValidationError> errors) {
+    private void processItemUpdate(ItemUpdateMutation m, String path, NtrlocPrincipal principal, RequestState state) {
+        List<ValidationError> errors = state.errors;
         Optional<UUID> itemTypeId = registerPartitionManager.findItemTypeId(m.itemId());
         if (itemTypeId.isEmpty()) {
             errors.add(new ValidationError(path + ".itemId", "Unknown item: " + m.itemId()));
@@ -235,18 +220,17 @@ public class MutationRequestProcessor {
         // fail if the item would still be missing it afterward.
         checkRequiredItemPropertiesOnUpdate(itemTypeId.get(), m.itemId(), properties, path + PROPERTIES_PATH_SUFFIX, errors);
         checkDeprecatedItemProperties(itemTypeId.get(), m.properties(), path + PROPERTIES_PATH_SUFFIX, errors);
-        entries.add(new ItemUpdateEntry(m.itemId(), properties, Map.of(), Set.of(), Set.of(), Set.of()));
-        itemResults.add(new ItemMutationResult(null, m.itemId(), MutationOperation.UPDATE));
+        state.entries.add(new ItemUpdateEntry(m.itemId(), properties, Map.of(), Set.of(), Set.of(), Set.of()));
+        state.itemResults.add(new ItemMutationResult(null, m.itemId(), MutationOperation.UPDATE));
     }
 
-    private void processItemDelete(ItemDeleteMutation m, String path, NtrlocPrincipal principal,
-                                    List<LedgerEntry> entries, List<ItemMutationResult> itemResults, List<ValidationError> errors) {
+    private void processItemDelete(ItemDeleteMutation m, String path, NtrlocPrincipal principal, RequestState state) {
         if (!canDeleteItem(principal, m.itemId())) {
-            errors.add(new ValidationError(path, "Not permitted to delete this item"));
+            state.errors.add(new ValidationError(path, "Not permitted to delete this item"));
             return;
         }
-        entries.add(new ItemDeleteEntry(m.itemId()));
-        itemResults.add(new ItemMutationResult(null, m.itemId(), MutationOperation.DELETE));
+        state.entries.add(new ItemDeleteEntry(m.itemId()));
+        state.itemResults.add(new ItemMutationResult(null, m.itemId(), MutationOperation.DELETE));
     }
 
     private boolean canDeleteItem(NtrlocPrincipal principal, UUID itemId) {
@@ -261,12 +245,10 @@ public class MutationRequestProcessor {
         return permissionService.mayCreateLink(ctx, permissionService.markerIdsForItem(endpoint.itemId()), endpoint.perspectiveId());
     }
 
-    private void processLinkCreate(LinkCreateMutation m, String path, NtrlocPrincipal principal,
-                                    Map<String, UUID> refIdToItemId, Map<String, UUID> refIdToItemTypeId,
-                                    Map<LinkPerspectiveKey, Integer> perspectiveDelta, Map<LinkPerspectiveKey, String> lastLinkMutationPath,
-                                    List<LedgerEntry> entries, List<LinkMutationResult> linkResults, List<ValidationError> errors) {
-        Optional<ResolvedEndpoint> a = resolveEndpoint(m.firstItem(), path + ".firstItem", refIdToItemId, refIdToItemTypeId, errors);
-        Optional<ResolvedEndpoint> b = resolveEndpoint(m.secondItem(), path + ".secondItem", refIdToItemId, refIdToItemTypeId, errors);
+    private void processLinkCreate(LinkCreateMutation m, String path, NtrlocPrincipal principal, RequestState state) {
+        List<ValidationError> errors = state.errors;
+        Optional<ResolvedEndpoint> a = resolveEndpoint(m.firstItem(), path + ".firstItem", state.refIdToItemId, state.refIdToItemTypeId, errors);
+        Optional<ResolvedEndpoint> b = resolveEndpoint(m.secondItem(), path + ".secondItem", state.refIdToItemId, state.refIdToItemTypeId, errors);
         if (a.isEmpty() || b.isEmpty()) return;
 
         Optional<UUID> linkTypeId = resolveLinkTypeId(a.get(), b.get(), path, errors);
@@ -281,18 +263,18 @@ public class MutationRequestProcessor {
             errors.add(new ValidationError(path, "Not permitted to create this link"));
             return;
         }
-        recordLinkDelta(perspectiveDelta, lastLinkMutationPath, endpointA, path, +1);
-        recordLinkDelta(perspectiveDelta, lastLinkMutationPath, endpointB, path, +1);
+        state.recordLinkDelta(endpointA.itemId(), endpointA.perspectiveId(), path, +1);
+        state.recordLinkDelta(endpointB.itemId(), endpointB.perspectiveId(), path, +1);
         checkCanWriteLinkProperties(principal, List.of(endpointA.itemId(), endpointB.itemId()), linkTypeId.get(), m.properties(), path + PROPERTIES_PATH_SUFFIX, errors);
         Map<UUID, Object> properties = resolveLinkPropertyIds(linkTypeId.get(), m.properties(), path + PROPERTIES_PATH_SUFFIX, errors);
         checkRequiredLinkProperties(linkTypeId.get(), m.properties(), path + PROPERTIES_PATH_SUFFIX, errors);
         checkDeprecatedLinkProperties(linkTypeId.get(), m.properties(), path + PROPERTIES_PATH_SUFFIX, errors);
-        entries.add(new LinkCreateEntry(linkId, linkTypeId.get(), endpointA, endpointB, properties));
-        linkResults.add(new LinkMutationResult(linkId, MutationOperation.CREATE));
+        state.entries.add(new LinkCreateEntry(linkId, linkTypeId.get(), endpointA, endpointB, properties));
+        state.linkResults.add(new LinkMutationResult(linkId, MutationOperation.CREATE));
     }
 
-    private void processLinkUpdate(LinkUpdateMutation m, String path, NtrlocPrincipal principal, List<LedgerEntry> entries,
-                                    List<LinkMutationResult> linkResults, List<ValidationError> errors) {
+    private void processLinkUpdate(LinkUpdateMutation m, String path, NtrlocPrincipal principal, RequestState state) {
+        List<ValidationError> errors = state.errors;
         Optional<UUID> linkTypeId = registerPartitionManager.findLinkTypeId(m.linkId());
         if (linkTypeId.isEmpty()) {
             errors.add(new ValidationError(path + ".linkId", "Unknown link: " + m.linkId()));
@@ -303,27 +285,25 @@ public class MutationRequestProcessor {
         Map<UUID, Object> properties = resolveLinkPropertyIds(linkTypeId.get(), m.properties(), path + PROPERTIES_PATH_SUFFIX, errors);
         checkRequiredLinkPropertiesOnUpdate(linkTypeId.get(), m.linkId(), properties, path + PROPERTIES_PATH_SUFFIX, errors);
         checkDeprecatedLinkProperties(linkTypeId.get(), m.properties(), path + PROPERTIES_PATH_SUFFIX, errors);
-        entries.add(new LinkUpdateEntry(m.linkId(), properties));
-        linkResults.add(new LinkMutationResult(m.linkId(), MutationOperation.UPDATE));
+        state.entries.add(new LinkUpdateEntry(m.linkId(), properties));
+        state.linkResults.add(new LinkMutationResult(m.linkId(), MutationOperation.UPDATE));
     }
 
     // An update never changes endpoints (Section 8 -- see stageLinkUpdate's own comment), so unlike
     // create/delete there is no perspective-cardinality delta to record here.
-    private void processLinkDelete(LinkDeleteMutation m, String path, NtrlocPrincipal principal,
-                                    Map<LinkPerspectiveKey, Integer> perspectiveDelta, Map<LinkPerspectiveKey, String> lastLinkMutationPath,
-                                    List<LedgerEntry> entries, List<LinkMutationResult> linkResults, List<ValidationError> errors) {
+    private void processLinkDelete(LinkDeleteMutation m, String path, NtrlocPrincipal principal, RequestState state) {
         List<RegisterLinkEndpoint> endpoints = registerPartitionManager.findLinkEndpoints(m.linkId());
         // Both sides' own link:delete grant are required, same symmetric reasoning as
         // processLinkCreate's own link:create check.
         if (!canDeleteLink(principal, endpoints)) {
-            errors.add(new ValidationError(path, "Not permitted to delete this link"));
+            state.errors.add(new ValidationError(path, "Not permitted to delete this link"));
             return;
         }
         for (RegisterLinkEndpoint endpoint : endpoints) {
-            recordLinkDelta(perspectiveDelta, lastLinkMutationPath, endpoint, path, -1);
+            state.recordLinkDelta(endpoint.itemId(), endpoint.perspectiveId(), path, -1);
         }
-        entries.add(new LinkDeleteEntry(m.linkId()));
-        linkResults.add(new LinkMutationResult(m.linkId(), MutationOperation.DELETE));
+        state.entries.add(new LinkDeleteEntry(m.linkId()));
+        state.linkResults.add(new LinkMutationResult(m.linkId(), MutationOperation.DELETE));
     }
 
     private boolean canDeleteLink(NtrlocPrincipal principal, List<RegisterLinkEndpoint> endpoints) {
@@ -339,33 +319,43 @@ public class MutationRequestProcessor {
 
     private record LinkPerspectiveKey(UUID itemId, UUID perspectiveId) {}
 
-    private void recordLinkDelta(Map<LinkPerspectiveKey, Integer> perspectiveDelta, Map<LinkPerspectiveKey, String> lastLinkMutationPath,
-                                  LinkEndpoint endpoint, String path, int change) {
-        recordLinkDelta(perspectiveDelta, lastLinkMutationPath, new LinkPerspectiveKey(endpoint.itemId(), endpoint.perspectiveId()), path, change);
-    }
+    // Everything process() accumulates while walking one request.
+    //
+    // Perspective cardinality can only be judged once the whole request has been walked: a new
+    // item's minCardinality can only be met by link creates elsewhere in the same request. So
+    // perspectiveDelta accumulates a net change per (item, perspective), and
+    // checkLinkPerspectiveCardinality judges the totals at the end.
+    private static final class RequestState {
+        final List<ValidationError> errors = new ArrayList<>();
+        final Map<String, UUID> refIdToItemId = new HashMap<>();
+        final Map<String, UUID> refIdToItemTypeId = new HashMap<>();
+        final List<LedgerEntry> entries = new ArrayList<>();
+        final List<ItemMutationResult> itemResults = new ArrayList<>();
+        final List<LinkMutationResult> linkResults = new ArrayList<>();
+        final Map<UUID, NewItemInfo> newItems = new HashMap<>();
+        final Map<LinkPerspectiveKey, Integer> perspectiveDelta = new HashMap<>();
+        final Map<LinkPerspectiveKey, String> lastLinkMutationPath = new HashMap<>();
 
-    private void recordLinkDelta(Map<LinkPerspectiveKey, Integer> perspectiveDelta, Map<LinkPerspectiveKey, String> lastLinkMutationPath,
-                                  RegisterLinkEndpoint endpoint, String path, int change) {
-        recordLinkDelta(perspectiveDelta, lastLinkMutationPath, new LinkPerspectiveKey(endpoint.itemId(), endpoint.perspectiveId()), path, change);
-    }
-
-    private void recordLinkDelta(Map<LinkPerspectiveKey, Integer> perspectiveDelta, Map<LinkPerspectiveKey, String> lastLinkMutationPath,
-                                  LinkPerspectiveKey key, String path, int change) {
-        perspectiveDelta.merge(key, change, Integer::sum);
-        lastLinkMutationPath.put(key, path);
+        void recordLinkDelta(UUID itemId, UUID perspectiveId, String path, int change) {
+            LinkPerspectiveKey key = new LinkPerspectiveKey(itemId, perspectiveId);
+            perspectiveDelta.merge(key, change, Integer::sum);
+            lastLinkMutationPath.put(key, path);
+        }
     }
 
     // Where checkLinkPerspectiveCardinality learns a new item's own type from, to enumerate its
     // perspectives in the second pass below -- see that method's own comment.
     private record NewItemInfo(String path, UUID itemTypeId) {}
 
-    // Judged only once the whole request has been walked -- see process()'s own comment on why a
+    // Judged only once the whole request has been walked -- see RequestState's comment on why a
     // per-mutation check can't work for minCardinality. Two passes: the first judges every
     // perspective some link create/delete in this request actually touched; the second catches a
     // new item's own perspective that nothing touched at all (zero link creates for it, so it never
     // becomes a perspectiveDelta key), which would otherwise slip past the first pass entirely.
-    private void checkLinkPerspectiveCardinality(Map<LinkPerspectiveKey, Integer> perspectiveDelta, Map<UUID, NewItemInfo> newItems,
-                                                  Map<LinkPerspectiveKey, String> lastLinkMutationPath, List<ValidationError> errors) {
+    private void checkLinkPerspectiveCardinality(RequestState state) {
+        Map<LinkPerspectiveKey, Integer> perspectiveDelta = state.perspectiveDelta;
+        Map<UUID, NewItemInfo> newItems = state.newItems;
+        List<ValidationError> errors = state.errors;
         // A net-zero delta (e.g. one add and one remove against the same perspective in the same
         // request) is skipped outright: nothing is actually changing for that pair, so this must
         // stay silent even if its existing count already violates a bound tightened after the fact
@@ -376,7 +366,7 @@ public class MutationRequestProcessor {
             PerspectiveLookup perspective = findPerspectiveById(key.perspectiveId()).orElseThrow();
             NewItemInfo newItem = newItems.get(key.itemId());
             int existing = newItem != null ? 0 : registerPartitionManager.countLinksForPerspective(key.itemId(), key.perspectiveId());
-            String path = newItem != null ? newItem.path() + ".links." + perspective.name() : lastLinkMutationPath.get(key);
+            String path = newItem != null ? newItem.path() + ".links." + perspective.name() : state.lastLinkMutationPath.get(key);
             reportCardinalityViolation(perspective, existing + change, path, errors);
         });
 
