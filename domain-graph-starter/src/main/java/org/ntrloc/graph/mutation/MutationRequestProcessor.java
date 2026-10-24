@@ -24,13 +24,11 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 // Turns a client-facing MutationRequest -- which speaks only in names (item type, property,
 // perspective), never internal schema ids -- into concrete LedgerEntry objects (which speak
@@ -60,17 +58,20 @@ public class MutationRequestProcessor {
     private final RegisterPartitionManager registerPartitionManager;
     private final SchemaManager schemaManager;
     private final PropertyValidator propertyValidator;
+    private final LinkEndpointResolver linkEndpointResolver;
     private final PermissionService permissionService;
 
     public MutationRequestProcessor(LedgerRegisterCoordinator coordinator,
                                      RegisterPartitionManager registerPartitionManager,
                                      SchemaManager schemaManager,
                                      PropertyValidator propertyValidator,
+                                     LinkEndpointResolver linkEndpointResolver,
                                      PermissionService permissionService) {
         this.coordinator = coordinator;
         this.registerPartitionManager = registerPartitionManager;
         this.schemaManager = schemaManager;
         this.propertyValidator = propertyValidator;
+        this.linkEndpointResolver = linkEndpointResolver;
         this.permissionService = permissionService;
     }
 
@@ -231,16 +232,14 @@ public class MutationRequestProcessor {
 
     private void processLinkCreate(LinkCreateMutation m, String path, NtrlocPrincipal principal, RequestState state) {
         List<ValidationError> errors = state.errors;
-        Optional<ResolvedEndpoint> a = resolveEndpoint(m.firstItem(), path + ".firstItem", state.refIdToItemId, state.refIdToItemTypeId, errors);
-        Optional<ResolvedEndpoint> b = resolveEndpoint(m.secondItem(), path + ".secondItem", state.refIdToItemId, state.refIdToItemTypeId, errors);
-        if (a.isEmpty() || b.isEmpty()) return;
-
-        Optional<UUID> linkTypeId = resolveLinkTypeId(a.get(), b.get(), path, errors);
-        if (linkTypeId.isEmpty()) return;
+        Optional<LinkEndpointResolver.ResolvedLink> resolved =
+                linkEndpointResolver.resolve(m, path, state.refIdToItemId, state.refIdToItemTypeId, errors);
+        if (resolved.isEmpty()) return;
 
         UUID linkId = UUID.randomUUID();
-        LinkEndpoint endpointA = new LinkEndpoint(a.get().perspectiveIdFor(linkTypeId.get()), a.get().itemId());
-        LinkEndpoint endpointB = new LinkEndpoint(b.get().perspectiveIdFor(linkTypeId.get()), b.get().itemId());
+        UUID linkTypeId = resolved.get().linkTypeId();
+        LinkEndpoint endpointA = resolved.get().first();
+        LinkEndpoint endpointB = resolved.get().second();
         // Both sides' own link:create grant are required, not just one -- a user with rights on
         // only one endpoint's perspective can't unilaterally attach a link into the other side.
         if (!canCreateLink(principal, endpointA) || !canCreateLink(principal, endpointB)) {
@@ -249,11 +248,11 @@ public class MutationRequestProcessor {
         }
         state.recordLinkDelta(endpointA.itemId(), endpointA.perspectiveId(), path, +1);
         state.recordLinkDelta(endpointB.itemId(), endpointB.perspectiveId(), path, +1);
-        propertyValidator.checkCanWriteLinkProperties(principal, List.of(endpointA.itemId(), endpointB.itemId()), linkTypeId.get(), m.properties(), path + PROPERTIES_PATH_SUFFIX, errors);
-        Map<UUID, Object> properties = propertyValidator.resolveLinkPropertyIds(linkTypeId.get(), m.properties(), path + PROPERTIES_PATH_SUFFIX, errors);
-        propertyValidator.checkRequiredLinkProperties(linkTypeId.get(), m.properties(), path + PROPERTIES_PATH_SUFFIX, errors);
-        propertyValidator.checkDeprecatedLinkProperties(linkTypeId.get(), m.properties(), path + PROPERTIES_PATH_SUFFIX, errors);
-        state.entries.add(new LinkCreateEntry(linkId, linkTypeId.get(), endpointA, endpointB, properties));
+        propertyValidator.checkCanWriteLinkProperties(principal, List.of(endpointA.itemId(), endpointB.itemId()), linkTypeId, m.properties(), path + PROPERTIES_PATH_SUFFIX, errors);
+        Map<UUID, Object> properties = propertyValidator.resolveLinkPropertyIds(linkTypeId, m.properties(), path + PROPERTIES_PATH_SUFFIX, errors);
+        propertyValidator.checkRequiredLinkProperties(linkTypeId, m.properties(), path + PROPERTIES_PATH_SUFFIX, errors);
+        propertyValidator.checkDeprecatedLinkProperties(linkTypeId, m.properties(), path + PROPERTIES_PATH_SUFFIX, errors);
+        state.entries.add(new LinkCreateEntry(linkId, linkTypeId, endpointA, endpointB, properties));
         state.linkResults.add(new LinkMutationResult(linkId, MutationOperation.CREATE));
     }
 
@@ -409,75 +408,6 @@ public class MutationRequestProcessor {
                 .filter(item -> item.name().equals(itemTypeName))
                 .map(item -> item.id())
                 .findFirst();
-    }
-
-    private record ResolvedEndpoint(UUID itemId, String perspectiveName, List<AdminItemLinkPerspectiveView> candidates) {
-        Set<UUID> candidateLinkTypeIds() {
-            return candidates.stream().map(AdminItemLinkPerspectiveView::linkId).collect(Collectors.toSet());
-        }
-
-        UUID perspectiveIdFor(UUID linkTypeId) {
-            return candidates.stream()
-                    .filter(c -> c.linkId().equals(linkTypeId))
-                    .map(AdminItemLinkPerspectiveView::id)
-                    .findFirst()
-                    .orElseThrow();
-        }
-    }
-
-    private Optional<ResolvedEndpoint> resolveEndpoint(LinkEndpointReference ref, String path,
-                                                         Map<String, UUID> refIdToItemId, Map<String, UUID> refIdToItemTypeId,
-                                                         List<ValidationError> errors) {
-        UUID itemId;
-        UUID itemTypeId;
-        if (ref.item() instanceof NewItemReference r) {
-            itemId = refIdToItemId.get(r.refId());
-            itemTypeId = refIdToItemTypeId.get(r.refId());
-            if (itemId == null) {
-                errors.add(new ValidationError(path + ".item.refId", "Unknown refId: " + r.refId()));
-                return Optional.empty();
-            }
-        } else if (ref.item() instanceof ExistingItemReference r) {
-            Optional<UUID> resolved = registerPartitionManager.findItemTypeId(r.itemId());
-            if (resolved.isEmpty()) {
-                errors.add(new ValidationError(path + ".item.itemId", "Unknown item: " + r.itemId()));
-                return Optional.empty();
-            }
-            itemId = r.itemId();
-            itemTypeId = resolved.get();
-        } else {
-            throw new IllegalArgumentException("Unsupported item reference: " + ref.item().getClass().getSimpleName());
-        }
-
-        List<AdminItemLinkPerspectiveView> candidates = schemaManager.getAdminSchema().items().stream()
-                .filter(item -> item.id().equals(itemTypeId))
-                .findFirst()
-                .map(item -> item.links().getOrDefault(ref.perspectiveName(), List.of()))
-                .orElse(List.of());
-        if (candidates.isEmpty()) {
-            errors.add(new ValidationError(path + ".perspectiveName", "Unknown perspective: " + ref.perspectiveName()));
-            return Optional.empty();
-        }
-        return Optional.of(new ResolvedEndpoint(itemId, ref.perspectiveName(), candidates));
-    }
-
-    // A perspective name isn't unique per item type (the schema allows the same name across
-    // multiple distinct link definitions), so the concrete link type is whichever one both
-    // endpoints' perspective candidates agree on.
-    private Optional<UUID> resolveLinkTypeId(ResolvedEndpoint a, ResolvedEndpoint b, String path, List<ValidationError> errors) {
-        Set<UUID> common = new HashSet<>(a.candidateLinkTypeIds());
-        common.retainAll(b.candidateLinkTypeIds());
-        if (common.isEmpty()) {
-            errors.add(new ValidationError(path,
-                    "No link connects perspective '%s' to perspective '%s'".formatted(a.perspectiveName(), b.perspectiveName())));
-            return Optional.empty();
-        }
-        if (common.size() > 1) {
-            errors.add(new ValidationError(path,
-                    "Ambiguous link: multiple link types connect perspective '%s' to perspective '%s'".formatted(a.perspectiveName(), b.perspectiveName())));
-            return Optional.empty();
-        }
-        return Optional.of(common.iterator().next());
     }
 
     // An abstract item type exists only to be extended -- items must be created as one of its
