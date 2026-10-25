@@ -1,6 +1,5 @@
 package org.ntrloc.graph.db.partition.schema;
 
-import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.ControlledListReference;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateControlledListMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DefinitionMutation;
@@ -38,30 +37,32 @@ class ControlledListMutationApplier {
     }
 
     boolean apply(DefinitionMutation mutation, Map<String, UUID> refIdToListId, List<ControlledListMutationResult> results) {
-        if (mutation instanceof CreateControlledListMutation m) {
-            requireNameAvailable(m.name(), null);
-            var list = controlledListManager.createList(m.name(), m.valueType());
-            controlledListManager.addValues(list.id(), toValueEntries(m.values()));
-            if (m.refId() != null) {
-                refIdToListId.put(m.refId(), list.id());
+        switch (mutation) {
+            case CreateControlledListMutation m -> {
+                requireNameAvailable(m.name(), null);
+                var list = controlledListManager.createList(m.name(), m.valueType());
+                controlledListManager.addValues(list.id(), toValueEntries(m.values()));
+                if (m.refId() != null) {
+                    refIdToListId.put(m.refId(), list.id());
+                }
+                results.add(new ControlledListMutationResult(m.refId(), list.id()));
             }
-            results.add(new ControlledListMutationResult(m.refId(), list.id()));
-        } else if (mutation instanceof UpdateControlledListMutation m) {
-            var list = controlledListManager.getListById(m.listId())
-                    .orElseThrow(() -> new IllegalArgumentException("No controlled list: " + m.listId()));
-            if (m.name() != null) {
-                requireNameAvailable(m.name(), list.id());
-                controlledListManager.renameList(list.id(), m.name());
+            case UpdateControlledListMutation m -> {
+                var list = controlledListManager.getListById(m.listId())
+                        .orElseThrow(() -> new IllegalArgumentException("No controlled list: " + m.listId()));
+                if (m.name() != null) {
+                    requireNameAvailable(m.name(), list.id());
+                    controlledListManager.renameList(list.id(), m.name());
+                }
+                if (m.values() != null) {
+                    controlledListManager.replaceValues(list.id(), list.valueType(), toReplaceEntries(m.values()));
+                }
             }
-            if (m.values() != null) {
-                controlledListManager.replaceValues(list.id(), list.valueType(), toReplaceEntries(m.values()));
+            case DeleteControlledListMutation m -> controlledListManager.deleteList(m.listId());
+            case SetPropertyControlledListMutation m -> applySetProperty(m, refIdToListId);
+            default -> {
+                return false;
             }
-        } else if (mutation instanceof DeleteControlledListMutation m) {
-            controlledListManager.deleteList(m.listId());
-        } else if (mutation instanceof SetPropertyControlledListMutation m) {
-            applySetProperty(m, refIdToListId);
-        } else {
-            return false;
         }
         return true;
     }

@@ -71,7 +71,7 @@ public class MarkerDecisionPipelineRepository implements PipelineSource {
                 """)
                 .param(PARAM_ITEM_TYPE_ID, itemTypeId)
                 .param("factIds", changedFactIds)
-                .query((rs, n) -> readPipeline(rs.getString(COL_PIPELINE)))
+                .query((rs, _) -> readPipeline(rs.getString(COL_PIPELINE)))
                 .list();
     }
 
@@ -125,7 +125,7 @@ public class MarkerDecisionPipelineRepository implements PipelineSource {
 
     public List<PipelineRow> getAllPipelines() {
         return jdbcClient.sql(SELECT_ROW + " ORDER BY item_type_id")
-                .query((rs, n) -> new PipelineRow(
+                .query((rs, _) -> new PipelineRow(
                         rs.getObject("id", UUID.class),
                         rs.getObject(COL_ITEM_TYPE_ID, UUID.class),
                         rs.getBoolean(COL_ENABLED),
@@ -137,7 +137,7 @@ public class MarkerDecisionPipelineRepository implements PipelineSource {
     public Optional<PipelineRow> findById(UUID id) {
         return jdbcClient.sql(SELECT_ROW + " WHERE id = :id")
                 .param("id", id)
-                .query((rs, n) -> new PipelineRow(
+                .query((rs, _) -> new PipelineRow(
                         rs.getObject("id", UUID.class),
                         rs.getObject(COL_ITEM_TYPE_ID, UUID.class),
                         rs.getBoolean(COL_ENABLED),
@@ -151,7 +151,7 @@ public class MarkerDecisionPipelineRepository implements PipelineSource {
     public Optional<PipelineRow> findByItemTypeId(UUID itemTypeId) {
         return jdbcClient.sql(SELECT_ROW + " WHERE item_type_id = :itemTypeId")
                 .param(PARAM_ITEM_TYPE_ID, itemTypeId)
-                .query((rs, n) -> new PipelineRow(
+                .query((rs, _) -> new PipelineRow(
                         rs.getObject("id", UUID.class),
                         rs.getObject(COL_ITEM_TYPE_ID, UUID.class),
                         rs.getBoolean(COL_ENABLED),

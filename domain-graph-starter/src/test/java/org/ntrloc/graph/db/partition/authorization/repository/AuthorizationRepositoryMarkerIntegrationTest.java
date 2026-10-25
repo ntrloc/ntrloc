@@ -106,7 +106,7 @@ class AuthorizationRepositoryMarkerIntegrationTest extends AbstractIntegrationTe
         authRepo.setItemPermissions(grantId, true, false);
 
         var row = jdbcClient.sql("SELECT item_can_read, item_can_delete FROM marker_grant WHERE id = :id")
-                .param("id", grantId).query((rs, n) -> Map.entry(rs.getBoolean("item_can_read"), rs.getBoolean("item_can_delete"))).single();
+                .param("id", grantId).query((rs, _) -> Map.entry(rs.getBoolean("item_can_read"), rs.getBoolean("item_can_delete"))).single();
         assertThat(row.getKey()).isTrue();
         assertThat(row.getValue()).isFalse();
     }
@@ -122,7 +122,7 @@ class AuthorizationRepositoryMarkerIntegrationTest extends AbstractIntegrationTe
 
         var row = jdbcClient.sql("SELECT can_read, can_write FROM marker_grant_property WHERE marker_grant_id = :id AND property_id = :propId")
                 .param("id", grantId).param("propId", fixture.namePropertyId())
-                .query((rs, n) -> Map.entry(rs.getBoolean("can_read"), rs.getBoolean("can_write"))).single();
+                .query((rs, _) -> Map.entry(rs.getBoolean("can_read"), rs.getBoolean("can_write"))).single();
         assertThat(row.getKey()).isTrue();
         assertThat(row.getValue()).isTrue();
         Long rows = jdbcClient.sql("SELECT COUNT(*) FROM marker_grant_property WHERE marker_grant_id = :id")
@@ -144,7 +144,7 @@ class AuthorizationRepositoryMarkerIntegrationTest extends AbstractIntegrationTe
                 WHERE marker_grant_id = :id AND perspective_id = :perspId
                 """)
                 .param("id", grantId).param("perspId", fixture.productPerspectiveId())
-                .query((rs, n) -> List.of(rs.getBoolean("can_create"), rs.getBoolean("can_read"), rs.getBoolean("can_delete"))).single();
+                .query((rs, _) -> List.of(rs.getBoolean("can_create"), rs.getBoolean("can_read"), rs.getBoolean("can_delete"))).single();
         assertThat(row).containsExactly(true, true, true);
     }
 

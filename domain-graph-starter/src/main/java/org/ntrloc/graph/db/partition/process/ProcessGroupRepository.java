@@ -23,7 +23,7 @@ public class ProcessGroupRepository {
 
     public List<ProcessGroupRow> listGroups() {
         return jdbcClient.sql("SELECT id, name FROM process_group ORDER BY name")
-                .query((rs, n) -> new ProcessGroupRow(rs.getObject("id", UUID.class), rs.getString("name")))
+                .query((rs, _) -> new ProcessGroupRow(rs.getObject("id", UUID.class), rs.getString("name")))
                 .list();
     }
 
@@ -36,7 +36,7 @@ public class ProcessGroupRepository {
                 WHERE m.user_id = :userId
                 """)
                 .param("userId", userId)
-                .query((rs, n) -> rs.getString("name"))
+                .query((rs, _) -> rs.getString("name"))
                 .list());
     }
 

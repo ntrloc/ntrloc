@@ -357,7 +357,7 @@ class PropertyValidator {
         UUID binaryId;
         try {
             binaryId = UUID.fromString(s);
-        } catch (IllegalArgumentException e) {
+        } catch (IllegalArgumentException _) {
             errors.add(new ValidationError(path, PROPERTY_QUOTE_PREFIX + property.name() + "' is not a valid binary id: " + s));
             return;
         }
@@ -394,7 +394,7 @@ class PropertyValidator {
         try {
             LocalDate.parse(s);
             return true;
-        } catch (Exception e) {
+        } catch (Exception _) {
             return false;
         }
     }
@@ -403,11 +403,11 @@ class PropertyValidator {
         try {
             OffsetDateTime.parse(s);
             return true;
-        } catch (Exception e) {
+        } catch (Exception _) {
             try {
                 Instant.parse(s);
                 return true;
-            } catch (Exception e2) {
+            } catch (Exception _) {
                 return false;
             }
         }

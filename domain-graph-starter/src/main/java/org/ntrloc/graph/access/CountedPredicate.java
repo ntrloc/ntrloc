@@ -22,9 +22,12 @@ public record CountedPredicate(Context subject, Predicate subPredicate, Predicat
     }
 
     private static boolean containsEachStep(Context context) {
-        if (context instanceof StepToLink step) return step.each() || containsEachStep(step.next());
-        if (context instanceof StepToItem step) return step.each() || containsEachStep(step.next());
-        if (context instanceof StepToProperty step) return step.each() || containsEachStep(step.next());
-        return false; // Self, StepToStateMachine -- neither is steppable
+        return switch (context) {
+            case StepToLink step -> step.each() || containsEachStep(step.next());
+            case StepToItem step -> step.each() || containsEachStep(step.next());
+            case StepToProperty step -> step.each() || containsEachStep(step.next());
+            case Self _, StepToStateMachine _ -> false; // neither is steppable
+            case null -> false;
+        };
     }
 }

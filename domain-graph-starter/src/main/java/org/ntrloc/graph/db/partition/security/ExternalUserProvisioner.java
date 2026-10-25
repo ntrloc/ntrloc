@@ -51,7 +51,7 @@ public class ExternalUserProvisioner {
                 var user = repo.createUser(displayName, email, false);
                 defaultUserGroupInitializer.addUserToDefaultUserGroup(user.id());
             });
-        } catch (DuplicateKeyException e) {
+        } catch (DuplicateKeyException _) {
             // A concurrent first login for the same email created the account first; use that one.
         }
         return principals.byEmail(email).orElseThrow();

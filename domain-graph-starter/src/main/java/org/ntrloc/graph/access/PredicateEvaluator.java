@@ -17,27 +17,33 @@ public final class PredicateEvaluator {
 
     @SuppressWarnings("unchecked")
     public static boolean evaluate(Predicate predicate, Object value, UUID selfId) {
-        if (predicate instanceof StringPredicate p) return evaluateString(p, (String) value);
-        if (predicate instanceof NumberPredicate p) return evaluateNumber(p, (Number) value);
-        if (predicate instanceof DatePredicate p) return evaluateDate(p, (Instant) value);
-        if (predicate instanceof BooleanPredicate p) return evaluateBoolean(p, (Boolean) value);
-        if (predicate instanceof StringListPredicate p) return evaluateStringList(p, (List<String>) value);
-        if (predicate instanceof NumberListPredicate p) return evaluateNumberList(p, (List<Number>) value);
-        if (predicate instanceof DateListPredicate p) return evaluateDateList(p, (List<Instant>) value);
-        if (predicate instanceof LinkPredicate p) return evaluateLink(p, (Integer) value);
-        if (predicate instanceof StateMachinePredicate p) return evaluateStateMachine(p, (UUID) value);
-        if (predicate instanceof IdentityPredicate p) return evaluateIdentity(p, (UUID) value, selfId);
-        throw new IllegalArgumentException("Unsupported predicate: " + predicate);
+        return switch (predicate) {
+            case StringPredicate p -> evaluateString(p, (String) value);
+            case NumberPredicate p -> evaluateNumber(p, (Number) value);
+            case DatePredicate p -> evaluateDate(p, (Instant) value);
+            case BooleanPredicate p -> evaluateBoolean(p, (Boolean) value);
+            case StringListPredicate p -> evaluateStringList(p, (List<String>) value);
+            case NumberListPredicate p -> evaluateNumberList(p, (List<Number>) value);
+            case DateListPredicate p -> evaluateDateList(p, (List<Instant>) value);
+            case LinkPredicate p -> evaluateLink(p, (Integer) value);
+            case StateMachinePredicate p -> evaluateStateMachine(p, (UUID) value);
+            case IdentityPredicate p -> evaluateIdentity(p, (UUID) value, selfId);
+            // Quantified over many instances, so never resolved to one value: SignalEvaluator
+            // evaluates these itself, applying this method to each sub-predicate.
+            case TotalityPredicate _, CountedPredicate _ ->
+                    throw new IllegalArgumentException("Evaluated by SignalEvaluator, not against a single value: " + predicate);
+        };
     }
 
     private static boolean evaluateString(StringPredicate p, String value) {
-        if (p instanceof StringEqualsPredicate e) return value != null && value.equals(e.value());
-        if (p instanceof StringNotEqualsPredicate e) return value == null || !value.equals(e.value());
-        if (p instanceof StringLikePredicate e) return value != null && likeMatch(value, e.pattern());
-        if (p instanceof StringStartsWithPredicate e) return value != null && value.startsWith(e.prefix());
-        if (p instanceof StringExistsPredicate) return value != null;
-        if (p instanceof StringNotExistsPredicate) return value == null;
-        throw new IllegalArgumentException("Unsupported StringPredicate: " + p);
+        return switch (p) {
+            case StringEqualsPredicate e -> value != null && value.equals(e.value());
+            case StringNotEqualsPredicate e -> value == null || !value.equals(e.value());
+            case StringLikePredicate e -> value != null && likeMatch(value, e.pattern());
+            case StringStartsWithPredicate e -> value != null && value.startsWith(e.prefix());
+            case StringExistsPredicate _ -> value != null;
+            case StringNotExistsPredicate _ -> value == null;
+        };
     }
 
     // '%' = any run of characters, '_' = exactly one -- the same two wildcards SQL LIKE uses, since
@@ -83,31 +89,34 @@ public final class PredicateEvaluator {
 
     private static boolean evaluateBoolean(BooleanPredicate p, Boolean value) {
         boolean actual = Boolean.TRUE.equals(value);
-        if (p instanceof IsTruePredicate) return actual;
-        if (p instanceof IsFalsePredicate) return !actual;
-        throw new IllegalArgumentException("Unsupported BooleanPredicate: " + p);
+        return switch (p) {
+            case IsTruePredicate _ -> actual;
+            case IsFalsePredicate _ -> !actual;
+        };
     }
 
     private static boolean evaluateStringList(StringListPredicate p, List<String> value) {
         List<String> v = value == null ? List.of() : value;
-        if (p instanceof StringListIncludesPredicate e) return v.contains(e.value());
-        if (p instanceof StringListExcludesPredicate e) return !v.contains(e.value());
-        if (p instanceof StringListIsEmptyPredicate) return v.isEmpty();
-        if (p instanceof StringListIsNotEmptyPredicate) return !v.isEmpty();
-        if (p instanceof StringListSizePredicate e) return compareNumber(e.operator(), v.size(), e.value(), e.valueTo());
-        throw new IllegalArgumentException("Unsupported StringListPredicate: " + p);
+        return switch (p) {
+            case StringListIncludesPredicate e -> v.contains(e.value());
+            case StringListExcludesPredicate e -> !v.contains(e.value());
+            case StringListIsEmptyPredicate _ -> v.isEmpty();
+            case StringListIsNotEmptyPredicate _ -> !v.isEmpty();
+            case StringListSizePredicate e -> compareNumber(e.operator(), v.size(), e.value(), e.valueTo());
+        };
     }
 
     private static boolean evaluateNumberList(NumberListPredicate p, List<Number> value) {
         List<Number> v = value == null ? List.of() : value;
-        if (p instanceof NumberListIsEmptyPredicate) return v.isEmpty();
-        if (p instanceof NumberListIsNotEmptyPredicate) return !v.isEmpty();
-        if (p instanceof NumberListSizePredicate e) return compareNumber(e.operator(), v.size(), e.value(), e.valueTo());
-        if (p instanceof NumberListSumPredicate e) return compareNumber(e.operator(), sum(v), e.value(), e.valueTo());
-        if (p instanceof NumberListAvgPredicate e) return compareNumber(e.operator(), avg(v), e.value(), e.valueTo());
-        if (p instanceof NumberListMinPredicate e) return compareNumber(e.operator(), min(v), e.value(), e.valueTo());
-        if (p instanceof NumberListMaxPredicate e) return compareNumber(e.operator(), max(v), e.value(), e.valueTo());
-        throw new IllegalArgumentException("Unsupported NumberListPredicate: " + p);
+        return switch (p) {
+            case NumberListIsEmptyPredicate _ -> v.isEmpty();
+            case NumberListIsNotEmptyPredicate _ -> !v.isEmpty();
+            case NumberListSizePredicate e -> compareNumber(e.operator(), v.size(), e.value(), e.valueTo());
+            case NumberListSumPredicate e -> compareNumber(e.operator(), sum(v), e.value(), e.valueTo());
+            case NumberListAvgPredicate e -> compareNumber(e.operator(), avg(v), e.value(), e.valueTo());
+            case NumberListMinPredicate e -> compareNumber(e.operator(), min(v), e.value(), e.valueTo());
+            case NumberListMaxPredicate e -> compareNumber(e.operator(), max(v), e.value(), e.valueTo());
+        };
     }
 
     private static double sum(List<Number> v) {
@@ -134,18 +143,15 @@ public final class PredicateEvaluator {
 
     private static boolean evaluateDateList(DateListPredicate p, List<Instant> value) {
         List<Instant> v = value == null ? List.of() : value;
-        if (p instanceof DateListIsEmptyPredicate) return v.isEmpty();
-        if (p instanceof DateListIsNotEmptyPredicate) return !v.isEmpty();
-        if (p instanceof DateListSizePredicate e) return compareNumber(e.operator(), v.size(), e.value(), e.valueTo());
-        if (p instanceof DateListMinPredicate e) {
-            // subject is irrelevant here -- evaluateDate never reads it, this is just reusing the
-            // operator/value/valueTo comparison logic against an already-reduced Instant.
-            return evaluateDate(new DatePredicate(null, e.operator(), e.value(), e.valueTo()), minInstant(v));
-        }
-        if (p instanceof DateListMaxPredicate e) {
-            return evaluateDate(new DatePredicate(null, e.operator(), e.value(), e.valueTo()), maxInstant(v));
-        }
-        throw new IllegalArgumentException("Unsupported DateListPredicate: " + p);
+        // For Min/Max, subject is irrelevant -- evaluateDate never reads it, this is just reusing the
+        // operator/value/valueTo comparison logic against an already-reduced Instant.
+        return switch (p) {
+            case DateListIsEmptyPredicate _ -> v.isEmpty();
+            case DateListIsNotEmptyPredicate _ -> !v.isEmpty();
+            case DateListSizePredicate e -> compareNumber(e.operator(), v.size(), e.value(), e.valueTo());
+            case DateListMinPredicate e -> evaluateDate(new DatePredicate(null, e.operator(), e.value(), e.valueTo()), minInstant(v));
+            case DateListMaxPredicate e -> evaluateDate(new DatePredicate(null, e.operator(), e.value(), e.valueTo()), maxInstant(v));
+        };
     }
 
     private static Instant minInstant(List<Instant> v) {
@@ -158,19 +164,22 @@ public final class PredicateEvaluator {
 
     private static boolean evaluateLink(LinkPredicate p, Integer value) {
         int count = value == null ? 0 : value;
-        if (p instanceof LinkIsPresentPredicate) return count > 0;
-        if (p instanceof LinkCountPredicate e) return compareNumber(e.operator(), count, e.value(), e.valueTo());
-        throw new IllegalArgumentException("Unsupported LinkPredicate: " + p);
+        return switch (p) {
+            case LinkIsPresentPredicate _ -> count > 0;
+            case LinkCountPredicate e -> compareNumber(e.operator(), count, e.value(), e.valueTo());
+        };
     }
 
     private static boolean evaluateStateMachine(StateMachinePredicate p, UUID currentStateId) {
-        if (p instanceof StateEqualsPredicate e) return e.stateId().equals(currentStateId);
-        if (p instanceof NoStatePredicate) return currentStateId == null;
-        throw new IllegalArgumentException("Unsupported StateMachinePredicate: " + p);
+        return switch (p) {
+            case StateEqualsPredicate e -> e.stateId().equals(currentStateId);
+            case NoStatePredicate _ -> currentStateId == null;
+        };
     }
 
     private static boolean evaluateIdentity(IdentityPredicate p, UUID resolvedId, UUID selfId) {
-        if (p instanceof EqualsSelfPredicate) return resolvedId != null && resolvedId.equals(selfId);
-        throw new IllegalArgumentException("Unsupported IdentityPredicate: " + p);
+        return switch (p) {
+            case EqualsSelfPredicate _ -> resolvedId != null && resolvedId.equals(selfId);
+        };
     }
 }

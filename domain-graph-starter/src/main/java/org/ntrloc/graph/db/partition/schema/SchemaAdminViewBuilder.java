@@ -131,7 +131,7 @@ class SchemaAdminViewBuilder {
                 collectListUsage(contents, entityNameMap.getOrDefault(ownerId, "(item)"), usageByListId));
         ownerContents.byTrait().forEach((ownerId, contents) ->
                 collectListUsage(contents, entityNameMap.getOrDefault(ownerId, "(trait)"), usageByListId));
-        ownerContents.byLink().forEach((ownerId, contents) ->
+        ownerContents.byLink().forEach((_, contents) ->
                 collectListUsage(contents, "(link property)", usageByListId));
 
         return controlledListManager.getAllLists().stream()

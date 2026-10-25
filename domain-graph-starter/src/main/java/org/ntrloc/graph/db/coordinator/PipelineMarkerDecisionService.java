@@ -8,6 +8,7 @@ import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
 import org.ntrloc.graph.db.partition.ledger.ItemUpdateEntry;
 import org.ntrloc.graph.db.partition.ledger.LedgerEntry;
 import org.ntrloc.graph.db.partition.ledger.LedgerPartitionManager;
+import org.ntrloc.graph.db.partition.ledger.ManuallyAppliedMarker;
 import org.ntrloc.graph.db.partition.ledger.MarkerAttribution;
 import org.ntrloc.graph.db.partition.ledger.PipelineAppliedMarker;
 import org.ntrloc.graph.db.partition.register.RegisterPartitionManager;
@@ -57,9 +58,11 @@ public class PipelineMarkerDecisionService {
     }
 
     private LedgerEntry enrichEntry(LedgerEntry entry) {
-        if (entry instanceof ItemCreateEntry e) return enrichCreate(e);
-        if (entry instanceof ItemUpdateEntry e) return enrichUpdate(e);
-        return entry;
+        return switch (entry) {
+            case ItemCreateEntry e -> enrichCreate(e);
+            case ItemUpdateEntry e -> enrichUpdate(e);
+            default -> entry;
+        };
     }
 
     // Everything a create sets is, by definition, newly "changed" -- there's no prior state to
@@ -157,18 +160,22 @@ public class PipelineMarkerDecisionService {
     private Map<UUID, UUID> replayCurrentPipelineAttribution(UUID itemId) {
         Map<UUID, UUID> current = new HashMap<>();
         for (LedgerEntry entry : ledgerPartitionManager.readItemStream(itemId)) {
-            if (entry instanceof ItemCreateEntry e) {
-                e.initialMarkers().forEach(m -> putIfPipeline(current, m));
-            } else if (entry instanceof ItemUpdateEntry e) {
-                e.markersAdded().forEach(m -> putIfPipeline(current, m));
-                e.markersRemoved().forEach(m -> current.remove(m.markerId()));
+            switch (entry) {
+                case ItemCreateEntry e -> e.initialMarkers().forEach(m -> putIfPipeline(current, m));
+                case ItemUpdateEntry e -> {
+                    e.markersAdded().forEach(m -> putIfPipeline(current, m));
+                    e.markersRemoved().forEach(m -> current.remove(m.markerId()));
+                }
+                default -> { /* carries no marker changes */ }
             }
         }
         return current;
     }
 
     private void putIfPipeline(Map<UUID, UUID> current, MarkerAttribution attribution) {
-        if (attribution instanceof PipelineAppliedMarker pam) current.put(pam.markerId(), pam.pipelineId());
-        else current.remove(attribution.markerId());
+        switch (attribution) {
+            case PipelineAppliedMarker pam -> current.put(pam.markerId(), pam.pipelineId());
+            case ManuallyAppliedMarker m -> current.remove(m.markerId());
+        }
     }
 }

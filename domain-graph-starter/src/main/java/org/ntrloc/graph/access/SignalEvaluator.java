@@ -41,14 +41,16 @@ public final class SignalEvaluator {
     public static boolean evaluatePin(UUID pinId, List<SignalBlock> topLevelSignals,
                                        Map<UUID, Object> selfProperties, UUID selfId, FactResolver facts) {
         for (SignalBlock block : topLevelSignals) {
-            if (block instanceof Condition c && c.id().equals(pinId)) {
-                return evaluateCondition(c, null, selfId, selfProperties, selfId, facts);
-            }
-            if (block instanceof ConditionGroup g) {
-                for (Condition c : g.conditions()) {
-                    // A member condition with no subject of its own inherits the group's -- the same
-                    // DRY/inheritance relationship a predicate has with whatever contains it.
-                    if (c.id().equals(pinId)) return evaluateCondition(c, g.subject(), selfId, selfProperties, selfId, facts);
+            switch (block) {
+                case Condition c -> {
+                    if (c.id().equals(pinId)) return evaluateCondition(c, null, selfId, selfProperties, selfId, facts);
+                }
+                case ConditionGroup g -> {
+                    for (Condition c : g.conditions()) {
+                        // A member condition with no subject of its own inherits the group's -- the same
+                        // DRY/inheritance relationship a predicate has with whatever contains it.
+                        if (c.id().equals(pinId)) return evaluateCondition(c, g.subject(), selfId, selfProperties, selfId, facts);
+                    }
                 }
             }
         }
@@ -82,13 +84,18 @@ public final class SignalEvaluator {
                                               UUID currentItemId, Map<UUID, Object> currentProperties,
                                               UUID selfId, FactResolver facts) {
         Context subject = predicate.subject() != null ? predicate.subject() : inherited;
-        if (predicate instanceof TotalityPredicate t) {
-            return evaluateQuantity(t.quantity(), t.subPredicates(),
+        return switch (predicate) {
+            case TotalityPredicate t -> evaluateQuantity(t.quantity(), t.subPredicates(),
                     sub -> evaluatePredicate(sub, subject, currentItemId, currentProperties, selfId, facts));
-        }
-        if (predicate instanceof CountedPredicate cp) {
-            return evaluateCountedPredicate(cp, subject, currentItemId, currentProperties, selfId, facts);
-        }
+            case CountedPredicate cp -> evaluateCountedPredicate(cp, subject, currentItemId, currentProperties, selfId, facts);
+            default -> evaluateAgainstSingleValue(predicate, subject, currentItemId, currentProperties, selfId, facts);
+        };
+    }
+
+    // Every other predicate kind tests exactly one resolved value -- see PredicateEvaluator.
+    private static boolean evaluateAgainstSingleValue(Predicate predicate, Context subject,
+                                                      UUID currentItemId, Map<UUID, Object> currentProperties,
+                                                      UUID selfId, FactResolver facts) {
         List<ContextResolver.Instance> instances = ContextResolver.resolveInstances(subject, currentItemId, currentProperties, facts);
         if (instances.size() > 1) {
             // An each-containing subject outside a CountedPredicate has nowhere to put more than one
@@ -96,7 +103,7 @@ public final class SignalEvaluator {
             // precisely because it's the only predicate kind built to consume more than one.
             throw new IllegalStateException("Subject resolved to more than one instance outside a CountedPredicate: " + subject);
         }
-        Object value = instances.isEmpty() ? null : instances.get(0).value();
+        Object value = instances.isEmpty() ? null : instances.getFirst().value();
         return PredicateEvaluator.evaluate(predicate, value, selfId);
     }
 

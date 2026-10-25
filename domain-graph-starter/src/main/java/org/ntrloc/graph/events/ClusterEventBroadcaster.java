@@ -3,6 +3,8 @@ package org.ntrloc.graph.events;
 import com.hazelcast.topic.ITopic;
 import jakarta.annotation.PreDestroy;
 import org.ntrloc.graph.cluster.ClusterService;
+import org.springframework.context.event.ContextClosedEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -61,6 +63,11 @@ public class ClusterEventBroadcaster {
 
     public SseEmitter register(Predicate<ClusterEvent> filter) {
         return registry.register(filter);
+    }
+
+    @EventListener(ContextClosedEvent.class)
+    void closeStreams() {
+        registry.completeAll();
     }
 
     @PreDestroy

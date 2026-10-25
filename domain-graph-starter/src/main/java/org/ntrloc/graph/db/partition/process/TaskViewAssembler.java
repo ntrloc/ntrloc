@@ -28,7 +28,7 @@ public class TaskViewAssembler {
     }
 
     public TaskView toView(Task task) {
-        return toViews(List.of(task)).get(0);
+        return toViews(List.of(task)).getFirst();
     }
 
     public List<TaskView> toViews(List<Task> tasks) {
@@ -57,7 +57,7 @@ public class TaskViewAssembler {
         }
         try {
             return Optional.of(UUID.fromString(value.trim()));
-        } catch (IllegalArgumentException e) {
+        } catch (IllegalArgumentException _) {
             return Optional.empty();
         }
     }

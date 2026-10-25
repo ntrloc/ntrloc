@@ -33,14 +33,13 @@ class LinkMutationApplier {
     // private method per mutation type drops the outer nesting layer everything inside a branch
     // used to inherit.
     boolean apply(DefinitionMutation mutation) {
-        if (mutation instanceof CreateLinkDefinitionMutation m) {
-            applyCreate(m);
-        } else if (mutation instanceof DeleteLinkDefinitionMutation m) {
-            applyDelete(m);
-        } else if (mutation instanceof UpdatePerspectiveDefinitionMutation m) {
-            applyUpdatePerspective(m);
-        } else {
-            return false;
+        switch (mutation) {
+            case CreateLinkDefinitionMutation m -> applyCreate(m);
+            case DeleteLinkDefinitionMutation m -> applyDelete(m);
+            case UpdatePerspectiveDefinitionMutation m -> applyUpdatePerspective(m);
+            default -> {
+                return false;
+            }
         }
         return true;
     }

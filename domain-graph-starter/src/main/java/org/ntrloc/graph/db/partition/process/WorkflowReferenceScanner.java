@@ -39,7 +39,7 @@ public class WorkflowReferenceScanner {
                 WHERE s.entry_process_id = :key OR s.exit_process_id = :key
                 """)
                 .param("key", processId)
-                .query((rs, n) -> "state \"" + rs.getString("state") + IN_STATE_MACHINE
+                .query((rs, _) -> "state \"" + rs.getString("state") + IN_STATE_MACHINE
                         + rs.getString(COL_MACHINE) + "\" (" + rs.getString("role") + " process)")
                 .list().forEach(refs::add);
         jdbcClient.sql("""
@@ -50,7 +50,7 @@ public class WorkflowReferenceScanner {
                 WHERE t.process_id = :key
                 """)
                 .param("key", processId)
-                .query((rs, n) -> "transition \"" + rs.getString("transition") + IN_STATE_MACHINE
+                .query((rs, _) -> "transition \"" + rs.getString("transition") + IN_STATE_MACHINE
                         + rs.getString(COL_MACHINE) + "\"")
                 .list().forEach(refs::add);
         return refs;
@@ -67,7 +67,7 @@ public class WorkflowReferenceScanner {
                 WHERE s.entry_marker_decision_key = :key
                 """)
                 .param("key", decisionKey)
-                .query((rs, n) -> "state \"" + rs.getString("state") + IN_STATE_MACHINE
+                .query((rs, _) -> "state \"" + rs.getString("state") + IN_STATE_MACHINE
                         + rs.getString(COL_MACHINE) + "\" (entry-marker decision)")
                 .list().forEach(refs::add);
         return refs;

@@ -123,7 +123,7 @@ public class VariableInstanceDataManagerImpl extends AbstractProcessDataManager 
     @Override
     public VariableInstanceEntity findVariablesInstanceByQuery(InternalVariableInstanceQueryImpl query) {
         List<VariableInstanceEntity> results = findVariablesInstancesByQuery(query);
-        return results.isEmpty() ? null : results.get(0);
+        return results.isEmpty() ? null : results.getFirst();
     }
 
     private Map<String, Object> internalQueryWhereClause(InternalVariableInstanceQueryImpl query, StringBuilder sql) {

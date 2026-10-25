@@ -14,7 +14,7 @@ record PropertyScope(Map<String, AdminPropertyDefinitionView> properties, Map<St
 
     static PropertyScope of(List<AdminPropertyDefinitionView> properties, List<AdminPropertyGroupView> groups) {
         return new PropertyScope(
-                properties.stream().collect(Collectors.toMap(AdminPropertyDefinitionView::name, p -> p, (a, b) -> a)),
-                groups.stream().collect(Collectors.toMap(AdminPropertyGroupView::name, g -> g, (a, b) -> a)));
+                properties.stream().collect(Collectors.toMap(AdminPropertyDefinitionView::name, p -> p, (a, _) -> a)),
+                groups.stream().collect(Collectors.toMap(AdminPropertyGroupView::name, g -> g, (a, _) -> a)));
     }
 }

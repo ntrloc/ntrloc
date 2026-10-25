@@ -3,14 +3,13 @@ package org.ntrloc.graph.security;
 import org.ntrloc.graph.TestApplication;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.boot.webtestclient.autoconfigure.AutoConfigureWebTestClient;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.reactive.server.WebTestClient;
 import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.containers.wait.strategy.Wait;
-import org.testcontainers.utility.MountableFile;
 
 import java.io.IOException;
 import java.net.CookieHandler;
@@ -23,7 +22,6 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -42,29 +40,20 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Local login is off in this context, as in an SSO-only deployment.
  *
  * OIDC-enabled settings make this a separate Spring context, so each subclass brings its own
- * Postgres container (see PersonalAccessTokenAuthenticationIntegrationTest); Keycloak is read-only
- * to these tests, so one server is shared. Singleton containers, as in AbstractIntegrationTest.
+ * Postgres container (see PersonalAccessTokenAuthenticationIntegrationTest); Keycloak is shared
+ * (see KeycloakContainers). Singleton containers, as in AbstractIntegrationTest.
+ * @DirtiesContext (inherited) closes each subclass's context once it finishes, so these extra
+ * contexts don't all stay alive, and in memory, for the rest of the test run.
  */
 @SpringBootTest(classes = TestApplication.class, webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @AutoConfigureWebTestClient
+@DirtiesContext
 public abstract class AbstractOidcIntegrationTest {
 
-    protected static final String OIDC_PASSWORD = "oidc-secret";
-    private static final int KEYCLOAK_PORT = 8080;
+    protected static final String OIDC_PASSWORD = KeycloakContainers.USER_PASSWORD;
     private static final Pattern LOGIN_FORM_ACTION = Pattern.compile("<form[^>]*id=\"kc-form-login\"[^>]*action=\"([^\"]+)\"");
 
-    @SuppressWarnings("resource")
-    private static final GenericContainer<?> KEYCLOAK = new GenericContainer<>("quay.io/keycloak/keycloak:26.4.2")
-            .withCommand("start-dev", "--import-realm")
-            .withEnv(Map.of("KC_BOOTSTRAP_ADMIN_USERNAME", "admin", "KC_BOOTSTRAP_ADMIN_PASSWORD", "admin"))
-            .withCopyFileToContainer(MountableFile.forClasspathResource("oidc/ntrloc-realm.json"), "/opt/keycloak/data/import/ntrloc-realm.json")
-            .withExposedPorts(KEYCLOAK_PORT)
-            .waitingFor(Wait.forHttp("/realms/ntrloc/.well-known/openid-configuration").forPort(KEYCLOAK_PORT)
-                    .withStartupTimeout(Duration.ofMinutes(3)));
-
-    static {
-        KEYCLOAK.start();
-    }
+    private static final GenericContainer<?> KEYCLOAK = KeycloakContainers.shared();
 
     @DynamicPropertySource
     static void registerOidcProperties(DynamicPropertyRegistry registry) {
@@ -72,12 +61,11 @@ public abstract class AbstractOidcIntegrationTest {
         // SSO only, as an OIDC deployment typically is: no local login, no LDAP.
         registry.add("graph.auth.local.enabled", () -> "false");
         registry.add("graph.auth.oauth.enabled", () -> "true");
-        registry.add(registration + "client-id", () -> "ntrloc");
-        registry.add(registration + "client-secret", () -> "ntrloc-client-secret");
+        registry.add(registration + "client-id", () -> KeycloakContainers.CLIENT_ID);
+        registry.add(registration + "client-secret", () -> KeycloakContainers.CLIENT_SECRET);
         registry.add(registration + "client-name", () -> "Keycloak");
         registry.add(registration + "scope", () -> "openid,profile,email");
-        registry.add("spring.security.oauth2.client.provider.keycloak.issuer-uri",
-                () -> "http://localhost:" + KEYCLOAK.getMappedPort(KEYCLOAK_PORT) + "/realms/ntrloc");
+        registry.add("spring.security.oauth2.client.provider.keycloak.issuer-uri", () -> KeycloakContainers.issuerUri(KEYCLOAK));
     }
 
     @LocalServerPort

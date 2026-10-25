@@ -39,16 +39,13 @@ public final class WatchDerivation {
         }
         Set<UUID> watchedIds = new HashSet<>();
         for (SignalBlock block : blocks) {
-            if (block instanceof Condition c) {
-                collectConditionWatches(c, null, watchedIds);
-            } else if (block instanceof ConditionGroup g) {
+            switch (block) {
+                case Condition c -> collectConditionWatches(c, null, watchedIds);
                 // Each member condition inherits the group's own subject when it has none of its
                 // own -- the same relationship SignalEvaluator resolves at evaluation time; watch
                 // derivation has to follow the identical inheritance chain or it under-counts exactly
                 // the facts a condition actually reads.
-                for (Condition c : g.conditions()) {
-                    collectConditionWatches(c, g.subject(), watchedIds);
-                }
+                case ConditionGroup g -> g.conditions().forEach(c -> collectConditionWatches(c, g.subject(), watchedIds));
             }
         }
         return watchedIds;
@@ -69,29 +66,36 @@ public final class WatchDerivation {
         if (subject != null) {
             collectReferencedIds(subject, ids);
         }
-        if (predicate instanceof TotalityPredicate t) {
-            for (Predicate sub : t.subPredicates()) {
-                collectPredicateWatches(sub, subject, ids);
+        switch (predicate) {
+            case TotalityPredicate t -> t.subPredicates().forEach(sub -> collectPredicateWatches(sub, subject, ids));
+            case CountedPredicate c -> {
+                collectPredicateWatches(c.subPredicate(), subject, ids);
+                collectPredicateWatches(c.countPredicate(), subject, ids);
             }
-        } else if (predicate instanceof CountedPredicate c) {
-            collectPredicateWatches(c.subPredicate(), subject, ids);
-            collectPredicateWatches(c.countPredicate(), subject, ids);
+            default -> {
+                // A leaf value predicate nests nothing further.
+            }
         }
     }
 
     private static void collectReferencedIds(Context context, Set<UUID> ids) {
-        if (context instanceof StepToLink step) {
-            ids.add(step.linkPerspectiveId());
-            collectReferencedIds(step.next(), ids);
-        } else if (context instanceof StepToItem step) {
-            ids.add(step.linkPerspectiveId());
-            collectReferencedIds(step.next(), ids);
-        } else if (context instanceof StepToProperty step) {
-            ids.add(step.propertyId());
-            collectReferencedIds(step.next(), ids);
-        } else if (context instanceof StepToStateMachine step) {
-            ids.add(step.stateMachineId());
+        switch (context) {
+            case StepToLink step -> {
+                ids.add(step.linkPerspectiveId());
+                collectReferencedIds(step.next(), ids);
+            }
+            case StepToItem step -> {
+                ids.add(step.linkPerspectiveId());
+                collectReferencedIds(step.next(), ids);
+            }
+            case StepToProperty step -> {
+                ids.add(step.propertyId());
+                collectReferencedIds(step.next(), ids);
+            }
+            case StepToStateMachine step -> ids.add(step.stateMachineId());
+            // Self, or a chain with no terminal step: nothing to add, nothing to recurse into.
+            case Self _ -> { /* nothing */ }
+            case null -> { /* nothing */ }
         }
-        // Self -- nothing to add, nothing further to recurse into.
     }
 }

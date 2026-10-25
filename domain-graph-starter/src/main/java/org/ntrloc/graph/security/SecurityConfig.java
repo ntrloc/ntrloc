@@ -114,7 +114,7 @@ public class SecurityConfig {
                         // Both admin UIs. Admin comes only from security_user.is_admin, read off the
                         // principal like every controller's own admin check -- never from granted
                         // authorities.
-                        .requestMatchers("/admin/**", "/admin-react/**").access((authentication, context) ->
+                        .requestMatchers("/admin/**", "/admin-react/**").access((authentication, _) ->
                                 new AuthorizationDecision(principals.fromAuthentication(authentication.get())
                                         .map(NtrlocPrincipal::isAdmin).orElse(false)))
                         .anyRequest().authenticated()

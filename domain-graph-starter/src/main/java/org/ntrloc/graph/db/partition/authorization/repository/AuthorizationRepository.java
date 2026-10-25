@@ -109,7 +109,7 @@ public class AuthorizationRepository {
                 """)
                 .param(PARAM_ITEM_TYPE_ID, itemTypeId).param(PARAM_PRINCIPAL_TYPE, principalType)
                 .param(PARAM_PRINCIPAL_ID, principalId).param(PARAM_PERMISSION, permission)
-                .query((rs, n) -> rs.getObject("id", UUID.class))
+                .query((rs, _) -> rs.getObject("id", UUID.class))
                 .optional();
     }
 
@@ -131,7 +131,7 @@ public class AuthorizationRepository {
                 """)
                 .param(PARAM_PRINCIPAL_TYPE, principalType)
                 .param(PARAM_PRINCIPAL_ID, principalId)
-                .query((rs, n) -> new GrantRow(
+                .query((rs, _) -> new GrantRow(
                         rs.getObject("grant_id", UUID.class),
                         rs.getObject(COL_ITEM_TYPE_ID, UUID.class),
                         rs.getString("item_type_name"),
@@ -151,7 +151,7 @@ public class AuthorizationRepository {
                 ORDER BY si.name, g.permission
                 """)
                 .param("groupIds", groupIds)
-                .query((rs, n) -> new GrantRow(
+                .query((rs, _) -> new GrantRow(
                         rs.getObject("grant_id", UUID.class),
                         rs.getObject(COL_ITEM_TYPE_ID, UUID.class),
                         rs.getString("item_type_name"),
@@ -188,7 +188,7 @@ public class AuthorizationRepository {
                 WHERE id = :id RETURNING id, name, description, scope_kind, scope_id
                 """)
                 .param("id", id).param("name", name).param(COL_DESCRIPTION, description)
-                .query((rs, n) -> new MarkerRow(
+                .query((rs, _) -> new MarkerRow(
                         rs.getObject("id", UUID.class), rs.getString("name"), rs.getString(COL_DESCRIPTION),
                         rs.getString("scope_kind"), rs.getObject("scope_id", UUID.class)))
                 .single();
@@ -201,7 +201,7 @@ public class AuthorizationRepository {
 
     public List<MarkerRow> getAllMarkers() {
         return jdbcClient.sql("SELECT id, name, description, scope_kind, scope_id FROM authorization_marker ORDER BY name")
-                .query((rs, n) -> new MarkerRow(
+                .query((rs, _) -> new MarkerRow(
                         rs.getObject("id", UUID.class),
                         rs.getString("name"),
                         rs.getString(COL_DESCRIPTION),
@@ -218,7 +218,7 @@ public class AuthorizationRepository {
                 WHERE ri.item_id = :itemId AND ri.state = 'COMMITTED'
                 """)
                 .param(PARAM_ITEM_ID, itemId)
-                .query((rs, n) -> rs.getObject(COL_MARKER_ID, UUID.class))
+                .query((rs, _) -> rs.getObject(COL_MARKER_ID, UUID.class))
                 .list());
     }
 
@@ -233,7 +233,7 @@ public class AuthorizationRepository {
                 WHERE ri.item_id IN (:itemIds) AND ri.state = 'COMMITTED'
                 """)
                 .param("itemIds", itemIds)
-                .query((rs, n) -> Map.entry(rs.getObject("item_id", UUID.class), rs.getObject(COL_MARKER_ID, UUID.class)))
+                .query((rs, _) -> Map.entry(rs.getObject("item_id", UUID.class), rs.getObject(COL_MARKER_ID, UUID.class)))
                 .list().stream()
                 .collect(Collectors.groupingBy(Map.Entry::getKey, Collectors.mapping(Map.Entry::getValue, Collectors.toSet())));
     }
@@ -358,7 +358,7 @@ public class AuthorizationRepository {
                 WHERE marker_id = :markerId AND principal_type = :principalType AND principal_id = :principalId
                 """)
                 .param(PARAM_MARKER_ID, markerId).param(PARAM_PRINCIPAL_TYPE, principalType).param(PARAM_PRINCIPAL_ID, principalId)
-                .query((rs, n) -> new ItemLevelAccessRow(rs.getBoolean("item_can_read"), rs.getBoolean("item_can_delete")))
+                .query((rs, _) -> new ItemLevelAccessRow(rs.getBoolean("item_can_read"), rs.getBoolean("item_can_delete")))
                 .optional()
                 .orElse(new ItemLevelAccessRow(false, false));
     }
@@ -383,7 +383,7 @@ public class AuthorizationRepository {
                 WHERE mg.marker_id = :markerId AND mg.principal_type = :principalType AND mg.principal_id = :principalId
                 """)
                 .param(PARAM_MARKER_ID, markerId).param(PARAM_PRINCIPAL_TYPE, principalType).param(PARAM_PRINCIPAL_ID, principalId)
-                .query((rs, n) -> new PropertyAccessRow(
+                .query((rs, _) -> new PropertyAccessRow(
                         rs.getObject(COL_PROPERTY_ID, UUID.class), rs.getBoolean(COL_CAN_READ), rs.getBoolean(COL_CAN_WRITE)))
                 .list();
     }
@@ -398,7 +398,7 @@ public class AuthorizationRepository {
                 WHERE mg.marker_id = :markerId AND mg.principal_type = :principalType AND mg.principal_id = :principalId
                 """)
                 .param(PARAM_MARKER_ID, markerId).param(PARAM_PRINCIPAL_TYPE, principalType).param(PARAM_PRINCIPAL_ID, principalId)
-                .query((rs, n) -> new PropertyAccessRow(
+                .query((rs, _) -> new PropertyAccessRow(
                         rs.getObject(COL_PROPERTY_ID, UUID.class), rs.getBoolean(COL_CAN_READ), rs.getBoolean(COL_CAN_WRITE)))
                 .list();
     }
@@ -411,7 +411,7 @@ public class AuthorizationRepository {
                 WHERE mg.marker_id = :markerId AND mg.principal_type = :principalType AND mg.principal_id = :principalId
                 """)
                 .param(PARAM_MARKER_ID, markerId).param(PARAM_PRINCIPAL_TYPE, principalType).param(PARAM_PRINCIPAL_ID, principalId)
-                .query((rs, n) -> new LinkPerspectiveAccessRow(
+                .query((rs, _) -> new LinkPerspectiveAccessRow(
                         rs.getObject(COL_PERSPECTIVE_ID, UUID.class), rs.getBoolean("can_create"),
                         rs.getBoolean(COL_CAN_READ), rs.getBoolean("can_delete")))
                 .list();
@@ -427,7 +427,7 @@ public class AuthorizationRepository {
                 WHERE mg.marker_id = :markerId AND mg.principal_type = :principalType AND mg.principal_id = :principalId
                 """)
                 .param(PARAM_MARKER_ID, markerId).param(PARAM_PRINCIPAL_TYPE, principalType).param(PARAM_PRINCIPAL_ID, principalId)
-                .query((rs, n) -> rs.getObject("transition_id", UUID.class))
+                .query((rs, _) -> rs.getObject("transition_id", UUID.class))
                 .list());
     }
 
@@ -440,7 +440,7 @@ public class AuthorizationRepository {
                 WHERE mg.marker_id = :markerId AND mg.principal_type = :principalType AND mg.principal_id = :principalId
                 """)
                 .param(PARAM_MARKER_ID, markerId).param(PARAM_PRINCIPAL_TYPE, principalType).param(PARAM_PRINCIPAL_ID, principalId)
-                .query((rs, n) -> rs.getObject("state_machine_id", UUID.class))
+                .query((rs, _) -> rs.getObject("state_machine_id", UUID.class))
                 .list());
     }
 
@@ -448,7 +448,7 @@ public class AuthorizationRepository {
 
     public List<ItemTypeGrantRow> getAllItemTypeGrants() {
         return jdbcClient.sql("SELECT principal_type, principal_id, permission, item_type_id FROM authorization_item_type_grant")
-                .query((rs, n) -> new ItemTypeGrantRow(
+                .query((rs, _) -> new ItemTypeGrantRow(
                         rs.getString(COL_PRINCIPAL_TYPE),
                         rs.getObject(COL_PRINCIPAL_ID, UUID.class),
                         rs.getString(COL_PERMISSION),
@@ -458,7 +458,7 @@ public class AuthorizationRepository {
 
     public List<MarkerGrantRow> getAllMarkerGrants() {
         return jdbcClient.sql("SELECT principal_type, principal_id, marker_id, item_can_read, item_can_delete FROM marker_grant")
-                .query((rs, n) -> new MarkerGrantRow(
+                .query((rs, _) -> new MarkerGrantRow(
                         rs.getString(COL_PRINCIPAL_TYPE),
                         rs.getObject(COL_PRINCIPAL_ID, UUID.class),
                         rs.getObject(COL_MARKER_ID, UUID.class),
@@ -472,7 +472,7 @@ public class AuthorizationRepository {
                 SELECT mg.principal_type, mg.principal_id, mg.marker_id, mgp.property_id, mgp.can_read, mgp.can_write
                 FROM marker_grant_property mgp JOIN marker_grant mg ON mg.id = mgp.marker_grant_id
                 """)
-                .query((rs, n) -> new PropertyGrantRow(
+                .query((rs, _) -> new PropertyGrantRow(
                         rs.getString(COL_PRINCIPAL_TYPE), rs.getObject(COL_PRINCIPAL_ID, UUID.class), rs.getObject(COL_MARKER_ID, UUID.class),
                         rs.getObject(COL_PROPERTY_ID, UUID.class), rs.getBoolean(COL_CAN_READ), rs.getBoolean(COL_CAN_WRITE)))
                 .list();
@@ -483,7 +483,7 @@ public class AuthorizationRepository {
                 SELECT mg.principal_type, mg.principal_id, mg.marker_id, mgp.property_id, mgp.can_read, mgp.can_write
                 FROM marker_grant_link_property mgp JOIN marker_grant mg ON mg.id = mgp.marker_grant_id
                 """)
-                .query((rs, n) -> new PropertyGrantRow(
+                .query((rs, _) -> new PropertyGrantRow(
                         rs.getString(COL_PRINCIPAL_TYPE), rs.getObject(COL_PRINCIPAL_ID, UUID.class), rs.getObject(COL_MARKER_ID, UUID.class),
                         rs.getObject(COL_PROPERTY_ID, UUID.class), rs.getBoolean(COL_CAN_READ), rs.getBoolean(COL_CAN_WRITE)))
                 .list();
@@ -494,7 +494,7 @@ public class AuthorizationRepository {
                 SELECT mg.principal_type, mg.principal_id, mg.marker_id, mglp.perspective_id, mglp.can_create, mglp.can_read, mglp.can_delete
                 FROM marker_grant_link_perspective mglp JOIN marker_grant mg ON mg.id = mglp.marker_grant_id
                 """)
-                .query((rs, n) -> new LinkPerspectiveGrantRow(
+                .query((rs, _) -> new LinkPerspectiveGrantRow(
                         rs.getString(COL_PRINCIPAL_TYPE), rs.getObject(COL_PRINCIPAL_ID, UUID.class), rs.getObject(COL_MARKER_ID, UUID.class),
                         rs.getObject(COL_PERSPECTIVE_ID, UUID.class), rs.getBoolean("can_create"), rs.getBoolean(COL_CAN_READ), rs.getBoolean("can_delete")))
                 .list();
@@ -505,7 +505,7 @@ public class AuthorizationRepository {
                 SELECT mg.principal_type, mg.principal_id, mg.marker_id, mgt.transition_id
                 FROM marker_grant_transition mgt JOIN marker_grant mg ON mg.id = mgt.marker_grant_id
                 """)
-                .query((rs, n) -> new MarkerScopedGrantRow(
+                .query((rs, _) -> new MarkerScopedGrantRow(
                         rs.getString(COL_PRINCIPAL_TYPE), rs.getObject(COL_PRINCIPAL_ID, UUID.class),
                         rs.getObject(COL_MARKER_ID, UUID.class), rs.getObject("transition_id", UUID.class)))
                 .list();
@@ -516,7 +516,7 @@ public class AuthorizationRepository {
                 SELECT mg.principal_type, mg.principal_id, mg.marker_id, mgs.state_machine_id
                 FROM marker_grant_state_machine_start mgs JOIN marker_grant mg ON mg.id = mgs.marker_grant_id
                 """)
-                .query((rs, n) -> new MarkerScopedGrantRow(
+                .query((rs, _) -> new MarkerScopedGrantRow(
                         rs.getString(COL_PRINCIPAL_TYPE), rs.getObject(COL_PRINCIPAL_ID, UUID.class),
                         rs.getObject(COL_MARKER_ID, UUID.class), rs.getObject("state_machine_id", UUID.class)))
                 .list();

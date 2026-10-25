@@ -17,7 +17,7 @@
     </modules>
 
     <properties>
-        <maven.compiler.release>17</maven.compiler.release>
+        <maven.compiler.release>25</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
         <sonar.organization>NTRLOC</sonar.organization>
@@ -26,7 +26,7 @@
         <maven-compiler-plugin.version>3.13.0</maven-compiler-plugin.version>
         <maven-source-plugin.version>3.2.1</maven-source-plugin.version>
         <!-- JaCoCo settings -->
-        <jacoco.maven.plugin.version>0.8.13</jacoco.maven.plugin.version>
+        <jacoco.maven.plugin.version>0.8.15</jacoco.maven.plugin.version>
         <jacoco.exec.path>target/jacoco.exec</jacoco.exec.path>
         <jacoco.class.dump.dir>target/instrumented-classes</jacoco.class.dump.dir>
         <jacoco.includes>org/ntrloc/**</jacoco.includes>
@@ -134,7 +134,7 @@
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>${maven-compiler-plugin.version}</version>
                 <configuration>
-                    <release>17</release>
+                    <release>25</release>
                     <compilerArgs>
                         <arg>-parameters</arg>
                     </compilerArgs>

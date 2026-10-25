@@ -46,7 +46,7 @@ public final class ProcessScriptEngineFactory {
     // the collision to be resolved in config instead.
     private static void failFastOnCollisions(List<String> importPackages) {
         ClassPathScanningCandidateComponentProvider scanner = new ClassPathScanningCandidateComponentProvider(false);
-        scanner.addIncludeFilter((metadataReader, metadataReaderFactory) -> true);
+        scanner.addIncludeFilter((_, _) -> true);
 
         Map<String, String> packageBySimpleName = new HashMap<>();
         for (String importPackage : importPackages) {

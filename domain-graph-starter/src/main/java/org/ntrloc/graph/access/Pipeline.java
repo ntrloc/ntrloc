@@ -85,19 +85,21 @@ public record Pipeline(
     // just as real a point of contact with the signal domain as any standalone AddMarkers' is. Empty
     // for Start/End, which have no Gate at all.
     private static List<Gate> gatesOf(CarrierBlock block) {
-        if (block instanceof AddMarkers b) return List.of(b.gate());
-        if (block instanceof RemoveMarkers b) return List.of(b.gate());
-        if (block instanceof SetMarkers b) return List.of(b.gate());
-        if (block instanceof Filter b) return List.of(b.signal());
-        if (block instanceof Select s) {
-            List<Gate> gates = new ArrayList<>();
-            gates.add(s.gate());
-            for (AddMarkers row : s.adds()) {
-                gates.add(row.gate());
+        return switch (block) {
+            case AddMarkers b -> List.of(b.gate());
+            case RemoveMarkers b -> List.of(b.gate());
+            case SetMarkers b -> List.of(b.gate());
+            case Filter b -> List.of(b.signal());
+            case Select s -> {
+                List<Gate> gates = new ArrayList<>();
+                gates.add(s.gate());
+                for (AddMarkers row : s.adds()) {
+                    gates.add(row.gate());
+                }
+                yield gates;
             }
-            return gates;
-        }
-        return List.of(); // Start, End
+            case Start _, End _ -> List.of();
+        };
     }
 
     // Every addressable pin id reachable from this pipeline's top-level signals: a standalone
@@ -107,12 +109,9 @@ public record Pipeline(
     static Set<UUID> collectSignalPinIds(List<SignalBlock> topLevelSignals) {
         Set<UUID> ids = new HashSet<>();
         for (SignalBlock block : topLevelSignals) {
-            if (block instanceof Condition c) {
-                ids.add(c.id());
-            } else if (block instanceof ConditionGroup g) {
-                for (Condition c : g.conditions()) {
-                    ids.add(c.id());
-                }
+            switch (block) {
+                case Condition c -> ids.add(c.id());
+                case ConditionGroup g -> g.conditions().forEach(c -> ids.add(c.id()));
             }
         }
         return ids;

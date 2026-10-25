@@ -3,6 +3,7 @@ package org.ntrloc.graph.security;
 import org.ntrloc.graph.TestApplication;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.boot.webtestclient.autoconfigure.AutoConfigureWebTestClient;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseCookie;
@@ -29,9 +30,13 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * Singleton containers started in static initializers, not @Testcontainers/@Container -- see
  * AbstractIntegrationTest for why.
+ *
+ * @DirtiesContext (inherited by every subclass) closes each subclass's context once it finishes,
+ * so these extra contexts don't all stay alive, and in memory, for the rest of the test run.
  */
 @SpringBootTest(classes = TestApplication.class, webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @AutoConfigureWebTestClient
+@DirtiesContext
 public abstract class AbstractLdapIntegrationTest {
 
     protected static final String LDAP_PASSWORD = "ldap-secret";

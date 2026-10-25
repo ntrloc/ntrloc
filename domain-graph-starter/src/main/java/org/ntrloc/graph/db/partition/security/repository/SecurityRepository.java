@@ -25,7 +25,7 @@ public class SecurityRepository {
 
     public record PersonalAccessTokenRow(UUID id, UUID userId, String name, OffsetDateTime createdAt, OffsetDateTime expiresAt) {}
 
-    private static final RowMapper<UserRow> USER_ROW = (rs, n) -> new UserRow(
+    private static final RowMapper<UserRow> USER_ROW = (rs, _) -> new UserRow(
             rs.getObject("id", UUID.class),
             rs.getString("display_name"),
             rs.getString(COL_EMAIL),
@@ -93,7 +93,7 @@ public class SecurityRepository {
                 SELECT group_id FROM effective_groups
                 """)
                 .param(PARAM_USER_ID, userId)
-                .query((rs, n) -> rs.getObject("group_id", UUID.class))
+                .query((rs, _) -> rs.getObject("group_id", UUID.class))
                 .list());
     }
 
@@ -104,7 +104,7 @@ public class SecurityRepository {
                 WHERE gm.user_id = :userId ORDER BY g.name
                 """)
                 .param(PARAM_USER_ID, userId)
-                .query((rs, n) -> new UserGroupRow(rs.getObject("id", UUID.class), rs.getString("name")))
+                .query((rs, _) -> new UserGroupRow(rs.getObject("id", UUID.class), rs.getString("name")))
                 .list();
     }
 
@@ -180,7 +180,7 @@ public class SecurityRepository {
                 WHERE smg.group_id = :groupId ORDER BY g.name
                 """)
                 .param(PARAM_GROUP_ID, groupId)
-                .query((rs, n) -> new UserGroupRow(rs.getObject("id", UUID.class), rs.getString("name")))
+                .query((rs, _) -> new UserGroupRow(rs.getObject("id", UUID.class), rs.getString("name")))
                 .list();
     }
 
@@ -192,20 +192,20 @@ public class SecurityRepository {
                 WHERE smg.member_group_id = :groupId ORDER BY g.name
                 """)
                 .param(PARAM_GROUP_ID, groupId)
-                .query((rs, n) -> new UserGroupRow(rs.getObject("id", UUID.class), rs.getString("name")))
+                .query((rs, _) -> new UserGroupRow(rs.getObject("id", UUID.class), rs.getString("name")))
                 .list();
     }
 
     public List<UserGroupRow> listUserGroups() {
         return jdbcClient.sql("SELECT id, name FROM security_user_group ORDER BY name")
-                .query((rs, n) -> new UserGroupRow(rs.getObject("id", UUID.class), rs.getString("name")))
+                .query((rs, _) -> new UserGroupRow(rs.getObject("id", UUID.class), rs.getString("name")))
                 .list();
     }
 
     public Optional<UserGroupRow> findUserGroupById(UUID groupId) {
         return jdbcClient.sql("SELECT id, name FROM security_user_group WHERE id = :id")
                 .param("id", groupId)
-                .query((rs, n) -> new UserGroupRow(rs.getObject("id", UUID.class), rs.getString("name")))
+                .query((rs, _) -> new UserGroupRow(rs.getObject("id", UUID.class), rs.getString("name")))
                 .optional();
     }
 
@@ -241,7 +241,7 @@ public class SecurityRepository {
     public Optional<UserGroupRow> findUserGroupByName(String name) {
         return jdbcClient.sql("SELECT id, name FROM security_user_group WHERE name = :name")
                 .param("name", name)
-                .query((rs, n) -> new UserGroupRow(rs.getObject("id", UUID.class), rs.getString("name")))
+                .query((rs, _) -> new UserGroupRow(rs.getObject("id", UUID.class), rs.getString("name")))
                 .optional();
     }
 
@@ -289,7 +289,7 @@ public class SecurityRepository {
                 FROM security_local_credentials WHERE user_id = :userId
                 """)
                 .param(PARAM_USER_ID, userId)
-                .query((rs, n) -> new LocalCredentialsRow(
+                .query((rs, _) -> new LocalCredentialsRow(
                         rs.getObject("user_id", UUID.class),
                         rs.getString("password_hash"),
                         rs.getBoolean("active")))
@@ -328,7 +328,7 @@ public class SecurityRepository {
                 ORDER BY created_at DESC
                 """)
                 .param(PARAM_USER_ID, userId)
-                .query((rs, n) -> new PersonalAccessTokenRow(
+                .query((rs, _) -> new PersonalAccessTokenRow(
                         rs.getObject("id", UUID.class),
                         rs.getObject("user_id", UUID.class),
                         rs.getString("name"),

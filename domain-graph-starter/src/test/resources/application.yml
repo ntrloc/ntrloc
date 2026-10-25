@@ -1,3 +1,10 @@
+spring:
+  # The whole suite runs on virtual threads, so it doubles as their compatibility check; the
+  # runtimes keep them off until load-tested (see their application.yml).
+  threads:
+    virtual:
+      enabled: true
+
 cluster:
   name: graph-test
 

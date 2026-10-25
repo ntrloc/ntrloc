@@ -81,7 +81,7 @@ public class LedgerPartitionManagerImpl implements LedgerPartitionManager {
                 ORDER BY sequence_number
                 """)
                 .param("itemId", itemId)
-                .query((rs, n) -> new LedgerEntryRecord(
+                .query((rs, _) -> new LedgerEntryRecord(
                         readEntry(rs.getString(COL_PAYLOAD)),
                         rs.getObject("created_date", OffsetDateTime.class),
                         rs.getObject("created_by", UUID.class)))
@@ -96,7 +96,7 @@ public class LedgerPartitionManagerImpl implements LedgerPartitionManager {
                 """)
                 .param("targetType", targetType)
                 .param("targetId", targetId)
-                .query((rs, n) -> readEntry(rs.getString(COL_PAYLOAD)))
+                .query((rs, _) -> readEntry(rs.getString(COL_PAYLOAD)))
                 .list();
     }
 
@@ -108,7 +108,7 @@ public class LedgerPartitionManagerImpl implements LedgerPartitionManager {
                 ORDER BY sequence_number
                 """)
                 .param(PARAM_TRANSACTION_ID, transactionId)
-                .query((rs, n) -> readEntry(rs.getString(COL_PAYLOAD)))
+                .query((rs, _) -> readEntry(rs.getString(COL_PAYLOAD)))
                 .list();
     }
 
@@ -116,23 +116,25 @@ public class LedgerPartitionManagerImpl implements LedgerPartitionManager {
     }
 
     private TargetRef targetOf(LedgerEntry entry) {
-        if (entry instanceof ItemCreateEntry e) return new TargetRef("ITEM", e.itemId());
-        if (entry instanceof ItemUpdateEntry e) return new TargetRef("ITEM", e.itemId());
-        if (entry instanceof ItemDeleteEntry e) return new TargetRef("ITEM", e.itemId());
-        if (entry instanceof LinkCreateEntry e) return new TargetRef("LINK", e.linkId());
-        if (entry instanceof LinkUpdateEntry e) return new TargetRef("LINK", e.linkId());
-        if (entry instanceof LinkDeleteEntry e) return new TargetRef("LINK", e.linkId());
-        throw new IllegalArgumentException("Unsupported entry: " + entry.getClass().getSimpleName());
+        return switch (entry) {
+            case ItemCreateEntry e -> new TargetRef("ITEM", e.itemId());
+            case ItemUpdateEntry e -> new TargetRef("ITEM", e.itemId());
+            case ItemDeleteEntry e -> new TargetRef("ITEM", e.itemId());
+            case LinkCreateEntry e -> new TargetRef("LINK", e.linkId());
+            case LinkUpdateEntry e -> new TargetRef("LINK", e.linkId());
+            case LinkDeleteEntry e -> new TargetRef("LINK", e.linkId());
+        };
     }
 
     private String entryTypeOf(LedgerEntry entry) {
-        if (entry instanceof ItemCreateEntry) return "ITEM_CREATE";
-        if (entry instanceof ItemUpdateEntry) return "ITEM_UPDATE";
-        if (entry instanceof ItemDeleteEntry) return "ITEM_DELETE";
-        if (entry instanceof LinkCreateEntry) return "LINK_CREATE";
-        if (entry instanceof LinkUpdateEntry) return "LINK_UPDATE";
-        if (entry instanceof LinkDeleteEntry) return "LINK_DELETE";
-        throw new IllegalArgumentException("Unsupported entry: " + entry.getClass().getSimpleName());
+        return switch (entry) {
+            case ItemCreateEntry _ -> "ITEM_CREATE";
+            case ItemUpdateEntry _ -> "ITEM_UPDATE";
+            case ItemDeleteEntry _ -> "ITEM_DELETE";
+            case LinkCreateEntry _ -> "LINK_CREATE";
+            case LinkUpdateEntry _ -> "LINK_UPDATE";
+            case LinkDeleteEntry _ -> "LINK_DELETE";
+        };
     }
 
     private String writeEntry(LedgerEntry entry) {

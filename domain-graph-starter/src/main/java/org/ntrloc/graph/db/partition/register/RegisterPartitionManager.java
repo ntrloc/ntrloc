@@ -20,7 +20,6 @@ import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminBinaryPropertyDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemDefinitionView;
-import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminLinkView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.DynamicFieldView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminSchemaView;
@@ -295,7 +294,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
         for (int i = 0; i < binaryFieldPath.size() - 1; i++) {
             sql.append("->'").append(binaryFieldPath.get(i)).append("'");
         }
-        return sql.append("->>'").append(binaryFieldPath.get(binaryFieldPath.size() - 1)).append("'").toString();
+        return sql.append("->>'").append(binaryFieldPath.getLast()).append("'").toString();
     }
 
     // `->>` always yields text, so an unqualified ORDER BY on it sorts an INT property as "1", "10",
@@ -399,7 +398,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                 .params(mergeParams(filterFragment, allFacetFilters))
                 .param("limit", effectiveLimit(spec))
                 .param("offset", effectiveOffset(spec))
-                .query((rs, n) -> new RawItem(
+                .query((rs, _) -> new RawItem(
                         rs.getObject(COL_REGISTER_ITEM_ID, UUID.class),
                         rs.getObject(COL_ITEM_ID, UUID.class),
                         rs.getString(COL_ITEM_TYPE),
@@ -455,7 +454,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
         // query that can pull in a sibling's own facetable property alongside the shared ones. Not
         // incorrect (branches lacking that property just contribute no values to it), just
         // possibly slightly more inclusive than strictly necessary in that one case.
-        UUID representativeItemTypeId = branches.get(0);
+        UUID representativeItemTypeId = branches.getFirst();
 
         SqlFragment filterFragment = combineFragments(List.of(
                 buildPredicateFragment(spec.filter(), representativeItemTypeId, permissions),
@@ -518,7 +517,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                 .params(mainSource.params())
                 .param("limit", effectiveLimit(spec))
                 .param("offset", effectiveOffset(spec))
-                .query((rs, n) -> new RawItem(
+                .query((rs, _) -> new RawItem(
                         rs.getObject(COL_REGISTER_ITEM_ID, UUID.class),
                         rs.getObject(COL_ITEM_ID, UUID.class),
                         rs.getString(COL_ITEM_TYPE),
@@ -598,7 +597,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                 ORDER BY count DESC, value ASC NULLS LAST
                 """.formatted(propertyId, source.sql(), propertyId))
                 .params(source.params())
-                .query((rs, n) -> {
+                .query((rs, _) -> {
                     String value = rs.getString(COL_FACET_VALUE);
                     return new FacetBucket(value, labelFor(value, labelsByValue), rs.getLong(COL_FACET_COUNT));
                 })
@@ -654,7 +653,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                 """.formatted(propertyId, tableName, filter.sql(), otherFacetFilters.sql(), propertyId))
                 .param(PARAM_ITEM_TYPE_ID, itemTypeId)
                 .params(mergeParams(filter, otherFacetFilters))
-                .query((rs, n) -> {
+                .query((rs, _) -> {
                     String value = rs.getString(COL_FACET_VALUE);
                     return new FacetBucket(value, labelFor(value, labelsByValue), rs.getLong(COL_FACET_COUNT));
                 })
@@ -692,7 +691,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                 """.formatted(stateMachineId, tableName, filter.sql(), stateMachineId))
                 .param(PARAM_ITEM_TYPE_ID, itemTypeId)
                 .params(filter.params())
-                .query((rs, n) -> {
+                .query((rs, _) -> {
                     String stateId = rs.getString(COL_FACET_VALUE);
                     String label = stateId == null ? null : stateNames.get(UUID.fromString(stateId));
                     return new FacetBucket(stateId, label, rs.getLong(COL_FACET_COUNT));
@@ -746,10 +745,11 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
     }
 
     private SqlFragment buildFacetFilterFragment(FacetFilter facetFilter, UUID itemTypeId, AtomicInteger counter, RequestPermissionContext permissions) {
-        if (facetFilter instanceof TermsFacetFilter f) return buildTermsFacetFilterFragment(f, itemTypeId, counter, permissions);
-        if (facetFilter instanceof RangeFacetFilter) throw new UnsupportedOperationException("Range facet filters not yet supported");
-        if (facetFilter instanceof DateRangeFacetFilter) throw new UnsupportedOperationException("Date range facet filters not yet supported");
-        throw new IllegalArgumentException("Unsupported facet filter: " + facetFilter.getClass().getSimpleName());
+        return switch (facetFilter) {
+            case TermsFacetFilter f -> buildTermsFacetFilterFragment(f, itemTypeId, counter, permissions);
+            case RangeFacetFilter _ -> throw new UnsupportedOperationException("Range facet filters not yet supported");
+            case DateRangeFacetFilter _ -> throw new UnsupportedOperationException("Date range facet filters not yet supported");
+        };
     }
 
     private SqlFragment buildTermsFacetFilterFragment(TermsFacetFilter f, UUID itemTypeId, AtomicInteger counter, RequestPermissionContext permissions) {
@@ -835,7 +835,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                 """.formatted(tableNameFor(itemTypeId)))
                 .param(PARAM_ITEM_TYPE_ID, itemTypeId)
                 .param(PARAM_ITEM_ID, itemId)
-                .query((rs, n) -> new RawItem(
+                .query((rs, _) -> new RawItem(
                         rs.getObject(COL_REGISTER_ITEM_ID, UUID.class),
                         rs.getObject(COL_ITEM_ID, UUID.class),
                         rs.getString(COL_ITEM_TYPE),
@@ -855,7 +855,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                 .map(AdminItemDefinitionView::stateMachines)
                 .orElse(null);
         return Optional.of(assembleProjectedItems(rawItems, propertyPathsByIdForItemType(itemTypeId), propertyViewsById, stateMachines, binaryBaseUrl,
-                options).get(0));
+                options).getFirst());
     }
 
     // --- Write side: staged at prepare (UNCOMMITTED), flipped/cleaned up at commit/abort ---
@@ -909,7 +909,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                 WHERE ri.item_id = :itemId AND ri.state = 'COMMITTED'
                 """.formatted(tableNameFor(itemTypeId)))
                 .param(PARAM_ITEM_ID, itemId)
-                .query((rs, n) -> new CurrentItemRowContent(
+                .query((rs, _) -> new CurrentItemRowContent(
                         rs.getObject("current_register_item_id", UUID.class),
                         parseJsonb(rs.getString(COL_PROPERTIES)), parseJsonb(rs.getString(COL_STATES)),
                         rs.getObject(COL_CREATED_DATE, OffsetDateTime.class), rs.getObject(COL_CREATED_BY, UUID.class)))
@@ -1026,7 +1026,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
         Map<UUID, UUID> result = new HashMap<>();
         jdbcClient.sql("SELECT property_id, binary_id FROM register_binary_property WHERE register_item_id = :registerItemId")
                 .param(PARAM_REGISTER_ITEM_ID, registerItemId)
-                .query((rs, n) -> Map.entry(rs.getObject("property_id", UUID.class), rs.getObject("binary_id", UUID.class)))
+                .query((rs, _) -> Map.entry(rs.getObject("property_id", UUID.class), rs.getObject("binary_id", UUID.class)))
                 .list()
                 .forEach(e -> result.put(e.getKey(), e.getValue()));
         return result;
@@ -1285,7 +1285,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                 WHERE rl.link_id = :linkId AND rl.state = 'COMMITTED' AND ri.state = 'COMMITTED'
                 """)
                 .param(PARAM_LINK_ID, linkId)
-                .query((rs, n) -> new RegisterLinkEndpoint(
+                .query((rs, _) -> new RegisterLinkEndpoint(
                         rs.getObject(COL_PERSPECTIVE_ID, UUID.class),
                         rs.getObject(COL_ITEM_ID, UUID.class)))
                 .list();
@@ -1297,7 +1297,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                 FROM register_link WHERE link_id = :linkId AND state = 'COMMITTED'
                 """)
                 .param(PARAM_LINK_ID, linkId)
-                .query((rs, n) -> new CurrentLinkRowContent(
+                .query((rs, _) -> new CurrentLinkRowContent(
                         rs.getObject("current_register_link_id", UUID.class),
                         rs.getObject(COL_CREATED_DATE, OffsetDateTime.class), rs.getObject(COL_CREATED_BY, UUID.class)))
                 .single();
@@ -1308,7 +1308,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
         Map<String, Object> currentProperties = jdbcClient.sql("SELECT properties::text AS properties FROM %s WHERE register_link_id = :id"
                 .formatted(linkTableNameFor(linkTypeId)))
                 .param("id", currentRegisterLinkId)
-                .query((rs, n) -> parseJsonb(rs.getString(COL_PROPERTIES)))
+                .query((rs, _) -> parseJsonb(rs.getString(COL_PROPERTIES)))
                 .single();
 
         Map<String, Object> merged = mergeProperties(currentProperties, keysToStrings(propertiesDiff));
@@ -1325,7 +1325,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                 WHERE rilp.register_link_id = :oldLinkId
                 """)
                 .param("oldLinkId", currentRegisterLinkId)
-                .query((rs, n) -> new RegisterLinkEndpoint(
+                .query((rs, _) -> new RegisterLinkEndpoint(
                         rs.getObject(COL_PERSPECTIVE_ID, UUID.class),
                         rs.getObject(COL_ITEM_ID, UUID.class)))
                 .list();
@@ -1450,7 +1450,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
         if (registerItemIds.isEmpty()) return Map.of();
         return jdbcClient.sql("SELECT register_item_id, marker_id FROM register_item_marker WHERE register_item_id IN (:ids)")
                 .param("ids", registerItemIds)
-                .query((rs, n) -> Map.entry(rs.getObject(COL_REGISTER_ITEM_ID, UUID.class), rs.getObject("marker_id", UUID.class)))
+                .query((rs, _) -> Map.entry(rs.getObject(COL_REGISTER_ITEM_ID, UUID.class), rs.getObject("marker_id", UUID.class)))
                 .list().stream()
                 .collect(Collectors.groupingBy(Map.Entry::getKey, Collectors.mapping(Map.Entry::getValue, Collectors.toSet())));
     }
@@ -1463,7 +1463,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
         if (markerIds.isEmpty()) return Map.of();
         return jdbcClient.sql("SELECT id, name FROM authorization_marker WHERE id IN (:ids)")
                 .param("ids", markerIds)
-                .query((rs, n) -> Map.entry(rs.getObject("id", UUID.class), rs.getString("name")))
+                .query((rs, _) -> Map.entry(rs.getObject("id", UUID.class), rs.getString("name")))
                 .list().stream()
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
     }
@@ -1753,7 +1753,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                 WHERE ri_mine.item_id = :itemId AND ri_mine.state = 'COMMITTED'
                 """)
                 .param(PARAM_ITEM_ID, itemId)
-                .query((rs, n) -> new RegisterLinkedItem(
+                .query((rs, _) -> new RegisterLinkedItem(
                         rs.getObject("link_id", UUID.class),
                         rs.getObject("connected_item_id", UUID.class)))
                 .list();
@@ -2128,7 +2128,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
             for (int i = 0; i < path.size() - 1; i++) {
                 cursor = (Map<String, Object>) cursor.computeIfAbsent(path.get(i), k -> new HashMap<String, Object>());
             }
-            cursor.put(path.get(path.size() - 1), value);
+            cursor.put(path.getLast(), value);
         });
         return byName;
     }
@@ -2143,7 +2143,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
         for (int i = 0; i < path.size() - 1; i++) {
             cursor = (Map<String, Object>) cursor.computeIfAbsent(path.get(i), k -> new HashMap<String, Object>());
         }
-        cursor.put(path.get(path.size() - 1), value);
+        cursor.put(path.getLast(), value);
     }
 
     // Projection rule (4): resolved once per request against whatever properties the caller is
@@ -2331,7 +2331,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                 .param("rawItemIds", myRegisterItemIds)
                 .param("perspectiveNames", requestedLinks != null ? List.copyOf(requestedLinks.keySet()) : List.of())
                 .params(permissionFragment.params())
-                .query((rs, n) -> new LinkRow(
+                .query((rs, _) -> new LinkRow(
                         rs.getObject("my_register_item_id", UUID.class),
                         rs.getString("perspective_name"),
                         rs.getObject(COL_PERSPECTIVE_ID, UUID.class),
@@ -2685,7 +2685,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                 WHERE rbp.register_item_id IN (:ids)
                 """)
                 .param("ids", registerItemIds)
-                .query((rs, n) -> new BinaryPropertyRow(
+                .query((rs, _) -> new BinaryPropertyRow(
                         rs.getObject(COL_REGISTER_ITEM_ID, UUID.class),
                         rs.getObject("property_id", UUID.class),
                         rs.getString("property_name"),
@@ -2904,56 +2904,62 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
     }
 
     private SqlFragment translatePredicate(Predicate predicate, UUID itemTypeId, AtomicInteger counter, RequestPermissionContext permissions) {
-        if (predicate instanceof AndPredicate and) {
-            List<SqlFragment> children = and.predicates().stream()
-                    .map(p -> translatePredicate(p, itemTypeId, counter, permissions))
-                    .toList();
-            String sql = children.stream()
-                    .map(SqlFragment::sql)
-                    .collect(Collectors.joining(" AND ", "(", ")"));
-            Map<String, Object> params = new HashMap<>();
-            children.forEach(c -> params.putAll(c.params()));
-            return new SqlFragment(sql, params);
-        } else if (predicate instanceof OrPredicate or) {
-            List<SqlFragment> children = or.predicates().stream()
-                    .map(p -> translatePredicate(p, itemTypeId, counter, permissions))
-                    .toList();
-            String sql = children.stream()
-                    .map(SqlFragment::sql)
-                    .collect(Collectors.joining(" OR ", "(", ")"));
-            Map<String, Object> params = new HashMap<>();
-            children.forEach(c -> params.putAll(c.params()));
-            return new SqlFragment(sql, params);
-        } else if (predicate instanceof NotPredicate not) {
-            var child = translatePredicate(not.predicate(), itemTypeId, counter, permissions);
-            return new SqlFragment("NOT (" + child.sql() + ")", child.params());
-        } else if (predicate instanceof PropertyExistencePredicate p) {
-            UUID propertyId = resolvePropertyId(itemTypeId, p.propertyName());
-            requirePropertyReadableByAnyMarker(permissions, propertyId, p.propertyName());
-            return new SqlFragment("jsonb_exists(rt.properties::jsonb, '" + propertyId + "')", Map.of());
-        } else if (predicate instanceof PropertyValuePredicate p) {
-            UUID propertyId = resolvePropertyId(itemTypeId, p.propertyName());
-            requirePropertyReadableByAnyMarker(permissions, propertyId, p.propertyName());
-            String paramName = "pred_" + counter.getAndIncrement();
-            String sqlOp = switch (p.operator()) {
-                case EQUALS              -> "=";
-                case NOT_EQUALS          -> "!=";
-                case LESS_THAN           -> "<";
-                case LESS_THAN_OR_EQUAL  -> "<=";
-                case GREATER_THAN        -> ">";
-                case GREATER_THAN_OR_EQUAL -> ">=";
-                case LIKE                -> "ILIKE";
-            };
-            return new SqlFragment(
-                    "(rt.properties::jsonb)->>'" + propertyId + "' " + sqlOp + " :" + paramName,
-                    Map.of(paramName, p.value()));
-        } else if (predicate instanceof StateValuePredicate p) {
-            UUID stateMachineId = resolveStateMachineId(itemTypeId, p.stateMachineName());
-            UUID stateId = resolveStateId(stateMachineId, p.stateName());
-            return new SqlFragment(
-                    "(rt.states::jsonb)->'" + stateMachineId + "'->>'currentStateId' = '" + stateId + "'", Map.of());
+        switch (predicate) {
+            case AndPredicate and -> {
+                List<SqlFragment> children = and.predicates().stream()
+                        .map(p -> translatePredicate(p, itemTypeId, counter, permissions))
+                        .toList();
+                String sql = children.stream()
+                        .map(SqlFragment::sql)
+                        .collect(Collectors.joining(" AND ", "(", ")"));
+                Map<String, Object> params = new HashMap<>();
+                children.forEach(c -> params.putAll(c.params()));
+                return new SqlFragment(sql, params);
+            }
+            case OrPredicate or -> {
+                List<SqlFragment> children = or.predicates().stream()
+                        .map(p -> translatePredicate(p, itemTypeId, counter, permissions))
+                        .toList();
+                String sql = children.stream()
+                        .map(SqlFragment::sql)
+                        .collect(Collectors.joining(" OR ", "(", ")"));
+                Map<String, Object> params = new HashMap<>();
+                children.forEach(c -> params.putAll(c.params()));
+                return new SqlFragment(sql, params);
+            }
+            case NotPredicate not -> {
+                var child = translatePredicate(not.predicate(), itemTypeId, counter, permissions);
+                return new SqlFragment("NOT (" + child.sql() + ")", child.params());
+            }
+            case PropertyExistencePredicate p -> {
+                UUID propertyId = resolvePropertyId(itemTypeId, p.propertyName());
+                requirePropertyReadableByAnyMarker(permissions, propertyId, p.propertyName());
+                return new SqlFragment("jsonb_exists(rt.properties::jsonb, '" + propertyId + "')", Map.of());
+            }
+            case PropertyValuePredicate p -> {
+                UUID propertyId = resolvePropertyId(itemTypeId, p.propertyName());
+                requirePropertyReadableByAnyMarker(permissions, propertyId, p.propertyName());
+                String paramName = "pred_" + counter.getAndIncrement();
+                String sqlOp = switch (p.operator()) {
+                    case EQUALS              -> "=";
+                    case NOT_EQUALS          -> "!=";
+                    case LESS_THAN           -> "<";
+                    case LESS_THAN_OR_EQUAL  -> "<=";
+                    case GREATER_THAN        -> ">";
+                    case GREATER_THAN_OR_EQUAL -> ">=";
+                    case LIKE                -> "ILIKE";
+                };
+                return new SqlFragment(
+                        "(rt.properties::jsonb)->>'" + propertyId + "' " + sqlOp + " :" + paramName,
+                        Map.of(paramName, p.value()));
+            }
+            case StateValuePredicate p -> {
+                UUID stateMachineId = resolveStateMachineId(itemTypeId, p.stateMachineName());
+                UUID stateId = resolveStateId(stateMachineId, p.stateName());
+                return new SqlFragment(
+                        "(rt.states::jsonb)->'" + stateMachineId + "'->>'currentStateId' = '" + stateId + "'", Map.of());
+            }
         }
-        throw new IllegalArgumentException("Unsupported predicate: " + predicate.getClass().getSimpleName());
     }
 
     // markerIdsByRegisterId/propertyReadGrantsByMarker: the mode-2 property-read filter, applied
@@ -2991,7 +2997,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                     : fetchBinaryPropsByItem(entry.getValue(), binaryBaseUrl, idToPath, null);
             jdbcClient.sql("SELECT " + idColumn + ", properties::text FROM " + table + " WHERE " + idColumn + " IN (:ids)")
                     .param("ids", entry.getValue())
-                    .query((rs, n) -> {
+                    .query((rs, _) -> {
                         UUID registerId = rs.getObject(idColumn, UUID.class);
                         Set<UUID> markerIds = markerIdsByRegisterId.getOrDefault(registerId, Set.of());
                         Map<String, Object> readable = filterPropertiesByReadGrant(parseJsonb(rs.getString(COL_PROPERTIES)),
@@ -3041,14 +3047,13 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
     @Override
     @EventListener
     public void onSchemaChange(SchemaChangeEvent event) {
-        if (event instanceof SchemaChangeEvent.ItemTypeCreated e) {
-            createItemTypeTable(e.itemTypeId());
-        } else if (event instanceof SchemaChangeEvent.ItemTypeDeleted e) {
-            dropItemTypeTable(e.itemTypeId());
-        } else if (event instanceof SchemaChangeEvent.LinkTypeCreated e) {
-            createLinkTypeTable(e.linkTypeId());
-        } else if (event instanceof SchemaChangeEvent.LinkTypeDeleted e) {
-            dropLinkTypeTable(e.linkTypeId());
+        switch (event) {
+            case SchemaChangeEvent.ItemTypeCreated e -> createItemTypeTable(e.itemTypeId());
+            case SchemaChangeEvent.ItemTypeDeleted e -> dropItemTypeTable(e.itemTypeId());
+            case SchemaChangeEvent.LinkTypeCreated e -> createLinkTypeTable(e.linkTypeId());
+            case SchemaChangeEvent.LinkTypeDeleted e -> dropLinkTypeTable(e.linkTypeId());
+            // Traits have no register-side table of their own (see above).
+            case SchemaChangeEvent.TraitCreated _, SchemaChangeEvent.TraitDeleted _ -> { /* nothing */ }
         }
     }
 

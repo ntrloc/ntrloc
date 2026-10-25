@@ -1,5 +1,7 @@
 package org.ntrloc.graph.db.coordinator;
 
+import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
+import org.ntrloc.graph.db.partition.ledger.ItemDeleteEntry;
 import org.ntrloc.graph.db.partition.ledger.ItemUpdateEntry;
 import org.ntrloc.graph.db.partition.ledger.LedgerEntry;
 import org.ntrloc.graph.db.partition.ledger.LinkCreateEntry;
@@ -53,11 +55,14 @@ public class NoOpMutationFilter {
 
     // Returns null for an entry that turned out to have nothing left to do.
     private LedgerEntry filterEntry(LedgerEntry entry) {
-        if (entry instanceof ItemUpdateEntry e) return filterItemUpdate(e);
-        if (entry instanceof LinkCreateEntry e) return filterLinkCreate(e);
-        if (entry instanceof LinkUpdateEntry e) return filterLinkUpdate(e);
-        if (entry instanceof LinkDeleteEntry e) return filterLinkDelete(e);
-        return entry;
+        return switch (entry) {
+            case ItemUpdateEntry e -> filterItemUpdate(e);
+            case LinkCreateEntry e -> filterLinkCreate(e);
+            case LinkUpdateEntry e -> filterLinkUpdate(e);
+            case LinkDeleteEntry e -> filterLinkDelete(e);
+            // Never a no-op: a create always makes something, a delete always removes it.
+            case ItemCreateEntry _, ItemDeleteEntry _ -> entry;
+        };
     }
 
     private ItemUpdateEntry filterItemUpdate(ItemUpdateEntry e) {

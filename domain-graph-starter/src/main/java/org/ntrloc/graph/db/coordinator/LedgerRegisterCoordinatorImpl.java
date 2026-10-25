@@ -76,18 +76,20 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
         // so only properties/stateChanges gate whether there's a row to stage.
         StagingContext staging = new StagingContext(transactionId, actorUserId, createdDate);
         for (LedgerEntry entry : expanded) {
-            if (entry instanceof ItemCreateEntry e) {
-                registerPartitionManager.stageItemCreate(e.itemId(), e.itemTypeId(), e.properties(), e.initialStates(), staging);
-            } else if (entry instanceof ItemUpdateEntry e && hasRegisterEffect(e)) {
-                registerPartitionManager.stageItemChange(e.itemId(), e.properties(), e.stateChanges(), e.stateMachinesEnded(), staging);
+            switch (entry) {
+                case ItemCreateEntry e -> registerPartitionManager.stageItemCreate(e.itemId(), e.itemTypeId(), e.properties(), e.initialStates(), staging);
+                case ItemUpdateEntry e when hasRegisterEffect(e) -> registerPartitionManager.stageItemChange(e.itemId(), e.properties(), e.stateChanges(), e.stateMachinesEnded(), staging);
+                default -> { /* handled in another phase */ }
             }
         }
         for (LedgerEntry entry : expanded) {
-            if (entry instanceof LinkCreateEntry e) {
-                registerPartitionManager.stageLinkCreate(e.linkId(), e.linkTypeId(),
-                        toRegisterEndpoint(e.endpointA()), toRegisterEndpoint(e.endpointB()), e.properties(), staging);
-            } else if (entry instanceof LinkUpdateEntry e && !e.properties().isEmpty()) {
-                registerPartitionManager.stageLinkUpdate(e.linkId(), e.properties(), staging);
+            switch (entry) {
+                case LinkCreateEntry e -> {
+                    registerPartitionManager.stageLinkCreate(e.linkId(), e.linkTypeId(),
+                            toRegisterEndpoint(e.endpointA()), toRegisterEndpoint(e.endpointB()), e.properties(), staging);
+                }
+                case LinkUpdateEntry e when !e.properties().isEmpty() -> registerPartitionManager.stageLinkUpdate(e.linkId(), e.properties(), staging);
+                default -> { /* handled in another phase */ }
             }
         }
     }
@@ -116,20 +118,20 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
 
     private void commitItems(List<LedgerEntry> entries, UUID transactionId, UUID commitId) {
         for (LedgerEntry entry : entries) {
-            if (entry instanceof ItemCreateEntry e) {
-                registerPartitionManager.commitItem(e.itemId(), transactionId, commitId);
-            } else if (entry instanceof ItemUpdateEntry e && hasRegisterEffect(e)) {
-                registerPartitionManager.commitItem(e.itemId(), transactionId, commitId);
+            switch (entry) {
+                case ItemCreateEntry e -> registerPartitionManager.commitItem(e.itemId(), transactionId, commitId);
+                case ItemUpdateEntry e when hasRegisterEffect(e) -> registerPartitionManager.commitItem(e.itemId(), transactionId, commitId);
+                default -> { /* handled in another phase */ }
             }
         }
     }
 
     private void commitLinks(List<LedgerEntry> entries, UUID transactionId, UUID commitId) {
         for (LedgerEntry entry : entries) {
-            if (entry instanceof LinkCreateEntry e) {
-                registerPartitionManager.commitLink(e.linkId(), transactionId, commitId);
-            } else if (entry instanceof LinkUpdateEntry e && !e.properties().isEmpty()) {
-                registerPartitionManager.commitLink(e.linkId(), transactionId, commitId);
+            switch (entry) {
+                case LinkCreateEntry e -> registerPartitionManager.commitLink(e.linkId(), transactionId, commitId);
+                case LinkUpdateEntry e when !e.properties().isEmpty() -> registerPartitionManager.commitLink(e.linkId(), transactionId, commitId);
+                default -> { /* handled in another phase */ }
             }
         }
     }
@@ -148,11 +150,13 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
 
     private void applyMarkers(List<LedgerEntry> entries) {
         for (LedgerEntry entry : entries) {
-            if (entry instanceof ItemCreateEntry e) {
-                e.initialMarkers().forEach(m -> registerPartitionManager.postItemMarkerAdd(e.itemId(), m.markerId()));
-            } else if (entry instanceof ItemUpdateEntry e) {
-                e.markersAdded().forEach(m -> registerPartitionManager.postItemMarkerAdd(e.itemId(), m.markerId()));
-                e.markersRemoved().forEach(m -> registerPartitionManager.postItemMarkerRemove(e.itemId(), m.markerId()));
+            switch (entry) {
+                case ItemCreateEntry e -> e.initialMarkers().forEach(m -> registerPartitionManager.postItemMarkerAdd(e.itemId(), m.markerId()));
+                case ItemUpdateEntry e -> {
+                    e.markersAdded().forEach(m -> registerPartitionManager.postItemMarkerAdd(e.itemId(), m.markerId()));
+                    e.markersRemoved().forEach(m -> registerPartitionManager.postItemMarkerRemove(e.itemId(), m.markerId()));
+                }
+                default -> { /* handled in another phase */ }
             }
         }
     }

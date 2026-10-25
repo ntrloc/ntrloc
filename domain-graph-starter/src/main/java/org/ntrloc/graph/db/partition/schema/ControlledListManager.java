@@ -146,7 +146,7 @@ public class ControlledListManager {
     public List<AllowedValue> getValues(UUID listId, PropertyType valueType) {
         return jdbcClient.sql("SELECT value, label FROM %s ORDER BY sort_order, value"
                         .formatted(tableNameFor(listId)))
-                .query((rs, n) -> {
+                .query((rs, _) -> {
                     Object val = switch (valueType) {
                         case STRING -> rs.getString(PARAM_VALUE);
                         case INT    -> rs.getInt(PARAM_VALUE);
@@ -194,7 +194,7 @@ public class ControlledListManager {
 
     public List<ControlledList> getAllLists() {
         return jdbcClient.sql("SELECT id, name, value_type FROM schema_controlled_list ORDER BY name")
-                .query((rs, n) -> new ControlledList(
+                .query((rs, _) -> new ControlledList(
                         rs.getObject("id", UUID.class),
                         rs.getString("name"),
                         PropertyType.valueOf(rs.getString(COL_VALUE_TYPE))))
@@ -204,7 +204,7 @@ public class ControlledListManager {
     public Optional<ControlledList> getListById(UUID listId) {
         return jdbcClient.sql("SELECT id, name, value_type FROM schema_controlled_list WHERE id = :id")
                 .param("id", listId)
-                .query((rs, n) -> new ControlledList(
+                .query((rs, _) -> new ControlledList(
                         rs.getObject("id", UUID.class),
                         rs.getString("name"),
                         PropertyType.valueOf(rs.getString(COL_VALUE_TYPE))))
@@ -245,7 +245,7 @@ public class ControlledListManager {
                 WHERE sp.id = :propertyId
                 """)
                 .param("propertyId", propertyId)
-                .query((rs, n) -> new ControlledList(
+                .query((rs, _) -> new ControlledList(
                         rs.getObject("id", UUID.class),
                         rs.getString("name"),
                         PropertyType.valueOf(rs.getString(COL_VALUE_TYPE))))

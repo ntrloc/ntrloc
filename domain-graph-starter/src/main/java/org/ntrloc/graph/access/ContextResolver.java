@@ -43,22 +43,16 @@ public final class ContextResolver {
     // on the first call, and whatever item a prior StepToItem landed on for every recursive call
     // after that. facts answers everything beyond that one item's own already-known properties.
     public static List<Instance> resolveInstances(Context context, UUID itemId, Map<UUID, Object> itemProperties, FactResolver facts) {
-        if (context instanceof Self) {
-            return List.of(new Instance(itemId, itemId));
-        }
-        if (context instanceof StepToProperty step) {
-            return resolvePropertyStep(step, itemId, itemProperties);
-        }
-        if (context instanceof StepToStateMachine step) {
-            return List.of(new Instance(itemId, facts.currentStateId(itemId, step.stateMachineId())));
-        }
-        if (context instanceof StepToItem step) {
-            return resolveItemStep(step, itemId, facts);
-        }
-        // StepToLink -- reading a link's own properties, rather than stepping past it to the item on
-        // the far end -- is a deliberately separate, still-unsupported piece of work; see
-        // FactResolver's own comment.
-        throw new UnsupportedOperationException("ContextResolver does not yet support " + context);
+        return switch (context) {
+            case Self _ -> List.of(new Instance(itemId, itemId));
+            case StepToProperty step -> resolvePropertyStep(step, itemId, itemProperties);
+            case StepToStateMachine step -> List.of(new Instance(itemId, facts.currentStateId(itemId, step.stateMachineId())));
+            case StepToItem step -> resolveItemStep(step, itemId, facts);
+            // Reading a link's own properties, rather than stepping past it to the item on the far
+            // end, is a deliberately separate, still-unsupported piece of work; see FactResolver's
+            // own comment.
+            case StepToLink _ -> throw new UnsupportedOperationException("ContextResolver does not yet support " + context);
+        };
     }
 
     private static List<Instance> resolvePropertyStep(StepToProperty step, UUID itemId, Map<UUID, Object> itemProperties) {
@@ -81,7 +75,7 @@ public final class ContextResolver {
             if (targets.isEmpty()) {
                 return List.of();
             }
-            UUID target = targets.get(0);
+            UUID target = targets.getFirst();
             return resolveInstances(step.next(), target, facts.propertiesOfItem(target), facts);
         }
         List<Instance> results = new ArrayList<>();

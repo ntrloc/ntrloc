@@ -21,6 +21,7 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -73,11 +74,23 @@ public final class UiBrowser {
 
     /** Opens a browser session against the server on this port. */
     public UiBrowser(int port) {
+        this(port, List.of());
+    }
+
+    /**
+     * Opens a browser session that also treats these plain-HTTP origins as secure, as Chrome does
+     * localhost on its own -- so it keeps cookies marked Secure from, e.g., an identity provider
+     * running in another container.
+     */
+    public UiBrowser(int port, List<String> originsTreatedAsSecure) {
         this.port = port;
         Testcontainers.exposeHostPorts(port);
         // A typical desktop window; Chrome's default in the container is narrow enough to squeeze
         // table columns down to nothing.
         ChromeOptions options = new ChromeOptions().addArguments("--window-size=1600,1000");
+        if (!originsTreatedAsSecure.isEmpty()) {
+            options.addArguments("--unsafely-treat-insecure-origin-as-secure=" + String.join(",", originsTreatedAsSecure));
+        }
         options.setCapability("goog:loggingPrefs", Map.of(LogType.BROWSER, "ALL"));
         driver = new RemoteWebDriver(BROWSER.getSeleniumAddress(), options);
     }

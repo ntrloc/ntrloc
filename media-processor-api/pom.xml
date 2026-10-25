@@ -20,7 +20,7 @@
          made by each consumer (domain-graph-starter as a client, ntrloc-media-processor as a
          server), not something this shared module should force on either side. -->
     <properties>
-        <maven.compiler.release>17</maven.compiler.release>
+        <maven.compiler.release>25</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
 
         <!-- gRPC's wire protocol is version-tolerant, so this needn't match ntrloc-media-processor's

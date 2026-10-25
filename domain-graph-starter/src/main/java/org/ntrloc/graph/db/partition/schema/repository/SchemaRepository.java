@@ -74,7 +74,7 @@ public class SchemaRepository {
 
     public Set<ItemRow> getAllItems() {
         return Set.copyOf(jdbcClient.sql("SELECT id, name, description, supertype_id, abstract, display_label_pattern FROM schema_item")
-                .query((rs, n) -> new ItemRow(
+                .query((rs, _) -> new ItemRow(
                         rs.getObject("id", UUID.class),
                         rs.getString("name"),
                         rs.getString(PARAM_DESCRIPTION),
@@ -139,7 +139,7 @@ public class SchemaRepository {
 
     public Set<TraitRow> getAllTraits() {
         return Set.copyOf(jdbcClient.sql("SELECT id, name, description FROM schema_trait")
-                .query((rs, n) -> new TraitRow(
+                .query((rs, _) -> new TraitRow(
                         rs.getObject("id", UUID.class),
                         rs.getString("name"),
                         rs.getString(PARAM_DESCRIPTION)))
@@ -186,7 +186,7 @@ public class SchemaRepository {
 
     public Map<UUID, List<UUID>> getTraitIdsByItem() {
         return jdbcClient.sql("SELECT item_id, trait_id FROM schema_item_trait")
-                .query((rs, n) -> Map.entry(
+                .query((rs, _) -> Map.entry(
                         rs.getObject("item_id", UUID.class),
                         rs.getObject("trait_id", UUID.class)))
                 .list().stream()
@@ -264,7 +264,7 @@ public class SchemaRepository {
     public Optional<PropertyOwnerRef> findPropertyParent(UUID propertyId) {
         return jdbcClient.sql("SELECT * FROM schema_property WHERE id = :id")
                 .param("id", propertyId)
-                .query((rs, n) -> parentOf(rs))
+                .query((rs, _) -> parentOf(rs))
                 .optional();
     }
 
@@ -307,14 +307,14 @@ public class SchemaRepository {
                 VALUES (:name, :description, :parentItemId, :parentTraitId, :parentLinkId, :parentGroupId) RETURNING *
                 """), parent)
                 .param("name", name).param(PARAM_DESCRIPTION, description)
-                .query((rs, n) -> mapGroup(rs))
+                .query((rs, _) -> mapGroup(rs))
                 .single();
     }
 
     public GroupRow updateGroup(UUID id, String name, String description) {
         return jdbcClient.sql("UPDATE schema_property_group SET name = :name, description = :description WHERE id = :id RETURNING *")
                 .param("id", id).param("name", name).param(PARAM_DESCRIPTION, description)
-                .query((rs, n) -> mapGroup(rs))
+                .query((rs, _) -> mapGroup(rs))
                 .single();
     }
 
@@ -325,7 +325,7 @@ public class SchemaRepository {
     public Optional<GroupRow> findGroup(UUID id) {
         return jdbcClient.sql("SELECT * FROM schema_property_group WHERE id = :id")
                 .param("id", id)
-                .query((rs, n) -> mapGroup(rs))
+                .query((rs, _) -> mapGroup(rs))
                 .optional();
     }
 
@@ -357,7 +357,7 @@ public class SchemaRepository {
     // column is one of this class's own COL_PARENT_* constants, never caller-supplied.
     private Map<UUID, List<GroupRow>> groupsGroupedBy(String column) {
         return jdbcClient.sql("SELECT * FROM schema_property_group WHERE " + column + " IS NOT NULL")
-                .query((rs, n) -> Map.entry(rs.getObject(column, UUID.class), mapGroup(rs)))
+                .query((rs, _) -> Map.entry(rs.getObject(column, UUID.class), mapGroup(rs)))
                 .list().stream()
                 .collect(Collectors.groupingBy(Map.Entry::getKey, Collectors.mapping(Map.Entry::getValue, Collectors.toList())));
     }
@@ -366,7 +366,7 @@ public class SchemaRepository {
     // a cycle -- a property is always a leaf).
     public Map<UUID, UUID> getParentGroupIdByGroup() {
         return jdbcClient.sql("SELECT id, parent_group_id FROM schema_property_group WHERE parent_group_id IS NOT NULL")
-                .query((rs, n) -> Map.entry(
+                .query((rs, _) -> Map.entry(
                         rs.getObject("id", UUID.class),
                         rs.getObject(COL_PARENT_GROUP_ID, UUID.class)))
                 .list().stream()
@@ -402,7 +402,7 @@ public class SchemaRepository {
 
     public Set<UUID> getAllLinkIds() {
         return Set.copyOf(jdbcClient.sql("SELECT id FROM schema_link")
-                .query((rs, n) -> rs.getObject("id", UUID.class))
+                .query((rs, _) -> rs.getObject("id", UUID.class))
                 .list());
     }
 
@@ -497,7 +497,7 @@ public class SchemaRepository {
 
     public Map<UUID, List<StateMachineRow>> getStateMachinesByItem() {
         return jdbcClient.sql("SELECT * FROM schema_state_machine ORDER BY item_definition_id, name")
-                .query((rs, n) -> Map.entry(rs.getObject(COL_ITEM_DEFINITION_ID, UUID.class), mapStateMachine(rs)))
+                .query((rs, _) -> Map.entry(rs.getObject(COL_ITEM_DEFINITION_ID, UUID.class), mapStateMachine(rs)))
                 .list().stream()
                 .collect(Collectors.groupingBy(Map.Entry::getKey, Collectors.mapping(Map.Entry::getValue, Collectors.toList())));
     }
@@ -550,12 +550,12 @@ public class SchemaRepository {
     public Optional<StateRow> findState(UUID id) {
         return jdbcClient.sql("SELECT * FROM schema_state WHERE id = :id")
                 .param("id", id)
-                .query((rs, n) -> mapState(rs)).optional();
+                .query((rs, _) -> mapState(rs)).optional();
     }
 
     public Map<UUID, List<StateRow>> getStatesByStateMachine() {
         return jdbcClient.sql("SELECT * FROM schema_state ORDER BY state_machine_id, name")
-                .query((rs, n) -> Map.entry(rs.getObject("state_machine_id", UUID.class), mapState(rs)))
+                .query((rs, _) -> Map.entry(rs.getObject("state_machine_id", UUID.class), mapState(rs)))
                 .list().stream()
                 .collect(Collectors.groupingBy(Map.Entry::getKey, Collectors.mapping(Map.Entry::getValue, Collectors.toList())));
     }
@@ -591,12 +591,12 @@ public class SchemaRepository {
     public Optional<TransitionRow> findTransition(UUID id) {
         return jdbcClient.sql("SELECT * FROM schema_state_transition WHERE id = :id")
                 .param("id", id)
-                .query((rs, n) -> mapTransition(rs)).optional();
+                .query((rs, _) -> mapTransition(rs)).optional();
     }
 
     public Map<UUID, List<TransitionRow>> getTransitionsByFromState() {
         return jdbcClient.sql("SELECT * FROM schema_state_transition ORDER BY from_state_id, name")
-                .query((rs, n) -> Map.entry(rs.getObject("from_state_id", UUID.class), mapTransition(rs)))
+                .query((rs, _) -> Map.entry(rs.getObject("from_state_id", UUID.class), mapTransition(rs)))
                 .list().stream()
                 .collect(Collectors.groupingBy(Map.Entry::getKey, Collectors.mapping(Map.Entry::getValue, Collectors.toList())));
     }
@@ -635,7 +635,7 @@ public class SchemaRepository {
                 ORDER BY bdp.path
                 """)
                 .param("propertyId", propertyId)
-                .query((rs, n) -> new DynamicFieldView(rs.getString("path"), PropertyType.valueOf(rs.getString("type"))))
+                .query((rs, _) -> new DynamicFieldView(rs.getString("path"), PropertyType.valueOf(rs.getString("type"))))
                 .list();
     }
 

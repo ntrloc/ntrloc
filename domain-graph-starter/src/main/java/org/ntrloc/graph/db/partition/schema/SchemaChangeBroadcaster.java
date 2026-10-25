@@ -2,6 +2,8 @@ package org.ntrloc.graph.db.partition.schema;
 
 import org.ntrloc.graph.cluster.ClusterService;
 import org.ntrloc.graph.events.SseEmitterRegistry;
+import org.springframework.context.event.ContextClosedEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -46,5 +48,10 @@ public class SchemaChangeBroadcaster {
 
     public SseEmitter register() {
         return registry.register();
+    }
+
+    @EventListener(ContextClosedEvent.class)
+    void closeStreams() {
+        registry.completeAll();
     }
 }

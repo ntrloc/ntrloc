@@ -59,6 +59,18 @@ public class SseEmitterRegistry<T> {
         }
     }
 
+    // Ends every open stream. Each owning broadcaster calls this on ContextClosedEvent, which Spring
+    // publishes before graceful shutdown starts waiting for in-flight requests: these streams have
+    // no timeout and a closed browser never tells the server, so otherwise every shutdown with an
+    // admin UI open waits out the full graceful-shutdown timeout (30s) for them. A client's
+    // EventSource sees the stream end and reconnects on its own.
+    public void completeAll() {
+        for (Registration<T> registration : registrations) {
+            registration.emitter().complete();
+        }
+        registrations.clear();
+    }
+
     // For a shared heartbeat: a comment line is ignored by EventSource's message/named-event
     // handling, so it never reaches application listeners, but it's enough to keep a reverse
     // proxy/load balancer from treating an otherwise-idle connection as dead.

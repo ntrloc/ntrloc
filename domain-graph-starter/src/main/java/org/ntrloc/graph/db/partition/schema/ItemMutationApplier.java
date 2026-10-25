@@ -10,7 +10,6 @@ import org.ntrloc.graph.db.partition.schema.repository.SchemaRepository;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
 
-import java.util.HashSet;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -35,14 +34,13 @@ class ItemMutationApplier {
     // complexity is far lower in isolation (worst case 4), and this method is now just a sequence
     // of flat, unnested checks.
     boolean apply(DefinitionMutation mutation) {
-        if (mutation instanceof CreateItemDefinitionMutation m) {
-            applyCreate(m);
-        } else if (mutation instanceof UpdateItemDefinitionMutation m) {
-            applyUpdate(m);
-        } else if (mutation instanceof DeleteItemDefinitionMutation m) {
-            applyDelete(m);
-        } else {
-            return false;
+        switch (mutation) {
+            case CreateItemDefinitionMutation m -> applyCreate(m);
+            case UpdateItemDefinitionMutation m -> applyUpdate(m);
+            case DeleteItemDefinitionMutation m -> applyDelete(m);
+            default -> {
+                return false;
+            }
         }
         return true;
     }

@@ -28,26 +28,17 @@ public final class PredicateEvaluator {
      */
     public static boolean evaluate(Predicate predicate, Map<String, Object> propsByName,
                                     Map<String, String> currentStateByMachineName) {
-        if (predicate instanceof AndPredicate p) {
-            return p.predicates().stream().allMatch(c -> evaluate(c, propsByName, currentStateByMachineName));
-        }
-        if (predicate instanceof OrPredicate p) {
-            return p.predicates().stream().anyMatch(c -> evaluate(c, propsByName, currentStateByMachineName));
-        }
-        if (predicate instanceof NotPredicate p) {
-            return !evaluate(p.predicate(), propsByName, currentStateByMachineName);
-        }
-        if (predicate instanceof PropertyExistencePredicate p) {
-            return propsByName.get(p.propertyName()) != null;
-        }
-        if (predicate instanceof StateValuePredicate p) {
-            return p.stateName().equals(currentStateByMachineName.get(p.stateMachineName()));
-        }
-        if (predicate instanceof PropertyValuePredicate p) {
-            Object actual = propsByName.get(p.propertyName());
-            return actual != null && compare(actual, p.operator(), p.value());
-        }
-        throw new IllegalArgumentException("Unsupported predicate: " + predicate.getClass().getSimpleName());
+        return switch (predicate) {
+            case AndPredicate p -> p.predicates().stream().allMatch(c -> evaluate(c, propsByName, currentStateByMachineName));
+            case OrPredicate p -> p.predicates().stream().anyMatch(c -> evaluate(c, propsByName, currentStateByMachineName));
+            case NotPredicate p -> !evaluate(p.predicate(), propsByName, currentStateByMachineName);
+            case PropertyExistencePredicate p -> propsByName.get(p.propertyName()) != null;
+            case StateValuePredicate p -> p.stateName().equals(currentStateByMachineName.get(p.stateMachineName()));
+            case PropertyValuePredicate p -> {
+                Object actual = propsByName.get(p.propertyName());
+                yield actual != null && compare(actual, p.operator(), p.value());
+            }
+        };
     }
 
     private static boolean compare(Object actual, Operator op, String expected) {
@@ -71,7 +62,7 @@ public final class PredicateEvaluator {
     private static Double parseNumber(String s) {
         try {
             return Double.valueOf(s);
-        } catch (NumberFormatException e) {
+        } catch (NumberFormatException _) {
             return null;
         }
     }

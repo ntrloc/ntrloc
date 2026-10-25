@@ -1,6 +1,8 @@
 package org.ntrloc.graph.db.partition.process;
 
 import org.ntrloc.graph.events.SseEmitterRegistry;
+import org.springframework.context.event.ContextClosedEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -36,5 +38,10 @@ public class TaskEventBroadcaster {
 
     public SseEmitter register() {
         return registry.register();
+    }
+
+    @EventListener(ContextClosedEvent.class)
+    void closeStreams() {
+        registry.completeAll();
     }
 }

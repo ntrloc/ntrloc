@@ -144,7 +144,7 @@ public class AccessAdminController {
         var grants = authRepo.getItemTypeGrantsForPrincipal(principalType, principalId);
         Map<UUID, UserGroupPermissionView> byItemType = new LinkedHashMap<>();
         for (var g : grants) {
-            byItemType.compute(g.itemTypeId(), (k, existing) -> {
+            byItemType.compute(g.itemTypeId(), (_, existing) -> {
                 if (existing == null) {
                     var ops = new ArrayList<String>();
                     ops.add(g.permission());
@@ -645,7 +645,7 @@ public class AccessAdminController {
         for (var entry : viaMap.entrySet()) {
             var key = entry.getKey();
             var viaUserGroups = entry.getValue();
-            byItemType.compute(key.itemTypeId(), (k, existing) -> {
+            byItemType.compute(key.itemTypeId(), (_, existing) -> {
                 var opWithVia = new OperationWithVia(key.operation(), viaUserGroups);
                 if (existing == null) {
                     var ops = new ArrayList<OperationWithVia>();

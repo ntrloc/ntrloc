@@ -110,7 +110,7 @@ public class BinaryPartitionManagerImpl implements BinaryPartitionManager {
                 .param("mimeType", info.getMimeType())
                 .param(COL_LENGTH, info.getLength())
                 .param(COL_METADATA, metadataJson(info))
-                .query((rs, n) -> new InsertResult(rs.getObject("id", UUID.class), rs.getBoolean("inserted")))
+                .query((rs, _) -> new InsertResult(rs.getObject("id", UUID.class), rs.getBoolean("inserted")))
                 .single();
         if (result.inserted()) {
             eventPublisher.publishEvent(new BinaryContentEvent.Created(result.id()));
@@ -148,7 +148,7 @@ public class BinaryPartitionManagerImpl implements BinaryPartitionManager {
                 FROM binary_content WHERE id = :id
                 """)
                 .param("id", id)
-                .query((rs, n) -> mapRow(rs))
+                .query((rs, _) -> mapRow(rs))
                 .optional();
     }
 
@@ -161,7 +161,7 @@ public class BinaryPartitionManagerImpl implements BinaryPartitionManager {
                 FROM binary_content WHERE id IN (:ids)
                 """)
                 .param("ids", idList)
-                .query((rs, n) -> mapRow(rs))
+                .query((rs, _) -> mapRow(rs))
                 .list()
                 .stream()
                 .collect(Collectors.toMap(BinaryPropertyObject::id, obj -> obj));

@@ -5,8 +5,8 @@ import org.ntrloc.graph.TestApplication;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.boot.webtestclient.autoconfigure.AutoConfigureWebTestClient;
-import org.springframework.http.HttpStatus;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.TestPropertySource;
@@ -40,6 +40,7 @@ import java.util.UUID;
         "graph.auth.oauth.enabled=false",
         "graph.auth.ldap.enabled=false"
 })
+@DirtiesContext
 class PersonalAccessTokenAuthenticationIntegrationTest {
 
     private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:18");

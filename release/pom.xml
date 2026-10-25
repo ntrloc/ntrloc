@@ -36,7 +36,7 @@
                 <configuration>
                     <image>
                         <env>
-                            <BP_JVM_VERSION>21</BP_JVM_VERSION>
+                            <BP_JVM_VERSION>25</BP_JVM_VERSION>
                         </env>
                     </image>
                 </configuration>
@@ -64,7 +64,7 @@
                                 <name>docker.io/ntrloc/ntrloc:${project.version}-amd64</name>
                                 <imagePlatform>linux/amd64</imagePlatform>
                                 <env>
-                                    <BP_JVM_VERSION>21</BP_JVM_VERSION>
+                                    <BP_JVM_VERSION>25</BP_JVM_VERSION>
                                 </env>
                             </image>
                         </configuration>
@@ -84,7 +84,7 @@
                                 <name>docker.io/ntrloc/ntrloc:${project.version}-arm64</name>
                                 <imagePlatform>linux/arm64</imagePlatform>
                                 <env>
-                                    <BP_JVM_VERSION>21</BP_JVM_VERSION>
+                                    <BP_JVM_VERSION>25</BP_JVM_VERSION>
                                 </env>
                             </image>
                         </configuration>

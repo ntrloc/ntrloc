@@ -101,7 +101,7 @@ public class BinaryDynamicPropertyRegistrar {
         Map<UUID, Integer> result = new HashMap<>();
         jdbcClient.sql("SELECT property_id, COUNT(*) AS n FROM register_binary_property WHERE binary_id = :binaryId GROUP BY property_id")
                 .param("binaryId", binaryContentId)
-                .query((rs, n) -> Map.entry(rs.getObject("property_id", UUID.class), rs.getInt("n")))
+                .query((rs, _) -> Map.entry(rs.getObject("property_id", UUID.class), rs.getInt("n")))
                 .list()
                 .forEach(e -> result.put(e.getKey(), e.getValue()));
         return result;
@@ -132,22 +132,16 @@ public class BinaryDynamicPropertyRegistrar {
     private void flattenPaths(Map<String, Object> node, String pathPrefix, Map<String, PropertyType> result) {
         node.forEach((key, value) -> {
             String path = pathPrefix.isEmpty() ? key : pathPrefix + "." + key;
-            if (value == null) {
-                // no type to infer
-            } else if (value instanceof Map<?, ?> child) {
-                flattenPaths((Map<String, Object>) child, path, result);
-            } else if (value instanceof List<?>) {
-                // structured list elements: not modeled yet (design-notes section 6)
-            } else if (value instanceof String) {
-                result.put(path, PropertyType.STRING);
-            } else if (value instanceof Boolean) {
-                result.put(path, PropertyType.BOOLEAN);
-            } else if (value instanceof Double) {
-                result.put(path, PropertyType.DOUBLE);
-            } else if (value instanceof Number) {
-                result.put(path, PropertyType.LONG);
+            switch (value) {
+                case null -> { /* no type to infer */ }
+                case Map<?, ?> child -> flattenPaths((Map<String, Object>) child, path, result);
+                case List<?> _ -> { /* structured list elements: not modeled yet (design-notes section 6) */ }
+                case String _ -> result.put(path, PropertyType.STRING);
+                case Boolean _ -> result.put(path, PropertyType.BOOLEAN);
+                case Double _ -> result.put(path, PropertyType.DOUBLE);
+                case Number _ -> result.put(path, PropertyType.LONG);
+                default -> { /* unrecognized JSON scalar shape -- ignore rather than fail the whole walk */ }
             }
-            // else: unrecognized JSON scalar shape -- ignore rather than fail the whole walk
         });
     }
 

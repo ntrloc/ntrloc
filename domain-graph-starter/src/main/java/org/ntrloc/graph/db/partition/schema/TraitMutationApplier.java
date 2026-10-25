@@ -26,27 +26,31 @@ class TraitMutationApplier {
     }
 
     boolean apply(DefinitionMutation mutation) {
-        if (mutation instanceof CreateTraitDefinitionMutation m) {
-            var trait = repo.createTrait(m.name(), m.description());
-            PropertyMutationApplier.createContents(repo, new SchemaRepository.PropertyOwnerRef(PropertyContainerKind.TRAIT, trait.id()),
-                    m.properties(), m.groups(), ENTITY_KIND_TRAIT + " '" + m.name() + "'");
-            eventPublisher.publishEvent(new SchemaChangeEvent.TraitCreated(trait.id()));
-        } else if (mutation instanceof DeleteTraitDefinitionMutation m) {
-            SchemaMutationValidation.requireTraitNotInUse(repo, m.id());
-            repo.deleteTrait(m.id());
-            eventPublisher.publishEvent(new SchemaChangeEvent.TraitDeleted(m.id()));
-        } else if (mutation instanceof ImplementTraitMutation m) {
-            var traitName = repo.getAllTraits().stream()
-                    .filter(t -> t.id().equals(m.traitId()))
-                    .findFirst()
-                    .map(SchemaRepository.TraitRow::name)
-                    .orElseThrow(() -> new IllegalArgumentException("Unknown trait: " + m.traitId()));
-            SchemaMutationValidation.requireTraitNameAvailable(repo, m.itemId(), traitName);
-            repo.implementTrait(m.itemId(), m.traitId());
-        } else if (mutation instanceof RemoveTraitMutation m) {
-            repo.removeTrait(m.itemId(), m.traitId());
-        } else {
-            return false;
+        switch (mutation) {
+            case CreateTraitDefinitionMutation m -> {
+                var trait = repo.createTrait(m.name(), m.description());
+                PropertyMutationApplier.createContents(repo, new SchemaRepository.PropertyOwnerRef(PropertyContainerKind.TRAIT, trait.id()),
+                        m.properties(), m.groups(), ENTITY_KIND_TRAIT + " '" + m.name() + "'");
+                eventPublisher.publishEvent(new SchemaChangeEvent.TraitCreated(trait.id()));
+            }
+            case DeleteTraitDefinitionMutation m -> {
+                SchemaMutationValidation.requireTraitNotInUse(repo, m.id());
+                repo.deleteTrait(m.id());
+                eventPublisher.publishEvent(new SchemaChangeEvent.TraitDeleted(m.id()));
+            }
+            case ImplementTraitMutation m -> {
+                var traitName = repo.getAllTraits().stream()
+                        .filter(t -> t.id().equals(m.traitId()))
+                        .findFirst()
+                        .map(SchemaRepository.TraitRow::name)
+                        .orElseThrow(() -> new IllegalArgumentException("Unknown trait: " + m.traitId()));
+                SchemaMutationValidation.requireTraitNameAvailable(repo, m.itemId(), traitName);
+                repo.implementTrait(m.itemId(), m.traitId());
+            }
+            case RemoveTraitMutation m -> repo.removeTrait(m.itemId(), m.traitId());
+            default -> {
+                return false;
+            }
         }
         return true;
     }

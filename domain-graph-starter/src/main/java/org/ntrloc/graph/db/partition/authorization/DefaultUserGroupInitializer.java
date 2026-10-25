@@ -93,7 +93,7 @@ public class DefaultUserGroupInitializer {
     // again on a later restart; see the migration comment on schema_item.default_visibility_decided.
     private void grantReadForUncoveredItemTypes(UUID groupId) {
         jdbcClient.sql("SELECT id FROM schema_item WHERE NOT default_visibility_decided")
-                .query((rs, n) -> rs.getObject("id", UUID.class))
+                .query((rs, _) -> rs.getObject("id", UUID.class))
                 .list()
                 .forEach(itemTypeId -> grantReadForItemType(itemTypeId, groupId));
     }

@@ -104,29 +104,22 @@ public final class PipelineEvaluator {
         }
 
         private Set<UUID> applyBlock(CarrierBlock block, Set<UUID> carrierIn) {
-            if (block instanceof End) return carrierIn;
-            if (block instanceof AddMarkers b) {
-                return applyAddMarkers(b, fires(b.gate()), carrierIn);
-            }
-            if (block instanceof RemoveMarkers b) {
-                if (!fires(b.gate())) return carrierIn;
-                Set<UUID> out = new LinkedHashSet<>(carrierIn);
-                out.removeAll(b.markerIds());
-                return out;
-            }
-            if (block instanceof SetMarkers b) {
-                if (!fires(b.gate())) return carrierIn;
-                return new LinkedHashSet<>(b.markerIds());
-            }
-            if (block instanceof Filter f) {
-                return fires(f.signal()) ? carrierIn : Set.of();
-            }
-            if (block instanceof Select s) {
+            return switch (block) {
+                case End _ -> carrierIn;
+                case AddMarkers b -> applyAddMarkers(b, fires(b.gate()), carrierIn);
+                case RemoveMarkers b -> {
+                    if (!fires(b.gate())) yield carrierIn;
+                    Set<UUID> out = new LinkedHashSet<>(carrierIn);
+                    out.removeAll(b.markerIds());
+                    yield out;
+                }
+                case SetMarkers b -> fires(b.gate()) ? new LinkedHashSet<>(b.markerIds()) : carrierIn;
+                case Filter f -> fires(f.signal()) ? carrierIn : Set.of();
                 // The Select's own primary pin is (Otherwise), gated like any other block. Its rows are
                 // ordinary AddMarkers, handled above.
-                return fires(s.gate()) ? carrierIn : Set.of();
-            }
-            throw new IllegalArgumentException("Unsupported carrier block: " + block);
+                case Select s -> fires(s.gate()) ? carrierIn : Set.of();
+                case Start _ -> throw new IllegalStateException("Start has no carrier input; carrierOut handles it");
+            };
         }
 
         // An unconditional gate fires without consulting topLevelSignals (see Gate).

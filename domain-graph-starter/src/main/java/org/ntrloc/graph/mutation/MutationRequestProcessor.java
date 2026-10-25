@@ -88,24 +88,20 @@ public class MutationRequestProcessor {
         for (int i = 0; i < items.size(); i++) {
             String path = "items[%d]".formatted(i);
             ItemMutation item = items.get(i);
-            if (item instanceof ItemCreateMutation m) {
-                processItemCreate(m, path, principal, state);
-            } else if (item instanceof ItemUpdateMutation m) {
-                processItemUpdate(m, path, principal, state);
-            } else if (item instanceof ItemDeleteMutation m) {
-                processItemDelete(m, path, principal, state);
+            switch (item) {
+                case ItemCreateMutation m -> processItemCreate(m, path, principal, state);
+                case ItemUpdateMutation m -> processItemUpdate(m, path, principal, state);
+                case ItemDeleteMutation m -> processItemDelete(m, path, principal, state);
             }
         }
 
         for (int i = 0; i < links.size(); i++) {
             String path = "links[%d]".formatted(i);
             LinkMutation link = links.get(i);
-            if (link instanceof LinkCreateMutation m) {
-                processLinkCreate(m, path, principal, state);
-            } else if (link instanceof LinkUpdateMutation m) {
-                processLinkUpdate(m, path, principal, state);
-            } else if (link instanceof LinkDeleteMutation m) {
-                processLinkDelete(m, path, principal, state);
+            switch (link) {
+                case LinkCreateMutation m -> processLinkCreate(m, path, principal, state);
+                case LinkUpdateMutation m -> processLinkUpdate(m, path, principal, state);
+                case LinkDeleteMutation m -> processLinkDelete(m, path, principal, state);
             }
         }
 

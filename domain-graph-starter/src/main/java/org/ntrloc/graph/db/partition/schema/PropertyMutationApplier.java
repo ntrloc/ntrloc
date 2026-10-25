@@ -35,33 +35,31 @@ class PropertyMutationApplier {
     }
 
     boolean apply(DefinitionMutation mutation) {
-        if (mutation instanceof AddPropertyDefinitionMutation m) {
-            applyAddProperty(m);
-        } else if (mutation instanceof UpdatePropertyDefinitionMutation m) {
-            SchemaMutationValidation.requireFacetableEligible(m.propertyType(), m.cardinality(), m.facetable());
-            var existing = repo.findProperty(m.id())
-                    .orElseThrow(() -> new IllegalArgumentException("Unknown property: " + m.id()));
-            if (!existing.name().equals(m.name())) {
-                var parent = repo.findPropertyParent(m.id())
-                        .orElseThrow(() -> new IllegalArgumentException("Property " + m.id() + " has no parent"));
-                SchemaMutationValidation.requireNameAvailable(repo, parent, m.name(), "this " + parent.kind().name().toLowerCase());
+        switch (mutation) {
+            case AddPropertyDefinitionMutation m -> applyAddProperty(m);
+            case UpdatePropertyDefinitionMutation m -> {
+                SchemaMutationValidation.requireFacetableEligible(m.propertyType(), m.cardinality(), m.facetable());
+                var existing = repo.findProperty(m.id())
+                        .orElseThrow(() -> new IllegalArgumentException("Unknown property: " + m.id()));
+                if (!existing.name().equals(m.name())) {
+                    var parent = repo.findPropertyParent(m.id())
+                            .orElseThrow(() -> new IllegalArgumentException("Property " + m.id() + " has no parent"));
+                    SchemaMutationValidation.requireNameAvailable(repo, parent, m.name(), "this " + parent.kind().name().toLowerCase());
+                }
+                repo.updateProperty(m.id(), m.name(), m.description(), m.propertyType(), m.cardinality(), m.usage(), m.facetable());
             }
-            repo.updateProperty(m.id(), m.name(), m.description(), m.propertyType(), m.cardinality(), m.usage(), m.facetable());
-        } else if (mutation instanceof DeletePropertyDefinitionMutation m) {
-            repo.deleteProperty(m.id());
-        } else if (mutation instanceof MovePropertyDefinitionMutation m) {
-            applyMoveProperty(m);
-        } else if (mutation instanceof AddPropertyGroupDefinitionMutation m) {
-            applyAddGroup(m);
-        } else if (mutation instanceof UpdatePropertyGroupDefinitionMutation m) {
-            applyUpdateGroup(m);
-        } else if (mutation instanceof DeletePropertyGroupDefinitionMutation m) {
-            SchemaMutationValidation.requireGroupEmpty(repo, m.id());
-            repo.deleteGroup(m.id());
-        } else if (mutation instanceof MovePropertyGroupDefinitionMutation m) {
-            applyMoveGroup(m);
-        } else {
-            return false;
+            case DeletePropertyDefinitionMutation m -> repo.deleteProperty(m.id());
+            case MovePropertyDefinitionMutation m -> applyMoveProperty(m);
+            case AddPropertyGroupDefinitionMutation m -> applyAddGroup(m);
+            case UpdatePropertyGroupDefinitionMutation m -> applyUpdateGroup(m);
+            case DeletePropertyGroupDefinitionMutation m -> {
+                SchemaMutationValidation.requireGroupEmpty(repo, m.id());
+                repo.deleteGroup(m.id());
+            }
+            case MovePropertyGroupDefinitionMutation m -> applyMoveGroup(m);
+            default -> {
+                return false;
+            }
         }
         return true;
     }
