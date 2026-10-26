@@ -93,4 +93,18 @@ class LdapLoginIntegrationTest extends AbstractLdapIntegrationTest {
 
         assertThat(me(logIn(email, "local-secret"))).containsEntry("email", email);
     }
+
+    // Only an OIDC sign-in is also signed out of its provider; an LDAP one just ends the session.
+    @Test
+    void loggingOut_endsTheSession_andReturnsToTheLoginPage() {
+        securityRepo.findUserByEmail("resync.user@example.org")
+                .orElseGet(() -> securityRepo.createUser("Resync User", "resync.user@example.org", false));
+        ResponseCookie session = logIn("resync.user", LDAP_PASSWORD);
+
+        webTestClient.get().uri("/logout").cookie(session.getName(), session.getValue()).exchange()
+                .expectStatus().is3xxRedirection()
+                .expectHeader().value("Location", location -> assertThat(location).endsWith("/login"));
+        webTestClient.get().uri("/api/account/me").cookie(session.getName(), session.getValue()).exchange()
+                .expectStatus().is3xxRedirection();
+    }
 }

@@ -13,7 +13,7 @@ import java.security.GeneralSecurityException;
 import java.security.SecureRandom;
 import java.util.Base64;
 
-// Encrypts secrets kept in the database (the LDAP bind password) with graph.security.secret-key,
+// Encrypts secrets kept in the database (LDAP bind password, OIDC client secrets) with graph.security.secret-key,
 // which lives outside the database, so a database dump alone doesn't reveal them. AES-GCM, so a
 // tampered value fails to decrypt rather than decrypting to garbage. The "v1:" prefix leaves room
 // to change the scheme later without guessing how an old value was written.

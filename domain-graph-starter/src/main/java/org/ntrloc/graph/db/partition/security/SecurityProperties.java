@@ -10,7 +10,7 @@ public class SecurityProperties {
     private boolean seedTestData = false;
     private AutoProvision autoProvision = new AutoProvision();
     // Base64 of a 32-byte AES key (e.g. `openssl rand -base64 32`) that encrypts secrets stored in
-    // the database, such as the LDAP bind password. Without one, those secrets can't be saved.
+    // the database: the LDAP bind password and OIDC client secrets. Without one, those secrets can't be saved.
     private String secretKey;
 
     public boolean isSeedTestData() {

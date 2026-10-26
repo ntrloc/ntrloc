@@ -264,6 +264,25 @@ CREATE TABLE security_ldap_config (
     updated_by              UUID REFERENCES security_user(id) ON DELETE SET NULL
 );
 
+-- The OpenID Connect providers people can sign in with, edited in the admin UI. registration_id is
+-- part of the redirect URI registered at the provider (/login/oauth2/code/{registration_id}), so
+-- it never changes once created. Confidential clients only: the client secret is required, and
+-- encrypted like the LDAP bind password. version goes up on every save, so each node knows to
+-- rebuild its cached client registration (see security_ldap_config).
+CREATE TABLE security_oidc_provider (
+    id                      UUID PRIMARY KEY DEFAULT uuidv7(),
+    registration_id         TEXT NOT NULL UNIQUE,
+    display_name            TEXT NOT NULL,
+    issuer_uri              TEXT NOT NULL,
+    client_id               TEXT NOT NULL,
+    client_secret_encrypted TEXT NOT NULL,
+    scopes                  TEXT NOT NULL,
+    enabled                 BOOLEAN NOT NULL,
+    version                 BIGINT NOT NULL DEFAULT 1,
+    updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_by              UUID REFERENCES security_user(id) ON DELETE SET NULL
+);
+
 -- === authorization_* (AuthorizationInitializer) ===
 
 -- A marker's scope answers two questions only: which item instances is it eligible to be assigned

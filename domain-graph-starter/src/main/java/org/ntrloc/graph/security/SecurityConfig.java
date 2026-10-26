@@ -11,14 +11,16 @@ import org.ntrloc.graph.db.partition.security.ExternalUserProvisioner;
 import org.ntrloc.graph.db.partition.security.LocalAuthenticationProvider;
 import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpHeaders;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.authorization.AuthorizationDecision;
 import org.springframework.security.config.Customizer;
+import org.springframework.security.config.ObjectPostProcessor;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.core.Authentication;
@@ -26,14 +28,15 @@ import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.context.RequestAttributeSecurityContextRepository;
 import org.springframework.security.web.context.SecurityContextRepository;
-import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
+import org.springframework.security.oauth2.client.oidc.web.logout.OidcClientInitiatedLogoutSuccessHandler;
+import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestRedirectFilter;
 import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
 import org.springframework.security.oauth2.core.OAuth2Error;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
+import org.springframework.security.web.authentication.SimpleUrlAuthenticationFailureHandler;
 import org.springframework.security.web.authentication.logout.LogoutSuccessHandler;
-import org.springframework.security.web.authentication.logout.SimpleUrlLogoutSuccessHandler;
 import org.springframework.security.web.authentication.www.BasicAuthenticationFilter;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -46,37 +49,35 @@ import java.util.Optional;
 @EnableWebSecurity
 public class SecurityConfig {
 
+    private static final Logger LOG = LoggerFactory.getLogger(SecurityConfig.class);
+
     private static final String LOGIN_PATH = "/login";
 
     private final AuthProperties authProperties;
     private final SecurityRepository securityRepository;
     private final ExternalPrincipalResolver principals;
     private final ExternalUserProvisioner provisioner;
-    private final ObjectProvider<ClientRegistrationRepository> clientRegistrations;
     private final LdapConfigurationService ldapConfiguration;
+    private final OidcProviderService oidcProviders;
 
     public SecurityConfig(AuthProperties authProperties, SecurityRepository securityRepository,
                            ExternalPrincipalResolver principals, ExternalUserProvisioner provisioner,
-                           ObjectProvider<ClientRegistrationRepository> clientRegistrations,
-                           LdapConfigurationService ldapConfiguration) {
+                           LdapConfigurationService ldapConfiguration, OidcProviderService oidcProviders) {
         this.authProperties = authProperties;
         this.securityRepository = securityRepository;
         this.principals = principals;
         this.provisioner = provisioner;
-        this.clientRegistrations = clientRegistrations;
         this.ldapConfiguration = ldapConfiguration;
+        this.oidcProviders = oidcProviders;
     }
 
-    // LDAP doesn't count: it's configured in the admin UI, so it can't be what admins rely on to
-    // reach the admin UI in the first place.
+    // LDAP and OIDC are configured in the admin UI, and a bad save there can leave no one able to
+    // sign in. graph.auth.local.enabled is the way back: turn it on and restart.
     @PostConstruct
-    public void validateAuthConfig() {
-        if (!authProperties.getLocal().isEnabled() && !authProperties.getOauth().isEnabled()) {
-            throw new IllegalStateException("Local login or OpenID Connect must be enabled");
-        }
-        if (authProperties.getOauth().isEnabled() && clientRegistrations.getIfAvailable() == null) {
-            throw new IllegalStateException("graph.auth.oauth.enabled is set, but no OpenID Connect provider is "
-                    + "configured under spring.security.oauth2.client.registration");
+    public void warnWithoutLocalLogin() {
+        if (!authProperties.getLocal().isEnabled()) {
+            LOG.warn("Local login is off (graph.auth.local.enabled): if LDAP and OIDC sign-in stop working, "
+                    + "turn it back on and restart to reach the admin UI");
         }
     }
 
@@ -122,19 +123,27 @@ public class SecurityConfig {
                         .logoutSuccessHandler(logoutSuccessHandler())
                 );
 
-        if (authProperties.getOauth().isEnabled()) {
-            // OpenID Connect only: a plain OAuth2 provider has no verified email to resolve a user by.
-            http.oauth2Login(oauth -> oauth
-                    .loginPage(LOGIN_PATH)
-                    .userInfoEndpoint(userInfo -> userInfo
-                            .oidcUserService(new NtrlocOidcUserService(principals, provisioner))
-                            .userService(request -> {
-                                throw new OAuth2AuthenticationException(new OAuth2Error("invalid_client"),
-                                        "Only OpenID Connect providers are supported (request the openid scope)");
-                            })));
-        }
+        // OpenID Connect only: a plain OAuth2 provider has no verified email to resolve a user by.
+        // Unconditional, like formLogin below: providers come and go in the admin UI without a restart.
+        http.oauth2Login(oauth -> oauth
+                .loginPage(LOGIN_PATH)
+                .clientRegistrationRepository(oidcProviders)
+                // A disabled or deleted provider (an old bookmark, a stale login page) ends at the
+                // login page's error, not a 500.
+                .withObjectPostProcessor(new ObjectPostProcessor<OAuth2AuthorizationRequestRedirectFilter>() {
+                    @Override
+                    public <O extends OAuth2AuthorizationRequestRedirectFilter> O postProcess(O filter) {
+                        filter.setAuthenticationFailureHandler(new SimpleUrlAuthenticationFailureHandler(LOGIN_PATH + "?error"));
+                        return filter;
+                    }
+                })
+                .userInfoEndpoint(userInfo -> userInfo
+                        .oidcUserService(new NtrlocOidcUserService(principals, provisioner))
+                        .userService(_ -> {
+                            throw new OAuth2AuthenticationException(new OAuth2Error("invalid_client"),
+                                    "Only OpenID Connect providers are supported (request the openid scope)");
+                        })));
 
-        // Unconditional: LDAP can be switched on at any time without a restart.
         http.formLogin(form -> form.loginPage(LOGIN_PATH));
 
         http.httpBasic(Customizer.withDefaults());
@@ -166,9 +175,14 @@ public class SecurityConfig {
         return new LoginUrlAuthenticationEntryPoint(LOGIN_PATH);
     }
 
+    // Someone who signed in through an OIDC provider is signed out of the provider too (RP-initiated
+    // logout): otherwise its session signs them straight back in on their next "Sign In with ...",
+    // without asking for a password. The provider then returns them to the login page. Everyone
+    // else, and a provider with no end_session_endpoint, goes straight to the login page.
     @Bean
     public LogoutSuccessHandler logoutSuccessHandler() {
-        SimpleUrlLogoutSuccessHandler handler = new SimpleUrlLogoutSuccessHandler();
+        OidcClientInitiatedLogoutSuccessHandler handler = new OidcClientInitiatedLogoutSuccessHandler(oidcProviders);
+        handler.setPostLogoutRedirectUri("{baseUrl}" + LOGIN_PATH);
         handler.setDefaultTargetUrl(LOGIN_PATH);
         return handler;
     }

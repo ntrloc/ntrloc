@@ -103,4 +103,32 @@ class OidcLoginIntegrationTest extends AbstractOidcIntegrationTest {
 
         getAdminPage(logIn("plain.user")).expectStatus().isForbidden();
     }
+
+    // The control for the test below: Keycloak's own session signs a browser straight back in.
+    @Test
+    void withoutLoggingOut_keycloakSignsTheBrowserStraightBackIn() {
+        ensureAccount("resync.user@example.org");
+        Browser browser = new Browser();
+        browser.logIn("resync.user", OIDC_PASSWORD);
+
+        assertThat(browser.keycloakAsksForPassword()).isFalse();
+    }
+
+    // RP-initiated logout: logging out of ntrloc ends the Keycloak session too, so signing in again
+    // asks for a password, and Keycloak returns the browser to ntrloc's login page.
+    @Test
+    void loggingOut_endsTheKeycloakSessionToo() {
+        ensureAccount("resync.user@example.org");
+        Browser browser = new Browser();
+        String session = browser.logIn("resync.user", OIDC_PASSWORD).sessionId().orElseThrow();
+
+        assertThat(browser.logOut()).endsWith("/login");
+        webTestClient.get().uri("/api/account/me").cookie("JSESSIONID", session).exchange()
+                .expectStatus().is3xxRedirection();
+        assertThat(browser.keycloakAsksForPassword()).isTrue();
+    }
+
+    private void ensureAccount(String email) {
+        securityRepo.findUserByEmail(email).orElseGet(() -> securityRepo.createUser("Resync User", email, false));
+    }
 }

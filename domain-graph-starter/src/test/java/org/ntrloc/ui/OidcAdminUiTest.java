@@ -8,6 +8,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.ntrloc.graph.TestApplication;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.ntrloc.graph.security.KeycloakContainers;
+import org.ntrloc.graph.security.OidcProviderService;
 import org.openqa.selenium.By;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -35,6 +36,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * ntrloc validates in full. Keycloak marks its session cookies Secure, so the browser treats that
  * plain-HTTP origin as secure, as Chrome does localhost.
  *
+ * Keycloak is registered as a sign-in provider through OidcProviderService, as the admin UI does.
  * Its own Spring context (SSO only) and Postgres, closed after this class (@DirtiesContext).
  */
 @SpringBootTest(classes = TestApplication.class, webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
@@ -67,14 +69,7 @@ class OidcAdminUiTest implements UiBrowser.Holder {
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
         registry.add("graph.auth.local.enabled", () -> "false");
-        registry.add("graph.auth.oauth.enabled", () -> "true");
         registry.add("graph.security.auto-provision.enabled", () -> "false");
-        String registration = "spring.security.oauth2.client.registration.keycloak.";
-        registry.add(registration + "client-id", () -> KeycloakContainers.CLIENT_ID);
-        registry.add(registration + "client-secret", () -> KeycloakContainers.CLIENT_SECRET);
-        registry.add(registration + "client-name", () -> "Keycloak");
-        registry.add(registration + "scope", () -> "openid,profile,email");
-        registry.add("spring.security.oauth2.client.provider.keycloak.issuer-uri", () -> keycloakUrl() + "/realms/ntrloc");
     }
 
     @LocalServerPort
@@ -90,8 +85,12 @@ class OidcAdminUiTest implements UiBrowser.Holder {
         return browser;
     }
 
+    @Autowired
+    private OidcProviderService oidcProviders;
+
     @BeforeEach
     void openBrowser() {
+        KeycloakContainers.register(oidcProviders, keycloakUrl() + "/realms/ntrloc");
         browser = new UiBrowser(port, List.of(keycloakUrl()));
     }
 

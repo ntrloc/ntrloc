@@ -1,14 +1,13 @@
 package org.ntrloc.graph.security;
 
 import org.ntrloc.graph.branding.BrandingProperties;
-import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.MediaType;
-import org.springframework.security.oauth2.client.registration.ClientRegistration;
-import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
+import org.ntrloc.graph.security.OidcProviderService.OidcProvider;
 import org.springframework.web.util.HtmlUtils;
 import org.springframework.web.util.UriUtils;
 
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -18,15 +17,14 @@ public class LoginController {
 
     private final AuthProperties authProperties;
     private final BrandingProperties brandingProperties;
-    private final ObjectProvider<ClientRegistrationRepository> clientRegistrations;
+    private final OidcProviderService oidcProviders;
     private final LdapConfigurationService ldapConfiguration;
 
     public LoginController(AuthProperties authProperties, BrandingProperties brandingProperties,
-                           ObjectProvider<ClientRegistrationRepository> clientRegistrations,
-                           LdapConfigurationService ldapConfiguration) {
+                           OidcProviderService oidcProviders, LdapConfigurationService ldapConfiguration) {
         this.authProperties = authProperties;
         this.brandingProperties = brandingProperties;
-        this.clientRegistrations = clientRegistrations;
+        this.oidcProviders = oidcProviders;
         this.ldapConfiguration = ldapConfiguration;
     }
 
@@ -79,20 +77,19 @@ public class LoginController {
 
         boolean first = true;
 
-        // OAuth first: one button per configured OpenID Connect provider.
-        if (authProperties.getOauth().isEnabled()
-                && clientRegistrations.getIfAvailable() instanceof Iterable<?> registrations) {
+        // OAuth first: one button per enabled OpenID Connect provider.
+        List<OidcProvider> providers = oidcProviders.enabledProviders();
+        if (!providers.isEmpty()) {
             html.append("""
                 <div class="section-label">Single Sign-On</div>
                 """);
-            for (Object registration : registrations) {
-                ClientRegistration client = (ClientRegistration) registration;
+            for (OidcProvider provider : providers) {
                 html.append("""
                     <a href="/oauth2/authorization/%s" style="text-decoration:none">
                         <button class="btn btn-oauth">Sign In with %s</button>
                     </a>
-                    """.formatted(UriUtils.encodePathSegment(client.getRegistrationId(), StandardCharsets.UTF_8),
-                        HtmlUtils.htmlEscape(client.getClientName())));
+                    """.formatted(UriUtils.encodePathSegment(provider.registrationId(), StandardCharsets.UTF_8),
+                        HtmlUtils.htmlEscape(provider.displayName())));
             }
             first = false;
         }

@@ -1,5 +1,6 @@
 package org.ntrloc.graph.security;
 
+import org.ntrloc.graph.security.OidcProviderService.OidcProvider;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
 import org.testcontainers.utility.MountableFile;
@@ -18,6 +19,7 @@ import java.util.Map;
 public final class KeycloakContainers {
 
     public static final int PORT = 8080;
+    public static final String REGISTRATION_ID = "keycloak";
     public static final String CLIENT_ID = "ntrloc";
     public static final String CLIENT_SECRET = "ntrloc-client-secret";
     public static final String USER_PASSWORD = "oidc-secret";
@@ -49,6 +51,20 @@ public final class KeycloakContainers {
                 .withExposedPorts(PORT)
                 .waitingFor(Wait.forHttp("/realms/ntrloc/.well-known/openid-configuration").forPort(PORT)
                         .withStartupTimeout(Duration.ofMinutes(3)));
+    }
+
+    /**
+     * Registers (or resets) the realm as the "keycloak" sign-in provider, as an admin would in the
+     * admin UI, with the given issuer URL.
+     */
+    public static void register(OidcProviderService providers, String issuerUri) {
+        OidcProvider keycloak = new OidcProvider(REGISTRATION_ID, "Keycloak", issuerUri, CLIENT_ID,
+                "openid profile email", true);
+        if (providers.list().stream().anyMatch(p -> p.provider().registrationId().equals(REGISTRATION_ID))) {
+            providers.update(REGISTRATION_ID, keycloak, CLIENT_SECRET, null);
+        } else {
+            providers.create(keycloak, CLIENT_SECRET, null);
+        }
     }
 
     /** The realm's issuer URL, as reached from this JVM. */

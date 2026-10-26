@@ -41,10 +41,8 @@ graph:
   auth:
     local:
       enabled: true
-    oauth:
-      enabled: false
   security:
-    # Development only -- encrypts secrets stored in the database (the LDAP bind password).
+    # Development only -- encrypts secrets stored in the database (LDAP bind password, OIDC client secrets).
     secret-key: sk/CG7pRY7zUgw5X1StIHXdmcEIVej9FRmng2VMqPio=
     seed-local-accounts: true
     seed-test-data: false

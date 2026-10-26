@@ -41,10 +41,8 @@ graph:
   auth:
     local:
       enabled: true
-    oauth:
-      enabled: false
   security:
-    # Encrypts secrets stored in the database (the LDAP bind password): base64 of 32 random bytes,
+    # Encrypts secrets stored in the database (LDAP bind password, OIDC client secrets): base64 of 32 random bytes,
     # e.g. `openssl rand -base64 32`. Keep it out of the database and don't lose it.
     secret-key: ${NTRLOC_SECRET_KEY:}
     seed-local-accounts: true

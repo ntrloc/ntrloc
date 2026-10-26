@@ -2,7 +2,6 @@ import Button from '../../controls/button/Button'
 import Input from '../../controls/input/Input'
 import Switch from '../../controls/switch/Switch'
 import { useLdapConfigViewModel } from './LdapConfigViewModel'
-import './LdapConfigView.css'
 
 // Laid out in pairs that belong together: where the directory is, how ntrloc signs in to search
 // it, how a login finds a person, and what's read from their entry.
@@ -23,10 +22,10 @@ function LdapConfigView() {
 
   if (status !== 'ready') {
     return (
-      <ldap-config-view>
+      <security-card>
         <h3>LDAP</h3>
         <p className="status">{status === 'loading' ? 'Loading…' : "The LDAP configuration couldn't be loaded."}</p>
-      </ldap-config-view>
+      </security-card>
     )
   }
 
@@ -42,16 +41,16 @@ function LdapConfigView() {
   }
 
   return (
-    <ldap-config-view>
-      <ldap-config-header>
+    <security-card>
+      <security-card-header>
         <h3>LDAP</h3>
-        <span className="ldap-config-enabled-label">{values.enabled ? 'Enabled' : 'Disabled'}</span>
+        <span className="security-card-enabled-label">{values.enabled ? 'Enabled' : 'Disabled'}</span>
         <Switch on={values.enabled} onChange={(on) => setField('enabled', on)} label="LDAP enabled" disabled={!editing} />
-      </ldap-config-header>
+      </security-card-header>
 
-      <ldap-config-fields>
+      <security-card-fields>
         {FIELDS.map((field) => (
-          <ldap-config-field key={field.key}>
+          <security-card-field key={field.key}>
             <Input
               name={field.name}
               editing={editing}
@@ -62,20 +61,20 @@ function LdapConfigView() {
               autoComplete="off"
               spellCheck={false}
             />
-            {editing && field.hint && <span className="ldap-config-hint">{field.hint}</span>}
-          </ldap-config-field>
+            {editing && field.hint && <span className="security-card-hint">{field.hint}</span>}
+          </security-card-field>
         ))}
-      </ldap-config-fields>
+      </security-card-fields>
 
-      {error && <p className="ldap-config-error">{error}</p>}
+      {error && <p className="security-card-error">{error}</p>}
 
       {testResult && (
-        <p className="ldap-config-test-result" data-ok={testResult.ok || undefined}>
+        <p className="security-card-test-result" data-ok={testResult.ok || undefined}>
           {testResult.message}
         </p>
       )}
 
-      <ldap-config-actions>
+      <security-card-actions>
         {editing ? (
           <>
             <Button onClick={save} disabled={busy !== null}>
@@ -91,8 +90,8 @@ function LdapConfigView() {
         ) : (
           <Button onClick={startEditing}>Edit</Button>
         )}
-      </ldap-config-actions>
-    </ldap-config-view>
+      </security-card-actions>
+    </security-card>
   )
 }
 
