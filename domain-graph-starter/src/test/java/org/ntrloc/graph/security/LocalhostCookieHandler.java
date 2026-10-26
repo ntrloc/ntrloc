@@ -11,11 +11,11 @@ import java.util.Map;
 // Keycloak marks its session cookies Secure. Browsers treat localhost as a secure origin and
 // send them over plain HTTP anyway; java.net.CookieManager doesn't, so without this Keycloak
 // never sees its own login session and rejects the form post.
-final class LocalhostCookieHandler extends CookieHandler {
+public final class LocalhostCookieHandler extends CookieHandler {
 
     private final CookieManager delegate;
 
-    LocalhostCookieHandler(CookieManager delegate) {
+    public LocalhostCookieHandler(CookieManager delegate) {
         this.delegate = delegate;
     }
 

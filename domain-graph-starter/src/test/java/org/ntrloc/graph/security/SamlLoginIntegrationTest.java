@@ -48,6 +48,16 @@ class SamlLoginIntegrationTest extends AbstractSamlIntegrationTest {
                 .containsEntry("displayName", "Existing ntrloc User");
     }
 
+    // The session starting a sign-in holds the request the IdP's response must match, and that
+    // response arrives as a cross-site POST -- which browsers withhold SameSite=Lax cookies from.
+    @Test
+    void theSessionCookie_leavesSameSiteToTheBrowser_soTheIdpsPostCarriesIt() {
+        String setCookie = webTestClient.get().uri("/saml2/authenticate/" + REGISTRATION_ID).exchange()
+                .returnResult(Void.class).getResponseHeaders().getFirst("Set-Cookie");
+
+        assertThat(setCookie).startsWith("SESSION=").doesNotContainIgnoringCase("SameSite");
+    }
+
     @Test
     void theEmail_canBeTheNameId() {
         saveProvider(idp("", true));

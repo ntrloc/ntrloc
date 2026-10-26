@@ -88,10 +88,15 @@ public final class KeycloakContainers {
      * and their username as "displayName"; encryptAssertions decides whether it encrypts them.
      */
     public static void registerSamlClient(GenericContainer<?> keycloak, String spMetadataUrl, boolean encryptAssertions) {
+        String spMetadata = send(HttpClient.newHttpClient(), HttpRequest.newBuilder(URI.create(spMetadataUrl)).GET().build()).body();
+        registerSamlClientFromMetadata(keycloak, spMetadata, encryptAssertions);
+    }
+
+    /** As registerSamlClient, from metadata the caller fetched -- e.g. over HTTPS it trusts. */
+    public static void registerSamlClientFromMetadata(GenericContainer<?> keycloak, String spMetadata, boolean encryptAssertions) {
         String admin = "http://localhost:" + keycloak.getMappedPort(PORT) + "/admin/realms/ntrloc";
         HttpClient http = HttpClient.newHttpClient();
         String token = adminToken(keycloak, http);
-        String spMetadata = send(http, HttpRequest.newBuilder(URI.create(spMetadataUrl)).GET().build()).body();
         ObjectNode client = (ObjectNode) JSON.readTree(send(http, authorized(token, admin + "/client-description-converter")
                 .header("Content-Type", "application/xml")
                 .POST(HttpRequest.BodyPublishers.ofString(spMetadata)).build()).body());
