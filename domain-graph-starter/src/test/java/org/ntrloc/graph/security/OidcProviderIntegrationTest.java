@@ -18,11 +18,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 // OIDC providers managed through the admin API rather than YAML: changes apply to the next sign-in,
 // the client secret is encrypted and never returned, and only admins can touch them. Each test
-// starts from Keycloak registered as the "keycloak" provider (AbstractOidcIntegrationTest).
+// starts from Keycloak registered as the "corporate-oidc" provider (AbstractOidcIntegrationTest).
 class OidcProviderIntegrationTest extends AbstractOidcIntegrationTest {
 
     private static final String API = "/api/admin/security/oidc";
-    private static final String KEYCLOAK = API + "/" + KeycloakContainers.REGISTRATION_ID;
+    private static final String PROVIDER = API + "/" + KeycloakContainers.REGISTRATION_ID;
 
     private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:18");
 
@@ -58,28 +58,28 @@ class OidcProviderIntegrationTest extends AbstractOidcIntegrationTest {
 
     @Test
     void anEnabledProvider_isOfferedOnTheLoginPage() {
-        assertThat(loginPage()).contains("Sign In with Keycloak").contains("/oauth2/authorization/keycloak");
+        assertThat(loginPage()).contains("Sign In with Corporate SSO").contains("/oauth2/authorization/corporate-oidc");
     }
 
     @Test
     void disablingAProvider_stopsItsSignIns_andEnablingItAgainRestoresThem_withoutARestart() {
-        put(keycloak(false), null).expectStatus().isOk();
+        put(provider(false), null).expectStatus().isOk();
 
-        assertThat(loginPage()).doesNotContain("Sign In with Keycloak");
+        assertThat(loginPage()).doesNotContain("Sign In with Corporate SSO");
         assertSignInEndsAtTheLoginError();
 
-        put(keycloak(true), null).expectStatus().isOk();
+        put(provider(true), null).expectStatus().isOk();
         logIn("existing.user");
     }
 
     // Proves the stored secret is the one actually sent to Keycloak.
     @Test
     void aWrongClientSecret_failsTheSignIn_andAKeptSecretStillWorks() {
-        put(keycloak(true), "wrong-secret").expectStatus().isOk();
+        put(provider(true), "wrong-secret").expectStatus().isOk();
         assertLoginFails("existing.user");
 
-        put(keycloak(true), KeycloakContainers.CLIENT_SECRET).expectStatus().isOk();
-        put(keycloak(true), null).expectStatus().isOk();
+        put(provider(true), KeycloakContainers.CLIENT_SECRET).expectStatus().isOk();
+        put(provider(true), null).expectStatus().isOk();
         logIn("existing.user");
     }
 
@@ -91,38 +91,47 @@ class OidcProviderIntegrationTest extends AbstractOidcIntegrationTest {
                 .expectStatus().isOk().expectBody(String.class).returnResult().getResponseBody();
 
         assertThat(stored).startsWith("v1:").doesNotContain(KeycloakContainers.CLIENT_SECRET);
-        assertThat(body).contains("\"registrationId\":\"keycloak\"")
-                .contains("/login/oauth2/code/keycloak")
+        assertThat(body).contains("\"registrationId\":\"corporate-oidc\"")
                 .doesNotContain(KeycloakContainers.CLIENT_SECRET).doesNotContain(stored);
     }
 
     @Test
+    void aProvider_showsTheUrisToRegisterAtTheProvider() {
+        String body = webTestClient.get().uri(API).cookie("JSESSIONID", admin).exchange()
+                .expectStatus().isOk().expectBody(String.class).returnResult().getResponseBody();
+
+        assertThat(body)
+                .containsPattern("\"redirectUri\":\"http://localhost:\\d+/login/oauth2/code/corporate-oidc\"")
+                .containsPattern("\"postLogoutRedirectUri\":\"http://localhost:\\d+/login\"");
+    }
+
+    @Test
     void invalidProviders_areRejectedWithTheirReason() {
-        Map<String, Object> badId = keycloak(true);
+        Map<String, Object> badId = provider(true);
         badId.put("registrationId", "Not Valid");
-        Map<String, Object> noEmailScope = keycloak(true);
+        Map<String, Object> noEmailScope = provider(true);
         noEmailScope.put("registrationId", "other");
         noEmailScope.put("scopes", "openid profile");
 
         assertRejected(post(badId, "secret"), "registration ID");
         assertRejected(post(noEmailScope, "secret"), "email");
-        assertRejected(post(keycloak(true), "secret"), "already exists");
+        assertRejected(post(provider(true), "secret"), "already exists");
         assertRejected(post(Map.of("registrationId", "nosecret", "displayName", "No Secret", "issuerUri",
                 "http://localhost", "clientId", "x", "scopes", "openid email", "enabled", true), null), "client secret");
     }
 
     @Test
     void aDeletedProvider_isGoneFromTheLoginPage() {
-        webTestClient.delete().uri(KEYCLOAK).cookie("JSESSIONID", admin).exchange().expectStatus().isNoContent();
+        webTestClient.delete().uri(PROVIDER).cookie("JSESSIONID", admin).exchange().expectStatus().isNoContent();
 
-        assertThat(loginPage()).doesNotContain("Sign In with Keycloak");
+        assertThat(loginPage()).doesNotContain("Sign In with Corporate SSO");
         assertSignInEndsAtTheLoginError();
-        webTestClient.delete().uri(KEYCLOAK).cookie("JSESSIONID", admin).exchange().expectStatus().isNotFound();
+        webTestClient.delete().uri(PROVIDER).cookie("JSESSIONID", admin).exchange().expectStatus().isNotFound();
     }
 
     @Test
     void testingAnIssuer_readsItsDiscoveryDocument_withoutSaving() {
-        String issuer = (String) keycloak(true).get("issuerUri");
+        String issuer = (String) provider(true).get("issuerUri");
 
         assertThat(test(issuer)).containsEntry("ok", true);
         assertThat(test("http://127.0.0.1:1/realms/nowhere")).containsEntry("ok", false);
@@ -133,13 +142,13 @@ class OidcProviderIntegrationTest extends AbstractOidcIntegrationTest {
         String nonAdmin = logIn("existing.user");
 
         webTestClient.get().uri(API).cookie("JSESSIONID", nonAdmin).exchange().expectStatus().isForbidden();
-        webTestClient.put().uri(KEYCLOAK).cookie("JSESSIONID", nonAdmin).bodyValue(keycloak(false)).exchange()
+        webTestClient.put().uri(PROVIDER).cookie("JSESSIONID", nonAdmin).bodyValue(provider(false)).exchange()
                 .expectStatus().isForbidden();
-        webTestClient.delete().uri(KEYCLOAK).cookie("JSESSIONID", nonAdmin).exchange().expectStatus().isForbidden();
-        assertThat(loginPage()).contains("Sign In with Keycloak");
+        webTestClient.delete().uri(PROVIDER).cookie("JSESSIONID", nonAdmin).exchange().expectStatus().isForbidden();
+        assertThat(loginPage()).contains("Sign In with Corporate SSO");
     }
 
-    private Map<String, Object> keycloak(boolean enabled) {
+    private Map<String, Object> provider(boolean enabled) {
         OidcProviderService.OidcProvider registered = oidcProviders.list().stream()
                 .filter(p -> p.provider().registrationId().equals(KeycloakContainers.REGISTRATION_ID))
                 .findFirst().orElseThrow().provider();
@@ -155,7 +164,7 @@ class OidcProviderIntegrationTest extends AbstractOidcIntegrationTest {
 
     // Starting a sign-in with a provider that's gone lands on the login page's error, not at Keycloak.
     private void assertSignInEndsAtTheLoginError() {
-        webTestClient.get().uri("/oauth2/authorization/keycloak").exchange()
+        webTestClient.get().uri("/oauth2/authorization/corporate-oidc").exchange()
                 .expectStatus().is3xxRedirection()
                 .expectHeader().value("Location", location -> assertThat(location).endsWith("/login?error"));
     }
@@ -168,7 +177,7 @@ class OidcProviderIntegrationTest extends AbstractOidcIntegrationTest {
     private WebTestClient.ResponseSpec put(Map<String, Object> body, String clientSecret) {
         Map<String, Object> withSecret = new HashMap<>(body);
         withSecret.put("clientSecret", clientSecret);
-        return webTestClient.put().uri(KEYCLOAK).cookie("JSESSIONID", admin).bodyValue(withSecret).exchange();
+        return webTestClient.put().uri(PROVIDER).cookie("JSESSIONID", admin).bodyValue(withSecret).exchange();
     }
 
     private WebTestClient.ResponseSpec post(Map<String, Object> body, String clientSecret) {

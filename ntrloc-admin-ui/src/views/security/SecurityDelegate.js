@@ -67,3 +67,59 @@ export async function testOidcIssuer(issuerUri) {
   if (!res.ok) throw new Error(await readErrorMessage(res, `Failed to test the issuer (${res.status})`))
   return res.json()
 }
+
+const SAML_API = '/api/admin/security/saml'
+
+export async function fetchSamlProviders() {
+  const res = await fetch(SAML_API, { credentials: 'same-origin' })
+  if (!res.ok) throw new Error(await readErrorMessage(res, `Failed to load the SAML providers (${res.status})`))
+  return res.json()
+}
+
+export async function createSamlProvider(provider) {
+  const res = await send('POST', SAML_API, provider)
+  if (!res.ok) throw new Error(await readErrorMessage(res, `Failed to add the provider (${res.status})`))
+  return res.json()
+}
+
+export async function updateSamlProvider(registrationId, provider) {
+  const res = await send('PUT', `${SAML_API}/${encodeURIComponent(registrationId)}`, provider)
+  if (!res.ok) throw new Error(await readErrorMessage(res, `Failed to save the provider (${res.status})`))
+  return res.json()
+}
+
+export async function deleteSamlProvider(registrationId) {
+  const res = await fetch(`${SAML_API}/${encodeURIComponent(registrationId)}`, {
+    method: 'DELETE',
+    credentials: 'same-origin',
+  })
+  if (!res.ok) throw new Error(await readErrorMessage(res, `Failed to delete the provider (${res.status})`))
+}
+
+export async function testSamlMetadata(metadataUri) {
+  const res = await send('POST', `${SAML_API}/test`, { metadataUri })
+  if (!res.ok) throw new Error(await readErrorMessage(res, `Failed to test the metadata (${res.status})`))
+  return res.json()
+}
+
+// Key rotation for a SAML provider. Each returns the provider as it now is.
+export async function addSamlNextKey(registrationId, key) {
+  const res = await send('POST', `${SAML_API}/${encodeURIComponent(registrationId)}/keys`, key)
+  if (!res.ok) throw new Error(await readErrorMessage(res, `Failed to add the key (${res.status})`))
+  return res.json()
+}
+
+export async function activateSamlNextKey(registrationId) {
+  const res = await send('POST', `${SAML_API}/${encodeURIComponent(registrationId)}/keys/activate`, {})
+  if (!res.ok) throw new Error(await readErrorMessage(res, `Failed to activate the key (${res.status})`))
+  return res.json()
+}
+
+export async function removeSamlKey(registrationId, role) {
+  const res = await fetch(`${SAML_API}/${encodeURIComponent(registrationId)}/keys/${role}`, {
+    method: 'DELETE',
+    credentials: 'same-origin',
+  })
+  if (!res.ok) throw new Error(await readErrorMessage(res, `Failed to remove the key (${res.status})`))
+  return res.json()
+}

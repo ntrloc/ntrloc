@@ -28,9 +28,12 @@ import java.util.List;
 @RequestMapping("/api/admin/security/oidc")
 public class OidcProviderController {
 
-    // redirectUri is what to register at the provider, as this server is being reached right now.
+    // redirectUri and postLogoutRedirectUri are what to register at the provider, as this server is
+    // being reached right now: where it sends people back after signing in, and after signing out
+    // (SecurityConfig.logoutSuccessHandler).
     public record OidcProviderView(String registrationId, String displayName, String issuerUri, String clientId,
-                                   String scopes, boolean enabled, String redirectUri, OffsetDateTime updatedAt) {}
+                                   String scopes, boolean enabled, String redirectUri, String postLogoutRedirectUri,
+                                   OffsetDateTime updatedAt) {}
 
     // clientSecret: required on create; null or blank on update keeps the stored one.
     public record OidcProviderRequest(String registrationId, String displayName, String issuerUri, String clientId,
@@ -95,7 +98,8 @@ public class OidcProviderController {
         OidcProvider p = stored.provider();
         String redirectUri = ServletUriComponentsBuilder.fromCurrentContextPath()
                 .path("/login/oauth2/code/{registrationId}").buildAndExpand(p.registrationId()).toUriString();
+        String postLogoutRedirectUri = ServletUriComponentsBuilder.fromCurrentContextPath().path("/login").toUriString();
         return new OidcProviderView(p.registrationId(), p.displayName(), p.issuerUri(), p.clientId(), p.scopes(),
-                p.enabled(), redirectUri, stored.updatedAt());
+                p.enabled(), redirectUri, postLogoutRedirectUri, stored.updatedAt());
     }
 }

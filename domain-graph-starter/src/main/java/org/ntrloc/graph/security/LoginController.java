@@ -3,10 +3,12 @@ package org.ntrloc.graph.security;
 import org.ntrloc.graph.branding.BrandingProperties;
 import org.springframework.http.MediaType;
 import org.ntrloc.graph.security.OidcProviderService.OidcProvider;
+import org.ntrloc.graph.security.SamlProviderService.SamlProvider;
 import org.springframework.web.util.HtmlUtils;
 import org.springframework.web.util.UriUtils;
 
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -15,16 +17,21 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 public class LoginController {
 
+    private record SignInButton(String pathPrefix, String registrationId, String label) {}
+
     private final AuthProperties authProperties;
     private final BrandingProperties brandingProperties;
     private final OidcProviderService oidcProviders;
+    private final SamlProviderService samlProviders;
     private final LdapConfigurationService ldapConfiguration;
 
     public LoginController(AuthProperties authProperties, BrandingProperties brandingProperties,
-                           OidcProviderService oidcProviders, LdapConfigurationService ldapConfiguration) {
+                           OidcProviderService oidcProviders, SamlProviderService samlProviders,
+                           LdapConfigurationService ldapConfiguration) {
         this.authProperties = authProperties;
         this.brandingProperties = brandingProperties;
         this.oidcProviders = oidcProviders;
+        this.samlProviders = samlProviders;
         this.ldapConfiguration = ldapConfiguration;
     }
 
@@ -77,19 +84,25 @@ public class LoginController {
 
         boolean first = true;
 
-        // OAuth first: one button per enabled OpenID Connect provider.
-        List<OidcProvider> providers = oidcProviders.enabledProviders();
-        if (!providers.isEmpty()) {
+        // Single sign-on first: one button per enabled OpenID Connect and SAML provider.
+        List<SignInButton> buttons = new ArrayList<>();
+        for (OidcProvider provider : oidcProviders.enabledProviders()) {
+            buttons.add(new SignInButton("/oauth2/authorization/", provider.registrationId(), provider.displayName()));
+        }
+        for (SamlProvider provider : samlProviders.enabledProviders()) {
+            buttons.add(new SignInButton("/saml2/authenticate/", provider.registrationId(), provider.displayName()));
+        }
+        if (!buttons.isEmpty()) {
             html.append("""
                 <div class="section-label">Single Sign-On</div>
                 """);
-            for (OidcProvider provider : providers) {
+            for (SignInButton button : buttons) {
                 html.append("""
-                    <a href="/oauth2/authorization/%s" style="text-decoration:none">
+                    <a href="%s%s" style="text-decoration:none">
                         <button class="btn btn-oauth">Sign In with %s</button>
                     </a>
-                    """.formatted(UriUtils.encodePathSegment(provider.registrationId(), StandardCharsets.UTF_8),
-                        HtmlUtils.htmlEscape(provider.displayName())));
+                    """.formatted(button.pathPrefix(), UriUtils.encodePathSegment(button.registrationId(), StandardCharsets.UTF_8),
+                        HtmlUtils.htmlEscape(button.label())));
             }
             first = false;
         }

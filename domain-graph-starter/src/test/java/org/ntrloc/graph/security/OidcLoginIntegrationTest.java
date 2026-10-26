@@ -40,7 +40,7 @@ class OidcLoginIntegrationTest extends AbstractOidcIntegrationTest {
                 .expectStatus().isOk()
                 .expectBody(String.class).returnResult().getResponseBody();
 
-        assertThat(page).contains("href=\"/oauth2/authorization/keycloak\"").contains("Sign In with Keycloak")
+        assertThat(page).contains("href=\"/oauth2/authorization/corporate-oidc\"").contains("Sign In with Corporate SSO")
                 .doesNotContain("Local Account");
     }
 

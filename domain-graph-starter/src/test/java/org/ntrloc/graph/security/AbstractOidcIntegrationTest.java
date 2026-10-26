@@ -13,7 +13,6 @@ import org.springframework.test.web.reactive.server.WebTestClient;
 import org.testcontainers.containers.GenericContainer;
 
 import java.io.IOException;
-import java.net.CookieHandler;
 import java.net.CookieManager;
 import java.net.CookiePolicy;
 import java.net.HttpCookie;
@@ -23,8 +22,6 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Matcher;
@@ -97,7 +94,7 @@ public abstract class AbstractOidcIntegrationTest {
 
         /** Signs in through Keycloak's login form. */
         public LoginResult logIn(String username, String password) {
-            String keycloakLoginPage = call(() -> redirectTarget(http, get(appUrl("/oauth2/authorization/keycloak"))));
+            String keycloakLoginPage = call(() -> redirectTarget(http, get(appUrl("/oauth2/authorization/corporate-oidc"))));
             String loginFormHtml = call(() -> send(http, get(keycloakLoginPage)).body());
             Matcher action = LOGIN_FORM_ACTION.matcher(loginFormHtml);
             assertThat(action.find()).as("Keycloak login form").isTrue();
@@ -114,7 +111,7 @@ public abstract class AbstractOidcIntegrationTest {
          * the browser straight back in from its own session.
          */
         public boolean keycloakAsksForPassword() {
-            String keycloak = call(() -> redirectTarget(http, get(appUrl("/oauth2/authorization/keycloak"))));
+            String keycloak = call(() -> redirectTarget(http, get(appUrl("/oauth2/authorization/corporate-oidc"))));
             HttpResponse<String> response = call(() -> send(http, get(keycloak)));
             return response.statusCode() == 200 && LOGIN_FORM_ACTION.matcher(response.body()).find();
         }
@@ -204,32 +201,6 @@ public abstract class AbstractOidcIntegrationTest {
         HttpResponse<String> response = send(http, request);
         assertThat(response.statusCode()).as("redirect from %s", request.uri()).isBetween(300, 399);
         return request.uri().resolve(response.headers().firstValue("Location").orElseThrow()).toString();
-    }
-
-    // Keycloak marks its session cookies Secure. Browsers treat localhost as a secure origin and
-    // send them over plain HTTP anyway; java.net.CookieManager doesn't, so without this Keycloak
-    // never sees its own login session and rejects the form post.
-    private static final class LocalhostCookieHandler extends CookieHandler {
-
-        private final CookieManager delegate;
-
-        LocalhostCookieHandler(CookieManager delegate) {
-            this.delegate = delegate;
-        }
-
-        @Override
-        public Map<String, List<String>> get(URI uri, Map<String, List<String>> requestHeaders) throws IOException {
-            return delegate.get(uri, requestHeaders);
-        }
-
-        @Override
-        public void put(URI uri, Map<String, List<String>> responseHeaders) throws IOException {
-            Map<String, List<String>> withoutSecure = new HashMap<>(responseHeaders);
-            withoutSecure.replaceAll((name, values) -> name != null && name.equalsIgnoreCase("Set-Cookie")
-                    ? values.stream().map(value -> value.replaceAll("(?i);\\s*Secure", "")).toList()
-                    : values);
-            delegate.put(uri, withoutSecure);
-        }
     }
 
     private static String encode(String value) {

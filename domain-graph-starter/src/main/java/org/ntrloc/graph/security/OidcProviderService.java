@@ -21,7 +21,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.regex.Pattern;
 
 // The OpenID Connect providers people can sign in with, stored in the database and edited by admins
 // (OidcProviderController), so a change applies without a restart. Also the ClientRegistrationRepository
@@ -33,8 +32,6 @@ public class OidcProviderService implements ClientRegistrationRepository {
 
     private static final Logger LOG = LoggerFactory.getLogger(OidcProviderService.class);
 
-    // Lowercase, as it appears in the provider's redirect URI: /login/oauth2/code/{registrationId}.
-    private static final Pattern REGISTRATION_ID = Pattern.compile("[a-z0-9]([a-z0-9-]{0,48}[a-z0-9])?");
     private static final Set<String> REQUIRED_SCOPES = Set.of("openid", "email");
     private static final String ISSUER_URI_SCHEME = "The issuer URI must start with http:// or https://";
 
@@ -78,9 +75,7 @@ public class OidcProviderService implements ClientRegistrationRepository {
     public StoredOidcProvider create(OidcProvider requested, String clientSecret, UUID updatedBy) {
         OidcProvider provider = requested.normalized();
         validate(provider);
-        if (!REGISTRATION_ID.matcher(provider.registrationId()).matches()) {
-            throw new IllegalArgumentException("The registration ID must be lowercase letters, digits and hyphens");
-        }
+        ProviderRegistrationIds.validate(provider.registrationId());
         if (clientSecret == null || clientSecret.isEmpty()) {
             throw new IllegalArgumentException("A client secret is required");
         }

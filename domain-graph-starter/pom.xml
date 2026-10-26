@@ -108,6 +108,20 @@
             <version>7.1.0</version>
         </dependency>
 
+        <!-- SAML 2.0 sign-in. Its OpenSAML dependency comes from the Shibboleth repository (root pom). -->
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-saml2-service-provider</artifactId>
+            <version>7.1.0</version>
+        </dependency>
+        <!-- Generates each SAML provider's self-signed signing certificate (SamlCertificates). Already
+             on the classpath via OpenSAML, at this version; explicit since ntrloc uses it directly. -->
+        <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcpkix-jdk18on</artifactId>
+            <version>1.84</version>
+        </dependency>
+
         <!-- SpEL evaluation of item-type display-label patterns (RegisterPartitionManager). Both
              were already transitively resolved at this exact version via
              spring-security-ldap to spring-security-core, but made explicit rather than relying

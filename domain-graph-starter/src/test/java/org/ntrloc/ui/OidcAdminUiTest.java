@@ -27,7 +27,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Signing in to the React admin UI through Keycloak in a real browser: ntrloc's login page, its
- * "Sign In with Keycloak" button, Keycloak's own login form, and back. Admin comes from the ntrloc
+ * "Sign In with Corporate SSO" button, Keycloak's own login form, and back. Admin comes from the ntrloc
  * account, never the provider.
  *
  * The browser (in a container) and ntrloc (in this JVM) reach Keycloak at the same URL, on
@@ -104,7 +104,7 @@ class OidcAdminUiTest implements UiBrowser.Holder {
     private void openAdminUiThroughKeycloakAs(String username, String path) {
         browser.driver().get(browser.serverUrl(UiBrowser.ADMIN_UI_PATH + path));
         browser.await().until(ExpectedConditions.elementToBeClickable(
-                By.cssSelector("a[href='/oauth2/authorization/keycloak'] button"))).click();
+                By.cssSelector("a[href='/oauth2/authorization/corporate-oidc'] button"))).click();
         browser.await().until(ExpectedConditions.visibilityOfElementLocated(By.id("username"))).sendKeys(username);
         browser.driver().findElement(By.id("password")).sendKeys(KeycloakContainers.USER_PASSWORD);
         browser.driver().findElement(By.id("kc-login")).click();

@@ -19,6 +19,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.authorization.AuthorizationDecision;
+import org.springframework.security.authentication.ProviderManager;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.ObjectPostProcessor;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -31,6 +32,10 @@ import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.security.oauth2.client.oidc.web.logout.OidcClientInitiatedLogoutSuccessHandler;
 import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestRedirectFilter;
 import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
+import org.springframework.security.saml2.provider.service.authentication.OpenSaml5AuthenticationProvider;
+import org.springframework.security.saml2.provider.service.authentication.Saml2AssertionAuthentication;
+import org.springframework.security.saml2.provider.service.web.authentication.logout.OpenSaml5LogoutRequestResolver;
+import org.springframework.security.saml2.provider.service.web.authentication.logout.Saml2RelyingPartyInitiatedLogoutSuccessHandler;
 import org.springframework.security.oauth2.core.OAuth2Error;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.SecurityFilterChain;
@@ -59,24 +64,27 @@ public class SecurityConfig {
     private final ExternalUserProvisioner provisioner;
     private final LdapConfigurationService ldapConfiguration;
     private final OidcProviderService oidcProviders;
+    private final SamlProviderService samlProviders;
 
     public SecurityConfig(AuthProperties authProperties, SecurityRepository securityRepository,
                            ExternalPrincipalResolver principals, ExternalUserProvisioner provisioner,
-                           LdapConfigurationService ldapConfiguration, OidcProviderService oidcProviders) {
+                           LdapConfigurationService ldapConfiguration, OidcProviderService oidcProviders,
+                           SamlProviderService samlProviders) {
         this.authProperties = authProperties;
         this.securityRepository = securityRepository;
         this.principals = principals;
         this.provisioner = provisioner;
         this.ldapConfiguration = ldapConfiguration;
         this.oidcProviders = oidcProviders;
+        this.samlProviders = samlProviders;
     }
 
-    // LDAP and OIDC are configured in the admin UI, and a bad save there can leave no one able to
+    // LDAP, OIDC and SAML are configured in the admin UI, and a bad save there can leave no one able to
     // sign in. graph.auth.local.enabled is the way back: turn it on and restart.
     @PostConstruct
     public void warnWithoutLocalLogin() {
         if (!authProperties.getLocal().isEnabled()) {
-            LOG.warn("Local login is off (graph.auth.local.enabled): if LDAP and OIDC sign-in stop working, "
+            LOG.warn("Local login is off (graph.auth.local.enabled): if LDAP, OIDC and SAML sign-in stop working, "
                     + "turn it back on and restart to reach the admin UI");
         }
     }
@@ -144,6 +152,28 @@ public class SecurityConfig {
                                     "Only OpenID Connect providers are supported (request the openid scope)");
                         })));
 
+        // SAML 2.0, unconditional for the same reason. Its own AuthenticationManager: the SAML provider
+        // only ever handles an IdP's response, and NtrlocSamlResponseConverter turns that into the
+        // ntrloc account. ntrloc's metadata for each IdP -- entity ID, ACS URL, signing certificate --
+        // is served at SamlProviderService.METADATA_PATH. A failed sign-in ends at /login?error.
+        OpenSaml5AuthenticationProvider samlAuthentication = new OpenSaml5AuthenticationProvider();
+        samlAuthentication.setResponseAuthenticationConverter(
+                new NtrlocSamlResponseConverter(samlProviders, principals, provisioner));
+        http.saml2Login(saml -> saml
+                .loginPage(LOGIN_PATH)
+                .relyingPartyRegistrationRepository(samlProviders)
+                .authenticationManager(new ProviderManager(samlAuthentication)));
+        http.saml2Metadata(metadata -> metadata.metadataUrl(SamlProviderService.METADATA_PATH));
+        // The IdP's side of single logout, at SamlProviderService.SLO_PATH: its response to ntrloc's
+        // LogoutRequest, and its own LogoutRequests when someone signs out elsewhere. Starting a
+        // logout is logoutSuccessHandler()'s job, for GET and POST /logout alike, so Spring's own
+        // POST-only trigger is moved off /logout, where it would answer an IdP without single
+        // logout with a bare 401.
+        http.saml2Logout(logout -> logout
+                .logoutUrl("/logout/saml2")
+                .logoutRequest(request -> request.logoutUrl(SamlProviderService.SLO_PATH))
+                .logoutResponse(response -> response.logoutUrl(SamlProviderService.SLO_PATH)));
+
         http.formLogin(form -> form.loginPage(LOGIN_PATH));
 
         http.httpBasic(Customizer.withDefaults());
@@ -175,16 +205,26 @@ public class SecurityConfig {
         return new LoginUrlAuthenticationEntryPoint(LOGIN_PATH);
     }
 
-    // Someone who signed in through an OIDC provider is signed out of the provider too (RP-initiated
-    // logout): otherwise its session signs them straight back in on their next "Sign In with ...",
-    // without asking for a password. The provider then returns them to the login page. Everyone
-    // else, and a provider with no end_session_endpoint, goes straight to the login page.
+    // Someone who signed in through an external provider is signed out of it too, so its session
+    // can't sign them straight back in on their next "Sign In with ...": an OIDC provider through
+    // RP-initiated logout, a SAML IdP through a signed LogoutRequest (single logout), each returning
+    // the browser to the login page. Everyone else -- and a provider with no logout endpoint -- goes
+    // straight to the login page. Handles GET and POST /logout alike.
     @Bean
     public LogoutSuccessHandler logoutSuccessHandler() {
-        OidcClientInitiatedLogoutSuccessHandler handler = new OidcClientInitiatedLogoutSuccessHandler(oidcProviders);
-        handler.setPostLogoutRedirectUri("{baseUrl}" + LOGIN_PATH);
-        handler.setDefaultTargetUrl(LOGIN_PATH);
-        return handler;
+        OidcClientInitiatedLogoutSuccessHandler oidc = new OidcClientInitiatedLogoutSuccessHandler(oidcProviders);
+        oidc.setPostLogoutRedirectUri("{baseUrl}" + LOGIN_PATH);
+        oidc.setDefaultTargetUrl(LOGIN_PATH);
+        LogoutSuccessHandler saml = new Saml2RelyingPartyInitiatedLogoutSuccessHandler(
+                new OpenSaml5LogoutRequestResolver(samlProviders));
+        return (request, response, authentication) -> {
+            if (authentication instanceof Saml2AssertionAuthentication signedIn
+                    && samlProviders.supportsSingleLogout(signedIn.getRelyingPartyRegistrationId())) {
+                saml.onLogoutSuccess(request, response, authentication);
+            } else {
+                oidc.onLogoutSuccess(request, response, authentication);
+            }
+        };
     }
 
     // The principal set here is the token owner's full NtrlocPrincipal, the same shape a local

@@ -283,6 +283,36 @@ CREATE TABLE security_oidc_provider (
     updated_by              UUID REFERENCES security_user(id) ON DELETE SET NULL
 );
 
+-- The SAML identity providers people can sign in with, edited in the admin UI. registration_id is
+-- part of ntrloc's own URLs registered at the IdP (entity ID / metadata, assertion consumer
+-- service), so it never changes once created. email_attribute blank means the NameID is the email.
+-- version as for security_oidc_provider; key changes (below) bump it too.
+CREATE TABLE security_saml_provider (
+    id                     UUID PRIMARY KEY DEFAULT uuidv7(),
+    registration_id        TEXT NOT NULL UNIQUE,
+    display_name           TEXT NOT NULL,
+    metadata_uri           TEXT NOT NULL,
+    email_attribute        TEXT NOT NULL,
+    display_name_attribute TEXT NOT NULL,
+    enabled                BOOLEAN NOT NULL,
+    version                BIGINT NOT NULL DEFAULT 1,
+    updated_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_by             UUID REFERENCES security_user(id) ON DELETE SET NULL
+);
+
+-- ntrloc's own key pairs for a SAML provider, generated or uploaded: the private key encrypted like
+-- the other secrets, the certificate (PEM) published in ntrloc's metadata. At most one per role:
+-- ACTIVE signs and decrypts; NEXT is published ahead of a rotation and already decrypts; RETIRING
+-- is the previous ACTIVE, kept only to decrypt what the IdP still encrypts to it.
+CREATE TABLE security_saml_provider_key (
+    provider_id           UUID NOT NULL REFERENCES security_saml_provider(id) ON DELETE CASCADE,
+    role                  TEXT NOT NULL CHECK (role IN ('ACTIVE', 'NEXT', 'RETIRING')),
+    private_key_encrypted TEXT NOT NULL,
+    certificate           TEXT NOT NULL,
+    created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (provider_id, role)
+);
+
 -- === authorization_* (AuthorizationInitializer) ===
 
 -- A marker's scope answers two questions only: which item instances is it eligible to be assigned
