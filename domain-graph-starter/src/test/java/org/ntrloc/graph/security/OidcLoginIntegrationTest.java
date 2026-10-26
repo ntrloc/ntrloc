@@ -123,7 +123,7 @@ class OidcLoginIntegrationTest extends AbstractOidcIntegrationTest {
         String session = browser.logIn("resync.user", OIDC_PASSWORD).sessionId().orElseThrow();
 
         assertThat(browser.logOut()).endsWith("/login");
-        webTestClient.get().uri("/api/account/me").cookie("JSESSIONID", session).exchange()
+        webTestClient.get().uri("/api/account/me").cookie("SESSION", session).exchange()
                 .expectStatus().is3xxRedirection();
         assertThat(browser.keycloakAsksForPassword()).isTrue();
     }

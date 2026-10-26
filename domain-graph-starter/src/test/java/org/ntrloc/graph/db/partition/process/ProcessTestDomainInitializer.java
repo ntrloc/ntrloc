@@ -3,6 +3,7 @@ package org.ntrloc.graph.db.partition.process;
 import org.flowable.dmn.api.DmnRepositoryService;
 import org.flowable.engine.RepositoryService;
 import org.ntrloc.graph.domain.DomainInitializer;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
@@ -14,6 +15,7 @@ import org.springframework.stereotype.Component;
 // not @PostConstruct) -- this is the test-scope equivalent of CoordinatorTestDomainInitializer,
 // just for the process/DMN partition instead of the schema partition.
 @Component
+@ConditionalOnProperty(prefix = "graph.security", name = "seed-test-data", havingValue = "true")
 public class ProcessTestDomainInitializer implements DomainInitializer, ApplicationRunner {
 
     private final RepositoryService repositoryService;

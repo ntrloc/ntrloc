@@ -87,7 +87,7 @@ class OidcProviderIntegrationTest extends AbstractOidcIntegrationTest {
     void theClientSecret_isEncryptedAtRest_andNeverReturned() {
         String stored = jdbcClient.sql("SELECT client_secret_encrypted FROM security_oidc_provider")
                 .query(String.class).single();
-        String body = webTestClient.get().uri(API).cookie("JSESSIONID", admin).exchange()
+        String body = webTestClient.get().uri(API).cookie("SESSION", admin).exchange()
                 .expectStatus().isOk().expectBody(String.class).returnResult().getResponseBody();
 
         assertThat(stored).startsWith("v1:").doesNotContain(KeycloakContainers.CLIENT_SECRET);
@@ -97,7 +97,7 @@ class OidcProviderIntegrationTest extends AbstractOidcIntegrationTest {
 
     @Test
     void aProvider_showsTheUrisToRegisterAtTheProvider() {
-        String body = webTestClient.get().uri(API).cookie("JSESSIONID", admin).exchange()
+        String body = webTestClient.get().uri(API).cookie("SESSION", admin).exchange()
                 .expectStatus().isOk().expectBody(String.class).returnResult().getResponseBody();
 
         assertThat(body)
@@ -122,11 +122,11 @@ class OidcProviderIntegrationTest extends AbstractOidcIntegrationTest {
 
     @Test
     void aDeletedProvider_isGoneFromTheLoginPage() {
-        webTestClient.delete().uri(PROVIDER).cookie("JSESSIONID", admin).exchange().expectStatus().isNoContent();
+        webTestClient.delete().uri(PROVIDER).cookie("SESSION", admin).exchange().expectStatus().isNoContent();
 
         assertThat(loginPage()).doesNotContain("Sign In with Corporate SSO");
         assertSignInEndsAtTheLoginError();
-        webTestClient.delete().uri(PROVIDER).cookie("JSESSIONID", admin).exchange().expectStatus().isNotFound();
+        webTestClient.delete().uri(PROVIDER).cookie("SESSION", admin).exchange().expectStatus().isNotFound();
     }
 
     @Test
@@ -141,10 +141,10 @@ class OidcProviderIntegrationTest extends AbstractOidcIntegrationTest {
     void aNonAdmin_canNeitherReadNorChangeProviders() {
         String nonAdmin = logIn("existing.user");
 
-        webTestClient.get().uri(API).cookie("JSESSIONID", nonAdmin).exchange().expectStatus().isForbidden();
-        webTestClient.put().uri(PROVIDER).cookie("JSESSIONID", nonAdmin).bodyValue(provider(false)).exchange()
+        webTestClient.get().uri(API).cookie("SESSION", nonAdmin).exchange().expectStatus().isForbidden();
+        webTestClient.put().uri(PROVIDER).cookie("SESSION", nonAdmin).bodyValue(provider(false)).exchange()
                 .expectStatus().isForbidden();
-        webTestClient.delete().uri(PROVIDER).cookie("JSESSIONID", nonAdmin).exchange().expectStatus().isForbidden();
+        webTestClient.delete().uri(PROVIDER).cookie("SESSION", nonAdmin).exchange().expectStatus().isForbidden();
         assertThat(loginPage()).contains("Sign In with Corporate SSO");
     }
 
@@ -177,13 +177,13 @@ class OidcProviderIntegrationTest extends AbstractOidcIntegrationTest {
     private WebTestClient.ResponseSpec put(Map<String, Object> body, String clientSecret) {
         Map<String, Object> withSecret = new HashMap<>(body);
         withSecret.put("clientSecret", clientSecret);
-        return webTestClient.put().uri(PROVIDER).cookie("JSESSIONID", admin).bodyValue(withSecret).exchange();
+        return webTestClient.put().uri(PROVIDER).cookie("SESSION", admin).bodyValue(withSecret).exchange();
     }
 
     private WebTestClient.ResponseSpec post(Map<String, Object> body, String clientSecret) {
         Map<String, Object> withSecret = new HashMap<>(body);
         withSecret.put("clientSecret", clientSecret);
-        return webTestClient.post().uri(API).cookie("JSESSIONID", admin).bodyValue(withSecret).exchange();
+        return webTestClient.post().uri(API).cookie("SESSION", admin).bodyValue(withSecret).exchange();
     }
 
     private static void assertRejected(WebTestClient.ResponseSpec response, String reason) {
@@ -193,7 +193,7 @@ class OidcProviderIntegrationTest extends AbstractOidcIntegrationTest {
 
     @SuppressWarnings("unchecked")
     private Map<String, Object> test(String issuerUri) {
-        return webTestClient.post().uri(API + "/test").cookie("JSESSIONID", admin).bodyValue(Map.of("issuerUri", issuerUri))
+        return webTestClient.post().uri(API + "/test").cookie("SESSION", admin).bodyValue(Map.of("issuerUri", issuerUri))
                 .exchange().expectStatus().isOk().expectBody(Map.class).returnResult().getResponseBody();
     }
 }

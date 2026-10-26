@@ -224,7 +224,7 @@ class SamlProviderIntegrationTest extends AbstractSamlIntegrationTest {
                 .body(BodyInserters.fromFormData("username", email).with("password", "local-secret"))
                 .exchange()
                 .expectStatus().is3xxRedirection()
-                .returnResult(Void.class).getResponseCookies().getFirst("JSESSIONID");
+                .returnResult(Void.class).getResponseCookies().getFirst("SESSION");
     }
 
     private static Map<String, Object> request(boolean enabled) {

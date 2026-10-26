@@ -15,6 +15,7 @@ import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemDefin
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemLinkPerspectiveView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyDefinitionView;
 import org.ntrloc.graph.domain.DomainInitializer;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
@@ -32,6 +33,7 @@ import java.util.UUID;
 // just different properties that happen to share a name/label) -- Product and Contributor each get
 // their own separate "name" property here, not one shared id.
 @Component
+@ConditionalOnProperty(prefix = "graph.security", name = "seed-test-data", havingValue = "true")
 public class CoordinatorTestDomainInitializer implements DomainInitializer, ApplicationRunner {
 
     private final SchemaManager schemaManager;

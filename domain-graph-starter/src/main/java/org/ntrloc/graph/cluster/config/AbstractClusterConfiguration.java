@@ -7,6 +7,7 @@ import com.hazelcast.config.MapConfig;
 import com.hazelcast.config.QueueConfig;
 import com.hazelcast.config.ScheduledExecutorConfig;
 import com.hazelcast.config.TopicConfig;
+import com.hazelcast.spring.session.HazelcastSessionConfiguration;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.springframework.beans.factory.annotation.Value;
@@ -62,6 +63,9 @@ public abstract class AbstractClusterConfiguration {
         joinConfig.getTcpIpConfig().setEnabled(false);
         joinConfig.getAwsConfig().setEnabled(false);
         joinConfig.getAutoDetectionConfig().setEnabled(false);
+
+        // Serializers for the login sessions ClusterSessionConfiguration keeps in this member.
+        HazelcastSessionConfiguration.applySerializationConfig(cfg);
 
         if (mapConfigs != null && !mapConfigs.isEmpty()) {
             LOG.debug("Applying cluster map configurations");

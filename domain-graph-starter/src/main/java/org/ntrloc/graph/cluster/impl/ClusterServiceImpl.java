@@ -85,6 +85,11 @@ public class ClusterServiceImpl implements ClusterService, MembershipListener {
         return hazelcast.getTopic(name);
     }
 
+    @Override
+    public HazelcastInstance getHazelcastInstance() {
+        return hazelcast;
+    }
+
     /*
      * Cluster membership methods
      */

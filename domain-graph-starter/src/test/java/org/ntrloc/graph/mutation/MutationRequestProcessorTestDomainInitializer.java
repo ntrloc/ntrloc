@@ -12,6 +12,7 @@ import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePropertyDe
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePropertyGroupDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemDefinitionView;
 import org.ntrloc.graph.domain.DomainInitializer;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
@@ -31,6 +32,7 @@ import java.util.UUID;
 //    a third, disjoint item type C with its own self-contained link (link3, sharing no perspective
 //    name with A/B at all) to reach the "no common link" branch the opposite way.
 @Component
+@ConditionalOnProperty(prefix = "graph.security", name = "seed-test-data", havingValue = "true")
 public class MutationRequestProcessorTestDomainInitializer implements DomainInitializer, ApplicationRunner {
 
     private UUID aTypeId;

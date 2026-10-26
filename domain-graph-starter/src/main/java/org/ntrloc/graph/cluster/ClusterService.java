@@ -1,6 +1,7 @@
 package org.ntrloc.graph.cluster;
 
 import com.hazelcast.cluster.Member;
+import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.map.IMap;
 import com.hazelcast.topic.ITopic;
 
@@ -24,5 +25,11 @@ public interface ClusterService {
     <K, V> IMap<K, V> getMap(String name);
 
     <T> ITopic<T> getTopic(String name);
+
+    /**
+     * The underlying Hazelcast member, for libraries that integrate with Hazelcast directly
+     * (Spring Session). This service still owns its lifecycle.
+     */
+    HazelcastInstance getHazelcastInstance();
 
 }

@@ -93,7 +93,7 @@ public abstract class AbstractLdapIntegrationTest {
     protected ResponseCookie logIn(String username, String password) {
         EntityExchangeResult<Void> result = submitLogin(username, password);
         assertThat(result.getResponseHeaders().getFirst(HttpHeaders.LOCATION)).doesNotContain("error");
-        ResponseCookie session = result.getResponseCookies().getFirst("JSESSIONID");
+        ResponseCookie session = result.getResponseCookies().getFirst("SESSION");
         assertThat(session).isNotNull();
         return session;
     }

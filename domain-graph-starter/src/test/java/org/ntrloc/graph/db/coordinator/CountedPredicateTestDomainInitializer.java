@@ -14,6 +14,7 @@ import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemDefin
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminStateMachineView;
 import org.ntrloc.graph.domain.DomainInitializer;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
@@ -29,6 +30,7 @@ import java.util.UUID;
 // machine chain of its own) rather than extending it, same reasoning every other dedicated fixture in
 // this test tree already uses.
 @Component
+@ConditionalOnProperty(prefix = "graph.security", name = "seed-test-data", havingValue = "true")
 public class CountedPredicateTestDomainInitializer implements DomainInitializer, ApplicationRunner {
 
     public static final String PUBLICATION_MACHINE = "Publication";

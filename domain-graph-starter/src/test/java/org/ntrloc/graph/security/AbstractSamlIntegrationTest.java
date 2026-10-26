@@ -171,7 +171,7 @@ public abstract class AbstractSamlIntegrationTest {
 
         public Optional<String> sessionId() {
             return cookies.getCookieStore().get(URI.create(appUrl("/"))).stream()
-                    .filter(cookie -> cookie.getName().equals("JSESSIONID"))
+                    .filter(cookie -> cookie.getName().equals("SESSION"))
                     .map(HttpCookie::getValue)
                     .findFirst();
         }
@@ -215,7 +215,7 @@ public abstract class AbstractSamlIntegrationTest {
     @SuppressWarnings("unchecked")
     protected Map<String, Object> me(String sessionId) {
         return webTestClient.get().uri("/api/account/me")
-                .cookie("JSESSIONID", sessionId)
+                .cookie("SESSION", sessionId)
                 .exchange()
                 .expectStatus().isOk()
                 .expectBody(Map.class)

@@ -132,7 +132,7 @@ public abstract class AbstractOidcIntegrationTest {
 
         public Optional<String> sessionId() {
             return cookies.getCookieStore().get(URI.create(appUrl("/"))).stream()
-                    .filter(cookie -> cookie.getName().equals("JSESSIONID"))
+                    .filter(cookie -> cookie.getName().equals("SESSION"))
                     .map(HttpCookie::getValue)
                     .findFirst();
         }
@@ -157,7 +157,7 @@ public abstract class AbstractOidcIntegrationTest {
     @SuppressWarnings("unchecked")
     protected Map<String, Object> me(String sessionId) {
         return webTestClient.get().uri("/api/account/me")
-                .cookie("JSESSIONID", sessionId)
+                .cookie("SESSION", sessionId)
                 .exchange()
                 .expectStatus().isOk()
                 .expectBody(Map.class)
@@ -166,7 +166,7 @@ public abstract class AbstractOidcIntegrationTest {
     }
 
     protected WebTestClient.ResponseSpec getAdminPage(String sessionId) {
-        return webTestClient.get().uri("/admin-react/index.html").cookie("JSESSIONID", sessionId).exchange();
+        return webTestClient.get().uri("/admin-react/index.html").cookie("SESSION", sessionId).exchange();
     }
 
     private interface HttpCall<T> {

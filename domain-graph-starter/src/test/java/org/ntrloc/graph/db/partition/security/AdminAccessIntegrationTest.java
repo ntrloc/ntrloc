@@ -57,7 +57,7 @@ class AdminAccessIntegrationTest extends AbstractIntegrationTest {
                 .exchange()
                 .expectStatus().is3xxRedirection()
                 .returnResult(Void.class)
-                .getResponseCookies().getFirst("JSESSIONID");
+                .getResponseCookies().getFirst("SESSION");
         assertThat(session).isNotNull();
         return session;
     }

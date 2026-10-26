@@ -7,6 +7,7 @@ import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateLinkDefini
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePerspectiveDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemDefinitionView;
 import org.ntrloc.graph.domain.DomainInitializer;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
@@ -21,6 +22,7 @@ import java.util.UUID;
 // SchemaMutationValidation.requireConsistentPerspectiveTarget for what makes both possible now
 // that schema_entity_link_perspective's old UNIQUE(entity_id, link_definition_id) is gone.
 @Component
+@ConditionalOnProperty(prefix = "graph.security", name = "seed-test-data", havingValue = "true")
 public class SelfLinkTestDomainInitializer implements DomainInitializer, ApplicationRunner {
 
     private UUID personTypeId;

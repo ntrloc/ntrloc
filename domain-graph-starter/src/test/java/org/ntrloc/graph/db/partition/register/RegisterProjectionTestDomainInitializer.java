@@ -13,6 +13,7 @@ import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePropertyGr
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyDefinitionView;
 import org.ntrloc.graph.domain.DomainInitializer;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.stereotype.Component;
@@ -25,6 +26,7 @@ import java.util.UUID;
 // property variety projection/faceting needs (a boolean, a controlled-list-backed string, a state
 // machine) without touching a fixture other test classes already depend on.
 @Component
+@ConditionalOnProperty(prefix = "graph.security", name = "seed-test-data", havingValue = "true")
 public class RegisterProjectionTestDomainInitializer implements DomainInitializer, ApplicationRunner {
 
     public static final String AVAILABILITY_MACHINE = "Availability";

@@ -278,6 +278,21 @@
             <version>${hazelcast.version}</version>
         </dependency>
 
+        <!-- Login sessions live in the cluster's Hazelcast, so any node can serve any signed-in
+             browser. Spring Session 4 dropped its own Hazelcast module; Hazelcast publishes this
+             one. spring-boot-session (first, so its spring-session-core version wins) applies
+             Boot's server.servlet.session.* settings to it. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-session</artifactId>
+            <version>${spring.boot.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.hazelcast.spring</groupId>
+            <artifactId>hazelcast-spring-session</artifactId>
+            <version>4.0.0</version>
+        </dependency>
+
         <!-- Media processor client (org.ntrloc.graph.mediaprocessor): optional at the deployment
              level only. media-processor-api and grpc-stub/grpc-protobuf/protobuf-java (transitive
              through it) are always on the classpath, same as Hazelcast above for clustering.

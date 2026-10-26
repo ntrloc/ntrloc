@@ -159,7 +159,7 @@ class SamlLoginIntegrationTest extends AbstractSamlIntegrationTest {
     }
 
     private void assertSessionEnded(String session) {
-        webTestClient.get().uri("/api/account/me").cookie("JSESSIONID", session).exchange()
+        webTestClient.get().uri("/api/account/me").cookie("SESSION", session).exchange()
                 .expectStatus().is3xxRedirection();
     }
 
