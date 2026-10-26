@@ -42,7 +42,7 @@ function SamlProvidersView() {
       registered={REGISTERED}
       sourceColumn={SOURCE}
       testLabel="Test metadata"
-      extra={(provider) => <SamlKeysView provider={provider} onChanged={vm.providerChanged} />}
+      ExtraView={SamlKeysView}
     />
   )
 }

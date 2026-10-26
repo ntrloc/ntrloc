@@ -40,10 +40,17 @@ public class SamlProviderService implements RelyingPartyRegistrationRepository {
     private static final Logger LOG = LoggerFactory.getLogger(SamlProviderService.class);
 
     // ntrloc's own URLs for a provider. Its entity ID is its metadata URL, a common convention. The
-    // single logout URL is shared: the signed-in user's session says which provider it's for.
+    // single logout URL is shared: the signed-in user's session says which provider it's for. These
+    // are routes, like a @GetMapping path, and they're registered at each IdP, so they're
+    // deliberately not configurable (java:S1075).
+    @SuppressWarnings("java:S1075")
     static final String METADATA_PATH = "/saml2/metadata/{registrationId}";
+    @SuppressWarnings("java:S1075")
     static final String ACS_PATH = "/login/saml2/sso/{registrationId}";
+    @SuppressWarnings("java:S1075")
     static final String SLO_PATH = "/logout/saml2/slo";
+    // Resolved by Spring, per request, to how this server is being reached.
+    private static final String BASE_URL = "{baseUrl}";
     private static final String METADATA_URI_SCHEME = "The metadata URI must start with http:// or https://";
 
     // emailAttribute blank: the NameID is the email. displayNameAttribute blank: no display name.
@@ -239,10 +246,10 @@ public class SamlProviderService implements RelyingPartyRegistrationRepository {
             }
             RelyingPartyRegistration registration = RelyingPartyRegistrations.fromMetadataLocation(row.metadataUri())
                     .registrationId(row.registrationId())
-                    .entityId("{baseUrl}" + METADATA_PATH)
-                    .assertionConsumerServiceLocation("{baseUrl}" + ACS_PATH)
-                    .singleLogoutServiceLocation("{baseUrl}" + SLO_PATH)
-                    .singleLogoutServiceResponseLocation("{baseUrl}" + SLO_PATH)
+                    .entityId(BASE_URL + METADATA_PATH)
+                    .assertionConsumerServiceLocation(BASE_URL + ACS_PATH)
+                    .singleLogoutServiceLocation(BASE_URL + SLO_PATH)
+                    .singleLogoutServiceResponseLocation(BASE_URL + SLO_PATH)
                     .signingX509Credentials(credentials -> credentials.addAll(signing))
                     .decryptionX509Credentials(credentials -> credentials.addAll(decryption))
                     .build();

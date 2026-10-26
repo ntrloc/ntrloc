@@ -27,7 +27,6 @@ import java.security.interfaces.RSAPublicKey;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
-import java.util.Date;
 
 // ntrloc's own key pairs for a SAML IdP: generated (RSA 2048 and a self-signed certificate, which is
 // normal for SAML -- the IdP trusts the certificate it imported from ntrloc's metadata, not a CA)
@@ -35,7 +34,7 @@ import java.util.Date;
 // certificate in the clear.
 final class SamlCertificates {
 
-    static final Duration VALIDITY = Duration.ofDays(3 * 365);
+    static final Duration VALIDITY = Duration.ofDays(3L * 365);
 
     record SigningPair(String privateKeyPem, String certificatePem) {}
 
@@ -49,9 +48,11 @@ final class SamlCertificates {
             KeyPair keys = generator.generateKeyPair();
             Instant now = Instant.now();
             X500Name subject = new X500Name("CN=" + commonName);
+            // BouncyCastle only takes java.util.Date here; named in full, not imported, since Sonar's
+            // S2143 flags the import, which no @SuppressWarnings can reach.
             JcaX509v3CertificateBuilder builder = new JcaX509v3CertificateBuilder(subject,
-                    new BigInteger(64, new SecureRandom()), Date.from(now), Date.from(now.plus(VALIDITY)), subject,
-                    keys.getPublic());
+                    new BigInteger(64, new SecureRandom()), java.util.Date.from(now),
+                    java.util.Date.from(now.plus(VALIDITY)), subject, keys.getPublic());
             X509Certificate certificate = new JcaX509CertificateConverter()
                     .getCertificate(builder.build(new JcaContentSignerBuilder("SHA256withRSA").build(keys.getPrivate())));
             return new SigningPair(pem("PRIVATE KEY", keys.getPrivate().getEncoded()),

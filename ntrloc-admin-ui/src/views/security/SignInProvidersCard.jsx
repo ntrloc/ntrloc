@@ -9,9 +9,9 @@ const NOT_YET_SAVED = 'Shown once the provider is saved'
 // time. vm is a useSignInProvidersViewModel. fields are the editable ones ({ key, name,
 // placeholder, hint, secret }); registered are the read-only values to register at the provider
 // ({ name, valueOf(provider), hint }), which the server reports once the provider is saved.
-// sourceColumn is the list's column saying where the provider is ({ name, valueOf }). extra, if
-// given, renders more of the form for a saved provider: extra(provider, vm).
-function SignInProvidersCard({ title, vm, fields, registered, sourceColumn, testLabel, extra }) {
+// sourceColumn is the list's column saying where the provider is ({ name, valueOf }). ExtraView, if
+// given, is a component rendering more of the form for a saved provider, given { provider, vm }.
+function SignInProvidersCard({ title, vm, fields, registered, sourceColumn, testLabel, ExtraView }) {
   if (vm.status !== 'ready') {
     return (
       <security-card>
@@ -61,7 +61,7 @@ function SignInProvidersCard({ title, vm, fields, registered, sourceColumn, test
         </table>
       )}
 
-      {vm.editing && <ProviderForm vm={vm} fields={fields} registered={registered} testLabel={testLabel} extra={extra} />}
+      {vm.editing && <ProviderForm vm={vm} fields={fields} registered={registered} testLabel={testLabel} ExtraView={ExtraView} />}
 
       <ModalPopupView
         open={vm.confirmingDelete}
@@ -73,7 +73,7 @@ function SignInProvidersCard({ title, vm, fields, registered, sourceColumn, test
   )
 }
 
-function ProviderForm({ vm, fields, registered, testLabel, extra }) {
+function ProviderForm({ vm, fields, registered, testLabel, ExtraView }) {
   const { draft, editing, busy } = vm
   const isNew = editing === 'new'
   const existing = vm.providers.find((p) => p.registrationId === editing)
@@ -128,7 +128,7 @@ function ProviderForm({ vm, fields, registered, testLabel, extra }) {
         ))}
       </security-card-fields>
 
-      {existing && extra?.(existing, vm)}
+      {existing && ExtraView && <ExtraView provider={existing} vm={vm} />}
 
       {vm.error && <p className="security-card-error">{vm.error}</p>}
 

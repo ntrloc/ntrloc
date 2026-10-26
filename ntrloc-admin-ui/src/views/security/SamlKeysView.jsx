@@ -14,8 +14,8 @@ const NEXT_STEP = {
 
 // ntrloc's key pairs for one SAML provider, and rotating them: add a next key (generated, or the
 // admin's own PEM key and certificate), activate it, retire the old one -- or discard a next key. Changes apply at once,
-// independently of the provider form's Save; onChanged gets the provider as it then is.
-function SamlKeysView({ provider, onChanged }) {
+// independently of the provider form's Save; vm (the card's) gets the provider as it then is.
+function SamlKeysView({ provider, vm }) {
   const [adding, setAdding] = useState(null)
   const [upload, setUpload] = useState({ privateKey: '', certificate: '' })
   const [busy, setBusy] = useState(false)
@@ -27,7 +27,7 @@ function SamlKeysView({ provider, onChanged }) {
     setBusy(true)
     setError(null)
     try {
-      onChanged(await action())
+      vm.providerChanged(await action())
       setAdding(null)
       setUpload({ privateKey: '', certificate: '' })
     } catch (e) {
@@ -102,7 +102,7 @@ function SamlKeysView({ provider, onChanged }) {
 
       {!roles.has('NEXT') && adding === null && (
         <saml-keys-actions>
-          <Button variant="secondary" onClick={() => run(() => addSamlNextKey(provider.registrationId, {}))} disabled={busy}>
+          <Button variant="secondary" onClick={() => void run(() => addSamlNextKey(provider.registrationId, {}))} disabled={busy}>
             Generate next key
           </Button>
           <Button variant="secondary" onClick={() => setAdding('upload')} disabled={busy}>
@@ -134,7 +134,7 @@ function SamlKeysView({ provider, onChanged }) {
             />
           </label>
           <saml-keys-actions>
-            <Button onClick={() => run(() => addSamlNextKey(provider.registrationId, upload))} disabled={busy}>
+            <Button onClick={() => void run(() => addSamlNextKey(provider.registrationId, upload))} disabled={busy}>
               Upload
             </Button>
             <Button variant="secondary" onClick={() => setAdding(null)} disabled={busy}>
@@ -152,7 +152,7 @@ function SamlKeysView({ provider, onChanged }) {
         onConfirm={() => {
           const { action } = confirmations[confirming]
           setConfirming(null)
-          run(action)
+          void run(action)
         }}
         onCancel={() => setConfirming(null)}
       />
