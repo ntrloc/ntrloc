@@ -36,6 +36,11 @@ function LdapConfigView() {
     return values[key] || '—'
   }
 
+  function placeholder({ key, placeholder }) {
+    if (key !== 'password') return placeholder
+    return passwordSet ? 'blank keeps the current password' : ''
+  }
+
   return (
     <ldap-config-view>
       <ldap-config-header>
@@ -53,7 +58,7 @@ function LdapConfigView() {
               value={editing ? values[field.key] : displayValue(field)}
               onChange={(e) => setField(field.key, e.target.value)}
               type={field.key === 'password' ? 'password' : 'text'}
-              placeholder={field.key === 'password' ? (passwordSet ? 'blank keeps the current password' : '') : field.placeholder}
+              placeholder={placeholder(field)}
               autoComplete="off"
               spellCheck={false}
             />

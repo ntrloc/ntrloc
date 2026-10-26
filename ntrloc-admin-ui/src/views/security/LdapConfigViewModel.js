@@ -3,8 +3,10 @@ import { fetchLdapConfig, saveLdapConfig, testLdapConfig } from './SecurityDeleg
 
 // The draft's password starts blank, and a blank one on save or test means "use the stored one".
 function draftOf(config) {
-  const { bindPasswordSet: _, updatedAt: __, ...fields } = config
-  return { ...fields, password: '' }
+  const draft = { ...config, password: '' }
+  delete draft.bindPasswordSet
+  delete draft.updatedAt
+  return draft
 }
 
 // Edit mode works on a draft copy of the saved config, so Cancel just discards it. Test runs

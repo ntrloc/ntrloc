@@ -5,7 +5,6 @@ import './SecurityView.css'
 function SecurityView() {
   return (
     <security-view>
-      <h2>Security</h2>
       <LdapConfigView />
     </security-view>
   )

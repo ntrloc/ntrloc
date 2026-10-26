@@ -18,6 +18,7 @@ import java.time.OffsetDateTime;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 
 // The LDAP directory ntrloc signs people in against, stored in the database and edited by admins
 // (LdapConfigurationController), so a change applies without a restart. The bind password is
@@ -48,6 +49,10 @@ public class LdapConfigurationService {
         boolean anonymous() {
             return bindDn.isEmpty();
         }
+
+        private static String trim(String value) {
+            return value == null ? "" : value.trim();
+        }
     }
 
     public record StoredLdapSettings(LdapSettings settings, boolean bindPasswordSet, OffsetDateTime updatedAt) {}
@@ -61,7 +66,7 @@ public class LdapConfigurationService {
 
     private final LdapConfigurationRepository repository;
     private final SecretCipher cipher;
-    private volatile CachedDirectory cached;
+    private final AtomicReference<CachedDirectory> cached = new AtomicReference<>();
 
     public LdapConfigurationService(LdapConfigurationRepository repository, SecretCipher cipher) {
         this.repository = repository;
@@ -148,14 +153,15 @@ public class LdapConfigurationService {
         if (version.isEmpty()) {
             return Optional.empty();
         }
-        CachedDirectory current = cached;
+        CachedDirectory current = cached.get();
         if (current != null && current.version() == version.get()) {
             return current.directory();
         }
         synchronized (this) {
             LdapConfigurationRow row = repository.find().orElseThrow();
-            cached = new CachedDirectory(row.version(), buildDirectory(row));
-            return cached.directory();
+            CachedDirectory rebuilt = new CachedDirectory(row.version(), buildDirectory(row));
+            cached.set(rebuilt);
+            return rebuilt.directory();
         }
     }
 
@@ -229,9 +235,5 @@ public class LdapConfigurationService {
             root = root.getCause();
         }
         return root.getMessage() != null ? root.getMessage() : root.getClass().getSimpleName();
-    }
-
-    private static String trim(String value) {
-        return value == null ? "" : value.trim();
     }
 }
