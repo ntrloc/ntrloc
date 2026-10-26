@@ -19,12 +19,15 @@ public class LoginController {
     private final AuthProperties authProperties;
     private final BrandingProperties brandingProperties;
     private final ObjectProvider<ClientRegistrationRepository> clientRegistrations;
+    private final LdapConfigurationService ldapConfiguration;
 
     public LoginController(AuthProperties authProperties, BrandingProperties brandingProperties,
-                           ObjectProvider<ClientRegistrationRepository> clientRegistrations) {
+                           ObjectProvider<ClientRegistrationRepository> clientRegistrations,
+                           LdapConfigurationService ldapConfiguration) {
         this.authProperties = authProperties;
         this.brandingProperties = brandingProperties;
         this.clientRegistrations = clientRegistrations;
+        this.ldapConfiguration = ldapConfiguration;
     }
 
     @GetMapping(value = "/login", produces = MediaType.TEXT_HTML_VALUE)
@@ -95,7 +98,7 @@ public class LoginController {
         }
 
         // LDAP second
-        if (authProperties.getLdap().isEnabled()) {
+        if (ldapConfiguration.isEnabled()) {
             if (!first) {
                 html.append("""
                     <div class="divider"><span>or</span></div>

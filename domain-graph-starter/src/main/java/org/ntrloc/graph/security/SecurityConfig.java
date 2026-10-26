@@ -15,9 +15,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.http.HttpHeaders;
-import org.springframework.ldap.core.support.LdapContextSource;
 import org.springframework.security.authentication.AuthenticationManager;
-import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.authorization.AuthorizationDecision;
 import org.springframework.security.config.Customizer;
@@ -28,8 +26,6 @@ import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.context.RequestAttributeSecurityContextRepository;
 import org.springframework.security.web.context.SecurityContextRepository;
-import org.springframework.security.ldap.authentication.BindAuthenticator;
-import org.springframework.security.ldap.search.FilterBasedLdapUserSearch;
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
 import org.springframework.security.oauth2.core.OAuth2Error;
@@ -57,25 +53,26 @@ public class SecurityConfig {
     private final ExternalPrincipalResolver principals;
     private final ExternalUserProvisioner provisioner;
     private final ObjectProvider<ClientRegistrationRepository> clientRegistrations;
+    private final LdapConfigurationService ldapConfiguration;
 
     public SecurityConfig(AuthProperties authProperties, SecurityRepository securityRepository,
                            ExternalPrincipalResolver principals, ExternalUserProvisioner provisioner,
-                           ObjectProvider<ClientRegistrationRepository> clientRegistrations) {
+                           ObjectProvider<ClientRegistrationRepository> clientRegistrations,
+                           LdapConfigurationService ldapConfiguration) {
         this.authProperties = authProperties;
         this.securityRepository = securityRepository;
         this.principals = principals;
         this.provisioner = provisioner;
         this.clientRegistrations = clientRegistrations;
+        this.ldapConfiguration = ldapConfiguration;
     }
 
+    // LDAP doesn't count: it's configured in the admin UI, so it can't be what admins rely on to
+    // reach the admin UI in the first place.
     @PostConstruct
     public void validateAuthConfig() {
-        boolean anyEnabled = authProperties.getLocal().isEnabled()
-                || authProperties.getOauth().isEnabled()
-                || authProperties.getLdap().isEnabled();
-        if (!anyEnabled) {
-            throw new IllegalStateException(
-                    "At least one authentication method must be enabled");
+        if (!authProperties.getLocal().isEnabled() && !authProperties.getOauth().isEnabled()) {
+            throw new IllegalStateException("Local login or OpenID Connect must be enabled");
         }
         if (authProperties.getOauth().isEnabled() && clientRegistrations.getIfAvailable() == null) {
             throw new IllegalStateException("graph.auth.oauth.enabled is set, but no OpenID Connect provider is "
@@ -91,9 +88,7 @@ public class SecurityConfig {
         // HttpSecurity builds -- which also holds the OAuth2 login providers oauth2Login() registers
         // (so this must never be replaced by an explicit http.authenticationManager(...)). A
         // BadCredentialsException from one moves on to the next.
-        if (authProperties.getLdap().isEnabled()) {
-            http.authenticationProvider(ldapAuthenticationProvider());
-        }
+        http.authenticationProvider(new NtrlocLdapAuthenticationProvider(ldapConfiguration, principals, provisioner));
         if (authProperties.getLocal().isEnabled()) {
             http.authenticationProvider(new LocalAuthenticationProvider(principals, securityRepository));
         }
@@ -139,10 +134,8 @@ public class SecurityConfig {
                             })));
         }
 
-        if (authProperties.getLocal().isEnabled() ||
-                authProperties.getLdap().isEnabled()) {
-            http.formLogin(form -> form.loginPage(LOGIN_PATH));
-        }
+        // Unconditional: LDAP can be switched on at any time without a restart.
+        http.formLogin(form -> form.loginPage(LOGIN_PATH));
 
         http.httpBasic(Customizer.withDefaults());
 
@@ -178,26 +171,6 @@ public class SecurityConfig {
         SimpleUrlLogoutSuccessHandler handler = new SimpleUrlLogoutSuccessHandler();
         handler.setDefaultTargetUrl(LOGIN_PATH);
         return handler;
-    }
-
-    // Search for the user's entry with the configured filter, then bind as it to check the password.
-    private AuthenticationProvider ldapAuthenticationProvider() {
-        AuthProperties.LdapProperties ldap = authProperties.getLdap();
-        LdapContextSource contextSource = new LdapContextSource();
-        contextSource.setUrl(ldap.getUrl());
-        contextSource.setBase(ldap.getBase());
-        if (ldap.getUsername() == null || ldap.getUsername().isBlank()) {
-            contextSource.setAnonymousReadOnly(true);
-        } else {
-            contextSource.setUserDn(ldap.getUsername());
-            contextSource.setPassword(ldap.getPassword());
-        }
-        contextSource.afterPropertiesSet();
-
-        BindAuthenticator authenticator = new BindAuthenticator(contextSource);
-        authenticator.setUserSearch(new FilterBasedLdapUserSearch(ldap.getUserSearchBase(), ldap.getUserSearchFilter(), contextSource));
-
-        return new NtrlocLdapAuthenticationProvider(authenticator, ldap, principals, provisioner);
     }
 
     // The principal set here is the token owner's full NtrlocPrincipal, the same shape a local

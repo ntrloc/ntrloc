@@ -1,0 +1,36 @@
+.switch {
+  position: relative;
+  flex: none;
+  width: 40px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 11px;
+  background: var(--border);
+  cursor: pointer;
+  transition: background 150ms ease;
+}
+
+.switch[data-on] {
+  background: var(--primary);
+}
+
+.switch:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.switch-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--bg);
+  transition: transform 150ms ease;
+}
+
+.switch[data-on] .switch-thumb {
+  transform: translateX(18px);
+}

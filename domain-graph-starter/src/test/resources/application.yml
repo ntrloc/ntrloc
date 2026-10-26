@@ -11,6 +11,7 @@ cluster:
 graph:
   security:
     seed-test-data: true
+    secret-key: Sghf3zoi5J8HWMXMLRrt3pfmY28x6gFncKH+qVW+iEM=
   ui:
     mounts:
       # The vanilla-JS admin UI at the same /admin path the release runtime mounts it, so tests

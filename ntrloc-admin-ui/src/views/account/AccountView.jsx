@@ -1,3 +1,4 @@
+import Switch from '../../controls/switch/Switch'
 import { useTheme } from '../../global/viewmodel/useTheme'
 import './AccountView.css'
 
@@ -7,7 +8,6 @@ import './AccountView.css'
 // Sidebar.jsx) has somewhere real to land.
 function AccountView() {
   const { theme, toggleTheme } = useTheme()
-  const isDark = theme === 'dark'
 
   return (
     <account-view>
@@ -16,13 +16,7 @@ function AccountView() {
 
       <account-setting-row>
         <span className="account-setting-label">Dark mode</span>
-        {/* role="switch" + aria-checked, not a disguised checkbox input -- matches how a toggle's
-            own state should be exposed to assistive tech. data-on (not a className) mirrors the
-            same boolean-attribute convention this app's other controls use (e.g.
-            CollapsiblePanel's data-collapsed) for driving pure-CSS state. */}
-        <button type="button" role="switch" aria-checked={isDark} aria-label="Dark mode" className="theme-switch" data-on={isDark || undefined} onClick={toggleTheme}>
-          <span className="theme-switch-thumb" />
-        </button>
+        <Switch on={theme === 'dark'} onChange={toggleTheme} label="Dark mode" />
       </account-setting-row>
     </account-view>
   )

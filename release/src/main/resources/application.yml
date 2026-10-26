@@ -24,7 +24,7 @@ spring:
     # Hikari's defaults, made explicit: the pool size is the real limit on concurrent database work.
     hikari:
       maximum-pool-size: ${DB_POOL_SIZE:10}
-      connection-timeout: 30s
+      connection-timeout: 30000  # ms -- Hikari takes a plain number, not a duration
   # Virtual threads for request handling and Spring's own task executors. Off until a load test
   # shows they help: every request then competes directly for the database pool below, which
   # Tomcat's 200-thread cap otherwise shields it from. The test suite runs with them on.
@@ -43,9 +43,10 @@ graph:
       enabled: true
     oauth:
       enabled: false
-    ldap:
-      enabled: false
   security:
+    # Encrypts secrets stored in the database (the LDAP bind password): base64 of 32 random bytes,
+    # e.g. `openssl rand -base64 32`. Keep it out of the database and don't lose it.
+    secret-key: ${NTRLOC_SECRET_KEY:}
     seed-local-accounts: true
     seed-test-data: false
   ui:

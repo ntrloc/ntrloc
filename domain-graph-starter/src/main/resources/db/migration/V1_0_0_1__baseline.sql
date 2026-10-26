@@ -243,6 +243,27 @@ CREATE TABLE security_personal_access_token (
     expires_at TIMESTAMPTZ
 );
 
+-- The one LDAP directory ntrloc signs people in against, edited in the admin UI. A single row (id
+-- is always TRUE); no row means LDAP has never been configured, which reads as disabled. version
+-- goes up on every save, so each node can tell its cached directory connection is stale with one
+-- cheap read per login -- no cluster message needed. The bind password is encrypted with the
+-- server's graph.security.secret-key (see SecretCipher), never stored in plaintext.
+CREATE TABLE security_ldap_config (
+    id                      BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (id),
+    enabled                 BOOLEAN NOT NULL,
+    url                     TEXT NOT NULL,
+    base_dn                 TEXT NOT NULL,
+    bind_dn                 TEXT NOT NULL,
+    bind_password_encrypted TEXT,
+    user_search_base        TEXT NOT NULL,
+    user_search_filter      TEXT NOT NULL,
+    email_attribute         TEXT NOT NULL,
+    display_name_attribute  TEXT NOT NULL,
+    version                 BIGINT NOT NULL DEFAULT 1,
+    updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_by              UUID REFERENCES security_user(id) ON DELETE SET NULL
+);
+
 -- === authorization_* (AuthorizationInitializer) ===
 
 -- A marker's scope answers two questions only: which item instances is it eligible to be assigned

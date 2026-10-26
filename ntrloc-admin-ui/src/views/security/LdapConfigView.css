@@ -1,0 +1,66 @@
+ldap-config-view {
+  display: block;
+  max-width: 900px;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+ldap-config-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+ldap-config-header h3 {
+  margin: 0 auto 0 0;
+  color: var(--text-h);
+}
+
+.ldap-config-enabled-label {
+  font-size: 0.9em;
+}
+
+/* Two columns of label-above-value fields, collapsing to one on narrow screens. */
+ldap-config-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px 40px;
+}
+
+@media (max-width: 640px) {
+  ldap-config-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+ldap-config-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ldap-config-hint {
+  font-size: 0.8em;
+}
+
+.ldap-config-test-result,
+.ldap-config-error {
+  margin: 20px 0 0;
+  color: var(--secondary);
+}
+
+.ldap-config-test-result[data-ok] {
+  color: var(--primary);
+}
+
+ldap-config-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 24px;
+}
+
+ldap-config-actions .btn {
+  --btn-padding: 7px 16px;
+}

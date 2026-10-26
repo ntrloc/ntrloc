@@ -37,8 +37,8 @@ class PrincipalResolverImpl implements ExternalPrincipalResolver, InternalPrinci
         return repo.findUserById(id).map(this::toPrincipal);
     }
 
-    // Local, LDAP and PAT logins carry their NtrlocPrincipal as the Authentication's principal;
-    // OIDC logins (whose principal must be an OidcUser) carry it via NtrlocPrincipalHolder.
+    // Local, LDAP and PAT logins carry their NtrlocPrincipal as the Authentication's principal.
+    // OIDC logins, whose principal must be an OidcUser, carry it via NtrlocPrincipalHolder.
     @Override
     public Optional<NtrlocPrincipal> fromAuthentication(Authentication auth) {
         if (auth == null || !auth.isAuthenticated() || auth instanceof AnonymousAuthenticationToken) {
