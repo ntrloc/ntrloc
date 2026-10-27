@@ -19,17 +19,19 @@ class TraitMutationApplier {
 
     private final SchemaRepository repo;
     private final ApplicationEventPublisher eventPublisher;
+    private final PropertyMutationApplier propertyMutationApplier;
 
-    TraitMutationApplier(SchemaRepository repo, ApplicationEventPublisher eventPublisher) {
+    TraitMutationApplier(SchemaRepository repo, ApplicationEventPublisher eventPublisher, PropertyMutationApplier propertyMutationApplier) {
         this.repo = repo;
         this.eventPublisher = eventPublisher;
+        this.propertyMutationApplier = propertyMutationApplier;
     }
 
     boolean apply(DefinitionMutation mutation) {
         switch (mutation) {
             case CreateTraitDefinitionMutation m -> {
                 var trait = repo.createTrait(m.name(), m.description());
-                PropertyMutationApplier.createContents(repo, new SchemaRepository.PropertyOwnerRef(PropertyContainerKind.TRAIT, trait.id()),
+                propertyMutationApplier.createContents(new SchemaRepository.PropertyOwnerRef(PropertyContainerKind.TRAIT, trait.id()),
                         m.properties(), m.groups(), ENTITY_KIND_TRAIT + " '" + m.name() + "'");
                 eventPublisher.publishEvent(new SchemaChangeEvent.TraitCreated(trait.id()));
             }

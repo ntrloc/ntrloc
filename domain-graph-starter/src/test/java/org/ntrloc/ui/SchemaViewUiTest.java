@@ -121,7 +121,7 @@ class SchemaViewUiTest extends AbstractUiIntegrationTest {
                 List.of("", "year", "Year first published", "Integer (optional)"),
                 List.of("publisher", "", "", ""),
                 List.of("", "name", "Publisher's name", "String (optional)"),
-                List.of(TRACKED_TRAIT + "(via " + TRACKED_TRAIT + ")", "", "", ""),
+                List.of(TRACKED_TRAIT + "(trait)", "", "", ""),
                 List.of("", "trackingCode", "Internal tracking code", "String (optional)"));
     }
 

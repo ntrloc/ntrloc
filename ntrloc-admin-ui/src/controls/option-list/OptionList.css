@@ -26,7 +26,9 @@
   background: var(--border);
 }
 
+/* The current value reads as text, not a filled button: bold, in the primary color. It still gets
+   the hover background like any other option. */
 .option-list-option-selected {
-  background: var(--primary);
-  color: var(--bg);
+  color: var(--primary);
+  font-weight: bold;
 }

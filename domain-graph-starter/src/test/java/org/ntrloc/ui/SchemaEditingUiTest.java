@@ -10,12 +10,20 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
+import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
+import org.ntrloc.graph.db.partition.schema.definition.PropertyContainerKind;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
+import org.ntrloc.graph.db.partition.schema.definition.PropertyUsage;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.AddPropertyGroupDefinitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateControlledListMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateLinkDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePerspectiveDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.UpdateItemDefinitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.UpdatePropertyDefinitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminControlledListView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyDefinitionView;
+import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyGroupView;
 import org.springframework.beans.factory.annotation.Autowired;
 
 /**
@@ -53,7 +61,7 @@ class SchemaEditingUiTest extends AbstractUiIntegrationTest {
     void editingOpensTheFieldsAndCancelPutsEverythingBack() {
         schema.edit();
         assertThat(schema.overviewEditable()).isTrue();
-        assertThat(schema.cardActions("Properties")).containsExactly("New property");
+        assertThat(schema.cardActions("Properties")).containsExactly("New group", "New property");
         assertThat(schema.cardActions("Links")).containsExactly("New link");
 
         schema.typeInto("Description", "Changed").toggleSwitch("Abstract type").toggleDeleteProperty("pages").toggleDeleteLink("authors");
@@ -127,6 +135,196 @@ class SchemaEditingUiTest extends AbstractUiIntegrationTest {
 
         assertThat(propertyNames()).contains("own", "inherited", "code");
         assertThat(schema.deletableProperties()).containsExactly("own");
+        assertThat(schema.editableProperties()).containsExactly("own");
+        assertThat(schema.groupActions("UiEditTrait-" + suffix)).isEmpty();
+    }
+
+    @Test
+    void newGroupsAndEverythingInsideThemAreSavedTogether() {
+        String listName = "UiEditFormats-" + UUID.randomUUID().toString().substring(0, 8);
+        schemaManager.applyMutations(List.of(new CreateControlledListMutation(null, listName, PropertyType.STRING, List.of(
+                new CreateControlledListMutation.Entry("HARDBACK", "Hardback")))));
+
+        schema.edit().newGroup();
+        assertThat(schema.propertyEditorTitle()).isEqualTo("New group");
+        assertThat(schema.propertyEditorCanApply()).isFalse();
+        schema.typeInPropertyEditor("Name", "publication").applyPropertyEditor();
+        assertThat(schema.groupActions("publication"))
+                .containsExactly("Add group to publication", "Add property to publication", "Edit publication", "Delete publication");
+
+        schema.addPropertyTo("publication").typeInPropertyEditor("Name", "year").chooseInPropertyEditor("Type", "Integer").applyPropertyEditor();
+        schema.addGroupTo("publication").typeInPropertyEditor("Name", "edition").applyPropertyEditor();
+        schema.addPropertyTo("edition")
+                .typeInPropertyEditor("Name", "format")
+                .chooseInPropertyEditor("Controlled list", listName)
+                .applyPropertyEditor();
+        assertThat(propertyNames()).containsSubsequence("year", "format");
+
+        schema.save();
+
+        AdminPropertyGroupView publication = groupNamed(testData.itemType(bookType).groups(), "publication");
+        assertThat(publication.properties()).extracting(AdminPropertyDefinitionView::name).containsExactly("year");
+        AdminPropertyDefinitionView format = groupNamed(publication.groups(), "edition").properties().getFirst();
+        assertThat(format.name()).isEqualTo("format");
+        assertThat(format.controlledListId()).isEqualTo(controlledList(listName).id());
+    }
+
+    @Test
+    void savedGroupsTakeNewPropertiesAndGroupsToo() {
+        UUID bookId = testData.itemType(bookType).id();
+        schemaManager.applyMutations(List.of(new AddPropertyGroupDefinitionMutation(PropertyContainerKind.ITEM, bookId, "details", "d",
+                List.of(), List.of())));
+        schema.awaitGroup("details").edit();
+        assertThat(schema.groupActions("details")).containsExactly("Add group to details", "Add property to details");
+
+        schema.addPropertyTo("details").typeInPropertyEditor("Name", "language").applyPropertyEditor();
+        schema.addGroupTo("details").typeInPropertyEditor("Name", "physical").applyPropertyEditor();
+        schema.save();
+
+        AdminPropertyGroupView details = groupNamed(testData.itemType(bookType).groups(), "details");
+        assertThat(details.properties()).extracting(AdminPropertyDefinitionView::name).containsExactly("language");
+        assertThat(details.groups()).extracting(AdminPropertyGroupView::name).containsExactly("physical");
+    }
+
+    @Test
+    void droppingANewGroupDropsEverythingInsideIt() {
+        schema.edit().newGroup().typeInPropertyEditor("Name", "scratch").applyPropertyEditor();
+        schema.addPropertyTo("scratch").typeInPropertyEditor("Name", "note").applyPropertyEditor();
+        assertThat(propertyNames()).contains("note");
+
+        schema.toggleDeleteProperty("scratch");
+
+        assertThat(propertyNames()).doesNotContain("note");
+        assertThat(schema.groupActions("scratch")).isEmpty();
+        assertThat(schema.unsavedItemTypes()).isEmpty();
+    }
+
+    @Test
+    void aPropertysEditsAreHeldUntilSaveAndThenAppliedTogether() {
+        String listName = "UiEditGenres-" + UUID.randomUUID().toString().substring(0, 8);
+        schemaManager.applyMutations(List.of(new CreateControlledListMutation(null, listName, PropertyType.STRING, List.of(
+                new CreateControlledListMutation.Entry("FICTION", "Fiction")))));
+        schema.edit().editProperty("title");
+        assertThat(schema.propertyEditorFields()).containsExactly(
+                entry("Name", "title"),
+                entry("Description", "UI test fixture"),
+                entry("Type", "String"),
+                entry("Controlled list", "None"),
+                entry("Cardinality", "Single value"),
+                entry("Usage", "Optional"));
+        assertThat(schema.propertyEditorOptions("Controlled list")).contains("None", listName);
+
+        schema.typeInPropertyEditor("Name", "heading")
+                .typeInPropertyEditor("Description", "The book's heading")
+                .chooseInPropertyEditor("Cardinality", "List")
+                .chooseInPropertyEditor("Usage", "Required")
+                .chooseInPropertyEditor("Controlled list", listName)
+                .applyPropertyEditor();
+
+        assertThat(schema.propertyRows()).contains(List.of("", "heading", "The book's heading", "String List (required)", ""));
+        assertThat(schema.editedProperties()).containsExactly("heading");
+        assertThat(propertyNamed(bookType, "title")).isNotNull();
+
+        schema.save();
+
+        AdminPropertyDefinitionView saved = propertyNamed(bookType, "heading");
+        assertThat(saved.description()).isEqualTo("The book's heading");
+        assertThat(saved.cardinality()).isEqualTo(PropertyCardinality.LIST);
+        assertThat(saved.usage()).isEqualTo(PropertyUsage.REQUIRED);
+        assertThat(saved.controlledListId()).isEqualTo(controlledList(listName).id());
+        assertThat(schema.editedProperties()).isEmpty();
+    }
+
+    @Test
+    void aNewPropertyNeedsANameAndIsAddedOnSave() {
+        schema.edit().newProperty();
+        assertThat(schema.propertyEditorTitle()).isEqualTo("New property");
+        assertThat(schema.propertyEditorFields()).containsExactly(
+                entry("Name", ""),
+                entry("Description", ""),
+                entry("Type", "String"),
+                entry("Controlled list", "None"),
+                entry("Cardinality", "Single value"),
+                entry("Usage", "Optional"));
+        assertThat(schema.propertyEditorCanApply()).isFalse();
+        assertThat(schema.propertyEditorError()).isEmpty();
+
+        schema.typeInPropertyEditor("Name", "x").typeInPropertyEditor("Name", " ");
+        assertThat(schema.propertyEditorCanApply()).isFalse();
+        assertThat(schema.propertyEditorError()).isEqualTo("A property needs a name.");
+
+        schema.typeInPropertyEditor("Name", "isbn")
+                .chooseInPropertyEditor("Type", "Long")
+                .chooseInPropertyEditor("Cardinality", "Set")
+                .applyPropertyEditor();
+        assertThat(schema.propertyRows()).contains(List.of("", "isbn", "", "Long Set (optional)", ""));
+        assertThat(schema.editedProperties()).containsExactly("isbn");
+        assertThat(schema.unsavedItemTypes()).containsExactly(bookType);
+
+        schema.save();
+
+        AdminPropertyDefinitionView isbn = propertyNamed(bookType, "isbn");
+        assertThat(isbn.type()).isEqualTo(PropertyType.LONG);
+        assertThat(isbn.cardinality()).isEqualTo(PropertyCardinality.SET);
+        assertThat(schema.editedProperties()).isEmpty();
+    }
+
+    @Test
+    void aNewPropertyCanComeWithAControlledList() {
+        String listName = "UiEditFormats-" + UUID.randomUUID().toString().substring(0, 8);
+        schemaManager.applyMutations(List.of(new CreateControlledListMutation(null, listName, PropertyType.STRING, List.of(
+                new CreateControlledListMutation.Entry("HARDBACK", "Hardback")))));
+
+        schema.edit().newProperty()
+                .typeInPropertyEditor("Name", "format")
+                .chooseInPropertyEditor("Controlled list", listName)
+                .applyPropertyEditor()
+                .save();
+
+        assertThat(propertyNamed(bookType, "format").controlledListId()).isEqualTo(controlledList(listName).id());
+    }
+
+    @Test
+    void aNewPropertyCanBeEditedOrDroppedBeforeSaving() {
+        schema.edit().newProperty().typeInPropertyEditor("Name", "draft").applyPropertyEditor();
+
+        schema.editProperty("draft");
+        assertThat(schema.propertyEditorTitle()).isEqualTo("New property");
+        schema.typeInPropertyEditor("Name", "renamed").applyPropertyEditor();
+        assertThat(propertyNames()).contains("renamed").doesNotContain("draft");
+
+        schema.toggleDeleteProperty("renamed");
+        assertThat(propertyNames()).doesNotContain("renamed");
+        assertThat(schema.unsavedItemTypes()).isEmpty();
+    }
+
+    @Test
+    void cancellingThePropertyEditorChangesNothing() {
+        schema.edit().editProperty("pages").typeInPropertyEditor("Description", "Changed");
+        assertThat(schema.propertyEditorOptions("Cardinality")).containsExactly("Single value", "List", "Set");
+
+        schema.cancelPropertyEditor();
+
+        assertThat(schema.editedProperties()).isEmpty();
+        assertThat(schema.unsavedItemTypes()).isEmpty();
+    }
+
+    @Test
+    void aPropertySomeoneElseChangesWhileItIsBeingEditedMustBeSettledBeforeSaving() {
+        schema.edit().editProperty("title").typeInPropertyEditor("Description", "Mine").applyPropertyEditor();
+
+        AdminPropertyDefinitionView title = propertyNamed(bookType, "title");
+        schemaManager.applyMutations(List.of(new UpdatePropertyDefinitionMutation(title.id(), "title", "Theirs",
+                title.type(), title.cardinality(), title.usage(), title.facetable())));
+        schema.awaitConflict();
+        assertThat(schema.conflicts()).containsExactly("Property title was changed by someone else");
+        assertThat(schema.saveEnabled()).isFalse();
+
+        schema.useTheirs("Property title");
+
+        assertThat(schema.conflicts()).isEmpty();
+        assertThat(schema.propertyRows()).contains(List.of("", "title", "Theirs", "String (optional)", ""));
+        assertThat(schema.unsavedItemTypes()).isEmpty();
     }
 
     @Test
@@ -169,6 +367,24 @@ class SchemaEditingUiTest extends AbstractUiIntegrationTest {
         AdminItemDefinitionView saved = testData.itemType(bookType);
         assertThat(saved.description()).isEqualTo("Mine");
         assertThat(saved.displayLabelPattern()).isEqualTo("pages");
+    }
+
+    private AdminPropertyDefinitionView propertyNamed(String itemTypeName, String propertyName) {
+        return testData.itemType(itemTypeName).properties().stream()
+                .filter(property -> property.name().equals(propertyName))
+                .findFirst()
+                .orElse(null);
+    }
+
+    private static AdminPropertyGroupView groupNamed(List<AdminPropertyGroupView> groups, String name) {
+        return groups.stream().filter(group -> group.name().equals(name)).findFirst().orElseThrow();
+    }
+
+    private AdminControlledListView controlledList(String name) {
+        return schemaManager.getAdminSchema().controlledLists().stream()
+                .filter(list -> list.name().equals(name))
+                .findFirst()
+                .orElseThrow();
     }
 
     // Another admin's save of the item type's own fields.

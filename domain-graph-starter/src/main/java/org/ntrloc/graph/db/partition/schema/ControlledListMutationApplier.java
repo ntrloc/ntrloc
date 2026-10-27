@@ -75,17 +75,7 @@ class ControlledListMutationApplier {
         }
         AdminPropertyDefinitionView property = repo.findProperty(m.propertyId())
                 .orElseThrow(() -> new IllegalArgumentException("No property: " + m.propertyId()));
-        if (!ControlledListManager.SUPPORTED_TYPES.contains(property.type())) {
-            throw new IllegalArgumentException(
-                    "Controlled lists are not supported for property type: " + property.type());
-        }
-        var list = controlledListManager.getListById(listId)
-                .orElseThrow(() -> new IllegalArgumentException("No controlled list: " + listId));
-        if (list.valueType() != property.type()) {
-            throw new IllegalArgumentException("Controlled list '" + list.name() + "' is " + list.valueType()
-                    + " but property '" + property.name() + "' is " + property.type());
-        }
-        controlledListManager.setPropertyControlledList(m.propertyId(), listId);
+        controlledListManager.attachToProperty(property, listId);
     }
 
     // null (detach) passes straight through; a NewControlledListReference resolves against this

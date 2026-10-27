@@ -7,6 +7,8 @@ import ItemTypeLinksView from './ItemTypeLinksView'
 import ItemTypeStateMachinesView from './ItemTypeStateMachinesView'
 import AccessMarkersView from './AccessMarkersView'
 import ItemTypeConflictsView from './ItemTypeConflictsView'
+import PropertyEditDialog from './PropertyEditDialog'
+import GroupEditDialog from './GroupEditDialog'
 import { useItemTypeViewModel } from './ItemTypeViewModel'
 import './ItemTypeDetailView.css'
 
@@ -35,17 +37,24 @@ function ItemTypeDetailView({
     {
       key: 'properties',
       label: 'Properties',
-      // Opens the new-property dialog, once it exists.
       actions: editing && (
-        <Button variant="ghost-secondary" icon="plus">
-          New property
-        </Button>
+        <>
+          <Button variant="ghost-secondary" icon="plus" onClick={() => vm.newGroup()}>
+            New group
+          </Button>
+          <Button variant="ghost-secondary" icon="plus" onClick={() => vm.newProperty()}>
+            New property
+          </Button>
+        </>
       ),
       view: (
         <PropertyTreeView
           tree={vm.propertyTree}
           onSelectTrait={onSelectTrait}
           deletion={editing ? vm.propertyDeletion : undefined}
+          onEdit={editing ? vm.editRow : undefined}
+          onAddProperty={editing ? vm.newProperty : undefined}
+          onAddGroup={editing ? vm.newGroup : undefined}
         />
       ),
     },
@@ -135,6 +144,23 @@ function ItemTypeDetailView({
           also survive this whole component unmounting when the sidebar accordion switches to a
           different section and back. */}
       <TabView sections={sections} activeKey={tabKey} onActiveKeyChange={onTabKeyChange} borderStyle="top" />
+      {vm.groupEditor && (
+        <GroupEditDialog
+          group={vm.groupEditor.group}
+          isNew={vm.groupEditor.isNew}
+          onApply={vm.groupEditor.apply}
+          onCancel={vm.groupEditor.cancel}
+        />
+      )}
+      {vm.propertyEditor && (
+        <PropertyEditDialog
+          property={vm.propertyEditor.property}
+          isNew={vm.propertyEditor.isNew}
+          controlledLists={vm.propertyEditor.controlledLists}
+          onApply={vm.propertyEditor.apply}
+          onCancel={vm.propertyEditor.cancel}
+        />
+      )}
     </item-type-detail-view>
   )
 }

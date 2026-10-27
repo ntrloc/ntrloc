@@ -22,10 +22,12 @@ class ItemMutationApplier {
 
     private final SchemaRepository repo;
     private final ApplicationEventPublisher eventPublisher;
+    private final PropertyMutationApplier propertyMutationApplier;
 
-    ItemMutationApplier(SchemaRepository repo, ApplicationEventPublisher eventPublisher) {
+    ItemMutationApplier(SchemaRepository repo, ApplicationEventPublisher eventPublisher, PropertyMutationApplier propertyMutationApplier) {
         this.repo = repo;
         this.eventPublisher = eventPublisher;
+        this.propertyMutationApplier = propertyMutationApplier;
     }
 
     // A flat dispatch by design -- each branch used to carry its own nested loop/conditional logic
@@ -62,7 +64,7 @@ class ItemMutationApplier {
                 .collect(Collectors.toSet());
         SchemaMutationValidation.requireNamesAvailableUnderSupertype(repo, m.supertypeId(), ownNames, traitNames);
         var item = repo.createItem(m.name(), m.description(), m.supertypeId(), m.abstractType(), m.displayLabelPattern());
-        PropertyMutationApplier.createContents(repo, new SchemaRepository.PropertyOwnerRef(PropertyContainerKind.ITEM, item.id()),
+        propertyMutationApplier.createContents(new SchemaRepository.PropertyOwnerRef(PropertyContainerKind.ITEM, item.id()),
                 m.properties(), m.groups(), "item type '" + m.name() + "'");
         for (var traitId : m.traitIds()) {
             repo.implementTrait(item.id(), traitId);

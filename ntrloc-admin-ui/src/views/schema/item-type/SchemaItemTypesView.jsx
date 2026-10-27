@@ -16,11 +16,12 @@ function SchemaItemTypesView({ selectedItemTypeId, onSelectItemType, dirtyItemTy
               type="button"
               className="schema-item-types-list-item"
               aria-current={itemType.id === selectedItemTypeId || undefined}
+              aria-label={dirtyItemTypeIds.has(itemType.id) ? `${itemType.name} (unsaved changes)` : undefined}
               onClick={() => onSelectItemType(itemType.id)}
             >
               {itemType.name}
               {dirtyItemTypeIds.has(itemType.id) && (
-                <span className="schema-item-types-unsaved" role="img" aria-label="Unsaved changes" title="Unsaved changes" />
+                <span className="schema-item-types-unsaved" aria-hidden="true" title="Unsaved changes" />
               )}
             </button>
           </li>

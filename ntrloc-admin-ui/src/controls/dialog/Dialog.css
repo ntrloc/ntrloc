@@ -1,0 +1,37 @@
+/* Fixed, not a portal -- as with ModalPopupView, nothing in this app transforms an ancestor. */
+dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 100;
+}
+
+dialog-view {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: min(560px, calc(100vw - 40px));
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  box-shadow: var(--shadow);
+}
+
+.dialog-title {
+  margin: 0;
+  color: var(--text-h);
+}
+
+dialog-body {
+  display: block;
+}
+
+dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}

@@ -30,8 +30,10 @@ function flattenLevel(properties, groups, depth, collapsedGroupIds, inherited = 
       collapsed,
       hasChildren,
       traitNamespace: group.traitNamespace,
+      inherited: inherited || group.inherited,
+      isNew: group.isNew,
     }
-    const childrenInherited = inherited || group.inherited
+    const childrenInherited = row.inherited
     return collapsed
       ? [row]
       : [row, ...flattenLevel(group.properties, group.groups, depth + 1, collapsedGroupIds, childrenInherited)]

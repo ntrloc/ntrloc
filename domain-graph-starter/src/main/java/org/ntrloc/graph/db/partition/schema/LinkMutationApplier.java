@@ -21,10 +21,12 @@ class LinkMutationApplier {
 
     private final SchemaRepository repo;
     private final ApplicationEventPublisher eventPublisher;
+    private final PropertyMutationApplier propertyMutationApplier;
 
-    LinkMutationApplier(SchemaRepository repo, ApplicationEventPublisher eventPublisher) {
+    LinkMutationApplier(SchemaRepository repo, ApplicationEventPublisher eventPublisher, PropertyMutationApplier propertyMutationApplier) {
         this.repo = repo;
         this.eventPublisher = eventPublisher;
+        this.propertyMutationApplier = propertyMutationApplier;
     }
 
     // Flat dispatch by design -- see ItemMutationApplier.apply()'s own comment for why: each
@@ -46,7 +48,7 @@ class LinkMutationApplier {
 
     private void applyCreate(CreateLinkDefinitionMutation m) {
         UUID linkId = repo.createLink();
-        PropertyMutationApplier.createContents(repo, new SchemaRepository.PropertyOwnerRef(PropertyContainerKind.LINK, linkId),
+        propertyMutationApplier.createContents(new SchemaRepository.PropertyOwnerRef(PropertyContainerKind.LINK, linkId),
                 m.properties(), m.groups(), "this link type");
         var perspectives = m.perspectives();
         for (int i = 0; i < perspectives.size(); i++) {

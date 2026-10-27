@@ -220,9 +220,140 @@ class SchemaPage {
         return this;
     }
 
+    /** Opens the property editor from a property's row. */
+    SchemaPage editProperty(String name) {
+        card("Properties").findElement(By.cssSelector("td.property-tree-actions button[aria-label='Edit " + name + "']")).click();
+        await().until(d -> !d.findElements(By.tagName("dialog-view")).isEmpty());
+        return this;
+    }
+
+    /** Opens the property editor for a new property, from the Properties card's title bar. */
+    SchemaPage newProperty() {
+        return openEditor(card("Properties").findElement(By.xpath(".//collapsible-card-actions//button[.='New property']")));
+    }
+
+    /** Opens the group editor for a new top-level group, from the Properties card's title bar. */
+    SchemaPage newGroup() {
+        return openEditor(card("Properties").findElement(By.xpath(".//collapsible-card-actions//button[.='New group']")));
+    }
+
+    SchemaPage addPropertyTo(String groupName) {
+        return openEditor(card("Properties").findElement(By.cssSelector("button[aria-label='Add property to " + groupName + "']")));
+    }
+
+    SchemaPage addGroupTo(String groupName) {
+        return openEditor(card("Properties").findElement(By.cssSelector("button[aria-label='Add group to " + groupName + "']")));
+    }
+
+    /** Waits for a group to appear in the Properties card, e.g. one someone else just saved. */
+    SchemaPage awaitGroup(String groupName) {
+        await().until(d -> !card("Properties").findElements(By.xpath(
+                ".//div[contains(@class,'property-tree-group-cell')]/*[1][normalize-space(.)='" + groupName + "']")).isEmpty());
+        return this;
+    }
+
+    /** The buttons on a group's row in the Properties card, by accessible name. */
+    List<String> groupActions(String groupName) {
+        return card("Properties").findElements(By.xpath(
+                        ".//tr[td//div[contains(@class,'property-tree-group-cell')]/*[1][normalize-space(.)='" + groupName + "']]"
+                                + "//td[contains(@class,'property-tree-actions')]//button")).stream()
+                .map(button -> button.getDomAttribute("aria-label"))
+                .toList();
+    }
+
+    private SchemaPage openEditor(WebElement button) {
+        button.click();
+        await().until(d -> !d.findElements(By.tagName("dialog-view")).isEmpty());
+        return this;
+    }
+
+    String propertyEditorTitle() {
+        return text(dialog().findElement(By.className("dialog-title")));
+    }
+
+    boolean propertyEditorCanApply() {
+        return dialog().findElement(By.xpath(".//dialog-actions//button[.='Apply']")).isEnabled();
+    }
+
+    /** The property editor's validation message, or empty when there's none. */
+    String propertyEditorError() {
+        return texts(dialog().findElements(By.className("property-edit-error"))).stream().findFirst().orElse("");
+    }
+
+    /** The properties whose rows offer an edit button. */
+    List<String> editableProperties() {
+        return card("Properties").findElements(By.cssSelector("td.property-tree-actions button[aria-label^='Edit ']")).stream()
+                .map(button -> button.getDomAttribute("aria-label").substring("Edit ".length()))
+                .toList();
+    }
+
+    /** Properties with edits not yet saved. */
+    List<String> editedProperties() {
+        return card("Properties").findElements(By.cssSelector("tr[data-edited] td:nth-child(2)")).stream()
+                .map(SchemaPage::text)
+                .toList();
+    }
+
+    /** The open property editor's fields, label to value. */
+    Map<String, String> propertyEditorFields() {
+        return settled(() -> {
+            Map<String, String> fields = new LinkedHashMap<>();
+            for (WebElement field : dialog().findElements(By.cssSelector("property-edit-fields > *"))) {
+                fields.put(text(field.findElement(By.cssSelector(".input-control-name"))), fieldValue(field));
+            }
+            return fields;
+        });
+    }
+
+    SchemaPage typeInPropertyEditor(String fieldLabel, String text) {
+        WebElement input = dialog().findElement(By.xpath(
+                ".//input-control[span[contains(@class,'input-control-name')][.='" + fieldLabel + "']]//input"));
+        input.sendKeys(Keys.chord(Keys.CONTROL, "a"), Keys.BACK_SPACE);
+        input.sendKeys(text);
+        return this;
+    }
+
+    /** Picks one of a choice field's options in the property editor. */
+    SchemaPage chooseInPropertyEditor(String fieldLabel, String option) {
+        WebElement field = dialog().findElement(By.xpath(
+                ".//popover-button[span[contains(@class,'input-control-name')][.='" + fieldLabel + "']]"));
+        field.findElement(By.cssSelector(".popover-button-trigger")).click();
+        field.findElement(By.xpath(".//button[contains(@class,'option-list-option')][.='" + option + "']")).click();
+        return this;
+    }
+
+    /** The options a choice field in the property editor offers, closing it again afterwards. */
+    List<String> propertyEditorOptions(String fieldLabel) {
+        WebElement field = dialog().findElement(By.xpath(
+                ".//popover-button[span[contains(@class,'input-control-name')][.='" + fieldLabel + "']]"));
+        WebElement trigger = field.findElement(By.cssSelector(".popover-button-trigger"));
+        trigger.click();
+        List<String> options = texts(field.findElements(By.cssSelector(".option-list-option")));
+        trigger.click();
+        return options;
+    }
+
+    SchemaPage applyPropertyEditor() {
+        return closePropertyEditor("Apply");
+    }
+
+    SchemaPage cancelPropertyEditor() {
+        return closePropertyEditor("Cancel");
+    }
+
+    private SchemaPage closePropertyEditor(String button) {
+        dialog().findElement(By.xpath(".//dialog-actions//button[.='" + button + "']")).click();
+        await().until(d -> d.findElements(By.tagName("dialog-view")).isEmpty());
+        return this;
+    }
+
+    private WebElement dialog() {
+        return driver.findElement(By.tagName("dialog-view"));
+    }
+
     /** The properties whose rows offer a delete button: the ones this item type declares itself. */
     List<String> deletableProperties() {
-        return card("Properties").findElements(By.cssSelector("td.property-tree-actions button")).stream()
+        return card("Properties").findElements(By.cssSelector("td.property-tree-actions button:not([aria-label^='Edit '])")).stream()
                 .map(button -> button.getDomAttribute("aria-label").replaceFirst("^(Delete|Keep) ", ""))
                 .toList();
     }
@@ -294,9 +425,9 @@ class SchemaPage {
         return propertyRows(propertyTable());
     }
 
-    /** Opens a trait from the "(via trait)" link on its group in the Properties card. */
+    /** Opens a trait from the "(trait)" link on its group in the Properties card. */
     SchemaPage followTraitLink(String traitName) {
-        card("Properties").findElement(By.xpath(".//button[contains(@class,'property-tree-trait-link')][.='" + traitName + "']")).click();
+        card("Properties").findElement(By.cssSelector("button.property-tree-trait-link[aria-label='Open trait " + traitName + "']")).click();
         return awaitHeading(traitName);
     }
 

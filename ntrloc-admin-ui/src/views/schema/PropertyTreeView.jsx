@@ -2,42 +2,10 @@ import Filter from '../../controls/filter/Filter'
 import ChevronIcon from '../../controls/chevron-icon/ChevronIcon'
 import IconButton from '../../controls/icon-button/IconButton'
 import { usePropertyTreeViewModel } from './PropertyTreeViewModel'
+import { formatPropertyType } from './propertyLabels'
 import './PropertyTreeView.css'
 
 const INDENT_PX = 20
-
-const TYPE_LABELS = {
-  STRING: 'String',
-  INT: 'Integer',
-  LONG: 'Long',
-  DOUBLE: 'Double',
-  DATE: 'Date',
-  DATETIME: 'Date/Time',
-  BOOLEAN: 'Boolean',
-  BINARY: 'Binary',
-}
-
-const CARDINALITY_SUFFIXES = {
-  SINGLE: '',
-  LIST: ' List',
-  SET: ' Set',
-}
-
-const USAGE_LABELS = {
-  OPTIONAL: 'optional',
-  REQUIRED: 'required',
-  DEPRECATED: 'deprecated',
-}
-
-// A single-glance summary in place of separate Type/Cardinality/Usage columns -- a prior granular,
-// per-value table (meant to double as an editor) turned out not worth it for a read-only view.
-// e.g. "String (required)", "Integer List (optional)".
-function formatPropertyType(property) {
-  const type = TYPE_LABELS[property.type] ?? property.type
-  const cardinality = CARDINALITY_SUFFIXES[property.cardinality] ?? ''
-  const usage = USAGE_LABELS[property.usage] ?? property.usage
-  return `${type}${cardinality} (${usage})`
-}
 
 // Shared by both the item type and trait editors' Properties tab -- first pass, display only
 // (property/group editing is a separate, not-yet-requested piece of work). A single tree table
@@ -50,8 +18,12 @@ function formatPropertyType(property) {
 //
 // `deletion` ({ isMarked, onToggle }), when given, adds a trailing column with a delete/undo toggle
 // on each property this container declares itself -- marking it for deletion rather than deleting
-// it outright. Properties inherited from a trait or supertype get no toggle.
-function PropertyTreeView({ tree, onSelectTrait, deletion }) {
+// it outright. `onEdit`, given with it, adds an edit button beside each toggle (not on a property
+// marked for deletion). Properties inherited from a trait or supertype get neither. A property
+// with pending edits (`edited` on its node) is flagged until they're saved. `onAddProperty` and
+// `onAddGroup`, given with `deletion`, put add buttons on each group the container declares itself;
+// a group not yet saved (`isNew`) also gets the edit and delete buttons.
+function PropertyTreeView({ tree, onSelectTrait, deletion, onEdit, onAddProperty, onAddGroup }) {
   const { rows, toggleGroup, isEmpty, nameFilter, setNameFilter, descriptionFilter, setDescriptionFilter } =
     usePropertyTreeViewModel(tree)
 
@@ -110,15 +82,17 @@ function PropertyTreeView({ tree, onSelectTrait, deletion }) {
                       stand-in for everything a trait it implements contributes, and their id is
                       literally that trait's own id (see propertyTreeShaping's own toGroupNode comment). */}
                   {row.traitNamespace && (
-                    <span className="property-tree-group-via">
-                      (via{' '}
+                    <span className="property-tree-group-kind">
+                      (
                       <button
                         type="button"
                         className="property-tree-trait-link"
+                        aria-label={`Open trait ${row.name}`}
                         onClick={() => onSelectTrait(row.id)}
                       >
-                        {row.name}
-                      </button>)
+                        trait
+                      </button>
+                      )
                     </span>
                   )}
                 </div>
@@ -126,16 +100,36 @@ function PropertyTreeView({ tree, onSelectTrait, deletion }) {
               <td />
               <td />
               <td />
-              {deletion && <td />}
+              {deletion && (
+                <td className="property-tree-actions">
+                  {!row.inherited && onAddGroup && (
+                    <IconButton icon="folder-plus" label={`Add group to ${row.name}`} onClick={() => onAddGroup(row.id)} />
+                  )}
+                  {!row.inherited && onAddProperty && (
+                    <IconButton icon="file-plus" label={`Add property to ${row.name}`} onClick={() => onAddProperty(row.id)} />
+                  )}
+                  {row.isNew && onEdit && <IconButton icon="edit" label={`Edit ${row.name}`} onClick={() => onEdit(row.id)} />}
+                  {row.isNew && (
+                    <IconButton icon="trash" label={`Delete ${row.name}`} onClick={() => deletion.onToggle(row.id)} />
+                  )}
+                </td>
+              )}
             </tr>
           ) : (
-            <tr key={row.id} data-marked-for-delete={deletion?.isMarked(row.id) || undefined}>
+            <tr
+              key={row.id}
+              data-marked-for-delete={deletion?.isMarked(row.id) || undefined}
+              data-edited={row.edited || undefined}
+            >
               <td>{row.groupName}</td>
               <td>{row.name}</td>
               <td>{row.description}</td>
               <td>{formatPropertyType(row)}</td>
               {deletion && (
                 <td className="property-tree-actions">
+                  {!row.inherited && onEdit && !deletion.isMarked(row.id) && (
+                    <IconButton icon="edit" label={`Edit ${row.name}`} onClick={() => onEdit(row.id)} />
+                  )}
                   {!row.inherited && (
                     <IconButton
                       icon={deletion.isMarked(row.id) ? 'undo' : 'trash'}

@@ -10,6 +10,7 @@ import org.ntrloc.graph.db.partition.schema.definition.mutation.DeletePropertyDe
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DeletePropertyGroupDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.MovePropertyDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.MovePropertyGroupDefinitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.UpdatePropertyDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.UpdatePropertyGroupDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.repository.SchemaRepository;
@@ -19,7 +20,6 @@ import org.springframework.stereotype.Component;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.UUID;
 
 // Applies property and property-group definition mutations -- split out of SchemaManager (see its
 // own history). Every property and group has exactly one parent (an item type, trait, link type,
@@ -29,9 +29,11 @@ import java.util.UUID;
 class PropertyMutationApplier {
 
     private final SchemaRepository repo;
+    private final ControlledListManager controlledListManager;
 
-    PropertyMutationApplier(SchemaRepository repo) {
+    PropertyMutationApplier(SchemaRepository repo, ControlledListManager controlledListManager) {
         this.repo = repo;
+        this.controlledListManager = controlledListManager;
     }
 
     boolean apply(DefinitionMutation mutation) {
@@ -72,15 +74,15 @@ class PropertyMutationApplier {
         var parent = new PropertyOwnerRef(m.parentKind(), m.parentId());
         SchemaMutationValidation.requireKnownParent(repo, parent);
         SchemaMutationValidation.requireNameAvailable(repo, parent, m.name(), label(parent));
-        createPropertyUnder(repo, parent, new CreatePropertyDefinitionMutation(
-                m.name(), m.description(), m.propertyType(), m.cardinality(), m.usage(), m.facetable()));
+        createPropertyUnder(parent, new CreatePropertyDefinitionMutation(
+                m.name(), m.description(), m.propertyType(), m.cardinality(), m.usage(), m.facetable(), m.controlledListId()));
     }
 
     private void applyAddGroup(AddPropertyGroupDefinitionMutation m) {
         var parent = new PropertyOwnerRef(m.parentKind(), m.parentId());
         SchemaMutationValidation.requireKnownParent(repo, parent);
         SchemaMutationValidation.requireNameAvailable(repo, parent, m.name(), label(parent));
-        createGroupRecursive(repo, parent, new CreatePropertyGroupDefinitionMutation(
+        createGroupRecursive(parent, new CreatePropertyGroupDefinitionMutation(
                 m.name(), m.description(), m.properties(), m.groups()));
     }
 
@@ -116,27 +118,32 @@ class PropertyMutationApplier {
         repo.moveGroup(m.groupId(), target);
     }
 
-    // Creates one leaf property under an already-existing parent. Name availability is the caller's
-    // job (it differs between a standalone add and an initial-contents batch).
-    static void createPropertyUnder(SchemaRepository repo, PropertyOwnerRef parent, CreatePropertyDefinitionMutation spec) {
+    // Creates one leaf property under an already-existing parent, with its controlled list if it names
+    // one. Name availability is the caller's job (it differs between a standalone add and an
+    // initial-contents batch).
+    private void createPropertyUnder(PropertyOwnerRef parent, CreatePropertyDefinitionMutation spec) {
         SchemaMutationValidation.requireFacetableEligible(spec.propertyType(), spec.cardinality(), spec.facetable());
-        repo.createProperty(parent, spec.name(), spec.description(), spec.propertyType(), spec.cardinality(), spec.usage(), spec.facetable());
+        AdminPropertyDefinitionView property = repo.createProperty(
+                parent, spec.name(), spec.description(), spec.propertyType(), spec.cardinality(), spec.usage(), spec.facetable());
+        if (spec.controlledListId() != null) {
+            controlledListManager.attachToProperty(property, spec.controlledListId());
+        }
     }
 
     // Creates the initial contents (properties, then groups) of a container that has just been
     // created and so starts empty. Properties and groups share the one sibling namespace, so both
     // kinds go through the same used-names set; names against a supertype chain / trait names are
     // the item applier's concern and checked before it calls this.
-    static void createContents(SchemaRepository repo, PropertyOwnerRef parent, List<CreatePropertyDefinitionMutation> properties,
-                               List<CreatePropertyGroupDefinitionMutation> groups, String context) {
+    void createContents(PropertyOwnerRef parent, List<CreatePropertyDefinitionMutation> properties,
+                        List<CreatePropertyGroupDefinitionMutation> groups, String context) {
         Set<String> usedNames = new HashSet<>();
         for (var p : properties) {
             SchemaMutationValidation.requireUniqueName(usedNames, p.name(), context);
-            createPropertyUnder(repo, parent, p);
+            createPropertyUnder(parent, p);
         }
         for (var g : groups) {
             SchemaMutationValidation.requireUniqueName(usedNames, g.name(), context);
-            createGroupRecursive(repo, parent, g);
+            createGroupRecursive(parent, g);
         }
     }
 
@@ -150,10 +157,9 @@ class PropertyMutationApplier {
 
     // Recursively creates a group with its full subtree, each child attached under its parent's real
     // id as soon as the parent exists.
-    static UUID createGroupRecursive(SchemaRepository repo, PropertyOwnerRef parent, CreatePropertyGroupDefinitionMutation spec) {
+    private void createGroupRecursive(PropertyOwnerRef parent, CreatePropertyGroupDefinitionMutation spec) {
         var group = repo.createGroup(parent, spec.name(), spec.description());
-        createContents(repo, new PropertyOwnerRef(PropertyContainerKind.GROUP, group.id()),
+        createContents(new PropertyOwnerRef(PropertyContainerKind.GROUP, group.id()),
                 spec.properties(), spec.groups(), "property group '" + spec.name() + "'");
-        return group.id();
     }
 }

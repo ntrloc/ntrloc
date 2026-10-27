@@ -7,6 +7,8 @@ function toPropertyNode(property) {
     type: property.type,
     cardinality: property.cardinality,
     usage: property.usage,
+    controlledListId: property.controlledListId ?? null,
+    facetable: property.facetable,
     inherited: Boolean(property.definedIn),
   }
 }

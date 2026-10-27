@@ -1,8 +1,9 @@
 import Button from '../../../controls/button/Button'
 import './ItemTypeConflictsView.css'
 
-// Fields someone else changed while they were being edited here. Each has to be settled, one way or
-// the other, before the item type can be saved.
+// Fields and properties someone else changed while they were being edited here. Each has to be
+// settled, one way or the other, before the item type can be saved. A field shows the value it now
+// has; a property, just what happened to it. "Keep mine" isn't offered for a property that's gone.
 function ItemTypeConflictsView({ conflicts }) {
   return (
     <item-type-conflicts role="alert">
@@ -11,11 +12,18 @@ function ItemTypeConflictsView({ conflicts }) {
         {conflicts.map((conflict) => (
           <li key={conflict.key} data-field={conflict.label}>
             <span>
-              {conflict.label} is now <q>{conflict.theirs}</q>
+              {conflict.label}{' '}
+              {conflict.note ?? (
+                <>
+                  is now <q>{conflict.theirs}</q>
+                </>
+              )}
             </span>
-            <Button variant="ghost-secondary" onClick={conflict.keepMine}>
-              Keep mine
-            </Button>
+            {conflict.keepMine && (
+              <Button variant="ghost-secondary" onClick={conflict.keepMine}>
+                Keep mine
+              </Button>
+            )}
             <Button variant="ghost-secondary" onClick={conflict.useTheirs}>
               Use theirs
             </Button>

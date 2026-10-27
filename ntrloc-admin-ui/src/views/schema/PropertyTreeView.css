@@ -39,14 +39,21 @@
   width: 20%;
 }
 
+/* As narrow as its buttons allow. */
 .property-tree-table[data-deletable] th:nth-child(5) {
-  width: 40px;
+  width: 1%;
 }
 
 .property-tree-table .property-tree-actions {
   padding-top: 2px;
   padding-bottom: 2px;
   text-align: right;
+  white-space: nowrap;
+}
+
+/* Edited, pending save: the name carries the same orange as the sidebar's unsaved marker. */
+.property-tree-table tr[data-edited] td:nth-child(2) {
+  color: var(--secondary);
 }
 
 /* Marked for deletion, pending save: struck through and dimmed, but still shown so it can be
@@ -89,9 +96,9 @@
   font-weight: 500;
 }
 
-/* Drops below the group's name when both don't fit on one line, rather than being squeezed out of
-   sight (taking its trait link with it). */
-.property-tree-group-via {
+/* "(trait)" after a trait's group, linking to the trait. Drops below the group's name when both
+   don't fit on one line, rather than being squeezed out of sight (taking the link with it). */
+.property-tree-group-kind {
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;

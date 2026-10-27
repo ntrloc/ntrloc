@@ -6,6 +6,7 @@ function toControlledLists(adminSchema) {
   return adminSchema.controlledLists.map((list) => ({
     id: list.id,
     name: list.name,
+    valueType: list.valueType,
   }))
 }
 

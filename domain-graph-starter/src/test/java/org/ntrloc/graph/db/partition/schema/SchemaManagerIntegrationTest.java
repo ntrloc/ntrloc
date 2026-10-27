@@ -10,6 +10,7 @@ import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateItemDefini
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateLinkDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePerspectiveDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePropertyDefinitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePropertyGroupDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.AddPropertyGroupDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DeletePropertyGroupDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.MovePropertyGroupDefinitionMutation;
@@ -586,6 +587,56 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         var listView = schema.controlledLists().stream().filter(l -> l.id().equals(listId)).findFirst().orElseThrow();
         assertThat(listView.valueCount()).isEqualTo(1);
         assertThat(listView.usedBy()).extracting(u -> u.propertyId()).contains(propId);
+    }
+
+    private UUID createStringList(String name) {
+        schemaManager.applyMutations(List.of(new CreateControlledListMutation(null, name, PropertyType.STRING,
+                List.of(new CreateControlledListMutation.Entry("Open", "Open")))));
+        return controlledListManager.getAllLists().stream()
+                .filter(l -> l.name().equals(name)).findFirst().orElseThrow().id();
+    }
+
+    @Test
+    void addPropertyDefinitionMutation_withAControlledList_attachesItToTheNewProperty() {
+        UUID itemId = createItem("Item-" + UUID.randomUUID());
+        UUID listId = createStringList("List-" + UUID.randomUUID());
+
+        schemaManager.applyMutations(List.of(new AddPropertyDefinitionMutation(PropertyContainerKind.ITEM, itemId, "status", "d",
+                PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false, listId)));
+
+        var status = schemaManager.getAdminSchema().items().stream().filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
+                .properties().stream().filter(p -> p.name().equals("status")).findFirst().orElseThrow();
+        assertThat(status.controlledListId()).isEqualTo(listId);
+    }
+
+    @Test
+    void addPropertyGroupDefinitionMutation_attachesControlledListsToPropertiesInsideIt() {
+        UUID itemId = createItem("Item-" + UUID.randomUUID());
+        UUID listId = createStringList("List-" + UUID.randomUUID());
+
+        schemaManager.applyMutations(List.of(new AddPropertyGroupDefinitionMutation(PropertyContainerKind.ITEM, itemId, "details", "d",
+                List.of(), List.of(new CreatePropertyGroupDefinitionMutation("inner", "d", List.of(new CreatePropertyDefinitionMutation(
+                        "status", "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false, listId)), List.of())))));
+
+        var details = schemaManager.getAdminSchema().items().stream().filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
+                .groups().stream().filter(g -> g.name().equals("details")).findFirst().orElseThrow();
+        var status = details.groups().getFirst().properties().getFirst();
+        assertThat(status.name()).isEqualTo("status");
+        assertThat(status.controlledListId()).isEqualTo(listId);
+    }
+
+    @Test
+    void addPropertyDefinitionMutation_withAControlledListOfAnotherType_addsNothing() {
+        UUID itemId = createItem("Item-" + UUID.randomUUID());
+        UUID listId = createStringList("List-" + UUID.randomUUID());
+
+        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new AddPropertyDefinitionMutation(PropertyContainerKind.ITEM, itemId,
+                "count", "d", PropertyType.INT, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false, listId))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("is STRING but property 'count' is INT");
+
+        assertThat(schemaRepo.findChildNames(new SchemaRepository.PropertyOwnerRef(PropertyContainerKind.ITEM, itemId)))
+                .doesNotContain("count");
     }
 
     // CreateControlledListMutation's own refId, resolved by a NewControlledListReference later in

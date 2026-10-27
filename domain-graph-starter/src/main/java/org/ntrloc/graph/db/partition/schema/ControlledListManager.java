@@ -1,5 +1,6 @@
 package org.ntrloc.graph.db.partition.schema;
 
+import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.ReplaceControlledListMutation;
 import org.springframework.boot.sql.init.dependency.DependsOnDatabaseInitialization;
@@ -265,6 +266,22 @@ public class ControlledListManager {
             typed.add(new ValueEntry(value, entry.label()));
         }
         addValues(listId, typed);
+    }
+
+    // Attaches a list to a property, after checking the property's type can have one and matches the
+    // list's value type.
+    public void attachToProperty(AdminPropertyDefinitionView property, UUID listId) {
+        if (!SUPPORTED_TYPES.contains(property.type())) {
+            throw new IllegalArgumentException(
+                    "Controlled lists are not supported for property type: " + property.type());
+        }
+        var list = getListById(listId)
+                .orElseThrow(() -> new IllegalArgumentException("No controlled list: " + listId));
+        if (list.valueType() != property.type()) {
+            throw new IllegalArgumentException("Controlled list '" + list.name() + "' is " + list.valueType()
+                    + " but property '" + property.name() + "' is " + property.type());
+        }
+        setPropertyControlledList(property.id(), listId);
     }
 
     public void setPropertyControlledList(UUID propertyId, UUID listId) {
