@@ -13,6 +13,7 @@ import org.ntrloc.graph.events.ClusterEventBroadcaster;
 import org.springframework.boot.sql.init.dependency.DependsOnDatabaseInitialization;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -58,6 +59,7 @@ public class SchemaManager {
     // New, parallel signal -- see ClusterEventBroadcaster's own comment. Published alongside
     // schemaChangedTopic above, not instead of it, while the new SSE relay is proven out.
     private final ClusterEventBroadcaster clusterEventBroadcaster;
+    private final TransactionTemplate transactionTemplate;
 
     // AtomicReference, not a plain volatile field: rebuildCache() can now run on the Hazelcast
     // message-listener thread (a remote node's change arriving) as well as on whatever thread
@@ -73,7 +75,7 @@ public class SchemaManager {
                           PropertyMutationApplier propertyMutationApplier, LinkMutationApplier linkMutationApplier,
                           StateMutationApplier stateMutationApplier, ControlledListMutationApplier controlledListMutationApplier,
                           PermissionService permissionService, ClusterService clusterService,
-                          ClusterEventBroadcaster clusterEventBroadcaster) {
+                          ClusterEventBroadcaster clusterEventBroadcaster, TransactionTemplate transactionTemplate) {
         this.controlledListManager = controlledListManager;
         this.adminViewBuilder = adminViewBuilder;
         this.calculatedViewBuilder = calculatedViewBuilder;
@@ -86,6 +88,7 @@ public class SchemaManager {
         this.permissionService = permissionService;
         this.clusterService = clusterService;
         this.clusterEventBroadcaster = clusterEventBroadcaster;
+        this.transactionTemplate = transactionTemplate;
         rebuildCache();
 
         this.schemaChangedTopic = clusterService.getTopic(SCHEMA_CHANGED_TOPIC);
@@ -107,12 +110,19 @@ public class SchemaManager {
     // SetPropertyControlledListMutation later in the *same* batch can reference that same create by
     // its own refId (NewControlledListReference) rather than needing two separate round trips --
     // refIdToListId is what makes that resolution possible, built up as the batch is walked.
+    //
+    // The batch is all-or-nothing: one transaction covers every mutation, including the register
+    // tables, grants and pipelines the SchemaChangeEvent listeners create along the way. The cache
+    // is rebuilt (and other nodes told) only after that transaction commits.
     public List<ControlledListMutationResult> applyMutations(List<DefinitionMutation> mutations) {
-        Map<String, UUID> refIdToListId = new HashMap<>();
-        List<ControlledListMutationResult> results = new ArrayList<>();
-        for (DefinitionMutation mutation : mutations) {
-            applyMutation(mutation, refIdToListId, results);
-        }
+        List<ControlledListMutationResult> results = transactionTemplate.execute(_ -> {
+            Map<String, UUID> refIdToListId = new HashMap<>();
+            List<ControlledListMutationResult> applied = new ArrayList<>();
+            for (DefinitionMutation mutation : mutations) {
+                applyMutation(mutation, refIdToListId, applied);
+            }
+            return applied;
+        });
         refreshCache();
         return results;
     }

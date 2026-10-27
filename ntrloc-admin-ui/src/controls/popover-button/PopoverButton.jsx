@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import FieldLabel from '../field-label/FieldLabel'
 import ChevronDownIcon from '../chevron-icon/ChevronDownIcon'
 import './PopoverButton.css'
 
@@ -12,7 +13,11 @@ import './PopoverButton.css'
 // click since there's more than one thing to set) or a `({ close }) => node` render function, for
 // content like a single-select OptionList that should close itself immediately on pick -- the way
 // a native <select> does -- without this control needing to know anything about what "a pick" means.
-function PopoverButton({ summary, disabled = false, children }) {
+//
+// `name` turns it into a form field: a FieldLabel above an underlined trigger, matching Input. Left
+// out, it stays a compact boxed button for toolbars (Sort, Filter, ...). Not `editable`, it shows
+// just its summary as plain text, the same as Input's view mode.
+function PopoverButton({ name, summary, editable = true, disabled = false, children }) {
   const [open, setOpen] = useState(false)
   const containerRef = useRef(null)
 
@@ -27,8 +32,18 @@ function PopoverButton({ summary, disabled = false, children }) {
     return () => document.removeEventListener('mousedown', handlePointerDown)
   }, [open])
 
+  if (!editable) {
+    return (
+      <popover-button data-field={name ? true : undefined}>
+        {name && <FieldLabel>{name}</FieldLabel>}
+        <span className="popover-button-value">{summary}</span>
+      </popover-button>
+    )
+  }
+
   return (
-    <popover-button ref={containerRef}>
+    <popover-button ref={containerRef} data-field={name ? true : undefined}>
+      {name && <FieldLabel>{name}</FieldLabel>}
       <button
         type="button"
         className="popover-button-trigger"

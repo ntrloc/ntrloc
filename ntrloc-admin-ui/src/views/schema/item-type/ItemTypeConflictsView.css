@@ -1,0 +1,28 @@
+/* Its own full-width block above the footer's buttons. */
+item-type-conflicts {
+  flex-basis: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  color: var(--secondary);
+}
+
+item-type-conflicts p {
+  margin: 0;
+}
+
+item-type-conflicts ul {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+item-type-conflicts li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}

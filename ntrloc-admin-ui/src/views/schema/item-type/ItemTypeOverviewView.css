@@ -1,0 +1,7 @@
+/* Two rows of three: the text fields (name, description, display label), then the type's
+   relationships (abstract, parent, traits). */
+item-type-overview {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px 24px;
+}

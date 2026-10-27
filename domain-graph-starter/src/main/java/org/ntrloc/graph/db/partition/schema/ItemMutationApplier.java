@@ -4,12 +4,14 @@ import org.ntrloc.graph.db.partition.schema.definition.PropertyContainerKind;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateItemDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DeleteItemDefinitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.ExpectItemDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.UpdateItemDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.event.SchemaChangeEvent;
 import org.ntrloc.graph.db.partition.schema.repository.SchemaRepository;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
 
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -38,6 +40,7 @@ class ItemMutationApplier {
             case CreateItemDefinitionMutation m -> applyCreate(m);
             case UpdateItemDefinitionMutation m -> applyUpdate(m);
             case DeleteItemDefinitionMutation m -> applyDelete(m);
+            case ExpectItemDefinitionMutation m -> applyExpect(m);
             default -> {
                 return false;
             }
@@ -74,6 +77,24 @@ class ItemMutationApplier {
             SchemaMutationValidation.requireNoTopLevelCollisionsForSupertype(repo, m.id(), m.supertypeId());
         }
         repo.updateItem(m.id(), m.name(), m.description(), m.supertypeId(), m.abstractType(), m.displayLabelPattern());
+    }
+
+    // Blank and absent text are the same to an editor, so they're the same here too.
+    private void applyExpect(ExpectItemDefinitionMutation m) {
+        var row = repo.lockItem(m.id())
+                .orElseThrow(() -> new SchemaConflictException("This item type was deleted by someone else."));
+        boolean unchanged = row.name().equals(m.name())
+                && Objects.equals(blankToNull(row.description()), blankToNull(m.description()))
+                && Objects.equals(row.supertypeId(), m.supertypeId())
+                && row.abstractType() == m.abstractType()
+                && Objects.equals(blankToNull(row.displayLabelPattern()), blankToNull(m.displayLabelPattern()));
+        if (!unchanged) {
+            throw new SchemaConflictException("Item type " + row.name() + " was changed by someone else while you were editing it.");
+        }
+    }
+
+    private static String blankToNull(String text) {
+        return text == null || text.isBlank() ? null : text;
     }
 
     private void applyDelete(DeleteItemDefinitionMutation m) {

@@ -11,8 +11,14 @@ function sortByName(nodes) {
 // consistently at every level. Collapsing a group only ever hides *that group's* own children -- it
 // doesn't touch any nested group's own collapsed state, so re-expanding it later shows descendants
 // exactly as they were left, not reset back to expanded.
-function flattenLevel(properties, groups, depth, collapsedGroupIds) {
-  const propertyRows = sortByName(properties).map((property) => ({ ...property, depth }))
+// inherited carries down from a trait's or supertype's group to everything under it -- not declared
+// by this container, so not this container's to delete.
+function flattenLevel(properties, groups, depth, collapsedGroupIds, inherited = false) {
+  const propertyRows = sortByName(properties).map((property) => ({
+    ...property,
+    depth,
+    inherited: inherited || property.inherited,
+  }))
   const groupRows = sortByName(groups).flatMap((group) => {
     const collapsed = collapsedGroupIds.has(group.id)
     const hasChildren = group.properties.length > 0 || group.groups.length > 0
@@ -25,7 +31,10 @@ function flattenLevel(properties, groups, depth, collapsedGroupIds) {
       hasChildren,
       traitNamespace: group.traitNamespace,
     }
-    return collapsed ? [row] : [row, ...flattenLevel(group.properties, group.groups, depth + 1, collapsedGroupIds)]
+    const childrenInherited = inherited || group.inherited
+    return collapsed
+      ? [row]
+      : [row, ...flattenLevel(group.properties, group.groups, depth + 1, collapsedGroupIds, childrenInherited)]
   })
   return [...propertyRows, ...groupRows]
 }
@@ -41,12 +50,19 @@ function propertyMatches(property, nameFilter, descriptionFilter) {
 // list of matches (no group header rows, no indentation -- there's no tree left to convey nesting
 // once non-matching branches are gone), each carrying its own immediate parent group's name so
 // which group it's in is still visible without the tree around it.
-function matchProperties(properties, groups, nameFilter, descriptionFilter, groupName) {
+function matchProperties(properties, groups, nameFilter, descriptionFilter, groupName, inherited = false) {
   const matches = properties
     .filter((property) => propertyMatches(property, nameFilter, descriptionFilter))
-    .map((property) => ({ ...property, depth: 0, groupName }))
+    .map((property) => ({ ...property, depth: 0, groupName, inherited: inherited || property.inherited }))
   const nested = groups.flatMap((group) =>
-    matchProperties(group.properties, group.groups, nameFilter, descriptionFilter, group.name),
+    matchProperties(
+      group.properties,
+      group.groups,
+      nameFilter,
+      descriptionFilter,
+      group.name,
+      inherited || group.inherited,
+    ),
   )
   return sortByName([...matches, ...nested])
 }

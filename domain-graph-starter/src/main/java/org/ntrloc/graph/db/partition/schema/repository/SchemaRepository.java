@@ -84,6 +84,21 @@ public class SchemaRepository {
                 .list());
     }
 
+    // Locks the row until the transaction ends, so nothing else can change it between a caller's
+    // check and its own writes.
+    public Optional<ItemRow> lockItem(UUID id) {
+        return jdbcClient.sql("SELECT id, name, description, supertype_id, abstract, display_label_pattern FROM schema_item WHERE id = :id FOR UPDATE")
+                .param("id", id)
+                .query((rs, _) -> new ItemRow(
+                        rs.getObject("id", UUID.class),
+                        rs.getString("name"),
+                        rs.getString(PARAM_DESCRIPTION),
+                        rs.getObject("supertype_id", UUID.class),
+                        rs.getBoolean("abstract"),
+                        rs.getString("display_label_pattern")))
+                .optional();
+    }
+
     // Convenience overload for the common case (no supertype, not abstract) -- keeps every
     // existing caller that predates inheritance compiling unchanged.
     public ItemRow createItem(String name, String description) {

@@ -45,6 +45,32 @@ popover-button {
   flex: none;
 }
 
+/* Form-field form (see PopoverButton.jsx's `name`): label above, and the trigger drawn like
+   Input's own field -- just a bottom rule, no box. */
+popover-button[data-field] {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+popover-button[data-field] .popover-button-trigger {
+  width: 100%;
+  padding: 4px 0;
+  border: none;
+  border-bottom: 1px solid var(--border-light);
+  border-radius: 0;
+  background: transparent;
+}
+
+popover-button[data-field] .popover-button-trigger[aria-expanded='true'] {
+  border-bottom-color: var(--primary);
+}
+
+.popover-button-value {
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
 popover-button-popover {
   position: absolute;
   top: calc(100% + 4px);

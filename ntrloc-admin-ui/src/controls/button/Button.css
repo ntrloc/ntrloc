@@ -30,3 +30,19 @@
 .btn-secondary:hover:not(:disabled) {
   filter: brightness(0.92);
 }
+
+/* Unfilled: just the orange label (and icon), with a faint orange wash on hover. */
+.btn-ghost-secondary {
+  background: transparent;
+  color: var(--secondary);
+}
+
+.btn-ghost-secondary:hover:not(:disabled) {
+  background: var(--secondary-bg);
+}
+
+.btn-with-icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}

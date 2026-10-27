@@ -1,0 +1,7 @@
+.input-control-name {
+  font-size: 0.9em;
+  padding-bottom: 10px;
+  font-weight: 600;
+  color: var(--primary);
+  overflow-wrap: anywhere;
+}

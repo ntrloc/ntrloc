@@ -70,6 +70,23 @@ class SchemaAdminControllerIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void applyMutations_whenTheItemTypeChangedSinceTheEditorLoadedIt_returnsConflict() {
+        String itemName = "SchemaAdminTest-" + UUID.randomUUID();
+        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(itemName, "d", List.of(), null, false, null)));
+        UUID itemId = schemaManager.getAdminSchema().items().stream()
+                .filter(i -> i.name().equals(itemName)).findFirst().orElseThrow().id();
+
+        webTestClient.post().uri("/api/admin/schema/mutations")
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue(List.of(java.util.Map.of("type", "EXPECT_ITEM", "id", itemId, "name", itemName,
+                        "description", "not what it says now", "abstractType", false)))
+                .exchange()
+                .expectStatus().isEqualTo(409)
+                .expectBody()
+                .jsonPath("$.message").value(message -> assertThat((String) message).contains("changed by someone else"));
+    }
+
+    @Test
     void getControlledList_forAPropertyWithNoList_returnsNotFound() {
         UUID propertyId = createProperty();
 

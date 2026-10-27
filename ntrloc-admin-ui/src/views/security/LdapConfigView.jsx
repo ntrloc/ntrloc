@@ -53,7 +53,7 @@ function LdapConfigView() {
           <security-card-field key={field.key}>
             <Input
               name={field.name}
-              editing={editing}
+              editable={editing}
               value={editing ? values[field.key] : displayValue(field)}
               onChange={(e) => setField(field.key, e.target.value)}
               type={field.key === 'password' ? 'password' : 'text'}

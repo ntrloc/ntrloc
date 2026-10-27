@@ -36,8 +36,7 @@ function TraitDetailView({ traitId, onSelectItemType, onSelectTrait, detailTabKe
         <h2>{trait.name}</h2>
         {trait.description && <p className="trait-detail-description">{trait.description}</p>}
       </trait-detail-header>
-      {/* Controlled from SchemaViewModel and shared with ItemTypeDetailView's own tab state -- see
-          that component's own comment on why. */}
+      {/* Controlled from SchemaViewModel so the active tab survives switching selection. */}
       <TabView sections={sections} activeKey={detailTabKey} onActiveKeyChange={onDetailTabKeyChange} />
     </trait-detail-view>
   )

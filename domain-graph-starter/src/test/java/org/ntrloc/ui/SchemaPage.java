@@ -17,7 +17,8 @@ import org.openqa.selenium.support.ui.WebDriverWait;
 
 /**
  * The admin UI's Schema view: the sidebar accordion (item types, traits, controlled lists) and the
- * selected item type's or trait's detail tabs. Text is read with textContent, as in ItemPanePage.
+ * selected item type's or trait's detail tabs -- for an item type, the Structure tab's Overview,
+ * Properties and Links cards, and editing them. Text is read with textContent, as in ItemPanePage.
  */
 class SchemaPage {
 
@@ -47,6 +48,12 @@ class SchemaPage {
 
     List<String> itemTypeNames() {
         return texts(driver.findElements(By.cssSelector(".schema-item-types-list-item")));
+    }
+
+    /** The item types the sidebar marks as having unsaved changes. */
+    List<String> unsavedItemTypes() {
+        return texts(driver.findElements(By.xpath(
+                "//button[contains(@class,'schema-item-types-list-item')][span[contains(@class,'schema-item-types-unsaved')]]")));
     }
 
     List<String> traitNames() {
@@ -107,7 +114,159 @@ class SchemaPage {
         return text(content().findElement(By.cssSelector("tab-view-panel")));
     }
 
-    /** The Overview tab's rows, label to value. */
+    /** The titles of the Structure tab's cards, in order. */
+    List<String> structureCards() {
+        return texts(content().findElements(By.cssSelector("collapsible-card .collapsible-card-title")));
+    }
+
+    SchemaPage toggleCard(String title) {
+        card(title).findElement(By.cssSelector(".collapsible-card-toggle")).click();
+        return this;
+    }
+
+    boolean cardExpanded(String title) {
+        return "true".equals(card(title).findElement(By.cssSelector(".collapsible-card-toggle")).getDomAttribute("aria-expanded"));
+    }
+
+    /** A Structure card's content, e.g. its placeholder when it's empty. */
+    String cardText(String title) {
+        return settled(() -> text(card(title).findElement(By.tagName("collapsible-card-body"))));
+    }
+
+    /** The buttons in a Structure card's title bar, e.g. "New property" while editing. */
+    List<String> cardActions(String title) {
+        return texts(card(title).findElements(By.cssSelector("collapsible-card-actions button")));
+    }
+
+    /**
+     * An item type's Overview card, label to value. Switches read as Yes/No; text fields read the
+     * same whether or not the item type is being edited.
+     */
+    Map<String, String> itemTypeOverview() {
+        return settled(() -> {
+            Map<String, String> fields = new LinkedHashMap<>();
+            for (WebElement field : card("Overview").findElements(By.cssSelector("item-type-overview > *"))) {
+                fields.put(text(field.findElement(By.cssSelector(".input-control-name"))), fieldValue(field));
+            }
+            return fields;
+        });
+    }
+
+    private static String fieldValue(WebElement field) {
+        List<WebElement> inputs = field.findElements(By.cssSelector("input.input-control-field"));
+        if (!inputs.isEmpty()) {
+            return inputs.getFirst().getDomProperty("value");
+        }
+        List<WebElement> switches = field.findElements(By.cssSelector("[role='switch']"));
+        if (!switches.isEmpty()) {
+            return "true".equals(switches.getFirst().getDomAttribute("aria-checked")) ? "Yes" : "No";
+        }
+        return text(field.findElement(By.cssSelector(".input-control-value, .popover-button-value, .popover-button-trigger-label")));
+    }
+
+    /** Waits for an Overview field to show a value, e.g. one someone else just saved. */
+    SchemaPage awaitOverviewEntry(String fieldLabel, String value) {
+        await().until(d -> value.equals(itemTypeOverview().get(fieldLabel)));
+        return this;
+    }
+
+    /** Whether the Overview's fields can be changed right now (inputs rather than plain text). */
+    boolean overviewEditable() {
+        return !card("Overview").findElements(By.cssSelector("input.input-control-field")).isEmpty();
+    }
+
+    SchemaPage edit() {
+        footerButton("Edit").click();
+        await().until(d -> !footerButtons("Save").isEmpty());
+        return this;
+    }
+
+    SchemaPage cancel() {
+        footerButton("Cancel").click();
+        await().until(d -> !footerButtons("Edit").isEmpty());
+        return this;
+    }
+
+    /** Saves, and waits until the item type is back out of editing. */
+    SchemaPage save() {
+        footerButton("Save").click();
+        await().until(d -> !footerButtons("Edit").isEmpty());
+        return this;
+    }
+
+    boolean saveEnabled() {
+        return footerButton("Save").isEnabled();
+    }
+
+    /** Replaces an Overview text field's value. */
+    SchemaPage typeInto(String fieldLabel, String text) {
+        WebElement input = card("Overview").findElement(By.xpath(
+                ".//input-control[span[contains(@class,'input-control-name')][.='" + fieldLabel + "']]//input"));
+        input.sendKeys(Keys.chord(Keys.CONTROL, "a"), Keys.BACK_SPACE);
+        input.sendKeys(text);
+        return this;
+    }
+
+    SchemaPage toggleSwitch(String fieldLabel) {
+        card("Overview").findElement(By.xpath(
+                ".//switch-control[span[contains(@class,'input-control-name')][.='" + fieldLabel + "']]//button[@role='switch']")).click();
+        return this;
+    }
+
+    /** Marks a property for delete, or unmarks it -- its row's trash/undo button. */
+    SchemaPage toggleDeleteProperty(String name) {
+        card("Properties").findElement(By.xpath(
+                ".//td[contains(@class,'property-tree-actions')]//button[@aria-label='Delete " + name + "' or @aria-label='Keep " + name + "']")).click();
+        return this;
+    }
+
+    /** The properties whose rows offer a delete button: the ones this item type declares itself. */
+    List<String> deletableProperties() {
+        return card("Properties").findElements(By.cssSelector("td.property-tree-actions button")).stream()
+                .map(button -> button.getDomAttribute("aria-label").replaceFirst("^(Delete|Keep) ", ""))
+                .toList();
+    }
+
+    List<String> propertiesMarkedForDelete() {
+        return card("Properties").findElements(By.cssSelector("tr[data-marked-for-delete] td:nth-child(2)")).stream()
+                .map(SchemaPage::text)
+                .toList();
+    }
+
+    SchemaPage toggleDeleteLink(String perspectiveName) {
+        linkCard(perspectiveName).findElement(By.xpath(
+                ".//button[@aria-label='Delete " + perspectiveName + "' or @aria-label='Keep " + perspectiveName + "']")).click();
+        return this;
+    }
+
+    boolean linkMarkedForDelete(String perspectiveName) {
+        return !linkCard(perspectiveName).findElements(By.cssSelector("button[aria-label='Keep " + perspectiveName + "']")).isEmpty();
+    }
+
+    /** Fields someone else changed while they were being edited here, e.g. "Description is now “x”". */
+    List<String> conflicts() {
+        return texts(content().findElements(By.cssSelector("item-type-conflicts li span")));
+    }
+
+    SchemaPage awaitConflict() {
+        await().until(d -> !conflicts().isEmpty());
+        return this;
+    }
+
+    SchemaPage keepMine(String fieldLabel) {
+        return resolveConflict(fieldLabel, "Keep mine");
+    }
+
+    SchemaPage useTheirs(String fieldLabel) {
+        return resolveConflict(fieldLabel, "Use theirs");
+    }
+
+    private SchemaPage resolveConflict(String fieldLabel, String choice) {
+        content().findElement(By.xpath(".//item-type-conflicts//li[@data-field='" + fieldLabel + "']//button[.='" + choice + "']")).click();
+        return this;
+    }
+
+    /** The trait's Overview tab's rows, label to value. */
     Map<String, String> overview() {
         return settled(() -> {
             Map<String, String> rows = new LinkedHashMap<>();
@@ -118,7 +277,7 @@ class SchemaPage {
         });
     }
 
-    /** Follows one of the Overview tab's links (parent type, trait, implementing item type). */
+    /** Follows one of a trait's Overview links to an item type that implements it. */
     SchemaPage followOverviewLink(String name) {
         settled(() -> {
             content().findElement(By.xpath(".//button[contains(@class,'entity-overview-link')][.='" + name + "']")).click();
@@ -127,9 +286,18 @@ class SchemaPage {
         return awaitHeading(name);
     }
 
-    /** The Properties tab's table, one list of cell texts per row (Group, Name, Description, Type). */
+    /**
+     * The property table, one list of cell texts per row (Group, Name, Description, Type): an item
+     * type's Properties card, or a trait's Properties tab.
+     */
     List<List<String>> propertyRows() {
-        return propertyRows(content());
+        return propertyRows(propertyTable());
+    }
+
+    /** Opens a trait from the "(via trait)" link on its group in the Properties card. */
+    SchemaPage followTraitLink(String traitName) {
+        card("Properties").findElement(By.xpath(".//button[contains(@class,'property-tree-trait-link')][.='" + traitName + "']")).click();
+        return awaitHeading(traitName);
     }
 
     static List<List<String>> propertyRows(WebElement table) {
@@ -139,7 +307,7 @@ class SchemaPage {
     }
 
     SchemaPage toggleGroup(String name) {
-        content().findElement(By.xpath(".//button[contains(@class,'property-tree-group-toggle')][normalize-space()='" + name + "']")).click();
+        propertyTable().findElement(By.xpath(".//button[contains(@class,'property-tree-group-toggle')][normalize-space()='" + name + "']")).click();
         return this;
     }
 
@@ -152,11 +320,11 @@ class SchemaPage {
     }
 
     SchemaPage clearNameFilter() {
-        content().findElement(By.cssSelector("input[name='property-name-filter'] + .filter-clear")).click();
+        propertyTable().findElement(By.cssSelector("input[name='property-name-filter'] + .filter-clear")).click();
         return this;
     }
 
-    /** Each link card on an item type's Links tab, as its box and arrow-label texts in reading order. */
+    /** Each link in an item type's Links card, as its box and arrow-label texts in reading order. */
     List<List<String>> linkDiagrams() {
         return content().findElements(By.tagName("item-type-link-view")).stream()
                 .map(card -> texts(card.findElements(By.cssSelector(".item-type-link-box, .item-type-link-arrow-label"))))
@@ -205,7 +373,7 @@ class SchemaPage {
     }
 
     private SchemaPage filter(String inputName, String text) {
-        WebElement input = content().findElement(By.cssSelector("input[name='" + inputName + "']"));
+        WebElement input = propertyTable().findElement(By.cssSelector("input[name='" + inputName + "']"));
         input.sendKeys(Keys.chord(Keys.CONTROL, "a"), Keys.BACK_SPACE);
         input.sendKeys(text);
         return this;
@@ -217,6 +385,27 @@ class SchemaPage {
 
     private WebElement content() {
         return driver.findElement(CONTENT);
+    }
+
+    private WebElement card(String title) {
+        return content().findElement(By.xpath(
+                ".//collapsible-card[.//span[contains(@class,'collapsible-card-title')][.='" + title + "']]"));
+    }
+
+    // An item type's properties are in its Properties card -- the Links card holds link property
+    // tables too -- while a trait's are on its own Properties tab.
+    private WebElement propertyTable() {
+        List<WebElement> cards = content().findElements(By.xpath(
+                ".//collapsible-card[.//span[contains(@class,'collapsible-card-title')][.='Properties']]"));
+        return cards.isEmpty() ? content() : cards.getFirst();
+    }
+
+    private WebElement footerButton(String label) {
+        return footerButtons(label).getFirst();
+    }
+
+    private List<WebElement> footerButtons(String label) {
+        return content().findElements(By.xpath(".//item-type-structure-footer//button[.='" + label + "']"));
     }
 
     static List<String> texts(List<WebElement> elements) {

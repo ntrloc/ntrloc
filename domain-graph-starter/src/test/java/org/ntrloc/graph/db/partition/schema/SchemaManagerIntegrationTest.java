@@ -20,6 +20,7 @@ import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateControlled
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateTransitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DeleteControlledListMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.DeleteItemDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DeleteLinkDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.ExistingControlledListReference;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.NewControlledListReference;
@@ -29,6 +30,7 @@ import org.ntrloc.graph.db.partition.schema.definition.mutation.DeleteStateMachi
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DeleteStateMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DeleteTraitDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DeleteTransitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.ExpectItemDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.ImplementTraitMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.MovePropertyDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.RemoveTraitMutation;
@@ -48,12 +50,14 @@ import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyG
 import org.ntrloc.graph.db.partition.authorization.PermissionService;
 import org.ntrloc.graph.db.partition.authorization.repository.AuthorizationRepository;
 import org.ntrloc.graph.db.partition.security.TestPrincipals;
+import org.ntrloc.graph.db.partition.schema.repository.SchemaRepository;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -84,6 +88,9 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private SecurityRepository securityRepo;
+
+    @Autowired
+    private SchemaRepository schemaRepo;
 
     private UUID createItem(String name) {
         schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(name, "d", List.of(), null, false, null)));
@@ -222,6 +229,96 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         var updated = findItem(newName);
         assertThat(updated.id()).isEqualTo(itemId);
         assertThat(updated.description()).isEqualTo("updated description");
+    }
+
+    // --- Batches are all-or-nothing ---
+
+    // Read straight from the database: the cached admin schema isn't rebuilt after a failed batch,
+    // so it would show the old state whether or not the batch was rolled back.
+    private Set<String> storedItemNames() {
+        return schemaRepo.getAllItems().stream().map(SchemaRepository.ItemRow::name).collect(Collectors.toSet());
+    }
+
+    private static CreateLinkDefinitionMutation linkToAnUnknownItemType() {
+        return new CreateLinkDefinitionMutation(List.of(), List.of(
+                new CreatePerspectiveDefinitionMutation(UUID.randomUUID(), "ghost", "d", 0, null)));
+    }
+
+    @Test
+    void aBatchThatFailsPartwayThrough_leavesEarlierChangesInItUnapplied() {
+        String name = "Item-" + UUID.randomUUID();
+        UUID itemId = createItem(name);
+        String newName = "Renamed-" + UUID.randomUUID();
+
+        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(
+                new UpdateItemDefinitionMutation(itemId, newName, "d", null, false, null),
+                linkToAnUnknownItemType())))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        assertThat(storedItemNames()).contains(name).doesNotContain(newName);
+    }
+
+    @Test
+    void aBatchThatFailsAfterCreatingAnItemType_leavesNoItemTypeBehind() {
+        String name = "Item-" + UUID.randomUUID();
+
+        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(
+                new CreateItemDefinitionMutation(name, "d", List.of(), null, false, null),
+                linkToAnUnknownItemType())))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        assertThat(storedItemNames()).doesNotContain(name);
+    }
+
+    // --- Expecting an item type's fields to be unchanged ---
+
+    @Test
+    void anExpectationTheItemTypeStillMeets_letsTheRestOfTheBatchApply() {
+        String name = "Item-" + UUID.randomUUID();
+        UUID itemId = createItem(name);
+        String newName = "Renamed-" + UUID.randomUUID();
+
+        schemaManager.applyMutations(List.of(
+                new ExpectItemDefinitionMutation(itemId, name, "d", null, false, null),
+                new UpdateItemDefinitionMutation(itemId, newName, "d", null, false, null)));
+
+        assertThat(findItem(newName).id()).isEqualTo(itemId);
+    }
+
+    @Test
+    void anExpectationAboutAFieldSomeoneElseChanged_rejectsTheWholeBatch() {
+        String name = "Item-" + UUID.randomUUID();
+        UUID itemId = createItem(name);
+        schemaManager.applyMutations(List.of(new UpdateItemDefinitionMutation(itemId, name, "changed elsewhere", null, false, null)));
+        String newName = "Renamed-" + UUID.randomUUID();
+
+        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(
+                new ExpectItemDefinitionMutation(itemId, name, "d", null, false, null),
+                new UpdateItemDefinitionMutation(itemId, newName, "d", null, false, null))))
+                .isInstanceOf(SchemaConflictException.class)
+                .hasMessageContaining("changed by someone else");
+
+        assertThat(storedItemNames()).contains(name).doesNotContain(newName);
+    }
+
+    @Test
+    void anExpectationAboutADeletedItemType_isAConflict() {
+        UUID itemId = createItem("Item-" + UUID.randomUUID());
+        schemaManager.applyMutations(List.of(new DeleteItemDefinitionMutation(itemId)));
+
+        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(
+                new ExpectItemDefinitionMutation(itemId, "anything", null, null, false, null))))
+                .isInstanceOf(SchemaConflictException.class)
+                .hasMessageContaining("deleted");
+    }
+
+    @Test
+    void anExpectation_treatsBlankAndMissingTextAsTheSame() {
+        String name = "Item-" + UUID.randomUUID();
+        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(name, null, List.of(), null, false, null)));
+        UUID itemId = findItem(name).id();
+
+        schemaManager.applyMutations(List.of(new ExpectItemDefinitionMutation(itemId, name, "", null, false, "")));
     }
 
     @Test

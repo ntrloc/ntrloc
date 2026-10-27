@@ -24,9 +24,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 
 /**
  * The Schema view, end to end: a real user signs in and browses item types, traits, and controlled
- * lists -- each item type's overview, property tree, links, and state machine diagrams -- for a
- * schema created through the same SchemaManager the application itself uses. Nothing here changes
- * the schema, so the fixture is shared by every test.
+ * lists -- each item type's Structure (overview, property tree, links) and state machine diagrams --
+ * for a schema created through the same SchemaManager the application itself uses. Nothing here
+ * changes the schema, so the fixture is shared by every test; SchemaEditingUiTest covers editing.
  */
 class SchemaViewUiTest extends AbstractUiIntegrationTest {
 
@@ -57,36 +57,47 @@ class SchemaViewUiTest extends AbstractUiIntegrationTest {
     }
 
     @Test
-    void selectingAnItemTypeShowsItsOverview() {
+    void selectingAnItemTypeShowsItsStructure() {
         schema.selectItemType(BOOK_TYPE);
 
         assertThat(driver.getCurrentUrl()).endsWith("/schema/item-types/" + bookTypeId);
         assertThat(schema.selectedListEntry()).isEqualTo(BOOK_TYPE);
-        assertThat(schema.tabs()).containsExactly("Overview", "Properties", "Links", "State Machines", "Access Markers");
-        assertThat(schema.overview()).containsExactly(
+        assertThat(schema.tabs()).containsExactly("Structure", "State Machines", "Access Markers");
+        assertThat(schema.structureCards()).containsExactly("Overview", "Properties", "Links");
+        assertThat(schema.itemTypeOverview()).containsExactly(
+                entry("Item type name", BOOK_TYPE),
+                entry("Description", "UI test fixture"),
+                entry("Display label", "title"),
                 entry("Abstract type", "No"),
                 entry("Parent type", PUBLICATION_TYPE),
-                entry("Implements", TRACKED_TRAIT),
-                entry("Display label", "title"));
+                entry("Traits", TRACKED_TRAIT));
+        assertThat(schema.overviewEditable()).isFalse();
+        assertThat(schema.cardActions("Properties")).isEmpty();
     }
 
     @Test
-    void overviewLinksOpenTheParentTypeAndTheTrait() {
-        schema.selectItemType(BOOK_TYPE).followOverviewLink(PUBLICATION_TYPE);
-        assertThat(schema.overview()).containsExactly(
+    void anItemTypeWithNothingSetShowsDefaults() {
+        schema.selectItemType(PUBLICATION_TYPE);
+
+        assertThat(schema.itemTypeOverview()).contains(
+                entry("Display label", "Default"),
                 entry("Abstract type", "Yes"),
                 entry("Parent type", "None"),
-                entry("Implements", "None"),
-                entry("Display label", "Default"));
+                entry("Traits", "None"));
+    }
 
-        // Each selection is its own history entry.
-        driver.navigate().back();
-        schema.awaitHeading(BOOK_TYPE).followOverviewLink(TRACKED_TRAIT);
+    @Test
+    void traitLinksLeadBetweenAnItemTypeAndItsTraits() {
+        schema.selectItemType(BOOK_TYPE).followTraitLink(TRACKED_TRAIT);
 
         assertThat(schema.tabs()).containsExactly("Overview", "Properties", "Links");
         assertThat(schema.overview()).containsEntry("Implemented by", BOOK_TYPE);
 
-        schema.followOverviewLink(BOOK_TYPE);
+        // Each selection is its own history entry.
+        driver.navigate().back();
+        schema.awaitHeading(BOOK_TYPE);
+        driver.navigate().forward();
+        schema.awaitHeading(TRACKED_TRAIT).followOverviewLink(BOOK_TYPE);
         assertThat(schema.heading()).isEqualTo(BOOK_TYPE);
     }
 
@@ -99,8 +110,8 @@ class SchemaViewUiTest extends AbstractUiIntegrationTest {
     }
 
     @Test
-    void propertiesTabShowsPropertiesBeforeGroupsAtEveryLevel() {
-        schema.selectItemType(BOOK_TYPE).openTab("Properties");
+    void propertiesCardShowsPropertiesBeforeGroupsAtEveryLevel() {
+        schema.selectItemType(BOOK_TYPE);
 
         assertThat(schema.propertyRows()).containsExactly(
                 List.of("", "keywords", "Search keywords", "String Set (optional)"),
@@ -116,7 +127,7 @@ class SchemaViewUiTest extends AbstractUiIntegrationTest {
 
     @Test
     void collapsingAGroupHidesEverythingInsideIt() {
-        schema.selectItemType(BOOK_TYPE).openTab("Properties");
+        schema.selectItemType(BOOK_TYPE);
 
         schema.toggleGroup("publication");
         assertThat(propertyNames()).containsExactly("keywords", "pages", "title", "", "", "trackingCode");
@@ -127,7 +138,7 @@ class SchemaViewUiTest extends AbstractUiIntegrationTest {
 
     @Test
     void filteringPropertiesListsMatchesWithTheirOwnGroup() {
-        schema.selectItemType(BOOK_TYPE).openTab("Properties");
+        schema.selectItemType(BOOK_TYPE);
 
         schema.filterPropertiesByName("NA");
         assertThat(schema.propertyRows()).containsExactly(List.of("publisher", "name", "Publisher's name", "String (optional)"));
@@ -149,8 +160,8 @@ class SchemaViewUiTest extends AbstractUiIntegrationTest {
     }
 
     @Test
-    void linksTabShowsBothDirectionsOfEachLinkAndItsProperties() {
-        schema.selectItemType(BOOK_TYPE).openTab("Links");
+    void linksCardShowsBothDirectionsOfEachLinkAndItsProperties() {
+        schema.selectItemType(BOOK_TYPE);
 
         assertThat(schema.linkDiagrams()).containsExactly(List.of(BOOK_TYPE, "authors (0-any)", "books (1)", AUTHOR_TYPE));
         WebElement card = schema.linkCard("authors");
@@ -163,7 +174,7 @@ class SchemaViewUiTest extends AbstractUiIntegrationTest {
         assertThat(schema.linkDiagrams()).containsExactly(List.of(AUTHOR_TYPE, "books (1)", "authors (0-any)", BOOK_TYPE));
 
         schema.selectItemType(PUBLICATION_TYPE);
-        assertThat(schema.tabText()).isEqualTo("No links yet.");
+        assertThat(schema.cardText("Links")).isEqualTo("No links yet.");
     }
 
     @Test
@@ -181,18 +192,23 @@ class SchemaViewUiTest extends AbstractUiIntegrationTest {
     }
 
     @Test
-    void theOpenTabStaysOpenWhileBrowsing() {
-        schema.selectItemType(BOOK_TYPE).openTab("Properties");
+    void theOpenTabAndCollapsedCardsStayThatWayWhileBrowsing() {
+        schema.selectItemType(BOOK_TYPE).toggleCard("Links");
+        assertThat(schema.cardExpanded("Links")).isFalse();
 
         schema.selectItemType(AUTHOR_TYPE);
-        assertThat(schema.activeTab()).isEqualTo("Properties");
+        assertThat(schema.cardExpanded("Links")).isFalse();
         assertThat(propertyNames()).containsExactly("name");
+        schema.toggleCard("Links");
 
+        schema.openTab("State Machines");
         schema.openSection("Traits");
         assertThat(driver.getCurrentUrl()).endsWith("/schema/traits");
         schema.openSection("Item Types");
         schema.selectItemType(BOOK_TYPE);
-        assertThat(schema.activeTab()).isEqualTo("Properties");
+        assertThat(schema.activeTab()).isEqualTo("State Machines");
+        schema.openTab("Structure");
+        assertThat(schema.cardExpanded("Links")).isTrue();
     }
 
     @Test

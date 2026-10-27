@@ -1,52 +1,47 @@
-import { useItemTypeOverviewViewModel } from './ItemTypeOverviewViewModel'
-import '../EntityOverviewList.css'
+import Input from '../../../controls/input/Input'
+import Switch from '../../../controls/switch/Switch'
+import PopoverButton from '../../../controls/popover-button/PopoverButton'
+import OptionList from '../../../controls/option-list/OptionList'
+import CheckboxOptionList from '../../../controls/option-list/CheckboxOptionList'
+import './ItemTypeOverviewView.css'
 
-// Parent type and implemented traits are both links -- the same "click to jump there" affordance
-// already established for a property group's own "(via <trait>)" link, just reused here.
-function ItemTypeOverviewView({ itemType, onSelectItemType, onSelectTrait }) {
-  const { traits } = useItemTypeOverviewViewModel(itemType)
+// `overview` is ItemTypeViewModel's Overview slice: current field values plus their setters.
+function ItemTypeOverviewView({ overview, editable }) {
+  const { fields } = overview
 
   return (
-    <dl className="entity-overview-list">
-      <div className="entity-overview-row">
-        <dt>Abstract type</dt>
-        <dd>{itemType.abstractType ? 'Yes' : 'No'}</dd>
-      </div>
-      <div className="entity-overview-row">
-        <dt>Parent type</dt>
-        <dd>
-          {itemType.supertype ? (
-            <button type="button" className="entity-overview-link" onClick={() => onSelectItemType(itemType.supertype.id)}>
-              {itemType.supertype.name}
-            </button>
-          ) : (
-            <span className="entity-overview-empty">None</span>
-          )}
-        </dd>
-      </div>
-      <div className="entity-overview-row">
-        <dt>Implements</dt>
-        <dd>
-          {traits.length === 0 ? (
-            <span className="entity-overview-empty">None</span>
-          ) : (
-            <ul className="entity-overview-link-list">
-              {traits.map((trait) => (
-                <li key={trait.id}>
-                  <button type="button" className="entity-overview-link" onClick={() => onSelectTrait(trait.id)}>
-                    {trait.name}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </dd>
-      </div>
-      <div className="entity-overview-row">
-        <dt>Display label</dt>
-        <dd>{itemType.displayLabelPattern || <span className="entity-overview-empty">Default</span>}</dd>
-      </div>
-    </dl>
+    <item-type-overview>
+      <Input name="Item type name" editable={editable} value={fields.name} onChange={(e) => overview.setName(e.target.value)} />
+      <Input
+        name="Description"
+        editable={editable}
+        value={fields.description}
+        onChange={(e) => overview.setDescription(e.target.value)}
+      />
+      <Input
+        name="Display label"
+        editable={editable}
+        placeholder="Default"
+        value={editable ? fields.displayLabelPattern : fields.displayLabelPattern || 'Default'}
+        onChange={(e) => overview.setDisplayLabelPattern(e.target.value)}
+      />
+      <Switch name="Abstract type" editable={editable} on={fields.abstractType} onChange={overview.setAbstractType} />
+      <PopoverButton name="Parent type" editable={editable} summary={overview.supertypeSummary}>
+        {({ close }) => (
+          <OptionList
+            options={overview.supertypeOptions}
+            value={overview.supertypeValue}
+            onChange={(value) => {
+              overview.setSupertypeValue(value)
+              close()
+            }}
+          />
+        )}
+      </PopoverButton>
+      <PopoverButton name="Traits" editable={editable} summary={overview.traitSummary}>
+        <CheckboxOptionList options={overview.traitOptions} selectedValues={fields.traitIds} onChange={overview.setTraitIds} />
+      </PopoverButton>
+    </item-type-overview>
   )
 }
 

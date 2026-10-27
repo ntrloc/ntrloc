@@ -1,0 +1,48 @@
+collapsible-card {
+  display: block;
+  border: 1px solid color-mix(in srgb, var(--border) 85%, white 15%);
+  background: color-mix(in srgb, var(--bg) 96%, white 4%);
+}
+
+collapsible-card-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-right: 14px;
+}
+
+.collapsible-card-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  padding: 12px 14px;
+  border: none;
+  background: transparent;
+  color: var(--text-h);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.collapsible-card-toggle:hover .collapsible-card-title {
+  color: var(--primary);
+}
+
+.collapsible-card-title {
+  font-size: 1.1em;
+  font-weight: 600;
+}
+
+collapsible-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+
+collapsible-card-body {
+  display: block;
+  padding: 0 14px 14px;
+}

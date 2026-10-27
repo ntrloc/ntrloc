@@ -1,3 +1,9 @@
+switch-control {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
 .switch {
   position: relative;
   flex: none;
@@ -13,6 +19,10 @@
 
 .switch[data-on] {
   background: var(--primary);
+}
+
+.switch[data-readonly] {
+  cursor: default;
 }
 
 .switch:disabled {

@@ -1,0 +1,21 @@
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.icon-button:hover:not(:disabled) {
+  background: var(--primary-bg);
+  color: var(--text-h);
+}
+
+.icon-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}

@@ -2,7 +2,7 @@ import Button from '../../../controls/button/Button'
 import { useSchemaItemTypesViewModel } from './SchemaItemTypesViewModel'
 import './SchemaItemTypesView.css'
 
-function SchemaItemTypesView({ selectedItemTypeId, onSelectItemType }) {
+function SchemaItemTypesView({ selectedItemTypeId, onSelectItemType, dirtyItemTypeIds }) {
   const { itemTypes } = useSchemaItemTypesViewModel()
 
   return (
@@ -19,6 +19,9 @@ function SchemaItemTypesView({ selectedItemTypeId, onSelectItemType }) {
               onClick={() => onSelectItemType(itemType.id)}
             >
               {itemType.name}
+              {dirtyItemTypeIds.has(itemType.id) && (
+                <span className="schema-item-types-unsaved" role="img" aria-label="Unsaved changes" title="Unsaved changes" />
+              )}
             </button>
           </li>
         ))}

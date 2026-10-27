@@ -1,34 +1,118 @@
+import Button from '../../../controls/button/Button'
+import CollapsibleCard from '../../../controls/collapsible-card/CollapsibleCard'
 import TabView from '../../../controls/tabview/TabView'
 import PropertyTreeView from '../PropertyTreeView'
 import ItemTypeOverviewView from './ItemTypeOverviewView'
 import ItemTypeLinksView from './ItemTypeLinksView'
 import ItemTypeStateMachinesView from './ItemTypeStateMachinesView'
 import AccessMarkersView from './AccessMarkersView'
-import { useItemTypeModel } from '../../../global/model/ItemTypeModel'
-import { useItemTypeDetailViewModel } from './ItemTypeDetailViewModel'
+import ItemTypeConflictsView from './ItemTypeConflictsView'
+import { useItemTypeViewModel } from './ItemTypeViewModel'
 import './ItemTypeDetailView.css'
 
-function ItemTypeDetailView({ itemTypeId, onSelectItemType, onSelectTrait, detailTabKey, onDetailTabKeyChange }) {
-  const { itemType } = useItemTypeDetailViewModel(itemTypeId)
-  const { getItemTypePropertyTree } = useItemTypeModel()
+function ItemTypeDetailView({
+  itemTypeViewModels,
+  itemTypeId,
+  onSelectTrait,
+  tabKey,
+  onTabKeyChange,
+  collapsedStructureCards,
+  onToggleStructureCard,
+}) {
+  const vm = useItemTypeViewModel(itemTypeViewModels, itemTypeId)
+  const { itemType, editing } = vm
 
   if (!itemType) return <p>Item type not found.</p>
 
-  const sections = [
+  // The item type's own shape -- everything schema editing will cover -- grouped under one tab,
+  // apart from State Machines and Access Markers, which are edited separately.
+  const structureCards = [
     {
       key: 'overview',
       label: 'Overview',
-      view: <ItemTypeOverviewView itemType={itemType} onSelectItemType={onSelectItemType} onSelectTrait={onSelectTrait} />,
+      view: <ItemTypeOverviewView overview={vm.overview} editable={editing} />,
     },
     {
       key: 'properties',
       label: 'Properties',
-      view: <PropertyTreeView tree={getItemTypePropertyTree(itemType.id)} onSelectTrait={onSelectTrait} />,
+      // Opens the new-property dialog, once it exists.
+      actions: editing && (
+        <Button variant="ghost-secondary" icon="plus">
+          New property
+        </Button>
+      ),
+      view: (
+        <PropertyTreeView
+          tree={vm.propertyTree}
+          onSelectTrait={onSelectTrait}
+          deletion={editing ? vm.propertyDeletion : undefined}
+        />
+      ),
     },
     {
       key: 'links',
       label: 'Links',
-      view: <ItemTypeLinksView itemTypeId={itemType.id} itemTypeName={itemType.name} onSelectTrait={onSelectTrait} />,
+      // Opens the new-link dialog, once it exists.
+      actions: editing && (
+        <Button variant="ghost-secondary" icon="plus">
+          New link
+        </Button>
+      ),
+      view: (
+        <ItemTypeLinksView
+          links={vm.links}
+          itemTypeName={itemType.name}
+          onSelectTrait={onSelectTrait}
+          deletion={editing ? vm.linkDeletion : undefined}
+        />
+      ),
+    },
+  ]
+
+  const sections = [
+    {
+      key: 'structure',
+      label: 'Structure',
+      view: (
+        <item-type-structure>
+          <item-type-structure-cards>
+            {structureCards.map((card) => (
+              <CollapsibleCard
+                key={card.key}
+                title={card.label}
+                actions={card.actions}
+                expanded={!collapsedStructureCards.has(card.key)}
+                onToggle={() => onToggleStructureCard(card.key)}
+              >
+                {card.view}
+              </CollapsibleCard>
+            ))}
+          </item-type-structure-cards>
+          <item-type-structure-footer>
+            {vm.conflicts.length > 0 && <ItemTypeConflictsView conflicts={vm.conflicts} />}
+            {vm.saveError && vm.conflicts.length === 0 && (
+              <p className="item-type-save-error" role="alert">
+                {vm.saveError}
+              </p>
+            )}
+            {editing ? (
+              <>
+                <Button variant="ghost-secondary" onClick={vm.cancel} disabled={vm.saving}>
+                  Cancel
+                </Button>
+                <Button variant="secondary" onClick={vm.save} disabled={vm.saving || vm.conflicts.length > 0}>
+                  {vm.saving ? 'Saving…' : 'Save'}
+                </Button>
+              </>
+            ) : (
+              <Button variant="secondary" onClick={vm.startEditing}>
+                Edit
+              </Button>
+            )}
+          </item-type-structure-footer>
+        </item-type-structure>
+      ),
+      padding: 0,
     },
     { key: 'stateMachines', label: 'State Machines', view: <ItemTypeStateMachinesView itemTypeId={itemType.id} /> },
     {
@@ -45,12 +129,12 @@ function ItemTypeDetailView({ itemTypeId, onSelectItemType, onSelectTrait, detai
         <h2>{itemType.name}</h2>
         {itemType.description && <p className="item-type-detail-description">{itemType.description}</p>}
       </item-type-detail-header>
-      {/* Not keyed on the item type -- the active tab should survive switching selection, so e.g.
-          staying on "Properties" while browsing different item types. Controlled from
-          SchemaViewModel (not TabView's own internal state, and shared with TraitDetailView's own
-          tab set) so it also survives this whole component unmounting when the accordion switches
-          to a different section and back. */}
-      <TabView sections={sections} activeKey={detailTabKey} onActiveKeyChange={onDetailTabKeyChange} borderStyle="top" />
+      {/* Not keyed on the item type -- the active tab and collapsed Structure cards should survive
+          switching selection, so e.g. staying on "Properties" while browsing different item types.
+          Controlled from SchemaViewModel (not TabView's own internal state) so they
+          also survive this whole component unmounting when the sidebar accordion switches to a
+          different section and back. */}
+      <TabView sections={sections} activeKey={tabKey} onActiveKeyChange={onTabKeyChange} borderStyle="top" />
     </item-type-detail-view>
   )
 }

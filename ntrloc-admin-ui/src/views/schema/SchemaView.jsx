@@ -17,6 +17,12 @@ function SchemaView() {
     selectItemType,
     selectedTraitId,
     selectTrait,
+    itemTypeTabKey,
+    setItemTypeTabKey,
+    collapsedStructureCards,
+    toggleStructureCard,
+    itemTypeViewModels,
+    dirtyItemTypeIds,
     detailTabKey,
     setDetailTabKey,
   } = useSchemaViewModel()
@@ -28,7 +34,13 @@ function SchemaView() {
     {
       key: 'itemTypes',
       label: 'Item Types',
-      view: <SchemaItemTypesView selectedItemTypeId={selectedItemTypeId} onSelectItemType={selectItemType} />,
+      view: (
+        <SchemaItemTypesView
+          selectedItemTypeId={selectedItemTypeId}
+          onSelectItemType={selectItemType}
+          dirtyItemTypeIds={dirtyItemTypeIds}
+        />
+      ),
     },
     {
       key: 'traits',
@@ -46,11 +58,13 @@ function SchemaView() {
       <schema-view-content>
         {activeSection === 'itemTypes' && selectedItemTypeId && (
           <ItemTypeDetailView
+            itemTypeViewModels={itemTypeViewModels}
             itemTypeId={selectedItemTypeId}
-            onSelectItemType={selectItemType}
             onSelectTrait={selectTrait}
-            detailTabKey={detailTabKey}
-            onDetailTabKeyChange={setDetailTabKey}
+            tabKey={itemTypeTabKey}
+            onTabKeyChange={setItemTypeTabKey}
+            collapsedStructureCards={collapsedStructureCards}
+            onToggleStructureCard={toggleStructureCard}
           />
         )}
         {activeSection === 'traits' && selectedTraitId && (

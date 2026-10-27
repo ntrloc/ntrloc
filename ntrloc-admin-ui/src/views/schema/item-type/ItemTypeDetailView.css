@@ -28,3 +28,38 @@ item-type-detail-header h2 {
 .item-type-detail-description {
   color: var(--text);
 }
+
+/* Fills the tab panel: the cards scroll on their own while the footer's Edit button stays put
+   below them. */
+item-type-structure {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+item-type-structure-cards {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 20px;
+}
+
+item-type-structure-footer {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  padding: 10px;
+}
+
+/* Its own full-width line above the buttons. */
+.item-type-save-error {
+  flex-basis: 100%;
+  margin: 0;
+  text-align: center;
+  color: var(--secondary);
+}

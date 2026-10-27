@@ -1,5 +1,6 @@
 import Filter from '../../controls/filter/Filter'
 import ChevronIcon from '../../controls/chevron-icon/ChevronIcon'
+import IconButton from '../../controls/icon-button/IconButton'
 import { usePropertyTreeViewModel } from './PropertyTreeViewModel'
 import './PropertyTreeView.css'
 
@@ -46,14 +47,20 @@ function formatPropertyType(property) {
 // instead. Filtering only ever matches a property's own name/description (never a group's), and
 // collapses the tree into a flat list of matches with no structure left to convey nesting -- there,
 // the Group column shows each match's own immediate parent group instead.
-function PropertyTreeView({ tree, onSelectTrait }) {
+//
+// `deletion` ({ isMarked, onToggle }), when given, adds a trailing column with a delete/undo toggle
+// on each property this container declares itself -- marking it for deletion rather than deleting
+// it outright. Properties inherited from a trait or supertype get no toggle.
+function PropertyTreeView({ tree, onSelectTrait, deletion }) {
   const { rows, toggleGroup, isEmpty, nameFilter, setNameFilter, descriptionFilter, setDescriptionFilter } =
     usePropertyTreeViewModel(tree)
 
   if (isEmpty) return <p>No properties yet.</p>
 
+  const columnCount = deletion ? 5 : 4
+
   return (
-    <table className="property-tree-table">
+    <table className="property-tree-table" data-deletable={deletion ? true : undefined}>
       <thead>
         <tr>
           <th>Group</th>
@@ -75,12 +82,13 @@ function PropertyTreeView({ tree, onSelectTrait }) {
             </div>
           </th>
           <th>Type</th>
+          {deletion && <th aria-label="Actions" />}
         </tr>
       </thead>
       <tbody>
         {rows.length === 0 && (
           <tr>
-            <td className="property-tree-no-matches" colSpan={4}>
+            <td className="property-tree-no-matches" colSpan={columnCount}>
               No matching properties.
             </td>
           </tr>
@@ -118,13 +126,25 @@ function PropertyTreeView({ tree, onSelectTrait }) {
               <td />
               <td />
               <td />
+              {deletion && <td />}
             </tr>
           ) : (
-            <tr key={row.id}>
+            <tr key={row.id} data-marked-for-delete={deletion?.isMarked(row.id) || undefined}>
               <td>{row.groupName}</td>
               <td>{row.name}</td>
               <td>{row.description}</td>
               <td>{formatPropertyType(row)}</td>
+              {deletion && (
+                <td className="property-tree-actions">
+                  {!row.inherited && (
+                    <IconButton
+                      icon={deletion.isMarked(row.id) ? 'undo' : 'trash'}
+                      label={deletion.isMarked(row.id) ? `Keep ${row.name}` : `Delete ${row.name}`}
+                      onClick={() => deletion.onToggle(row.id)}
+                    />
+                  )}
+                </td>
+              )}
             </tr>
           ),
         )}

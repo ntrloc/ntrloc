@@ -39,10 +39,28 @@
   width: 20%;
 }
 
+.property-tree-table[data-deletable] th:nth-child(5) {
+  width: 40px;
+}
+
+.property-tree-table .property-tree-actions {
+  padding-top: 2px;
+  padding-bottom: 2px;
+  text-align: right;
+}
+
+/* Marked for deletion, pending save: struck through and dimmed, but still shown so it can be
+   undone. */
+.property-tree-table tr[data-marked-for-delete] td:not(.property-tree-actions) {
+  text-decoration: line-through;
+  opacity: 0.5;
+}
+
 .property-tree-group-cell {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: 0 6px;
   min-width: 0;
 }
 
@@ -71,7 +89,10 @@
   font-weight: 500;
 }
 
+/* Drops below the group's name when both don't fit on one line, rather than being squeezed out of
+   sight (taking its trait link with it). */
 .property-tree-group-via {
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

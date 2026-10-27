@@ -96,7 +96,7 @@ function ProviderForm({ vm, fields, registered, testLabel, ExtraView }) {
         <security-card-field>
           <Input
             name="Registration ID"
-            editing={isNew}
+            editable={isNew}
             value={draft.registrationId}
             onChange={(e) => vm.setField('registrationId', e.target.value)}
             placeholder="corporate-sso"
@@ -109,7 +109,7 @@ function ProviderForm({ vm, fields, registered, testLabel, ExtraView }) {
           <security-card-field key={field.key}>
             <Input
               name={field.name}
-              editing
+              editable
               value={draft[field.key]}
               onChange={(e) => vm.setField(field.key, e.target.value)}
               type={field.secret ? 'password' : 'text'}
@@ -122,7 +122,7 @@ function ProviderForm({ vm, fields, registered, testLabel, ExtraView }) {
         ))}
         {registered.map(({ name, valueOf, hint }) => (
           <security-card-field key={name}>
-            <Input name={name} value={existing ? valueOf(existing) : NOT_YET_SAVED} />
+            <Input name={name} editable={false} value={existing ? valueOf(existing) : NOT_YET_SAVED} />
             <span className="security-card-hint">{hint}</span>
           </security-card-field>
         ))}

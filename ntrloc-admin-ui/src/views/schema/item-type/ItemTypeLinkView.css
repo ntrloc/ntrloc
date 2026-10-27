@@ -19,6 +19,20 @@ item-type-link-view {
   gap: 8px;
 }
 
+.item-type-link-properties-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Marked for deletion, pending save: everything but the undo toggle is dimmed and struck through. */
+item-type-link-view[data-marked-for-delete] .item-type-link-diagram,
+item-type-link-view[data-marked-for-delete] .item-type-link-properties-toggle,
+item-type-link-view[data-marked-for-delete] .property-tree-table {
+  opacity: 0.5;
+  text-decoration: line-through;
+}
+
 .item-type-link-properties-toggle {
   display: flex;
   align-items: center;

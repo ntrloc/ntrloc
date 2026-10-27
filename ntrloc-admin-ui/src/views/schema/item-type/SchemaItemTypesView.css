@@ -14,7 +14,9 @@ schema-item-types-view {
 }
 
 .schema-item-types-list-item {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   width: 100%;
   padding: 6px 8px;
   border: none;
@@ -35,4 +37,13 @@ schema-item-types-view {
   background: var(--primary-bg);
   color: var(--primary);
   font-weight: 500;
+}
+
+/* An item type with pending, unsaved edits. */
+.schema-item-types-unsaved {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--secondary);
 }

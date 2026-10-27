@@ -7,6 +7,7 @@ function toPropertyNode(property) {
     type: property.type,
     cardinality: property.cardinality,
     usage: property.usage,
+    inherited: Boolean(property.definedIn),
   }
 }
 
@@ -14,7 +15,8 @@ function toPropertyNode(property) {
 // AdminPropertyGroupView's own shape on the backend. traitNamespace marks a synthetic group (not a
 // real one an item type declared) standing in for everything a trait it implements contributes --
 // its id/name are literally the trait's own, which is also all a consumer needs to jump to that
-// trait (see SchemaContentResolver.ownAndTraitContents on the backend).
+// trait (see SchemaContentResolver.ownAndTraitContents on the backend). inherited marks a node that
+// came from a trait or a supertype (the server tags it definedIn) rather than being declared here.
 function toGroupNode(group) {
   return {
     kind: 'group',
@@ -22,6 +24,7 @@ function toGroupNode(group) {
     name: group.name,
     description: group.description,
     traitNamespace: group.traitNamespace,
+    inherited: Boolean(group.definedIn),
     properties: group.properties.map(toPropertyNode),
     groups: group.groups.map(toGroupNode),
   }

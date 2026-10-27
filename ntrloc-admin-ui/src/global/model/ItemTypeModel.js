@@ -26,6 +26,22 @@ function toItemTypeDetail(adminSchema, itemTypeId) {
   }
 }
 
+// Every item type that could become this one's parent: anything but itself and its own
+// descendants, either of which would make a supertype cycle (the server rejects those too).
+function supertypeCandidates(adminSchema, itemTypeId) {
+  const byId = new Map(adminSchema.items.map((item) => [item.id, item]))
+  function descendsFromSelf(item) {
+    for (let current = item; current; current = byId.get(current.supertypeId)) {
+      if (current.id === itemTypeId) return true
+    }
+    return false
+  }
+  return adminSchema.items
+    .filter((item) => !descendsFromSelf(item))
+    .map((item) => ({ id: item.id, name: item.name }))
+    .sort((a, b) => a.name.localeCompare(b.name))
+}
+
 function toItemTypePropertyTree(adminSchema, itemTypeId) {
   const item = adminSchema.items.find((it) => it.id === itemTypeId)
   return item ? toPropertyTree(item) : { properties: [], groups: [] }
@@ -124,6 +140,7 @@ export function useItemTypeModel() {
   return {
     getItemTypes: () => (schema ? toItemTypes(schema) : []),
     getItemType: (itemTypeId) => (schema ? toItemTypeDetail(schema, itemTypeId) : null),
+    getSupertypeCandidates: (itemTypeId) => (schema ? supertypeCandidates(schema, itemTypeId) : []),
     getItemTypePropertyTree: (itemTypeId) =>
       schema ? toItemTypePropertyTree(schema, itemTypeId) : { properties: [], groups: [] },
     getConcreteItemTypes: () => (schema ? concreteItemTypes(toItemTypes(schema)) : []),

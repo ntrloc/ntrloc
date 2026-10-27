@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import ChevronIcon from '../../../controls/chevron-icon/ChevronIcon'
+import IconButton from '../../../controls/icon-button/IconButton'
 import PropertyTreeView from '../PropertyTreeView'
 import { useLinkModel } from '../../../global/model/LinkModel'
 import './ItemTypeLinkView.css'
@@ -15,15 +16,16 @@ function formatCardinality({ min, max }) {
 // direction, labeled with that direction's own perspective name and cardinality -- plus, below it
 // in the same bordered card, the link's own properties. Reusing PropertyTreeView as-is (the same
 // table used for an item type/trait's own Properties tab) is a first pass, not a final call -- a
-// full filterable table may turn out heavier than a single link card wants.
-function ItemTypeLinkView({ sourceName, link, onSelectTrait }) {
+// full filterable table may turn out heavier than a single link card wants. onToggleDelete, when
+// given, adds a delete/undo toggle that marks the whole link for deletion.
+function ItemTypeLinkView({ sourceName, link, onSelectTrait, markedForDelete = false, onToggleDelete }) {
   const { getLinkPropertyTree } = useLinkModel()
   const [propertiesExpanded, setPropertiesExpanded] = useState(true)
   const targetName = link.target?.name ?? 'Unknown'
   const propertyTree = getLinkPropertyTree(link.linkId)
 
   return (
-    <item-type-link-view>
+    <item-type-link-view data-marked-for-delete={markedForDelete || undefined}>
       <div className="item-type-link-diagram">
         <div className="item-type-link-box item-type-link-box-source">{sourceName}</div>
         <div className="item-type-link-arrows">
@@ -45,14 +47,23 @@ function ItemTypeLinkView({ sourceName, link, onSelectTrait }) {
         <div className="item-type-link-box">{targetName}</div>
       </div>
       <div className="item-type-link-properties">
-        <button
-          type="button"
-          className="item-type-link-properties-toggle"
-          onClick={() => setPropertiesExpanded((current) => !current)}
-        >
-          <ChevronIcon expanded={propertiesExpanded} />
-          Properties
-        </button>
+        <div className="item-type-link-properties-header">
+          <button
+            type="button"
+            className="item-type-link-properties-toggle"
+            onClick={() => setPropertiesExpanded((current) => !current)}
+          >
+            <ChevronIcon expanded={propertiesExpanded} />
+            Properties
+          </button>
+          {onToggleDelete && (
+            <IconButton
+              icon={markedForDelete ? 'undo' : 'trash'}
+              label={markedForDelete ? `Keep ${link.name}` : `Delete ${link.name}`}
+              onClick={onToggleDelete}
+            />
+          )}
+        </div>
         {propertiesExpanded && <PropertyTreeView tree={propertyTree} onSelectTrait={onSelectTrait} />}
       </div>
     </item-type-link-view>

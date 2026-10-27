@@ -1,5 +1,6 @@
 package org.ntrloc.graph.db;
 
+import org.ntrloc.graph.db.partition.schema.SchemaConflictException;
 import org.ntrloc.graph.mutation.MutationErrorResponse;
 import org.ntrloc.graph.mutation.MutationValidationException;
 import org.springframework.http.HttpStatus;
@@ -22,6 +23,11 @@ public class ApiExceptionHandler {
     @ExceptionHandler(IllegalArgumentException.class)
     ResponseEntity<ErrorResponse> handleIllegalArgument(IllegalArgumentException e) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(new ErrorResponse(e.getMessage()));
+    }
+
+    @ExceptionHandler(SchemaConflictException.class)
+    ResponseEntity<ErrorResponse> handleSchemaConflict(SchemaConflictException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponse(e.getMessage()));
     }
 
     // Catches MutationValidationException for every caller that doesn't already handle it locally

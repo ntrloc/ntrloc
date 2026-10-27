@@ -35,6 +35,8 @@ function toItemTypeLinkDetails(adminSchema, itemTypeId) {
         cardinality: { min: perspective.minCardinality, max: perspective.maxCardinality },
         target: target ? { name: target.name } : null,
         reverse,
+        // From a trait or supertype rather than declared on this item type.
+        inherited: Boolean(perspective.definedIn),
       }
     }),
   )
