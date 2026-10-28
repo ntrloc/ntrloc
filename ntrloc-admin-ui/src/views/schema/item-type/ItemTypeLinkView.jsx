@@ -14,7 +14,7 @@ function formatCardinality({ min, max }) {
 }
 
 // A perspective's name and cardinality, then -- when it has a description -- an (i) that shows it
-// on hover. Focusable, so it can be reached from the keyboard too.
+// on hover, and gives it to screen readers.
 function ArrowLabel({ perspective }) {
   return (
     <span className="item-type-link-arrow-label" data-edited={perspective.edited || undefined}>
@@ -23,7 +23,6 @@ function ArrowLabel({ perspective }) {
         <span
           className="item-type-link-description"
           role="img"
-          tabIndex={0}
           aria-label={perspective.description}
           title={perspective.description}
         >

@@ -23,13 +23,15 @@ jobs:
           distribution: 'temurin'
           cache: maven
 
-      - name: Cache Maven packages
+      # Maven's own repository is already cached by setup-java above. npm's download cache, for the
+      # admin UI's npm install.
+      - name: Cache npm packages
         uses: actions/cache@v4
         with:
-          path: ~/.m2/repository
-          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-${{ hashFiles('ntrloc-admin-ui/package-lock.json') }}
           restore-keys: |
-            ${{ runner.os }}-maven-    
+            ${{ runner.os }}-npm-
 
       - name: Build with Maven
         run: mvn -B package
@@ -43,6 +45,15 @@ jobs:
           name: ui-test-failures
           path: '**/target/ui-test-failures/'
           if-no-files-found: ignore
+
+      # The analyzers SonarQube downloads for each scan, so they aren't fetched again every run.
+      - name: Cache SonarQube analyzers
+        uses: actions/cache@v4
+        with:
+          path: ~/.sonar/cache
+          key: ${{ runner.os }}-sonar
+          restore-keys: |
+            ${{ runner.os }}-sonar
 
       - name: Official SonarQube Scan
         uses: SonarSource/sonarqube-scan-action@8c71dc039c2dd71d3821e89a2b58ecc7fee6ced9 # version 5.3.0

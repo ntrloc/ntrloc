@@ -55,7 +55,7 @@ class SchemaEditingUiTest extends AbstractUiIntegrationTest {
                 new CreatePerspectiveDefinitionMutation(bookId, "authors", "UI test fixture", 0, null),
                 new CreatePerspectiveDefinitionMutation(authorId, "books", "UI test fixture", 0, null)))));
 
-        openAdminUiAs(createLocalAdmin(), "/schema");
+        openAdminUiAs(admin(), "/schema");
         schema = SchemaPage.of(driver).selectItemType(bookType);
     }
 

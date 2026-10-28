@@ -81,7 +81,7 @@ class AccessMarkersUiTest extends AbstractUiIntegrationTest {
     @BeforeEach
     void signInAndOpenSchemaView() {
         createFixtureOnce();
-        openAdminUiAs(createLocalAdmin(), "/schema");
+        openAdminUiAs(admin(), "/schema");
         schema = SchemaPage.of(driver);
     }
 

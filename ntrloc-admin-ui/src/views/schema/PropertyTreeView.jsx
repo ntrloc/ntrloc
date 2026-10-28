@@ -106,7 +106,7 @@ function GroupBox({ group, actions, withinDeleted }) {
         </button>
         {group.traitNamespace && (
           <span className="property-tree-group-kind">
-            (
+            {'('}
             <button
               type="button"
               className="property-tree-trait-link"
@@ -115,7 +115,7 @@ function GroupBox({ group, actions, withinDeleted }) {
             >
               trait
             </button>
-            )
+            {')'}
           </span>
         )}
         {changeable && !marked && onAddGroup && (

@@ -64,7 +64,7 @@ class ItemPaneUiTest extends AbstractUiIntegrationTest {
     @BeforeEach
     void signIn() {
         createFixtureOnce();
-        admin = createLocalAdmin();
+        admin = admin();
         openAdminUiAs(admin, "/search");
     }
 

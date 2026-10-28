@@ -6,6 +6,7 @@ import org.openqa.selenium.By;
 import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.OutputType;
 import org.openqa.selenium.TakesScreenshot;
+import org.openqa.selenium.UnexpectedAlertBehaviour;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.chrome.ChromeOptions;
 import org.openqa.selenium.logging.LogType;
@@ -92,6 +93,10 @@ public final class UiBrowser {
             options.addArguments("--unsafely-treat-insecure-origin-as-secure=" + String.join(",", originsTreatedAsSecure));
         }
         options.setCapability("goog:loggingPrefs", Map.of(LogType.BROWSER, "ALL"));
+        // A session can outlive one test (AbstractUiIntegrationTest keeps one per class), and a test
+        // can end with unsaved edits -- leaving the page then asks "Leave site?", which nobody's there
+        // to answer.
+        options.setUnhandledPromptBehaviour(UnexpectedAlertBehaviour.ACCEPT);
         driver = new RemoteWebDriver(BROWSER.getSeleniumAddress(), options);
     }
 
@@ -109,10 +114,13 @@ public final class UiBrowser {
 
     /**
      * Requests an admin UI page, signs in on the login page the server redirects to, and waits to
-     * land back on the requested page.
+     * land back on the requested page. Any session the browser already had is dropped first.
      */
     public void openAdminUiAs(String username, String password, String path) {
         String url = serverUrl(ADMIN_UI_PATH + path);
+        if (driver.getCurrentUrl().startsWith("http")) {
+            driver.manage().deleteAllCookies();
+        }
         driver.get(url);
         await().until(ExpectedConditions.visibilityOfElementLocated(By.name("username"))).sendKeys(username);
         driver.findElement(By.name("password")).sendKeys(password);
@@ -139,13 +147,28 @@ public final class UiBrowser {
         }
     }
 
+    /**
+     * Loads an admin UI page in the session the browser is already signed in to, starting it from
+     * scratch: a full page load, with nothing left in the page's own storage.
+     */
+    public void openAdminUi(String path) {
+        String url = serverUrl(ADMIN_UI_PATH + path);
+        ((JavascriptExecutor) driver).executeScript("localStorage.clear(); sessionStorage.clear()");
+        driver.get(url);
+        await().until(ExpectedConditions.urlMatches("^" + Pattern.quote(url) + "(\\?.*)?$"));
+    }
+
     /** Writes this session's coverage under the given name, then closes the browser. */
     public void close(String coverageName) {
         try {
             writeCoverage(coverageName);
         } finally {
-            driver.quit();
+            quit();
         }
+    }
+
+    public void quit() {
+        driver.quit();
     }
 
     /**

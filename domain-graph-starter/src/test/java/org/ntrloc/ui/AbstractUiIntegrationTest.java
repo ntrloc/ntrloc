@@ -1,6 +1,7 @@
 package org.ntrloc.ui;
 
 import java.util.UUID;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.TestInfo;
@@ -16,11 +17,13 @@ import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 
 /**
- * Base for Selenium tests of the React admin UI (ntrloc-admin-ui), each driving its own
- * {@link UiBrowser} session.
+ * Base for Selenium tests of the React admin UI (ntrloc-admin-ui), driving a {@link UiBrowser}.
  *
- * Every test signs in through the real login page as a real local user it creates
- * (createLocalAdmin), exactly as a person would -- nothing about authentication is stubbed.
+ * Tests sign in through the real login page as real local users (createLocalAdmin), exactly as a
+ * person would -- nothing about authentication is stubbed. A browser session takes a while to
+ * start and sign in, so each test class keeps one, signed in as its own admin (admin()) the first
+ * time a test asks; later tests in the class reuse it, each starting from a full page load with
+ * the page's storage cleared. Signing in as anyone else signs the session in afresh.
  *
  * Shares AbstractIntegrationTest's application context (TestApplication scans UI hosting, and the
  * /admin-react mount is in the test application.yml): a second context against the same Postgres
@@ -47,7 +50,10 @@ public abstract class AbstractUiIntegrationTest extends AbstractIntegrationTest 
     @Autowired
     private LedgerRegisterCoordinator coordinator;
 
-    private UiBrowser browser;
+    // Per test class (see the class comment); JUnit runs test classes one after another.
+    private static UiBrowser browser;
+    private static LocalUser admin;
+    private static LocalUser signedInAs;
 
     protected WebDriver driver;
 
@@ -61,14 +67,34 @@ public abstract class AbstractUiIntegrationTest extends AbstractIntegrationTest 
     @BeforeEach
     void openBrowser() {
         testData = new UiTestData(schemaManager, coordinator, securityRepository);
-        browser = new UiBrowser(port);
+        if (browser == null) {
+            browser = new UiBrowser(port);
+        }
         driver = browser.driver();
     }
 
     @AfterEach
-    void closeBrowser(TestInfo testInfo) {
-        browser.close(testInfo.getTestClass().orElseThrow().getSimpleName() + "-"
+    void saveCoverage(TestInfo testInfo) {
+        browser.writeCoverage(testInfo.getTestClass().orElseThrow().getSimpleName() + "-"
                 + testInfo.getTestMethod().orElseThrow().getName());
+    }
+
+    @AfterAll
+    static void closeBrowser() {
+        if (browser != null) {
+            browser.quit();
+        }
+        browser = null;
+        admin = null;
+        signedInAs = null;
+    }
+
+    /** This test class's own admin, created the first time a test asks for it. */
+    protected LocalUser admin() {
+        if (admin == null) {
+            admin = createLocalAdmin();
+        }
+        return admin;
     }
 
     /** Creates a real admin with local credentials, the same way LocalAccountSeeder does. */
@@ -80,9 +106,17 @@ public abstract class AbstractUiIntegrationTest extends AbstractIntegrationTest 
         return new LocalUser(user.id(), email, password);
     }
 
-    /** See {@link UiBrowser#openAdminUiAs}. */
+    /**
+     * Opens an admin UI page signed in as this user: through the login page (see
+     * {@link UiBrowser#openAdminUiAs}), unless the browser is already signed in as them.
+     */
     protected void openAdminUiAs(LocalUser user, String path) {
+        if (user.equals(signedInAs)) {
+            browser.openAdminUi(path);
+            return;
+        }
         browser.openAdminUiAs(user.email(), user.password(), path);
+        signedInAs = user;
     }
 
     protected String serverUrl(String path) {

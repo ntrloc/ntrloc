@@ -41,7 +41,7 @@ function shapeLevel(node, filter, collapsedGroupIds, inherited) {
 // shows and owns itself, in place of this one's own.
 export function usePropertyTreeViewModel(tree, externalFilter) {
   const [collapsedGroupIds, setCollapsedGroupIds] = useState(() => new Set())
-  const [ownFilter, setFilter] = useState('')
+  const [ownFilter, setOwnFilter] = useState('')
   const filter = externalFilter ?? ownFilter
 
   const isEmpty = tree.properties.length === 0 && tree.groups.length === 0
@@ -58,5 +58,5 @@ export function usePropertyTreeViewModel(tree, externalFilter) {
     })
   }
 
-  return { root, toggleGroup, isEmpty, noMatches, filter, setFilter }
+  return { root, toggleGroup, isEmpty, noMatches, filter, setFilter: setOwnFilter }
 }

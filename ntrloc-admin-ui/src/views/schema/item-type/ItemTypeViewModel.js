@@ -643,6 +643,136 @@ export class ItemTypeViewModels {
   }
 }
 
+// A property someone else changed or deleted since it was edited here, unless they made the same
+// change.
+function propertyConflictsFor(vm, state, savedProperties) {
+  return Object.entries(state.propertyChanges).flatMap(([id, change]) => {
+    const property = savedProperties.get(id)
+    const label = `Property ${change.base.name}`
+    if (!property) {
+      return [{ key: id, label, note: 'was deleted by someone else', useTheirs: () => vm.useTheirProperty(id) }]
+    }
+    const savedValues = propertyFields(property)
+    if (sameProperty(change.base, savedValues) || sameProperty(change.values, savedValues)) return []
+    return [
+      {
+        key: id,
+        label,
+        note: 'was changed by someone else',
+        keepMine: () => vm.keepMyProperty(id, savedValues),
+        useTheirs: () => vm.useTheirProperty(id),
+      },
+    ]
+  })
+}
+
+// The same for each direction of a link.
+function perspectiveConflictsFor(vm, state, savedPerspectives) {
+  return Object.entries(state.perspectiveChanges).flatMap(([id, change]) => {
+    const perspective = savedPerspectives.get(id)
+    const label = `Link ${change.base.name}`
+    if (!perspective) {
+      return [{ key: id, label, note: 'was deleted by someone else', useTheirs: () => vm.useTheirPerspective(id) }]
+    }
+    if (samePerspective(change.base, perspective.fields) || samePerspective(change.values, perspective.fields)) return []
+    return [
+      {
+        key: id,
+        label,
+        note: 'was changed by someone else',
+        keepMine: () => vm.keepMyPerspective(id, perspective.fields),
+        useTheirs: () => vm.useTheirPerspective(id),
+      },
+    ]
+  })
+}
+
+const BLANK_PERSPECTIVE = { name: '', description: '', minCardinality: 0, maxCardinality: null }
+
+// The link editor's starting point, or null when it's closed: a fresh link, a new one already
+// added, or both directions of a saved one with any pending edits. Only a new link's target can be
+// chosen, from `targets`.
+function linkEditorFor(vm, state, itemType, links, targets) {
+  if (!state.linkEditor) return null
+  const targetName = (id) => targets.find((t) => t.id === id)?.name ?? 'Unknown'
+  const addedLink = state.newLinks.find((link) => link.id === state.linkEditor.id)
+  if (state.linkEditor.mode === 'create' || addedLink) {
+    return {
+      isNew: true,
+      sourceName: itemType.name,
+      targetOptions: targets.map((t) => ({ value: t.id, label: t.kind === 'trait' ? `${t.name} (trait)` : t.name })),
+      targetId: addedLink?.targetId ?? null,
+      targetName,
+      forward: addedLink?.forward ?? BLANK_PERSPECTIVE,
+      reverse: addedLink?.reverse ?? BLANK_PERSPECTIVE,
+      apply: (forward, reverse, targetId) =>
+        addedLink ? vm.updateNewLink(addedLink.id, targetId, forward, reverse) : vm.addLink(targetId, forward, reverse),
+      cancel: vm.closeLinkEditor,
+    }
+  }
+  const editedLink = links.find((link) => link.id === state.linkEditor.id && !link.inherited)
+  if (!editedLink) return null
+  const shownFields = (perspective) => ({ ...perspectiveFields(perspective), ...state.perspectiveChanges[perspective.id]?.values })
+  const directions = [editedLink, editedLink.reverse].filter(Boolean)
+  return {
+    isNew: false,
+    sourceName: itemType.name,
+    targetName: () => editedLink.target?.name ?? 'Unknown',
+    forward: shownFields(editedLink),
+    reverse: editedLink.reverse && shownFields(editedLink.reverse),
+    apply: (forward, reverse) =>
+      vm.setPerspectives(
+        directions.map((perspective, i) => ({
+          id: perspective.id,
+          values: i === 0 ? forward : reverse,
+          savedValues: perspectiveFields(perspective),
+        })),
+      ),
+    cancel: vm.closeLinkEditor,
+  }
+}
+
+const BLANK_PROPERTY = { name: '', description: '', type: 'STRING', cardinality: 'SINGLE', usage: 'OPTIONAL', controlledListId: null }
+
+// The property editor's starting point, or null when it's closed: a fresh property, a new one
+// already added, or a saved one with any pending edits. Only a property not yet saved can have its
+// type chosen.
+function propertyEditorFor(vm, state, savedProperties) {
+  const editor = state.propertyEditor
+  if (!editor) return null
+  if (editor.mode === 'create') {
+    return { isNew: true, property: BLANK_PROPERTY, apply: (values) => vm.addProperty(editor.parentId, values) }
+  }
+  const added = state.newProperties.find((p) => p.id === editor.id)
+  if (added) return { isNew: true, property: added.values, apply: (values) => vm.updateNewProperty(added.id, values) }
+  const property = savedProperties.get(editor.id)
+  if (!property) return null
+  return {
+    isNew: false,
+    property: { ...property, ...propertyFields(property), ...state.propertyChanges[property.id]?.values },
+    apply: (values) => vm.setProperty(property.id, values, propertyFields(property)),
+  }
+}
+
+// The group editor's starting point, or null when it's closed: a fresh group, a new one already
+// added, or a saved one with any pending edits.
+function groupEditorFor(vm, state, savedGroups) {
+  const editor = state.groupEditor
+  if (!editor) return null
+  if (editor.mode === 'create') {
+    return { isNew: true, group: { name: '', description: '' }, apply: (values) => vm.addGroup(editor.parentId, values) }
+  }
+  const added = state.newGroups.find((g) => g.id === editor.id)
+  if (added) return { isNew: true, group: added.values, apply: (values) => vm.updateNewGroup(added.id, values) }
+  const group = savedGroups.get(editor.id)
+  if (!group) return null
+  return {
+    isNew: false,
+    group: { ...groupFields(group), ...state.groupChanges[group.id] },
+    apply: (values) => vm.setGroup(group.id, values, groupFields(group)),
+  }
+}
+
 // The item type as it should currently be shown: saved data from the schema models with this item
 // type's pending edits laid over it, plus everything its views need to make more.
 export function useItemTypeViewModel(itemTypeViewModels, itemTypeId) {
@@ -715,133 +845,20 @@ export function useItemTypeViewModel(itemTypeViewModels, itemTypeId) {
       keepMine: () => vm.keepMine(key, saved[key]),
       useTheirs: () => vm.useTheirs(key),
     }))
-  const propertyConflicts = Object.entries(state.propertyChanges).flatMap(([id, change]) => {
-    const property = savedProperties.get(id)
-    const label = `Property ${change.base.name}`
-    if (!property) {
-      return [{ key: id, label, note: 'was deleted by someone else', useTheirs: () => vm.useTheirProperty(id) }]
-    }
-    const savedValues = propertyFields(property)
-    if (sameProperty(change.base, savedValues) || sameProperty(change.values, savedValues)) return []
-    return [
-      {
-        key: id,
-        label,
-        note: 'was changed by someone else',
-        keepMine: () => vm.keepMyProperty(id, savedValues),
-        useTheirs: () => vm.useTheirProperty(id),
-      },
-    ]
-  })
+  const propertyConflicts = propertyConflictsFor(vm, state, savedProperties)
+  const perspectiveConflicts = perspectiveConflictsFor(vm, state, savedPerspectives)
 
-  const perspectiveConflicts = Object.entries(state.perspectiveChanges).flatMap(([id, change]) => {
-    const perspective = savedPerspectives.get(id)
-    const label = `Link ${change.base.name}`
-    if (!perspective) {
-      return [{ key: id, label, note: 'was deleted by someone else', useTheirs: () => vm.useTheirPerspective(id) }]
-    }
-    if (samePerspective(change.base, perspective.fields) || samePerspective(change.values, perspective.fields)) return []
-    return [
-      {
-        key: id,
-        label,
-        note: 'was changed by someone else',
-        keepMine: () => vm.keepMyPerspective(id, perspective.fields),
-        useTheirs: () => vm.useTheirPerspective(id),
-      },
-    ]
-  })
-
-  // The link editor's starting point: a fresh link, a new one already added, or both directions of a
-  // saved one with any pending edits. Only a new link's target can be chosen -- any item type, this
-  // one included, or a trait, linking to every item type that implements it.
+  // Where a link can go: any item type, this one included, or a trait, linking to every item type
+  // that implements it.
   const targets = [
     ...sortByName(getItemTypes()).map((it) => ({ id: it.id, name: it.name, kind: 'item' })),
     ...sortByName(getTraits()).map((trait) => ({ id: trait.id, name: trait.name, kind: 'trait' })),
   ]
-  const targetOptions = targets.map((t) => ({ value: t.id, label: t.kind === 'trait' ? `${t.name} (trait)` : t.name }))
   const targetNamed = (id) => targets.find((t) => t.id === id)
-  const targetName = (id) => targetNamed(id)?.name ?? 'Unknown'
-  const blankPerspective = { name: '', description: '', minCardinality: 0, maxCardinality: null }
-  const addedLink = state.linkEditor?.id && state.newLinks.find((link) => link.id === state.linkEditor.id)
-  let linkEditor = null
-  const editedLink = state.linkEditor && links.find((link) => link.id === state.linkEditor.id && !link.inherited)
-  if (state.linkEditor?.mode === 'create' || addedLink) {
-    linkEditor = {
-      isNew: true,
-      sourceName: itemType.name,
-      targetOptions,
-      targetId: addedLink?.targetId ?? null,
-      targetName,
-      forward: addedLink?.forward ?? blankPerspective,
-      reverse: addedLink?.reverse ?? blankPerspective,
-      apply: (forward, reverse, targetId) =>
-        addedLink ? vm.updateNewLink(addedLink.id, targetId, forward, reverse) : vm.addLink(targetId, forward, reverse),
-      cancel: vm.closeLinkEditor,
-    }
-  } else if (editedLink) {
-    const directions = [editedLink, editedLink.reverse].filter(Boolean)
-    linkEditor = {
-      isNew: false,
-      sourceName: itemType.name,
-      targetName: () => editedLink.target?.name ?? 'Unknown',
-      forward: { ...perspectiveFields(editedLink), ...state.perspectiveChanges[editedLink.id]?.values },
-      reverse: editedLink.reverse && { ...perspectiveFields(editedLink.reverse), ...state.perspectiveChanges[editedLink.reverse.id]?.values },
-      apply: (forward, reverse) =>
-        vm.setPerspectives(
-          directions.map((perspective, i) => ({
-            id: perspective.id,
-            values: i === 0 ? forward : reverse,
-            savedValues: perspectiveFields(perspective),
-          })),
-        ),
-      cancel: vm.closeLinkEditor,
-    }
-  }
-
-  // The property editor's starting point: a fresh property, a new one already added, or a saved one
-  // with any pending edits. Only a property not yet saved can have its type chosen.
+  const linkEditor = linkEditorFor(vm, state, itemType, links, targets)
+  const propertyEditor = propertyEditorFor(vm, state, savedProperties)
+  const groupEditor = groupEditorFor(vm, state, savedGroups)
   const controlledLists = getControlledLists()
-  let propertyEditor = null
-  const editor = state.propertyEditor
-  if (editor?.mode === 'create') {
-    propertyEditor = {
-      isNew: true,
-      property: { name: '', description: '', type: 'STRING', cardinality: 'SINGLE', usage: 'OPTIONAL', controlledListId: null },
-      apply: (values) => vm.addProperty(editor.parentId, values),
-    }
-  } else if (editor && isNewProperty(editor.id)) {
-    const added = state.newProperties.find((p) => p.id === editor.id)
-    if (added) propertyEditor = { isNew: true, property: added.values, apply: (values) => vm.updateNewProperty(added.id, values) }
-  } else if (editor) {
-    const property = savedProperties.get(editor.id)
-    if (property) {
-      propertyEditor = {
-        isNew: false,
-        property: { ...property, ...propertyFields(property), ...state.propertyChanges[property.id]?.values },
-        apply: (values) => vm.setProperty(property.id, values, propertyFields(property)),
-      }
-    }
-  }
-
-  // The group editor's starting point: a fresh group, a new one already added, or a saved one with
-  // any pending edits.
-  let groupEditor = null
-  if (state.groupEditor?.mode === 'create') {
-    const parentId = state.groupEditor.parentId
-    groupEditor = { isNew: true, group: { name: '', description: '' }, apply: (values) => vm.addGroup(parentId, values) }
-  } else if (state.groupEditor) {
-    const added = state.newGroups.find((g) => g.id === state.groupEditor.id)
-    if (added) groupEditor = { isNew: true, group: added.values, apply: (values) => vm.updateNewGroup(added.id, values) }
-    const group = savedGroups.get(state.groupEditor.id)
-    if (group) {
-      groupEditor = {
-        isNew: false,
-        group: { ...groupFields(group), ...state.groupChanges[group.id] },
-        apply: (values) => vm.setGroup(group.id, values, groupFields(group)),
-      }
-    }
-  }
 
   return {
     itemType,

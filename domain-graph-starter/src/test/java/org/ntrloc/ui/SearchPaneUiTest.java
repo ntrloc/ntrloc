@@ -37,7 +37,7 @@ class SearchPaneUiTest extends AbstractUiIntegrationTest {
     @BeforeEach
     void signInAndOpenSearchPane() {
         createFixtureOnce();
-        openAdminUiAs(createLocalAdmin(), "/search");
+        openAdminUiAs(admin(), "/search");
         pane = SearchPanePage.openNew(driver);
     }
 
