@@ -1008,6 +1008,49 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void createItemDefinitionMutation_withARefId_canBeLinkedToLaterInTheSameBatch() {
+        String authorName = "Author-" + UUID.randomUUID();
+        UUID authorId = createItem(authorName);
+        String bookName = "Book-" + UUID.randomUUID();
+
+        schemaManager.applyMutations(List.of(
+                new CreateItemDefinitionMutation(bookName, "d", List.of(), null, false, null, List.of(), List.of(), "book"),
+                new CreateLinkDefinitionMutation(List.of(), List.of(
+                        new CreatePerspectiveDefinitionMutation(null, "writtenBy", "d", 0, null, "book"),
+                        new CreatePerspectiveDefinitionMutation(authorId, "wrote", "d", 0, null)))));
+
+        assertThat(findItem(bookName).links()).containsOnlyKeys("writtenBy");
+        assertThat(findItem(bookName).links().get("writtenBy").getFirst().targets()).extracting(t -> t.name())
+                .containsExactly(authorName);
+    }
+
+    @Test
+    void createLinkDefinitionMutation_withAnUnknownItemRefId_throwsAndCreatesNothing() {
+        UUID authorId = createItem("Author-" + UUID.randomUUID());
+        String bookName = "Book-" + UUID.randomUUID();
+
+        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(
+                new CreateItemDefinitionMutation(bookName, "d", List.of(), null, false, null, List.of(), List.of(), "book"),
+                new CreateLinkDefinitionMutation(List.of(), List.of(
+                        new CreatePerspectiveDefinitionMutation(null, "writtenBy", "d", 0, null, "no-such-ref"),
+                        new CreatePerspectiveDefinitionMutation(authorId, "wrote", "d", 0, null))))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Unknown item type refId: no-such-ref");
+        assertThat(storedItemNames()).doesNotContain(bookName);
+    }
+
+    @Test
+    void createLinkDefinitionMutation_withBothAnItemIdAndAnItemRefId_throws() {
+        UUID authorId = createItem("Author-" + UUID.randomUUID());
+
+        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
+                new CreatePerspectiveDefinitionMutation(authorId, "self", "d", 0, null, "book"),
+                new CreatePerspectiveDefinitionMutation(authorId, "selfBack", "d", 0, null))))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("exactly one of itemId and itemRefId");
+    }
+
+    @Test
     void createItemDefinitionMutation_withAnUnknownSupertype_throws() {
         assertThatThrownBy(() -> schemaManager.applyMutations(List.of(
                 new CreateItemDefinitionMutation("Item-" + UUID.randomUUID(), "d", List.of(), UUID.randomUUID(), false, null))))

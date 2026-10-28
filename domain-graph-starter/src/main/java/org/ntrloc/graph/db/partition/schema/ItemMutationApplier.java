@@ -11,8 +11,10 @@ import org.ntrloc.graph.db.partition.schema.repository.SchemaRepository;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
 
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 // Applies item-definition mutations -- split out of SchemaManager (see its own history) to keep
@@ -37,9 +39,10 @@ class ItemMutationApplier {
     // a private method per mutation type removes that outer nesting layer -- each handler's own
     // complexity is far lower in isolation (worst case 4), and this method is now just a sequence
     // of flat, unnested checks.
-    boolean apply(DefinitionMutation mutation) {
+    // refIdToItemTypeId: a created item type's id, by its refId, for later mutations in the batch.
+    boolean apply(DefinitionMutation mutation, Map<String, UUID> refIdToItemTypeId) {
         switch (mutation) {
-            case CreateItemDefinitionMutation m -> applyCreate(m);
+            case CreateItemDefinitionMutation m -> applyCreate(m, refIdToItemTypeId);
             case UpdateItemDefinitionMutation m -> applyUpdate(m);
             case DeleteItemDefinitionMutation m -> applyDelete(m);
             case ExpectItemDefinitionMutation m -> applyExpect(m);
@@ -50,7 +53,7 @@ class ItemMutationApplier {
         return true;
     }
 
-    private void applyCreate(CreateItemDefinitionMutation m) {
+    private void applyCreate(CreateItemDefinitionMutation m, Map<String, UUID> refIdToItemTypeId) {
         if (m.supertypeId() != null) {
             SchemaMutationValidation.requireKnownItem(repo, m.supertypeId());
         }
@@ -68,6 +71,9 @@ class ItemMutationApplier {
                 m.properties(), m.groups(), "item type '" + m.name() + "'");
         for (var traitId : m.traitIds()) {
             repo.implementTrait(item.id(), traitId);
+        }
+        if (m.refId() != null) {
+            refIdToItemTypeId.put(m.refId(), item.id());
         }
         eventPublisher.publishEvent(new SchemaChangeEvent.ItemTypeCreated(item.id()));
     }

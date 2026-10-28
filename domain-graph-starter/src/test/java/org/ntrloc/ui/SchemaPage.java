@@ -56,6 +56,17 @@ class SchemaPage {
                 "//button[contains(@class,'schema-item-types-list-item')][span[contains(@class,'schema-item-types-unsaved')]]")));
     }
 
+    /** Opens the New Item Type dialog from the sidebar. */
+    SchemaPage startNewItemType() {
+        return openEditor(driver.findElement(By.xpath("//schema-item-types-view/button[.='New Item Type']")));
+    }
+
+    /** Adds a new item type through the New Item Type dialog, and waits for it to open. */
+    SchemaPage newItemType(String name) {
+        startNewItemType().typeInPropertyEditor("Name", name).closePropertyEditor("Add");
+        return awaitHeading(name);
+    }
+
     List<String> traitNames() {
         return texts(driver.findElements(By.cssSelector(".schema-traits-list-item")));
     }
@@ -194,6 +205,13 @@ class SchemaPage {
         return this;
     }
 
+    /** Cancels a new item type, which closes it: nothing is left to show. */
+    SchemaPage cancelNewItemType() {
+        footerButton("Cancel").click();
+        await().until(d -> d.findElements(By.cssSelector("schema-view-content h2")).isEmpty());
+        return this;
+    }
+
     /** Saves, and waits until the item type is back out of editing. */
     SchemaPage save() {
         footerButton("Save").click();
@@ -323,7 +341,12 @@ class SchemaPage {
     }
 
     boolean propertyEditorCanApply() {
-        return dialog().findElement(By.xpath(".//dialog-actions//button[.='Apply']")).isEnabled();
+        return propertyEditorCanApply("Apply");
+    }
+
+    /** Whether the open dialog's button with this label (Apply, Add) can be clicked. */
+    boolean propertyEditorCanApply(String button) {
+        return dialog().findElement(By.xpath(".//dialog-actions//button[.='" + button + "']")).isEnabled();
     }
 
     /** The property editor's validation message, or empty when there's none. */
@@ -392,7 +415,7 @@ class SchemaPage {
         return closePropertyEditor("Cancel");
     }
 
-    private SchemaPage closePropertyEditor(String button) {
+    SchemaPage closePropertyEditor(String button) {
         dialog().findElement(By.xpath(".//dialog-actions//button[.='" + button + "']")).click();
         await().until(d -> d.findElements(By.tagName("dialog-view")).isEmpty());
         return this;

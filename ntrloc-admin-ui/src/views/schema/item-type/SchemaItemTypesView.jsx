@@ -1,13 +1,28 @@
+import { useState } from 'react'
 import Button from '../../../controls/button/Button'
+import NewItemTypeDialog from './NewItemTypeDialog'
 import { useSchemaItemTypesViewModel } from './SchemaItemTypesViewModel'
 import './SchemaItemTypesView.css'
 
-function SchemaItemTypesView({ selectedItemTypeId, onSelectItemType, dirtyItemTypeIds }) {
-  const { itemTypes } = useSchemaItemTypesViewModel()
+// `drafts` are new item types not yet saved, listed with the rest and marked unsaved like any item
+// type with pending edits; onCreateItemType starts one from the name the New Item Type dialog asks for.
+function SchemaItemTypesView({ selectedItemTypeId, onSelectItemType, dirtyItemTypeIds, drafts, onCreateItemType }) {
+  const { itemTypes, nameTaken } = useSchemaItemTypesViewModel(drafts)
+  const [creating, setCreating] = useState(false)
 
   return (
     <schema-item-types-view>
-      <Button>New Item Type</Button>
+      <Button onClick={() => setCreating(true)}>New Item Type</Button>
+      {creating && (
+        <NewItemTypeDialog
+          nameTaken={nameTaken}
+          onAdd={(name) => {
+            setCreating(false)
+            onCreateItemType(name)
+          }}
+          onCancel={() => setCreating(false)}
+        />
+      )}
       {itemTypes.length === 0 && <p>No item types yet.</p>}
       <ul className="schema-item-types-list">
         {itemTypes.map((itemType) => (

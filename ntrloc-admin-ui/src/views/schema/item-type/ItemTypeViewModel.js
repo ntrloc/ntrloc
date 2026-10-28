@@ -3,7 +3,7 @@ import { useItemTypeModel } from '../../../global/model/ItemTypeModel'
 import { useTraitModel } from '../../../global/model/TraitModel'
 import { useLinkModel } from '../../../global/model/LinkModel'
 import { useControlledListModel } from '../../../global/model/ControlledListModel'
-import { reload as reloadSchema } from '../../../global/model/SchemaCache'
+import { getRawSchema, reload as reloadSchema } from '../../../global/model/SchemaCache'
 import { applySchemaMutations, SchemaConflictError } from '../../../global/delegate/SchemaDelegate'
 
 const OVERVIEW_LABELS = {
@@ -154,6 +154,7 @@ let nextNewId = 1
 const NEW_PROPERTY_PREFIX = 'new-property-'
 const NEW_GROUP_PREFIX = 'new-group-'
 const NEW_LINK_PREFIX = 'new-link-'
+const NEW_ITEM_TYPE_PREFIX = 'new-item-type-'
 const isNewProperty = (id) => id.startsWith(NEW_PROPERTY_PREFIX)
 const isNewGroup = (id) => id.startsWith(NEW_GROUP_PREFIX)
 const isNewLink = (id) => id.startsWith(NEW_LINK_PREFIX)
@@ -166,6 +167,44 @@ const perspectiveCreateSpec = (itemId, values) => ({
   minCardinality: values.minCardinality,
   maxCardinality: values.maxCardinality,
 })
+
+// A new link, with anything new on it, as one mutation. `owner` names this item type: { itemId },
+// or { itemRefId } while it's still being created in the same batch.
+function linkCreateMutation(owner, link, state) {
+  return {
+    type: 'CREATE_LINK',
+    perspectives: [
+      { ...perspectiveCreateSpec(null, link.forward), ...owner },
+      perspectiveCreateSpec(link.targetId, link.reverse),
+    ],
+    properties: state.newProperties.filter((p) => p.parentId === link.id).map((p) => propertyCreateSpec(p.values)),
+    groups: state.newGroups
+      .filter((g) => g.parentId === link.id)
+      .map((g) => groupCreateSpec(g, state.newGroups, state.newProperties)),
+  }
+}
+
+// A new item type, not yet saved, as the batch that creates it: everything on it goes out in its
+// CREATE_ITEM, apart from new links, which refer to it by refId -- its temporary id.
+function createMutations(draftId, fields, state) {
+  return [
+    {
+      type: 'CREATE_ITEM',
+      refId: draftId,
+      name: fields.name,
+      description: fields.description || null,
+      supertypeId: fields.supertypeId,
+      abstractType: fields.abstractType,
+      displayLabelPattern: fields.displayLabelPattern || null,
+      traitIds: fields.traitIds,
+      properties: state.newProperties.filter((p) => p.parentId === null).map((p) => propertyCreateSpec(p.values)),
+      groups: state.newGroups
+        .filter((g) => g.parentId === null)
+        .map((g) => groupCreateSpec(g, state.newGroups, state.newProperties)),
+    },
+    ...state.newLinks.map((link) => linkCreateMutation({ itemRefId: draftId }, link, state)),
+  ]
+}
 
 // A new link shaped like ItemTypeModel's saved ones, so it shows in the list the same way. It uses
 // its temporary id as both its perspective id and its link id.
@@ -299,14 +338,7 @@ function toMutations(itemTypeId, saved, fields, state, savedTree, linkTrees, sav
         ...savedParent(itemTypeId, g.parentId, keptLinkIds),
         ...groupCreateSpec(g, state.newGroups, state.newProperties),
       })),
-    ...state.newLinks.map((link) => ({
-      type: 'CREATE_LINK',
-      perspectives: [perspectiveCreateSpec(itemTypeId, link.forward), perspectiveCreateSpec(link.targetId, link.reverse)],
-      properties: state.newProperties.filter((p) => p.parentId === link.id).map((p) => propertyCreateSpec(p.values)),
-      groups: state.newGroups
-        .filter((g) => g.parentId === link.id)
-        .map((g) => groupCreateSpec(g, state.newGroups, state.newProperties)),
-    })),
+    ...state.newLinks.map((link) => linkCreateMutation({ itemId: itemTypeId }, link, state)),
     ...[...state.removedTraitIds]
       .filter((traitId) => saved.traitIds.includes(traitId))
       .map((traitId) => ({ type: 'REMOVE_TRAIT', itemId: itemTypeId, traitId })),
@@ -561,7 +593,7 @@ export class ItemTypeViewModel {
   // the old ones. On failure every edit is kept; a conflict also reloads the schema, so whatever
   // someone else changed shows up as conflicts to resolve.
   save = async (mutations) => {
-    if (this.#snapshot.saving) return
+    if (this.#snapshot.saving) return false
     this.#update({ saving: true, saveError: null })
     try {
       if (mutations.length > 0) {
@@ -569,9 +601,11 @@ export class ItemTypeViewModel {
         await reloadSchema()
       }
       this.#reset()
+      return true
     } catch (error) {
       if (error instanceof SchemaConflictError) await reloadSchema().catch(() => {})
       this.#update({ saving: false, saveError: error.message })
+      return false
     }
   }
 
@@ -620,10 +654,33 @@ export class ItemTypeViewModel {
 
 // Every item type's ItemTypeViewModel, created on first use. One subscription covers them all, and
 // getDirtyIds gives the item types with unsaved changes (for the sidebar list's marker).
+//
+// Also the new item types not yet saved (drafts): each has a temporary id and starts out being
+// edited. A draft is nothing but unsaved changes, so it always counts as dirty; Cancel discards it,
+// and Save creates it.
 export class ItemTypeViewModels {
   #byId = new Map()
   #listeners = new Set()
   #dirtyIds = new Set()
+  #drafts = []
+  #nextDraftId = 1
+
+  createDraft = (name) => {
+    const id = `${NEW_ITEM_TYPE_PREFIX}${this.#nextDraftId++}`
+    this.#drafts = [...this.#drafts, { id, name }]
+    this.get(id).startEditing()
+    return id
+  }
+
+  getDraft = (id) => this.#drafts.find((draft) => draft.id === id)
+
+  getDrafts = () => this.#drafts
+
+  discardDraft = (id) => {
+    this.#drafts = this.#drafts.filter((draft) => draft.id !== id)
+    this.#byId.delete(id)
+    this.#changed()
+  }
 
   get = (itemTypeId) => {
     if (!this.#byId.has(itemTypeId)) this.#byId.set(itemTypeId, new ItemTypeViewModel(this.#changed))
@@ -638,7 +695,10 @@ export class ItemTypeViewModels {
   getDirtyIds = () => this.#dirtyIds
 
   #changed = () => {
-    this.#dirtyIds = new Set([...this.#byId].filter(([, vm]) => vm.getSnapshot().dirty).map(([id]) => id))
+    this.#dirtyIds = new Set([
+      ...[...this.#byId].filter(([, vm]) => vm.getSnapshot().dirty).map(([id]) => id),
+      ...this.#drafts.map((draft) => draft.id),
+    ])
     this.#listeners.forEach((listener) => listener())
   }
 }
@@ -775,7 +835,20 @@ function groupEditorFor(vm, state, savedGroups) {
 
 // The item type as it should currently be shown: saved data from the schema models with this item
 // type's pending edits laid over it, plus everything its views need to make more.
-export function useItemTypeViewModel(itemTypeViewModels, itemTypeId) {
+// A draft as the saved item type it will become, with nothing set yet but its name.
+const draftItemType = (draft) => ({
+  id: draft.id,
+  name: draft.name,
+  description: '',
+  abstractType: false,
+  supertype: null,
+  traits: [],
+  displayLabelPattern: '',
+})
+
+// `navigation` ({ selectItemType, closeItemType }) moves on once a draft is saved (to the item type
+// it became) or discarded.
+export function useItemTypeViewModel(itemTypeViewModels, itemTypeId, navigation) {
   const vm = itemTypeViewModels.get(itemTypeId)
   const state = useSyncExternalStore(itemTypeViewModels.subscribe, vm.getSnapshot)
   const { getItemType, getItemTypes, getSupertypeCandidates, getItemTypePropertyTree } = useItemTypeModel()
@@ -783,7 +856,8 @@ export function useItemTypeViewModel(itemTypeViewModels, itemTypeId) {
   const { getItemTypeLinkDetails, getLinkPropertyTree } = useLinkModel()
   const { getControlledLists } = useControlledListModel()
 
-  const itemType = getItemType(itemTypeId)
+  const draft = itemTypeViewModels.getDraft(itemTypeId)
+  const itemType = draft ? draftItemType(draft) : getItemType(itemTypeId)
   if (!itemType) return { itemType: null }
 
   const saved = {
@@ -812,8 +886,10 @@ export function useItemTypeViewModel(itemTypeViewModels, itemTypeId) {
   }
   const traitOptions = sortByName(getTraits()).map((trait) => ({ value: trait.id, label: trait.name }))
 
-  const savedTree = getItemTypePropertyTree(itemType.id)
-  const links = sortByName(getItemTypeLinkDetails(itemTypeId))
+  // A draft has nothing saved -- whatever it inherits from a parent type or traits shows once it's
+  // saved.
+  const savedTree = draft ? { properties: [], groups: [] } : getItemTypePropertyTree(itemType.id)
+  const links = draft ? [] : sortByName(getItemTypeLinkDetails(itemTypeId))
   // The property trees of the links this item type declares itself, which it edits along with its
   // own. Something new at a link's top level has the link's id as its parentId.
   const linkTrees = links.filter((link) => !link.inherited).map((link) => ({ linkId: link.linkId, tree: getLinkPropertyTree(link.linkId) }))
@@ -868,8 +944,22 @@ export function useItemTypeViewModel(itemTypeViewModels, itemTypeId) {
     saveError: state.saveError,
     conflicts: [...fieldConflicts, ...propertyConflicts, ...perspectiveConflicts],
     startEditing: vm.startEditing,
-    cancel: vm.cancel,
-    save: () => vm.save(toMutations(itemType.id, saved, fields, state, savedTree, linkTrees, savedPerspectives)),
+    isDraft: Boolean(draft),
+    cancel: draft
+      ? () => {
+          navigation.closeItemType()
+          itemTypeViewModels.discardDraft(itemTypeId)
+        }
+      : vm.cancel,
+    save: draft
+      ? async () => {
+          if (!(await vm.save(createMutations(itemTypeId, fields, state)))) return
+          const created = getRawSchema()?.items.find((item) => item.name === fields.name)
+          if (created) navigation.selectItemType(created.id)
+          else navigation.closeItemType()
+          itemTypeViewModels.discardDraft(itemTypeId)
+        }
+      : () => vm.save(toMutations(itemType.id, saved, fields, state, savedTree, linkTrees, savedPerspectives)),
     overview: {
       fields,
       setName: setField('name'),

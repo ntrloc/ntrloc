@@ -48,6 +48,7 @@ export function useSchemaViewModel() {
   // and other screens.
   const [itemTypeViewModels] = useState(() => new ItemTypeViewModels())
   const dirtyItemTypeIds = useSyncExternalStore(itemTypeViewModels.subscribe, itemTypeViewModels.getDirtyIds)
+  const draftItemTypes = useSyncExternalStore(itemTypeViewModels.subscribe, itemTypeViewModels.getDrafts)
   const hasUnsavedChanges = dirtyItemTypeIds.size > 0
 
   // A reload, closing the tab or signing out is the one way to lose those edits, so ask first. Browsers
@@ -78,6 +79,18 @@ export function useSchemaViewModel() {
     void navigate(`/schema/item-types/${itemTypeId}`)
   }
 
+  // A new item type starts as a draft, opened for editing; nothing is saved until its Save.
+  function createItemType(name) {
+    selectItemType(itemTypeViewModels.createDraft(name))
+  }
+
+  // Leaving a draft once it's saved or discarded. Replacing its history entry keeps Back from
+  // returning to a draft that no longer exists.
+  const draftNavigation = {
+    selectItemType: (itemTypeId) => void navigate(`/schema/item-types/${itemTypeId}`, { replace: true }),
+    closeItemType: () => void navigate('/schema/item-types', { replace: true }),
+  }
+
   function selectTrait(traitId) {
     void navigate(`/schema/traits/${traitId}`)
   }
@@ -87,6 +100,9 @@ export function useSchemaViewModel() {
     setActiveSection,
     selectedItemTypeId,
     selectItemType,
+    createItemType,
+    draftItemTypes,
+    draftNavigation,
     selectedTraitId,
     selectTrait,
     itemTypeTabKey,

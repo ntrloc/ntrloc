@@ -21,12 +21,13 @@ function ItemTypeDetailView({
   itemTypeId,
   onSelectTrait,
   onSelectItemType,
+  draftNavigation,
   tabKey,
   onTabKeyChange,
   collapsedStructureCards,
   onToggleStructureCard,
 }) {
-  const vm = useItemTypeViewModel(itemTypeViewModels, itemTypeId)
+  const vm = useItemTypeViewModel(itemTypeViewModels, itemTypeId, draftNavigation)
   // Like the active tab, kept while browsing other item types.
   const [propertyFilter, setPropertyFilter] = useState('')
   const { itemType, editing } = vm

@@ -36,10 +36,14 @@ class SearchPanePage {
 
     /** Opens a new search pane from the Search view's header and returns it. */
     static SearchPanePage openNew(WebDriver driver) {
+        WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(15));
+        // Waited for, not assumed: just after a page load the view may not have rendered yet, and
+        // counting its panes before it has would count none.
+        WebElement button = wait.until(ExpectedConditions.elementToBeClickable(
+                By.xpath("//search-header-view//button[normalize-space()='New search pane']")));
         int before = driver.findElements(By.cssSelector("pane-view")).size();
-        driver.findElement(By.xpath("//search-header-view//button[normalize-space()='New search pane']")).click();
-        new WebDriverWait(driver, Duration.ofSeconds(15))
-                .until(d -> d.findElements(By.cssSelector("pane-view")).size() > before);
+        button.click();
+        wait.until(d -> d.findElements(By.cssSelector("pane-view")).size() > before);
         List<WebElement> panes = driver.findElements(By.cssSelector("pane-view"));
         return new SearchPanePage(driver, panes.get(panes.size() - 1));
     }

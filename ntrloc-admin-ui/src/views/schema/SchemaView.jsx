@@ -15,6 +15,9 @@ function SchemaView() {
     setActiveSection,
     selectedItemTypeId,
     selectItemType,
+    createItemType,
+    draftItemTypes,
+    draftNavigation,
     selectedTraitId,
     selectTrait,
     itemTypeTabKey,
@@ -39,6 +42,8 @@ function SchemaView() {
           selectedItemTypeId={selectedItemTypeId}
           onSelectItemType={selectItemType}
           dirtyItemTypeIds={dirtyItemTypeIds}
+          drafts={draftItemTypes}
+          onCreateItemType={createItemType}
         />
       ),
     },
@@ -62,6 +67,7 @@ function SchemaView() {
             itemTypeId={selectedItemTypeId}
             onSelectTrait={selectTrait}
             onSelectItemType={selectItemType}
+            draftNavigation={draftNavigation}
             tabKey={itemTypeTabKey}
             onTabKeyChange={setItemTypeTabKey}
             collapsedStructureCards={collapsedStructureCards}

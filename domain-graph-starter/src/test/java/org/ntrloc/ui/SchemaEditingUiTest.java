@@ -81,6 +81,65 @@ class SchemaEditingUiTest extends AbstractUiIntegrationTest {
     }
 
     @Test
+    void aNewItemTypeIsEditedUntilSavedAndThenCreatedWithEverythingOnIt() {
+        String name = "UiEditMagazine-" + UUID.randomUUID().toString().substring(0, 8);
+        schema.newItemType(name);
+
+        assertThat(schema.overviewEditable()).isTrue();
+        assertThat(schema.itemTypeOverview()).containsEntry("Item type name", name);
+        assertThat(schema.unsavedItemTypes()).contains(name);
+        assertThat(schemaManager.getAdminSchema().items()).extracting(AdminItemDefinitionView::name).doesNotContain(name);
+
+        schema.typeInto("Description", "Made in the UI")
+                .newProperty().typeInPropertyEditor("Name", "issue").chooseInPropertyEditor("Type", "Integer").applyPropertyEditor();
+        String forward = name + " to " + authorType;
+        schema.newLink()
+                .chooseInPropertyEditor("Links to", authorType)
+                .typeInLinkEditor(forward, "Name", "contributors")
+                .typeInLinkEditor(authorType + " back to " + name, "Name", "contributedTo")
+                .applyPropertyEditor();
+        schema.save();
+
+        AdminItemDefinitionView saved = testData.itemType(name);
+        assertThat(saved.description()).isEqualTo("Made in the UI");
+        assertThat(saved.properties()).extracting(AdminPropertyDefinitionView::name).containsExactly("issue");
+        assertThat(saved.links()).containsOnlyKeys("contributors");
+        assertThat(testData.itemType(authorType).links()).containsKey("contributedTo");
+        // Now the saved item type, under its real id.
+        assertThat(driver.getCurrentUrl()).endsWith("/schema/item-types/" + saved.id());
+        assertThat(schema.overviewEditable()).isFalse();
+        assertThat(schema.unsavedItemTypes()).isEmpty();
+    }
+
+    @Test
+    void cancellingANewItemTypeDiscardsIt() {
+        String name = "UiEditScratch-" + UUID.randomUUID().toString().substring(0, 8);
+        schema.newItemType(name).newProperty().typeInPropertyEditor("Name", "note").applyPropertyEditor();
+
+        schema.cancelNewItemType();
+
+        assertThat(schema.itemTypeNames()).doesNotContain(name);
+        assertThat(schema.unsavedItemTypes()).isEmpty();
+        assertThat(driver.getCurrentUrl()).endsWith("/schema/item-types");
+    }
+
+    @Test
+    void aNewItemTypeNeedsANameNoOtherItemTypeHas() {
+        schema.startNewItemType();
+        assertThat(schema.propertyEditorTitle()).isEqualTo("New item type");
+        assertThat(schema.propertyEditorCanApply("Add")).isFalse();
+
+        schema.typeInPropertyEditor("Name", bookType);
+        assertThat(schema.propertyEditorCanApply("Add")).isFalse();
+        assertThat(schema.propertyEditorError()).isEqualTo("There's already an item type named " + bookType + ".");
+
+        schema.typeInPropertyEditor("Name", bookType + "-2");
+        assertThat(schema.propertyEditorCanApply("Add")).isTrue();
+        schema.cancelPropertyEditor();
+        assertThat(schema.unsavedItemTypes()).isEmpty();
+    }
+
+    @Test
     void anEditUndoneByHandIsNoLongerAnUnsavedChange() {
         schema.edit().typeInto("Description", "Changed");
         assertThat(schema.unsavedItemTypes()).containsExactly(bookType);
