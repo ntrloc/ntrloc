@@ -251,7 +251,7 @@ class SchemaPage {
         return openEditor(card("Properties").findElement(By.cssSelector(".property-tree-toolbar button[aria-label='Add group']")));
     }
 
-    /** Opens the property editor for a new property at the top level of a link's properties. */
+    /** Opens the property editor for a new property at the top level of a link's (unfolded) properties. */
     SchemaPage newLinkProperty(String perspectiveName) {
         return openEditor(linkCard(perspectiveName).findElement(By.cssSelector(".property-tree-toolbar button[aria-label='Add property']")));
     }
@@ -528,11 +528,90 @@ class SchemaPage {
         return this;
     }
 
-    /** Each link in an item type's Links card, as its box and arrow-label texts in reading order. */
+    /**
+     * Each link in an item type's Links card, in reading order: the label over the arrow out, the
+     * label under the arrow back, and the target's box.
+     */
     List<List<String>> linkDiagrams() {
         return content().findElements(By.tagName("item-type-link-view")).stream()
-                .map(card -> texts(card.findElements(By.cssSelector(".item-type-link-box, .item-type-link-arrow-label"))))
+                .map(card -> texts(card.findElements(By.cssSelector(".item-type-link-arrow-label, .item-type-link-box"))))
                 .toList();
+    }
+
+    /** Unfolds a link, if it isn't already -- saved links start folded down to their arrows. */
+    SchemaPage expandLink(String perspectiveName) {
+        if (!linkExpanded(perspectiveName)) {
+            linkCard(perspectiveName).findElement(By.cssSelector(".item-type-link-toggle")).click();
+        }
+        return this;
+    }
+
+    boolean linkExpanded(String perspectiveName) {
+        return "true".equals(linkCard(perspectiveName).findElement(By.cssSelector(".item-type-link-toggle")).getDomAttribute("aria-expanded"));
+    }
+
+    /** The descriptions a link card's (i) icons show on hover, in reading order. */
+    List<String> linkDescriptions(String perspectiveName) {
+        return linkCard(perspectiveName).findElements(By.cssSelector(".item-type-link-description")).stream()
+                .map(icon -> icon.getDomAttribute("title"))
+                .toList();
+    }
+
+    /** The edit and delete buttons for a link itself, by accessible name. */
+    List<String> linkActions(String perspectiveName) {
+        return linkCard(perspectiveName).findElements(By.cssSelector(
+                        ".item-type-link-actions button, .item-type-link-arrow-middle button")).stream()
+                .map(button -> button.getDomAttribute("aria-label"))
+                .toList();
+    }
+
+    /** Where an inherited link comes from, e.g. "(trait)". */
+    String linkSource(String perspectiveName) {
+        return text(linkCard(perspectiveName).findElement(By.cssSelector(".item-type-link-source")));
+    }
+
+    /** Follows an inherited link's "(trait)" or "(supertype)" link to where it comes from. */
+    SchemaPage followLinkSource(String perspectiveName, String sourceName) {
+        linkCard(perspectiveName).findElement(By.cssSelector(".item-type-link-source button")).click();
+        return awaitHeading(sourceName);
+    }
+
+    /** Opens the link editor from a link's edit button. */
+    SchemaPage editLink(String perspectiveName) {
+        return openEditor(linkCard(perspectiveName).findElement(By.cssSelector("button[aria-label='Edit link " + perspectiveName + "']")));
+    }
+
+    /** Opens the link editor for a new link, from the Links card's title bar. */
+    SchemaPage newLink() {
+        return openEditor(card("Links").findElement(By.cssSelector("collapsible-card-actions button[aria-label='New link']")));
+    }
+
+    /**
+     * The open link editor's fields, label to value: "Links to", then each direction's fields as
+     * "heading: label", e.g. "Book to Author: Name".
+     */
+    Map<String, String> linkEditorFields() {
+        return settled(() -> {
+            Map<String, String> fields = new LinkedHashMap<>();
+            WebElement target = dialog().findElement(By.cssSelector("link-edit-fields > :first-child"));
+            fields.put(text(target.findElement(By.cssSelector(".input-control-name"))), fieldValue(target));
+            for (WebElement section : dialog().findElements(By.cssSelector("section.link-edit-direction"))) {
+                String heading = text(section.findElement(By.tagName("h3")));
+                for (WebElement field : section.findElements(By.cssSelector("property-edit-fields > *"))) {
+                    fields.put(heading + ": " + text(field.findElement(By.cssSelector(".input-control-name"))), fieldValue(field));
+                }
+            }
+            return fields;
+        });
+    }
+
+    /** Replaces a field's value in one direction of the link editor, by that direction's heading. */
+    SchemaPage typeInLinkEditor(String direction, String fieldLabel, String text) {
+        WebElement input = dialog().findElement(By.xpath(".//section[contains(@class,'link-edit-direction')][h3[.='" + direction + "']]"
+                + "//input-control[span[contains(@class,'input-control-name')][.='" + fieldLabel + "']]//input"));
+        input.sendKeys(Keys.chord(Keys.CONTROL, "a"), Keys.BACK_SPACE);
+        input.sendKeys(text);
+        return this;
     }
 
     /** The link card whose arrows carry this perspective name. */

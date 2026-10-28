@@ -230,7 +230,7 @@ class SchemaEditingUiTest extends AbstractUiIntegrationTest {
 
     @Test
     void aLinksPropertiesAreEditedAndSavedWithTheItemType() {
-        schema.edit().newLinkProperty("authors").typeInPropertyEditor("Name", "role").applyPropertyEditor();
+        schema.edit().expandLink("authors").newLinkProperty("authors").typeInPropertyEditor("Name", "role").applyPropertyEditor();
         assertThat(SchemaPage.propertyRows(schema.linkCard("authors"))).containsExactly(List.of("role", "", "String (optional)"));
         assertThat(schema.unsavedItemTypes()).containsExactly(bookType);
 
@@ -239,6 +239,98 @@ class SchemaEditingUiTest extends AbstractUiIntegrationTest {
 
         schema.edit().editLinkProperty("authors", "role").typeInPropertyEditor("Description", "The author's role").applyPropertyEditor().save();
         assertThat(linkProperties("authors")).extracting(AdminPropertyDefinitionView::description).containsExactly("The author's role");
+    }
+
+    @Test
+    void aLinksTwoDirectionsAreEditedAndSavedTogether() {
+        String forward = bookType + " to " + authorType;
+        String back = authorType + " back to " + bookType;
+        schema.edit().editLink("authors");
+        assertThat(schema.propertyEditorTitle()).isEqualTo("Edit link authors");
+        assertThat(schema.linkEditorFields()).containsExactly(
+                entry("Links to", authorType),
+                entry(forward + ": Name", "authors"),
+                entry(forward + ": Description", "UI test fixture"),
+                entry(forward + ": Minimum", "0"),
+                entry(forward + ": Maximum", ""),
+                entry(back + ": Name", "books"),
+                entry(back + ": Description", "UI test fixture"),
+                entry(back + ": Minimum", "0"),
+                entry(back + ": Maximum", ""));
+
+        schema.typeInLinkEditor(forward, "Name", "writers").typeInLinkEditor(forward, "Maximum", "0");
+        assertThat(schema.propertyEditorCanApply()).isFalse();
+        assertThat(schema.propertyEditorError()).isEqualTo("This link's maximum must be blank (any) or at least 1.");
+
+        schema.typeInLinkEditor(forward, "Maximum", "5").typeInLinkEditor(back, "Name", "works").applyPropertyEditor();
+        assertThat(schema.linkDiagrams()).containsExactly(List.of("writers (5)", "works (0-any)", authorType));
+        assertThat(schema.unsavedItemTypes()).containsExactly(bookType);
+
+        schema.save();
+
+        assertThat(testData.itemType(bookType).links().get("writers").getFirst().maxCardinality()).isEqualTo(5);
+        assertThat(testData.itemType(authorType).links()).containsOnlyKeys("works");
+    }
+
+    @Test
+    void aNewLinkIsAddedOnSaveWithAnyPropertiesGivenIt() {
+        String forward = bookType + " to " + authorType;
+        String back = authorType + " back to " + bookType;
+        schema.edit().newLink();
+        assertThat(schema.propertyEditorTitle()).isEqualTo("New link");
+        assertThat(schema.propertyEditorCanApply()).isFalse();
+
+        schema.chooseInPropertyEditor("Links to", authorType)
+                .typeInLinkEditor(forward, "Name", "editors")
+                .typeInLinkEditor(back, "Name", "edited")
+                .applyPropertyEditor();
+        assertThat(schema.linkDiagrams()).contains(List.of("editors (0-any)", "edited (0-any)", authorType));
+        // Open from the start, ready for its properties.
+        assertThat(schema.linkExpanded("editors")).isTrue();
+
+        schema.newLinkProperty("editors").typeInPropertyEditor("Name", "since").applyPropertyEditor();
+        schema.save();
+
+        assertThat(testData.itemType(authorType).links()).containsKey("edited");
+        assertThat(linkProperties("editors")).extracting(AdminPropertyDefinitionView::name).containsExactly("since");
+        // Saved, it starts folded like every other saved link.
+        assertThat(schema.linkExpanded("editors")).isFalse();
+    }
+
+    @Test
+    void droppingANewLinkDropsItAndAnythingAddedToIt() {
+        String forward = bookType + " to " + authorType;
+        String back = authorType + " back to " + bookType;
+        schema.edit().newLink()
+                .chooseInPropertyEditor("Links to", authorType)
+                .typeInLinkEditor(forward, "Name", "editors")
+                .typeInLinkEditor(back, "Name", "edited")
+                .applyPropertyEditor();
+        schema.newLinkProperty("editors").typeInPropertyEditor("Name", "since").applyPropertyEditor();
+
+        schema.toggleDeleteLink("editors");
+
+        assertThat(schema.linkDiagrams()).hasSize(1);
+        assertThat(schema.unsavedItemTypes()).isEmpty();
+    }
+
+    @Test
+    void aLinkFromATraitSaysWhereItComesFromAndCannotBeChangedHere() {
+        String suffix = UUID.randomUUID().toString().substring(0, 8);
+        String traitName = "UiEditCiting-" + suffix;
+        UUID traitId = testData.createTrait(traitName, List.of()).id();
+        schemaManager.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
+                new CreatePerspectiveDefinitionMutation(traitId, "cites", "UI test fixture", 0, null),
+                new CreatePerspectiveDefinitionMutation(testData.itemType(authorType).id(), "citedBy", "UI test fixture", 0, null)))));
+        String essayType = "UiEditEssay-" + suffix;
+        testData.createItemType(essayType, null, List.of(property("title", PropertyType.STRING)), List.of(), null, false, List.of(traitId));
+        String link = traitName + ".cites";
+
+        schema.selectItemType(essayType).edit();
+
+        assertThat(schema.linkSource(link)).isEqualTo("(trait)");
+        assertThat(schema.linkActions(link)).isEmpty();
+        schema.cancel().followLinkSource(link, traitName);
     }
 
     @Test

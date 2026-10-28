@@ -184,18 +184,30 @@ class SchemaViewUiTest extends AbstractUiIntegrationTest {
     void linksCardShowsBothDirectionsOfEachLinkAndItsProperties() {
         schema.selectItemType(BOOK_TYPE);
 
-        assertThat(schema.linkDiagrams()).containsExactly(List.of(BOOK_TYPE, "authors (0-any)", "books (1)", AUTHOR_TYPE));
-        WebElement card = schema.linkCard("authors");
+        assertThat(schema.linkDiagrams()).containsExactly(List.of("authors (0-any)", "books (1)", AUTHOR_TYPE));
+        assertThat(schema.linkDescriptions("authors")).containsExactly("Who wrote it", "What they wrote");
+        WebElement card = schema.expandLink("authors").linkCard("authors");
         assertThat(SchemaPage.propertyRows(card)).containsExactly(List.of("role", "The author's role", "String (optional)"));
 
         SchemaPage.toggleLinkProperties(card);
         assertThat(SchemaPage.propertyRows(card)).isEmpty();
 
         schema.selectItemType(AUTHOR_TYPE);
-        assertThat(schema.linkDiagrams()).containsExactly(List.of(AUTHOR_TYPE, "books (1)", "authors (0-any)", BOOK_TYPE));
+        assertThat(schema.linkDiagrams()).containsExactly(List.of("books (1)", "authors (0-any)", BOOK_TYPE));
 
         schema.selectItemType(PUBLICATION_TYPE);
         assertThat(schema.cardText("Links")).isEqualTo("No links yet.");
+    }
+
+    @Test
+    void linksStartFoldedAndStayOpenOnceOpened() {
+        schema.selectItemType(BOOK_TYPE);
+        assertThat(schema.linkExpanded("authors")).isFalse();
+        assertThat(SchemaPage.propertyRows(schema.linkCard("authors"))).isEmpty();
+
+        schema.expandLink("authors").selectItemType(AUTHOR_TYPE).selectItemType(BOOK_TYPE);
+
+        assertThat(schema.linkExpanded("authors")).isTrue();
     }
 
     @Test
@@ -279,8 +291,8 @@ class SchemaViewUiTest extends AbstractUiIntegrationTest {
                 new CreateLinkDefinitionMutation(
                         List.of(described("role", PropertyType.STRING, "The author's role")),
                         List.of(
-                                new CreatePerspectiveDefinitionMutation(bookId, "authors", "UI test fixture", 0, null),
-                                new CreatePerspectiveDefinitionMutation(authorTypeId, "books", "UI test fixture", 1, 1)),
+                                new CreatePerspectiveDefinitionMutation(bookId, "authors", "Who wrote it", 0, null),
+                                new CreatePerspectiveDefinitionMutation(authorTypeId, "books", "What they wrote", 1, 1)),
                         List.of()),
                 new CreateControlledListMutation("genre", GENRE_LIST, PropertyType.STRING, List.of(
                         new CreateControlledListMutation.Entry("FICTION", "Fiction"),
