@@ -58,6 +58,8 @@ import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -339,6 +341,50 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
                 .hasMessageContaining("changed by someone else");
 
         assertThat(storedItemNames()).contains(name).doesNotContain(newName);
+    }
+
+    @Test
+    void deletingAnItemType_deletesItsLinksToo() {
+        String authorName = "Author-" + UUID.randomUUID();
+        UUID authorId = createItem(authorName);
+        UUID bookId = createItem("Book-" + UUID.randomUUID());
+        schemaManager.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
+                new CreatePerspectiveDefinitionMutation(bookId, "writtenBy", "d", 0, null),
+                new CreatePerspectiveDefinitionMutation(authorId, "wrote", "d", 0, null)))));
+
+        schemaManager.applyMutations(List.of(new DeleteItemDefinitionMutation(bookId)));
+
+        assertThat(Objects.requireNonNullElse(findItem(authorName).links(), Map.of())).doesNotContainKey("wrote");
+    }
+
+    @Test
+    void deletingAnItemTypeOthersInheritFrom_throwsNamingThem() {
+        String vehicleName = "Vehicle-" + UUID.randomUUID();
+        UUID vehicleId = createItem(vehicleName);
+        String carName = "Car-" + UUID.randomUUID();
+        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(), vehicleId, false, null)));
+
+        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new DeleteItemDefinitionMutation(vehicleId))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Cannot delete item type '" + vehicleName + "' because " + carName + " inherits from it");
+        assertThat(storedItemNames()).contains(vehicleName);
+    }
+
+    @Test
+    void deletingATrait_deletesItsLinksToo() {
+        String authorName = "Author-" + UUID.randomUUID();
+        UUID authorId = createItem(authorName);
+        String traitName = "Authored-" + UUID.randomUUID();
+        schemaManager.applyMutations(List.of(new CreateTraitDefinitionMutation(traitName, "d", List.of())));
+        UUID traitId = findTrait(traitName).id();
+        schemaManager.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
+                new CreatePerspectiveDefinitionMutation(traitId, "writtenBy", "d", 0, null),
+                new CreatePerspectiveDefinitionMutation(authorId, "wrote", "d", 0, null)))));
+
+        schemaManager.applyMutations(List.of(new DeleteTraitDefinitionMutation(traitId)));
+
+        assertThat(schemaManager.getAdminSchema().traits()).extracting(t -> t.name()).doesNotContain(traitName);
+        assertThat(Objects.requireNonNullElse(findItem(authorName).links(), Map.of())).doesNotContainKey("wrote");
     }
 
     @Test

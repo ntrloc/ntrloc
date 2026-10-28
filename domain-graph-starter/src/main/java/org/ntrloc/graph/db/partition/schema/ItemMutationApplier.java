@@ -24,11 +24,14 @@ class ItemMutationApplier {
     private final SchemaRepository repo;
     private final ApplicationEventPublisher eventPublisher;
     private final PropertyMutationApplier propertyMutationApplier;
+    private final LinkMutationApplier linkMutationApplier;
 
-    ItemMutationApplier(SchemaRepository repo, ApplicationEventPublisher eventPublisher, PropertyMutationApplier propertyMutationApplier) {
+    ItemMutationApplier(SchemaRepository repo, ApplicationEventPublisher eventPublisher, PropertyMutationApplier propertyMutationApplier,
+                        LinkMutationApplier linkMutationApplier) {
         this.repo = repo;
         this.eventPublisher = eventPublisher;
         this.propertyMutationApplier = propertyMutationApplier;
+        this.linkMutationApplier = linkMutationApplier;
     }
 
     // A flat dispatch by design -- each branch used to carry its own nested loop/conditional logic
@@ -102,6 +105,8 @@ class ItemMutationApplier {
 
     private void applyDelete(DeleteItemDefinitionMutation m) {
         SchemaMutationValidation.requireItemTypeNotInUse(repo, m.id());
+        SchemaMutationValidation.requireNoSubtypes(repo, m.id());
+        linkMutationApplier.deleteLinksTouching(m.id());
         repo.deleteItem(m.id());
         eventPublisher.publishEvent(new SchemaChangeEvent.ItemTypeDeleted(m.id()));
     }

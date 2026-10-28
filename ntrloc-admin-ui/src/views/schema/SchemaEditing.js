@@ -335,6 +335,8 @@ export class SchemaEditorViewModel {
     // { mode: 'edit', id }.
     propertyEditor: null,
     groupEditor: null,
+    // The item type or trait itself is to be deleted on Save -- and with it, its links.
+    deleting: false,
     dirty: false,
     saving: false,
     saveError: null,
@@ -348,6 +350,8 @@ export class SchemaEditorViewModel {
   getSnapshot = () => this.#snapshot
 
   startEditing = () => this.#update({ editing: true })
+
+  toggleDeleting = () => this.#update({ deleting: !this.#snapshot.deleting })
 
   cancel = () => this.#reset()
 
@@ -568,6 +572,7 @@ export class SchemaEditorViewModel {
       linkEditor: null,
       propertyEditor: null,
       groupEditor: null,
+      deleting: false,
       saving: false,
       saveError: null,
     })
@@ -587,7 +592,8 @@ export class SchemaEditorViewModel {
       Object.keys(next.perspectiveChanges).length > 0 ||
       next.newProperties.length > 0 ||
       next.newGroups.length > 0 ||
-      next.newLinks.length > 0
+      next.newLinks.length > 0 ||
+      next.deleting
     this.#snapshot = next
     this.#onChange()
   }
@@ -624,7 +630,8 @@ export class SchemaEditorViewModels {
 
   getDrafts = () => this.#drafts
 
-  discardDraft = (id) => {
+  // Forgets a draft, or the edits of one that's been deleted.
+  discard = (id) => {
     this.#drafts = this.#drafts.filter((draft) => draft.id !== id)
     this.#byId.delete(id)
     this.#changed()
@@ -791,6 +798,16 @@ function groupEditorFor(vm, state, savedGroups) {
 //
 // Returns the conflicts among those edits, `mutations` to save them (see contentMutations), and
 // `view`: what the Properties and Links cards and the property, group and link editors need.
+// Marking a saved item type or trait for deletion on Save. `links` are the ones its Links card shows
+// (structureEditing's view.links); the ones of its own go with it, so they're named for the editor.
+export function deletionEditing(vm, state, links) {
+  return {
+    marked: state.deleting,
+    toggle: vm.toggleDeleting,
+    links: links.filter((link) => !link.inherited && !link.isNew).map((link) => `${link.name} (to ${link.target.name})`),
+  }
+}
+
 export function structureEditing({ vm, state, owner, savedTree, links, models }) {
   const { getLinkPropertyTree, getItemTypes, getTraits, getControlledLists } = models
   // The property trees of the links this owner declares itself, which it edits along with its own.

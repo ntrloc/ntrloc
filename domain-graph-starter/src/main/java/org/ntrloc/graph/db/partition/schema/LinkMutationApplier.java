@@ -79,8 +79,18 @@ class LinkMutationApplier {
     }
 
     private void applyDelete(DeleteLinkDefinitionMutation m) {
-        repo.deleteLink(m.id());
-        eventPublisher.publishEvent(new SchemaChangeEvent.LinkTypeDeleted(m.id()));
+        deleteLink(m.id());
+    }
+
+    // Deleting an item type or trait takes every link with an end at it along -- only once it's
+    // not in use, so no link of these has any data.
+    void deleteLinksTouching(UUID entityId) {
+        repo.linkIdsTouching(entityId).forEach(this::deleteLink);
+    }
+
+    private void deleteLink(UUID linkId) {
+        repo.deleteLink(linkId);
+        eventPublisher.publishEvent(new SchemaChangeEvent.LinkTypeDeleted(linkId));
     }
 
     private void applyUpdatePerspective(UpdatePerspectiveDefinitionMutation m) {

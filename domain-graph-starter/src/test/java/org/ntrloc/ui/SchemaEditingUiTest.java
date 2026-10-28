@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.ntrloc.ui.UiTestData.property;
 
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -138,6 +140,53 @@ class SchemaEditingUiTest extends AbstractUiIntegrationTest {
         assertThat(schema.propertyEditorCanApply("Add")).isTrue();
         schema.cancelPropertyEditor();
         assertThat(schema.unsavedItemTypes()).isEmpty();
+    }
+
+    @Test
+    void deletingAnItemTypeWaitsForSaveAndTakesItsLinksWithIt() {
+        schema.edit().clickFooter("Delete item type");
+        assertThat(schema.deleteNotice()).contains(
+                "This item type will be deleted when you save. Its links go with it: authors (to " + authorType + ").");
+        assertThat(schema.unsavedItemTypes()).containsExactly(bookType);
+
+        schema.clickFooter("Keep item type");
+        assertThat(schema.deleteNotice()).isEmpty();
+        assertThat(schema.unsavedItemTypes()).isEmpty();
+
+        schema.clickFooter("Delete item type");
+        assertThat(schemaManager.getAdminSchema().items()).extracting(AdminItemDefinitionView::name).contains(bookType);
+        schema.saveDeletion();
+
+        assertThat(schemaManager.getAdminSchema().items()).extracting(AdminItemDefinitionView::name).doesNotContain(bookType);
+        assertThat(Objects.requireNonNullElse(testData.itemType(authorType).links(), Map.of())).doesNotContainKey("books");
+        assertThat(schema.itemTypeNames()).doesNotContain(bookType);
+        assertThat(schema.unsavedItemTypes()).isEmpty();
+        assertThat(driver.getCurrentUrl()).endsWith("/schema/item-types");
+    }
+
+    @Test
+    void anItemTypeWithItemsCantBeDeleted() {
+        testData.createItem(testData.itemType(bookType).id(), Map.of());
+
+        String error = schema.edit().clickFooter("Delete item type").saveExpectingError();
+
+        assertThat(error).contains("Cannot delete item type '" + bookType + "' because items of this type still exist");
+        assertThat(schemaManager.getAdminSchema().items()).extracting(AdminItemDefinitionView::name).contains(bookType);
+    }
+
+    @Test
+    void deletingATraitWaitsForSave() {
+        String name = "UiEditDoomedTrait-" + UUID.randomUUID().toString().substring(0, 8);
+        testData.createTrait(name, List.of(property("code", PropertyType.STRING)));
+        schema.openSection("Traits").selectTrait(name).edit().clickFooter("Delete trait");
+        assertThat(schema.deleteNotice()).contains("This trait will be deleted when you save.");
+        assertThat(schema.unsavedTraits()).containsExactly(name);
+
+        schema.saveDeletion();
+
+        assertThat(schemaManager.getAdminSchema().traits()).extracting(AdminTraitDefinitionView::name).doesNotContain(name);
+        assertThat(schema.traitNames()).doesNotContain(name);
+        assertThat(driver.getCurrentUrl()).endsWith("/schema/traits");
     }
 
     @Test

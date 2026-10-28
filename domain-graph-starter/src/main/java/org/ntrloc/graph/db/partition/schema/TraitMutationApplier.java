@@ -26,11 +26,14 @@ class TraitMutationApplier {
     private final SchemaRepository repo;
     private final ApplicationEventPublisher eventPublisher;
     private final PropertyMutationApplier propertyMutationApplier;
+    private final LinkMutationApplier linkMutationApplier;
 
-    TraitMutationApplier(SchemaRepository repo, ApplicationEventPublisher eventPublisher, PropertyMutationApplier propertyMutationApplier) {
+    TraitMutationApplier(SchemaRepository repo, ApplicationEventPublisher eventPublisher, PropertyMutationApplier propertyMutationApplier,
+                        LinkMutationApplier linkMutationApplier) {
         this.repo = repo;
         this.eventPublisher = eventPublisher;
         this.propertyMutationApplier = propertyMutationApplier;
+        this.linkMutationApplier = linkMutationApplier;
     }
 
     // refIdToEntityId: a created trait's id, by its refId, for later mutations in the batch.
@@ -49,6 +52,7 @@ class TraitMutationApplier {
             case ExpectTraitDefinitionMutation m -> requireUnchanged(m);
             case DeleteTraitDefinitionMutation m -> {
                 SchemaMutationValidation.requireTraitNotInUse(repo, m.id());
+                linkMutationApplier.deleteLinksTouching(m.id());
                 repo.deleteTrait(m.id());
                 eventPublisher.publishEvent(new SchemaChangeEvent.TraitDeleted(m.id()));
             }

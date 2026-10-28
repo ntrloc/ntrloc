@@ -4,6 +4,7 @@ import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Supplier;
 
 import org.openqa.selenium.By;
@@ -231,6 +232,31 @@ class SchemaPage {
         footerButton("Cancel").click();
         await().until(d -> d.findElements(By.cssSelector("schema-view-content h2")).isEmpty());
         return this;
+    }
+
+    /** Clicks a footer button that only changes what's pending, like "Delete item type" or "Keep trait". */
+    SchemaPage clickFooter(String label) {
+        footerButton(label).click();
+        return this;
+    }
+
+    /** What the footer says Save will delete, or empty when nothing is marked. */
+    Optional<String> deleteNotice() {
+        return content().findElements(By.cssSelector(".schema-edit-delete-notice")).stream().findFirst().map(SchemaPage::text);
+    }
+
+    /** Saves a deletion, and waits until what was deleted has closed. */
+    SchemaPage saveDeletion() {
+        footerButton("Save").click();
+        await().until(d -> d.findElements(By.cssSelector("schema-view-content h2")).isEmpty());
+        return this;
+    }
+
+    /** Clicks Save and waits for the footer's error. */
+    String saveExpectingError() {
+        footerButton("Save").click();
+        await().until(d -> !content().findElements(By.cssSelector(".schema-edit-save-error")).isEmpty());
+        return text(content().findElement(By.cssSelector(".schema-edit-save-error")));
     }
 
     /** Saves, and waits until the item type is back out of editing. */

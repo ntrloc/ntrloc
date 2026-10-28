@@ -88,7 +88,7 @@ function ItemTypeDetailView({
       label: 'Structure',
       view: (
         <item-type-structure>
-          <item-type-structure-cards>
+          <item-type-structure-cards data-marked-for-delete={vm.deletion?.marked || undefined}>
             {structureCards.map((card) => (
               <CollapsibleCard
                 key={card.key}
@@ -118,7 +118,7 @@ function ItemTypeDetailView({
   return (
     <item-type-detail-view>
       <item-type-detail-header>
-        <h2>{itemType.name}</h2>
+        <h2 data-marked-for-delete={vm.deletion?.marked || undefined}>{itemType.name}</h2>
         {itemType.description && <p className="item-type-detail-description">{itemType.description}</p>}
       </item-type-detail-header>
       {/* Not keyed on the item type -- the active tab and collapsed Structure cards should survive

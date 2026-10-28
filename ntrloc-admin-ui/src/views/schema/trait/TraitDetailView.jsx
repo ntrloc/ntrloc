@@ -82,10 +82,10 @@ function TraitDetailView({
   return (
     <trait-detail-view>
       <trait-detail-header>
-        <h2>{trait.name}</h2>
+        <h2 data-marked-for-delete={vm.deletion?.marked || undefined}>{trait.name}</h2>
         {trait.description && <p className="trait-detail-description">{trait.description}</p>}
       </trait-detail-header>
-      <trait-detail-cards>
+      <trait-detail-cards data-marked-for-delete={vm.deletion?.marked || undefined}>
         {cards.map((card) => (
           <CollapsibleCard
             key={card.key}

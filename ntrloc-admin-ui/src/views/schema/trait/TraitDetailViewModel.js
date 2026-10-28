@@ -4,7 +4,7 @@ import { useTraitModel } from '../../../global/model/TraitModel'
 import { useLinkModel } from '../../../global/model/LinkModel'
 import { useControlledListModel } from '../../../global/model/ControlledListModel'
 import { getRawSchema } from '../../../global/model/SchemaCache'
-import { groupCreateSpec, linkCreateMutation, propertyCreateSpec, sortByName, structureEditing } from '../SchemaEditing'
+import { deletionEditing, groupCreateSpec, linkCreateMutation, propertyCreateSpec, sortByName, structureEditing } from '../SchemaEditing'
 
 const OVERVIEW_LABELS = { name: 'Trait name', description: 'Description' }
 
@@ -44,7 +44,8 @@ function overviewMutations(traitId, saved, fields, state) {
 // trait's pending edits laid over it -- the same editing an item type has, apart from the fields only
 // an item type has (parent type, traits, display label, abstract). Its pending edits live in
 // `traitViewModels` (one per trait, kept by SchemaViewModel), so they survive browsing.
-// `navigation` ({ selectTrait, closeTrait }) moves on once a draft is saved or discarded.
+// `navigation` ({ selectTrait, closeTrait }) moves on once a draft is saved or discarded, or once a
+// trait is deleted.
 export function useTraitDetailViewModel(traitViewModels, traitId, navigation) {
   const vm = traitViewModels.get(traitId)
   const state = useSyncExternalStore(traitViewModels.subscribe, vm.getSnapshot)
@@ -88,13 +89,16 @@ export function useTraitDetailViewModel(traitViewModels, traitId, navigation) {
     dirty: state.dirty,
     saving: state.saving,
     saveError: state.saveError,
-    conflicts: [...fieldConflicts, ...structure.conflicts],
+    // As for an item type, a deletion makes any other edits moot.
+    conflicts: state.deleting ? [] : [...fieldConflicts, ...structure.conflicts],
     startEditing: vm.startEditing,
     isDraft: Boolean(draft),
+    noun: 'trait',
+    deletion: draft ? null : deletionEditing(vm, state, structure.view.links),
     cancel: draft
       ? () => {
           navigation.closeTrait()
-          traitViewModels.discardDraft(traitId)
+          traitViewModels.discard(traitId)
         }
       : vm.cancel,
     save: draft
@@ -103,9 +107,17 @@ export function useTraitDetailViewModel(traitViewModels, traitId, navigation) {
           const created = getRawSchema()?.traits.find((saved) => saved.name === fields.name)
           if (created) navigation.selectTrait(created.id)
           else navigation.closeTrait()
-          traitViewModels.discardDraft(traitId)
+          traitViewModels.discard(traitId)
         }
-      : () => vm.save([...structure.mutations(), ...overviewMutations(trait.id, saved, fields, state)]),
+      : async () => {
+          if (!state.deleting) {
+            await vm.save([...structure.mutations(), ...overviewMutations(trait.id, saved, fields, state)])
+            return
+          }
+          if (!(await vm.save([{ type: 'DELETE_TRAIT', id: trait.id }]))) return
+          navigation.closeTrait()
+          traitViewModels.discard(traitId)
+        },
     overview: {
       fields,
       setName: setField('name'),

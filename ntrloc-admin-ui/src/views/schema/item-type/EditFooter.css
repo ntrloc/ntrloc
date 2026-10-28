@@ -14,3 +14,22 @@ schema-edit-footer {
   text-align: center;
   color: var(--secondary);
 }
+
+/* Also on its own line: what Save will delete. */
+.schema-edit-delete-notice {
+  flex-basis: 100%;
+  margin: 0;
+  text-align: center;
+  color: var(--secondary);
+}
+
+/* An item type's or trait's cards and heading, while it's marked to be deleted on Save. */
+item-type-structure-cards[data-marked-for-delete],
+trait-detail-cards[data-marked-for-delete] {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+h2[data-marked-for-delete] {
+  text-decoration: line-through;
+}

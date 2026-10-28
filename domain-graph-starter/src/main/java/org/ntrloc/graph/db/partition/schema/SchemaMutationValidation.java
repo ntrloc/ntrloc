@@ -294,7 +294,7 @@ final class SchemaMutationValidation {
                     .map(SchemaRepository.TraitRow::name)
                     .orElse(traitId.toString());
             throw new IllegalArgumentException(
-                    "Cannot delete trait '" + name + "' because it is still implemented by an item type or referenced by a link perspective");
+                    "Cannot delete trait '" + name + "' because it is still implemented by an item type");
         }
     }
 
@@ -307,6 +307,22 @@ final class SchemaMutationValidation {
                     .orElse(itemTypeId.toString());
             throw new IllegalArgumentException(
                     "Cannot delete item type '" + name + "' because items of this type still exist");
+        }
+    }
+
+    // A subtype's shape includes everything it inherits, so its parent can't go out from under it.
+    static void requireNoSubtypes(SchemaRepository repo, UUID itemTypeId) {
+        var items = repo.getAllItems();
+        List<String> subtypes = items.stream()
+                .filter(i -> itemTypeId.equals(i.supertypeId()))
+                .map(SchemaRepository.ItemRow::name)
+                .sorted()
+                .toList();
+        if (!subtypes.isEmpty()) {
+            String name = items.stream().filter(i -> i.id().equals(itemTypeId)).findFirst()
+                    .map(SchemaRepository.ItemRow::name).orElse(itemTypeId.toString());
+            throw new IllegalArgumentException("Cannot delete item type '" + name + "' because "
+                    + String.join(", ", subtypes) + (subtypes.size() == 1 ? " inherits" : " inherit") + " from it");
         }
     }
 

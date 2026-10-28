@@ -186,18 +186,11 @@ public class SchemaRepository {
         jdbcClient.sql("DELETE FROM schema_trait WHERE id = :id").param("id", id).update();
     }
 
-    // Covers both ways a trait can be "in use": implemented by an item type (schema_item_trait),
-    // or the target of a link perspective (schema_entity_link_perspective.entity_id -- deliberately
-    // unconstrained by its own FK, since it's polymorphic across schema_item/schema_trait, so a
-    // deleted trait referenced there would otherwise leave a silently orphaned perspective row
-    // instead of a clean, caught error).
+    // A trait is in use once an item type implements it -- items of that type carry its members.
+    // Its links don't count: the trait's deletion takes them with it (see linkIdsTouching).
     public boolean isTraitInUse(UUID traitId) {
         return Boolean.TRUE.equals(jdbcClient.sql("""
-                SELECT EXISTS(
-                    SELECT 1 FROM schema_item_trait WHERE trait_id = :traitId
-                    UNION ALL
-                    SELECT 1 FROM schema_entity_link_perspective WHERE entity_id = :traitId
-                )
+                SELECT EXISTS(SELECT 1 FROM schema_item_trait WHERE trait_id = :traitId)
                 """)
                 .param(PARAM_TRAIT_ID, traitId)
                 .query(Boolean.class).single());
@@ -437,6 +430,15 @@ public class SchemaRepository {
 
     public UUID createLink() {
         return jdbcClient.sql("INSERT INTO schema_link DEFAULT VALUES RETURNING id").query(UUID.class).single();
+    }
+
+    // Every link with an end at this item type or trait. schema_entity_link_perspective.entity_id has
+    // no FK (it's polymorphic across schema_item/schema_trait), so deleting the entity alone would
+    // leave these links dangling.
+    public List<UUID> linkIdsTouching(UUID entityId) {
+        return jdbcClient.sql("SELECT DISTINCT link_definition_id FROM schema_entity_link_perspective WHERE entity_id = :entityId")
+                .param("entityId", entityId)
+                .query(UUID.class).list();
     }
 
     public void deleteLink(UUID id) {
