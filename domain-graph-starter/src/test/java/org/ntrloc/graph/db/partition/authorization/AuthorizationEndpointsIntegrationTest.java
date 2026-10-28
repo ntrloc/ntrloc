@@ -128,7 +128,12 @@ class AuthorizationEndpointsIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void schemaViewShowsAllTypesForAdmin() {
-        webTestClient.get().uri("/api/schema")
+        // An admin sees every fixture of the shared test run, which can outgrow the client's default
+        // 256KB response buffer.
+        webTestClient.mutate()
+                .codecs(codecs -> codecs.defaultCodecs().maxInMemorySize(4 * 1024 * 1024))
+                .build()
+                .get().uri("/api/schema")
                 .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com"))
                 .exchange()
                 .expectStatus().isOk()
