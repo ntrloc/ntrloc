@@ -221,6 +221,14 @@ A group is pure addressing: it has no value, so `null` on a group key
 instead. This replaces today's `null`-on-object cascade (`nullAllLeaves`), which is removed; no
 bulk-clear primitive exists, and one can be added later if a real need appears.
 
+> **Superseded 2026-10-28:** trait namespacing has been removed. A trait's properties, groups and
+> link perspectives now appear on an implementing item type under their own names (`name`,
+> `content`), so how a type is composed from traits never shows in paths that end users see. The
+> collisions this section guarded against are now rejected by schema validation instead: an item
+> type's top-level property/group names, and separately its perspective names, are unique across its
+> own, its traits' and its supertype chain's. Admins resolve any conflict while editing the schema.
+> The original reasoning follows.
+
 **Traits are namespaced in projections.** A trait's properties, groups, and links project (and are
 written, filtered, sorted, and faceted) under the trait's name: `File.name`, `File.content`. This
 makes the cross-trait name collision that exists today impossible by construction. (Today
@@ -418,8 +426,8 @@ Answers folded in from the last round of questions:
 - All 18 migrations are folded into one baseline (`V1_0_0_1__baseline.sql`); the Flyway upgrade test is retired.
 
 As built:
-- Every property and group has exactly one parent, held as parent columns with a CHECK. Sibling names are unique across properties and groups, app-enforced, including the supertype chain in both directions and the names of implemented traits.
-- A trait's contributions appear on an item type as a namespace group named for the trait (`traitNamespace = true`); its link perspectives are keyed `TraitName.perspective`.
+- Every property and group has exactly one parent, held as parent columns with a CHECK. Sibling names are unique across properties and groups, app-enforced; at an item type's top level that includes its supertype chain in both directions and the members of every trait it implements.
+- A trait's contributions appear on an item type at its top level under their own names, tagged `definedIn` with the trait (superseding the earlier `traitNamespace` group and `TraitName.perspective` keys). A perspective name appears once per item type, except that both ends of one symmetric self-link may share it.
 - Mutation payloads address groups by JSON nesting. `null` on a group is a validation error; there is no bulk clear.
 - A group with any contents cannot be deleted. Deleting an item/trait/link cascades through the FKs.
 - The advisory `edit` tree uses `{scalars, groups}` (was `objects`).

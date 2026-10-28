@@ -92,20 +92,14 @@ class LinkEndpointResolver {
         return Optional.of(new ResolvedEndpoint(itemId, ref.perspectiveName(), candidates));
     }
 
-    // A perspective name isn't unique per item type (the schema allows the same name across
-    // multiple distinct link definitions), so the concrete link type is whichever one both
-    // endpoints' perspective candidates agree on.
+    // The link type both endpoints' perspectives belong to. A perspective name is unique per item
+    // type, so each endpoint names one link; the two just have to agree.
     private Optional<UUID> resolveLinkTypeId(ResolvedEndpoint a, ResolvedEndpoint b, String path, List<ValidationError> errors) {
         Set<UUID> common = new HashSet<>(a.candidateLinkTypeIds());
         common.retainAll(b.candidateLinkTypeIds());
         if (common.isEmpty()) {
             errors.add(new ValidationError(path,
                     "No link connects perspective '%s' to perspective '%s'".formatted(a.perspectiveName(), b.perspectiveName())));
-            return Optional.empty();
-        }
-        if (common.size() > 1) {
-            errors.add(new ValidationError(path,
-                    "Ambiguous link: multiple link types connect perspective '%s' to perspective '%s'".formatted(a.perspectiveName(), b.perspectiveName())));
             return Optional.empty();
         }
         return Optional.of(common.iterator().next());

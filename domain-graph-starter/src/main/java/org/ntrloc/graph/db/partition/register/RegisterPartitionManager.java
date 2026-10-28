@@ -2265,7 +2265,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                     return cleaned;
                 }
             } catch (Exception e) {
-                LOG.warn("Display label pattern \"{}\" failed to evaluate for item {}: {}", pattern, itemId, e.getMessage());
+                LOG.info("Display label pattern \"{}\" failed to evaluate for item {}: {}", pattern, itemId, e.getMessage());
             }
         }
         // No pattern anywhere in the chain, evaluation failed, or the cleaned result was empty --

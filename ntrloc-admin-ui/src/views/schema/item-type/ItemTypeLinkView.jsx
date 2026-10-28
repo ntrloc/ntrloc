@@ -146,6 +146,7 @@ function ItemTypeLinkView({
             </div>
           }
           onSelectTrait={onSelectTrait}
+          onSelectItemType={onSelectItemType}
           deletion={editing ? propertyEditing.deletion : undefined}
           onEdit={editing ? propertyEditing.onEdit : undefined}
           onAddProperty={editing ? (parentId) => propertyEditing.onAddProperty(parentId ?? link.linkId) : undefined}

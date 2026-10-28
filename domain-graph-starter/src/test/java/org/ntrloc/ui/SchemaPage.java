@@ -67,6 +67,23 @@ class SchemaPage {
         return awaitHeading(name);
     }
 
+    /** Opens the New Trait dialog from the sidebar. */
+    SchemaPage startNewTrait() {
+        return openEditor(driver.findElement(By.xpath("//schema-traits-view/button[.='New Trait']")));
+    }
+
+    /** Adds a new trait through the New Trait dialog, and waits for it to open. */
+    SchemaPage newTrait(String name) {
+        startNewTrait().typeInPropertyEditor("Name", name).closePropertyEditor("Add");
+        return awaitHeading(name);
+    }
+
+    /** The traits the sidebar marks as having unsaved changes. */
+    List<String> unsavedTraits() {
+        return texts(driver.findElements(By.xpath(
+                "//button[contains(@class,'schema-traits-list-item')][span[contains(@class,'schema-traits-unsaved')]]")));
+    }
+
     List<String> traitNames() {
         return texts(driver.findElements(By.cssSelector(".schema-traits-list-item")));
     }
@@ -163,7 +180,7 @@ class SchemaPage {
     Map<String, String> itemTypeOverview() {
         return settled(() -> {
             Map<String, String> fields = new LinkedHashMap<>();
-            for (WebElement field : card("Overview").findElements(By.cssSelector("item-type-overview > *"))) {
+            for (WebElement field : card("Overview").findElements(By.cssSelector("item-type-overview > *, trait-overview > *"))) {
                 fields.put(text(field.findElement(By.cssSelector(".input-control-name"))), fieldValue(field));
             }
             return fields;
@@ -178,6 +195,10 @@ class SchemaPage {
         List<WebElement> switches = field.findElements(By.cssSelector("[role='switch']"));
         if (!switches.isEmpty()) {
             return "true".equals(switches.getFirst().getDomAttribute("aria-checked")) ? "Yes" : "No";
+        }
+        List<WebElement> links = field.findElements(By.cssSelector(".entity-overview-link"));
+        if (!links.isEmpty()) {
+            return String.join(", ", texts(links));
         }
         return text(field.findElement(By.cssSelector(".input-control-value, .popover-button-value, .popover-button-trigger-label")));
     }
@@ -205,8 +226,8 @@ class SchemaPage {
         return this;
     }
 
-    /** Cancels a new item type, which closes it: nothing is left to show. */
-    SchemaPage cancelNewItemType() {
+    /** Cancels a new item type or trait, which closes it: nothing is left to show. */
+    SchemaPage cancelDraft() {
         footerButton("Cancel").click();
         await().until(d -> d.findElements(By.cssSelector("schema-view-content h2")).isEmpty());
         return this;
@@ -363,7 +384,7 @@ class SchemaPage {
 
     /** Properties with edits not yet saved. */
     List<String> editedProperties() {
-        return card("Properties").findElements(By.cssSelector("tr[data-edited] td:nth-child(1)")).stream()
+        return card("Properties").findElements(By.cssSelector("tr[data-edited] .property-tree-name")).stream()
                 .map(SchemaPage::text)
                 .toList();
     }
@@ -433,7 +454,7 @@ class SchemaPage {
     }
 
     List<String> propertiesMarkedForDelete() {
-        return card("Properties").findElements(By.cssSelector("tr[data-marked-for-delete] td:nth-child(1)")).stream()
+        return card("Properties").findElements(By.cssSelector("tr[data-marked-for-delete] .property-tree-name")).stream()
                 .map(SchemaPage::text)
                 .toList();
     }
@@ -471,15 +492,9 @@ class SchemaPage {
         return this;
     }
 
-    /** The trait's Overview tab's rows, label to value. */
-    Map<String, String> overview() {
-        return settled(() -> {
-            Map<String, String> rows = new LinkedHashMap<>();
-            for (WebElement row : content().findElements(By.cssSelector(".entity-overview-row"))) {
-                rows.put(text(row.findElement(By.tagName("dt"))), text(row.findElement(By.tagName("dd"))));
-            }
-            return rows;
-        });
+    /** The item types a trait's Overview lists as implementing it. */
+    List<String> traitImplementers() {
+        return settled(() -> texts(card("Overview").findElements(By.cssSelector(".entity-overview-link"))));
     }
 
     /** Follows one of a trait's Overview links to an item type that implements it. */
@@ -494,8 +509,9 @@ class SchemaPage {
     /**
      * The property tree in reading order, for an item type's Properties card or a trait's Properties
      * tab: each property as its Name, Description, and Type; each group as "Group " and its path from
-     * the top level, e.g. "Group publication > publisher", with " (trait)" for a trait's; and any
-     * "No properties yet." or "No matching properties." message.
+     * the top level, e.g. "Group publication > publisher"; and any "No properties yet." or "No
+     * matching properties." message. Anything inherited has its marker after its name, e.g.
+     * "trackingCode (trait)".
      */
     List<List<String>> propertyRows() {
         return propertyRows(propertyTable());
@@ -503,12 +519,12 @@ class SchemaPage {
 
     /** Just the properties' names, in reading order. */
     List<String> propertyNames() {
-        return texts(propertyTable().findElements(By.cssSelector("table.property-tree-table tbody tr td:nth-child(1)")));
+        return texts(propertyTable().findElements(By.cssSelector("table.property-tree-table tbody tr .property-tree-name")));
     }
 
-    /** Opens a trait from the "(trait)" link on its group in the Properties card. */
+    /** Opens a trait from the "(trait)" link on one of its properties or groups in the Properties card. */
     SchemaPage followTraitLink(String traitName) {
-        card("Properties").findElement(By.cssSelector("button.property-tree-trait-link[aria-label='Open trait " + traitName + "']")).click();
+        card("Properties").findElements(By.cssSelector("button.property-tree-trait-link[aria-label='Open trait " + traitName + "']")).getFirst().click();
         return awaitHeading(traitName);
     }
 
@@ -525,12 +541,20 @@ class SchemaPage {
             case "section" -> {
                 List<String> path = texts(row.findElements(By.xpath(
                         "ancestor-or-self::section[contains(@class,'property-tree-group')]/header//span[contains(@class,'property-tree-group-name')]")));
-                boolean trait = !row.findElements(By.cssSelector(":scope > header .property-tree-group-kind")).isEmpty();
-                yield List.of("Group " + String.join(" > ", path) + (trait ? " (trait)" : ""));
+                yield List.of("Group " + String.join(" > ", path) + sourceSuffix(row.findElements(By.cssSelector(":scope > header .property-tree-source"))));
             }
             case "p" -> List.of(text(row));
-            default -> texts(row.findElements(By.tagName("td"))).subList(0, 3);
+            default -> {
+                List<WebElement> cells = row.findElements(By.tagName("td"));
+                String name = text(cells.get(0).findElement(By.className("property-tree-name")))
+                        + sourceSuffix(cells.get(0).findElements(By.className("property-tree-source")));
+                yield List.of(name, text(cells.get(1)), text(cells.get(2)));
+            }
         };
+    }
+
+    private static String sourceSuffix(List<WebElement> marker) {
+        return marker.isEmpty() ? "" : " " + text(marker.getFirst());
     }
 
     SchemaPage toggleGroup(String name) {
@@ -647,11 +671,6 @@ class SchemaPage {
         card.findElement(By.cssSelector(".item-type-link-properties-toggle")).click();
     }
 
-    /** A trait's Links tab: just the perspective names. */
-    List<String> linkNames() {
-        return texts(content().findElements(By.cssSelector("ul.link-list li")));
-    }
-
     List<String> stateMachineNames() {
         return texts(content().findElements(By.cssSelector(".item-type-state-machine-name")));
     }
@@ -704,7 +723,7 @@ class SchemaPage {
     }
 
     private List<WebElement> footerButtons(String label) {
-        return content().findElements(By.xpath(".//item-type-structure-footer//button[.='" + label + "']"));
+        return content().findElements(By.xpath(".//schema-edit-footer//button[.='" + label + "']"));
     }
 
     static List<String> texts(List<WebElement> elements) {

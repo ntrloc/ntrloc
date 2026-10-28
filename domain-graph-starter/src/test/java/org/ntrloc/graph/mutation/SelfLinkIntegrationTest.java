@@ -24,10 +24,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 // Covers the family-tree scenario that motivated dropping schema_entity_link_perspective's old
 // UNIQUE(entity_id, link_definition_id): Alice is the mother of Bob and Charlie (an asymmetric
 // self-link, two differently-named perspectives on Person), and Bob and Charlie are siblings of
-// each other (a symmetric self-link, two identically-named perspectives on Person). Also covers
-// SchemaMutationValidation.requireConsistentPerspectiveTarget, the guardrail that replaced the
-// dropped constraint: a perspective name must resolve to the same target across every link
-// definition that uses it for a given entity.
+// each other (a symmetric self-link, two identically-named perspectives on Person -- the one case
+// where a perspective name may appear twice on a type, since both are ends of the same link). Also
+// covers SchemaMutationValidation.requirePerspectiveNameAvailable: otherwise a perspective name
+// appears once per item type.
 class SelfLinkIntegrationTest extends AbstractIntegrationTest {
 
     // Not static/final: needs a real, backed security_user row now that ledger_entry.created_by
@@ -98,14 +98,14 @@ class SelfLinkIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void perspectiveName_reusedForADifferentTargetOnTheSameEntity_throws() {
+    void perspectiveName_usedTwiceOnTheSameItemTypeByDifferentLinks_throws() {
         UUID otherTypeId = createOtherItemType();
 
         assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
                 new CreatePerspectiveDefinitionMutation(fixture.personTypeId(), "mother", "d", 0, 1),
                 new CreatePerspectiveDefinitionMutation(otherTypeId, "child", "d", 0, null))))))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("already targets a different type");
+                .hasMessageContaining("is already a link perspective");
     }
 
     private UUID createOtherItemType() {

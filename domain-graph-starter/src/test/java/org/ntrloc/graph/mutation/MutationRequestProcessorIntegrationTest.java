@@ -50,7 +50,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 // item-create/update/delete and link-create happy/error paths extensively; this class targets
 // specifically what jacoco showed as still uncovered: a null items/links request, a null
 // principal, the LinkUpdateMutation/LinkDeleteMutation top-level dispatch, an unknown perspective
-// name, resolveLinkTypeId's "no common link"/"ambiguous link" branches (neither reachable via
+// name, resolveLinkTypeId's "no common link" branch (not reachable via
 // CoordinatorTestDomainInitializer's single-link fixture -- see
 // MutationRequestProcessorTestDomainInitializer's own comment for why a second fixture was
 // needed), the null-properties and null-property-value ("clear this property") branches, and the
@@ -211,7 +211,7 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
                         .anyMatch(err -> err.path().equals("links[0].firstItem.perspectiveName")));
     }
 
-    // --- resolveLinkTypeId: no common link type / ambiguous link type ---
+    // --- resolveLinkTypeId: no common link type ---
 
     @Test
     void linkCreateMutation_betweenPerspectivesThatShareNoLinkType_reportsAValidationError() {
@@ -226,21 +226,6 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
                 .isInstanceOf(MutationValidationException.class)
                 .satisfies(e -> assertThat(((MutationValidationException) e).errors())
                         .anyMatch(err -> err.message().contains("No link connects")));
-    }
-
-    @Test
-    void linkCreateMutation_betweenPerspectivesConnectedByMultipleLinkTypes_reportsAValidationError() {
-        UUID aId = createItem("MutReqProcA");
-        UUID bId = createItem("MutReqProcB");
-
-        assertThatThrownBy(() -> processor.process(new MutationRequest(List.of(), List.of(
-                new LinkCreateMutation(
-                        new LinkEndpointReference("toB", new ExistingItemReference(aId)),
-                        new LinkEndpointReference("fromA", new ExistingItemReference(bId)),
-                        Map.of()))), SOME_PRINCIPAL))
-                .isInstanceOf(MutationValidationException.class)
-                .satisfies(e -> assertThat(((MutationValidationException) e).errors())
-                        .anyMatch(err -> err.message().contains("Ambiguous link")));
     }
 
     // --- resolvePropertyIds: null properties map, null property value ---

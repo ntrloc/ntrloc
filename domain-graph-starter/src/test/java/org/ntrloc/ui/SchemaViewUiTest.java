@@ -90,8 +90,8 @@ class SchemaViewUiTest extends AbstractUiIntegrationTest {
     void traitLinksLeadBetweenAnItemTypeAndItsTraits() {
         schema.selectItemType(BOOK_TYPE).followTraitLink(TRACKED_TRAIT);
 
-        assertThat(schema.tabs()).containsExactly("Overview", "Properties", "Links");
-        assertThat(schema.overview()).containsEntry("Implemented by", BOOK_TYPE);
+        assertThat(schema.structureCards()).containsExactly("Overview", "Properties", "Links");
+        assertThat(schema.traitImplementers()).containsExactly(BOOK_TYPE);
 
         // Each selection is its own history entry.
         driver.navigate().back();
@@ -117,12 +117,11 @@ class SchemaViewUiTest extends AbstractUiIntegrationTest {
                 List.of("keywords", "Search keywords", "String Set (optional)"),
                 List.of("pages", "Number of pages", "Integer (optional)"),
                 List.of("title", "The book's title", "String (required)"),
+                List.of("trackingCode (trait)", "Internal tracking code", "String (optional)"),
                 List.of("Group publication"),
                 List.of("year", "Year first published", "Integer (optional)"),
                 List.of("Group publication > publisher"),
-                List.of("name", "Publisher's name", "String (optional)"),
-                List.of("Group " + TRACKED_TRAIT + " (trait)"),
-                List.of("trackingCode", "Internal tracking code", "String (optional)"));
+                List.of("name", "Publisher's name", "String (optional)"));
     }
 
     @Test
@@ -133,7 +132,7 @@ class SchemaViewUiTest extends AbstractUiIntegrationTest {
         assertThat(schema.propertyNames()).containsExactly("keywords", "pages", "title", "trackingCode");
 
         schema.toggleGroup("publication");
-        assertThat(schema.propertyNames()).containsExactly("keywords", "pages", "title", "year", "name", "trackingCode");
+        assertThat(schema.propertyNames()).containsExactly("keywords", "pages", "title", "trackingCode", "year", "name");
     }
 
     @Test
@@ -173,11 +172,10 @@ class SchemaViewUiTest extends AbstractUiIntegrationTest {
 
     @Test
     void aTraitShowsItsOwnPropertiesAndLinks() {
-        schema.openSection("Traits").selectTrait(TRACKED_TRAIT).openTab("Properties");
+        schema.openSection("Traits").selectTrait(TRACKED_TRAIT);
 
         assertThat(schema.propertyRows()).containsExactly(List.of("trackingCode", "Internal tracking code", "String (optional)"));
-        schema.openTab("Links");
-        assertThat(schema.tabText()).isEqualTo("No links yet.");
+        assertThat(schema.cardText("Links")).isEqualTo("No links yet.");
     }
 
     @Test

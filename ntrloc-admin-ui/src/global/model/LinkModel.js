@@ -1,26 +1,17 @@
 import { useSchemaSnapshot } from './SchemaCache'
-import { toPropertyTree } from './propertyTreeShaping'
+import { toPropertyTree, toSource } from './propertyTreeShaping'
 
-// Every link is really two perspectives (one on each side) sharing a linkId -- this item type's own
-// side is right there in its own links map, but the *reverse* perspective's own name/cardinality
-// only exists on the target item type's own links map. Found by scanning it for whichever entry
-// shares this perspective's linkId but isn't this exact perspective (id differs) -- the id check is
-// what keeps a self-link (an item type linking to its own kind) from matching itself as its own
-// reverse. Only the first target is resolved for now -- a link naming more than one possible target
-// type is a real (if rarer) case this doesn't yet have a diagram for.
-// Where an inherited link comes from -- { kind: 'trait' | 'supertype', id, name } -- found by name,
-// which is all the server's definedIn carries.
-function toSource(adminSchema, definedIn) {
-  const kind = definedIn.entityType
-  const candidates = kind === 'trait' ? adminSchema.traits : adminSchema.items
-  return { kind, id: candidates.find((c) => c.name === definedIn.entityName)?.id ?? null, name: definedIn.entityName }
-}
+// Every link is really two perspectives (one on each side) sharing a linkId -- this item type's (or
+// trait's) own side is right there in its own links map, but the *reverse* perspective's own
+// name/cardinality only exists on the target's own links map. Found by scanning it for whichever
+// entry shares this perspective's linkId but isn't this exact perspective (id differs) -- the id
+// check is what keeps a self-link (an item type linking to its own kind) from matching itself as
+// its own reverse. Only the first target is resolved for now -- a link naming more than one
+// possible target type is a real (if rarer) case this doesn't yet have a diagram for.
+function toLinkDetails(adminSchema, owner) {
+  if (!owner?.links) return []
 
-function toItemTypeLinkDetails(adminSchema, itemTypeId) {
-  const item = adminSchema.items.find((it) => it.id === itemTypeId)
-  if (!item?.links) return []
-
-  return Object.entries(item.links).flatMap(([name, perspectives]) =>
+  return Object.entries(owner.links).flatMap(([name, perspectives]) =>
     perspectives.map((perspective) => {
       const target = perspective.targets[0] ?? null
       // The far end can be a trait as well as an item type.
@@ -64,13 +55,16 @@ function toItemTypeLinkDetails(adminSchema, itemTypeId) {
 // properties, which live right on the container itself.
 function toLinkPropertyTree(adminSchema, linkId) {
   const link = adminSchema.links.find((l) => l.id === linkId)
-  return link ? toPropertyTree(link) : { properties: [], groups: [] }
+  return link ? toPropertyTree(link, adminSchema) : { properties: [], groups: [] }
 }
 
 export function useLinkModel() {
   const schema = useSchemaSnapshot()
   return {
-    getItemTypeLinkDetails: (itemTypeId) => (schema ? toItemTypeLinkDetails(schema, itemTypeId) : []),
+    getItemTypeLinkDetails: (itemTypeId) =>
+      schema ? toLinkDetails(schema, schema.items.find((item) => item.id === itemTypeId)) : [],
+    getTraitLinkDetails: (traitId) =>
+      schema ? toLinkDetails(schema, schema.traits.find((trait) => trait.id === traitId)) : [],
     getLinkPropertyTree: (linkId) =>
       schema ? toLinkPropertyTree(schema, linkId) : { properties: [], groups: [] },
   }

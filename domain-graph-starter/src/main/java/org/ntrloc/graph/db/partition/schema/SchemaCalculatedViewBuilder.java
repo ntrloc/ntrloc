@@ -92,7 +92,7 @@ class SchemaCalculatedViewBuilder {
 
     private List<PropertyGroupDefinitionView> toCalculatedGroups(List<AdminPropertyGroupView> groups) {
         return groups.stream()
-                .map(g -> new PropertyGroupDefinitionView(g.id(), g.name(), g.description(), g.definedIn(), g.traitNamespace(),
+                .map(g -> new PropertyGroupDefinitionView(g.id(), g.name(), g.description(), g.definedIn(),
                         toCalculatedProperties(g.properties()), toCalculatedGroups(g.groups())))
                 .toList();
     }
@@ -122,7 +122,7 @@ class SchemaCalculatedViewBuilder {
                 .map(traitId -> {
                     var trait = ctx.traitById().get(traitId);
                     var definedIn = new DefinedInView(SchemaContentResolver.ENTITY_KIND_TRAIT, trait.name());
-                    return SchemaContentResolver.namespaced(trait.name(), buildPerspectiveViews(trait.id(), ctx, definedIn));
+                    return buildPerspectiveViews(trait.id(), ctx, definedIn);
                 })
                 .filter(m -> m != null && !m.isEmpty())
                 .reduce(new LinkedHashMap<>(), (acc, m) -> { acc.putAll(m); return acc; });

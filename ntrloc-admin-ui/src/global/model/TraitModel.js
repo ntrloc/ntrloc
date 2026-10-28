@@ -27,22 +27,7 @@ function toTraitDetail(adminSchema, traitId) {
 
 function toTraitPropertyTree(adminSchema, traitId) {
   const trait = adminSchema.traits.find((t) => t.id === traitId)
-  return trait ? toPropertyTree(trait) : { properties: [], groups: [] }
-}
-
-// Used by the trait editor's own Links tab (still just a plain list there) -- both item types and
-// traits have a links map on the wire, keyed by the link's own perspective name (e.g. "photos",
-// "creator"), null rather than an empty map when there are none. An item type gets a richer view
-// (see LinkModel's toItemTypeLinkDetails); a trait isn't one specific item type, so a trait's own
-// link entry has no single concrete "other side" to diagram the way an item type's does.
-function toLinkNames(container) {
-  if (!container.links) return []
-  return Object.keys(container.links).map((name) => ({ name }))
-}
-
-function toTraitLinks(adminSchema, traitId) {
-  const trait = adminSchema.traits.find((t) => t.id === traitId)
-  return trait ? toLinkNames(trait) : []
+  return trait ? toPropertyTree(trait, adminSchema) : { properties: [], groups: [] }
 }
 
 export function useTraitModel() {
@@ -52,6 +37,5 @@ export function useTraitModel() {
     getTrait: (traitId) => (schema ? toTraitDetail(schema, traitId) : null),
     getTraitPropertyTree: (traitId) =>
       schema ? toTraitPropertyTree(schema, traitId) : { properties: [], groups: [] },
-    getTraitLinks: (traitId) => (schema ? toTraitLinks(schema, traitId) : []),
   }
 }

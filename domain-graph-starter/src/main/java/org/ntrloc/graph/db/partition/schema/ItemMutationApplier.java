@@ -15,7 +15,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 // Applies item-definition mutations -- split out of SchemaManager (see its own history) to keep
 // each mutation-family applier's own dependency footprint small.
@@ -39,10 +38,10 @@ class ItemMutationApplier {
     // a private method per mutation type removes that outer nesting layer -- each handler's own
     // complexity is far lower in isolation (worst case 4), and this method is now just a sequence
     // of flat, unnested checks.
-    // refIdToItemTypeId: a created item type's id, by its refId, for later mutations in the batch.
-    boolean apply(DefinitionMutation mutation, Map<String, UUID> refIdToItemTypeId) {
+    // refIdToEntityId: a created item type's (or trait's) id, by its refId, for later mutations in the batch.
+    boolean apply(DefinitionMutation mutation, Map<String, UUID> refIdToEntityId) {
         switch (mutation) {
-            case CreateItemDefinitionMutation m -> applyCreate(m, refIdToItemTypeId);
+            case CreateItemDefinitionMutation m -> applyCreate(m, refIdToEntityId);
             case UpdateItemDefinitionMutation m -> applyUpdate(m);
             case DeleteItemDefinitionMutation m -> applyDelete(m);
             case ExpectItemDefinitionMutation m -> applyExpect(m);
@@ -53,19 +52,15 @@ class ItemMutationApplier {
         return true;
     }
 
-    private void applyCreate(CreateItemDefinitionMutation m, Map<String, UUID> refIdToItemTypeId) {
+    private void applyCreate(CreateItemDefinitionMutation m, Map<String, UUID> refIdToEntityId) {
         if (m.supertypeId() != null) {
             SchemaMutationValidation.requireKnownItem(repo, m.supertypeId());
         }
-        // Everything the new item type will own at the top level -- properties, groups, and the names
-        // of the traits it implements -- checked against its supertype chain before anything is
-        // written, so a failure leaves no half-built item behind.
+        // Everything the new item type will own at the top level -- its own properties and groups, and
+        // whatever the traits it implements bring -- checked before anything is written, so a failure
+        // leaves no half-built item behind.
         Set<String> ownNames = PropertyMutationApplier.topLevelNames(m.properties(), m.groups());
-        Set<String> traitNames = repo.getAllTraits().stream()
-                .filter(t -> m.traitIds().contains(t.id()))
-                .map(SchemaRepository.TraitRow::name)
-                .collect(Collectors.toSet());
-        SchemaMutationValidation.requireNamesAvailableUnderSupertype(repo, m.supertypeId(), ownNames, traitNames);
+        SchemaMutationValidation.requireNamesAvailableForNewItemType(repo, m.supertypeId(), ownNames, m.traitIds());
         var item = repo.createItem(m.name(), m.description(), m.supertypeId(), m.abstractType(), m.displayLabelPattern());
         propertyMutationApplier.createContents(new SchemaRepository.PropertyOwnerRef(PropertyContainerKind.ITEM, item.id()),
                 m.properties(), m.groups(), "item type '" + m.name() + "'");
@@ -73,7 +68,7 @@ class ItemMutationApplier {
             repo.implementTrait(item.id(), traitId);
         }
         if (m.refId() != null) {
-            refIdToItemTypeId.put(m.refId(), item.id());
+            refIdToEntityId.put(m.refId(), item.id());
         }
         eventPublisher.publishEvent(new SchemaChangeEvent.ItemTypeCreated(item.id()));
     }

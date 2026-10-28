@@ -4,20 +4,14 @@ trait-detail-view {
   gap: 16px;
   min-height: 0;
   min-width: 0;
-
-  /* Sizing of trait-detail-view's own child lives here since it's the container -- TabView stays
-     agnostic about whatever context it's placed in (same convention as Accordion). */
-  tab-view {
-    flex: 1;
-    min-height: 0;
-    min-width: 0;
-  }
 }
 
+/* Matches item-type-detail-header. */
 trait-detail-header {
   display: flex;
   align-items: baseline;
   gap: 12px;
+  margin: 10px;
 }
 
 trait-detail-header h2 {
@@ -26,4 +20,19 @@ trait-detail-header h2 {
 
 .trait-detail-description {
   color: var(--text);
+}
+
+/* Scrolls on its own, laid out like an item type's Structure cards, while the footer stays put below. */
+trait-detail-cards {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 20px;
+}
+
+trait-detail-cards collapsible-card-actions filter-view {
+  width: 240px;
 }

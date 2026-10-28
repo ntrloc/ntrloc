@@ -168,6 +168,20 @@ public class SchemaRepository {
         return new TraitRow(traitId, name, description);
     }
 
+    public void updateTrait(UUID id, String name, String description) {
+        jdbcClient.sql("UPDATE schema_trait SET name = :name, description = :description WHERE id = :id")
+                .param("id", id).param("name", name).param(PARAM_DESCRIPTION, description)
+                .update();
+    }
+
+    // The trait's row, locked until the transaction ends -- see lockItem.
+    public Optional<TraitRow> lockTrait(UUID id) {
+        return jdbcClient.sql("SELECT id, name, description FROM schema_trait WHERE id = :id FOR UPDATE")
+                .param("id", id)
+                .query((rs, _) -> new TraitRow(rs.getObject("id", UUID.class), rs.getString("name"), rs.getString(PARAM_DESCRIPTION)))
+                .optional();
+    }
+
     public void deleteTrait(UUID id) {
         jdbcClient.sql("DELETE FROM schema_trait WHERE id = :id").param("id", id).update();
     }
@@ -470,20 +484,6 @@ public class SchemaRepository {
     public List<PerspectiveRow> findInversePerspectives(UUID linkId, UUID perspectiveId) {
         return jdbcClient.sql("SELECT * FROM schema_entity_link_perspective WHERE link_definition_id = :linkId AND id != :perspectiveId")
                 .param(PARAM_LINK_ID, linkId).param("perspectiveId", perspectiveId)
-                .query(this::mapPerspective)
-                .list();
-    }
-
-    // Used by SchemaMutationValidation.requireConsistentPerspectiveTarget -- excludeLinkId lets
-    // the caller ignore rows belonging to the link definition currently being created, whose own
-    // perspectives are each other's target by construction and shouldn't be compared against
-    // themselves via this lookup.
-    public List<PerspectiveRow> findPerspectivesByEntityAndName(UUID entityId, String name, UUID excludeLinkId) {
-        return jdbcClient.sql("""
-                SELECT * FROM schema_entity_link_perspective
-                WHERE entity_id = :entityId AND name = :name AND link_definition_id != :excludeLinkId
-                """)
-                .param("entityId", entityId).param("name", name).param("excludeLinkId", excludeLinkId)
                 .query(this::mapPerspective)
                 .list();
     }

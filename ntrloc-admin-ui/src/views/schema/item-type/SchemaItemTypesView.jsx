@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import Button from '../../../controls/button/Button'
-import NewItemTypeDialog from './NewItemTypeDialog'
+import NewDefinitionDialog from '../NewDefinitionDialog'
 import { useSchemaItemTypesViewModel } from './SchemaItemTypesViewModel'
 import './SchemaItemTypesView.css'
 
@@ -14,7 +14,8 @@ function SchemaItemTypesView({ selectedItemTypeId, onSelectItemType, dirtyItemTy
     <schema-item-types-view>
       <Button onClick={() => setCreating(true)}>New Item Type</Button>
       {creating && (
-        <NewItemTypeDialog
+        <NewDefinitionDialog
+          noun="item type"
           nameTaken={nameTaken}
           onAdd={(name) => {
             setCreating(false)

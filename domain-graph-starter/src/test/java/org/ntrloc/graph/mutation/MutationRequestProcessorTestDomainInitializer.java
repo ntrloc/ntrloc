@@ -26,11 +26,9 @@ import java.util.UUID;
 //  - A property of every scalar type MutationRequestProcessor's validateScalar() switches on
 //    (CoordinatorTestDomainInitializer only has STRING/DATE), to reach the BINARY-rejection and
 //    LONG/DOUBLE/DATETIME branches.
-//  - Two link definitions sharing the *same* perspective-name pair between A and B (link1, link2)
-//    -- resolveLinkTypeId's "ambiguous" branch (multiple link types connect the same perspective
-//    pair) needs a genuine second candidate, which no single-link fixture can ever produce -- plus
-//    a third, disjoint item type C with its own self-contained link (link3, sharing no perspective
-//    name with A/B at all) to reach the "no common link" branch the opposite way.
+//  - A link between A and B (link1), plus a disjoint item type C with its own self-contained link
+//    (link3, sharing no perspective name with A/B at all) to reach resolveLinkTypeId's "no common
+//    link" branch.
 @Component
 @ConditionalOnProperty(prefix = "graph.security", name = "seed-test-data", havingValue = "true")
 public class MutationRequestProcessorTestDomainInitializer implements DomainInitializer, ApplicationRunner {
@@ -88,25 +86,17 @@ public class MutationRequestProcessorTestDomainInitializer implements DomainInit
                 "MutReqProcD", "MutationRequestProcessor test fixture", List.of(), null, false, null)));
         dTypeId = findItem("MutReqProcD").id();
 
-        // link1 and link2: two distinct link types both using the perspective-name pair
-        // ("toB" on A, "fromA" on B) -- A.toB and B.fromA each end up with TWO candidate link
-        // types, so connecting them is genuinely ambiguous (resolveLinkTypeId's own comment).
-        schemaManager.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
-                new CreatePerspectiveDefinitionMutation(aTypeId, "toB", "d", 0, null),
-                new CreatePerspectiveDefinitionMutation(bTypeId, "fromA", "d", 0, null)))));
+        // link1: "toB" on A, "fromA" on B.
         schemaManager.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
                 new CreatePerspectiveDefinitionMutation(aTypeId, "toB", "d", 0, null),
                 new CreatePerspectiveDefinitionMutation(bTypeId, "fromA", "d", 0, null)))));
 
-        // link3: connects C and D, sharing no perspective name with A/B's link1/link2 at all --
-        // connecting A.toB to C.onlyC has zero candidate link types in common (the opposite
-        // failure mode from link1/link2's ambiguity). Deliberately two distinct item types rather
-        // than a self-link on C, purely to keep this fixture's naming simple -- self-links are
-        // supported (see SelfLinkIntegrationTest).
+        // link3: connects C and D, sharing no perspective name with A/B's link1 at all -- connecting
+        // A.toB to C.onlyC has zero candidate link types in common. Deliberately two distinct item
+        // types rather than a self-link on C, purely to keep this fixture's naming simple --
+        // self-links are supported (see SelfLinkIntegrationTest).
         //
-        // link1/link2 (above) deliberately can't be created via a normal LinkCreateMutation --
-        // A.toB/B.fromA is ambiguous by construction. link3 (C<->D) is the only unambiguous link in
-        // this fixture, so it's the one that carries the property-group test coverage: a group
+        // link3 carries the property-group test coverage: a group
         // "linkExtra" whose leaf name ("nested") deliberately collides with MutReqProcA's own
         // "extra.nested" leaf -- same group-scoped-resolution proof, now crossing the item/link
         // boundary.

@@ -110,7 +110,7 @@ public class SchemaManager {
     // SetPropertyControlledListMutation later in the *same* batch can reference that same create by
     // its own refId (NewControlledListReference) rather than needing two separate round trips --
     // refIdToListId is what makes that resolution possible, built up as the batch is walked;
-    // refIdToItemTypeId does the same for a link to an item type created earlier in the batch.
+    // refIdToEntityId does the same for a link to an item type or trait created earlier in the batch.
     //
     // The batch is all-or-nothing: one transaction covers every mutation, including the register
     // tables, grants and pipelines the SchemaChangeEvent listeners create along the way. The cache
@@ -118,10 +118,10 @@ public class SchemaManager {
     public List<ControlledListMutationResult> applyMutations(List<DefinitionMutation> mutations) {
         List<ControlledListMutationResult> results = transactionTemplate.execute(_ -> {
             Map<String, UUID> refIdToListId = new HashMap<>();
-            Map<String, UUID> refIdToItemTypeId = new HashMap<>();
+            Map<String, UUID> refIdToEntityId = new HashMap<>();
             List<ControlledListMutationResult> applied = new ArrayList<>();
             for (DefinitionMutation mutation : mutations) {
-                applyMutation(mutation, refIdToListId, refIdToItemTypeId, applied);
+                applyMutation(mutation, refIdToListId, refIdToEntityId, applied);
             }
             return applied;
         });
@@ -143,12 +143,12 @@ public class SchemaManager {
     // Dispatches to one applier per mutation family (item, trait, property, link, state machine)
     // -- see those classes' own history for why this isn't one flat if-instanceof chain over all
     // ~25 DefinitionMutation subtypes (that alone drove this class's dependency count sky-high).
-    private void applyMutation(DefinitionMutation mutation, Map<String, UUID> refIdToListId, Map<String, UUID> refIdToItemTypeId,
+    private void applyMutation(DefinitionMutation mutation, Map<String, UUID> refIdToListId, Map<String, UUID> refIdToEntityId,
                                List<ControlledListMutationResult> results) {
-        if (itemMutationApplier.apply(mutation, refIdToItemTypeId)) return;
-        if (traitMutationApplier.apply(mutation)) return;
+        if (itemMutationApplier.apply(mutation, refIdToEntityId)) return;
+        if (traitMutationApplier.apply(mutation, refIdToEntityId)) return;
         if (propertyMutationApplier.apply(mutation)) return;
-        if (linkMutationApplier.apply(mutation, refIdToItemTypeId)) return;
+        if (linkMutationApplier.apply(mutation, refIdToEntityId)) return;
         if (stateMutationApplier.apply(mutation)) return;
         if (controlledListMutationApplier.apply(mutation, refIdToListId, results)) return;
         if (mutation instanceof ReplaceControlledListMutation m) {

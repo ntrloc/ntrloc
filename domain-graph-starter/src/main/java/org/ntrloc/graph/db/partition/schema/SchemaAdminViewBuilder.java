@@ -168,8 +168,7 @@ class SchemaAdminViewBuilder {
                 .map(traitId -> {
                     var trait = traitById.get(traitId);
                     var definedIn = new DefinedInView(SchemaContentResolver.ENTITY_KIND_TRAIT, trait.name());
-                    return SchemaContentResolver.namespaced(trait.name(),
-                            buildPerspectiveAdminViews(trait.id(), perspectivesByEntity, entityNameMap, itemEntityIds, definedIn));
+                    return buildPerspectiveAdminViews(trait.id(), perspectivesByEntity, entityNameMap, itemEntityIds, definedIn);
                 })
                 .filter(m -> m != null && !m.isEmpty())
                 .reduce(new LinkedHashMap<>(), (acc, m) -> { acc.putAll(m); return acc; });

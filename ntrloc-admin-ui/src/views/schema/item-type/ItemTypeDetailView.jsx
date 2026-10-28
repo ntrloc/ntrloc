@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import Button from '../../../controls/button/Button'
 import Filter from '../../../controls/filter/Filter'
 import IconButton from '../../../controls/icon-button/IconButton'
 import CollapsibleCard from '../../../controls/collapsible-card/CollapsibleCard'
@@ -9,10 +8,8 @@ import ItemTypeOverviewView from './ItemTypeOverviewView'
 import ItemTypeLinksView from './ItemTypeLinksView'
 import ItemTypeStateMachinesView from './ItemTypeStateMachinesView'
 import AccessMarkersView from './AccessMarkersView'
-import ItemTypeConflictsView from './ItemTypeConflictsView'
-import PropertyEditDialog from './PropertyEditDialog'
-import GroupEditDialog from './GroupEditDialog'
-import LinkEditDialog from './LinkEditDialog'
+import EditFooter from './EditFooter'
+import StructureDialogs from './StructureDialogs'
 import { useItemTypeViewModel } from './ItemTypeViewModel'
 import './ItemTypeDetailView.css'
 
@@ -54,6 +51,7 @@ function ItemTypeDetailView({
           tree={vm.propertyTree}
           filter={propertyFilter}
           onSelectTrait={onSelectTrait}
+          onSelectItemType={onSelectItemType}
           deletion={editing ? vm.propertyDeletion : undefined}
           onEdit={editing ? vm.editRow : undefined}
           onAddProperty={editing ? vm.newProperty : undefined}
@@ -103,28 +101,7 @@ function ItemTypeDetailView({
               </CollapsibleCard>
             ))}
           </item-type-structure-cards>
-          <item-type-structure-footer>
-            {vm.conflicts.length > 0 && <ItemTypeConflictsView conflicts={vm.conflicts} />}
-            {vm.saveError && vm.conflicts.length === 0 && (
-              <p className="item-type-save-error" role="alert">
-                {vm.saveError}
-              </p>
-            )}
-            {editing ? (
-              <>
-                <Button variant="ghost-secondary" onClick={vm.cancel} disabled={vm.saving}>
-                  Cancel
-                </Button>
-                <Button variant="secondary" onClick={vm.save} disabled={vm.saving || vm.conflicts.length > 0}>
-                  {vm.saving ? 'Saving…' : 'Save'}
-                </Button>
-              </>
-            ) : (
-              <Button variant="secondary" onClick={vm.startEditing}>
-                Edit
-              </Button>
-            )}
-          </item-type-structure-footer>
+          <EditFooter vm={vm} />
         </item-type-structure>
       ),
       padding: 0,
@@ -150,36 +127,7 @@ function ItemTypeDetailView({
           also survive this whole component unmounting when the sidebar accordion switches to a
           different section and back. */}
       <TabView sections={sections} activeKey={tabKey} onActiveKeyChange={onTabKeyChange} borderStyle="top" />
-      {vm.groupEditor && (
-        <GroupEditDialog
-          group={vm.groupEditor.group}
-          isNew={vm.groupEditor.isNew}
-          onApply={vm.groupEditor.apply}
-          onCancel={vm.groupEditor.cancel}
-        />
-      )}
-      {vm.linkEditor && (
-        <LinkEditDialog
-          isNew={vm.linkEditor.isNew}
-          sourceName={vm.linkEditor.sourceName}
-          targetOptions={vm.linkEditor.targetOptions}
-          targetId={vm.linkEditor.targetId}
-          targetName={vm.linkEditor.targetName}
-          forward={vm.linkEditor.forward}
-          reverse={vm.linkEditor.reverse}
-          onApply={vm.linkEditor.apply}
-          onCancel={vm.linkEditor.cancel}
-        />
-      )}
-      {vm.propertyEditor && (
-        <PropertyEditDialog
-          property={vm.propertyEditor.property}
-          isNew={vm.propertyEditor.isNew}
-          controlledLists={vm.propertyEditor.controlledLists}
-          onApply={vm.propertyEditor.apply}
-          onCancel={vm.propertyEditor.cancel}
-        />
-      )}
+      <StructureDialogs vm={vm} />
     </item-type-detail-view>
   )
 }

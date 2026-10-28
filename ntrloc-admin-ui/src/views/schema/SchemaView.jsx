@@ -20,14 +20,17 @@ function SchemaView() {
     draftNavigation,
     selectedTraitId,
     selectTrait,
+    createTrait,
+    draftTraits,
+    traitDraftNavigation,
     itemTypeTabKey,
     setItemTypeTabKey,
     collapsedStructureCards,
     toggleStructureCard,
     itemTypeViewModels,
     dirtyItemTypeIds,
-    detailTabKey,
-    setDetailTabKey,
+    traitViewModels,
+    dirtyTraitIds,
   } = useSchemaViewModel()
 
   if (status === 'error') return <p className="schema-view-error">Failed to load schema.</p>
@@ -50,7 +53,15 @@ function SchemaView() {
     {
       key: 'traits',
       label: 'Traits',
-      view: <SchemaTraitsView selectedTraitId={selectedTraitId} onSelectTrait={selectTrait} />,
+      view: (
+        <SchemaTraitsView
+          selectedTraitId={selectedTraitId}
+          onSelectTrait={selectTrait}
+          dirtyTraitIds={dirtyTraitIds}
+          drafts={draftTraits}
+          onCreateTrait={createTrait}
+        />
+      ),
     },
     { key: 'controlledLists', label: 'Controlled Lists', view: <SchemaControlledListsView /> },
   ]
@@ -76,11 +87,13 @@ function SchemaView() {
         )}
         {activeSection === 'traits' && selectedTraitId && (
           <TraitDetailView
+            traitViewModels={traitViewModels}
             traitId={selectedTraitId}
             onSelectItemType={selectItemType}
             onSelectTrait={selectTrait}
-            detailTabKey={detailTabKey}
-            onDetailTabKeyChange={setDetailTabKey}
+            draftNavigation={traitDraftNavigation}
+            collapsed={collapsedStructureCards}
+            onToggleCollapsed={toggleStructureCard}
           />
         )}
         {!(

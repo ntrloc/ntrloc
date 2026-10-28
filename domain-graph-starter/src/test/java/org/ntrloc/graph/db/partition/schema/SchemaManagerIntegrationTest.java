@@ -32,6 +32,7 @@ import org.ntrloc.graph.db.partition.schema.definition.mutation.DeleteStateMutat
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DeleteTraitDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DeleteTransitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.ExpectItemDefinitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.ExpectTraitDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.ImplementTraitMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.MovePropertyDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.RemoveTraitMutation;
@@ -43,6 +44,7 @@ import org.ntrloc.graph.db.partition.schema.definition.mutation.UpdatePerspectiv
 import org.ntrloc.graph.db.partition.schema.definition.mutation.UpdatePropertyDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.UpdateStateMachineMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.UpdateStateMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.UpdateTraitDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.UpdateTransitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyDefinitionView;
@@ -142,16 +144,12 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
 
         var adminItem = findItem(itemName);
         assertThat(adminItem.traits()).extracting(t -> t.name()).contains(traitName);
-        // A trait's contributions sit under a namespace group named for the trait, not flat on the item.
-        assertThat(adminItem.properties()).extracting(p -> p.name()).doesNotContain("inheritedProp");
-        assertThat(adminItem.groups()).filteredOn(g -> g.name().equals(traitName)).singleElement().satisfies(g -> {
-            assertThat(g.traitNamespace()).isTrue();
-            assertThat(g.definedIn().entityName()).isEqualTo(traitName);
-            assertThat(g.properties()).extracting(p -> p.name()).containsExactly("inheritedProp");
-        });
-        // Trait-contributed perspectives are namespaced by the trait's name too.
-        assertThat(adminItem.links()).containsKey(traitName + ".reviewers");
-        assertThat(adminItem.links().get(traitName + ".reviewers").get(0).targets())
+        // A trait's contributions sit on the item under their own names, tagged with where they came from.
+        assertThat(adminItem.properties()).filteredOn(p -> p.name().equals("inheritedProp")).singleElement()
+                .satisfies(p -> assertThat(p.definedIn().entityName()).isEqualTo(traitName));
+        assertThat(adminItem.groups()).extracting(g -> g.name()).doesNotContain(traitName);
+        assertThat(adminItem.links()).containsKey("reviewers");
+        assertThat(adminItem.links().get("reviewers").get(0).targets())
                 .extracting(t -> t.kind()).contains("item");
 
         var reviewerAdminItem = findItem(reviewerName);
@@ -160,9 +158,8 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
 
         var calculatedItem = schemaManager.getSchema(ADMIN).items().stream()
                 .filter(i -> i.name().equals(itemName)).findFirst().orElseThrow();
-        assertThat(calculatedItem.groups()).filteredOn(g -> g.name().equals(traitName)).singleElement()
-                .satisfies(g -> assertThat(g.properties()).extracting(p -> p.name()).containsExactly("inheritedProp"));
-        assertThat(calculatedItem.links()).containsKey(traitName + ".reviewers");
+        assertThat(calculatedItem.properties()).extracting(p -> p.name()).contains("inheritedProp");
+        assertThat(calculatedItem.links()).containsKey("reviewers");
     }
 
     @Test
@@ -284,6 +281,48 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
                 new UpdateItemDefinitionMutation(itemId, newName, "d", null, false, null)));
 
         assertThat(findItem(newName).id()).isEqualTo(itemId);
+    }
+
+    @Test
+    void updateTraitDefinitionMutation_afterAMatchingExpectation_renamesAndRedescribesTheTrait() {
+        String name = "Trait-" + UUID.randomUUID();
+        schemaManager.applyMutations(List.of(new CreateTraitDefinitionMutation(name, "d", List.of())));
+        UUID traitId = findTrait(name).id();
+        String newName = "Renamed-" + UUID.randomUUID();
+
+        schemaManager.applyMutations(List.of(
+                new ExpectTraitDefinitionMutation(traitId, name, "d"),
+                new UpdateTraitDefinitionMutation(traitId, newName, "changed")));
+
+        assertThat(findTrait(newName).id()).isEqualTo(traitId);
+        assertThat(findTrait(newName).description()).isEqualTo("changed");
+    }
+
+    @Test
+    void aTraitExpectationAboutAFieldSomeoneElseChanged_rejectsTheWholeBatch() {
+        String name = "Trait-" + UUID.randomUUID();
+        schemaManager.applyMutations(List.of(new CreateTraitDefinitionMutation(name, "d", List.of())));
+        UUID traitId = findTrait(name).id();
+        schemaManager.applyMutations(List.of(new UpdateTraitDefinitionMutation(traitId, name, "changed elsewhere")));
+
+        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(
+                new ExpectTraitDefinitionMutation(traitId, name, "d"),
+                new UpdateTraitDefinitionMutation(traitId, "Renamed-" + UUID.randomUUID(), "d"))))
+                .isInstanceOf(SchemaConflictException.class)
+                .hasMessageContaining("changed by someone else");
+        assertThat(findTrait(name).description()).isEqualTo("changed elsewhere");
+    }
+
+    @Test
+    void aTraitExpectationAboutADeletedTrait_isAConflict() {
+        String name = "Trait-" + UUID.randomUUID();
+        schemaManager.applyMutations(List.of(new CreateTraitDefinitionMutation(name, "d", List.of())));
+        UUID traitId = findTrait(name).id();
+        schemaManager.applyMutations(List.of(new DeleteTraitDefinitionMutation(traitId)));
+
+        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new ExpectTraitDefinitionMutation(traitId, name, null))))
+                .isInstanceOf(SchemaConflictException.class)
+                .hasMessageContaining("deleted");
     }
 
     @Test
@@ -423,7 +462,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         assertThatThrownBy(() -> schemaManager.applyMutations(List.of(
                 new UpdatePerspectiveDefinitionMutation(perspectiveToRename, "existingName", "d", 0, 1))))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("already targets a different type");
+                .hasMessageContaining("is already a link perspective");
     }
 
     // --- Controlled lists ---
@@ -906,7 +945,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
                 vehicleId, false, null))))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("wheels")
-                .hasMessageContaining("collides");
+                .hasMessageContaining("is already a property or group");
     }
 
     @Test
@@ -936,7 +975,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new AddPropertyDefinitionMutation(PropertyContainerKind.ITEM, carId, "wheels", "d", PropertyType.INT, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false))))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("wheels")
-                .hasMessageContaining("collides");
+                .hasMessageContaining("is already a property or group");
     }
 
     @Test
@@ -953,7 +992,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
                 new UpdateItemDefinitionMutation(boatId, boatName, "d", vehicleId, false, null))))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("wheels")
-                .hasMessageContaining("collides");
+                .hasMessageContaining("is already a property or group");
     }
 
     @Test
@@ -973,9 +1012,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         schemaManager.applyMutations(List.of(new ImplementTraitMutation(carId, traitId)));
 
         var car = findItem(carName);
-        assertThat(car.properties()).extracting(p -> p.name()).containsExactlyInAnyOrder("doors", "wheels");
-        assertThat(car.groups()).filteredOn(g -> g.name().equals(traitName)).singleElement()
-                .satisfies(g -> assertThat(g.properties()).extracting(p -> p.name()).containsExactly("insured"));
+        assertThat(car.properties()).extracting(p -> p.name()).containsExactlyInAnyOrder("doors", "wheels", "insured");
     }
 
     @Test
@@ -1025,6 +1062,23 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
+    void createTraitDefinitionMutation_withARefId_canBeLinkedToLaterInTheSameBatch() {
+        String authorName = "Author-" + UUID.randomUUID();
+        UUID authorId = createItem(authorName);
+        String traitName = "Authored-" + UUID.randomUUID();
+
+        schemaManager.applyMutations(List.of(
+                new CreateTraitDefinitionMutation(traitName, "d", List.of(), List.of(), "authored"),
+                new CreateLinkDefinitionMutation(List.of(), List.of(
+                        new CreatePerspectiveDefinitionMutation(null, "writtenBy", "d", 0, null, "authored"),
+                        new CreatePerspectiveDefinitionMutation(authorId, "wrote", "d", 0, null)))));
+
+        assertThat(findTrait(traitName).links()).containsOnlyKeys("writtenBy");
+        assertThat(findTrait(traitName).links().get("writtenBy").getFirst().targets()).extracting(t -> t.name())
+                .containsExactly(authorName);
+    }
+
+    @Test
     void createLinkDefinitionMutation_withAnUnknownItemRefId_throwsAndCreatesNothing() {
         UUID authorId = createItem("Author-" + UUID.randomUUID());
         String bookName = "Book-" + UUID.randomUUID();
@@ -1035,7 +1089,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
                         new CreatePerspectiveDefinitionMutation(null, "writtenBy", "d", 0, null, "no-such-ref"),
                         new CreatePerspectiveDefinitionMutation(authorId, "wrote", "d", 0, null))))))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Unknown item type refId: no-such-ref");
+                .hasMessageContaining("Unknown refId: no-such-ref");
         assertThat(storedItemNames()).doesNotContain(bookName);
     }
 
@@ -1194,7 +1248,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void aTraitsContributions_appearUnderANamespaceGroupNamedForTheTrait_onImplementingItems() {
+    void aTraitsContributions_appearOnImplementingItemsUnderTheirOwnNames() {
         String traitName = "Trait-" + UUID.randomUUID();
         schemaManager.applyMutations(List.of(new CreateTraitDefinitionMutation(traitName, "d", List.of(
                 new CreatePropertyDefinitionMutation("name", "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)))));
@@ -1203,16 +1257,14 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
 
         schemaManager.applyMutations(List.of(new ImplementTraitMutation(itemId, traitId)));
 
-        var namespace = findGroup(itemId, traitName);
-        assertThat(namespace.traitNamespace()).isTrue();
-        assertThat(namespace.definedIn().entityName()).isEqualTo(traitName);
-        assertThat(namespace.properties()).extracting(AdminPropertyDefinitionView::name).containsExactly("name");
-        assertThat(itemView(itemId).properties()).extracting(AdminPropertyDefinitionView::name).doesNotContain("name");
-        assertThat(itemView(itemId).sortableFields()).extracting(f -> f.name()).contains(traitName + ".name");
+        assertThat(itemView(itemId).properties()).filteredOn(p -> p.name().equals("name")).singleElement()
+                .satisfies(p -> assertThat(p.definedIn().entityName()).isEqualTo(traitName));
+        assertThat(itemView(itemId).groups()).isEmpty();
+        assertThat(itemView(itemId).sortableFields()).extracting(f -> f.name()).contains("name").doesNotContain(traitName + ".name");
     }
 
     @Test
-    void aTraitOwnedGroup_isNestedInsideTheTraitNamespace() {
+    void aTraitOwnedGroup_appearsAtTheImplementingItemsTopLevel() {
         String traitName = "Trait-" + UUID.randomUUID();
         schemaManager.applyMutations(List.of(new CreateTraitDefinitionMutation(traitName, "d", List.of())));
         UUID traitId = findTrait(traitName).id();
@@ -1222,8 +1274,8 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
 
         schemaManager.applyMutations(List.of(new ImplementTraitMutation(itemId, traitId)));
 
-        var file = findGroup(itemId, traitName).groups().get(0);
-        assertThat(file.name()).isEqualTo("file");
+        var file = findGroup(itemId, "file");
+        assertThat(file.definedIn().entityName()).isEqualTo(traitName);
         assertThat(file.properties()).extracting(AdminPropertyDefinitionView::name).containsExactly("name");
     }
 
@@ -1275,29 +1327,102 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void addPropertyDefinitionMutation_onAnItemType_cannotShareANameWithAnImplementedTrait() {
+    void addPropertyDefinitionMutation_onAnItemType_cannotShareANameWithAnImplementedTraitsProperty() {
+        UUID traitId = createTraitWithProperty("Trait-" + UUID.randomUUID(), "code");
+        UUID itemId = createItem("Item-" + UUID.randomUUID());
+        schemaManager.applyMutations(List.of(new ImplementTraitMutation(itemId, traitId)));
+
+        assertThatThrownBy(() -> addProperty(ITEM, itemId, "code", PropertyType.STRING))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("'code' is already a property or group");
+    }
+
+    @Test
+    void anItemTypeMayHaveAPropertyNamedForATraitItImplements() {
         String traitName = "Trait-" + UUID.randomUUID();
         schemaManager.applyMutations(List.of(new CreateTraitDefinitionMutation(traitName, "d", List.of())));
         UUID traitId = findTrait(traitName).id();
         UUID itemId = createItem("Item-" + UUID.randomUUID());
         schemaManager.applyMutations(List.of(new ImplementTraitMutation(itemId, traitId)));
 
-        assertThatThrownBy(() -> addProperty(ITEM, itemId, traitName, PropertyType.STRING))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("collides");
+        addProperty(ITEM, itemId, traitName, PropertyType.STRING);
+
+        assertThat(itemView(itemId).properties()).extracting(AdminPropertyDefinitionView::name).contains(traitName);
     }
 
     @Test
-    void implementTraitMutation_whoseNameMatchesAnExistingPropertyOnTheItem_throws() {
+    void addPropertyDefinitionMutation_onATrait_isCheckedAgainstEveryImplementingItemType() {
+        UUID traitId = createTraitWithProperty("Trait-" + UUID.randomUUID(), "code");
+        UUID itemId = createItem("Item-" + UUID.randomUUID());
+        addProperty(ITEM, itemId, "region", PropertyType.STRING);
+        schemaManager.applyMutations(List.of(new ImplementTraitMutation(itemId, traitId)));
+
+        assertThatThrownBy(() -> addProperty(PropertyContainerKind.TRAIT, traitId, "region", PropertyType.STRING))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("'region' is already a property or group on item type");
+    }
+
+    @Test
+    void implementTraitMutation_whenAnotherImplementedTraitHasAPropertyOfTheSameName_throws() {
+        UUID firstTraitId = createTraitWithProperty("Trait-" + UUID.randomUUID(), "code");
+        UUID secondTraitId = createTraitWithProperty("Trait-" + UUID.randomUUID(), "code");
+        UUID itemId = createItem("Item-" + UUID.randomUUID());
+        schemaManager.applyMutations(List.of(new ImplementTraitMutation(itemId, firstTraitId)));
+
+        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new ImplementTraitMutation(itemId, secondTraitId))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("'code' is already a property or group");
+    }
+
+    @Test
+    void aTraitImplementedByBothAnItemTypeAndItsSupertype_contributesItsPropertiesOnce() {
+        UUID traitId = createTraitWithProperty("Trait-" + UUID.randomUUID(), "code");
+        UUID vehicleId = createItem("Item-" + UUID.randomUUID());
+        schemaManager.applyMutations(List.of(new ImplementTraitMutation(vehicleId, traitId)));
+        String carName = "Item-" + UUID.randomUUID();
+        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(), vehicleId, false, null)));
+        UUID carId = findItem(carName).id();
+
+        schemaManager.applyMutations(List.of(new ImplementTraitMutation(carId, traitId)));
+
+        assertThat(findItem(carName).properties()).extracting(p -> p.name()).containsExactly("code");
+    }
+
+    @Test
+    void createLinkDefinitionMutation_onATrait_isCheckedAgainstEveryImplementingItemTypesPerspectives() {
         String traitName = "Trait-" + UUID.randomUUID();
         schemaManager.applyMutations(List.of(new CreateTraitDefinitionMutation(traitName, "d", List.of())));
         UUID traitId = findTrait(traitName).id();
         UUID itemId = createItem("Item-" + UUID.randomUUID());
-        addProperty(ITEM, itemId, traitName, PropertyType.STRING);
+        UUID otherId = createItem("Item-" + UUID.randomUUID());
+        schemaManager.applyMutations(List.of(
+                new ImplementTraitMutation(itemId, traitId),
+                new CreateLinkDefinitionMutation(List.of(), List.of(
+                        new CreatePerspectiveDefinitionMutation(itemId, "related", "d", 0, null),
+                        new CreatePerspectiveDefinitionMutation(otherId, "relatedFrom", "d", 0, null)))));
+
+        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
+                new CreatePerspectiveDefinitionMutation(traitId, "related", "d", 0, null),
+                new CreatePerspectiveDefinitionMutation(otherId, "relatedTrait", "d", 0, null))))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("'related' is already a link perspective");
+    }
+
+    private UUID createTraitWithProperty(String traitName, String propertyName) {
+        schemaManager.applyMutations(List.of(new CreateTraitDefinitionMutation(traitName, "d", List.of(
+                new CreatePropertyDefinitionMutation(propertyName, "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)))));
+        return findTrait(traitName).id();
+    }
+
+    @Test
+    void implementTraitMutation_whosePropertyMatchesAnExistingPropertyOnTheItem_throws() {
+        UUID traitId = createTraitWithProperty("Trait-" + UUID.randomUUID(), "code");
+        UUID itemId = createItem("Item-" + UUID.randomUUID());
+        addProperty(ITEM, itemId, "code", PropertyType.STRING);
 
         assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new ImplementTraitMutation(itemId, traitId))))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("collides");
+                .hasMessageContaining("'code' is already a property or group");
     }
 
     @Test
@@ -1308,7 +1433,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
 
         assertThatThrownBy(() -> addProperty(ITEM, superId, "clash", PropertyType.STRING))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("collides");
+                .hasMessageContaining("is already a property or group");
     }
 
     @Test

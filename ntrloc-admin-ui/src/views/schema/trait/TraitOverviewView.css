@@ -1,0 +1,6 @@
+/* Laid out like an item type's Overview: three to a row. */
+trait-overview {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px 24px;
+}

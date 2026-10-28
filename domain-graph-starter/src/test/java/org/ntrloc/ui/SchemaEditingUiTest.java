@@ -26,6 +26,7 @@ import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminControlle
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyGroupView;
+import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminTraitDefinitionView;
 import org.springframework.beans.factory.annotation.Autowired;
 
 /**
@@ -116,7 +117,7 @@ class SchemaEditingUiTest extends AbstractUiIntegrationTest {
         String name = "UiEditScratch-" + UUID.randomUUID().toString().substring(0, 8);
         schema.newItemType(name).newProperty().typeInPropertyEditor("Name", "note").applyPropertyEditor();
 
-        schema.cancelNewItemType();
+        schema.cancelDraft();
 
         assertThat(schema.itemTypeNames()).doesNotContain(name);
         assertThat(schema.unsavedItemTypes()).isEmpty();
@@ -137,6 +138,117 @@ class SchemaEditingUiTest extends AbstractUiIntegrationTest {
         assertThat(schema.propertyEditorCanApply("Add")).isTrue();
         schema.cancelPropertyEditor();
         assertThat(schema.unsavedItemTypes()).isEmpty();
+    }
+
+    @Test
+    void aNewTraitIsEditedUntilSavedAndThenCreatedWithEverythingOnIt() {
+        String name = "UiEditTagged-" + UUID.randomUUID().toString().substring(0, 8);
+        schema.openSection("Traits").newTrait(name);
+
+        assertThat(schema.overviewEditable()).isTrue();
+        assertThat(schema.itemTypeOverview()).containsEntry("Trait name", name);
+        assertThat(schema.unsavedTraits()).contains(name);
+        assertThat(schemaManager.getAdminSchema().traits()).extracting(AdminTraitDefinitionView::name).doesNotContain(name);
+
+        schema.typeInto("Description", "Made in the UI")
+                .newProperty().typeInPropertyEditor("Name", "tag").applyPropertyEditor();
+        schema.newLink()
+                .chooseInPropertyEditor("Links to", authorType)
+                .typeInLinkEditor(name + " to " + authorType, "Name", "taggedBy")
+                .typeInLinkEditor(authorType + " back to " + name, "Name", "tagged")
+                .applyPropertyEditor();
+        schema.save();
+
+        AdminTraitDefinitionView saved = testData.trait(name);
+        assertThat(saved.description()).isEqualTo("Made in the UI");
+        assertThat(saved.properties()).extracting(AdminPropertyDefinitionView::name).containsExactly("tag");
+        assertThat(saved.links()).containsOnlyKeys("taggedBy");
+        assertThat(testData.itemType(authorType).links()).containsKey("tagged");
+        // Now the saved trait, under its real id.
+        assertThat(driver.getCurrentUrl()).endsWith("/schema/traits/" + saved.id());
+        assertThat(schema.overviewEditable()).isFalse();
+        assertThat(schema.unsavedTraits()).isEmpty();
+    }
+
+    @Test
+    void cancellingANewTraitDiscardsIt() {
+        String name = "UiEditScratchTrait-" + UUID.randomUUID().toString().substring(0, 8);
+        schema.openSection("Traits").newTrait(name).newProperty().typeInPropertyEditor("Name", "note").applyPropertyEditor();
+
+        schema.cancelDraft();
+
+        assertThat(schema.traitNames()).doesNotContain(name);
+        assertThat(schema.unsavedTraits()).isEmpty();
+        assertThat(driver.getCurrentUrl()).endsWith("/schema/traits");
+    }
+
+    @Test
+    void aNewTraitNeedsANameNoOtherTraitHas() {
+        String existing = "UiEditTakenTrait-" + UUID.randomUUID().toString().substring(0, 8);
+        testData.createTrait(existing, List.of());
+        schema.openSection("Traits").startNewTrait();
+        assertThat(schema.propertyEditorTitle()).isEqualTo("New trait");
+        assertThat(schema.propertyEditorCanApply("Add")).isFalse();
+
+        schema.typeInPropertyEditor("Name", existing);
+        assertThat(schema.propertyEditorCanApply("Add")).isFalse();
+        assertThat(schema.propertyEditorError()).isEqualTo("There's already a trait named " + existing + ".");
+
+        schema.typeInPropertyEditor("Name", existing + "-2");
+        assertThat(schema.propertyEditorCanApply("Add")).isTrue();
+        schema.cancelPropertyEditor();
+        assertThat(schema.unsavedTraits()).isEmpty();
+    }
+
+    @Test
+    void aTraitsEditsAreHeldUntilSaveAndThenAppliedTogether() {
+        String traitName = "UiEditTrait-" + UUID.randomUUID().toString().substring(0, 8);
+        testData.createTrait(traitName, List.of(property("code", PropertyType.STRING)));
+        schema.openSection("Traits").selectTrait(traitName).edit();
+
+        schema.typeInto("Description", "Edited in the UI")
+                .toggleDeleteProperty("code")
+                .newProperty().typeInPropertyEditor("Name", "region").applyPropertyEditor();
+        assertThat(schema.unsavedTraits()).containsExactly(traitName);
+        assertThat(testData.trait(traitName).description()).isEqualTo("UI test fixture");
+
+        schema.save();
+
+        AdminTraitDefinitionView saved = testData.trait(traitName);
+        assertThat(saved.description()).isEqualTo("Edited in the UI");
+        assertThat(saved.properties()).extracting(AdminPropertyDefinitionView::name).containsExactly("region");
+        assertThat(schema.unsavedTraits()).isEmpty();
+    }
+
+    @Test
+    void cancellingATraitsEditsPutsEverythingBack() {
+        String traitName = "UiEditTrait-" + UUID.randomUUID().toString().substring(0, 8);
+        testData.createTrait(traitName, List.of(property("code", PropertyType.STRING)));
+        schema.openSection("Traits").selectTrait(traitName).edit()
+                .typeInto("Trait name", traitName + "-renamed")
+                .toggleDeleteProperty("code");
+
+        schema.cancel();
+
+        assertThat(schema.itemTypeOverview()).containsEntry("Trait name", traitName);
+        assertThat(schema.propertiesMarkedForDelete()).isEmpty();
+        assertThat(schema.unsavedTraits()).isEmpty();
+    }
+
+    @Test
+    void aTraitsNewLinkIsCreatedOnSave() {
+        String traitName = "UiEditTrait-" + UUID.randomUUID().toString().substring(0, 8);
+        testData.createTrait(traitName, List.of());
+        String forward = traitName + " to " + authorType;
+        schema.openSection("Traits").selectTrait(traitName).edit().newLink()
+                .chooseInPropertyEditor("Links to", authorType)
+                .typeInLinkEditor(forward, "Name", "reviewers")
+                .typeInLinkEditor(authorType + " back to " + traitName, "Name", "reviews")
+                .applyPropertyEditor()
+                .save();
+
+        assertThat(testData.trait(traitName).links()).containsOnlyKeys("reviewers");
+        assertThat(testData.itemType(authorType).links()).containsKey("reviews");
     }
 
     @Test
@@ -197,7 +309,9 @@ class SchemaEditingUiTest extends AbstractUiIntegrationTest {
         assertThat(schema.propertyNames()).contains("own", "inherited", "code");
         assertThat(schema.deletableProperties()).containsExactly("own");
         assertThat(schema.editableProperties()).containsExactly("own");
-        assertThat(schema.groupActions("UiEditTrait-" + suffix)).isEmpty();
+        assertThat(schema.propertyRows()).contains(
+                List.of("code (trait)", "UI test fixture", "String (optional)"),
+                List.of("inherited (supertype)", "UI test fixture", "String (optional)"));
     }
 
     @Test
@@ -383,7 +497,7 @@ class SchemaEditingUiTest extends AbstractUiIntegrationTest {
                 new CreatePerspectiveDefinitionMutation(testData.itemType(authorType).id(), "citedBy", "UI test fixture", 0, null)))));
         String essayType = "UiEditEssay-" + suffix;
         testData.createItemType(essayType, null, List.of(property("title", PropertyType.STRING)), List.of(), null, false, List.of(traitId));
-        String link = traitName + ".cites";
+        String link = "cites";
 
         schema.selectItemType(essayType).edit();
 

@@ -47,23 +47,6 @@ item-type-structure-cards {
   padding: 20px;
 }
 
-item-type-structure-footer {
-  flex: none;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 10px;
-  padding: 10px;
-}
-
-/* Its own full-width line above the buttons. */
-.item-type-save-error {
-  flex-basis: 100%;
-  margin: 0;
-  text-align: center;
-  color: var(--secondary);
-}
-
 /* The Properties card's filter, in its title bar. */
 item-type-structure-cards collapsible-card-actions filter-view {
   width: 240px;

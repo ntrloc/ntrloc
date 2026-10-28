@@ -15,12 +15,10 @@ import org.springframework.stereotype.Component;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 // Raw-content resolution shared by SchemaAdminViewBuilder and SchemaCalculatedViewBuilder -- split
@@ -161,31 +159,30 @@ class SchemaContentResolver {
     private AdminPropertyGroupView resolveGroup(
             SchemaRepository.GroupRow group,
             Map<UUID, List<AdminPropertyDefinitionView>> propertiesByGroup, Map<UUID, List<SchemaRepository.GroupRow>> groupsByGroup) {
-        return new AdminPropertyGroupView(group.id(), group.name(), group.description(), null, false,
+        return new AdminPropertyGroupView(group.id(), group.name(), group.description(), null,
                 propertiesByGroup.getOrDefault(group.id(), List.of()),
                 groupsByGroup.getOrDefault(group.id(), List.of()).stream()
                         .map(child -> resolveGroup(child, propertiesByGroup, groupsByGroup))
                         .toList());
     }
 
-    // An item's own contents (definedIn = null) plus one namespace group per directly-implemented
-    // trait -- no supertype involvement, used as the per-level building block for
-    // effectiveContents' chain walk. A trait's contributions are addressed under its name
-    // everywhere (projections, mutations, filters, sorts), so they are presented the same way here:
-    // the synthetic group carries the trait's id and name, and the trait's own properties and groups
-    // sit inside it.
+    // An item's own contents (definedIn = null) plus everything its directly-implemented traits
+    // contribute, side by side at the top level and tagged with the trait each came from -- no
+    // supertype involvement, used as the per-level building block for effectiveContents' chain walk.
+    // A trait's members share the item type's one namespace (validation keeps their names from
+    // colliding), so how a type is composed from traits never shows in a property's path.
     Contents ownAndTraitContents(
             ItemRow item, Map<UUID, List<UUID>> traitIdsByItem, OwnerContents ownerContents, Map<UUID, TraitRow> traitById) {
         var own = ownerContents.byItem().getOrDefault(item.id(), Contents.EMPTY);
-        var namespaces = traitIdsByItem.getOrDefault(item.id(), List.of()).stream()
-                .map(traitId -> {
-                    var trait = traitById.get(traitId);
-                    var contents = ownerContents.byTrait().getOrDefault(traitId, Contents.EMPTY);
-                    return new AdminPropertyGroupView(trait.id(), trait.name(), trait.description(),
-                            new DefinedInView(ENTITY_KIND_TRAIT, trait.name()), true, contents.properties(), contents.groups());
-                })
-                .toList();
-        return new Contents(own.properties(), Stream.concat(own.groups().stream(), namespaces.stream()).toList());
+        List<AdminPropertyDefinitionView> properties = new ArrayList<>(own.properties());
+        List<AdminPropertyGroupView> groups = new ArrayList<>(own.groups());
+        for (UUID traitId : traitIdsByItem.getOrDefault(item.id(), List.of())) {
+            var tag = new DefinedInView(ENTITY_KIND_TRAIT, traitById.get(traitId).name());
+            var contents = ownerContents.byTrait().getOrDefault(traitId, Contents.EMPTY);
+            contents.properties().forEach(p -> properties.add(p.withDefinedIn(tag)));
+            contents.groups().forEach(g -> groups.add(g.withDefinedIn(tag)));
+        }
+        return new Contents(List.copyOf(properties), List.copyOf(groups));
     }
 
     // Recursive: own+trait contents, plus the full supertype chain's effective contents walked
@@ -193,7 +190,7 @@ class SchemaContentResolver {
     // if it isn't already tagged (i.e. it's genuinely that ancestor's own, not something *that*
     // ancestor itself inherited from a trait or a further ancestor), so the tag always names the
     // actual originating source, not just the immediate parent. A trait implemented at two levels of
-    // the chain contributes one namespace group, not two.
+    // the chain contributes its members once: anything already present by id is skipped.
     Contents effectiveContents(
             ItemRow item, Map<UUID, ItemRow> itemById, Map<UUID, List<UUID>> traitIdsByItem,
             OwnerContents ownerContents, Map<UUID, TraitRow> traitById) {
@@ -202,30 +199,19 @@ class SchemaContentResolver {
         if (supertype == null) return own;
         var superContents = effectiveContents(supertype, itemById, traitIdsByItem, ownerContents, traitById);
         var tag = new DefinedInView(ENTITY_KIND_SUPERTYPE, supertype.name());
+        Set<UUID> present = new HashSet<>();
+        own.properties().forEach(p -> present.add(p.id()));
+        own.groups().forEach(g -> present.add(g.id()));
         var inheritedProps = superContents.properties().stream()
+                .filter(p -> !present.contains(p.id()))
                 .map(p -> p.definedIn() == null ? p.withDefinedIn(tag) : p)
                 .toList();
-        Set<String> traitNamespacesHeld = own.groups().stream()
-                .filter(AdminPropertyGroupView::traitNamespace)
-                .map(AdminPropertyGroupView::name)
-                .collect(Collectors.toSet());
         var inheritedGroups = superContents.groups().stream()
-                .filter(g -> !(g.traitNamespace() && traitNamespacesHeld.contains(g.name())))
+                .filter(g -> !present.contains(g.id()))
                 .map(g -> g.definedIn() == null ? g.withDefinedIn(tag) : g)
                 .toList();
         return new Contents(
                 Stream.concat(own.properties().stream(), inheritedProps.stream()).toList(),
                 Stream.concat(own.groups().stream(), inheritedGroups.stream()).toList());
-    }
-
-    // A trait's link perspectives are addressed under the trait's name on an item, like its
-    // properties -- "File.attachments", not "attachments" -- so they can never collide with the item
-    // type's own perspectives. Shared here since SchemaAdminViewBuilder and
-    // SchemaCalculatedViewBuilder's own parallel link-building walks both need it identically.
-    static <V> Map<String, List<V>> namespaced(String traitName, Map<String, List<V>> perspectives) {
-        if (perspectives == null) return null;
-        var result = new LinkedHashMap<String, List<V>>();
-        perspectives.forEach((name, list) -> result.put(traitName + "." + name, list));
-        return result;
     }
 }

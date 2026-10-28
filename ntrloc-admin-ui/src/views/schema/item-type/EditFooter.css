@@ -1,0 +1,16 @@
+schema-edit-footer {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  padding: 10px;
+}
+
+/* Its own full-width line above the buttons. */
+.schema-edit-save-error {
+  flex-basis: 100%;
+  margin: 0;
+  text-align: center;
+  color: var(--secondary);
+}

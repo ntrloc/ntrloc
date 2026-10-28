@@ -1,5 +1,6 @@
 package org.ntrloc.graph.db.partition.authorization;
 
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,6 +23,15 @@ class AuthorizationEndpointsIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private WebTestClient webTestClient;
+
+    // The schema holds every fixture of the shared test run, which can outgrow the client's default
+    // 256KB response buffer.
+    @BeforeEach
+    void allowLargeResponses() {
+        webTestClient = webTestClient.mutate()
+                .codecs(codecs -> codecs.defaultCodecs().maxInMemorySize(4 * 1024 * 1024))
+                .build();
+    }
 
     @Test
     void schemaViewShowsOnlyGrantedTypes_forUserGroupMember() {
@@ -128,12 +138,7 @@ class AuthorizationEndpointsIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void schemaViewShowsAllTypesForAdmin() {
-        // An admin sees every fixture of the shared test run, which can outgrow the client's default
-        // 256KB response buffer.
-        webTestClient.mutate()
-                .codecs(codecs -> codecs.defaultCodecs().maxInMemorySize(4 * 1024 * 1024))
-                .build()
-                .get().uri("/api/schema")
+        webTestClient.get().uri("/api/schema")
                 .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com"))
                 .exchange()
                 .expectStatus().isOk()

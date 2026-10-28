@@ -1,6 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { ItemTypeViewModels } from './item-type/ItemTypeViewModel'
+import { SchemaEditorViewModels } from './SchemaEditing'
 
 const SECTION_PATHS = {
   itemTypes: 'item-types',
@@ -34,22 +34,24 @@ function parseSchemaLocation(pathname) {
 export function useSchemaViewModel() {
   const location = useLocation()
   const navigate = useNavigate()
-  // The detail views' own active tab/section -- deliberately NOT part of the URL (unlike selection
-  // above): just lifted up here instead of TabView's own internal state, so it survives
-  // the detail view unmounting when the accordion switches to a different section and back. Item
-  // types and traits each keep their own, since their tab sets no longer line up.
+  // The item type detail view's active tab -- deliberately NOT part of the URL (unlike selection
+  // above): just lifted up here instead of TabView's own internal state, so it survives the detail
+  // view unmounting when the accordion switches to a different section and back.
   const [itemTypeTabKey, setItemTypeTabKey] = useState('structure')
-  // Keys of the Structure tab's collapsed cards, and of links and link properties inside the Links
-  // card toggled from how they start (see ItemTypeLinksView).
+  // Keys of the collapsed cards -- an item type's Structure cards and a trait's (prefixed "trait-")
+  // -- and of links and link properties toggled from how they start (see ItemTypeLinksView).
   const [collapsedStructureCards, setCollapsedStructureCards] = useState(() => new Set())
-  const [detailTabKey, setDetailTabKey] = useState('overview')
   // Every item type's pending edits, kept here -- this view stays mounted (App.jsx's ViewGate) even
   // while another top-level view is showing, so edits survive browsing other item types, traits,
   // and other screens.
-  const [itemTypeViewModels] = useState(() => new ItemTypeViewModels())
+  const [itemTypeViewModels] = useState(() => new SchemaEditorViewModels('new-item-type-'))
   const dirtyItemTypeIds = useSyncExternalStore(itemTypeViewModels.subscribe, itemTypeViewModels.getDirtyIds)
   const draftItemTypes = useSyncExternalStore(itemTypeViewModels.subscribe, itemTypeViewModels.getDrafts)
-  const hasUnsavedChanges = dirtyItemTypeIds.size > 0
+  // Every trait's pending edits, kept the same way.
+  const [traitViewModels] = useState(() => new SchemaEditorViewModels('new-trait-'))
+  const dirtyTraitIds = useSyncExternalStore(traitViewModels.subscribe, traitViewModels.getDirtyIds)
+  const draftTraits = useSyncExternalStore(traitViewModels.subscribe, traitViewModels.getDrafts)
+  const hasUnsavedChanges = dirtyItemTypeIds.size > 0 || dirtyTraitIds.size > 0
 
   // A reload, closing the tab or signing out is the one way to lose those edits, so ask first. Browsers
   // show their own generic "Leave site?" wording; the message can't be customized.
@@ -95,6 +97,16 @@ export function useSchemaViewModel() {
     void navigate(`/schema/traits/${traitId}`)
   }
 
+  // A new trait starts as a draft too, as a new item type does.
+  function createTrait(name) {
+    selectTrait(traitViewModels.createDraft(name))
+  }
+
+  const traitDraftNavigation = {
+    selectTrait: (traitId) => void navigate(`/schema/traits/${traitId}`, { replace: true }),
+    closeTrait: () => void navigate('/schema/traits', { replace: true }),
+  }
+
   return {
     activeSection,
     setActiveSection,
@@ -105,13 +117,16 @@ export function useSchemaViewModel() {
     draftNavigation,
     selectedTraitId,
     selectTrait,
+    createTrait,
+    draftTraits,
+    traitDraftNavigation,
     itemTypeTabKey,
     setItemTypeTabKey,
     collapsedStructureCards,
     toggleStructureCard,
     itemTypeViewModels,
     dirtyItemTypeIds,
-    detailTabKey,
-    setDetailTabKey,
+    traitViewModels,
+    dirtyTraitIds,
   }
 }

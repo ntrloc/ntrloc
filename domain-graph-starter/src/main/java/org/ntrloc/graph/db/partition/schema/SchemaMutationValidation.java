@@ -13,6 +13,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 // Shared validation helpers for the per-family mutation appliers (ItemMutationApplier,
@@ -31,12 +32,14 @@ final class SchemaMutationValidation {
     // and groups directly under the same parent. Properties and groups live in separate tables, so
     // that can't be a DB constraint; it is enforced here, in the application.
     //
-    // An item type's top-level names are the exception to "just look at the parent": they share one
-    // flat namespace with its whole supertype chain (in both directions -- adding a name to a
-    // supertype has to be checked against every subtype too) and with the names of the traits it
-    // implements, since a trait's contributions project under the trait's own name. Inside a trait,
-    // a link type, or a group there is nothing else in the namespace, so the sibling check is all it
-    // takes.
+    // An item type's top level is the exception to "just look at the parent". Its own properties and
+    // groups, those of every trait it implements, and those of its whole supertype chain (in both
+    // directions -- a subtype inherits whatever is added to a supertype) share one flat namespace: a
+    // trait's members appear on the item type under their own names, so how a type is composed never
+    // shows in a path. Its link perspectives form a second namespace of the same shape -- a
+    // perspective name appears once per item type. Inside a link type or a group there is nothing
+    // else in the namespace, so the sibling check is all it takes; a trait's top level is checked
+    // against every item type that implements it.
 
     // Names supplied together in one create payload (an item/trait/link's initial contents, or a new
     // group's) -- properties and groups share the one namespace, so callers pass both kinds through
@@ -47,9 +50,74 @@ final class SchemaMutationValidation {
         }
     }
 
-    // What names a single item type puts into its own namespace: its own property/group names, and
-    // the names of the traits it implements.
-    private record NameSets(Set<String> children, Set<String> traits) {}
+    // One name in a namespace, with what it belongs to: the item type or trait declaring a property
+    // or group, or the link a perspective is one end of. The same name twice is a collision only
+    // between different owners -- a trait reached at two levels of a supertype chain, or both ends of
+    // one symmetric self-link ("siblings" both ways), are one owner.
+    private record OwnedName(String name, UUID owner) {}
+
+    // One of the two namespaces an item type has, as declared by an item type or by a trait.
+    private record Namespace(String noun, Function<UUID, List<OwnedName>> declaredByItem,
+                             Function<UUID, List<OwnedName>> declaredByTrait) {}
+
+    private static Namespace propertyNames(SchemaRepository repo) {
+        return new Namespace("a property or group",
+                itemId -> owned(repo.findChildNames(new SchemaRepository.PropertyOwnerRef(PropertyContainerKind.ITEM, itemId)), itemId),
+                traitId -> owned(repo.findChildNames(new SchemaRepository.PropertyOwnerRef(PropertyContainerKind.TRAIT, traitId)), traitId));
+    }
+
+    private static Namespace perspectiveNames(SchemaRepository repo) {
+        Map<UUID, List<SchemaRepository.PerspectiveRow>> byEntity = repo.getPerspectivesByEntity();
+        Function<UUID, List<OwnedName>> declared = entityId -> byEntity.getOrDefault(entityId, List.of()).stream()
+                .map(p -> new OwnedName(p.name(), p.linkId()))
+                .toList();
+        return new Namespace("a link perspective", declared, declared);
+    }
+
+    private static List<OwnedName> owned(Set<String> names, UUID owner) {
+        return names.stream().map(name -> new OwnedName(name, owner)).toList();
+    }
+
+    // What one item type puts into a namespace at its own level: what it declares, and what each trait
+    // it implements directly declares.
+    private static List<OwnedName> levelOf(Namespace namespace, Map<UUID, List<UUID>> traitIdsByItem, UUID itemId) {
+        List<OwnedName> names = new ArrayList<>(namespace.declaredByItem().apply(itemId));
+        for (UUID traitId : traitIdsByItem.getOrDefault(itemId, List.of())) {
+            names.addAll(namespace.declaredByTrait().apply(traitId));
+        }
+        return names;
+    }
+
+    private static void requireNoCollision(List<OwnedName> added, List<OwnedName> existing, Namespace namespace, String where) {
+        for (OwnedName a : added) {
+            for (OwnedName e : existing) {
+                if (a.name().equals(e.name()) && !a.owner().equals(e.owner())) {
+                    throw new IllegalArgumentException("'" + a.name() + "' is already " + namespace.noun() + " on " + where);
+                }
+            }
+        }
+    }
+
+    // `added` joining item type itemId's namespace: checked against its own level and every level of
+    // its supertype chain in both directions.
+    private static void requireAvailableAcrossChain(SchemaRepository repo, Namespace namespace, UUID itemId, List<OwnedName> added) {
+        Map<UUID, UUID> supertypeById = supertypeById(repo);
+        Map<UUID, List<UUID>> traitIdsByItem = repo.getTraitIdsByItem();
+        requireNoCollision(added, levelOf(namespace, traitIdsByItem, itemId), namespace, "item type '" + itemName(repo, itemId) + "'");
+        for (UUID ancestor : ancestorsOf(supertypeById, itemId)) {
+            requireNoCollision(added, levelOf(namespace, traitIdsByItem, ancestor), namespace, "supertype '" + itemName(repo, ancestor) + "'");
+        }
+        for (UUID descendant : descendantsOf(supertypeById, itemId)) {
+            requireNoCollision(added, levelOf(namespace, traitIdsByItem, descendant), namespace, "subtype '" + itemName(repo, descendant) + "'");
+        }
+    }
+
+    private static List<UUID> implementersOf(SchemaRepository repo, UUID traitId) {
+        return repo.getTraitIdsByItem().entrySet().stream()
+                .filter(entry -> entry.getValue().contains(traitId))
+                .map(Map.Entry::getKey)
+                .toList();
+    }
 
     private static Map<UUID, UUID> supertypeById(SchemaRepository repo) {
         // Collectors.toMap throws on a null value, so items with no supertype (the common case) are
@@ -84,43 +152,12 @@ final class SchemaMutationValidation {
         return descendants;
     }
 
-    private static NameSets nameSetsOf(SchemaRepository repo, Map<UUID, String> traitNameById, Map<UUID, List<UUID>> traitIdsByItem, UUID itemId) {
-        Set<String> children = repo.findChildNames(new SchemaRepository.PropertyOwnerRef(PropertyContainerKind.ITEM, itemId));
-        Set<String> traits = traitIdsByItem.getOrDefault(itemId, List.of()).stream()
-                .map(traitNameById::get)
-                .collect(Collectors.toSet());
-        return new NameSets(children, traits);
-    }
-
-    private static Map<UUID, String> traitNameById(SchemaRepository repo) {
-        return repo.getAllTraits().stream()
-                .collect(Collectors.toMap(SchemaRepository.TraitRow::id, SchemaRepository.TraitRow::name));
-    }
-
     private static String itemName(SchemaRepository repo, UUID itemId) {
         return repo.getAllItems().stream()
                 .filter(i -> i.id().equals(itemId))
                 .findFirst()
                 .map(SchemaRepository.ItemRow::name)
                 .orElse(itemId.toString());
-    }
-
-    // A collision is a property/group name meeting another property/group name or a trait name, or a
-    // trait name meeting a property/group name. Trait-vs-trait is deliberately not a collision: trait
-    // names are globally unique, so the same name on both sides is the same trait, implemented at
-    // two levels of the chain, which the effective view simply dedupes.
-    private static void requireNoCollision(NameSets a, NameSets b, String aLabel, String bLabel) {
-        Set<String> collisions = new LinkedHashSet<>();
-        for (String name : a.children()) {
-            if (b.children().contains(name) || b.traits().contains(name)) collisions.add(name);
-        }
-        for (String name : a.traits()) {
-            if (b.children().contains(name)) collisions.add(name);
-        }
-        if (!collisions.isEmpty()) {
-            throw new IllegalArgumentException(
-                    "'" + collisions.iterator().next() + "' on " + aLabel + " collides with a property, group, or trait of that name on " + bLabel);
-        }
     }
 
     static void requireKnownParent(SchemaRepository repo, SchemaRepository.PropertyOwnerRef parent) {
@@ -135,91 +172,96 @@ final class SchemaMutationValidation {
         }
     }
 
-    // A new property or group named `name` under `parent` (also used for a move's target).
+    // A new property or group named `name` under `parent` (also used for a rename, and a move's
+    // target). At an item type's or a trait's top level, it joins every implementing item type's
+    // namespace as well.
     static void requireNameAvailable(SchemaRepository repo, SchemaRepository.PropertyOwnerRef parent, String name, String context) {
         if (repo.findChildNames(parent).contains(name)) {
             throw new IllegalArgumentException("'" + name + "' already exists on " + context);
         }
-        if (parent.kind() != PropertyContainerKind.ITEM) return;
-
-        UUID itemId = parent.ownerId();
-        Map<UUID, UUID> supertypeById = supertypeById(repo);
-        Map<UUID, String> traitNames = traitNameById(repo);
-        Map<UUID, List<UUID>> traitIdsByItem = repo.getTraitIdsByItem();
-        NameSets added = new NameSets(Set.of(name), Set.of());
-
-        requireNoCollision(added, new NameSets(Set.of(), nameSetsOf(repo, traitNames, traitIdsByItem, itemId).traits()),
-                THIS_ITEM_TYPE, "a trait this item type implements");
-        for (UUID ancestor : ancestorsOf(supertypeById, itemId)) {
-            requireNoCollision(added, nameSetsOf(repo, traitNames, traitIdsByItem, ancestor),
-                    THIS_ITEM_TYPE, "supertype '" + itemName(repo, ancestor) + "'");
-        }
-        for (UUID descendant : descendantsOf(supertypeById, itemId)) {
-            requireNoCollision(added, nameSetsOf(repo, traitNames, traitIdsByItem, descendant),
-                    THIS_ITEM_TYPE, "subtype '" + itemName(repo, descendant) + "'");
+        Namespace namespace = propertyNames(repo);
+        List<OwnedName> added = List.of(new OwnedName(name, parent.ownerId()));
+        switch (parent.kind()) {
+            case ITEM -> requireAvailableAcrossChain(repo, namespace, parent.ownerId(), added);
+            case TRAIT -> implementersOf(repo, parent.ownerId())
+                    .forEach(itemId -> requireAvailableAcrossChain(repo, namespace, itemId, added));
+            default -> { /* only siblings share a group's or a link's namespace */ }
         }
     }
 
-    // Implementing a trait puts its name into the item type's namespace (its contributions project
-    // under it), so the trait's name can't match any property or group already there, on the item
-    // type itself or anywhere in its supertype chain in either direction.
-    static void requireTraitNameAvailable(SchemaRepository repo, UUID itemId, String traitName) {
-        Map<UUID, UUID> supertypeById = supertypeById(repo);
-        Map<UUID, String> traitNames = traitNameById(repo);
-        Map<UUID, List<UUID>> traitIdsByItem = repo.getTraitIdsByItem();
-        NameSets added = new NameSets(Set.of(), Set.of(traitName));
-
-        Set<UUID> relatives = new LinkedHashSet<>();
-        relatives.add(itemId);
-        relatives.addAll(ancestorsOf(supertypeById, itemId));
-        relatives.addAll(descendantsOf(supertypeById, itemId));
-        for (UUID relative : relatives) {
-            requireNoCollision(added, nameSetsOf(repo, traitNames, traitIdsByItem, relative),
-                    "the trait", "item type '" + itemName(repo, relative) + "'");
+    // Implementing a trait puts its properties, groups and perspectives into the item type's
+    // namespaces, so none of their names can already be taken there or anywhere in its supertype
+    // chain in either direction.
+    static void requireTraitMembersAvailable(SchemaRepository repo, UUID itemId, UUID traitId) {
+        for (Namespace namespace : List.of(propertyNames(repo), perspectiveNames(repo))) {
+            requireAvailableAcrossChain(repo, namespace, itemId, namespace.declaredByTrait().apply(traitId));
         }
     }
 
-    // A brand-new item type's whole initial namespace (property/group names it declares, trait names
-    // it implements) against everything its supertype chain already owns. Inheritance is strictly
-    // additive -- no override, ever -- so a name already owned anywhere up the chain can't be
-    // re-declared lower down; it would just be a second, distinct row silently coexisting with the
-    // inherited one.
-    static void requireNamesAvailableUnderSupertype(SchemaRepository repo, UUID supertypeId, Set<String> ownNames, Set<String> ownTraitNames) {
-        Set<String> own = new HashSet<>(ownNames);
-        own.retainAll(ownTraitNames);
-        if (!own.isEmpty()) {
-            throw new IllegalArgumentException("'" + own.iterator().next() + "' is used both as a property or group and as a trait name on this item type");
+    // A brand-new item type's whole initial namespaces -- the property/group names it declares and
+    // everything the traits it implements bring -- checked among themselves, then against everything
+    // its supertype chain already owns. Inheritance is strictly additive -- no override, ever -- so a
+    // name already owned anywhere up the chain can't be re-declared lower down.
+    static void requireNamesAvailableForNewItemType(SchemaRepository repo, UUID supertypeId, Set<String> ownNames, List<UUID> traitIds) {
+        requireNewLevelAvailable(repo, propertyNames(repo), owned(ownNames, new UUID(0, 0)), traitIds, supertypeId);
+        requireNewLevelAvailable(repo, perspectiveNames(repo), List.of(), traitIds, supertypeId);
+    }
+
+    private static void requireNewLevelAvailable(SchemaRepository repo, Namespace namespace, List<OwnedName> own,
+                                                 List<UUID> traitIds, UUID supertypeId) {
+        List<OwnedName> level = new ArrayList<>(own);
+        for (UUID traitId : traitIds) {
+            List<OwnedName> traitNames = namespace.declaredByTrait().apply(traitId);
+            requireNoCollision(traitNames, level, namespace, THIS_ITEM_TYPE);
+            level.addAll(traitNames);
         }
         if (supertypeId == null) return;
-        checkAgainstAncestors(repo, supertypeId, new NameSets(ownNames, ownTraitNames), THIS_ITEM_TYPE);
+        Map<UUID, List<UUID>> traitIdsByItem = repo.getTraitIdsByItem();
+        for (UUID ancestor : chainFrom(supertypeById(repo), supertypeId)) {
+            requireNoCollision(level, levelOf(namespace, traitIdsByItem, ancestor), namespace, "supertype '" + itemName(repo, ancestor) + "'");
+        }
     }
 
-    // Re-parenting: the item type's own namespace, plus every descendant's (they all inherit the new
+    // Re-parenting: the item type's own namespaces, plus every descendant's (they all inherit the new
     // ancestors too), against the proposed supertype's whole chain.
     static void requireNoTopLevelCollisionsForSupertype(SchemaRepository repo, UUID itemId, UUID proposedSupertypeId) {
         Map<UUID, UUID> supertypeById = supertypeById(repo);
-        Map<UUID, String> traitNames = traitNameById(repo);
         Map<UUID, List<UUID>> traitIdsByItem = repo.getTraitIdsByItem();
-
         List<UUID> moving = new ArrayList<>();
         moving.add(itemId);
         moving.addAll(descendantsOf(supertypeById, itemId));
-        for (UUID member : moving) {
-            String label = member.equals(itemId) ? THIS_ITEM_TYPE : "subtype '" + itemName(repo, member) + "'";
-            checkAgainstAncestors(repo, proposedSupertypeId, nameSetsOf(repo, traitNames, traitIdsByItem, member), label);
+        for (Namespace namespace : List.of(propertyNames(repo), perspectiveNames(repo))) {
+            for (UUID member : moving) {
+                List<OwnedName> names = levelOf(namespace, traitIdsByItem, member);
+                for (UUID ancestor : chainFrom(supertypeById, proposedSupertypeId)) {
+                    requireNoCollision(names, levelOf(namespace, traitIdsByItem, ancestor), namespace,
+                            "supertype '" + itemName(repo, ancestor) + "'");
+                }
+            }
         }
     }
 
-    private static void checkAgainstAncestors(SchemaRepository repo, UUID startSupertypeId, NameSets names, String label) {
-        Map<UUID, UUID> supertypeById = supertypeById(repo);
-        Map<UUID, String> traitNames = traitNameById(repo);
-        Map<UUID, List<UUID>> traitIdsByItem = repo.getTraitIdsByItem();
-        UUID current = startSupertypeId;
-        while (current != null) {
-            requireNoCollision(names, nameSetsOf(repo, traitNames, traitIdsByItem, current),
-                    label, "supertype '" + itemName(repo, current) + "'");
-            current = supertypeById.get(current);
+    // A perspective named `name`, one end of link linkId, on an item type or trait. On an item type
+    // it joins that type's perspective namespace; on a trait, the trait's own and every implementing
+    // item type's.
+    static void requirePerspectiveNameAvailable(SchemaRepository repo, UUID entityId, String name, UUID linkId) {
+        Namespace namespace = perspectiveNames(repo);
+        List<OwnedName> added = List.of(new OwnedName(name, linkId));
+        boolean isItemType = repo.getAllItems().stream().anyMatch(item -> item.id().equals(entityId));
+        if (isItemType) {
+            requireAvailableAcrossChain(repo, namespace, entityId, added);
+            return;
         }
+        requireNoCollision(added, namespace.declaredByTrait().apply(entityId), namespace, "this trait");
+        implementersOf(repo, entityId).forEach(itemId -> requireAvailableAcrossChain(repo, namespace, itemId, added));
+    }
+
+    // startId and every supertype above it.
+    private static List<UUID> chainFrom(Map<UUID, UUID> supertypeById, UUID startId) {
+        List<UUID> chain = new ArrayList<>();
+        chain.add(startId);
+        chain.addAll(ancestorsOf(supertypeById, startId));
+        return chain;
     }
 
     // Despite the parameter name (CreatePerspectiveDefinitionMutation.itemId(), inherited here),
@@ -236,26 +278,6 @@ final class SchemaMutationValidation {
                 || repo.getAllTraits().stream().anyMatch(trait -> trait.id().equals(id));
         if (!known) {
             throw new IllegalArgumentException("Unknown item or trait: " + id);
-        }
-    }
-
-    // The one guardrail schema_entity_link_perspective's now-removed UNIQUE(entity_id,
-    // link_definition_id) used to provide as an accidental side effect: a perspective name is
-    // only meaningful if it names a single, consistent target across every link definition that
-    // uses it for a given entity -- e.g. Person "worksFor" must always mean the same thing,
-    // whether it resolves to Company via one link or Department via another, it can't be both.
-    // Same-entity, same-name, same-target is fine (that's how self-links and the deliberately
-    // ambiguous-link-type test fixtures both work), so this compares target *sets*, not row
-    // counts.
-    static void requireConsistentPerspectiveTarget(SchemaRepository repo, UUID newLinkId, UUID entityId, String name, Set<UUID> newTargets) {
-        for (var existing : repo.findPerspectivesByEntityAndName(entityId, name, newLinkId)) {
-            Set<UUID> existingTargets = repo.findInversePerspectives(existing.linkId(), existing.id()).stream()
-                    .map(SchemaRepository.PerspectiveRow::entityId)
-                    .collect(Collectors.toSet());
-            if (!existingTargets.equals(newTargets)) {
-                throw new IllegalArgumentException(
-                        "Perspective '" + name + "' already targets a different type via another link definition");
-            }
         }
     }
 

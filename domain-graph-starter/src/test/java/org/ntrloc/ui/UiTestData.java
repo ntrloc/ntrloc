@@ -102,6 +102,13 @@ final class UiTestData {
         return machine.states().stream().collect(Collectors.toMap(AdminStateView::name, AdminStateView::id));
     }
 
+    AdminTraitDefinitionView trait(String name) {
+        return schemaManager.getAdminSchema().traits().stream()
+                .filter(trait -> trait.name().equals(name))
+                .findFirst()
+                .orElseThrow();
+    }
+
     AdminItemDefinitionView itemType(String name) {
         return schemaManager.getAdminSchema().items().stream()
                 .filter(item -> item.name().equals(name))

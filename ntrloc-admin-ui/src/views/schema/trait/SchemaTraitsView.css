@@ -14,7 +14,9 @@ schema-traits-view {
 }
 
 .schema-traits-list-item {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   width: 100%;
   padding: 6px 8px;
   border: none;
@@ -35,4 +37,13 @@ schema-traits-view {
   background: var(--primary-bg);
   color: var(--primary);
   font-weight: 500;
+}
+
+/* Unsaved changes, as on the item types list. */
+.schema-traits-unsaved {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--secondary);
 }

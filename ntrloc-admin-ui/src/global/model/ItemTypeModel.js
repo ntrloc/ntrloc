@@ -44,7 +44,7 @@ function supertypeCandidates(adminSchema, itemTypeId) {
 
 function toItemTypePropertyTree(adminSchema, itemTypeId) {
   const item = adminSchema.items.find((it) => it.id === itemTypeId)
-  return item ? toPropertyTree(item) : { properties: [], groups: [] }
+  return item ? toPropertyTree(item, adminSchema) : { properties: [], groups: [] }
 }
 
 // Abstract item types exist only to be extended -- never instantiated, so never a valid
