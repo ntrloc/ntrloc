@@ -19,6 +19,13 @@ const ICONS = {
       <path d="M12 18v-6M9 15h6" />
     </>
   ),
+  info: (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      {/* Heavier than the circle, so the "i" still reads at small sizes. */}
+      <path strokeWidth="2.75" d="M12 17v-6M12 7h.01" />
+    </>
+  ),
   trash: (
     <>
       <polyline points="3 6 5 6 21 6" />

@@ -31,6 +31,25 @@ function sameProperty(a, b) {
   return PROPERTY_FIELDS.every((key) => a[key] === b[key])
 }
 
+// What the link editor can change on each direction of a link (a perspective).
+function perspectiveFields(perspective) {
+  return {
+    name: perspective.name,
+    description: perspective.description ?? '',
+    minCardinality: perspective.cardinality.min,
+    maxCardinality: perspective.cardinality.max ?? null,
+  }
+}
+
+const samePerspective = (a, b) => Object.keys(a).every((key) => a[key] === b[key])
+
+// A perspective as it should be shown, with any pending edits.
+function withPerspectiveChange(perspective, change) {
+  if (!change) return perspective
+  const { name, description, minCardinality, maxCardinality } = change.values
+  return { ...perspective, name, description, cardinality: { min: minCardinality, max: maxCardinality }, edited: true }
+}
+
 // The properties an item type declares itself, by id -- the ones it can edit or delete. Inherited
 // ones, and everything under an inherited group, belong to a trait or supertype.
 function ownProperties(tree, byId = new Map()) {
@@ -134,8 +153,40 @@ function groupCreateSpec(group, newGroups, newProperties) {
 let nextNewId = 1
 const NEW_PROPERTY_PREFIX = 'new-property-'
 const NEW_GROUP_PREFIX = 'new-group-'
+const NEW_LINK_PREFIX = 'new-link-'
 const isNewProperty = (id) => id.startsWith(NEW_PROPERTY_PREFIX)
 const isNewGroup = (id) => id.startsWith(NEW_GROUP_PREFIX)
+const isNewLink = (id) => id.startsWith(NEW_LINK_PREFIX)
+
+// One direction of a new link, as the server's create payload.
+const perspectiveCreateSpec = (itemId, values) => ({
+  itemId,
+  name: values.name,
+  description: values.description || null,
+  minCardinality: values.minCardinality,
+  maxCardinality: values.maxCardinality,
+})
+
+// A new link shaped like ItemTypeModel's saved ones, so it shows in the list the same way. It uses
+// its temporary id as both its perspective id and its link id.
+function newLinkDetails(link, target) {
+  const shown = (id, values) => ({
+    id,
+    name: values.name,
+    description: values.description,
+    cardinality: { min: values.minCardinality, max: values.maxCardinality },
+    edited: true,
+  })
+  return {
+    ...shown(link.id, link.forward),
+    linkId: link.id,
+    target: { name: target?.name ?? 'Unknown', kind: target?.kind ?? 'item' },
+    reverse: shown(null, link.reverse),
+    inherited: false,
+    source: null,
+    isNew: true,
+  }
+}
 
 // Where something new is added: the item type itself (parentId null), one of its links (the link's
 // id), or a saved group.
@@ -189,9 +240,9 @@ function propertyMutations(property, values) {
 // dropped. Deleting a group deletes everything saved inside it first, since the server only deletes
 // an empty one; anything new added inside it is dropped. New properties and groups come after
 // deletes and edits, so they can take a name those free up; anything new inside a new group goes
-// out as part of that group's own mutation. Property edits and additions on a link being deleted
-// are dropped along with it.
-function toMutations(itemTypeId, saved, fields, state, savedTree, linkTrees) {
+// out as part of that group's own mutation, and anything new on a new link as part of its
+// CREATE_LINK. Property edits and additions on a link being deleted are dropped along with it.
+function toMutations(itemTypeId, saved, fields, state, savedTree, linkTrees, savedPerspectives) {
   const keptLinks = linkTrees.filter(({ linkId }) => !state.deletedLinkIds.has(linkId))
   const keptLinkIds = new Set(keptLinks.map(({ linkId }) => linkId))
   const savedProperties = new Map()
@@ -232,6 +283,9 @@ function toMutations(itemTypeId, saved, fields, state, savedTree, linkTrees) {
     ...Object.entries(state.propertyChanges)
       .filter(([id]) => savedProperties.has(id) && !deletedPropertyIds.has(id))
       .flatMap(([id, change]) => propertyMutations(savedProperties.get(id), change.values)),
+    ...Object.entries(state.perspectiveChanges)
+      .filter(([id]) => savedPerspectives.has(id) && !state.deletedLinkIds.has(savedPerspectives.get(id).linkId))
+      .map(([id, { values }]) => ({ type: 'UPDATE_PERSPECTIVE', id, ...values, description: values.description || null })),
     ...Object.entries(state.groupChanges)
       .filter(([id]) => savedGroups.has(id) && !deletedGroupIds.has(id))
       .map(([id, values]) => ({ type: 'UPDATE_PROPERTY_GROUP', id, name: values.name, description: values.description || null })),
@@ -245,6 +299,14 @@ function toMutations(itemTypeId, saved, fields, state, savedTree, linkTrees) {
         ...savedParent(itemTypeId, g.parentId, keptLinkIds),
         ...groupCreateSpec(g, state.newGroups, state.newProperties),
       })),
+    ...state.newLinks.map((link) => ({
+      type: 'CREATE_LINK',
+      perspectives: [perspectiveCreateSpec(itemTypeId, link.forward), perspectiveCreateSpec(link.targetId, link.reverse)],
+      properties: state.newProperties.filter((p) => p.parentId === link.id).map((p) => propertyCreateSpec(p.values)),
+      groups: state.newGroups
+        .filter((g) => g.parentId === link.id)
+        .map((g) => groupCreateSpec(g, state.newGroups, state.newProperties)),
+    })),
     ...[...state.removedTraitIds]
       .filter((traitId) => saved.traitIds.includes(traitId))
       .map((traitId) => ({ type: 'REMOVE_TRAIT', itemId: itemTypeId, traitId })),
@@ -286,8 +348,16 @@ export class ItemTypeViewModel {
     // someone else's change made meanwhile.
     groupChanges: {},
     deletedGroupIds: new Set(),
+    // Each direction of a link (a perspective) with pending edits, by perspective id, kept like a
+    // property's: { values, base }.
+    perspectiveChanges: {},
     newProperties: [],
     newGroups: [],
+    // New links: { id, targetId, forward, reverse }, each direction's values as the link editor's.
+    newLinks: [],
+    // The link editor, while open: { mode: 'create' }, or { id } of the link perspective it was
+    // opened from.
+    linkEditor: null,
     // What the property and group editors are open on: null, { mode: 'create', parentId }, or
     // { mode: 'edit', id }.
     propertyEditor: null,
@@ -381,6 +451,12 @@ export class ItemTypeViewModel {
       this.#update({ deletedPropertyIds: toggled(this.#snapshot.deletedPropertyIds, id) })
       return
     }
+    this.#update(this.#withoutNew(id))
+  }
+
+  // The new properties and groups left once something new -- a property, a group, or a link -- is
+  // dropped, along with everything new inside it.
+  #withoutNew(id) {
     const removed = new Set([id])
     for (let grew = true; grew; ) {
       grew = false
@@ -391,10 +467,50 @@ export class ItemTypeViewModel {
         }
       }
     }
-    this.#update({
+    return {
       newGroups: this.#snapshot.newGroups.filter((g) => !removed.has(g.id)),
       newProperties: this.#snapshot.newProperties.filter((p) => !removed.has(p.id) && !removed.has(p.parentId)),
+    }
+  }
+
+  openLinkEditor = (perspectiveId) => this.#update({ linkEditor: { id: perspectiveId } })
+
+  openNewLinkEditor = () => this.#update({ linkEditor: { mode: 'create' } })
+
+  addLink = (targetId, forward, reverse) =>
+    this.#update({
+      newLinks: [...this.#snapshot.newLinks, { id: `${NEW_LINK_PREFIX}${nextNewId++}`, targetId, forward, reverse }],
+      linkEditor: null,
     })
+
+  updateNewLink = (id, targetId, forward, reverse) =>
+    this.#update({
+      newLinks: this.#snapshot.newLinks.map((link) => (link.id === id ? { ...link, targetId, forward, reverse } : link)),
+      linkEditor: null,
+    })
+
+  closeLinkEditor = () => this.#update({ linkEditor: null })
+
+  // Applies the link editor's values: [{ id, values, savedValues }], one per direction. As with
+  // setProperty, values matching what's saved drop the change.
+  setPerspectives = (edits) => {
+    const perspectiveChanges = { ...this.#snapshot.perspectiveChanges }
+    for (const { id, values, savedValues } of edits) {
+      if (samePerspective(values, savedValues)) delete perspectiveChanges[id]
+      else perspectiveChanges[id] = { values, base: perspectiveChanges[id]?.base ?? savedValues }
+    }
+    this.#update({ perspectiveChanges, linkEditor: null })
+  }
+
+  keepMyPerspective = (id, savedValues) => {
+    const change = this.#snapshot.perspectiveChanges[id]
+    this.#update({ perspectiveChanges: { ...this.#snapshot.perspectiveChanges, [id]: { ...change, base: savedValues } } })
+  }
+
+  useTheirPerspective = (id) => {
+    const perspectiveChanges = { ...this.#snapshot.perspectiveChanges }
+    delete perspectiveChanges[id]
+    this.#update({ perspectiveChanges })
   }
 
   // A saved group's trash button: marks it, and everything inside it, for deletion.
@@ -430,7 +546,15 @@ export class ItemTypeViewModel {
     this.#update({ propertyChanges })
   }
 
-  toggleDeletedLink = (linkId) => this.#update({ deletedLinkIds: toggled(this.#snapshot.deletedLinkIds, linkId) })
+  // A link's trash button. A new link is dropped outright, with anything new on it; a saved one is
+  // marked for deletion.
+  toggleDeletedLink = (linkId) => {
+    if (!isNewLink(linkId)) {
+      this.#update({ deletedLinkIds: toggled(this.#snapshot.deletedLinkIds, linkId) })
+      return
+    }
+    this.#update({ ...this.#withoutNew(linkId), newLinks: this.#snapshot.newLinks.filter((link) => link.id !== linkId) })
+  }
 
   // Sends everything as one batch the server applies all-or-nothing. On success, waits for the
   // reloaded schema before dropping the edits, so the saved values replace them without a flash of
@@ -462,8 +586,11 @@ export class ItemTypeViewModel {
       propertyChanges: {},
       groupChanges: {},
       deletedGroupIds: new Set(),
+      perspectiveChanges: {},
       newProperties: [],
       newGroups: [],
+      newLinks: [],
+      linkEditor: null,
       propertyEditor: null,
       groupEditor: null,
       saving: false,
@@ -482,8 +609,10 @@ export class ItemTypeViewModel {
       Object.keys(next.propertyChanges).length > 0 ||
       Object.keys(next.groupChanges).length > 0 ||
       next.deletedGroupIds.size > 0 ||
+      Object.keys(next.perspectiveChanges).length > 0 ||
       next.newProperties.length > 0 ||
-      next.newGroups.length > 0
+      next.newGroups.length > 0 ||
+      next.newLinks.length > 0
     this.#snapshot = next
     this.#onChange()
   }
@@ -519,7 +648,7 @@ export class ItemTypeViewModels {
 export function useItemTypeViewModel(itemTypeViewModels, itemTypeId) {
   const vm = itemTypeViewModels.get(itemTypeId)
   const state = useSyncExternalStore(itemTypeViewModels.subscribe, vm.getSnapshot)
-  const { getItemType, getSupertypeCandidates, getItemTypePropertyTree } = useItemTypeModel()
+  const { getItemType, getItemTypes, getSupertypeCandidates, getItemTypePropertyTree } = useItemTypeModel()
   const { getTraits } = useTraitModel()
   const { getItemTypeLinkDetails, getLinkPropertyTree } = useLinkModel()
   const { getControlledLists } = useControlledListModel()
@@ -564,6 +693,13 @@ export function useItemTypeViewModel(itemTypeViewModels, itemTypeId) {
     ownProperties(tree, savedProperties)
     ownGroups(tree, savedGroups)
   }
+  // Both directions of every link this item type declares itself, by perspective id -- the reverse
+  // direction belongs to the target, but is edited from here along with its link.
+  const savedPerspectives = new Map()
+  for (const link of links.filter((l) => !l.inherited)) {
+    savedPerspectives.set(link.id, { linkId: link.linkId, fields: perspectiveFields(link) })
+    if (link.reverse) savedPerspectives.set(link.reverse.id, { linkId: link.linkId, fields: perspectiveFields(link.reverse) })
+  }
   // A property tree as it should be shown, pending edits and additions included.
   const shownTree = (tree, parentId) =>
     withNewNodes(withPendingEdits(tree, state.propertyChanges, state.groupChanges), parentId, state.newGroups, state.newProperties)
@@ -597,6 +733,71 @@ export function useItemTypeViewModel(itemTypeViewModels, itemTypeId) {
       },
     ]
   })
+
+  const perspectiveConflicts = Object.entries(state.perspectiveChanges).flatMap(([id, change]) => {
+    const perspective = savedPerspectives.get(id)
+    const label = `Link ${change.base.name}`
+    if (!perspective) {
+      return [{ key: id, label, note: 'was deleted by someone else', useTheirs: () => vm.useTheirPerspective(id) }]
+    }
+    if (samePerspective(change.base, perspective.fields) || samePerspective(change.values, perspective.fields)) return []
+    return [
+      {
+        key: id,
+        label,
+        note: 'was changed by someone else',
+        keepMine: () => vm.keepMyPerspective(id, perspective.fields),
+        useTheirs: () => vm.useTheirPerspective(id),
+      },
+    ]
+  })
+
+  // The link editor's starting point: a fresh link, a new one already added, or both directions of a
+  // saved one with any pending edits. Only a new link's target can be chosen -- any item type, this
+  // one included, or a trait, linking to every item type that implements it.
+  const targets = [
+    ...sortByName(getItemTypes()).map((it) => ({ id: it.id, name: it.name, kind: 'item' })),
+    ...sortByName(getTraits()).map((trait) => ({ id: trait.id, name: trait.name, kind: 'trait' })),
+  ]
+  const targetOptions = targets.map((t) => ({ value: t.id, label: t.kind === 'trait' ? `${t.name} (trait)` : t.name }))
+  const targetNamed = (id) => targets.find((t) => t.id === id)
+  const targetName = (id) => targetNamed(id)?.name ?? 'Unknown'
+  const blankPerspective = { name: '', description: '', minCardinality: 0, maxCardinality: null }
+  const addedLink = state.linkEditor?.id && state.newLinks.find((link) => link.id === state.linkEditor.id)
+  let linkEditor = null
+  const editedLink = state.linkEditor && links.find((link) => link.id === state.linkEditor.id && !link.inherited)
+  if (state.linkEditor?.mode === 'create' || addedLink) {
+    linkEditor = {
+      isNew: true,
+      sourceName: itemType.name,
+      targetOptions,
+      targetId: addedLink?.targetId ?? null,
+      targetName,
+      forward: addedLink?.forward ?? blankPerspective,
+      reverse: addedLink?.reverse ?? blankPerspective,
+      apply: (forward, reverse, targetId) =>
+        addedLink ? vm.updateNewLink(addedLink.id, targetId, forward, reverse) : vm.addLink(targetId, forward, reverse),
+      cancel: vm.closeLinkEditor,
+    }
+  } else if (editedLink) {
+    const directions = [editedLink, editedLink.reverse].filter(Boolean)
+    linkEditor = {
+      isNew: false,
+      sourceName: itemType.name,
+      targetName: () => editedLink.target?.name ?? 'Unknown',
+      forward: { ...perspectiveFields(editedLink), ...state.perspectiveChanges[editedLink.id]?.values },
+      reverse: editedLink.reverse && { ...perspectiveFields(editedLink.reverse), ...state.perspectiveChanges[editedLink.reverse.id]?.values },
+      apply: (forward, reverse) =>
+        vm.setPerspectives(
+          directions.map((perspective, i) => ({
+            id: perspective.id,
+            values: i === 0 ? forward : reverse,
+            savedValues: perspectiveFields(perspective),
+          })),
+        ),
+      cancel: vm.closeLinkEditor,
+    }
+  }
 
   // The property editor's starting point: a fresh property, a new one already added, or a saved one
   // with any pending edits. Only a property not yet saved can have its type chosen.
@@ -648,10 +849,10 @@ export function useItemTypeViewModel(itemTypeViewModels, itemTypeId) {
     dirty: state.dirty,
     saving: state.saving,
     saveError: state.saveError,
-    conflicts: [...fieldConflicts, ...propertyConflicts],
+    conflicts: [...fieldConflicts, ...propertyConflicts, ...perspectiveConflicts],
     startEditing: vm.startEditing,
     cancel: vm.cancel,
-    save: () => vm.save(toMutations(itemType.id, saved, fields, state, savedTree, linkTrees)),
+    save: () => vm.save(toMutations(itemType.id, saved, fields, state, savedTree, linkTrees, savedPerspectives)),
     overview: {
       fields,
       setName: setField('name'),
@@ -685,7 +886,20 @@ export function useItemTypeViewModel(itemTypeViewModels, itemTypeId) {
     groupEditor: groupEditor && { ...groupEditor, cancel: vm.closeGroupEditor },
     // Each with its property tree. The same propertyDeletion, editRow, newProperty, and newGroup work
     // on a link's properties as on the item type's own.
-    links: links.map((link) => ({ ...link, propertyTree: shownTree(getLinkPropertyTree(link.linkId), link.linkId) })),
+    links: sortByName([
+      ...links.map((link) => ({
+        ...withPerspectiveChange(link, state.perspectiveChanges[link.id]),
+        reverse: link.reverse && withPerspectiveChange(link.reverse, state.perspectiveChanges[link.reverse.id]),
+        propertyTree: shownTree(getLinkPropertyTree(link.linkId), link.linkId),
+      })),
+      ...state.newLinks.map((link) => ({
+        ...newLinkDetails(link, targetNamed(link.targetId)),
+        propertyTree: shownTree({ properties: [], groups: [] }, link.id),
+      })),
+    ]),
+    editLink: vm.openLinkEditor,
+    newLink: vm.openNewLinkEditor,
+    linkEditor,
     linkDeletion: { isMarked: (id) => state.deletedLinkIds.has(id), onToggle: vm.toggleDeletedLink },
   }
 }

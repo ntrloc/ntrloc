@@ -3,7 +3,6 @@ import Button from '../../../controls/button/Button'
 import Dialog from '../../../controls/dialog/Dialog'
 import Input from '../../../controls/input/Input'
 import PopoverButton from '../../../controls/popover-button/PopoverButton'
-import OptionList from '../../../controls/option-list/OptionList'
 import {
   CARDINALITY_LABELS,
   CONTROLLED_LIST_TYPES,
@@ -11,27 +10,10 @@ import {
   USAGE_LABELS,
   validCardinalities,
 } from '../propertyLabels'
+import ChoiceField from './ChoiceField'
 import './PropertyEditDialog.css'
 
 const capitalized = (text) => text.charAt(0).toUpperCase() + text.slice(1)
-
-// A single-select field: a labeled PopoverButton whose list closes as soon as something is picked.
-function ChoiceField({ name, options, value, onChange }) {
-  return (
-    <PopoverButton name={name} summary={options.find((opt) => opt.value === value)?.label}>
-      {({ close }) => (
-        <OptionList
-          options={options}
-          value={value}
-          onChange={(picked) => {
-            onChange(picked)
-            close()
-          }}
-        />
-      )}
-    </PopoverButton>
-  )
-}
 
 const typeOptions = Object.entries(TYPE_LABELS).map(([value, label]) => ({ value, label }))
 

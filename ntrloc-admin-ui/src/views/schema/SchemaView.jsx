@@ -61,6 +61,7 @@ function SchemaView() {
             itemTypeViewModels={itemTypeViewModels}
             itemTypeId={selectedItemTypeId}
             onSelectTrait={selectTrait}
+            onSelectItemType={selectItemType}
             tabKey={itemTypeTabKey}
             onTabKeyChange={setItemTypeTabKey}
             collapsedStructureCards={collapsedStructureCards}

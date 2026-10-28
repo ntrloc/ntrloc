@@ -144,6 +144,7 @@ function GroupBox({ group, actions, withinDeleted }) {
 // subgroups -- so every button sits on the thing it acts on. One filter narrows the whole tree by
 // property name or description, hiding groups with nothing matching. `filter`, when given, comes
 // from a filter box the caller shows elsewhere (e.g. its card's header) rather than this one's own.
+// `heading`, when given, is shown at the top of the box -- and `collapsed` leaves only it showing.
 //
 // `deletion` ({ isMarked, onToggle }), when given, puts edit and delete/undo buttons on every
 // property and group this container declares itself -- marking it for deletion rather than deleting
@@ -151,27 +152,39 @@ function GroupBox({ group, actions, withinDeleted }) {
 // editor on a property or group, and `onAddProperty`/`onAddGroup` add one at the top level (null) or
 // inside a group (its id). Anything inherited from a trait or supertype gets no buttons. Pending
 // edits (`edited` on a node) are flagged until they're saved.
-function PropertyTreeView({ tree, filter: externalFilter, onSelectTrait, deletion, onEdit, onAddProperty, onAddGroup }) {
+function PropertyTreeView({
+  tree,
+  filter: externalFilter,
+  heading,
+  collapsed = false,
+  onSelectTrait,
+  deletion,
+  onEdit,
+  onAddProperty,
+  onAddGroup,
+}) {
   const { root, toggleGroup, isEmpty, noMatches, filter, setFilter } = usePropertyTreeViewModel(tree, externalFilter)
   const actions = { deletion, onEdit, onAddGroup, onAddProperty, onSelectTrait, toggleGroup }
   const editable = Boolean(deletion && onAddGroup)
   const showFilter = !isEmpty && externalFilter === undefined
 
-  if (isEmpty && !editable) return <p>No properties yet.</p>
+  if (isEmpty && !editable && !heading) return <p>No properties yet.</p>
+
+  let contents
+  if (noMatches) contents = <p className="property-tree-empty">No matching properties.</p>
+  else if (isEmpty && !editable) contents = <p className="property-tree-empty">No properties yet.</p>
+  else contents = <ContainerContents node={root} actions={actions} withinDeleted={false} />
 
   return (
     <property-tree>
-      {(editable || showFilter) && (
+      {heading}
+      {!collapsed && (editable || showFilter) && (
         <div className="property-tree-toolbar">
           {editable && <AddButtons name={null} onAddGroup={() => onAddGroup(null)} onAddProperty={() => onAddProperty(null)} />}
           {showFilter && <Filter name="property-filter" value={filter} onChange={setFilter} placeholder="Filter properties" />}
         </div>
       )}
-      {noMatches ? (
-        <p className="property-tree-empty">No matching properties.</p>
-      ) : (
-        <ContainerContents node={root} actions={actions} withinDeleted={false} />
-      )}
+      {!collapsed && contents}
     </property-tree>
   )
 }

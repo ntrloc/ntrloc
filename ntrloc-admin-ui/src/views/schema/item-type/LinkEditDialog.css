@@ -1,0 +1,12 @@
+link-edit-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.link-edit-direction h3 {
+  margin: 0 0 12px;
+  color: var(--text-h);
+  font-size: 1em;
+  font-weight: 600;
+}

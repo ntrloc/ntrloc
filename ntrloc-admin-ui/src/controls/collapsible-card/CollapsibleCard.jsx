@@ -1,6 +1,7 @@
 import './CollapsibleCard.css'
 
-function TriangleIcon({ expanded }) {
+// Also used by other collapsible boxes that should read the same as a card, e.g. a link's.
+export function TriangleIcon({ expanded }) {
   return (
     <svg aria-hidden="true" className="collapsible-card-icon" viewBox="0 0 12 10" width="12" height="10" fill="currentColor">
       {expanded ? <polygon points="6 0 12 10 0 10" /> : <polygon points="0 0 12 0 6 10" />}

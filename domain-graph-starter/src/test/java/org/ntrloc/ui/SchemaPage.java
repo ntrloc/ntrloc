@@ -133,9 +133,11 @@ class SchemaPage {
         return settled(() -> text(card(title).findElement(By.tagName("collapsible-card-body"))));
     }
 
-    /** The buttons in a Structure card's title bar, e.g. "New link" while editing. */
+    /** The buttons in a Structure card's title bar by accessible name, e.g. "New link" while editing. */
     List<String> cardActions(String title) {
-        return texts(card(title).findElements(By.cssSelector("collapsible-card-actions button")));
+        return card(title).findElements(By.cssSelector("collapsible-card-actions button")).stream()
+                .map(button -> button.getDomAttribute("aria-label") != null ? button.getDomAttribute("aria-label") : text(button))
+                .toList();
     }
 
     /** Whether the Properties card's filter is in its title bar. */

@@ -39,7 +39,8 @@ export function useSchemaViewModel() {
   // the detail view unmounting when the accordion switches to a different section and back. Item
   // types and traits each keep their own, since their tab sets no longer line up.
   const [itemTypeTabKey, setItemTypeTabKey] = useState('structure')
-  // Keys of the Structure tab's collapsed cards -- every card starts open.
+  // Keys of the Structure tab's collapsed cards, and of links and link properties inside the Links
+  // card toggled from how they start (see ItemTypeLinksView).
   const [collapsedStructureCards, setCollapsedStructureCards] = useState(() => new Set())
   const [detailTabKey, setDetailTabKey] = useState('overview')
   // Every item type's pending edits, kept here -- this view stays mounted (App.jsx's ViewGate) even

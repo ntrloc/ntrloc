@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import Button from '../../../controls/button/Button'
 import Filter from '../../../controls/filter/Filter'
+import IconButton from '../../../controls/icon-button/IconButton'
 import CollapsibleCard from '../../../controls/collapsible-card/CollapsibleCard'
 import TabView from '../../../controls/tabview/TabView'
 import PropertyTreeView from '../PropertyTreeView'
@@ -11,6 +12,7 @@ import AccessMarkersView from './AccessMarkersView'
 import ItemTypeConflictsView from './ItemTypeConflictsView'
 import PropertyEditDialog from './PropertyEditDialog'
 import GroupEditDialog from './GroupEditDialog'
+import LinkEditDialog from './LinkEditDialog'
 import { useItemTypeViewModel } from './ItemTypeViewModel'
 import './ItemTypeDetailView.css'
 
@@ -18,6 +20,7 @@ function ItemTypeDetailView({
   itemTypeViewModels,
   itemTypeId,
   onSelectTrait,
+  onSelectItemType,
   tabKey,
   onTabKeyChange,
   collapsedStructureCards,
@@ -60,18 +63,16 @@ function ItemTypeDetailView({
     {
       key: 'links',
       label: 'Links',
-      // Opens the new-link dialog, once it exists.
-      actions: editing && (
-        <Button variant="ghost-secondary" icon="plus">
-          New link
-        </Button>
-      ),
+      actions: editing && <IconButton icon="plus" label="New link" variant="secondary" onClick={vm.newLink} />,
       view: (
         <ItemTypeLinksView
           links={vm.links}
-          itemTypeName={itemType.name}
+          collapsed={collapsedStructureCards}
+          onToggleCollapsed={onToggleStructureCard}
           onSelectTrait={onSelectTrait}
+          onSelectItemType={onSelectItemType}
           deletion={editing ? vm.linkDeletion : undefined}
+          onEdit={editing ? vm.editLink : undefined}
           propertyEditing={
             editing
               ? { deletion: vm.propertyDeletion, onEdit: vm.editRow, onAddProperty: vm.newProperty, onAddGroup: vm.newGroup }
@@ -154,6 +155,19 @@ function ItemTypeDetailView({
           isNew={vm.groupEditor.isNew}
           onApply={vm.groupEditor.apply}
           onCancel={vm.groupEditor.cancel}
+        />
+      )}
+      {vm.linkEditor && (
+        <LinkEditDialog
+          isNew={vm.linkEditor.isNew}
+          sourceName={vm.linkEditor.sourceName}
+          targetOptions={vm.linkEditor.targetOptions}
+          targetId={vm.linkEditor.targetId}
+          targetName={vm.linkEditor.targetName}
+          forward={vm.linkEditor.forward}
+          reverse={vm.linkEditor.reverse}
+          onApply={vm.linkEditor.apply}
+          onCancel={vm.linkEditor.cancel}
         />
       )}
       {vm.propertyEditor && (

@@ -1,22 +1,157 @@
+/* A box like the property tree's, so a link reads as one of the same family. */
 item-type-link-view {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding: 20px;
-  border: 1px solid var(--border);
+  gap: 8px;
+  padding: 10px 12px 16px 12px;
+  border: 1px dashed var(--border);
   border-radius: 8px;
 }
 
-.item-type-link-diagram {
+.item-type-link-top {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 16px;
+  gap: 4px 8px;
 }
 
-.item-type-link-properties {
+.item-type-link-toggle {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
+  align-items: center;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-h);
+  cursor: pointer;
+}
+
+.item-type-link-toggle:hover {
+  color: var(--primary);
+}
+
+.item-type-link-actions {
+  display: inline-flex;
+  margin-left: auto;
+}
+
+/* The arrows and the link's properties line up under its name, past the triangle. */
+.item-type-link-diagram,
+item-type-link-view > property-tree {
+  margin-left: 20px;
+}
+
+/* A grid rather than a row, so the target box centers on the span from the arrow out to the arrow
+   back -- not on that plus the label under the arrow back, which would sit it too low. */
+.item-type-link-diagram {
+  display: grid;
+  grid-template-columns: minmax(0, 400px) max-content;
+  column-gap: 12px;
+  align-items: center;
+}
+
+.item-type-link-arrows {
+  display: contents;
+}
+
+.item-type-link-arrows > * {
+  grid-column: 1;
+}
+
+.item-type-link-box {
+  grid-column: 2;
+  grid-row: 1 / span 3;
+}
+
+/* Between the arrows: room for the link's edit button. */
+.item-type-link-arrow-middle {
+  display: flex;
+  justify-content: center;
+  min-height: 28px;
+  padding: 2px 0;
+}
+
+.item-type-link-arrow-label {
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.item-type-link-arrows .item-type-link-arrow-label {
+  justify-self: end;
+  margin-top: 4px;
+}
+
+.item-type-link-name {
+  color: var(--text-h);
+  font-weight: 600;
+}
+
+.item-type-link-arrow-label[data-edited] .item-type-link-name {
+  color: var(--secondary);
+}
+
+.item-type-link-description {
+  display: inline-flex;
+  margin-left: 6px;
+  vertical-align: -4px;
+  color: var(--text);
+  cursor: help;
+}
+
+.item-type-link-description:hover,
+.item-type-link-description:focus-visible {
+  color: var(--primary);
+}
+
+.item-type-link-source {
+  color: var(--text);
+}
+
+.item-type-link-box {
+  flex: none;
+  /* Taller than the span between the arrows, so both meet its side rather than its corners -- the
+     negative margins keep that extra height from pushing the arrows apart. */
+  margin: -10px 0;
+  padding: 18px 20px;
+  border: 1px solid var(--border-light);
+  border-radius: 6px;
+  color: var(--text-h);
+  font-weight: 500;
+  text-align: center;
+}
+
+.item-type-link-box-kind {
+  color: var(--text);
+  font-weight: normal;
+}
+
+.item-type-link-arrow {
+  position: relative;
+  height: 1px;
+  background: var(--text);
+}
+
+.item-type-link-arrow-forward::after {
+  content: '';
+  position: absolute;
+  right: -1px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 5px solid transparent;
+  border-left-color: var(--text);
+}
+
+.item-type-link-arrow-backward::before {
+  content: '';
+  position: absolute;
+  left: -1px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 5px solid transparent;
+  border-right-color: var(--text);
+}
+
+item-type-link-view > property-tree {
+  margin-top: 12px;
 }
 
 .item-type-link-properties-header {
@@ -30,25 +165,16 @@ item-type-link-view {
   width: 240px;
 }
 
-/* Marked for deletion, pending save: everything but the undo toggle is dimmed and struck through. */
-item-type-link-view[data-marked-for-delete] .item-type-link-diagram > :not(.icon-button),
-item-type-link-view[data-marked-for-delete] .item-type-link-properties-toggle,
-item-type-link-view[data-marked-for-delete] property-tree {
-  opacity: 0.5;
-  text-decoration: line-through;
-}
-
 .item-type-link-properties-toggle {
   display: flex;
   align-items: center;
-  gap: 6px;
-  align-self: flex-start;
+  gap: 8px;
   padding: 0;
   border: none;
   background: transparent;
   color: var(--text-h);
   font: inherit;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
 }
 
@@ -56,64 +182,10 @@ item-type-link-view[data-marked-for-delete] property-tree {
   color: var(--primary);
 }
 
-.item-type-link-box {
-  flex: none;
-  padding: 10px 20px;
-  border-radius: 6px;
-  background: var(--code-bg);
-  color: var(--text-h);
-  font-weight: 500;
-  text-align: center;
-}
-
-.item-type-link-box-source {
-  background: none;
-  border: 1px dashed var(--primary-border);
-}
-
-.item-type-link-arrows {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  flex: 1;
-  min-width: 0;
-}
-
-.item-type-link-arrow-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.item-type-link-arrow-label {
-  flex: none;
-  color: var(--text);
-  white-space: nowrap;
-}
-
-.item-type-link-arrow {
-  position: relative;
-  flex: 1;
-  height: 1px;
-  background: var(--border);
-}
-
-.item-type-link-arrow-forward::after {
-  content: '';
-  position: absolute;
-  right: -1px;
-  top: 50%;
-  transform: translateY(-50%);
-  border: 5px solid transparent;
-  border-left-color: var(--border);
-}
-
-.item-type-link-arrow-backward::before {
-  content: '';
-  position: absolute;
-  left: -1px;
-  top: 50%;
-  transform: translateY(-50%);
-  border: 5px solid transparent;
-  border-right-color: var(--border);
+/* Marked for deletion, pending save: everything but the undo button is dimmed and struck through. */
+item-type-link-view[data-marked-for-delete] .item-type-link-top > :not(.item-type-link-actions),
+item-type-link-view[data-marked-for-delete] .item-type-link-diagram,
+item-type-link-view[data-marked-for-delete] > property-tree {
+  opacity: 0.5;
+  text-decoration: line-through;
 }
