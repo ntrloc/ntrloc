@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import Button from '../../../controls/button/Button'
+import Filter from '../../../controls/filter/Filter'
 import CollapsibleCard from '../../../controls/collapsible-card/CollapsibleCard'
 import TabView from '../../../controls/tabview/TabView'
 import PropertyTreeView from '../PropertyTreeView'
@@ -22,6 +24,8 @@ function ItemTypeDetailView({
   onToggleStructureCard,
 }) {
   const vm = useItemTypeViewModel(itemTypeViewModels, itemTypeId)
+  // Like the active tab, kept while browsing other item types.
+  const [propertyFilter, setPropertyFilter] = useState('')
   const { itemType, editing } = vm
 
   if (!itemType) return <p>Item type not found.</p>
@@ -37,19 +41,14 @@ function ItemTypeDetailView({
     {
       key: 'properties',
       label: 'Properties',
-      actions: editing && (
-        <>
-          <Button variant="ghost-secondary" icon="plus" onClick={() => vm.newGroup()}>
-            New group
-          </Button>
-          <Button variant="ghost-secondary" icon="plus" onClick={() => vm.newProperty()}>
-            New property
-          </Button>
-        </>
+      // Only while the card is open -- there's nothing to filter in a collapsed one.
+      actions: !collapsedStructureCards.has('properties') && (
+        <Filter name="property-filter" value={propertyFilter} onChange={setPropertyFilter} placeholder="Filter properties" />
       ),
       view: (
         <PropertyTreeView
           tree={vm.propertyTree}
+          filter={propertyFilter}
           onSelectTrait={onSelectTrait}
           deletion={editing ? vm.propertyDeletion : undefined}
           onEdit={editing ? vm.editRow : undefined}
@@ -73,6 +72,11 @@ function ItemTypeDetailView({
           itemTypeName={itemType.name}
           onSelectTrait={onSelectTrait}
           deletion={editing ? vm.linkDeletion : undefined}
+          propertyEditing={
+            editing
+              ? { deletion: vm.propertyDeletion, onEdit: vm.editRow, onAddProperty: vm.newProperty, onAddGroup: vm.newGroup }
+              : undefined
+          }
         />
       ),
     },

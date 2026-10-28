@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import ChevronIcon from '../../../controls/chevron-icon/ChevronIcon'
+import Filter from '../../../controls/filter/Filter'
 import IconButton from '../../../controls/icon-button/IconButton'
 import PropertyTreeView from '../PropertyTreeView'
-import { useLinkModel } from '../../../global/model/LinkModel'
 import './ItemTypeLinkView.css'
 
 // max unset means "any" -- nothing meaningful to show alongside min then except the range itself.
@@ -14,15 +14,16 @@ function formatCardinality({ min, max }) {
 
 // One link's own diagram -- two boxes (this item type and whatever it targets) with an arrow each
 // direction, labeled with that direction's own perspective name and cardinality -- plus, below it
-// in the same bordered card, the link's own properties. Reusing PropertyTreeView as-is (the same
-// table used for an item type/trait's own Properties tab) is a first pass, not a final call -- a
-// full filterable table may turn out heavier than a single link card wants. onToggleDelete, when
-// given, adds a delete/undo toggle that marks the whole link for deletion.
-function ItemTypeLinkView({ sourceName, link, onSelectTrait, markedForDelete = false, onToggleDelete }) {
-  const { getLinkPropertyTree } = useLinkModel()
+// in the same bordered card, the link's own properties, shown and edited the same way as the item
+// type's own (with a filter beside their heading while they're expanded). onToggleDelete, when
+// given, adds a delete/undo toggle that marks the whole link for deletion. propertyEditing ({
+// deletion, onEdit, onAddProperty, onAddGroup }), when given, makes its properties editable; adding
+// at their top level adds to the link itself.
+function ItemTypeLinkView({ sourceName, link, onSelectTrait, markedForDelete = false, onToggleDelete, propertyEditing }) {
   const [propertiesExpanded, setPropertiesExpanded] = useState(true)
+  const [filter, setFilter] = useState('')
   const targetName = link.target?.name ?? 'Unknown'
-  const propertyTree = getLinkPropertyTree(link.linkId)
+  const editing = propertyEditing && !markedForDelete
 
   return (
     <item-type-link-view data-marked-for-delete={markedForDelete || undefined}>
@@ -45,6 +46,13 @@ function ItemTypeLinkView({ sourceName, link, onSelectTrait, markedForDelete = f
           )}
         </div>
         <div className="item-type-link-box">{targetName}</div>
+        {onToggleDelete && (
+          <IconButton
+            icon={markedForDelete ? 'undo' : 'trash'}
+            label={markedForDelete ? `Keep ${link.name}` : `Delete ${link.name}`}
+            onClick={onToggleDelete}
+          />
+        )}
       </div>
       <div className="item-type-link-properties">
         <div className="item-type-link-properties-header">
@@ -56,15 +64,21 @@ function ItemTypeLinkView({ sourceName, link, onSelectTrait, markedForDelete = f
             <ChevronIcon expanded={propertiesExpanded} />
             Properties
           </button>
-          {onToggleDelete && (
-            <IconButton
-              icon={markedForDelete ? 'undo' : 'trash'}
-              label={markedForDelete ? `Keep ${link.name}` : `Delete ${link.name}`}
-              onClick={onToggleDelete}
-            />
+          {propertiesExpanded && (
+            <Filter name="link-property-filter" value={filter} onChange={setFilter} placeholder="Filter properties" />
           )}
         </div>
-        {propertiesExpanded && <PropertyTreeView tree={propertyTree} onSelectTrait={onSelectTrait} />}
+        {propertiesExpanded && (
+          <PropertyTreeView
+            tree={link.propertyTree}
+            filter={filter}
+            onSelectTrait={onSelectTrait}
+            deletion={editing ? propertyEditing.deletion : undefined}
+            onEdit={editing ? propertyEditing.onEdit : undefined}
+            onAddProperty={editing ? (parentId) => propertyEditing.onAddProperty(parentId ?? link.linkId) : undefined}
+            onAddGroup={editing ? (parentId) => propertyEditing.onAddGroup(parentId ?? link.linkId) : undefined}
+          />
+        )}
       </div>
     </item-type-link-view>
   )

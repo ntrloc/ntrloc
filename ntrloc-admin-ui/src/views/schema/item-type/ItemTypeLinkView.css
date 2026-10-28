@@ -23,12 +23,17 @@ item-type-link-view {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 16px;
+}
+
+.item-type-link-properties-header filter-view {
+  width: 240px;
 }
 
 /* Marked for deletion, pending save: everything but the undo toggle is dimmed and struck through. */
-item-type-link-view[data-marked-for-delete] .item-type-link-diagram,
+item-type-link-view[data-marked-for-delete] .item-type-link-diagram > :not(.icon-button),
 item-type-link-view[data-marked-for-delete] .item-type-link-properties-toggle,
-item-type-link-view[data-marked-for-delete] .property-tree-table {
+item-type-link-view[data-marked-for-delete] property-tree {
   opacity: 0.5;
   text-decoration: line-through;
 }

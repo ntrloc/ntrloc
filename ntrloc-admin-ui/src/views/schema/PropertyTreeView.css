@@ -1,3 +1,40 @@
+/* The tree's top level and every group are boxes of the same kind, each group nested inside its
+   parent's. No right padding, so the edit/delete buttons line up down the right edge at every
+   depth. */
+property-tree,
+.property-tree-group {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px 0 20px 10px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+}
+
+/* Translucent, so each nested group lightens a little more than the one around it. */
+.property-tree-group {
+  background: rgb(255 255 255 / 3%);
+}
+
+.property-tree-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+}
+
+.property-tree-toolbar filter-view {
+  flex: 0 1 260px;
+  min-width: 0;
+  margin-left: auto;
+}
+
+.property-tree-add {
+  display: inline-flex;
+  flex: none;
+}
+
 .property-tree-table {
   width: 100%;
   border-collapse: collapse;
@@ -11,63 +48,70 @@
   padding: 6px 8px;
   text-align: left;
   border-bottom: 1px solid var(--border);
+  overflow-wrap: anywhere;
 }
 
+/* Same color as a field's label (FieldLabel), but not bold. */
 .property-tree-table th {
-  color: var(--text-h);
-  font-weight: 500;
+  color: var(--primary);
+  font-weight: normal;
 }
 
 .property-tree-table td {
   color: var(--text);
 }
 
-/* Group, Name, Description, Type -- adjustable, just a reasonable starting split. */
+/* Name, Description, Type -- adjustable, just a reasonable starting split. */
 .property-tree-table th:nth-child(1) {
-  width: 15%;
+  width: 25%;
 }
 
 .property-tree-table th:nth-child(2) {
-  width: 20%;
+  width: 50%;
 }
 
 .property-tree-table th:nth-child(3) {
-  width: 45%;
+  width: 25%;
 }
 
-.property-tree-table th:nth-child(4) {
-  width: 20%;
-}
-
-/* As narrow as its buttons allow. */
-.property-tree-table[data-deletable] th:nth-child(5) {
-  width: 1%;
+/* Room for exactly two icon buttons: edit and delete. */
+.property-tree-table[data-deletable] th:nth-child(4) {
+  width: 64px;
 }
 
 .property-tree-table .property-tree-actions {
-  padding-top: 2px;
-  padding-bottom: 2px;
+  padding: 2px 0 2px 8px;
   text-align: right;
   white-space: nowrap;
 }
 
 /* Edited, pending save: the name carries the same orange as the sidebar's unsaved marker. */
-.property-tree-table tr[data-edited] td:nth-child(2) {
+.property-tree-table tr[data-edited] td:nth-child(1),
+.property-tree-group[data-edited] > .property-tree-group-header .property-tree-group-name {
   color: var(--secondary);
 }
 
 /* Marked for deletion, pending save: struck through and dimmed, but still shown so it can be
-   undone. */
-.property-tree-table tr[data-marked-for-delete] td:not(.property-tree-actions) {
+   undone. A group's mark covers everything inside it. */
+.property-tree-table tr[data-marked-for-delete] td:not(.property-tree-actions),
+.property-tree-group[data-marked-for-delete] > .property-tree-group-header .property-tree-group-name,
+.property-tree-group[data-marked-for-delete] > .property-tree-group-body {
   text-decoration: line-through;
   opacity: 0.5;
 }
 
-.property-tree-group-cell {
+.property-tree-group-header {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0 6px;
+  gap: 4px 12px;
+  min-width: 0;
+}
+
+.property-tree-group-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
   min-width: 0;
 }
 
@@ -75,13 +119,13 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  flex: none;
+  min-width: 0;
   padding: 0;
   border: none;
   background: transparent;
   color: var(--text-h);
   font: inherit;
-  font-weight: 500;
+  font-weight: 600;
   text-align: left;
   cursor: pointer;
 }
@@ -90,19 +134,15 @@
   color: var(--primary);
 }
 
-.property-tree-group-label {
+.property-tree-group-actions {
+  display: inline-flex;
   flex: none;
-  color: var(--text-h);
-  font-weight: 500;
+  margin-left: auto;
 }
 
-/* "(trait)" after a trait's group, linking to the trait. Drops below the group's name when both
-   don't fit on one line, rather than being squeezed out of sight (taking the link with it). */
+/* "(trait)" after a trait's group, linking to the trait. */
 .property-tree-group-kind {
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  flex: none;
   color: var(--text);
   font-weight: normal;
 }
@@ -120,21 +160,7 @@
   text-decoration: underline;
 }
 
-.property-tree-no-matches {
+.property-tree-empty {
+  margin: 0;
   color: var(--text);
-}
-
-.property-tree-header-with-filter {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.property-tree-header-with-filter span {
-  flex: none;
-}
-
-.property-tree-header-with-filter filter-view {
-  flex: 1;
-  min-width: 0;
 }

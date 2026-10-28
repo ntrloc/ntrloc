@@ -18,6 +18,8 @@ import org.ntrloc.graph.db.partition.schema.definition.mutation.AddPropertyGroup
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateControlledListMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateLinkDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePerspectiveDefinitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePropertyDefinitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePropertyGroupDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.UpdateItemDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.UpdatePropertyDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminControlledListView;
@@ -61,7 +63,7 @@ class SchemaEditingUiTest extends AbstractUiIntegrationTest {
     void editingOpensTheFieldsAndCancelPutsEverythingBack() {
         schema.edit();
         assertThat(schema.overviewEditable()).isTrue();
-        assertThat(schema.cardActions("Properties")).containsExactly("New group", "New property");
+        assertThat(schema.topLevelAddButtons()).containsExactly("Add group", "Add property");
         assertThat(schema.cardActions("Links")).containsExactly("New link");
 
         schema.typeInto("Description", "Changed").toggleSwitch("Abstract type").toggleDeleteProperty("pages").toggleDeleteLink("authors");
@@ -73,7 +75,7 @@ class SchemaEditingUiTest extends AbstractUiIntegrationTest {
         schema.cancel();
         assertThat(schema.overviewEditable()).isFalse();
         assertThat(schema.itemTypeOverview()).contains(entry("Description", "UI test fixture"), entry("Abstract type", "No"));
-        assertThat(schema.cardActions("Properties")).isEmpty();
+        assertThat(schema.topLevelAddButtons()).isEmpty();
         assertThat(schema.propertiesMarkedForDelete()).isEmpty();
         assertThat(schema.unsavedItemTypes()).isEmpty();
     }
@@ -118,7 +120,7 @@ class SchemaEditingUiTest extends AbstractUiIntegrationTest {
 
         assertThat(schema.overviewEditable()).isFalse();
         assertThat(schema.itemTypeOverview()).contains(entry("Description", "Saved from the UI"), entry("Abstract type", "Yes"));
-        assertThat(propertyNames()).containsExactly("title");
+        assertThat(schema.propertyNames()).containsExactly("title");
         assertThat(schema.cardText("Links")).isEqualTo("No links yet.");
         assertThat(schema.unsavedItemTypes()).isEmpty();
     }
@@ -133,7 +135,7 @@ class SchemaEditingUiTest extends AbstractUiIntegrationTest {
 
         schema.selectItemType(childType).edit();
 
-        assertThat(propertyNames()).contains("own", "inherited", "code");
+        assertThat(schema.propertyNames()).contains("own", "inherited", "code");
         assertThat(schema.deletableProperties()).containsExactly("own");
         assertThat(schema.editableProperties()).containsExactly("own");
         assertThat(schema.groupActions("UiEditTrait-" + suffix)).isEmpty();
@@ -158,7 +160,7 @@ class SchemaEditingUiTest extends AbstractUiIntegrationTest {
                 .typeInPropertyEditor("Name", "format")
                 .chooseInPropertyEditor("Controlled list", listName)
                 .applyPropertyEditor();
-        assertThat(propertyNames()).containsSubsequence("year", "format");
+        assertThat(schema.propertyNames()).containsSubsequence("year", "format");
 
         schema.save();
 
@@ -175,7 +177,8 @@ class SchemaEditingUiTest extends AbstractUiIntegrationTest {
         schemaManager.applyMutations(List.of(new AddPropertyGroupDefinitionMutation(PropertyContainerKind.ITEM, bookId, "details", "d",
                 List.of(), List.of())));
         schema.awaitGroup("details").edit();
-        assertThat(schema.groupActions("details")).containsExactly("Add group to details", "Add property to details");
+        assertThat(schema.groupActions("details"))
+                .containsExactly("Add group to details", "Add property to details", "Edit details", "Delete details");
 
         schema.addPropertyTo("details").typeInPropertyEditor("Name", "language").applyPropertyEditor();
         schema.addGroupTo("details").typeInPropertyEditor("Name", "physical").applyPropertyEditor();
@@ -187,15 +190,67 @@ class SchemaEditingUiTest extends AbstractUiIntegrationTest {
     }
 
     @Test
+    void aSavedGroupCanBeRenamed() {
+        addSavedGroup("details", List.of(), List.of());
+        schema.awaitGroup("details").edit().editGroup("details");
+        assertThat(schema.propertyEditorTitle()).isEqualTo("Edit group details");
+
+        schema.typeInPropertyEditor("Name", "specifics").applyPropertyEditor();
+        assertThat(schema.editedGroups()).containsExactly("specifics");
+        assertThat(schema.unsavedItemTypes()).containsExactly(bookType);
+
+        schema.save();
+
+        assertThat(testData.itemType(bookType).groups()).extracting(AdminPropertyGroupView::name).containsExactly("specifics");
+        assertThat(schema.editedGroups()).isEmpty();
+    }
+
+    @Test
+    void deletingASavedGroupDeletesEverythingInsideIt() {
+        addSavedGroup("details", List.of(property("language", PropertyType.STRING)), List.of(
+                new CreatePropertyGroupDefinitionMutation("physical", null, List.of(property("weight", PropertyType.INT)), List.of())));
+        schema.awaitGroup("details").edit();
+
+        schema.toggleDeleteGroup("details");
+        assertThat(schema.groupMarkedForDelete("details")).isTrue();
+        // Everything inside goes with the group, so nothing in it has buttons of its own.
+        assertThat(schema.groupActions("physical")).isEmpty();
+        assertThat(schema.deletableProperties()).containsExactlyInAnyOrder("title", "pages");
+
+        schema.toggleDeleteGroup("details");
+        assertThat(schema.groupMarkedForDelete("details")).isFalse();
+        assertThat(schema.unsavedItemTypes()).isEmpty();
+
+        schema.toggleDeleteGroup("details").save();
+
+        AdminItemDefinitionView saved = testData.itemType(bookType);
+        assertThat(saved.groups()).isEmpty();
+        assertThat(saved.properties()).extracting(AdminPropertyDefinitionView::name).containsExactlyInAnyOrder("title", "pages");
+    }
+
+    @Test
+    void aLinksPropertiesAreEditedAndSavedWithTheItemType() {
+        schema.edit().newLinkProperty("authors").typeInPropertyEditor("Name", "role").applyPropertyEditor();
+        assertThat(SchemaPage.propertyRows(schema.linkCard("authors"))).containsExactly(List.of("role", "", "String (optional)"));
+        assertThat(schema.unsavedItemTypes()).containsExactly(bookType);
+
+        schema.save();
+        assertThat(linkProperties("authors")).extracting(AdminPropertyDefinitionView::name).containsExactly("role");
+
+        schema.edit().editLinkProperty("authors", "role").typeInPropertyEditor("Description", "The author's role").applyPropertyEditor().save();
+        assertThat(linkProperties("authors")).extracting(AdminPropertyDefinitionView::description).containsExactly("The author's role");
+    }
+
+    @Test
     void droppingANewGroupDropsEverythingInsideIt() {
         schema.edit().newGroup().typeInPropertyEditor("Name", "scratch").applyPropertyEditor();
         schema.addPropertyTo("scratch").typeInPropertyEditor("Name", "note").applyPropertyEditor();
-        assertThat(propertyNames()).contains("note");
+        assertThat(schema.propertyNames()).contains("note");
 
-        schema.toggleDeleteProperty("scratch");
+        schema.toggleDeleteGroup("scratch");
 
-        assertThat(propertyNames()).doesNotContain("note");
-        assertThat(schema.groupActions("scratch")).isEmpty();
+        assertThat(schema.propertyNames()).doesNotContain("note");
+        assertThat(schema.propertyRows()).doesNotContain(List.of("Group scratch"));
         assertThat(schema.unsavedItemTypes()).isEmpty();
     }
 
@@ -221,7 +276,7 @@ class SchemaEditingUiTest extends AbstractUiIntegrationTest {
                 .chooseInPropertyEditor("Controlled list", listName)
                 .applyPropertyEditor();
 
-        assertThat(schema.propertyRows()).contains(List.of("", "heading", "The book's heading", "String List (required)", ""));
+        assertThat(schema.propertyRows()).contains(List.of("heading", "The book's heading", "String List (required)"));
         assertThat(schema.editedProperties()).containsExactly("heading");
         assertThat(propertyNamed(bookType, "title")).isNotNull();
 
@@ -257,7 +312,7 @@ class SchemaEditingUiTest extends AbstractUiIntegrationTest {
                 .chooseInPropertyEditor("Type", "Long")
                 .chooseInPropertyEditor("Cardinality", "Set")
                 .applyPropertyEditor();
-        assertThat(schema.propertyRows()).contains(List.of("", "isbn", "", "Long Set (optional)", ""));
+        assertThat(schema.propertyRows()).contains(List.of("isbn", "", "Long Set (optional)"));
         assertThat(schema.editedProperties()).containsExactly("isbn");
         assertThat(schema.unsavedItemTypes()).containsExactly(bookType);
 
@@ -291,10 +346,10 @@ class SchemaEditingUiTest extends AbstractUiIntegrationTest {
         schema.editProperty("draft");
         assertThat(schema.propertyEditorTitle()).isEqualTo("New property");
         schema.typeInPropertyEditor("Name", "renamed").applyPropertyEditor();
-        assertThat(propertyNames()).contains("renamed").doesNotContain("draft");
+        assertThat(schema.propertyNames()).contains("renamed").doesNotContain("draft");
 
         schema.toggleDeleteProperty("renamed");
-        assertThat(propertyNames()).doesNotContain("renamed");
+        assertThat(schema.propertyNames()).doesNotContain("renamed");
         assertThat(schema.unsavedItemTypes()).isEmpty();
     }
 
@@ -323,7 +378,7 @@ class SchemaEditingUiTest extends AbstractUiIntegrationTest {
         schema.useTheirs("Property title");
 
         assertThat(schema.conflicts()).isEmpty();
-        assertThat(schema.propertyRows()).contains(List.of("", "title", "Theirs", "String (optional)", ""));
+        assertThat(schema.propertyRows()).contains(List.of("title", "Theirs", "String (optional)"));
         assertThat(schema.unsavedItemTypes()).isEmpty();
     }
 
@@ -369,6 +424,22 @@ class SchemaEditingUiTest extends AbstractUiIntegrationTest {
         assertThat(saved.displayLabelPattern()).isEqualTo("pages");
     }
 
+    // Another admin's save of a new group on the book type.
+    private void addSavedGroup(String name, List<CreatePropertyDefinitionMutation> properties,
+                               List<CreatePropertyGroupDefinitionMutation> groups) {
+        schemaManager.applyMutations(List.of(new AddPropertyGroupDefinitionMutation(PropertyContainerKind.ITEM,
+                testData.itemType(bookType).id(), name, null, properties, groups)));
+    }
+
+    private List<AdminPropertyDefinitionView> linkProperties(String perspectiveName) {
+        UUID linkId = testData.itemType(bookType).links().get(perspectiveName).getFirst().linkId();
+        return schemaManager.getAdminSchema().links().stream()
+                .filter(link -> link.id().equals(linkId))
+                .findFirst()
+                .orElseThrow()
+                .properties();
+    }
+
     private AdminPropertyDefinitionView propertyNamed(String itemTypeName, String propertyName) {
         return testData.itemType(itemTypeName).properties().stream()
                 .filter(property -> property.name().equals(propertyName))
@@ -392,9 +463,5 @@ class SchemaEditingUiTest extends AbstractUiIntegrationTest {
         AdminItemDefinitionView itemType = testData.itemType(itemTypeName);
         schemaManager.applyMutations(List.of(new UpdateItemDefinitionMutation(itemType.id(), itemType.name(), description,
                 itemType.supertypeId(), itemType.abstractType(), displayLabelPattern)));
-    }
-
-    private List<String> propertyNames() {
-        return schema.propertyRows().stream().map(row -> row.get(1)).filter(name -> !name.isEmpty()).toList();
     }
 }

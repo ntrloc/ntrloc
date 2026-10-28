@@ -114,15 +114,15 @@ class SchemaViewUiTest extends AbstractUiIntegrationTest {
         schema.selectItemType(BOOK_TYPE);
 
         assertThat(schema.propertyRows()).containsExactly(
-                List.of("", "keywords", "Search keywords", "String Set (optional)"),
-                List.of("", "pages", "Number of pages", "Integer (optional)"),
-                List.of("", "title", "The book's title", "String (required)"),
-                List.of("publication", "", "", ""),
-                List.of("", "year", "Year first published", "Integer (optional)"),
-                List.of("publisher", "", "", ""),
-                List.of("", "name", "Publisher's name", "String (optional)"),
-                List.of(TRACKED_TRAIT + "(trait)", "", "", ""),
-                List.of("", "trackingCode", "Internal tracking code", "String (optional)"));
+                List.of("keywords", "Search keywords", "String Set (optional)"),
+                List.of("pages", "Number of pages", "Integer (optional)"),
+                List.of("title", "The book's title", "String (required)"),
+                List.of("Group publication"),
+                List.of("year", "Year first published", "Integer (optional)"),
+                List.of("Group publication > publisher"),
+                List.of("name", "Publisher's name", "String (optional)"),
+                List.of("Group " + TRACKED_TRAIT + " (trait)"),
+                List.of("trackingCode", "Internal tracking code", "String (optional)"));
     }
 
     @Test
@@ -130,31 +130,52 @@ class SchemaViewUiTest extends AbstractUiIntegrationTest {
         schema.selectItemType(BOOK_TYPE);
 
         schema.toggleGroup("publication");
-        assertThat(propertyNames()).containsExactly("keywords", "pages", "title", "", "", "trackingCode");
+        assertThat(schema.propertyNames()).containsExactly("keywords", "pages", "title", "trackingCode");
 
         schema.toggleGroup("publication");
-        assertThat(propertyNames()).containsExactly("keywords", "pages", "title", "", "year", "", "name", "", "trackingCode");
+        assertThat(schema.propertyNames()).containsExactly("keywords", "pages", "title", "year", "name", "trackingCode");
     }
 
     @Test
-    void filteringPropertiesListsMatchesWithTheirOwnGroup() {
+    void filteringKeepsOnlyMatchingPropertiesAndTheGroupsAroundThem() {
         schema.selectItemType(BOOK_TYPE);
 
-        schema.filterPropertiesByName("NA");
-        assertThat(schema.propertyRows()).containsExactly(List.of("publisher", "name", "Publisher's name", "String (optional)"));
+        schema.filterProperties("NAME");
+        assertThat(schema.propertyRows()).containsExactly(
+                List.of("Group publication"),
+                List.of("Group publication > publisher"),
+                List.of("name", "Publisher's name", "String (optional)"));
 
-        schema.filterPropertiesByName("no such property");
+        // Descriptions match too.
+        schema.filterProperties("first published");
+        assertThat(schema.propertyRows()).containsExactly(
+                List.of("Group publication"),
+                List.of("year", "Year first published", "Integer (optional)"));
+
+        schema.filterProperties("no such property");
         assertThat(schema.propertyRows()).containsExactly(List.of("No matching properties."));
 
-        schema.clearNameFilter().filterPropertiesByDescription("year");
-        assertThat(schema.propertyRows()).containsExactly(List.of("publication", "year", "Year first published", "Integer (optional)"));
+        schema.clearPropertyFilter();
+        assertThat(schema.propertyNames()).hasSize(6);
+    }
+
+    @Test
+    void thePropertyFilterIsInTheCardsTitleBarWhileTheCardIsOpen() {
+        schema.selectItemType(BOOK_TYPE);
+        assertThat(schema.propertyFilterShown()).isTrue();
+
+        schema.toggleCard("Properties");
+        assertThat(schema.propertyFilterShown()).isFalse();
+
+        schema.toggleCard("Properties");
+        assertThat(schema.propertyFilterShown()).isTrue();
     }
 
     @Test
     void aTraitShowsItsOwnPropertiesAndLinks() {
         schema.openSection("Traits").selectTrait(TRACKED_TRAIT).openTab("Properties");
 
-        assertThat(schema.propertyRows()).containsExactly(List.of("", "trackingCode", "Internal tracking code", "String (optional)"));
+        assertThat(schema.propertyRows()).containsExactly(List.of("trackingCode", "Internal tracking code", "String (optional)"));
         schema.openTab("Links");
         assertThat(schema.tabText()).isEqualTo("No links yet.");
     }
@@ -165,7 +186,7 @@ class SchemaViewUiTest extends AbstractUiIntegrationTest {
 
         assertThat(schema.linkDiagrams()).containsExactly(List.of(BOOK_TYPE, "authors (0-any)", "books (1)", AUTHOR_TYPE));
         WebElement card = schema.linkCard("authors");
-        assertThat(SchemaPage.propertyRows(card)).containsExactly(List.of("", "role", "The author's role", "String (optional)"));
+        assertThat(SchemaPage.propertyRows(card)).containsExactly(List.of("role", "The author's role", "String (optional)"));
 
         SchemaPage.toggleLinkProperties(card);
         assertThat(SchemaPage.propertyRows(card)).isEmpty();
@@ -198,7 +219,7 @@ class SchemaViewUiTest extends AbstractUiIntegrationTest {
 
         schema.selectItemType(AUTHOR_TYPE);
         assertThat(schema.cardExpanded("Links")).isFalse();
-        assertThat(propertyNames()).containsExactly("name");
+        assertThat(schema.propertyNames()).containsExactly("name");
         schema.toggleCard("Links");
 
         schema.openTab("State Machines");
@@ -222,10 +243,6 @@ class SchemaViewUiTest extends AbstractUiIntegrationTest {
         assertThat(driver.getCurrentUrl()).endsWith("/schema/controlled-lists");
         assertThat(schema.controlledListNames()).contains(GENRE_LIST);
         assertThat(schema.contentText()).isEqualTo("Select an item type, trait, or controlled list.");
-    }
-
-    private List<String> propertyNames() {
-        return schema.propertyRows().stream().map(row -> row.get(1)).toList();
     }
 
     private static CreatePropertyDefinitionMutation described(String name, PropertyType type, String description) {

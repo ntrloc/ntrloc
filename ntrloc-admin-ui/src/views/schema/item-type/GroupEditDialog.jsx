@@ -4,7 +4,7 @@ import Dialog from '../../../controls/dialog/Dialog'
 import Input from '../../../controls/input/Input'
 import './PropertyEditDialog.css'
 
-// Creates a property group (`isNew`) or edits a new one before it's saved. As with
+// Creates a property group (`isNew`) or edits one, saved or not. As with
 // PropertyEditDialog, Apply only hands the values back to the item type's pending edits, and waits
 // for a name.
 function GroupEditDialog({ group, isNew = false, onApply, onCancel }) {

@@ -133,9 +133,14 @@ class SchemaPage {
         return settled(() -> text(card(title).findElement(By.tagName("collapsible-card-body"))));
     }
 
-    /** The buttons in a Structure card's title bar, e.g. "New property" while editing. */
+    /** The buttons in a Structure card's title bar, e.g. "New link" while editing. */
     List<String> cardActions(String title) {
         return texts(card(title).findElements(By.cssSelector("collapsible-card-actions button")));
+    }
+
+    /** Whether the Properties card's filter is in its title bar. */
+    boolean propertyFilterShown() {
+        return !card("Properties").findElements(By.cssSelector("collapsible-card-actions input[name='property-filter']")).isEmpty();
     }
 
     /**
@@ -227,14 +232,31 @@ class SchemaPage {
         return this;
     }
 
-    /** Opens the property editor for a new property, from the Properties card's title bar. */
-    SchemaPage newProperty() {
-        return openEditor(card("Properties").findElement(By.xpath(".//collapsible-card-actions//button[.='New property']")));
+    /** The add buttons at the top of the Properties card, by accessible name. */
+    List<String> topLevelAddButtons() {
+        return card("Properties").findElements(By.cssSelector(".property-tree-toolbar button")).stream()
+                .map(button -> button.getDomAttribute("aria-label"))
+                .toList();
     }
 
-    /** Opens the group editor for a new top-level group, from the Properties card's title bar. */
+    /** Opens the property editor for a new top-level property. */
+    SchemaPage newProperty() {
+        return openEditor(card("Properties").findElement(By.cssSelector(".property-tree-toolbar button[aria-label='Add property']")));
+    }
+
+    /** Opens the group editor for a new top-level group. */
     SchemaPage newGroup() {
-        return openEditor(card("Properties").findElement(By.xpath(".//collapsible-card-actions//button[.='New group']")));
+        return openEditor(card("Properties").findElement(By.cssSelector(".property-tree-toolbar button[aria-label='Add group']")));
+    }
+
+    /** Opens the property editor for a new property at the top level of a link's properties. */
+    SchemaPage newLinkProperty(String perspectiveName) {
+        return openEditor(linkCard(perspectiveName).findElement(By.cssSelector(".property-tree-toolbar button[aria-label='Add property']")));
+    }
+
+    /** Opens the property editor from a property's row in a link's properties. */
+    SchemaPage editLinkProperty(String perspectiveName, String name) {
+        return openEditor(linkCard(perspectiveName).findElement(By.cssSelector("td.property-tree-actions button[aria-label='Edit " + name + "']")));
     }
 
     SchemaPage addPropertyTo(String groupName) {
@@ -247,21 +269,48 @@ class SchemaPage {
 
     /** Waits for a group to appear in the Properties card, e.g. one someone else just saved. */
     SchemaPage awaitGroup(String groupName) {
-        await().until(d -> !card("Properties").findElements(By.xpath(
-                ".//div[contains(@class,'property-tree-group-cell')]/*[1][normalize-space(.)='" + groupName + "']")).isEmpty());
+        await().until(d -> !card("Properties").findElements(group(groupName)).isEmpty());
         return this;
     }
 
-    /** The buttons on a group's row in the Properties card, by accessible name. */
+    /** The add, edit, and delete buttons on a group's header in the Properties card, by accessible name. */
     List<String> groupActions(String groupName) {
-        return card("Properties").findElements(By.xpath(
-                        ".//tr[td//div[contains(@class,'property-tree-group-cell')]/*[1][normalize-space(.)='" + groupName + "']]"
-                                + "//td[contains(@class,'property-tree-actions')]//button")).stream()
+        return card("Properties").findElement(group(groupName)).findElements(By.cssSelector(
+                        ":scope > header .property-tree-add button, :scope > header .property-tree-group-actions button")).stream()
                 .map(button -> button.getDomAttribute("aria-label"))
                 .toList();
     }
 
+    /** Opens the group editor from a group's header. */
+    SchemaPage editGroup(String groupName) {
+        return openEditor(card("Properties").findElement(group(groupName))
+                .findElement(By.cssSelector(":scope > header button[aria-label='Edit " + groupName + "']")));
+    }
+
+    /** Marks a group, with everything in it, for delete, or unmarks it -- its header's trash/undo button. */
+    SchemaPage toggleDeleteGroup(String groupName) {
+        card("Properties").findElement(group(groupName)).findElement(By.xpath(
+                "./header//button[@aria-label='Delete " + groupName + "' or @aria-label='Keep " + groupName + "']")).click();
+        return this;
+    }
+
+    boolean groupMarkedForDelete(String groupName) {
+        return card("Properties").findElement(group(groupName)).getDomAttribute("data-marked-for-delete") != null;
+    }
+
+    /** Groups whose name has edits not yet saved. */
+    List<String> editedGroups() {
+        return texts(card("Properties").findElements(By.cssSelector("section.property-tree-group[data-edited] > header .property-tree-group-name")));
+    }
+
+    private static By group(String groupName) {
+        return By.cssSelector("section.property-tree-group[aria-label='Group " + groupName + "']");
+    }
+
+    // Scrolled to the middle first: the editing footer stays pinned over the bottom of the view,
+    // where a click would otherwise scroll a button to, and lands on the footer instead.
     private SchemaPage openEditor(WebElement button) {
+        ((JavascriptExecutor) driver).executeScript("arguments[0].scrollIntoView({block: 'center'})", button);
         button.click();
         await().until(d -> !d.findElements(By.tagName("dialog-view")).isEmpty());
         return this;
@@ -289,7 +338,7 @@ class SchemaPage {
 
     /** Properties with edits not yet saved. */
     List<String> editedProperties() {
-        return card("Properties").findElements(By.cssSelector("tr[data-edited] td:nth-child(2)")).stream()
+        return card("Properties").findElements(By.cssSelector("tr[data-edited] td:nth-child(1)")).stream()
                 .map(SchemaPage::text)
                 .toList();
     }
@@ -359,7 +408,7 @@ class SchemaPage {
     }
 
     List<String> propertiesMarkedForDelete() {
-        return card("Properties").findElements(By.cssSelector("tr[data-marked-for-delete] td:nth-child(2)")).stream()
+        return card("Properties").findElements(By.cssSelector("tr[data-marked-for-delete] td:nth-child(1)")).stream()
                 .map(SchemaPage::text)
                 .toList();
     }
@@ -418,11 +467,18 @@ class SchemaPage {
     }
 
     /**
-     * The property table, one list of cell texts per row (Group, Name, Description, Type): an item
-     * type's Properties card, or a trait's Properties tab.
+     * The property tree in reading order, for an item type's Properties card or a trait's Properties
+     * tab: each property as its Name, Description, and Type; each group as "Group " and its path from
+     * the top level, e.g. "Group publication > publisher", with " (trait)" for a trait's; and any
+     * "No properties yet." or "No matching properties." message.
      */
     List<List<String>> propertyRows() {
         return propertyRows(propertyTable());
+    }
+
+    /** Just the properties' names, in reading order. */
+    List<String> propertyNames() {
+        return texts(propertyTable().findElements(By.cssSelector("table.property-tree-table tbody tr td:nth-child(1)")));
     }
 
     /** Opens a trait from the "(trait)" link on its group in the Properties card. */
@@ -431,27 +487,42 @@ class SchemaPage {
         return awaitHeading(traitName);
     }
 
-    static List<List<String>> propertyRows(WebElement table) {
-        return table.findElements(By.cssSelector("table.property-tree-table tbody tr")).stream()
-                .map(row -> texts(row.findElements(By.tagName("td"))))
+    static List<List<String>> propertyRows(WebElement container) {
+        return container.findElements(By.xpath(".//section[contains(@class,'property-tree-group')]"
+                        + " | .//table[contains(@class,'property-tree-table')]/tbody/tr"
+                        + " | .//p[contains(@class,'property-tree-empty')]")).stream()
+                .map(SchemaPage::propertyRow)
                 .toList();
     }
 
+    private static List<String> propertyRow(WebElement row) {
+        return switch (row.getTagName()) {
+            case "section" -> {
+                List<String> path = texts(row.findElements(By.xpath(
+                        "ancestor-or-self::section[contains(@class,'property-tree-group')]/header//span[contains(@class,'property-tree-group-name')]")));
+                boolean trait = !row.findElements(By.cssSelector(":scope > header .property-tree-group-kind")).isEmpty();
+                yield List.of("Group " + String.join(" > ", path) + (trait ? " (trait)" : ""));
+            }
+            case "p" -> List.of(text(row));
+            default -> texts(row.findElements(By.tagName("td"))).subList(0, 3);
+        };
+    }
+
     SchemaPage toggleGroup(String name) {
-        propertyTable().findElement(By.xpath(".//button[contains(@class,'property-tree-group-toggle')][normalize-space()='" + name + "']")).click();
+        propertyTable().findElement(group(name)).findElement(By.cssSelector(":scope > header .property-tree-group-toggle")).click();
         return this;
     }
 
-    SchemaPage filterPropertiesByName(String text) {
-        return filter("property-name-filter", text);
+    /** Narrows the properties to those whose name or description contains the text. */
+    SchemaPage filterProperties(String text) {
+        WebElement input = propertyTable().findElement(By.cssSelector("input[name='property-filter']"));
+        input.sendKeys(Keys.chord(Keys.CONTROL, "a"), Keys.BACK_SPACE);
+        input.sendKeys(text);
+        return this;
     }
 
-    SchemaPage filterPropertiesByDescription(String text) {
-        return filter("property-description-filter", text);
-    }
-
-    SchemaPage clearNameFilter() {
-        propertyTable().findElement(By.cssSelector("input[name='property-name-filter'] + .filter-clear")).click();
+    SchemaPage clearPropertyFilter() {
+        propertyTable().findElement(By.cssSelector("input[name='property-filter'] + .filter-clear")).click();
         return this;
     }
 
@@ -462,7 +533,7 @@ class SchemaPage {
                 .toList();
     }
 
-    /** The property table under the link card whose arrows carry this perspective name. */
+    /** The link card whose arrows carry this perspective name. */
     WebElement linkCard(String perspectiveName) {
         return content().findElement(By.xpath(".//item-type-link-view[.//span[contains(@class,'item-type-link-arrow-label')][starts-with(.,'"
                 + perspectiveName + " (')]]"));
@@ -501,13 +572,6 @@ class SchemaPage {
 
     private WebElement machine(String name) {
         return content().findElement(By.xpath(".//div[contains(@class,'item-type-state-machine')][h3[.='" + name + "']]"));
-    }
-
-    private SchemaPage filter(String inputName, String text) {
-        WebElement input = propertyTable().findElement(By.cssSelector("input[name='" + inputName + "']"));
-        input.sendKeys(Keys.chord(Keys.CONTROL, "a"), Keys.BACK_SPACE);
-        input.sendKeys(text);
-        return this;
     }
 
     private <T> T settled(Supplier<T> read) {

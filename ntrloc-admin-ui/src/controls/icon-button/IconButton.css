@@ -19,3 +19,12 @@
   opacity: 0.6;
   cursor: default;
 }
+
+.icon-button-secondary {
+  color: var(--secondary);
+}
+
+.icon-button-secondary:hover:not(:disabled) {
+  background: var(--secondary-bg);
+  color: var(--secondary);
+}

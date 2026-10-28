@@ -39,15 +39,49 @@ function ownProperties(tree, byId = new Map()) {
   return byId
 }
 
-// The tree as it should be shown: each property with pending edits carries them, flagged `edited`.
-function withPropertyChanges(tree, propertyChanges) {
+// The groups an item type declares itself, by id -- the ones it can rename or delete.
+function ownGroups(tree, byId = new Map()) {
+  tree.groups
+    .filter((g) => !g.inherited)
+    .forEach((g) => {
+      byId.set(g.id, g)
+      ownGroups(g, byId)
+    })
+  return byId
+}
+
+const groupFields = (group) => ({ name: group.name, description: group.description ?? '' })
+
+// The tree as it should be shown: each property or group with pending edits carries them, flagged
+// `edited`.
+function withPendingEdits(tree, propertyChanges, groupChanges) {
   return {
     ...tree,
     properties: tree.properties.map((p) =>
       propertyChanges[p.id] ? { ...p, ...propertyChanges[p.id].values, edited: true } : p,
     ),
-    groups: tree.groups.map((g) => withPropertyChanges(g, propertyChanges)),
+    groups: tree.groups.map((g) => {
+      const edited = withPendingEdits(g, propertyChanges, groupChanges)
+      return groupChanges[g.id] ? { ...edited, ...groupChanges[g.id], edited: true } : edited
+    }),
   }
+}
+
+// Everything saved inside the groups marked for deletion, and those groups themselves. The server
+// only deletes an empty group, so groups come innermost first, after the properties in them.
+function deletedGroupContents(tree, deletedGroupIds, inside = false) {
+  const contents = { propertyIds: [], groupIds: [] }
+  for (const group of tree.groups) {
+    const deleted = inside || deletedGroupIds.has(group.id)
+    const nested = deletedGroupContents(group, deletedGroupIds, deleted)
+    contents.propertyIds.push(...nested.propertyIds)
+    contents.groupIds.push(...nested.groupIds)
+    if (deleted) {
+      contents.propertyIds.push(...group.properties.map((p) => p.id))
+      contents.groupIds.push(group.id)
+    }
+  }
+  return contents
 }
 
 // New properties and groups not yet saved. Each has a parentId: null for the item type's top level,
@@ -103,9 +137,11 @@ const NEW_GROUP_PREFIX = 'new-group-'
 const isNewProperty = (id) => id.startsWith(NEW_PROPERTY_PREFIX)
 const isNewGroup = (id) => id.startsWith(NEW_GROUP_PREFIX)
 
-// Where something new is added: the item type itself (parentId null) or a saved group.
-function savedParent(itemTypeId, parentId) {
-  return parentId === null ? { parentKind: 'ITEM', parentId: itemTypeId } : { parentKind: 'GROUP', parentId }
+// Where something new is added: the item type itself (parentId null), one of its links (the link's
+// id), or a saved group.
+function savedParent(itemTypeId, parentId, linkIds) {
+  if (parentId === null) return { parentKind: 'ITEM', parentId: itemTypeId }
+  return { parentKind: linkIds.has(parentId) ? 'LINK' : 'GROUP', parentId }
 }
 
 function sortByName(nodes) {
@@ -150,9 +186,30 @@ function propertyMutations(property, values) {
 // every Overview field at once, so it's sent whole, after EXPECT_ITEM: the server rejects the batch
 // if those fields no longer hold what this editor last saw, rather than overwriting someone else's
 // change made since. Edits to a property that's since been deleted, or is being deleted here, are
-// dropped. New properties and groups come after deletes and edits, so they can take a name those
-// free up; anything new inside a new group goes out as part of that group's own mutation.
-function toMutations(itemTypeId, saved, fields, state, savedProperties) {
+// dropped. Deleting a group deletes everything saved inside it first, since the server only deletes
+// an empty one; anything new added inside it is dropped. New properties and groups come after
+// deletes and edits, so they can take a name those free up; anything new inside a new group goes
+// out as part of that group's own mutation. Property edits and additions on a link being deleted
+// are dropped along with it.
+function toMutations(itemTypeId, saved, fields, state, savedTree, linkTrees) {
+  const keptLinks = linkTrees.filter(({ linkId }) => !state.deletedLinkIds.has(linkId))
+  const keptLinkIds = new Set(keptLinks.map(({ linkId }) => linkId))
+  const savedProperties = new Map()
+  const savedGroups = new Map()
+  const deletedContents = { propertyIds: [], groupIds: [] }
+  for (const tree of [savedTree, ...keptLinks.map((link) => link.tree)]) {
+    ownProperties(tree, savedProperties)
+    ownGroups(tree, savedGroups)
+    const contents = deletedGroupContents(tree, state.deletedGroupIds)
+    deletedContents.propertyIds.push(...contents.propertyIds)
+    deletedContents.groupIds.push(...contents.groupIds)
+  }
+  const deletedPropertyIds = new Set(
+    [...state.deletedPropertyIds, ...deletedContents.propertyIds].filter((id) => savedProperties.has(id)),
+  )
+  const deletedGroupIds = new Set(deletedContents.groupIds)
+  const addedUnder = (parentId) =>
+    parentId === null || keptLinkIds.has(parentId) || (savedGroups.has(parentId) && !deletedGroupIds.has(parentId))
   const overview = {
     name: fields.name,
     description: fields.description,
@@ -169,19 +226,23 @@ function toMutations(itemTypeId, saved, fields, state, savedProperties) {
   }
   const overviewChanged = Object.keys(state.fieldChanges).length > 0
   return [
-    ...[...state.deletedPropertyIds].map((id) => ({ type: 'DELETE_PROPERTY', id })),
+    ...[...deletedPropertyIds].map((id) => ({ type: 'DELETE_PROPERTY', id })),
+    ...deletedContents.groupIds.map((id) => ({ type: 'DELETE_PROPERTY_GROUP', id })),
     ...[...state.deletedLinkIds].map((id) => ({ type: 'DELETE_LINK', id })),
     ...Object.entries(state.propertyChanges)
-      .filter(([id]) => savedProperties.has(id) && !state.deletedPropertyIds.has(id))
+      .filter(([id]) => savedProperties.has(id) && !deletedPropertyIds.has(id))
       .flatMap(([id, change]) => propertyMutations(savedProperties.get(id), change.values)),
+    ...Object.entries(state.groupChanges)
+      .filter(([id]) => savedGroups.has(id) && !deletedGroupIds.has(id))
+      .map(([id, values]) => ({ type: 'UPDATE_PROPERTY_GROUP', id, name: values.name, description: values.description || null })),
     ...state.newProperties
-      .filter((p) => p.parentId === null || !isNewGroup(p.parentId))
-      .map((p) => ({ type: 'ADD_PROPERTY', ...savedParent(itemTypeId, p.parentId), ...propertyCreateSpec(p.values) })),
+      .filter((p) => addedUnder(p.parentId))
+      .map((p) => ({ type: 'ADD_PROPERTY', ...savedParent(itemTypeId, p.parentId, keptLinkIds), ...propertyCreateSpec(p.values) })),
     ...state.newGroups
-      .filter((g) => g.parentId === null || !isNewGroup(g.parentId))
+      .filter((g) => addedUnder(g.parentId))
       .map((g) => ({
         type: 'ADD_PROPERTY_GROUP',
-        ...savedParent(itemTypeId, g.parentId),
+        ...savedParent(itemTypeId, g.parentId, keptLinkIds),
         ...groupCreateSpec(g, state.newGroups, state.newProperties),
       })),
     ...[...state.removedTraitIds]
@@ -221,6 +282,10 @@ export class ItemTypeViewModel {
     deletedPropertyIds: new Set(),
     deletedLinkIds: new Set(),
     propertyChanges: {},
+    // A saved group's new name and description, by id. Unlike a property's, not checked for
+    // someone else's change made meanwhile.
+    groupChanges: {},
+    deletedGroupIds: new Set(),
     newProperties: [],
     newGroups: [],
     // What the property and group editors are open on: null, { mode: 'create', parentId }, or
@@ -274,6 +339,8 @@ export class ItemTypeViewModel {
   // A row's edit button: a new group opens the group editor, anything else the property editor.
   openEditor = (id) =>
     this.#update(isNewGroup(id) ? { groupEditor: { mode: 'edit', id } } : { propertyEditor: { mode: 'edit', id } })
+
+  openGroupEditor = (id) => this.#update({ groupEditor: { mode: 'edit', id } })
 
   openNewPropertyEditor = (parentId = null) => this.#update({ propertyEditor: { mode: 'create', parentId } })
 
@@ -330,6 +397,17 @@ export class ItemTypeViewModel {
     })
   }
 
+  // A saved group's trash button: marks it, and everything inside it, for deletion.
+  toggleDeletedGroup = (id) => this.#update({ deletedGroupIds: toggled(this.#snapshot.deletedGroupIds, id) })
+
+  // Applies the group editor's values to a saved group; values matching what's saved drop the change.
+  setGroup = (groupId, values, savedValues) => {
+    const groupChanges = { ...this.#snapshot.groupChanges }
+    if (values.name === savedValues.name && values.description === savedValues.description) delete groupChanges[groupId]
+    else groupChanges[groupId] = values
+    this.#update({ groupChanges, groupEditor: null })
+  }
+
   // Applies the property editor's values. As with setField, values matching what's saved drop the
   // change; `base` is the saved property the first edit was made against.
   setProperty = (propertyId, values, savedValues) => {
@@ -382,6 +460,8 @@ export class ItemTypeViewModel {
       deletedPropertyIds: new Set(),
       deletedLinkIds: new Set(),
       propertyChanges: {},
+      groupChanges: {},
+      deletedGroupIds: new Set(),
       newProperties: [],
       newGroups: [],
       propertyEditor: null,
@@ -400,6 +480,8 @@ export class ItemTypeViewModel {
       next.deletedPropertyIds.size > 0 ||
       next.deletedLinkIds.size > 0 ||
       Object.keys(next.propertyChanges).length > 0 ||
+      Object.keys(next.groupChanges).length > 0 ||
+      next.deletedGroupIds.size > 0 ||
       next.newProperties.length > 0 ||
       next.newGroups.length > 0
     this.#snapshot = next
@@ -439,7 +521,7 @@ export function useItemTypeViewModel(itemTypeViewModels, itemTypeId) {
   const state = useSyncExternalStore(itemTypeViewModels.subscribe, vm.getSnapshot)
   const { getItemType, getSupertypeCandidates, getItemTypePropertyTree } = useItemTypeModel()
   const { getTraits } = useTraitModel()
-  const { getItemTypeLinkDetails } = useLinkModel()
+  const { getItemTypeLinkDetails, getLinkPropertyTree } = useLinkModel()
   const { getControlledLists } = useControlledListModel()
 
   const itemType = getItemType(itemTypeId)
@@ -472,7 +554,19 @@ export function useItemTypeViewModel(itemTypeViewModels, itemTypeId) {
   const traitOptions = sortByName(getTraits()).map((trait) => ({ value: trait.id, label: trait.name }))
 
   const savedTree = getItemTypePropertyTree(itemType.id)
+  const links = sortByName(getItemTypeLinkDetails(itemTypeId))
+  // The property trees of the links this item type declares itself, which it edits along with its
+  // own. Something new at a link's top level has the link's id as its parentId.
+  const linkTrees = links.filter((link) => !link.inherited).map((link) => ({ linkId: link.linkId, tree: getLinkPropertyTree(link.linkId) }))
   const savedProperties = ownProperties(savedTree)
+  const savedGroups = ownGroups(savedTree)
+  for (const { tree } of linkTrees) {
+    ownProperties(tree, savedProperties)
+    ownGroups(tree, savedGroups)
+  }
+  // A property tree as it should be shown, pending edits and additions included.
+  const shownTree = (tree, parentId) =>
+    withNewNodes(withPendingEdits(tree, state.propertyChanges, state.groupChanges), parentId, state.newGroups, state.newProperties)
 
   // A field someone else saved a new value for since this edit was made, when that value isn't the
   // one entered here anyway. `theirs` is that value; a property conflict has a `note` instead.
@@ -529,8 +623,8 @@ export function useItemTypeViewModel(itemTypeViewModels, itemTypeId) {
     }
   }
 
-  // The group editor's starting point: a fresh group, or a new one already added. Saved groups
-  // aren't edited here yet.
+  // The group editor's starting point: a fresh group, a new one already added, or a saved one with
+  // any pending edits.
   let groupEditor = null
   if (state.groupEditor?.mode === 'create') {
     const parentId = state.groupEditor.parentId
@@ -538,6 +632,14 @@ export function useItemTypeViewModel(itemTypeViewModels, itemTypeId) {
   } else if (state.groupEditor) {
     const added = state.newGroups.find((g) => g.id === state.groupEditor.id)
     if (added) groupEditor = { isNew: true, group: added.values, apply: (values) => vm.updateNewGroup(added.id, values) }
+    const group = savedGroups.get(state.groupEditor.id)
+    if (group) {
+      groupEditor = {
+        isNew: false,
+        group: { ...groupFields(group), ...state.groupChanges[group.id] },
+        apply: (values) => vm.setGroup(group.id, values, groupFields(group)),
+      }
+    }
   }
 
   return {
@@ -549,7 +651,7 @@ export function useItemTypeViewModel(itemTypeViewModels, itemTypeId) {
     conflicts: [...fieldConflicts, ...propertyConflicts],
     startEditing: vm.startEditing,
     cancel: vm.cancel,
-    save: () => vm.save(toMutations(itemType.id, saved, fields, state, savedProperties)),
+    save: () => vm.save(toMutations(itemType.id, saved, fields, state, savedTree, linkTrees)),
     overview: {
       fields,
       setName: setField('name'),
@@ -569,21 +671,21 @@ export function useItemTypeViewModel(itemTypeViewModels, itemTypeId) {
           .map((opt) => opt.label)
           .join(', ') || 'None',
     },
-    propertyTree: withNewNodes(
-      withPropertyChanges(savedTree, state.propertyChanges),
-      null,
-      state.newGroups,
-      state.newProperties,
-    ),
-    propertyDeletion: { isMarked: (id) => state.deletedPropertyIds.has(id), onToggle: vm.toggleDeleted },
-    editRow: vm.openEditor,
+    propertyTree: shownTree(savedTree, null),
+    propertyDeletion: {
+      isMarked: (id) => state.deletedPropertyIds.has(id) || state.deletedGroupIds.has(id),
+      onToggle: (id) => (savedGroups.has(id) ? vm.toggleDeletedGroup(id) : vm.toggleDeleted(id)),
+    },
+    editRow: (id) => (savedGroups.has(id) ? vm.openGroupEditor(id) : vm.openEditor(id)),
     // New properties and groups, at the top level (no argument) or inside a group (its id).
     newProperty: vm.openNewPropertyEditor,
     newGroup: vm.openNewGroupEditor,
     // The editors while they're open, or null.
     propertyEditor: propertyEditor && { ...propertyEditor, controlledLists, cancel: vm.closePropertyEditor },
     groupEditor: groupEditor && { ...groupEditor, cancel: vm.closeGroupEditor },
-    links: sortByName(getItemTypeLinkDetails(itemTypeId)),
+    // Each with its property tree. The same propertyDeletion, editRow, newProperty, and newGroup work
+    // on a link's properties as on the item type's own.
+    links: links.map((link) => ({ ...link, propertyTree: shownTree(getLinkPropertyTree(link.linkId), link.linkId) })),
     linkDeletion: { isMarked: (id) => state.deletedLinkIds.has(id), onToggle: vm.toggleDeletedLink },
   }
 }

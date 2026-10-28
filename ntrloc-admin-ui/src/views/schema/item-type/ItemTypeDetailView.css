@@ -63,3 +63,8 @@ item-type-structure-footer {
   text-align: center;
   color: var(--secondary);
 }
+
+/* The Properties card's filter, in its title bar. */
+item-type-structure-cards collapsible-card-actions filter-view {
+  width: 240px;
+}
