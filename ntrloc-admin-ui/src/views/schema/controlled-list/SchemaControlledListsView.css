@@ -13,8 +13,29 @@ schema-controlled-lists-view {
   padding: 0;
 }
 
-.schema-controlled-lists-list li {
+/* Like the item types and traits lists. */
+.schema-controlled-lists-list-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
   padding: 6px 8px;
+  border: none;
   border-radius: 4px;
+  background: transparent;
   color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.schema-controlled-lists-list-item:hover {
+  background: var(--primary-bg);
+  color: var(--text-h);
+}
+
+.schema-controlled-lists-list-item[aria-current] {
+  background: var(--primary-bg);
+  color: var(--primary);
+  font-weight: 500;
 }

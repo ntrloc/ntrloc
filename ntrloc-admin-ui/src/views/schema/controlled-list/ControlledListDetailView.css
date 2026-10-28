@@ -1,0 +1,66 @@
+controlled-list-detail-view {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+  min-width: 0;
+}
+
+/* Matches item-type-detail-header. */
+controlled-list-detail-header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin: 10px;
+}
+
+controlled-list-detail-header h2 {
+  margin: 0;
+}
+
+/* Scrolls on its own, laid out like an item type's Structure cards. */
+controlled-list-detail-cards {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 20px;
+}
+
+/* Laid out like an item type's Overview: three to a row. */
+controlled-list-overview {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px 24px;
+}
+
+/* Styled like the Properties card's table. */
+.controlled-list-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.controlled-list-table th,
+.controlled-list-table td {
+  padding: 6px 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  overflow-wrap: anywhere;
+}
+
+.controlled-list-table th {
+  color: var(--primary);
+  font-weight: normal;
+}
+
+.controlled-list-table td {
+  color: var(--text);
+}
+
+/* One property per line, as each names its owner and itself. */
+.controlled-list-usage {
+  flex-direction: column;
+}

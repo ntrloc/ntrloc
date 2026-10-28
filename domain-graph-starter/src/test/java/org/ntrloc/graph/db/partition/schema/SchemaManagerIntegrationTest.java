@@ -66,6 +66,7 @@ import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 
 // Covers SchemaManager.applyMutations()'s mutation types that nothing else in the suite exercises
 // (jacoco showed create/delete-item, create-link-with-perspectives, create-state-machine/state/
@@ -671,7 +672,8 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
 
         var listView = schema.controlledLists().stream().filter(l -> l.id().equals(listId)).findFirst().orElseThrow();
         assertThat(listView.valueCount()).isEqualTo(1);
-        assertThat(listView.usedBy()).extracting(u -> u.propertyId()).contains(propId);
+        assertThat(listView.usedBy()).extracting(u -> u.propertyId(), u -> u.ownerId(), u -> u.ownerKind())
+                .contains(tuple(propId, itemId, PropertyContainerKind.ITEM));
     }
 
     private UUID createStringList(String name) {

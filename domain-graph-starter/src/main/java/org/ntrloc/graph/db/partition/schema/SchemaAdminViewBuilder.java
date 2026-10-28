@@ -2,6 +2,7 @@ package org.ntrloc.graph.db.partition.schema;
 
 import org.ntrloc.graph.db.partition.schema.SchemaContentResolver.Contents;
 import org.ntrloc.graph.db.partition.schema.SchemaContentResolver.OwnerContents;
+import org.ntrloc.graph.db.partition.schema.definition.PropertyContainerKind;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
 import org.ntrloc.graph.db.partition.schema.definition.view.DefinedInView;
 import org.ntrloc.graph.db.partition.schema.definition.view.TargetEntityView;
@@ -127,12 +128,12 @@ class SchemaAdminViewBuilder {
     // generic owner label since links carry no name.
     private List<AdminControlledListView> buildControlledListViews(OwnerContents ownerContents, Map<UUID, String> entityNameMap) {
         Map<UUID, List<AdminControlledListView.UsageRef>> usageByListId = new HashMap<>();
-        ownerContents.byItem().forEach((ownerId, contents) ->
-                collectListUsage(contents, entityNameMap.getOrDefault(ownerId, "(item)"), usageByListId));
-        ownerContents.byTrait().forEach((ownerId, contents) ->
-                collectListUsage(contents, entityNameMap.getOrDefault(ownerId, "(trait)"), usageByListId));
-        ownerContents.byLink().forEach((_, contents) ->
-                collectListUsage(contents, "(link property)", usageByListId));
+        ownerContents.byItem().forEach((ownerId, contents) -> collectListUsage(contents,
+                new ListOwner(entityNameMap.getOrDefault(ownerId, "(item)"), ownerId, PropertyContainerKind.ITEM), usageByListId));
+        ownerContents.byTrait().forEach((ownerId, contents) -> collectListUsage(contents,
+                new ListOwner(entityNameMap.getOrDefault(ownerId, "(trait)"), ownerId, PropertyContainerKind.TRAIT), usageByListId));
+        ownerContents.byLink().forEach((ownerId, contents) -> collectListUsage(contents,
+                new ListOwner("(link property)", ownerId, PropertyContainerKind.LINK), usageByListId));
 
         return controlledListManager.getAllLists().stream()
                 .map(list -> new AdminControlledListView(list.id(), list.name(), list.valueType(),
@@ -141,20 +142,22 @@ class SchemaAdminViewBuilder {
                 .toList();
     }
 
-    private void collectListUsage(Contents contents, String ownerLabel, Map<UUID, List<AdminControlledListView.UsageRef>> out) {
-        collectListUsage(contents.properties(), contents.groups(), ownerLabel, out);
+    private record ListOwner(String label, UUID id, PropertyContainerKind kind) {}
+
+    private void collectListUsage(Contents contents, ListOwner owner, Map<UUID, List<AdminControlledListView.UsageRef>> out) {
+        collectListUsage(contents.properties(), contents.groups(), owner, out);
     }
 
-    private void collectListUsage(List<AdminPropertyDefinitionView> props, List<AdminPropertyGroupView> groups, String ownerLabel,
+    private void collectListUsage(List<AdminPropertyDefinitionView> props, List<AdminPropertyGroupView> groups, ListOwner owner,
                                   Map<UUID, List<AdminControlledListView.UsageRef>> out) {
         for (AdminPropertyDefinitionView p : props) {
             if (p.controlledListId() != null) {
                 out.computeIfAbsent(p.controlledListId(), k -> new ArrayList<>())
-                        .add(new AdminControlledListView.UsageRef(p.id(), p.name(), ownerLabel));
+                        .add(new AdminControlledListView.UsageRef(p.id(), p.name(), owner.label(), owner.id(), owner.kind()));
             }
         }
         for (AdminPropertyGroupView g : groups) {
-            collectListUsage(g.properties(), g.groups(), ownerLabel, out);
+            collectListUsage(g.properties(), g.groups(), owner, out);
         }
     }
 

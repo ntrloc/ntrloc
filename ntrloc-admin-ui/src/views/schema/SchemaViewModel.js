@@ -13,19 +13,18 @@ const SECTION_PATHS = {
 // back from another top-level view doesn't unmount it; a stray /search or /schema/whatever-unknown
 // path should just mean nothing's selected, not garbage parsed out of an unrelated URL.
 function parseSchemaLocation(pathname) {
-  if (!pathname.startsWith('/schema')) {
-    return { activeSection: 'itemTypes', selectedItemTypeId: null, selectedTraitId: null }
-  }
+  const none = { selectedItemTypeId: null, selectedTraitId: null, selectedControlledListId: null }
+  if (!pathname.startsWith('/schema')) return { ...none, activeSection: 'itemTypes' }
   const [segment, id] = pathname.slice('/schema'.length).replace(/^\//, '').split('/')
-  if (segment === 'traits') return { activeSection: 'traits', selectedItemTypeId: null, selectedTraitId: id || null }
+  if (segment === 'traits') return { ...none, activeSection: 'traits', selectedTraitId: id || null }
   if (segment === 'controlled-lists') {
-    return { activeSection: 'controlledLists', selectedItemTypeId: null, selectedTraitId: null }
+    return { ...none, activeSection: 'controlledLists', selectedControlledListId: id || null }
   }
-  return { activeSection: 'itemTypes', selectedItemTypeId: id || null, selectedTraitId: null }
+  return { ...none, activeSection: 'itemTypes', selectedItemTypeId: id || null }
 }
 
-// Selection lives in the URL, not plain component state -- every selection (an item type, a trait,
-// eventually a controlled list) is a real sub-route (/schema/item-types/:id, /schema/traits/:id),
+// Selection lives in the URL, not plain component state -- every selection (an item type, a trait, a
+// controlled list) is a real sub-route (/schema/item-types/:id, /schema/traits/:id, ...),
 // pushed onto browser history like any other navigation, so the back/forward buttons walk through
 // exactly what was viewed -- including cross-references like a property group's "(via <trait>)"
 // link, which is just selectTrait like any other trait selection. Sidebar's own "Schema" nav link
@@ -62,7 +61,7 @@ export function useSchemaViewModel() {
     return () => window.removeEventListener('beforeunload', warn)
   }, [hasUnsavedChanges])
 
-  const { activeSection, selectedItemTypeId, selectedTraitId } = parseSchemaLocation(location.pathname)
+  const { activeSection, selectedItemTypeId, selectedTraitId, selectedControlledListId } = parseSchemaLocation(location.pathname)
 
   function toggleStructureCard(key) {
     setCollapsedStructureCards((prev) => {
@@ -97,6 +96,10 @@ export function useSchemaViewModel() {
     void navigate(`/schema/traits/${traitId}`)
   }
 
+  function selectControlledList(listId) {
+    void navigate(`/schema/controlled-lists/${listId}`)
+  }
+
   // A new trait starts as a draft too, as a new item type does.
   function createTrait(name) {
     selectTrait(traitViewModels.createDraft(name))
@@ -120,6 +123,8 @@ export function useSchemaViewModel() {
     createTrait,
     draftTraits,
     traitDraftNavigation,
+    selectedControlledListId,
+    selectControlledList,
     itemTypeTabKey,
     setItemTypeTabKey,
     collapsedStructureCards,

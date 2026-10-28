@@ -19,6 +19,7 @@ let status = import.meta.hot?.data?.status ?? 'loading' // 'loading' | 'ready' |
 let hasStartedLoading = import.meta.hot?.data?.hasStartedLoading ?? false
 const listeners = new Set()
 let latestLoad = 0
+let latestLoading = Promise.resolve()
 
 function notify() {
   listeners.forEach((listener) => listener())
@@ -58,17 +59,19 @@ function load() {
     notify()
   }
   // Loads can overlap (a schemaChanged arriving mid-fetch); only the most recently started one may
-  // land, so a slow older response can't overwrite a newer schema.
+  // land, so a slow older response can't overwrite a newer schema. An older one finishes only when
+  // that newer one has: whoever awaits a reload (e.g. after a save) then sees a schema at least as
+  // new as the one they asked for.
   const thisLoad = ++latestLoad
-  return fetchAdminSchema()
+  const loading = fetchAdminSchema()
     .then((schema) => {
-      if (thisLoad !== latestLoad) return
+      if (thisLoad !== latestLoad) return latestLoading
       cachedSchema = schema
       status = 'ready'
       notify()
     })
     .catch((error) => {
-      if (thisLoad !== latestLoad) return
+      if (thisLoad !== latestLoad) return latestLoading
       if (isInitialLoad) {
         status = 'error'
         notify()
@@ -76,6 +79,8 @@ function load() {
         console.error('Failed to reload schema', error)
       }
     })
+  latestLoading = loading
+  return loading
 }
 
 export function reload() {

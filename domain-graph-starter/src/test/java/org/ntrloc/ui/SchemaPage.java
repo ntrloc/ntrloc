@@ -100,6 +100,24 @@ class SchemaPage {
         return awaitHeading(name);
     }
 
+    SchemaPage selectControlledList(String name) {
+        driver.findElement(By.xpath("//button[contains(@class,'schema-controlled-lists-list-item')][.='" + name + "']")).click();
+        return awaitHeading(name);
+    }
+
+    /** A card's table, one row per entry, each row's cells joined with " | ". */
+    List<String> cardTableRows(String cardTitle) {
+        return settled(() -> card(cardTitle).findElements(By.cssSelector("tbody tr")).stream()
+                .map(row -> String.join(" | ", texts(row.findElements(By.cssSelector("td")))))
+                .toList());
+    }
+
+    /** Clicks a link-styled button inside a card, e.g. an owner in a controlled list's Used by. */
+    SchemaPage clickInCard(String cardTitle, String label) {
+        card(cardTitle).findElement(By.xpath(".//button[.='" + label + "']")).click();
+        return awaitHeading(label);
+    }
+
     SchemaPage selectTrait(String name) {
         driver.findElement(By.xpath("//button[contains(@class,'schema-traits-list-item')][.='" + name + "']")).click();
         return awaitHeading(name);
@@ -181,7 +199,7 @@ class SchemaPage {
     Map<String, String> itemTypeOverview() {
         return settled(() -> {
             Map<String, String> fields = new LinkedHashMap<>();
-            for (WebElement field : card("Overview").findElements(By.cssSelector("item-type-overview > *, trait-overview > *"))) {
+            for (WebElement field : card("Overview").findElements(By.cssSelector("item-type-overview > *, trait-overview > *, controlled-list-overview > *"))) {
                 fields.put(text(field.findElement(By.cssSelector(".input-control-name"))), fieldValue(field));
             }
             return fields;
@@ -196,6 +214,10 @@ class SchemaPage {
         List<WebElement> switches = field.findElements(By.cssSelector("[role='switch']"));
         if (!switches.isEmpty()) {
             return "true".equals(switches.getFirst().getDomAttribute("aria-checked")) ? "Yes" : "No";
+        }
+        List<WebElement> listed = field.findElements(By.cssSelector(".entity-overview-link-list > li"));
+        if (!listed.isEmpty()) {
+            return String.join(", ", texts(listed));
         }
         List<WebElement> links = field.findElements(By.cssSelector(".entity-overview-link"));
         if (!links.isEmpty()) {

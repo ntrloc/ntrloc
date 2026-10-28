@@ -18,6 +18,8 @@ import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateLinkDefini
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePerspectiveDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePropertyDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePropertyGroupDefinitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.NewControlledListReference;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.SetPropertyControlledListMutation;
 import org.ntrloc.ui.UiTestData.Transition;
 import org.openqa.selenium.WebElement;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -255,6 +257,23 @@ class SchemaViewUiTest extends AbstractUiIntegrationTest {
         assertThat(schema.contentText()).isEqualTo("Select an item type, trait, or controlled list.");
     }
 
+    @Test
+    void selectingAControlledListShowsWhereItsUsedAndItsValues() {
+        schema.openSection("Controlled Lists").selectControlledList(GENRE_LIST);
+
+        assertThat(driver.getCurrentUrl()).contains("/schema/controlled-lists/");
+        assertThat(schema.selectedListEntry()).isEqualTo(GENRE_LIST);
+        assertThat(schema.structureCards()).containsExactly("Overview", "Values");
+        assertThat(schema.itemTypeOverview()).containsExactly(
+                entry("Name", GENRE_LIST),
+                entry("Value type", "String"),
+                entry("Used by", BOOK_TYPE + " · keywords"));
+        assertThat(schema.cardTableRows("Values")).containsExactly("FICTION | Fiction", "REFERENCE | Reference");
+
+        schema.clickInCard("Overview", BOOK_TYPE);
+        assertThat(driver.getCurrentUrl()).endsWith("/schema/item-types/" + bookTypeId);
+    }
+
     private static CreatePropertyDefinitionMutation described(String name, PropertyType type, String description) {
         return described(name, type, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, description);
     }
@@ -294,7 +313,9 @@ class SchemaViewUiTest extends AbstractUiIntegrationTest {
                         List.of()),
                 new CreateControlledListMutation("genre", GENRE_LIST, PropertyType.STRING, List.of(
                         new CreateControlledListMutation.Entry("FICTION", "Fiction"),
-                        new CreateControlledListMutation.Entry("REFERENCE", "Reference")))));
+                        new CreateControlledListMutation.Entry("REFERENCE", "Reference"))),
+                new SetPropertyControlledListMutation(UiTestData.propertyId(testData.itemType(BOOK_TYPE), "keywords"),
+                        new NewControlledListReference("genre"))));
 
         testData.createStateMachine(BOOK_TYPE, "Lifecycle", List.of("Draft", "In review", "Published"), List.of(
                 new Transition("__start__", "Draft", "Create"),

@@ -2,18 +2,24 @@ import { useEffect, useSyncExternalStore } from 'react'
 import { useSchemaSnapshot } from './SchemaCache'
 import { fetchControlledListValues } from '../delegate/ControlledListDelegate'
 
-function toControlledLists(adminSchema) {
-  return adminSchema.controlledLists.map((list) => ({
-    id: list.id,
-    name: list.name,
-    valueType: list.valueType,
-  }))
-}
+// `usedBy` is every property pointing at the list: { propertyId, propertyName, ownerLabel, ownerId,
+// ownerKind }, ownerKind being ITEM, TRAIT or LINK.
+const toControlledList = (list) => ({
+  id: list.id,
+  name: list.name,
+  valueType: list.valueType,
+  valueCount: list.valueCount,
+  usedBy: list.usedBy,
+})
 
 export function useControlledListModel() {
   const schema = useSchemaSnapshot()
   return {
-    getControlledLists: () => (schema ? toControlledLists(schema) : []),
+    getControlledLists: () => (schema ? schema.controlledLists.map(toControlledList) : []),
+    getControlledList: (listId) => {
+      const list = schema?.controlledLists.find((candidate) => candidate.id === listId)
+      return list ? toControlledList(list) : null
+    },
   }
 }
 

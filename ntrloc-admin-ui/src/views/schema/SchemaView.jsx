@@ -6,6 +6,7 @@ import ItemTypeDetailView from './item-type/ItemTypeDetailView'
 import SchemaTraitsView from './trait/SchemaTraitsView'
 import TraitDetailView from './trait/TraitDetailView'
 import SchemaControlledListsView from './controlled-list/SchemaControlledListsView'
+import ControlledListDetailView from './controlled-list/ControlledListDetailView'
 import './SchemaView.css'
 
 function SchemaView() {
@@ -23,6 +24,8 @@ function SchemaView() {
     createTrait,
     draftTraits,
     traitDraftNavigation,
+    selectedControlledListId,
+    selectControlledList,
     itemTypeTabKey,
     setItemTypeTabKey,
     collapsedStructureCards,
@@ -63,7 +66,16 @@ function SchemaView() {
         />
       ),
     },
-    { key: 'controlledLists', label: 'Controlled Lists', view: <SchemaControlledListsView /> },
+    {
+      key: 'controlledLists',
+      label: 'Controlled Lists',
+      view: (
+        <SchemaControlledListsView
+          selectedControlledListId={selectedControlledListId}
+          onSelectControlledList={selectControlledList}
+        />
+      ),
+    },
   ]
 
   return (
@@ -96,9 +108,19 @@ function SchemaView() {
             onToggleCollapsed={toggleStructureCard}
           />
         )}
+        {activeSection === 'controlledLists' && selectedControlledListId && (
+          <ControlledListDetailView
+            listId={selectedControlledListId}
+            onSelectItemType={selectItemType}
+            onSelectTrait={selectTrait}
+            collapsed={collapsedStructureCards}
+            onToggleCollapsed={toggleStructureCard}
+          />
+        )}
         {!(
           (activeSection === 'itemTypes' && selectedItemTypeId) ||
-          (activeSection === 'traits' && selectedTraitId)
+          (activeSection === 'traits' && selectedTraitId) ||
+          (activeSection === 'controlledLists' && selectedControlledListId)
         ) && <p className="schema-view-placeholder">Select an item type, trait, or controlled list.</p>}
       </schema-view-content>
     </schema-view>
