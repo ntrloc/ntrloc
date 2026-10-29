@@ -86,7 +86,8 @@ public class MarkerAdminController {
         if (body.name() == null || body.name().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "name is required");
         }
-        var marker = authRepo.updateMarker(id, body.name(), body.description());
+        var marker = authRepo.updateMarker(id, body.name(), body.description())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "This marker was deleted by someone else."));
         return new MarkerView(marker.id(), marker.name(), marker.description(), marker.scopeKind(), marker.scopeId());
     }
 

@@ -1,3 +1,5 @@
+import { logInfo } from '../log'
+
 // Owns every call to the schema API -- every other layer works with plain data, never fetch.
 export async function fetchAdminSchema() {
   const res = await fetch('/api/admin/schema', { credentials: 'same-origin' })
@@ -11,6 +13,7 @@ export class SchemaConflictError extends Error {}
 
 // One batch of schema mutations, applied by the server all-or-nothing.
 export async function applySchemaMutations(mutations) {
+  logInfo(`Saving schema: ${mutations.map((mutation) => mutation.type).join(', ')}`)
   const res = await fetch('/api/admin/schema/mutations', {
     method: 'POST',
     credentials: 'same-origin',
@@ -20,6 +23,8 @@ export async function applySchemaMutations(mutations) {
   if (!res.ok) {
     const body = await res.json().catch(() => null)
     const message = body?.message || `Failed to save schema changes (${res.status})`
+    logInfo(`Schema save refused (${res.status}): ${message}`)
     throw res.status === 409 ? new SchemaConflictError(message) : new Error(message)
   }
+  logInfo(`Schema saved (${res.status})`)
 }

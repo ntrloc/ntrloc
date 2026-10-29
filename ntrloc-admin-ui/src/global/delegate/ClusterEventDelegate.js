@@ -6,6 +6,8 @@
 // from the union of the core UI's own needs plus whatever admin-ui-extensions declare wanting, but
 // that's not built yet; see ClusterEventController on the backend for the server side of this same
 // "start simple" step.
+import { logInfo } from '../log'
+
 const EVENT_TYPES = ['schemaChanged']
 
 let eventSource = null
@@ -17,10 +19,14 @@ function connect() {
   // Events sent while not connected (before the first open, or while EventSource is reconnecting)
   // are never replayed, so every (re)connect tells each listener to refresh, as if it had missed one.
   eventSource.addEventListener('open', () => {
+    logInfo('Event stream connected')
     for (const listeners of listenersByType.values()) listeners.forEach((listener) => listener(null))
   })
+  // EventSource reconnects by itself; its 'open' then refreshes whatever was missed meanwhile.
+  eventSource.addEventListener('error', () => logInfo('Event stream disconnected'))
   for (const type of EVENT_TYPES) {
     eventSource.addEventListener(type, (event) => {
+      logInfo(`${type} event received`)
       const listeners = listenersByType.get(type)
       if (listeners) listeners.forEach((listener) => listener(event.data))
     })

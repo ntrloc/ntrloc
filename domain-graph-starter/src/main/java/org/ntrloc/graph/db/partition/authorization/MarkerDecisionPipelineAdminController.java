@@ -97,7 +97,8 @@ public class MarkerDecisionPipelineAdminController {
         if (body.pipeline() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "pipeline is required");
         }
-        return toView(repository.updatePipeline(id, body.pipeline(), body.enabled(), orEmpty(body.layout())));
+        return toView(repository.updatePipeline(id, body.pipeline(), body.enabled(), orEmpty(body.layout()))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "This pipeline was deleted by someone else.")));
     }
 
     @DeleteMapping("/{id}")

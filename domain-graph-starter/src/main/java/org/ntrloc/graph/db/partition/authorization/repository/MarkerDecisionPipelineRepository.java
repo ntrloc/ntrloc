@@ -88,20 +88,21 @@ public class MarkerDecisionPipelineRepository implements PipelineSource {
         return new PipelineRow(id, itemTypeId, true, pipeline, layout);
     }
 
-    public PipelineRow updatePipeline(UUID id, Pipeline pipeline, boolean enabled, PipelineLayout layout) {
-        jdbcClient.sql("""
+    // Empty when there's no such pipeline -- e.g. someone else deleted it meanwhile.
+    public Optional<PipelineRow> updatePipeline(UUID id, Pipeline pipeline, boolean enabled, PipelineLayout layout) {
+        Optional<UUID> itemTypeId = jdbcClient.sql("""
                 UPDATE marker_decision_pipeline SET pipeline = :pipeline::jsonb, enabled = :enabled, layout = :layout::jsonb
                 WHERE id = :id
+                RETURNING item_type_id
                 """)
                 .param(COL_PIPELINE, writePipeline(pipeline))
                 .param(COL_ENABLED, enabled)
                 .param(COL_LAYOUT, writeLayout(layout))
                 .param("id", id)
-                .update();
-        writeWatches(id, pipeline);
-        UUID itemTypeId = jdbcClient.sql("SELECT item_type_id FROM marker_decision_pipeline WHERE id = :id")
-                .param("id", id).query(UUID.class).single();
-        return new PipelineRow(id, itemTypeId, enabled, pipeline, layout);
+                .query(UUID.class)
+                .optional();
+        itemTypeId.ifPresent(_ -> writeWatches(id, pipeline));
+        return itemTypeId.map(itemType -> new PipelineRow(id, itemType, enabled, pipeline, layout));
     }
 
     // Re-derived wholesale from the pipeline's own graph, not diffed against what's already stored

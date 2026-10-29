@@ -1,6 +1,7 @@
 import { useEffect, useSyncExternalStore } from 'react'
 import { fetchAdminSchema } from '../delegate/SchemaDelegate'
 import { onSchemaChanged } from '../delegate/ClusterEventDelegate'
+import { logInfo } from '../log'
 
 // The only thing in the app that knows GET /api/admin/schema exists, or that a "schemaChanged"
 // cluster event even exists -- every schema-related Model (ItemTypeModel, TraitModel, LinkModel,
@@ -52,7 +53,8 @@ function getSchemaSnapshot() {
   return cachedSchema
 }
 
-function load() {
+// `reason` is only for the log: what this load is responding to.
+function load(reason) {
   hasStartedLoading = true
   // Only the very first fetch should flip status to 'loading' -- a later reload (schemaChanged)
   // already has a working cachedSchema to keep showing while the new one comes in. Consumers key
@@ -70,9 +72,14 @@ function load() {
   // that newer one has: whoever awaits a reload (e.g. after a save) then sees a schema at least as
   // new as the one they asked for.
   const thisLoad = ++latestLoad
+  logInfo(`Schema load #${thisLoad} started (${reason})`)
   const loading = Promise.all([fetchAdminSchema(), ...(isInitialLoad ? [] : [...reloadHooks].map((hook) => hook()))])
     .then(([schema]) => {
-      if (thisLoad !== latestLoad) return latestLoading
+      if (thisLoad !== latestLoad) {
+        logInfo(`Schema load #${thisLoad} superseded by #${latestLoad}`)
+        return latestLoading
+      }
+      logInfo(`Schema load #${thisLoad} applied: ${schemaSize(schema)}`)
       cachedSchema = schema
       status = 'ready'
       notify()
@@ -90,13 +97,17 @@ function load() {
   return loading
 }
 
-export function reload() {
-  return load()
+export function reload(reason = 'requested') {
+  return load(reason)
 }
 
-const unsubscribeFromSchemaChanged = onSchemaChanged(() => {
-  void reload()
+// `data` is null when the event stream (re)connected rather than delivering an event.
+const unsubscribeFromSchemaChanged = onSchemaChanged((data) => {
+  void reload(data === null ? 'event stream connected' : 'schemaChanged event')
 })
+
+const schemaSize = (schema) =>
+  `${schema.items?.length ?? 0} item types, ${schema.traits?.length ?? 0} traits, ${schema.controlledLists?.length ?? 0} controlled lists`
 
 // Dev-only: Vite HMR re-evaluates this module's top-level code (including the subscription above)
 // on every edit, but ClusterEventDelegate's own listener set is a separate module that doesn't get
@@ -116,7 +127,7 @@ if (import.meta.hot) {
 }
 
 function ensureLoadStarted() {
-  if (!hasStartedLoading) void load()
+  if (!hasStartedLoading) void load('first use')
 }
 
 // For a consumer that only needs to know whether the schema is loaded (e.g. to show a loading/error

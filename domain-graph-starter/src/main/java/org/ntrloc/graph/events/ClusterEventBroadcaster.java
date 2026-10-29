@@ -3,6 +3,8 @@ package org.ntrloc.graph.events;
 import com.hazelcast.topic.ITopic;
 import jakarta.annotation.PreDestroy;
 import org.ntrloc.graph.cluster.ClusterService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.event.ContextClosedEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
@@ -28,6 +30,7 @@ import java.util.function.Predicate;
 @Component
 public class ClusterEventBroadcaster {
 
+    private static final Logger LOG = LoggerFactory.getLogger(ClusterEventBroadcaster.class);
     private static final String EVENTS_TOPIC = "ntrloc.events";
 
     // Comfortably under the common ~60s default idle-connection timeout used by most reverse
@@ -52,7 +55,11 @@ public class ClusterEventBroadcaster {
 
     public ClusterEventBroadcaster(ClusterService clusterService) {
         this.topic = clusterService.getTopic(EVENTS_TOPIC);
-        topic.addMessageListener(message -> registry.publish(message.getMessageObject()));
+        topic.addMessageListener(message -> {
+            ClusterEvent event = message.getMessageObject();
+            int delivered = registry.publish(event);
+            LOG.info("Delivered {} event to {} of {} connected clients", event.type(), delivered, registry.size());
+        });
         heartbeatExecutor.scheduleAtFixedRate(() -> registry.broadcastComment("heartbeat"),
                 HEARTBEAT_INTERVAL.toSeconds(), HEARTBEAT_INTERVAL.toSeconds(), TimeUnit.SECONDS);
     }

@@ -33,3 +33,7 @@ binary:
 logging:
   level:
     root: warn
+    # The server's half of a live schema update, for a failed UI test's output: the schema changing,
+    # its event reaching connected pages, and pages connecting and disconnecting.
+    org.ntrloc.graph.db.partition.schema.SchemaManager: info
+    org.ntrloc.graph.events: debug

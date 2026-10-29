@@ -240,6 +240,28 @@ class MarkerDecisionPipelineAdminControllerIntegrationTest extends AbstractInteg
     }
 
     @Test
+    void updatingAPipelineSomeoneElseDeleted_isNotFound() {
+        Pipeline pipeline = simplePipeline(UUID.randomUUID());
+        PipelineView created = webTestClient.post().uri("/api/admin/marker-decision-pipelines")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com"))
+                .bodyValue(new CreatePipelineRequest(fixture.productTypeId(), pipeline, null))
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody(PipelineView.class)
+                .returnResult().getResponseBody();
+        webTestClient.delete().uri("/api/admin/marker-decision-pipelines/{id}", created.id())
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com"))
+                .exchange()
+                .expectStatus().isNoContent();
+
+        webTestClient.put().uri("/api/admin/marker-decision-pipelines/{id}", created.id())
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com"))
+                .bodyValue(new UpdatePipelineRequest(pipeline, true, new PipelineLayout(Map.of(), Map.of())))
+                .exchange()
+                .expectStatus().isNotFound();
+    }
+
+    @Test
     void creatingWithoutRequiredFields_isBadRequest() {
         webTestClient.post().uri("/api/admin/marker-decision-pipelines")
                 .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com"))

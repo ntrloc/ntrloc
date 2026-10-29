@@ -182,7 +182,8 @@ public class AuthorizationRepository {
     // what a marker's grants are validated against, so changing it out from under existing grants
     // would silently invalidate them). Not cache-affecting: AuthorizationCacheManager's Snapshot
     // keys everything by marker id, never by name/description, so no refreshCache() call here.
-    public MarkerRow updateMarker(UUID id, String name, String description) {
+    // Empty when there's no such marker -- e.g. someone else deleted it meanwhile.
+    public Optional<MarkerRow> updateMarker(UUID id, String name, String description) {
         return jdbcClient.sql("""
                 UPDATE authorization_marker SET name = :name, description = :description
                 WHERE id = :id RETURNING id, name, description, scope_kind, scope_id
@@ -191,7 +192,7 @@ public class AuthorizationRepository {
                 .query((rs, _) -> new MarkerRow(
                         rs.getObject("id", UUID.class), rs.getString("name"), rs.getString(COL_DESCRIPTION),
                         rs.getString("scope_kind"), rs.getObject("scope_id", UUID.class)))
-                .single();
+                .optional();
     }
 
     public void deleteMarker(UUID id) {

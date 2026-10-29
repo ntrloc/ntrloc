@@ -22,6 +22,7 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
@@ -37,7 +38,7 @@ import java.util.stream.Collectors;
  * npm run coverage:report to merge into an LCOV file.
  *
  * The browser container is a JVM-wide singleton, like the Postgres ones. A failing test leaves a
- * screenshot, the page's HTML and the browser console in target/ui-test-failures/ (see
+ * screenshot, the page's HTML, the browser console and the server's log in target/ui-test-failures/ (see
  * FailureCapture).
  */
 public final class UiBrowser {
@@ -121,12 +122,20 @@ public final class UiBrowser {
         if (driver.getCurrentUrl().startsWith("http")) {
             driver.manage().deleteAllCookies();
         }
+        restartLogCapture();
         driver.get(url);
         await().until(ExpectedConditions.visibilityOfElementLocated(By.name("username"))).sendKeys(username);
         driver.findElement(By.name("password")).sendKeys(password);
         driver.findElement(By.name("password")).submit();
         // Spring Security returns to the saved request with "?continue" appended.
         await().until(ExpectedConditions.urlMatches("^" + Pattern.quote(url) + "(\\?.*)?$"));
+    }
+
+    // What a failure captures (see FailureCapture) starts from here: reading the browser's console
+    // log empties it, and the server's log is collected afresh.
+    private void restartLogCapture() {
+        driver.manage().logs().get(LogType.BROWSER);
+        ServerLogCapture.restart();
     }
 
     /**
@@ -154,6 +163,7 @@ public final class UiBrowser {
     public void openAdminUi(String path) {
         String url = serverUrl(ADMIN_UI_PATH + path);
         ((JavascriptExecutor) driver).executeScript("localStorage.clear(); sessionStorage.clear()");
+        restartLogCapture();
         driver.get(url);
         await().until(ExpectedConditions.urlMatches("^" + Pattern.quote(url) + "(\\?.*)?$"));
     }
@@ -198,8 +208,9 @@ public final class UiBrowser {
             Files.writeString(dir.resolve("browser.txt"), "URL: " + driver.getCurrentUrl()
                     + "\nWindow: " + ((JavascriptExecutor) driver).executeScript("return innerWidth + 'x' + innerHeight") + "\n");
             Files.writeString(dir.resolve("console.log"), driver.manage().logs().get(LogType.BROWSER).getAll().stream()
-                    .map(entry -> entry.getLevel() + " " + entry.getMessage())
+                    .map(entry -> Instant.ofEpochMilli(entry.getTimestamp()) + " " + entry.getLevel() + " " + entry.getMessage())
                     .collect(Collectors.joining("\n")));
+            Files.writeString(dir.resolve("server.log"), String.join("\n", ServerLogCapture.lines()));
         }
     }
 }

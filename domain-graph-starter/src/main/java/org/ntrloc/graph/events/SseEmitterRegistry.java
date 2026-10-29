@@ -44,19 +44,32 @@ public class SseEmitterRegistry<T> {
         SseEmitter emitter = new SseEmitter(0L);
         Registration<T> registration = new Registration<>(emitter, filter);
         registrations.add(registration);
-        emitter.onCompletion(() -> registrations.remove(registration));
-        emitter.onTimeout(() -> registrations.remove(registration));
-        emitter.onError(e -> registrations.remove(registration));
+        LOG.debug("SSE client connected ({} open)", registrations.size());
+        emitter.onCompletion(() -> unregister(registration, "completed"));
+        emitter.onTimeout(() -> unregister(registration, "timed out"));
+        emitter.onError(e -> unregister(registration, "failed"));
         return emitter;
     }
 
-    public void publish(T event) {
-        for (Registration<T> registration : registrations) {
-            if (!registration.filter().test(event)) {
-                continue;
-            }
-            send(registration, toEvent.apply(event));
+    private void unregister(Registration<T> registration, String how) {
+        if (registrations.remove(registration)) {
+            LOG.debug("SSE client {} ({} open)", how, registrations.size());
         }
+    }
+
+    public int size() {
+        return registrations.size();
+    }
+
+    // Returns how many clients it was sent to.
+    public int publish(T event) {
+        int delivered = 0;
+        for (Registration<T> registration : registrations) {
+            if (registration.filter().test(event) && send(registration, toEvent.apply(event))) {
+                delivered++;
+            }
+        }
+        return delivered;
     }
 
     // Ends every open stream. Each owning broadcaster calls this on ContextClosedEvent, which Spring
@@ -80,13 +93,15 @@ public class SseEmitterRegistry<T> {
         }
     }
 
-    private void send(Registration<T> registration, SseEmitter.SseEventBuilder event) {
+    private boolean send(Registration<T> registration, SseEmitter.SseEventBuilder event) {
         try {
             registration.emitter().send(event);
+            return true;
         } catch (IOException | IllegalStateException e) {
             LOG.debug("Dropping a dead SSE connection", e);
             registration.emitter().completeWithError(e);
             registrations.remove(registration);
+            return false;
         }
     }
 }

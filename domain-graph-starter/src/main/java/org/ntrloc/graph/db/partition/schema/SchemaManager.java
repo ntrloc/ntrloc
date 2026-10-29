@@ -10,6 +10,8 @@ import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminSchemaVie
 import org.ntrloc.graph.db.partition.schema.definition.view.calculated.SchemaView;
 import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
 import org.ntrloc.graph.events.ClusterEventBroadcaster;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.sql.init.dependency.DependsOnDatabaseInitialization;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
@@ -30,6 +32,8 @@ import java.util.stream.Collectors;
 @Service
 @DependsOnDatabaseInitialization
 public class SchemaManager {
+
+    private static final Logger LOG = LoggerFactory.getLogger(SchemaManager.class);
 
     // Cluster-wide "the schema changed, refresh your own copy" signal -- an ITopic, not the
     // IMap.put()-as-a-side-channel trick the old domain-graph-starter SchemaManagerImpl used
@@ -132,6 +136,7 @@ public class SchemaManager {
     // started going through applyMutations like every other schema write.
     public void refreshCache() {
         rebuildCache();
+        LOG.info("Schema changed: cache rebuilt ({} item types), publishing schemaChanged", cachedAdminSchema.get().items().size());
         schemaChangedTopic.publish(UUID.randomUUID().toString());
         clusterEventBroadcaster.publish(SCHEMA_CHANGED_TOPIC, UUID.randomUUID().toString());
     }

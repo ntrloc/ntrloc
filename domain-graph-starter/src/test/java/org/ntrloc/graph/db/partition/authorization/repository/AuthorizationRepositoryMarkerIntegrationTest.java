@@ -75,6 +75,14 @@ class AuthorizationRepositoryMarkerIntegrationTest extends AbstractIntegrationTe
     }
 
     @Test
+    void updateMarker_forAMarkerSomeoneElseDeleted_isEmpty() {
+        var marker = authRepo.createMarker("arm-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId());
+        authRepo.deleteMarker(marker.id());
+
+        assertThat(authRepo.updateMarker(marker.id(), "renamed", null)).isEmpty();
+    }
+
+    @Test
     void ensureMarkerGrant_isIdempotent() {
         var marker = authRepo.createMarker("arm-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId());
         var group = securityRepo.createUserGroup("arm-" + UUID.randomUUID());

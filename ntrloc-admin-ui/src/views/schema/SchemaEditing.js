@@ -563,12 +563,12 @@ export class SchemaEditorViewModel {
     try {
       if (mutations.length > 0) {
         await applySchemaMutations(mutations)
-        await reloadSchema()
+        await reloadSchema('after save')
       }
       this.#reset()
       return true
     } catch (error) {
-      if (error instanceof SchemaConflictError) await reloadSchema().catch(() => {})
+      if (error instanceof SchemaConflictError) await reloadSchema('after conflict').catch(() => {})
       this.#update({ saving: false, saveError: error.message })
       return false
     }
@@ -822,7 +822,7 @@ function groupEditorFor(vm, state, savedGroups) {
 // and waits for the reloaded schema. Throws whatever the server refused it with.
 export async function deleteDefinition(mutation) {
   await applySchemaMutations([mutation])
-  await reloadSchema()
+  await reloadSchema('after delete')
 }
 
 // What deleting an item type or trait does to the links its Links card shows (structureEditing's
