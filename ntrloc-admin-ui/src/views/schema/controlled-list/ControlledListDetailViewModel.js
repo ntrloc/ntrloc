@@ -60,6 +60,23 @@ function valueProblems(valueType, rows) {
   return problems
 }
 
+// A saved list's values as editable rows -- null until they've loaded.
+function savedRowsOf(values) {
+  if (values.status !== 'ready') return null
+  return values.values.map((entry, index) => ({ key: `saved-${index}`, value: String(entry.value), label: entry.label ?? '' }))
+}
+
+// Saving a saved list's edits: a check that it's still as `savedName` (and, with `valueEdit`, still
+// has its saved values), then the update. `newName` is null when unchanged; `valueEdit`, the values
+// as saved and as edited, is absent when they're unchanged. Nothing at all when neither changed.
+function updateMutations(listId, savedName, newName, valueEdit) {
+  if (newName === null && !valueEdit) return []
+  return [
+    { type: 'EXPECT_CONTROLLED_LIST', listId, name: savedName, values: valueEdit ? asEntries(valueEdit.savedRows) : null },
+    { type: 'UPDATE_CONTROLLED_LIST', listId, name: newName, values: valueEdit ? asEntries(valueEdit.rows) : null },
+  ]
+}
+
 // A row's problems as shown: a new row's pending ones wait until it's been left.
 function shownProblems(row, problems) {
   const shown = {}
@@ -88,16 +105,7 @@ export function useControlledListDetailViewModel(controlledListViewModels, listI
   for (const [key, change] of Object.entries(state.fieldChanges)) fields[key] = change.value
   const setField = (key) => (value) => vm.setField(key, value, saved[key])
 
-  // The values as saved now, as editable rows -- null until they've loaded.
-  let savedRows = null
-  if (draft) savedRows = []
-  else if (values.status === 'ready') {
-    savedRows = values.values.map((entry, index) => ({
-      key: `saved-${index}`,
-      value: String(entry.value),
-      label: entry.label ?? '',
-    }))
-  }
+  const savedRows = draft ? [] : savedRowsOf(values)
   const rows = state.valuesChange?.rows ?? savedRows ?? []
   const setRows = (next) => vm.setValues(next, savedRows)
 
@@ -134,20 +142,6 @@ export function useControlledListDetailViewModel(controlledListViewModels, listI
         ]
       : []
 
-  function saveMutations() {
-    const mutations = []
-    const nameChanged = 'name' in state.fieldChanges
-    if (!nameChanged && !change) return mutations
-    mutations.push({ type: 'EXPECT_CONTROLLED_LIST', listId, name: saved.name, values: change ? asEntries(savedRows) : null })
-    mutations.push({
-      type: 'UPDATE_CONTROLLED_LIST',
-      listId,
-      name: nameChanged ? fields.name.trim() : null,
-      values: change ? asEntries(rows) : null,
-    })
-    return mutations
-  }
-
   async function save() {
     if (draft) {
       const created = {
@@ -164,7 +158,8 @@ export function useControlledListDetailViewModel(controlledListViewModels, listI
       controlledListViewModels.discard(listId)
       return
     }
-    await vm.save(saveMutations())
+    const nameChanged = 'name' in state.fieldChanges
+    await vm.save(updateMutations(listId, saved.name, nameChanged ? fields.name.trim() : null, change && { savedRows, rows }))
   }
 
   const usedBy = [...list.usedBy].sort(
@@ -230,7 +225,12 @@ export function useControlledListDetailViewModel(controlledListViewModels, listI
             : rows.map((other) => (other.key === key ? { ...other, removed: !other.removed } : other)),
         )
       },
-      add: () => setRows([...rows, { key: `new-value-${nextNewValue++}`, value: '', label: '', isNew: true }]),
+      // Returns the new row's key.
+      add: () => {
+        const key = `new-value-${nextNewValue++}`
+        setRows([...rows, { key, value: '', label: '', isNew: true }])
+        return key
+      },
     },
   }
 }

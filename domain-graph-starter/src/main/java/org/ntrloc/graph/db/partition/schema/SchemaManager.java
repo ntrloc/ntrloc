@@ -104,13 +104,9 @@ public class SchemaManager {
         cachedSchema.set(calculatedViewBuilder.buildSchema());
     }
 
-    // Returns one ControlledListMutationResult per CreateControlledListMutation the batch actually
-    // processed -- the caller's only way to learn a newly-created list's real id, same reasoning
-    // MutationResponse's own ItemMutationResult list serves on the item/link side. A
-    // SetPropertyControlledListMutation later in the *same* batch can reference that same create by
-    // its own refId (NewControlledListReference) rather than needing two separate round trips --
-    // refIdToListId is what makes that resolution possible, built up as the batch is walked;
-    // refIdToEntityId does the same for a link to an item type or trait created earlier in the batch.
+    // Returns one ControlledListMutationResult per controlled list the batch created: the caller's
+    // only way to learn a new list's id. Later mutations in the batch refer to a list, item type or
+    // trait created earlier in it by its refId.
     //
     // The batch is all-or-nothing: one transaction covers every mutation, including the register
     // tables, grants and pipelines the SchemaChangeEvent listeners create along the way. The cache

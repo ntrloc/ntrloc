@@ -7,7 +7,6 @@ import org.ntrloc.graph.db.partition.schema.repository.SchemaRepository;
 
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -103,12 +102,12 @@ final class SchemaMutationValidation {
     private static void requireAvailableAcrossChain(SchemaRepository repo, Namespace namespace, UUID itemId, List<OwnedName> added) {
         Map<UUID, UUID> supertypeById = supertypeById(repo);
         Map<UUID, List<UUID>> traitIdsByItem = repo.getTraitIdsByItem();
-        requireNoCollision(added, levelOf(namespace, traitIdsByItem, itemId), namespace, "item type '" + itemName(repo, itemId) + "'");
+        requireNoCollision(added, levelOf(namespace, traitIdsByItem, itemId), namespace, named("item type", repo, itemId));
         for (UUID ancestor : ancestorsOf(supertypeById, itemId)) {
-            requireNoCollision(added, levelOf(namespace, traitIdsByItem, ancestor), namespace, "supertype '" + itemName(repo, ancestor) + "'");
+            requireNoCollision(added, levelOf(namespace, traitIdsByItem, ancestor), namespace, named("supertype", repo, ancestor));
         }
         for (UUID descendant : descendantsOf(supertypeById, itemId)) {
-            requireNoCollision(added, levelOf(namespace, traitIdsByItem, descendant), namespace, "subtype '" + itemName(repo, descendant) + "'");
+            requireNoCollision(added, levelOf(namespace, traitIdsByItem, descendant), namespace, named("subtype", repo, descendant));
         }
     }
 
@@ -150,6 +149,11 @@ final class SchemaMutationValidation {
             }
         }
         return descendants;
+    }
+
+    // e.g. "supertype 'Vehicle'", for naming where a collision is.
+    private static String named(String role, SchemaRepository repo, UUID itemId) {
+        return role + " '" + itemName(repo, itemId) + "'";
     }
 
     private static String itemName(SchemaRepository repo, UUID itemId) {
@@ -218,7 +222,7 @@ final class SchemaMutationValidation {
         if (supertypeId == null) return;
         Map<UUID, List<UUID>> traitIdsByItem = repo.getTraitIdsByItem();
         for (UUID ancestor : chainFrom(supertypeById(repo), supertypeId)) {
-            requireNoCollision(level, levelOf(namespace, traitIdsByItem, ancestor), namespace, "supertype '" + itemName(repo, ancestor) + "'");
+            requireNoCollision(level, levelOf(namespace, traitIdsByItem, ancestor), namespace, named("supertype", repo, ancestor));
         }
     }
 
@@ -235,7 +239,7 @@ final class SchemaMutationValidation {
                 List<OwnedName> names = levelOf(namespace, traitIdsByItem, member);
                 for (UUID ancestor : chainFrom(supertypeById, proposedSupertypeId)) {
                     requireNoCollision(names, levelOf(namespace, traitIdsByItem, ancestor), namespace,
-                            "supertype '" + itemName(repo, ancestor) + "'");
+                            named("supertype", repo, ancestor));
                 }
             }
         }

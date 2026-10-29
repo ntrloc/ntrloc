@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react'
 import CollapsibleCard from '../../../controls/collapsible-card/CollapsibleCard'
 import FieldLabel from '../../../controls/field-label/FieldLabel'
 import IconButton from '../../../controls/icon-button/IconButton'
@@ -24,6 +25,12 @@ function ControlledListDetailView({
 }) {
   const vm = useControlledListDetailViewModel(controlledListViewModels, listId, navigation)
   const { list, editing, overview } = vm
+  // A value row just added, to put the cursor in once it's there.
+  const [addedKey, setAddedKey] = useState(null)
+  const cardsRef = useRef(null)
+  useEffect(() => {
+    if (addedKey) cardsRef.current?.querySelector(`input[data-row-key="${addedKey}"]`)?.focus()
+  }, [addedKey])
 
   if (!list) return <p>Controlled list not found.</p>
 
@@ -59,7 +66,7 @@ function ControlledListDetailView({
       key: 'values',
       label: 'Values',
       actions: vm.values.editable && (
-        <IconButton icon="plus" label="Add value" variant="secondary" onClick={vm.values.add} />
+        <IconButton icon="plus" label="Add value" variant="secondary" onClick={() => setAddedKey(vm.values.add())} />
       ),
       view: <ValuesTable values={vm.values} />,
     },
@@ -73,7 +80,7 @@ function ControlledListDetailView({
         <DefinitionActions vm={vm} name={list.name} />
       </controlled-list-detail-header>
       <EditMessages vm={vm} />
-      <controlled-list-detail-cards>
+      <controlled-list-detail-cards ref={cardsRef}>
         {cards.map((card) => (
           <CollapsibleCard
             key={card.key}
@@ -152,7 +159,7 @@ function ValuesTable({ values }) {
                     className="input-control-field"
                     aria-label={`Value ${index + 1}`}
                     value={row.value}
-                    autoFocus={row.isNew && row.value === '' && row.label === ''}
+                    data-row-key={row.key}
                     onChange={(e) => values.setValue(row.key, 'value', e.target.value)}
                   />
                   <FieldProblem message={row.problems.value} />
@@ -177,7 +184,7 @@ function ValuesTable({ values }) {
               <td className="controlled-list-actions">
                 <IconButton
                   icon={row.removed ? 'undo' : 'trash'}
-                  label={row.removed ? `Keep ${row.value}` : `Remove ${row.value || `value ${index + 1}`}`}
+                  label={row.removed ? `Keep ${row.value}` : `Remove ${rowName(row, index)}`}
                   onClick={() => values.toggleRemove(row.key)}
                 />
               </td>
@@ -188,6 +195,9 @@ function ValuesTable({ values }) {
     </table>
   )
 }
+
+// How a row's remove button names it: by its value, or its place while it has none.
+const rowName = (row, index) => row.value || `value ${index + 1}`
 
 // What's wrong with the field just above, if anything.
 function FieldProblem({ message }) {
