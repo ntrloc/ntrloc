@@ -369,9 +369,8 @@ class PropertyValidator {
     private void validateScalar(String path, AdminPropertyDefinitionView property, Object value, List<ValidationError> errors) {
         boolean valid = switch (property.type()) {
             case STRING -> value instanceof String;
-            case INT -> value instanceof Integer;
-            case LONG -> value instanceof Integer || value instanceof Long;
-            case DOUBLE -> value instanceof Double || value instanceof Integer || value instanceof Long;
+            case INTEGER -> value instanceof Integer || value instanceof Long;
+            case DECIMAL -> value instanceof Double || value instanceof Integer || value instanceof Long;
             case BOOLEAN -> value instanceof Boolean;
             case DATE -> value instanceof String s && isValidDate(s);
             case DATETIME -> value instanceof String s && isValidDateTime(s);

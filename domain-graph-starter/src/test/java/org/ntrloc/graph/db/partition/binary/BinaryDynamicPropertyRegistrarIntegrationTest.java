@@ -97,8 +97,8 @@ class BinaryDynamicPropertyRegistrarIntegrationTest extends AbstractIntegrationT
 
         registrar.onAttach(propertyId, metadata);
 
-        assertThat(catalogType(lengthPath)).contains("LONG");
-        assertThat(catalogType(gammaPath)).contains("DOUBLE");
+        assertThat(catalogType(lengthPath)).contains("INTEGER");
+        assertThat(catalogType(gammaPath)).contains("DECIMAL");
         assertThat(catalogType(boolPath)).contains("BOOLEAN");
     }
 

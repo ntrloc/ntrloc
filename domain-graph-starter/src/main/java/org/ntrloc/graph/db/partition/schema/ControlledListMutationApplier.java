@@ -1,5 +1,6 @@
 package org.ntrloc.graph.db.partition.schema;
 
+import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.ControlledListReference;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateControlledListMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DefinitionMutation;
@@ -42,7 +43,7 @@ class ControlledListMutationApplier {
             case CreateControlledListMutation m -> {
                 requireNameAvailable(m.name(), null);
                 var list = controlledListManager.createList(m.name(), m.valueType());
-                // Typed as replacing them would be: a value of an INT or LONG list arrives as text.
+                // Typed as replacing them would be: every value arrives as text.
                 controlledListManager.replaceValues(list.id(), list.valueType(), m.values() == null ? List.of()
                         : m.values().stream().map(e -> new ReplaceControlledListMutation.Entry(e.value(), e.label())).toList());
                 if (m.refId() != null) {
@@ -103,21 +104,25 @@ class ControlledListMutationApplier {
         throw new IllegalArgumentException("Unsupported controlled list reference: " + ref.getClass().getSimpleName());
     }
 
-    // Values compare in order, as text, with a blank label the same as none.
+    // Values compare in order, by canonical text (ControlledListValues.key), with a blank label the
+    // same as none.
     private void requireUnchanged(ExpectControlledListMutation m) {
         var list = controlledListManager.lockList(m.listId())
                 .orElseThrow(() -> new SchemaConflictException("This controlled list was deleted by someone else."));
+        PropertyType type = list.valueType();
         boolean unchanged = list.name().equals(m.name())
-                && (m.values() == null || comparable(m.values()).equals(controlledListManager.getValues(list.id(), list.valueType()).stream()
-                        .map(v -> new UpdateControlledListMutation.Entry(String.valueOf(v.value()), blankToNull(v.label())))
+                && (m.values() == null || comparable(type, m.values()).equals(controlledListManager.getValues(list.id(), type).stream()
+                        .map(v -> new UpdateControlledListMutation.Entry(ControlledListValues.key(type, v.value()), blankToNull(v.label())))
                         .toList()));
         if (!unchanged) {
             throw new SchemaConflictException("Controlled list " + list.name() + " was changed by someone else while you were editing it.");
         }
     }
 
-    private static List<UpdateControlledListMutation.Entry> comparable(List<UpdateControlledListMutation.Entry> entries) {
-        return entries.stream().map(e -> new UpdateControlledListMutation.Entry(e.value(), blankToNull(e.label()))).toList();
+    private static List<UpdateControlledListMutation.Entry> comparable(PropertyType type, List<UpdateControlledListMutation.Entry> entries) {
+        return entries.stream()
+                .map(e -> new UpdateControlledListMutation.Entry(ControlledListValues.key(type, e.value()), blankToNull(e.label())))
+                .toList();
     }
 
     private static String blankToNull(String text) {

@@ -14,6 +14,7 @@ import org.ntrloc.graph.projection.FacetFilter;
 import org.ntrloc.graph.projection.LinkProjectionSpec;
 import org.ntrloc.graph.projection.NotPredicate;
 import org.ntrloc.graph.projection.Predicate;
+import org.ntrloc.graph.db.partition.schema.ControlledListLabels;
 import org.ntrloc.graph.db.partition.schema.ControlledListManager;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
@@ -297,7 +298,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
         return sql.append("->>'").append(binaryFieldPath.getLast()).append("'").toString();
     }
 
-    // `->>` always yields text, so an unqualified ORDER BY on it sorts an INT property as "1", "10",
+    // `->>` always yields text, so an unqualified ORDER BY on it sorts an INTEGER property as "1", "10",
     // "2". Cast the extracted text to the property's real type so the sort is by value. NULLIF(_,'')
     // keeps an empty-string (or absent -> NULL) cell from failing the cast; NULLS LAST still applies.
     private static String typedSortExpression(String jsonbColumnAlias, AdminPropertyDefinitionView property) {
@@ -306,8 +307,8 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
 
     private static String castedText(String text, PropertyType type) {
         return switch (type) {
-            case INT, LONG -> nullifCast(text, "bigint");
-            case DOUBLE -> nullifCast(text, "double precision");
+            case INTEGER -> nullifCast(text, "bigint");
+            case DECIMAL -> nullifCast(text, "double precision");
             case DATE -> nullifCast(text, "date");
             case DATETIME -> nullifCast(text, "timestamptz");
             case BOOLEAN -> nullifCast(text, "boolean");
@@ -588,7 +589,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                                                               String field, UUID representativeItemTypeId) {
         AdminPropertyDefinitionView property = resolveProperty(representativeItemTypeId, sanitizeFieldName(field));
         String propertyId = property.id().toString();
-        Map<String, String> labelsByValue = labelsForFacetProperty(property);
+        ControlledListLabels labels = labelsForFacetProperty(property);
         SqlFragment source = buildUnionedBranchSource(branches, filter, otherFacetFilters);
         return jdbcClient.sql("""
                 SELECT combined.properties->>'%s' AS value, COUNT(*) AS count
@@ -599,7 +600,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                 .params(source.params())
                 .query((rs, _) -> {
                     String value = rs.getString(COL_FACET_VALUE);
-                    return new FacetBucket(value, labelFor(value, labelsByValue), rs.getLong(COL_FACET_COUNT));
+                    return new FacetBucket(value, labelFor(value, labels), rs.getLong(COL_FACET_COUNT));
                 })
                 .list();
     }
@@ -639,7 +640,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
         // this item type, which subsumes it. Left in as a cheap, redundant first check.
         AdminPropertyDefinitionView property = resolveProperty(itemTypeId, sanitizeFieldName(field));
         String propertyId = property.id().toString();
-        Map<String, String> labelsByValue = labelsForFacetProperty(property);
+        ControlledListLabels labels = labelsForFacetProperty(property);
         return jdbcClient.sql("""
                 SELECT rt.properties->>'%s' AS value, COUNT(*) AS count
                 FROM register_item ri
@@ -655,20 +656,22 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                 .params(mergeParams(filter, otherFacetFilters))
                 .query((rs, _) -> {
                     String value = rs.getString(COL_FACET_VALUE);
-                    return new FacetBucket(value, labelFor(value, labelsByValue), rs.getLong(COL_FACET_COUNT));
+                    return new FacetBucket(value, labelFor(value, labels), rs.getLong(COL_FACET_COUNT));
                 })
                 .list();
     }
 
     // Shared by both runTermsFacetQuery variants -- empty when the property isn't controlled-list-
-    // backed, or its list has no labels at all (see ControlledListManager.getLabelsByValue).
-    private Map<String, String> labelsForFacetProperty(AdminPropertyDefinitionView property) {
-        return property.controlledListId() == null ? Map.of()
-                : controlledListManager.getLabelsByValue(property.controlledListId(), property.type());
+    // backed, or its list has no labels at all (see ControlledListManager.getLabels).
+    private ControlledListLabels labelsForFacetProperty(AdminPropertyDefinitionView property) {
+        return property.controlledListId() == null ? new ControlledListLabels(property.type(), Map.of())
+                : controlledListManager.getLabels(property.controlledListId(), property.type());
     }
 
-    private String labelFor(String value, Map<String, String> labelsByValue) {
-        return value == null ? null : labelsByValue.getOrDefault(value, value);
+    private String labelFor(String value, ControlledListLabels labels) {
+        if (value == null) return null;
+        String label = labels.labelFor(value);
+        return label == null ? value : label;
     }
 
     // Each bucket's value is a state id, which a state predicate filters on; its label is the state's name.
@@ -2151,18 +2154,18 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
     // where applicable) rather than per row -- a controlled-list label lookup is a real query, and a
     // page of results shares the same schema, so paying for it once per property id here (not once
     // per property id per row) is what keeps this from becoming an N+1. Only properties that are both
-    // controlled-list-backed AND whose list actually has labels (ControlledListManager.getLabelsByValue
+    // controlled-list-backed AND whose list actually has labels (ControlledListManager.getLabels
     // returns non-empty) end up with an entry -- an absent entry means applyControlledListLabels
     // leaves that property's value exactly as namesForIds already produced it.
-    private Map<UUID, Map<String, String>> resolveControlledListLabels(
+    private Map<UUID, ControlledListLabels> resolveControlledListLabels(
             Map<UUID, List<String>> ownPropertyNames, Map<UUID, AdminPropertyDefinitionView> propertyViewsById) {
-        Map<UUID, Map<String, String>> result = new HashMap<>();
+        Map<UUID, ControlledListLabels> result = new HashMap<>();
         for (UUID propertyId : ownPropertyNames.keySet()) {
             AdminPropertyDefinitionView view = propertyViewsById.get(propertyId);
             if (view == null || view.controlledListId() == null) continue;
-            Map<String, String> labelsByValue = controlledListManager.getLabelsByValue(view.controlledListId(), view.type());
-            if (!labelsByValue.isEmpty()) {
-                result.put(propertyId, labelsByValue);
+            ControlledListLabels labels = controlledListManager.getLabels(view.controlledListId(), view.type());
+            if (!labels.isEmpty()) {
+                result.put(propertyId, labels);
             }
         }
         return result;
@@ -2174,7 +2177,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
     // property whose value is absent from this particular item (getAtPath returns null) rather than
     // writing one in.
     private void applyControlledListLabels(Map<String, Object> props, Map<UUID, List<String>> idToPath,
-                                             Map<UUID, Map<String, String>> labelsByPropertyId) {
+                                             Map<UUID, ControlledListLabels> labelsByPropertyId) {
         for (var entry : labelsByPropertyId.entrySet()) {
             List<String> path = idToPath.get(entry.getKey());
             if (path == null) continue;
@@ -2189,16 +2192,16 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
     // is wrapped independently, though validateEntries' all-or-nothing labeling rule (rule 2 of the
     // controlled-list design) means every element of a given property's list either has a label or
     // none do in practice.
-    private Object wrapControlledListValue(Object rawValue, Map<String, String> labelsByValue) {
+    private Object wrapControlledListValue(Object rawValue, ControlledListLabels labels) {
         if (rawValue instanceof List<?> list) {
-            return list.stream().map(v -> wrapControlledListScalar(v, labelsByValue)).toList();
+            return list.stream().map(v -> wrapControlledListScalar(v, labels)).toList();
         }
-        return wrapControlledListScalar(rawValue, labelsByValue);
+        return wrapControlledListScalar(rawValue, labels);
     }
 
-    private Object wrapControlledListScalar(Object value, Map<String, String> labelsByValue) {
+    private Object wrapControlledListScalar(Object value, ControlledListLabels labels) {
         if (value == null) return null;
-        String label = labelsByValue.get(String.valueOf(value));
+        String label = labels.labelFor(value);
         return label == null ? value : Map.of(COL_FACET_VALUE, value, "label", label);
     }
 
@@ -2594,7 +2597,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
         Map<UUID, Set<UUID>> effectiveReadGrants = permissions.isAdmin() ? null
                 : readImpliedByWrite(permissions.propertyReadGrantsByMarker(), permissions.propertyWriteGrantsByMarker());
 
-        Map<UUID, Map<String, String>> controlledListLabelsByPropertyId = resolveControlledListLabels(allPropertyNames, propertyViewsById);
+        Map<UUID, ControlledListLabels> controlledListLabelsByPropertyId = resolveControlledListLabels(allPropertyNames, propertyViewsById);
 
         AssemblyContext ctx = new AssemblyContext(allPropertyNames, ownPropertyNames, controlledListLabelsByPropertyId, stateMachines, displayLabelPatterns,
                 linksByItem, markerIdsByRegisterItemId, binaryPropsByItem, effectiveReadGrants,
@@ -2605,7 +2608,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
     private record AssemblyContext(
             Map<UUID, List<String>> allPropertyNames,
             Map<UUID, List<String>> ownPropertyNames,
-            Map<UUID, Map<String, String>> controlledListLabelsByPropertyId,
+            Map<UUID, ControlledListLabels> controlledListLabelsByPropertyId,
             List<AdminStateMachineView> stateMachines,
             Map<String, String> displayLabelPatterns,
             Map<UUID, Map<String, List<ProjectedLink>>> linksByItem,
@@ -2992,7 +2995,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
             Map<UUID, AdminPropertyDefinitionView> propertyViewsById = isLinkTable
                     ? propertyViewsByIdForLinkType(typeOrDefId)
                     : propertyViewsByIdForItemType(typeOrDefId);
-            Map<UUID, Map<String, String>> controlledListLabelsByPropertyId = resolveControlledListLabels(idToPath, propertyViewsById);
+            Map<UUID, ControlledListLabels> controlledListLabelsByPropertyId = resolveControlledListLabels(idToPath, propertyViewsById);
             Map<UUID, List<AssembledBinary>> binaryPropsByItem = isLinkTable ? Map.of()
                     : fetchBinaryPropsByItem(entry.getValue(), binaryBaseUrl, idToPath, null);
             jdbcClient.sql("SELECT " + idColumn + ", properties::text FROM " + table + " WHERE " + idColumn + " IN (:ids)")

@@ -24,8 +24,7 @@ public class ControlledListManager {
     private static final String PARAM_LABEL = "label";
     private static final String COL_VALUE_TYPE = "value_type";
 
-    public static final Set<PropertyType> SUPPORTED_TYPES = Set.of(
-            PropertyType.STRING, PropertyType.INT, PropertyType.LONG);
+    public static final Set<PropertyType> SUPPORTED_TYPES = ControlledListValues.SUPPORTED_TYPES;
 
     private final JdbcClient jdbcClient;
 
@@ -52,7 +51,7 @@ public class ControlledListManager {
                     label      TEXT,
                     sort_order INT NOT NULL DEFAULT 0
                 )
-                """.formatted(tableNameFor(listId), ddlColumnType(valueType))).update();
+                """.formatted(tableNameFor(listId), ControlledListValues.columnType(valueType))).update();
 
         return new ControlledList(listId, name, valueType);
     }
@@ -118,6 +117,7 @@ public class ControlledListManager {
     //     into a value (see ItemPanePropertyGroupsEditView's own comment on why only `value` is
     //     ever what's actually stored/validated against).
     private void validateEntries(List<ValueEntry> entries) {
+        // Typed already, so equal values in different forms (2 and 2.0) are caught too.
         Set<Object> seenValues = new HashSet<>();
         for (ValueEntry entry : entries) {
             if (!seenValues.add(entry.value())) {
@@ -147,15 +147,7 @@ public class ControlledListManager {
     public List<AllowedValue> getValues(UUID listId, PropertyType valueType) {
         return jdbcClient.sql("SELECT value, label FROM %s ORDER BY sort_order, value"
                         .formatted(tableNameFor(listId)))
-                .query((rs, _) -> {
-                    Object val = switch (valueType) {
-                        case STRING -> rs.getString(PARAM_VALUE);
-                        case INT    -> rs.getInt(PARAM_VALUE);
-                        case LONG   -> rs.getLong(PARAM_VALUE);
-                        default -> throw new IllegalStateException("Unexpected controlled list type: " + valueType);
-                    };
-                    return new AllowedValue(val, rs.getString(PARAM_LABEL));
-                })
+                .query((rs, _) -> new AllowedValue(ControlledListValues.read(rs, PARAM_VALUE, valueType), rs.getString(PARAM_LABEL)))
                 .list();
     }
 
@@ -163,29 +155,24 @@ public class ControlledListManager {
     // carries no labels at all, or a {value,label} object when it does. validateEntries enforces
     // that a list is either fully labeled or fully unlabeled (never a mix), so "does any value have
     // a label" is equivalent to "do they all" -- callers can treat an empty map back as "don't wrap
-    // anything for this property" with no extra branch. Keyed by value.toString() rather than the
-    // raw typed value: callers resolve this against a JSONB ->>'...' extraction (always text) or a
-    // Jackson-deserialized number whose exact boxed type (Integer vs Long) doesn't always match
-    // this list's own valueType, same leniency containsValue already needed.
-    public Map<String, String> getLabelsByValue(UUID listId, PropertyType valueType) {
+    // anything for this property" with no extra branch. Looked up by a value in any of its forms:
+    // callers have JSONB ->>'...' text, or whatever number Jackson produced.
+    public ControlledListLabels getLabels(UUID listId, PropertyType valueType) {
         List<AllowedValue> values = getValues(listId, valueType);
-        boolean labeled = values.stream().anyMatch(v -> hasLabel(v.label()));
-        if (!labeled) {
-            return Map.of();
+        Map<String, String> byKey = new HashMap<>();
+        if (values.stream().anyMatch(v -> hasLabel(v.label()))) {
+            values.forEach(v -> byKey.put(ControlledListValues.key(valueType, v.value()), v.label()));
         }
-        Map<String, String> byValue = new HashMap<>();
-        for (AllowedValue v : values) {
-            byValue.put(String.valueOf(v.value()), v.label());
-        }
-        return byValue;
+        return new ControlledListLabels(valueType, byKey);
     }
 
-    // A value's own instance type at the JSON boundary doesn't always match the list's declared
-    // valueType -- e.g. Jackson hands LONG values through as Integer when they fit, same leniency
-    // validateScalar already allows -- so this normalizes before binding, rather than requiring the
-    // caller to.
+    // An item's value as it arrived from JSON (e.g. an Integer for an INTEGER list, or a DATETIME at
+    // any offset), put in the column's own type before it's looked for.
     public boolean containsValue(UUID listId, PropertyType valueType, Object value) {
-        Object normalized = valueType == PropertyType.LONG && value instanceof Integer i ? i.longValue() : value;
+        Object normalized = ControlledListValues.fromItemValue(valueType, value);
+        if (normalized == null) {
+            return false;
+        }
         return jdbcClient.sql("SELECT 1 FROM %s WHERE value = :value LIMIT 1".formatted(tableNameFor(listId)))
                 .param(PARAM_VALUE, normalized)
                 .query(Integer.class)
@@ -269,13 +256,7 @@ public class ControlledListManager {
         jdbcClient.sql("DELETE FROM " + tableNameFor(listId)).update();
         List<ValueEntry> typed = new ArrayList<>(entries.size());
         for (var entry : entries) {
-            Object value = switch (valueType) {
-                case STRING -> entry.value();
-                case INT    -> Integer.parseInt(entry.value());
-                case LONG   -> Long.parseLong(entry.value());
-                default -> throw new IllegalArgumentException("Unsupported controlled list type: " + valueType);
-            };
-            typed.add(new ValueEntry(value, entry.label()));
+            typed.add(new ValueEntry(ControlledListValues.parse(valueType, entry.value()), entry.label()));
         }
         addValues(listId, typed);
     }
@@ -305,14 +286,5 @@ public class ControlledListManager {
 
     public static String tableNameFor(UUID listId) {
         return "schema_controlled_list_" + listId.toString().replace("-", "_");
-    }
-
-    private String ddlColumnType(PropertyType type) {
-        return switch (type) {
-            case STRING -> "VARCHAR(4000)";
-            case INT    -> "INTEGER";
-            case LONG   -> "BIGINT";
-            default -> throw new IllegalArgumentException("No DDL column type mapping for: " + type);
-        };
     }
 }

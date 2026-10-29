@@ -60,7 +60,7 @@ class SchemaEditingUiTest extends AbstractUiIntegrationTest {
         bookType = "UiEditBook-" + suffix;
         authorType = "UiEditAuthor-" + suffix;
         UUID bookId = testData.createItemType(bookType, "title",
-                List.of(property("title", PropertyType.STRING), property("pages", PropertyType.INT)), List.of()).id();
+                List.of(property("title", PropertyType.STRING), property("pages", PropertyType.INTEGER)), List.of()).id();
         UUID authorId = testData.createItemType(authorType, null, List.of(property("name", PropertyType.STRING)), List.of()).id();
         schemaManager.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
                 new CreatePerspectiveDefinitionMutation(bookId, "authors", "UI test fixture", 0, null),
@@ -254,8 +254,8 @@ class SchemaEditingUiTest extends AbstractUiIntegrationTest {
         schema.save();
 
         var saved = controlledListManager.getAllLists().stream().filter(l -> l.name().equals(name)).findFirst().orElseThrow();
-        assertThat(saved.valueType()).isEqualTo(PropertyType.INT);
-        assertThat(controlledListManager.getValues(saved.id(), PropertyType.INT)).extracting(AllowedValue::value).containsExactly(10, 2);
+        assertThat(saved.valueType()).isEqualTo(PropertyType.INTEGER);
+        assertThat(controlledListManager.getValues(saved.id(), PropertyType.INTEGER)).extracting(AllowedValue::value).containsExactly(10L, 2L);
         assertThat(driver.getCurrentUrl()).endsWith("/schema/controlled-lists/" + saved.id());
         assertThat(schema.unsavedControlledLists()).isEmpty();
     }
@@ -531,7 +531,7 @@ class SchemaEditingUiTest extends AbstractUiIntegrationTest {
     @Test
     void deletingASavedGroupDeletesEverythingInsideIt() {
         addSavedGroup("details", List.of(property("language", PropertyType.STRING)), List.of(
-                new CreatePropertyGroupDefinitionMutation("physical", null, List.of(property("weight", PropertyType.INT)), List.of())));
+                new CreatePropertyGroupDefinitionMutation("physical", null, List.of(property("weight", PropertyType.INTEGER)), List.of())));
         schema.awaitGroup("details").edit();
 
         schema.toggleDeleteGroup("details");
@@ -724,17 +724,17 @@ class SchemaEditingUiTest extends AbstractUiIntegrationTest {
         assertThat(schema.propertyEditorError()).isEqualTo("A property needs a name.");
 
         schema.typeInPropertyEditor("Name", "isbn")
-                .chooseInPropertyEditor("Type", "Long")
+                .chooseInPropertyEditor("Type", "Integer")
                 .chooseInPropertyEditor("Cardinality", "Set")
                 .applyPropertyEditor();
-        assertThat(schema.propertyRows()).contains(List.of("isbn", "", "Long Set (optional)"));
+        assertThat(schema.propertyRows()).contains(List.of("isbn", "", "Integer Set (optional)"));
         assertThat(schema.editedProperties()).containsExactly("isbn");
         assertThat(schema.unsavedItemTypes()).containsExactly(bookType);
 
         schema.save();
 
         AdminPropertyDefinitionView isbn = propertyNamed(bookType, "isbn");
-        assertThat(isbn.type()).isEqualTo(PropertyType.LONG);
+        assertThat(isbn.type()).isEqualTo(PropertyType.INTEGER);
         assertThat(isbn.cardinality()).isEqualTo(PropertyCardinality.SET);
         assertThat(schema.editedProperties()).isEmpty();
     }

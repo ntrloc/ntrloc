@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import FieldLabel from '../field-label/FieldLabel'
 import ChevronDownIcon from '../chevron-icon/ChevronDownIcon'
+import { useWindowAnchoredPopover } from './useWindowAnchoredPopover'
 import './PopoverButton.css'
 
 // A Select-like trigger that reveals arbitrary content in a popover on click -- the generic form
@@ -17,9 +18,13 @@ import './PopoverButton.css'
 // `name` turns it into a form field: a FieldLabel above an underlined trigger, matching Input. Left
 // out, it stays a compact boxed button for toolbars (Sort, Filter, ...). Not `editable`, it shows
 // just its summary as plain text, the same as Input's view mode.
+//
+// The popover is placed against the window, so a scrolling ancestor can't clip it (see
+// useWindowAnchoredPopover).
 function PopoverButton({ name, summary, editable = true, disabled = false, children }) {
   const [open, setOpen] = useState(false)
   const containerRef = useRef(null)
+  const { triggerRef, popoverRef } = useWindowAnchoredPopover(open)
 
   useEffect(() => {
     if (!open) return
@@ -45,6 +50,7 @@ function PopoverButton({ name, summary, editable = true, disabled = false, child
     <popover-button ref={containerRef} data-field={name ? true : undefined}>
       {name && <FieldLabel>{name}</FieldLabel>}
       <button
+        ref={triggerRef}
         type="button"
         className="popover-button-trigger"
         disabled={disabled}
@@ -56,7 +62,7 @@ function PopoverButton({ name, summary, editable = true, disabled = false, child
         <ChevronDownIcon className="popover-button-trigger-caret" />
       </button>
       {open && (
-        <popover-button-popover>
+        <popover-button-popover ref={popoverRef}>
           {typeof children === 'function' ? children({ close: () => setOpen(false) }) : children}
         </popover-button-popover>
       )}

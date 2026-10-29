@@ -161,7 +161,7 @@ export function buildPropertyDiff(editableGroups, draft) {
 function toWireValue(leaf, rawDraft) {
   if (leaf.cardinality !== 'SINGLE') {
     // A controlled-list value already came straight from the list's own API response -- it's
-    // already correctly typed (STRING/INT/LONG, matching the list's own valueType), so this is a
+    // already correctly typed (matching the list's own valueType), so this is a
     // plain pass-through rather than re-parsing user-typed text through coerceScalar.
     if (leaf.controlledListId) {
       const values = Array.isArray(rawDraft) ? rawDraft : []
@@ -182,12 +182,11 @@ function toWireValue(leaf, rawDraft) {
 
 function coerceScalar(type, raw) {
   switch (type) {
-    case 'INT':
-    case 'LONG': {
+    case 'INTEGER': {
       const n = Number.parseInt(raw, 10)
       return Number.isNaN(n) ? undefined : n
     }
-    case 'DOUBLE': {
+    case 'DECIMAL': {
       const n = Number.parseFloat(raw)
       return Number.isNaN(n) ? undefined : n
     }

@@ -27,11 +27,11 @@ tree-select {
   color: var(--text);
 }
 
+/* Placed against the window by useWindowAnchoredPopover. */
 tree-select-popover {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
+  position: fixed;
   z-index: 20;
+  box-sizing: border-box;
   display: block;
   min-width: 320px;
   max-height: 320px;

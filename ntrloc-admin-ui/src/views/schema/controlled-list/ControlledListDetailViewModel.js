@@ -1,12 +1,11 @@
 import { useSyncExternalStore } from 'react'
 import { useControlledListModel, useControlledListValues } from '../../../global/model/ControlledListModel'
 import { getRawSchema } from '../../../global/model/SchemaCache'
+import { TYPE_LABELS } from '../propertyLabels'
 import { deleteDefinition, sameValues } from '../SchemaEditing'
+import { VALUE_TYPE_OPTIONS, valueType as valueTypeOf } from './controlledListValueTypes'
 
-const TYPE_LABELS = { STRING: 'String', INT: 'Integer', LONG: 'Long' }
-const TYPE_OPTIONS = Object.entries(TYPE_LABELS).map(([value, label]) => ({ value, label }))
 const OVERVIEW_LABELS = { name: 'Name', valueType: 'Value type' }
-const WHOLE_NUMBER = /^-?\d+$/
 
 // Keys for value rows added here, until they're saved.
 let nextNewValue = 1
@@ -29,6 +28,7 @@ function nameProblem(fields, nameTaken) {
 // or none. `pending` marks the problems of something not filled in yet (a blank value, a missing
 // label), which a new row only shows once it's been left -- they still hold Save back meanwhile.
 function valueProblems(valueType, rows) {
+  const type = valueTypeOf(valueType)
   const kept = rows.filter((row) => !row.removed)
   const problems = new Map()
   const flag = (row, field, message, pending = false) => {
@@ -40,10 +40,11 @@ function valueProblems(valueType, rows) {
   for (const row of kept) {
     const value = row.value.trim()
     const label = row.label.trim()
+    const problem = value === '' ? null : type.problem(value)
     if (value === '') flag(row, 'value', 'Enter a value.', true)
-    else if (valueType !== 'STRING' && !WHOLE_NUMBER.test(value)) flag(row, 'value', 'Must be a whole number.')
-    else if (values.has(value)) flag(row, 'value', 'Already in the list.')
-    values.add(value)
+    else if (problem) flag(row, 'value', problem)
+    else if (values.has(type.key(value))) flag(row, 'value', 'Already in the list.')
+    else values.add(type.key(value))
     if (label !== '' && labels.has(label)) flag(row, 'label', 'Already used as a label.')
     labels.add(label)
   }
@@ -201,7 +202,7 @@ export function useControlledListDetailViewModel(controlledListViewModels, listI
       nameProblem: nameIssue,
       // Only a new list's type can be chosen; a saved one's values are already of it.
       typeEditable: Boolean(draft),
-      typeOptions: TYPE_OPTIONS,
+      typeOptions: VALUE_TYPE_OPTIONS,
       typeLabel: TYPE_LABELS[fields.valueType] ?? fields.valueType,
       setValueType: setField('valueType'),
       usedBy,
@@ -210,6 +211,8 @@ export function useControlledListDetailViewModel(controlledListViewModels, listI
       status: draft ? 'ready' : values.status,
       rows: rows.map((row) => ({ ...row, problems: shownProblems(row, problems.get(row.key)) })),
       editable: state.editing && savedRows !== null,
+      // How a value of the list's type is entered and shown.
+      type: valueTypeOf(fields.valueType),
       // Focus has left a new row, so whatever it's still missing can be pointed out.
       leave: (key) => {
         const row = rows.find((candidate) => candidate.key === key)

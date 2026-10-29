@@ -185,7 +185,7 @@ class SearchPaneUiTest extends AbstractUiIntegrationTest {
             return;
         }
         AdminItemDefinitionView widget = testData.createItemType(WIDGET_TYPE, "name",
-                List.of(property("name", PropertyType.STRING), property("rank", PropertyType.INT), property("color", PropertyType.STRING)),
+                List.of(property("name", PropertyType.STRING), property("rank", PropertyType.INTEGER), property("color", PropertyType.STRING)),
                 List.of());
         UUID name = propertyId(widget, "name");
         UUID rank = propertyId(widget, "rank");

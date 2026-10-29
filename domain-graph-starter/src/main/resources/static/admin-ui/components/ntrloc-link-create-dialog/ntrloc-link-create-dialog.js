@@ -107,10 +107,9 @@ function openLinkCreateDialog(candidates) {
       switch (property.type) {
         case 'BOOLEAN':
           return `<md-checkbox class="value-input" data-name="${escapeHtml(property.name)}" ${state.values[property.name] ? 'checked' : ''}></md-checkbox>`;
-        case 'INT':
-        case 'LONG':
+        case 'INTEGER':
           return `<input type="number" step="1" class="value-input" data-name="${escapeHtml(property.name)}" value="${escapeHtml(v)}">`;
-        case 'DOUBLE':
+        case 'DECIMAL':
           return `<input type="number" step="any" class="value-input" data-name="${escapeHtml(property.name)}" value="${escapeHtml(v)}">`;
         case 'DATE':
           return `<input type="date" class="value-input" data-name="${escapeHtml(property.name)}" value="${escapeHtml(v)}">`;
@@ -233,10 +232,9 @@ function openLinkPropertiesDialog({ title, propertyDefs, initialValues }) {
       switch (property.type) {
         case 'BOOLEAN':
           return `<md-checkbox class="value-input" data-name="${escapeHtml(property.name)}" ${state.values[property.name] ? 'checked' : ''}></md-checkbox>`;
-        case 'INT':
-        case 'LONG':
+        case 'INTEGER':
           return `<input type="number" step="1" class="value-input" data-name="${escapeHtml(property.name)}" value="${escapeHtml(v)}">`;
-        case 'DOUBLE':
+        case 'DECIMAL':
           return `<input type="number" step="any" class="value-input" data-name="${escapeHtml(property.name)}" value="${escapeHtml(v)}">`;
         case 'DATE':
           return `<input type="date" class="value-input" data-name="${escapeHtml(property.name)}" value="${escapeHtml(v)}">`;
@@ -322,9 +320,8 @@ function openLinkPropertiesDialog({ title, propertyDefs, initialValues }) {
 // escapeHtml below) rather than a shared import, since these are plain scripts, not modules.
 function coerceValue(property, rawValue) {
   switch (property.type) {
-    case 'INT':
-    case 'LONG':
-    case 'DOUBLE': {
+    case 'INTEGER':
+    case 'DECIMAL': {
       const n = Number(rawValue);
       if (rawValue === '' || Number.isNaN(n)) throw new Error('Expected a number');
       return n;

@@ -6,7 +6,7 @@ import java.util.Set;
 // Every type here carries a value -- a property is always a leaf. Structure (nesting, paths) is a
 // PropertyGroup's job, a separate kind of schema node, not a type of property.
 public enum PropertyType {
-    STRING, INT, LONG, DOUBLE, DATE, DATETIME, BOOLEAN, BINARY;
+    STRING, INTEGER, DECIMAL, DATE, DATETIME, BOOLEAN, BINARY;
 
     public Set<PropertyCardinality> validCardinalities() {
         return switch (this) {

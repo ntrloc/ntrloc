@@ -295,10 +295,10 @@ class SchemaViewUiTest extends AbstractUiIntegrationTest {
         UUID bookId = testData.createItemType(BOOK_TYPE, "title",
                 List.of(
                         described("title", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.REQUIRED, "The book's title"),
-                        described("pages", PropertyType.INT, "Number of pages"),
+                        described("pages", PropertyType.INTEGER, "Number of pages"),
                         described("keywords", PropertyType.STRING, PropertyCardinality.SET, PropertyUsage.OPTIONAL, "Search keywords")),
                 List.of(new CreatePropertyGroupDefinitionMutation("publication", "UI test fixture",
-                        List.of(described("year", PropertyType.INT, "Year first published")),
+                        List.of(described("year", PropertyType.INTEGER, "Year first published")),
                         List.of(new CreatePropertyGroupDefinitionMutation("publisher", "UI test fixture",
                                 List.of(described("name", PropertyType.STRING, "Publisher's name")), List.of())))),
                 publicationTypeId, false, List.of(trackedTraitId)).id();

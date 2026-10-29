@@ -71,11 +71,12 @@ popover-button[data-field] .popover-button-trigger[aria-expanded='true'] {
   overflow-wrap: anywhere;
 }
 
+/* Placed against the window by useWindowAnchoredPopover. */
 popover-button-popover {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
+  position: fixed;
   z-index: 20;
+  overflow: auto;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   gap: 8px;

@@ -2437,15 +2437,12 @@ class NtrlocSearch extends HTMLElement {
     return `<span class="value-text">${escapeHtml(String(val))}</span>`;
   }
 
-  // Matches PropertyType.java's real enum values (STRING, INT, LONG, DOUBLE, DATE, DATETIME,
-  // BOOLEAN, BINARY, OBJECT) -- this used to check for 'INTEGER'/'FLOAT', which that enum has
-  // never had, so every numeric property silently rendered as a plain text input. That in turn
-  // meant its edited value was always captured as a JS string (see the 'edit-value' listener in
-  // wireUp()), which the backend correctly rejects for an INT/LONG/DOUBLE property expecting an
-  // actual number.
+  // Matches PropertyType.java's enum values. A numeric property needs a number input, or its
+  // edited value is captured as a JS string (see the 'edit-value' listener in wireUp()), which the
+  // backend rejects for an INTEGER/DECIMAL property.
   inputTypeFor(schemaType) {
     switch (schemaType) {
-      case 'INT': case 'LONG': case 'DOUBLE': return 'number';
+      case 'INTEGER': case 'DECIMAL': return 'number';
       case 'DATE': return 'date';
       case 'DATETIME': return 'datetime-local';
       case 'BOOLEAN': return 'checkbox';
@@ -2508,7 +2505,7 @@ class NtrlocSearch extends HTMLElement {
           if (action === 'undo-remove') el.addEventListener('click', () => this.undoRemoveProperty(id, itemId, el.dataset.path));
           // A number input's own .value is still a plain string in JS regardless of its type
           // attribute -- .valueAsNumber is what actually parses it, and is what makes an
-          // INT/LONG/DOUBLE property round-trip as a real number instead of a string the backend
+          // INTEGER/DECIMAL property round-trip as a real number instead of a string the backend
           // then rejects (see inputTypeFor's own comment). Empty is null (property cleared, not
           // NaN sent to the server), and a value that hasn't parsed to a valid number yet (e.g.
           // mid-typing "-") is left as NaN in memory -- diffEditedValue/saveEdit only ever compare

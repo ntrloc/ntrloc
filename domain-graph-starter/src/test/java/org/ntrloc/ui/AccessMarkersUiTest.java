@@ -373,7 +373,7 @@ class AccessMarkersUiTest extends AbstractUiIntegrationTest {
         }
         AdminItemDefinitionView report = testData.createItemType(REPORT_TYPE, "status", List.of(
                 property("status", PropertyType.STRING),
-                property("score", PropertyType.INT),
+                property("score", PropertyType.INTEGER),
                 property("confidential", PropertyType.BOOLEAN)), List.of());
         UUID reviewerTypeId = testData.createItemType(REVIEWER_TYPE, "name", List.of(property("name", PropertyType.STRING)), List.of()).id();
         schemaManager.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(

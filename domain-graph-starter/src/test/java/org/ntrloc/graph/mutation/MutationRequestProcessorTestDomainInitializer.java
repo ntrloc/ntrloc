@@ -25,7 +25,7 @@ import java.util.UUID;
 //
 //  - A property of every scalar type MutationRequestProcessor's validateScalar() switches on
 //    (CoordinatorTestDomainInitializer only has STRING/DATE), to reach the BINARY-rejection and
-//    LONG/DOUBLE/DATETIME branches.
+//    INTEGER/DECIMAL/DATETIME branches.
 //  - A link between A and B (link1), plus a disjoint item type C with its own self-contained link
 //    (link3, sharing no perspective name with A/B at all) to reach resolveLinkTypeId's "no common
 //    link" branch.
@@ -62,8 +62,8 @@ public class MutationRequestProcessorTestDomainInitializer implements DomainInit
                 "MutReqProcA", "MutationRequestProcessor test fixture",
                 List.of(
                         property("attachment", PropertyType.BINARY, PropertyCardinality.SINGLE),
-                        property("count", PropertyType.LONG, PropertyCardinality.SINGLE),
-                        property("price", PropertyType.DOUBLE, PropertyCardinality.SINGLE),
+                        property("count", PropertyType.INTEGER, PropertyCardinality.SINGLE),
+                        property("price", PropertyType.DECIMAL, PropertyCardinality.SINGLE),
                         property("createdAt", PropertyType.DATETIME, PropertyCardinality.SINGLE)),
                 null, false, null, List.of(),
                 List.of(

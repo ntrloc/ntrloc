@@ -54,7 +54,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 // CoordinatorTestDomainInitializer's single-link fixture -- see
 // MutationRequestProcessorTestDomainInitializer's own comment for why a second fixture was
 // needed), the null-properties and null-property-value ("clear this property") branches, and the
-// BINARY/LONG/DATETIME validateScalar branches (CoordinatorTestDomainInitializer only has
+// BINARY/INTEGER/DATETIME validateScalar branches (CoordinatorTestDomainInitializer only has
 // STRING/DATE properties).
 class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
 
@@ -1012,7 +1012,7 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
                         .anyMatch(err -> err.path().equals("links[0]") && err.message().toLowerCase().contains("minimum")));
     }
 
-    // --- validateBinaryValue/validateScalar: BINARY, LONG, DOUBLE, DATETIME ---
+    // --- validateBinaryValue/validateScalar: BINARY, INTEGER, DECIMAL, DATETIME ---
 
     @Test
     void binaryProperty_acceptsAnIdFromAnEarlierUpload() {

@@ -3,9 +3,8 @@
 
 export const TYPE_LABELS = {
   STRING: 'String',
-  INT: 'Integer',
-  LONG: 'Long',
-  DOUBLE: 'Double',
+  INTEGER: 'Integer',
+  DECIMAL: 'Decimal',
   DATE: 'Date',
   DATETIME: 'Date/Time',
   BOOLEAN: 'Boolean',
@@ -31,7 +30,7 @@ export const USAGE_LABELS = {
 }
 
 // The property types a controlled list can back (ControlledListManager.SUPPORTED_TYPES).
-export const CONTROLLED_LIST_TYPES = ['STRING', 'INT', 'LONG']
+export const CONTROLLED_LIST_TYPES = ['STRING', 'INTEGER', 'DECIMAL', 'DATE', 'DATETIME']
 
 // Mirrors PropertyType.validCardinalities on the server.
 export function validCardinalities(type) {

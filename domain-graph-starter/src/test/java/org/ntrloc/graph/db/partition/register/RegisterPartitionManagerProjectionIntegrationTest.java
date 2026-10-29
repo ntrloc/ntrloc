@@ -856,7 +856,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
 
     @Test
     void sorting_byIntPropertyColumn_ordersNumericallyNotLexicographically() {
-        // pageCount is INT: the JSONB ->> extraction is text, so without a numeric cast "10" sorts
+        // pageCount is INTEGER: the JSONB ->> extraction is text, so without a numeric cast "10" sorts
         // before "2". Values chosen so lexicographic and numeric order genuinely differ.
         createBook("ten", 10, true, "Fiction");
         createBook("two", 2, true, "Fiction");

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import CheckboxTree from '../checkbox-tree/CheckboxTree'
 import ChevronDownIcon from '../chevron-icon/ChevronDownIcon'
+import { useWindowAnchoredPopover } from '../popover-button/useWindowAnchoredPopover'
 import './TreeSelect.css'
 
 // A Select-like trigger that reveals a CheckboxTree in a popover on click, the way a native <select>
@@ -13,6 +14,7 @@ import './TreeSelect.css'
 function TreeSelect({ nodes, selectedKeys, onChange, summary, disabled = false }) {
   const [open, setOpen] = useState(false)
   const containerRef = useRef(null)
+  const { triggerRef, popoverRef } = useWindowAnchoredPopover(open)
 
   useEffect(() => {
     if (!open) return
@@ -28,6 +30,7 @@ function TreeSelect({ nodes, selectedKeys, onChange, summary, disabled = false }
   return (
     <tree-select ref={containerRef}>
       <button
+        ref={triggerRef}
         type="button"
         className="tree-select-trigger"
         disabled={disabled}
@@ -39,7 +42,7 @@ function TreeSelect({ nodes, selectedKeys, onChange, summary, disabled = false }
         <ChevronDownIcon className="tree-select-trigger-caret" />
       </button>
       {open && (
-        <tree-select-popover>
+        <tree-select-popover ref={popoverRef}>
           <CheckboxTree nodes={nodes} selectedKeys={selectedKeys} onChange={onChange} />
         </tree-select-popover>
       )}

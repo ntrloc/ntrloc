@@ -383,24 +383,23 @@ final class SchemaMutationValidation {
 
     // Facetable is an admin-controlled opt-in (RegisterPartitionManager.isTermsFacetable), but
     // only ever meaningful on top of real structural eligibility -- SINGLE cardinality, and
-    // either BOOLEAN or a type that can carry a controlled list (STRING/INT/LONG -- the same set
-    // the admin UI itself offers a controlled list for, see ntrloc-property-table.js's own
-    // CONTROLLED_LIST_TYPES). Deliberately does NOT also require a controlled list already be
+    // either BOOLEAN or a type that can carry a controlled list (ControlledListValues.SUPPORTED_TYPES).
+    // Deliberately does NOT also require a controlled list already be
     // attached: an admin drafting a brand-new property has no property id yet to attach one to
     // (that's a separate call, after this one returns), so "facetable checked, list not attached
     // yet" is a normal, transient step in the real workflow, not an invalid state -- it just means
     // isTermsFacetable won't actually treat it as facetable until the list catches up. What this
     // rejects is only the combinations that could never be valid regardless of sequencing:
-    // LIST/SET cardinality, or a type that can never carry a controlled list or be BOOLEAN
-    // (DATE/DATETIME/DOUBLE/BINARY).
-    private static final Set<PropertyType> FACETABLE_ELIGIBLE_TYPES =
-            Set.of(PropertyType.BOOLEAN, PropertyType.STRING, PropertyType.INT, PropertyType.LONG);
+    // LIST/SET cardinality, or a type that can never carry a controlled list or be BOOLEAN (BINARY).
+    private static boolean facetableType(PropertyType type) {
+        return type == PropertyType.BOOLEAN || ControlledListValues.SUPPORTED_TYPES.contains(type);
+    }
 
     static void requireFacetableEligible(PropertyType type, PropertyCardinality cardinality, boolean facetable) {
         if (!facetable) return;
-        if (cardinality != PropertyCardinality.SINGLE || !FACETABLE_ELIGIBLE_TYPES.contains(type)) {
+        if (cardinality != PropertyCardinality.SINGLE || !facetableType(type)) {
             throw new IllegalArgumentException(
-                    "Only a SINGLE-cardinality property backed by a controlled list (STRING/INT/LONG), or a BOOLEAN, can be marked facetable");
+                    "Only a SINGLE-cardinality property backed by a controlled list, or a BOOLEAN, can be marked facetable");
         }
     }
 

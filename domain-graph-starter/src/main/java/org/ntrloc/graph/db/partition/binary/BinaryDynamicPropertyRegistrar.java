@@ -138,8 +138,8 @@ public class BinaryDynamicPropertyRegistrar {
                 case List<?> _ -> { /* structured list elements: not modeled yet (design-notes section 6) */ }
                 case String _ -> result.put(path, PropertyType.STRING);
                 case Boolean _ -> result.put(path, PropertyType.BOOLEAN);
-                case Double _ -> result.put(path, PropertyType.DOUBLE);
-                case Number _ -> result.put(path, PropertyType.LONG);
+                case Double _ -> result.put(path, PropertyType.DECIMAL);
+                case Number _ -> result.put(path, PropertyType.INTEGER);
                 default -> { /* unrecognized JSON scalar shape -- ignore rather than fail the whole walk */ }
             }
         });

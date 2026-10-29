@@ -11,6 +11,7 @@ import org.ntrloc.graph.db.partition.schema.definition.mutation.ReplaceControlle
 import org.ntrloc.graph.db.partition.schema.definition.PropertyContainerKind;
 import org.springframework.beans.factory.annotation.Autowired;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -175,6 +176,71 @@ class ControlledListManagerIntegrationTest extends AbstractIntegrationTest {
                 new ReplaceControlledListMutation.Entry("X", null))))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Duplicate controlled list value");
+    }
+
+    // Each list type's values, entered as text the way the admin API sends them.
+    private UUID listOf(PropertyType type, String... valuesAndLabels) {
+        var list = controlledListManager.createList("List-" + UUID.randomUUID(), type);
+        List<ReplaceControlledListMutation.Entry> entries = new ArrayList<>();
+        for (int i = 0; i < valuesAndLabels.length; i += 2) {
+            entries.add(new ReplaceControlledListMutation.Entry(valuesAndLabels[i], valuesAndLabels[i + 1]));
+        }
+        controlledListManager.replaceValues(list.id(), type, entries);
+        return list.id();
+    }
+
+    @Test
+    void anIntegerList_holdsWholeNumbers_andMatchesAnItemsIntegerOrLong() {
+        UUID listId = listOf(PropertyType.INTEGER, "10", "Ten", "5000000000", "Lots");
+
+        assertThat(controlledListManager.getValues(listId, PropertyType.INTEGER)).extracting(AllowedValue::value)
+                .containsExactly(10L, 5_000_000_000L);
+        assertThat(controlledListManager.containsValue(listId, PropertyType.INTEGER, 10)).isTrue();
+        assertThat(controlledListManager.containsValue(listId, PropertyType.INTEGER, 5_000_000_000L)).isTrue();
+        assertThat(controlledListManager.containsValue(listId, PropertyType.INTEGER, "10")).isFalse();
+        assertThat(controlledListManager.getLabels(listId, PropertyType.INTEGER).labelFor(10)).isEqualTo("Ten");
+    }
+
+    @Test
+    void aDecimalList_treats2And2Point0AsOneValue() {
+        UUID listId = listOf(PropertyType.DECIMAL, "2.0", "Two", "0.5", "Half");
+
+        assertThat(controlledListManager.getValues(listId, PropertyType.DECIMAL)).extracting(AllowedValue::value)
+                .containsExactly(2.0, 0.5);
+        assertThat(controlledListManager.containsValue(listId, PropertyType.DECIMAL, 2)).isTrue();
+        assertThat(controlledListManager.containsValue(listId, PropertyType.DECIMAL, 0.5)).isTrue();
+        assertThat(controlledListManager.containsValue(listId, PropertyType.DECIMAL, 0.25)).isFalse();
+        // A facet's JSONB text, in whichever form the item was saved with.
+        assertThat(controlledListManager.getLabels(listId, PropertyType.DECIMAL).labelFor("2")).isEqualTo("Two");
+        assertThatThrownBy(() -> listOf(PropertyType.DECIMAL, "2", null, "2.00", null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Duplicate controlled list value");
+    }
+
+    @Test
+    void aDateList_holdsIsoDates() {
+        UUID listId = listOf(PropertyType.DATE, "2026-01-31", "End of January");
+
+        assertThat(controlledListManager.getValues(listId, PropertyType.DATE)).extracting(AllowedValue::value)
+                .containsExactly("2026-01-31");
+        assertThat(controlledListManager.containsValue(listId, PropertyType.DATE, "2026-01-31")).isTrue();
+        assertThat(controlledListManager.containsValue(listId, PropertyType.DATE, "2026-02-01")).isFalse();
+        assertThat(controlledListManager.containsValue(listId, PropertyType.DATE, "not a date")).isFalse();
+        assertThatThrownBy(() -> listOf(PropertyType.DATE, "31/01/2026", null))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("isn't a valid DATE");
+    }
+
+    @Test
+    void aDateTimeList_holdsInstants_andMatchesTheSameInstantAtAnyOffset() {
+        UUID listId = listOf(PropertyType.DATETIME, "2026-01-31T09:30:00+02:00", "Kick-off");
+
+        assertThat(controlledListManager.getValues(listId, PropertyType.DATETIME)).extracting(AllowedValue::value)
+                .containsExactly("2026-01-31T07:30:00Z");
+        assertThat(controlledListManager.containsValue(listId, PropertyType.DATETIME, "2026-01-31T07:30:00Z")).isTrue();
+        assertThat(controlledListManager.containsValue(listId, PropertyType.DATETIME, "2026-01-31T08:30:00+01:00")).isTrue();
+        assertThat(controlledListManager.containsValue(listId, PropertyType.DATETIME, "2026-01-31T09:30:00Z")).isFalse();
+        assertThat(controlledListManager.getLabels(listId, PropertyType.DATETIME).labelFor("2026-01-31T07:30Z")).isEqualTo("Kick-off");
     }
 
     @Test

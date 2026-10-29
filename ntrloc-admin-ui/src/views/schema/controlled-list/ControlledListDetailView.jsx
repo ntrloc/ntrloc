@@ -158,9 +158,11 @@ function ValuesTable({ values }) {
                   <input
                     className="input-control-field"
                     aria-label={`Value ${index + 1}`}
-                    value={row.value}
+                    type={values.type.input ?? 'text'}
+                    inputMode={values.type.inputMode}
+                    value={values.type.toInput(row.value)}
                     data-row-key={row.key}
-                    onChange={(e) => values.setValue(row.key, 'value', e.target.value)}
+                    onChange={(e) => values.setValue(row.key, 'value', values.type.fromInput(e.target.value))}
                   />
                   <FieldProblem message={row.problems.value} />
                 </td>
@@ -176,7 +178,7 @@ function ValuesTable({ values }) {
               </>
             ) : (
               <>
-                <td>{row.value}</td>
+                <td>{values.type.display(row.value)}</td>
                 <td>{row.label}</td>
               </>
             )}

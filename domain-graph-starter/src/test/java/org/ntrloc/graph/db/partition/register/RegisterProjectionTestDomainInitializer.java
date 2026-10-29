@@ -67,7 +67,7 @@ public class RegisterProjectionTestDomainInitializer implements DomainInitialize
                 "RegisterProjectionTestBook", "RegisterPartitionManager projection/facet test fixture",
                 List.of(
                         property("title", PropertyType.STRING, PropertyCardinality.SINGLE),
-                        property("pageCount", PropertyType.INT, PropertyCardinality.SINGLE),
+                        property("pageCount", PropertyType.INTEGER, PropertyCardinality.SINGLE),
                         property("inStock", PropertyType.BOOLEAN, PropertyCardinality.SINGLE, true),
                         property("genre", PropertyType.STRING, PropertyCardinality.SINGLE, true),
                         // condition/format both back onto a controlled list, but deliberately differ from
@@ -103,10 +103,10 @@ public class RegisterProjectionTestDomainInitializer implements DomainInitialize
                 // name, the same way a top-level facetable property is.
                 List.of(
                         group("dimensions",
-                                property("widthCm", PropertyType.INT, PropertyCardinality.SINGLE),
+                                property("widthCm", PropertyType.INTEGER, PropertyCardinality.SINGLE),
                                 property("material", PropertyType.STRING, PropertyCardinality.SINGLE, true)),
                         group("packaging",
-                                property("widthCm", PropertyType.INT, PropertyCardinality.SINGLE))))));
+                                property("widthCm", PropertyType.INTEGER, PropertyCardinality.SINGLE))))));
 
         AdminItemDefinitionView book = findItem("RegisterProjectionTestBook");
         bookTypeId = book.id();

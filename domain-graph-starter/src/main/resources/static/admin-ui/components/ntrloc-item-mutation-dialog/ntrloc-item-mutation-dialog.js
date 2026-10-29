@@ -140,7 +140,7 @@ injectStyles('ntrloc-item-mutation-dialog-styles', `
 // addableProperties/createProperties below): only SINGLE-cardinality properties are offered in
 // this first cut -- LIST/SET would need a multi-value editor this dialog doesn't have yet, not a
 // fundamental backend limit.
-const VALUE_TYPES = ['STRING', 'INT', 'LONG', 'DOUBLE', 'DATE', 'DATETIME', 'BOOLEAN', 'GROUP'];
+const VALUE_TYPES = ['STRING', 'INTEGER', 'DECIMAL', 'DATE', 'DATETIME', 'BOOLEAN', 'GROUP'];
 
 // Promise-based wrapper around a transient <md-dialog>, same shape as
 // ntrloc-save-confirm-dialog.js/ntrloc-controlled-list-dialog.js's open*Dialog functions. Handles
@@ -234,10 +234,9 @@ function openItemMutationDialog({ mode = 'create', item } = {}) {
       switch (property.type) {
         case 'BOOLEAN':
           return `<md-checkbox class="value-input" ${dataAttr} ${value ? 'checked' : ''}></md-checkbox>`;
-        case 'INT':
-        case 'LONG':
+        case 'INTEGER':
           return `<input type="number" step="1" class="value-input" ${dataAttr} value="${escapeHtml(v)}">`;
-        case 'DOUBLE':
+        case 'DECIMAL':
           return `<input type="number" step="any" class="value-input" ${dataAttr} value="${escapeHtml(v)}">`;
         case 'DATE':
           return `<input type="date" class="value-input" ${dataAttr} value="${escapeHtml(v)}">`;
@@ -537,7 +536,7 @@ function openItemMutationDialog({ mode = 'create', item } = {}) {
 // MutationRequestProcessor.validateScalar on the backend for the exact target shapes), writing
 // the result onto row.coercedValue rather than returning a parallel array -- the submit handler
 // above reads it back off each row once this returns no errors. Returns the accumulated error
-// list (empty means every row coerced cleanly); INT/DATE/DATETIME/GROUP (JSON) can each fail to parse
+// list (empty means every row coerced cleanly); INTEGER/DATE/DATETIME/GROUP (JSON) can each fail to parse
 // client-side before ever reaching the server's own validation.
 function coerceAllRows(state, propertyDef) {
   const errors = [];
@@ -558,10 +557,10 @@ function coerceAllRows(state, propertyDef) {
 
 // Create mode's own coercion pass -- can't reuse coerceAllRows as-is because that one assumes
 // every row it sees was deliberately added by the user (so a blank value is a mistake worth
-// erroring on, e.g. an INT left empty). Here EVERY eligible property always has a row whether or
+// erroring on, e.g. an INTEGER left empty). Here EVERY eligible property always has a row whether or
 // not the user wants to set it, so a blank/untouched value has to mean "omit this property" rather
 // than "error" -- coerceValue itself is still reused unchanged (and still throws on a genuinely
-// invalid non-blank value, e.g. "abc" typed into an INT field), just never called at all for a
+// invalid non-blank value, e.g. "abc" typed into an INTEGER field), just never called at all for a
 // value that's blank to begin with. BOOLEAN is the one exception: a checkbox has no "blank" state,
 // so it's always included (unchecked coerces to false), matching how link-property dialogs already
 // treat booleans.
@@ -586,9 +585,8 @@ function coerceCreateValues(properties, values) {
 
 function coerceValue(property, rawValue) {
   switch (property.type) {
-    case 'INT':
-    case 'LONG':
-    case 'DOUBLE': {
+    case 'INTEGER':
+    case 'DECIMAL': {
       const n = Number(rawValue);
       if (rawValue === '' || Number.isNaN(n)) throw new Error('Expected a number');
       return n;

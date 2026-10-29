@@ -306,13 +306,13 @@ class ItemPaneUiTest extends AbstractUiIntegrationTest {
         AdminItemDefinitionView gadget = testData.createItemType(GADGET_TYPE, "name",
                 List.of(
                         property("name", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.REQUIRED),
-                        property("quantity", PropertyType.INT),
-                        property("price", PropertyType.DOUBLE),
+                        property("quantity", PropertyType.INTEGER),
+                        property("price", PropertyType.DECIMAL),
                         property("active", PropertyType.BOOLEAN),
                         property("tags", PropertyType.STRING, PropertyCardinality.SET, PropertyUsage.OPTIONAL),
                         property("finish", PropertyType.STRING),
                         property("features", PropertyType.STRING, PropertyCardinality.SET, PropertyUsage.OPTIONAL)),
-                List.of(group("dimensions", property("width", PropertyType.DOUBLE))));
+                List.of(group("dimensions", property("width", PropertyType.DECIMAL))));
 
         schemaManager.applyMutations(List.of(
                 new CreateControlledListMutation("finish", "UiItemFinish", PropertyType.STRING, List.of(
