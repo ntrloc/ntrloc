@@ -79,6 +79,54 @@ class SchemaPage {
         return awaitHeading(name);
     }
 
+    /** Adds a new controlled list through the New Controlled List dialog, and waits for it to open. */
+    SchemaPage newControlledList(String name) {
+        openEditor(driver.findElement(By.xpath("//schema-controlled-lists-view/button[.='New Controlled List']")))
+                .typeInPropertyEditor("Name", name).closePropertyEditor("Add");
+        return awaitHeading(name);
+    }
+
+    /** The controlled lists the sidebar marks as having unsaved changes. */
+    List<String> unsavedControlledLists() {
+        return texts(driver.findElements(By.xpath(
+                "//button[contains(@class,'schema-controlled-lists-list-item')][span[contains(@class,'schema-controlled-lists-unsaved')]]")));
+    }
+
+    /** Replaces the text of a controlled list value's "Value" or "Label", by its 1-based row. */
+    SchemaPage typeInValue(int row, String column, String text) {
+        WebElement input = card("Values").findElement(By.cssSelector("input[aria-label='" + column + " " + row + "']"));
+        input.sendKeys(Keys.chord(Keys.CONTROL, "a"), Keys.BACK_SPACE);
+        input.sendKeys(text);
+        return this;
+    }
+
+    /** Adds an empty row to a controlled list's values. */
+    SchemaPage addValue() {
+        card("Values").findElement(By.cssSelector("button[aria-label='Add value']")).click();
+        return this;
+    }
+
+    /** Marks a saved value for removal, or keeps it after all. */
+    SchemaPage toggleRemoveValue(String value) {
+        card("Values").findElement(By.xpath(
+                ".//button[@aria-label='Remove " + value + "' or @aria-label='Keep " + value + "']")).click();
+        return this;
+    }
+
+    /** What the editor says needs fixing before Save, if anything. */
+    Optional<String> editProblem() {
+        return content().findElements(By.cssSelector("schema-edit-messages .schema-edit-save-error")).stream().findFirst().map(SchemaPage::text);
+    }
+
+    /** Picks one of a choice field's options in the Overview card. */
+    SchemaPage chooseInOverview(String fieldLabel, String option) {
+        WebElement field = card("Overview").findElement(By.xpath(
+                ".//popover-button[span[contains(@class,'input-control-name')][.='" + fieldLabel + "']]"));
+        field.findElement(By.cssSelector(".popover-button-trigger")).click();
+        field.findElement(By.xpath(".//button[contains(@class,'option-list-option')][.='" + option + "']")).click();
+        return this;
+    }
+
     /** The traits the sidebar marks as having unsaved changes. */
     List<String> unsavedTraits() {
         return texts(driver.findElements(By.xpath(
@@ -238,58 +286,76 @@ class SchemaPage {
     }
 
     SchemaPage edit() {
-        footerButton("Edit").click();
-        await().until(d -> !footerButtons("Save").isEmpty());
+        headerButton("Edit").click();
+        await().until(d -> !headerButtons("Save").isEmpty());
         return this;
     }
 
     SchemaPage cancel() {
-        footerButton("Cancel").click();
-        await().until(d -> !footerButtons("Edit").isEmpty());
+        headerButton("Cancel").click();
+        await().until(d -> !headerButtons("Edit").isEmpty());
         return this;
     }
 
     /** Cancels a new item type or trait, which closes it: nothing is left to show. */
     SchemaPage cancelDraft() {
-        footerButton("Cancel").click();
+        headerButton("Cancel").click();
         await().until(d -> d.findElements(By.cssSelector("schema-view-content h2")).isEmpty());
         return this;
     }
 
-    /** Clicks a footer button that only changes what's pending, like "Delete item type" or "Keep trait". */
-    SchemaPage clickFooter(String label) {
-        footerButton(label).click();
+    /** Whether the header offers Delete -- only for something saved, and not while it's being edited. */
+    boolean canDelete() {
+        return !headerButtons("Delete").isEmpty();
+    }
+
+    /** Clicks the header's Delete, and returns what the confirmation says it will do. */
+    String startDelete() {
+        headerButton("Delete").click();
+        await().until(d -> !d.findElements(By.tagName("dialog-view")).isEmpty());
+        return String.join(" ", texts(dialog().findElements(By.className("definition-delete-consequence"))));
+    }
+
+    SchemaPage cancelDelete() {
+        dialogButton("Cancel").click();
+        await().until(d -> d.findElements(By.tagName("dialog-view")).isEmpty());
         return this;
     }
 
-    /** What the footer says Save will delete, or empty when nothing is marked. */
-    Optional<String> deleteNotice() {
-        return content().findElements(By.cssSelector(".schema-edit-delete-notice")).stream().findFirst().map(SchemaPage::text);
-    }
-
-    /** Saves a deletion, and waits until what was deleted has closed. */
-    SchemaPage saveDeletion() {
-        footerButton("Save").click();
+    /** Confirms a deletion, and waits until what was deleted has closed. */
+    SchemaPage confirmDelete() {
+        dialogButton("Delete").click();
         await().until(d -> d.findElements(By.cssSelector("schema-view-content h2")).isEmpty());
         return this;
     }
 
-    /** Clicks Save and waits for the footer's error. */
+    /** Confirms a deletion the server refuses, and returns the confirmation's error. */
+    String confirmDeleteExpectingError() {
+        dialogButton("Delete").click();
+        await().until(d -> !dialog().findElements(By.className("property-edit-error")).isEmpty());
+        return text(dialog().findElement(By.className("property-edit-error")));
+    }
+
+    private WebElement dialogButton(String label) {
+        return dialog().findElement(By.xpath(".//dialog-actions//button[.='" + label + "']"));
+    }
+
+    /** Clicks Save and waits for its error. */
     String saveExpectingError() {
-        footerButton("Save").click();
+        headerButton("Save").click();
         await().until(d -> !content().findElements(By.cssSelector(".schema-edit-save-error")).isEmpty());
         return text(content().findElement(By.cssSelector(".schema-edit-save-error")));
     }
 
     /** Saves, and waits until the item type is back out of editing. */
     SchemaPage save() {
-        footerButton("Save").click();
-        await().until(d -> !footerButtons("Edit").isEmpty());
+        headerButton("Save").click();
+        await().until(d -> !headerButtons("Edit").isEmpty());
         return this;
     }
 
     boolean saveEnabled() {
-        return footerButton("Save").isEnabled();
+        return headerButton("Save").isEnabled();
     }
 
     /** Replaces an Overview text field's value. */
@@ -396,8 +462,7 @@ class SchemaPage {
         return By.cssSelector("section.property-tree-group[aria-label='Group " + groupName + "']");
     }
 
-    // Scrolled to the middle first: the editing footer stays pinned over the bottom of the view,
-    // where a click would otherwise scroll a button to, and lands on the footer instead.
+    // Scrolled to the middle first, clear of anything pinned at the edges of the view.
     private SchemaPage openEditor(WebElement button) {
         ((JavascriptExecutor) driver).executeScript("arguments[0].scrollIntoView({block: 'center'})", button);
         button.click();
@@ -766,12 +831,12 @@ class SchemaPage {
         return cards.isEmpty() ? content() : cards.getFirst();
     }
 
-    private WebElement footerButton(String label) {
-        return footerButtons(label).getFirst();
+    private WebElement headerButton(String label) {
+        return headerButtons(label).getFirst();
     }
 
-    private List<WebElement> footerButtons(String label) {
-        return content().findElements(By.xpath(".//schema-edit-footer//button[.='" + label + "']"));
+    private List<WebElement> headerButtons(String label) {
+        return content().findElements(By.xpath(".//definition-actions//button[.='" + label + "']"));
     }
 
     static List<String> texts(List<WebElement> elements) {

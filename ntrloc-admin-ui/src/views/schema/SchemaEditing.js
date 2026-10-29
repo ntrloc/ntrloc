@@ -140,6 +140,13 @@ export function groupCreateSpec(group, newGroups, newProperties) {
   }
 }
 
+// Whether two sets of controlled list rows hold the same values, in the same order. Removed rows
+// don't count; a blank label is the same as none.
+export function sameValues(rows, otherRows) {
+  const kept = (list) => list.filter((row) => !row.removed).map((row) => [row.value, row.label || ''])
+  return JSON.stringify(kept(rows)) === JSON.stringify(kept(otherRows))
+}
+
 // Ids for new properties and groups until the server gives them real ones -- never sent to it.
 let nextNewId = 1
 const NEW_PROPERTY_PREFIX = 'new-property-'
@@ -335,8 +342,9 @@ export class SchemaEditorViewModel {
     // { mode: 'edit', id }.
     propertyEditor: null,
     groupEditor: null,
-    // The item type or trait itself is to be deleted on Save -- and with it, its links.
-    deleting: false,
+    // A controlled list's values, while edited: { rows, base }, `base` being the saved values the
+    // edit started from (see setValues).
+    valuesChange: null,
     dirty: false,
     saving: false,
     saveError: null,
@@ -350,8 +358,6 @@ export class SchemaEditorViewModel {
   getSnapshot = () => this.#snapshot
 
   startEditing = () => this.#update({ editing: true })
-
-  toggleDeleting = () => this.#update({ deleting: !this.#snapshot.deleting })
 
   cancel = () => this.#reset()
 
@@ -375,6 +381,20 @@ export class SchemaEditorViewModel {
     delete fieldChanges[key]
     this.#update({ fieldChanges })
   }
+
+  // A controlled list's values, edited as a whole: `rows` are [{ key, value, label, removed, isNew }]
+  // and `savedRows` the values as saved now. Back to them drops the change.
+  setValues = (rows, savedRows) => {
+    if (sameValues(rows, savedRows)) {
+      this.#update({ valuesChange: null })
+      return
+    }
+    this.#update({ valuesChange: { rows, base: this.#snapshot.valuesChange?.base ?? savedRows } })
+  }
+
+  keepMyValues = (savedRows) => this.#update({ valuesChange: { ...this.#snapshot.valuesChange, base: savedRows } })
+
+  useTheirValues = () => this.#update({ valuesChange: null })
 
   // Kept as the difference from the saved traits, not the list itself.
   setTraitIds = (traitIds, savedTraitIds) =>
@@ -572,7 +592,7 @@ export class SchemaEditorViewModel {
       linkEditor: null,
       propertyEditor: null,
       groupEditor: null,
-      deleting: false,
+      valuesChange: null,
       saving: false,
       saveError: null,
     })
@@ -593,7 +613,7 @@ export class SchemaEditorViewModel {
       next.newProperties.length > 0 ||
       next.newGroups.length > 0 ||
       next.newLinks.length > 0 ||
-      next.deleting
+      next.valuesChange !== null
     this.#snapshot = next
     this.#onChange()
   }
@@ -798,14 +818,18 @@ function groupEditorFor(vm, state, savedGroups) {
 //
 // Returns the conflicts among those edits, `mutations` to save them (see contentMutations), and
 // `view`: what the Properties and Links cards and the property, group and link editors need.
-// Marking a saved item type or trait for deletion on Save. `links` are the ones its Links card shows
-// (structureEditing's view.links); the ones of its own go with it, so they're named for the editor.
-export function deletionEditing(vm, state, links) {
-  return {
-    marked: state.deleting,
-    toggle: vm.toggleDeleting,
-    links: links.filter((link) => !link.inherited && !link.isNew).map((link) => `${link.name} (to ${link.target.name})`),
-  }
+// Deletes a saved item type, trait or controlled list right away -- not an edit held until Save --
+// and waits for the reloaded schema. Throws whatever the server refused it with.
+export async function deleteDefinition(mutation) {
+  await applySchemaMutations([mutation])
+  await reloadSchema()
+}
+
+// What deleting an item type or trait does to the links its Links card shows (structureEditing's
+// view.links): its own go with it, so they're named.
+export function linksDeletedWith(links) {
+  const names = links.filter((link) => !link.inherited && !link.isNew).map((link) => `${link.name} (to ${link.target.name})`)
+  return names.length > 0 ? `Its links go with it: ${names.join(', ')}.` : null
 }
 
 export function structureEditing({ vm, state, owner, savedTree, links, models }) {

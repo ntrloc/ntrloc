@@ -4,6 +4,7 @@ import static java.util.Map.entry;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.ntrloc.ui.UiTestData.property;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -11,6 +12,8 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.ntrloc.graph.db.partition.schema.AllowedValue;
+import org.ntrloc.graph.db.partition.schema.ControlledListManager;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyContainerKind;
@@ -22,6 +25,8 @@ import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateLinkDefini
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePerspectiveDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePropertyDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePropertyGroupDefinitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.ExistingControlledListReference;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.SetPropertyControlledListMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.UpdateItemDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.UpdatePropertyDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminControlledListView;
@@ -41,6 +46,9 @@ class SchemaEditingUiTest extends AbstractUiIntegrationTest {
 
     @Autowired
     private SchemaManager schemaManager;
+
+    @Autowired
+    private ControlledListManager controlledListManager;
 
     private SchemaPage schema;
     private String bookType;
@@ -143,19 +151,16 @@ class SchemaEditingUiTest extends AbstractUiIntegrationTest {
     }
 
     @Test
-    void deletingAnItemTypeWaitsForSaveAndTakesItsLinksWithIt() {
-        schema.edit().clickFooter("Delete item type");
-        assertThat(schema.deleteNotice()).contains(
-                "This item type will be deleted when you save. Its links go with it: authors (to " + authorType + ").");
-        assertThat(schema.unsavedItemTypes()).containsExactly(bookType);
+    void deletingAnItemTypeAsksFirstAndTakesItsLinksWithIt() {
+        assertThat(schema.edit().canDelete()).isFalse();
+        schema.cancel();
 
-        schema.clickFooter("Keep item type");
-        assertThat(schema.deleteNotice()).isEmpty();
-        assertThat(schema.unsavedItemTypes()).isEmpty();
-
-        schema.clickFooter("Delete item type");
+        assertThat(schema.startDelete()).isEqualTo("Its links go with it: authors (to " + authorType + "). This can't be undone.");
+        schema.cancelDelete();
         assertThat(schemaManager.getAdminSchema().items()).extracting(AdminItemDefinitionView::name).contains(bookType);
-        schema.saveDeletion();
+
+        schema.startDelete();
+        schema.confirmDelete();
 
         assertThat(schemaManager.getAdminSchema().items()).extracting(AdminItemDefinitionView::name).doesNotContain(bookType);
         assertThat(Objects.requireNonNullElse(testData.itemType(authorType).links(), Map.of())).doesNotContainKey("books");
@@ -168,25 +173,111 @@ class SchemaEditingUiTest extends AbstractUiIntegrationTest {
     void anItemTypeWithItemsCantBeDeleted() {
         testData.createItem(testData.itemType(bookType).id(), Map.of());
 
-        String error = schema.edit().clickFooter("Delete item type").saveExpectingError();
+        schema.startDelete();
+        String error = schema.confirmDeleteExpectingError();
 
         assertThat(error).contains("Cannot delete item type '" + bookType + "' because items of this type still exist");
         assertThat(schemaManager.getAdminSchema().items()).extracting(AdminItemDefinitionView::name).contains(bookType);
     }
 
     @Test
-    void deletingATraitWaitsForSave() {
+    void deletingATraitAsksFirst() {
         String name = "UiEditDoomedTrait-" + UUID.randomUUID().toString().substring(0, 8);
         testData.createTrait(name, List.of(property("code", PropertyType.STRING)));
-        schema.openSection("Traits").selectTrait(name).edit().clickFooter("Delete trait");
-        assertThat(schema.deleteNotice()).contains("This trait will be deleted when you save.");
-        assertThat(schema.unsavedTraits()).containsExactly(name);
+        assertThat(schema.openSection("Traits").selectTrait(name).startDelete()).isEqualTo("This can't be undone.");
 
-        schema.saveDeletion();
+        schema.confirmDelete();
 
         assertThat(schemaManager.getAdminSchema().traits()).extracting(AdminTraitDefinitionView::name).doesNotContain(name);
         assertThat(schema.traitNames()).doesNotContain(name);
         assertThat(driver.getCurrentUrl()).endsWith("/schema/traits");
+    }
+
+    @Test
+    void aControlledListsEditsAreHeldUntilSaveAndThenAppliedTogether() {
+        String name = "UiEditStatus-" + UUID.randomUUID().toString().substring(0, 8);
+        UUID listId = controlledList(name, "OPEN", "Open", "SHUT", "Shut");
+        schema.openSection("Controlled Lists").selectControlledList(name).edit();
+
+        schema.typeInto("Name", name + "-renamed")
+                .typeInValue(1, "Label", "Opened")
+                .toggleRemoveValue("SHUT")
+                .addValue().typeInValue(3, "Value", "HELD").typeInValue(3, "Label", "Held");
+        assertThat(schema.unsavedControlledLists()).containsExactly(name);
+        assertThat(labelsOf(listId)).containsExactly("Open", "Shut");
+
+        schema.save();
+
+        assertThat(controlledListManager.getListById(listId).orElseThrow().name()).isEqualTo(name + "-renamed");
+        assertThat(labelsOf(listId)).containsExactly("Opened", "Held");
+        assertThat(schema.cardTableRows("Values")).containsExactly("OPEN | Opened", "HELD | Held");
+        assertThat(schema.unsavedControlledLists()).isEmpty();
+    }
+
+    @Test
+    void aControlledListCantBeSavedWithValuesTheServerWouldRefuse() {
+        String name = "UiEditRules-" + UUID.randomUUID().toString().substring(0, 8);
+        controlledList(name, "OPEN", "Open");
+        schema.openSection("Controlled Lists").selectControlledList(name).edit();
+
+        schema.addValue().typeInValue(2, "Value", "OPEN").typeInValue(2, "Label", "Again");
+        assertThat(schema.editProblem()).contains("OPEN is in the list twice.");
+        assertThat(schema.saveEnabled()).isFalse();
+
+        schema.typeInValue(2, "Value", "SHUT").typeInValue(2, "Label", "");
+        assertThat(schema.editProblem()).contains("Give every value a label, or none of them.");
+
+        schema.typeInValue(2, "Label", "Shut");
+        assertThat(schema.editProblem()).isEmpty();
+        assertThat(schema.saveEnabled()).isTrue();
+    }
+
+    @Test
+    void aNewControlledListIsEditedUntilSavedAndThenCreatedWithItsValues() {
+        String name = "UiEditSizes-" + UUID.randomUUID().toString().substring(0, 8);
+        schema.openSection("Controlled Lists").newControlledList(name);
+        assertThat(schema.unsavedControlledLists()).contains(name);
+
+        schema.chooseInOverview("Value type", "Integer")
+                .addValue().typeInValue(1, "Value", "10")
+                .addValue().typeInValue(2, "Value", "2");
+        schema.save();
+
+        var saved = controlledListManager.getAllLists().stream().filter(l -> l.name().equals(name)).findFirst().orElseThrow();
+        assertThat(saved.valueType()).isEqualTo(PropertyType.INT);
+        assertThat(controlledListManager.getValues(saved.id(), PropertyType.INT)).extracting(AllowedValue::value).containsExactly(10, 2);
+        assertThat(driver.getCurrentUrl()).endsWith("/schema/controlled-lists/" + saved.id());
+        assertThat(schema.unsavedControlledLists()).isEmpty();
+    }
+
+    @Test
+    void deletingAControlledListAsksFirstAndDetachesTheProperties() {
+        String name = "UiEditDoomedList-" + UUID.randomUUID().toString().substring(0, 8);
+        UUID listId = controlledList(name, "A", "Aye");
+        UUID titleId = UiTestData.propertyId(testData.itemType(bookType), "title");
+        schemaManager.applyMutations(List.of(new SetPropertyControlledListMutation(titleId, new ExistingControlledListReference(listId))));
+        assertThat(schema.openSection("Controlled Lists").selectControlledList(name).startDelete())
+                .isEqualTo("Properties using it stop using it: " + bookType + " · title. This can't be undone.");
+
+        schema.confirmDelete();
+
+        assertThat(controlledListManager.getListById(listId)).isEmpty();
+        assertThat(testData.itemType(bookType).properties()).filteredOn(p -> p.name().equals("title"))
+                .extracting(AdminPropertyDefinitionView::controlledListId).containsOnlyNulls();
+        assertThat(driver.getCurrentUrl()).endsWith("/schema/controlled-lists");
+    }
+
+    private UUID controlledList(String name, String... valuesAndLabels) {
+        List<CreateControlledListMutation.Entry> entries = new ArrayList<>();
+        for (int i = 0; i < valuesAndLabels.length; i += 2) {
+            entries.add(new CreateControlledListMutation.Entry(valuesAndLabels[i], valuesAndLabels[i + 1]));
+        }
+        schemaManager.applyMutations(List.of(new CreateControlledListMutation(null, name, PropertyType.STRING, entries)));
+        return controlledListManager.getAllLists().stream().filter(l -> l.name().equals(name)).findFirst().orElseThrow().id();
+    }
+
+    private List<String> labelsOf(UUID listId) {
+        return controlledListManager.getValues(listId, PropertyType.STRING).stream().map(AllowedValue::label).toList();
     }
 
     @Test

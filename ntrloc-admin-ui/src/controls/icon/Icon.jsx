@@ -34,6 +34,8 @@ const ICONS = {
       <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
     </>
   ),
+  check: <polyline points="20 6 9 17 4 12" />,
+  x: <path d="M18 6 6 18M6 6l12 12" />,
   undo: (
     <>
       <polyline points="9 14 4 9 9 4" />

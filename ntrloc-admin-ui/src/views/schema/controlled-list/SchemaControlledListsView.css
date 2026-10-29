@@ -39,3 +39,12 @@ schema-controlled-lists-view {
   color: var(--primary);
   font-weight: 500;
 }
+
+/* Unsaved changes, as on the item types list. */
+.schema-controlled-lists-unsaved {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--secondary);
+}

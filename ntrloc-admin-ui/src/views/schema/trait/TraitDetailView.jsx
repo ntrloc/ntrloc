@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import CollapsibleCard from '../../../controls/collapsible-card/CollapsibleCard'
+import DefinitionActions from '../DefinitionActions'
 import Filter from '../../../controls/filter/Filter'
 import IconButton from '../../../controls/icon-button/IconButton'
 import PropertyTreeView from '../PropertyTreeView'
 import ItemTypeLinksView from '../item-type/ItemTypeLinksView'
-import EditFooter from '../item-type/EditFooter'
+import EditMessages from '../EditMessages'
 import StructureDialogs from '../item-type/StructureDialogs'
 import TraitOverviewView from './TraitOverviewView'
 import { useTraitDetailViewModel } from './TraitDetailViewModel'
@@ -82,10 +83,12 @@ function TraitDetailView({
   return (
     <trait-detail-view>
       <trait-detail-header>
-        <h2 data-marked-for-delete={vm.deletion?.marked || undefined}>{trait.name}</h2>
+        <h2>{trait.name}</h2>
         {trait.description && <p className="trait-detail-description">{trait.description}</p>}
+        <DefinitionActions vm={vm} name={trait.name} />
       </trait-detail-header>
-      <trait-detail-cards data-marked-for-delete={vm.deletion?.marked || undefined}>
+      <EditMessages vm={vm} />
+      <trait-detail-cards>
         {cards.map((card) => (
           <CollapsibleCard
             key={card.key}
@@ -98,7 +101,6 @@ function TraitDetailView({
           </CollapsibleCard>
         ))}
       </trait-detail-cards>
-      <EditFooter vm={vm} />
       <StructureDialogs vm={vm} />
     </trait-detail-view>
   )

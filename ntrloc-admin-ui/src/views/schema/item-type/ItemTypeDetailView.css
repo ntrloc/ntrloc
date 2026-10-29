@@ -29,8 +29,7 @@ item-type-detail-header h2 {
   color: var(--text);
 }
 
-/* Fills the tab panel: the cards scroll on their own while the footer's Edit button stays put
-   below them. */
+/* Fills the tab panel, so the cards scroll on their own under the header. */
 item-type-structure {
   display: flex;
   flex-direction: column;

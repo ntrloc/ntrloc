@@ -212,6 +212,18 @@ public class ControlledListManager {
                 .optional();
     }
 
+    // The list's row, locked until the transaction ends, so what's checked against it can't change
+    // before the batch commits.
+    public Optional<ControlledList> lockList(UUID listId) {
+        return jdbcClient.sql("SELECT id, name, value_type FROM schema_controlled_list WHERE id = :id FOR UPDATE")
+                .param("id", listId)
+                .query((rs, _) -> new ControlledList(
+                        rs.getObject("id", UUID.class),
+                        rs.getString("name"),
+                        PropertyType.valueOf(rs.getString(COL_VALUE_TYPE))))
+                .optional();
+    }
+
     public void renameList(UUID listId, String name) {
         jdbcClient.sql("UPDATE schema_controlled_list SET name = :name WHERE id = :id")
                 .param("name", name).param("id", listId).update();

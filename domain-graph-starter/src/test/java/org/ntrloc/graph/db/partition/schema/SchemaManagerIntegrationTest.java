@@ -2,39 +2,42 @@ package org.ntrloc.graph.db.partition.schema;
 
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
+import org.ntrloc.graph.db.partition.authorization.PermissionService;
+import org.ntrloc.graph.db.partition.authorization.repository.AuthorizationRepository;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyContainerKind;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyUsage;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.AddPropertyDefinitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.AddPropertyGroupDefinitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateControlledListMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateItemDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateLinkDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePerspectiveDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePropertyDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePropertyGroupDefinitionMutation;
-import org.ntrloc.graph.db.partition.schema.definition.mutation.AddPropertyGroupDefinitionMutation;
-import org.ntrloc.graph.db.partition.schema.definition.mutation.DeletePropertyGroupDefinitionMutation;
-import org.ntrloc.graph.db.partition.schema.definition.mutation.MovePropertyGroupDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateStateMachineMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateStateMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateTraitDefinitionMutation;
-import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateControlledListMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateTransitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DeleteControlledListMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DeleteItemDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DeleteLinkDefinitionMutation;
-import org.ntrloc.graph.db.partition.schema.definition.mutation.ExistingControlledListReference;
-import org.ntrloc.graph.db.partition.schema.definition.mutation.NewControlledListReference;
-import org.ntrloc.graph.db.partition.schema.definition.mutation.AddPropertyDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DeletePropertyDefinitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.DeletePropertyGroupDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DeleteStateMachineMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DeleteStateMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DeleteTraitDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DeleteTransitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.ExistingControlledListReference;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.ExpectControlledListMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.ExpectItemDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.ExpectTraitDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.ImplementTraitMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.MovePropertyDefinitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.MovePropertyGroupDefinitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.NewControlledListReference;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.RemoveTraitMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.ReplaceControlledListMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.SetPropertyControlledListMutation;
@@ -48,12 +51,10 @@ import org.ntrloc.graph.db.partition.schema.definition.mutation.UpdateTraitDefin
 import org.ntrloc.graph.db.partition.schema.definition.mutation.UpdateTransitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyDefinitionView;
-import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminTraitDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyGroupView;
-import org.ntrloc.graph.db.partition.authorization.PermissionService;
-import org.ntrloc.graph.db.partition.authorization.repository.AuthorizationRepository;
-import org.ntrloc.graph.db.partition.security.TestPrincipals;
+import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminTraitDefinitionView;
 import org.ntrloc.graph.db.partition.schema.repository.SchemaRepository;
+import org.ntrloc.graph.db.partition.security.TestPrincipals;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -681,6 +682,55 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
                 List.of(new CreateControlledListMutation.Entry("Open", "Open")))));
         return controlledListManager.getAllLists().stream()
                 .filter(l -> l.name().equals(name)).findFirst().orElseThrow().id();
+    }
+
+    @Test
+    void aControlledListExpectationThatStillHolds_letsTheUpdateThrough() {
+        String name = "List-" + UUID.randomUUID();
+        UUID listId = createStringList(name);
+
+        schemaManager.applyMutations(List.of(
+                new ExpectControlledListMutation(listId, name, List.of(new UpdateControlledListMutation.Entry("Open", "Open"))),
+                new UpdateControlledListMutation(listId, null, List.of(
+                        new UpdateControlledListMutation.Entry("Open", "Open"), new UpdateControlledListMutation.Entry("Closed", "Closed")))));
+
+        assertThat(controlledListManager.getValues(listId, PropertyType.STRING)).extracting(AllowedValue::value).containsExactly("Open", "Closed");
+    }
+
+    @Test
+    void aControlledListExpectationAboutValuesSomeoneElseChanged_rejectsTheWholeBatch() {
+        String name = "List-" + UUID.randomUUID();
+        UUID listId = createStringList(name);
+        schemaManager.applyMutations(List.of(new UpdateControlledListMutation(listId, null,
+                List.of(new UpdateControlledListMutation.Entry("Open", "Opened elsewhere")))));
+
+        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(
+                new ExpectControlledListMutation(listId, name, List.of(new UpdateControlledListMutation.Entry("Open", "Open"))),
+                new UpdateControlledListMutation(listId, "Renamed-" + UUID.randomUUID(), null))))
+                .isInstanceOf(SchemaConflictException.class)
+                .hasMessageContaining("changed by someone else");
+        assertThat(controlledListManager.getListById(listId).orElseThrow().name()).isEqualTo(name);
+    }
+
+    @Test
+    void aControlledListExpectationAboutADeletedList_isAConflict() {
+        String name = "List-" + UUID.randomUUID();
+        UUID listId = createStringList(name);
+        schemaManager.applyMutations(List.of(new DeleteControlledListMutation(listId)));
+
+        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new ExpectControlledListMutation(listId, name, null))))
+                .isInstanceOf(SchemaConflictException.class)
+                .hasMessageContaining("deleted");
+    }
+
+    @Test
+    void creatingAnIntegerControlledList_storesItsValuesAsNumbers() {
+        String name = "List-" + UUID.randomUUID();
+        schemaManager.applyMutations(List.of(new CreateControlledListMutation(null, name, PropertyType.INT,
+                List.of(new CreateControlledListMutation.Entry("10", null), new CreateControlledListMutation.Entry("2", null)))));
+        UUID listId = controlledListManager.getAllLists().stream().filter(l -> l.name().equals(name)).findFirst().orElseThrow().id();
+
+        assertThat(controlledListManager.getValues(listId, PropertyType.INT)).extracting(AllowedValue::value).containsExactly(10, 2);
     }
 
     @Test

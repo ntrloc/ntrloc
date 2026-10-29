@@ -50,7 +50,11 @@ export function useSchemaViewModel() {
   const [traitViewModels] = useState(() => new SchemaEditorViewModels('new-trait-'))
   const dirtyTraitIds = useSyncExternalStore(traitViewModels.subscribe, traitViewModels.getDirtyIds)
   const draftTraits = useSyncExternalStore(traitViewModels.subscribe, traitViewModels.getDrafts)
-  const hasUnsavedChanges = dirtyItemTypeIds.size > 0 || dirtyTraitIds.size > 0
+  // And every controlled list's.
+  const [controlledListViewModels] = useState(() => new SchemaEditorViewModels('new-controlled-list-'))
+  const dirtyControlledListIds = useSyncExternalStore(controlledListViewModels.subscribe, controlledListViewModels.getDirtyIds)
+  const draftControlledLists = useSyncExternalStore(controlledListViewModels.subscribe, controlledListViewModels.getDrafts)
+  const hasUnsavedChanges = dirtyItemTypeIds.size > 0 || dirtyTraitIds.size > 0 || dirtyControlledListIds.size > 0
 
   // A reload, closing the tab or signing out is the one way to lose those edits, so ask first. Browsers
   // show their own generic "Leave site?" wording; the message can't be customized.
@@ -100,6 +104,15 @@ export function useSchemaViewModel() {
     void navigate(`/schema/controlled-lists/${listId}`)
   }
 
+  function createControlledList(name) {
+    selectControlledList(controlledListViewModels.createDraft(name))
+  }
+
+  const controlledListNavigation = {
+    selectControlledList: (listId) => void navigate(`/schema/controlled-lists/${listId}`, { replace: true }),
+    closeControlledList: () => void navigate('/schema/controlled-lists', { replace: true }),
+  }
+
   // A new trait starts as a draft too, as a new item type does.
   function createTrait(name) {
     selectTrait(traitViewModels.createDraft(name))
@@ -125,6 +138,11 @@ export function useSchemaViewModel() {
     traitDraftNavigation,
     selectedControlledListId,
     selectControlledList,
+    createControlledList,
+    draftControlledLists,
+    controlledListNavigation,
+    controlledListViewModels,
+    dirtyControlledListIds,
     itemTypeTabKey,
     setItemTypeTabKey,
     collapsedStructureCards,

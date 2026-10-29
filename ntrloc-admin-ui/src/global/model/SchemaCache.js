@@ -20,6 +20,13 @@ let hasStartedLoading = import.meta.hot?.data?.hasStartedLoading ?? false
 const listeners = new Set()
 let latestLoad = 0
 let latestLoading = Promise.resolve()
+// Refreshes of data kept beside the schema (a controlled list's values), run with every reload so
+// they land together with it.
+const reloadHooks = new Set()
+
+export function addSchemaReloadHook(hook) {
+  reloadHooks.add(hook)
+}
 
 function notify() {
   listeners.forEach((listener) => listener())
@@ -63,8 +70,8 @@ function load() {
   // that newer one has: whoever awaits a reload (e.g. after a save) then sees a schema at least as
   // new as the one they asked for.
   const thisLoad = ++latestLoad
-  const loading = fetchAdminSchema()
-    .then((schema) => {
+  const loading = Promise.all([fetchAdminSchema(), ...(isInitialLoad ? [] : [...reloadHooks].map((hook) => hook()))])
+    .then(([schema]) => {
       if (thisLoad !== latestLoad) return latestLoading
       cachedSchema = schema
       status = 'ready'

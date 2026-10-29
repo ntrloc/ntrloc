@@ -4,7 +4,7 @@ import { useTraitModel } from '../../../global/model/TraitModel'
 import { useLinkModel } from '../../../global/model/LinkModel'
 import { useControlledListModel } from '../../../global/model/ControlledListModel'
 import { getRawSchema } from '../../../global/model/SchemaCache'
-import { deletionEditing, groupCreateSpec, linkCreateMutation, propertyCreateSpec, sortByName, structureEditing } from '../SchemaEditing'
+import { deleteDefinition, linksDeletedWith, groupCreateSpec, linkCreateMutation, propertyCreateSpec, sortByName, structureEditing } from '../SchemaEditing'
 
 const OVERVIEW_LABELS = { name: 'Trait name', description: 'Description' }
 
@@ -89,12 +89,20 @@ export function useTraitDetailViewModel(traitViewModels, traitId, navigation) {
     dirty: state.dirty,
     saving: state.saving,
     saveError: state.saveError,
-    // As for an item type, a deletion makes any other edits moot.
-    conflicts: state.deleting ? [] : [...fieldConflicts, ...structure.conflicts],
+    conflicts: [...fieldConflicts, ...structure.conflicts],
     startEditing: vm.startEditing,
     isDraft: Boolean(draft),
     noun: 'trait',
-    deletion: draft ? null : deletionEditing(vm, state, structure.view.links),
+    deletion: draft
+      ? null
+      : {
+          consequence: linksDeletedWith(structure.view.links),
+          confirm: async () => {
+            await deleteDefinition({ type: 'DELETE_TRAIT', id: trait.id })
+            navigation.closeTrait()
+            traitViewModels.discard(traitId)
+          },
+        },
     cancel: draft
       ? () => {
           navigation.closeTrait()
@@ -109,15 +117,7 @@ export function useTraitDetailViewModel(traitViewModels, traitId, navigation) {
           else navigation.closeTrait()
           traitViewModels.discard(traitId)
         }
-      : async () => {
-          if (!state.deleting) {
-            await vm.save([...structure.mutations(), ...overviewMutations(trait.id, saved, fields, state)])
-            return
-          }
-          if (!(await vm.save([{ type: 'DELETE_TRAIT', id: trait.id }]))) return
-          navigation.closeTrait()
-          traitViewModels.discard(traitId)
-        },
+      : () => vm.save([...structure.mutations(), ...overviewMutations(trait.id, saved, fields, state)]),
     overview: {
       fields,
       setName: setField('name'),

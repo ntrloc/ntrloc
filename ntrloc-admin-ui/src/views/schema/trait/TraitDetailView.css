@@ -22,7 +22,7 @@ trait-detail-header h2 {
   color: var(--text);
 }
 
-/* Scrolls on its own, laid out like an item type's Structure cards, while the footer stays put below. */
+/* Scrolls on its own under the header, laid out like an item type's Structure cards. */
 trait-detail-cards {
   flex: 1;
   min-height: 0;

@@ -1,0 +1,13 @@
+schema-edit-messages {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0 10px 10px;
+}
+
+.schema-edit-save-error {
+  margin: 0;
+  text-align: center;
+  color: var(--secondary);
+}

@@ -1,4 +1,4 @@
-/* Its own full-width block above the footer's buttons. */
+/* Its own full-width block under the editing header. */
 item-type-conflicts {
   flex-basis: 100%;
   display: flex;

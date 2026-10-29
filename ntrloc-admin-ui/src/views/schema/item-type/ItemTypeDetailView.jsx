@@ -2,13 +2,14 @@ import { useState } from 'react'
 import Filter from '../../../controls/filter/Filter'
 import IconButton from '../../../controls/icon-button/IconButton'
 import CollapsibleCard from '../../../controls/collapsible-card/CollapsibleCard'
+import DefinitionActions from '../DefinitionActions'
 import TabView from '../../../controls/tabview/TabView'
 import PropertyTreeView from '../PropertyTreeView'
 import ItemTypeOverviewView from './ItemTypeOverviewView'
 import ItemTypeLinksView from './ItemTypeLinksView'
 import ItemTypeStateMachinesView from './ItemTypeStateMachinesView'
 import AccessMarkersView from './AccessMarkersView'
-import EditFooter from './EditFooter'
+import EditMessages from '../EditMessages'
 import StructureDialogs from './StructureDialogs'
 import { useItemTypeViewModel } from './ItemTypeViewModel'
 import './ItemTypeDetailView.css'
@@ -88,7 +89,7 @@ function ItemTypeDetailView({
       label: 'Structure',
       view: (
         <item-type-structure>
-          <item-type-structure-cards data-marked-for-delete={vm.deletion?.marked || undefined}>
+          <item-type-structure-cards>
             {structureCards.map((card) => (
               <CollapsibleCard
                 key={card.key}
@@ -101,7 +102,6 @@ function ItemTypeDetailView({
               </CollapsibleCard>
             ))}
           </item-type-structure-cards>
-          <EditFooter vm={vm} />
         </item-type-structure>
       ),
       padding: 0,
@@ -118,9 +118,19 @@ function ItemTypeDetailView({
   return (
     <item-type-detail-view>
       <item-type-detail-header>
-        <h2 data-marked-for-delete={vm.deletion?.marked || undefined}>{itemType.name}</h2>
+        <h2>{itemType.name}</h2>
         {itemType.description && <p className="item-type-detail-description">{itemType.description}</p>}
+        {/* Editing covers the Structure tab, so Edit brings it up. */}
+        <DefinitionActions
+          vm={vm}
+          name={itemType.name}
+          onEdit={() => {
+            onTabKeyChange('structure')
+            vm.startEditing()
+          }}
+        />
       </item-type-detail-header>
+      <EditMessages vm={vm} />
       {/* Not keyed on the item type -- the active tab and collapsed Structure cards should survive
           switching selection, so e.g. staying on "Properties" while browsing different item types.
           Controlled from SchemaViewModel (not TabView's own internal state) so they

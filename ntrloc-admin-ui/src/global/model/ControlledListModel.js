@@ -1,5 +1,5 @@
 import { useEffect, useSyncExternalStore } from 'react'
-import { useSchemaSnapshot } from './SchemaCache'
+import { addSchemaReloadHook, useSchemaSnapshot } from './SchemaCache'
 import { fetchControlledListValues } from '../delegate/ControlledListDelegate'
 
 // `usedBy` is every property pointing at the list: { propertyId, propertyName, ownerLabel, ownerId,
@@ -53,6 +53,19 @@ function loadValues(listId) {
       notifyValues(listId)
     })
 }
+
+// With every schema reload, the values already loaded are fetched again -- saved edits, here or
+// elsewhere, change them.
+addSchemaReloadHook(() =>
+  Promise.all(
+    [...valuesCache.keys()].map((listId) =>
+      fetchControlledListValues(listId)
+        .then((body) => valuesCache.set(listId, { status: 'ready', values: body.values }))
+        .catch(() => valuesCache.set(listId, { status: 'error', values: [] }))
+        .finally(() => notifyValues(listId)),
+    ),
+  ),
+)
 
 // `listId` may be null/undefined (a property with no controlled list) -- returns a permanently-idle
 // snapshot rather than requiring every caller to guard the hook call itself, since the hook still

@@ -1,0 +1,11 @@
+/* Pushed to the right end of the detail header, centred on the heading rather than its baseline. */
+definition-actions {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+  align-self: center;
+}
+
+.definition-delete-consequence {
+  margin: 0 0 8px;
+}

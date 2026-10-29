@@ -4,6 +4,7 @@ import org.ntrloc.graph.db.partition.schema.definition.mutation.ControlledListRe
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateControlledListMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DeleteControlledListMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.ExpectControlledListMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.ExistingControlledListReference;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.NewControlledListReference;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.ReplaceControlledListMutation;
@@ -41,7 +42,9 @@ class ControlledListMutationApplier {
             case CreateControlledListMutation m -> {
                 requireNameAvailable(m.name(), null);
                 var list = controlledListManager.createList(m.name(), m.valueType());
-                controlledListManager.addValues(list.id(), toValueEntries(m.values()));
+                // Typed as replacing them would be: a value of an INT or LONG list arrives as text.
+                controlledListManager.replaceValues(list.id(), list.valueType(), m.values() == null ? List.of()
+                        : m.values().stream().map(e -> new ReplaceControlledListMutation.Entry(e.value(), e.label())).toList());
                 if (m.refId() != null) {
                     refIdToListId.put(m.refId(), list.id());
                 }
@@ -59,6 +62,7 @@ class ControlledListMutationApplier {
                 }
             }
             case DeleteControlledListMutation m -> controlledListManager.deleteList(m.listId());
+            case ExpectControlledListMutation m -> requireUnchanged(m);
             case SetPropertyControlledListMutation m -> applySetProperty(m, refIdToListId);
             default -> {
                 return false;
@@ -99,17 +103,33 @@ class ControlledListMutationApplier {
         throw new IllegalArgumentException("Unsupported controlled list reference: " + ref.getClass().getSimpleName());
     }
 
+    // Values compare in order, as text, with a blank label the same as none.
+    private void requireUnchanged(ExpectControlledListMutation m) {
+        var list = controlledListManager.lockList(m.listId())
+                .orElseThrow(() -> new SchemaConflictException("This controlled list was deleted by someone else."));
+        boolean unchanged = list.name().equals(m.name())
+                && (m.values() == null || comparable(m.values()).equals(controlledListManager.getValues(list.id(), list.valueType()).stream()
+                        .map(v -> new UpdateControlledListMutation.Entry(String.valueOf(v.value()), blankToNull(v.label())))
+                        .toList()));
+        if (!unchanged) {
+            throw new SchemaConflictException("Controlled list " + list.name() + " was changed by someone else while you were editing it.");
+        }
+    }
+
+    private static List<UpdateControlledListMutation.Entry> comparable(List<UpdateControlledListMutation.Entry> entries) {
+        return entries.stream().map(e -> new UpdateControlledListMutation.Entry(e.value(), blankToNull(e.label()))).toList();
+    }
+
+    private static String blankToNull(String text) {
+        return text == null || text.isBlank() ? null : text;
+    }
+
     private void requireNameAvailable(String name, UUID excludeListId) {
         boolean taken = controlledListManager.getAllLists().stream()
                 .anyMatch(l -> l.name().equalsIgnoreCase(name) && !l.id().equals(excludeListId));
         if (taken) {
             throw new IllegalArgumentException("A controlled list named '" + name + "' already exists");
         }
-    }
-
-    private static List<ControlledListManager.ValueEntry> toValueEntries(List<CreateControlledListMutation.Entry> entries) {
-        return entries == null ? List.of()
-                : entries.stream().map(e -> new ControlledListManager.ValueEntry(e.value(), e.label())).toList();
     }
 
     private static List<ReplaceControlledListMutation.Entry> toReplaceEntries(List<UpdateControlledListMutation.Entry> entries) {

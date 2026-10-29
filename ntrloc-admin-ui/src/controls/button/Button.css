@@ -41,6 +41,25 @@
   background: var(--secondary-bg);
 }
 
+/* For what deletes something: red, filled or (ghost) just the label and icon. */
+.btn-danger {
+  background: var(--danger);
+  color: var(--bg);
+}
+
+.btn-danger:hover:not(:disabled) {
+  filter: brightness(0.92);
+}
+
+.btn-ghost-danger {
+  background: transparent;
+  color: var(--danger);
+}
+
+.btn-ghost-danger:hover:not(:disabled) {
+  background: var(--danger-bg);
+}
+
 .btn-with-icon {
   display: inline-flex;
   align-items: center;

@@ -4,7 +4,7 @@ import { useTraitModel } from '../../../global/model/TraitModel'
 import { useLinkModel } from '../../../global/model/LinkModel'
 import { useControlledListModel } from '../../../global/model/ControlledListModel'
 import { getRawSchema } from '../../../global/model/SchemaCache'
-import { deletionEditing, groupCreateSpec, linkCreateMutation, propertyCreateSpec, sortByName, structureEditing } from '../SchemaEditing'
+import { deleteDefinition, linksDeletedWith, groupCreateSpec, linkCreateMutation, propertyCreateSpec, sortByName, structureEditing } from '../SchemaEditing'
 
 const OVERVIEW_LABELS = {
   name: 'Item type name',
@@ -153,12 +153,20 @@ export function useItemTypeViewModel(itemTypeViewModels, itemTypeId, navigation)
     dirty: state.dirty,
     saving: state.saving,
     saveError: state.saveError,
-    // Edits made alongside a deletion are moot, so nothing in them can conflict.
-    conflicts: state.deleting ? [] : [...fieldConflicts, ...structure.conflicts],
+    conflicts: [...fieldConflicts, ...structure.conflicts],
     startEditing: vm.startEditing,
     isDraft: Boolean(draft),
     noun: 'item type',
-    deletion: draft ? null : deletionEditing(vm, state, structure.view.links),
+    deletion: draft
+      ? null
+      : {
+          consequence: linksDeletedWith(structure.view.links),
+          confirm: async () => {
+            await deleteDefinition({ type: 'DELETE_ITEM', id: itemType.id })
+            navigation.closeItemType()
+            itemTypeViewModels.discard(itemTypeId)
+          },
+        },
     cancel: draft
       ? () => {
           navigation.closeItemType()
@@ -173,15 +181,7 @@ export function useItemTypeViewModel(itemTypeViewModels, itemTypeId, navigation)
           else navigation.closeItemType()
           itemTypeViewModels.discard(itemTypeId)
         }
-      : async () => {
-          if (!state.deleting) {
-            await vm.save([...structure.mutations(), ...overviewMutations(itemType.id, saved, fields, state)])
-            return
-          }
-          if (!(await vm.save([{ type: 'DELETE_ITEM', id: itemType.id }]))) return
-          navigation.closeItemType()
-          itemTypeViewModels.discard(itemTypeId)
-        },
+      : () => vm.save([...structure.mutations(), ...overviewMutations(itemType.id, saved, fields, state)]),
     overview: {
       fields,
       setName: setField('name'),

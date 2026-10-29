@@ -26,6 +26,11 @@ function SchemaView() {
     traitDraftNavigation,
     selectedControlledListId,
     selectControlledList,
+    createControlledList,
+    draftControlledLists,
+    controlledListNavigation,
+    controlledListViewModels,
+    dirtyControlledListIds,
     itemTypeTabKey,
     setItemTypeTabKey,
     collapsedStructureCards,
@@ -73,6 +78,9 @@ function SchemaView() {
         <SchemaControlledListsView
           selectedControlledListId={selectedControlledListId}
           onSelectControlledList={selectControlledList}
+          dirtyControlledListIds={dirtyControlledListIds}
+          drafts={draftControlledLists}
+          onCreateControlledList={createControlledList}
         />
       ),
     },
@@ -110,7 +118,9 @@ function SchemaView() {
         )}
         {activeSection === 'controlledLists' && selectedControlledListId && (
           <ControlledListDetailView
+            controlledListViewModels={controlledListViewModels}
             listId={selectedControlledListId}
+            navigation={controlledListNavigation}
             onSelectItemType={selectItemType}
             onSelectTrait={selectTrait}
             collapsed={collapsedStructureCards}

@@ -18,7 +18,7 @@ controlled-list-detail-header h2 {
   margin: 0;
 }
 
-/* Scrolls on its own, laid out like an item type's Structure cards. */
+/* Scrolls on its own under the header, laid out like an item type's Structure cards. */
 controlled-list-detail-cards {
   flex: 1;
   min-height: 0;
@@ -63,4 +63,20 @@ controlled-list-overview {
 /* One property per line, as each names its owner and itself. */
 .controlled-list-usage {
   flex-direction: column;
+}
+
+/* Room for one icon button: remove, or keep. */
+.controlled-list-table[data-editable] th:nth-child(3) {
+  width: 40px;
+}
+
+.controlled-list-table .controlled-list-actions {
+  padding: 2px 0 2px 8px;
+  text-align: right;
+}
+
+/* Marked for removal, pending save. */
+.controlled-list-table tr[data-marked-for-delete] td:not(.controlled-list-actions) {
+  text-decoration: line-through;
+  opacity: 0.5;
 }
