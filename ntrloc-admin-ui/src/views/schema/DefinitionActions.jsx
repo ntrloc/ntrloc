@@ -15,7 +15,7 @@ function DefinitionActions({ vm, name, onEdit = vm.startEditing }) {
         <Button variant="ghost-secondary" icon="x" onClick={vm.cancel} disabled={vm.saving}>
           Cancel
         </Button>
-        <Button variant="ghost-secondary" icon="check" onClick={vm.save} disabled={vm.saving || vm.conflicts.length > 0 || Boolean(vm.problem)}>
+        <Button variant="ghost-secondary" icon="check" onClick={vm.save} disabled={vm.saving || vm.conflicts.length > 0 || Boolean(vm.invalid)}>
           {vm.saving ? 'Saving…' : 'Save'}
         </Button>
       </definition-actions>

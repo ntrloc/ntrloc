@@ -80,3 +80,15 @@ controlled-list-overview {
   text-decoration: line-through;
   opacity: 0.5;
 }
+
+/* Under the field it's about. */
+.controlled-list-field-problem {
+  margin: 4px 0 0;
+  font-size: 0.85em;
+  color: var(--secondary);
+}
+
+/* A problem under one field shouldn't push its row's other fields off their line. */
+.controlled-list-table[data-editable] td {
+  vertical-align: top;
+}

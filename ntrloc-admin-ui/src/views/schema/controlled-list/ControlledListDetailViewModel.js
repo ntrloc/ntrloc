@@ -17,28 +17,56 @@ const draftList = (draft) => ({ id: draft.id, name: draft.name, valueType: 'STRI
 const asEntries = (rows) =>
   rows.filter((row) => !row.removed).map((row) => ({ value: row.value.trim(), label: row.label.trim() || null }))
 
-// The first thing wrong with the list as edited, or null: Save waits until it's fixed. The server
-// holds a list's values to the same rules -- distinct values, and labels on all of them or none.
-function problemWith(fields, rows, nameTaken) {
+function nameProblem(fields, nameTaken) {
   const name = fields.name.trim()
   if (name === '') return 'A controlled list needs a name.'
   if (nameTaken(name)) return `There's already a controlled list named ${name}.`
+  return null
+}
+
+// What's wrong with each value as edited, by row key: { value, label }, each a message or absent.
+// The server holds a list's values to the same rules -- distinct values, and labels on all of them
+// or none. `pending` marks the problems of something not filled in yet (a blank value, a missing
+// label), which a new row only shows once it's been left -- they still hold Save back meanwhile.
+function valueProblems(valueType, rows) {
   const kept = rows.filter((row) => !row.removed)
+  const problems = new Map()
+  const flag = (row, field, message, pending = false) => {
+    if (!problems.has(row.key)) problems.set(row.key, {})
+    problems.get(row.key)[field] ??= { message, pending }
+  }
   const values = new Set()
   const labels = new Set()
-  for (const [index, row] of kept.entries()) {
+  for (const row of kept) {
     const value = row.value.trim()
     const label = row.label.trim()
-    if (value === '') return `Value ${index + 1} is blank.`
-    if (fields.valueType !== 'STRING' && !WHOLE_NUMBER.test(value)) return `${value} isn't a whole number.`
-    if (values.has(value)) return `${value} is in the list twice.`
+    if (value === '') flag(row, 'value', 'Enter a value.', true)
+    else if (valueType !== 'STRING' && !WHOLE_NUMBER.test(value)) flag(row, 'value', 'Must be a whole number.')
+    else if (values.has(value)) flag(row, 'value', 'Already in the list.')
     values.add(value)
-    if (label !== '' && labels.has(label)) return `The label ${label} is used twice.`
+    if (label !== '' && labels.has(label)) flag(row, 'label', 'Already used as a label.')
     labels.add(label)
   }
-  const labeled = kept.filter((row) => row.label.trim() !== '').length
-  if (labeled > 0 && labeled < kept.length) return 'Give every value a label, or none of them.'
-  return null
+  // Labels go on all of them or none: whichever side is smaller is the one out of line.
+  const labeled = kept.filter((row) => row.label.trim() !== '')
+  const unlabeled = kept.filter((row) => row.label.trim() === '')
+  if (labeled.length > 0 && unlabeled.length > 0) {
+    if (labeled.length >= unlabeled.length) {
+      unlabeled.forEach((row) => flag(row, 'label', 'Needs a label, as the other values have one.', true))
+    } else {
+      labeled.forEach((row) => flag(row, 'label', "The other values have no label: clear this one, or label them all."))
+    }
+  }
+  return problems
+}
+
+// A row's problems as shown: a new row's pending ones wait until it's been left.
+function shownProblems(row, problems) {
+  const shown = {}
+  for (const [field, problem] of Object.entries(problems ?? {})) {
+    if (!problem.pending || !row.isNew || row.visited) shown[field] = problem.message
+  }
+  return shown
 }
 
 // A controlled list as its detail view shows and edits it: what the schema says about it, its values
@@ -77,6 +105,9 @@ export function useControlledListDetailViewModel(controlledListViewModels, listI
     [...getControlledLists(), ...controlledListViewModels.getDrafts()].some(
       (other) => other.id !== listId && other.name.toLowerCase() === name.toLowerCase(),
     )
+
+  const nameIssue = nameProblem(fields, nameTaken)
+  const problems = valueProblems(fields.valueType, rows)
 
   const fieldConflicts = Object.entries(state.fieldChanges)
     .filter(([key, change]) => change.base !== saved[key] && change.value !== saved[key])
@@ -147,7 +178,8 @@ export function useControlledListDetailViewModel(controlledListViewModels, listI
     saving: state.saving,
     saveError: state.saveError,
     conflicts: [...fieldConflicts, ...valuesConflict],
-    problem: problemWith(fields, rows, nameTaken),
+    // Shown by the fields they're about; any of them holds Save back.
+    invalid: Boolean(nameIssue) || problems.size > 0,
     startEditing: vm.startEditing,
     isDraft: Boolean(draft),
     noun: 'controlled list',
@@ -171,6 +203,7 @@ export function useControlledListDetailViewModel(controlledListViewModels, listI
     overview: {
       fields,
       setName: setField('name'),
+      nameProblem: nameIssue,
       // Only a new list's type can be chosen; a saved one's values are already of it.
       typeEditable: Boolean(draft),
       typeOptions: TYPE_OPTIONS,
@@ -180,8 +213,13 @@ export function useControlledListDetailViewModel(controlledListViewModels, listI
     },
     values: {
       status: draft ? 'ready' : values.status,
-      rows,
+      rows: rows.map((row) => ({ ...row, problems: shownProblems(row, problems.get(row.key)) })),
       editable: state.editing && savedRows !== null,
+      // Focus has left a new row, so whatever it's still missing can be pointed out.
+      leave: (key) => {
+        const row = rows.find((candidate) => candidate.key === key)
+        if (row?.isNew && !row.visited) setRows(rows.map((other) => (other.key === key ? { ...other, visited: true } : other)))
+      },
       setValue: (key, field, text) => setRows(rows.map((row) => (row.key === key ? { ...row, [field]: text } : row))),
       // A saved value is struck through until Save, so it can be kept after all; a new one just goes.
       toggleRemove: (key) => {

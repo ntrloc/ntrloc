@@ -1,10 +1,10 @@
 package org.ntrloc.ui;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.function.Supplier;
 
 import org.openqa.selenium.By;
@@ -113,9 +113,25 @@ class SchemaPage {
         return this;
     }
 
-    /** What the editor says needs fixing before Save, if anything. */
-    Optional<String> editProblem() {
-        return content().findElements(By.cssSelector("schema-edit-messages .schema-edit-save-error")).stream().findFirst().map(SchemaPage::text);
+    /** What a value's or label's field says is wrong with it, by row: e.g. "2 Label: Already used as a label." */
+    List<String> valueProblems() {
+        List<String> problems = new ArrayList<>();
+        List<WebElement> rows = card("Values").findElements(By.cssSelector("tbody tr"));
+        for (int i = 0; i < rows.size(); i++) {
+            List<WebElement> cells = rows.get(i).findElements(By.tagName("td"));
+            for (int c = 0; c < 2 && c < cells.size(); c++) {
+                for (WebElement problem : cells.get(c).findElements(By.className("controlled-list-field-problem"))) {
+                    problems.add((i + 1) + (c == 0 ? " Value: " : " Label: ") + text(problem));
+                }
+            }
+        }
+        return problems;
+    }
+
+    /** Moves focus out of the Values table, as clicking elsewhere would. */
+    SchemaPage leaveValues() {
+        card("Overview").findElement(By.cssSelector("input.input-control-field")).click();
+        return this;
     }
 
     /** Picks one of a choice field's options in the Overview card. */

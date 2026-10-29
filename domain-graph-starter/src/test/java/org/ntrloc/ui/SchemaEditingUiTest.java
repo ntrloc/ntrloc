@@ -220,15 +220,25 @@ class SchemaEditingUiTest extends AbstractUiIntegrationTest {
         controlledList(name, "OPEN", "Open");
         schema.openSection("Controlled Lists").selectControlledList(name).edit();
 
-        schema.addValue().typeInValue(2, "Value", "OPEN").typeInValue(2, "Label", "Again");
-        assertThat(schema.editProblem()).contains("OPEN is in the list twice.");
+        // A new row isn't faulted for being empty before it's been filled in -- but can't be saved yet.
+        schema.addValue();
+        assertThat(schema.valueProblems()).isEmpty();
         assertThat(schema.saveEnabled()).isFalse();
 
-        schema.typeInValue(2, "Value", "SHUT").typeInValue(2, "Label", "");
-        assertThat(schema.editProblem()).contains("Give every value a label, or none of them.");
+        schema.typeInValue(2, "Value", "OPEN");
+        assertThat(schema.valueProblems()).containsExactly("2 Value: Already in the list.");
+
+        schema.typeInValue(2, "Value", "SHUT");
+        assertThat(schema.valueProblems()).isEmpty();
+        schema.leaveValues();
+        assertThat(schema.valueProblems()).containsExactly("2 Label: Needs a label, as the other values have one.");
+        assertThat(schema.saveEnabled()).isFalse();
+
+        schema.typeInValue(2, "Label", "Open");
+        assertThat(schema.valueProblems()).containsExactly("2 Label: Already used as a label.");
 
         schema.typeInValue(2, "Label", "Shut");
-        assertThat(schema.editProblem()).isEmpty();
+        assertThat(schema.valueProblems()).isEmpty();
         assertThat(schema.saveEnabled()).isTrue();
     }
 

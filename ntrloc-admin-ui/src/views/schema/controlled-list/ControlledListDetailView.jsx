@@ -33,7 +33,14 @@ function ControlledListDetailView({
       label: 'Overview',
       view: (
         <controlled-list-overview>
-          <Input name="Name" editable={editing} value={overview.fields.name} onChange={(e) => overview.setName(e.target.value)} />
+          <Input name="Name" editable={editing} value={overview.fields.name}>
+            <input
+              className="input-control-field"
+              value={overview.fields.name}
+              onChange={(e) => overview.setName(e.target.value)}
+            />
+            <FieldProblem message={overview.nameProblem} />
+          </Input>
           {editing && overview.typeEditable ? (
             <ChoiceField
               name="Value type"
@@ -131,7 +138,13 @@ function ValuesTable({ values }) {
       </thead>
       <tbody>
         {values.rows.map((row, index) => (
-          <tr key={row.key} data-marked-for-delete={row.removed || undefined}>
+          <tr
+            key={row.key}
+            data-marked-for-delete={row.removed || undefined}
+            onBlur={(e) => {
+              if (!e.currentTarget.contains(e.relatedTarget)) values.leave(row.key)
+            }}
+          >
             {editable && !row.removed ? (
               <>
                 <td>
@@ -142,6 +155,7 @@ function ValuesTable({ values }) {
                     autoFocus={row.isNew && row.value === '' && row.label === ''}
                     onChange={(e) => values.setValue(row.key, 'value', e.target.value)}
                   />
+                  <FieldProblem message={row.problems.value} />
                 </td>
                 <td>
                   <input
@@ -150,6 +164,7 @@ function ValuesTable({ values }) {
                     value={row.label}
                     onChange={(e) => values.setValue(row.key, 'label', e.target.value)}
                   />
+                  <FieldProblem message={row.problems.label} />
                 </td>
               </>
             ) : (
@@ -172,6 +187,11 @@ function ValuesTable({ values }) {
       </tbody>
     </table>
   )
+}
+
+// What's wrong with the field just above, if anything.
+function FieldProblem({ message }) {
+  return message ? <p className="controlled-list-field-problem">{message}</p> : null
 }
 
 export default ControlledListDetailView
