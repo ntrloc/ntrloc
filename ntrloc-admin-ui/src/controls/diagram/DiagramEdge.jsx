@@ -1,5 +1,6 @@
 import DiagramIconButton from './DiagramIconButton'
 import { edgeLabelSize } from './diagramText'
+import './DiagramCanvas.css'
 
 const CORNER_RADIUS = 6
 const ARROW_LENGTH = 9
@@ -131,12 +132,18 @@ function DiagramEdge({ route, label, arrow = true, selected = false, className, 
       )}
       {selected && onEndPointerDown && (
         <>
-          <circle className="diagram-edge-end" cx={first.x} cy={first.y} r={END_HANDLE_RADIUS} onPointerDown={(event) => onEndPointerDown(event, 'from')} />
-          <circle className="diagram-edge-end" cx={last.x} cy={last.y} r={END_HANDLE_RADIUS} onPointerDown={(event) => onEndPointerDown(event, 'to')} />
+          <DiagramEndHandle x={first.x} y={first.y} onPointerDown={(event) => onEndPointerDown(event, 'from')} />
+          <DiagramEndHandle x={last.x} y={last.y} onPointerDown={(event) => onEndPointerDown(event, 'to')} />
         </>
       )}
     </g>
   )
+}
+
+// A selected connection's end, to drag to another place (see lineEnds' dragLineEnd): a hollow ring in
+// the selection color (--diagram-selected, on a --diagram-label-bg fill).
+export function DiagramEndHandle({ x, y, onPointerDown }) {
+  return <circle className="diagram-edge-end" cx={x} cy={y} r={END_HANDLE_RADIUS} onPointerDown={onPointerDown} />
 }
 
 function EdgeLabel({ text, x, y }) {

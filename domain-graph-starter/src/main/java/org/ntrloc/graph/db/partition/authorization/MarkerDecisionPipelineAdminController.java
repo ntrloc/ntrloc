@@ -18,6 +18,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 import java.util.List;
 import java.util.Map;
@@ -46,10 +49,13 @@ public class MarkerDecisionPipelineAdminController {
 
     private final MarkerDecisionPipelineRepository repository;
     private final ExternalPrincipalResolver principalResolver;
+    private final ObjectMapper objectMapper;
 
-    public MarkerDecisionPipelineAdminController(MarkerDecisionPipelineRepository repository, ExternalPrincipalResolver principalResolver) {
+    public MarkerDecisionPipelineAdminController(MarkerDecisionPipelineRepository repository, ExternalPrincipalResolver principalResolver,
+                                                 ObjectMapper objectMapper) {
         this.repository = repository;
         this.principalResolver = principalResolver;
+        this.objectMapper = objectMapper;
     }
 
     @GetMapping
@@ -90,15 +96,27 @@ public class MarkerDecisionPipelineAdminController {
         }
     }
 
+    // Read raw, as blocks and conditions the editor has added come with refIds rather than ids -- see
+    // PipelineRefIds.
     @PutMapping("/{id}")
-    PipelineView updatePipeline(@PathVariable UUID id, @RequestBody UpdatePipelineRequest body,
-                                 Authentication authentication) {
+    PipelineView updatePipeline(@PathVariable UUID id, @RequestBody JsonNode json, Authentication authentication) {
         requireAdmin(authentication);
+        UpdatePipelineRequest body = readUpdate(json);
         if (body.pipeline() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "pipeline is required");
         }
         return toView(repository.updatePipeline(id, body.pipeline(), body.enabled(), orEmpty(body.layout()))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "This pipeline was deleted by someone else.")));
+    }
+
+    private UpdatePipelineRequest readUpdate(JsonNode json) {
+        try {
+            return objectMapper.treeToValue(PipelineRefIds.resolve(json), UpdatePipelineRequest.class);
+        } catch (JacksonException e) {
+            Throwable cause = e;
+            while (cause.getCause() != null) cause = cause.getCause();
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, cause.getMessage(), e);
+        }
     }
 
     @DeleteMapping("/{id}")

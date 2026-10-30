@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useCollapsiblePanel } from '../../../../controls/collapsible-panel/useCollapsiblePanel'
 import Dialog from '../../../../controls/dialog/Dialog'
+import { DiagramEndHandle } from '../../../../controls/diagram/DiagramEdge'
 import DiagramPalette from '../../../../controls/diagram/DiagramPalette'
 import { usePipelineForItemType } from '../../../../global/model/PipelineModel'
 import MarkerPipelineInspector from './MarkerPipelineInspector'
@@ -10,6 +11,10 @@ import Button from '../../../../controls/button/Button'
 import './MarkerPipelineView.css'
 
 const PIN_RING_R = 7
+// The ring shown around an empty output pin when it's hovered, to draw a new connection from.
+const NEW_CONNECTION_RADIUS = 11
+// Start's circle for drawing new connections, at its middle.
+const START_CONNECTOR_RADIUS = 6
 const PIN_FILL_R = 3.5
 // A carrier input's own arrowhead outline, and the smaller filled one every carrier edge's own
 // terminus draws to nest inside it -- see Pin's own `shape="arrow"` and PipelineEdge below. Both
@@ -38,7 +43,8 @@ function arrowPoints(cx, cy, halfWidth, halfHeight) {
 // output, never a signal pin), giving carrier flow an explicit direction beyond "left is in, right
 // is out" alone. See PipelineEdge for the smaller filled arrow every carrier edge draws to nest
 // inside this one.
-function Pin({ cx, cy, variant, shape }) {
+// empty: a carrier output nothing is connected to -- just the ring.
+function Pin({ cx, cy, variant, shape, empty }) {
   if (shape === 'arrow') {
     return (
       <polygon
@@ -50,7 +56,7 @@ function Pin({ cx, cy, variant, shape }) {
   return (
     <g className={variant ? `mp-pin mp-pin-${variant}` : 'mp-pin'}>
       <circle className="mp-pin-ring" cx={cx} cy={cy} r={PIN_RING_R} />
-      <circle className="mp-pin-fill" cx={cx} cy={cy} r={PIN_FILL_R} />
+      {!empty && <circle className="mp-pin-fill" cx={cx} cy={cy} r={PIN_FILL_R} />}
     </g>
   )
 }
@@ -199,7 +205,7 @@ function HeaderIcons({ icons, onEdit, onDelete }) {
 // left, for a block with exactly one input port (<add>/<set>/<remove>). A block with several
 // distinct input ports -- just <filter>, carrier "input" plus its "if" gate reference -- gets its
 // own FilterNode below instead, with each port its own labeled row.
-function CarrierBlockNode({ rect, label, editable, selected, invalid, onDelete, onContextMenu, onPointerDown, onPointerMove, onPointerUp }) {
+function CarrierBlockNode({ id, rect, label, outputConnected, editable, selected, invalid, onDelete, onContextMenu, onPointerDown, onPointerMove, onPointerUp }) {
   const rightStripX = rect.x + rect.width - STRIP_WIDTH
   const midY = bodyMidY(rect)
   const { centerX, titleY, headerBottom, chips, icons } = chipLayout(rect, label.markerNames, editable)
@@ -229,7 +235,7 @@ function CarrierBlockNode({ rect, label, editable, selected, invalid, onDelete, 
         </g>
       ))}
       <Pin cx={rect.x + STRIP_WIDTH / 2} cy={midY} shape="arrow" />
-      <Pin cx={rightStripX + STRIP_WIDTH / 2} cy={midY} />
+      <Pin cx={rightStripX + STRIP_WIDTH / 2} cy={midY} empty={!outputConnected(id)} />
     </g>
   )
 }
@@ -242,7 +248,7 @@ function CarrierBlockNode({ rect, label, editable, selected, invalid, onDelete, 
 // "central area" this shape deliberately has none of. The "if" pin is drawn in the signal domain's
 // own color, since it's literally where a dashed signal-reference edge lands (see
 // SignalReferenceEdge).
-function FilterNode({ rect, label, editable, selected, invalid, onDelete, onContextMenu, onPointerDown, onPointerMove, onPointerUp }) {
+function FilterNode({ id, rect, label, outputConnected, editable, selected, invalid, onDelete, onContextMenu, onPointerDown, onPointerMove, onPointerUp }) {
   const rightStripX = rect.x + rect.width - STRIP_WIDTH
   const midY = bodyMidY(rect)
   const { centerX, titleY, headerBottom, input, ifPort, icons } = filterPortLayout(rect, editable)
@@ -271,7 +277,7 @@ function FilterNode({ rect, label, editable, selected, invalid, onDelete, onCont
       </text>
       <Pin cx={input.x} cy={input.y} shape="arrow" />
       <Pin cx={ifPort.x} cy={ifPort.y} variant="signal" />
-      <Pin cx={rightStripX + STRIP_WIDTH / 2} cy={midY} />
+      <Pin cx={rightStripX + STRIP_WIDTH / 2} cy={midY} empty={!outputConnected(id)} />
     </g>
   )
 }
@@ -284,7 +290,7 @@ function FilterNode({ rect, label, editable, selected, invalid, onDelete, onCont
 // always the synthetic Otherwise branch -- no chips, just the "(Otherwise)" text (see
 // MarkerPipelineViewModel's blockLabel) -- a plain routing pin, not a marker-adding action, so it's
 // rendered distinctly from a real row's dashed marker chips.
-function SelectNode({ rect, label, editable, selected, invalid, onDelete, onContextMenu, onPointerDown, onPointerMove, onPointerUp }) {
+function SelectNode({ rect, label, outputConnected, editable, selected, invalid, onDelete, onContextMenu, onPointerDown, onPointerMove, onPointerUp }) {
   const rightStripX = rect.x + rect.width - STRIP_WIDTH
   const midY = bodyMidY(rect)
   const { centerX, titleY, headerBottom, propertyChip, rows, icons } = selectRowLayout(rect, label.rows, label.propertyLabel, editable)
@@ -327,7 +333,7 @@ function SelectNode({ rect, label, editable, selected, invalid, onDelete, onCont
       )}
       <Pin cx={rect.x + STRIP_WIDTH / 2} cy={midY} shape="arrow" />
       {rows.map((row) => (
-        <Pin key={row.id} cx={rightStripX + STRIP_WIDTH / 2} cy={row.midY} />
+        <Pin key={row.id} cx={rightStripX + STRIP_WIDTH / 2} cy={row.midY} empty={!outputConnected(row.id)} />
       ))}
     </g>
   )
@@ -455,6 +461,16 @@ function PipelineEdge({ edge, isDragging }) {
   )
 }
 
+// A connection, carrier or condition: drawn highlighted while selected or dragged.
+function Connection({ edge, signal, highlighted }) {
+  const Edge = signal ? SignalReferenceEdge : PipelineEdge
+  return (
+    <g className="mp-connection">
+      <Edge edge={edge} isDragging={highlighted} />
+    </g>
+  )
+}
+
 // An edge's own single adjustable bend (see orthogonalPath) -- only rendered in edit mode, same as a
 // node becoming draggable. The cursor names which axis it's actually constrained to, since the
 // handle itself gives no other visual hint: ew-resize for a forward edge's vertical run (only its
@@ -497,6 +513,17 @@ export function MarkerPipelineDiagram({ vm }) {
     closeContextMenu,
     isEditing,
     isNodeSelected,
+    isEdgeSelected,
+    onEdgePointerDown,
+    onEdgeEndPointerDown,
+    endDrag,
+    endDragPoints,
+    isOutputConnected,
+    emptyOutputPins,
+    startConnector,
+    onStartConnectorPointerDown,
+    onOutputPinPointerDown,
+    newConnectionPoints,
     pipeline,
     problems,
     removeNode,
@@ -518,8 +545,8 @@ export function MarkerPipelineDiagram({ vm }) {
 
   // At most one of these is ever set -- draggingEdgeKey names exactly one edge, which is either a
   // carrier edge or a signal one, never both -- used to draw that one edge last (see below).
-  const draggingCarrierEdge = layout.edges.find((edge) => edge.key === draggingEdgeKey)
-  const draggingSignalEdge = layout.signalEdges.find((edge) => edge.key === draggingEdgeKey)
+  const selectedEdge = [...layout.edges, ...layout.signalEdges].find((edge) => isEdgeSelected(edge.key))
+  const isHighlighted = (edge) => edge.key === draggingEdgeKey || isEdgeSelected(edge.key)
 
   return (
     <div
@@ -531,6 +558,16 @@ export function MarkerPipelineDiagram({ vm }) {
     >
       {viewBox && (
         <svg className="marker-pipeline-diagram-svg" viewBox={viewBox} role="img" aria-label="Marker decision pipeline">
+          {/* While editing, each connection's grab area: wide, invisible, along its whole length --
+              drawn under the nodes, so a press on a node (Start, where its connections begin, or a
+              pin, where they end) is the node's. */}
+          {isEditing && (
+            <g>
+              {[...layout.edges, ...layout.signalEdges].map((edge) => (
+                <path key={edge.key} className="mp-edge-hit" d={edgePathD(edge.points)} onPointerDown={(event) => onEdgePointerDown(event, edge.key)} />
+              ))}
+            </g>
+          )}
           {/* Nodes first, edges next, each edge's own bend handle last (edit mode only): a connector
               is always fully visible crossing over a block or a pseudostate's own shape, never the
               other way around, and a handle is always reachable for dragging even where an edge
@@ -551,6 +588,8 @@ export function MarkerPipelineDiagram({ vm }) {
               return (
                 <Node
                   key={block.id}
+                  id={block.id}
+                  outputConnected={isOutputConnected}
                   rect={layout.rects.get(block.id)}
                   label={label}
                   editable={isEditing}
@@ -591,30 +630,60 @@ export function MarkerPipelineDiagram({ vm }) {
             ))}
           </g>
           <g>
-            {/* The one edge actually being dragged is drawn last, after every other edge of either
-                kind -- SVG has no z-index, only draw order, so without this an edge that happened to
-                come earlier in the array could render *under* one it visually crosses, hiding the
-                very path an admin is trying to watch move. */}
-            {layout.edges.map((edge) =>
-              edge.key === draggingEdgeKey ? null : <PipelineEdge key={edge.key} edge={edge} />,
-            )}
-            {layout.signalEdges.map((edge) =>
-              edge.key === draggingEdgeKey ? null : <SignalReferenceEdge key={edge.key} edge={edge} />,
-            )}
-            {draggingCarrierEdge && <PipelineEdge key={draggingCarrierEdge.key} edge={draggingCarrierEdge} isDragging />}
-            {draggingSignalEdge && <SignalReferenceEdge key={draggingSignalEdge.key} edge={draggingSignalEdge} isDragging />}
-          </g>
-          {isEditing && (
-            <g>
-              {[...layout.edges, ...layout.signalEdges].map((edge) => (
-                <EdgeHandle
+            {/* The selected (or dragged) connection is drawn last -- SVG has no z-index, only draw
+                order, so it's on top of any it crosses. One whose end is being dragged is drawn to
+                where that end is now. */}
+            {[...layout.edges.map((edge) => ({ edge, signal: false })), ...layout.signalEdges.map((edge) => ({ edge, signal: true }))]
+              .sort((a, b) => Number(isHighlighted(a.edge)) - Number(isHighlighted(b.edge)))
+              .map(({ edge, signal }) => (
+                <Connection
                   key={edge.key}
-                  handle={edge.handle}
-                  onPointerDown={(event) => onEdgeHandlePointerDown(event, edge.key, edge.handle)}
-                  onPointerMove={onEdgeHandlePointerMove}
-                  onPointerUp={onEdgeHandlePointerUp}
+                  edge={endDrag?.key === edge.key && endDragPoints ? { ...edge, points: endDragPoints } : edge}
+                  signal={signal}
+                  highlighted={isHighlighted(edge)}
                 />
               ))}
+          </g>
+          {newConnectionPoints && <PipelineEdge edge={{ points: newConnectionPoints }} isDragging />}
+          {/* Start's circle for drawing another connection (see the view model's startConnector). */}
+          {startConnector && (
+            <circle
+              className={startConnector.shown ? 'mp-start-connector mp-start-connector-shown' : 'mp-start-connector'}
+              cx={startConnector.x}
+              cy={startConnector.y}
+              r={START_CONNECTOR_RADIUS}
+              onPointerDown={onStartConnectorPointerDown}
+            />
+          )}
+          {/* An empty output pin, while editing: hovered, it shows where a new connection starts. */}
+          {emptyOutputPins.map(([id, point]) => (
+            <circle
+              key={id}
+              className="mp-pin-start"
+              cx={point.x}
+              cy={point.y}
+              r={NEW_CONNECTION_RADIUS}
+              onPointerDown={(event) => onOutputPinPointerDown(event, id)}
+            />
+          ))}
+          {isEditing && selectedEdge && !endDrag && (
+            <g>
+              <EdgeHandle
+                handle={selectedEdge.handle}
+                onPointerDown={(event) => onEdgeHandlePointerDown(event, selectedEdge.key, selectedEdge.handle)}
+                onPointerMove={onEdgeHandlePointerMove}
+                onPointerUp={onEdgeHandlePointerUp}
+              />
+              <DiagramEndHandle
+                x={selectedEdge.points[0].x}
+                y={selectedEdge.points[0].y}
+                onPointerDown={(event) => onEdgeEndPointerDown(event, selectedEdge, 'from')}
+              />
+              <DiagramEndHandle
+                x={selectedEdge.points[selectedEdge.points.length - 1].x}
+                y={selectedEdge.points[selectedEdge.points.length - 1].y}
+                onPointerDown={(event) => onEdgeEndPointerDown(event, selectedEdge, 'to')}
+              />
             </g>
           )}
         </svg>
@@ -719,10 +788,9 @@ function ReadOnlyDiagram({ pipelineView, itemTypeId, initialView, onViewChange }
 
 // Editing the pipeline in a dialog over the tab, like the state machine editor: arranging its diagram,
 // and adding and deleting blocks from the palette, with the selected block's details beside it. Save
-// keeps the arrangement; Cancel (or Escape) drops everything. Added or deleted blocks can't be saved
-// yet.
-function MarkerPipelineEditDialog({ pipelineView, itemTypeId, itemTypeName, saveLayout, onClose }) {
-  const vm = useMarkerPipelineViewModel(pipelineView, itemTypeId, saveLayout, null, undefined, { editable: true })
+// keeps the changes; Cancel (or Escape) drops them.
+function MarkerPipelineEditDialog({ pipelineView, itemTypeId, itemTypeName, savePipeline, onClose }) {
+  const vm = useMarkerPipelineViewModel(pipelineView, itemTypeId, savePipeline, null, undefined, { editable: true })
   const inspector = useCollapsiblePanel(true)
 
   async function save() {
@@ -741,13 +809,11 @@ function MarkerPipelineEditDialog({ pipelineView, itemTypeId, itemTypeName, save
       actions={
         <>
           {vm.saveError && <span className="mp-edit-error">{vm.saveError}</span>}
-          {!vm.saveError && vm.structureChanged && (
-            <span className="mp-edit-note">Added and deleted blocks can't be saved yet.</span>
-          )}
+          {!vm.saveError && vm.saveBlocker && <span className="mp-edit-note">{vm.saveBlocker}</span>}
           <Button variant="ghost-secondary" icon="x" onClick={onClose} disabled={vm.isSaving}>
             Cancel
           </Button>
-          <Button variant="ghost-secondary" icon="check" onClick={save} disabled={vm.isSaving || vm.structureChanged}>
+          <Button variant="ghost-secondary" icon="check" onClick={save} disabled={vm.isSaving || vm.saveBlocker !== null}>
             {vm.isSaving ? 'Saving…' : 'Save'}
           </Button>
         </>
@@ -766,7 +832,7 @@ function MarkerPipelineEditDialog({ pipelineView, itemTypeId, itemTypeName, save
 
 // The item type's pipeline, read-only, with an Edit button opening it in MarkerPipelineEditDialog.
 function MarkerPipelineView({ itemTypeId, itemTypeName, initialView, onViewChange }) {
-  const { status, pipeline, saveLayout } = usePipelineForItemType(itemTypeId)
+  const { status, pipeline, savePipeline } = usePipelineForItemType(itemTypeId)
   const [editing, setEditing] = useState(false)
 
   if (status === 'loading') return null
@@ -787,7 +853,7 @@ function MarkerPipelineView({ itemTypeId, itemTypeName, initialView, onViewChang
           pipelineView={pipeline}
           itemTypeId={itemTypeId}
           itemTypeName={itemTypeName}
-          saveLayout={saveLayout}
+          savePipeline={savePipeline}
           onClose={() => setEditing(false)}
         />
       )}

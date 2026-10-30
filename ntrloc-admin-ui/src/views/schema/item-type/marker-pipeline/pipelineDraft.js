@@ -11,6 +11,14 @@ export function initialDraft(pipelineView) {
   }
 }
 
+// The draft with every node's position written down, from `rects` (where each is drawn now) -- so a
+// change to the structure can't move one that was only placed where the flow put it.
+export function withPositionsFixed(draft, rects) {
+  const positions = new Map(draft.positions)
+  for (const [id, { x, y }] of rects) if (!positions.has(id)) positions.set(id, { x, y })
+  return positions.size === draft.positions.size ? draft : { ...draft, positions }
+}
+
 const gate = (quantity = 'ALL') => ({ conditionOutputPinIds: [], quantity })
 const condition = (id, predicate = null) => ({ type: 'CONDITION', id, subject: null, predicate })
 
@@ -50,6 +58,80 @@ export function addNode(draft, kind, position) {
     draft: { ...draft, pipeline, positions: new Map(draft.positions).set(nodeId, position), nextRef: draft.nextRef + refs.length },
     nodeId,
   }
+}
+
+export function setBlockMarkers(draft, blockId, markerIds) {
+  const carrierBlocks = draft.pipeline.carrierBlocks.map((b) => (b.id === blockId ? { ...b, markerIds } : b))
+  return { ...draft, pipeline: { ...draft.pipeline, carrierBlocks } }
+}
+
+// A carrier connection (an edge from computeLayout: { key, outputPinId, targetId }) with one end
+// moved: its start ('from') to another output pin, or its end ('to') to another block's input.
+export function moveCarrierEnd(draft, edge, end, pinId) {
+  const outputPinId = end === 'from' ? pinId : edge.outputPinId
+  const targetId = end === 'to' ? pinId : edge.targetId
+  const routes = draft.pipeline.routes
+    .map((r) => (r.outputPinId === edge.outputPinId ? { ...r, inputPinIds: r.inputPinIds.filter((id) => id !== edge.targetId) } : r))
+    .filter((r) => r.inputPinIds.length > 0)
+  const existing = routes.find((r) => r.outputPinId === outputPinId)
+  const moved = existing
+    ? routes.map((r) => (r === existing ? { ...r, inputPinIds: [...r.inputPinIds, targetId] } : r))
+    : [...routes, { outputPinId, inputPinIds: [targetId] }]
+  return withoutBend({ ...draft, pipeline: { ...draft.pipeline, routes: moved } }, edge.key)
+}
+
+// A new carrier connection, from an output pin to a block's input.
+export function addCarrierConnection(draft, outputPinId, targetId) {
+  const { routes } = draft.pipeline
+  const existing = routes.find((r) => r.outputPinId === outputPinId)
+  const next = existing
+    ? routes.map((r) => (r === existing ? { ...r, inputPinIds: [...r.inputPinIds, targetId] } : r))
+    : [...routes, { outputPinId, inputPinIds: [targetId] }]
+  return { ...draft, pipeline: { ...draft.pipeline, routes: next } }
+}
+
+// The gate a condition connects to by ownerId: a block's (a Filter's signal), a <select> row's, or a
+// <select>'s own (its Otherwise), changed by fn.
+function withGate(pipeline, ownerId, fn) {
+  const carrierBlocks = pipeline.carrierBlocks.map((b) => {
+    if (b.id === ownerId) return b.type === 'FILTER' ? { ...b, signal: fn(b.signal) } : { ...b, gate: fn(b.gate) }
+    if (b.type === 'SELECT' && b.adds.some((row) => row.id === ownerId)) {
+      return { ...b, adds: b.adds.map((row) => (row.id === ownerId ? { ...row, gate: fn(row.gate) } : row)) }
+    }
+    return b
+  })
+  return { ...pipeline, carrierBlocks }
+}
+
+const replacePin = (from, to) => (g) => ({ ...g, conditionOutputPinIds: g.conditionOutputPinIds.map((p) => (p === from ? to : p)) })
+const removePin = (pin) => (g) => ({ ...g, conditionOutputPinIds: g.conditionOutputPinIds.filter((p) => p !== pin) })
+const addPin = (pin) => (g) => ({ ...g, conditionOutputPinIds: [...g.conditionOutputPinIds, pin] })
+
+// A condition connection (a signal edge from computeLayout: { key, pinId, ownerId }) with one end
+// moved: its start ('from') to another condition's pin, or its end ('to') to another gate.
+export function moveSignalEnd(draft, edge, end, id) {
+  const pipeline =
+    end === 'from'
+      ? withGate(draft.pipeline, edge.ownerId, replacePin(edge.pinId, id))
+      : withGate(withGate(draft.pipeline, edge.ownerId, removePin(edge.pinId)), id, addPin(edge.pinId))
+  return withoutBend({ ...draft, pipeline }, edge.key)
+}
+
+// A moved connection's bend no longer fits it.
+function withoutBend(draft, key) {
+  const edgeBends = new Map(draft.edgeBends)
+  edgeBends.delete(key)
+  return { ...draft, edgeBends }
+}
+
+// The gate pins a gate owner (see withGate) reads.
+export function gatePinsOf(pipeline, ownerId) {
+  for (const b of pipeline.carrierBlocks) {
+    if (b.id === ownerId) return (b.type === 'FILTER' ? b.signal : b.gate)?.conditionOutputPinIds ?? []
+    const row = b.type === 'SELECT' && b.adds.find((r) => r.id === ownerId)
+    if (row) return row.gate?.conditionOutputPinIds ?? []
+  }
+  return []
 }
 
 const withoutPins = (g, pins) => g && { ...g, conditionOutputPinIds: g.conditionOutputPinIds.filter((p) => !pins.has(p)) }

@@ -28,6 +28,9 @@ marker-pipeline-view {
   --mp-test-blue: #6fb8e8;
   --mp-text: #f3f4f6;
   --mp-selected: #ecd596;
+  /* For the shared connection end handles (see DiagramEndHandle). */
+  --diagram-selected: var(--mp-selected);
+  --diagram-label-bg: var(--mp-block-bg);
 
   display: flex;
   flex-direction: column;
@@ -498,4 +501,42 @@ marker-pipeline-view.marker-pipeline-editing {
   fill: #000;
   stroke: #e8d44a;
   stroke-width: 1.5;
+}
+
+/* A connection's grab area while editing: wide, invisible, along its whole length. */
+.mp-edge-hit {
+  cursor: pointer;
+}
+
+/* Where a new connection can be drawn from: an empty output pin's ring, shown on hover. */
+.mp-pin-start {
+  fill: transparent;
+  stroke: transparent;
+  stroke-width: 1.5;
+  cursor: crosshair;
+}
+
+.mp-pin-start:hover {
+  stroke: var(--mp-selected);
+}
+
+/* Start's circle for drawing new connections, at its middle: shown on hover, or all along while
+   Start leads nowhere. */
+.mp-start-connector {
+  fill: transparent;
+  stroke: transparent;
+  stroke-width: 1.5;
+  cursor: crosshair;
+}
+
+.mp-start-connector:hover,
+.mp-start-connector-shown {
+  fill: var(--mp-block-bg);
+  stroke: var(--mp-selected);
+}
+
+/* A connection's drawn line lets presses through: to its grab area under the nodes, or to a node it
+   crosses. */
+.mp-connection {
+  pointer-events: none;
 }

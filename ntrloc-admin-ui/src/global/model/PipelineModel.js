@@ -47,17 +47,16 @@ export function usePipelineForItemType(itemTypeId) {
     if (!cache.has(itemTypeId)) load(itemTypeId)
   }, [itemTypeId])
 
-  // The diagram editor's own save -- pipeline/enabled are carried through unchanged from whatever's
-  // currently cached (see PipelineDelegate's updatePipeline comment), only layout actually changes.
-  // Mutates the cache from the response directly, same as MarkerModel's own create/update do, rather
-  // than refetching.
-  async function saveLayout(layout) {
+  // The diagram editor's save: the pipeline as edited and its layout, `enabled` carried through
+  // unchanged. Mutates the cache from the response directly, same as MarkerModel's own create/update
+  // do, rather than refetching.
+  async function savePipeline({ pipeline, layout }) {
     const current = cache.get(itemTypeId)?.pipeline
-    const updated = await updatePipelineRequest(current.id, { pipeline: current.pipeline, enabled: current.enabled, layout })
+    const updated = await updatePipelineRequest(current.id, { pipeline, enabled: current.enabled, layout })
     cache.set(itemTypeId, { status: 'ready', pipeline: updated })
     notify()
     return updated
   }
 
-  return { ...(entry ?? { status: 'loading', pipeline: null }), saveLayout }
+  return { ...(entry ?? { status: 'loading', pipeline: null }), savePipeline }
 }

@@ -1,4 +1,6 @@
 import DiagramInspector, { InspectorField } from '../../../../controls/diagram/DiagramInspector'
+import CheckboxOptionList from '../../../../controls/option-list/CheckboxOptionList'
+import PopoverButton from '../../../../controls/popover-button/PopoverButton'
 
 const QUANTITY_JOIN = { ALL: ' and ', ANY: ' or ' }
 
@@ -12,13 +14,34 @@ function describeGate(gate, pinDescriptions) {
   return texts.join(QUANTITY_JOIN[gate.quantity] ?? ' and ')
 }
 
+// The blocks that act on markers: what each is called, and what its markers field says it does.
 const MARKER_BLOCKS = {
   ADD_MARKERS: { kind: 'Add markers', what: 'Adds' },
   REMOVE_MARKERS: { kind: 'Remove markers', what: 'Removes' },
-  SET_MARKERS: { kind: 'Set markers', what: 'Sets the markers to' },
+  SET_MARKERS: { kind: 'Set markers', what: 'Sets' },
 }
 
-function BlockDetails({ block, label, pinDescriptions }) {
+// Which of the item type's markers a block adds, removes or sets: chosen from a checklist.
+function MarkerChoice({ name, block, vm }) {
+  const chosen = new Set(block.markerIds)
+  const summary = vm.markerOptions.filter((o) => chosen.has(o.value)).map((o) => o.label).join(', ') || 'None'
+  return (
+    <PopoverButton name={name} summary={summary}>
+      <CheckboxOptionList options={vm.markerOptions} selectedValues={block.markerIds} onChange={(ids) => vm.setMarkers(block.id, ids)} />
+    </PopoverButton>
+  )
+}
+
+function BlockDetails({ block, label, pinDescriptions, vm }) {
+  const markerBlock = MARKER_BLOCKS[block.type]
+  if (markerBlock) {
+    return (
+      <>
+        <p className="diagram-inspector-kind">{markerBlock.kind}</p>
+        <MarkerChoice name={markerBlock.what} block={block} vm={vm} />
+      </>
+    )
+  }
   if (block.type === 'FILTER') {
     return (
       <>
@@ -39,14 +62,7 @@ function BlockDetails({ block, label, pinDescriptions }) {
       </>
     )
   }
-  const { kind, what } = MARKER_BLOCKS[block.type] ?? { kind: block.type, what: 'Markers' }
-  return (
-    <>
-      <p className="diagram-inspector-kind">{kind}</p>
-      <InspectorField name={what} value={label.markerNames.join(', ')} />
-      <InspectorField name="When" value={describeGate(block.gate, pinDescriptions)} />
-    </>
-  )
+  return <p className="diagram-inspector-kind">{block.type}</p>
 }
 
 function SignalDetails({ signal, pinDescriptions }) {
@@ -74,8 +90,41 @@ function PseudoDetails({ kind }) {
   )
 }
 
-// The selected node's details, in the pipeline editor's Details panel -- read-only -- and what it
-// still needs before it can be saved. vm: the editor's view model (useMarkerPipelineViewModel).
+// What a carrier pin (or gate) belongs to, in words: Start, End, a block's kind, or a <select> row's
+// condition.
+function pinOwnerName(pipeline, vm, id) {
+  if (id === pipeline.start.id) return 'Start'
+  if (id === pipeline.end.id) return 'End'
+  const block = pipeline.carrierBlocks.find((b) => b.id === id)
+  if (block) return vm.blocks.get(block.id)?.title ?? block.type
+  for (const select of pipeline.carrierBlocks.filter((b) => b.type === 'SELECT')) {
+    const row = select.adds.find((r) => r.id === id)
+    if (row) return `Select row: ${describeGate(row.gate, vm.pinDescriptions)}`
+  }
+  return 'Unknown'
+}
+
+function ConnectionDetails({ edge, pipeline, vm }) {
+  if (edge.outputPinId) {
+    return (
+      <>
+        <p className="diagram-inspector-kind">Carrier connection</p>
+        <InspectorField name="From" value={pinOwnerName(pipeline, vm, edge.outputPinId)} />
+        <InspectorField name="To" value={pinOwnerName(pipeline, vm, edge.targetId)} />
+      </>
+    )
+  }
+  return (
+    <>
+      <p className="diagram-inspector-kind">Condition connection</p>
+      <InspectorField name="Condition" value={vm.pinDescriptions.get(edge.pinId)} />
+      <InspectorField name="Read by" value={pinOwnerName(pipeline, vm, edge.ownerId)} />
+    </>
+  )
+}
+
+// The selected node's (or connection's) details, in the pipeline editor's Details panel -- an Add,
+// Remove or Set block's markers can be chosen; the rest is read-only for now -- and what it still needs before it can be saved. vm: the editor's view model (useMarkerPipelineViewModel).
 function MarkerPipelineInspector({ pipeline, vm, panel }) {
   const nodeId = vm.selection?.kind === 'node' ? vm.selection.id : null
   let details = null
@@ -84,12 +133,16 @@ function MarkerPipelineInspector({ pipeline, vm, panel }) {
   else if (nodeId) {
     const block = pipeline.carrierBlocks.find((b) => b.id === nodeId)
     const signalNode = vm.layout.signalNodes.find((n) => n.id === nodeId)
-    if (block) details = <BlockDetails block={block} label={vm.blocks.get(block.id)} pinDescriptions={vm.pinDescriptions} />
+    if (block) details = <BlockDetails block={block} label={vm.blocks.get(block.id)} pinDescriptions={vm.pinDescriptions} vm={vm} />
     else if (signalNode) details = <SignalDetails signal={signalNode.signal} pinDescriptions={vm.pinDescriptions} />
+  }
+  if (vm.selection?.kind === 'edge') {
+    const edge = [...vm.layout.edges, ...vm.layout.signalEdges].find((e) => e.key === vm.selection.id)
+    if (edge) details = <ConnectionDetails edge={edge} pipeline={pipeline} vm={vm} />
   }
   const problems = (nodeId && vm.problems.get(nodeId)) ?? []
   return (
-    <DiagramInspector panel={panel} emptyText="Select a block to see its details.">
+    <DiagramInspector panel={panel} emptyText="Select a block or connection to see its details.">
       {details && (
         <>
           {details}

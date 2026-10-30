@@ -573,7 +573,7 @@ export function signalConditionLayout(rect, description, editable) {
 // Returns both the drawable `points` and the single draggable `handle` for that one bend -- its own
 // position, and which axis dragging it is allowed to move along -- so the View never has to
 // re-derive either from the path shape itself.
-function orthogonalPath(from, to, bend) {
+export function orthogonalPath(from, to, bend) {
   const dx = to.x - from.x
   if (dx >= 2 * EDGE_STUB) {
     const midX = bend ?? from.x + dx / 2
@@ -673,6 +673,11 @@ export function computeLayout(pipeline, positions, blocks, signalDescriptions = 
     edges,
     signalNodes: signalNodesList,
     signalEdges,
+    // Where each pin is: carrier outputs and condition pins by pin id, carrier inputs by block id, and
+    // the gates conditions connect to by their block's (or <select> row's) id.
+    outputPinPositions,
+    inputPinPositions,
+    gateAnchors,
     // minX/minY: the top-left corner of the diagram's own bounding box, PADDING clear of the
     // tightest content actually needs -- exported so the View's fit-zoom can center the viewport
     // over exactly this box instead of assuming it starts at (0, 0), which a saved position is
@@ -854,7 +859,7 @@ function computeRouteEdges(pipeline, outputPinPositions, inputPinPositions, edge
       const to = inputPinPositions.get(targetId)
       if (!to) continue
       const key = `${route.outputPinId}->${targetId}`
-      edges.push({ key, ...orthogonalPath(from, to, edgeBends.get(key)) })
+      edges.push({ key, outputPinId: route.outputPinId, targetId, ...orthogonalPath(from, to, edgeBends.get(key)) })
     }
   }
   return edges
@@ -877,7 +882,7 @@ function computeSignalEdges(pipeline, outputPinPositions, gateAnchors, edgeBends
       const from = outputPinPositions.get(pinId)
       if (!from) continue
       const key = `signal:${pinId}=>${ownerId}`
-      signalEdges.push({ key, ...orthogonalPath(from, to, edgeBends.get(key)) })
+      signalEdges.push({ key, pinId, ownerId, ...orthogonalPath(from, to, edgeBends.get(key)) })
     }
   }
   for (const block of pipeline.carrierBlocks) {

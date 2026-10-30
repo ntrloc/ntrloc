@@ -1,10 +1,23 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { dragLineEnd } from '../../../../controls/diagram/lineEnds'
+import { startDiagramDrag } from '../../../../controls/diagram/startDiagramDrag'
 import { useDiagramSelection } from '../../../../controls/diagram/useDiagramSelection'
 import { useMarkerModel } from '../../../../global/model/MarkerModel'
 import { useUndoable, useUndoShortcuts } from '../../../../global/useUndoable'
-import { addNode, deleteNode, initialDraft, nodeProblems } from './pipelineDraft'
+import {
+  addCarrierConnection,
+  addNode,
+  deleteNode,
+  gatePinsOf,
+  initialDraft,
+  moveCarrierEnd,
+  moveSignalEnd,
+  nodeProblems,
+  setBlockMarkers,
+  withPositionsFixed,
+} from './pipelineDraft'
 import { useSchemaSnapshot } from '../../../../global/model/SchemaCache'
-import { computeLayout, inlinedConditionGroupFor, signalNodes } from './markerPipelineLayout'
+import { computeLayout, inlinedConditionGroupFor, orthogonalPath, signalNodes } from './markerPipelineLayout'
 import { describeCondition, describeConditionGroupSubject, describeConditionShort } from './pipelineConditionText'
 
 const MIN_ZOOM = 0.3
@@ -102,6 +115,8 @@ function signalNodeLabel(schema, itemTypeId, signal) {
 }
 
 const NO_HISTORY = { undo: () => {}, redo: () => {} }
+// How far (screen pixels) a press on Start's circle has to move to draw a connection, not select Start.
+const START_DRAG_THRESHOLD = 4
 // Roughly half a new block's size, to center it on where it's placed.
 const NEW_NODE_HALF_WIDTH = 80
 const NEW_NODE_HALF_HEIGHT = 30
@@ -109,7 +124,7 @@ const NEW_NODE_HALF_HEIGHT = 30
 // editable: the diagram opens ready to edit (in the editor dialog), rather than read-only -- its
 // pipeline and layout then a draft (see pipelineDraft) with each change a step to undo (Cmd/Ctrl+Z)
 // or redo (Cmd/Ctrl+Shift+Z, or Ctrl+Y).
-export function useMarkerPipelineViewModel(pipelineView, itemTypeId, saveLayout, initialView, onViewChange, { editable = false } = {}) {
+export function useMarkerPipelineViewModel(pipelineView, itemTypeId, savePipeline, initialView, onViewChange, { editable = false } = {}) {
   const { getMarkersForItemType } = useMarkerModel()
   const markerNamesById = new Map(getMarkersForItemType(itemTypeId).map((m) => [m.id, m.name]))
   // Reaches past the shaped per-concept Models (ItemTypeModel/LinkModel/StateMachineModel) straight
@@ -126,9 +141,14 @@ export function useMarkerPipelineViewModel(pipelineView, itemTypeId, saveLayout,
   const pipeline = draft?.pipeline ?? pipelineView.pipeline
   const effectivePositions = draft?.positions ?? new Map(Object.entries(pipelineView.layout?.positions ?? {}))
   const effectiveEdgeBends = draft?.edgeBends ?? new Map(Object.entries(pipelineView.layout?.edgeBends ?? {}))
-  // A changed structure (blocks added or deleted) can't be saved yet -- only the layout can.
-  const structureChanged = pipeline !== pipelineView.pipeline
   const problems = editable ? nodeProblems(pipeline) : new Map()
+  // Why it can't be saved as it is, if it can't. (New blocks go with refIds, which the server swaps
+  // for ids.)
+  const saveBlocker = problems.size > 0 ? 'Some blocks still need something -- see their details.' : null
+  // The item type's markers, for choosing a block's.
+  const markerOptions = getMarkersForItemType(itemTypeId)
+    .map((m) => ({ value: m.id, label: m.name }))
+    .sort((a, b) => a.label.localeCompare(b.label))
 
   const blockCtx = { markerNamesById, pipeline, schema, itemTypeId }
   const blocks = new Map(pipeline.carrierBlocks.map((b) => [b.id, blockLabel(b, blockCtx)]))
@@ -189,7 +209,10 @@ export function useMarkerPipelineViewModel(pipelineView, itemTypeId, saveLayout,
     setIsSaving(true)
     setSaveError(null)
     try {
-      await saveLayout({ positions: Object.fromEntries(draft.positions), edgeBends: Object.fromEntries(draft.edgeBends) })
+      await savePipeline({
+        pipeline: draft.pipeline,
+        layout: { positions: Object.fromEntries(draft.positions), edgeBends: Object.fromEntries(draft.edgeBends) },
+      })
       return true
     } catch (error) {
       setSaveError(error.message || 'Failed to save pipeline layout.')
@@ -384,6 +407,12 @@ export function useMarkerPipelineViewModel(pipelineView, itemTypeId, saveLayout,
     return () => el.removeEventListener('wheel', handleWheel)
   }, [])
 
+  // A change to the pipeline's structure, made with every node's position fixed where it's drawn first:
+  // a node never placed is drawn where the flow puts it, and changing the flow would move it.
+  function changeStructure(fn) {
+    history.change((d) => fn(withPositionsFixed(d, layout.rects)))
+  }
+
   // A new block or condition from the palette, centered on where it was placed (screen
   // coordinates), and selected.
   function placeNode(kind, { clientX, clientY }) {
@@ -392,19 +421,183 @@ export function useMarkerPipelineViewModel(pipelineView, itemTypeId, saveLayout,
     const x = view.x + (clientX - rect.left) / view.zoom
     const y = view.y + (clientY - rect.top) / view.zoom
     const { nodeId } = addNode(history.present, kind, { x: 0, y: 0 })
-    history.change((d) => addNode(d, kind, { x: x - NEW_NODE_HALF_WIDTH, y: y - NEW_NODE_HALF_HEIGHT }).draft)
+    changeStructure((d) => addNode(d, kind, { x: x - NEW_NODE_HALF_WIDTH, y: y - NEW_NODE_HALF_HEIGHT }).draft)
     selection.select('node', nodeId)
   }
 
+  // --- Connections: selecting one, and moving its ends ---
+
+  // A connection end being dragged: { key, end, nodeId (null while it's loose), point }.
+  const [endDrag, setEndDrag] = useState(null)
+  const zeroRect = (p) => ({ x: p.x, y: p.y, width: 0, height: 0 })
+  const signalPins = new Set(layout.signalNodes.flatMap((n) => n.pinIds))
+  // Carrier output pins: everything that can start a carrier connection -- not End, which has none,
+  // nor a condition's pin.
+  const isCarrierOutput = (id) => id !== pipeline.end.id && !signalPins.has(id)
+  // A carrier output pin's block: a <select> row's is its <select>.
+  const ownerOfOutput = (pinId) => pipeline.carrierBlocks.find((b) => b.type === 'SELECT' && b.adds.some((r) => r.id === pinId))?.id ?? pinId
+  const connectedOutputs = new Set(pipeline.routes.map((r) => r.outputPinId))
+
+  function onEdgePointerDown(event, edgeKey) {
+    if (!isEditing || event.button !== 0) return
+    event.stopPropagation()
+    selection.select('edge', edgeKey)
+  }
+
+  // Where one end of a connection may be moved to, as pins (by id) to snap to -- its own included,
+  // so it can go back: a carrier's start to any carrier output, its end to any block's input (not
+  // its own block, nor where the same output already leads); a condition connection's start to any
+  // condition pin, its end to any gate (not one already reading that condition).
+  function endCandidates(edge, end) {
+    const pins = new Map()
+    const put = (id, point) => pins.set(id, zeroRect(point))
+    if (edge.outputPinId) {
+      const feeds = (out) => pipeline.routes.find((r) => r.outputPinId === out)?.inputPinIds ?? []
+      if (end === 'from') {
+        for (const [id, point] of layout.outputPinPositions) {
+          if (!isCarrierOutput(id) || ownerOfOutput(id) === edge.targetId) continue
+          if (id !== edge.outputPinId && feeds(id).includes(edge.targetId)) continue
+          put(id, point)
+        }
+      } else {
+        for (const [id, point] of layout.inputPinPositions) {
+          if (id === pipeline.start.id || id === ownerOfOutput(edge.outputPinId)) continue
+          if (id !== edge.targetId && feeds(edge.outputPinId).includes(id)) continue
+          put(id, point)
+        }
+      }
+    } else if (end === 'from') {
+      for (const [id, point] of layout.outputPinPositions) {
+        if (!signalPins.has(id)) continue
+        if (id !== edge.pinId && gatePinsOf(pipeline, edge.ownerId).includes(id)) continue
+        put(id, point)
+      }
+    } else {
+      for (const [id, point] of layout.gateAnchors) {
+        if (id !== edge.ownerId && gatePinsOf(pipeline, id).includes(edge.pinId)) continue
+        put(id, point)
+      }
+    }
+    return pins
+  }
+
+  // Dragging a selected connection's end: on its pin while it's near it, then loose, following the
+  // pointer, and snapping to any pin it may move to (see lineEnds' dragLineEnd -- the same as the
+  // state machine editor's transitions). Let go on a pin, it moves there; let go loose, it goes back.
+  function onEdgeEndPointerDown(event, edge, end) {
+    if (!view) return
+    const isCarrier = Boolean(edge.outputPinId)
+    const originalId = isCarrier ? (end === 'from' ? edge.outputPinId : edge.targetId) : end === 'from' ? edge.pinId : edge.ownerId
+    const start = end === 'from' ? edge.points[0] : edge.points[edge.points.length - 1]
+    const pins = endCandidates(edge, end)
+    let current = { nodeId: originalId }
+    startDiagramDrag(
+      event,
+      view.zoom,
+      (dx, dy) => {
+        const point = { x: start.x + dx, y: start.y + dy }
+        const at = dragLineEnd({ point, attachedId: current.nodeId, rects: pins, canAttach: () => true, zoom: view.zoom })
+        current = at
+        setEndDrag({ key: edge.key, end, nodeId: at.nodeId, point: at.nodeId ? pins.get(at.nodeId) : point })
+      },
+      () => {
+        setEndDrag(null)
+        if (!current.nodeId || current.nodeId === originalId) return
+        const moved = current.nodeId
+        if (isCarrier) {
+          changeStructure((d) => moveCarrierEnd(d, edge, end, moved))
+          const out = end === 'from' ? moved : edge.outputPinId
+          selection.select('edge', `${out}->${end === 'to' ? moved : edge.targetId}`)
+        } else {
+          changeStructure((d) => moveSignalEnd(d, edge, end, moved))
+          selection.select('edge', `signal:${end === 'from' ? moved : edge.pinId}=>${end === 'to' ? moved : edge.ownerId}`)
+        }
+      },
+    )
+  }
+
+  // Drawing a new carrier connection from an output pin with nothing connected, or from Start: it
+  // follows the pointer,
+  // snapping to any block input it may lead to (as a moved end does). Let go on one, it's made; let go
+  // anywhere else, it's dropped.
+  const [newConnection, setNewConnection] = useState(null)
+
+  // threshold: how far (screen pixels) the pointer has to move before it's a new connection rather
+  // than a click.
+  function onOutputPinPointerDown(event, outputPinId, { threshold = 0 } = {}) {
+    if (!isEditing || !view) return
+    const start = layout.outputPinPositions.get(outputPinId)
+    const pins = endCandidates({ outputPinId, targetId: null }, 'to')
+    let current = { nodeId: null }
+    startDiagramDrag(
+      event,
+      view.zoom,
+      (dx, dy) => {
+        const point = { x: start.x + dx, y: start.y + dy }
+        current = dragLineEnd({ point, attachedId: current.nodeId, rects: pins, canAttach: () => true, zoom: view.zoom })
+        setNewConnection({ outputPinId, point: current.nodeId ? pins.get(current.nodeId) : point })
+      },
+      () => {
+        setNewConnection(null)
+        if (!current.nodeId) return
+        const targetId = current.nodeId
+        changeStructure((d) => addCarrierConnection(d, outputPinId, targetId))
+        selection.select('edge', `${outputPinId}->${targetId}`)
+      },
+      { threshold },
+    )
+  }
+
+  const newConnectionPoints = newConnection
+    ? orthogonalPath(layout.outputPinPositions.get(newConnection.outputPinId), newConnection.point).points
+    : null
+
+  // Start leads to any number of blocks: a small circle at its middle to draw another connection from
+  // -- shown on hover, or all along while it leads nowhere yet. Not while one of its connections is
+  // selected: that connection's end handle is in the same place. { x, y, shown } or null.
+  const startPoint = layout.outputPinPositions.get(pipeline.start.id)
+  const startConnectionSelected = selection.selection?.kind === 'edge' && selection.selection.id.startsWith(`${pipeline.start.id}->`)
+  const startConnector =
+    isEditing && startPoint && !startConnectionSelected ? { ...startPoint, shown: !connectedOutputs.has(pipeline.start.id) } : null
+
+  // A press on Start's circle selects Start; a drag from it draws a new connection.
+  function onStartConnectorPointerDown(event) {
+    selection.select('node', pipeline.start.id)
+    onOutputPinPointerDown(event, pipeline.start.id, { threshold: START_DRAG_THRESHOLD })
+  }
+
+  // Carrier output pins with nothing connected -- where a new connection can be drawn from. Start can
+  // always lead to more (see startConnector).
+  const emptyOutputPins = isEditing
+    ? [...layout.outputPinPositions].filter(([id]) => isCarrierOutput(id) && id !== pipeline.start.id && !connectedOutputs.has(id))
+    : []
+
+  // The connection being dragged, drawn to where its end is now.
+  let endDragPoints = null
+  if (endDrag) {
+    const edge = [...layout.edges, ...layout.signalEdges].find((e) => e.key === endDrag.key)
+    if (edge) {
+      const from = endDrag.end === 'from' ? endDrag.point : edge.points[0]
+      const to = endDrag.end === 'to' ? endDrag.point : edge.points[edge.points.length - 1]
+      endDragPoints = orthogonalPath(from, to).points
+    }
+  }
+
+  function setMarkers(blockId, markerIds) {
+    changeStructure((d) => setBlockMarkers(d, blockId, markerIds))
+  }
+
   function removeNode(nodeId) {
-    history.change((d) => deleteNode(d, nodeId))
+    changeStructure((d) => deleteNode(d, nodeId))
     if (selection.isSelected('node', nodeId)) selection.clear()
   }
 
   return {
     pipeline,
-    structureChanged,
+    saveBlocker,
     problems,
+    markerOptions,
+    setMarkers,
     placeNode,
     removeNode,
     layout,
@@ -438,5 +631,16 @@ export function useMarkerPipelineViewModel(pipelineView, itemTypeId, saveLayout,
     pinDescriptions,
     selection: selection.selection,
     isNodeSelected: (nodeId) => selection.isSelected('node', nodeId),
+    isEdgeSelected: (edgeKey) => selection.isSelected('edge', edgeKey),
+    onEdgePointerDown,
+    onEdgeEndPointerDown,
+    endDrag,
+    endDragPoints,
+    isOutputConnected: (pinId) => connectedOutputs.has(pinId),
+    emptyOutputPins,
+    startConnector,
+    onStartConnectorPointerDown,
+    onOutputPinPointerDown,
+    newConnectionPoints,
   }
 }
