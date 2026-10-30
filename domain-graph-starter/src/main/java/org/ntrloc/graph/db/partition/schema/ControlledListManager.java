@@ -24,8 +24,6 @@ public class ControlledListManager {
     private static final String PARAM_LABEL = "label";
     private static final String COL_VALUE_TYPE = "value_type";
 
-    public static final Set<PropertyType> SUPPORTED_TYPES = ControlledListValues.SUPPORTED_TYPES;
-
     private final JdbcClient jdbcClient;
 
     public ControlledListManager(JdbcClient jdbcClient) {
@@ -35,7 +33,7 @@ public class ControlledListManager {
     public record ControlledList(UUID id, String name, PropertyType valueType) {}
 
     public ControlledList createList(String name, PropertyType valueType) {
-        if (!SUPPORTED_TYPES.contains(valueType)) {
+        if (!ControlledListValues.SUPPORTED_TYPES.contains(valueType)) {
             throw new IllegalArgumentException("Controlled lists are not supported for property type: " + valueType);
         }
         UUID listId = jdbcClient.sql(
@@ -264,7 +262,7 @@ public class ControlledListManager {
     // Attaches a list to a property, after checking the property's type can have one and matches the
     // list's value type.
     public void attachToProperty(AdminPropertyDefinitionView property, UUID listId) {
-        if (!SUPPORTED_TYPES.contains(property.type())) {
+        if (!ControlledListValues.SUPPORTED_TYPES.contains(property.type())) {
             throw new IllegalArgumentException(
                     "Controlled lists are not supported for property type: " + property.type());
         }

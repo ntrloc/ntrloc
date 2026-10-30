@@ -5,7 +5,7 @@ import { CONTROLLED_LIST_TYPES, TYPE_LABELS } from '../propertyLabels'
 // as a UTC instant like 2026-01-31T09:30:00Z -- and sent back that way.
 
 const WHOLE_NUMBER = /^-?\d+$/
-const NUMBER = /^-?(\d+\.?\d*|\.\d+)(e[-+]?\d+)?$/i
+const NUMBER = /^-?(\d+(\.\d*)?|\.\d+)(e[-+]?\d+)?$/i
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/
 
 const asText = (value) => value

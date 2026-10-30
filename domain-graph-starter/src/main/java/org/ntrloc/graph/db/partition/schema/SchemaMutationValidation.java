@@ -21,6 +21,7 @@ import java.util.stream.Collectors;
 final class SchemaMutationValidation {
 
     private static final String THIS_ITEM_TYPE = "this item type";
+    private static final String SUPERTYPE = "supertype";
 
     private SchemaMutationValidation() {
     }
@@ -104,7 +105,7 @@ final class SchemaMutationValidation {
         Map<UUID, List<UUID>> traitIdsByItem = repo.getTraitIdsByItem();
         requireNoCollision(added, levelOf(namespace, traitIdsByItem, itemId), namespace, named("item type", repo, itemId));
         for (UUID ancestor : ancestorsOf(supertypeById, itemId)) {
-            requireNoCollision(added, levelOf(namespace, traitIdsByItem, ancestor), namespace, named("supertype", repo, ancestor));
+            requireNoCollision(added, levelOf(namespace, traitIdsByItem, ancestor), namespace, named(SUPERTYPE, repo, ancestor));
         }
         for (UUID descendant : descendantsOf(supertypeById, itemId)) {
             requireNoCollision(added, levelOf(namespace, traitIdsByItem, descendant), namespace, named("subtype", repo, descendant));
@@ -222,7 +223,7 @@ final class SchemaMutationValidation {
         if (supertypeId == null) return;
         Map<UUID, List<UUID>> traitIdsByItem = repo.getTraitIdsByItem();
         for (UUID ancestor : chainFrom(supertypeById(repo), supertypeId)) {
-            requireNoCollision(level, levelOf(namespace, traitIdsByItem, ancestor), namespace, named("supertype", repo, ancestor));
+            requireNoCollision(level, levelOf(namespace, traitIdsByItem, ancestor), namespace, named(SUPERTYPE, repo, ancestor));
         }
     }
 
@@ -239,7 +240,7 @@ final class SchemaMutationValidation {
                 List<OwnedName> names = levelOf(namespace, traitIdsByItem, member);
                 for (UUID ancestor : chainFrom(supertypeById, proposedSupertypeId)) {
                     requireNoCollision(names, levelOf(namespace, traitIdsByItem, ancestor), namespace,
-                            named("supertype", repo, ancestor));
+                            named(SUPERTYPE, repo, ancestor));
                 }
             }
         }

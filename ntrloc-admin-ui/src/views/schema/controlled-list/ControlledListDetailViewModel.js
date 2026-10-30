@@ -48,17 +48,20 @@ function valueProblems(valueType, rows) {
     if (label !== '' && labels.has(label)) flag(row, 'label', 'Already used as a label.')
     labels.add(label)
   }
-  // Labels go on all of them or none: whichever side is smaller is the one out of line.
-  const labeled = kept.filter((row) => row.label.trim() !== '')
-  const unlabeled = kept.filter((row) => row.label.trim() === '')
-  if (labeled.length > 0 && unlabeled.length > 0) {
-    if (labeled.length >= unlabeled.length) {
-      unlabeled.forEach((row) => flag(row, 'label', 'Needs a label, as the other values have one.', true))
-    } else {
-      labeled.forEach((row) => flag(row, 'label', "The other values have no label: clear this one, or label them all."))
-    }
-  }
+  flagMixedLabels(kept, flag)
   return problems
+}
+
+// Labels go on all of them or none: whichever side is smaller is the one out of line.
+function flagMixedLabels(rows, flag) {
+  const labeled = rows.filter((row) => row.label.trim() !== '')
+  const unlabeled = rows.filter((row) => row.label.trim() === '')
+  if (labeled.length === 0 || unlabeled.length === 0) return
+  if (labeled.length >= unlabeled.length) {
+    unlabeled.forEach((row) => flag(row, 'label', 'Needs a label, as the other values have one.', true))
+  } else {
+    labeled.forEach((row) => flag(row, 'label', 'The other values have no label: clear this one, or label them all.'))
+  }
 }
 
 // A saved list's values as editable rows -- null until they've loaded.
