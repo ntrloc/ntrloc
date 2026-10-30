@@ -100,6 +100,7 @@ function AccessMarkersView({ itemTypeId, itemTypeName }) {
         <MarkerPipelineView
           key={itemTypeId}
           itemTypeId={itemTypeId}
+          itemTypeName={itemTypeName}
           initialView={viewByItemTypeId.get(itemTypeId) ?? null}
           onViewChange={(view) => viewByItemTypeId.set(itemTypeId, view)}
         />

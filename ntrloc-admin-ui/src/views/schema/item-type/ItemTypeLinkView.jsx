@@ -7,10 +7,10 @@ import PropertyTreeView from '../PropertyTreeView'
 import './ItemTypeLinkView.css'
 
 // max unset means "any" -- nothing meaningful to show alongside min then except the range itself.
-// A finite max is shown alone (dropping min) -- e.g. (0, 1) reads as just "(1)" -- since which of
-// optional/required a single-valued link is isn't this diagram's concern yet.
+// "(1)" when min and max are the same, "(0-1)" when they differ, "(0-any)" with no max.
 function formatCardinality({ min, max }) {
-  return max == null ? `${min}-any` : `${max}`
+  if (max == null) return `${min}-any`
+  return min === max ? `${max}` : `${min}-${max}`
 }
 
 // A perspective's name and cardinality, then -- when it has a description -- an (i) that shows it

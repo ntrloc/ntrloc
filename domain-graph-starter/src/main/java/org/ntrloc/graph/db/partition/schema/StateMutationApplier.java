@@ -48,13 +48,13 @@ class StateMutationApplier {
             case CreateStateMutation m -> {
                 SchemaMutationValidation.requireNotReservedStateName(m.name());
                 var state = repo.createState(m.stateMachineId(), m.name(), m.description(), SchemaRepository.STATE_KIND_NORMAL,
-                        m.entryProcessId(), m.exitProcessId(), m.entryMarkerDecisionKey());
+                        m.entryProcessId(), m.exitProcessId());
                 if (m.refId() != null) refIdToEntityId.put(m.refId(), state.id());
             }
             case UpdateStateMutation m -> {
                 SchemaMutationValidation.requireNotReservedStateName(m.name());
                 SchemaMutationValidation.requireDeletableState(repo, m.id()); // NORMAL-only -- same gate as delete
-                repo.updateState(m.id(), m.name(), m.description(), m.entryProcessId(), m.exitProcessId(), m.entryMarkerDecisionKey());
+                repo.updateState(m.id(), m.name(), m.description(), m.entryProcessId(), m.exitProcessId());
             }
             case DeleteStateMutation m -> {
                 SchemaMutationValidation.requireDeletableState(repo, m.id());

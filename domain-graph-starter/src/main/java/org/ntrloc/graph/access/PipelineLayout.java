@@ -1,10 +1,10 @@
 package org.ntrloc.graph.access;
 
 import java.util.Map;
-import java.util.UUID;
 
-// Where a pipeline's own diagram places each of its elements -- every carrier block id, Start/End,
-// and every signal/pin id that can appear as a node. Deliberately separate from Pipeline itself
+// Where a pipeline's own diagram places each of its elements, keyed however the editor names its
+// nodes -- a carrier block's id, Start/End's, a Condition's, or a key of the editor's own for a node
+// with no id (a ConditionGroup's). Deliberately separate from Pipeline itself
 // (see MarkerDecisionPipelineRepository's own comment): this is the "how it's drawn" layer, stored
 // alongside the pipeline it describes, never embedded in or read by anything that evaluates one --
 // same split BPMN itself draws between a <process> and its <bpmndi:BPMNDiagram>.
@@ -20,7 +20,7 @@ import java.util.UUID;
 // detour's own lane y; see markerPipelineLayout.js's orthogonalPath), so one number per edge is
 // enough to override it. Absent for an edge the admin never touched -- the editor computes its own
 // default bend the same way it always has.
-public record PipelineLayout(Map<UUID, Point> positions, Map<String, Double> edgeBends) {
+public record PipelineLayout(Map<String, Point> positions, Map<String, Double> edgeBends) {
 
     public PipelineLayout {
         if (positions == null) positions = Map.of();

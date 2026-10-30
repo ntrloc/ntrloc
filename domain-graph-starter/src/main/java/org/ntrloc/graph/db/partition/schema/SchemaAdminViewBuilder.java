@@ -225,8 +225,7 @@ class SchemaAdminViewBuilder {
                                 repo.parseGuardCondition(t.guardCondition())))
                         .toList();
                 return new AdminStateView(state.id(), state.name(), state.description(),
-                        state.kind(), state.entryProcessId(), state.exitProcessId(),
-                        state.entryMarkerDecisionKey(), transitions);
+                        state.kind(), state.entryProcessId(), state.exitProcessId(), transitions);
             }).toList();
             return new AdminStateMachineView(machine.id(), machine.name(), machine.description(), stateViews,
                     repo.parseLayout(machine.layout()));

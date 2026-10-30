@@ -1,7 +1,7 @@
 import { useSchemaSnapshot } from './SchemaCache'
 
 // A machine as the admin UI draws and inspects it: its states and transitions with their details
-// (processes, marker decision, guard), and its saved diagram layout.
+// (processes, guard), and its saved diagram layout.
 function toItemTypeStateMachines(adminSchema, itemTypeId) {
   const item = adminSchema.items.find((it) => it.id === itemTypeId)
   if (!item?.stateMachines) return []
@@ -18,7 +18,6 @@ function toItemTypeStateMachines(adminSchema, itemTypeId) {
       description: state.description,
       entryProcessId: state.entryProcessId,
       exitProcessId: state.exitProcessId,
-      entryMarkerDecisionKey: state.entryMarkerDecisionKey,
       transitions: (state.transitions ?? []).map((transition) => ({
         id: transition.id,
         toStateId: transition.toStateId,

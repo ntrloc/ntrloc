@@ -275,7 +275,7 @@ class AccessMarkersUiTest extends AbstractUiIntegrationTest {
         assertThat(dragged[0]).isGreaterThan(before[0]);
         page.saveLayout();
 
-        Point saved = savedLayout(type).positions().get(addBlockId(type));
+        Point saved = savedLayout(type).positions().get(addBlockId(type).toString());
         assertThat(saved.x()).isCloseTo(dragged[0], within(0.5));
         assertThat(saved.y()).isCloseTo(before[1], within(0.5));
         assertThat(page.blockPosition("Add")).containsExactly(dragged);

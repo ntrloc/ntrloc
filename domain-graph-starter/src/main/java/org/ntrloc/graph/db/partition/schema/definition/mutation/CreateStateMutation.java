@@ -10,11 +10,10 @@ import java.util.UUID;
 // it has an id.
 public record CreateStateMutation(UUID stateMachineId, String name, @Nullable String description,
                                   @Nullable String entryProcessId, @Nullable String exitProcessId,
-                                  @Nullable String entryMarkerDecisionKey, @Nullable String refId) implements DefinitionMutation {
+                                  @Nullable String refId) implements DefinitionMutation {
 
     public CreateStateMutation(UUID stateMachineId, String name, @Nullable String description,
-                               @Nullable String entryProcessId, @Nullable String exitProcessId,
-                               @Nullable String entryMarkerDecisionKey) {
-        this(stateMachineId, name, description, entryProcessId, exitProcessId, entryMarkerDecisionKey, null);
+                               @Nullable String entryProcessId, @Nullable String exitProcessId) {
+        this(stateMachineId, name, description, entryProcessId, exitProcessId, null);
     }
 }

@@ -82,7 +82,7 @@ final class UiTestData {
         schemaManager.applyMutations(List.of(new CreateStateMachineMutation(itemType(itemTypeName).id(), name, null)));
         UUID machineId = stateMachine(itemTypeName, name).id();
         schemaManager.applyMutations(states.stream()
-                .<DefinitionMutation>map(state -> new CreateStateMutation(machineId, state, null, null, null, null))
+                .<DefinitionMutation>map(state -> new CreateStateMutation(machineId, state, null, null, null))
                 .toList());
         Map<String, UUID> stateIds = stateIds(stateMachine(itemTypeName, name));
         schemaManager.applyMutations(transitions.stream()

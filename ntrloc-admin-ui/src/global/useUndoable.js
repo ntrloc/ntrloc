@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 // A value with an undo history, for an editor's draft. Each change is a step to undo, except:
 // - change(fn, key): consecutive changes with the same key make one step (e.g. typing into a field);
@@ -47,4 +47,22 @@ export function useUndoable(initial) {
     canUndo: history.past.length > 0,
     canRedo: history.future.length > 0,
   }
+}
+
+// Cmd/Ctrl+Z undoes and Cmd/Ctrl+Shift+Z (or Ctrl+Y) redoes, while mounted -- except in a text field,
+// which has its own undo.
+export function useUndoShortcuts({ undo, redo }) {
+  useEffect(() => {
+    function onKeyDown(event) {
+      if (!(event.metaKey || event.ctrlKey)) return
+      if (event.target.closest?.('input, textarea, [contenteditable="true"]')) return
+      const key = event.key.toLowerCase()
+      if (key === 'z' && !event.shiftKey) undo()
+      else if ((key === 'z' && event.shiftKey) || key === 'y') redo()
+      else return
+      event.preventDefault()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [undo, redo])
 }

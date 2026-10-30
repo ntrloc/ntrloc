@@ -324,11 +324,10 @@ function gatesOf(block) {
 // input/output of its own, just one addressable pin per Condition it contains (a bare Condition is
 // one pin; a ConditionGroup is several, one per member condition -- see Pipeline's own doc comment
 // on topLevelSignals). A ConditionGroup has no id of its own to key a node/position by (only its
-// member Conditions are individually addressable -- see ConditionGroup.java), so this module
-// synthesizes a stable one from its position in topLevelSignals; fine for drag-to-reposition since
-// that list's own order never changes from here (no pipeline-structure editing yet).
-function signalNodeId(signal, index) {
-  return signal.type === 'CONDITION_GROUP' ? `signal-group-${index}` : signal.id
+// member Conditions are individually addressable -- see ConditionGroup.java), so it's keyed by its
+// first condition's id instead.
+function signalNodeId(signal) {
+  return signal.type === 'CONDITION_GROUP' ? `group-${signal.conditions[0].id}` : signal.id
 }
 
 function signalPinIds(signal) {
@@ -369,10 +368,9 @@ export function inlinedConditionGroupFor(pipeline, blockId) {
 // this module -- deliberately schema-free -- needing to know how.
 export function signalNodes(pipeline) {
   return (pipeline.topLevelSignals ?? [])
-    .map((signal, index) => ({ signal, index }))
-    .filter(({ signal }) => inlinedConditionGroupOwner(pipeline, signal) === null)
-    .map(({ signal, index }) => ({
-      id: signalNodeId(signal, index),
+    .filter((signal) => inlinedConditionGroupOwner(pipeline, signal) === null)
+    .map((signal) => ({
+      id: signalNodeId(signal),
       title: signal.type === 'CONDITION_GROUP' ? 'Condition Group' : 'Condition',
       pinIds: signalPinIds(signal),
       signal,

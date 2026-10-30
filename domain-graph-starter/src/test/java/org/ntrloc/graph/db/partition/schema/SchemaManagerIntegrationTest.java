@@ -865,7 +865,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
                 {"positions": {"new-state-1": {"x": 160, "y": 80}}, "transitions": {}}
                 """);
         schemaManager.applyMutations(List.of(
-                new CreateStateMutation(machineId, "Drafted", null, null, null, null, "new-state-1"),
+                new CreateStateMutation(machineId, "Drafted", null, null, null, "new-state-1"),
                 new SetStateMachineLayoutMutation(machineId, layout)));
 
         var machine = onlyStateMachine(itemId);
@@ -884,9 +884,9 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         schemaManager.applyMutations(List.of(new CreateStateMachineMutation(itemId, "machine", null)));
         UUID machineId = onlyStateMachine(itemId).id();
         schemaManager.applyMutations(List.of(
-                new CreateStateMutation(machineId, "A", null, null, null, null),
-                new CreateStateMutation(machineId, "B", null, null, null, null),
-                new CreateStateMutation(machineId, "C", null, null, null, null)));
+                new CreateStateMutation(machineId, "A", null, null, null),
+                new CreateStateMutation(machineId, "B", null, null, null),
+                new CreateStateMutation(machineId, "C", null, null, null)));
         UUID a = stateNamed(itemId, "A").id();
         UUID b = stateNamed(itemId, "B").id();
         schemaManager.applyMutations(List.of(new CreateTransitionMutation(a, b, "go", null, null, null)));
@@ -917,7 +917,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         var m = aMachineWithATransitionFromAToB();
 
         schemaManager.applyMutations(List.of(
-                new CreateStateMutation(m.machineId(), "D", null, null, null, null, "new-state-1"),
+                new CreateStateMutation(m.machineId(), "D", null, null, null, "new-state-1"),
                 new UpdateTransitionMutation(m.transitionId(), "go", null, null, null, null, "new-state-1")));
 
         assertThat(stateNamed(m.itemId(), "A").transitions().get(0).toStateId()).isEqualTo(stateNamed(m.itemId(), "D").id());
@@ -949,7 +949,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
                 """);
 
         schemaManager.applyMutations(List.of(
-                new CreateStateMutation(m.machineId(), "D", null, null, null, null, "new-state-1"),
+                new CreateStateMutation(m.machineId(), "D", null, null, null, "new-state-1"),
                 new CreateTransitionMutation(m.b(), null, "onward", null, null, null, null, "new-state-1", "new-transition-1"),
                 new SetStateMachineLayoutMutation(m.machineId(), layout)));
 
@@ -971,15 +971,14 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         UUID machineId = schemaManager.getAdminSchema().items().stream()
                 .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
                 .stateMachines().get(0).id();
-        schemaManager.applyMutations(List.of(new CreateStateMutation(machineId, "original", "d", null, null, null)));
+        schemaManager.applyMutations(List.of(new CreateStateMutation(machineId, "original", "d", null, null)));
         UUID stateId = normalStateNamed(itemId, "original").id();
 
         schemaManager.applyMutations(List.of(
-                new UpdateStateMutation(stateId, "renamed", "updated", "entry-proc", "exit-proc", "marker-dec")));
+                new UpdateStateMutation(stateId, "renamed", "updated", "entry-proc", "exit-proc")));
         var afterUpdate = normalStateNamed(itemId, "renamed");
         assertThat(afterUpdate.name()).isEqualTo("renamed");
         assertThat(afterUpdate.kind()).isEqualTo("NORMAL");
-        assertThat(afterUpdate.entryMarkerDecisionKey()).isEqualTo("marker-dec");
 
         schemaManager.applyMutations(List.of(new DeleteStateMutation(stateId)));
         var afterDelete = schemaManager.getAdminSchema().items().stream()
@@ -1031,7 +1030,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
                 .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
                 .stateMachines().get(0).id();
 
-        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new CreateStateMutation(machineId, "__start__", "d", null, null, null))))
+        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new CreateStateMutation(machineId, "__start__", "d", null, null))))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("reserved");
     }
@@ -1044,8 +1043,8 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
                 .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
                 .stateMachines().get(0).id();
         schemaManager.applyMutations(List.of(
-                new CreateStateMutation(machineId, "s1", "d", null, null, null),
-                new CreateStateMutation(machineId, "s2", "d", null, null, null)));
+                new CreateStateMutation(machineId, "s1", "d", null, null),
+                new CreateStateMutation(machineId, "s2", "d", null, null)));
         var states = schemaManager.getAdminSchema().items().stream()
                 .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
                 .stateMachines().get(0).states();
@@ -1081,8 +1080,8 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
                 .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
                 .stateMachines().get(0).id();
         schemaManager.applyMutations(List.of(
-                new CreateStateMutation(machineId, "from", "d", null, null, null),
-                new CreateStateMutation(machineId, "to", "d", null, null, null)));
+                new CreateStateMutation(machineId, "from", "d", null, null),
+                new CreateStateMutation(machineId, "to", "d", null, null)));
         var states = schemaManager.getAdminSchema().items().stream()
                 .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
                 .stateMachines().get(0).states();

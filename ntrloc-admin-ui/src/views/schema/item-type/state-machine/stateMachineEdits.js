@@ -87,7 +87,6 @@ export function editMutations(machine, edits, endpoints = new Map()) {
         description: edit.description.trim() || null,
         entryProcessId: state.entryProcessId,
         exitProcessId: state.exitProcessId,
-        entryMarkerDecisionKey: state.entryMarkerDecisionKey,
       })
     }
     for (const transition of state.transitions) {

@@ -138,11 +138,6 @@ CREATE TABLE schema_state_machine (
 -- machine and undeletable. NORMAL states are the user-defined ones. START has at most one outgoing
 -- transition (to a NORMAL state, no guard); END has no outgoing transitions. Pseudostate rows carry
 -- a sentinel name ('__start__' / '__end__'); the editor renders them by kind, not name.
---
--- entry_marker_decision_key: a NORMAL state may declare a DMN decision (by key, deployed
--- independently like entry_process_id) that runs on entry: it looks at the item's property values
--- and returns marker names to apply for as long as the item is in that state. Nullable;
--- pseudostates never get one.
 CREATE TABLE schema_state (
     id                        UUID PRIMARY KEY DEFAULT uuidv7(),
     state_machine_id          UUID NOT NULL REFERENCES schema_state_machine(id) ON DELETE CASCADE,
@@ -151,7 +146,6 @@ CREATE TABLE schema_state (
     kind                      TEXT NOT NULL DEFAULT 'NORMAL' CHECK (kind IN ('NORMAL', 'START', 'END')),
     entry_process_id          TEXT,
     exit_process_id           TEXT,
-    entry_marker_decision_key TEXT,
     UNIQUE (state_machine_id, name)
 );
 

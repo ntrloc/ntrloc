@@ -79,7 +79,6 @@ export function addState(draft, fields, position) {
     description: '',
     entryProcessId: null,
     exitProcessId: null,
-    entryMarkerDecisionKey: null,
     transitions: [],
     ...fields,
   }

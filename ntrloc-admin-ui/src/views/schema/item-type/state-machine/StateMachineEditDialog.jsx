@@ -42,7 +42,7 @@ function StateMachineEditDialog({ machine, onClose }) {
           <Input name="Description" value={vm.description} onChange={(e) => vm.setDescription(e.target.value)} />
         </state-machine-edit-fields>
         {vm.nameProblem && <p className="state-machine-edit-problem">{vm.nameProblem}</p>}
-        <state-machine-edit-body>
+        <diagram-editor-body>
           <DiagramCanvas
             canvas={vm.canvas}
             className="sm-diagram"
@@ -74,7 +74,7 @@ function StateMachineEditDialog({ machine, onClose }) {
             onEdit={vm.editField}
             problems={vm.problems}
           />
-        </state-machine-edit-body>
+        </diagram-editor-body>
       </state-machine-edit-dialog>
     </Dialog>
   )

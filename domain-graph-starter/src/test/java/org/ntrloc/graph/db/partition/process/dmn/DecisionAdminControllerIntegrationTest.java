@@ -4,13 +4,7 @@ import org.springframework.http.HttpHeaders;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
-import org.ntrloc.graph.db.coordinator.CoordinatorTestDomainInitializer;
 import org.ntrloc.graph.db.partition.process.dmn.DecisionAdminController.DecisionDefinitionView;
-import org.ntrloc.graph.db.partition.register.RegisterPartitionManager;
-import org.ntrloc.graph.db.partition.schema.SchemaManager;
-import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateStateMachineMutation;
-import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateStateMutation;
-import org.ntrloc.graph.db.partition.schema.definition.mutation.DefinitionMutation;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.reactive.server.WebTestClient;
@@ -40,15 +34,6 @@ class DecisionAdminControllerIntegrationTest extends AbstractIntegrationTest {
     void authenticateAsRoot() {
         webTestClient = webTestClient.mutate().defaultHeader(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com")).build();
     }
-
-    @Autowired
-    private CoordinatorTestDomainInitializer fixture;
-
-    @Autowired
-    private SchemaManager schemaManager;
-
-    @Autowired
-    private RegisterPartitionManager registerPartitionManager;
 
     @Test
     void listsDeployedDecisionsIncludingApprovalDecision() {
@@ -120,26 +105,6 @@ class DecisionAdminControllerIntegrationTest extends AbstractIntegrationTest {
         webTestClient.delete().uri("/api/admin/dmn/decisions/{key}", "missing-" + UUID.randomUUID())
                 .exchange()
                 .expectStatus().isNotFound();
-    }
-
-    @Test
-    void deletingADecisionStillReferencedByAStatesEntryMarkerDecisionIsBlockedWithA409() {
-        String key = "referencedDecisionTest-" + UUID.randomUUID();
-        deploy(key, "v1");
-        String machineName = "decision-delete-guard-machine-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.<DefinitionMutation>of(
-                new CreateStateMachineMutation(fixture.productTypeId(), machineName, null)));
-        UUID smId = registerPartitionManager.resolveStateMachineId(fixture.productTypeId(), machineName);
-        schemaManager.applyMutations(List.<DefinitionMutation>of(
-                new CreateStateMutation(smId, "Guarded", null, null, null, key)));
-
-        webTestClient.delete().uri("/api/admin/dmn/decisions/{key}", key)
-                .exchange()
-                .expectStatus().isEqualTo(409)
-                .expectBody()
-                .jsonPath("$.message").value(m -> assertThat((String) m).contains("Guarded"));
-
-        assertThat(fetchDecisions()).anyMatch(d -> d.key().equals(key));
     }
 
     private DecisionDefinitionView deploy(String key, String labelSuffix) {

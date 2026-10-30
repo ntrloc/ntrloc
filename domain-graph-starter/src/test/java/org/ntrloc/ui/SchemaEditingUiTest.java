@@ -586,7 +586,7 @@ class SchemaEditingUiTest extends AbstractUiIntegrationTest {
         assertThat(schema.propertyEditorError()).isEqualTo("This link's maximum must be blank (any) or at least 1.");
 
         schema.typeInLinkEditor(forward, "Maximum", "5").typeInLinkEditor(back, "Name", "works").applyPropertyEditor();
-        assertThat(schema.linkDiagrams()).containsExactly(List.of("writers (5)", "works (0-any)", authorType));
+        assertThat(schema.linkDiagrams()).containsExactly(List.of("writers (0-5)", "works (0-any)", authorType));
         assertThat(schema.unsavedItemTypes()).containsExactly(bookType);
 
         schema.save();

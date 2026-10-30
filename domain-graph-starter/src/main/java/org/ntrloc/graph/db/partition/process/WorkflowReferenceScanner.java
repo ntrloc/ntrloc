@@ -6,9 +6,8 @@ import org.springframework.stereotype.Component;
 import java.util.ArrayList;
 import java.util.List;
 
-// "Is this process / decision key still pointed at from somewhere in the schema?" -- the delete
-// guard for ProcessAdminController / DecisionAdminController. Both a process id and a decision key
-// are stored as plain strings (not FKs), so nothing in the DB stops a definition being deleted out
+// "Is this process key still pointed at from somewhere in the schema?" -- the delete guard for
+// ProcessAdminController. A process key is stored as a plain string (not an FK), so nothing in the DB stops a definition being deleted out
 // from under a state machine; this scanner is what makes those deletes a hard "not in use" gate
 // instead, matching how schema item-type / trait deletion already works.
 //
@@ -52,23 +51,6 @@ public class WorkflowReferenceScanner {
                 .param("key", processId)
                 .query((rs, _) -> "transition \"" + rs.getString("transition") + IN_STATE_MACHINE
                         + rs.getString(COL_MACHINE) + "\"")
-                .list().forEach(refs::add);
-        return refs;
-    }
-
-    // Human-readable descriptions of everything currently referencing this decision key. Empty
-    // means "safe to delete".
-    public List<String> decisionReferences(String decisionKey) {
-        List<String> refs = new ArrayList<>();
-        jdbcClient.sql("""
-                SELECT sm.name AS machine, s.name AS state
-                FROM schema_state s
-                JOIN schema_state_machine sm ON sm.id = s.state_machine_id
-                WHERE s.entry_marker_decision_key = :key
-                """)
-                .param("key", decisionKey)
-                .query((rs, _) -> "state \"" + rs.getString("state") + IN_STATE_MACHINE
-                        + rs.getString(COL_MACHINE) + "\" (entry-marker decision)")
                 .list().forEach(refs::add);
         return refs;
     }

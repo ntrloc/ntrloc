@@ -150,7 +150,7 @@ class ProcessAdminControllerIntegrationTest extends AbstractIntegrationTest {
         UUID stateMachineId = schemaManager.getAdminSchema().items().stream()
                 .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
                 .stateMachines().get(0).id();
-        schemaManager.applyMutations(List.of(new CreateStateMutation(stateMachineId, "GuardState", null, key, null, null)));
+        schemaManager.applyMutations(List.of(new CreateStateMutation(stateMachineId, "GuardState", null, key, null)));
 
         webTestClient.delete().uri("/api/admin/process/definitions/{key}", key)
                 .exchange()

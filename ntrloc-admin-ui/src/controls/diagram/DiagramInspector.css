@@ -1,0 +1,55 @@
+.diagram-inspector {
+  --collapsible-panel-width: 280px;
+  --collapsible-panel-collapsed-width: 48px;
+}
+
+/* It sits in a dialog, not the page, so it has no page-sidebar background of its own. */
+.diagram-inspector collapsible-panel-content {
+  background: var(--bg);
+  overflow-y: auto;
+}
+
+diagram-inspector-details {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.diagram-inspector[data-collapsed]:not([data-floating]) diagram-inspector-details {
+  display: none;
+}
+
+.diagram-inspector-note {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+}
+
+/* What's selected, above its fields. */
+.diagram-inspector-kind {
+  margin: 0;
+  color: var(--text-h);
+  font-weight: 600;
+}
+
+.diagram-inspector-problem {
+  margin: 4px 0 0;
+  color: var(--danger);
+  font-size: 13px;
+}
+
+/* A diagram editor's body: the diagram and the inspector, left to right, with an optional palette
+   floating over the diagram. */
+diagram-editor-body {
+  position: relative;
+  display: flex;
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+}
+
+/* The diagram: whatever isn't the palette or the inspector. */
+diagram-editor-body > :not(diagram-palette, .diagram-inspector) {
+  flex: 1;
+  min-width: 0;
+}

@@ -1,4 +1,9 @@
+import { useState } from 'react'
+import { useCollapsiblePanel } from '../../../../controls/collapsible-panel/useCollapsiblePanel'
+import Dialog from '../../../../controls/dialog/Dialog'
+import DiagramPalette from '../../../../controls/diagram/DiagramPalette'
 import { usePipelineForItemType } from '../../../../global/model/PipelineModel'
+import MarkerPipelineInspector from './MarkerPipelineInspector'
 import { useMarkerPipelineViewModel } from './MarkerPipelineViewModel'
 import { STRIP_WIDTH, bodyMidY, chipLayout, selectRowLayout, signalRowLayout, signalConditionLayout, filterPortLayout, PSEUDO_LABEL_GAP } from './markerPipelineLayout'
 import Button from '../../../../controls/button/Button'
@@ -93,6 +98,11 @@ function PredicateBox({ box }) {
   )
 }
 
+// A node's class: draggable while editing, highlighted while selected, marked while incomplete.
+function nodeClassName(editable, selected, invalid) {
+  return ['mp-node', editable && 'mp-node-editable', selected && 'mp-node-selected', invalid && 'mp-node-invalid'].filter(Boolean).join(' ')
+}
+
 // START = a plain filled dot (the standard UML initial-pseudostate convention); END = a ring around
 // a filled dot. Same shape family as a pin, just bigger -- pin < Start < End. Start previously had a
 // notch bitten out toward its outgoing edge, but a notch is a fixed direction while an edge's actual
@@ -105,7 +115,7 @@ function PredicateBox({ box }) {
 // editable + the three pointer handlers: present only while the diagram is in edit mode (see
 // MarkerPipelineDiagram), letting Start/End be dragged around like any other node -- PipelineLayout
 // itself makes no distinction between a pseudostate's position and a carrier block's.
-function PseudoStateNode({ rect, kind, editable, onPointerDown, onPointerMove, onPointerUp }) {
+function PseudoStateNode({ rect, kind, editable, selected, invalid, onPointerDown, onPointerMove, onPointerUp }) {
   const cx = rect.x + rect.width / 2
   const cy = rect.y + rect.height / 2
   const r = rect.width / 2
@@ -114,7 +124,7 @@ function PseudoStateNode({ rect, kind, editable, onPointerDown, onPointerMove, o
 
   return (
     <g
-      className={editable ? 'mp-node mp-node-editable' : 'mp-node'}
+      className={nodeClassName(editable, selected, invalid)}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
@@ -189,14 +199,14 @@ function HeaderIcons({ icons, onEdit, onDelete }) {
 // left, for a block with exactly one input port (<add>/<set>/<remove>). A block with several
 // distinct input ports -- just <filter>, carrier "input" plus its "if" gate reference -- gets its
 // own FilterNode below instead, with each port its own labeled row.
-function CarrierBlockNode({ rect, label, editable, onContextMenu, onPointerDown, onPointerMove, onPointerUp }) {
+function CarrierBlockNode({ rect, label, editable, selected, invalid, onDelete, onContextMenu, onPointerDown, onPointerMove, onPointerUp }) {
   const rightStripX = rect.x + rect.width - STRIP_WIDTH
   const midY = bodyMidY(rect)
   const { centerX, titleY, headerBottom, chips, icons } = chipLayout(rect, label.markerNames, editable)
 
   return (
     <g
-      className={editable ? 'mp-node mp-node-editable' : 'mp-node'}
+      className={nodeClassName(editable, selected, invalid)}
       onContextMenu={onContextMenu}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
@@ -209,7 +219,7 @@ function CarrierBlockNode({ rect, label, editable, onContextMenu, onPointerDown,
       <text className="mp-node-title" x={centerX} y={titleY}>
         {label.title}
       </text>
-      <HeaderIcons icons={icons} onEdit={onContextMenu} onDelete={onContextMenu} />
+      <HeaderIcons icons={icons} onEdit={onContextMenu} onDelete={onDelete ?? onContextMenu} />
       {chips.map((chip) => (
         <g key={chip.name}>
           <rect className="mp-marker-chip-rect" x={chip.x} y={chip.y} width={chip.width} height={chip.height} />
@@ -232,14 +242,14 @@ function CarrierBlockNode({ rect, label, editable, onContextMenu, onPointerDown,
 // "central area" this shape deliberately has none of. The "if" pin is drawn in the signal domain's
 // own color, since it's literally where a dashed signal-reference edge lands (see
 // SignalReferenceEdge).
-function FilterNode({ rect, label, editable, onContextMenu, onPointerDown, onPointerMove, onPointerUp }) {
+function FilterNode({ rect, label, editable, selected, invalid, onDelete, onContextMenu, onPointerDown, onPointerMove, onPointerUp }) {
   const rightStripX = rect.x + rect.width - STRIP_WIDTH
   const midY = bodyMidY(rect)
   const { centerX, titleY, headerBottom, input, ifPort, icons } = filterPortLayout(rect, editable)
 
   return (
     <g
-      className={editable ? 'mp-node mp-node-editable' : 'mp-node'}
+      className={nodeClassName(editable, selected, invalid)}
       onContextMenu={onContextMenu}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
@@ -252,7 +262,7 @@ function FilterNode({ rect, label, editable, onContextMenu, onPointerDown, onPoi
       <text className="mp-node-title" x={centerX} y={titleY}>
         {label.title}
       </text>
-      <HeaderIcons icons={icons} onEdit={onContextMenu} onDelete={onContextMenu} />
+      <HeaderIcons icons={icons} onEdit={onContextMenu} onDelete={onDelete ?? onContextMenu} />
       <text className="mp-port-label" x={input.labelX} y={input.labelY}>
         input
       </text>
@@ -274,14 +284,14 @@ function FilterNode({ rect, label, editable, onContextMenu, onPointerDown, onPoi
 // always the synthetic Otherwise branch -- no chips, just the "(Otherwise)" text (see
 // MarkerPipelineViewModel's blockLabel) -- a plain routing pin, not a marker-adding action, so it's
 // rendered distinctly from a real row's dashed marker chips.
-function SelectNode({ rect, label, editable, onContextMenu, onPointerDown, onPointerMove, onPointerUp }) {
+function SelectNode({ rect, label, editable, selected, invalid, onDelete, onContextMenu, onPointerDown, onPointerMove, onPointerUp }) {
   const rightStripX = rect.x + rect.width - STRIP_WIDTH
   const midY = bodyMidY(rect)
   const { centerX, titleY, headerBottom, propertyChip, rows, icons } = selectRowLayout(rect, label.rows, label.propertyLabel, editable)
 
   return (
     <g
-      className={editable ? 'mp-node mp-node-editable' : 'mp-node'}
+      className={nodeClassName(editable, selected, invalid)}
       onContextMenu={onContextMenu}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
@@ -294,7 +304,7 @@ function SelectNode({ rect, label, editable, onContextMenu, onPointerDown, onPoi
       <text className="mp-node-title" x={centerX} y={titleY}>
         {label.title}
       </text>
-      <HeaderIcons icons={icons} onEdit={onContextMenu} onDelete={onContextMenu} />
+      <HeaderIcons icons={icons} onEdit={onContextMenu} onDelete={onDelete ?? onContextMenu} />
       {propertyChip && <TextChip chip={propertyChip} />}
       {rows.map((row) =>
         row.otherwise ? (
@@ -329,7 +339,7 @@ function SelectNode({ rect, label, editable, onContextMenu, onPointerDown, onPoi
 // is a title over a stacked pin-row per member Condition, each with its own short label; a bare
 // Condition (always exactly one pin) is a title over its own root predicate box (see describeCondition
 // and PredicateBox), with one pin centered on the whole body.
-function SignalNode({ rect, node, description, editable, onContextMenu, onPointerDown, onPointerMove, onPointerUp }) {
+function SignalNode({ rect, node, description, editable, selected, invalid, onDelete, onContextMenu, onPointerDown, onPointerMove, onPointerUp }) {
   const bodyRight = rect.x + rect.width - STRIP_WIDTH
   const isGroup = node.pinIds.length > 1
 
@@ -339,7 +349,7 @@ function SignalNode({ rect, node, description, editable, onContextMenu, onPointe
 
   return (
     <g
-      className={editable ? 'mp-node mp-node-editable' : 'mp-node'}
+      className={nodeClassName(editable, selected, invalid)}
       onContextMenu={onContextMenu}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
@@ -351,7 +361,7 @@ function SignalNode({ rect, node, description, editable, onContextMenu, onPointe
       <text className="mp-signal-node-title" x={centerX} y={titleY}>
         {node.title}
       </text>
-      <HeaderIcons icons={icons} onEdit={onContextMenu} onDelete={onContextMenu} />
+      <HeaderIcons icons={icons} onEdit={onContextMenu} onDelete={onDelete ?? onContextMenu} />
       {isGroup ? (
         <>
           {groupLayout.propertyChip && <TextChip chip={groupLayout.propertyChip} />}
@@ -466,12 +476,11 @@ function EdgeHandle({ handle, onPointerDown, onPointerMove, onPointerUp }) {
 // Diagram for the item type's one pipeline -- condition/predicate text is the one place this diagram
 // does surface gate detail (see pipelineConditionText.js), since a Condition has no admin-authored
 // name of its own the way a marker or a block's title does; everywhere else stays the same shape-only
-// restraint StateMachineDiagramView's own comment describes. Editable only in the sense of
-// repositioning nodes (see the Edit/Save/Cancel bar below and MarkerPipelineViewModel's drag
-// handlers) -- no click-to-select, no editing the pipeline's own structure yet. No name/title shown
-// -- a pipeline has none; it's identified by its item type, which is already this whole tab's own
-// heading.
-function MarkerPipelineDiagram({ pipelineView, itemTypeId, saveLayout, initialView, onViewChange }) {
+// restraint StateMachineDiagramView's own comment describes. `vm` is its view model
+// (useMarkerPipelineViewModel): read-only on the Access Markers tab; in the editor dialog, editable
+// in the sense of repositioning nodes and edge bends -- no editing the pipeline's own structure yet.
+// No name/title shown -- a pipeline has none; it's identified by its item type.
+export function MarkerPipelineDiagram({ vm }) {
   const {
     layout,
     blocks,
@@ -487,11 +496,10 @@ function MarkerPipelineDiagram({ pipelineView, itemTypeId, saveLayout, initialVi
     onBlockContextMenu,
     closeContextMenu,
     isEditing,
-    isSaving,
-    saveError,
-    startEditing,
-    saveEditing,
-    cancelEditing,
+    isNodeSelected,
+    pipeline,
+    problems,
+    removeNode,
     onNodePointerDown,
     onNodePointerMove,
     onNodePointerUp,
@@ -499,7 +507,7 @@ function MarkerPipelineDiagram({ pipelineView, itemTypeId, saveLayout, initialVi
     onEdgeHandlePointerMove,
     onEdgeHandlePointerUp,
     draggingEdgeKey,
-  } = useMarkerPipelineViewModel(pipelineView, itemTypeId, saveLayout, initialView, onViewChange)
+  } = vm
 
   // An SVG viewBox is an infinite-canvas window into the diagram's fixed coordinate space: (x, y)
   // is its top-left corner, (width/zoom, height/zoom) is how much of the diagram it shows. Panning
@@ -532,11 +540,12 @@ function MarkerPipelineDiagram({ pipelineView, itemTypeId, saveLayout, initialVi
               rect={layout.rects.get(start.id)}
               kind="START"
               editable={isEditing}
+              selected={isNodeSelected(start.id)}
               onPointerDown={(event) => onNodePointerDown(event, start.id)}
               onPointerMove={onNodePointerMove}
               onPointerUp={onNodePointerUp}
             />
-            {pipelineView.pipeline.carrierBlocks.map((block) => {
+            {pipeline.carrierBlocks.map((block) => {
               const label = blocks.get(block.id)
               const Node = nodeComponentFor(label)
               return (
@@ -545,6 +554,9 @@ function MarkerPipelineDiagram({ pipelineView, itemTypeId, saveLayout, initialVi
                   rect={layout.rects.get(block.id)}
                   label={label}
                   editable={isEditing}
+                  selected={isNodeSelected(block.id)}
+                  invalid={problems.has(block.id)}
+                  onDelete={() => removeNode(block.id)}
                   onContextMenu={(event) => onBlockContextMenu(event, block.id)}
                   onPointerDown={(event) => onNodePointerDown(event, block.id)}
                   onPointerMove={onNodePointerMove}
@@ -556,6 +568,7 @@ function MarkerPipelineDiagram({ pipelineView, itemTypeId, saveLayout, initialVi
               rect={layout.rects.get(end.id)}
               kind="END"
               editable={isEditing}
+              selected={isNodeSelected(end.id)}
               onPointerDown={(event) => onNodePointerDown(event, end.id)}
               onPointerMove={onNodePointerMove}
               onPointerUp={onNodePointerUp}
@@ -567,6 +580,9 @@ function MarkerPipelineDiagram({ pipelineView, itemTypeId, saveLayout, initialVi
                 node={node}
                 description={signalDescriptions.get(node.id)}
                 editable={isEditing}
+                selected={isNodeSelected(node.id)}
+                invalid={problems.has(node.id)}
+                onDelete={() => removeNode(node.id)}
                 onContextMenu={(event) => onBlockContextMenu(event, node.id)}
                 onPointerDown={(event) => onNodePointerDown(event, node.id)}
                 onPointerMove={onNodePointerMove}
@@ -640,26 +656,6 @@ function MarkerPipelineDiagram({ pipelineView, itemTypeId, saveLayout, initialVi
           </div>
         </>
       )}
-      {/* Plain HTML, same reasoning as the context menu above: floats over the canvas, fixed to the
-          container rather than the diagram, so panning/zooming never moves or scales it.
-          stopPropagation on pointerdown for the same reason as the context menu above: without it,
-          the container's own onPointerDown (pan-start) fires first on the way up, calling
-          preventDefault()/setPointerCapture() before this button's click is ever synthesized -- which
-          suppresses the click in some browsers/input paths even though hit-testing alone would have
-          landed on the button correctly. */}
-      <div className="mp-edit-bar" onPointerDown={(event) => event.stopPropagation()}>
-        {saveError && <span className="mp-edit-error">{saveError}</span>}
-        {isEditing ? (
-          <>
-            <Button variant="secondary" onClick={cancelEditing} disabled={isSaving}>Cancel</Button>
-            <Button variant="primary" onClick={saveEditing} disabled={isSaving}>
-              {isSaving ? 'Saving…' : 'Save'}
-            </Button>
-          </>
-        ) : (
-          <Button variant="primary" onClick={startEditing}>Edit</Button>
-        )}
-      </div>
     </div>
   )
 }
@@ -670,8 +666,108 @@ function nodeComponentFor(label) {
   return CarrierBlockNode
 }
 
-function MarkerPipelineView({ itemTypeId, initialView, onViewChange }) {
+// Palette icons: a carrier block, and a condition.
+const swatch = (className) => (
+  <svg aria-hidden="true" viewBox="0 0 16 16" width="16" height="16" className={className}>
+    <rect x="2" y="3" width="12" height="10" rx="1" />
+  </svg>
+)
+const ACTION_ICON = (
+  <svg aria-hidden="true" viewBox="0 0 20 20" width="20" height="20" className="mp-palette-action">
+    <rect x="2" y="4" width="16" height="12" rx="1.5" />
+    <path d="M6 10h8M11 7l3 3-3 3" />
+  </svg>
+)
+const CONDITION_ICON = (
+  <svg aria-hidden="true" viewBox="0 0 20 20" width="20" height="20" className="mp-palette-condition">
+    <path d="M10 2l8 8-8 8-8-8z" />
+    <path d="M8 8.5a2 2 0 1 1 2.5 1.9c-.4.2-.5.5-.5.9v.4M10 13.6v.1" />
+  </svg>
+)
+
+// What the marker decision editor's palette adds: the carrier blocks and conditions it supports.
+const PALETTE = [
+  {
+    id: 'actions',
+    label: 'Actions',
+    icon: ACTION_ICON,
+    items: [
+      { id: 'ADD_MARKERS', label: 'Add markers', icon: swatch('mp-palette-swatch-action'), description: 'Gives an item these markers, when its gate allows.' },
+      { id: 'REMOVE_MARKERS', label: 'Remove markers', icon: swatch('mp-palette-swatch-action'), description: 'Takes these markers away from an item, when its gate allows.' },
+      { id: 'SET_MARKERS', label: 'Set markers', icon: swatch('mp-palette-swatch-action'), description: "Replaces an item's markers with exactly these." },
+      { id: 'FILTER', label: 'Filter', icon: swatch('mp-palette-swatch-action'), description: 'Lets items through only when a condition holds.' },
+      { id: 'SELECT', label: 'Select', icon: swatch('mp-palette-swatch-action'), description: 'Gives each item the markers of the row whose condition it meets.' },
+    ],
+  },
+  {
+    id: 'conditions',
+    label: 'Conditions',
+    icon: CONDITION_ICON,
+    items: [
+      { id: 'CONDITION', label: 'Condition', icon: swatch('mp-palette-swatch-condition'), description: "One test, on a property of the item or of something it's linked to." },
+      { id: 'CONDITION_GROUP', label: 'Condition group', icon: swatch('mp-palette-swatch-condition'), description: 'Several tests on one property, each with its own outcome -- true and false, for example.' },
+      { id: 'COUNTED', label: 'Counting condition', icon: swatch('mp-palette-swatch-condition'), description: 'Counts the linked items that pass a test, and compares the count.' },
+      { id: 'TOTALITY', label: 'All / any / none of', icon: swatch('mp-palette-swatch-condition'), description: 'Combines several tests into one: all of them, any of them, or none.' },
+    ],
+  },
+]
+
+function ReadOnlyDiagram({ pipelineView, itemTypeId, initialView, onViewChange }) {
+  const vm = useMarkerPipelineViewModel(pipelineView, itemTypeId, null, initialView, onViewChange)
+  return <MarkerPipelineDiagram vm={vm} />
+}
+
+// Editing the pipeline in a dialog over the tab, like the state machine editor: arranging its diagram,
+// and adding and deleting blocks from the palette, with the selected block's details beside it. Save
+// keeps the arrangement; Cancel (or Escape) drops everything. Added or deleted blocks can't be saved
+// yet.
+function MarkerPipelineEditDialog({ pipelineView, itemTypeId, itemTypeName, saveLayout, onClose }) {
+  const vm = useMarkerPipelineViewModel(pipelineView, itemTypeId, saveLayout, null, undefined, { editable: true })
+  const inspector = useCollapsiblePanel(true)
+
+  async function save() {
+    if (await vm.saveEditing()) onClose()
+  }
+
+  return (
+    <Dialog
+      title={
+        <>
+          Edit marker decision <strong>{itemTypeName}</strong>
+        </>
+      }
+      size="large"
+      onCancel={onClose}
+      actions={
+        <>
+          {vm.saveError && <span className="mp-edit-error">{vm.saveError}</span>}
+          {!vm.saveError && vm.structureChanged && (
+            <span className="mp-edit-note">Added and deleted blocks can't be saved yet.</span>
+          )}
+          <Button variant="ghost-secondary" icon="x" onClick={onClose} disabled={vm.isSaving}>
+            Cancel
+          </Button>
+          <Button variant="ghost-secondary" icon="check" onClick={save} disabled={vm.isSaving || vm.structureChanged}>
+            {vm.isSaving ? 'Saving…' : 'Save'}
+          </Button>
+        </>
+      }
+    >
+      <marker-pipeline-view className="marker-pipeline-editing">
+        <diagram-editor-body>
+          <DiagramPalette categories={PALETTE} targetRef={vm.containerRef} onPlace={(item, at) => vm.placeNode(item.id, at)} />
+          <MarkerPipelineDiagram vm={vm} />
+          <MarkerPipelineInspector pipeline={vm.pipeline} vm={vm} panel={inspector} />
+        </diagram-editor-body>
+      </marker-pipeline-view>
+    </Dialog>
+  )
+}
+
+// The item type's pipeline, read-only, with an Edit button opening it in MarkerPipelineEditDialog.
+function MarkerPipelineView({ itemTypeId, itemTypeName, initialView, onViewChange }) {
   const { status, pipeline, saveLayout } = usePipelineForItemType(itemTypeId)
+  const [editing, setEditing] = useState(false)
 
   if (status === 'loading') return null
   if (!pipeline) {
@@ -680,13 +776,21 @@ function MarkerPipelineView({ itemTypeId, initialView, onViewChange }) {
 
   return (
     <marker-pipeline-view>
-      <MarkerPipelineDiagram
-        pipelineView={pipeline}
-        itemTypeId={itemTypeId}
-        saveLayout={saveLayout}
-        initialView={initialView}
-        onViewChange={onViewChange}
-      />
+      <marker-pipeline-toolbar>
+        <Button variant="ghost-secondary" icon="edit" onClick={() => setEditing(true)}>
+          Edit
+        </Button>
+      </marker-pipeline-toolbar>
+      <ReadOnlyDiagram pipelineView={pipeline} itemTypeId={itemTypeId} initialView={initialView} onViewChange={onViewChange} />
+      {editing && (
+        <MarkerPipelineEditDialog
+          pipelineView={pipeline}
+          itemTypeId={itemTypeId}
+          itemTypeName={itemTypeName}
+          saveLayout={saveLayout}
+          onClose={() => setEditing(false)}
+        />
+      )}
     </marker-pipeline-view>
   )
 }

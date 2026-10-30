@@ -64,7 +64,9 @@ class MarkerDecisionPipelineAdminControllerIntegrationTest extends AbstractInteg
     @Test
     void createThenGet_roundTripsThePipelineAndLayoutThroughHttpJson() {
         Pipeline pipeline = simplePipeline(UUID.randomUUID());
-        PipelineLayout layout = new PipelineLayout(Map.of(pipeline.start().id(), new Point(10, 20), pipeline.end().id(), new Point(300, 20)), Map.of());
+        // A condition group has no id; the editor keys its box "group-<first condition id>".
+        PipelineLayout layout = new PipelineLayout(Map.of(pipeline.start().id().toString(), new Point(10, 20),
+                pipeline.end().id().toString(), new Point(300, 20), "group-" + UUID.randomUUID(), new Point(150, 80)), Map.of());
 
         PipelineView created = webTestClient.post().uri("/api/admin/marker-decision-pipelines")
                 .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com"))
@@ -197,7 +199,7 @@ class MarkerDecisionPipelineAdminControllerIntegrationTest extends AbstractInteg
                 .returnResult().getResponseBody();
 
         try {
-            PipelineLayout newLayout = new PipelineLayout(Map.of(pipeline.start().id(), new Point(5, 5)), Map.of());
+            PipelineLayout newLayout = new PipelineLayout(Map.of(pipeline.start().id().toString(), new Point(5, 5)), Map.of());
             PipelineView updated = webTestClient.put().uri("/api/admin/marker-decision-pipelines/{id}", created.id())
                     .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com"))
                     .bodyValue(new UpdatePipelineRequest(pipeline, false, newLayout))

@@ -1,12 +1,13 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useCollapsiblePanel } from '../../../../controls/collapsible-panel/useCollapsiblePanel'
 import { dragLineEnd } from '../../../../controls/diagram/lineEnds'
 import { moveEnd, moveSegment } from '../../../../controls/diagram/orthogonalRoutes'
 import { startDiagramDrag } from '../../../../controls/diagram/startDiagramDrag'
+import { useDiagramSelection } from '../../../../controls/diagram/useDiagramSelection'
 import { useDiagramView } from '../../../../controls/diagram/useDiagramView'
 import { applySchemaMutations } from '../../../../global/delegate/SchemaDelegate'
 import { reload as reloadSchema } from '../../../../global/model/SchemaCache'
-import { useUndoable } from '../../../../global/useUndoable'
+import { useUndoable, useUndoShortcuts } from '../../../../global/useUndoable'
 import { layoutStateMachine, STATE_BUTTON_INSET, stateBox } from './stateMachineDiagram'
 import * as drafts from './stateMachineDraft'
 import { applyEdits, canMoveEnd, editedFields, nameProblems, transitionEnds } from './stateMachineEdits'
@@ -20,9 +21,10 @@ const PENDING_TRANSITION = 'pending-transition'
 
 // A name not already in `taken`: `base`, or `base 2`, `base 3`...
 function distinctName(base, taken) {
-  let name = base
-  for (let n = 2; taken.has(name); n++) name = `${base} ${n}`
-  return name
+  const nameFor = (n) => (n === 1 ? base : `${base} ${n}`)
+  let n = 1
+  while (taken.has(nameFor(n))) n++
+  return nameFor(n)
 }
 
 // Editing a machine: its name and description; its states and transitions -- adding, deleting,
@@ -38,7 +40,7 @@ export function useStateMachineEditorViewModel(machine, onClose) {
   // A transition end being dragged: { edgeKey, end, nodeId (null while it's loose), point,
   // lineLayout }, and `pending` while it's a new transition being drawn.
   const [endDrag, setEndDrag] = useState(null)
-  const [selection, setSelection] = useState(null)
+  const selection = useDiagramSelection()
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState(null)
 
@@ -49,21 +51,7 @@ export function useStateMachineEditorViewModel(machine, onClose) {
   const layout = layoutStateMachine(edited, draft.positions, ...withEndDrag(draft.edgeLayouts, draft.endpoints, endDrag))
   const canvas = useDiagramView(layout.bounds, { interactive: true })
 
-  const { undo, redo } = history
-  useEffect(() => {
-    function onKeyDown(event) {
-      if (!(event.metaKey || event.ctrlKey)) return
-      // A text field has its own undo.
-      if (event.target.closest?.('input, textarea, [contenteditable="true"]')) return
-      const key = event.key.toLowerCase()
-      if (key === 'z' && !event.shiftKey) undo()
-      else if ((key === 'z' && event.shiftKey) || key === 'y') redo()
-      else return
-      event.preventDefault()
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [undo, redo])
+  useUndoShortcuts(history)
 
   const transitions = () => edited.states.flatMap((s) => s.transitions)
 
@@ -74,23 +62,23 @@ export function useStateMachineEditorViewModel(machine, onClose) {
     const { x, y, zoom } = canvas.view
     const position = { x: snap(x + canvas.view.width / zoom / 2 - width / 2), y: snap(y + canvas.view.height / zoom / 2 - height / 2) }
     history.change((d) => drafts.addState(d, { name }, position))
-    setSelection({ kind: 'state', id: `new-state-${draft.nextRef}` })
+    selection.select('state', `new-state-${draft.nextRef}`)
   }
 
   function deleteState(stateId) {
     history.change((d) => drafts.deleteState(d, machine, stateId))
-    setSelection(null)
+    selection.clear()
   }
 
   function deleteTransition(transitionId) {
     history.change((d) => drafts.deleteTransition(d, transitionId))
-    setSelection(null)
+    selection.clear()
   }
 
   function onStatePointerDown(event, stateId) {
     if (!canvas.view) return
     const start = layout.rects.get(stateId)
-    setSelection({ kind: 'state', id: stateId })
+    selection.select('state', stateId)
     const gesture = history.startGesture()
     startDiagramDrag(
       event,
@@ -104,7 +92,7 @@ export function useStateMachineEditorViewModel(machine, onClose) {
     if (!canvas.view) return
     const route = layout.routes.get(edgeKey)
     const start = segment.a[segment.axis]
-    setSelection({ kind: 'transition', id: edgeKey })
+    selection.select('transition', edgeKey)
     const gesture = history.startGesture()
     startDiagramDrag(
       event,
@@ -148,7 +136,7 @@ export function useStateMachineEditorViewModel(machine, onClose) {
     const originalId = end === 'from' ? own.fromId : own.toId
     const transition = transitions().find((t) => t.id === edgeKey)
     const otherEnd = end === 'from' ? 'to' : 'from'
-    setSelection({ kind: 'transition', id: edgeKey })
+    selection.select('transition', edgeKey)
     dragTransitionEnd(event, {
       edgeKey,
       end,
@@ -183,7 +171,7 @@ export function useStateMachineEditorViewModel(machine, onClose) {
       onDrop: ({ nodeId, lineLayout }) => {
         const name = distinctName('New transition', new Set(transitions().map((t) => t.name.trim())))
         history.change((d) => drafts.addTransition(d, stateId, nodeId, name, lineLayout))
-        setSelection({ kind: 'transition', id: `new-transition-${draft.nextRef}` })
+        selection.select('transition', `new-transition-${draft.nextRef}`)
       },
     })
   }
@@ -237,8 +225,8 @@ export function useStateMachineEditorViewModel(machine, onClose) {
     save,
     cancel: onClose,
     targetStateId: endDrag?.nodeId ?? null,
-    selection,
-    clearSelection: () => setSelection(null),
+    selection: selection.selection,
+    clearSelection: selection.clear,
     onStatePointerDown,
     onSegmentPointerDown,
     onEndPointerDown,

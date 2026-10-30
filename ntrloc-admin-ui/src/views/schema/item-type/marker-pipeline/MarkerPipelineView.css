@@ -27,6 +27,7 @@ marker-pipeline-view {
   --mp-predicate-magenta: #e06fd6;
   --mp-test-blue: #6fb8e8;
   --mp-text: #f3f4f6;
+  --mp-selected: #ecd596;
 
   display: flex;
   flex-direction: column;
@@ -420,19 +421,81 @@ marker-pipeline-view {
    diagram itself (plain HTML outside the SVG's viewBox, same technique as the context menu above),
    so panning/zooming never moves or scales it. Bottom-center, per the design discussion this was
    built from. */
-.mp-edit-bar {
-  position: absolute;
-  left: 50%;
-  bottom: 20px;
-  z-index: 1;
+
+/* The tab's Edit button, at the top right over the diagram. */
+marker-pipeline-toolbar {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  transform: translateX(-50%);
+  justify-content: flex-end;
+  padding: 8px 8px 0;
+}
+
+/* In the editor dialog, filling its body. */
+marker-pipeline-view.marker-pipeline-editing {
+  height: 100%;
+}
+
+/* A save error or note, at the left of the editor dialog's buttons. */
+.mp-edit-note {
+  align-self: center;
+  margin-right: auto;
+  color: var(--text);
+  font-size: 13px;
 }
 
 .mp-edit-error {
-  color: #f85149;
+  align-self: center;
+  margin-right: auto;
+  color: var(--danger);
   font-size: 13px;
-  white-space: nowrap;
+}
+
+/* A selected node, in the editor: outlined in the same amber the state machine editor uses. */
+.mp-node-selected .mp-node-rect,
+.mp-node-selected .mp-signal-node-rect,
+.mp-node-selected .mp-pseudo-ring {
+  stroke: var(--mp-selected);
+  stroke-width: 2;
+}
+
+.mp-node-selected .mp-pseudo-fill {
+  stroke: var(--mp-selected);
+  stroke-width: 2;
+}
+
+/* A node that still needs something (see the Details panel). */
+.mp-node-invalid .mp-node-rect,
+.mp-node-invalid .mp-signal-node-rect {
+  stroke: var(--danger);
+  stroke-dasharray: 4 3;
+}
+
+/* Palette icons. */
+.mp-palette-action rect,
+.mp-palette-action path,
+.mp-palette-condition path {
+  fill: none;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.mp-palette-action rect,
+.mp-palette-action path {
+  stroke: #e8952f;
+}
+
+.mp-palette-condition path {
+  stroke: #e8d44a;
+}
+
+.mp-palette-swatch-action rect {
+  fill: #000;
+  stroke: #e8952f;
+  stroke-width: 1.5;
+}
+
+.mp-palette-swatch-condition rect {
+  fill: #000;
+  stroke: #e8d44a;
+  stroke-width: 1.5;
 }

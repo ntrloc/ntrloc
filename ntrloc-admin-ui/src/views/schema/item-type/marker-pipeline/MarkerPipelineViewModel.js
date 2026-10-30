@@ -1,5 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useDiagramSelection } from '../../../../controls/diagram/useDiagramSelection'
 import { useMarkerModel } from '../../../../global/model/MarkerModel'
+import { useUndoable, useUndoShortcuts } from '../../../../global/useUndoable'
+import { addNode, deleteNode, initialDraft, nodeProblems } from './pipelineDraft'
 import { useSchemaSnapshot } from '../../../../global/model/SchemaCache'
 import { computeLayout, inlinedConditionGroupFor, signalNodes } from './markerPipelineLayout'
 import { describeCondition, describeConditionGroupSubject, describeConditionShort } from './pipelineConditionText'
@@ -69,6 +72,21 @@ function blockLabel(block, ctx) {
   }
 }
 
+// Each condition's pin, described in a line: its subject and its test, e.g. "product.owner = Clubs".
+function pinDescriptionsOf(schema, itemTypeId, pipeline) {
+  const descriptions = new Map()
+  for (const signal of pipeline.topLevelSignals ?? []) {
+    if (signal.type === 'CONDITION_GROUP') {
+      const subject = describeConditionGroupSubject(schema, itemTypeId, signal)
+      for (const c of signal.conditions) descriptions.set(c.id, `${subject} ${describeConditionShort(c.predicate)}`.trim())
+    } else {
+      const box = describeCondition(schema, itemTypeId, signal)
+      descriptions.set(signal.id, [box?.subjectText, box?.testText ?? box?.label].filter(Boolean).join(' '))
+    }
+  }
+  return descriptions
+}
+
 // A standalone signal node's own text -- a ConditionGroup's shared subject plus each member's own
 // short label (same shape blockLabel's SELECT case builds for an *inlined* group, since the content
 // is the same either way, just drawn in a different place), or a bare Condition's full description
@@ -83,7 +101,15 @@ function signalNodeLabel(schema, itemTypeId, signal) {
   return describeCondition(schema, itemTypeId, signal)
 }
 
-export function useMarkerPipelineViewModel(pipelineView, itemTypeId, saveLayout, initialView, onViewChange) {
+const NO_HISTORY = { undo: () => {}, redo: () => {} }
+// Roughly half a new block's size, to center it on where it's placed.
+const NEW_NODE_HALF_WIDTH = 80
+const NEW_NODE_HALF_HEIGHT = 30
+
+// editable: the diagram opens ready to edit (in the editor dialog), rather than read-only -- its
+// pipeline and layout then a draft (see pipelineDraft) with each change a step to undo (Cmd/Ctrl+Z)
+// or redo (Cmd/Ctrl+Shift+Z, or Ctrl+Y).
+export function useMarkerPipelineViewModel(pipelineView, itemTypeId, saveLayout, initialView, onViewChange, { editable = false } = {}) {
   const { getMarkersForItemType } = useMarkerModel()
   const markerNamesById = new Map(getMarkersForItemType(itemTypeId).map((m) => [m.id, m.name]))
   // Reaches past the shaped per-concept Models (ItemTypeModel/LinkModel/StateMachineModel) straight
@@ -92,26 +118,25 @@ export function useMarkerPipelineViewModel(pipelineView, itemTypeId, saveLayout,
   // those per-type-scoped Models can do; see pipelineConditionText.js's own comment.
   const schema = useSchemaSnapshot()
 
-  // savedPositions: whatever's currently persisted (from pipelineView.layout). draftPositions: a
-  // working copy an edit session drags around, null outside edit mode -- see startEditing/
-  // cancelEditing/saveEditing below. Layout is always computed off whichever of the two is live, so
-  // a drag in progress renders exactly like a saved one would, with no separate "preview" code path.
-  const savedPositions = new Map(Object.entries(pipelineView.layout?.positions ?? {}).map(([id, p]) => [id, p]))
-  const [draftPositions, setDraftPositions] = useState(null)
-  const effectivePositions = draftPositions ?? savedPositions
+  // The draft while editing; otherwise what's saved. Layout is always computed off whichever is live,
+  // so a drag in progress renders exactly like a saved one would.
+  const history = useUndoable(() => initialDraft(pipelineView))
+  useUndoShortcuts(editable ? history : NO_HISTORY)
+  const draft = editable ? history.present : null
+  const pipeline = draft?.pipeline ?? pipelineView.pipeline
+  const effectivePositions = draft?.positions ?? new Map(Object.entries(pipelineView.layout?.positions ?? {}))
+  const effectiveEdgeBends = draft?.edgeBends ?? new Map(Object.entries(pipelineView.layout?.edgeBends ?? {}))
+  // A changed structure (blocks added or deleted) can't be saved yet -- only the layout can.
+  const structureChanged = pipeline !== pipelineView.pipeline
+  const problems = editable ? nodeProblems(pipeline) : new Map()
 
-  // savedEdgeBends/draftEdgeBends/effectiveEdgeBends: same pattern as positions above, one admin-
-  // adjusted number per edge (see orthogonalPath) instead of one {x,y} per node.
-  const savedEdgeBends = new Map(Object.entries(pipelineView.layout?.edgeBends ?? {}))
-  const [draftEdgeBends, setDraftEdgeBends] = useState(null)
-  const effectiveEdgeBends = draftEdgeBends ?? savedEdgeBends
-
-  const blockCtx = { markerNamesById, pipeline: pipelineView.pipeline, schema, itemTypeId }
-  const blocks = new Map(pipelineView.pipeline.carrierBlocks.map((b) => [b.id, blockLabel(b, blockCtx)]))
-  const signalDescriptions = new Map(
-    signalNodes(pipelineView.pipeline).map((node) => [node.id, signalNodeLabel(schema, itemTypeId, node.signal)]),
-  )
-  const layout = computeLayout(pipelineView.pipeline, effectivePositions, blocks, signalDescriptions, effectiveEdgeBends)
+  const blockCtx = { markerNamesById, pipeline, schema, itemTypeId }
+  const blocks = new Map(pipeline.carrierBlocks.map((b) => [b.id, blockLabel(b, blockCtx)]))
+  const signalDescriptions = new Map(signalNodes(pipeline).map((node) => [node.id, signalNodeLabel(schema, itemTypeId, node.signal)]))
+  const layout = computeLayout(pipeline, effectivePositions, blocks, signalDescriptions, effectiveEdgeBends)
+  const pinDescriptions = pinDescriptionsOf(schema, itemTypeId, pipeline)
+  // What's selected while editing: a node (kind 'node'), by its id.
+  const selection = useDiagramSelection()
 
   // Pan/zoom -- an infinite canvas (viewBox window into the diagram's own coordinate space), not
   // native container scrolling. useStateMachineDiagramViewModel's own pan (scrollLeft/scrollTop
@@ -154,45 +179,21 @@ export function useMarkerPipelineViewModel(pipelineView, itemTypeId, saveLayout,
     setContextMenu(null)
   }
 
-  // Edit mode -- owned here rather than as local View state, same reasoning as pan/zoom and the
-  // context menu above: it's "how this diagram is currently being interacted with," not something
-  // the View has any logic of its own around.
-  const [isEditing, setIsEditing] = useState(false)
+  const isEditing = editable
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState(null)
   const nodeDragRef = useRef(null)
 
-  function startEditing() {
-    // A fresh clone, not a reference to savedPositions/savedEdgeBends -- dragging mutates this copy
-    // freely without ever touching what's actually persisted until Save.
-    setDraftPositions(new Map(savedPositions))
-    setDraftEdgeBends(new Map(savedEdgeBends))
-    setSaveError(null)
-    setIsEditing(true)
-  }
-
-  function cancelEditing() {
-    setDraftPositions(null)
-    setDraftEdgeBends(null)
-    setDraggingEdgeKey(null)
-    setSaveError(null)
-    setIsEditing(false)
-  }
-
+  // Whether it saved.
   async function saveEditing() {
     setIsSaving(true)
     setSaveError(null)
     try {
-      await saveLayout({
-        positions: Object.fromEntries(draftPositions ?? savedPositions),
-        edgeBends: Object.fromEntries(draftEdgeBends ?? savedEdgeBends),
-      })
-      setDraftPositions(null)
-      setDraftEdgeBends(null)
-      setDraggingEdgeKey(null)
-      setIsEditing(false)
+      await saveLayout({ positions: Object.fromEntries(draft.positions), edgeBends: Object.fromEntries(draft.edgeBends) })
+      return true
     } catch (error) {
       setSaveError(error.message || 'Failed to save pipeline layout.')
+      return false
     } finally {
       setIsSaving(false)
     }
@@ -208,28 +209,32 @@ export function useMarkerPipelineViewModel(pipelineView, itemTypeId, saveLayout,
     if (!view) return
     event.preventDefault()
     event.stopPropagation()
+    selection.select('node', nodeId)
     // Falls back to the node's current *rendered* position (effectivePositions might not have an
     // entry yet -- e.g. a node still sitting at its rank-based fallback spot, never dragged before)
     // rather than requiring draftPositions to already know about every node up front.
     const current = effectivePositions.get(nodeId) ?? layout.rects.get(nodeId)
-    nodeDragRef.current = { nodeId, startX: event.clientX, startY: event.clientY, startPos: { x: current.x, y: current.y } }
+    nodeDragRef.current = {
+      nodeId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startPos: { x: current.x, y: current.y },
+      gesture: history.startGesture(),
+    }
     event.currentTarget.setPointerCapture(event.pointerId)
   }
 
   function onNodePointerMove(event) {
     if (!nodeDragRef.current) return
     event.stopPropagation()
-    const { nodeId, startX, startY, startPos } = nodeDragRef.current
+    const { nodeId, startX, startY, startPos, gesture } = nodeDragRef.current
     const dx = (event.clientX - startX) / view.zoom
     const dy = (event.clientY - startY) / view.zoom
-    setDraftPositions((prev) => {
-      const next = new Map(prev)
-      next.set(nodeId, { x: startPos.x + dx, y: startPos.y + dy })
-      return next
-    })
+    gesture.update((d) => ({ ...d, positions: new Map(d.positions).set(nodeId, { x: startPos.x + dx, y: startPos.y + dy }) }))
   }
 
   function onNodePointerUp(event) {
+    nodeDragRef.current?.gesture.end()
     nodeDragRef.current = null
     event.stopPropagation()
     // Same guard as the canvas's own onPointerUp -- releasing a capture that was never set throws.
@@ -255,7 +260,14 @@ export function useMarkerPipelineViewModel(pipelineView, itemTypeId, saveLayout,
     event.preventDefault()
     event.stopPropagation()
     const current = effectiveEdgeBends.get(edgeKey) ?? (handle.axis === 'x' ? handle.x : handle.y)
-    edgeDragRef.current = { edgeKey, axis: handle.axis, startX: event.clientX, startY: event.clientY, startValue: current }
+    edgeDragRef.current = {
+      edgeKey,
+      axis: handle.axis,
+      startX: event.clientX,
+      startY: event.clientY,
+      startValue: current,
+      gesture: history.startGesture(),
+    }
     setDraggingEdgeKey(edgeKey)
     event.currentTarget.setPointerCapture(event.pointerId)
   }
@@ -263,16 +275,13 @@ export function useMarkerPipelineViewModel(pipelineView, itemTypeId, saveLayout,
   function onEdgeHandlePointerMove(event) {
     if (!edgeDragRef.current) return
     event.stopPropagation()
-    const { edgeKey, axis, startX, startY, startValue } = edgeDragRef.current
+    const { edgeKey, axis, startX, startY, startValue, gesture } = edgeDragRef.current
     const delta = axis === 'x' ? (event.clientX - startX) / view.zoom : (event.clientY - startY) / view.zoom
-    setDraftEdgeBends((prev) => {
-      const next = new Map(prev)
-      next.set(edgeKey, startValue + delta)
-      return next
-    })
+    gesture.update((d) => ({ ...d, edgeBends: new Map(d.edgeBends).set(edgeKey, startValue + delta) }))
   }
 
   function onEdgeHandlePointerUp(event) {
+    edgeDragRef.current?.gesture.end()
     edgeDragRef.current = null
     setDraggingEdgeKey(null)
     event.stopPropagation()
@@ -307,6 +316,8 @@ export function useMarkerPipelineViewModel(pipelineView, itemTypeId, saveLayout,
   function onPointerDown(event) {
     if (event.button !== 0) return // left button only
     if (!view) return // not measured yet -- nothing meaningful to drag relative to
+    // A press on the canvas itself (a node's or handle's own press never reaches here) deselects.
+    if (isEditing) selection.clear()
     // Without this, a real mouse drag starting over any of the diagram's <text> content begins a
     // native text-selection gesture instead of a pan -- harmless with synthetic PointerEvents (which
     // skip the browser's own gesture recognition entirely), only visible with an actual mouse
@@ -373,12 +384,34 @@ export function useMarkerPipelineViewModel(pipelineView, itemTypeId, saveLayout,
     return () => el.removeEventListener('wheel', handleWheel)
   }, [])
 
+  // A new block or condition from the palette, centered on where it was placed (screen
+  // coordinates), and selected.
+  function placeNode(kind, { clientX, clientY }) {
+    if (!view) return
+    const rect = containerRef.current.getBoundingClientRect()
+    const x = view.x + (clientX - rect.left) / view.zoom
+    const y = view.y + (clientY - rect.top) / view.zoom
+    const { nodeId } = addNode(history.present, kind, { x: 0, y: 0 })
+    history.change((d) => addNode(d, kind, { x: x - NEW_NODE_HALF_WIDTH, y: y - NEW_NODE_HALF_HEIGHT }).draft)
+    selection.select('node', nodeId)
+  }
+
+  function removeNode(nodeId) {
+    history.change((d) => deleteNode(d, nodeId))
+    if (selection.isSelected('node', nodeId)) selection.clear()
+  }
+
   return {
+    pipeline,
+    structureChanged,
+    problems,
+    placeNode,
+    removeNode,
     layout,
     blocks,
     signalDescriptions,
-    start: pipelineView.pipeline.start,
-    end: pipelineView.pipeline.end,
+    start: pipeline.start,
+    end: pipeline.end,
     containerRef,
     // null until measured -- the View renders nothing (not a wrongly-scaled frame) until then.
     // Building the viewBox string itself is left to the View (a one-line pure function of this plain
@@ -394,9 +427,7 @@ export function useMarkerPipelineViewModel(pipelineView, itemTypeId, saveLayout,
     isEditing,
     isSaving,
     saveError,
-    startEditing,
     saveEditing,
-    cancelEditing,
     onNodePointerDown,
     onNodePointerMove,
     onNodePointerUp,
@@ -404,5 +435,8 @@ export function useMarkerPipelineViewModel(pipelineView, itemTypeId, saveLayout,
     onEdgeHandlePointerMove,
     onEdgeHandlePointerUp,
     draggingEdgeKey,
+    pinDescriptions,
+    selection: selection.selection,
+    isNodeSelected: (nodeId) => selection.isSelected('node', nodeId),
   }
 }

@@ -17,17 +17,6 @@ state-machine-edit-fields {
   font-size: 13px;
 }
 
-state-machine-edit-body {
-  display: flex;
-  gap: 12px;
-  flex: 1;
-  min-height: 0;
-}
-
-state-machine-edit-body .diagram-canvas {
-  flex: 1;
-}
-
 /* In the action row: Add state on the left, then any save error, then Cancel and Save on the right. */
 .state-machine-add-state {
   margin-right: auto;
