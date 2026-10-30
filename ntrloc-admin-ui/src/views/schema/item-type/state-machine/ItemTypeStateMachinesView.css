@@ -1,0 +1,26 @@
+/* Laid out like the Structure tab's cards (item-type-structure-cards). */
+item-type-state-machines {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  height: 100%;
+  box-sizing: border-box;
+  overflow: auto;
+  padding: 20px;
+}
+
+/* A card is a flex item: without this, a wide diagram would widen it past the panel instead of
+   scrolling inside StateMachineDiagramView. */
+item-type-state-machines collapsible-card {
+  min-width: 0;
+  flex: none;
+}
+
+item-type-state-machines-toolbar {
+  display: flex;
+}
+
+.item-type-state-machine-description {
+  margin: 0 0 12px;
+  color: var(--text);
+}

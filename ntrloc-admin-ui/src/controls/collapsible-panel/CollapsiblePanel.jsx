@@ -24,14 +24,20 @@ function ChevronIcon({ direction }) {
 // like every other control here (locked/floating/the handlers all owned by the caller via that
 // hook) -- this component only ever renders what it's told.
 //
+// side: 'left' (the default) or 'right' -- which edge of its container it sits on, so which way it
+// collapses and its chevron points.
+//
 // title is optional: the nav Sidebar renders no header text of its own (just the toggle, with its
 // nav links as the body), while e.g. a marker list panel names itself. Either way the toggle
 // button sits in the same header row, pushed to the far side when a title is present.
-function CollapsiblePanel({ title, locked, collapsed, floating, onToggleLocked, onMouseEnter, onMouseLeave, children, ...rest }) {
+function CollapsiblePanel({ title, side = 'left', locked, collapsed, floating, onToggleLocked, onMouseEnter, onMouseLeave, children, ...rest }) {
+  // Points the way the panel would move: towards its edge to collapse, away from it to open.
+  const away = side === 'left' ? 'right' : 'left'
   return (
     <collapsible-panel
       data-collapsed={collapsed || undefined}
       data-floating={floating || undefined}
+      data-side={side}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
       {...rest}
@@ -46,7 +52,7 @@ function CollapsiblePanel({ title, locked, collapsed, floating, onToggleLocked, 
             title={locked ? 'Collapse' : 'Lock open'}
             aria-label={locked ? 'Collapse' : 'Lock open'}
           >
-            <ChevronIcon direction={locked ? 'left' : 'right'} />
+            <ChevronIcon direction={locked ? side : away} />
           </button>
         </collapsible-panel-header>
         {children}

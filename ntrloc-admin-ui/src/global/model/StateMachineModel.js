@@ -1,10 +1,7 @@
 import { useSchemaSnapshot } from './SchemaCache'
 
-// Shape only -- states/transitions as the diagram needs them (id/name/kind per state, and
-// id/toStateId/toStateName/name per transition). Deliberately drops entry/exit process ids and
-// guard conditions for now, matching the legacy diagram's own "shape only" design direction (see
-// ntrloc-state-machine-diagram.js's own comment) -- showing that extra detail is editor territory,
-// a separate, not-yet-built piece of work.
+// A machine as the admin UI draws and inspects it: its states and transitions with their details
+// (processes, marker decision, guard), and its saved diagram layout.
 function toItemTypeStateMachines(adminSchema, itemTypeId) {
   const item = adminSchema.items.find((it) => it.id === itemTypeId)
   if (!item?.stateMachines) return []
@@ -13,15 +10,23 @@ function toItemTypeStateMachines(adminSchema, itemTypeId) {
     id: machine.id,
     name: machine.name,
     description: machine.description,
+    layout: machine.layout ?? null,
     states: machine.states.map((state) => ({
       id: state.id,
       name: state.name,
       kind: state.kind,
+      description: state.description,
+      entryProcessId: state.entryProcessId,
+      exitProcessId: state.exitProcessId,
+      entryMarkerDecisionKey: state.entryMarkerDecisionKey,
       transitions: (state.transitions ?? []).map((transition) => ({
         id: transition.id,
         toStateId: transition.toStateId,
         toStateName: transition.toStateName,
         name: transition.name,
+        description: transition.description,
+        processId: transition.processId,
+        guardCondition: transition.guardCondition,
       })),
     })),
   }))

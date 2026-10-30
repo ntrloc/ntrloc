@@ -89,3 +89,15 @@ collapsible-panel[data-collapsed]:not([data-floating]) .collapsible-panel-title 
   background: var(--primary-bg);
   color: var(--text-h);
 }
+
+/* On the right: anchored to the right edge (so floating widens leftwards), with its border and its
+   toggle on the side facing the content. */
+collapsible-panel[data-side='right'] collapsible-panel-content {
+  left: auto;
+  border-right: none;
+  border-left: 1px solid var(--border);
+}
+
+collapsible-panel[data-side='right'] collapsible-panel-header {
+  flex-direction: row-reverse;
+}

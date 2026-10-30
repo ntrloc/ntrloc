@@ -128,20 +128,22 @@ item-type-link-view > property-tree {
 .item-type-link-arrow-forward::after {
   content: '';
   position: absolute;
-  right: -1px;
+  right: 0;
   top: 50%;
   transform: translateY(-50%);
   border: 5px solid transparent;
+  border-right-width: 0;
   border-left-color: var(--text);
 }
 
 .item-type-link-arrow-backward::before {
   content: '';
   position: absolute;
-  left: -1px;
+  left: 0;
   top: 50%;
   transform: translateY(-50%);
   border: 5px solid transparent;
+  border-left-width: 0;
   border-right-color: var(--text);
 }
 

@@ -128,6 +128,9 @@ CREATE TABLE schema_state_machine (
     item_definition_id UUID NOT NULL REFERENCES schema_item(id) ON DELETE CASCADE,
     name               TEXT NOT NULL,
     description        TEXT,
+    -- How its diagram is drawn: where its states sit and how its transitions run, as the editor saved
+    -- them. Never read by anything that runs the machine.
+    layout             JSONB,
     UNIQUE (item_definition_id, name)
 );
 

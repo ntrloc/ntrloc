@@ -1,0 +1,39 @@
+state-machine-edit-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  height: 100%;
+}
+
+state-machine-edit-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 300px) minmax(0, 520px);
+  gap: 28px;
+}
+
+.state-machine-edit-problem {
+  margin: -8px 0 0;
+  color: var(--danger);
+  font-size: 13px;
+}
+
+state-machine-edit-body {
+  display: flex;
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+}
+
+state-machine-edit-body .diagram-canvas {
+  flex: 1;
+}
+
+/* In the action row: Add state on the left, then any save error, then Cancel and Save on the right. */
+.state-machine-add-state {
+  margin-right: auto;
+}
+
+.state-machine-edit-error {
+  align-self: center;
+  color: var(--danger);
+}

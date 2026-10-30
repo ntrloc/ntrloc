@@ -150,7 +150,7 @@ public class SchemaManager {
         if (traitMutationApplier.apply(mutation, refIdToEntityId)) return;
         if (propertyMutationApplier.apply(mutation)) return;
         if (linkMutationApplier.apply(mutation, refIdToEntityId)) return;
-        if (stateMutationApplier.apply(mutation)) return;
+        if (stateMutationApplier.apply(mutation, refIdToEntityId)) return;
         if (controlledListMutationApplier.apply(mutation, refIdToListId, results)) return;
         if (mutation instanceof ReplaceControlledListMutation m) {
             var list = controlledListManager.getListForProperty(m.propertyId())

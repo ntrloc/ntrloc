@@ -21,6 +21,17 @@ dialog-view {
   box-shadow: var(--shadow);
 }
 
+dialog-view[data-size='large'] {
+  width: min(1400px, calc(100vw - 80px));
+  height: calc(100vh - 80px);
+  box-sizing: border-box;
+}
+
+dialog-view[data-size='large'] dialog-body {
+  flex: 1;
+  min-height: 0;
+}
+
 .dialog-title {
   margin: 0;
   color: var(--text-h);

@@ -38,7 +38,7 @@ public class SchemaRepository {
 
     public record GroupRow(UUID id, String name, String description, PropertyOwnerRef parent) {}
 
-    public record StateMachineRow(UUID id, UUID itemDefinitionId, String name, String description) {}
+    public record StateMachineRow(UUID id, UUID itemDefinitionId, String name, String description, String layout) {}
 
     public record StateRow(UUID id, UUID stateMachineId, String name, String description, String kind,
                            String entryProcessId, String exitProcessId, String entryMarkerDecisionKey) {}
@@ -499,12 +499,18 @@ public class SchemaRepository {
                 """)
                 .param("itemDefinitionId", itemDefinitionId).param("name", name).param(PARAM_DESCRIPTION, description)
                 .query(UUID.class).single();
-        return new StateMachineRow(id, itemDefinitionId, name, description);
+        return new StateMachineRow(id, itemDefinitionId, name, description, null);
     }
 
     public void updateStateMachine(UUID id, String name, String description) {
         jdbcClient.sql("UPDATE schema_state_machine SET name = :name, description = :description WHERE id = :id")
                 .param("id", id).param("name", name).param(PARAM_DESCRIPTION, description)
+                .update();
+    }
+
+    public void setStateMachineLayout(UUID id, JsonNode layout) {
+        jdbcClient.sql("UPDATE schema_state_machine SET layout = :layout::jsonb WHERE id = :id")
+                .param("id", id).param("layout", layout == null || layout.isNull() ? null : layout.toString())
                 .update();
     }
 
@@ -601,6 +607,12 @@ public class SchemaRepository {
                 .update();
     }
 
+    public void updateTransitionEndpoints(UUID id, UUID fromStateId, UUID toStateId) {
+        jdbcClient.sql("UPDATE schema_state_transition SET from_state_id = :fromStateId, to_state_id = :toStateId WHERE id = :id")
+                .param("id", id).param("fromStateId", fromStateId).param("toStateId", toStateId)
+                .update();
+    }
+
     public void deleteTransition(UUID id) {
         jdbcClient.sql("DELETE FROM schema_state_transition WHERE id = :id").param("id", id).update();
     }
@@ -682,7 +694,8 @@ public class SchemaRepository {
                 rs.getObject("id", UUID.class),
                 rs.getObject(COL_ITEM_DEFINITION_ID, UUID.class),
                 rs.getString("name"),
-                rs.getString(PARAM_DESCRIPTION)
+                rs.getString(PARAM_DESCRIPTION),
+                rs.getString("layout")
         );
     }
 
@@ -717,6 +730,15 @@ public class SchemaRepository {
             return MAPPER.readTree(json);
         } catch (JacksonException e) {
             throw new IllegalStateException("Failed to parse guard condition JSON: " + json, e);
+        }
+    }
+
+    public JsonNode parseLayout(String json) {
+        if (json == null) return null;
+        try {
+            return MAPPER.readTree(json);
+        } catch (JacksonException e) {
+            throw new IllegalStateException("Failed to parse layout JSON: " + json, e);
         }
     }
 

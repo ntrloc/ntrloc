@@ -41,6 +41,7 @@ import org.ntrloc.graph.db.partition.schema.definition.mutation.NewControlledLis
 import org.ntrloc.graph.db.partition.schema.definition.mutation.RemoveTraitMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.ReplaceControlledListMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.SetPropertyControlledListMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.SetStateMachineLayoutMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.UpdateControlledListMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.UpdateItemDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.UpdatePerspectiveDefinitionMutation;
@@ -52,11 +53,14 @@ import org.ntrloc.graph.db.partition.schema.definition.mutation.UpdateTransition
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyGroupView;
+import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminStateMachineView;
+import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminStateView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminTraitDefinitionView;
 import org.ntrloc.graph.db.partition.schema.repository.SchemaRepository;
 import org.ntrloc.graph.db.partition.security.TestPrincipals;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.util.List;
 import java.util.Map;
@@ -832,6 +836,132 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
                 .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
                 .stateMachines();
         assertThat(afterDelete).isNullOrEmpty();
+    }
+
+    @Test
+    void setStateMachineLayoutMutation_storesTheLayoutAsGiven_andNullClearsIt() {
+        UUID itemId = createItem("Item-" + UUID.randomUUID());
+        schemaManager.applyMutations(List.of(new CreateStateMachineMutation(itemId, "machine", null)));
+        var machine = onlyStateMachine(itemId);
+        assertThat(machine.layout()).isNull();
+
+        var layout = JsonMapper.builder().build().readTree("""
+                {"positions": {"%s": {"x": 40, "y": -24}}, "transitions": {}}
+                """.formatted(machine.states().get(0).id()));
+        schemaManager.applyMutations(List.of(new SetStateMachineLayoutMutation(machine.id(), layout)));
+        assertThat(onlyStateMachine(itemId).layout()).isEqualTo(layout);
+
+        schemaManager.applyMutations(List.of(new SetStateMachineLayoutMutation(machine.id(), null)));
+        assertThat(onlyStateMachine(itemId).layout()).isNull();
+    }
+
+    @Test
+    void aStateCreatedWithARefId_canBePlacedByItInTheSameBatch() {
+        UUID itemId = createItem("Item-" + UUID.randomUUID());
+        schemaManager.applyMutations(List.of(new CreateStateMachineMutation(itemId, "machine", null)));
+        UUID machineId = onlyStateMachine(itemId).id();
+
+        var layout = JsonMapper.builder().build().readTree("""
+                {"positions": {"new-state-1": {"x": 160, "y": 80}}, "transitions": {}}
+                """);
+        schemaManager.applyMutations(List.of(
+                new CreateStateMutation(machineId, "Drafted", null, null, null, null, "new-state-1"),
+                new SetStateMachineLayoutMutation(machineId, layout)));
+
+        var machine = onlyStateMachine(itemId);
+        UUID draftedId = machine.states().stream().filter(s -> s.name().equals("Drafted")).findFirst().orElseThrow().id();
+        assertThat(machine.layout().get("positions").propertyNames()).containsExactly(draftedId.toString());
+        assertThat(machine.layout().get("positions").get(draftedId.toString()).get("x").asInt()).isEqualTo(160);
+    }
+
+    // --- Moving a transition between states ---
+
+    // A machine with states A, B and C, and one transition, A -> B, named "go".
+    private record MovingTransition(UUID itemId, UUID machineId, UUID a, UUID b, UUID c, UUID transitionId) {}
+
+    private MovingTransition aMachineWithATransitionFromAToB() {
+        UUID itemId = createItem("Item-" + UUID.randomUUID());
+        schemaManager.applyMutations(List.of(new CreateStateMachineMutation(itemId, "machine", null)));
+        UUID machineId = onlyStateMachine(itemId).id();
+        schemaManager.applyMutations(List.of(
+                new CreateStateMutation(machineId, "A", null, null, null, null),
+                new CreateStateMutation(machineId, "B", null, null, null, null),
+                new CreateStateMutation(machineId, "C", null, null, null, null)));
+        UUID a = stateNamed(itemId, "A").id();
+        UUID b = stateNamed(itemId, "B").id();
+        schemaManager.applyMutations(List.of(new CreateTransitionMutation(a, b, "go", null, null, null)));
+        return new MovingTransition(itemId, machineId, a, b, stateNamed(itemId, "C").id(), stateNamed(itemId, "A").transitions().get(0).id());
+    }
+
+    private AdminStateView stateNamed(UUID itemId, String name) {
+        return onlyStateMachine(itemId).states().stream().filter(s -> s.name().equals(name)).findFirst().orElseThrow();
+    }
+
+    @Test
+    void movingATransitionsEnds_keepsTheSameTransition() {
+        var m = aMachineWithATransitionFromAToB();
+
+        schemaManager.applyMutations(List.of(
+                new UpdateTransitionMutation(m.transitionId(), "go", null, null, null, m.c().toString(), m.a().toString())));
+
+        assertThat(stateNamed(m.itemId(), "A").transitions()).isEmpty();
+        var moved = stateNamed(m.itemId(), "C").transitions();
+        assertThat(moved).singleElement().satisfies(t -> {
+            assertThat(t.id()).isEqualTo(m.transitionId());
+            assertThat(t.toStateId()).isEqualTo(m.a());
+        });
+    }
+
+    @Test
+    void aTransitionCanBeMovedToAStateCreatedInTheSameBatch() {
+        var m = aMachineWithATransitionFromAToB();
+
+        schemaManager.applyMutations(List.of(
+                new CreateStateMutation(m.machineId(), "D", null, null, null, null, "new-state-1"),
+                new UpdateTransitionMutation(m.transitionId(), "go", null, null, null, null, "new-state-1")));
+
+        assertThat(stateNamed(m.itemId(), "A").transitions().get(0).toStateId()).isEqualTo(stateNamed(m.itemId(), "D").id());
+    }
+
+    @Test
+    void movingATransition_keepsToTheStructuralRules() {
+        var m = aMachineWithATransitionFromAToB();
+        UUID start = onlyStateMachine(m.itemId()).states().stream().filter(s -> s.kind().equals("START")).findFirst().orElseThrow().id();
+        schemaManager.applyMutations(List.of(new CreateTransitionMutation(m.a(), m.c(), "other", null, null, null)));
+
+        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(
+                new UpdateTransitionMutation(m.transitionId(), "go", null, null, null, null, start.toString()))))
+                .hasMessageContaining("START pseudostate cannot have incoming transitions");
+        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(
+                new UpdateTransitionMutation(m.transitionId(), "go", null, null, null, null, m.c().toString()))))
+                .hasMessageContaining("There's already a transition from 'A' to 'C'");
+        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(
+                new UpdateTransitionMutation(m.transitionId(), "go", null, null, null, null, m.a().toString()))))
+                .hasMessageContaining("can't lead from a state back to itself");
+        assertThat(stateNamed(m.itemId(), "A").transitions()).extracting(t -> t.toStateId()).containsExactlyInAnyOrder(m.b(), m.c());
+    }
+
+    @Test
+    void aNewTransitionToANewState_isCreatedAndDrawnInOneBatch() {
+        var m = aMachineWithATransitionFromAToB();
+        var layout = JsonMapper.builder().build().readTree("""
+                {"positions": {}, "transitions": {"new-transition-1": {"to": {"side": "top", "at": 0.5}}}}
+                """);
+
+        schemaManager.applyMutations(List.of(
+                new CreateStateMutation(m.machineId(), "D", null, null, null, null, "new-state-1"),
+                new CreateTransitionMutation(m.b(), null, "onward", null, null, null, null, "new-state-1", "new-transition-1"),
+                new SetStateMachineLayoutMutation(m.machineId(), layout)));
+
+        var onward = stateNamed(m.itemId(), "B").transitions().get(0);
+        assertThat(onward.toStateId()).isEqualTo(stateNamed(m.itemId(), "D").id());
+        assertThat(onlyStateMachine(m.itemId()).layout().get("transitions").propertyNames()).containsExactly(onward.id().toString());
+    }
+
+    private AdminStateMachineView onlyStateMachine(UUID itemId) {
+        return schemaManager.getAdminSchema().items().stream()
+                .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
+                .stateMachines().get(0);
     }
 
     @Test

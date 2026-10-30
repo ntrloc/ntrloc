@@ -1,0 +1,65 @@
+/* State machine colors, read-only and editing alike. Dark ones as drawn in the design; light ones to
+   match. */
+.sm-diagram {
+  --sm-line: #6b7480;
+  --sm-state-border: #8a93a0;
+  --sm-state-fill: var(--code-bg);
+  --sm-selected: #c08a1e;
+  --diagram-edge: var(--sm-line);
+  --diagram-selected: var(--sm-selected);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) .sm-diagram {
+    --sm-line: #c6d1df;
+    --sm-state-border: #a0a9b9;
+    --sm-state-fill: #2d2f32;
+    --sm-selected: #ecd596;
+  }
+}
+
+:root[data-theme='dark'] .sm-diagram {
+  --sm-line: #c6d1df;
+  --sm-state-border: #a0a9b9;
+  --sm-state-fill: #2d2f32;
+  --sm-selected: #ecd596;
+}
+
+.sm-state-rect {
+  fill: var(--sm-state-fill);
+  stroke: var(--sm-state-border);
+  stroke-width: 1.5;
+}
+
+.sm-state-label {
+  fill: var(--text-h);
+  font-size: 14px;
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+
+.sm-pseudo-fill {
+  fill: var(--text-h);
+}
+
+.sm-pseudo-ring {
+  fill: none;
+  stroke: var(--text-h);
+  stroke-width: 1.5;
+}
+
+.sm-state-selected .sm-state-rect,
+.sm-state-selected .sm-pseudo-ring {
+  stroke: var(--sm-selected);
+}
+
+.sm-state-selected .sm-pseudo-fill {
+  stroke: var(--sm-selected);
+  stroke-width: 2;
+}
+
+.sm-invalid .sm-state-rect,
+.sm-invalid .diagram-edge-label-bg {
+  stroke: var(--danger);
+  stroke-width: 1.5;
+}

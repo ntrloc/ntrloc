@@ -800,30 +800,34 @@ class SchemaPage {
         card.findElement(By.cssSelector(".item-type-link-properties-toggle")).click();
     }
 
+    /** The State Machines tab's cards' titles: its machines' names. */
     List<String> stateMachineNames() {
-        return texts(content().findElements(By.cssSelector(".item-type-state-machine-name")));
+        return texts(content().findElements(By.cssSelector("item-type-state-machines collapsible-card .collapsible-card-title")));
     }
 
     /** The NORMAL states drawn in one machine's diagram (START/END are unlabeled dots). */
     List<String> stateNames(String machineName) {
-        return machine(machineName).findElements(By.cssSelector(".sm-node-label")).stream().map(SchemaPage::text).toList();
+        return texts(machine(machineName).findElements(By.cssSelector(".sm-state-label")));
     }
 
     int pseudoStateCount(String machineName) {
-        return machine(machineName).findElements(By.cssSelector(".sm-node-pseudo-fill")).size();
+        return machine(machineName).findElements(By.cssSelector(".sm-pseudo-fill")).size();
     }
 
     /** The transition labels drawn in one machine's diagram. */
     List<String> transitionNames(String machineName) {
-        return texts(machine(machineName).findElements(By.cssSelector(".sm-edge-label")));
+        return texts(machine(machineName).findElements(By.cssSelector(".diagram-edge-label")));
     }
 
-    int edgeCount(String machineName) {
-        return machine(machineName).findElements(By.cssSelector(".sm-edge")).size();
+    /** Opens a machine's editor from its card's Edit button. */
+    StateMachineEditorPage editStateMachine(String machineName) {
+        machine(machineName).findElement(By.xpath(".//collapsible-card-actions/button[.='Edit']")).click();
+        return StateMachineEditorPage.of(driver);
     }
 
     private WebElement machine(String name) {
-        return content().findElement(By.xpath(".//div[contains(@class,'item-type-state-machine')][h3[.='" + name + "']]"));
+        return content().findElement(By.xpath(
+                ".//item-type-state-machines/collapsible-card[.//span[contains(@class,'collapsible-card-title')][.='" + name + "']]"));
     }
 
     private <T> T settled(Supplier<T> read) {

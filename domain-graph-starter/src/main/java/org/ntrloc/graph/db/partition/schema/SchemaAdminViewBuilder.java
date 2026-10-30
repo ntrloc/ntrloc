@@ -228,7 +228,8 @@ class SchemaAdminViewBuilder {
                         state.kind(), state.entryProcessId(), state.exitProcessId(),
                         state.entryMarkerDecisionKey(), transitions);
             }).toList();
-            return new AdminStateMachineView(machine.id(), machine.name(), machine.description(), stateViews);
+            return new AdminStateMachineView(machine.id(), machine.name(), machine.description(), stateViews,
+                    repo.parseLayout(machine.layout()));
         }).toList();
     }
 

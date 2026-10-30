@@ -37,8 +37,9 @@ export function useSchemaViewModel() {
   // above): just lifted up here instead of TabView's own internal state, so it survives the detail
   // view unmounting when the accordion switches to a different section and back.
   const [itemTypeTabKey, setItemTypeTabKey] = useState('structure')
-  // Keys of the collapsed cards -- an item type's Structure cards and a trait's (prefixed "trait-")
-  // -- and of links and link properties toggled from how they start (see ItemTypeLinksView).
+  // Keys of the collapsed cards -- an item type's Structure cards, its state machines (prefixed
+  // "state-machine-") and a trait's (prefixed "trait-") -- and of links and link properties toggled
+  // from how they start (see ItemTypeLinksView).
   const [collapsedStructureCards, setCollapsedStructureCards] = useState(() => new Set())
   // Every item type's pending edits, kept here -- this view stays mounted (App.jsx's ViewGate) even
   // while another top-level view is showing, so edits survive browsing other item types, traits,

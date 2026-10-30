@@ -423,13 +423,27 @@ final class SchemaMutationValidation {
         }
     }
 
-    // Structural rules for a transition being created between fromStateId and toStateId, with the
-    // given (already-serialized) guard. Enforced here rather than the DB so the message is useful.
-    static void requireValidTransitionEndpoints(SchemaRepository repo, UUID fromStateId, UUID toStateId, String serializedGuard) {
+    // Structural rules for a transition between fromStateId and toStateId, with the given
+    // (already-serialized) guard: one being created, or `moving` (an existing one's id) being moved
+    // there. Enforced here rather than the DB so the message is useful.
+    static void requireValidTransitionEndpoints(SchemaRepository repo, UUID fromStateId, UUID toStateId, String serializedGuard,
+                                                UUID moving) {
         SchemaRepository.StateRow from = repo.findState(fromStateId)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown from-state: " + fromStateId));
         SchemaRepository.StateRow to = repo.findState(toStateId)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown to-state: " + toStateId));
+        if (!from.stateMachineId().equals(to.stateMachineId())) {
+            throw new IllegalArgumentException("A transition's states must belong to the same state machine");
+        }
+        if (fromStateId.equals(toStateId)) {
+            throw new IllegalArgumentException("A transition can't lead from a state back to itself");
+        }
+        List<SchemaRepository.TransitionRow> others = repo.getTransitionsByFromState().getOrDefault(fromStateId, List.of()).stream()
+                .filter(t -> !t.id().equals(moving))
+                .toList();
+        if (others.stream().anyMatch(t -> t.toStateId().equals(toStateId))) {
+            throw new IllegalArgumentException("There's already a transition from '" + from.name() + "' to '" + to.name() + "'");
+        }
         if (SchemaRepository.STATE_KIND_END.equals(from.kind())) {
             throw new IllegalArgumentException("The END pseudostate cannot have outgoing transitions");
         }
@@ -440,8 +454,7 @@ final class SchemaMutationValidation {
             if (serializedGuard != null) {
                 throw new IllegalArgumentException("The transition out of START cannot have a guard condition");
             }
-            boolean alreadyWired = !repo.getTransitionsByFromState().getOrDefault(fromStateId, List.of()).isEmpty();
-            if (alreadyWired) {
+            if (!others.isEmpty()) {
                 throw new IllegalArgumentException("START already has an outgoing transition");
             }
         }

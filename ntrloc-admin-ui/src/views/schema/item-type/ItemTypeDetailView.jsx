@@ -7,7 +7,7 @@ import TabView from '../../../controls/tabview/TabView'
 import PropertyTreeView from '../PropertyTreeView'
 import ItemTypeOverviewView from './ItemTypeOverviewView'
 import ItemTypeLinksView from './ItemTypeLinksView'
-import ItemTypeStateMachinesView from './ItemTypeStateMachinesView'
+import ItemTypeStateMachinesView from './state-machine/ItemTypeStateMachinesView'
 import AccessMarkersView from './AccessMarkersView'
 import EditMessages from '../EditMessages'
 import StructureDialogs from './StructureDialogs'
@@ -106,7 +106,18 @@ function ItemTypeDetailView({
       ),
       padding: 0,
     },
-    { key: 'stateMachines', label: 'State Machines', view: <ItemTypeStateMachinesView itemTypeId={itemType.id} /> },
+    {
+      key: 'stateMachines',
+      label: 'State Machines',
+      view: (
+        <ItemTypeStateMachinesView
+          itemTypeId={itemType.id}
+          collapsed={collapsedStructureCards}
+          onToggleCollapsed={onToggleStructureCard}
+        />
+      ),
+      padding: 0,
+    },
     {
       key: 'accessMarkers',
       label: 'Access Markers',

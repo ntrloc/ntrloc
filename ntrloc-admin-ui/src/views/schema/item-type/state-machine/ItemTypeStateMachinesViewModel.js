@@ -1,4 +1,4 @@
-import { useStateMachineModel } from '../../../global/model/StateMachineModel'
+import { useStateMachineModel } from '../../../../global/model/StateMachineModel'
 
 // Alphabetical order is this view's own presentation concern -- StateMachineModel's accessor stays
 // raw, in whatever order the schema happened to list them.

@@ -218,10 +218,11 @@ class SchemaViewUiTest extends AbstractUiIntegrationTest {
         assertThat(schema.stateNames("Lifecycle")).containsExactlyInAnyOrder("Draft", "In review", "Published");
         assertThat(schema.pseudoStateCount("Lifecycle")).isEqualTo(2);
         assertThat(schema.transitionNames("Lifecycle"))
-                .containsExactlyInAnyOrder("Create", "Submit", "Revise", "Approve", "Reject", "Retract", "Retire");
+                .containsExactlyInAnyOrder("Create", "Submit", "Abandon", "Approve", "Reject", "Retract", "Retire");
 
         schema.selectItemType(PUBLICATION_TYPE);
-        assertThat(schema.tabText()).isEqualTo("No state machines yet.");
+        assertThat(schema.stateMachineNames()).isEmpty();
+        assertThat(schema.tabText()).contains("No state machines yet.");
     }
 
     @Test
@@ -320,7 +321,7 @@ class SchemaViewUiTest extends AbstractUiIntegrationTest {
         testData.createStateMachine(BOOK_TYPE, "Lifecycle", List.of("Draft", "In review", "Published"), List.of(
                 new Transition("__start__", "Draft", "Create"),
                 new Transition("Draft", "In review", "Submit"),
-                new Transition("Draft", "Draft", "Revise"),
+                new Transition("Draft", "__end__", "Abandon"),
                 new Transition("In review", "Published", "Approve"),
                 new Transition("In review", "Draft", "Reject"),
                 new Transition("Published", "Draft", "Retract"),
