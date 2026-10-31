@@ -216,11 +216,13 @@ export function deleteNode(draft, nodeId) {
 // { type: 'STEP_TO_STATE_MACHINE', stateMachineId }. Nothing past a property or a state machine.
 export function subjectSteps(context) {
   const steps = []
-  for (let step = context; step && step.type !== 'SELF'; step = step.next) {
-    const { next: _next, ...own } = step
-    steps.push(own)
-  }
+  for (let step = context; step && step.type !== 'SELF'; step = step.next) steps.push(without(step, 'next'))
   return steps
+}
+
+// An object without one of its fields.
+export function without(object, key) {
+  return Object.fromEntries(Object.entries(object).filter(([k]) => k !== key))
 }
 
 // The subject those steps make, back to the item itself (Self) at the end of the chain.
@@ -250,7 +252,7 @@ function withSubject(signal, subject, keeps) {
   const itself = !subject || subject.type === 'SELF'
   const refit = (c) => {
     if (!isLeaf(c.predicate) || (itself && c.predicate.subject)) return c
-    const { subject: _own, ...predicate } = c.predicate
+    const predicate = without(c.predicate, 'subject')
     return { ...c, predicate: predicate.type && keeps(predicate) ? predicate : null }
   }
   if (signal.type === 'CONDITION_GROUP') return { ...signal, subject, conditions: signal.conditions.map(refit) }
@@ -281,6 +283,17 @@ function testProblem(predicate) {
   return null
 }
 
+// What a carrier block still needs: markers, a condition in its "if", rows, something leading in.
+function blockProblems(pipeline, block, fedIds, conditionalIds) {
+  const hasIf = block.type === 'FILTER' || conditionalIds.has(block.id)
+  return [
+    block.markerIds?.length === 0 && 'Choose at least one marker.',
+    hasIf && gatePinsOf(pipeline, block.id).length === 0 && 'Connect a condition to its "if".',
+    block.type === 'SELECT' && block.adds.length === 0 && 'Add at least one row.',
+    !fedIds.has(block.id) && 'Connect something into it.',
+  ].filter(Boolean)
+}
+
 // What each node still needs before the pipeline can be saved, by node id: a list of messages.
 // testProblemOf(signal, condition): what's wrong with a condition's own test given its subject (a
 // value missing, or a test its subject can't have), if anything.
@@ -290,11 +303,7 @@ export function nodeProblems(pipeline, testProblemOf = () => null, conditionalId
   const add = (id, message) => problems.set(id, [...(problems.get(id) ?? []), message])
   const fedIds = new Set(pipeline.routes.flatMap((r) => r.inputPinIds))
   for (const block of pipeline.carrierBlocks) {
-    if (block.markerIds && block.markerIds.length === 0) add(block.id, 'Choose at least one marker.')
-    const ifUnconnected = block.type === 'FILTER' ? block.signal.conditionOutputPinIds.length === 0 : conditionalIds.has(block.id) && gatePinsOf(pipeline, block.id).length === 0
-    if (ifUnconnected) add(block.id, 'Connect a condition to its "if".')
-    if (block.type === 'SELECT' && block.adds.length === 0) add(block.id, 'Add at least one row.')
-    if (!fedIds.has(block.id)) add(block.id, 'Connect something into it.')
+    for (const message of blockProblems(pipeline, block, fedIds, conditionalIds)) add(block.id, message)
   }
   for (const signal of pipeline.topLevelSignals ?? []) {
     const conditions = signal.type === 'CONDITION_GROUP' ? signal.conditions : [signal]

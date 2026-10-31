@@ -93,33 +93,47 @@ function ValueField({ valueKind, end, value, onChange, fieldKey }) {
     const options = (end.machine?.states ?? []).filter((s) => s.kind !== 'START' && s.kind !== 'END').map((s) => ({ value: s.id, label: s.name }))
     return <Choice summary={options.find((o) => o.value === value)?.label ?? 'Choose a state'} options={options} value={value} onChange={onChange} />
   }
-  if (valueKind === 'number' || valueKind === 'count') {
-    return (
-      <input
-        className="input-control-field"
-        type="number"
-        step={valueKind === 'count' ? 1 : 'any'}
-        min={valueKind === 'count' ? 0 : undefined}
-        value={value ?? ''}
-        aria-label="Value"
-        onChange={(e) => typing(e.target.value === '' ? null : valueKind === 'count' ? Math.trunc(Number(e.target.value)) : Number(e.target.value))}
-      />
-    )
-  }
-  if (valueKind === 'date' || valueKind === 'dateTime') {
-    const dated = valueKind === 'date'
-    const shown = value ? formatInstant(value).replace(' ', 'T').slice(0, dated ? 10 : 16) : ''
-    return (
-      <input
-        className="input-control-field"
-        type={dated ? 'date' : 'datetime-local'}
-        value={shown}
-        aria-label="Value"
-        onChange={(e) => typing(e.target.value === '' ? null : dated ? `${e.target.value}T00:00:00Z` : `${e.target.value}:00Z`)}
-      />
-    )
-  }
+  if (valueKind === 'number' || valueKind === 'count') return <NumberField whole={valueKind === 'count'} value={value} onChange={typing} />
+  if (valueKind === 'date' || valueKind === 'dateTime') return <DateField withTime={valueKind === 'dateTime'} value={value} onChange={typing} />
   return <input className="input-control-field" type="text" value={value ?? ''} aria-label="Value" onChange={(e) => typing(e.target.value)} />
+}
+
+// whole: a count, so no fractions and nothing below 0. Cleared, it's null.
+function NumberField({ whole, value, onChange }) {
+  function change(text) {
+    if (text === '') return onChange(null)
+    onChange(whole ? Math.trunc(Number(text)) : Number(text))
+  }
+  return (
+    <input
+      className="input-control-field"
+      type="number"
+      step={whole ? 1 : 'any'}
+      min={whole ? 0 : undefined}
+      value={value ?? ''}
+      aria-label="Value"
+      onChange={(e) => change(e.target.value)}
+    />
+  )
+}
+
+// A date's instant is midnight UTC that day; a date-time's is taken as UTC. Cleared, it's null.
+function DateField({ withTime, value, onChange }) {
+  const length = withTime ? 16 : 10
+  const shown = value ? formatInstant(value).replace(' ', 'T').slice(0, length) : ''
+  function change(text) {
+    if (text === '') return onChange(null)
+    onChange(withTime ? `${text}:00Z` : `${text}T00:00:00Z`)
+  }
+  return (
+    <input
+      className="input-control-field"
+      type={withTime ? 'datetime-local' : 'date'}
+      value={shown}
+      aria-label="Value"
+      onChange={(e) => change(e.target.value)}
+    />
+  )
 }
 
 export default TestPicker

@@ -353,6 +353,7 @@ marker-pipeline-view {
   fill: none;
   stroke: transparent;
   stroke-width: 14;
+  cursor: pointer;
 }
 
 /* An edge's own single adjustable bend -- only rendered while the diagram is in edit mode (see
@@ -506,11 +507,6 @@ marker-pipeline-view.marker-pipeline-editing {
   fill: #000;
   stroke: #e8d44a;
   stroke-width: 1.5;
-}
-
-/* A connection's grab area while editing: wide, invisible, along its whole length. */
-.mp-edge-hit {
-  cursor: pointer;
 }
 
 /* Where a new connection can be drawn from: an empty output pin's ring, shown on hover. */

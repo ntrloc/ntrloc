@@ -24,7 +24,7 @@ function SubjectPicker({ name = 'Subject', schema, itemTypeId, subject, counting
   const rows = [itemTypeId]
   for (const step of steps) {
     if (step.type !== 'STEP_TO_ITEM') break
-    rows.push(linksOf(schema, rows[rows.length - 1]).find((l) => l.id === step.linkPerspectiveId)?.targetItemTypeId ?? null)
+    rows.push(linksOf(schema, rows.at(-1)).find((l) => l.id === step.linkPerspectiveId)?.targetItemTypeId ?? null)
   }
 
   function choose(row, value) {
@@ -48,7 +48,7 @@ function SubjectPicker({ name = 'Subject', schema, itemTypeId, subject, counting
         const step = steps[row]
         const value = step ? valueOf(step) : ITSELF
         return (
-          <subject-picker-row key={row}>
+          <subject-picker-row key={steps.slice(0, row).map(valueOf).join('/') || 'start'}>
             <PopoverButton summary={options.find((o) => o.value === value)?.label ?? (value === ITSELF ? 'Choose…' : 'Unknown')} disabled={!rowItemType}>
               {({ close }) => (
                 <OptionList

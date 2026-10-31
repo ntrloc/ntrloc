@@ -553,7 +553,9 @@ function placePredicateBox(box, x, y, width) {
 // sizing needs to know about it, not where this box is actually placed.
 // A bare condition's body content, top to bottom: its subject's pill, then its test's pill or box.
 function conditionContentHeight(description) {
-  const testHeight = description?.test ? TEXT_CHIP_HEIGHT : description?.box ? predicateBoxHeight(description.box) : 0
+  let testHeight = 0
+  if (description?.test) testHeight = TEXT_CHIP_HEIGHT
+  else if (description?.box) testHeight = predicateBoxHeight(description.box)
   const pieces = [description?.subjectLabel ? TEXT_CHIP_HEIGHT : 0, testHeight].filter(Boolean)
   return pieces.reduce((sum, h) => sum + h, 0) + Math.max(0, pieces.length - 1) * BOX_CONTENT_GAP
 }

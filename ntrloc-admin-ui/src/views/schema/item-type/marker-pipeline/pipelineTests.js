@@ -154,16 +154,28 @@ export function predicateFor(test, previous) {
   return predicate
 }
 
+// What a predicate's value is, by its type (see valueKind above): text, unless listed here.
+const VALUE_KINDS = {
+  NUMBER: 'number',
+  NUMBER_LIST_SUM: 'number',
+  NUMBER_LIST_AVG: 'number',
+  NUMBER_LIST_MIN: 'number',
+  NUMBER_LIST_MAX: 'number',
+  DATE: 'date',
+  DATE_LIST_MIN: 'date',
+  DATE_LIST_MAX: 'date',
+  STATE_EQUALS: 'state',
+}
+
+function valueKindOf(type) {
+  return type.endsWith('_SIZE') ? 'count' : (VALUE_KINDS[type] ?? 'text')
+}
+
 // Whether a value carries over between two tests: text to text, a number to a number, and so on.
 function sameValueKind(test, previous) {
   if (!previous?.type) return false
-  const kindOf = (p) => (['NUMBER', 'NUMBER_LIST_SUM', 'NUMBER_LIST_AVG', 'NUMBER_LIST_MIN', 'NUMBER_LIST_MAX'].includes(p.type) ? 'number'
-    : p.type.endsWith('_SIZE') ? 'count'
-    : ['DATE', 'DATE_LIST_MIN', 'DATE_LIST_MAX'].includes(p.type) ? 'date'
-    : p.type === 'STATE_EQUALS' ? 'state'
-    : 'text')
   const kind = { dateTime: 'date', listValue: 'text' }[test.valueKind] ?? test.valueKind
-  return kind === kindOf(previous)
+  return kind === valueKindOf(previous.type)
 }
 
 // What's missing from a test's values, if anything.
@@ -211,7 +223,10 @@ export function describeTest(predicate, stateName = (id) => id, onMachine = fals
   if (!predicate.operator) return (predicate.type ?? '').toLowerCase().replaceAll('_', ' ')
   const dated = predicate.type.startsWith('DATE') && !predicate.type.endsWith('_SIZE')
   const operator = operatorsFor(dated ? 'date' : 'number').find((o) => o.operator === predicate.operator)
-  const show = (v) => (v === null || v === undefined || v === '' ? '…' : dated ? formatInstant(v) : v)
+  const show = (v) => {
+    if (v === null || v === undefined || v === '') return '…'
+    return dated ? formatInstant(v) : v
+  }
   const comparison = predicate.operator === 'BETWEEN'
     ? `between ${show(predicate.value)} and ${show(predicate.valueTo)}`
     : `${operator?.symbol ?? predicate.operator} ${show(predicate.value)}`

@@ -22,6 +22,7 @@ import {
   setSubject,
   subjectOf,
   withPositionsFixed,
+  without,
 } from './pipelineDraft'
 import { subjectEnd, testOf, testsFor, testValueProblem } from './pipelineTests'
 import { useSchemaSnapshot } from '../../../../global/model/SchemaCache'
@@ -138,6 +139,39 @@ function signalNodeLabel(schema, itemTypeId, signal) {
   }
 }
 
+// What's drawn: the draft while editing, otherwise what's saved.
+function shownPipeline(pipelineView, draft) {
+  if (draft) return { pipeline: draft.pipeline, positions: draft.positions, edgeBends: draft.edgeBends }
+  return {
+    pipeline: pipelineView.pipeline,
+    positions: new Map(Object.entries(pipelineView.layout?.positions ?? {})),
+    edgeBends: new Map(Object.entries(pipelineView.layout?.edgeBends ?? {})),
+  }
+}
+
+// A connection whose end is being dragged (endDrag: { key, end, point }), drawn to where that end is
+// now: { movingEdge, points }, or nulls while nothing is.
+function draggedConnection(layout, endDrag) {
+  const movingEdge = endDrag ? [...layout.edges, ...layout.signalEdges].find((e) => e.key === endDrag.key) : null
+  if (!movingEdge) return { movingEdge: null, points: null }
+  const ends = [movingEdge.points[0], movingEdge.points.at(-1)]
+  if (endDrag.end === 'from') ends[0] = endDrag.point
+  else ends[1] = endDrag.point
+  return { movingEdge, points: orthogonalPath(ends[0], ends[1]).points }
+}
+
+// A dot marks a dragged line's moving end where no arrowhead does: a condition line's either end, a
+// carrier line's start; and a new condition line's end. { x, y, signal } or null.
+function dragEndDotOf(dragged, endDrag, newConnection, newConnectionPoints) {
+  const { movingEdge, points } = dragged
+  if (movingEdge && (movingEdge.pinId || endDrag.end === 'from')) {
+    const at = endDrag.end === 'from' ? points[0] : points.at(-1)
+    return { ...at, signal: Boolean(movingEdge.pinId) }
+  }
+  if (newConnection?.signal && newConnectionPoints) return { ...newConnectionPoints.at(-1), signal: true }
+  return null
+}
+
 const NO_HISTORY = { undo: () => {}, redo: () => {} }
 // How far (screen pixels) a press on Start's circle has to move to draw a connection, not select Start.
 const START_DRAG_THRESHOLD = 4
@@ -162,9 +196,7 @@ export function useMarkerPipelineViewModel(pipelineView, itemTypeId, savePipelin
   const history = useUndoable(() => initialDraft(pipelineView))
   useUndoShortcuts(editable ? history : NO_HISTORY)
   const draft = editable ? history.present : null
-  const pipeline = draft?.pipeline ?? pipelineView.pipeline
-  const effectivePositions = draft?.positions ?? new Map(Object.entries(pipelineView.layout?.positions ?? {}))
-  const effectiveEdgeBends = draft?.edgeBends ?? new Map(Object.entries(pipelineView.layout?.edgeBends ?? {}))
+  const { pipeline, positions: effectivePositions, edgeBends: effectiveEdgeBends } = shownPipeline(pipelineView, draft)
   // What a condition's test reads -- its own subject, if it has one, or the condition's (or group's) --
   // and so which tests it can be.
   const testSubjectOf = (signal, condition) => condition.predicate?.subject ?? subjectOf(signal)
@@ -490,36 +522,18 @@ export function useMarkerPipelineViewModel(pipelineView, itemTypeId, savePipelin
   // its own block, nor where the same output already leads); a condition connection's start to any
   // condition pin, its end to any gate (not one already reading that condition).
   function endCandidates(edge, end) {
-    const pins = new Map()
-    const put = (id, point) => pins.set(id, zeroRect(point))
-    if (edge.outputPinId) {
-      const feeds = (out) => pipeline.routes.find((r) => r.outputPinId === out)?.inputPinIds ?? []
-      if (end === 'from') {
-        for (const [id, point] of layout.outputPinPositions) {
-          if (!isCarrierOutput(id) || ownerOfOutput(id) === edge.targetId) continue
-          if (id !== edge.outputPinId && feeds(id).includes(edge.targetId)) continue
-          put(id, point)
-        }
-      } else {
-        for (const [id, point] of layout.inputPinPositions) {
-          if (id === pipeline.start.id || id === ownerOfOutput(edge.outputPinId)) continue
-          if (id !== edge.targetId && feeds(edge.outputPinId).includes(id)) continue
-          put(id, point)
-        }
-      }
-    } else if (end === 'from') {
-      for (const [id, point] of layout.outputPinPositions) {
-        if (!signalPins.has(id)) continue
-        if (id !== edge.pinId && gatePinsOf(pipeline, edge.ownerId).includes(id)) continue
-        put(id, point)
-      }
-    } else {
-      for (const [id, point] of layout.gateAnchors) {
-        if (id !== edge.ownerId && gatePinsOf(pipeline, id).includes(edge.pinId)) continue
-        put(id, point)
-      }
+    const feeds = (out) => pipeline.routes.find((r) => r.outputPinId === out)?.inputPinIds ?? []
+    const reads = (ownerId) => gatePinsOf(pipeline, ownerId)
+    // Each kind of end: where it may go, and whether a pin there will do.
+    const kinds = {
+      carrierFrom: [layout.outputPinPositions, (id) => isCarrierOutput(id) && ownerOfOutput(id) !== edge.targetId && (id === edge.outputPinId || !feeds(id).includes(edge.targetId))],
+      carrierTo: [layout.inputPinPositions, (id) => id !== pipeline.start.id && id !== ownerOfOutput(edge.outputPinId) && (id === edge.targetId || !feeds(edge.outputPinId).includes(id))],
+      signalFrom: [layout.outputPinPositions, (id) => signalPins.has(id) && (id === edge.pinId || !reads(edge.ownerId).includes(id))],
+      signalTo: [layout.gateAnchors, (id) => id === edge.ownerId || !reads(id).includes(edge.pinId)],
     }
-    return pins
+    const kind = `${edge.outputPinId ? 'carrier' : 'signal'}${end === 'from' ? 'From' : 'To'}`
+    const [positions, allowed] = kinds[kind]
+    return new Map([...positions].filter(([id]) => allowed(id)).map(([id, point]) => [id, zeroRect(point)]))
   }
 
   // Dragging a selected connection's end: on its pin while it's near it, then loose, following the
@@ -528,7 +542,8 @@ export function useMarkerPipelineViewModel(pipelineView, itemTypeId, savePipelin
   function onEdgeEndPointerDown(event, edge, end) {
     if (!view) return
     const isCarrier = Boolean(edge.outputPinId)
-    const originalId = isCarrier ? (end === 'from' ? edge.outputPinId : edge.targetId) : end === 'from' ? edge.pinId : edge.ownerId
+    const [fromId, toId] = isCarrier ? [edge.outputPinId, edge.targetId] : [edge.pinId, edge.ownerId]
+    const originalId = end === 'from' ? fromId : toId
     const start = end === 'from' ? edge.points[0] : edge.points[edge.points.length - 1]
     const pins = endCandidates(edge, end)
     let current = { nodeId: originalId }
@@ -647,22 +662,9 @@ export function useMarkerPipelineViewModel(pipelineView, itemTypeId, savePipelin
     ? [...layout.outputPinPositions].filter(([id]) => isCarrierOutput(id) && id !== pipeline.start.id && !connectedOutputs.has(id))
     : []
 
-  // The connection being dragged, drawn to where its end is now.
-  const movingEdge = endDrag ? [...layout.edges, ...layout.signalEdges].find((e) => e.key === endDrag.key) : null
-  let endDragPoints = null
-  if (movingEdge) {
-    const from = endDrag.end === 'from' ? endDrag.point : movingEdge.points[0]
-    const to = endDrag.end === 'to' ? endDrag.point : movingEdge.points[movingEdge.points.length - 1]
-    endDragPoints = orthogonalPath(from, to).points
-  }
-  // A dot marks a dragged line's moving end where no arrowhead does: a condition line's either end, a
-  // carrier line's start. { x, y, signal } or null.
-  let dragEndDot = null
-  if (movingEdge && endDragPoints && (movingEdge.pinId || endDrag.end === 'from')) {
-    dragEndDot = { ...(endDrag.end === 'from' ? endDragPoints[0] : endDragPoints.at(-1)), signal: Boolean(movingEdge.pinId) }
-  } else if (newConnection?.signal && newConnectionPoints) {
-    dragEndDot = { ...newConnectionPoints.at(-1), signal: true }
-  }
+  const dragged = draggedConnection(layout, endDrag)
+  const { movingEdge, points: endDragPoints } = dragged
+  const dragEndDot = dragEndDotOf(dragged, endDrag, newConnection, newConnectionPoints)
 
   // Whether a pin is drawn connected: while one end of a connection is moved, not by that end.
   const movedAway = (edge, end) => edge === movingEdge && endDrag.end === end
@@ -684,10 +686,10 @@ export function useMarkerPipelineViewModel(pipelineView, itemTypeId, savePipelin
   function setTestSubject(signal, condition, subject) {
     const own = subject && subject.type !== 'SELF' ? subject : null
     const tests = testsFor(subjectEnd(schema, itemTypeId, own ?? subjectOf(signal)), itemTypeId)
-    const { subject: _old, ...rest } = condition.predicate ?? {}
-    const kept = rest.type && testOf(rest, tests) ? rest : {}
-    const predicate = own ? { ...kept, subject: own } : kept.type ? kept : null
-    setConditionTest(condition.id, predicate)
+    const previous = condition.predicate
+    const kept = previous?.type && testOf(previous, tests) ? without(previous, 'subject') : null
+    if (own) setConditionTest(condition.id, { ...kept, subject: own })
+    else setConditionTest(condition.id, kept)
   }
 
   // key: typing into one of a test's values is one undo step, not one per keystroke.
