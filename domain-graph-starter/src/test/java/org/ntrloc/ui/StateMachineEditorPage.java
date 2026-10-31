@@ -16,7 +16,8 @@ import org.openqa.selenium.support.ui.WebDriverWait;
 
 /**
  * The state machine editor dialog: its name and description, the diagram (states, transitions and
- * the buttons on whichever is selected), the Details panel, and Add state, Cancel and Save. Pointer
+ * the buttons on whichever is selected), the Details panel, and Add state -- then Close, or once
+ * something has changed, Cancel and Save. Pointer
  * work -- selecting, dragging -- goes through real mouse actions, as the diagram reacts to pointer
  * events, not clicks.
  */
@@ -62,13 +63,13 @@ class StateMachineEditorPage {
 
     /** Replaces a field of what's selected, in the Details panel. */
     StateMachineEditorPage typeInDetails(String fieldLabel, String text) {
-        replaceText(dialog().findElement(By.xpath(".//sm-inspector-details" + field(fieldLabel))), text);
+        replaceText(dialog().findElement(By.xpath(".//diagram-inspector-details" + field(fieldLabel))), text);
         return this;
     }
 
     /** What's wrong with the selected thing's name, as Details shows it; empty if nothing is. */
     String detailsProblem() {
-        return texts(dialog().findElements(By.cssSelector(".sm-inspector-problem"))).stream().findFirst().orElse("");
+        return texts(dialog().findElements(By.cssSelector(".diagram-inspector-problem"))).stream().findFirst().orElse("");
     }
 
     StateMachineEditorPage addState() {
@@ -119,11 +120,35 @@ class StateMachineEditorPage {
     /** Saves, and waits for the editor to close. */
     void save() {
         button("Save").click();
-        await().until(ExpectedConditions.invisibilityOfElementLocated(By.cssSelector("state-machine-edit-dialog")));
+        awaitClosed();
     }
 
     void cancel() {
         button("Cancel").click();
+        awaitClosed();
+    }
+
+    void close() {
+        button("Close").click();
+        awaitClosed();
+    }
+
+    /** The buttons at the bottom right: Close, or Cancel and Save. */
+    List<String> closingButtons() {
+        return texts(dialog().findElements(By.xpath(".//dialog-actions//button[normalize-space(.)!='Add state']")));
+    }
+
+    /** Presses Escape -- which closes the editor only while there's nothing to lose. */
+    StateMachineEditorPage pressEscape() {
+        new Actions(driver).sendKeys(Keys.ESCAPE).perform();
+        return this;
+    }
+
+    boolean isOpen() {
+        return !driver.findElements(By.cssSelector("state-machine-edit-dialog")).isEmpty();
+    }
+
+    private void awaitClosed() {
         await().until(ExpectedConditions.invisibilityOfElementLocated(By.cssSelector("state-machine-edit-dialog")));
     }
 

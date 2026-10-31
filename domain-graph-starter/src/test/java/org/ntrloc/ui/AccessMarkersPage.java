@@ -7,6 +7,7 @@ import java.time.Duration;
 import java.util.List;
 
 import org.openqa.selenium.By;
+import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.Keys;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.WebElement;
@@ -17,7 +18,8 @@ import org.openqa.selenium.support.ui.WebDriverWait;
 
 /**
  * An item type's Access Markers tab in the Schema view: the marker list with its create/edit/delete
- * dialogs, and the item type's marker decision pipeline diagram with its layout editing.
+ * dialogs, and the item type's marker decision pipeline diagram -- read-only on the tab, edited in
+ * its editor dialog (Edit), which shows Close until something changes, then Cancel and Save.
  */
 class AccessMarkersPage {
 
@@ -25,6 +27,7 @@ class AccessMarkersPage {
     private static final By DIALOG = By.tagName("marker-dialog-view");
     private static final By DIAGRAM = By.cssSelector("svg.marker-pipeline-diagram-svg");
     private static final By CANVAS = By.cssSelector(".marker-pipeline-diagram-scroll");
+    private static final By EDITOR = By.cssSelector("dialog-view marker-pipeline-view.marker-pipeline-editing");
 
     private final WebDriver driver;
 
@@ -219,30 +222,128 @@ class AccessMarkersPage {
     }
 
     boolean isEditingLayout() {
-        return !editBar().findElements(By.xpath(".//button[.='Save']")).isEmpty();
+        return !driver.findElements(EDITOR).isEmpty();
     }
 
+    /** Opens the pipeline's editor dialog. */
     AccessMarkersPage editLayout() {
-        editBar().findElement(By.xpath(".//button[.='Edit']")).click();
+        driver.findElement(By.xpath("//marker-pipeline-toolbar//button[normalize-space(.)='Edit']")).click();
         await().until(d -> isEditingLayout());
+        awaitDiagram();
         return this;
     }
 
-    /** Saves, waiting for the save to finish: the Save button reads "Saving…" while the request is in flight. */
+    /** The editor's buttons, left to right: Close, or Cancel and Save. */
+    List<String> editorButtons() {
+        return texts(editorActions().findElements(By.tagName("button")));
+    }
+
+    /** Saves, waiting for the save to finish and the editor to close. */
     AccessMarkersPage saveLayout() {
-        editBar().findElement(By.xpath(".//button[.='Save']")).click();
-        await().until(d -> !editBar().findElements(By.xpath(".//button[.='Edit']")).isEmpty());
+        editorButton("Save").click();
+        await().until(d -> !isEditingLayout());
         return this;
     }
 
     String saveLayoutExpectingError() {
-        editBar().findElement(By.xpath(".//button[.='Save']")).click();
+        editorButton("Save").click();
         return text(await().until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector(".mp-edit-error"))));
     }
 
     AccessMarkersPage cancelLayout() {
-        editBar().findElement(By.xpath(".//button[.='Cancel']")).click();
+        editorButton("Cancel").click();
         await().until(d -> !isEditingLayout());
+        return this;
+    }
+
+    AccessMarkersPage closeEditor() {
+        editorButton("Close").click();
+        await().until(d -> !isEditingLayout());
+        return this;
+    }
+
+    /** Presses Escape in the editor -- which closes it only while there's nothing to lose. */
+    AccessMarkersPage pressEscapeInEditor() {
+        new Actions(driver).sendKeys(Keys.ESCAPE).perform();
+        return this;
+    }
+
+    AccessMarkersPage undo() {
+        new Actions(driver).keyDown(Keys.CONTROL).sendKeys("z").keyUp(Keys.CONTROL).perform();
+        return this;
+    }
+
+    /** Selects the first carrier connection, by pressing halfway along its line. */
+    AccessMarkersPage selectFirstConnection() {
+        // Where on screen the line's midpoint is, which only the browser knows; the press is a real one.
+        @SuppressWarnings("unchecked")
+        List<Number> at = (List<Number>) ((JavascriptExecutor) driver).executeScript("""
+                const path = arguments[0]
+                const p = path.getPointAtLength(path.getTotalLength() / 2)
+                const m = path.getScreenCTM()
+                return [p.x * m.a + m.e, p.y * m.d + m.f]
+                """, diagram().findElement(By.cssSelector(".mp-edge-hit")));
+        new Actions(driver).moveToLocation(at.get(0).intValue(), at.get(1).intValue()).click().perform();
+        await().until(d -> edgeHandleCount() == 1);
+        return this;
+    }
+
+    /** Waits for the editor's buttons to be these (see editorButtons). */
+    AccessMarkersPage awaitEditorButtons(String... labels) {
+        await().until(d -> editorButtons().equals(List.of(labels)));
+        return this;
+    }
+
+    // --- Building in the editor -----------------------------------------------------------------------
+
+    /**
+     * Drags an item from the editor's palette (hovering its category open) onto the canvas, at this
+     * fraction of the canvas's width and height. The new block or condition is selected.
+     */
+    AccessMarkersPage addFromPalette(String category, String item, double atX, double atY) {
+        WebElement editor = driver.findElement(EDITOR);
+        new Actions(driver).moveToElement(editor.findElement(By.cssSelector(".diagram-palette-category[aria-label='" + category + "']"))).perform();
+        WebElement entry = await().until(d -> editor.findElement(By.xpath(".//button[contains(@class,'diagram-palette-item')][normalize-space(.)='" + item + "']")));
+        WebElement canvas = editor.findElement(CANVAS);
+        int x = (int) (canvas.getRect().getWidth() * (atX - 0.5));
+        int y = (int) (canvas.getRect().getHeight() * (atY - 0.5));
+        new Actions(driver).clickAndHold(entry).moveByOffset(40, 40).moveToElement(canvas, x, y).release().perform();
+        return this;
+    }
+
+    /** Selects a block by pressing on its title. */
+    AccessMarkersPage selectBlock(String blockTitle) {
+        new Actions(driver).moveToElement(node(blockTitle).findElement(By.cssSelector(".mp-node-title"))).click().perform();
+        return this;
+    }
+
+    /** Chooses an option in one of the Details panel's pickers (Subject, Reads, Test), by its label. */
+    AccessMarkersPage chooseInDetails(String fieldLabel, String option) {
+        WebElement field = details().findElement(By.xpath(".//*[self::subject-picker or self::test-picker][span[contains(@class,'input-control-name')][.='"
+                + fieldLabel + "']]"));
+        field.findElement(By.cssSelector(".popover-button-trigger")).click();
+        await().until(d -> field.findElement(By.xpath(".//button[contains(@class,'option-list-option')][normalize-space(.)='" + option + "']"))).click();
+        return this;
+    }
+
+    /** Types the selected condition's test value. */
+    AccessMarkersPage typeTestValue(String value) {
+        details().findElement(By.cssSelector("test-picker input")).sendKeys(value);
+        return this;
+    }
+
+    /** Flips the selected block's Conditional switch. */
+    AccessMarkersPage toggleConditional() {
+        details().findElement(By.cssSelector("[role='switch']")).click();
+        return this;
+    }
+
+    /** Draws a connection from the (only) condition's pin to a block's "if". */
+    AccessMarkersPage connectConditionTo(String blockTitle) {
+        WebElement pin = diagram().findElement(By.xpath(".//*[local-name()='g'][contains(@class,'mp-node')][*[local-name()='text'][contains(@class,'mp-signal-node-title')]]"
+                + "//*[local-name()='g'][contains(@class,'mp-pin-signal')]"));
+        WebElement ifPin = node(blockTitle).findElement(By.cssSelector(".mp-pin-signal"));
+        new Actions(driver).moveToElement(pin).clickAndHold().moveByOffset(30, 0).moveToElement(ifPin).moveByOffset(1, 1).release().perform();
         return this;
     }
 
@@ -279,12 +380,22 @@ class AccessMarkersPage {
                 + blockTitle + "']]"));
     }
 
+    // The editor's diagram while it's open (the tab's is still behind it), otherwise the tab's.
     private WebElement diagram() {
-        return driver.findElement(DIAGRAM);
+        List<WebElement> editor = driver.findElements(EDITOR);
+        return editor.isEmpty() ? driver.findElement(DIAGRAM) : editor.getFirst().findElement(DIAGRAM);
     }
 
-    private WebElement editBar() {
-        return driver.findElement(By.cssSelector(".mp-edit-bar"));
+    private WebElement details() {
+        return driver.findElement(EDITOR).findElement(By.tagName("diagram-inspector-details"));
+    }
+
+    private WebElement editorActions() {
+        return driver.findElement(By.cssSelector("dialog-view dialog-actions"));
+    }
+
+    private WebElement editorButton(String label) {
+        return editorActions().findElement(By.xpath(".//button[normalize-space(.)='" + label + "']"));
     }
 
     private WebElement view() {

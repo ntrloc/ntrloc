@@ -93,8 +93,32 @@ class StateMachineEditingUiTest extends AbstractUiIntegrationTest {
         assertThat(editor.stateNames()).containsExactlyInAnyOrder("Draft", "Review", "Done");
         editor.redo();
         assertThat(editor.stateNames()).containsExactlyInAnyOrder("Draft", "Done");
-        editor.undo().save();
+        editor.save();
 
+        assertThat(normalStates()).containsExactlyInAnyOrder("Draft", "Done");
+    }
+
+    @Test
+    void withNothingChangedItOnlyCloses() {
+        StateMachineEditorPage editor = schema.editStateMachine(MACHINE).selectState("Review");
+        assertThat(editor.closingButtons()).containsExactly("Close");
+
+        editor.pressEscape();
+
+        assertThat(editor.isOpen()).isFalse();
+    }
+
+    @Test
+    void escapeLeavesChangesAloneAndUndoingThemAllLeavesNothingToSave() {
+        StateMachineEditorPage editor = schema.editStateMachine(MACHINE).addState();
+        assertThat(editor.closingButtons()).containsExactly("Cancel", "Save");
+
+        editor.pressEscape();
+        assertThat(editor.isOpen()).isTrue();
+
+        editor.undo();
+        assertThat(editor.closingButtons()).containsExactly("Close");
+        editor.close();
         assertThat(normalStates()).containsExactlyInAnyOrder("Draft", "Review", "Done");
     }
 

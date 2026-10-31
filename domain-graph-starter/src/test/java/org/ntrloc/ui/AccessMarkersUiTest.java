@@ -220,12 +220,12 @@ class AccessMarkersUiTest extends AbstractUiIntegrationTest {
         // its own node.
         assertThat(page.signalTitles()).containsExactlyInAnyOrder("Condition", "Condition", "Condition", "Condition Group");
         assertThat(page.diagramTexts()).contains(
-                // score > 5
-                "score", "> 5",
+                // score > 5: the condition's context, then its test
+                "property: score", "> 5",
                 // at least one linked reviewer is in the Approved state
                 "count", "linked item: reviewers", "any match", "Review = Approved",
                 // every one of two score bounds holds
-                "totality", "all match", ">= 1", "<= 10",
+                "totality", "all match", "≥ 1", "≤ 10",
                 // the flags group: one shared property, a pin per member
                 "property: confidential", "is true", "is false");
         // remove and add each read one flag; set reads two conditions; filter reads one.
@@ -300,8 +300,10 @@ class AccessMarkersUiTest extends AbstractUiIntegrationTest {
         String type = createScratchTypeWithAddBlock();
         AccessMarkersPage page = AccessMarkersPage.open(schema, driver, type).awaitDiagram();
 
+        // A connection's bend handle shows once it's selected.
         page.editLayout();
-        assertThat(page.edgeHandleCount()).isEqualTo(2);
+        assertThat(page.edgeHandleCount()).isZero();
+        page.selectFirstConnection();
         double before = page.firstEdgeHandleX();
         page.dragFirstEdgeHandle(30, 0);
         assertThat(page.firstEdgeHandleX()).as("handle x after dragging it").isGreaterThan(before);
@@ -309,6 +311,42 @@ class AccessMarkersUiTest extends AbstractUiIntegrationTest {
 
         assertThat(savedLayout(type).edgeBends()).hasSize(1);
         assertThat(page.edgeHandleCount()).isZero();
+    }
+
+    @Test
+    void theEditorOnlyClosesUntilSomethingChanges() {
+        String type = createScratchTypeWithAddBlock();
+        AccessMarkersPage page = AccessMarkersPage.open(schema, driver, type).awaitDiagram().editLayout();
+        page.awaitEditorButtons("Close");
+
+        page.dragBlock("Add", 60, 0).awaitEditorButtons("Cancel", "Save");
+        page.pressEscapeInEditor();
+        assertThat(page.isEditingLayout()).as("Escape with changes").isTrue();
+
+        page.undo().awaitEditorButtons("Close");
+        page.pressEscapeInEditor();
+        assertThat(page.isEditingLayout()).as("Escape with none").isFalse();
+    }
+
+    @Test
+    void savesAConditionalAddAndTheConditionItReads() {
+        String type = createScratchTypeWithAddBlock();
+        AccessMarkersPage page = AccessMarkersPage.open(schema, driver, type).awaitDiagram().editLayout();
+
+        page.addFromPalette("Conditions", "Condition", 0.3, 0.8)
+                .chooseInDetails("Reads", "Property: name")
+                .chooseInDetails("Test", "equals")
+                .typeTestValue("bill");
+        page.selectBlock("Add").toggleConditional().connectConditionTo("Add");
+        assertThat(page.diagramTexts()).contains("name = bill");
+        page.saveLayout();
+
+        Pipeline saved = pipelineRepository.findByItemTypeId(testData.itemType(type).id()).orElseThrow().pipeline();
+        Condition condition = (Condition) saved.topLevelSignals().getFirst();
+        UUID name = UiTestData.propertyId(testData.itemType(type), "name");
+        assertThat(condition.predicate()).isEqualTo(new StringEqualsPredicate(new StepToProperty(name, false, new Self()), "bill"));
+        AddMarkers add = (AddMarkers) saved.carrierBlocks().getFirst();
+        assertThat(add.gate().conditionOutputPinIds()).containsExactly(condition.id());
     }
 
     @Test

@@ -147,7 +147,7 @@ export function describeCondition(schema, itemTypeId, condition, { withSubject =
   const ownSubjectText = ownPath.length ? ownPath.join('.') : null
   if (!predicate) return ownSubjectText ? { label: 'value', subjectText: ownSubjectText, testText: null, children: [] } : null
   if (predicate.type === 'COUNTED') return describePredicateBox(schema, itemTypeId, predicate)
-  if (predicate.type === 'TOTALITY') return { ...describePredicateBox(schema, itemTypeId, predicate), subjectText: ownSubjectText }
+  if (predicate.type === 'TOTALITY') return { ...describePredicateBox(schema, itemTypeId, predicate), subjectText: withSubject ? ownSubjectText : null }
   const effectiveSubject = predicate.subject ?? condition.subject ?? { type: 'SELF' }
   const chain = describeConditionSubject(schema, itemTypeId, effectiveSubject)
   return {
