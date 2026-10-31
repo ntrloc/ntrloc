@@ -13,45 +13,19 @@
 // Models (ItemTypeModel/LinkModel/StateMachineModel), which are each scoped to a single item type and
 // can't resolve an id against whatever type a chain has stepped onto by then.
 
-function findItemType(schema, itemTypeId) {
-  return schema?.items.find((it) => it.id === itemTypeId) ?? null
-}
+import { describeTest } from './pipelineTests'
+import { linksOf, propertiesOf, stateMachinesOf } from './pipelineSchema'
 
 function resolvePropertyName(schema, itemTypeId, propertyId) {
-  const item = findItemType(schema, itemTypeId)
-  if (!item) return propertyId
-  function walk(container) {
-    for (const p of container.properties ?? []) if (p.id === propertyId) return p.name
-    for (const g of container.groups ?? []) {
-      const found = walk(g)
-      if (found) return found
-    }
-    return null
-  }
-  return walk(item) ?? propertyId
+  return propertiesOf(schema, itemTypeId).find((p) => p.id === propertyId)?.name ?? propertyId
 }
 
-// A link is really two perspectives (one per item type it connects); this item type's own links map
-// names this side, but the perspective itself carries only the *target* type's name, not its id --
-// resolved here by name against the schema's own item list, same trick LinkModel's own reverse-
-// perspective lookup uses.
 function resolveLink(schema, itemTypeId, linkPerspectiveId) {
-  const item = findItemType(schema, itemTypeId)
-  if (!item?.links) return null
-  for (const [name, perspectives] of Object.entries(item.links)) {
-    const perspective = perspectives.find((p) => p.id === linkPerspectiveId)
-    if (perspective) {
-      const targetName = perspective.targets?.[0]?.name
-      const targetItem = targetName ? schema.items.find((it) => it.name === targetName) : null
-      return { name, targetItemTypeId: targetItem?.id ?? null }
-    }
-  }
-  return null
+  return linksOf(schema, itemTypeId).find((link) => link.id === linkPerspectiveId) ?? null
 }
 
 function resolveStateMachine(schema, itemTypeId, stateMachineId) {
-  const item = findItemType(schema, itemTypeId)
-  return item?.stateMachines?.find((m) => m.id === stateMachineId) ?? null
+  return stateMachinesOf(schema, itemTypeId).find((m) => m.id === stateMachineId) ?? null
 }
 
 function resolveStateName(machine, stateId) {
@@ -102,32 +76,12 @@ function operatorSymbol(operator) {
   }
 }
 
-function humanizeType(type) {
-  return (type ?? '').toLowerCase().replaceAll('_', ' ')
-}
-
-// A leaf predicate's own text, ignoring its subject entirely -- the subject (if any) is shown
-// separately, by whatever's walking the subject chain above this leaf (see describeCondition and
-// describeConditionShort below), since the same leaf shape shows up both with and without one
-// (e.g. a ConditionGroup member's subject is inherited from the group, not its own).
-function describeLeafPredicate(predicate) {
-  if (!predicate) return ''
-  switch (predicate.type) {
-    case 'STRING_EQUALS':
-      return `= ${predicate.value}`
-    case 'STRING_LIST_INCLUDES':
-      return `= ${predicate.value}`
-    case 'NUMBER':
-      return `${operatorSymbol(predicate.operator)} ${predicate.value}`
-    case 'IS_TRUE':
-      return 'is true'
-    case 'IS_FALSE':
-      return 'is false'
-    case 'STRING_EXISTS':
-      return 'exists'
-    default:
-      return humanizeType(predicate.type)
-  }
+// A leaf predicate's own text, ignoring its subject (shown separately, by whatever walks the subject
+// chain -- see describeCondition and describeConditionShort). machine: the state machine the subject
+// ends on, if it does, to name "is in state"'s state.
+function describeLeafPredicate(predicate, terminal = null) {
+  const onMachine = terminal?.kind === 'stateMachine'
+  return describeTest(predicate, (stateId) => resolveStateName(terminal?.machine, stateId), onMachine)
 }
 
 // The count-predicate's own quantifier phrase -- the two shapes an admin actually reaches for
@@ -184,32 +138,60 @@ function describePredicateBox(schema, itemTypeId, predicate) {
 // describePredicateBox), rooted either at the Condition's own leaf predicate (a 'value' box, carrying
 // a subject chip only if its chain actually traverses something beyond bare Self) or, for a COUNTED/
 // TOTALITY predicate, at that compound predicate's own box.
-export function describeCondition(schema, itemTypeId, condition) {
+// A condition's own subject, when it's anything but the item itself (nothing to show for that), shows
+// even before it has a test.
+// withSubject false: leave the subject out of the text (it's shown on its own, as a pill).
+export function describeCondition(schema, itemTypeId, condition, { withSubject = true } = {}) {
   const predicate = condition.predicate
-  if (!predicate) return null
-  if (predicate.type === 'COUNTED' || predicate.type === 'TOTALITY') {
-    return describePredicateBox(schema, itemTypeId, predicate)
-  }
+  const ownPath = describeConditionSubject(schema, itemTypeId, condition.subject ?? { type: 'SELF' }).path
+  const ownSubjectText = ownPath.length ? ownPath.join('.') : null
+  if (!predicate) return ownSubjectText ? { label: 'value', subjectText: ownSubjectText, testText: null, children: [] } : null
+  if (predicate.type === 'COUNTED') return describePredicateBox(schema, itemTypeId, predicate)
+  if (predicate.type === 'TOTALITY') return { ...describePredicateBox(schema, itemTypeId, predicate), subjectText: ownSubjectText }
   const effectiveSubject = predicate.subject ?? condition.subject ?? { type: 'SELF' }
   const chain = describeConditionSubject(schema, itemTypeId, effectiveSubject)
   return {
     label: 'value',
-    subjectText: chain.path.length ? chain.path.join('.') : null,
-    testText: describeLeafPredicate(predicate),
+    subjectText: withSubject && chain.path.length ? chain.path.join('.') : null,
+    testText: describeLeafPredicate(predicate, chain.terminal),
     children: [],
   }
 }
 
-// A ConditionGroup's own subject, as the "property: X" header shown once for the whole group (every
-// member condition's subject is inherited from this, never its own -- see ConditionGroup.java).
+// A bare condition's (non-counting) test as its pill shows it: { lead, text } -- what the test reads,
+// only when it reads something of its own rather than the condition's subject, then the test itself.
+export function describeTestPill(schema, itemTypeId, condition) {
+  const predicate = condition.predicate
+  const chain = describeConditionSubject(schema, itemTypeId, predicate.subject ?? condition.subject ?? { type: 'SELF' })
+  // What the test reads of its own, named -- a state machine's as "Onboarding state".
+  const ownChain = predicate.subject ? describeConditionSubject(schema, itemTypeId, predicate.subject) : null
+  const own = ownChain?.terminal.kind === 'stateMachine' ? [...ownChain.path, `${ownChain.terminal.machine?.name ?? 'machine'} state`] : (ownChain?.path ?? [])
+  return { lead: own.length ? own.join('.') : null, text: describeLeafPredicate(predicate, chain.terminal) }
+}
+
+// A subject's pill text, named for what it ends on -- "property: product.owner", "linked item:
+// product", "state: Onboarding" -- or null for the item itself, which has nothing to show.
+export function describeSubjectChip(schema, itemTypeId, context) {
+  const chain = describeConditionSubject(schema, itemTypeId, context ?? { type: 'SELF' })
+  const isState = chain.terminal.kind === 'stateMachine'
+  // A state machine isn't part of the chain's path (see describeConditionSubject); here it's named.
+  const path = isState ? [...chain.path, chain.terminal.machine?.name ?? 'state machine'] : chain.path
+  if (path.length === 0) return null
+  const kind = { property: 'property', stateMachine: 'state' }[chain.terminal.kind] ?? 'linked item'
+  return `${kind}: ${path.join('.')}`
+}
+
+// A ConditionGroup's own subject, as the pill shown once for the whole group (every member
+// condition's subject is inherited from this, never its own -- see ConditionGroup.java).
 export function describeConditionGroupSubject(schema, itemTypeId, group) {
-  const chain = describeConditionSubject(schema, itemTypeId, group.subject)
-  return chain.path.join('.')
+  return describeSubjectChip(schema, itemTypeId, group.subject)
 }
 
 // A single member condition's own short label, the way a ConditionGroup's branch reads inline
 // wherever it's consumed (e.g. a <select> row) -- just the leaf predicate's own distinguishing value,
 // no subject prefix (the group's own header already said what property this is).
-export function describeConditionShort(predicate) {
-  return describeLeafPredicate(predicate)
+// subject: the group's, to name a state by its machine's.
+export function describeConditionShort(predicate, schema = null, itemTypeId = null, subject = null) {
+  const terminal = subject ? describeConditionSubject(schema, itemTypeId, subject).terminal : null
+  return describeLeafPredicate(predicate, terminal)
 }

@@ -22,7 +22,7 @@ class WatchDerivationTest {
     void aFlatConditionWatchesJustItsOwnReferencedThing() {
         UUID firstName = UUID.randomUUID();
         Condition condition = new Condition(UUID.randomUUID(),
-                new StepToProperty(firstName, false, new Self()), new StringExistsPredicate(null));
+                new StepToProperty(firstName, false, new Self()), new ExistsPredicate(null));
 
         Set<UUID> watches = WatchDerivation.derive(pipelineOf(condition));
 
@@ -31,7 +31,7 @@ class WatchDerivationTest {
 
     @Test
     void selfSubjectWithNoStepsWatchesNothing() {
-        Condition condition = new Condition(UUID.randomUUID(), new Self(), new StringExistsPredicate(null));
+        Condition condition = new Condition(UUID.randomUUID(), new Self(), new ExistsPredicate(null));
         assertThat(WatchDerivation.derive(pipelineOf(condition))).isEmpty();
     }
 
@@ -76,7 +76,7 @@ class WatchDerivationTest {
         UUID hireDate = UUID.randomUUID();
         UUID firstName = UUID.randomUUID();
         Predicate a = new IsTruePredicate(new StepToProperty(hireDate, false, new Self()));
-        Predicate b = new StringExistsPredicate(new StepToProperty(firstName, false, new Self()));
+        Predicate b = new ExistsPredicate(new StepToProperty(firstName, false, new Self()));
         TotalityPredicate totality = new TotalityPredicate(null, Quantity.ALL, List.of(a, b));
         Condition condition = new Condition(UUID.randomUUID(), null, totality);
 

@@ -89,6 +89,9 @@ function ItemTypeDetailView({
       label: 'Structure',
       view: (
         <item-type-structure>
+          <item-type-structure-toolbar>
+            <DefinitionActions vm={vm} name={itemType.name} remove={false} />
+          </item-type-structure-toolbar>
           <item-type-structure-cards>
             {structureCards.map((card) => (
               <CollapsibleCard
@@ -131,15 +134,8 @@ function ItemTypeDetailView({
       <item-type-detail-header>
         <h2>{itemType.name}</h2>
         {itemType.description && <p className="item-type-detail-description">{itemType.description}</p>}
-        {/* Editing covers the Structure tab, so Edit brings it up. */}
-        <DefinitionActions
-          vm={vm}
-          name={itemType.name}
-          onEdit={() => {
-            onTabKeyChange('structure')
-            vm.startEditing()
-          }}
-        />
+        {/* Delete is the whole item type's; Edit is its Structure tab's, so it's there. */}
+        <DefinitionActions vm={vm} name={itemType.name} edit={false} />
       </item-type-detail-header>
       <EditMessages vm={vm} />
       {/* Not keyed on the item type -- the active tab and collapsed Structure cards should survive

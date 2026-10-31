@@ -31,10 +31,46 @@ class PredicateEvaluatorTest {
     }
 
     @Test
-    void stringExists_distinguishesPresentFromAbsent() {
-        assertThat(PredicateEvaluator.evaluate(new StringExistsPredicate(null), "x", selfId)).isTrue();
-        assertThat(PredicateEvaluator.evaluate(new StringExistsPredicate(null), null, selfId)).isFalse();
-        assertThat(PredicateEvaluator.evaluate(new StringNotExistsPredicate(null), null, selfId)).isTrue();
+    void exists_holdsForAnyValue_butNotForNoneOrAnEmptyList() {
+        Predicate exists = new ExistsPredicate(null);
+        Predicate notExists = new NotExistsPredicate(null);
+
+        assertThat(PredicateEvaluator.evaluate(exists, "x", selfId)).isTrue();
+        assertThat(PredicateEvaluator.evaluate(exists, 0, selfId)).isTrue();
+        assertThat(PredicateEvaluator.evaluate(exists, false, selfId)).isTrue();
+        assertThat(PredicateEvaluator.evaluate(exists, List.of("a"), selfId)).isTrue();
+        assertThat(PredicateEvaluator.evaluate(exists, UUID.randomUUID(), selfId)).isTrue();
+
+        assertThat(PredicateEvaluator.evaluate(exists, null, selfId)).isFalse();
+        assertThat(PredicateEvaluator.evaluate(exists, List.of(), selfId)).isFalse();
+        assertThat(PredicateEvaluator.evaluate(notExists, null, selfId)).isTrue();
+        assertThat(PredicateEvaluator.evaluate(notExists, List.of(), selfId)).isTrue();
+        assertThat(PredicateEvaluator.evaluate(notExists, "x", selfId)).isFalse();
+    }
+
+    @Test
+    void numberAndDateComparisons_withNoValue_holdOnlyForNotEquals() {
+        assertThat(PredicateEvaluator.evaluate(new NumberPredicate(null, ComparisonOperator.GREATER_THAN, 5, null), null, selfId)).isFalse();
+        assertThat(PredicateEvaluator.evaluate(new NumberPredicate(null, ComparisonOperator.NOT_EQUALS, 5, null), null, selfId)).isTrue();
+        Instant someDay = Instant.parse("2020-01-20T00:00:00Z");
+        assertThat(PredicateEvaluator.evaluate(new DatePredicate(null, DateComparisonOperator.AFTER, someDay, null), null, selfId)).isFalse();
+        assertThat(PredicateEvaluator.evaluate(new DatePredicate(null, DateComparisonOperator.NOT_EQUALS, someDay, null), null, selfId)).isTrue();
+    }
+
+    @Test
+    void datePredicate_readsDatesAsTheyAreStored() {
+        Instant someDay = Instant.parse("2020-01-20T00:00:00Z");
+
+        assertThat(PredicateEvaluator.evaluate(new DatePredicate(null, DateComparisonOperator.EQUALS, someDay, null), "2020-01-20", selfId)).isTrue();
+        assertThat(PredicateEvaluator.evaluate(new DatePredicate(null, DateComparisonOperator.AFTER, someDay, null), "2020-01-20T09:30:00Z", selfId)).isTrue();
+        assertThat(PredicateEvaluator.evaluate(new DatePredicate(null, DateComparisonOperator.AFTER, someDay, null), "2020-01-19T23:00:00", selfId)).isFalse();
+        assertThat(PredicateEvaluator.evaluate(new DateListMinPredicate(null, DateComparisonOperator.BEFORE, someDay, null), List.of("2019-06-01", "2021-01-01"), selfId)).isTrue();
+    }
+
+    @Test
+    void listAggregates_ofAnEmptyList_neverHold() {
+        assertThat(PredicateEvaluator.evaluate(new NumberListMaxPredicate(null, ComparisonOperator.LESS_THAN, 5, null), List.of(), selfId)).isFalse();
+        assertThat(PredicateEvaluator.evaluate(new DateListMinPredicate(null, DateComparisonOperator.AFTER, Instant.EPOCH, null), List.of(), selfId)).isFalse();
     }
 
     @Test
@@ -100,12 +136,12 @@ class PredicateEvaluatorTest {
     }
 
     @Test
-    void stateMachinePredicates_equalsAndNoState() {
+    void stateMachinePredicates_equalsAndNotInAnyState() {
         UUID stateId = UUID.randomUUID();
 
         assertThat(PredicateEvaluator.evaluate(new StateEqualsPredicate(null, stateId), stateId, selfId)).isTrue();
         assertThat(PredicateEvaluator.evaluate(new StateEqualsPredicate(null, stateId), UUID.randomUUID(), selfId)).isFalse();
-        assertThat(PredicateEvaluator.evaluate(new NoStatePredicate(null), null, selfId)).isTrue();
+        assertThat(PredicateEvaluator.evaluate(new NotExistsPredicate(null), null, selfId)).isTrue();
     }
 
     @Test

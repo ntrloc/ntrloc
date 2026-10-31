@@ -1,0 +1,10 @@
+subject-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* One item type the subject passes through: its next step. */
+subject-picker-row {
+  display: block;
+}

@@ -6,7 +6,7 @@ import DiagramPalette from '../../../../controls/diagram/DiagramPalette'
 import { usePipelineForItemType } from '../../../../global/model/PipelineModel'
 import MarkerPipelineInspector from './MarkerPipelineInspector'
 import { useMarkerPipelineViewModel } from './MarkerPipelineViewModel'
-import { STRIP_WIDTH, bodyMidY, chipLayout, selectRowLayout, signalRowLayout, signalConditionLayout, filterPortLayout, PSEUDO_LABEL_GAP } from './markerPipelineLayout'
+import { STRIP_WIDTH, bodyMidY, chipLayout, selectRowLayout, signalRowLayout, signalConditionLayout, filterPortLayout, conditionalPortLayout, PSEUDO_LABEL_GAP } from './markerPipelineLayout'
 import Button from '../../../../controls/button/Button'
 import './MarkerPipelineView.css'
 
@@ -76,7 +76,8 @@ function TextChip({ chip }) {
     <g>
       <rect className={`mp-${kind}-chip-rect`} x={chip.x} y={chip.y} width={chip.width} height={chip.height} />
       <text className={`mp-${kind}-chip-text`} x={chip.x + chip.width / 2} y={chip.y + chip.height / 2 + 4}>
-        {chip.text}
+        {chip.lead && <tspan>{chip.lead} </tspan>}
+        {chip.strong ? <tspan className="mp-chip-strong">{chip.text}</tspan> : chip.text}
       </text>
     </g>
   )
@@ -205,10 +206,12 @@ function HeaderIcons({ icons, onEdit, onDelete }) {
 // left, for a block with exactly one input port (<add>/<set>/<remove>). A block with several
 // distinct input ports -- just <filter>, carrier "input" plus its "if" gate reference -- gets its
 // own FilterNode below instead, with each port its own labeled row.
-function CarrierBlockNode({ id, rect, label, outputConnected, editable, selected, invalid, onDelete, onContextMenu, onPointerDown, onPointerMove, onPointerUp }) {
+// A conditional block (see conditionalPortLayout) splits its input strip: its input over its "if".
+function CarrierBlockNode({ id, rect, label, outputConnected, gateConnected, editable, selected, invalid, onDelete, onContextMenu, onPointerDown, onPointerMove, onPointerUp }) {
   const rightStripX = rect.x + rect.width - STRIP_WIDTH
   const midY = bodyMidY(rect)
   const { centerX, titleY, headerBottom, chips, icons } = chipLayout(rect, label.markerNames, editable)
+  const ports = label.conditional ? conditionalPortLayout(rect) : null
 
   return (
     <g
@@ -234,7 +237,15 @@ function CarrierBlockNode({ id, rect, label, outputConnected, editable, selected
           </text>
         </g>
       ))}
-      <Pin cx={rect.x + STRIP_WIDTH / 2} cy={midY} shape="arrow" />
+      {ports ? (
+        <>
+          <line className="mp-node-divider" x1={rect.x} y1={ports.dividerY} x2={rect.x + STRIP_WIDTH} y2={ports.dividerY} />
+          <Pin cx={ports.input.x} cy={ports.input.y} shape="arrow" />
+          <Pin cx={ports.ifPort.x} cy={ports.ifPort.y} variant="signal" empty={!gateConnected(id)} />
+        </>
+      ) : (
+        <Pin cx={rect.x + STRIP_WIDTH / 2} cy={midY} shape="arrow" />
+      )}
       <Pin cx={rightStripX + STRIP_WIDTH / 2} cy={midY} empty={!outputConnected(id)} />
     </g>
   )
@@ -248,7 +259,7 @@ function CarrierBlockNode({ id, rect, label, outputConnected, editable, selected
 // "central area" this shape deliberately has none of. The "if" pin is drawn in the signal domain's
 // own color, since it's literally where a dashed signal-reference edge lands (see
 // SignalReferenceEdge).
-function FilterNode({ id, rect, label, outputConnected, editable, selected, invalid, onDelete, onContextMenu, onPointerDown, onPointerMove, onPointerUp }) {
+function FilterNode({ id, rect, label, outputConnected, gateConnected, editable, selected, invalid, onDelete, onContextMenu, onPointerDown, onPointerMove, onPointerUp }) {
   const rightStripX = rect.x + rect.width - STRIP_WIDTH
   const midY = bodyMidY(rect)
   const { centerX, titleY, headerBottom, input, ifPort, icons } = filterPortLayout(rect, editable)
@@ -276,7 +287,7 @@ function FilterNode({ id, rect, label, outputConnected, editable, selected, inva
         if
       </text>
       <Pin cx={input.x} cy={input.y} shape="arrow" />
-      <Pin cx={ifPort.x} cy={ifPort.y} variant="signal" />
+      <Pin cx={ifPort.x} cy={ifPort.y} variant="signal" empty={!gateConnected(id)} />
       <Pin cx={rightStripX + STRIP_WIDTH / 2} cy={midY} empty={!outputConnected(id)} />
     </g>
   )
@@ -293,7 +304,7 @@ function FilterNode({ id, rect, label, outputConnected, editable, selected, inva
 function SelectNode({ rect, label, outputConnected, editable, selected, invalid, onDelete, onContextMenu, onPointerDown, onPointerMove, onPointerUp }) {
   const rightStripX = rect.x + rect.width - STRIP_WIDTH
   const midY = bodyMidY(rect)
-  const { centerX, titleY, headerBottom, propertyChip, rows, icons } = selectRowLayout(rect, label.rows, label.propertyLabel, editable)
+  const { centerX, titleY, headerBottom, propertyChip, rows, icons } = selectRowLayout(rect, label.rows, label.subjectLabel, editable)
 
   return (
     <g
@@ -345,7 +356,7 @@ function SelectNode({ rect, label, outputConnected, editable, selected, invalid,
 // is a title over a stacked pin-row per member Condition, each with its own short label; a bare
 // Condition (always exactly one pin) is a title over its own root predicate box (see describeCondition
 // and PredicateBox), with one pin centered on the whole body.
-function SignalNode({ rect, node, description, editable, selected, invalid, onDelete, onContextMenu, onPointerDown, onPointerMove, onPointerUp }) {
+function SignalNode({ rect, node, description, pinRead, editable, selected, invalid, onDelete, onContextMenu, onPointerDown, onPointerMove, onPointerUp }) {
   const bodyRight = rect.x + rect.width - STRIP_WIDTH
   const isGroup = node.pinIds.length > 1
 
@@ -377,14 +388,16 @@ function SignalNode({ rect, node, description, editable, selected, invalid, onDe
           {groupLayout.rows.map((row) => (
             <g key={row.id}>
               {row.labelChip && <TextChip chip={row.labelChip} />}
-              <Pin cx={bodyRight + STRIP_WIDTH / 2} cy={row.midY} variant="signal" />
+              <Pin cx={bodyRight + STRIP_WIDTH / 2} cy={row.midY} variant="signal" empty={!pinRead(row.id)} />
             </g>
           ))}
         </>
       ) : (
         <>
+          {conditionLayout.subjectChip && <TextChip chip={conditionLayout.subjectChip} />}
+          {conditionLayout.testChip && <TextChip chip={conditionLayout.testChip} />}
           <PredicateBox box={conditionLayout.box} />
-          <Pin cx={bodyRight + STRIP_WIDTH / 2} cy={conditionLayout.pinY} variant="signal" />
+          <Pin cx={bodyRight + STRIP_WIDTH / 2} cy={conditionLayout.pinY} variant="signal" empty={!pinRead(node.pinIds[0])} />
         </>
       )}
     </g>
@@ -519,6 +532,12 @@ export function MarkerPipelineDiagram({ vm }) {
     endDrag,
     endDragPoints,
     isOutputConnected,
+    isSignalPinRead,
+    isGateConnected,
+    signalPinStarts,
+    onSignalPinPointerDown,
+    newConnectionIsSignal,
+    dragEndDot,
     emptyOutputPins,
     startConnector,
     onStartConnectorPointerDown,
@@ -590,6 +609,7 @@ export function MarkerPipelineDiagram({ vm }) {
                   key={block.id}
                   id={block.id}
                   outputConnected={isOutputConnected}
+                  gateConnected={isGateConnected}
                   rect={layout.rects.get(block.id)}
                   label={label}
                   editable={isEditing}
@@ -618,6 +638,7 @@ export function MarkerPipelineDiagram({ vm }) {
                 rect={layout.rects.get(node.id)}
                 node={node}
                 description={signalDescriptions.get(node.id)}
+                pinRead={isSignalPinRead}
                 editable={isEditing}
                 selected={isNodeSelected(node.id)}
                 invalid={problems.has(node.id)}
@@ -644,7 +665,17 @@ export function MarkerPipelineDiagram({ vm }) {
                 />
               ))}
           </g>
-          {newConnectionPoints && <PipelineEdge edge={{ points: newConnectionPoints }} isDragging />}
+          {newConnectionPoints &&
+            (newConnectionIsSignal ? (
+              <SignalReferenceEdge edge={{ points: newConnectionPoints }} isDragging />
+            ) : (
+              <PipelineEdge edge={{ points: newConnectionPoints }} isDragging />
+            ))}
+          {dragEndDot && (
+            <g className={dragEndDot.signal ? 'mp-pin mp-pin-signal' : 'mp-pin'}>
+              <circle className="mp-pin-fill" cx={dragEndDot.x} cy={dragEndDot.y} r={PIN_FILL_R} />
+            </g>
+          )}
           {/* Start's circle for drawing another connection (see the view model's startConnector). */}
           {startConnector && (
             <circle
@@ -664,6 +695,17 @@ export function MarkerPipelineDiagram({ vm }) {
               cy={point.y}
               r={NEW_CONNECTION_RADIUS}
               onPointerDown={(event) => onOutputPinPointerDown(event, id)}
+            />
+          ))}
+          {/* The same for a condition's pin, connected or not. */}
+          {signalPinStarts.map(([id, point]) => (
+            <circle
+              key={id}
+              className="mp-pin-start"
+              cx={point.x}
+              cy={point.y}
+              r={NEW_CONNECTION_RADIUS}
+              onPointerDown={(event) => onSignalPinPointerDown(event, id)}
             />
           ))}
           {isEditing && selectedEdge && !endDrag && (
@@ -787,8 +829,11 @@ function ReadOnlyDiagram({ pipelineView, itemTypeId, initialView, onViewChange }
 }
 
 // Editing the pipeline in a dialog over the tab, like the state machine editor: arranging its diagram,
-// and adding and deleting blocks from the palette, with the selected block's details beside it. Save
-// keeps the changes; Cancel (or Escape) drops them.
+// and adding and deleting blocks from the palette, with the selected block's details beside it. With
+// no changes, Close (or Escape) closes it; with changes, Save keeps them and Cancel drops them --
+// Escape doesn't, so they can't be lost by a stray key.
+const IGNORE = () => {}
+
 function MarkerPipelineEditDialog({ pipelineView, itemTypeId, itemTypeName, savePipeline, onClose }) {
   const vm = useMarkerPipelineViewModel(pipelineView, itemTypeId, savePipeline, null, undefined, { editable: true })
   const inspector = useCollapsiblePanel(true)
@@ -805,18 +850,24 @@ function MarkerPipelineEditDialog({ pipelineView, itemTypeId, itemTypeName, save
         </>
       }
       size="large"
-      onCancel={onClose}
+      onCancel={vm.hasChanges ? IGNORE : onClose}
       actions={
-        <>
-          {vm.saveError && <span className="mp-edit-error">{vm.saveError}</span>}
-          {!vm.saveError && vm.saveBlocker && <span className="mp-edit-note">{vm.saveBlocker}</span>}
-          <Button variant="ghost-secondary" icon="x" onClick={onClose} disabled={vm.isSaving}>
-            Cancel
+        vm.hasChanges ? (
+          <>
+            {vm.saveError && <span className="mp-edit-error">{vm.saveError}</span>}
+            {!vm.saveError && vm.saveBlocker && <span className="mp-edit-note">{vm.saveBlocker}</span>}
+            <Button variant="ghost-secondary" icon="x" onClick={onClose} disabled={vm.isSaving}>
+              Cancel
+            </Button>
+            <Button variant="ghost-secondary" icon="check" onClick={save} disabled={vm.isSaving || vm.saveBlocker !== null}>
+              {vm.isSaving ? 'Saving…' : 'Save'}
+            </Button>
+          </>
+        ) : (
+          <Button variant="ghost-secondary" icon="x" onClick={onClose}>
+            Close
           </Button>
-          <Button variant="ghost-secondary" icon="check" onClick={save} disabled={vm.isSaving || vm.saveBlocker !== null}>
-            {vm.isSaving ? 'Saving…' : 'Save'}
-          </Button>
-        </>
+        )
       }
     >
       <marker-pipeline-view className="marker-pipeline-editing">

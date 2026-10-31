@@ -1,6 +1,12 @@
 package org.ntrloc.graph.access;
 
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeParseException;
+import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 import java.util.regex.Pattern;
@@ -18,13 +24,14 @@ public final class PredicateEvaluator {
     @SuppressWarnings("unchecked")
     public static boolean evaluate(Predicate predicate, Object value, UUID selfId) {
         return switch (predicate) {
+            case PresencePredicate p -> evaluatePresence(p, value);
             case StringPredicate p -> evaluateString(p, (String) value);
             case NumberPredicate p -> evaluateNumber(p, (Number) value);
-            case DatePredicate p -> evaluateDate(p, (Instant) value);
+            case DatePredicate p -> evaluateDate(p, toInstant(value));
             case BooleanPredicate p -> evaluateBoolean(p, (Boolean) value);
             case StringListPredicate p -> evaluateStringList(p, (List<String>) value);
             case NumberListPredicate p -> evaluateNumberList(p, (List<Number>) value);
-            case DateListPredicate p -> evaluateDateList(p, (List<Instant>) value);
+            case DateListPredicate p -> evaluateDateList(p, value == null ? null : ((List<Object>) value).stream().map(PredicateEvaluator::toInstant).toList());
             case LinkPredicate p -> evaluateLink(p, (Integer) value);
             case StateMachinePredicate p -> evaluateStateMachine(p, (UUID) value);
             case IdentityPredicate p -> evaluateIdentity(p, (UUID) value, selfId);
@@ -35,14 +42,39 @@ public final class PredicateEvaluator {
         };
     }
 
+    // An empty list has no value, same as an unset property.
+    private static boolean evaluatePresence(PresencePredicate p, Object value) {
+        boolean exists = value != null && !(value instanceof Collection<?> c && c.isEmpty());
+        return switch (p) {
+            case ExistsPredicate _ -> exists;
+            case NotExistsPredicate _ -> !exists;
+        };
+    }
+
+    // A date property is stored as ISO text: a date ("2020-01-20", the start of that day, UTC) or a
+    // date-time, with or without an offset (UTC when without).
+    static Instant toInstant(Object value) {
+        if (value == null || value instanceof Instant) return (Instant) value;
+        String text = value.toString();
+        try {
+            return OffsetDateTime.parse(text).toInstant();
+        } catch (DateTimeParseException _) {
+            // not a date-time with an offset
+        }
+        try {
+            return LocalDateTime.parse(text).toInstant(ZoneOffset.UTC);
+        } catch (DateTimeParseException _) {
+            // not a date-time without one
+        }
+        return LocalDate.parse(text).atStartOfDay(ZoneOffset.UTC).toInstant();
+    }
+
     private static boolean evaluateString(StringPredicate p, String value) {
         return switch (p) {
             case StringEqualsPredicate e -> value != null && value.equals(e.value());
             case StringNotEqualsPredicate e -> value == null || !value.equals(e.value());
             case StringLikePredicate e -> value != null && likeMatch(value, e.pattern());
             case StringStartsWithPredicate e -> value != null && value.startsWith(e.prefix());
-            case StringExistsPredicate _ -> value != null;
-            case StringNotExistsPredicate _ -> value == null;
         };
     }
 
@@ -60,7 +92,9 @@ public final class PredicateEvaluator {
         return value.matches(regex.toString());
     }
 
+    // With no value, only "does not equal" holds -- the same as a string's.
     private static boolean evaluateNumber(NumberPredicate p, Number value) {
+        if (value == null) return p.operator() == ComparisonOperator.NOT_EQUALS;
         return compareNumber(p.operator(), value, p.value(), p.valueTo());
     }
 
@@ -78,6 +112,7 @@ public final class PredicateEvaluator {
     }
 
     private static boolean evaluateDate(DatePredicate p, Instant actual) {
+        if (actual == null) return p.operator() == DateComparisonOperator.NOT_EQUALS;
         return switch (p.operator()) {
             case EQUALS -> actual.equals(p.value());
             case NOT_EQUALS -> !actual.equals(p.value());
@@ -113,9 +148,9 @@ public final class PredicateEvaluator {
             case NumberListIsNotEmptyPredicate _ -> !v.isEmpty();
             case NumberListSizePredicate e -> compareNumber(e.operator(), v.size(), e.value(), e.valueTo());
             case NumberListSumPredicate e -> compareNumber(e.operator(), sum(v), e.value(), e.valueTo());
-            case NumberListAvgPredicate e -> compareNumber(e.operator(), avg(v), e.value(), e.valueTo());
-            case NumberListMinPredicate e -> compareNumber(e.operator(), min(v), e.value(), e.valueTo());
-            case NumberListMaxPredicate e -> compareNumber(e.operator(), max(v), e.value(), e.valueTo());
+            case NumberListAvgPredicate e -> !v.isEmpty() && compareNumber(e.operator(), avg(v), e.value(), e.valueTo());
+            case NumberListMinPredicate e -> !v.isEmpty() && compareNumber(e.operator(), min(v), e.value(), e.valueTo());
+            case NumberListMaxPredicate e -> !v.isEmpty() && compareNumber(e.operator(), max(v), e.value(), e.valueTo());
         };
     }
 
@@ -149,8 +184,8 @@ public final class PredicateEvaluator {
             case DateListIsEmptyPredicate _ -> v.isEmpty();
             case DateListIsNotEmptyPredicate _ -> !v.isEmpty();
             case DateListSizePredicate e -> compareNumber(e.operator(), v.size(), e.value(), e.valueTo());
-            case DateListMinPredicate e -> evaluateDate(new DatePredicate(null, e.operator(), e.value(), e.valueTo()), minInstant(v));
-            case DateListMaxPredicate e -> evaluateDate(new DatePredicate(null, e.operator(), e.value(), e.valueTo()), maxInstant(v));
+            case DateListMinPredicate e -> !v.isEmpty() && evaluateDate(new DatePredicate(null, e.operator(), e.value(), e.valueTo()), minInstant(v));
+            case DateListMaxPredicate e -> !v.isEmpty() && evaluateDate(new DatePredicate(null, e.operator(), e.value(), e.valueTo()), maxInstant(v));
         };
     }
 
@@ -173,7 +208,6 @@ public final class PredicateEvaluator {
     private static boolean evaluateStateMachine(StateMachinePredicate p, UUID currentStateId) {
         return switch (p) {
             case StateEqualsPredicate e -> e.stateId().equals(currentStateId);
-            case NoStatePredicate _ -> currentStateId == null;
         };
     }
 

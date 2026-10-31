@@ -65,7 +65,7 @@ class SignalEvaluatorTest {
         // not empty" as siblings, each addressing a different property, grouped under one condition.
         UUID firstName = UUID.randomUUID();
         UUID photos = UUID.randomUUID();
-        Predicate firstNameIsNotNull = new StringExistsPredicate(new StepToProperty(firstName, false, new Self()));
+        Predicate firstNameIsNotNull = new ExistsPredicate(new StepToProperty(firstName, false, new Self()));
         Predicate photosIsNotEmpty = new StringListIsNotEmptyPredicate(new StepToProperty(photos, false, new Self()));
         Condition condition = new Condition(UUID.randomUUID(), null,
                 new TotalityPredicate(null, Quantity.ALL, List.of(firstNameIsNotNull, photosIsNotEmpty)));
@@ -255,7 +255,7 @@ class SignalEvaluatorTest {
                 .properties(photoA, Map.of(tag, "x"))
                 .properties(photoB, Map.of(tag, "x"))
                 .properties(photoC, Map.of(tag, "x"));
-        Predicate taggedOnEachPhoto = new StringExistsPredicate(new StepToProperty(tag, false, new Self()));
+        Predicate taggedOnEachPhoto = new ExistsPredicate(new StepToProperty(tag, false, new Self()));
 
         Predicate counted = new CountedPredicate(new StepToItem(perspectiveId, true, new Self()),
                 taggedOnEachPhoto, new NumberPredicate(null, ComparisonOperator.GREATER_THAN_OR_EQUAL, 3, null));

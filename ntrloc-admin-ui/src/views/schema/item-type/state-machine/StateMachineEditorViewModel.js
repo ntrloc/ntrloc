@@ -224,6 +224,8 @@ export function useStateMachineEditorViewModel(machine, onClose) {
     saveError,
     save,
     cancel: onClose,
+    // Whether the draft differs from what's saved: undone back to it, it doesn't.
+    hasChanges: history.canUndo,
     targetStateId: endDrag?.nodeId ?? null,
     selection: selection.selection,
     clearSelection: selection.clear,

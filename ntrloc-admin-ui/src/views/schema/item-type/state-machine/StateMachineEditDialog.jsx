@@ -7,8 +7,11 @@ import StateMachineShapes from './StateMachineShapes'
 import { useStateMachineEditorViewModel } from './StateMachineEditorViewModel'
 import './StateMachineEditDialog.css'
 
+const IGNORE = () => {}
+
 // Editing one state machine: its name and description over the diagram, and the selected state's or
-// transition's details beside it. Save keeps the changes; Cancel (or Escape) drops them. The title
+// transition's details beside it. With no changes, Close (or Escape) closes it; with changes, Save
+// keeps them and Cancel drops them -- Escape doesn't, so they can't be lost by a stray key. The title
 // keeps the saved name until then.
 function StateMachineEditDialog({ machine, onClose }) {
   const vm = useStateMachineEditorViewModel(machine, onClose)
@@ -20,19 +23,27 @@ function StateMachineEditDialog({ machine, onClose }) {
         </>
       }
       size="large"
-      onCancel={vm.cancel}
+      onCancel={vm.hasChanges ? IGNORE : vm.cancel}
       actions={
         <>
           <Button variant="ghost-secondary" icon="plus" className="state-machine-add-state" onClick={vm.addState}>
             Add state
           </Button>
-          {vm.saveError && <span className="state-machine-edit-error">{vm.saveError}</span>}
-          <Button variant="ghost-secondary" icon="x" onClick={vm.cancel} disabled={vm.saving}>
-            Cancel
-          </Button>
-          <Button variant="ghost-secondary" icon="check" onClick={vm.save} disabled={vm.saving || vm.invalid}>
-            {vm.saving ? 'Saving…' : 'Save'}
-          </Button>
+          {vm.hasChanges ? (
+            <>
+              {vm.saveError && <span className="state-machine-edit-error">{vm.saveError}</span>}
+              <Button variant="ghost-secondary" icon="x" onClick={vm.cancel} disabled={vm.saving}>
+                Cancel
+              </Button>
+              <Button variant="ghost-secondary" icon="check" onClick={vm.save} disabled={vm.saving || vm.invalid}>
+                {vm.saving ? 'Saving…' : 'Save'}
+              </Button>
+            </>
+          ) : (
+            <Button variant="ghost-secondary" icon="x" onClick={vm.cancel}>
+              Close
+            </Button>
+          )}
         </>
       }
     >

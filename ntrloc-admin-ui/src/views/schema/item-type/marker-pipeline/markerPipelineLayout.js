@@ -151,6 +151,12 @@ function textChip(kind, text, x, y) {
   return { kind, text, x, y, width: textChipWidth(text), height: TEXT_CHIP_HEIGHT }
 }
 
+// A bare condition's test, as one pill: what the test reads (only when it reads something of its own,
+// not the condition's subject), then the test itself in bold -- "firstName is not null".
+function testPillWidth(test) {
+  return textChipWidth(test.lead ? `${test.lead} ${test.text}` : test.text) + estimateLabelWidth(test.text) * 0.1
+}
+
 function isPseudo(node) {
   return node.type === 'START' || node.type === 'END'
 }
@@ -220,8 +226,8 @@ function rowHeight(row) {
 // needing its own output pin at its own row's y. blockLabel represents that as label.rows: one entry
 // per select.adds[i], plus a synthetic trailing row (otherwise: true) whose id is the Select block's
 // own id -- unifying "the block's own output pin" and "a row's output pin" into one list, since
-// that's exactly what the Otherwise pin is: a row with no chips of its own. propertyLabel (optional):
-// "property: X" header for a ConditionGroup this <select> wholly owns and therefore renders inline
+// that's exactly what the Otherwise pin is: a row with no chips of its own. subjectLabel (optional):
+// subject pill (e.g. "property: owner") header for a ConditionGroup this <select> wholly owns and therefore renders inline
 // rather than as its own standalone signal node -- see inlinedConditionGroupFor. See selectRowLayout,
 // which lays these rows out the same way chipLayout lays out an ordinary block's chips.
 // A row's own required width: its condition-branch caption (see rowContentHeight's own comment),
@@ -241,10 +247,10 @@ function rowRequiredWidth(row, predicateColWidth) {
   return predicateColWidth > 0 ? predicateColWidth + CRITERIA_RIGHT_MARGIN + markerWidth : markerWidth
 }
 
-function selectBodyWidth(rows, title, propertyLabel) {
+function selectBodyWidth(rows, title, subjectLabel) {
   const predicateColWidth = predicateColumnWidth(rows)
   const contentWidest = Math.max(
-    propertyLabel ? textChipWidth(`property: ${propertyLabel}`) : 0,
+    subjectLabel ? textChipWidth(subjectLabel) : 0,
     ...rows.map((row) => (row.otherwise ? 0 : rowRequiredWidth(row, predicateColWidth))),
     estimateLabelWidth('(Otherwise)'),
     0,
@@ -253,15 +259,15 @@ function selectBodyWidth(rows, title, propertyLabel) {
   return Math.max(titleCandidateWidth(title), contentWidth, MIN_BODY_WIDTH)
 }
 
-// The gap a "property: X" header reserves above the rows it precedes -- one chip's own height plus
+// The gap a subject pill (e.g. "property: owner") header reserves above the rows it precedes -- one chip's own height plus
 // the breathing room on either side of it, the same amount selectRowLayout actually uses to push its
 // rows down by.
-function propertyHeaderHeight(propertyLabel) {
-  return propertyLabel ? CONTENT_TOP_GAP + TEXT_CHIP_HEIGHT + TEXT_CHIP_GAP : 0
+function propertyHeaderHeight(subjectLabel) {
+  return subjectLabel ? CONTENT_TOP_GAP + TEXT_CHIP_HEIGHT + TEXT_CHIP_GAP : 0
 }
 
-function selectHeight(rows, propertyLabel) {
-  return TITLE_AREA_HEIGHT + propertyHeaderHeight(propertyLabel) + rows.reduce((sum, row) => sum + rowHeight(row), 0) + BOTTOM_PADDING
+function selectHeight(rows, subjectLabel) {
+  return TITLE_AREA_HEIGHT + propertyHeaderHeight(subjectLabel) + rows.reduce((sum, row) => sum + rowHeight(row), 0) + BOTTOM_PADDING
 }
 
 // <filter> has two distinct left-side input ports -- its carrier "input" and its "if" gate
@@ -298,8 +304,8 @@ function nodeDimensions(node, blocks) {
   if (label?.isFilter) return filterNodeDimensions(label)
   if (label?.rows) {
     return {
-      width: 2 * STRIP_WIDTH + selectBodyWidth(label.rows, label.title, label.propertyLabel),
-      height: Math.max(selectHeight(label.rows, label.propertyLabel), PSEUDO_DIAMETER),
+      width: 2 * STRIP_WIDTH + selectBodyWidth(label.rows, label.title, label.subjectLabel),
+      height: Math.max(selectHeight(label.rows, label.subjectLabel), PSEUDO_DIAMETER),
     }
   }
   const markerNames = label?.markerNames ?? []
@@ -307,7 +313,9 @@ function nodeDimensions(node, blocks) {
   const chipsHeight = markerNames.length === 0 ? 0 : markerNames.length * chipHeight + CHIP_GAP * (markerNames.length - 1)
   const height = TITLE_AREA_HEIGHT + CONTENT_TOP_GAP + chipsHeight + BOTTOM_PADDING
   const width = 2 * STRIP_WIDTH + bodyWidth(label ?? { title: '', markerNames: [] })
-  return { width, height: Math.max(height, PSEUDO_DIAMETER) }
+  // A conditional block's input strip holds two pins, its input over its "if".
+  const minHeight = label?.conditional ? TITLE_AREA_HEIGHT + 2 * ROW_MIN_HEIGHT : 0
+  return { width, height: Math.max(height, minHeight, PSEUDO_DIAMETER) }
 }
 
 function allNodes(pipeline) {
@@ -356,7 +364,7 @@ function inlinedConditionGroupOwner(pipeline, signal) {
 }
 
 // The ConditionGroup a given block wholly owns (see inlinedConditionGroupOwner), if any -- what
-// MarkerPipelineViewModel's blockLabel uses to build a <select>'s own "property: X" header and each
+// MarkerPipelineViewModel's blockLabel uses to build a <select>'s own subject pill (e.g. "property: owner") header and each
 // row's branch caption.
 export function inlinedConditionGroupFor(pipeline, blockId) {
   return (pipeline.topLevelSignals ?? []).find((signal) => inlinedConditionGroupOwner(pipeline, signal) === blockId) ?? null
@@ -410,8 +418,9 @@ function predicateBoxHeight(box) {
   return height + ROW_PADDING_Y
 }
 
-// description: this node's own {propertyLabel, rowLabels} (a ConditionGroup) or a predicate box (a
-// bare Condition's own root box -- see pipelineConditionText.describeCondition) from
+// description: this node's own {subjectLabel, rowLabels} (a ConditionGroup) or {subjectLabel, test |
+// box} (a bare Condition: its subject's pill, and its test -- a pill, {lead, text}, or for a counting or
+// all/any/none test a root box, see pipelineConditionText.describeCondition) from
 // MarkerPipelineViewModel. No predicate detail at all when absent (schema still loading, or a shape
 // this module doesn't know how to size yet) -- still a valid, if minimal, box. Only a right-side
 // strip: unlike a carrier block, a signal block has no input of its own to feed, so there's nothing on
@@ -423,10 +432,10 @@ function predicateBoxHeight(box) {
 // + HEADER_LABEL_ICON_GAP) vs. 2 * BODY_SIDE_MARGIN) and only the wider actually has to win.
 function signalNodeDimensions(node, description) {
   if (node.pinIds.length > 1) {
-    const height = TITLE_AREA_HEIGHT + propertyHeaderHeight(description?.propertyLabel) + node.pinIds.length * ROW_MIN_HEIGHT + BOTTOM_PADDING
+    const height = TITLE_AREA_HEIGHT + propertyHeaderHeight(description?.subjectLabel) + node.pinIds.length * ROW_MIN_HEIGHT + BOTTOM_PADDING
     const labelWidths = (description?.rowLabels ?? []).map((l) => textChipWidth(l))
     const contentWidest = Math.max(
-      description?.propertyLabel ? textChipWidth(`property: ${description.propertyLabel}`) : 0,
+      description?.subjectLabel ? textChipWidth(description.subjectLabel) : 0,
       ...labelWidths,
       0,
     )
@@ -434,23 +443,28 @@ function signalNodeDimensions(node, description) {
     const width = STRIP_WIDTH + Math.max(titleCandidateWidth(node.title), contentWidth, MIN_BODY_WIDTH)
     return { width, height }
   }
-  const box = description ?? null
+  // A bare condition: its subject's pill (if it reads anything but the item itself), over its test --
+  // a pill, or a box for a counting / all-any-none test.
+  const box = description?.box ?? null
+  const test = description?.test ?? null
+  const subjectLabel = description?.subjectLabel ?? null
   // The root box is itself a piece of content at the outer level, needing BODY_SIDE_MARGIN clear on
   // every side of its own content just like a nested box does within it -- see predicateBoxMinWidth.
   const boxMinWidth = box ? predicateBoxMinWidth(box) + 2 * BODY_SIDE_MARGIN : 0
   const boxWidth = boxMinWidth + 2 * BODY_SIDE_MARGIN
-  const boxHeight = box ? predicateBoxHeight(box) : 0
+  const testWidth = test ? testPillWidth(test) + 2 * BODY_SIDE_MARGIN : 0
+  const subjectWidth = subjectLabel ? textChipWidth(subjectLabel) + 2 * BODY_SIDE_MARGIN : 0
   const height = Math.max(
-    TITLE_AREA_HEIGHT + CONTENT_TOP_GAP + boxHeight + BOTTOM_PADDING,
+    TITLE_AREA_HEIGHT + CONTENT_TOP_GAP + conditionContentHeight(description) + BOTTOM_PADDING,
     TITLE_AREA_HEIGHT + ROW_MIN_HEIGHT + BOTTOM_PADDING,
   )
-  const width = STRIP_WIDTH + Math.max(titleCandidateWidth(node.title), boxWidth, MIN_BODY_WIDTH)
+  const width = STRIP_WIDTH + Math.max(titleCandidateWidth(node.title), boxWidth, testWidth, subjectWidth, MIN_BODY_WIDTH)
   return { width, height }
 }
 
 // A standalone ConditionGroup's own stacked pin-rows -- same shape as before text existed (one row
 // per member Condition, each with its own output pin), now also carrying that member's own short
-// label (see pipelineConditionText.describeConditionShort) and an optional "property: X" header for
+// label (see pipelineConditionText.describeConditionShort) and an optional subject pill (e.g. "property: owner") header for
 // the group's own shared subject. Rare in practice -- our one real pipeline's only ConditionGroup is
 // inlined into its <select> (see inlinedConditionGroupOwner) -- but kept correct for a group that
 // ever is referenced from more than one place.
@@ -469,12 +483,12 @@ export function signalRowLayout(rect, pinIds, description, editable) {
   // otherwise matches).
   const centerX = rect.x + rect.width / 2
   let propertyChip = null
-  if (description?.propertyLabel) {
-    const text = `property: ${description.propertyLabel}`
+  if (description?.subjectLabel) {
+    const text = description.subjectLabel
     const width = textChipWidth(text)
     propertyChip = { kind: 'subject', text, x: centerX - width / 2, y: headerBottom + CONTENT_TOP_GAP, width, height: TEXT_CHIP_HEIGHT }
   }
-  const rowsTop = headerBottom + propertyHeaderHeight(description?.propertyLabel)
+  const rowsTop = headerBottom + propertyHeaderHeight(description?.subjectLabel)
   const rows = pinIds.map((id, i) => {
     const top = rowsTop + i * ROW_MIN_HEIGHT
     const label = description?.rowLabels?.[i] ?? null
@@ -537,6 +551,13 @@ function placePredicateBox(box, x, y, width) {
 // title sits well clear of the icons' own band regardless (same reasoning as chipLayout's own
 // comment), so its own width is untouched by titleCandidateWidth -- only signalNodeDimensions' own
 // sizing needs to know about it, not where this box is actually placed.
+// A bare condition's body content, top to bottom: its subject's pill, then its test's pill or box.
+function conditionContentHeight(description) {
+  const testHeight = description?.test ? TEXT_CHIP_HEIGHT : description?.box ? predicateBoxHeight(description.box) : 0
+  const pieces = [description?.subjectLabel ? TEXT_CHIP_HEIGHT : 0, testHeight].filter(Boolean)
+  return pieces.reduce((sum, h) => sum + h, 0) + Math.max(0, pieces.length - 1) * BOX_CONTENT_GAP
+}
+
 export function signalConditionLayout(rect, description, editable) {
   const headerBottom = rect.y + TITLE_AREA_HEIGHT
   const titleY = rect.y + TITLE_AREA_HEIGHT / 2 + 4
@@ -546,14 +567,31 @@ export function signalConditionLayout(rect, description, editable) {
   // that formula reads as off-center against the box itself).
   const centerX = rect.x + rect.width / 2
 
+  const subjectLabel = description?.subjectLabel ?? null
+  // The pill and the box, as one stack centered in the body -- below the header, left of the pin strip.
+  const contentHeight = conditionContentHeight(description)
+  const contentTop = headerBottom + (rect.y + rect.height - headerBottom - contentHeight) / 2
+  const bodyCenterX = (rect.x + bodyRight) / 2
+  let subjectChip = null
+  if (subjectLabel) {
+    const width = textChipWidth(subjectLabel)
+    subjectChip = { kind: 'subject', text: subjectLabel, x: bodyCenterX - width / 2, y: contentTop, width, height: TEXT_CHIP_HEIGHT }
+  }
+  let testChip = null
+  if (description?.test) {
+    const width = testPillWidth(description.test)
+    const y = subjectChip ? contentTop + TEXT_CHIP_HEIGHT + BOX_CONTENT_GAP : contentTop
+    testChip = { kind: 'test', lead: description.test.lead, text: description.test.text, strong: true, x: bodyCenterX - width / 2, y, width, height: TEXT_CHIP_HEIGHT }
+  }
   let box = null
-  if (description) {
+  if (description?.box) {
     const boxX = rect.x + BODY_SIDE_MARGIN
     const boxWidth = bodyRight - boxX - BODY_SIDE_MARGIN
-    box = placePredicateBox(description, boxX, headerBottom + CONTENT_TOP_GAP, boxWidth)
+    const boxTop = subjectChip ? contentTop + TEXT_CHIP_HEIGHT + BOX_CONTENT_GAP : contentTop
+    box = placePredicateBox(description.box, boxX, boxTop, boxWidth)
   }
 
-  return { centerX, titleY, headerBottom, box, pinY: bodyMidY(rect), icons: headerIcons(rect, editable) }
+  return { centerX, titleY, headerBottom, subjectChip, testChip, box, pinY: bodyMidY(rect), icons: headerIcons(rect, editable) }
 }
 
 // An edge always connects horizontally at both ends -- an output pin's own line always leaves it
@@ -634,7 +672,7 @@ function rankByLongestPath(pipeline) {
 // positions: Map<UUID, {x, y}> decoded from the pipeline's own PipelineLayout.positions (empty map
 // if nothing saved yet, never null). blocks: Map<UUID, {title, markerNames}> from
 // MarkerPipelineViewModel -- see nodeDimensions' own comment on why sizing needs this.
-// signalDescriptions: Map<signal node id, {propertyLabel, rowLabels} | {lines, nested}> from the same
+// signalDescriptions: Map<signal node id, {subjectLabel, rowLabels} | {lines, nested}> from the same
 // place -- see signalNodeDimensions. edgeBends: Map<edge key, number> decoded from
 // PipelineLayout.edgeBends (empty map if nothing saved yet, never null) -- see orthogonalPath.
 // No `editable` param -- every node's own size always reserves room for its edit/delete icons (see
@@ -827,15 +865,20 @@ function placeCarrierNodePins(node, rect, label, { outputPinPositions, inputPinP
     outputPinPositions.set(node.id, outputPoint(rect, node))
   } else if (label?.rows) {
     inputPinPositions.set(node.id, inputPoint(rect, node))
-    const { rows } = selectRowLayout(rect, label.rows, label.propertyLabel)
+    const { rows } = selectRowLayout(rect, label.rows, label.subjectLabel)
     for (const row of rows) {
       outputPinPositions.set(row.id, { x: rect.x + rect.width - STRIP_WIDTH / 2, y: row.midY })
       gateAnchors.set(row.id, { x: rect.x + STRIP_WIDTH, y: row.midY })
     }
+  } else if (label?.conditional) {
+    const { input, ifPort } = conditionalPortLayout(rect)
+    inputPinPositions.set(node.id, input)
+    gateAnchors.set(node.id, ifPort)
+    outputPinPositions.set(node.id, outputPoint(rect, node))
   } else {
+    // An unconditional block has no "if": nothing to connect a condition to.
     inputPinPositions.set(node.id, inputPoint(rect, node))
     outputPinPositions.set(node.id, outputPoint(rect, node))
-    if (!isPseudo(node)) gateAnchors.set(node.id, { x: rect.x + STRIP_WIDTH, y: bodyMidY(rect) - PIN_DIAMETER })
   }
 }
 
@@ -967,17 +1010,26 @@ export function filterPortLayout(rect, editable) {
   }
 }
 
+// A conditional Add/Remove/Set block's input strip, split in two: its carrier input in the upper
+// half, its "if" (where conditions connect) in the lower.
+export function conditionalPortLayout(rect) {
+  const headerBottom = rect.y + TITLE_AREA_HEIGHT
+  const midY = (headerBottom + rect.y + rect.height) / 2
+  const x = rect.x + STRIP_WIDTH / 2
+  return { dividerY: midY, input: { x, y: (headerBottom + midY) / 2 }, ifPort: { x, y: (midY + rect.y + rect.height) / 2 } }
+}
+
 // chipLayout's counterpart for a <select> block: rows.map, not markerNames.map, since each row needs
 // its own top/height/midY (for its own divider and its own output pin) in addition to its own
 // chips -- see nodeDimensions' own comment on label.rows and rowHeight above, which this mirrors
-// exactly so a row's reserved space and its actual drawn position never drift apart. propertyLabel
-// (optional): the "property: X" header for a ConditionGroup this <select> wholly owns (see
+// exactly so a row's reserved space and its actual drawn position never drift apart. subjectLabel
+// (optional): the subject pill (e.g. "property: owner") header for a ConditionGroup this <select> wholly owns (see
 // inlinedConditionGroupFor) -- pushes every row down to make room, same as a signal node's own
 // property-label header (see signalRowLayout).
 // editable: see headerIcons -- governs only whether the icons are drawn. centerX is full-width
 // throughout, including the title (see chipLayout's own comment on why that can never overlap the
 // icons, via titleCandidateWidth in selectBodyWidth).
-export function selectRowLayout(rect, rows, propertyLabel, editable) {
+export function selectRowLayout(rect, rows, subjectLabel, editable) {
   const bodyX = rect.x + STRIP_WIDTH
   const bodyWidthPx = rect.width - 2 * STRIP_WIDTH
   const chipX = bodyX + BODY_SIDE_MARGIN
@@ -986,8 +1038,8 @@ export function selectRowLayout(rect, rows, propertyLabel, editable) {
   const titleY = rect.y + TITLE_AREA_HEIGHT / 2 + 4
   const chipHeight = CHIP_LINE_HEIGHT + CHIP_PADDING_Y
   let propertyChip = null
-  if (propertyLabel) {
-    const text = `property: ${propertyLabel}`
+  if (subjectLabel) {
+    const text = subjectLabel
     const width = textChipWidth(text)
     propertyChip = { kind: 'subject', text, x: centerX - width / 2, y: headerBottom + CONTENT_TOP_GAP, width, height: TEXT_CHIP_HEIGHT }
   }
@@ -997,7 +1049,7 @@ export function selectRowLayout(rect, rows, propertyLabel, editable) {
   // cells would, rather than trailing whatever text sits to its left.
   const predicateColWidth = predicateColumnWidth(rows)
   const markerColumnX = predicateColWidth > 0 ? chipX + predicateColWidth + CRITERIA_RIGHT_MARGIN : chipX
-  let top = headerBottom + propertyHeaderHeight(propertyLabel)
+  let top = headerBottom + propertyHeaderHeight(subjectLabel)
   const laidOutRows = rows.map((row) => {
     const height = rowHeight(row)
     const conditionChip = row.conditionLabel ? textChip('predicate', row.conditionLabel, chipX, top + ROW_PADDING_Y) : null

@@ -277,6 +277,11 @@ marker-pipeline-view {
   text-anchor: middle;
 }
 
+/* A bare condition's test, after what it reads: "firstName is not null". */
+.mp-chip-strong {
+  font-weight: 700;
+}
+
 /* The literal marker name(s) a carrier block adds/removes/sets -- a dashed chip, visually distinct
    from the block's own solid border, since it's content flowing through the block, not the block
    itself. */

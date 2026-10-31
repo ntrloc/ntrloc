@@ -1,4 +1,4 @@
-// The pipeline editor's draft -- { pipeline, positions, edgeBends, nextRef } -- and the changes made
+// The pipeline editor's draft -- { pipeline, positions, edgeBends, conditionalIds, nextRef } -- and the changes made
 // to it, each returning a new draft (one undo step each; see useUndoable). New blocks and conditions
 // are named by refIds (new-block-N, new-condition-N) until saving creates them.
 
@@ -7,8 +7,40 @@ export function initialDraft(pipelineView) {
     pipeline: pipelineView.pipeline,
     positions: new Map(Object.entries(pipelineView.layout?.positions ?? {})),
     edgeBends: new Map(Object.entries(pipelineView.layout?.edgeBends ?? {})),
+    conditionalIds: new Set(pipelineView.pipeline.carrierBlocks.filter(isConditional).map((b) => b.id)),
     nextRef: 1,
   }
+}
+
+const MARKER_BLOCK_TYPES = new Set(['ADD_MARKERS', 'REMOVE_MARKERS', 'SET_MARKERS'])
+export const isMarkerBlock = (block) => MARKER_BLOCK_TYPES.has(block.type)
+
+// An Add/Remove/Set block applies only when its conditions hold -- it has an "if" pin. Saved, that's
+// one with conditions connected; while editing, also one switched on but not connected yet (see
+// conditionalIds).
+export function isConditional(block) {
+  return isMarkerBlock(block) && (block.gate?.conditionOutputPinIds ?? []).length > 0
+}
+
+// An Add/Remove/Set block made conditional, or not -- no longer conditional, its conditions are
+// disconnected from it.
+export function setBlockConditional(draft, blockId, on) {
+  const conditionalIds = new Set(draft.conditionalIds)
+  if (on) {
+    conditionalIds.add(blockId)
+    return { ...draft, conditionalIds }
+  }
+  conditionalIds.delete(blockId)
+  const pins = gatePinsOf(draft.pipeline, blockId)
+  const edgeBends = new Map(draft.edgeBends)
+  for (const pin of pins) edgeBends.delete(`signal:${pin}=>${blockId}`)
+  const pipeline = withGate(draft.pipeline, blockId, (g) => ({ ...g, conditionOutputPinIds: [] }))
+  return { ...draft, pipeline, conditionalIds, edgeBends }
+}
+
+// A new condition connection: condition pin pinId read by the gate of ownerId (see withGate).
+export function addSignalConnection(draft, pinId, ownerId) {
+  return { ...draft, pipeline: withGate(draft.pipeline, ownerId, addPin(pinId)) }
 }
 
 // The draft with every node's position written down, from `rects` (where each is drawn now) -- so a
@@ -105,7 +137,7 @@ function withGate(pipeline, ownerId, fn) {
 
 const replacePin = (from, to) => (g) => ({ ...g, conditionOutputPinIds: g.conditionOutputPinIds.map((p) => (p === from ? to : p)) })
 const removePin = (pin) => (g) => ({ ...g, conditionOutputPinIds: g.conditionOutputPinIds.filter((p) => p !== pin) })
-const addPin = (pin) => (g) => ({ ...g, conditionOutputPinIds: [...g.conditionOutputPinIds, pin] })
+const addPin = (pin) => (g) => ({ quantity: 'ALL', ...g, conditionOutputPinIds: [...(g?.conditionOutputPinIds ?? []), pin] })
 
 // A condition connection (a signal edge from computeLayout: { key, pinId, ownerId }) with one end
 // moved: its start ('from') to another condition's pin, or its end ('to') to another gate.
@@ -114,6 +146,20 @@ export function moveSignalEnd(draft, edge, end, id) {
     end === 'from'
       ? withGate(draft.pipeline, edge.ownerId, replacePin(edge.pinId, id))
       : withGate(withGate(draft.pipeline, edge.ownerId, removePin(edge.pinId)), id, addPin(edge.pinId))
+  return withoutBend({ ...draft, pipeline }, edge.key)
+}
+
+// A connection (an edge from computeLayout) removed: a carrier one from its route, a condition one
+// from the gate reading it.
+export function deleteConnection(draft, edge) {
+  const pipeline = edge.outputPinId
+    ? {
+        ...draft.pipeline,
+        routes: draft.pipeline.routes
+          .map((r) => (r.outputPinId === edge.outputPinId ? { ...r, inputPinIds: r.inputPinIds.filter((id) => id !== edge.targetId) } : r))
+          .filter((r) => r.inputPinIds.length > 0),
+      }
+    : withGate(draft.pipeline, edge.ownerId, removePin(edge.pinId))
   return withoutBend({ ...draft, pipeline }, edge.key)
 }
 
@@ -163,28 +209,97 @@ export function deleteNode(draft, nodeId) {
   }
 }
 
+// --- Subjects ---
+
+// A subject (a Context, or null for the item itself) as the steps it takes, outermost first:
+// { type: 'STEP_TO_ITEM', linkPerspectiveId, each } | { type: 'STEP_TO_PROPERTY', propertyId } |
+// { type: 'STEP_TO_STATE_MACHINE', stateMachineId }. Nothing past a property or a state machine.
+export function subjectSteps(context) {
+  const steps = []
+  for (let step = context; step && step.type !== 'SELF'; step = step.next) {
+    const { next: _next, ...own } = step
+    steps.push(own)
+  }
+  return steps
+}
+
+// The subject those steps make, back to the item itself (Self) at the end of the chain.
+export function subjectFromSteps(steps) {
+  return steps.reduceRight((next, step) => (step.type === 'STEP_TO_STATE_MACHINE' ? step : { ...step, each: !!step.each, next }), {
+    type: 'SELF',
+  })
+}
+
+const hasEach = (context) => subjectSteps(context).some((step) => step.each)
+
+// A predicate with a subject but no type yet is a test still being chosen (see the inspector's Reads).
+const isLeaf = (predicate) => predicate && predicate.type !== 'COUNTED' && predicate.type !== 'TOTALITY'
+
+// Where a condition (or group) keeps its subject: a group, for all its conditions; a counting
+// condition, in its count; any other condition, its own. (A test can read a subject of its own too.)
+export function subjectOf(signal) {
+  if (signal.type === 'CONDITION' && signal.predicate?.type === 'COUNTED') return signal.predicate.subject
+  return signal.subject
+}
+
+// keeps(predicate): whether a test still fits the new subject -- one that doesn't is cleared. A test
+// reading a subject of its own doesn't read this one, so stays as it is.
+// A test reads a subject of its own only under the item itself: given another subject, it reads that.
+function withSubject(signal, subject, keeps) {
+  if (signal.type === 'CONDITION' && signal.predicate?.type === 'COUNTED') return { ...signal, predicate: { ...signal.predicate, subject } }
+  const itself = !subject || subject.type === 'SELF'
+  const refit = (c) => {
+    if (!isLeaf(c.predicate) || (itself && c.predicate.subject)) return c
+    const { subject: _own, ...predicate } = c.predicate
+    return { ...c, predicate: predicate.type && keeps(predicate) ? predicate : null }
+  }
+  if (signal.type === 'CONDITION_GROUP') return { ...signal, subject, conditions: signal.conditions.map(refit) }
+  return refit({ ...signal, subject })
+}
+
+// The condition (or group) drawn as node nodeId, given a new subject.
+export function setSubject(draft, nodeId, subject, keeps = () => true) {
+  const topLevelSignals = draft.pipeline.topLevelSignals.map((s) => (nodeIdOf({ signal: s }) === nodeId ? withSubject(s, subject, keeps) : s))
+  return { ...draft, pipeline: { ...draft.pipeline, topLevelSignals } }
+}
+
+// Condition conditionId -- on its own, or one of a group's -- given a new test.
+export function setPredicate(draft, conditionId, predicate) {
+  const withTest = (c) => (c.id === conditionId ? { ...c, predicate } : c)
+  const topLevelSignals = draft.pipeline.topLevelSignals.map((s) =>
+    s.type === 'CONDITION_GROUP' ? { ...s, conditions: s.conditions.map(withTest) } : withTest(s),
+  )
+  return { ...draft, pipeline: { ...draft.pipeline, topLevelSignals } }
+}
+
 // What's missing from a condition's test, if anything.
 function testProblem(predicate) {
-  if (!predicate) return 'Choose what it tests.'
-  if (predicate.type === 'COUNTED' && (!predicate.subject || !predicate.subPredicate)) return 'Choose what it counts.'
+  if (!predicate?.type) return 'Choose what it tests.'
+  if (predicate.type === 'COUNTED' && !hasEach(predicate.subject)) return 'Count over a link to several items.'
+  if (predicate.type === 'COUNTED' && !predicate.subPredicate) return 'Choose what it counts.'
   if (predicate.type === 'TOTALITY' && (predicate.subPredicates ?? []).length < 2) return 'Add at least two tests to combine.'
   return null
 }
 
 // What each node still needs before the pipeline can be saved, by node id: a list of messages.
-export function nodeProblems(pipeline) {
+// testProblemOf(signal, condition): what's wrong with a condition's own test given its subject (a
+// value missing, or a test its subject can't have), if anything.
+// conditionalIds: the blocks switched to conditional (see isConditional).
+export function nodeProblems(pipeline, testProblemOf = () => null, conditionalIds = new Set()) {
   const problems = new Map()
   const add = (id, message) => problems.set(id, [...(problems.get(id) ?? []), message])
   const fedIds = new Set(pipeline.routes.flatMap((r) => r.inputPinIds))
   for (const block of pipeline.carrierBlocks) {
     if (block.markerIds && block.markerIds.length === 0) add(block.id, 'Choose at least one marker.')
-    if (block.type === 'FILTER' && block.signal.conditionOutputPinIds.length === 0) add(block.id, 'Connect a condition to its "if".')
+    const ifUnconnected = block.type === 'FILTER' ? block.signal.conditionOutputPinIds.length === 0 : conditionalIds.has(block.id) && gatePinsOf(pipeline, block.id).length === 0
+    if (ifUnconnected) add(block.id, 'Connect a condition to its "if".')
     if (block.type === 'SELECT' && block.adds.length === 0) add(block.id, 'Add at least one row.')
     if (!fedIds.has(block.id)) add(block.id, 'Connect something into it.')
   }
   for (const signal of pipeline.topLevelSignals ?? []) {
     const conditions = signal.type === 'CONDITION_GROUP' ? signal.conditions : [signal]
-    for (const message of new Set(conditions.map((c) => testProblem(c.predicate)).filter(Boolean))) add(nodeIdOf({ signal }), message)
+    const messages = conditions.map((c) => testProblem(c.predicate) ?? (isLeaf(c.predicate) ? testProblemOf(signal, c) : null))
+    for (const message of new Set(messages.filter(Boolean))) add(nodeIdOf({ signal }), message)
   }
   return problems
 }

@@ -1,0 +1,24 @@
+test-picker {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+test-picker .input-control-field {
+  width: 100%;
+}
+
+.test-picker-and,
+.test-picker-note {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+}
+
+/* A condition's test: what it reads (under the item itself), then the test. */
+condition-test {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}

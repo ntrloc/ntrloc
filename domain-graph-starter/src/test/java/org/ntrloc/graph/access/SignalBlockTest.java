@@ -62,7 +62,7 @@ class SignalBlockTest {
     @Test
     void totalityPredicateCombinesDistinctSubPredicatesInOrder() {
         Predicate hireDate = new IsTruePredicate(null);
-        Predicate firstName = new StringExistsPredicate(null);
+        Predicate firstName = new ExistsPredicate(null);
 
         TotalityPredicate totality = new TotalityPredicate(null, Quantity.ALL, List.of(hireDate, firstName));
 

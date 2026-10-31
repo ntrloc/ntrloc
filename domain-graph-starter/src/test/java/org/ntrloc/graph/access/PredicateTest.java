@@ -1,6 +1,7 @@
 package org.ntrloc.graph.access;
 
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.json.JsonMapper;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -78,12 +79,19 @@ class PredicateTest {
     }
 
     @Test
-    void stateMachinePredicatesCoverCurrentStateAndNoState() {
-        java.util.UUID approved = java.util.UUID.randomUUID();
-        Predicate stateEquals = new StateEqualsPredicate(null, approved);
-        Predicate noState = new NoStatePredicate(null);
+    void stateMachinePredicatesCoverCurrentState() {
+        Predicate stateEquals = new StateEqualsPredicate(null, java.util.UUID.randomUUID());
 
         assertThat(stateEquals).isInstanceOf(StateMachinePredicate.class);
-        assertThat(noState).isInstanceOf(StateMachinePredicate.class);
+    }
+
+    @Test
+    void existsAndNotExists_alsoReadTheNamesTheyReplaced() {
+        JsonMapper mapper = JsonMapper.builder().build();
+
+        assertThat(mapper.readValue("{\"type\":\"STRING_EXISTS\"}", Predicate.class)).isInstanceOf(ExistsPredicate.class);
+        assertThat(mapper.readValue("{\"type\":\"STRING_NOT_EXISTS\"}", Predicate.class)).isInstanceOf(NotExistsPredicate.class);
+        assertThat(mapper.readValue("{\"type\":\"NO_STATE\"}", Predicate.class)).isInstanceOf(NotExistsPredicate.class);
+        assertThat(mapper.writeValueAsString(new NotExistsPredicate(null))).contains("\"type\":\"NOT_EXISTS\"");
     }
 }

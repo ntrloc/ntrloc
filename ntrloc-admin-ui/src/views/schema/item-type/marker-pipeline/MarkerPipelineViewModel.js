@@ -7,18 +7,35 @@ import { useUndoable, useUndoShortcuts } from '../../../../global/useUndoable'
 import {
   addCarrierConnection,
   addNode,
+  deleteConnection,
   deleteNode,
   gatePinsOf,
   initialDraft,
+  isConditional,
+  addSignalConnection,
+  setBlockConditional,
   moveCarrierEnd,
   moveSignalEnd,
   nodeProblems,
   setBlockMarkers,
+  setPredicate,
+  setSubject,
+  subjectOf,
   withPositionsFixed,
 } from './pipelineDraft'
+import { subjectEnd, testOf, testsFor, testValueProblem } from './pipelineTests'
 import { useSchemaSnapshot } from '../../../../global/model/SchemaCache'
 import { computeLayout, inlinedConditionGroupFor, orthogonalPath, signalNodes } from './markerPipelineLayout'
-import { describeCondition, describeConditionGroupSubject, describeConditionShort } from './pipelineConditionText'
+import {
+  describeCondition,
+  describeConditionGroupSubject,
+  describeConditionShort,
+  describeConditionSubject,
+  describeSubjectChip,
+  describeTestPill,
+} from './pipelineConditionText'
+
+const isLeafTest = (predicate) => predicate && predicate.type !== 'COUNTED' && predicate.type !== 'TOTALITY'
 
 const MIN_ZOOM = 0.3
 const MAX_ZOOM = 3
@@ -30,20 +47,20 @@ const MAX_ZOOM = 3
 // own marker list is enough -- no need to search every marker in the system.
 //
 // ctx: { markerNamesById, pipeline, schema, itemTypeId } -- schema/itemTypeId only matter for
-// SELECT's own propertyLabel/conditionLabel text (see pipelineConditionText.js); every other block
+// SELECT's own subjectLabel/conditionLabel text (see pipelineConditionText.js); every other block
 // type only ever needs markerNamesById, the same as before condition text existed.
 function blockLabel(block, ctx) {
-  const { markerNamesById, pipeline, schema, itemTypeId } = ctx
+  const { markerNamesById, pipeline, schema, itemTypeId, conditional } = ctx
   function markerNames(markerIds) {
     return markerIds.map((id) => markerNamesById.get(id) ?? id)
   }
   switch (block.type) {
     case 'ADD_MARKERS':
-      return { title: 'Add', markerNames: markerNames(block.markerIds) }
+      return { title: 'Add', markerNames: markerNames(block.markerIds), conditional: conditional(block) }
     case 'REMOVE_MARKERS':
-      return { title: 'Remove', markerNames: markerNames(block.markerIds) }
+      return { title: 'Remove', markerNames: markerNames(block.markerIds), conditional: conditional(block) }
     case 'SET_MARKERS':
-      return { title: 'Set', markerNames: markerNames(block.markerIds) }
+      return { title: 'Set', markerNames: markerNames(block.markerIds), conditional: conditional(block) }
     case 'FILTER':
       // isFilter: true picks the two-port FilterNode rendering (own "input"/"if" ports) rather
       // than the single shared-strip CarrierBlockNode every other block gets -- see
@@ -56,8 +73,8 @@ function blockLabel(block, ctx) {
       // node purely referenced back in via dashed lines to the very rows that already say the same
       // thing.
       const group = inlinedConditionGroupFor(pipeline, block.id)
-      const propertyLabel = group ? describeConditionGroupSubject(schema, itemTypeId, group) : null
-      const shortLabelByConditionId = new Map((group?.conditions ?? []).map((c) => [c.id, describeConditionShort(c.predicate)]))
+      const subjectLabel = group ? describeConditionGroupSubject(schema, itemTypeId, group) : null
+      const shortLabelByConditionId = new Map((group?.conditions ?? []).map((c) => [c.id, describeConditionShort(c.predicate, schema, itemTypeId, group.subject)]))
       function conditionLabelFor(gate) {
         const pinId = gate?.conditionOutputPinIds?.[0]
         return pinId ? (shortLabelByConditionId.get(pinId) ?? null) : null
@@ -68,7 +85,7 @@ function blockLabel(block, ctx) {
       // label.rows and Select.java's doc comment on why id() doubles as that pin).
       return {
         title: 'Select',
-        propertyLabel,
+        subjectLabel,
         rows: [
           ...block.adds.map((add) => ({
             id: add.id,
@@ -90,11 +107,12 @@ function pinDescriptionsOf(schema, itemTypeId, pipeline) {
   const descriptions = new Map()
   for (const signal of pipeline.topLevelSignals ?? []) {
     if (signal.type === 'CONDITION_GROUP') {
-      const subject = describeConditionGroupSubject(schema, itemTypeId, signal)
-      for (const c of signal.conditions) descriptions.set(c.id, `${subject} ${describeConditionShort(c.predicate)}`.trim())
+      const subject = describeConditionSubject(schema, itemTypeId, signal.subject).path.join('.')
+      for (const c of signal.conditions) descriptions.set(c.id, `${subject} ${describeConditionShort(c.predicate, schema, itemTypeId, signal.subject)}`.trim())
     } else {
       const box = describeCondition(schema, itemTypeId, signal)
-      descriptions.set(signal.id, [box?.subjectText, box?.testText ?? box?.label].filter(Boolean).join(' '))
+      // Nothing until it has a test: a subject alone doesn't say when it holds.
+      descriptions.set(signal.id, box?.testText ? [box.subjectText, box.testText].filter(Boolean).join(' ') : '')
     }
   }
   return descriptions
@@ -107,11 +125,17 @@ function pinDescriptionsOf(schema, itemTypeId, pipeline) {
 function signalNodeLabel(schema, itemTypeId, signal) {
   if (signal.type === 'CONDITION_GROUP') {
     return {
-      propertyLabel: describeConditionGroupSubject(schema, itemTypeId, signal),
-      rowLabels: signal.conditions.map((c) => describeConditionShort(c.predicate)),
+      subjectLabel: describeConditionGroupSubject(schema, itemTypeId, signal),
+      rowLabels: signal.conditions.map((c) => describeConditionShort(c.predicate, schema, itemTypeId, signal.subject)),
     }
   }
-  return describeCondition(schema, itemTypeId, signal)
+  // Its subject as a pill of its own, over its test -- which then has no subject of its own to show.
+  return {
+    subjectLabel: describeSubjectChip(schema, itemTypeId, signal.subject),
+    ...(isLeafTest(signal.predicate)
+      ? { test: describeTestPill(schema, itemTypeId, signal) }
+      : { box: describeCondition(schema, itemTypeId, signal, { withSubject: false }) }),
+  }
 }
 
 const NO_HISTORY = { undo: () => {}, redo: () => {} }
@@ -141,7 +165,16 @@ export function useMarkerPipelineViewModel(pipelineView, itemTypeId, savePipelin
   const pipeline = draft?.pipeline ?? pipelineView.pipeline
   const effectivePositions = draft?.positions ?? new Map(Object.entries(pipelineView.layout?.positions ?? {}))
   const effectiveEdgeBends = draft?.edgeBends ?? new Map(Object.entries(pipelineView.layout?.edgeBends ?? {}))
-  const problems = editable ? nodeProblems(pipeline) : new Map()
+  // What a condition's test reads -- its own subject, if it has one, or the condition's (or group's) --
+  // and so which tests it can be.
+  const testSubjectOf = (signal, condition) => condition.predicate?.subject ?? subjectOf(signal)
+  const testsOf = (signal, condition) => testsFor(subjectEnd(schema, itemTypeId, testSubjectOf(signal, condition)), itemTypeId)
+  function conditionTestProblem(signal, condition) {
+    if (!schema) return null
+    const test = testOf(condition.predicate, testsOf(signal, condition))
+    return test ? testValueProblem(test, condition.predicate) : "Its test doesn't fit its subject."
+  }
+  const problems = editable ? nodeProblems(pipeline, conditionTestProblem, draft.conditionalIds) : new Map()
   // Why it can't be saved as it is, if it can't. (New blocks go with refIds, which the server swaps
   // for ids.)
   const saveBlocker = problems.size > 0 ? 'Some blocks still need something -- see their details.' : null
@@ -150,7 +183,10 @@ export function useMarkerPipelineViewModel(pipelineView, itemTypeId, savePipelin
     .map((m) => ({ value: m.id, label: m.name }))
     .sort((a, b) => a.label.localeCompare(b.label))
 
-  const blockCtx = { markerNamesById, pipeline, schema, itemTypeId }
+  // Whether an Add/Remove/Set block has an "if": while editing, switched on (connected or not yet);
+  // otherwise, with conditions connected.
+  const conditional = (block) => (draft ? draft.conditionalIds.has(block.id) : isConditional(block))
+  const blockCtx = { markerNamesById, pipeline, schema, itemTypeId, conditional }
   const blocks = new Map(pipeline.carrierBlocks.map((b) => [b.id, blockLabel(b, blockCtx)]))
   const signalDescriptions = new Map(signalNodes(pipeline).map((node) => [node.id, signalNodeLabel(schema, itemTypeId, node.signal)]))
   const layout = computeLayout(pipeline, effectivePositions, blocks, signalDescriptions, effectiveEdgeBends)
@@ -256,8 +292,11 @@ export function useMarkerPipelineViewModel(pipelineView, itemTypeId, savePipelin
     gesture.update((d) => ({ ...d, positions: new Map(d.positions).set(nodeId, { x: startPos.x + dx, y: startPos.y + dy }) }))
   }
 
+  // Stops the event only when it ends a node drag: a connection being drawn or moved ends on the
+  // window's pointerup (see startDiagramDrag), and lets go over a block.
   function onNodePointerUp(event) {
-    nodeDragRef.current?.gesture.end()
+    if (!nodeDragRef.current) return
+    nodeDragRef.current.gesture.end()
     nodeDragRef.current = null
     event.stopPropagation()
     // Same guard as the canvas's own onPointerUp -- releasing a capture that was never set throws.
@@ -303,8 +342,10 @@ export function useMarkerPipelineViewModel(pipelineView, itemTypeId, savePipelin
     gesture.update((d) => ({ ...d, edgeBends: new Map(d.edgeBends).set(edgeKey, startValue + delta) }))
   }
 
+  // Same as onNodePointerUp: only the end of its own drag.
   function onEdgeHandlePointerUp(event) {
-    edgeDragRef.current?.gesture.end()
+    if (!edgeDragRef.current) return
+    edgeDragRef.current.gesture.end()
     edgeDragRef.current = null
     setDraggingEdgeKey(null)
     event.stopPropagation()
@@ -483,7 +524,7 @@ export function useMarkerPipelineViewModel(pipelineView, itemTypeId, savePipelin
 
   // Dragging a selected connection's end: on its pin while it's near it, then loose, following the
   // pointer, and snapping to any pin it may move to (see lineEnds' dragLineEnd -- the same as the
-  // state machine editor's transitions). Let go on a pin, it moves there; let go loose, it goes back.
+  // state machine editor's transitions). Let go on a pin, it moves there; let go loose, it's removed.
   function onEdgeEndPointerDown(event, edge, end) {
     if (!view) return
     const isCarrier = Boolean(edge.outputPinId)
@@ -500,9 +541,14 @@ export function useMarkerPipelineViewModel(pipelineView, itemTypeId, savePipelin
         current = at
         setEndDrag({ key: edge.key, end, nodeId: at.nodeId, point: at.nodeId ? pins.get(at.nodeId) : point })
       },
-      () => {
+      (didMove) => {
         setEndDrag(null)
-        if (!current.nodeId || current.nodeId === originalId) return
+        if (!didMove || current.nodeId === originalId) return
+        if (!current.nodeId) {
+          changeStructure((d) => deleteConnection(d, edge))
+          selection.clear()
+          return
+        }
         const moved = current.nodeId
         if (isCarrier) {
           changeStructure((d) => moveCarrierEnd(d, edge, end, moved))
@@ -548,9 +594,34 @@ export function useMarkerPipelineViewModel(pipelineView, itemTypeId, savePipelin
     )
   }
 
+  // The same from a condition's pin, to any "if" it may connect to.
+  function onSignalPinPointerDown(event, pinId) {
+    if (!isEditing || !view) return
+    const start = layout.outputPinPositions.get(pinId)
+    const pins = endCandidates({ pinId, ownerId: null }, 'to')
+    let current = { nodeId: null }
+    startDiagramDrag(
+      event,
+      view.zoom,
+      (dx, dy) => {
+        const point = { x: start.x + dx, y: start.y + dy }
+        current = dragLineEnd({ point, attachedId: current.nodeId, rects: pins, canAttach: () => true, zoom: view.zoom })
+        setNewConnection({ outputPinId: pinId, signal: true, point: current.nodeId ? pins.get(current.nodeId) : point })
+      },
+      () => {
+        setNewConnection(null)
+        if (!current.nodeId) return
+        const ownerId = current.nodeId
+        changeStructure((d) => addSignalConnection(d, pinId, ownerId))
+        selection.select('edge', `signal:${pinId}=>${ownerId}`)
+      },
+    )
+  }
+
   const newConnectionPoints = newConnection
     ? orthogonalPath(layout.outputPinPositions.get(newConnection.outputPinId), newConnection.point).points
     : null
+  const newConnectionIsSignal = Boolean(newConnection?.signal)
 
   // Start leads to any number of blocks: a small circle at its middle to draw another connection from
   // -- shown on hover, or all along while it leads nowhere yet. Not while one of its connections is
@@ -566,6 +637,10 @@ export function useMarkerPipelineViewModel(pipelineView, itemTypeId, savePipelin
     onOutputPinPointerDown(event, pipeline.start.id, { threshold: START_DRAG_THRESHOLD })
   }
 
+  // Condition pins -- where a new condition connection can be drawn from. A condition can feed any
+  // number of "if"s, so every one, connected or not.
+  const signalPinStarts = isEditing ? [...layout.outputPinPositions].filter(([id]) => signalPins.has(id)) : []
+
   // Carrier output pins with nothing connected -- where a new connection can be drawn from. Start can
   // always lead to more (see startConnector).
   const emptyOutputPins = isEditing
@@ -573,14 +648,51 @@ export function useMarkerPipelineViewModel(pipelineView, itemTypeId, savePipelin
     : []
 
   // The connection being dragged, drawn to where its end is now.
+  const movingEdge = endDrag ? [...layout.edges, ...layout.signalEdges].find((e) => e.key === endDrag.key) : null
   let endDragPoints = null
-  if (endDrag) {
-    const edge = [...layout.edges, ...layout.signalEdges].find((e) => e.key === endDrag.key)
-    if (edge) {
-      const from = endDrag.end === 'from' ? endDrag.point : edge.points[0]
-      const to = endDrag.end === 'to' ? endDrag.point : edge.points[edge.points.length - 1]
-      endDragPoints = orthogonalPath(from, to).points
-    }
+  if (movingEdge) {
+    const from = endDrag.end === 'from' ? endDrag.point : movingEdge.points[0]
+    const to = endDrag.end === 'to' ? endDrag.point : movingEdge.points[movingEdge.points.length - 1]
+    endDragPoints = orthogonalPath(from, to).points
+  }
+  // A dot marks a dragged line's moving end where no arrowhead does: a condition line's either end, a
+  // carrier line's start. { x, y, signal } or null.
+  let dragEndDot = null
+  if (movingEdge && endDragPoints && (movingEdge.pinId || endDrag.end === 'from')) {
+    dragEndDot = { ...(endDrag.end === 'from' ? endDragPoints[0] : endDragPoints.at(-1)), signal: Boolean(movingEdge.pinId) }
+  } else if (newConnection?.signal && newConnectionPoints) {
+    dragEndDot = { ...newConnectionPoints.at(-1), signal: true }
+  }
+
+  // Whether a pin is drawn connected: while one end of a connection is moved, not by that end.
+  const movedAway = (edge, end) => edge === movingEdge && endDrag.end === end
+  const isOutputConnected = (pinId) => layout.edges.some((e) => e.outputPinId === pinId && !movedAway(e, 'from'))
+  const isSignalPinRead = (pinId) => layout.signalEdges.some((e) => e.pinId === pinId && !movedAway(e, 'from'))
+  const isGateConnected = (ownerId) => layout.signalEdges.some((e) => e.ownerId === ownerId && !movedAway(e, 'to'))
+
+  function setConditional(blockId, on) {
+    changeStructure((d) => setBlockConditional(d, blockId, on))
+  }
+
+  function setConditionSubject(nodeId, subject) {
+    const tests = testsFor(subjectEnd(schema, itemTypeId, subject), itemTypeId)
+    changeStructure((d) => setSubject(d, nodeId, subject, (predicate) => testOf(predicate, tests) !== null))
+  }
+
+  // What a test under the item itself reads (see SignalDetails' Reads): its test kept if it still
+  // fits, else cleared.
+  function setTestSubject(signal, condition, subject) {
+    const own = subject && subject.type !== 'SELF' ? subject : null
+    const tests = testsFor(subjectEnd(schema, itemTypeId, own ?? subjectOf(signal)), itemTypeId)
+    const { subject: _old, ...rest } = condition.predicate ?? {}
+    const kept = rest.type && testOf(rest, tests) ? rest : {}
+    const predicate = own ? { ...kept, subject: own } : kept.type ? kept : null
+    setConditionTest(condition.id, predicate)
+  }
+
+  // key: typing into one of a test's values is one undo step, not one per keystroke.
+  function setConditionTest(conditionId, predicate, key = null) {
+    history.change((d) => setPredicate(withPositionsFixed(d, layout.rects), conditionId, predicate), key)
   }
 
   function setMarkers(blockId, markerIds) {
@@ -598,6 +710,13 @@ export function useMarkerPipelineViewModel(pipelineView, itemTypeId, savePipelin
     problems,
     markerOptions,
     setMarkers,
+    schema,
+    itemTypeId,
+    setConditionSubject,
+    setConditionTest,
+    setTestSubject,
+    testsOf,
+    testSubjectOf,
     placeNode,
     removeNode,
     layout,
@@ -636,7 +755,16 @@ export function useMarkerPipelineViewModel(pipelineView, itemTypeId, savePipelin
     onEdgeEndPointerDown,
     endDrag,
     endDragPoints,
-    isOutputConnected: (pinId) => connectedOutputs.has(pinId),
+    isOutputConnected,
+    isSignalPinRead,
+    isGateConnected,
+    dragEndDot,
+    signalPinStarts,
+    onSignalPinPointerDown,
+    newConnectionIsSignal,
+    setConditional,
+    // Whether the draft differs from what's saved: undone back to it, it doesn't.
+    hasChanges: editable && history.canUndo,
     emptyOutputPins,
     startConnector,
     onStartConnectorPointerDown,

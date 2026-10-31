@@ -36,6 +36,13 @@ item-type-structure {
   height: 100%;
 }
 
+/* Edit (or, while editing, Cancel and Save) at the tab's top right, over the cards. */
+item-type-structure-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 12px 20px 0;
+}
+
 item-type-structure-cards {
   flex: 1;
   min-height: 0;

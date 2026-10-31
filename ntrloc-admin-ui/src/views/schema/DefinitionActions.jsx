@@ -7,9 +7,12 @@ import './DefinitionActions.css'
 // The top right of an item type's, trait's or controlled list's header: Edit, and for a saved one
 // Delete, which asks first and then deletes it straight away -- or, while editing, Cancel and Save.
 // `vm` is that editor's view model; `onEdit`, if given, starts editing in place of vm.startEditing.
-function DefinitionActions({ vm, name, onEdit = vm.startEditing }) {
+// `edit` / `remove` false leave out that part, for a view showing them in two places (an item type's
+// Edit is its Structure tab's, its Delete the whole item type's).
+function DefinitionActions({ vm, name, onEdit = vm.startEditing, edit = true, remove = true }) {
   const [confirming, setConfirming] = useState(false)
   if (vm.editing) {
+    if (!edit) return null
     return (
       <definition-actions>
         <Button variant="ghost-secondary" icon="x" onClick={vm.cancel} disabled={vm.saving}>
@@ -23,10 +26,12 @@ function DefinitionActions({ vm, name, onEdit = vm.startEditing }) {
   }
   return (
     <definition-actions>
-      <Button variant="ghost-secondary" icon="edit" onClick={onEdit}>
-        Edit
-      </Button>
-      {vm.deletion && (
+      {edit && (
+        <Button variant="ghost-secondary" icon="edit" onClick={onEdit}>
+          Edit
+        </Button>
+      )}
+      {remove && vm.deletion && (
         <Button variant="ghost-danger" icon="trash" onClick={() => setConfirming(true)}>
           Delete
         </Button>

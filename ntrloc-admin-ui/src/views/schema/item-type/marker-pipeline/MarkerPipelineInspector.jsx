@@ -1,6 +1,11 @@
+import Switch from '../../../../controls/switch/Switch'
 import DiagramInspector, { InspectorField } from '../../../../controls/diagram/DiagramInspector'
 import CheckboxOptionList from '../../../../controls/option-list/CheckboxOptionList'
 import PopoverButton from '../../../../controls/popover-button/PopoverButton'
+import { subjectOf } from './pipelineDraft'
+import SubjectPicker from './SubjectPicker'
+import TestPicker from './TestPicker'
+import { subjectEnd } from './pipelineTests'
 
 const QUANTITY_JOIN = { ALL: ' and ', ANY: ' or ' }
 
@@ -39,6 +44,9 @@ function BlockDetails({ block, label, pinDescriptions, vm }) {
       <>
         <p className="diagram-inspector-kind">{markerBlock.kind}</p>
         <MarkerChoice name={markerBlock.what} block={block} vm={vm} />
+        {/* Conditional: it applies only when the conditions connected to its "if" hold; otherwise
+            items pass through it unchanged. */}
+        <Switch name="Conditional" on={label.conditional} onChange={(on) => vm.setConditional(block.id, on)} />
       </>
     )
   }
@@ -54,7 +62,7 @@ function BlockDetails({ block, label, pinDescriptions, vm }) {
     return (
       <>
         <p className="diagram-inspector-kind">Select</p>
-        {label.propertyLabel && <InspectorField name="Chooses by" value={label.propertyLabel} />}
+        {label.subjectLabel && <InspectorField name="Chooses by" value={label.subjectLabel} />}
         {block.adds.map((row, i) => (
           <InspectorField key={row.id} name={describeGate(row.gate, pinDescriptions)} value={label.rows[i].markerNames.join(', ')} />
         ))}
@@ -65,14 +73,58 @@ function BlockDetails({ block, label, pinDescriptions, vm }) {
   return <p className="diagram-inspector-kind">{block.type}</p>
 }
 
-function SignalDetails({ signal, pinDescriptions }) {
+// What a condition (or group) is called, by what it does.
+function conditionKind(signal) {
+  if (signal.type === 'CONDITION_GROUP') return 'Condition group'
+  if (signal.predicate?.type === 'COUNTED') return 'Counting condition'
+  if (signal.predicate?.type === 'TOTALITY') return 'All / any / none of'
+  return 'Condition'
+}
+
+function SignalDetails({ signal, nodeId, pinDescriptions, vm }) {
   const conditions = signal.type === 'CONDITION_GROUP' ? signal.conditions : [signal]
   return (
     <>
-      <p className="diagram-inspector-kind">{signal.type === 'CONDITION_GROUP' ? 'Condition group' : 'Condition'}</p>
-      {conditions.map((c, i) => (
-        <InspectorField key={c.id} name={conditions.length > 1 ? `Condition ${i + 1}` : 'Holds when'} value={pinDescriptions.get(c.id)} />
-      ))}
+      <p className="diagram-inspector-kind">{conditionKind(signal)}</p>
+      <SubjectPicker
+        schema={vm.schema}
+        itemTypeId={vm.itemTypeId}
+        subject={subjectOf(signal)}
+        counting={signal.predicate?.type === 'COUNTED'}
+        onChange={(subject) => vm.setConditionSubject(nodeId, subject)}
+      />
+      {conditions.map((c, i) => {
+        const name = conditions.length > 1 ? `Condition ${i + 1}` : 'Test'
+        // Counting and all/any/none tests aren't editable yet.
+        if (c.predicate?.type === 'COUNTED' || c.predicate?.type === 'TOTALITY') {
+          return <InspectorField key={c.id} name={name} value={pinDescriptions.get(c.id)} />
+        }
+        // Under the item itself, a test reads something of its own: one of the item's properties, a
+        // linked item, a state.
+        const itself = !subjectOf(signal) || subjectOf(signal).type === 'SELF'
+        return (
+          <condition-test key={c.id}>
+            {itself && (
+              <SubjectPicker
+                name={conditions.length > 1 ? `${name} reads` : 'Reads'}
+                schema={vm.schema}
+                itemTypeId={vm.itemTypeId}
+                subject={c.predicate?.subject ?? null}
+                counting={false}
+                itselfAllowed={false}
+                onChange={(subject) => vm.setTestSubject(signal, c, subject)}
+              />
+            )}
+            <TestPicker
+              name={name}
+              tests={vm.testsOf(signal, c)}
+              end={subjectEnd(vm.schema, vm.itemTypeId, vm.testSubjectOf(signal, c))}
+              predicate={c.predicate}
+              onChange={(predicate, key) => vm.setConditionTest(c.id, predicate, key && `${c.id}-${key}`)}
+            />
+          </condition-test>
+        )
+      })}
     </>
   )
 }
@@ -134,7 +186,7 @@ function MarkerPipelineInspector({ pipeline, vm, panel }) {
     const block = pipeline.carrierBlocks.find((b) => b.id === nodeId)
     const signalNode = vm.layout.signalNodes.find((n) => n.id === nodeId)
     if (block) details = <BlockDetails block={block} label={vm.blocks.get(block.id)} pinDescriptions={vm.pinDescriptions} vm={vm} />
-    else if (signalNode) details = <SignalDetails signal={signalNode.signal} pinDescriptions={vm.pinDescriptions} />
+    else if (signalNode) details = <SignalDetails signal={signalNode.signal} nodeId={nodeId} pinDescriptions={vm.pinDescriptions} vm={vm} />
   }
   if (vm.selection?.kind === 'edge') {
     const edge = [...vm.layout.edges, ...vm.layout.signalEdges].find((e) => e.key === vm.selection.id)

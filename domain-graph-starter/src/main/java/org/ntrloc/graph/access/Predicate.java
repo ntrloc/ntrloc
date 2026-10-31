@@ -25,13 +25,16 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
 // PredicateEvaluator's own dispatch, but no field anywhere in this model is ever declared as one of
 // them (always the bare Predicate), so there's nothing for a second JSON discriminator level to do.
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type")
+//
+// EXISTS/NOT_EXISTS also read the names they replaced (STRING_EXISTS/STRING_NOT_EXISTS, NO_STATE), so a
+// pipeline saved before still loads.
 @JsonSubTypes({
+        @JsonSubTypes.Type(value = ExistsPredicate.class, name = "EXISTS", names = "STRING_EXISTS"),
+        @JsonSubTypes.Type(value = NotExistsPredicate.class, name = "NOT_EXISTS", names = {"STRING_NOT_EXISTS", "NO_STATE"}),
         @JsonSubTypes.Type(value = StringEqualsPredicate.class, name = "STRING_EQUALS"),
         @JsonSubTypes.Type(value = StringNotEqualsPredicate.class, name = "STRING_NOT_EQUALS"),
         @JsonSubTypes.Type(value = StringLikePredicate.class, name = "STRING_LIKE"),
         @JsonSubTypes.Type(value = StringStartsWithPredicate.class, name = "STRING_STARTS_WITH"),
-        @JsonSubTypes.Type(value = StringExistsPredicate.class, name = "STRING_EXISTS"),
-        @JsonSubTypes.Type(value = StringNotExistsPredicate.class, name = "STRING_NOT_EXISTS"),
         @JsonSubTypes.Type(value = NumberPredicate.class, name = "NUMBER"),
         @JsonSubTypes.Type(value = DatePredicate.class, name = "DATE"),
         @JsonSubTypes.Type(value = IsTruePredicate.class, name = "IS_TRUE"),
@@ -56,7 +59,6 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
         @JsonSubTypes.Type(value = LinkIsPresentPredicate.class, name = "LINK_IS_PRESENT"),
         @JsonSubTypes.Type(value = LinkCountPredicate.class, name = "LINK_COUNT"),
         @JsonSubTypes.Type(value = StateEqualsPredicate.class, name = "STATE_EQUALS"),
-        @JsonSubTypes.Type(value = NoStatePredicate.class, name = "NO_STATE"),
         @JsonSubTypes.Type(value = EqualsSelfPredicate.class, name = "EQUALS_SELF"),
         @JsonSubTypes.Type(value = TotalityPredicate.class, name = "TOTALITY"),
         @JsonSubTypes.Type(value = CountedPredicate.class, name = "COUNTED")
@@ -64,7 +66,7 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
 public sealed interface Predicate
         permits StringPredicate, NumberPredicate, DatePredicate, BooleanPredicate,
         StringListPredicate, NumberListPredicate, DateListPredicate,
-        LinkPredicate, StateMachinePredicate, IdentityPredicate,
+        LinkPredicate, StateMachinePredicate, IdentityPredicate, PresencePredicate,
         TotalityPredicate, CountedPredicate {
 
     Context subject();
