@@ -5,6 +5,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.ntrloc.graph.TestDatabases;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.ntrloc.graph.security.AbstractLdapIntegrationTest;
 import org.openqa.selenium.By;
@@ -12,7 +13,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -25,17 +25,9 @@ class LdapAdminUiTest extends AbstractLdapIntegrationTest implements UiBrowser.H
     // Seeded by AuthorizationTestDataInitializer (graph.security.seed-test-data in the test config).
     private static final String SEEDED_ITEM_TYPE = "AclTestUnmarkedDoc";
 
-    private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:18");
-
-    static {
-        POSTGRES.start();
-    }
-
     @DynamicPropertySource
     static void registerProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
-        registry.add("spring.datasource.username", POSTGRES::getUsername);
-        registry.add("spring.datasource.password", POSTGRES::getPassword);
+        TestDatabases.registerFresh(registry, "LdapAdminUiTest");
         registry.add("graph.security.auto-provision.enabled", () -> "false");
     }
 

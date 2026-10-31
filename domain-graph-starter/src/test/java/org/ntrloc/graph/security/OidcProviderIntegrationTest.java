@@ -2,13 +2,13 @@ package org.ntrloc.graph.security;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.ntrloc.graph.TestDatabases;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.reactive.server.WebTestClient;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.util.HashMap;
 import java.util.List;
@@ -24,17 +24,9 @@ class OidcProviderIntegrationTest extends AbstractOidcIntegrationTest {
     private static final String API = "/api/admin/security/oidc";
     private static final String PROVIDER = API + "/" + KeycloakContainers.REGISTRATION_ID;
 
-    private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:18");
-
-    static {
-        POSTGRES.start();
-    }
-
     @DynamicPropertySource
     static void registerProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
-        registry.add("spring.datasource.username", POSTGRES::getUsername);
-        registry.add("spring.datasource.password", POSTGRES::getPassword);
+        TestDatabases.registerFresh(registry, "OidcProviderIntegrationTest");
         registry.add("graph.security.auto-provision.enabled", () -> "false");
     }
 

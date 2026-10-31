@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.ntrloc.graph.TestApplication;
+import org.ntrloc.graph.TestDatabases;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.ntrloc.graph.security.KeycloakContainers;
 import org.ntrloc.graph.security.SamlProviderService;
@@ -20,7 +21,6 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.Testcontainers;
 import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.util.List;
 
@@ -32,7 +32,7 @@ import java.util.List;
  * As in OidcAdminUiTest, the browser (in a container) and ntrloc (in this JVM) both reach the IdP
  * and ntrloc on host.testcontainers.internal, so ntrloc's entity ID -- built from the host it's
  * reached at -- is the same for both, and the IdP is registered from ntrloc's metadata as fetched
- * there. Its own Spring context (SSO only) and Postgres, closed after this class (@DirtiesContext).
+ * there. Its own Spring context (SSO only) and database, closed after this class (@DirtiesContext).
  */
 @SpringBootTest(classes = TestApplication.class, webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @DirtiesContext
@@ -43,11 +43,9 @@ class SamlAdminUiTest implements UiBrowser.Holder {
     private static final String SEEDED_ITEM_TYPE = "AclTestUnmarkedDoc";
     private static final String REGISTRATION_ID = "corporate-saml";
 
-    private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:18");
     private static final GenericContainer<?> KEYCLOAK = KeycloakContainers.shared();
 
     static {
-        POSTGRES.start();
         Testcontainers.exposeHostPorts(KEYCLOAK.getMappedPort(KeycloakContainers.PORT));
     }
 
@@ -57,9 +55,7 @@ class SamlAdminUiTest implements UiBrowser.Holder {
 
     @DynamicPropertySource
     static void registerProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
-        registry.add("spring.datasource.username", POSTGRES::getUsername);
-        registry.add("spring.datasource.password", POSTGRES::getPassword);
+        TestDatabases.registerFresh(registry, "SamlAdminUiTest");
         registry.add("graph.auth.local.enabled", () -> "false");
         registry.add("graph.security.auto-provision.enabled", () -> "false");
     }

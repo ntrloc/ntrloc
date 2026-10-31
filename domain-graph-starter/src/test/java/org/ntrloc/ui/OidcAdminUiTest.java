@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.ntrloc.graph.TestApplication;
+import org.ntrloc.graph.TestDatabases;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.ntrloc.graph.security.KeycloakContainers;
 import org.ntrloc.graph.security.OidcProviderService;
@@ -19,7 +20,6 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.Testcontainers;
 import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.util.List;
 
@@ -37,7 +37,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * plain-HTTP origin as secure, as Chrome does localhost.
  *
  * Keycloak is registered as a sign-in provider through OidcProviderService, as the admin UI does.
- * Its own Spring context (SSO only) and Postgres, closed after this class (@DirtiesContext).
+ * Its own Spring context (SSO only) and database, closed after this class (@DirtiesContext).
  */
 @SpringBootTest(classes = TestApplication.class, webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @DirtiesContext
@@ -47,11 +47,9 @@ class OidcAdminUiTest implements UiBrowser.Holder {
     // Seeded by AuthorizationTestDataInitializer (graph.security.seed-test-data in the test config).
     private static final String SEEDED_ITEM_TYPE = "AclTestUnmarkedDoc";
 
-    private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:18");
     private static final GenericContainer<?> KEYCLOAK = KeycloakContainers.shared();
 
     static {
-        POSTGRES.start();
         Testcontainers.exposeHostPorts(keycloakPort());
     }
 
@@ -65,9 +63,7 @@ class OidcAdminUiTest implements UiBrowser.Holder {
 
     @DynamicPropertySource
     static void registerProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
-        registry.add("spring.datasource.username", POSTGRES::getUsername);
-        registry.add("spring.datasource.password", POSTGRES::getPassword);
+        TestDatabases.registerFresh(registry, "OidcAdminUiTest");
         registry.add("graph.auth.local.enabled", () -> "false");
         registry.add("graph.security.auto-provision.enabled", () -> "false");
     }

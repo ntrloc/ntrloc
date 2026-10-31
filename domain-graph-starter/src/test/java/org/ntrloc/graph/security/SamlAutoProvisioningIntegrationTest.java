@@ -1,11 +1,11 @@
 package org.ntrloc.graph.security;
 
 import org.junit.jupiter.api.Test;
+import org.ntrloc.graph.TestDatabases;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -13,17 +13,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 // from the provider's display-name attribute. Each test uses its own IdP user.
 class SamlAutoProvisioningIntegrationTest extends AbstractSamlIntegrationTest {
 
-    private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:18");
-
-    static {
-        POSTGRES.start();
-    }
-
     @DynamicPropertySource
     static void registerProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
-        registry.add("spring.datasource.username", POSTGRES::getUsername);
-        registry.add("spring.datasource.password", POSTGRES::getPassword);
+        TestDatabases.registerFresh(registry, "SamlAutoProvisioningIntegrationTest");
         registry.add("graph.security.auto-provision.enabled", () -> "true");
     }
 

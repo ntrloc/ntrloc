@@ -2,6 +2,7 @@ package org.ntrloc.graph.security;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.ntrloc.graph.TestDatabases;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.ntrloc.graph.security.LdapConfigurationService.LdapSettings;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -11,7 +12,6 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.reactive.server.WebTestClient;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -26,17 +26,9 @@ class LdapConfigurationIntegrationTest extends AbstractLdapIntegrationTest {
 
     private static final String API = "/api/admin/security/ldap";
 
-    private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:18");
-
-    static {
-        POSTGRES.start();
-    }
-
     @DynamicPropertySource
     static void registerProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
-        registry.add("spring.datasource.username", POSTGRES::getUsername);
-        registry.add("spring.datasource.password", POSTGRES::getPassword);
+        TestDatabases.registerFresh(registry, "LdapConfigurationIntegrationTest");
         registry.add("graph.security.auto-provision.enabled", () -> "false");
     }
 

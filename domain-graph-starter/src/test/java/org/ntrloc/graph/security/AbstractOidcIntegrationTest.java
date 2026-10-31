@@ -38,9 +38,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * Keycloak is registered as a sign-in provider through OidcProviderService, as the admin UI does.
  * Local login is off in this context, as in an SSO-only deployment.
  *
- * OIDC-enabled settings make this a separate Spring context, so each subclass brings its own
- * Postgres container (see PersonalAccessTokenAuthenticationIntegrationTest); Keycloak is shared
- * (see KeycloakContainers). Singleton containers, as in AbstractIntegrationTest.
+ * OIDC-enabled settings make this a separate Spring context, so each subclass has a database of
+ * its own (see TestDatabases); Keycloak is shared (see KeycloakContainers).
  * @DirtiesContext (inherited) closes each subclass's context once it finishes, so these extra
  * contexts don't all stay alive, and in memory, for the rest of the test run.
  */

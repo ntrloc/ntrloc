@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.ntrloc.graph.TestApplication;
+import org.ntrloc.graph.TestDatabases;
 import org.ntrloc.graph.db.partition.authorization.PermissionService;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
 import org.ntrloc.graph.db.partition.security.PersonalAccessTokenService;
@@ -28,7 +29,6 @@ import org.springframework.test.web.reactive.server.WebTestClient;
 import org.springframework.web.reactive.function.BodyInserters;
 import org.springframework.web.util.UriComponentsBuilder;
 import org.testcontainers.containers.GenericContainer;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.io.IOException;
 import java.net.ServerSocket;
@@ -63,7 +63,8 @@ import static org.awaitility.Awaitility.await;
 @DisplayName("A two-node cluster")
 class ClusterIntegrationTest {
 
-    private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:18");
+    // One database for every node: they're one cluster.
+    private static final String DATABASE = TestDatabases.create("cluster");
     private static final GenericContainer<?> KEYCLOAK = KeycloakContainers.shared();
     private static final String ROOT = "root@example.com";
     private static final String PASSWORD = "s3cret!";
@@ -71,10 +72,6 @@ class ClusterIntegrationTest {
     private static final String SSO_EMAIL = "existing.user@example.org";
     private static final String SAML_ID = "corporate-saml";
     private static final Duration PROPAGATION = Duration.ofSeconds(10);
-
-    static {
-        POSTGRES.start();
-    }
 
     private String members;
     private ConfigurableApplicationContext nodeA;
@@ -388,9 +385,9 @@ class ClusterIntegrationTest {
     private static ConfigurableApplicationContext startNode(int hazelcastPort, String members, boolean seed) {
         return new SpringApplicationBuilder(TestApplication.class).run(
                 "--server.port=0",
-                "--spring.datasource.url=" + POSTGRES.getJdbcUrl(),
-                "--spring.datasource.username=" + POSTGRES.getUsername(),
-                "--spring.datasource.password=" + POSTGRES.getPassword(),
+                "--spring.datasource.url=" + DATABASE,
+                "--spring.datasource.username=" + TestDatabases.username(),
+                "--spring.datasource.password=" + TestDatabases.password(),
                 "--graph.security.seed-test-data=" + seed,
                 "--cluster.name=cluster-test",
                 "--cluster.strategy=tcp-ip",

@@ -40,8 +40,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * ntrloc's redirect to Keycloak, Keycloak's login form, and the auto-posted SAML response back to
  * ntrloc -- over plain HTTP from this JVM.
  *
- * SAML settings make this a separate Spring context, so each subclass brings its own Postgres
- * (see PersonalAccessTokenAuthenticationIntegrationTest). @DirtiesContext (inherited) closes each
+ * SAML settings make this a separate Spring context, so each subclass has a database of its own
+ * (see TestDatabases). @DirtiesContext (inherited) closes each
  * subclass's context once it finishes.
  */
 @SpringBootTest(classes = TestApplication.class, webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)

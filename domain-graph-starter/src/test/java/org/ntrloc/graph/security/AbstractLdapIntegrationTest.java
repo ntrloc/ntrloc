@@ -24,13 +24,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Base for LDAP login tests: a real OpenLDAP server seeded from ldap/test-directory.ldif, with
  * LDAP login configured (through LdapConfigurationService, as the admin UI does) alongside local
- * login. Subclasses add their own properties, making each a separate Spring context from
- * AbstractIntegrationTest's, so each subclass also brings its own Postgres container
- * (see PersonalAccessTokenAuthenticationIntegrationTest for why two contexts must never share
- * one database). The directory itself is read-only to these tests, so one server is shared.
- *
- * Singleton containers started in static initializers, not @Testcontainers/@Container -- see
- * AbstractIntegrationTest for why.
+ * login. Subclasses add their own properties, making each a separate Spring context with a
+ * database of its own (see TestDatabases). The directory itself is read-only to these tests, so
+ * one server is shared: a singleton container, as in AbstractIntegrationTest.
  *
  * @DirtiesContext (inherited by every subclass) closes each subclass's context once it finishes,
  * so these extra contexts don't all stay alive, and in memory, for the rest of the test run.

@@ -2,6 +2,7 @@ package org.ntrloc.graph.security;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.ntrloc.graph.TestDatabases;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseCookie;
@@ -11,7 +12,6 @@ import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.reactive.server.WebTestClient;
 import org.springframework.web.reactive.function.BodyInserters;
-import org.testcontainers.postgresql.PostgreSQLContainer;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -30,17 +30,9 @@ class SamlProviderIntegrationTest extends AbstractSamlIntegrationTest {
     private static final String API = "/api/admin/security/saml";
     private static final String PROVIDER = API + "/" + REGISTRATION_ID;
 
-    private static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:18");
-
-    static {
-        POSTGRES.start();
-    }
-
     @DynamicPropertySource
     static void registerProperties(DynamicPropertyRegistry registry) {
-        registry.add("spring.datasource.url", POSTGRES::getJdbcUrl);
-        registry.add("spring.datasource.username", POSTGRES::getUsername);
-        registry.add("spring.datasource.password", POSTGRES::getPassword);
+        TestDatabases.registerFresh(registry, "SamlProviderIntegrationTest");
         registry.add("graph.security.auto-provision.enabled", () -> "false");
     }
 
