@@ -9,7 +9,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 
 // Pins down the arity table from "Conditions: reading facts" / "Object shape": Condition is exactly
-// one predicate, ConditionGroup needs 2+ conditions (there's nothing to group at 1), TotalityPredicate
+// one predicate, ConditionGroup needs 1+ conditions (one is a group still being built), TotalityPredicate
 // needs 2+ sub-predicates (there's nothing to combine at 1), CountedPredicate wraps exactly one
 // sub-predicate and its subject must actually iterate something. Every Condition carries its own pin
 // id; ConditionGroup has none of its own, only its Conditions do; TotalityPredicate/CountedPredicate
@@ -23,10 +23,12 @@ class SignalBlockTest {
     }
 
     @Test
-    void conditionGroupRejectsFewerThanTwoConditions() {
-        assertThatIllegalArgumentException().isThrownBy(() ->
-                new ConditionGroup(new Self(), List.of(
-                        new Condition(UUID.randomUUID(), null, new StringEqualsPredicate(null, "CLUBS")))));
+    void conditionGroupNeedsAtLeastOneCondition() {
+        assertThatIllegalArgumentException().isThrownBy(() -> new ConditionGroup(new Self(), List.of()));
+
+        ConditionGroup one = new ConditionGroup(new Self(), List.of(
+                new Condition(UUID.randomUUID(), null, new StringEqualsPredicate(null, "CLUBS"))));
+        assertThat(one.conditions()).hasSize(1);
     }
 
     @Test

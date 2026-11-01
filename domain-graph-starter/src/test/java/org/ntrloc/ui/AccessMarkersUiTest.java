@@ -269,7 +269,6 @@ class AccessMarkersUiTest extends AbstractUiIntegrationTest {
         double[] before = page.blockPosition("Add");
 
         page.editLayout();
-        page.clickHeaderEditIcon("Add").dismissContextMenu();
         page.dragBlock("Add", 120, 0);
         double[] dragged = page.blockPosition("Add");
         assertThat(dragged[0]).isGreaterThan(before[0]);

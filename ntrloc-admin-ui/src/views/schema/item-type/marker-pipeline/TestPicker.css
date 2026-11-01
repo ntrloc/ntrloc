@@ -22,3 +22,13 @@ condition-test {
   flex-direction: column;
   gap: 14px;
 }
+
+/* A group's condition: its number, and a remove button while there's more than one. */
+condition-test-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--text-h);
+  font-size: 14px;
+  font-weight: 600;
+}

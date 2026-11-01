@@ -206,13 +206,6 @@ class AccessMarkersPage {
         return this;
     }
 
-    /** Clicks a node's header Edit icon (shown only while editing the layout). */
-    AccessMarkersPage clickHeaderEditIcon(String blockTitle) {
-        node(blockTitle).findElement(By.cssSelector(".mp-header-icon-edit")).click();
-        await().until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector(".mp-context-menu")));
-        return this;
-    }
-
     /** Clicks the overlay behind an open context menu, away from the menu, which dismisses it. */
     AccessMarkersPage dismissContextMenu() {
         WebElement overlay = driver.findElement(By.cssSelector(".mp-context-menu-overlay"));

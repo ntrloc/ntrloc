@@ -77,7 +77,7 @@ function operatorSymbol(operator) {
 }
 
 // A leaf predicate's own text, ignoring its subject (shown separately, by whatever walks the subject
-// chain -- see describeCondition and describeConditionShort). machine: the state machine the subject
+// chain -- see describeCondition and describeTestPill). machine: the state machine the subject
 // ends on, if it does, to name "is in state"'s state.
 function describeLeafPredicate(predicate, terminal = null) {
   const onMachine = terminal?.kind === 'stateMachine'
@@ -158,11 +158,13 @@ export function describeCondition(schema, itemTypeId, condition, { withSubject =
   }
 }
 
-// A bare condition's (non-counting) test as its pill shows it: { lead, text } -- what the test reads,
-// only when it reads something of its own rather than the condition's subject, then the test itself.
-export function describeTestPill(schema, itemTypeId, condition) {
+// A condition's (non-counting) test as its pill shows it: { lead, text } -- what the test reads, only
+// when it reads something of its own rather than the condition's subject, then the test itself; null
+// with no test yet. context: the subject it reads otherwise -- its own, or its group's.
+export function describeTestPill(schema, itemTypeId, condition, context = condition.subject) {
   const predicate = condition.predicate
-  const chain = describeConditionSubject(schema, itemTypeId, predicate.subject ?? condition.subject ?? { type: 'SELF' })
+  if (!predicate) return null
+  const chain = describeConditionSubject(schema, itemTypeId, predicate.subject ?? context ?? { type: 'SELF' })
   // What the test reads of its own, named -- a state machine's as "Onboarding state".
   const ownChain = predicate.subject ? describeConditionSubject(schema, itemTypeId, predicate.subject) : null
   const own = ownChain?.terminal.kind === 'stateMachine' ? [...ownChain.path, `${ownChain.terminal.machine?.name ?? 'machine'} state`] : (ownChain?.path ?? [])
@@ -187,11 +189,3 @@ export function describeConditionGroupSubject(schema, itemTypeId, group) {
   return describeSubjectChip(schema, itemTypeId, group.subject)
 }
 
-// A single member condition's own short label, the way a ConditionGroup's branch reads inline
-// wherever it's consumed (e.g. a <select> row) -- just the leaf predicate's own distinguishing value,
-// no subject prefix (the group's own header already said what property this is).
-// subject: the group's, to name a state by its machine's.
-export function describeConditionShort(predicate, schema = null, itemTypeId = null, subject = null) {
-  const terminal = subject ? describeConditionSubject(schema, itemTypeId, subject).terminal : null
-  return describeLeafPredicate(predicate, terminal)
-}

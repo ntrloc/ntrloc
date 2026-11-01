@@ -96,29 +96,23 @@ marker-pipeline-view {
   text-anchor: middle;
 }
 
-/* A carrier block's own edit/delete icons (see markerPipelineLayout.headerIcons) -- only ever
-   rendered while editing, so no separate editable-only selector is needed here the way
-   .mp-node-editable needs one for the whole node. Dimmed to start, same "quiet until you reach for
-   it" treatment a context menu item gets from its own :hover rule, rather than competing with the
-   title for attention at a glance. cursor: pointer (not inherited from .mp-node-editable's own
-   cursor: move) since clicking either icon is a click, not a drag. */
+/* A block's or condition's delete icon (see markerPipelineLayout.headerIcons) -- only rendered while
+   editing, and shown only while the pointer is over its node; hidden (not just transparent), so it
+   can't be clicked unseen. Dimmed until hovered itself. */
 .mp-header-icon {
+  visibility: hidden;
   cursor: pointer;
   opacity: 0.6;
-  /* Both icons are stroke-only (fill="none") -- SVG's default pointer-events (visiblePainted) only
-     hit-tests actually-painted pixels, which for a thin outline shape is a sliver far smaller than
-     the icon's own clickable footprint (most of a pencil or trash can's own bounding box is empty
-     space between its strokes). `visible` hit-tests the whole element regardless of what's painted
-     inside it, the same way a filled shape already would. */
+  /* Stroke-only (fill="none"): `visible` hit-tests the whole icon, not just its thin strokes. */
   pointer-events: visible;
+}
+
+.mp-node:hover .mp-header-icon {
+  visibility: visible;
 }
 
 .mp-header-icon:hover {
   opacity: 1;
-}
-
-.mp-header-icon-edit {
-  color: var(--mp-text);
 }
 
 .mp-header-icon-delete {
@@ -280,6 +274,12 @@ marker-pipeline-view {
 /* A bare condition's test, after what it reads: "firstName is not null". */
 .mp-chip-strong {
   font-weight: 700;
+}
+
+/* A test still missing something -- the test itself, or its value. */
+.mp-chip-incomplete {
+  stroke: #f85149;
+  stroke-dasharray: 4 3;
 }
 
 /* The literal marker name(s) a carrier block adds/removes/sets -- a dashed chip, visually distinct

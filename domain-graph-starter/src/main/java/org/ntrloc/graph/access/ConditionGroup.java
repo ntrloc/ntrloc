@@ -2,7 +2,7 @@ package org.ntrloc.graph.access;
 
 import java.util.List;
 
-// Replaces PredicateSignal. Groups 2..n conditions that share a declared (or implicit) subject but are
+// Replaces PredicateSignal. Groups 1..n conditions that share a declared (or implicit) subject but are
 // independently consequential -- each condition keeps its own output pin, since each is a full
 // Condition in its own right. No row-wrapper type needed (the old PinnedPredicate is gone): a Condition
 // already carries everything a grouped entry needs -- its own output, its own optional subject, its own
@@ -18,8 +18,9 @@ import java.util.List;
 public record ConditionGroup(Context subject, List<Condition> conditions) implements SignalBlock {
 
     public ConditionGroup {
-        if (conditions == null || conditions.size() < 2) {
-            throw new IllegalArgumentException("ConditionGroup requires at least 2 conditions");
+        // One is a group still being built: the editor starts every group with one and adds more.
+        if (conditions == null || conditions.isEmpty()) {
+            throw new IllegalArgumentException("ConditionGroup requires at least 1 condition");
         }
         conditions = List.copyOf(conditions);
     }

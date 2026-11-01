@@ -2,6 +2,8 @@
 // to it, each returning a new draft (one undo step each; see useUndoable). New blocks and conditions
 // are named by refIds (new-block-N, new-condition-N) until saving creates them.
 
+import { inlinedConditionGroupFor, inlinedConditionGroupOwner } from './markerPipelineLayout'
+
 export function initialDraft(pipelineView) {
   return {
     pipeline: pipelineView.pipeline,
@@ -51,22 +53,37 @@ export function withPositionsFixed(draft, rects) {
   return positions.size === draft.positions.size ? draft : { ...draft, positions }
 }
 
-const gate = (quantity = 'ALL') => ({ conditionOutputPinIds: [], quantity })
+const gate = (quantity = 'ALL', pins = []) => ({ conditionOutputPinIds: pins, quantity })
 const condition = (id, predicate = null) => ({ type: 'CONDITION', id, subject: null, predicate })
 
-// What each palette item adds, given the refIds it needs: a carrier block, or a top-level signal.
+// A Select's row: the markers it adds when its test (condition conditionId) holds.
+const selectRow = (id, conditionId) => ({ type: 'ADD_MARKERS', id, gate: gate('ALL', [conditionId]), markerIds: [] })
+
+// What each palette item adds: a carrier block, a top-level signal, or both -- a Select comes with the
+// condition group it reads its tests from, one test to start. ref(kind) makes each refId it needs.
 export const NEW_NODES = {
-  ADD_MARKERS: ([id]) => ({ block: { type: 'ADD_MARKERS', id, gate: gate(), markerIds: [] } }),
-  REMOVE_MARKERS: ([id]) => ({ block: { type: 'REMOVE_MARKERS', id, gate: gate(), markerIds: [] } }),
-  SET_MARKERS: ([id]) => ({ block: { type: 'SET_MARKERS', id, gate: gate(), markerIds: [] } }),
-  FILTER: ([id]) => ({ block: { type: 'FILTER', id, signal: gate() } }),
-  SELECT: ([id]) => ({ block: { type: 'SELECT', id, gate: gate('NONE'), adds: [] } }),
-  CONDITION: ([id]) => ({ signal: condition(id) }),
-  CONDITION_GROUP: ([a, b]) => ({ signal: { type: 'CONDITION_GROUP', subject: null, conditions: [condition(a), condition(b)] } }),
-  COUNTED: ([id]) => ({
-    signal: condition(id, { type: 'COUNTED', subject: null, subPredicate: null, countPredicate: { type: 'NUMBER', operator: 'GREATER_THAN', value: 0 } }),
+  ADD_MARKERS: (ref) => ({ block: { type: 'ADD_MARKERS', id: ref('block'), gate: gate(), markerIds: [] } }),
+  REMOVE_MARKERS: (ref) => ({ block: { type: 'REMOVE_MARKERS', id: ref('block'), gate: gate(), markerIds: [] } }),
+  SET_MARKERS: (ref) => ({ block: { type: 'SET_MARKERS', id: ref('block'), gate: gate(), markerIds: [] } }),
+  FILTER: (ref) => ({ block: { type: 'FILTER', id: ref('block'), signal: gate() } }),
+  SELECT: (ref) => {
+    const test = condition(ref('condition'))
+    return {
+      block: { type: 'SELECT', id: ref('block'), gate: gate('NONE', [test.id]), adds: [selectRow(ref('block'), test.id)] },
+      signal: { type: 'CONDITION_GROUP', subject: null, conditions: [test] },
+    }
+  },
+  CONDITION: (ref) => ({ signal: condition(ref('condition')) }),
+  CONDITION_GROUP: (ref) => ({ signal: { type: 'CONDITION_GROUP', subject: null, conditions: [condition(ref('condition'))] } }),
+  COUNTED: (ref) => ({
+    signal: condition(ref('condition'), {
+      type: 'COUNTED',
+      subject: null,
+      subPredicate: null,
+      countPredicate: { type: 'NUMBER', operator: 'GREATER_THAN', value: 0 },
+    }),
   }),
-  TOTALITY: ([id]) => ({ signal: condition(id, { type: 'TOTALITY', quantity: 'ALL', subPredicates: [] }) }),
+  TOTALITY: (ref) => ({ signal: condition(ref('condition'), { type: 'TOTALITY', quantity: 'ALL', subPredicates: [] }) }),
 }
 
 // The id a node is drawn and placed under: a block's or condition's own, or, for a condition group,
@@ -79,17 +96,92 @@ export function nodeIdOf({ block, signal }) {
 // A new block or condition of `kind`, with its top-left corner at `position`. Returns the draft and
 // the new node's id.
 export function addNode(draft, kind, position) {
-  const isCondition = !['ADD_MARKERS', 'REMOVE_MARKERS', 'SET_MARKERS', 'FILTER', 'SELECT'].includes(kind)
-  const refs = [0, 1].map((i) => `new-${isCondition ? 'condition' : 'block'}-${draft.nextRef + i}`)
-  const node = NEW_NODES[kind](refs)
+  let nextRef = draft.nextRef
+  const node = NEW_NODES[kind]((what) => `new-${what}-${nextRef++}`)
   const nodeId = nodeIdOf(node)
-  const pipeline = node.block
-    ? { ...draft.pipeline, carrierBlocks: [...draft.pipeline.carrierBlocks, node.block] }
-    : { ...draft.pipeline, topLevelSignals: [...(draft.pipeline.topLevelSignals ?? []), node.signal] }
-  return {
-    draft: { ...draft, pipeline, positions: new Map(draft.positions).set(nodeId, position), nextRef: draft.nextRef + refs.length },
-    nodeId,
-  }
+  let pipeline = draft.pipeline
+  if (node.block) pipeline = { ...pipeline, carrierBlocks: [...pipeline.carrierBlocks, node.block] }
+  if (node.signal) pipeline = { ...pipeline, topLevelSignals: [...(pipeline.topLevelSignals ?? []), node.signal] }
+  return { draft: { ...draft, pipeline, positions: new Map(draft.positions).set(nodeId, position), nextRef }, nodeId }
+}
+
+// --- A Select's tests: its condition group's conditions, each with a row of markers ---
+
+// The Select selectId, and the condition group it reads, changed by fn(select, group) -> [select, group].
+function withSelect(draft, selectId, fn) {
+  const select = draft.pipeline.carrierBlocks.find((b) => b.id === selectId)
+  const group = inlinedConditionGroupFor(draft.pipeline, selectId)
+  if (select?.type !== 'SELECT' || !group) return draft
+  const [newSelect, newGroup] = fn(select, group)
+  const carrierBlocks = draft.pipeline.carrierBlocks.map((b) => (b === select ? newSelect : b))
+  const topLevelSignals = draft.pipeline.topLevelSignals.map((s) => (s === group ? newGroup : s))
+  return { ...draft, pipeline: { ...draft.pipeline, carrierBlocks, topLevelSignals } }
+}
+
+// One more test, with nothing to test yet and no markers -- also counted in its Otherwise.
+export function addSelectTest(draft, selectId) {
+  const conditionId = `new-condition-${draft.nextRef}`
+  const rowId = `new-block-${draft.nextRef + 1}`
+  const changed = withSelect(draft, selectId, (select, group) => [
+    { ...select, gate: addPin(conditionId)(select.gate), adds: [...select.adds, selectRow(rowId, conditionId)] },
+    { ...group, conditions: [...group.conditions, condition(conditionId)] },
+  ])
+  return changed === draft ? draft : { ...changed, nextRef: draft.nextRef + 2 }
+}
+
+// A test out of a Select (which keeps at least one): its row, its condition, and where the row led.
+export function removeSelectTest(draft, selectId, rowId) {
+  const changed = withSelect(draft, selectId, (select, group) => {
+    const row = select.adds.find((r) => r.id === rowId)
+    if (!row || select.adds.length <= 1) return [select, group]
+    const pins = new Set(row.gate?.conditionOutputPinIds ?? [])
+    return [
+      { ...select, gate: withoutPins(select.gate, pins), adds: select.adds.filter((r) => r !== row) },
+      { ...group, conditions: group.conditions.filter((c) => !pins.has(c.id)) },
+    ]
+  })
+  if (changed === draft) return draft
+  const routes = changed.pipeline.routes.filter((r) => r.outputPinId !== rowId)
+  const edgeBends = new Map([...changed.edgeBends].filter(([key]) => !key.startsWith(`${rowId}->`)))
+  return { ...changed, edgeBends, pipeline: { ...changed.pipeline, routes } }
+}
+
+// The markers a Select's row (rowId) adds.
+export function setSelectRowMarkers(draft, rowId, markerIds) {
+  const carrierBlocks = draft.pipeline.carrierBlocks.map((b) =>
+    b.type === 'SELECT' && b.adds.some((r) => r.id === rowId) ? { ...b, adds: b.adds.map((r) => (r.id === rowId ? { ...r, markerIds } : r)) } : b,
+  )
+  return { ...draft, pipeline: { ...draft.pipeline, carrierBlocks } }
+}
+
+// The condition group drawn as node nodeId, changed by fn (its conditions -> new conditions). A group
+// is placed under its first condition's id, so a new first condition takes over the old one's place.
+function withGroupConditions(draft, nodeId, fn) {
+  let positions = draft.positions
+  const topLevelSignals = draft.pipeline.topLevelSignals.map((s) => {
+    if (nodeIdOf({ signal: s }) !== nodeId) return s
+    const changed = { ...s, conditions: fn(s.conditions) }
+    const newId = nodeIdOf({ signal: changed })
+    if (newId !== nodeId && positions.has(nodeId)) positions = new Map(positions).set(newId, positions.get(nodeId))
+    return changed
+  })
+  return { ...draft, positions, pipeline: { ...draft.pipeline, topLevelSignals } }
+}
+
+// One more condition in a group, with nothing to test yet.
+export function addGroupCondition(draft, nodeId) {
+  const id = `new-condition-${draft.nextRef}`
+  return { ...withGroupConditions(draft, nodeId, (conditions) => [...conditions, condition(id)]), nextRef: draft.nextRef + 1 }
+}
+
+// A condition out of a group (which keeps at least one), and out of every gate reading it.
+export function removeGroupCondition(draft, nodeId, conditionId) {
+  const changed = withGroupConditions(draft, nodeId, (conditions) => (conditions.length > 1 ? conditions.filter((c) => c.id !== conditionId) : conditions))
+  if (changed.pipeline === draft.pipeline) return draft
+  const pins = new Set([conditionId])
+  const carrierBlocks = changed.pipeline.carrierBlocks.map((b) => withoutGatePins(b, pins))
+  const edgeBends = new Map([...changed.edgeBends].filter(([key]) => !key.startsWith(`signal:${conditionId}=>`)))
+  return { ...changed, edgeBends, pipeline: { ...changed.pipeline, carrierBlocks } }
 }
 
 export function setBlockMarkers(draft, blockId, markerIds) {
@@ -182,6 +274,13 @@ export function gatePinsOf(pipeline, ownerId) {
 
 const withoutPins = (g, pins) => g && { ...g, conditionOutputPinIds: g.conditionOutputPinIds.filter((p) => !pins.has(p)) }
 
+// A carrier block with these condition pins dropped from every gate it has (its rows' too).
+function withoutGatePins(b, pins) {
+  if (b.type === 'FILTER') return { ...b, signal: withoutPins(b.signal, pins) }
+  if (b.type === 'SELECT') return { ...b, gate: withoutPins(b.gate, pins), adds: b.adds.map((row) => ({ ...row, gate: withoutPins(row.gate, pins) })) }
+  return { ...b, gate: withoutPins(b.gate, pins) }
+}
+
 // A block or condition (group) deleted, with what leads into or out of it: routes from and to a
 // block (and its rows), and gates reading a condition.
 export function deleteNode(draft, nodeId) {
@@ -193,16 +292,15 @@ export function deleteNode(draft, nodeId) {
       .filter((r) => !ids.has(r.outputPinId))
       .map((r) => ({ ...r, inputPinIds: r.inputPinIds.filter((id) => !ids.has(id)) }))
       .filter((r) => r.inputPinIds.length > 0)
-    return { ...draft, pipeline: { ...pipeline, carrierBlocks: pipeline.carrierBlocks.filter((b) => b !== block), routes } }
+    // A Select's tests go with it.
+    const group = block.type === 'SELECT' ? inlinedConditionGroupFor(pipeline, block.id) : null
+    const topLevelSignals = (pipeline.topLevelSignals ?? []).filter((s) => s !== group)
+    return { ...draft, pipeline: { ...pipeline, carrierBlocks: pipeline.carrierBlocks.filter((b) => b !== block), routes, topLevelSignals } }
   }
   const signal = (pipeline.topLevelSignals ?? []).find((s) => nodeIdOf({ signal: s }) === nodeId)
   if (!signal) return draft
   const pins = new Set(signal.type === 'CONDITION_GROUP' ? signal.conditions.map((c) => c.id) : [signal.id])
-  const carrierBlocks = pipeline.carrierBlocks.map((b) => {
-    if (b.type === 'FILTER') return { ...b, signal: withoutPins(b.signal, pins) }
-    if (b.type === 'SELECT') return { ...b, gate: withoutPins(b.gate, pins), adds: b.adds.map((row) => ({ ...row, gate: withoutPins(row.gate, pins) })) }
-    return { ...b, gate: withoutPins(b.gate, pins) }
-  })
+  const carrierBlocks = pipeline.carrierBlocks.map((b) => withoutGatePins(b, pins))
   return {
     ...draft,
     pipeline: { ...pipeline, carrierBlocks, topLevelSignals: pipeline.topLevelSignals.filter((s) => s !== signal) },
@@ -290,6 +388,7 @@ function blockProblems(pipeline, block, fedIds, conditionalIds) {
     block.markerIds?.length === 0 && 'Choose at least one marker.',
     hasIf && gatePinsOf(pipeline, block.id).length === 0 && 'Connect a condition to its "if".',
     block.type === 'SELECT' && block.adds.length === 0 && 'Add at least one row.',
+    block.type === 'SELECT' && block.adds.some((r) => r.markerIds.length === 0) && 'Choose markers for each test.',
     !fedIds.has(block.id) && 'Connect something into it.',
   ].filter(Boolean)
 }
@@ -308,7 +407,9 @@ export function nodeProblems(pipeline, testProblemOf = () => null, conditionalId
   for (const signal of pipeline.topLevelSignals ?? []) {
     const conditions = signal.type === 'CONDITION_GROUP' ? signal.conditions : [signal]
     const messages = conditions.map((c) => testProblem(c.predicate) ?? (isLeaf(c.predicate) ? testProblemOf(signal, c) : null))
-    for (const message of new Set(messages.filter(Boolean))) add(nodeIdOf({ signal }), message)
+    // A Select's tests are drawn in it, so their problems are its.
+    const at = inlinedConditionGroupOwner(pipeline, signal) ?? nodeIdOf({ signal })
+    for (const message of new Set(messages.filter(Boolean))) add(at, message)
   }
   return problems
 }

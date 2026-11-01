@@ -1,8 +1,10 @@
 import Switch from '../../../../controls/switch/Switch'
+import Button from '../../../../controls/button/Button'
+import IconButton from '../../../../controls/icon-button/IconButton'
 import DiagramInspector, { InspectorField } from '../../../../controls/diagram/DiagramInspector'
 import CheckboxOptionList from '../../../../controls/option-list/CheckboxOptionList'
 import PopoverButton from '../../../../controls/popover-button/PopoverButton'
-import { subjectOf } from './pipelineDraft'
+import { nodeIdOf, subjectOf } from './pipelineDraft'
 import SubjectPicker from './SubjectPicker'
 import TestPicker from './TestPicker'
 import { subjectEnd } from './pipelineTests'
@@ -26,13 +28,14 @@ const MARKER_BLOCKS = {
   SET_MARKERS: { kind: 'Set markers', what: 'Sets' },
 }
 
-// Which of the item type's markers a block adds, removes or sets: chosen from a checklist.
-function MarkerChoice({ name, block, vm }) {
-  const chosen = new Set(block.markerIds)
+// Which of the item type's markers a block (or a Select's test) adds, removes or sets: chosen from a
+// checklist.
+function MarkerChoice({ name, markerIds, onChange, vm }) {
+  const chosen = new Set(markerIds)
   const summary = vm.markerOptions.filter((o) => chosen.has(o.value)).map((o) => o.label).join(', ') || 'None'
   return (
     <PopoverButton name={name} summary={summary}>
-      <CheckboxOptionList options={vm.markerOptions} selectedValues={block.markerIds} onChange={(ids) => vm.setMarkers(block.id, ids)} />
+      <CheckboxOptionList options={vm.markerOptions} selectedValues={markerIds} onChange={onChange} />
     </PopoverButton>
   )
 }
@@ -43,7 +46,7 @@ function BlockDetails({ block, label, pinDescriptions, vm }) {
     return (
       <>
         <p className="diagram-inspector-kind">{markerBlock.kind}</p>
-        <MarkerChoice name={markerBlock.what} block={block} vm={vm} />
+        <MarkerChoice name={markerBlock.what} markerIds={block.markerIds} onChange={(ids) => vm.setMarkers(block.id, ids)} vm={vm} />
         {/* Conditional: it applies only when the conditions connected to its "if" hold; otherwise
             items pass through it unchanged. */}
         <Switch name="Conditional" on={label.conditional} onChange={(on) => vm.setConditional(block.id, on)} />
@@ -58,7 +61,9 @@ function BlockDetails({ block, label, pinDescriptions, vm }) {
       </>
     )
   }
+  if (block.type === 'SELECT' && vm.selectGroupOf(block.id)) return <SelectDetails select={block} group={vm.selectGroupOf(block.id)} vm={vm} />
   if (block.type === 'SELECT') {
+    // One whose tests aren't its own (read from conditions elsewhere too): shown, not edited.
     return (
       <>
         <p className="diagram-inspector-kind">Select</p>
@@ -81,8 +86,83 @@ function conditionKind(signal) {
   return 'Condition'
 }
 
+// A Select: the subject its tests read, and each test with the markers it adds -- every test that
+// holds adds its markers, on its own row; when none does, Otherwise passes items on unchanged.
+function SelectDetails({ select, group, vm }) {
+  const conditionOf = (row) => group.conditions.find((c) => c.id === row.gate?.conditionOutputPinIds?.[0])
+  return (
+    <>
+      <p className="diagram-inspector-kind">Select</p>
+      <SubjectPicker
+        schema={vm.schema}
+        itemTypeId={vm.itemTypeId}
+        subject={group.subject}
+        counting={false}
+        onChange={(subject) => vm.setConditionSubject(nodeIdOf({ signal: group }), subject)}
+      />
+      {select.adds.map((row, i) => {
+        const condition = conditionOf(row)
+        if (!condition) return null
+        return (
+          <ConditionEditor
+            key={row.id}
+            signal={group}
+            condition={condition}
+            heading={`Test ${i + 1}`}
+            onRemove={select.adds.length > 1 ? () => vm.removeTestFromSelect(select.id, row.id) : null}
+            vm={vm}
+          >
+            <MarkerChoice name="Adds" markerIds={row.markerIds} onChange={(ids) => vm.setRowMarkers(row.id, ids)} vm={vm} />
+          </ConditionEditor>
+        )
+      })}
+      <Button variant="ghost-secondary" icon="plus" onClick={() => vm.addTestToSelect(select.id)}>
+        Add test
+      </Button>
+      <InspectorField name="Otherwise" value="Passes items on unchanged" />
+    </>
+  )
+}
+
+// One condition's test, in a condition (or group, or Select): what it reads, under the item itself
+// (one of the item's properties, a linked item, a state), and the test. heading/onRemove: a group's
+// or Select's numbering, and its remove button (none when it's the last). children: more of it, after.
+function ConditionEditor({ signal, condition, heading, onRemove, vm, children }) {
+  const itself = !subjectOf(signal) || subjectOf(signal).type === 'SELF'
+  return (
+    <condition-test>
+      {heading && (
+        <condition-test-header>
+          <span>{heading}</span>
+          {onRemove && <IconButton icon="trash" label={`Remove ${heading.toLowerCase()}`} onClick={onRemove} />}
+        </condition-test-header>
+      )}
+      {itself && (
+        <SubjectPicker
+          name="Reads"
+          schema={vm.schema}
+          itemTypeId={vm.itemTypeId}
+          subject={condition.predicate?.subject ?? null}
+          counting={false}
+          itselfAllowed={false}
+          onChange={(subject) => vm.setTestSubject(signal, condition, subject)}
+        />
+      )}
+      <TestPicker
+        name="Test"
+        tests={vm.testsOf(signal, condition)}
+        end={subjectEnd(vm.schema, vm.itemTypeId, vm.testSubjectOf(signal, condition))}
+        predicate={condition.predicate}
+        onChange={(predicate, key) => vm.setConditionTest(condition.id, predicate, key && `${condition.id}-${key}`)}
+      />
+      {children}
+    </condition-test>
+  )
+}
+
 function SignalDetails({ signal, nodeId, pinDescriptions, vm }) {
-  const conditions = signal.type === 'CONDITION_GROUP' ? signal.conditions : [signal]
+  const isGroup = signal.type === 'CONDITION_GROUP'
+  const conditions = isGroup ? signal.conditions : [signal]
   return (
     <>
       <p className="diagram-inspector-kind">{conditionKind(signal)}</p>
@@ -93,38 +173,26 @@ function SignalDetails({ signal, nodeId, pinDescriptions, vm }) {
         counting={signal.predicate?.type === 'COUNTED'}
         onChange={(subject) => vm.setConditionSubject(nodeId, subject)}
       />
-      {conditions.map((c, i) => {
-        const name = conditions.length > 1 ? `Condition ${i + 1}` : 'Test'
+      {conditions.map((c, i) =>
         // Counting and all/any/none tests aren't editable yet.
-        if (c.predicate?.type === 'COUNTED' || c.predicate?.type === 'TOTALITY') {
-          return <InspectorField key={c.id} name={name} value={pinDescriptions.get(c.id)} />
-        }
-        // Under the item itself, a test reads something of its own: one of the item's properties, a
-        // linked item, a state.
-        const itself = !subjectOf(signal) || subjectOf(signal).type === 'SELF'
-        return (
-          <condition-test key={c.id}>
-            {itself && (
-              <SubjectPicker
-                name={conditions.length > 1 ? `${name} reads` : 'Reads'}
-                schema={vm.schema}
-                itemTypeId={vm.itemTypeId}
-                subject={c.predicate?.subject ?? null}
-                counting={false}
-                itselfAllowed={false}
-                onChange={(subject) => vm.setTestSubject(signal, c, subject)}
-              />
-            )}
-            <TestPicker
-              name={name}
-              tests={vm.testsOf(signal, c)}
-              end={subjectEnd(vm.schema, vm.itemTypeId, vm.testSubjectOf(signal, c))}
-              predicate={c.predicate}
-              onChange={(predicate, key) => vm.setConditionTest(c.id, predicate, key && `${c.id}-${key}`)}
-            />
-          </condition-test>
-        )
-      })}
+        c.predicate?.type === 'COUNTED' || c.predicate?.type === 'TOTALITY' ? (
+          <InspectorField key={c.id} name="Test" value={pinDescriptions.get(c.id)} />
+        ) : (
+          <ConditionEditor
+            key={c.id}
+            signal={signal}
+            condition={c}
+            heading={isGroup ? `Condition ${i + 1}` : null}
+            onRemove={isGroup && conditions.length > 1 ? () => vm.removeConditionFromGroup(nodeId, c.id) : null}
+            vm={vm}
+          />
+        ),
+      )}
+      {isGroup && (
+        <Button variant="ghost-secondary" icon="plus" onClick={() => vm.addConditionToGroup(nodeId)}>
+          Add condition
+        </Button>
+      )}
     </>
   )
 }

@@ -74,7 +74,7 @@ function TextChip({ chip }) {
   const kind = CHIP_KINDS.has(chip.kind) ? chip.kind : 'predicate'
   return (
     <g>
-      <rect className={`mp-${kind}-chip-rect`} x={chip.x} y={chip.y} width={chip.width} height={chip.height} />
+      <rect className={chip.incomplete ? `mp-${kind}-chip-rect mp-chip-incomplete` : `mp-${kind}-chip-rect`} x={chip.x} y={chip.y} width={chip.width} height={chip.height} />
       <text className={`mp-${kind}-chip-text`} x={chip.x + chip.width / 2} y={chip.y + chip.height / 2 + 4}>
         {chip.lead && <tspan>{chip.lead} </tspan>}
         {chip.strong ? <tspan className="mp-chip-strong">{chip.text}</tspan> : chip.text}
@@ -145,58 +145,33 @@ function PseudoStateNode({ rect, kind, editable, selected, invalid, onPointerDow
   )
 }
 
-// A carrier block or signal node's own edit/delete icons (see markerPipelineLayout.headerIcons for
-// their position -- unconditionally reserved in the node's own width, drawn only while editing) --
-// same stroke-icon convention as ChevronIcon (viewBox 0 0 24 24, stroke=currentColor), just nested as
-// an SVG-in-SVG nested viewport instead of a standalone <svg> element, since these live inside a
-// node's own shape, not floating HTML chrome. onEdit/onDelete both currently just reopen the same
-// context menu a right-click on the node already opens (see MarkerPipelineDiagram's own "shell for
-// now" comment on that menu) -- a second, more discoverable entry point into the one place real
-// edit/delete actions will eventually live, not yet wired to any real behavior of their own.
-function HeaderIcons({ icons, onEdit, onDelete }) {
+// A block's or condition's delete icon, at its header's right (see markerPipelineLayout.headerIcons),
+// only while editing; shown while the pointer is over the node (see MarkerPipelineView.css). An
+// SVG-in-SVG viewport, the same stroke-icon convention as ChevronIcon.
+function DeleteIcon({ icons, onDelete }) {
   if (!icons) return null
   return (
-    <g className="mp-header-icons">
-      <svg
-        className="mp-header-icon mp-header-icon-edit"
-        x={icons.edit.x}
-        y={icons.edit.y}
-        width={icons.edit.size}
-        height={icons.edit.size}
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        onPointerDown={(event) => event.stopPropagation()}
-        onClick={onEdit}
-      >
-        <title>Edit</title>
-        <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
-      </svg>
-      <svg
-        className="mp-header-icon mp-header-icon-delete"
-        x={icons.delete.x}
-        y={icons.delete.y}
-        width={icons.delete.size}
-        height={icons.delete.size}
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        onPointerDown={(event) => event.stopPropagation()}
-        onClick={onDelete}
-      >
-        <title>Delete</title>
-        <polyline points="3 6 5 6 21 6" />
-        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-        <line x1="10" y1="11" x2="10" y2="17" />
-        <line x1="14" y1="11" x2="14" y2="17" />
-      </svg>
-    </g>
+    <svg
+      className="mp-header-icon mp-header-icon-delete"
+      x={icons.delete.x}
+      y={icons.delete.y}
+      width={icons.delete.size}
+      height={icons.delete.size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      onPointerDown={(event) => event.stopPropagation()}
+      onClick={onDelete}
+    >
+      <title>Delete</title>
+      <polyline points="3 6 5 6 21 6" />
+      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+      <line x1="10" y1="11" x2="10" y2="17" />
+      <line x1="14" y1="11" x2="14" y2="17" />
+    </svg>
   )
 }
 
@@ -228,7 +203,7 @@ function CarrierBlockNode({ id, rect, label, outputConnected, gateConnected, edi
       <text className="mp-node-title" x={centerX} y={titleY}>
         {label.title}
       </text>
-      <HeaderIcons icons={icons} onEdit={onContextMenu} onDelete={onDelete ?? onContextMenu} />
+      <DeleteIcon icons={icons} onDelete={onDelete} />
       {chips.map((chip) => (
         <g key={chip.name}>
           <rect className="mp-marker-chip-rect" x={chip.x} y={chip.y} width={chip.width} height={chip.height} />
@@ -279,7 +254,7 @@ function FilterNode({ id, rect, label, outputConnected, gateConnected, editable,
       <text className="mp-node-title" x={centerX} y={titleY}>
         {label.title}
       </text>
-      <HeaderIcons icons={icons} onEdit={onContextMenu} onDelete={onDelete ?? onContextMenu} />
+      <DeleteIcon icons={icons} onDelete={onDelete} />
       <text className="mp-port-label" x={input.labelX} y={input.labelY}>
         input
       </text>
@@ -321,8 +296,12 @@ function SelectNode({ rect, label, outputConnected, editable, selected, invalid,
       <text className="mp-node-title" x={centerX} y={titleY}>
         {label.title}
       </text>
-      <HeaderIcons icons={icons} onEdit={onContextMenu} onDelete={onDelete ?? onContextMenu} />
+      <DeleteIcon icons={icons} onDelete={onDelete} />
       {propertyChip && <TextChip chip={propertyChip} />}
+      {/* A rule between rows, across the body, as a condition group's. */}
+      {rows.slice(1).map((row) => (
+        <line key={`div-${row.id}`} className="mp-node-divider" x1={rect.x + STRIP_WIDTH} y1={row.top} x2={rightStripX} y2={row.top} />
+      ))}
       {rows.map((row) =>
         row.otherwise ? (
           <text key={row.id} className="mp-select-otherwise-text" x={centerX} y={row.labelY}>
@@ -333,7 +312,13 @@ function SelectNode({ rect, label, outputConnected, editable, selected, invalid,
             {row.conditionChip && <TextChip chip={row.conditionChip} />}
             {row.chips.map((chip) => (
               <g key={chip.name}>
-                <rect className="mp-marker-chip-rect" x={chip.x} y={chip.y} width={chip.width} height={chip.height} />
+                <rect
+                  className={row.markersMissing ? 'mp-marker-chip-rect mp-chip-incomplete' : 'mp-marker-chip-rect'}
+                  x={chip.x}
+                  y={chip.y}
+                  width={chip.width}
+                  height={chip.height}
+                />
                 <text className="mp-marker-chip-text" x={chip.x + chip.width / 2} y={chip.y + chip.height / 2 + 4}>
                   {chip.name}
                 </text>
@@ -358,7 +343,7 @@ function SelectNode({ rect, label, outputConnected, editable, selected, invalid,
 // and PredicateBox), with one pin centered on the whole body.
 function SignalNode({ rect, node, description, pinRead, editable, selected, invalid, onDelete, onContextMenu, onPointerDown, onPointerMove, onPointerUp }) {
   const bodyRight = rect.x + rect.width - STRIP_WIDTH
-  const isGroup = node.pinIds.length > 1
+  const isGroup = node.isGroup
 
   const groupLayout = isGroup ? signalRowLayout(rect, node.pinIds, description, editable) : null
   const conditionLayout = isGroup ? null : signalConditionLayout(rect, description, editable)
@@ -378,7 +363,7 @@ function SignalNode({ rect, node, description, pinRead, editable, selected, inva
       <text className="mp-signal-node-title" x={centerX} y={titleY}>
         {node.title}
       </text>
-      <HeaderIcons icons={icons} onEdit={onContextMenu} onDelete={onDelete ?? onContextMenu} />
+      <DeleteIcon icons={icons} onDelete={onDelete} />
       {isGroup ? (
         <>
           {groupLayout.propertyChip && <TextChip chip={groupLayout.propertyChip} />}

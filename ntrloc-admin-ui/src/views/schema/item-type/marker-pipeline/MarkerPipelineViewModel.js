@@ -6,6 +6,11 @@ import { useMarkerModel } from '../../../../global/model/MarkerModel'
 import { useUndoable, useUndoShortcuts } from '../../../../global/useUndoable'
 import {
   addCarrierConnection,
+  addGroupCondition,
+  addSelectTest,
+  removeSelectTest,
+  setSelectRowMarkers,
+  removeGroupCondition,
   addNode,
   deleteConnection,
   deleteNode,
@@ -16,6 +21,7 @@ import {
   setBlockConditional,
   moveCarrierEnd,
   moveSignalEnd,
+  nodeIdOf,
   nodeProblems,
   setBlockMarkers,
   setPredicate,
@@ -30,7 +36,6 @@ import { computeLayout, inlinedConditionGroupFor, orthogonalPath, signalNodes } 
 import {
   describeCondition,
   describeConditionGroupSubject,
-  describeConditionShort,
   describeConditionSubject,
   describeSubjectChip,
   describeTestPill,
@@ -51,7 +56,7 @@ const MAX_ZOOM = 3
 // SELECT's own subjectLabel/conditionLabel text (see pipelineConditionText.js); every other block
 // type only ever needs markerNamesById, the same as before condition text existed.
 function blockLabel(block, ctx) {
-  const { markerNamesById, pipeline, schema, itemTypeId, conditional } = ctx
+  const { markerNamesById, pipeline, schema, itemTypeId, conditional, testPill } = ctx
   function markerNames(markerIds) {
     return markerIds.map((id) => markerNamesById.get(id) ?? id)
   }
@@ -75,10 +80,11 @@ function blockLabel(block, ctx) {
       // thing.
       const group = inlinedConditionGroupFor(pipeline, block.id)
       const subjectLabel = group ? describeConditionGroupSubject(schema, itemTypeId, group) : null
-      const shortLabelByConditionId = new Map((group?.conditions ?? []).map((c) => [c.id, describeConditionShort(c.predicate, schema, itemTypeId, group.subject)]))
+      // Each row's test, as a pill (see testPill), read off the condition its gate reads.
       function conditionLabelFor(gate) {
         const pinId = gate?.conditionOutputPinIds?.[0]
-        return pinId ? (shortLabelByConditionId.get(pinId) ?? null) : null
+        const condition = group?.conditions.find((c) => c.id === pinId)
+        return condition ? testPill(group, condition, group.subject) : null
       }
       // rows: one per select.adds[i] (an ordinary AddMarkers, own id, own markers), plus a
       // synthetic trailing row standing in for the block's own primary pin -- the (Otherwise)
@@ -88,9 +94,11 @@ function blockLabel(block, ctx) {
         title: 'Select',
         subjectLabel,
         rows: [
+          // A row with no markers yet shows "…", marked as missing them.
           ...block.adds.map((add) => ({
             id: add.id,
-            markerNames: markerNames(add.markerIds),
+            markerNames: add.markerIds.length > 0 ? markerNames(add.markerIds) : ['…'],
+            markersMissing: add.markerIds.length === 0,
             otherwise: false,
             conditionLabel: conditionLabelFor(add.gate),
           })),
@@ -109,7 +117,10 @@ function pinDescriptionsOf(schema, itemTypeId, pipeline) {
   for (const signal of pipeline.topLevelSignals ?? []) {
     if (signal.type === 'CONDITION_GROUP') {
       const subject = describeConditionSubject(schema, itemTypeId, signal.subject).path.join('.')
-      for (const c of signal.conditions) descriptions.set(c.id, `${subject} ${describeConditionShort(c.predicate, schema, itemTypeId, signal.subject)}`.trim())
+      for (const c of signal.conditions) {
+        const pill = describeTestPill(schema, itemTypeId, c, signal.subject)
+        descriptions.set(c.id, pill ? [subject, pill.lead, pill.text].filter(Boolean).join(' ') : '')
+      }
     } else {
       const box = describeCondition(schema, itemTypeId, signal)
       // Nothing until it has a test: a subject alone doesn't say when it holds.
@@ -123,18 +134,19 @@ function pinDescriptionsOf(schema, itemTypeId, pipeline) {
 // short label (same shape blockLabel's SELECT case builds for an *inlined* group, since the content
 // is the same either way, just drawn in a different place), or a bare Condition's full description
 // (see describeCondition -- stacked lines, or a nested "count" sub-box for a COUNTED predicate).
-function signalNodeLabel(schema, itemTypeId, signal) {
+// testPill(signal, condition, context): a condition's test as a pill (see the view model's).
+function signalNodeLabel(schema, itemTypeId, signal, testPill) {
   if (signal.type === 'CONDITION_GROUP') {
     return {
       subjectLabel: describeConditionGroupSubject(schema, itemTypeId, signal),
-      rowLabels: signal.conditions.map((c) => describeConditionShort(c.predicate, schema, itemTypeId, signal.subject)),
+      rowLabels: signal.conditions.map((c) => testPill(signal, c, signal.subject)),
     }
   }
   // Its subject as a pill of its own, over its test -- which then has no subject of its own to show.
   return {
     subjectLabel: describeSubjectChip(schema, itemTypeId, signal.subject),
-    ...(isLeafTest(signal.predicate)
-      ? { test: describeTestPill(schema, itemTypeId, signal) }
+    ...(!signal.predicate || isLeafTest(signal.predicate)
+      ? { test: testPill(signal, signal, signal.subject) }
       : { box: describeCondition(schema, itemTypeId, signal, { withSubject: false }) }),
   }
 }
@@ -218,9 +230,16 @@ export function useMarkerPipelineViewModel(pipelineView, itemTypeId, savePipelin
   // Whether an Add/Remove/Set block has an "if": while editing, switched on (connected or not yet);
   // otherwise, with conditions connected.
   const conditional = (block) => (draft ? draft.conditionalIds.has(block.id) : isConditional(block))
-  const blockCtx = { markerNamesById, pipeline, schema, itemTypeId, conditional }
+  // A condition's test as a pill: what it reads of its own, then the test ("…" while there's none),
+  // marked incomplete while it's missing the test or a value.
+  function testPill(signal, condition, context) {
+    const described = describeTestPill(schema, itemTypeId, condition, context)
+    const incomplete = !condition.predicate?.type || Boolean(conditionTestProblem(signal, condition))
+    return { lead: described?.lead ?? null, text: described?.text || '…', incomplete }
+  }
+  const blockCtx = { markerNamesById, pipeline, schema, itemTypeId, conditional, testPill }
   const blocks = new Map(pipeline.carrierBlocks.map((b) => [b.id, blockLabel(b, blockCtx)]))
-  const signalDescriptions = new Map(signalNodes(pipeline).map((node) => [node.id, signalNodeLabel(schema, itemTypeId, node.signal)]))
+  const signalDescriptions = new Map(signalNodes(pipeline).map((node) => [node.id, signalNodeLabel(schema, itemTypeId, node.signal, testPill)]))
   const layout = computeLayout(pipeline, effectivePositions, blocks, signalDescriptions, effectiveEdgeBends)
   const pinDescriptions = pinDescriptionsOf(schema, itemTypeId, pipeline)
   // What's selected while editing: a node (kind 'node'), by its id.
@@ -697,6 +716,32 @@ export function useMarkerPipelineViewModel(pipelineView, itemTypeId, savePipelin
     history.change((d) => setPredicate(withPositionsFixed(d, layout.rects), conditionId, predicate), key)
   }
 
+  function addConditionToGroup(nodeId) {
+    changeStructure((d) => addGroupCondition(d, nodeId))
+  }
+
+  // Removing a group's first condition renames the group (see nodeIdOf), so it's selected again by
+  // its new name.
+  function removeConditionFromGroup(nodeId, conditionId) {
+    const group = pipeline.topLevelSignals.find((s) => nodeIdOf({ signal: s }) === nodeId)
+    changeStructure((d) => removeGroupCondition(d, nodeId, conditionId))
+    const left = group?.conditions.filter((c) => c.id !== conditionId) ?? []
+    if (left.length > 0) selection.select('node', nodeIdOf({ signal: { ...group, conditions: left } }))
+  }
+
+  // A Select's tests (see pipelineDraft's addSelectTest).
+  function addTestToSelect(selectId) {
+    changeStructure((d) => addSelectTest(d, selectId))
+  }
+
+  function removeTestFromSelect(selectId, rowId) {
+    changeStructure((d) => removeSelectTest(d, selectId, rowId))
+  }
+
+  function setRowMarkers(rowId, markerIds) {
+    changeStructure((d) => setSelectRowMarkers(d, rowId, markerIds))
+  }
+
   function setMarkers(blockId, markerIds) {
     changeStructure((d) => setBlockMarkers(d, blockId, markerIds))
   }
@@ -717,6 +762,12 @@ export function useMarkerPipelineViewModel(pipelineView, itemTypeId, savePipelin
     setConditionSubject,
     setConditionTest,
     setTestSubject,
+    addConditionToGroup,
+    addTestToSelect,
+    removeTestFromSelect,
+    setRowMarkers,
+    selectGroupOf: (selectId) => inlinedConditionGroupFor(pipeline, selectId),
+    removeConditionFromGroup,
     testsOf,
     testSubjectOf,
     placeNode,
