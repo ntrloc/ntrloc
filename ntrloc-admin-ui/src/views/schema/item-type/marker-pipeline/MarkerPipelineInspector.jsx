@@ -3,8 +3,9 @@ import Button from '../../../../controls/button/Button'
 import IconButton from '../../../../controls/icon-button/IconButton'
 import DiagramInspector, { InspectorField } from '../../../../controls/diagram/DiagramInspector'
 import CheckboxOptionList from '../../../../controls/option-list/CheckboxOptionList'
+import OptionList from '../../../../controls/option-list/OptionList'
 import PopoverButton from '../../../../controls/popover-button/PopoverButton'
-import { nodeIdOf, subjectOf } from './pipelineDraft'
+import { nodeIdOf, predicateAt, subjectOf } from './pipelineDraft'
 import SubjectPicker from './SubjectPicker'
 import TestPicker from './TestPicker'
 import { subjectEnd } from './pipelineTests'
@@ -82,7 +83,6 @@ function BlockDetails({ block, label, pinDescriptions, vm }) {
 function conditionKind(signal) {
   if (signal.type === 'CONDITION_GROUP') return 'Condition group'
   if (signal.predicate?.type === 'COUNTED') return 'Counting condition'
-  if (signal.predicate?.type === 'TOTALITY') return 'All / any / none of'
   return 'Condition'
 }
 
@@ -160,6 +160,95 @@ function ConditionEditor({ signal, condition, heading, onRemove, vm, children })
   )
 }
 
+const QUANTITIES = [
+  { value: 'ALL', label: 'all' },
+  { value: 'ANY', label: 'any' },
+  { value: 'NONE', label: 'none' },
+]
+
+// A condition's test at path within its whole test (see pipelineDraft's predicateAt): a single test,
+// which can be moved into a group of its own, or a group -- all, any or none of its tests, each one
+// of these again. context: what a test reads unless it reads its own. onRemove: its group's remove
+// button (none when it's the group's last test).
+function TestEditor({ signal, condition, path, context, onRemove, vm }) {
+  const predicate = predicateAt(condition.predicate, path)
+  const trash = onRemove && <IconButton icon="trash" label="Remove test" onClick={onRemove} />
+  if (predicate?.type === 'TOTALITY') {
+    const tests = predicate.subPredicates
+    const inner = predicate.subject ?? context
+    return (
+      <test-section>
+        <test-section-header>
+          <span className="input-control-name">Test</span>
+          <PopoverButton summary={QUANTITIES.find((q) => q.value === predicate.quantity)?.label}>
+            {({ close }) => (
+              <OptionList
+                options={QUANTITIES}
+                value={predicate.quantity}
+                onChange={(quantity) => {
+                  vm.setQuantityAt(condition.id, path, quantity)
+                  close()
+                }}
+              />
+            )}
+          </PopoverButton>
+          {trash}
+        </test-section-header>
+        {tests.map((_, i) => (
+          <TestEditor
+            key={[...path, i].join('.')}
+            signal={signal}
+            condition={condition}
+            path={[...path, i]}
+            context={inner}
+            onRemove={tests.length > 1 ? () => vm.removeTestAt(condition.id, path, i) : null}
+            vm={vm}
+          />
+        ))}
+        <test-section-actions>
+          <Button variant="ghost-secondary" icon="plus" onClick={() => vm.addTestAt(condition.id, path)}>
+            Add test
+          </Button>
+          {tests.length === 1 && (
+            <Button variant="ghost-secondary" onClick={() => vm.ungroupTestAt(condition.id, path)}>
+              Ungroup
+            </Button>
+          )}
+        </test-section-actions>
+      </test-section>
+    )
+  }
+  // Reads only under the item itself: otherwise every test reads the condition's subject.
+  const itself = !subjectOf(signal) || subjectOf(signal).type === 'SELF'
+  return (
+    <test-section>
+      {/* At the top right, in line with the section's first field. */}
+      {trash && <test-section-remove>{trash}</test-section-remove>}
+      {itself && (
+        <SubjectPicker
+          name="Reads"
+          schema={vm.schema}
+          itemTypeId={vm.itemTypeId}
+          subject={predicate?.subject ?? null}
+          counting={false}
+          itselfAllowed={false}
+          onChange={(subject) => vm.setTestSubjectAt(condition, path, context, subject)}
+        />
+      )}
+      <TestPicker
+        name="Test"
+        tests={vm.testsOfPredicate(predicate, context)}
+        end={subjectEnd(vm.schema, vm.itemTypeId, predicate?.subject ?? context)}
+        predicate={predicate}
+        onChange={(p, key) => vm.setTestAt(condition.id, path, p, key && `${condition.id}-${path.join('.')}-${key}`)}
+      />
+      <Button variant="ghost-secondary" onClick={() => vm.groupTestAt(condition.id, path)}>
+        Move to group
+      </Button>
+    </test-section>
+  )
+}
+
 function SignalDetails({ signal, nodeId, pinDescriptions, vm }) {
   const isGroup = signal.type === 'CONDITION_GROUP'
   const conditions = isGroup ? signal.conditions : [signal]
@@ -173,21 +262,23 @@ function SignalDetails({ signal, nodeId, pinDescriptions, vm }) {
         counting={signal.predicate?.type === 'COUNTED'}
         onChange={(subject) => vm.setConditionSubject(nodeId, subject)}
       />
-      {conditions.map((c, i) =>
-        // Counting and all/any/none tests aren't editable yet.
-        c.predicate?.type === 'COUNTED' || c.predicate?.type === 'TOTALITY' ? (
-          <InspectorField key={c.id} name="Test" value={pinDescriptions.get(c.id)} />
-        ) : (
+      {conditions.map((c, i) => {
+        // Counting tests aren't editable yet.
+        if (c.predicate?.type === 'COUNTED') return <InspectorField key={c.id} name="Test" value={pinDescriptions.get(c.id)} />
+        // A lone condition's test, which can become a group of tests (a group's or Select's rows are
+        // a test each).
+        if (!isGroup) return <TestEditor key={c.id} signal={signal} condition={c} path={[]} context={subjectOf(signal)} vm={vm} />
+        return (
           <ConditionEditor
             key={c.id}
             signal={signal}
             condition={c}
-            heading={isGroup ? `Condition ${i + 1}` : null}
-            onRemove={isGroup && conditions.length > 1 ? () => vm.removeConditionFromGroup(nodeId, c.id) : null}
+            heading={`Condition ${i + 1}`}
+            onRemove={conditions.length > 1 ? () => vm.removeConditionFromGroup(nodeId, c.id) : null}
             vm={vm}
           />
-        ),
-      )}
+        )
+      })}
       {isGroup && (
         <Button variant="ghost-secondary" icon="plus" onClick={() => vm.addConditionToGroup(nodeId)}>
           Add condition

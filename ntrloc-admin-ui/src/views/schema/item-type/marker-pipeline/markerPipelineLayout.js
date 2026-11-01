@@ -415,7 +415,7 @@ function predicateBoxMinWidth(box) {
   return Math.max(
     box.subjectText ? textChipWidth(box.subjectText) : 0,
     box.testText ? textChipWidth(box.testText) : 0,
-    ...box.children.map((child) => predicateBoxMinWidth(child) + 2 * BODY_SIDE_MARGIN),
+    ...box.children.map((child) => (child.pill ? testPillWidth(child.pill) : predicateBoxMinWidth(child)) + 2 * BODY_SIDE_MARGIN),
     0,
   )
 }
@@ -432,7 +432,7 @@ function predicateBoxHeight(box) {
   const pieceCount = (box.subjectText ? 1 : 0) + box.children.length + (box.testText ? 1 : 0)
   let height = BOX_HEADER_HEIGHT + Math.max(0, pieceCount - 1) * BOX_CONTENT_GAP
   if (box.subjectText) height += TEXT_CHIP_HEIGHT
-  for (const child of box.children) height += predicateBoxHeight(child)
+  for (const child of box.children) height += child.pill ? TEXT_CHIP_HEIGHT : predicateBoxHeight(child)
   if (box.testText) height += TEXT_CHIP_HEIGHT
   return height + ROW_PADDING_Y
 }
@@ -545,12 +545,19 @@ function placePredicateBox(box, x, y, width) {
     hasPriorPiece = true
   }
 
+  // Each child: a test's pill, centered, or a box of its own (a group within a group).
   const childWidth = width - 2 * BODY_SIDE_MARGIN
   const children = box.children.map((child) => {
     if (hasPriorPiece) cy += BOX_CONTENT_GAP
+    hasPriorPiece = true
+    if (child.pill) {
+      const pillWidth = testPillWidth(child.pill)
+      const chip = { kind: 'test', ...child.pill, strong: true, x: x + width / 2 - pillWidth / 2, y: cy, width: pillWidth, height: TEXT_CHIP_HEIGHT }
+      cy += TEXT_CHIP_HEIGHT
+      return { pill: chip }
+    }
     const placed = placePredicateBox(child, x + BODY_SIDE_MARGIN, cy, childWidth)
     cy += placed.rect.height
-    hasPriorPiece = true
     return placed
   })
 

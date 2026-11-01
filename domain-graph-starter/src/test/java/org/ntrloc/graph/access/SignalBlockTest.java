@@ -10,7 +10,7 @@ import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException
 
 // Pins down the arity table from "Conditions: reading facts" / "Object shape": Condition is exactly
 // one predicate, ConditionGroup needs 1+ conditions (one is a group still being built), TotalityPredicate
-// needs 2+ sub-predicates (there's nothing to combine at 1), CountedPredicate wraps exactly one
+// needs 1+ sub-predicates (one is a group still being built), CountedPredicate wraps exactly one
 // sub-predicate and its subject must actually iterate something. Every Condition carries its own pin
 // id; ConditionGroup has none of its own, only its Conditions do; TotalityPredicate/CountedPredicate
 // never have a pin at all, since they're predicates nested directly, not separately-pinned blocks.
@@ -55,10 +55,11 @@ class SignalBlockTest {
     }
 
     @Test
-    void totalityPredicateRejectsFewerThanTwoSubPredicates() {
-        Predicate onlyOne = new IsTruePredicate(null);
-        assertThatIllegalArgumentException().isThrownBy(() ->
-                new TotalityPredicate(null, Quantity.ALL, List.of(onlyOne)));
+    void totalityPredicateNeedsAtLeastOneSubPredicate() {
+        assertThatIllegalArgumentException().isThrownBy(() -> new TotalityPredicate(null, Quantity.ALL, List.of()));
+
+        TotalityPredicate one = new TotalityPredicate(null, Quantity.ALL, List.of(new IsTruePredicate(null)));
+        assertThat(one.subPredicates()).hasSize(1);
     }
 
     @Test

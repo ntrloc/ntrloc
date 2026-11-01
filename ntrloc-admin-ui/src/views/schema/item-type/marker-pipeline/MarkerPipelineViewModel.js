@@ -24,7 +24,12 @@ import {
   nodeIdOf,
   nodeProblems,
   setBlockMarkers,
-  setPredicate,
+  changePredicateAt,
+  groupTest,
+  predicateAt,
+  ungroupTest,
+  withAnotherTest,
+  withoutTest,
   setSubject,
   subjectOf,
   withPositionsFixed,
@@ -40,8 +45,6 @@ import {
   describeSubjectChip,
   describeTestPill,
 } from './pipelineConditionText'
-
-const isLeafTest = (predicate) => predicate && predicate.type !== 'COUNTED' && predicate.type !== 'TOTALITY'
 
 const MIN_ZOOM = 0.3
 const MAX_ZOOM = 3
@@ -134,8 +137,9 @@ function pinDescriptionsOf(schema, itemTypeId, pipeline) {
 // short label (same shape blockLabel's SELECT case builds for an *inlined* group, since the content
 // is the same either way, just drawn in a different place), or a bare Condition's full description
 // (see describeCondition -- stacked lines, or a nested "count" sub-box for a COUNTED predicate).
-// testPill(signal, condition, context): a condition's test as a pill (see the view model's).
-function signalNodeLabel(schema, itemTypeId, signal, testPill) {
+// testPill(signal, condition, context) / groupBox(group, context): a condition's test as a pill, a
+// group of tests as a box (see the view model's).
+function signalNodeLabel(schema, itemTypeId, signal, { testPill, groupBox }) {
   if (signal.type === 'CONDITION_GROUP') {
     return {
       subjectLabel: describeConditionGroupSubject(schema, itemTypeId, signal),
@@ -143,12 +147,10 @@ function signalNodeLabel(schema, itemTypeId, signal, testPill) {
     }
   }
   // Its subject as a pill of its own, over its test -- which then has no subject of its own to show.
-  return {
-    subjectLabel: describeSubjectChip(schema, itemTypeId, signal.subject),
-    ...(!signal.predicate || isLeafTest(signal.predicate)
-      ? { test: testPill(signal, signal, signal.subject) }
-      : { box: describeCondition(schema, itemTypeId, signal, { withSubject: false }) }),
-  }
+  const subjectLabel = describeSubjectChip(schema, itemTypeId, signal.subject)
+  if (signal.predicate?.type === 'TOTALITY') return { subjectLabel, box: groupBox(signal.predicate, signal.subject) }
+  if (signal.predicate?.type === 'COUNTED') return { subjectLabel, box: describeCondition(schema, itemTypeId, signal, { withSubject: false }) }
+  return { subjectLabel, test: testPill(signal, signal, signal.subject) }
 }
 
 // What's drawn: the draft while editing, otherwise what's saved.
@@ -209,16 +211,18 @@ export function useMarkerPipelineViewModel(pipelineView, itemTypeId, savePipelin
   useUndoShortcuts(editable ? history : NO_HISTORY)
   const draft = editable ? history.present : null
   const { pipeline, positions: effectivePositions, edgeBends: effectiveEdgeBends } = shownPipeline(pipelineView, draft)
-  // What a condition's test reads -- its own subject, if it has one, or the condition's (or group's) --
-  // and so which tests it can be.
+  // What a test reads -- its own subject, if it has one, or else its context (the condition's, or
+  // group's, or a group of tests' own) -- and so which tests it can be.
+  const testsOfPredicate = (predicate, context) => testsFor(subjectEnd(schema, itemTypeId, predicate?.subject ?? context), itemTypeId)
   const testSubjectOf = (signal, condition) => condition.predicate?.subject ?? subjectOf(signal)
-  const testsOf = (signal, condition) => testsFor(subjectEnd(schema, itemTypeId, testSubjectOf(signal, condition)), itemTypeId)
-  function conditionTestProblem(signal, condition) {
+  const testsOf = (signal, condition) => testsOfPredicate(condition.predicate, subjectOf(signal))
+  // What's wrong with a single test, if anything: a value missing, or a test what it reads can't have.
+  function leafProblem(predicate, context) {
     if (!schema) return null
-    const test = testOf(condition.predicate, testsOf(signal, condition))
-    return test ? testValueProblem(test, condition.predicate) : "Its test doesn't fit its subject."
+    const test = testOf(predicate, testsOfPredicate(predicate, context))
+    return test ? testValueProblem(test, predicate) : "Its test doesn't fit its subject."
   }
-  const problems = editable ? nodeProblems(pipeline, conditionTestProblem, draft.conditionalIds) : new Map()
+  const problems = editable ? nodeProblems(pipeline, leafProblem, draft.conditionalIds) : new Map()
   // Why it can't be saved as it is, if it can't. (New blocks go with refIds, which the server swaps
   // for ids.)
   const saveBlocker = problems.size > 0 ? 'Some blocks still need something -- see their details.' : null
@@ -234,12 +238,21 @@ export function useMarkerPipelineViewModel(pipelineView, itemTypeId, savePipelin
   // marked incomplete while it's missing the test or a value.
   function testPill(signal, condition, context) {
     const described = describeTestPill(schema, itemTypeId, condition, context)
-    const incomplete = !condition.predicate?.type || Boolean(conditionTestProblem(signal, condition))
+    const incomplete = !condition.predicate?.type || Boolean(leafProblem(condition.predicate, context))
     return { lead: described?.lead ?? null, text: described?.text || '…', incomplete }
+  }
+  // A group of tests, as the box the block draws: headed by how it combines them ("all"), a pill for
+  // each test, a box for each group within it.
+  function groupBox(group, context) {
+    const inner = group.subject ?? context
+    const children = group.subPredicates.map((p) =>
+      p?.type === 'TOTALITY' ? groupBox(p, inner) : { pill: testPill(null, { predicate: p }, inner) },
+    )
+    return { label: group.quantity.toLowerCase(), subjectText: null, testText: null, children }
   }
   const blockCtx = { markerNamesById, pipeline, schema, itemTypeId, conditional, testPill }
   const blocks = new Map(pipeline.carrierBlocks.map((b) => [b.id, blockLabel(b, blockCtx)]))
-  const signalDescriptions = new Map(signalNodes(pipeline).map((node) => [node.id, signalNodeLabel(schema, itemTypeId, node.signal, testPill)]))
+  const signalDescriptions = new Map(signalNodes(pipeline).map((node) => [node.id, signalNodeLabel(schema, itemTypeId, node.signal, { testPill, groupBox })]))
   const layout = computeLayout(pipeline, effectivePositions, blocks, signalDescriptions, effectiveEdgeBends)
   const pinDescriptions = pinDescriptionsOf(schema, itemTypeId, pipeline)
   // What's selected while editing: a node (kind 'node'), by its id.
@@ -700,21 +713,38 @@ export function useMarkerPipelineViewModel(pipelineView, itemTypeId, savePipelin
     changeStructure((d) => setSubject(d, nodeId, subject, (predicate) => testOf(predicate, tests) !== null))
   }
 
-  // What a test under the item itself reads (see SignalDetails' Reads): its test kept if it still
-  // fits, else cleared.
-  function setTestSubject(signal, condition, subject) {
+  // What a test under the item itself reads (see the inspector's Reads) -- the one at path within
+  // condition's test: its test kept if it still fits, else cleared. context: what it reads otherwise.
+  function setTestSubjectAt(condition, path, context, subject) {
     const own = subject && subject.type !== 'SELF' ? subject : null
-    const tests = testsFor(subjectEnd(schema, itemTypeId, own ?? subjectOf(signal)), itemTypeId)
-    const previous = condition.predicate
+    const tests = testsFor(subjectEnd(schema, itemTypeId, own ?? context), itemTypeId)
+    const previous = predicateAt(condition.predicate, path)
     const kept = previous?.type && testOf(previous, tests) ? without(previous, 'subject') : null
-    if (own) setConditionTest(condition.id, { ...kept, subject: own })
-    else setConditionTest(condition.id, kept)
+    setTestAt(condition.id, path, own ? { ...kept, subject: own } : kept)
   }
 
-  // key: typing into one of a test's values is one undo step, not one per keystroke.
-  function setConditionTest(conditionId, predicate, key = null) {
-    history.change((d) => setPredicate(withPositionsFixed(d, layout.rects), conditionId, predicate), key)
+  function setTestSubject(signal, condition, subject) {
+    setTestSubjectAt(condition, [], subjectOf(signal), subject)
   }
+
+  // The test at path within condition conditionId's test. key: typing into one of its values is one
+  // undo step, not one per keystroke.
+  function setTestAt(conditionId, path, predicate, key = null) {
+    history.change((d) => changePredicateAt(withPositionsFixed(d, layout.rects), conditionId, path, () => predicate), key)
+  }
+
+  function setConditionTest(conditionId, predicate, key = null) {
+    setTestAt(conditionId, [], predicate, key)
+  }
+
+  // Grouping a test (see pipelineDraft's groupTest), and changing a group: how it combines its tests,
+  // which tests it has, and back out of it.
+  const changeTestAt = (conditionId, path, fn) => changeStructure((d) => changePredicateAt(d, conditionId, path, fn))
+  const groupTestAt = (conditionId, path) => changeTestAt(conditionId, path, groupTest)
+  const ungroupTestAt = (conditionId, path) => changeTestAt(conditionId, path, ungroupTest)
+  const addTestAt = (conditionId, path) => changeTestAt(conditionId, path, withAnotherTest)
+  const removeTestAt = (conditionId, path, i) => changeTestAt(conditionId, path, withoutTest(i))
+  const setQuantityAt = (conditionId, path, quantity) => changeTestAt(conditionId, path, (group) => ({ ...group, quantity }))
 
   function addConditionToGroup(nodeId) {
     changeStructure((d) => addGroupCondition(d, nodeId))
@@ -762,6 +792,14 @@ export function useMarkerPipelineViewModel(pipelineView, itemTypeId, savePipelin
     setConditionSubject,
     setConditionTest,
     setTestSubject,
+    setTestSubjectAt,
+    setTestAt,
+    testsOfPredicate,
+    groupTestAt,
+    ungroupTestAt,
+    addTestAt,
+    removeTestAt,
+    setQuantityAt,
     addConditionToGroup,
     addTestToSelect,
     removeTestFromSelect,

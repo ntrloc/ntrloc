@@ -32,3 +32,38 @@ condition-test-header {
   font-size: 14px;
   font-weight: 600;
 }
+
+/* One test of a condition, or a group of them -- each in a bordered section, nested as the groups are. */
+test-section {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  padding: 10px;
+  border: 1px solid var(--border-light);
+  border-radius: 4px;
+}
+
+/* A group's "Test: all/any/none", or a test's remove button, along the top. */
+test-section-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* The remove button, at the right. */
+test-section-header > .icon-button {
+  margin-left: auto;
+}
+
+test-section-actions {
+  display: flex;
+  gap: 8px;
+}
+
+test-section-remove {
+  position: absolute;
+  top: 11px;
+  right: 6px;
+}

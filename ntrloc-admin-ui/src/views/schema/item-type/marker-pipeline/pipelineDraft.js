@@ -83,7 +83,6 @@ export const NEW_NODES = {
       countPredicate: { type: 'NUMBER', operator: 'GREATER_THAN', value: 0 },
     }),
   }),
-  TOTALITY: (ref) => ({ signal: condition(ref('condition'), { type: 'TOTALITY', quantity: 'ALL', subPredicates: [] }) }),
 }
 
 // The id a node is drawn and placed under: a block's or condition's own, or, for a condition group,
@@ -332,8 +331,6 @@ export function subjectFromSteps(steps) {
 
 const hasEach = (context) => subjectSteps(context).some((step) => step.each)
 
-// A predicate with a subject but no type yet is a test still being chosen (see the inspector's Reads).
-const isLeaf = (predicate) => predicate && predicate.type !== 'COUNTED' && predicate.type !== 'TOTALITY'
 
 // Where a condition (or group) keeps its subject: a group, for all its conditions; a counting
 // condition, in its count; any other condition, its own. (A test can read a subject of its own too.)
@@ -344,15 +341,20 @@ export function subjectOf(signal) {
 
 // keeps(predicate): whether a test still fits the new subject -- one that doesn't is cleared. A test
 // reading a subject of its own doesn't read this one, so stays as it is.
-// A test reads a subject of its own only under the item itself: given another subject, it reads that.
+// Each test, given the condition's new subject: one reading a subject of its own (Reads) only stays
+// under the item itself; any other only while it still fits (keeps). A test that doesn't is emptied,
+// a group of tests keeping its shape.
+function refitTest(predicate, itself, keeps) {
+  if (!predicate || predicate.type === 'COUNTED') return predicate
+  if (predicate.type === 'TOTALITY') return { ...predicate, subPredicates: predicate.subPredicates.map((p) => refitTest(p, itself, keeps)) }
+  if (predicate.subject) return itself ? predicate : null
+  return predicate.type && keeps(predicate) ? predicate : null
+}
+
 function withSubject(signal, subject, keeps) {
   if (signal.type === 'CONDITION' && signal.predicate?.type === 'COUNTED') return { ...signal, predicate: { ...signal.predicate, subject } }
   const itself = !subject || subject.type === 'SELF'
-  const refit = (c) => {
-    if (!isLeaf(c.predicate) || (itself && c.predicate.subject)) return c
-    const predicate = without(c.predicate, 'subject')
-    return { ...c, predicate: predicate.type && keeps(predicate) ? predicate : null }
-  }
+  const refit = (c) => ({ ...c, predicate: refitTest(c.predicate, itself, keeps) })
   if (signal.type === 'CONDITION_GROUP') return { ...signal, subject, conditions: signal.conditions.map(refit) }
   return refit({ ...signal, subject })
 }
@@ -362,6 +364,36 @@ export function setSubject(draft, nodeId, subject, keeps = () => true) {
   const topLevelSignals = draft.pipeline.topLevelSignals.map((s) => (nodeIdOf({ signal: s }) === nodeId ? withSubject(s, subject, keeps) : s))
   return { ...draft, pipeline: { ...draft.pipeline, topLevelSignals } }
 }
+
+// --- Tests within tests: a condition's test can be a group (all / any / none of its tests) ---
+
+// The test at path within predicate: the indexes of each group's test down to it ([] is predicate).
+export function predicateAt(predicate, path) {
+  return path.reduce((p, i) => p?.subPredicates?.[i], predicate)
+}
+
+function updateAt(predicate, path, fn) {
+  if (path.length === 0) return fn(predicate)
+  const [i, ...rest] = path
+  return { ...predicate, subPredicates: predicate.subPredicates.map((p, j) => (j === i ? updateAt(p, rest, fn) : p)) }
+}
+
+function conditionById(pipeline, conditionId) {
+  return (pipeline.topLevelSignals ?? []).flatMap((s) => (s.type === 'CONDITION_GROUP' ? s.conditions : [s])).find((c) => c.id === conditionId)
+}
+
+// Condition conditionId with the test at path changed by fn (the test -> a new one).
+export function changePredicateAt(draft, conditionId, path, fn) {
+  const condition = conditionById(draft.pipeline, conditionId)
+  return condition ? setPredicate(draft, conditionId, updateAt(condition.predicate, path, fn)) : draft
+}
+
+// A test into a group of its own -- all of it, to start -- and back out of a group of one.
+export const groupTest = (predicate) => ({ type: 'TOTALITY', subject: null, quantity: 'ALL', subPredicates: [predicate] })
+export const ungroupTest = (group) => group.subPredicates[0]
+// A group with one more test, nothing chosen yet; or without its test at index i.
+export const withAnotherTest = (group) => ({ ...group, subPredicates: [...group.subPredicates, null] })
+export const withoutTest = (i) => (group) => ({ ...group, subPredicates: group.subPredicates.filter((_, j) => j !== i) })
 
 // Condition conditionId -- on its own, or one of a group's -- given a new test.
 export function setPredicate(draft, conditionId, predicate) {
@@ -373,12 +405,19 @@ export function setPredicate(draft, conditionId, predicate) {
 }
 
 // What's missing from a condition's test, if anything.
-function testProblem(predicate) {
+// leafProblem(predicate, context): what's wrong with a single test given what it reads (a value
+// missing, or a test it can't have), if anything. context: what it reads unless it reads its own.
+function testProblem(predicate, context, leafProblem) {
   if (!predicate?.type) return 'Choose what it tests.'
   if (predicate.type === 'COUNTED' && !hasEach(predicate.subject)) return 'Count over a link to several items.'
   if (predicate.type === 'COUNTED' && !predicate.subPredicate) return 'Choose what it counts.'
-  if (predicate.type === 'TOTALITY' && (predicate.subPredicates ?? []).length < 2) return 'Add at least two tests to combine.'
-  return null
+  if (predicate.type === 'COUNTED') return null
+  if (predicate.type === 'TOTALITY') {
+    if ((predicate.subPredicates ?? []).length === 0) return 'Add a test to the group.'
+    const inner = predicate.subject ?? context
+    return predicate.subPredicates.map((p) => testProblem(p, inner, leafProblem)).find(Boolean) ?? null
+  }
+  return leafProblem(predicate, context)
 }
 
 // What a carrier block still needs: markers, a condition in its "if", rows, something leading in.
@@ -394,10 +433,8 @@ function blockProblems(pipeline, block, fedIds, conditionalIds) {
 }
 
 // What each node still needs before the pipeline can be saved, by node id: a list of messages.
-// testProblemOf(signal, condition): what's wrong with a condition's own test given its subject (a
-// value missing, or a test its subject can't have), if anything.
-// conditionalIds: the blocks switched to conditional (see isConditional).
-export function nodeProblems(pipeline, testProblemOf = () => null, conditionalIds = new Set()) {
+// leafProblem: see testProblem. conditionalIds: the blocks switched to conditional (see isConditional).
+export function nodeProblems(pipeline, leafProblem = () => null, conditionalIds = new Set()) {
   const problems = new Map()
   const add = (id, message) => problems.set(id, [...(problems.get(id) ?? []), message])
   const fedIds = new Set(pipeline.routes.flatMap((r) => r.inputPinIds))
@@ -406,7 +443,7 @@ export function nodeProblems(pipeline, testProblemOf = () => null, conditionalId
   }
   for (const signal of pipeline.topLevelSignals ?? []) {
     const conditions = signal.type === 'CONDITION_GROUP' ? signal.conditions : [signal]
-    const messages = conditions.map((c) => testProblem(c.predicate) ?? (isLeaf(c.predicate) ? testProblemOf(signal, c) : null))
+    const messages = conditions.map((c) => testProblem(c.predicate, subjectOf(signal), leafProblem))
     // A Select's tests are drawn in it, so their problems are its.
     const at = inlinedConditionGroupOwner(pipeline, signal) ?? nodeIdOf({ signal })
     for (const message of new Set(messages.filter(Boolean))) add(at, message)

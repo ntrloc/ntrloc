@@ -97,9 +97,13 @@ function PredicateBox({ box }) {
         {box.label}
       </text>
       {box.subjectChip && <TextChip chip={box.subjectChip} />}
-      {box.children.map((child) => (
-        <PredicateBox key={`${child.rect.x},${child.rect.y}`} box={child} />
-      ))}
+      {box.children.map((child) =>
+        child.pill ? (
+          <TextChip key={`${child.pill.x},${child.pill.y}`} chip={child.pill} />
+        ) : (
+          <PredicateBox key={`${child.rect.x},${child.rect.y}`} box={child} />
+        ),
+      )}
       {box.testChip && <TextChip chip={box.testChip} />}
     </g>
   )
@@ -800,10 +804,9 @@ const PALETTE = [
     label: 'Conditions',
     icon: CONDITION_ICON,
     items: [
-      { id: 'CONDITION', label: 'Condition', icon: swatch('mp-palette-swatch-condition'), description: "One test, on a property of the item or of something it's linked to." },
+      { id: 'CONDITION', label: 'Condition', icon: swatch('mp-palette-swatch-condition'), description: "A test on the item or something it's linked to -- or a group of tests: all, any or none of them." },
       { id: 'CONDITION_GROUP', label: 'Condition group', icon: swatch('mp-palette-swatch-condition'), description: 'Several tests on one property, each with its own outcome -- true and false, for example.' },
       { id: 'COUNTED', label: 'Counting condition', icon: swatch('mp-palette-swatch-condition'), description: 'Counts the linked items that pass a test, and compares the count.' },
-      { id: 'TOTALITY', label: 'All / any / none of', icon: swatch('mp-palette-swatch-condition'), description: 'Combines several tests into one: all of them, any of them, or none.' },
     ],
   },
 ]
