@@ -785,7 +785,7 @@ class SchemaEditingUiTest extends AbstractUiIntegrationTest {
 
         AdminPropertyDefinitionView title = propertyNamed(bookType, "title");
         schemaManager.applyMutations(List.of(new UpdatePropertyDefinitionMutation(title.id(), "title", "Theirs",
-                title.type(), title.cardinality(), title.usage(), title.facetable())));
+                title.cardinality(), title.usage(), title.facetable())));
         schema.awaitConflict();
         assertThat(schema.conflicts()).containsExactly("Property title was changed by someone else");
         assertThat(schema.saveEnabled()).isFalse();

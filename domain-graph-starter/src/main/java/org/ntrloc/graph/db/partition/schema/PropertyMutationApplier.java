@@ -40,15 +40,15 @@ class PropertyMutationApplier {
         switch (mutation) {
             case AddPropertyDefinitionMutation m -> applyAddProperty(m);
             case UpdatePropertyDefinitionMutation m -> {
-                SchemaMutationValidation.requireFacetableEligible(m.propertyType(), m.cardinality(), m.facetable());
                 var existing = repo.findProperty(m.id())
                         .orElseThrow(() -> new IllegalArgumentException("Unknown property: " + m.id()));
+                SchemaMutationValidation.requireFacetableEligible(existing.type(), m.cardinality(), m.facetable());
                 if (!existing.name().equals(m.name())) {
                     var parent = repo.findPropertyParent(m.id())
                             .orElseThrow(() -> new IllegalArgumentException("Property " + m.id() + " has no parent"));
                     SchemaMutationValidation.requireNameAvailable(repo, parent, m.name(), "this " + parent.kind().name().toLowerCase());
                 }
-                repo.updateProperty(m.id(), m.name(), m.description(), m.propertyType(), m.cardinality(), m.usage(), m.facetable());
+                repo.updateProperty(m.id(), m.name(), m.description(), m.cardinality(), m.usage(), m.facetable());
             }
             case DeletePropertyDefinitionMutation m -> repo.deleteProperty(m.id());
             case MovePropertyDefinitionMutation m -> applyMoveProperty(m);

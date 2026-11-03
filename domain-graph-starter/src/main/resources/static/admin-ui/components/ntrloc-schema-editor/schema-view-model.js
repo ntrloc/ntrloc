@@ -62,7 +62,7 @@ function collectPropertyMutations(nodes, parentKind, parentId, ops) {
       continue;
     }
     if (node.ownFieldsDirty) {
-      ops.push({ type: 'UPDATE_PROPERTY', id: node.id, name: node.name, description: node.description, propertyType: node.type, cardinality: node.cardinality, usage: node.usage, facetable: node.facetable });
+      ops.push({ type: 'UPDATE_PROPERTY', id: node.id, name: node.name, description: node.description, cardinality: node.cardinality, usage: node.usage, facetable: node.facetable });
     }
     if (node.listAssociationDirty) {
       ops.push({ type: 'SET_PROPERTY_CONTROLLED_LIST', propertyId: node.id, listId: node.controlledListId });

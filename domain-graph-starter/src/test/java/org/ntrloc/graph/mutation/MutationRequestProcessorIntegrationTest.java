@@ -362,7 +362,7 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
                 .items().get(0).itemId();
 
         schemaManager.applyMutations(List.of(new UpdatePropertyDefinitionMutation(
-                notesPropertyId, "notes", "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.REQUIRED, false)));
+                notesPropertyId, "notes", "d", PropertyCardinality.SINGLE, PropertyUsage.REQUIRED, false)));
 
         assertThatThrownBy(() -> processor.process(new MutationRequest(
                 List.of(new ItemUpdateMutation(itemId, Map.of("title", "A Title"))), List.of()), SOME_PRINCIPAL))
@@ -409,7 +409,7 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
                 .items().get(0).itemId();
 
         schemaManager.applyMutations(List.of(new UpdatePropertyDefinitionMutation(
-                legacyCodePropertyId, "legacyCode", "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.DEPRECATED, false)));
+                legacyCodePropertyId, "legacyCode", "d", PropertyCardinality.SINGLE, PropertyUsage.DEPRECATED, false)));
 
         assertThatThrownBy(() -> processor.process(new MutationRequest(
                 List.of(new ItemUpdateMutation(itemId, Map.of("legacyCode", "ABC"))), List.of()), SOME_PRINCIPAL))
@@ -515,7 +515,7 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
                 .links().get(0).linkId();
 
         schemaManager.applyMutations(List.of(new UpdatePropertyDefinitionMutation(
-                notesPropertyId, notesPropertyName, "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.REQUIRED, false)));
+                notesPropertyId, notesPropertyName, "d", PropertyCardinality.SINGLE, PropertyUsage.REQUIRED, false)));
 
         assertThatThrownBy(() -> processor.process(new MutationRequest(List.of(),
                 List.of(new LinkUpdateMutation(linkId, Map.of()))), SOME_PRINCIPAL))

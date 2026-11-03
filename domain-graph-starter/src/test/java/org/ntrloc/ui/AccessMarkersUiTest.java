@@ -224,8 +224,8 @@ class AccessMarkersUiTest extends AbstractUiIntegrationTest {
                 "property: score", "> 5",
                 // at least one linked reviewer is in the Approved state
                 "count", "linked item: reviewers", "any match", "Review = Approved",
-                // every one of two score bounds holds
-                "totality", "all match", "≥ 1", "≤ 10",
+                // every one of two score bounds holds: the score, then a group of its tests
+                "property: score", "all", "≥ 1", "≤ 10",
                 // the flags group: one shared property, a pin per member
                 "property: confidential", "is true", "is false");
         // remove and add each read one flag; set reads two conditions; filter reads one.

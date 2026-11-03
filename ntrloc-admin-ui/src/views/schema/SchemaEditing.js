@@ -219,8 +219,8 @@ function toggled(set, id) {
   return next
 }
 
-// A property's pending edits as mutations. UPDATE_PROPERTY replaces every field at once, so the type
-// and facetable flag it doesn't edit go along unchanged; the controlled list is set separately, and
+// A property's pending edits as mutations. UPDATE_PROPERTY replaces every field at once, so the
+// facetable flag it doesn't edit goes along unchanged; the controlled list is set separately, and
 // only when it changed.
 function propertyMutations(property, values) {
   const mutations = [
@@ -229,7 +229,6 @@ function propertyMutations(property, values) {
       id: property.id,
       name: values.name,
       description: values.description || null,
-      propertyType: property.type,
       cardinality: values.cardinality,
       usage: values.usage,
       facetable: property.facetable,

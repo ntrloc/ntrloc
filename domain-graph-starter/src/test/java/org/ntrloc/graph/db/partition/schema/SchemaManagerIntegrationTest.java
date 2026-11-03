@@ -453,7 +453,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
                 .properties().stream().filter(p -> p.name().equals("original")).findFirst().orElseThrow().id();
 
         schemaManager.applyMutations(List.of(new UpdatePropertyDefinitionMutation(
-                propId, "renamed", "updated", PropertyType.INTEGER, PropertyCardinality.SINGLE, PropertyUsage.REQUIRED, false)));
+                propId, "renamed", "updated", PropertyCardinality.SINGLE, PropertyUsage.REQUIRED, false)));
         var afterUpdate = schemaManager.getAdminSchema().items().stream()
                 .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow();
         assertThat(afterUpdate.properties()).extracting(p -> p.name()).contains("renamed");

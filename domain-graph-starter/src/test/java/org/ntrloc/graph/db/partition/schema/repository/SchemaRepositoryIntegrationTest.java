@@ -109,10 +109,10 @@ class SchemaRepositoryIntegrationTest extends AbstractIntegrationTest {
         var property = newProperty(itemRef(item.id()), "Prop-");
 
         AdminPropertyDefinitionView updated = schemaRepo.updateProperty(property.id(), "Renamed-" + UUID.randomUUID(),
-                "updated", PropertyType.INTEGER, PropertyCardinality.LIST, PropertyUsage.REQUIRED, false);
+                "updated", PropertyCardinality.LIST, PropertyUsage.REQUIRED, false);
 
         assertThat(updated.description()).isEqualTo("updated");
-        assertThat(updated.type()).isEqualTo(PropertyType.INTEGER);
+        assertThat(updated.type()).isEqualTo(PropertyType.STRING);
         assertThat(updated.cardinality()).isEqualTo(PropertyCardinality.LIST);
         assertThat(updated.usage()).isEqualTo(PropertyUsage.REQUIRED);
     }

@@ -261,10 +261,10 @@ public class SchemaRepository {
                 .single();
     }
 
-    public AdminPropertyDefinitionView updateProperty(UUID id, String name, String description, PropertyType type, PropertyCardinality cardinality, PropertyUsage usage, boolean facetable) {
-        return jdbcClient.sql("UPDATE schema_property SET name = :name, description = :description, type = :type, cardinality = :cardinality, usage = :usage, facetable = :facetable WHERE id = :id RETURNING *")
+    public AdminPropertyDefinitionView updateProperty(UUID id, String name, String description, PropertyCardinality cardinality, PropertyUsage usage, boolean facetable) {
+        return jdbcClient.sql("UPDATE schema_property SET name = :name, description = :description, cardinality = :cardinality, usage = :usage, facetable = :facetable WHERE id = :id RETURNING *")
                 .param("id", id).param("name", name).param(PARAM_DESCRIPTION, description)
-                .param("type", type.name()).param(PARAM_CARDINALITY, cardinality.name()).param(PARAM_USAGE, usage.name())
+                .param(PARAM_CARDINALITY, cardinality.name()).param(PARAM_USAGE, usage.name())
                 .param(COL_FACETABLE, facetable)
                 .query(this::mapProperty)
                 .single();
