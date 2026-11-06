@@ -34,6 +34,9 @@ fix, a new API shape) are called out as such (§9).
    anything run in the middle of a write is given reads only and returns proposals (§5).
 6. **A store's SQL touches only its own tables** (target; current exceptions are parked, §8). Reading
    another store goes through that store, so each store can be overlaid independently in the preview.
+   When one query genuinely needs another partition's data (to sort or paginate by it), the owning
+   store supplies that piece as a SQL fragment, and the querying store embeds it without knowing what's
+   inside. Each store authors SQL only for its own tables, and the database still runs one query.
 7. **Interface segregation on stores.** Read and write interfaces are separate; only the owner of an
    invariant is given the write interface. Enforced by ArchUnit tests, not convention.
 
@@ -114,7 +117,34 @@ Item work has two themes; every item concern informs a question or constrains a 
 
 - **ProjectionEngine** is today's `RegisterPartitionManager` projection code (`project`,
   `projectAcrossTypes`, `projectOne`, result assembly). Its storage half becomes **RegisterStore**; its
-  schema lookups (`resolveStateMachineId`, `resolveStateId`) move to Schema.
+  schema lookups (`resolveStateMachineId`, `resolveStateId`) move to Schema. The two meet at an
+  **ExplicitProjection** (below).
+- **Whether Register and Binary should be one store is open (§10).** For now they're separate, and the
+  one query that needs both uses rule 6's fragment.
+
+**ExplicitProjection.** ProjectionEngine resolves a client's `ProjectionSpec` against the schema into an
+`ExplicitProjection`; RegisterStore compiles that to SQL against its physical layout, runs it, and
+returns rows keyed by id.
+
+| | ProjectionEngine | RegisterStore |
+|---|---|---|
+| Names → ids (properties, group and binary-field paths, state machines, states, perspectives) | ✓ | |
+| "All facetable" expansion, page clamping, cross-type representative type | ✓ | |
+| Rejecting unknown or unreadable requested fields (all request errors) | ✓ | |
+| Permission as "item has any of markers {…}"; link-target access | resolves it | applies it |
+| Filters, counts, facet GROUP BYs, typed sort, UNION across types, batched links | | ✓ |
+| Ids → names, property read grants, controlled-list labels, binary metadata, states, edit permissions, display labels, marker names, state-facet ordering, per-perspective link read | ✓ | |
+
+- The `ExplicitProjection` carries type ids, a condition tree over ids (`And`/`Or`/`Not`,
+  `PropertyExists`, `PropertyCompare`, `InState`, `ItemIdIs`), access, facets and facet filters by
+  property / state machine id, a sort key (system column, typed property, or a binary-field fragment from
+  Binary Store, rule 6), a page, a link selection by perspective id (nested), and whether to count.
+  A single-item read is `ItemIdIs` with counting off.
+- Rows come back keyed by id: item id and type id, raw properties and states, audit, marker ids, binary
+  ids by property, and links by perspective (each link's properties plus its target as a row).
+- RegisterStore then depends on nothing but the database: its `SchemaManager`, `BinaryPartitionManager`
+  and `ControlledListManager` dependencies move to ProjectionEngine, and its SQL stops joining
+  `schema_item`, `schema_entity_link_perspective` and `schema_property` for names.
 - **LedgerStore** is today's `LedgerPartitionManager`, renamed. It's hidden from projections; property
   history (`LedgerPropertyHistoryService`) is an audit-style reader beside the item component.
 - **BinaryReader / BinaryWriter** split today's `BinaryPartitionManager`.
@@ -267,6 +297,8 @@ parameters, never raw names; outputs use the same parameters, translated to ids 
 - **Stores whose SQL crosses partitions:** `AuthorizationRepository` joins `schema_item` (item type
   names) and `register_item` / `register_item_marker` (an item's markers). Target: callers pass item
   markers in; names come from Schema.
+- **`BinaryDynamicPropertyRegistrar` reads `register_binary_property`** (how many items reference a
+  binary, per property) when a binary is re-extracted. Target: it asks RegisterStore.
 - **Store → service cycle:** `AuthorizationRepository` depends on `AuthorizationCacheManager` (`@Lazy`)
   to refresh the cache after writes. Target: the store publishes "grants changed"; the cache listens
   (it already does for other nodes via the cluster topic).
@@ -281,9 +313,17 @@ parameters, never raw names; outputs use the same parameters, translated to ids 
 
 The item component first — everything else calls it or is called by it.
 
-1. **Split `RegisterPartitionManager`** into ProjectionEngine (read side) and RegisterStore; move
-   `resolveStateMachineId` / `resolveStateId` to Schema. Removes the register's upward dependencies on
-   Schema and Binary. The largest single move: ~3,100 lines, mostly moved, not rewritten.
+1. **Split `RegisterPartitionManager`** into ProjectionEngine (read side) and RegisterStore. Removes the
+   register's upward dependencies on Schema and Binary. The largest single move: ~3,100 lines, mostly
+   moved, not rewritten. Sub-steps, suite green after each:
+   1. State lookups move to Schema. *(Done.)*
+   2. Binary attachment reconciliation moves to the coordinator, at commit. *(Done; this also fixed
+      aborted transactions leaving reference counts changed.)*
+   3. SQL moves behind `ExplicitProjection` (§5.1), one feature at a time: single-item read → filters →
+      sort and pagination (with the binary-field fragment from Binary Store) → facets → cross-type →
+      links. Assembly keeps running on the new rows until the last one lands, then moves to
+      ProjectionEngine.
+   4. Rename the remainder to RegisterStore.
 2. **Rename `LedgerPartitionManager` → LedgerStore**, with read and write interfaces.
 3. **Split `BinaryPartitionManager`** into BinaryReader / BinaryWriter over BinaryStore.
 4. **Entity Read and Entity Write.** Split `EntityManager` along the two themes; I/O callers depend on the
@@ -316,6 +356,11 @@ bound, so they're features, not refactor steps.
 5. Where mutation-independent process bindings live within the schema, and how binary enrichment (likely
    system-supplied) is bound.
 6. Preview instance isolation mechanism (Flowable tenant id or other).
+7. Should Register and Binary be one store? For: binaries are reached only through items, and the
+   features that cross the line (sort by binary metadata, reference counts) need both. Against: the
+   register is derived (rebuildable by posting the ledger) while binary content is source data with its
+   own lifecycle (uploaded before attachment, content-addressed and shared, rewritten by enrichment,
+   bytes behind storage adapters). Undecided; separate for now.
 
 ---
 

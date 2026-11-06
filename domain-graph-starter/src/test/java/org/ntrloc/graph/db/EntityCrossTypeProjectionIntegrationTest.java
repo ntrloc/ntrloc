@@ -318,6 +318,33 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
         assertThat(itemIdsOf(body)).containsExactlyInAnyOrder(vehicleItemId.toString(), carItemId.toString());
     }
 
+    // "CrossTypeCar-…" sorts before "CrossTypeVehicle-…", whatever the random suffixes.
+    @Test
+    void collectionProjection_sortedByItemType_ordersByTypeNameAcrossBranches() {
+        String vehicleName = "CrossTypeVehicle-" + UUID.randomUUID();
+        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(vehicleName, "d", List.of(), null, false, null)));
+        UUID vehicleId = idOf(vehicleName);
+
+        String carName = "CrossTypeCar-" + UUID.randomUUID();
+        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(), vehicleId, false, null)));
+
+        UUID vehicleItemId = createItem(vehicleName);
+        UUID carItemId = createItem(carName);
+
+        assertThat(itemIdsOf(sortedByItemType(vehicleName, "ASC"))).containsExactly(carItemId.toString(), vehicleItemId.toString());
+        assertThat(itemIdsOf(sortedByItemType(vehicleName, "DESC"))).containsExactly(vehicleItemId.toString(), carItemId.toString());
+    }
+
+    private byte[] sortedByItemType(String itemTypeName, String direction) {
+        return webTestClient.post().uri("/api/projection/collection")
+                .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com"))
+                .contentType(MediaType.APPLICATION_JSON)
+                .bodyValue("{\"itemTypeName\":\"" + itemTypeName + "\",\"sortField\":\"itemType\",\"sortDirection\":\"" + direction + "\"}")
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody().returnResult().getResponseBody();
+    }
+
     // Direct item-type:read grant revocation, mirroring AuthorizationTestDataInitializer's own
     // revoke-default-then-grant-explicitly pattern rather than inventing a new one. Vehicle keeps
     // its default "everyone" read grant; Car's is revoked and never re-granted to "root2" -- so a

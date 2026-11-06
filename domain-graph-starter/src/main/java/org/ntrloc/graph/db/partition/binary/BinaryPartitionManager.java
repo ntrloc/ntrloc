@@ -1,8 +1,11 @@
 package org.ntrloc.graph.db.partition.binary;
 
+import org.ntrloc.graph.db.partition.CorrelatedSql;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -34,4 +37,11 @@ public interface BinaryPartitionManager {
     // diff against an empty prior value already behaves correctly as "everything is newly added."
     // No-op if the binary content row doesn't exist.
     void updateMetadata(UUID binaryContentId, Map<String, Object> extracted, Map<String, Object> derived);
+
+    /**
+     * SQL for one field of a binary's metadata document, as text (NULL when absent), for the binary whose
+     * id is the correlation key. For another store to embed, e.g. to sort by. {@code fieldPath} must
+     * already be validated against the dynamic-property registry: its segments are written into the SQL.
+     */
+    CorrelatedSql metadataFieldText(List<String> fieldPath);
 }

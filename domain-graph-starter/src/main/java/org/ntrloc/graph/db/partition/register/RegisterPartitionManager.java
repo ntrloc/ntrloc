@@ -4,6 +4,12 @@ import tools.jackson.databind.ObjectMapper;
 import org.ntrloc.graph.db.partition.authorization.RequestPermissionContext;
 import org.ntrloc.graph.db.partition.binary.BinaryPartitionManager;
 import org.ntrloc.graph.db.partition.binary.BinaryPropertyObject;
+import org.ntrloc.graph.db.partition.register.ExplicitProjection.Access;
+import org.ntrloc.graph.db.partition.register.ExplicitProjection.Comparison;
+import org.ntrloc.graph.db.partition.register.ExplicitProjection.Condition;
+import org.ntrloc.graph.db.partition.register.ExplicitProjection.Sort;
+import org.ntrloc.graph.db.partition.register.ExplicitProjection.SortKey;
+import org.ntrloc.graph.db.partition.register.ExplicitProjection.ValueType;
 import org.ntrloc.graph.access.FactResolver;
 import org.ntrloc.graph.projection.AndPredicate;
 import org.ntrloc.graph.projection.AvailableTransition;
@@ -12,6 +18,7 @@ import org.ntrloc.graph.projection.FacetBucket;
 import org.ntrloc.graph.projection.FacetFilter;
 import org.ntrloc.graph.projection.LinkProjectionSpec;
 import org.ntrloc.graph.projection.NotPredicate;
+import org.ntrloc.graph.projection.Operator;
 import org.ntrloc.graph.projection.Predicate;
 import org.ntrloc.graph.db.partition.schema.ControlledListLabels;
 import org.ntrloc.graph.db.partition.schema.ControlledListManager;
@@ -86,6 +93,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
     private final BinaryPartitionManager binaryPartitionManager;
     private final SchemaManager schemaManager;
     private final ControlledListManager controlledListManager;
+    private final RegisterStore registerStore;
 
     // Keyed by pattern *string*, not item type -- a pure function cache (the same SpEL text always
     // compiles to the same Expression), so it needs no invalidation hook when a pattern is edited;
@@ -111,12 +119,13 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
     public RegisterPartitionManager(JdbcClient jdbcClient, ObjectMapper objectMapper,
                                     BinaryPartitionManager binaryPartitionManager,
                                     SchemaManager schemaManager,
-                                    ControlledListManager controlledListManager) {
+                                    ControlledListManager controlledListManager, RegisterStore registerStore) {
         this.jdbcClient = jdbcClient;
         this.objectMapper = objectMapper;
         this.binaryPartitionManager = binaryPartitionManager;
         this.schemaManager = schemaManager;
         this.controlledListManager = controlledListManager;
+        this.registerStore = registerStore;
     }
 
     private static final String PARAM_ITEM_ID = "itemId";
@@ -140,7 +149,6 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
     private static final String PARAM_CREATED_BY = "createdBy";
     private static final String PARAM_UPDATED_DATE = "updatedDate";
     private static final String PARAM_UPDATED_BY = "updatedBy";
-    private static final String ORDER_BY_PREFIX = "ORDER BY ";
     private static final String COL_CREATED_DATE = "created_date";
     private static final String COL_CREATED_BY = "created_by";
     private static final String COL_UPDATED_DATE = "updated_date";
@@ -148,14 +156,15 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
     private static final String PARAM_PERSPECTIVE_ID = "perspectiveId";
     private static final String COL_PERSPECTIVE_ID = "perspective_id";
 
-    private static final Map<String, String> SYSTEM_SORT_COLUMNS = Map.of(
-            PARAM_ITEM_ID,          "ri.item_id",
-            "itemType",        "si.name",
-            PARAM_CREATED_DATE,     "ri.created_date",
-            PARAM_CREATED_BY,       "ri.created_by",
-            PARAM_UPDATED_DATE,     "ri.updated_date",
-            PARAM_UPDATED_BY,       "ri.updated_by",
-            "visibilityState", "ri.state"
+    // Sortable system fields by client name. "itemType" is handled separately (it needs the names).
+    private static final String SORT_FIELD_ITEM_TYPE = "itemType";
+    private static final Map<String, SortKey.Column> SYSTEM_SORT_COLUMNS = Map.of(
+            PARAM_ITEM_ID,      SortKey.Column.ITEM_ID,
+            PARAM_CREATED_DATE, SortKey.Column.CREATED_DATE,
+            PARAM_CREATED_BY,   SortKey.Column.CREATED_BY,
+            PARAM_UPDATED_DATE, SortKey.Column.UPDATED_DATE,
+            PARAM_UPDATED_BY,   SortKey.Column.UPDATED_BY,
+            "visibilityState",  SortKey.Column.VISIBILITY_STATE
     );
 
     // Applied when CollectionProjectionSpec.limit()/offset() are null or out of range, rather than
@@ -247,78 +256,70 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
         return field;
     }
 
-    private String orderByClause(CollectionProjectionSpec spec, UUID itemTypeId, RequestPermissionContext permissions) {
-        if (spec.sortField() == null || spec.sortField().isBlank()) return "ORDER BY ri.item_id ASC";
-        String direction = "DESC".equalsIgnoreCase(spec.sortDirection()) ? "DESC" : "ASC";
-        if (SYSTEM_SORT_COLUMNS.containsKey(spec.sortField())) {
-            return ORDER_BY_PREFIX + SYSTEM_SORT_COLUMNS.get(spec.sortField()) + " " + direction + " NULLS LAST, ri.item_id ASC";
+    // The client's sort resolved against the schema. Property names resolve against resolveAgainst
+    // (the one type, or a cross-type query's representative); itemTypeIds are every type queried, for
+    // sorting by type name. A field inside a binary's metadata (e.g. "attachment.length") is only
+    // sortable within a single type, and sorts by Binary Store's SQL for that field.
+    private Sort toSort(CollectionProjectionSpec spec, UUID resolveAgainst, Collection<UUID> itemTypeIds,
+                        RequestPermissionContext permissions, boolean allowBinaryFields) {
+        String field = spec.sortField();
+        if (field == null || field.isBlank()) return Sort.DEFAULT;
+        boolean descending = "DESC".equalsIgnoreCase(spec.sortDirection());
+        if (SORT_FIELD_ITEM_TYPE.equals(field)) {
+            Map<UUID, String> names = new HashMap<>();
+            itemTypeIds.forEach(id -> names.put(id, itemTypeName(id)));
+            return new Sort(new SortKey.ItemTypeName(names), descending);
         }
-        PropertyPathResolution resolution = resolvePropertyPath(itemTypeId, spec.sortField());
-        requirePropertyReadableByAnyMarker(permissions, resolution.property().id(), spec.sortField());
-        String column = sortExpressionFor(resolution, spec.sortField());
-        return ORDER_BY_PREFIX + column + " " + direction + " NULLS LAST, ri.item_id ASC";
-    }
+        SortKey.Column column = SYSTEM_SORT_COLUMNS.get(field);
+        if (column != null) return new Sort(column, descending);
 
-    // Ordinary leaf -> the existing rt.properties->>'<id>' extraction, cast per the property's own
-    // declared type. A binary field path -> a correlated subquery into binary_content, its JSON
-    // walked the same number of levels the path names, cast per whatever type the binary
-    // dynamic-property registry recorded for that exact path (resolvePropertyPath already resolved
-    // and attached it) -- the same castedText dispatch either way, just sourced from a different
-    // place (a real schema property vs. the registry) since a binary's intrinsic facts have no
-    // schema_property row of their own to carry a type. A bare BINARY leaf (no trailing field path)
-    // is rejected outright rather than silently sorting everything as NULL, which is what it did
-    // before this method existed -- BINARY values are never stored in rt.properties at all.
-    private static String sortExpressionFor(PropertyPathResolution resolution, String fullPath) {
-        if (resolution.binaryFieldPath().isEmpty()) {
-            if (resolution.property().type() == PropertyType.BINARY) {
-                throw new IllegalArgumentException("'" + fullPath
-                        + "' is binary content -- sort by an intrinsic attribute instead, e.g. '"
-                        + fullPath + ".length'");
-            }
-            return typedSortExpression("rt.properties", resolution.property());
+        PropertyPathResolution resolution = allowBinaryFields
+                ? resolvePropertyPath(resolveAgainst, field)
+                : PropertyPathResolution.ofProperty(resolveProperty(resolveAgainst, field));
+        requirePropertyReadableByAnyMarker(permissions, resolution.property().id(), field);
+        if (!resolution.binaryFieldPath().isEmpty()) {
+            return new Sort(new SortKey.BinaryField(resolution.property().id(),
+                    binaryPartitionManager.metadataFieldText(resolution.binaryFieldPath()), valueType(resolution.binaryFieldType())), descending);
         }
-        String text = "(SELECT " + binaryFieldJsonExtraction(resolution.binaryFieldPath()) + " FROM register_binary_property rbp "
-                + "JOIN binary_content bc ON bc.id = rbp.binary_id "
-                + "WHERE rbp.register_item_id = ri.id AND rbp.property_id = '" + resolution.property().id() + "')";
-        return castedText(text, resolution.binaryFieldType());
-    }
-
-    // Walks a JSON path inside binary_content.metadata (the physical column -- still named that
-    // regardless of the wire-level "metadata"/"calculated" bucket keys within it) -- ->'segment' for
-    // every level but the last, ->>'segment' (text extraction) for the last, e.g. ["length"] ->
-    // metadata->>'length'; ["hash","sha256"] -> metadata->'hash'->>'sha256'.
-    private static String binaryFieldJsonExtraction(List<String> binaryFieldPath) {
-        StringBuilder sql = new StringBuilder("bc.metadata");
-        for (int i = 0; i < binaryFieldPath.size() - 1; i++) {
-            sql.append("->'").append(binaryFieldPath.get(i)).append("'");
+        if (resolution.property().type() == PropertyType.BINARY) {
+            throw new IllegalArgumentException("'" + field + "' is binary content -- sort by an intrinsic attribute instead, e.g. '"
+                    + field + ".length'");
         }
-        return sql.append("->>'").append(binaryFieldPath.getLast()).append("'").toString();
+        return new Sort(new SortKey.Property(resolution.property().id(), valueType(resolution.property().type())), descending);
     }
 
-    // `->>` always yields text, so an unqualified ORDER BY on it sorts an INTEGER property as "1", "10",
-    // "2". Cast the extracted text to the property's real type so the sort is by value. NULLIF(_,'')
-    // keeps an empty-string (or absent -> NULL) cell from failing the cast; NULLS LAST still applies.
-    private static String typedSortExpression(String jsonbColumnAlias, AdminPropertyDefinitionView property) {
-        return castedText(jsonbColumnAlias + "->>'" + property.id() + "'", property.type());
-    }
-
-    private static String castedText(String text, PropertyType type) {
+    private static ValueType valueType(PropertyType type) {
         return switch (type) {
-            case INTEGER -> nullifCast(text, "bigint");
-            case DECIMAL -> nullifCast(text, "double precision");
-            case DATE -> nullifCast(text, "date");
-            case DATETIME -> nullifCast(text, "timestamptz");
-            case BOOLEAN -> nullifCast(text, "boolean");
-            default -> text;
+            case STRING -> ValueType.TEXT;
+            case INTEGER -> ValueType.INTEGER;
+            case DECIMAL -> ValueType.DECIMAL;
+            case DATE -> ValueType.DATE;
+            case DATETIME -> ValueType.DATETIME;
+            case BOOLEAN -> ValueType.BOOLEAN;
+            case BINARY -> throw new IllegalStateException("BINARY values aren't stored as comparable values");
         };
-    }
-
-    private static String nullifCast(String text, String pgType) {
-        return "NULLIF(" + text + ", '')::" + pgType;
     }
 
     private record RawItem(UUID registerItemId, UUID itemId, String itemType, Map<String, Object> properties, Map<String, Object> states,
                             OffsetDateTime createdDate, UUID createdBy, OffsetDateTime updatedDate, UUID updatedBy) {}
+
+    // Transitional: assembly still works on RawItem's name-and-raw-JSON shape. Goes away when
+    // assembly moves to ProjectionEngine and works on RegisterRows directly.
+    private RawItem toRawItem(RegisterRows.ItemRow row) {
+        Map<String, Object> states = new HashMap<>();
+        row.currentStateIds().forEach((stateMachineId, stateId) ->
+                states.put(stateMachineId.toString(), Map.of(STATE_CURRENT_STATE_ID, stateId.toString())));
+        return new RawItem(row.registerItemId(), row.itemId(), itemTypeName(row.itemTypeId()), keysToStrings(row.properties()), states,
+                row.audit().createdDate(), row.audit().createdBy(), row.audit().updatedDate(), row.audit().updatedBy());
+    }
+
+    private String itemTypeName(UUID itemTypeId) {
+        return schemaManager.getAdminSchema().items().stream()
+                .filter(item -> item.id().equals(itemTypeId))
+                .map(AdminItemDefinitionView::name)
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException("Register row for unknown item type " + itemTypeId));
+    }
 
     public ProjectionResult project(UUID itemTypeId, CollectionProjectionSpec spec, String binaryBaseUrl) {
         return project(itemTypeId, spec, binaryBaseUrl, RequestPermissionContext.forAdmin());
@@ -326,9 +327,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
 
     public ProjectionResult project(UUID itemTypeId, CollectionProjectionSpec spec, String binaryBaseUrl, RequestPermissionContext permissions) {
         String tableName = tableNameFor(itemTypeId);
-        SqlFragment filterFragment = combineFragments(List.of(
-                buildPredicateFragment(spec.filter(), itemTypeId, permissions),
-                buildItemReadPermissionFragment(permissions, "ri")));
+        SqlFragment filterFragment = registerStore.whereClause(toCondition(spec.filter(), itemTypeId, permissions), toAccess(permissions));
 
         List<FacetFilter> activeFacetFilters = spec.facetFilters() != null ? spec.facetFilters() : List.of();
         List<String> requestedFacets = resolveRequestedFacets(spec, itemTypeId, permissions);
@@ -379,6 +378,8 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
             return new ProjectionResult(List.of(), totalCount, 0, facets, stateMachineFacets);
         }
 
+        SqlFragment orderBy = registerStore.orderByClause(toSort(spec, itemTypeId, Set.of(itemTypeId), permissions, true),
+                RegisterStore.RowSource.ITEM_ROW);
         List<RawItem> rawItems = jdbcClient.sql("""
                 SELECT ri.id AS register_item_id, ri.item_id, si.name AS item_type, rt.properties::text AS properties, rt.states::text AS states,
                        ri.created_date, ri.created_by, ri.updated_date, ri.updated_by
@@ -391,9 +392,9 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                   %s
                 %s
                 LIMIT :limit OFFSET :offset
-                """.formatted(tableName, filterFragment.sql(), allFacetFilters.sql(), orderByClause(spec, itemTypeId, permissions)))
+                """.formatted(tableName, filterFragment.sql(), allFacetFilters.sql(), orderBy.sql()))
                 .param(PARAM_ITEM_TYPE_ID, itemTypeId)
-                .params(mergeParams(filterFragment, allFacetFilters))
+                .params(mergeParams(filterFragment, allFacetFilters, orderBy))
                 .param("limit", effectiveLimit(spec))
                 .param("offset", effectiveOffset(spec))
                 .query((rs, _) -> new RawItem(
@@ -418,16 +419,6 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
     }
 
     // --- Cross-type (trait/supertype-scoped) queries ---
-
-    private static final Map<String, String> SYSTEM_SORT_COLUMNS_ACROSS_TYPES = Map.of(
-            PARAM_ITEM_ID,     "combined.item_id",
-            "itemType",        "combined.item_type",
-            PARAM_CREATED_DATE,     "combined.created_date",
-            PARAM_CREATED_BY,       "combined.created_by",
-            PARAM_UPDATED_DATE,     "combined.updated_date",
-            PARAM_UPDATED_BY,       "combined.updated_by",
-            "visibilityState", "combined.visibility_state"
-    );
 
     // Parallel to project(), not a refactor of it: the single-table path is proven and
     // read-performance-critical, and reshaping it to always route through an N-branch code path
@@ -454,9 +445,8 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
         // possibly slightly more inclusive than strictly necessary in that one case.
         UUID representativeItemTypeId = branches.getFirst();
 
-        SqlFragment filterFragment = combineFragments(List.of(
-                buildPredicateFragment(spec.filter(), representativeItemTypeId, permissions),
-                buildItemReadPermissionFragment(permissions, "ri")));
+        SqlFragment filterFragment = registerStore.whereClause(toCondition(spec.filter(), representativeItemTypeId, permissions),
+                toAccess(permissions));
 
         List<FacetFilter> activeFacetFilters = spec.facetFilters() != null ? spec.facetFilters() : List.of();
         List<String> requestedFacets = resolveRequestedFacets(spec, representativeItemTypeId, permissions);
@@ -504,6 +494,8 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
         }
 
         SqlFragment mainSource = buildUnionedBranchSource(branches, filterFragment, allFacetFilters);
+        SqlFragment orderBy = registerStore.orderByClause(toSort(spec, representativeItemTypeId, branches, permissions, false),
+                RegisterStore.RowSource.COMBINED);
         List<RawItem> rawItems = jdbcClient.sql("""
                 SELECT combined.register_item_id, combined.item_id, combined.item_type,
                        combined.properties::text AS properties, combined.states::text AS states,
@@ -511,8 +503,9 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                 FROM (%s) combined
                 %s
                 LIMIT :limit OFFSET :offset
-                """.formatted(mainSource.sql(), orderByClauseAcrossTypes(spec, representativeItemTypeId, permissions)))
+                """.formatted(mainSource.sql(), orderBy.sql()))
                 .params(mainSource.params())
+                .params(orderBy.params())
                 .param("limit", effectiveLimit(spec))
                 .param("offset", effectiveOffset(spec))
                 .query((rs, _) -> new RawItem(
@@ -566,7 +559,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
             String paramName = "branchType_" + i;
             params.put(paramName, branchId);
             selects.add("""
-                    SELECT ri.id AS register_item_id, ri.item_id, si.name AS item_type,
+                    SELECT ri.id AS register_item_id, ri.item_id, ri.item_type_id, si.name AS item_type,
                            rt.properties AS properties, rt.states AS states,
                            ri.created_date AS created_date, ri.created_by AS created_by,
                            ri.updated_date AS updated_date, ri.updated_by AS updated_by, ri.state AS visibility_state
@@ -600,17 +593,6 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                     return new FacetBucket(value, labelFor(value, labels), rs.getLong(COL_FACET_COUNT));
                 })
                 .list();
-    }
-
-    private String orderByClauseAcrossTypes(CollectionProjectionSpec spec, UUID representativeItemTypeId, RequestPermissionContext permissions) {
-        if (spec.sortField() == null || spec.sortField().isBlank()) return "ORDER BY combined.item_id ASC";
-        String direction = "DESC".equalsIgnoreCase(spec.sortDirection()) ? "DESC" : "ASC";
-        if (SYSTEM_SORT_COLUMNS_ACROSS_TYPES.containsKey(spec.sortField())) {
-            return ORDER_BY_PREFIX + SYSTEM_SORT_COLUMNS_ACROSS_TYPES.get(spec.sortField()) + " " + direction + " NULLS LAST, combined.item_id ASC";
-        }
-        AdminPropertyDefinitionView property = resolveProperty(representativeItemTypeId, spec.sortField());
-        requirePropertyReadableByAnyMarker(permissions, property.id(), spec.sortField());
-        return ORDER_BY_PREFIX + typedSortExpression("combined.properties", property) + " " + direction + " NULLS LAST, combined.item_id ASC";
     }
 
     private long runCount(String tableName, UUID itemTypeId, SqlFragment filter, SqlFragment additionalFilter) {
@@ -823,27 +805,9 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
     // this, exactly like it already does for the type-level requireReadAccess check -- cheaper,
     // since a denied request never pays for fetching the item's own (possibly large) properties.
     public Optional<ProjectedItem> projectOne(UUID itemTypeId, UUID itemId, String binaryBaseUrl, RenderOptions options) {
-        List<RawItem> rawItems = jdbcClient.sql("""
-                SELECT ri.id AS register_item_id, ri.item_id, si.name AS item_type, rt.properties::text AS properties, rt.states::text AS states,
-                       ri.created_date, ri.created_by, ri.updated_date, ri.updated_by
-                FROM register_item ri
-                JOIN %s rt ON rt.register_item_id = ri.id
-                JOIN schema_item si ON si.id = ri.item_type_id
-                WHERE ri.item_type_id = :itemTypeId
-                  AND ri.item_id = :itemId
-                  AND ri.state = 'COMMITTED'
-                """.formatted(tableNameFor(itemTypeId)))
-                .param(PARAM_ITEM_TYPE_ID, itemTypeId)
-                .param(PARAM_ITEM_ID, itemId)
-                .query((rs, _) -> new RawItem(
-                        rs.getObject(COL_REGISTER_ITEM_ID, UUID.class),
-                        rs.getObject(COL_ITEM_ID, UUID.class),
-                        rs.getString(COL_ITEM_TYPE),
-                        parseJsonb(rs.getString(COL_PROPERTIES)),
-                        parseJsonb(rs.getString(COL_STATES)),
-                        rs.getObject(COL_CREATED_DATE, OffsetDateTime.class), rs.getObject(COL_CREATED_BY, UUID.class),
-                        rs.getObject(COL_UPDATED_DATE, OffsetDateTime.class), rs.getObject(COL_UPDATED_BY, UUID.class)))
-                .list();
+        List<RawItem> rawItems = registerStore.query(ExplicitProjection.singleItem(itemTypeId, itemId)).items().stream()
+                .map(this::toRawItem)
+                .toList();
 
         if (rawItems.isEmpty()) {
             return Optional.empty();
@@ -1402,7 +1366,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
 
     // --- Mode-2 (field/capability-affecting) permission resolution: batched per-page marker
     // lookup + in-memory set arithmetic against RequestPermissionContext's grant maps. Never a
-    // WHERE-clause concern (see buildItemReadPermissionFragment's own comment on the mode split).
+    // WHERE-clause concern (see toAccess's own comment on the mode split).
 
     private Map<UUID, Set<UUID>> getMarkerIdsForRegisterItems(Collection<UUID> registerItemIds) {
         if (registerItemIds.isEmpty()) return Map.of();
@@ -2509,7 +2473,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
         Map<UUID, Set<UUID>> markerIdsByRegisterItemId = getMarkerIdsForRegisterItems(rawItemIds);
         // Names for every marker we might surface on a projected item: all of them for an admin,
         // or just the caller's item:read-granted subset for everyone else. A non-admin only ever
-        // sees an item because one of its markers is granted (buildItemReadPermissionFragment), so a
+        // sees an item because one of its markers is granted (toAccess), so a
         // visible item's disclosable list is non-empty in practice.
         Set<UUID> markerIdsToName = permissions.isAdmin()
                 ? markerIdsByRegisterItemId.values().stream().flatMap(Set::stream).collect(Collectors.toSet())
@@ -2777,33 +2741,46 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
         return cursor;
     }
 
-    private record SqlFragment(String sql, Map<String, Object> params) {
-        static SqlFragment empty() { return new SqlFragment("", Map.of()); }
+    // The client's predicate resolved against the schema: names to ids, and each property it reads
+    // checked as readable (a request error otherwise). RegisterStore compiles the result.
+    private Condition toCondition(@Nullable Predicate predicate, UUID itemTypeId, RequestPermissionContext permissions) {
+        if (predicate == null) return Condition.All.INSTANCE;
+        return switch (predicate) {
+            case AndPredicate and -> new Condition.And(and.predicates().stream().map(p -> toCondition(p, itemTypeId, permissions)).toList());
+            case OrPredicate or -> new Condition.Or(or.predicates().stream().map(p -> toCondition(p, itemTypeId, permissions)).toList());
+            case NotPredicate not -> new Condition.Not(toCondition(not.predicate(), itemTypeId, permissions));
+            case PropertyExistencePredicate p -> new Condition.PropertyExists(readablePropertyId(itemTypeId, p.propertyName(), permissions));
+            case PropertyValuePredicate p -> new Condition.PropertyCompare(readablePropertyId(itemTypeId, p.propertyName(), permissions),
+                    toComparison(p.operator()), p.value());
+            case StateValuePredicate p -> {
+                UUID stateMachineId = schemaManager.resolveStateMachineId(itemTypeId, p.stateMachineName());
+                yield new Condition.InState(stateMachineId, schemaManager.resolveStateId(stateMachineId, p.stateName()));
+            }
+        };
     }
 
-    private SqlFragment buildPredicateFragment(Predicate predicate, UUID itemTypeId, RequestPermissionContext permissions) {
-        if (predicate == null) return SqlFragment.empty();
-        var translated = translatePredicate(predicate, itemTypeId, new AtomicInteger(), permissions);
-        return new SqlFragment("AND " + translated.sql(), translated.params());
+    private UUID readablePropertyId(UUID itemTypeId, String propertyName, RequestPermissionContext permissions) {
+        UUID propertyId = resolvePropertyId(itemTypeId, propertyName);
+        requirePropertyReadableByAnyMarker(permissions, propertyId, propertyName);
+        return propertyId;
     }
 
-    // Mode-1 (existence-affecting) item:read check, expressed as a semi-join so it composes into
-    // filterFragment and is honored by every downstream count/facet/list query built from it --
-    // never a post-fetch filter, since totalCount/pagination must reflect the filtered set (see
-    // docs/ntrloc-acl-design-notes.md "Performance model"). registerItemAlias is "ri" in both
-    // project()'s single-table query and buildUnionedBranchSource()'s per-branch queries, so the
-    // same fragment text is valid in both contexts. Empty granted set short-circuits to a literal
-    // FALSE rather than "IN ()" (invalid SQL) -- correctly "nothing visible" without a query.
-    private SqlFragment buildItemReadPermissionFragment(RequestPermissionContext permissions, String registerItemAlias) {
-        if (permissions.isAdmin()) {
-            return SqlFragment.empty();
-        }
-        if (permissions.grantedItemReadMarkerIds().isEmpty()) {
-            return new SqlFragment(SQL_AND_FALSE, Map.of());
-        }
-        return new SqlFragment(
-                "AND " + registerItemAlias + ".id IN (SELECT register_item_id FROM register_item_marker WHERE marker_id IN (:grantedItemReadMarkerIds))",
-                Map.of("grantedItemReadMarkerIds", permissions.grantedItemReadMarkerIds()));
+    private static Comparison toComparison(Operator operator) {
+        return switch (operator) {
+            case EQUALS -> Comparison.EQUALS;
+            case NOT_EQUALS -> Comparison.NOT_EQUALS;
+            case LESS_THAN -> Comparison.LESS_THAN;
+            case LESS_THAN_OR_EQUAL -> Comparison.LESS_THAN_OR_EQUAL;
+            case GREATER_THAN -> Comparison.GREATER_THAN;
+            case GREATER_THAN_OR_EQUAL -> Comparison.GREATER_THAN_OR_EQUAL;
+            case LIKE -> Comparison.LIKE_IGNORING_CASE;
+        };
+    }
+
+    // Mode-1 (existence-affecting) item:read, applied in SQL so every count, facet and page reflects
+    // it -- never a post-fetch filter (see docs/ntrloc-acl-design-notes.md "Performance model").
+    private static Access toAccess(RequestPermissionContext permissions) {
+        return permissions.isAdmin() ? Access.Unrestricted.INSTANCE : new Access.AnyMarker(permissions.grantedItemReadMarkerIds());
     }
 
     // The two checks fetchLinksByItem needs as a SQL semi-join beyond what's already established by
@@ -2831,65 +2808,6 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                 : new SqlFragment("AND ri_other.id IN (SELECT register_item_id FROM register_item_marker WHERE marker_id IN (:grantedItemReadMarkerIds))",
                         Map.of("grantedItemReadMarkerIds", permissions.grantedItemReadMarkerIds()));
         return combineFragments(List.of(targetTypeCheck, targetItemReadCheck));
-    }
-
-    private SqlFragment translatePredicate(Predicate predicate, UUID itemTypeId, AtomicInteger counter, RequestPermissionContext permissions) {
-        switch (predicate) {
-            case AndPredicate and -> {
-                List<SqlFragment> children = and.predicates().stream()
-                        .map(p -> translatePredicate(p, itemTypeId, counter, permissions))
-                        .toList();
-                String sql = children.stream()
-                        .map(SqlFragment::sql)
-                        .collect(Collectors.joining(" AND ", "(", ")"));
-                Map<String, Object> params = new HashMap<>();
-                children.forEach(c -> params.putAll(c.params()));
-                return new SqlFragment(sql, params);
-            }
-            case OrPredicate or -> {
-                List<SqlFragment> children = or.predicates().stream()
-                        .map(p -> translatePredicate(p, itemTypeId, counter, permissions))
-                        .toList();
-                String sql = children.stream()
-                        .map(SqlFragment::sql)
-                        .collect(Collectors.joining(" OR ", "(", ")"));
-                Map<String, Object> params = new HashMap<>();
-                children.forEach(c -> params.putAll(c.params()));
-                return new SqlFragment(sql, params);
-            }
-            case NotPredicate not -> {
-                var child = translatePredicate(not.predicate(), itemTypeId, counter, permissions);
-                return new SqlFragment("NOT (" + child.sql() + ")", child.params());
-            }
-            case PropertyExistencePredicate p -> {
-                UUID propertyId = resolvePropertyId(itemTypeId, p.propertyName());
-                requirePropertyReadableByAnyMarker(permissions, propertyId, p.propertyName());
-                return new SqlFragment("jsonb_exists(rt.properties::jsonb, '" + propertyId + "')", Map.of());
-            }
-            case PropertyValuePredicate p -> {
-                UUID propertyId = resolvePropertyId(itemTypeId, p.propertyName());
-                requirePropertyReadableByAnyMarker(permissions, propertyId, p.propertyName());
-                String paramName = "pred_" + counter.getAndIncrement();
-                String sqlOp = switch (p.operator()) {
-                    case EQUALS              -> "=";
-                    case NOT_EQUALS          -> "!=";
-                    case LESS_THAN           -> "<";
-                    case LESS_THAN_OR_EQUAL  -> "<=";
-                    case GREATER_THAN        -> ">";
-                    case GREATER_THAN_OR_EQUAL -> ">=";
-                    case LIKE                -> "ILIKE";
-                };
-                return new SqlFragment(
-                        "(rt.properties::jsonb)->>'" + propertyId + "' " + sqlOp + " :" + paramName,
-                        Map.of(paramName, p.value()));
-            }
-            case StateValuePredicate p -> {
-                UUID stateMachineId = schemaManager.resolveStateMachineId(itemTypeId, p.stateMachineName());
-                UUID stateId = schemaManager.resolveStateId(stateMachineId, p.stateName());
-                return new SqlFragment(
-                        "(rt.states::jsonb)->'" + stateMachineId + "'->>'currentStateId' = '" + stateId + "'", Map.of());
-            }
-        }
     }
 
     // markerIdsByRegisterId/propertyReadGrantsByMarker: the mode-2 property-read filter, applied
@@ -2957,11 +2875,11 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
     }
 
     public static String tableNameFor(UUID typeId) {
-        return "register_item_" + typeId.toString().replace("-", "_");
+        return RegisterStore.tableNameFor(typeId);
     }
 
     public static String linkTableNameFor(UUID linkTypeId) {
-        return "register_link_" + linkTypeId.toString().replace("-", "_");
+        return RegisterStore.linkTableNameFor(linkTypeId);
     }
 
     // --- Schema change reactions ---

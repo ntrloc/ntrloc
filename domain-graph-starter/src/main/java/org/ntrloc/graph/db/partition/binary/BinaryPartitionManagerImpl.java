@@ -1,5 +1,7 @@
 package org.ntrloc.graph.db.partition.binary;
 
+import org.ntrloc.graph.db.partition.CorrelatedSql;
+
 import org.ntrloc.graph.db.partition.binary.event.BinaryContentEvent;
 import org.ntrloc.graph.db.partition.binary.storage.BinaryContentInfo;
 import org.ntrloc.graph.db.partition.binary.storage.BinaryStorageAdapter;
@@ -229,5 +231,18 @@ public class BinaryPartitionManagerImpl implements BinaryPartitionManager {
     @SuppressWarnings("unchecked")
     private Map<String, Object> asMap(Object value) {
         return value instanceof Map<?, ?> map ? (Map<String, Object>) map : Map.of();
+    }
+
+    // Walks the metadata column one level per segment: ->'segment' for each but the last, ->>'segment'
+    // (text) for the last, e.g. ["hash", "sha256"] -> metadata->'hash'->>'sha256'.
+    @Override
+    public CorrelatedSql metadataFieldText(List<String> fieldPath) {
+        if (fieldPath.isEmpty()) throw new IllegalArgumentException("A metadata field path needs at least one segment");
+        StringBuilder field = new StringBuilder("bc.metadata");
+        for (int i = 0; i < fieldPath.size() - 1; i++) {
+            field.append("->'").append(fieldPath.get(i)).append("'");
+        }
+        field.append("->>'").append(fieldPath.getLast()).append("'");
+        return new CorrelatedSql("(SELECT " + field + " FROM binary_content bc WHERE bc.id = " + CorrelatedSql.KEY + ")");
     }
 }
