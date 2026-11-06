@@ -130,16 +130,21 @@ returns rows keyed by id.
 |---|---|---|
 | Names → ids (properties, group and binary-field paths, state machines, states, perspectives) | ✓ | |
 | "All facetable" expansion, page clamping, cross-type representative type | ✓ | |
-| Rejecting unknown or unreadable requested fields (all request errors) | ✓ | |
-| Permission as "item has any of markers {…}"; link-target access | resolves it | applies it |
-| Filters, counts, facet GROUP BYs, typed sort, UNION across types, batched links | | ✓ |
-| Ids → names, property read grants, controlled-list labels, binary metadata, states, edit permissions, display labels, marker names, state-facet ordering, per-perspective link read | ✓ | |
+| Rejecting unknown names, and filter/sort/facet fields the caller can read through no marker (all request errors) | ✓ | |
+| Item access ("has any of markers {…}") and link access (source marker grants the perspective; target type and target item readable) | resolves it | applies it |
+| Filters, counts, facet GROUP BYs, typed sort, UNION across types, links nested by level | | ✓ |
+| Ids → names, property and link-property read grants, controlled-list labels, binary metadata, states, edit permissions, display labels, marker names, state-facet ordering | ✓ | |
 
 - The `ExplicitProjection` carries type ids, a condition tree over ids (`And`/`Or`/`Not`,
   `PropertyExists`, `PropertyCompare`, `InState`, `ItemIdIs`), access, facets and facet filters by
-  property / state machine id, a sort key (system column, typed property, or a binary-field fragment from
-  Binary Store, rule 6), a page, a link selection by perspective id (nested), and whether to count.
-  A single-item read is `ItemIdIs` with counting off.
+  property / state machine id, a sort key (system column, item type name, typed property, or a
+  binary-field fragment from Binary Store, rule 6), a page, a link selection by perspective id (nested),
+  link access, and whether to count. A single-item read is `ItemIdIs` with counting off.
+- **What a caller can't read is left out, never refused.** A property or link the client names
+  explicitly comes back for each item only if that item's markers grant it; otherwise it's absent, as
+  if there were none. An error would reveal what it's meant to hide. (Changed 2026-11-06; both used to
+  be request errors.) Naming a field to filter, sort or facet by that the caller can read through *no*
+  marker is still a request error: that says something about the caller's own grants, not the data.
 - Rows come back keyed by id: item id and type id, raw properties and states, audit, marker ids, binary
   ids by property, and links by perspective (each link's properties plus its target as a row).
 - RegisterStore then depends on nothing but the database: its `SchemaManager`, `BinaryPartitionManager`
@@ -321,9 +326,9 @@ The item component first — everything else calls it or is called by it.
       aborted transactions leaving reference counts changed.)*
    3. SQL moves behind `ExplicitProjection` (§5.1), one feature at a time: single-item read → filters →
       sort and pagination (with the binary-field fragment from Binary Store) → facets → cross-type →
-      links. Assembly keeps running on the new rows until the last one lands, then moves to
-      ProjectionEngine.
-   4. Rename the remainder to RegisterStore.
+      links. *(Done.)* Assembly still runs in `RegisterPartitionManager` on the new rows.
+   4. Assembly moves to ProjectionEngine, working on `RegisterRows` directly.
+   5. The remaining write-side SQL moves into RegisterStore; `RegisterPartitionManager` goes away.
 2. **Rename `LedgerPartitionManager` → LedgerStore**, with read and write interfaces.
 3. **Split `BinaryPartitionManager`** into BinaryReader / BinaryWriter over BinaryStore.
 4. **Entity Read and Entity Write.** Split `EntityManager` along the two themes; I/O callers depend on the

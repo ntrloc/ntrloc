@@ -24,8 +24,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 // PermissionService.canReadItem actually reflects it -- and that revoking either the grant or the
 // marker assignment independently removes access. Link visibility no longer has a standalone
 // PermissionService method (markers only ever apply to items now -- see
-// docs/ntrloc-marker-admin-ui-design-notes.md; link:read is resolved in-memory in
-// RegisterPartitionManager.fetchLinksByItem, covered by InstanceReadFilteringIntegrationTest).
+// docs/ntrloc-marker-admin-ui-design-notes.md; link:read is applied in RegisterStore's link
+// query, covered by InstanceReadFilteringIntegrationTest).
 class PermissionServiceInstanceReadIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired

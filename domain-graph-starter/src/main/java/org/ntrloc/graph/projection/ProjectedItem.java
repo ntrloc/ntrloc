@@ -23,8 +23,7 @@ import java.util.UUID;
 // non-admin only sees an item at all because one of its markers is granted, this list is
 // non-empty in practice for them. Currently only populated on the top-level projected item, not on
 // any item reached through a link's own nested ProjectedItem -- a real follow-up, not an oversight
-// (RegisterPartitionManager.fetchLinksByItem skips fetching marker ids at all for an admin
-// today, purely as a filtering-cost optimization that predates this field existing).
+// (the store now returns every linked item's marker ids, so it's an assembly change).
 //
 // createdDate/createdBy read straight off the register row -- that row already carries the
 // authoritative values (set at staging/commit time by LedgerRegisterCoordinatorImpl, see

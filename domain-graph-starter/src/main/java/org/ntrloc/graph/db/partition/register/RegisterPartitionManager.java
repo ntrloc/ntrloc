@@ -7,6 +7,10 @@ import org.ntrloc.graph.db.partition.binary.BinaryPropertyObject;
 import org.ntrloc.graph.db.partition.register.ExplicitProjection.Access;
 import org.ntrloc.graph.db.partition.register.ExplicitProjection.Comparison;
 import org.ntrloc.graph.db.partition.register.ExplicitProjection.Condition;
+import org.ntrloc.graph.db.partition.register.ExplicitProjection.Page;
+import org.ntrloc.graph.db.partition.register.ExplicitProjection.StateMachineFacet;
+import org.ntrloc.graph.db.partition.register.ExplicitProjection.TermsFacet;
+import org.ntrloc.graph.db.partition.register.ExplicitProjection.TermsFilter;
 import org.ntrloc.graph.db.partition.register.ExplicitProjection.Sort;
 import org.ntrloc.graph.db.partition.register.ExplicitProjection.SortKey;
 import org.ntrloc.graph.db.partition.register.ExplicitProjection.ValueType;
@@ -78,7 +82,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -129,21 +132,16 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
     }
 
     private static final String PARAM_ITEM_ID = "itemId";
-    private static final String PROPERTIES_JSON_ARROW_PREFIX = "rt.properties->>'";
     private static final String PARAM_ITEM_TYPE_ID = "itemTypeId";
     private static final String COL_REGISTER_ITEM_ID = "register_item_id";
     private static final String COL_ITEM_ID = "item_id";
     private static final String COL_PROPERTIES = "properties";
-    private static final String COL_ITEM_TYPE = "item_type";
     private static final String COL_STATES = "states";
     private static final String COL_FACET_VALUE = "value";
-    private static final String COL_FACET_COUNT = "count";
     private static final String PARAM_TRANSACTION_ID = "transactionId";
     private static final String PARAM_LINK_ID = "linkId";
-    private static final String COL_REGISTER_LINK_ID = "register_link_id";
     private static final String STATE_CURRENT_STATE_ID = "currentStateId";
     private static final String PARAM_OLD_ID = "oldId";
-    private static final String SQL_AND_FALSE = "AND FALSE";
     private static final String PARAM_REGISTER_ITEM_ID = "registerItemId";
     private static final String PARAM_CREATED_DATE = "createdDate";
     private static final String PARAM_CREATED_BY = "createdBy";
@@ -151,8 +149,6 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
     private static final String PARAM_UPDATED_BY = "updatedBy";
     private static final String COL_CREATED_DATE = "created_date";
     private static final String COL_CREATED_BY = "created_by";
-    private static final String COL_UPDATED_DATE = "updated_date";
-    private static final String COL_UPDATED_BY = "updated_by";
     private static final String PARAM_PERSPECTIVE_ID = "perspectiveId";
     private static final String COL_PERSPECTIVE_ID = "perspective_id";
 
@@ -301,7 +297,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
     }
 
     private record RawItem(UUID registerItemId, UUID itemId, String itemType, Map<String, Object> properties, Map<String, Object> states,
-                            OffsetDateTime createdDate, UUID createdBy, OffsetDateTime updatedDate, UUID updatedBy) {}
+                            OffsetDateTime createdDate, UUID createdBy, OffsetDateTime updatedDate, UUID updatedBy, RegisterRows.ItemRow row) {}
 
     // Transitional: assembly still works on RawItem's name-and-raw-JSON shape. Goes away when
     // assembly moves to ProjectionEngine and works on RegisterRows directly.
@@ -310,15 +306,21 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
         row.currentStateIds().forEach((stateMachineId, stateId) ->
                 states.put(stateMachineId.toString(), Map.of(STATE_CURRENT_STATE_ID, stateId.toString())));
         return new RawItem(row.registerItemId(), row.itemId(), itemTypeName(row.itemTypeId()), keysToStrings(row.properties()), states,
-                row.audit().createdDate(), row.audit().createdBy(), row.audit().updatedDate(), row.audit().updatedBy());
+                row.audit().createdDate(), row.audit().createdBy(), row.audit().updatedDate(), row.audit().updatedBy(), row);
     }
 
     private String itemTypeName(UUID itemTypeId) {
+        String name = itemTypeNameOrNull(itemTypeId);
+        if (name == null) throw new IllegalStateException("Register row for unknown item type " + itemTypeId);
+        return name;
+    }
+
+    private @Nullable String itemTypeNameOrNull(UUID itemTypeId) {
         return schemaManager.getAdminSchema().items().stream()
                 .filter(item -> item.id().equals(itemTypeId))
                 .map(AdminItemDefinitionView::name)
                 .findFirst()
-                .orElseThrow(() -> new IllegalStateException("Register row for unknown item type " + itemTypeId));
+                .orElse(null);
     }
 
     public ProjectionResult project(UUID itemTypeId, CollectionProjectionSpec spec, String binaryBaseUrl) {
@@ -326,86 +328,34 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
     }
 
     public ProjectionResult project(UUID itemTypeId, CollectionProjectionSpec spec, String binaryBaseUrl, RequestPermissionContext permissions) {
-        String tableName = tableNameFor(itemTypeId);
-        SqlFragment filterFragment = registerStore.whereClause(toCondition(spec.filter(), itemTypeId, permissions), toAccess(permissions));
+        Condition filter = toCondition(spec.filter(), itemTypeId, permissions);
+        List<TermsFilter> termsFilters = toTermsFilters(spec, itemTypeId, permissions);
+        Map<String, AdminPropertyDefinitionView> facetProperties = new LinkedHashMap<>();
+        resolveRequestedFacets(spec, itemTypeId, permissions)
+                .forEach(field -> facetProperties.put(field, resolveProperty(itemTypeId, sanitizeFieldName(field))));
+        // Never auto-populated: only machines the client named (see CollectionProjectionSpec.stateMachineFacets).
+        Map<String, UUID> stateMachineIds = new LinkedHashMap<>();
+        (spec.stateMachineFacets() != null ? spec.stateMachineFacets() : List.<String>of())
+                .forEach(name -> stateMachineIds.put(name, schemaManager.resolveStateMachineId(itemTypeId, name)));
 
-        List<FacetFilter> activeFacetFilters = spec.facetFilters() != null ? spec.facetFilters() : List.of();
-        List<String> requestedFacets = resolveRequestedFacets(spec, itemTypeId, permissions);
+        RegisterRows rows = registerStore.query(new ExplicitProjection(Set.of(itemTypeId), filter, toAccess(permissions), termsFilters,
+                facetProperties.entrySet().stream().map(e -> new TermsFacet(e.getKey(), e.getValue().id())).toList(),
+                stateMachineIds.entrySet().stream().map(e -> new StateMachineFacet(e.getKey(), e.getValue())).toList(),
+                toSort(spec, itemTypeId, Set.of(itemTypeId), permissions, true),
+                new Page(effectiveOffset(spec), effectiveLimit(spec)), toLinkSelection(spec.links()), toLinkAccess(permissions), true));
 
-        // Build one SQL fragment per active facet filter, keyed by field
-        AtomicInteger facetParamCounter = new AtomicInteger();
-        Map<String, SqlFragment> facetFragmentsByField = new LinkedHashMap<>();
-        for (FacetFilter ff : activeFacetFilters) {
-            facetFragmentsByField.put(ff.field(), buildFacetFilterFragment(ff, itemTypeId, facetParamCounter, permissions));
-        }
-        SqlFragment allFacetFilters = combineFragments(facetFragmentsByField.values());
+        Map<String, List<FacetBucket>> facets = facetProperties.isEmpty() ? null : new LinkedHashMap<>();
+        facetProperties.forEach((field, property) -> facets.put(field, labelledTermsBuckets(rows.termsFacetCounts().get(field), property)));
+        Map<String, List<FacetBucket>> stateMachineFacets = stateMachineIds.isEmpty() ? null : new LinkedHashMap<>();
+        stateMachineIds.forEach((name, stateMachineId) ->
+                stateMachineFacets.put(name, stateMachineBuckets(rows.stateMachineFacetCounts().get(name), stateMachineId)));
 
-        // totalCount: base filter only
-        long totalCount = runCount(tableName, itemTypeId, filterFragment, SqlFragment.empty());
-
-        // facetedCount: base filter + all facet filters
-        long facetedCount = activeFacetFilters.isEmpty() ? totalCount
-                : runCount(tableName, itemTypeId, filterFragment, allFacetFilters);
-
-        // Facet GROUP BY queries — disjunctive: each facet excludes its own active filter
-        Map<String, List<FacetBucket>> facets = null;
-        if (!requestedFacets.isEmpty()) {
-            facets = new LinkedHashMap<>();
-            for (String field : requestedFacets) {
-                SqlFragment otherFilters = combineFragments(
-                        facetFragmentsByField.entrySet().stream()
-                                .filter(e -> !e.getKey().equals(field))
-                                .map(Map.Entry::getValue)
-                                .toList());
-                facets.put(field, runTermsFacetQuery(tableName, itemTypeId, filterFragment, otherFilters, field));
-            }
-        }
-
-        // Entirely separate from the property-facets block above -- no facetFilters interaction
-        // (there's no equivalent "state machine facet filter" type, unlike TermsFacetFilter), just
-        // the base predicate filter. Never auto-populated: only runs for machines the client
-        // explicitly named (see CollectionProjectionSpec.stateMachineFacets' own comment).
-        List<String> requestedStateMachineFacets = spec.stateMachineFacets() != null ? spec.stateMachineFacets() : List.of();
-        Map<String, List<FacetBucket>> stateMachineFacets = null;
-        if (!requestedStateMachineFacets.isEmpty()) {
-            stateMachineFacets = new LinkedHashMap<>();
-            for (String machineName : requestedStateMachineFacets) {
-                stateMachineFacets.put(machineName, runStateMachineFacetQuery(tableName, itemTypeId, filterFragment, machineName));
-            }
-        }
-
+        long totalCount = rows.counts().total();
+        long facetedCount = rows.counts().faceted();
         if (facetedCount == 0) {
             return new ProjectionResult(List.of(), totalCount, 0, facets, stateMachineFacets);
         }
-
-        SqlFragment orderBy = registerStore.orderByClause(toSort(spec, itemTypeId, Set.of(itemTypeId), permissions, true),
-                RegisterStore.RowSource.ITEM_ROW);
-        List<RawItem> rawItems = jdbcClient.sql("""
-                SELECT ri.id AS register_item_id, ri.item_id, si.name AS item_type, rt.properties::text AS properties, rt.states::text AS states,
-                       ri.created_date, ri.created_by, ri.updated_date, ri.updated_by
-                FROM register_item ri
-                JOIN %s rt ON rt.register_item_id = ri.id
-                JOIN schema_item si ON si.id = ri.item_type_id
-                WHERE ri.item_type_id = :itemTypeId
-                  AND ri.state = 'COMMITTED'
-                  %s
-                  %s
-                %s
-                LIMIT :limit OFFSET :offset
-                """.formatted(tableName, filterFragment.sql(), allFacetFilters.sql(), orderBy.sql()))
-                .param(PARAM_ITEM_TYPE_ID, itemTypeId)
-                .params(mergeParams(filterFragment, allFacetFilters, orderBy))
-                .param("limit", effectiveLimit(spec))
-                .param("offset", effectiveOffset(spec))
-                .query((rs, _) -> new RawItem(
-                        rs.getObject(COL_REGISTER_ITEM_ID, UUID.class),
-                        rs.getObject(COL_ITEM_ID, UUID.class),
-                        rs.getString(COL_ITEM_TYPE),
-                        parseJsonb(rs.getString(COL_PROPERTIES)),
-                        parseJsonb(rs.getString(COL_STATES)),
-                        rs.getObject(COL_CREATED_DATE, OffsetDateTime.class), rs.getObject(COL_CREATED_BY, UUID.class),
-                        rs.getObject(COL_UPDATED_DATE, OffsetDateTime.class), rs.getObject(COL_UPDATED_BY, UUID.class)))
-                .list();
+        List<RawItem> rawItems = rows.items().stream().map(this::toRawItem).toList();
 
         Map<UUID, AdminPropertyDefinitionView> propertyViewsById = propertyViewsByIdForItemType(itemTypeId);
         List<AdminStateMachineView> stateMachines = schemaManager.getAdminSchema().items().stream()
@@ -445,78 +395,29 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
         // possibly slightly more inclusive than strictly necessary in that one case.
         UUID representativeItemTypeId = branches.getFirst();
 
-        SqlFragment filterFragment = registerStore.whereClause(toCondition(spec.filter(), representativeItemTypeId, permissions),
-                toAccess(permissions));
+        Condition filter = toCondition(spec.filter(), representativeItemTypeId, permissions);
+        List<TermsFilter> termsFilters = toTermsFilters(spec, representativeItemTypeId, permissions);
+        Map<String, AdminPropertyDefinitionView> facetProperties = new LinkedHashMap<>();
+        resolveRequestedFacets(spec, representativeItemTypeId, permissions)
+                .forEach(field -> facetProperties.put(field, resolveProperty(representativeItemTypeId, sanitizeFieldName(field))));
 
-        List<FacetFilter> activeFacetFilters = spec.facetFilters() != null ? spec.facetFilters() : List.of();
-        List<String> requestedFacets = resolveRequestedFacets(spec, representativeItemTypeId, permissions);
+        // No state-machine facets across types: a machine belongs to one item type, so naming one isn't
+        // meaningful across an arbitrary branch set. Binary-field sorts are single-type only too.
+        RegisterRows rows = registerStore.query(new ExplicitProjection(itemTypeIds, filter, toAccess(permissions), termsFilters,
+                facetProperties.entrySet().stream().map(e -> new TermsFacet(e.getKey(), e.getValue().id())).toList(), List.of(),
+                toSort(spec, representativeItemTypeId, branches, permissions, false),
+                new Page(effectiveOffset(spec), effectiveLimit(spec)), toLinkSelection(spec.links()), toLinkAccess(permissions), true));
 
-        AtomicInteger facetParamCounter = new AtomicInteger();
-        Map<String, SqlFragment> facetFragmentsByField = new LinkedHashMap<>();
-        for (FacetFilter ff : activeFacetFilters) {
-            facetFragmentsByField.put(ff.field(), buildFacetFilterFragment(ff, representativeItemTypeId, facetParamCounter, permissions));
-        }
-        SqlFragment allFacetFilters = combineFragments(facetFragmentsByField.values());
-
-        SqlFragment baseSource = buildUnionedBranchSource(branches, filterFragment, SqlFragment.empty());
-        long totalCount = jdbcClient.sql("SELECT COUNT(*) FROM (" + baseSource.sql() + ") combined")
-                .params(baseSource.params())
-                .query(Long.class).single();
-
-        long facetedCount = totalCount;
-        if (!activeFacetFilters.isEmpty()) {
-            SqlFragment facetedSource = buildUnionedBranchSource(branches, filterFragment, allFacetFilters);
-            facetedCount = jdbcClient.sql("SELECT COUNT(*) FROM (" + facetedSource.sql() + ") combined")
-                    .params(facetedSource.params())
-                    .query(Long.class).single();
-        }
-
-        Map<String, List<FacetBucket>> facets = null;
-        if (!requestedFacets.isEmpty()) {
-            facets = new LinkedHashMap<>();
-            for (String field : requestedFacets) {
-                SqlFragment otherFilters = combineFragments(
-                        facetFragmentsByField.entrySet().stream()
-                                .filter(e -> !e.getKey().equals(field))
-                                .map(Map.Entry::getValue)
-                                .toList());
-                facets.put(field, runTermsFacetQueryAcrossTypes(branches, filterFragment, otherFilters, field, representativeItemTypeId));
-            }
-        }
-
-        // No cross-type equivalent for state-machine facets in this pass -- naming one specific
-        // machine id isn't guaranteed meaningful the same way across an arbitrary branch set the
-        // way a merged property lookup is; left unsupported here rather than guessed at.
+        Map<String, List<FacetBucket>> facets = facetProperties.isEmpty() ? null : new LinkedHashMap<>();
+        facetProperties.forEach((field, property) -> facets.put(field, labelledTermsBuckets(rows.termsFacetCounts().get(field), property)));
         Map<String, List<FacetBucket>> stateMachineFacets = null;
 
+        long totalCount = rows.counts().total();
+        long facetedCount = rows.counts().faceted();
         if (facetedCount == 0) {
             return new ProjectionResult(List.of(), totalCount, 0, facets, stateMachineFacets);
         }
-
-        SqlFragment mainSource = buildUnionedBranchSource(branches, filterFragment, allFacetFilters);
-        SqlFragment orderBy = registerStore.orderByClause(toSort(spec, representativeItemTypeId, branches, permissions, false),
-                RegisterStore.RowSource.COMBINED);
-        List<RawItem> rawItems = jdbcClient.sql("""
-                SELECT combined.register_item_id, combined.item_id, combined.item_type,
-                       combined.properties::text AS properties, combined.states::text AS states,
-                       combined.created_date, combined.created_by, combined.updated_date, combined.updated_by
-                FROM (%s) combined
-                %s
-                LIMIT :limit OFFSET :offset
-                """.formatted(mainSource.sql(), orderBy.sql()))
-                .params(mainSource.params())
-                .params(orderBy.params())
-                .param("limit", effectiveLimit(spec))
-                .param("offset", effectiveOffset(spec))
-                .query((rs, _) -> new RawItem(
-                        rs.getObject(COL_REGISTER_ITEM_ID, UUID.class),
-                        rs.getObject(COL_ITEM_ID, UUID.class),
-                        rs.getString(COL_ITEM_TYPE),
-                        parseJsonb(rs.getString(COL_PROPERTIES)),
-                        parseJsonb(rs.getString(COL_STATES)),
-                        rs.getObject(COL_CREATED_DATE, OffsetDateTime.class), rs.getObject(COL_CREATED_BY, UUID.class),
-                        rs.getObject(COL_UPDATED_DATE, OffsetDateTime.class), rs.getObject(COL_UPDATED_BY, UUID.class)))
-                .list();
+        List<RawItem> rawItems = rows.items().stream().map(this::toRawItem).toList();
 
         // Merged, not per-row-resolved: property ids are globally unique across the whole schema
         // (never scoped per type), so unioning each branch's own name lookup is a safe, unambiguous
@@ -541,107 +442,8 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
         return new ProjectionResult(items, totalCount, facetedCount, facets, stateMachineFacets);
     }
 
-    // One SELECT per branch (its own physical table, its own item-type-id parameter), UNION ALL'd
-    // into a single source reusable for a count wrapper, a facet GROUP BY wrapper, or the main
-    // paginated select -- filter/additionalFilter's own SQL text (and thus its :param placeholders)
-    // is repeated verbatim in every branch, which is safe: JdbcClient binds a named parameter to
-    // the same value everywhere it appears in one statement, so the shared filter params only need
-    // to be bound once despite appearing N times. properties/states are left as JSONB here (not
-    // cast to text) so a facet wrapper can access them directly -- only the final main-select
-    // wrapper casts to text, matching what parseJsonb expects.
-    private SqlFragment buildUnionedBranchSource(List<UUID> branches, SqlFragment filter, SqlFragment additionalFilter) {
-        List<String> selects = new ArrayList<>();
-        Map<String, Object> params = new HashMap<>();
-        params.putAll(filter.params());
-        params.putAll(additionalFilter.params());
-        for (int i = 0; i < branches.size(); i++) {
-            UUID branchId = branches.get(i);
-            String paramName = "branchType_" + i;
-            params.put(paramName, branchId);
-            selects.add("""
-                    SELECT ri.id AS register_item_id, ri.item_id, ri.item_type_id, si.name AS item_type,
-                           rt.properties AS properties, rt.states AS states,
-                           ri.created_date AS created_date, ri.created_by AS created_by,
-                           ri.updated_date AS updated_date, ri.updated_by AS updated_by, ri.state AS visibility_state
-                    FROM register_item ri
-                    JOIN %s rt ON rt.register_item_id = ri.id
-                    JOIN schema_item si ON si.id = ri.item_type_id
-                    WHERE ri.item_type_id = :%s
-                      AND ri.state = 'COMMITTED'
-                      %s
-                      %s
-                    """.formatted(tableNameFor(branchId), paramName, filter.sql(), additionalFilter.sql()));
-        }
-        return new SqlFragment(String.join(" UNION ALL ", selects), params);
-    }
-
-    private List<FacetBucket> runTermsFacetQueryAcrossTypes(List<UUID> branches, SqlFragment filter, SqlFragment otherFacetFilters,
-                                                              String field, UUID representativeItemTypeId) {
-        AdminPropertyDefinitionView property = resolveProperty(representativeItemTypeId, sanitizeFieldName(field));
-        String propertyId = property.id().toString();
-        ControlledListLabels labels = labelsForFacetProperty(property);
-        SqlFragment source = buildUnionedBranchSource(branches, filter, otherFacetFilters);
-        return jdbcClient.sql("""
-                SELECT combined.properties->>'%s' AS value, COUNT(*) AS count
-                FROM (%s) combined
-                GROUP BY combined.properties->>'%s'
-                ORDER BY count DESC, value ASC NULLS LAST
-                """.formatted(propertyId, source.sql(), propertyId))
-                .params(source.params())
-                .query((rs, _) -> {
-                    String value = rs.getString(COL_FACET_VALUE);
-                    return new FacetBucket(value, labelFor(value, labels), rs.getLong(COL_FACET_COUNT));
-                })
-                .list();
-    }
-
-    private long runCount(String tableName, UUID itemTypeId, SqlFragment filter, SqlFragment additionalFilter) {
-        return jdbcClient.sql("""
-                SELECT COUNT(*)
-                FROM register_item ri
-                JOIN %s rt ON rt.register_item_id = ri.id
-                WHERE ri.item_type_id = :itemTypeId
-                  AND ri.state = 'COMMITTED'
-                  %s
-                  %s
-                """.formatted(tableName, filter.sql(), additionalFilter.sql()))
-                .param(PARAM_ITEM_TYPE_ID, itemTypeId)
-                .params(mergeParams(filter, additionalFilter))
-                .query(Long.class)
-                .single();
-    }
-
-    private List<FacetBucket> runTermsFacetQuery(String tableName, UUID itemTypeId,
-                                                  SqlFragment filter, SqlFragment otherFacetFilters,
-                                                  String field) {
-        // sanitizeFieldName no longer carries the injection-prevention weight it used to here --
-        // resolveProperty already rejects anything that isn't a real, known property name for
-        // this item type, which subsumes it. Left in as a cheap, redundant first check.
-        AdminPropertyDefinitionView property = resolveProperty(itemTypeId, sanitizeFieldName(field));
-        String propertyId = property.id().toString();
-        ControlledListLabels labels = labelsForFacetProperty(property);
-        return jdbcClient.sql("""
-                SELECT rt.properties->>'%s' AS value, COUNT(*) AS count
-                FROM register_item ri
-                JOIN %s rt ON rt.register_item_id = ri.id
-                WHERE ri.item_type_id = :itemTypeId
-                  AND ri.state = 'COMMITTED'
-                  %s
-                  %s
-                GROUP BY rt.properties->>'%s'
-                ORDER BY count DESC, value ASC NULLS LAST
-                """.formatted(propertyId, tableName, filter.sql(), otherFacetFilters.sql(), propertyId))
-                .param(PARAM_ITEM_TYPE_ID, itemTypeId)
-                .params(mergeParams(filter, otherFacetFilters))
-                .query((rs, _) -> {
-                    String value = rs.getString(COL_FACET_VALUE);
-                    return new FacetBucket(value, labelFor(value, labels), rs.getLong(COL_FACET_COUNT));
-                })
-                .list();
-    }
-
-    // Shared by both runTermsFacetQuery variants -- empty when the property isn't controlled-list-
-    // backed, or its list has no labels at all (see ControlledListManager.getLabels).
+    // Empty when the property isn't controlled-list-backed, or its list has no labels at all (see
+    // ControlledListManager.getLabels).
     private ControlledListLabels labelsForFacetProperty(AdminPropertyDefinitionView property) {
         return property.controlledListId() == null ? new ControlledListLabels(property.type(), Map.of())
                 : controlledListManager.getLabels(property.controlledListId(), property.type());
@@ -653,38 +455,28 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
         return label == null ? value : label;
     }
 
+    private List<FacetBucket> labelledTermsBuckets(List<RegisterRows.ValueCount> counts, AdminPropertyDefinitionView property) {
+        ControlledListLabels labels = labelsForFacetProperty(property);
+        return counts.stream().map(c -> new FacetBucket(c.value(), labelFor(c.value(), labels), c.count())).toList();
+    }
+
     // Each bucket's value is a state id, which a state predicate filters on; its label is the state's name.
     // Buckets are ordered by distance from START, then by name. Unreachable states come after
     // reachable ones, and the null bucket (items never in this machine) always comes last.
-    private List<FacetBucket> runStateMachineFacetQuery(String tableName, UUID itemTypeId, SqlFragment filter, String stateMachineName) {
-        UUID stateMachineId = schemaManager.resolveStateMachineId(itemTypeId, stateMachineName);
+    private List<FacetBucket> stateMachineBuckets(List<RegisterRows.ValueCount> counts, UUID stateMachineId) {
         AdminStateMachineView machine = stateMachineView(stateMachineId);
         Map<UUID, String> stateNames = machine.states().stream()
                 .collect(Collectors.toMap(AdminStateView::id, AdminStateView::name));
         Map<UUID, Integer> rankByStateId = rankStatesByDistanceFromStart(machine);
-        List<FacetBucket> buckets = jdbcClient.sql("""
-                SELECT (rt.states::jsonb)->'%s'->>'currentStateId' AS value, COUNT(*) AS count
-                FROM register_item ri
-                JOIN %s rt ON rt.register_item_id = ri.id
-                WHERE ri.item_type_id = :itemTypeId
-                  AND ri.state = 'COMMITTED'
-                  %s
-                GROUP BY (rt.states::jsonb)->'%s'->>'currentStateId'
-                """.formatted(stateMachineId, tableName, filter.sql(), stateMachineId))
-                .param(PARAM_ITEM_TYPE_ID, itemTypeId)
-                .params(filter.params())
-                .query((rs, _) -> {
-                    String stateId = rs.getString(COL_FACET_VALUE);
-                    String label = stateId == null ? null : stateNames.get(UUID.fromString(stateId));
-                    return new FacetBucket(stateId, label, rs.getLong(COL_FACET_COUNT));
-                })
-                .list();
         Comparator<FacetBucket> byWorkflowPosition = Comparator
                 .comparing((FacetBucket b) -> b.value() == null)
                 .thenComparing(b -> b.value() == null ? Integer.MAX_VALUE
                         : rankByStateId.getOrDefault(UUID.fromString(b.value()), Integer.MAX_VALUE))
                 .thenComparing(b -> b.label() == null ? "" : b.label(), String.CASE_INSENSITIVE_ORDER);
-        return buckets.stream().sorted(byWorkflowPosition).toList();
+        return counts.stream()
+                .map(c -> new FacetBucket(c.value(), c.value() == null ? null : stateNames.get(UUID.fromString(c.value())), c.count()))
+                .sorted(byWorkflowPosition)
+                .toList();
     }
 
     private AdminStateMachineView stateMachineView(UUID stateMachineId) {
@@ -726,56 +518,26 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
         return distanceByStateId;
     }
 
-    private SqlFragment buildFacetFilterFragment(FacetFilter facetFilter, UUID itemTypeId, AtomicInteger counter, RequestPermissionContext permissions) {
-        return switch (facetFilter) {
-            case TermsFacetFilter f -> buildTermsFacetFilterFragment(f, itemTypeId, counter, permissions);
-            case RangeFacetFilter _ -> throw new UnsupportedOperationException("Range facet filters not yet supported");
-            case DateRangeFacetFilter _ -> throw new UnsupportedOperationException("Date range facet filters not yet supported");
-        };
-    }
-
-    private SqlFragment buildTermsFacetFilterFragment(TermsFacetFilter f, UUID itemTypeId, AtomicInteger counter, RequestPermissionContext permissions) {
-        List<String> values = f.values() != null ? f.values() : List.of();
-        boolean includeNull = f.includeNull();
-
-        if (values.isEmpty() && !includeNull) {
-            return SqlFragment.empty();
+    // The client's facet filters, one per property (a later filter on the same field replaces an
+    // earlier one), each property checked readable. A filter selecting nothing (no values, no null)
+    // narrows nothing, so it's dropped unresolved.
+    private List<TermsFilter> toTermsFilters(CollectionProjectionSpec spec, UUID itemTypeId, RequestPermissionContext permissions) {
+        if (spec.facetFilters() == null) return List.of();
+        Map<UUID, TermsFilter> byProperty = new LinkedHashMap<>();
+        for (FacetFilter facetFilter : spec.facetFilters()) {
+            switch (facetFilter) {
+                case TermsFacetFilter f -> {
+                    List<String> values = f.values() != null ? f.values() : List.of();
+                    if (values.isEmpty() && !f.includeNull()) continue;
+                    UUID propertyId = resolvePropertyId(itemTypeId, sanitizeFieldName(f.field()));
+                    requirePropertyReadableByAnyMarker(permissions, propertyId, f.field());
+                    byProperty.put(propertyId, new TermsFilter(propertyId, values, f.includeNull()));
+                }
+                case RangeFacetFilter _ -> throw new UnsupportedOperationException("Range facet filters not yet supported");
+                case DateRangeFacetFilter _ -> throw new UnsupportedOperationException("Date range facet filters not yet supported");
+            }
         }
-
-        UUID propertyUuid = resolvePropertyId(itemTypeId, sanitizeFieldName(f.field()));
-        requirePropertyReadableByAnyMarker(permissions, propertyUuid, f.field());
-        String propertyId = propertyUuid.toString();
-        List<String> clauses = new ArrayList<>();
-        Map<String, Object> params = new HashMap<>();
-
-        if (!values.isEmpty()) {
-            String paramName = "facet_" + counter.getAndIncrement();
-            clauses.add(PROPERTIES_JSON_ARROW_PREFIX + propertyId + "' IN (:" + paramName + ")");
-            params.put(paramName, values);
-        }
-        if (includeNull) {
-            clauses.add(PROPERTIES_JSON_ARROW_PREFIX + propertyId + "' IS NULL");
-        }
-
-        String sql = "AND (" + String.join(" OR ", clauses) + ")";
-        return new SqlFragment(sql, params);
-    }
-
-    private SqlFragment combineFragments(Collection<SqlFragment> fragments) {
-        String sql = fragments.stream()
-                .map(SqlFragment::sql)
-                .filter(s -> !s.isBlank())
-                .collect(Collectors.joining(" "));
-        Map<String, Object> params = new HashMap<>();
-        fragments.forEach(f -> params.putAll(f.params()));
-        return new SqlFragment(sql, params);
-    }
-
-    @SafeVarargs
-    private Map<String, Object> mergeParams(SqlFragment... fragments) {
-        Map<String, Object> params = new HashMap<>();
-        for (SqlFragment f : fragments) params.putAll(f.params());
-        return params;
+        return List.copyOf(byProperty.values());
     }
 
     public Optional<ProjectedItem> projectOne(UUID itemTypeId, UUID itemId, String binaryBaseUrl) {
@@ -798,14 +560,15 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
         return projectOne(itemTypeId, itemId, binaryBaseUrl, new RenderOptions(requestedLinks, permissions, true, true, null));
     }
 
-    // permissions here only filters this item's *links* (see fetchLinksByItem) -- the item's own
+    // permissions here only filters this item's *links* (see toLinkAccess) -- the item's own
     // existence isn't gated by this method at all, deliberately: unlike a paginated collection,
     // there's no totalCount/pagination correctness that requires it to be baked into this query,
     // so the caller (EntityManagerImpl) checks PermissionService.canReadItem before ever calling
     // this, exactly like it already does for the type-level requireReadAccess check -- cheaper,
     // since a denied request never pays for fetching the item's own (possibly large) properties.
     public Optional<ProjectedItem> projectOne(UUID itemTypeId, UUID itemId, String binaryBaseUrl, RenderOptions options) {
-        List<RawItem> rawItems = registerStore.query(ExplicitProjection.singleItem(itemTypeId, itemId)).items().stream()
+        List<RawItem> rawItems = registerStore.query(ExplicitProjection.singleItem(itemTypeId, itemId,
+                        toLinkSelection(options.requestedLinks()), toLinkAccess(options.permissions()))).items().stream()
                 .map(this::toRawItem)
                 .toList();
 
@@ -1368,19 +1131,9 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
     // lookup + in-memory set arithmetic against RequestPermissionContext's grant maps. Never a
     // WHERE-clause concern (see toAccess's own comment on the mode split).
 
-    private Map<UUID, Set<UUID>> getMarkerIdsForRegisterItems(Collection<UUID> registerItemIds) {
-        if (registerItemIds.isEmpty()) return Map.of();
-        return jdbcClient.sql("SELECT register_item_id, marker_id FROM register_item_marker WHERE register_item_id IN (:ids)")
-                .param("ids", registerItemIds)
-                .query((rs, _) -> Map.entry(rs.getObject(COL_REGISTER_ITEM_ID, UUID.class), rs.getObject("marker_id", UUID.class)))
-                .list().stream()
-                .collect(Collectors.groupingBy(Map.Entry::getKey, Collectors.mapping(Map.Entry::getValue, Collectors.toSet())));
-    }
-
-    // Marker id -> name, for ProjectedItem.markers -- a display-only concern (never used for any
-    // permission decision, unlike getMarkerIdsForRegisterItems above), so this queries
-    // authorization_marker directly rather than going through AuthorizationRepository, matching
-    // how this class already reads register_item_marker itself rather than depending on that repo.
+    // Marker id -> name, for ProjectedItem.markers -- display only, never a permission decision.
+    // Reads authorization_marker, another partition's table: the engine's to look up (through the
+    // authorization store), never RegisterStore's.
     private Map<UUID, String> resolveMarkerNames(Set<UUID> markerIds) {
         if (markerIds.isEmpty()) return Map.of();
         return jdbcClient.sql("SELECT id, name FROM authorization_marker WHERE id IN (:ids)")
@@ -1435,29 +1188,11 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
         return merged;
     }
 
-    // Distinct from filterPropertiesByReadGrant's own silent redaction, which is the right behavior
-    // for a request that asked for "everything" -- a client that *explicitly* named a property
-    // (requestedProperties != null, the same convention restrictToRequestedProperties already
-    // uses) gets a loud rejection instead if any of what it asked for turns out unreadable, rather
-    // than a response that quietly omits it. ownPropertyNames is already narrowed to exactly the
-    // requested subset by the time this runs (restrictToRequestedProperties ran earlier), so every
-    // key in it was explicitly asked for -- this only needs to check readability, not re-match
-    // names. effectiveReadGrants == null means admin (nothing to reject).
-    private void requireExplicitlyRequestedPropertiesAreReadable(Map<UUID, List<String>> ownPropertyNames, Set<UUID> markerIds,
-                                                                    @Nullable Map<UUID, Set<UUID>> effectiveReadGrants,
-                                                                    @Nullable List<String> requestedProperties) {
-        if (requestedProperties == null || effectiveReadGrants == null) return;
-        Set<UUID> readable = unionGrantedIds(markerIds, effectiveReadGrants);
-        for (Map.Entry<UUID, List<String>> entry : ownPropertyNames.entrySet()) {
-            if (!readable.contains(entry.getKey())) {
-                throw new IllegalArgumentException("Not permitted to read property: " + String.join(".", entry.getValue()));
-            }
-        }
-    }
-
     // Filters a still-property-ID-keyed JSONB map down to what's readable, before namesForIds
     // resolves it -- redaction has to happen at the ID level, namesForIds has no concept of
     // permission. propertyReadGrantsByMarker == null means "don't filter at all" (admin).
+    // Applies the same whether or not the caller named the property: an item whose markers don't
+    // grant it simply comes back without it, so a response never reveals what a caller can't see.
     private Map<String, Object> filterPropertiesByReadGrant(Map<String, Object> propertiesById, Set<UUID> markerIds,
                                                               @Nullable Map<UUID, Set<UUID>> propertyReadGrantsByMarker) {
         if (propertyReadGrantsByMarker == null) return propertiesById;
@@ -2096,15 +1831,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
         return label == null ? value : Map.of(COL_FACET_VALUE, value, "label", label);
     }
 
-    private record LinkRow(UUID myRegisterItemId, String perspectiveName, UUID perspectiveId,
-                           UUID registerLinkId, UUID linkId, UUID linkDefinitionId,
-                           UUID linkedRegisterItemId, UUID linkedItemId, UUID linkedItemTypeId, String linkedItemType,
-                           OffsetDateTime linkCreatedDate, UUID linkCreatedBy, OffsetDateTime linkUpdatedDate, UUID linkUpdatedBy,
-                           OffsetDateTime linkedItemCreatedDate, UUID linkedItemCreatedBy, OffsetDateTime linkedItemUpdatedDate, UUID linkedItemUpdatedBy) {}
-
-    private record BinaryPropertyRow(UUID registerItemId, UUID propertyId, String propertyName, UUID binaryId) {}
-
-    private record AssembledBinary(UUID propertyId, String name, Object value) {}
+    private record AssembledBinary(UUID propertyId, Object value) {}
 
     // Every item type's EFFECTIVE display-label pattern (own, or inherited from the nearest
     // supertype that defines one), keyed by type name -- name, not id, because RawItem/LinkRow
@@ -2168,272 +1895,160 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
         return itemId.toString();
     }
 
-    // requestedLinks == null: today's original single-hop behavior, unchanged -- every direct
-    // link, unfiltered, each linked item's own `links` left empty (Map.of()). requestedLinks !=
-    // null: only the named perspectives come back, and any entry whose own LinkProjectionSpec
-    // carries a non-empty `links` recurses exactly one more batched round trip for that
-    // perspective's linked items -- never per item, so query count scales with depth actually
-    // requested, not with result size. A perspective named in requestedLinks with no matching rows,
-    // or with a spec whose own `links` is null/empty, simply doesn't recurse further.
-    private Map<UUID, Map<String, List<ProjectedLink>>> fetchLinksByItem(
-            List<UUID> myRegisterItemIds, @Nullable Map<String, LinkProjectionSpec> requestedLinks,
-            RequestPermissionContext permissions, boolean includePermissions, String binaryBaseUrl) {
-        if (myRegisterItemIds.isEmpty() || (requestedLinks != null && requestedLinks.isEmpty())) {
-            return Map.of();
-        }
-
-        SqlFragment permissionFragment = buildLinkVisibilityPermissionFragment(permissions);
-
-        // ri_other's own COMMITTED filter, same as ri_mine's and rl's: an ordinary projection must
-        // only ever present committed data, for the linked item exactly as much as the item being
-        // projected or the link itself -- stated explicitly here rather than left to hold by
-        // accident (today it does, via rl.state already excluding brand-new links and the
-        // link-perspective repoint only ever happening inside commitItem's own transaction, but
-        // neither of those is a reason to leave this one unstated).
-        List<LinkRow> allLinkRows = jdbcClient.sql("""
-                SELECT
-                    rilp_mine.register_item_id  AS my_register_item_id,
-                    silp_mine.name              AS perspective_name,
-                    silp_mine.id                AS perspective_id,
-                    rl.id                       AS register_link_id,
-                    rl.link_id                  AS link_id,
-                    rl.link_definition_id       AS link_definition_id,
-                    ri_other.id                 AS linked_register_item_id,
-                    ri_other.item_id            AS linked_item_id,
-                    ri_other.item_type_id       AS linked_item_type_id,
-                    si_other.name               AS linked_item_type,
-                    rl.created_date             AS link_created_date,
-                    rl.created_by               AS link_created_by,
-                    rl.updated_date             AS link_updated_date,
-                    rl.updated_by               AS link_updated_by,
-                    ri_other.created_date       AS linked_item_created_date,
-                    ri_other.created_by         AS linked_item_created_by,
-                    ri_other.updated_date       AS linked_item_updated_date,
-                    ri_other.updated_by         AS linked_item_updated_by
-                FROM register_item ri_mine
-                JOIN register_item_link_perspective rilp_mine  ON rilp_mine.register_item_id = ri_mine.id
-                JOIN schema_entity_link_perspective silp_mine  ON silp_mine.id = rilp_mine.perspective_id
-                JOIN register_link                 rl          ON rl.id = rilp_mine.register_link_id AND rl.state = 'COMMITTED'
-                JOIN register_item_link_perspective rilp_other ON rilp_other.register_link_id = rl.id AND rilp_other.id != rilp_mine.id
-                JOIN register_item                 ri_other    ON ri_other.id = rilp_other.register_item_id AND ri_other.state = 'COMMITTED'
-                JOIN schema_item                   si_other    ON si_other.id = ri_other.item_type_id
-                WHERE ri_mine.id IN (:rawItemIds)
-                  AND ri_mine.state = 'COMMITTED'
-                  %s
-                  %s
-                """.formatted(requestedLinks != null ? "AND silp_mine.name IN (:perspectiveNames)" : "", permissionFragment.sql()))
-                .param("rawItemIds", myRegisterItemIds)
-                .param("perspectiveNames", requestedLinks != null ? List.copyOf(requestedLinks.keySet()) : List.of())
-                .params(permissionFragment.params())
-                .query((rs, _) -> new LinkRow(
-                        rs.getObject("my_register_item_id", UUID.class),
-                        rs.getString("perspective_name"),
-                        rs.getObject(COL_PERSPECTIVE_ID, UUID.class),
-                        rs.getObject(COL_REGISTER_LINK_ID, UUID.class),
-                        rs.getObject("link_id", UUID.class),
-                        rs.getObject("link_definition_id", UUID.class),
-                        rs.getObject("linked_register_item_id", UUID.class),
-                        rs.getObject("linked_item_id", UUID.class),
-                        rs.getObject("linked_item_type_id", UUID.class),
-                        rs.getString("linked_item_type"),
-                        rs.getObject("link_created_date", OffsetDateTime.class), rs.getObject("link_created_by", UUID.class),
-                        rs.getObject("link_updated_date", OffsetDateTime.class), rs.getObject("link_updated_by", UUID.class),
-                        rs.getObject("linked_item_created_date", OffsetDateTime.class), rs.getObject("linked_item_created_by", UUID.class),
-                        rs.getObject("linked_item_updated_date", OffsetDateTime.class), rs.getObject("linked_item_updated_by", UUID.class)))
-                .list();
-
-        if (allLinkRows.isEmpty()) {
-            return Map.of();
-        }
-
-        LinkVisibility visibility = filterLinkRowsByReadPermission(allLinkRows, permissions);
-        List<LinkRow> linkRows = visibility.visibleLinkRows();
-        requireExplicitlyRequestedLinksAreReadable(allLinkRows, linkRows, requestedLinks);
-        if (linkRows.isEmpty()) {
-            return Map.of();
-        }
-        Map<UUID, Set<UUID>> sourceItemMarkerIds = visibility.sourceItemMarkerIds();
-
-        LinkedItemMarkerContext markerContext = resolveLinkedItemMarkerContext(linkRows, sourceItemMarkerIds, permissions);
-
-        Map<UUID, Map<String, Object>> linkedItemProperties = fetchPropertiesByRegisterItemId(
-                linkRows.stream().collect(Collectors.groupingBy(
-                        LinkRow::linkedItemTypeId,
-                        Collectors.mapping(LinkRow::linkedRegisterItemId, Collectors.toList()))),
-                COL_REGISTER_ITEM_ID, markerContext.linkedItemMarkerIds(),
-                effectiveReadGrants(permissions, permissions.propertyReadGrantsByMarker(), permissions.propertyWriteGrantsByMarker()),
-                binaryBaseUrl);
-
-        Map<UUID, Map<String, Object>> linkProperties = fetchPropertiesByRegisterItemId(
-                linkRows.stream().collect(Collectors.groupingBy(
-                        LinkRow::linkDefinitionId,
-                        Collectors.mapping(LinkRow::registerLinkId, Collectors.toList()))),
-                COL_REGISTER_LINK_ID, markerContext.linkOwnerMarkerIds(),
-                effectiveReadGrants(permissions, permissions.linkPropertyReadGrantsByMarker(), permissions.linkPropertyWriteGrantsByMarker()),
-                binaryBaseUrl);
-
-        Map<UUID, Map<String, List<ProjectedLink>>> nestedLinksByLinkedRegisterItemId = requestedLinks != null
-                ? fetchNestedLinksForRequestedPerspectives(linkRows, requestedLinks, permissions, includePermissions, binaryBaseUrl)
-                : Map.of();
-
-        LinkProjectionContext resultContext = new LinkProjectionContext(linkedItemProperties, linkProperties,
-                sourceItemMarkerIds, markerContext.linkedItemMarkerIds(), nestedLinksByLinkedRegisterItemId,
-                resolveEffectiveDisplayLabelPatterns(), permissions, includePermissions);
-        return buildLinksResultMap(linkRows, resultContext);
-    }
-
-    // Extracted from fetchLinksByItem purely to keep that method's own cognitive complexity down.
-    private record LinkVisibility(Map<UUID, Set<UUID>> sourceItemMarkerIds, List<LinkRow> visibleLinkRows) {}
-
-    // Mode-2, in-memory: link:read/create/delete are anchored to the *source* item's own
-    // marker via the specific perspective traversed here (rilp_mine/silp_mine), never to a
-    // marker on the link itself (link markers don't exist -- see
-    // docs/ntrloc-marker-admin-ui-design-notes.md). This can't be a SQL semi-join the way
-    // item:read is: it's a two-dimensional check (marker AND perspective together), and links
-    // aren't independently paginated the way top-level items are, so there's no
-    // pagination/totalCount correctness reason it has to be.
-    private LinkVisibility filterLinkRowsByReadPermission(List<LinkRow> allLinkRows, RequestPermissionContext permissions) {
-        if (permissions.isAdmin()) {
-            return new LinkVisibility(Map.of(), allLinkRows);
-        }
-        Map<UUID, Set<UUID>> sourceItemMarkerIds = getMarkerIdsForRegisterItems(
-                allLinkRows.stream().map(LinkRow::myRegisterItemId).distinct().toList());
-        List<LinkRow> visibleLinkRows = allLinkRows.stream()
-                .filter(row -> !Collections.disjoint(
-                        unionGrantedIds(sourceItemMarkerIds.getOrDefault(row.myRegisterItemId(), Set.of()), permissions.linkPerspectiveReadGrantsByMarker()),
-                        Set.of(row.perspectiveId())))
-                .toList();
-        return new LinkVisibility(sourceItemMarkerIds, visibleLinkRows);
-    }
-
-    // Distinct from filterLinkRowsByReadPermission's own silent exclusion, same reasoning as
-    // requireExplicitlyRequestedPropertiesAreReadable: requestedLinks == null means "today's
-    // original single-hop behavior" (every direct link, unfiltered by name) -- nothing to reject
-    // there. requestedLinks naming a perspective that simply has no links at all stays silent too
-    // (there's genuinely nothing to reject, same as it would be without this check); only a row
-    // that *existed* in allLinkRows but was dropped by the permission filter, under an explicitly
-    // named perspective, is a loud rejection instead of a quietly thinner response.
-    private void requireExplicitlyRequestedLinksAreReadable(List<LinkRow> allLinkRows, List<LinkRow> visibleLinkRows,
-                                                               @Nullable Map<String, LinkProjectionSpec> requestedLinks) {
-        if (requestedLinks == null) return;
-        Set<LinkRow> visible = Set.copyOf(visibleLinkRows);
-        for (LinkRow row : allLinkRows) {
-            if (!visible.contains(row) && requestedLinks.containsKey(row.perspectiveName())) {
-                throw new IllegalArgumentException("Not permitted to read link via perspective: " + row.perspectiveName());
+    // The client's requested links as perspective ids. null: every direct link, not nested. Empty: none.
+    // Otherwise the named perspectives -- a name means every perspective with that name, since a name is
+    // only unique within an item type -- nested where a perspective's own spec names further links.
+    private ExplicitProjection.LinkSelection toLinkSelection(@Nullable Map<String, LinkProjectionSpec> requestedLinks) {
+        if (requestedLinks == null) return ExplicitProjection.LinkSelection.ALL_DIRECT;
+        if (requestedLinks.isEmpty()) return ExplicitProjection.LinkSelection.NONE;
+        Map<String, Set<UUID>> perspectiveIdsByName = new HashMap<>();
+        perspectiveNamesById().forEach((id, name) -> perspectiveIdsByName.computeIfAbsent(name, k -> new HashSet<>()).add(id));
+        Set<UUID> perspectiveIds = new HashSet<>();
+        Map<UUID, ExplicitProjection.LinkSelection> nested = new HashMap<>();
+        requestedLinks.forEach((name, spec) -> {
+            Set<UUID> named = perspectiveIdsByName.getOrDefault(name, Set.of());
+            perspectiveIds.addAll(named);
+            Map<String, LinkProjectionSpec> childLinks = spec != null ? spec.links() : null;
+            if (childLinks != null && !childLinks.isEmpty()) {
+                ExplicitProjection.LinkSelection child = toLinkSelection(childLinks);
+                named.forEach(id -> nested.put(id, child));
             }
+        });
+        return new ExplicitProjection.LinkSelection(perspectiveIds, nested);
+    }
+
+    // A link is visible only if the caller may read it through its source's markers, and may read the
+    // target's item type and the target itself; otherwise it's left out as if absent, whether or not the
+    // client named its perspective.
+    private static ExplicitProjection.LinkAccess toLinkAccess(RequestPermissionContext permissions) {
+        return permissions.isAdmin() ? ExplicitProjection.LinkAccess.Unrestricted.INSTANCE
+                : new ExplicitProjection.LinkAccess.Granted(permissions.linkPerspectiveReadGrantsByMarker(),
+                        permissions.readableItemTypeIds(), permissions.grantedItemReadMarkerIds());
+    }
+
+    private Map<UUID, String> perspectiveNamesById() {
+        Map<UUID, String> names = new HashMap<>();
+        schemaManager.getAdminSchema().items().forEach(item -> Optional.ofNullable(item.links()).orElse(Map.of())
+                .forEach((name, perspectives) -> perspectives.forEach(perspective -> names.put(perspective.id(), name))));
+        return names;
+    }
+
+    // Every binary id attached to these rows or, through their links, to any target at any depth.
+    private Map<UUID, BinaryPropertyObject> binaryObjects(List<RegisterRows.ItemRow> rows) {
+        Set<UUID> binaryIds = new HashSet<>();
+        collectBinaryIds(rows, binaryIds);
+        return binaryIds.isEmpty() ? Map.of() : binaryPartitionManager.getBinaryProperties(binaryIds);
+    }
+
+    private void collectBinaryIds(List<RegisterRows.ItemRow> rows, Set<UUID> into) {
+        for (RegisterRows.ItemRow row : rows) {
+            into.addAll(row.binaryIdsByProperty().values());
+            row.linksByPerspective().values().forEach(links -> collectBinaryIds(links.stream().map(RegisterRows.LinkRow::target).toList(), into));
         }
     }
 
-    // Extracted from fetchLinksByItem for the same reason as filterLinkRowsByReadPermission above.
-    private record LinkedItemMarkerContext(Map<UUID, Set<UUID>> linkedItemMarkerIds, Map<UUID, Set<UUID>> linkOwnerMarkerIds) {}
-
-    // Linked item's own properties use property:read/write (it's still an item, just reached
-    // via a link); the link's own properties use link_property:read/write -- distinct grant
-    // maps even though both may reference the same underlying schema_property ids. Link
-    // properties aren't perspective-scoped (symmetric regardless of viewing side), so they're
-    // gated by the source item's markers directly, same shape as an item's own properties --
-    // merged (union) across every row reaching a given link, for the rare case the same link is
-    // reachable from more than one source item in this same batch (e.g. a polymorphic page
-    // containing both of a link's endpoints).
-    private LinkedItemMarkerContext resolveLinkedItemMarkerContext(List<LinkRow> linkRows, Map<UUID, Set<UUID>> sourceItemMarkerIds,
-                                                                     RequestPermissionContext permissions) {
-        if (permissions.isAdmin()) {
-            return new LinkedItemMarkerContext(Map.of(), Map.of());
-        }
-        Map<UUID, Set<UUID>> linkedItemMarkerIds = getMarkerIdsForRegisterItems(
-                linkRows.stream().map(LinkRow::linkedRegisterItemId).distinct().toList());
-        Map<UUID, Set<UUID>> linkOwnerMarkerIds = linkRows.stream().collect(Collectors.groupingBy(LinkRow::registerLinkId,
-                Collectors.flatMapping(row -> sourceItemMarkerIds.getOrDefault(row.myRegisterItemId(), Set.of()).stream(), Collectors.toSet())));
-        return new LinkedItemMarkerContext(linkedItemMarkerIds, linkOwnerMarkerIds);
+    // A row's binary values, keyed by property id and placed via ownPropertyNames. requestedProperties
+    // is null for a linked item, which always returns every field unsliced (see ProjectionSpec).
+    private List<AssembledBinary> assembledBinaries(Map<UUID, UUID> binaryIdsByProperty, Map<UUID, BinaryPropertyObject> binaryObjects,
+                                                    String binaryBaseUrl, Map<UUID, List<String>> ownPropertyNames,
+                                                    @Nullable List<String> requestedProperties) {
+        List<AssembledBinary> result = new ArrayList<>();
+        binaryIdsByProperty.forEach((propertyId, binaryId) -> {
+            BinaryPropertyObject obj = binaryObjects.get(binaryId);
+            if (obj != null) {
+                result.add(new AssembledBinary(propertyId, assembleBinaryValue(obj, binaryBaseUrl, ownPropertyNames.get(propertyId), requestedProperties)));
+            }
+        });
+        return result;
     }
 
-    // A write grant implies read (see readImpliedByWrite's own comment); admin needs no grant
-    // map at all -- fetchPropertiesByRegisterItemId treats null as "don't filter."
-    private Map<UUID, Set<UUID>> effectiveReadGrants(RequestPermissionContext permissions, Map<UUID, Set<UUID>> readGrants,
-                                                       Map<UUID, Set<UUID>> writeGrants) {
-        return permissions.isAdmin() ? null : readImpliedByWrite(readGrants, writeGrants);
+    // What assembling a tree of links needs, resolved once per request. itemReadGrants/linkReadGrants
+    // are null for an admin (nothing filtered). The two maps cache each item or link type's property
+    // paths and controlled-list labels across the tree.
+    private record LinkAssembly(RequestPermissionContext permissions, boolean includePermissions, String binaryBaseUrl,
+                                Map<UUID, BinaryPropertyObject> binaryObjects, Map<String, String> displayLabelPatterns,
+                                Map<UUID, String> perspectiveNamesById,
+                                @Nullable Map<UUID, Set<UUID>> itemReadGrants, @Nullable Map<UUID, Set<UUID>> linkReadGrants,
+                                Map<UUID, TypeProperties> itemTypes, Map<UUID, TypeProperties> linkTypes) {}
+
+    private record TypeProperties(Map<UUID, List<String>> paths, Map<UUID, ControlledListLabels> labels) {}
+
+    private TypeProperties itemTypeProperties(UUID itemTypeId, LinkAssembly ctx) {
+        return ctx.itemTypes().computeIfAbsent(itemTypeId, id -> {
+            Map<UUID, List<String>> paths = propertyPathsByIdForItemType(id);
+            return new TypeProperties(paths, resolveControlledListLabels(paths, propertyViewsByIdForItemType(id)));
+        });
     }
 
-    // Everything toProjectedLink/buildLinksResultMap need beyond the row itself -- bundled into one
-    // record (same idea as AssemblyContext above) rather than an 8-9 parameter method signature.
-    private record LinkProjectionContext(
-            Map<UUID, Map<String, Object>> linkedItemProperties, Map<UUID, Map<String, Object>> linkProperties,
-            Map<UUID, Set<UUID>> sourceItemMarkerIds, Map<UUID, Set<UUID>> linkedItemMarkerIds,
-            Map<UUID, Map<String, List<ProjectedLink>>> nestedLinksByLinkedRegisterItemId,
-            Map<String, String> displayLabelPatterns, RequestPermissionContext permissions, boolean includePermissions) {}
-
-    // Extracted from fetchLinksByItem purely to keep that method's own cognitive complexity down --
-    // assembles the final perspective-name-keyed, then register-item-id-keyed result map once every
-    // input (properties, marker ids, nested links, display labels) has already been resolved above.
-    private Map<UUID, Map<String, List<ProjectedLink>>> buildLinksResultMap(List<LinkRow> linkRows, LinkProjectionContext ctx) {
-        return linkRows.stream()
-                .collect(Collectors.groupingBy(
-                        LinkRow::myRegisterItemId,
-                        Collectors.groupingBy(
-                                LinkRow::perspectiveName,
-                                Collectors.mapping(row -> toProjectedLink(row, ctx), Collectors.toList()))));
+    private TypeProperties linkTypeProperties(UUID linkTypeId, LinkAssembly ctx) {
+        return ctx.linkTypes().computeIfAbsent(linkTypeId, id -> {
+            Map<UUID, List<String>> paths = propertyPathsByIdForLinkType(id);
+            return new TypeProperties(paths, resolveControlledListLabels(paths, propertyViewsByIdForLinkType(id)));
+        });
     }
 
-    private ProjectedLink toProjectedLink(LinkRow row, LinkProjectionContext ctx) {
-        Map<String, Object> linkedProps = ctx.linkedItemProperties().getOrDefault(row.linkedRegisterItemId(), Map.of());
-        Set<UUID> linkedItemOwnMarkerIds = ctx.linkedItemMarkerIds().getOrDefault(row.linkedRegisterItemId(), Set.of());
-        Set<UUID> mySourceMarkerIds = ctx.sourceItemMarkerIds().getOrDefault(row.myRegisterItemId(), Set.of());
+    // One source item's links, by perspective name. A link whose perspective or target type is no longer
+    // in the schema is left out.
+    private Map<String, List<ProjectedLink>> assembleLinks(Set<UUID> sourceMarkerIds, Map<UUID, List<RegisterRows.LinkRow>> linksByPerspective,
+                                                           LinkAssembly ctx) {
+        Map<String, List<ProjectedLink>> result = new HashMap<>();
+        linksByPerspective.forEach((perspectiveId, links) -> {
+            String perspectiveName = ctx.perspectiveNamesById().get(perspectiveId);
+            if (perspectiveName == null) return;
+            for (RegisterRows.LinkRow link : links) {
+                ProjectedLink projected = toProjectedLink(link, sourceMarkerIds, ctx);
+                if (projected != null) result.computeIfAbsent(perspectiveName, k -> new ArrayList<>()).add(projected);
+            }
+        });
+        return result;
+    }
+
+    // The linked item's own properties are gated by property:read through its own markers (it's still
+    // an item); the link's properties by link_property:read through the source item's markers, since a
+    // link has no markers of its own. A linked item's states and markers aren't returned.
+    private @Nullable ProjectedLink toProjectedLink(RegisterRows.LinkRow link, Set<UUID> sourceMarkerIds, LinkAssembly ctx) {
+        RegisterRows.ItemRow target = link.target();
+        String targetTypeName = itemTypeNameOrNull(target.itemTypeId());
+        if (targetTypeName == null) return null;
+
+        TypeProperties itemType = itemTypeProperties(target.itemTypeId(), ctx);
+        Map<String, Object> targetProperties = namesForIds(
+                filterPropertiesByReadGrant(keysToStrings(target.properties()), target.markerIds(), ctx.itemReadGrants()), itemType.paths());
+        applyControlledListLabels(targetProperties, itemType.paths(), itemType.labels());
+        mergeReadableBinaryProperties(targetProperties, target.registerItemId(), target.markerIds(),
+                Map.of(target.registerItemId(), assembledBinaries(target.binaryIdsByProperty(), ctx.binaryObjects(), ctx.binaryBaseUrl(),
+                        itemType.paths(), null)),
+                ctx.itemReadGrants(), itemType.paths());
+
+        TypeProperties linkType = linkTypeProperties(link.linkTypeId(), ctx);
+        Map<String, Object> linkProperties = namesForIds(
+                filterPropertiesByReadGrant(keysToStrings(link.properties()), sourceMarkerIds, ctx.linkReadGrants()), linkType.paths());
+        applyControlledListLabels(linkProperties, linkType.paths(), linkType.labels());
+
         RequestPermissionContext permissions = ctx.permissions();
-        boolean includePermissions = ctx.includePermissions();
+        ProjectedItem targetItem = new ProjectedItem(
+                target.itemId(),
+                targetTypeName,
+                targetProperties,
+                assembleLinks(target.markerIds(), target.linksByPerspective(), ctx),
+                null,
+                ctx.includePermissions()
+                        ? buildPermissions(permissions, target.markerIds(),
+                                permissions.propertyWriteGrantsByMarker(), permissions.itemDeleteGrantedMarkerIds(),
+                                rootPropertiesForItemType(target.itemTypeId()), linkPerspectivesForItemType(target.itemTypeId()))
+                        : null,
+                computeDisplayLabel(target.itemId(), targetProperties, ctx.displayLabelPatterns().get(targetTypeName)),
+                null, // markers: not populated for a linked item yet -- see ProjectedItem's own comment
+                // createdBy/updatedBy left null -- see assembleProjectedItem's own comment.
+                target.audit().createdDate(), target.audit().createdBy(), null, target.audit().updatedDate(), target.audit().updatedBy(), null);
         return new ProjectedLink(
-            row.linkId(),
-            ctx.linkProperties().getOrDefault(row.registerLinkId(), Map.of()),
-            // states is left null for a linked item -- a projection's link expansion has
-            // never fetched a linked item's full state (matching binary properties'
-            // own scope, which the linked item also doesn't get); this is about the
-            // top-level projected item's state, not every item reachable through it.
-            new ProjectedItem(
-                    row.linkedItemId(),
-                    row.linkedItemType(),
-                    linkedProps,
-                    ctx.nestedLinksByLinkedRegisterItemId().getOrDefault(row.linkedRegisterItemId(), Map.of()),
-                    null,
-                    includePermissions
-                            ? buildPermissions(permissions, linkedItemOwnMarkerIds,
-                                    permissions.propertyWriteGrantsByMarker(), permissions.itemDeleteGrantedMarkerIds(),
-                                    rootPropertiesForItemType(row.linkedItemTypeId()),
-                                    linkPerspectivesForItemType(row.linkedItemTypeId()))
-                            : null,
-                    computeDisplayLabel(row.linkedItemId(), linkedProps, ctx.displayLabelPatterns().get(row.linkedItemType())),
-                    null, // markers: not populated for a linked item yet -- see ProjectedItem's own comment
-                    // createdBy/updatedBy left null -- see assembleProjectedItem's own comment.
-                    row.linkedItemCreatedDate(), row.linkedItemCreatedBy(), null, row.linkedItemUpdatedDate(), row.linkedItemUpdatedBy(), null),
-            includePermissions
-                    ? buildLinkPermissions(permissions, mySourceMarkerIds, row.perspectiveId(),
-                            rootPropertiesForLinkType(row.linkDefinitionId()))
-                    : null,
-            row.linkCreatedDate(), row.linkCreatedBy(), null, row.linkUpdatedDate(), row.linkUpdatedBy(), null
-        );
-    }
-
-
-    // Extracted from fetchLinksByItem purely to keep that method's own cognitive complexity down --
-    // one more batched round trip per requested perspective that itself names further nested links,
-    // never per item (fetchLinksByItem's own comment on why that's the scaling property that matters).
-    private Map<UUID, Map<String, List<ProjectedLink>>> fetchNestedLinksForRequestedPerspectives(
-            List<LinkRow> linkRows, Map<String, LinkProjectionSpec> requestedLinks, RequestPermissionContext permissions,
-            boolean includePermissions, String binaryBaseUrl) {
-        Map<String, List<LinkRow>> rowsByPerspective = linkRows.stream()
-                .collect(Collectors.groupingBy(LinkRow::perspectiveName));
-        Map<UUID, Map<String, List<ProjectedLink>>> nested = new HashMap<>();
-        for (var entry : rowsByPerspective.entrySet()) {
-            LinkProjectionSpec childSpec = requestedLinks.get(entry.getKey());
-            Map<String, LinkProjectionSpec> childLinks = childSpec != null ? childSpec.links() : null;
-            if (childLinks == null || childLinks.isEmpty()) {
-                continue;
-            }
-            List<UUID> childRegisterItemIds = entry.getValue().stream()
-                    .map(LinkRow::linkedRegisterItemId).distinct().toList();
-            // registerItemId is globally unique across every item type, so merging per-perspective
-            // results here is safe even if two requested perspectives happened to reach the same item.
-            nested.putAll(fetchLinksByItem(childRegisterItemIds, childLinks, permissions, includePermissions, binaryBaseUrl));
-        }
-        return nested;
+                link.linkId(),
+                linkProperties,
+                targetItem,
+                ctx.includePermissions()
+                        ? buildLinkPermissions(permissions, sourceMarkerIds, link.perspectiveId(), rootPropertiesForLinkType(link.linkTypeId()))
+                        : null,
+                link.audit().createdDate(), link.audit().createdBy(), null, link.audit().updatedDate(), link.audit().updatedBy(), null);
     }
 
     // ownPropertyNames/stateMachines are pre-resolved by the caller rather than looked up here from
@@ -2464,13 +2079,9 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
         Map<UUID, List<String>> ownPropertyNames = restrictToRequestedProperties(allPropertyNames, propertyViewsById, options.requestedProperties());
         RequestPermissionContext permissions = options.permissions();
         boolean includePermissions = options.includePermissions();
-        List<UUID> rawItemIds = rawItems.stream().map(RawItem::registerItemId).toList();
         Map<String, String> displayLabelPatterns = resolveEffectiveDisplayLabelPatterns();
-
-        Map<UUID, Map<String, List<ProjectedLink>>> linksByItem = fetchLinksByItem(rawItemIds, options.requestedLinks(), permissions, includePermissions, binaryBaseUrl);
-        // An admin used to skip this fetch entirely (nothing to filter by), but now also needs
-        // it to populate ProjectedItem.markers -- so it's unconditional regardless of who's asking.
-        Map<UUID, Set<UUID>> markerIdsByRegisterItemId = getMarkerIdsForRegisterItems(rawItemIds);
+        Map<UUID, Set<UUID>> markerIdsByRegisterItemId = rawItems.stream()
+                .collect(Collectors.toMap(RawItem::registerItemId, raw -> raw.row().markerIds(), (a, b) -> a));
         // Names for every marker we might surface on a projected item: all of them for an admin,
         // or just the caller's item:read-granted subset for everyone else. A non-admin only ever
         // sees an item because one of its markers is granted (toAccess), so a
@@ -2480,13 +2091,24 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                 : permissions.grantedItemReadMarkerIds();
         Map<UUID, String> markerNamesById = resolveMarkerNames(markerIdsToName);
 
-        Map<UUID, List<AssembledBinary>> binaryPropsByItem = fetchBinaryPropsByItem(
-                rawItemIds, binaryBaseUrl, ownPropertyNames, options.requestedProperties());
+        // Every binary attached anywhere in the result, the links' targets included, fetched at once.
+        Map<UUID, BinaryPropertyObject> binaryObjects = binaryObjects(rawItems.stream().map(RawItem::row).toList());
+        Map<UUID, List<AssembledBinary>> binaryPropsByItem = new HashMap<>();
+        rawItems.forEach(raw -> binaryPropsByItem.put(raw.registerItemId(), assembledBinaries(raw.row().binaryIdsByProperty(), binaryObjects,
+                binaryBaseUrl, ownPropertyNames, options.requestedProperties())));
 
         // Null for an admin (no filtering); otherwise the read-granted (write implies read)
         // property-id grant map, resolved per item against that item's markers below.
         Map<UUID, Set<UUID>> effectiveReadGrants = permissions.isAdmin() ? null
                 : readImpliedByWrite(permissions.propertyReadGrantsByMarker(), permissions.propertyWriteGrantsByMarker());
+
+        LinkAssembly linkAssembly = new LinkAssembly(permissions, includePermissions, binaryBaseUrl, binaryObjects, displayLabelPatterns,
+                perspectiveNamesById(), effectiveReadGrants,
+                permissions.isAdmin() ? null : readImpliedByWrite(permissions.linkPropertyReadGrantsByMarker(), permissions.linkPropertyWriteGrantsByMarker()),
+                new HashMap<>(), new HashMap<>());
+        Map<UUID, Map<String, List<ProjectedLink>>> linksByItem = new HashMap<>();
+        rawItems.forEach(raw -> linksByItem.put(raw.registerItemId(),
+                assembleLinks(raw.row().markerIds(), raw.row().linksByPerspective(), linkAssembly)));
 
         Map<UUID, ControlledListLabels> controlledListLabelsByPropertyId = resolveControlledListLabels(allPropertyNames, propertyViewsById);
 
@@ -2526,7 +2148,6 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
 
     private ProjectedItem assembleProjectedItem(RawItem raw, AssemblyContext ctx) {
         Set<UUID> markerIds = ctx.markerIdsByRegisterItemId().getOrDefault(raw.registerItemId(), Set.of());
-        requireExplicitlyRequestedPropertiesAreReadable(ctx.ownPropertyNames(), markerIds, ctx.effectiveReadGrants(), ctx.requestedProperties());
         Map<String, Object> readableProps = filterPropertiesByReadGrant(raw.properties(), markerIds, ctx.effectiveReadGrants());
         Map<String, Object> props = new HashMap<>(namesForIds(readableProps, ctx.ownPropertyNames()));
         applyControlledListLabels(props, ctx.ownPropertyNames(), ctx.controlledListLabelsByPropertyId());
@@ -2558,49 +2179,6 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                 // resolve or import anything security-related; EntityManagerImpl fills these in
                 // afterward from createdByUserId/updatedByUserId, batched across the whole page.
                 raw.createdDate(), raw.createdBy(), null, raw.updatedDate(), raw.updatedBy(), null);
-    }
-
-    // Batches the register_binary_property lookup + BinaryPartitionManager resolution for a set of
-    // register item ids, keyed by property id/path via ownPropertyNames -- the one place binary
-    // values get assembled, shared by assembleProjectedItems (the top-level item(s) in a projection)
-    // and fetchPropertiesByRegisterItemId (every linked item, at any nesting depth), so the two
-    // paths can't drift: a linked item gets exactly the same binary-property treatment a top-level
-    // one does. requestedProperties is null for every linked-item caller (see ProjectionSpec's own
-    // comment: properties() only restricts the top-level item; a linked item always returns
-    // everything), which assembleBinaryValue already treats as "no slicing, return everything."
-    private Map<UUID, List<AssembledBinary>> fetchBinaryPropsByItem(List<UUID> registerItemIds, String binaryBaseUrl,
-            Map<UUID, List<String>> ownPropertyNames, @Nullable List<String> requestedProperties) {
-        if (registerItemIds.isEmpty()) return Map.of();
-
-        List<BinaryPropertyRow> binaryRows = jdbcClient.sql("""
-                SELECT rbp.register_item_id, rbp.property_id, sp.name AS property_name, rbp.binary_id
-                FROM register_binary_property rbp
-                JOIN schema_property sp ON sp.id = rbp.property_id
-                WHERE rbp.register_item_id IN (:ids)
-                """)
-                .param("ids", registerItemIds)
-                .query((rs, _) -> new BinaryPropertyRow(
-                        rs.getObject(COL_REGISTER_ITEM_ID, UUID.class),
-                        rs.getObject("property_id", UUID.class),
-                        rs.getString("property_name"),
-                        rs.getObject("binary_id", UUID.class)))
-                .list();
-        if (binaryRows.isEmpty()) return Map.of();
-
-        Set<UUID> binaryIds = binaryRows.stream().map(BinaryPropertyRow::binaryId).collect(Collectors.toSet());
-        Map<UUID, BinaryPropertyObject> binaryObjects = binaryPartitionManager.getBinaryProperties(binaryIds);
-
-        Map<UUID, List<AssembledBinary>> binaryPropsByItem = new HashMap<>();
-        for (var row : binaryRows) {
-            BinaryPropertyObject obj = binaryObjects.get(row.binaryId());
-            if (obj == null) continue;
-            Map<String, Object> value = assembleBinaryValue(obj, binaryBaseUrl,
-                    ownPropertyNames.get(row.propertyId()), requestedProperties);
-            binaryPropsByItem
-                    .computeIfAbsent(row.registerItemId(), k -> new ArrayList<>())
-                    .add(new AssembledBinary(row.propertyId(), row.propertyName(), value));
-        }
-        return binaryPropsByItem;
     }
 
     // Extracted from assembleProjectedItem purely to keep that method's own cognitive complexity
@@ -2781,87 +2359,6 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
     // it -- never a post-fetch filter (see docs/ntrloc-acl-design-notes.md "Performance model").
     private static Access toAccess(RequestPermissionContext permissions) {
         return permissions.isAdmin() ? Access.Unrestricted.INSTANCE : new Access.AnyMarker(permissions.grantedItemReadMarkerIds());
-    }
-
-    // The two checks fetchLinksByItem needs as a SQL semi-join beyond what's already established by
-    // the time a row reaches that query: the *source* item (ri_mine) already passed the top-level
-    // filter to be in the page this method was called with, so only the target's (ri_other)
-    // type/instance readability needs checking here. Alias ri_other is fixed by fetchLinksByItem's
-    // own query text, not parameterized.
-    //
-    // Link visibility itself (can this principal traverse *this* perspective from ri_mine) used to
-    // be a third check here too, against the link's own marker -- markers only ever apply to items
-    // now (see docs/ntrloc-marker-admin-ui-design-notes.md), so that check moved to an in-memory,
-    // mode-2 filter in fetchLinksByItem instead (it's a two-dimensional marker+perspective check,
-    // and links aren't independently paginated, so there's no correctness reason it has to be a
-    // semi-join).
-    private SqlFragment buildLinkVisibilityPermissionFragment(RequestPermissionContext permissions) {
-        if (permissions.isAdmin()) {
-            return SqlFragment.empty();
-        }
-        SqlFragment targetTypeCheck = permissions.readableItemTypeIds().isEmpty()
-                ? new SqlFragment(SQL_AND_FALSE, Map.of())
-                : new SqlFragment("AND ri_other.item_type_id IN (:readableItemTypeIds)",
-                        Map.of("readableItemTypeIds", permissions.readableItemTypeIds()));
-        SqlFragment targetItemReadCheck = permissions.grantedItemReadMarkerIds().isEmpty()
-                ? new SqlFragment(SQL_AND_FALSE, Map.of())
-                : new SqlFragment("AND ri_other.id IN (SELECT register_item_id FROM register_item_marker WHERE marker_id IN (:grantedItemReadMarkerIds))",
-                        Map.of("grantedItemReadMarkerIds", permissions.grantedItemReadMarkerIds()));
-        return combineFragments(List.of(targetTypeCheck, targetItemReadCheck));
-    }
-
-    // markerIdsByRegisterId/propertyReadGrantsByMarker: the mode-2 property-read filter, applied
-    // at the ID level before namesForIds resolves names (namesForIds has no concept of
-    // permission). propertyReadGrantsByMarker == null means "don't filter" (admin).
-    //
-    // binaryBaseUrl is only actually used for an item lookup (isLinkTable false) -- a link's own
-    // properties can never be BINARY-typed (register_binary_property only ever references
-    // register_item_id, never a link row), so the merge below is skipped entirely for link
-    // properties, matching fetchBinaryPropsByItem's own item-only scope. This is the caller used for
-    // every linked item, at any nesting depth (fetchLinksByItem recurses back into itself for nested
-    // perspectives) -- merging binary properties here, via the exact same fetchBinaryPropsByItem/
-    // mergeReadableBinaryProperties helpers assembleProjectedItems uses for the top-level item, is
-    // what keeps property retrieval identical between the two rather than two logic paths that could
-    // drift. requestedProperties is passed as null (see fetchBinaryPropsByItem's own comment: a
-    // linked item always returns every property, unsliced, regardless of what the top-level item's
-    // own projection requested).
-    private Map<UUID, Map<String, Object>> fetchPropertiesByRegisterItemId(
-            Map<UUID, List<UUID>> typeOrDefIdToRegisterIds, String idColumn,
-            Map<UUID, Set<UUID>> markerIdsByRegisterId, @Nullable Map<UUID, Set<UUID>> propertyReadGrantsByMarker,
-            String binaryBaseUrl) {
-        boolean isLinkTable = idColumn.equals(COL_REGISTER_LINK_ID);
-        Map<UUID, Map<String, Object>> result = new HashMap<>();
-        for (var entry : typeOrDefIdToRegisterIds.entrySet()) {
-            UUID typeOrDefId = entry.getKey();
-            String table = isLinkTable ? linkTableNameFor(typeOrDefId) : tableNameFor(typeOrDefId);
-            Map<UUID, List<String>> idToPath = isLinkTable
-                    ? propertyPathsByIdForLinkType(typeOrDefId)
-                    : propertyPathsByIdForItemType(typeOrDefId);
-            Map<UUID, AdminPropertyDefinitionView> propertyViewsById = isLinkTable
-                    ? propertyViewsByIdForLinkType(typeOrDefId)
-                    : propertyViewsByIdForItemType(typeOrDefId);
-            Map<UUID, ControlledListLabels> controlledListLabelsByPropertyId = resolveControlledListLabels(idToPath, propertyViewsById);
-            Map<UUID, List<AssembledBinary>> binaryPropsByItem = isLinkTable ? Map.of()
-                    : fetchBinaryPropsByItem(entry.getValue(), binaryBaseUrl, idToPath, null);
-            jdbcClient.sql("SELECT " + idColumn + ", properties::text FROM " + table + " WHERE " + idColumn + " IN (:ids)")
-                    .param("ids", entry.getValue())
-                    .query((rs, _) -> {
-                        UUID registerId = rs.getObject(idColumn, UUID.class);
-                        Set<UUID> markerIds = markerIdsByRegisterId.getOrDefault(registerId, Set.of());
-                        Map<String, Object> readable = filterPropertiesByReadGrant(parseJsonb(rs.getString(COL_PROPERTIES)),
-                                markerIds, propertyReadGrantsByMarker);
-                        Map<String, Object> props = namesForIds(readable, idToPath);
-                        applyControlledListLabels(props, idToPath, controlledListLabelsByPropertyId);
-                        if (!isLinkTable) {
-                            mergeReadableBinaryProperties(props, registerId, markerIds,
-                                    binaryPropsByItem, propertyReadGrantsByMarker, idToPath);
-                        }
-                        return Map.entry(registerId, props);
-                    })
-                    .list()
-                    .forEach(e -> result.put(e.getKey(), e.getValue()));
-        }
-        return result;
     }
 
     @SuppressWarnings("unchecked")

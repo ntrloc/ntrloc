@@ -25,6 +25,9 @@ import org.ntrloc.graph.projection.CollectionProjectionSpec;
 import org.ntrloc.graph.projection.LinkProjectionSpec;
 import org.ntrloc.graph.projection.ItemProjectionSpec;
 import org.ntrloc.graph.projection.Operator;
+import org.ntrloc.graph.projection.OrPredicate;
+import org.ntrloc.graph.projection.ProjectedItem;
+import org.ntrloc.graph.projection.ProjectedLink;
 import org.ntrloc.graph.projection.PropertyExistencePredicate;
 import org.ntrloc.graph.projection.PropertyValuePredicate;
 import org.ntrloc.graph.projection.TermsFacetFilter;
@@ -35,6 +38,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -335,8 +339,8 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
 
     // --- Nested item property read filtering (through a link) ---
     //
-    // filterPropertiesByReadGrant is shared between the top-level item and every linked item
-    // fetchLinksByItem recurses through -- these isolate the *linked* item's own property grant,
+    // filterPropertiesByReadGrant is shared between the top-level item and every linked item at
+    // any depth -- these isolate the *linked* item's own property grant,
     // with item:read/link:read/link_property:read on the path to it otherwise fully granted, so
     // the only thing varying is whether "name" (the contributor's own property) is readable.
 
@@ -533,14 +537,13 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
                 .hasMessageContaining("color");
     }
 
-    // --- Explicitly-requested property read enforcement (requireExplicitlyRequestedPropertiesAreReadable) ---
+    // --- Explicitly requested properties ---
     //
-    // Distinct from propertyWithNoReadGrant_isAbsentFromResponse above -- that test leaves
-    // properties() null ("everything"), which still silently omits an unreadable one; these name
-    // the property explicitly, which has to be a loud rejection instead.
+    // Naming a property is allowed whether or not the caller may read it; each item returns it only
+    // if one of that item's markers grants it. An error would reveal what the caller can't see.
 
     @Test
-    void itemProjection_explicitlyRequestedUnreadableProperty_throwsIllegalArgumentException() {
+    void itemProjection_explicitlyRequestedUnreadableProperty_isLeftOut() {
         UUID productId = createProduct("Widget", "red");
         var principal = newUserInEveryoneUserGroup();
         UUID grantId = grantId(markerOnItem(productId).id(), principal);
@@ -548,11 +551,39 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
         authRepo.grantPropertyAccess(grantId, fixture.namePropertyId(), true, false);
         // color deliberately not granted, but explicitly requested below.
 
-        assertThatThrownBy(() -> entityManager.project(
+        var item = entityManager.project(
                 new ItemProjectionSpec("CoordinatorTestProduct", productId, null, List.of("name", "color"), true, false),
-                "http://binary", principal))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("color");
+                "http://binary", principal).orElseThrow();
+
+        assertThat(item.properties()).containsEntry("name", "Widget").doesNotContainKey("color");
+    }
+
+    @Test
+    void collectionProjection_explicitlyRequestedProperty_isReturnedOnlyForItemsWhoseMarkersGrantIt() {
+        String suffix = UUID.randomUUID().toString();
+        UUID granted = createProduct("Granted-" + suffix, "red");
+        UUID notGranted = createProduct("NotGranted-" + suffix, "blue");
+        var principal = newUserInEveryoneUserGroup();
+        UUID grantedGrant = grantId(markerOnItem(granted).id(), principal);
+        authRepo.setItemPermissions(grantedGrant, true, false);
+        authRepo.grantPropertyAccess(grantedGrant, fixture.namePropertyId(), true, false);
+        authRepo.grantPropertyAccess(grantedGrant, fixture.colorPropertyId(), true, false);
+        UUID notGrantedGrant = grantId(markerOnItem(notGranted).id(), principal);
+        authRepo.setItemPermissions(notGrantedGrant, true, false);
+        authRepo.grantPropertyAccess(notGrantedGrant, fixture.namePropertyId(), true, false);
+
+        var result = entityManager.project(
+                new CollectionProjectionSpec("CoordinatorTestProduct", null, null, null,
+                        new OrPredicate(List.of(
+                                new PropertyValuePredicate("name", Operator.EQUALS, "Granted-" + suffix),
+                                new PropertyValuePredicate("name", Operator.EQUALS, "NotGranted-" + suffix))),
+                        null, null, null, null, null, null, List.of("name", "color"), false, false),
+                "http://binary", principal);
+
+        Map<UUID, Map<String, Object>> propertiesByItem = result.items().stream()
+                .collect(Collectors.toMap(ProjectedItem::itemId, ProjectedItem::properties));
+        assertThat(propertiesByItem.get(granted)).containsEntry("color", "red");
+        assertThat(propertiesByItem.get(notGranted)).containsEntry("name", "NotGranted-" + suffix).doesNotContainKey("color");
     }
 
     @Test
@@ -570,34 +601,61 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
         assertThat(result.get().properties()).containsEntry("name", "Widget");
     }
 
-    // --- Explicitly-requested link read enforcement (requireExplicitlyRequestedLinksAreReadable) ---
+    // --- Explicitly requested links ---
     //
-    // Distinct from InstanceReadFilteringIntegrationTest's own
-    // linkFiltering_defaultLinksWithoutLinkRead_isExcludedEvenWhenBothEndpointsAreVisible -- that
-    // one uses the links==null default ("every direct link"), which stays silent; naming "products"
-    // explicitly here has to be a loud rejection instead.
+    // As for properties: naming a perspective is allowed whether or not the caller may read it; each
+    // item returns its links through it only if one of that item's markers grants link read on it. An
+    // error would reveal that links exist.
 
     @Test
-    void itemProjection_explicitlyRequestedLinkPerspectiveWithoutLinkReadGrant_throwsIllegalArgumentException() {
+    void itemProjection_explicitlyRequestedLinkPerspectiveWithoutLinkReadGrant_returnsNoLinks() {
         UUID productId = createProduct("Widget", "red");
         UUID contributorId = createContributor();
         createLink(productId, contributorId, "author");
         var principal = newUserInEveryoneUserGroup();
         UUID sourceGrantId = grantId(markerOnItem(productId).id(), principal);
         authRepo.setItemPermissions(sourceGrantId, true, false);
-        // The target (contributor) also has to be independently readable, or the row is excluded
-        // at the SQL level (buildLinkVisibilityPermissionFragment) before link:read is ever
-        // checked -- same setup linkPropertyWithNoReadGrant_isAbsentFromResponse above uses to
-        // isolate its own, different gate.
+        // The target is readable, so only the missing link:read grant can hide the link.
         authRepo.setItemPermissions(grantId(markerOnItem(contributorId).id(), principal), true, false);
-        // Deliberately no grantLinkPerspectiveAccess call -- link:read withheld entirely, but
-        // "products" is explicitly named below.
+        // Deliberately no grantLinkPerspectiveAccess call, but "products" is explicitly named below.
 
-        assertThatThrownBy(() -> entityManager.project(
+        var item = entityManager.project(
                 new ItemProjectionSpec("CoordinatorTestProduct", productId, Map.of("products", new LinkProjectionSpec(null)), true, false),
-                "http://binary", principal))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("products");
+                "http://binary", principal).orElseThrow();
+
+        assertThat(item.links().getOrDefault("products", List.of())).isEmpty();
+    }
+
+    @Test
+    void collectionProjection_explicitlyRequestedLinks_areReturnedOnlyForItemsWhoseMarkersGrantLinkRead() {
+        String suffix = UUID.randomUUID().toString();
+        UUID granted = createProduct("Granted-" + suffix, "red");
+        UUID notGranted = createProduct("NotGranted-" + suffix, "blue");
+        UUID contributorId = createContributor();
+        createLink(granted, contributorId, "author");
+        createLink(notGranted, contributorId, "editor");
+        var principal = newUserInEveryoneUserGroup();
+        UUID grantedGrant = grantId(markerOnItem(granted).id(), principal);
+        authRepo.setItemPermissions(grantedGrant, true, false);
+        authRepo.grantPropertyAccess(grantedGrant, fixture.namePropertyId(), true, false);
+        authRepo.grantLinkPerspectiveAccess(grantedGrant, fixture.productPerspectiveId(), false, true, false);
+        UUID notGrantedGrant = grantId(markerOnItem(notGranted).id(), principal);
+        authRepo.setItemPermissions(notGrantedGrant, true, false);
+        authRepo.grantPropertyAccess(notGrantedGrant, fixture.namePropertyId(), true, false);
+        authRepo.setItemPermissions(grantId(markerOnItem(contributorId).id(), principal), true, false);
+
+        var result = entityManager.project(
+                new CollectionProjectionSpec("CoordinatorTestProduct", null, null, null,
+                        new OrPredicate(List.of(
+                                new PropertyValuePredicate("name", Operator.EQUALS, "Granted-" + suffix),
+                                new PropertyValuePredicate("name", Operator.EQUALS, "NotGranted-" + suffix))),
+                        null, null, null, null, null, Map.of("products", new LinkProjectionSpec(null)), null, false, false),
+                "http://binary", principal);
+
+        Map<UUID, List<ProjectedLink>> linksByItem = result.items().stream()
+                .collect(Collectors.toMap(ProjectedItem::itemId, item -> item.links().getOrDefault("products", List.of())));
+        assertThat(linksByItem.get(granted)).extracting(link -> link.item().itemId()).containsExactly(contributorId);
+        assertThat(linksByItem.get(notGranted)).isEmpty();
     }
 
     // --- Facet property-read enforcement (resolveRequestedFacets/buildTermsFacetFilterFragment) ---

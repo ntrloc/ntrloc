@@ -32,7 +32,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 // Slice B: the item/link existence semi-joins wired into RegisterPartitionManager's actual query
-// paths (project/projectAcrossTypes, projectOne, and fetchLinksByItem), driven through
+// paths (project/projectAcrossTypes, projectOne, and the link query in RegisterStore), driven through
 // EntityManager exactly the way the real HTTP endpoints do. Every non-admin fixture user is
 // added to the default "everyone" group, which already holds type-level item-type:read on these
 // fixture types (DefaultUserGroupInitializer's default-open-until-narrowed grant) -- so every test
@@ -221,7 +221,7 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
         assertThat(result.get().itemId()).isEqualTo(productId);
     }
 
-    // --- Link filtering (fetchLinksByItem) ---
+    // --- Link filtering (RegisterStore's link query) ---
 
     @Test
     void linkFiltering_targetWithoutItemRead_linkIsExcluded() {
@@ -239,14 +239,10 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
         assertThat(result.get().links().values().stream().flatMap(List::stream)).isEmpty();
     }
 
-    // Naming "products" explicitly (a non-null links map) is an explicit request for that specific
-    // perspective, not the "give me every direct link" default (links == null) -- so an unreadable
-    // link under it is a loud rejection, not a silent exclusion (see
-    // RegisterPartitionManager.requireExplicitlyRequestedLinksAreReadable's own comment). This test
-    // used to assert the opposite (silent exclusion) before that check existed; the exclusion
-    // behavior itself still holds for the *default*, unnamed case -- see the sibling test below.
+    // Naming "products" explicitly is allowed without link:read; the unreadable link is left out,
+    // exactly as in the default (links == null) case below. An error would reveal that it exists.
     @Test
-    void linkFiltering_explicitlyRequestedPerspectiveWithoutLinkRead_throwsIllegalArgumentException() {
+    void linkFiltering_explicitlyRequestedPerspectiveWithoutLinkRead_returnsNoLinks() {
         UUID productId = createProduct();
         UUID contributorId = createContributor();
         createLink(productId, contributorId);
@@ -255,15 +251,14 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
         grantItemRead(contributorId, principal);
         // Deliberately no grantLinkRead(...) -- link:read is a separate, still-required condition.
 
-        assertThatThrownBy(() -> entityManager.project(
+        var item = entityManager.project(
                 new ItemProjectionSpec("CoordinatorTestProduct", productId, Map.of("products", new LinkProjectionSpec(null))),
-                "http://binary", principal))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("products");
+                "http://binary", principal).orElseThrow();
+
+        assertThat(item.links().getOrDefault("products", List.of())).isEmpty();
     }
 
-    // The default (links == null, "every direct link, one hop") still stays silent on a denial --
-    // only an *explicitly named* perspective (the sibling test above) is a loud rejection.
+    // The default (links == null, "every direct link, one hop") is silent on a denial too.
     @Test
     void linkFiltering_defaultLinksWithoutLinkRead_isExcludedEvenWhenBothEndpointsAreVisible() {
         UUID productId = createProduct();

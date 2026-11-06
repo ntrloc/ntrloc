@@ -277,7 +277,7 @@ class LedgerRegisterCoordinatorIntegrationTest extends AbstractIntegrationTest {
 
     // Foundational guarantee, not previously covered: an ordinary projection, outside any
     // transaction, must only ever present COMMITTED data -- including for a LINKED item, not just
-    // the item being projected directly. The most adversarial case fetchLinksByItem's own query
+    // the item being projected directly. The most adversarial case RegisterStore's link query
     // allows for: an existing, already-committed link to an item that's independently had a *new*
     // update staged (prepared, never committed) in a separate transaction. If the guarantee held
     // only by accident -- relying on the link-perspective repoint happening at commit time rather
