@@ -65,7 +65,7 @@ class StateMachineExecutionIntegrationTest extends AbstractIntegrationTest {
     }
 
     private UUID machineId() {
-        return registerPartitionManager.resolveStateMachineId(fixture.bookTypeId(),
+        return schemaManager.resolveStateMachineId(fixture.bookTypeId(),
                 RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE);
     }
 
@@ -94,7 +94,7 @@ class StateMachineExecutionIntegrationTest extends AbstractIntegrationTest {
         UUID book = createBook("Dune");
         entityManager.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, ADMIN);
 
-        UUID availableId = registerPartitionManager.resolveStateId(machineId(), RegisterProjectionTestDomainInitializer.AVAILABLE);
+        UUID availableId = schemaManager.resolveStateId(machineId(), RegisterProjectionTestDomainInitializer.AVAILABLE);
         assertThat(registerPartitionManager.currentStateIds(book)).containsEntry(machineId(), availableId);
     }
 
@@ -134,8 +134,8 @@ class StateMachineExecutionIntegrationTest extends AbstractIntegrationTest {
 
         // drive it (as admin) to Discontinued -> END so the machine is inactive again, then
         // revoke the start grant -- re-start must now be forbidden.
-        UUID discontinued = registerPartitionManager.resolveStateId(machineId(), RegisterProjectionTestDomainInitializer.DISCONTINUED);
-        UUID endStateId = registerPartitionManager.resolveStateId(machineId(), "__end__");
+        UUID discontinued = schemaManager.resolveStateId(machineId(), RegisterProjectionTestDomainInitializer.DISCONTINUED);
+        UUID endStateId = schemaManager.resolveStateId(machineId(), "__end__");
         schemaManager.applyMutations(List.<DefinitionMutation>of(
                 new CreateTransitionMutation(discontinued, endStateId, "RevokeTestEnd", null, null, null)));
         entityManager.executeTransition(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, transitionId("MarkOutOfStock"), ADMIN);
@@ -159,7 +159,7 @@ class StateMachineExecutionIntegrationTest extends AbstractIntegrationTest {
 
         entityManager.executeTransition(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, transitionId("MarkOutOfStock"), ADMIN);
 
-        UUID outOfStock = registerPartitionManager.resolveStateId(machineId(), RegisterProjectionTestDomainInitializer.OUT_OF_STOCK);
+        UUID outOfStock = schemaManager.resolveStateId(machineId(), RegisterProjectionTestDomainInitializer.OUT_OF_STOCK);
         assertThat(registerPartitionManager.currentStateIds(book)).containsEntry(machineId(), outOfStock);
     }
 
@@ -197,8 +197,8 @@ class StateMachineExecutionIntegrationTest extends AbstractIntegrationTest {
     @Test
     void executeTransition_withAnUnsatisfiedGuard_throwsUnprocessable() {
         UUID book = createBook("Dune");
-        UUID available = registerPartitionManager.resolveStateId(machineId(), RegisterProjectionTestDomainInitializer.AVAILABLE);
-        UUID discontinued = registerPartitionManager.resolveStateId(machineId(), RegisterProjectionTestDomainInitializer.DISCONTINUED);
+        UUID available = schemaManager.resolveStateId(machineId(), RegisterProjectionTestDomainInitializer.AVAILABLE);
+        UUID discontinued = schemaManager.resolveStateId(machineId(), RegisterProjectionTestDomainInitializer.DISCONTINUED);
         var guard = JsonMapper.builder().build().readTree(
                 "{\"type\":\"PROPERTY_VALUE\",\"propertyName\":\"title\",\"operator\":\"EQUALS\",\"value\":\"NOPE\"}");
         schemaManager.applyMutations(List.<DefinitionMutation>of(
@@ -215,8 +215,8 @@ class StateMachineExecutionIntegrationTest extends AbstractIntegrationTest {
     @Test
     void executeTransition_intoEnd_detachesTheMachine_andReStartWorks() {
         UUID book = createBook("Dune");
-        UUID available = registerPartitionManager.resolveStateId(machineId(), RegisterProjectionTestDomainInitializer.AVAILABLE);
-        UUID endStateId = registerPartitionManager.resolveStateId(machineId(), "__end__");
+        UUID available = schemaManager.resolveStateId(machineId(), RegisterProjectionTestDomainInitializer.AVAILABLE);
+        UUID endStateId = schemaManager.resolveStateId(machineId(), "__end__");
         schemaManager.applyMutations(List.<DefinitionMutation>of(
                 new CreateTransitionMutation(available, endStateId, "Archive", null, null, null)));
         entityManager.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, ADMIN);

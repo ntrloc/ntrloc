@@ -165,7 +165,7 @@ public class EntityManagerImpl implements EntityManager {
     @Override
     public void startStateMachine(UUID itemId, String stateMachineName, NtrlocPrincipal principal) {
         UUID itemTypeId = requireItemType(itemId);
-        UUID smId = registerPartitionManager.resolveStateMachineId(itemTypeId, stateMachineName);
+        UUID smId = schemaManager.resolveStateMachineId(itemTypeId, stateMachineName);
         AdminStateMachineView machine = machineView(itemTypeId, smId);
 
         if (registerPartitionManager.currentStateIds(itemId).containsKey(smId)) {
@@ -192,7 +192,7 @@ public class EntityManagerImpl implements EntityManager {
     @Override
     public void executeTransition(UUID itemId, String stateMachineName, UUID transitionId, NtrlocPrincipal principal) {
         UUID itemTypeId = requireItemType(itemId);
-        UUID smId = registerPartitionManager.resolveStateMachineId(itemTypeId, stateMachineName);
+        UUID smId = schemaManager.resolveStateMachineId(itemTypeId, stateMachineName);
         AdminStateMachineView machine = machineView(itemTypeId, smId);
 
         UUID currentStateId = registerPartitionManager.currentStateIds(itemId).get(smId);

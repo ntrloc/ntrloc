@@ -8,7 +8,11 @@ import org.ntrloc.graph.mutation.ItemDeleteMutation;
 import org.ntrloc.graph.mutation.ItemUpdateMutation;
 import org.ntrloc.graph.mutation.MutationRequest;
 import org.ntrloc.graph.mutation.MutationResponse;
+import org.ntrloc.graph.db.coordinator.LedgerRegisterCoordinator;
 import org.ntrloc.graph.db.partition.binary.BinaryPartitionManager;
+import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
+import org.ntrloc.graph.db.partition.ledger.ItemUpdateEntry;
+import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -18,19 +22,20 @@ import org.springframework.test.web.reactive.server.WebTestClient;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.time.OffsetDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 // End to end: a real item create/update/delete through the mutation/ledger/coordinator stack
-// actually reconciles the binary dynamic-property registry (RegisterPartitionManager's own
-// reconcileBinaryDynamicProperties, driven by BinaryDynamicPropertyRegistrar) -- as opposed to
-// BinaryDynamicPropertyRegistrarIntegrationTest, which drives the registrar directly and doesn't
-// prove RegisterPartitionManager actually calls it at the right moments.
+// actually reconciles the binary dynamic-property registry (the coordinator's
+// BinaryAttachmentReconciler) -- as opposed to BinaryDynamicPropertyRegistrarIntegrationTest,
+// which drives the registrar directly and doesn't prove it's called at the right moments.
 //
 // Uses "hash.sha256" as the path under test -- every stored binary always has one (written by
 // BinaryPartitionManagerImpl.metadataJson at upload time, real extraction isn't configured in this
@@ -51,6 +56,12 @@ class RegisterPartitionManagerBinaryDynamicPropertyIntegrationTest extends Abstr
 
     @Autowired
     private JdbcClient jdbcClient;
+
+    @Autowired
+    private LedgerRegisterCoordinator coordinator;
+
+    @Autowired
+    private SecurityRepository securityRepo;
 
     @BeforeEach
     void authenticateAsRoot() {
@@ -187,5 +198,40 @@ class RegisterPartitionManagerBinaryDynamicPropertyIntegrationTest extends Abstr
         deleteItem(item2);
 
         assertThat(referenceCount(fixture.attachmentPropertyId(), PATH).orElse(0)).isEqualTo(afterBothCreated - 2);
+    }
+
+    // Reference counts change at commit, not prepare: a transaction that's prepared and then
+    // aborted must leave them exactly as they were, for both an attach and a detach.
+    @Test
+    void abort_ofAPreparedCreateWithAnAttachment_leavesItsPathsUncounted() {
+        int before = referenceCount(fixture.attachmentPropertyId(), PATH).orElse(0);
+        UUID binaryId = storeBinary();
+        UUID txn = UUID.randomUUID();
+
+        coordinator.prepare(List.of(new ItemCreateEntry(UUID.randomUUID(), fixture.bookTypeId(),
+                Map.of(fixture.titlePropertyId(), "Dune", fixture.attachmentPropertyId(), binaryId.toString()), Map.of(), Set.of())),
+                txn, newActorId(), OffsetDateTime.now());
+        coordinator.abort(txn);
+
+        assertThat(referenceCount(fixture.attachmentPropertyId(), PATH).orElse(0)).isEqualTo(before);
+    }
+
+    @Test
+    void abort_ofAPreparedClearOfAnAttachment_keepsItsPathsCounted() {
+        UUID itemId = createBookWithAttachment(storeBinary());
+        int afterCreate = referenceCount(fixture.attachmentPropertyId(), PATH).orElse(0);
+        UUID txn = UUID.randomUUID();
+        Map<UUID, Object> clearAttachment = new HashMap<>();
+        clearAttachment.put(fixture.attachmentPropertyId(), null);
+
+        coordinator.prepare(List.of(new ItemUpdateEntry(itemId, clearAttachment, Map.of(), Set.of(), Set.of(), Set.of())),
+                txn, newActorId(), OffsetDateTime.now());
+        coordinator.abort(txn);
+
+        assertThat(referenceCount(fixture.attachmentPropertyId(), PATH)).contains(afterCreate);
+    }
+
+    private UUID newActorId() {
+        return securityRepo.createUser("Binary Abort Test Actor", "binary-abort-" + UUID.randomUUID() + "@example.com", true).id();
     }
 }

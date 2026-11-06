@@ -12,12 +12,14 @@ import org.ntrloc.graph.db.partition.ledger.LinkUpdateEntry;
 import org.ntrloc.graph.db.partition.register.RegisterLinkEndpoint;
 import org.ntrloc.graph.db.partition.register.RegisterPartitionManager;
 import org.ntrloc.graph.db.partition.register.StagingContext;
+import org.ntrloc.graph.db.partition.schema.SchemaManager;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 @Component
@@ -28,17 +30,23 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
     private final ItemDeleteCascadeExpander cascadeExpander;
     private final NoOpMutationFilter noOpMutationFilter;
     private final PipelineMarkerDecisionService pipelineMarkerDecisionService;
+    private final BinaryAttachmentReconciler binaryAttachmentReconciler;
+    private final SchemaManager schemaManager;
 
     public LedgerRegisterCoordinatorImpl(LedgerPartitionManager ledgerPartitionManager,
                                           RegisterPartitionManager registerPartitionManager,
                                           ItemDeleteCascadeExpander cascadeExpander,
                                           NoOpMutationFilter noOpMutationFilter,
-                                          PipelineMarkerDecisionService pipelineMarkerDecisionService) {
+                                          PipelineMarkerDecisionService pipelineMarkerDecisionService,
+                                          BinaryAttachmentReconciler binaryAttachmentReconciler,
+                                          SchemaManager schemaManager) {
         this.ledgerPartitionManager = ledgerPartitionManager;
         this.registerPartitionManager = registerPartitionManager;
         this.cascadeExpander = cascadeExpander;
         this.noOpMutationFilter = noOpMutationFilter;
         this.pipelineMarkerDecisionService = pipelineMarkerDecisionService;
+        this.binaryAttachmentReconciler = binaryAttachmentReconciler;
+        this.schemaManager = schemaManager;
     }
 
     // REQUIRES_NEW on prepare/commit/abort, not the default REQUIRED: each must durably commit (or
@@ -77,8 +85,10 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
         StagingContext staging = new StagingContext(transactionId, actorUserId, createdDate);
         for (LedgerEntry entry : expanded) {
             switch (entry) {
-                case ItemCreateEntry e -> registerPartitionManager.stageItemCreate(e.itemId(), e.itemTypeId(), e.properties(), e.initialStates(), staging);
-                case ItemUpdateEntry e when hasRegisterEffect(e) -> registerPartitionManager.stageItemChange(e.itemId(), e.properties(), e.stateChanges(), e.stateMachinesEnded(), staging);
+                case ItemCreateEntry e -> registerPartitionManager.stageItemCreate(e.itemId(), e.itemTypeId(), e.properties(), e.initialStates(),
+                        schemaManager.binaryPropertyIdsForItemType(e.itemTypeId()), staging);
+                case ItemUpdateEntry e when hasRegisterEffect(e) -> registerPartitionManager.stageItemChange(e.itemId(), e.properties(),
+                        e.stateChanges(), e.stateMachinesEnded(), binaryPropertyIdsForItem(e.itemId()), staging);
                 default -> { /* handled in another phase */ }
             }
         }
@@ -116,11 +126,13 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
         ledgerPartitionManager.commit(transactionId, commitId);
     }
 
+    // Binary attachments are reconciled here and in deleteItems, at commit -- never at prepare, so an
+    // aborted transaction leaves the binary dynamic-property counts untouched.
     private void commitItems(List<LedgerEntry> entries, UUID transactionId, UUID commitId) {
         for (LedgerEntry entry : entries) {
             switch (entry) {
-                case ItemCreateEntry e -> registerPartitionManager.commitItem(e.itemId(), transactionId, commitId);
-                case ItemUpdateEntry e when hasRegisterEffect(e) -> registerPartitionManager.commitItem(e.itemId(), transactionId, commitId);
+                case ItemCreateEntry e -> binaryAttachmentReconciler.reconcile(registerPartitionManager.commitItem(e.itemId(), transactionId, commitId));
+                case ItemUpdateEntry e when hasRegisterEffect(e) -> binaryAttachmentReconciler.reconcile(registerPartitionManager.commitItem(e.itemId(), transactionId, commitId));
                 default -> { /* handled in another phase */ }
             }
         }
@@ -144,7 +156,7 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
 
     private void deleteItems(List<LedgerEntry> entries) {
         for (LedgerEntry entry : entries) {
-            if (entry instanceof ItemDeleteEntry e) registerPartitionManager.deleteItem(e.itemId());
+            if (entry instanceof ItemDeleteEntry e) binaryAttachmentReconciler.reconcile(registerPartitionManager.deleteItem(e.itemId()));
         }
     }
 
@@ -173,6 +185,10 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
     // to the already-committed row and never gate staging).
     private static boolean hasRegisterEffect(ItemUpdateEntry e) {
         return !e.properties().isEmpty() || !e.stateChanges().isEmpty() || !e.stateMachinesEnded().isEmpty();
+    }
+
+    private Set<UUID> binaryPropertyIdsForItem(UUID itemId) {
+        return schemaManager.binaryPropertyIdsForItemType(registerPartitionManager.findItemTypeId(itemId).orElseThrow());
     }
 
     private RegisterLinkEndpoint toRegisterEndpoint(LinkEndpoint endpoint) {

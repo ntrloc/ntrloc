@@ -241,8 +241,8 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
     // internally. The real transition entry points are covered by StateMachineExecutionIntegrationTest;
     // these projection/facet tests only need a recorded current state, not START-pseudostate wiring.
     private void setState(UUID itemId, String machineName, String stateName) {
-        UUID smId = registerPartitionManager.resolveStateMachineId(fixture.bookTypeId(), machineName);
-        UUID stateId = registerPartitionManager.resolveStateId(smId, stateName);
+        UUID smId = schemaManager.resolveStateMachineId(fixture.bookTypeId(), machineName);
+        UUID stateId = schemaManager.resolveStateId(smId, stateName);
         UUID txn = UUID.randomUUID();
         coordinator.prepare(List.of(new ItemUpdateEntry(itemId, Map.of(), Map.of(smId, stateId), Set.of(), Set.of(), Set.of())), txn, actor, OffsetDateTime.now());
         coordinator.commit(txn, UUID.randomUUID());
@@ -814,8 +814,8 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
     }
 
     private void setStateForType(UUID itemTypeId, UUID itemId, String machineName, String stateName) {
-        UUID smId = registerPartitionManager.resolveStateMachineId(itemTypeId, machineName);
-        UUID stateId = registerPartitionManager.resolveStateId(smId, stateName);
+        UUID smId = schemaManager.resolveStateMachineId(itemTypeId, machineName);
+        UUID stateId = schemaManager.resolveStateId(smId, stateName);
         UUID txn = UUID.randomUUID();
         coordinator.prepare(List.of(new ItemUpdateEntry(itemId, Map.of(), Map.of(smId, stateId), Set.of(), Set.of(), Set.of())), txn, actor, OffsetDateTime.now());
         coordinator.commit(txn, UUID.randomUUID());

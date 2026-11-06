@@ -315,7 +315,7 @@ class NoOpMutationFilterIntegrationTest extends AbstractIntegrationTest {
         String name = "NoOpTestMachine-" + UUID.randomUUID();
         schemaManager.applyMutations(List.<org.ntrloc.graph.db.partition.schema.definition.mutation.DefinitionMutation>of(
                 new org.ntrloc.graph.db.partition.schema.definition.mutation.CreateStateMachineMutation(fixture.productTypeId(), name, null)));
-        UUID smId = registerPartitionManager.resolveStateMachineId(fixture.productTypeId(), name);
+        UUID smId = schemaManager.resolveStateMachineId(fixture.productTypeId(), name);
         schemaManager.applyMutations(List.<org.ntrloc.graph.db.partition.schema.definition.mutation.DefinitionMutation>of(
                 new org.ntrloc.graph.db.partition.schema.definition.mutation.CreateStateMutation(smId, "S1", null, null, null, null)));
         return smId;
@@ -323,8 +323,8 @@ class NoOpMutationFilterIntegrationTest extends AbstractIntegrationTest {
 
     private UUID newThrowawayMachineStarted(UUID itemId) {
         UUID smId = defineThrowawayMachine();
-        UUID s1 = registerPartitionManager.resolveStateId(smId, "S1");
-        UUID start = registerPartitionManager.resolveStateId(smId, "__start__");
+        UUID s1 = schemaManager.resolveStateId(smId, "S1");
+        UUID start = schemaManager.resolveStateId(smId, "__start__");
         schemaManager.applyMutations(List.<org.ntrloc.graph.db.partition.schema.definition.mutation.DefinitionMutation>of(
                 new org.ntrloc.graph.db.partition.schema.definition.mutation.CreateTransitionMutation(start, s1, "Begin", null, null, null)));
 

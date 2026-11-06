@@ -5,8 +5,13 @@ import org.ntrloc.graph.cluster.ClusterService;
 import org.ntrloc.graph.db.partition.authorization.PermissionService;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.ReplaceControlledListMutation;
+import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemDefinitionView;
+import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyDefinitionView;
+import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyGroupView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminSchemaView;
+import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminStateMachineView;
+import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminStateView;
 import org.ntrloc.graph.db.partition.schema.definition.view.calculated.SchemaView;
 import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
 import org.ntrloc.graph.events.ClusterEventBroadcaster;
@@ -24,6 +29,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
@@ -179,6 +185,53 @@ public class SchemaManager {
                 .filter(item -> readableItemTypeIds.contains(item.id()))
                 .toList();
         return new SchemaView(visibleItems, schema.traits());
+    }
+
+    // A state machine name is mutable, so callers translate it to the machine's stable id here and
+    // never store the name.
+    public UUID resolveStateMachineId(UUID itemTypeId, String stateMachineName) {
+        return getAdminSchema().items().stream()
+                .filter(item -> item.id().equals(itemTypeId))
+                .findFirst()
+                .flatMap(item -> Optional.ofNullable(item.stateMachines()).orElse(List.of()).stream()
+                        .filter(m -> m.name().equals(stateMachineName))
+                        .map(AdminStateMachineView::id)
+                        .findFirst())
+                .orElseThrow(() -> new IllegalArgumentException("Unknown state machine: " + stateMachineName));
+    }
+
+    // A state's name is only unique within its own machine (schema_state's UNIQUE constraint is
+    // (state_machine_id, name)), so resolution is scoped to a specific machine id, not global.
+    public UUID resolveStateId(UUID stateMachineId, String stateName) {
+        return getAdminSchema().items().stream()
+                .flatMap(item -> Optional.ofNullable(item.stateMachines()).orElse(List.of()).stream())
+                .filter(m -> m.id().equals(stateMachineId))
+                .findFirst()
+                .flatMap(m -> m.states().stream()
+                        .filter(s -> s.name().equals(stateName))
+                        .map(AdminStateView::id)
+                        .findFirst())
+                .orElseThrow(() -> new IllegalArgumentException("Unknown state: " + stateName));
+    }
+
+    /** This item type's own BINARY-typed properties, at any group depth. The register keeps them out of the properties JSONB. */
+    public Set<UUID> binaryPropertyIdsForItemType(UUID itemTypeId) {
+        return getAdminSchema().items().stream()
+                .filter(item -> item.id().equals(itemTypeId))
+                .findFirst()
+                .map(item -> binaryPropertyIds(item.properties(), item.groups()))
+                .orElse(Set.of());
+    }
+
+    private static Set<UUID> binaryPropertyIds(List<AdminPropertyDefinitionView> properties, List<AdminPropertyGroupView> groups) {
+        Set<UUID> result = new HashSet<>();
+        for (AdminPropertyDefinitionView p : properties) {
+            if (p.type() == PropertyType.BINARY) result.add(p.id());
+        }
+        for (AdminPropertyGroupView g : groups) {
+            result.addAll(binaryPropertyIds(g.properties(), g.groups()));
+        }
+        return result;
     }
 
     // Root plus every transitive descendant -- the "polymorphic by default" resolution a

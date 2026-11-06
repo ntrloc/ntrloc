@@ -17,8 +17,9 @@ import java.util.UUID;
 
 // Populates/reconciles the binary dynamic-property registry (binary_dynamic_property +
 // binary_property_dynamic_property) -- see docs/ntrloc-dynamic-properties-design-notes.md section
-// 10. Called by RegisterPartitionManager whenever a binary property's value is attached, detached,
-// or repointed to a different binary (never on read); will also be the reconciliation entry point
+// 10. Called by the coordinator (via BinaryAttachmentReconciler) whenever a binary property's value
+// is attached, detached, or repointed to a different binary (never on read); will also be the
+// reconciliation entry point
 // for re-extraction once that exists (BinaryPartitionManager.updateMetadata's own trigger 3). Shared
 // here so all triggers stay in lockstep rather than reimplementing the flatten/adjust walk per site.
 // Takes an already-parsed metadata map, not a raw JSON string: every caller already has one on hand

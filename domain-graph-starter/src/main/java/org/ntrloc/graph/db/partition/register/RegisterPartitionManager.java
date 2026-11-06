@@ -2,7 +2,6 @@ package org.ntrloc.graph.db.partition.register;
 
 import tools.jackson.databind.ObjectMapper;
 import org.ntrloc.graph.db.partition.authorization.RequestPermissionContext;
-import org.ntrloc.graph.db.partition.binary.BinaryDynamicPropertyRegistrar;
 import org.ntrloc.graph.db.partition.binary.BinaryPartitionManager;
 import org.ntrloc.graph.db.partition.binary.BinaryPropertyObject;
 import org.ntrloc.graph.access.FactResolver;
@@ -85,7 +84,6 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
     private final JdbcClient jdbcClient;
     private final ObjectMapper objectMapper;
     private final BinaryPartitionManager binaryPartitionManager;
-    private final BinaryDynamicPropertyRegistrar binaryDynamicPropertyRegistrar;
     private final SchemaManager schemaManager;
     private final ControlledListManager controlledListManager;
 
@@ -112,12 +110,11 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
 
     public RegisterPartitionManager(JdbcClient jdbcClient, ObjectMapper objectMapper,
                                     BinaryPartitionManager binaryPartitionManager,
-                                    BinaryDynamicPropertyRegistrar binaryDynamicPropertyRegistrar, SchemaManager schemaManager,
+                                    SchemaManager schemaManager,
                                     ControlledListManager controlledListManager) {
         this.jdbcClient = jdbcClient;
         this.objectMapper = objectMapper;
         this.binaryPartitionManager = binaryPartitionManager;
-        this.binaryDynamicPropertyRegistrar = binaryDynamicPropertyRegistrar;
         this.schemaManager = schemaManager;
         this.controlledListManager = controlledListManager;
     }
@@ -678,7 +675,7 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
     // Buckets are ordered by distance from START, then by name. Unreachable states come after
     // reachable ones, and the null bucket (items never in this machine) always comes last.
     private List<FacetBucket> runStateMachineFacetQuery(String tableName, UUID itemTypeId, SqlFragment filter, String stateMachineName) {
-        UUID stateMachineId = resolveStateMachineId(itemTypeId, stateMachineName);
+        UUID stateMachineId = schemaManager.resolveStateMachineId(itemTypeId, stateMachineName);
         AdminStateMachineView machine = stateMachineView(stateMachineId);
         Map<UUID, String> stateNames = machine.states().stream()
                 .collect(Collectors.toMap(AdminStateView::id, AdminStateView::name));
@@ -865,18 +862,17 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
     // Updates are never in-place: prepare stages a whole new row: commit deletes the old
     // committed row for the same business id and flips the new one to COMMITTED.
 
+    // binaryPropertyIds: the item type's BINARY properties, which go to register_binary_property
+    // rather than the properties JSONB.
     public UUID stageItemCreate(UUID itemId, UUID itemTypeId, Map<UUID, Object> properties, Map<UUID, UUID> initialStates,
-                                 StagingContext staging) {
+                                 Set<UUID> binaryPropertyIds, StagingContext staging) {
         Map<String, Object> states = new HashMap<>();
         initialStates.forEach((stateMachineId, stateId) -> states.put(stateMachineId.toString(), Map.of(STATE_CURRENT_STATE_ID, stateId.toString())));
 
-        Set<UUID> binaryPropertyIds = binaryPropertyIdsForItemType(itemTypeId);
         UUID registerItemId = insertItemRow(itemId, itemTypeId, keysToStrings(excludeKeys(properties, binaryPropertyIds)), states,
                 staging.transactionId(), RowAudit.created(staging));
         if (!binaryPropertyIds.isEmpty()) {
-            Map<UUID, UUID> binaryValues = toBinaryValues(filterKeys(properties, binaryPropertyIds));
-            insertBinaryProperties(registerItemId, binaryValues);
-            reconcileBinaryDynamicProperties(Map.of(), binaryValues);
+            insertBinaryProperties(registerItemId, toBinaryValues(filterKeys(properties, binaryPropertyIds)));
         }
         return registerItemId;
     }
@@ -897,11 +893,13 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
     // stateMachinesEnded removes those machines from the item's _state entirely (END pseudostate
     // reached) -- no tombstone, since re-entry via START is valid.
     //
+    // binaryPropertyIds is as for stageItemCreate.
+    //
     // Deliberately deferred: stateChanges values are accepted unconditionally -- this does not check
     // that a given stateId is actually reachable from the item's current state via a defined
     // transition. Transition validity/guard enforcement lives in EntityManagerImpl.executeTransition.
     public UUID stageItemChange(UUID itemId, Map<UUID, Object> propertiesDiff, Map<UUID, UUID> stateChanges,
-                                 Set<UUID> stateMachinesEnded, StagingContext staging) {
+                                 Set<UUID> stateMachinesEnded, Set<UUID> binaryPropertyIds, StagingContext staging) {
         UUID itemTypeId = findItemTypeId(itemId).orElseThrow();
 
         var current = jdbcClient.sql("""
@@ -918,7 +916,6 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                         rs.getObject(COL_CREATED_DATE, OffsetDateTime.class), rs.getObject(COL_CREATED_BY, UUID.class)))
                 .single();
 
-        Set<UUID> binaryPropertyIds = binaryPropertyIdsForItemType(itemTypeId);
         Map<UUID, Object> nonBinaryDiff = excludeKeys(propertiesDiff, binaryPropertyIds);
 
         Map<String, Object> mergedProperties = nonBinaryDiff.isEmpty()
@@ -937,68 +934,18 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
         // just carried forward from the prior register_item row instead of the jsonb blob, since
         // there's no jsonb to read them back out of.
         if (!binaryPropertyIds.isEmpty()) {
-            Map<UUID, UUID> oldBinaryValues = currentBinaryPropertyValues(current.registerItemId());
-            Map<UUID, UUID> mergedBinaryValues = new HashMap<>(oldBinaryValues);
+            Map<UUID, UUID> mergedBinaryValues = currentBinaryPropertyValues(current.registerItemId());
             filterKeys(propertiesDiff, binaryPropertyIds).forEach((propertyId, value) -> {
                 if (value == null) mergedBinaryValues.remove(propertyId);
                 else mergedBinaryValues.put(propertyId, UUID.fromString((String) value));
             });
             insertBinaryProperties(registerItemId, mergedBinaryValues);
-            reconcileBinaryDynamicProperties(oldBinaryValues, mergedBinaryValues);
         }
-
         return registerItemId;
-    }
-
-    // Diffs a binary property's old vs new value per property id and drives the dynamic-property
-    // registry accordingly -- a changed value is a detach of the old binary (if any) plus an attach
-    // of the new one (if any); an unchanged value (including "still absent") is a no-op. Runs inside
-    // the same @Transactional boundary as the register mutation that triggered it
-    // (LedgerRegisterCoordinatorImpl.prepare()), confirmed directly on that method -- so the
-    // registry's counters can never observe a staged-but-not-yet-committed change independently of
-    // the mutation itself.
-    private void reconcileBinaryDynamicProperties(Map<UUID, UUID> oldValues, Map<UUID, UUID> newValues) {
-        Set<UUID> propertyIds = new HashSet<>(oldValues.keySet());
-        propertyIds.addAll(newValues.keySet());
-        for (UUID propertyId : propertyIds) {
-            UUID oldBinaryId = oldValues.get(propertyId);
-            UUID newBinaryId = newValues.get(propertyId);
-            if (Objects.equals(oldBinaryId, newBinaryId)) continue;
-            if (oldBinaryId != null) {
-                binaryDynamicPropertyRegistrar.onDetach(propertyId, metadataFor(oldBinaryId));
-            }
-            if (newBinaryId != null) {
-                binaryDynamicPropertyRegistrar.onAttach(propertyId, metadataFor(newBinaryId));
-            }
-        }
-    }
-
-    private Map<String, Object> metadataFor(UUID binaryId) {
-        return binaryPartitionManager.getBinaryProperty(binaryId).map(BinaryPropertyObject::metadata).orElse(null);
     }
 
     private record CurrentItemRowContent(UUID registerItemId, Map<String, Object> properties, Map<String, Object> states,
                                           OffsetDateTime createdDate, UUID createdBy) {}
-
-    /** Which of this item type's own properties are BINARY-typed -- never stored in the properties JSONB (see stageItemCreate/stageItemChange's own exclusion), so NoOpMutationFilter can't compare a diff against a "current value" that's never actually there. */
-    public Set<UUID> binaryPropertyIdsForItemType(UUID itemTypeId) {
-        return schemaManager.getAdminSchema().items().stream()
-                .filter(item -> item.id().equals(itemTypeId))
-                .findFirst()
-                .map(item -> binaryPropertyIds(item.properties(), item.groups()))
-                .orElse(Set.of());
-    }
-
-    private Set<UUID> binaryPropertyIds(List<AdminPropertyDefinitionView> properties, List<AdminPropertyGroupView> groups) {
-        Set<UUID> result = new HashSet<>();
-        for (AdminPropertyDefinitionView p : properties) {
-            if (p.type() == PropertyType.BINARY) result.add(p.id());
-        }
-        for (AdminPropertyGroupView g : groups) {
-            result.addAll(binaryPropertyIds(g.properties(), g.groups()));
-        }
-        return result;
-    }
 
     private Map<UUID, Object> filterKeys(Map<UUID, Object> map, Set<UUID> keys) {
         Map<UUID, Object> result = new HashMap<>();
@@ -1178,7 +1125,10 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
         return result;
     }
 
-    public void commitItem(UUID itemId, UUID transactionId, UUID commitId) {
+    // Returns the item's binary values in the replaced committed row (none for a create) and in the
+    // newly committed one. Both are read before the old row is deleted, since its
+    // register_binary_property rows cascade-delete with it.
+    public BinaryValueChange commitItem(UUID itemId, UUID transactionId, UUID commitId) {
         UUID stagedRegisterItemId = jdbcClient.sql("""
                 SELECT id FROM register_item WHERE item_id = :itemId AND transaction_id = :transactionId AND state = 'UNCOMMITTED'
                 """)
@@ -1194,6 +1144,10 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                 .param("stagedRegisterItemId", stagedRegisterItemId)
                 .query(UUID.class)
                 .optional();
+
+        BinaryValueChange binaryChange = new BinaryValueChange(
+                oldRegisterItemId.map(this::currentBinaryPropertyValues).orElse(Map.of()),
+                currentBinaryPropertyValues(stagedRegisterItemId));
 
         // An update replaces the row wholesale (new surrogate id), but existing perspective rows
         // still point at the old one -- move them forward before deleting it, or the FK from
@@ -1225,22 +1179,23 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                 .param("commitId", commitId)
                 .param("stagedRegisterItemId", stagedRegisterItemId)
                 .update();
+        return binaryChange;
     }
 
-    public void deleteItem(UUID itemId) {
-        // Read the about-to-be-deleted row's binary properties first: register_binary_property rows
-        // cascade-delete with it (ON DELETE CASCADE on register_item_id), so there'd be nothing left
-        // to reconcile against afterward -- a deleted item is a detach of every binary property it
-        // held, same as any other property-value removal.
-        jdbcClient.sql("SELECT id FROM register_item WHERE item_id = :itemId AND state = 'COMMITTED'")
+    // Returns the binary values the item held, all now detached. They're read before the delete:
+    // register_binary_property rows cascade-delete with the register_item row.
+    public BinaryValueChange deleteItem(UUID itemId) {
+        BinaryValueChange detached = jdbcClient.sql("SELECT id FROM register_item WHERE item_id = :itemId AND state = 'COMMITTED'")
                 .param(PARAM_ITEM_ID, itemId)
                 .query(UUID.class)
                 .optional()
-                .ifPresent(registerItemId -> reconcileBinaryDynamicProperties(currentBinaryPropertyValues(registerItemId), Map.of()));
+                .map(registerItemId -> new BinaryValueChange(currentBinaryPropertyValues(registerItemId), Map.of()))
+                .orElse(BinaryValueChange.NONE);
 
         jdbcClient.sql("DELETE FROM register_item WHERE item_id = :itemId AND state = 'COMMITTED'")
                 .param(PARAM_ITEM_ID, itemId)
                 .update();
+        return detached;
     }
 
     public UUID stageLinkCreate(UUID linkId, UUID linkTypeId, RegisterLinkEndpoint endpointA, RegisterLinkEndpoint endpointB,
@@ -2060,34 +2015,6 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                 .map(DynamicFieldView::type)
                 .findFirst()
                 .orElse(null);
-    }
-
-    // Same "translate name to id, never store the name" rule as resolvePropertyId, one level up:
-    // a state machine name (like a property name) is mutable, so the states column has to be
-    // keyed by the machine's stable id.
-    public UUID resolveStateMachineId(UUID itemTypeId, String stateMachineName) {
-        return schemaManager.getAdminSchema().items().stream()
-                .filter(item -> item.id().equals(itemTypeId))
-                .findFirst()
-                .flatMap(item -> Optional.ofNullable(item.stateMachines()).orElse(List.of()).stream()
-                        .filter(m -> m.name().equals(stateMachineName))
-                        .map(AdminStateMachineView::id)
-                        .findFirst())
-                .orElseThrow(() -> new IllegalArgumentException("Unknown state machine: " + stateMachineName));
-    }
-
-    // A state's name is only unique within its own machine (schema_state's UNIQUE constraint is
-    // (state_machine_id, name)), so resolution is scoped to a specific machine id, not global.
-    public UUID resolveStateId(UUID stateMachineId, String stateName) {
-        return schemaManager.getAdminSchema().items().stream()
-                .flatMap(item -> Optional.ofNullable(item.stateMachines()).orElse(List.of()).stream())
-                .filter(m -> m.id().equals(stateMachineId))
-                .findFirst()
-                .flatMap(m -> m.states().stream()
-                        .filter(s -> s.name().equals(stateName))
-                        .map(AdminStateView::id)
-                        .findFirst())
-                .orElseThrow(() -> new IllegalArgumentException("Unknown state: " + stateName));
     }
 
     // The item's current state id per state machine it is participating in (empty for machines it
@@ -2957,8 +2884,8 @@ public class RegisterPartitionManager implements SchemaChangeListener, FactResol
                         Map.of(paramName, p.value()));
             }
             case StateValuePredicate p -> {
-                UUID stateMachineId = resolveStateMachineId(itemTypeId, p.stateMachineName());
-                UUID stateId = resolveStateId(stateMachineId, p.stateName());
+                UUID stateMachineId = schemaManager.resolveStateMachineId(itemTypeId, p.stateMachineName());
+                UUID stateId = schemaManager.resolveStateId(stateMachineId, p.stateName());
                 return new SqlFragment(
                         "(rt.states::jsonb)->'" + stateMachineId + "'->>'currentStateId' = '" + stateId + "'", Map.of());
             }
