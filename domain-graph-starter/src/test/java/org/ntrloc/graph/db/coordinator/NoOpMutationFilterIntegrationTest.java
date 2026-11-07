@@ -1,5 +1,6 @@
 package org.ntrloc.graph.db.coordinator;
 
+import org.ntrloc.graph.projection.ProjectionEngine;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
@@ -40,6 +41,10 @@ class NoOpMutationFilterIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private RegisterPartitionManager registerPartitionManager;
+
+    @Autowired
+
+    private ProjectionEngine projectionEngine;
 
     @Autowired
     private SchemaManager schemaManager;
@@ -124,7 +129,7 @@ class NoOpMutationFilterIntegrationTest extends AbstractIntegrationTest {
         coordinator.prepare(List.of(new ItemUpdateEntry(itemId, diff, Map.of(), Set.of(), Set.of(), Set.of())), txn, actor.id(), OffsetDateTime.now());
         coordinator.commit(txn, UUID.randomUUID());
 
-        var projected = registerPartitionManager.projectOne(fixture.productTypeId(), itemId, "http://binary").orElseThrow();
+        var projected = projectionEngine.projectOne(fixture.productTypeId(), itemId, "http://binary").orElseThrow();
         assertThat(projected.properties()).containsEntry("name", "Widget Pro").containsEntry("color", "red");
     }
 
@@ -252,7 +257,7 @@ class NoOpMutationFilterIntegrationTest extends AbstractIntegrationTest {
         coordinator.prepare(List.of(new ItemUpdateEntry(itemId, diff, Map.of(), Set.of(), Set.of(), Set.of())), txn, actor.id(), OffsetDateTime.now());
         coordinator.commit(txn, UUID.randomUUID());
 
-        var projected = registerPartitionManager.projectOne(fixture.productTypeId(), itemId, "http://binary").orElseThrow();
+        var projected = projectionEngine.projectOne(fixture.productTypeId(), itemId, "http://binary").orElseThrow();
         assertThat(projected.properties()).containsEntry("color", "red");
     }
 

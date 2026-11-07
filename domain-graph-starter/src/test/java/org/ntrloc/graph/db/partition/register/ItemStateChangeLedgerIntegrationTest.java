@@ -1,5 +1,6 @@
 package org.ntrloc.graph.db.partition.register;
 
+import org.ntrloc.graph.projection.ProjectionEngine;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
@@ -33,7 +34,8 @@ class ItemStateChangeLedgerIntegrationTest extends AbstractIntegrationTest {
     private LedgerRegisterCoordinator coordinator;
 
     @Autowired
-    private RegisterPartitionManager registerPartitionManager;
+
+    private ProjectionEngine projectionEngine;
 
     @Autowired
     private SchemaManager schemaManager;
@@ -102,7 +104,7 @@ class ItemStateChangeLedgerIntegrationTest extends AbstractIntegrationTest {
         coordinator.prepare(List.of(new ItemUpdateEntry(bookId, Map.of(fixture.pageCountPropertyId(), 250), Map.of(), Set.of(), Set.of(), Set.of())), updateTxn, actor, OffsetDateTime.now());
         coordinator.commit(updateTxn, UUID.randomUUID());
 
-        var book = registerPartitionManager.projectOne(fixture.bookTypeId(), bookId, "http://binary").orElseThrow();
+        var book = projectionEngine.projectOne(fixture.bookTypeId(), bookId, "http://binary").orElseThrow();
         assertThat(book.states().get(RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE).currentState())
                 .isEqualTo(RegisterProjectionTestDomainInitializer.OUT_OF_STOCK);
         assertThat(book.properties()).containsEntry("pageCount", 250);
@@ -118,7 +120,7 @@ class ItemStateChangeLedgerIntegrationTest extends AbstractIntegrationTest {
         setState(bookId, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE,
                 RegisterProjectionTestDomainInitializer.OUT_OF_STOCK);
 
-        var book = registerPartitionManager.projectOne(fixture.bookTypeId(), bookId, "http://binary").orElseThrow();
+        var book = projectionEngine.projectOne(fixture.bookTypeId(), bookId, "http://binary").orElseThrow();
         assertThat(book.properties()).containsEntry("title", "Symmetric Test Book");
         assertThat(book.properties()).containsEntry("pageCount", 400);
         assertThat(book.states().get(RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE).currentState())
@@ -141,7 +143,7 @@ class ItemStateChangeLedgerIntegrationTest extends AbstractIntegrationTest {
                 Map.of(stateMachineId, stateId), Set.of(), Set.of(), Set.of())), txn, actor, OffsetDateTime.now());
         coordinator.commit(txn, UUID.randomUUID());
 
-        var book = registerPartitionManager.projectOne(fixture.bookTypeId(), bookId, "http://binary").orElseThrow();
+        var book = projectionEngine.projectOne(fixture.bookTypeId(), bookId, "http://binary").orElseThrow();
         assertThat(book.properties()).containsEntry("pageCount", 500);
         assertThat(book.states().get(RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE).currentState())
                 .isEqualTo(RegisterProjectionTestDomainInitializer.OUT_OF_STOCK);

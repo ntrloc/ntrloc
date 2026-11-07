@@ -326,8 +326,10 @@ The item component first — everything else calls it or is called by it.
       aborted transactions leaving reference counts changed.)*
    3. SQL moves behind `ExplicitProjection` (§5.1), one feature at a time: single-item read → filters →
       sort and pagination (with the binary-field fragment from Binary Store) → facets → cross-type →
-      links. *(Done.)* Assembly still runs in `RegisterPartitionManager` on the new rows.
-   4. Assembly moves to ProjectionEngine, working on `RegisterRows` directly.
+      links. *(Done.)*
+   4. Assembly moves to ProjectionEngine, working on `RegisterRows` directly. *(Done:
+      `org.ntrloc.graph.projection.ProjectionEngine`; `RegisterPartitionManager` now depends only on the
+      database.)*
    5. The remaining write-side SQL moves into RegisterStore; `RegisterPartitionManager` goes away.
 2. **Rename `LedgerPartitionManager` → LedgerStore**, with read and write interfaces.
 3. **Split `BinaryPartitionManager`** into BinaryReader / BinaryWriter over BinaryStore.
@@ -366,6 +368,11 @@ bound, so they're features, not refactor steps.
    register is derived (rebuildable by posting the ledger) while binary content is source data with its
    own lifecycle (uploaded before attachment, content-addressed and shared, rewritten by enrichment,
    bytes behind storage adapters). Undecided; separate for now.
+8. **Filtering on a property some items don't grant (revisit).** Filter, sort and facets accept a property
+   the caller can read through *any* marker, then apply it to every item, including items whose markers
+   don't grant it. Filtering `color = 'red'` can return a product whose color the caller can't see,
+   revealing its value (sort order and facet counts leak the same way). Likely fix: apply each clause
+   only to items whose markers grant that property. Found 2026-11-06; not yet changed.
 
 ---
 

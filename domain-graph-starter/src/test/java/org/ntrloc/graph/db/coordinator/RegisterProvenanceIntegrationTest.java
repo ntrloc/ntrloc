@@ -8,7 +8,7 @@ import org.ntrloc.graph.db.partition.ledger.ItemUpdateEntry;
 import org.ntrloc.graph.db.partition.ledger.LinkCreateEntry;
 import org.ntrloc.graph.db.partition.ledger.LinkEndpoint;
 import org.ntrloc.graph.db.partition.ledger.LinkUpdateEntry;
-import org.ntrloc.graph.db.partition.register.RegisterPartitionManager;
+import org.ntrloc.graph.projection.ProjectionEngine;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.ntrloc.graph.projection.LinkProjectionSpec;
 import org.ntrloc.graph.projection.ProjectedItem;
@@ -34,9 +34,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 // not optional, called out by name in that doc's Part E section.
 //
 // Goes through LedgerRegisterCoordinator.prepare/commit directly (not through MutationRequestProcessor)
-// and reads back via RegisterPartitionManager.projectOne -- the register layer itself, one level
-// below EntityManagerImpl. Asserts against createdByUserId/updatedByUserId (the raw UUID
-// RegisterPartitionManager actually populates), not createdBy/updatedBy (the resolved UserInfo
+// and reads back via ProjectionEngine.projectOne, one level below EntityManagerImpl. Asserts
+// against createdByUserId/updatedByUserId (the raw UUID ProjectionEngine populates), not createdBy/updatedBy (the resolved UserInfo
 // ProjectedUserInfoEnricher fills in afterward, at the EntityManagerImpl layer this test
 // deliberately bypasses) -- see ProjectedItem's own comment for why those are two different
 // fields. createdDate/updatedDate are read straight off the register row, never recomputed, so
@@ -47,7 +46,7 @@ class RegisterProvenanceIntegrationTest extends AbstractIntegrationTest {
     private LedgerRegisterCoordinator coordinator;
 
     @Autowired
-    private RegisterPartitionManager registerPartitionManager;
+    private ProjectionEngine projectionEngine;
 
     @Autowired
     private CoordinatorTestDomainInitializer fixture;
@@ -67,7 +66,7 @@ class RegisterProvenanceIntegrationTest extends AbstractIntegrationTest {
     }
 
     private ProjectedItem projectProduct(UUID itemId, Map<String, LinkProjectionSpec> requestedLinks) {
-        return registerPartitionManager
+        return projectionEngine
                 .projectOne(fixture.productTypeId(), itemId, "", requestedLinks, RequestPermissionContext.forAdmin())
                 .orElseThrow();
     }

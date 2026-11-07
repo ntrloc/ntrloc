@@ -13,7 +13,8 @@ import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
 import org.ntrloc.graph.db.partition.authorization.PermissionService;
 import org.ntrloc.graph.db.partition.authorization.RequestPermissionContext;
 import org.ntrloc.graph.db.partition.register.RegisterPartitionManager;
-import org.ntrloc.graph.db.partition.register.RegisterPartitionManager.RenderOptions;
+import org.ntrloc.graph.projection.ProjectionEngine;
+import org.ntrloc.graph.projection.ProjectionEngine.RenderOptions;
 import org.ntrloc.graph.db.partition.process.ProcessAccessible;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminStateMachineView;
@@ -46,16 +47,18 @@ import java.util.stream.Collectors;
 public class EntityManagerImpl implements EntityManager {
 
     private final RegisterPartitionManager registerPartitionManager;
+    private final ProjectionEngine projectionEngine;
     private final SchemaManager schemaManager;
     private final PermissionService permissionService;
     private final MutationRequestProcessor mutationRequestProcessor;
     private final LedgerRegisterCoordinator coordinator;
     private final ProjectedUserInfoEnricher userInfoEnricher;
 
-    public EntityManagerImpl(RegisterPartitionManager registerPartitionManager, SchemaManager schemaManager,
+    public EntityManagerImpl(RegisterPartitionManager registerPartitionManager, ProjectionEngine projectionEngine, SchemaManager schemaManager,
                               PermissionService permissionService, MutationRequestProcessor mutationRequestProcessor,
                               LedgerRegisterCoordinator coordinator, ProjectedUserInfoEnricher userInfoEnricher) {
         this.registerPartitionManager = registerPartitionManager;
+        this.projectionEngine = projectionEngine;
         this.schemaManager = schemaManager;
         this.permissionService = permissionService;
         this.mutationRequestProcessor = mutationRequestProcessor;
@@ -80,13 +83,13 @@ public class EntityManagerImpl implements EntityManager {
         requireReadAccess(principal, actualItemTypeId.get(), spec.itemTypeName());
         // Instance-level check, separate from the type-level one above -- cheaper to check before
         // fetching the item's own (possibly large) properties than to fetch first and discard; see
-        // RegisterPartitionManager.projectOne's own comment on why this lives here, not in a
+        // ProjectionEngine.projectOne's own comment on why this lives here, not in a
         // query-level semi-join.
         if (!permissionService.canReadItem(principal, spec.itemId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown item type: " + spec.itemTypeName());
         }
         var permissionContext = permissionService.buildContext(principal);
-        return userInfoEnricher.enrich(registerPartitionManager.projectOne(actualItemTypeId.get(), spec.itemId(), binaryBaseUrl,
+        return userInfoEnricher.enrich(projectionEngine.projectOne(actualItemTypeId.get(), spec.itemId(), binaryBaseUrl,
                 new RenderOptions(spec.links(), permissionContext, Boolean.TRUE.equals(spec.includePermissions()),
                         Boolean.TRUE.equals(spec.includeStates()), spec.properties())));
     }
@@ -117,8 +120,8 @@ public class EntityManagerImpl implements EntityManager {
         // proven single-table path unchanged -- projectAcrossTypes only engages once polymorphism
         // is actually in play, not on every request.
         return userInfoEnricher.enrich(readableItemTypeIds.size() == 1
-                ? registerPartitionManager.project(readableItemTypeIds.iterator().next(), spec, binaryBaseUrl, permissionContext)
-                : registerPartitionManager.projectAcrossTypes(readableItemTypeIds, spec, binaryBaseUrl, permissionContext));
+                ? projectionEngine.project(readableItemTypeIds.iterator().next(), spec, binaryBaseUrl, permissionContext)
+                : projectionEngine.projectAcrossTypes(readableItemTypeIds, spec, binaryBaseUrl, permissionContext));
     }
 
     // Exactly one of itemTypeName/traitName must be set; resolves to the set of concrete item-type
@@ -245,7 +248,7 @@ public class EntityManagerImpl implements EntityManager {
     }
 
     private boolean guardSatisfied(UUID itemTypeId, UUID itemId, AdminTransitionView transition) {
-        ProjectedItem item = registerPartitionManager
+        ProjectedItem item = projectionEngine
                 .projectOne(itemTypeId, itemId, "", null, RequestPermissionContext.forAdmin())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown item: " + itemId));
         Map<String, String> currentStateByMachine = new java.util.HashMap<>();

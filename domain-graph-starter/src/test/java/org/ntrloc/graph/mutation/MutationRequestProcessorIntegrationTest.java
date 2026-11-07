@@ -1,5 +1,6 @@
 package org.ntrloc.graph.mutation;
 
+import org.ntrloc.graph.projection.ProjectionEngine;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
@@ -73,6 +74,10 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private RegisterPartitionManager registerPartitionManager;
+
+    @Autowired
+
+    private ProjectionEngine projectionEngine;
 
     @Autowired
     private CoordinatorTestDomainInitializer coordinatorFixture;
@@ -161,7 +166,7 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
         processor.process(new MutationRequest(List.of(),
                 List.of(new LinkUpdateMutation(linkId, Map.of("role", "editor")))), SOME_PRINCIPAL);
 
-        var product = registerPartitionManager.projectOne(coordinatorFixture.productTypeId(), productId, "http://binary").orElseThrow();
+        var product = projectionEngine.projectOne(coordinatorFixture.productTypeId(), productId, "http://binary").orElseThrow();
         assertThat(product.links().values().stream().flatMap(List::stream))
                 .anyMatch(link -> link.item().itemId().equals(contributorId) && link.properties().get("role").equals("editor"));
     }
@@ -190,7 +195,7 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
                 List.of(new LinkDeleteMutation(linkId))), SOME_PRINCIPAL);
 
         assertThat(deleteResponse.links()).extracting(r -> r.operation().name()).containsExactly("DELETE");
-        var product = registerPartitionManager.projectOne(coordinatorFixture.productTypeId(), productId, "http://binary").orElseThrow();
+        var product = projectionEngine.projectOne(coordinatorFixture.productTypeId(), productId, "http://binary").orElseThrow();
         assertThat(product.links().values().stream().flatMap(List::stream)).isEmpty();
     }
 
@@ -236,7 +241,7 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
                 List.of(new ItemCreateMutation(null, PRODUCT_TYPE, null)), List.of()), SOME_PRINCIPAL);
 
         UUID itemId = response.items().get(0).itemId();
-        var item = registerPartitionManager.projectOne(coordinatorFixture.productTypeId(), itemId, "http://binary").orElseThrow();
+        var item = projectionEngine.projectOne(coordinatorFixture.productTypeId(), itemId, "http://binary").orElseThrow();
         assertThat(item.properties()).doesNotContainKey("name");
     }
 
@@ -251,7 +256,7 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
         processor.process(new MutationRequest(
                 List.of(new ItemUpdateMutation(productId, clearName)), List.of()), SOME_PRINCIPAL);
 
-        var item = registerPartitionManager.projectOne(coordinatorFixture.productTypeId(), productId, "http://binary").orElseThrow();
+        var item = projectionEngine.projectOne(coordinatorFixture.productTypeId(), productId, "http://binary").orElseThrow();
         assertThat(item.properties()).doesNotContainKey("name");
     }
 
@@ -1023,7 +1028,7 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
                 SOME_PRINCIPAL);
 
         UUID itemId = response.items().get(0).itemId();
-        var item = registerPartitionManager.projectOne(fixture.aTypeId(), itemId, "http://binary").orElseThrow();
+        var item = projectionEngine.projectOne(fixture.aTypeId(), itemId, "http://binary").orElseThrow();
         @SuppressWarnings("unchecked")
         var attachment = (Map<String, Object>) item.properties().get("attachment");
         assertThat(attachment).containsEntry("id", binaryId.toString())
@@ -1112,7 +1117,7 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
                 SOME_PRINCIPAL);
         UUID itemId = response.items().get(0).itemId();
 
-        var item = registerPartitionManager.projectOne(itemTypeId, itemId, "http://binary").orElseThrow();
+        var item = projectionEngine.projectOne(itemTypeId, itemId, "http://binary").orElseThrow();
         assertThat(item.properties()).doesNotContainKey("content");
         @SuppressWarnings("unchecked")
         var file = (Map<String, Object>) item.properties().get("file");
@@ -1129,7 +1134,7 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
                 List.of(new ItemCreateMutation(null, "MutReqProcA", Map.of("count", 42))), List.of()), SOME_PRINCIPAL);
 
         UUID itemId = response.items().get(0).itemId();
-        var item = registerPartitionManager.projectOne(fixture.aTypeId(), itemId, "http://binary").orElseThrow();
+        var item = projectionEngine.projectOne(fixture.aTypeId(), itemId, "http://binary").orElseThrow();
         assertThat(item.properties()).containsEntry("count", 42);
     }
 
@@ -1156,7 +1161,7 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
                 List.of(new ItemCreateMutation(null, "MutReqProcA", Map.of("price", 19.99))), List.of()), SOME_PRINCIPAL);
 
         UUID itemId = response.items().get(0).itemId();
-        var item = registerPartitionManager.projectOne(fixture.aTypeId(), itemId, "http://binary").orElseThrow();
+        var item = projectionEngine.projectOne(fixture.aTypeId(), itemId, "http://binary").orElseThrow();
         assertThat(item.properties()).containsEntry("price", 19.99);
     }
 
@@ -1184,7 +1189,7 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
                 SOME_PRINCIPAL);
 
         UUID itemId = response.items().get(0).itemId();
-        var item = registerPartitionManager.projectOne(fixture.aTypeId(), itemId, "http://binary").orElseThrow();
+        var item = projectionEngine.projectOne(fixture.aTypeId(), itemId, "http://binary").orElseThrow();
         assertThat(item.properties()).containsKey("extra");
     }
 
@@ -1205,7 +1210,7 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
                 SOME_PRINCIPAL);
 
         UUID itemId = response.items().get(0).itemId();
-        var item = registerPartitionManager.projectOne(fixture.aTypeId(), itemId, "http://binary").orElseThrow();
+        var item = projectionEngine.projectOne(fixture.aTypeId(), itemId, "http://binary").orElseThrow();
         assertThat(item.properties().get("extra")).isEqualTo(Map.of("nested", "hello", "second", "world"));
     }
 
@@ -1231,7 +1236,7 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
                 SOME_PRINCIPAL);
 
         UUID itemId = response.items().get(0).itemId();
-        var item = registerPartitionManager.projectOne(fixture.aTypeId(), itemId, "http://binary").orElseThrow();
+        var item = projectionEngine.projectOne(fixture.aTypeId(), itemId, "http://binary").orElseThrow();
         assertThat(item.properties().get("extra")).isEqualTo(Map.of("nested", "extra-value"));
         assertThat(item.properties().get("extra2")).isEqualTo(Map.of("nested", "extra2-value"));
     }
@@ -1248,7 +1253,7 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
                 List.of(new ItemUpdateMutation(itemId, Map.of("extra", Map.of("nested", "changed")))), List.of()),
                 SOME_PRINCIPAL);
 
-        var item = registerPartitionManager.projectOne(fixture.aTypeId(), itemId, "http://binary").orElseThrow();
+        var item = projectionEngine.projectOne(fixture.aTypeId(), itemId, "http://binary").orElseThrow();
         assertThat(item.properties().get("extra")).isEqualTo(Map.of("nested", "changed", "second", "keep-me"));
     }
 
@@ -1285,7 +1290,7 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
                 List.of(new ItemUpdateMutation(itemId, Map.of("extra", leaves))), List.of()),
                 SOME_PRINCIPAL);
 
-        var item = registerPartitionManager.projectOne(fixture.aTypeId(), itemId, "http://binary").orElseThrow();
+        var item = projectionEngine.projectOne(fixture.aTypeId(), itemId, "http://binary").orElseThrow();
         assertThat(item.properties()).doesNotContainKey("extra");
     }
 
@@ -1302,7 +1307,7 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
                         properties))), SOME_PRINCIPAL);
         UUID linkId = response.links().get(0).linkId();
 
-        var item = registerPartitionManager.projectOne(fixture.cTypeId(), cId, "http://binary").orElseThrow();
+        var item = projectionEngine.projectOne(fixture.cTypeId(), cId, "http://binary").orElseThrow();
         return item.links().values().stream().flatMap(List::stream)
                 .filter(link -> link.linkId().equals(linkId))
                 .findFirst().orElseThrow();
@@ -1365,7 +1370,7 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
 
         var link = createCDLinkAndFindIt(Map.of("linkExtra", Map.of("nested", "link-value")));
 
-        var item = registerPartitionManager.projectOne(fixture.aTypeId(), itemId, "http://binary").orElseThrow();
+        var item = projectionEngine.projectOne(fixture.aTypeId(), itemId, "http://binary").orElseThrow();
         assertThat(item.properties().get("extra")).isEqualTo(Map.of("nested", "item-value"));
         assertThat(link.properties().get("linkExtra")).isEqualTo(Map.of("nested", "link-value"));
     }
@@ -1384,7 +1389,7 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
         processor.process(new MutationRequest(List.of(),
                 List.of(new LinkUpdateMutation(linkId, Map.of("linkExtra", Map.of("nested", "changed"))))), SOME_PRINCIPAL);
 
-        var item = registerPartitionManager.projectOne(fixture.cTypeId(), cId, "http://binary").orElseThrow();
+        var item = projectionEngine.projectOne(fixture.cTypeId(), cId, "http://binary").orElseThrow();
         var link = item.links().values().stream().flatMap(List::stream)
                 .filter(l -> l.linkId().equals(linkId)).findFirst().orElseThrow();
         assertThat(link.properties().get("linkExtra")).isEqualTo(Map.of("nested", "changed", "second", "keep-me"));
@@ -1462,7 +1467,7 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
         // (own + supertype chain, via SchemaViewBuilder) with zero changes needed to
         // resolveItemPropertyIds itself -- this proves that "falls out for free" claim, not just
         // assumes it.
-        var item = registerPartitionManager.projectOne(subtypeId, itemId, "http://binary").orElseThrow();
+        var item = projectionEngine.projectOne(subtypeId, itemId, "http://binary").orElseThrow();
         assertThat(item.properties()).containsEntry("inheritedProp", "value-from-supertype");
 
         // Leaf-only storage: the item's actual stored type is the subtype it was created as, not
@@ -1537,7 +1542,7 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
         schemaManager.applyMutations(List.of(new UpdateItemDefinitionMutation(typeId, typeName, "d", null, true, null)));
 
         // Existing instance is untouched -- still readable, not retroactively invalidated.
-        assertThat(registerPartitionManager.projectOne(typeId, existingItemId, "http://binary")).isPresent();
+        assertThat(projectionEngine.projectOne(typeId, existingItemId, "http://binary")).isPresent();
 
         // New instances are rejected going forward.
         assertThatThrownBy(() -> processor.process(new MutationRequest(

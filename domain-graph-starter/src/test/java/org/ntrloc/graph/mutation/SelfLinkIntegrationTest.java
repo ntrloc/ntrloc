@@ -1,9 +1,9 @@
 package org.ntrloc.graph.mutation;
 
+import org.ntrloc.graph.projection.ProjectionEngine;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
-import org.ntrloc.graph.db.partition.register.RegisterPartitionManager;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateItemDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateLinkDefinitionMutation;
@@ -39,7 +39,8 @@ class SelfLinkIntegrationTest extends AbstractIntegrationTest {
     private MutationRequestProcessor processor;
 
     @Autowired
-    private RegisterPartitionManager registerPartitionManager;
+
+    private ProjectionEngine projectionEngine;
 
     @Autowired
     private SchemaManager schemaManager;
@@ -64,7 +65,7 @@ class SelfLinkIntegrationTest extends AbstractIntegrationTest {
     }
 
     private List<UUID> linkedItemIds(UUID personId, String perspectiveName) {
-        var projected = registerPartitionManager.projectOne(fixture.personTypeId(), personId, "http://binary").orElseThrow();
+        var projected = projectionEngine.projectOne(fixture.personTypeId(), personId, "http://binary").orElseThrow();
         return projected.links().getOrDefault(perspectiveName, List.of()).stream()
                 .map(link -> link.item().itemId())
                 .toList();

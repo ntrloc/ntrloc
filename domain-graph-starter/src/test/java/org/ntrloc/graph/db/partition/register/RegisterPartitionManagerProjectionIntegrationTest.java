@@ -1,10 +1,11 @@
 package org.ntrloc.graph.db.partition.register;
 
+import org.ntrloc.graph.projection.ProjectionEngine;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.coordinator.LedgerRegisterCoordinator;
-import org.ntrloc.graph.db.partition.register.RegisterPartitionManager.RenderOptions;
+import org.ntrloc.graph.projection.ProjectionEngine.RenderOptions;
 import org.ntrloc.graph.mutation.ExistingItemReference;
 import org.ntrloc.graph.mutation.ItemCreateMutation;
 import org.ntrloc.graph.mutation.ItemDeleteMutation;
@@ -74,7 +75,8 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
     private WebTestClient webTestClient;
 
     @Autowired
-    private RegisterPartitionManager registerPartitionManager;
+
+    private ProjectionEngine projectionEngine;
 
     @Autowired
     private LedgerRegisterCoordinator coordinator;
@@ -256,7 +258,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
         var scopedSpec = new CollectionProjectionSpec(spec.itemTypeName(), spec.traitName(), spec.sortField(), spec.sortDirection(),
                 combinedFilter, spec.facets(), spec.facetFilters(), spec.stateMachineFacets(), spec.offset(), spec.limit(), spec.links(),
                 spec.properties(), spec.includePermissions(), spec.includeStates());
-        var result = registerPartitionManager.project(fixture.bookTypeId(), scopedSpec, "http://binary");
+        var result = projectionEngine.project(fixture.bookTypeId(), scopedSpec, "http://binary");
         return new ProjectedItemsAndFacets(result);
     }
 
@@ -781,7 +783,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
 
             var spec = new CollectionProjectionSpec(itemTypeName, null, null, null, null,
                     null, null, List.of(machineName), null, null);
-            ProjectionResult result = registerPartitionManager.project(throwawayTypeId, spec, "http://binary");
+            ProjectionResult result = projectionEngine.project(throwawayTypeId, spec, "http://binary");
 
             assertThat(result.stateMachineFacets().get(machineName))
                     .extracting(FacetBucket::label, FacetBucket::count)
@@ -942,7 +944,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
                 .exchange()
                 .expectStatus().isOk();
 
-        var book = registerPartitionManager.projectOne(fixture.bookTypeId(), bookId, "http://binary").orElseThrow();
+        var book = projectionEngine.projectOne(fixture.bookTypeId(), bookId, "http://binary").orElseThrow();
         assertThat(book.links().get("authors"))
                 .extracting(link -> link.item().properties().get("name"))
                 .containsExactly("Frank Herbert");
@@ -1000,7 +1002,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
         UUID bookId = createBook("Dune", 400, true, "Fiction");
         createAuthorLinkedToBook(bookId, "Frank Herbert");
 
-        var book = registerPartitionManager.projectOne(fixture.bookTypeId(), bookId, "http://binary", Map.of())
+        var book = projectionEngine.projectOne(fixture.bookTypeId(), bookId, "http://binary", Map.of())
                 .orElseThrow();
 
         assertThat(book.links()).isEmpty();
@@ -1013,7 +1015,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
         createPublisherLinkedToAuthor(authorId, "Ace Books");
 
         var requestedLinks = Map.of("authors", new LinkProjectionSpec(null));
-        var book = registerPartitionManager.projectOne(fixture.bookTypeId(), bookId, "http://binary", requestedLinks)
+        var book = projectionEngine.projectOne(fixture.bookTypeId(), bookId, "http://binary", requestedLinks)
                 .orElseThrow();
 
         var author = book.links().get("authors").get(0).item();
@@ -1031,7 +1033,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
 
         var requestedLinks = Map.of("authors",
                 new LinkProjectionSpec(Map.of("publisher", new LinkProjectionSpec(null))));
-        var book = registerPartitionManager.projectOne(fixture.bookTypeId(), bookId, "http://binary", requestedLinks)
+        var book = projectionEngine.projectOne(fixture.bookTypeId(), bookId, "http://binary", requestedLinks)
                 .orElseThrow();
 
         var author = book.links().get("authors").get(0).item();
@@ -1266,7 +1268,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
     void displayLabel_singleItemProjection_usesThePatternsPropertyEvenWhenItIsNotRequested() {
         UUID bookId = createBook("Dune", 400, true, "Fiction");
 
-        var book = registerPartitionManager.projectOne(fixture.bookTypeId(), bookId, "http://binary",
+        var book = projectionEngine.projectOne(fixture.bookTypeId(), bookId, "http://binary",
                 new RenderOptions(null, RequestPermissionContext.forAdmin(), false, false, List.of("pageCount"))).orElseThrow();
 
         assertThat(book.properties()).containsOnlyKeys("pageCount");
@@ -1279,7 +1281,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
         createAuthorLinkedToBook(bookId, "Frank Herbert");
 
         var requestedLinks = Map.of("authors", new LinkProjectionSpec(null));
-        var book = registerPartitionManager.projectOne(fixture.bookTypeId(), bookId, "http://binary",
+        var book = projectionEngine.projectOne(fixture.bookTypeId(), bookId, "http://binary",
                 new RenderOptions(requestedLinks, RequestPermissionContext.forAdmin(), true, true, List.of("title"))).orElseThrow();
 
         assertThat(book.properties()).containsOnlyKeys("title");
@@ -1299,7 +1301,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
         setState(bookId, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE,
                 RegisterProjectionTestDomainInitializer.OUT_OF_STOCK);
 
-        var book = registerPartitionManager.projectOne(fixture.bookTypeId(), bookId, "http://binary").orElseThrow();
+        var book = projectionEngine.projectOne(fixture.bookTypeId(), bookId, "http://binary").orElseThrow();
         assertThat(book.states().get(RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE).currentState())
                 .isEqualTo(RegisterProjectionTestDomainInitializer.OUT_OF_STOCK);
     }
@@ -1308,7 +1310,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
     void projection_forAnItemNotInAMachine_surfacesTheMachineAsStartable() {
         UUID bookId = createBook("Dune", 400, true, "Fiction");
 
-        var book = registerPartitionManager.projectOne(fixture.bookTypeId(), bookId, "http://binary").orElseThrow();
+        var book = projectionEngine.projectOne(fixture.bookTypeId(), bookId, "http://binary").orElseThrow();
         var s = book.states().get(RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE);
         assertThat(s).isNotNull();
         assertThat(s.currentState()).isNull();
@@ -1329,7 +1331,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
                 java.util.Map.of(), java.util.Map.of(), java.util.Map.of(), java.util.Map.of(),
                 java.util.Map.of(), java.util.Map.of(), java.util.Map.of(), java.util.Map.of(), java.util.Map.of());
 
-        var book = registerPartitionManager.projectOne(fixture.bookTypeId(), bookId, "http://binary", null, noGrants).orElseThrow();
+        var book = projectionEngine.projectOne(fixture.bookTypeId(), bookId, "http://binary", null, noGrants).orElseThrow();
 
         assertThat(book.states()).isNull();
     }
@@ -1346,7 +1348,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
                 RegisterProjectionTestDomainInitializer.OUT_OF_STOCK);
 
         // Scoped via the project(spec) helper (testMarker), not a raw, unfiltered
-        // registerPartitionManager.project(...) call -- unscoped, this queries every
+        // projectionEngine.project(...) call -- unscoped, this queries every
         // RegisterProjectionTestBook row ever created across the whole suite's shared container,
         // and the default page size can cut off before reaching this test's own book once enough
         // other tests have created rows of their own.
@@ -1363,7 +1365,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
         setState(bookId, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE,
                 RegisterProjectionTestDomainInitializer.OUT_OF_STOCK);
 
-        var book = registerPartitionManager.projectOne(fixture.bookTypeId(), bookId, "http://binary").orElseThrow();
+        var book = projectionEngine.projectOne(fixture.bookTypeId(), bookId, "http://binary").orElseThrow();
         var s = book.states().get(RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE);
         assertThat(s.startable()).isFalse();
         assertThat(s.availableTransitions()).extracting(t -> t.name())
@@ -1413,7 +1415,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
                 .param("itemId", bookId)
                 .update();
 
-        assertThatThrownBy(() -> registerPartitionManager.projectOne(fixture.bookTypeId(), bookId, "http://binary"))
+        assertThatThrownBy(() -> projectionEngine.projectOne(fixture.bookTypeId(), bookId, "http://binary"))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessageContaining("Failed to parse properties JSONB");
     }
@@ -1432,7 +1434,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
         coordinator.prepare(List.of(new ItemCreateEntry(bookId, fixture.bookTypeId(),
                 Map.of(fixture.titlePropertyId(), "Ghost Edition"), Map.of(), Set.of())), UUID.randomUUID(), actor, OffsetDateTime.now());
 
-        assertThat(registerPartitionManager.projectOne(fixture.bookTypeId(), bookId, "http://binary")).isEmpty();
+        assertThat(projectionEngine.projectOne(fixture.bookTypeId(), bookId, "http://binary")).isEmpty();
     }
 
     @Test
@@ -1449,7 +1451,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
         var spec = new CollectionProjectionSpec(BOOK_TYPE, null, null, new AndPredicate(List.of(
                 new PropertyValuePredicate("testMarker", Operator.EQUALS, marker),
                 new PropertyValuePredicate("title", Operator.EQUALS, "Ghost Edition"))));
-        var result = registerPartitionManager.project(fixture.bookTypeId(), spec, "http://binary");
+        var result = projectionEngine.project(fixture.bookTypeId(), spec, "http://binary");
 
         assertThat(result.items()).isEmpty();
     }
@@ -1464,7 +1466,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
         var spec = new CollectionProjectionSpec(BOOK_TYPE, null, null, new AndPredicate(List.of(
                 new PropertyValuePredicate("testMarker", Operator.EQUALS, marker),
                 new PropertyValuePredicate("title", Operator.EQUALS, "Ghost Edition"))));
-        var result = registerPartitionManager.projectAcrossTypes(Set.of(fixture.bookTypeId()), spec, "http://binary");
+        var result = projectionEngine.projectAcrossTypes(Set.of(fixture.bookTypeId()), spec, "http://binary");
 
         assertThat(result.items()).isEmpty();
     }

@@ -1,11 +1,11 @@
 package org.ntrloc.graph.mutation;
 
+import org.ntrloc.graph.projection.ProjectionEngine;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.coordinator.CoordinatorTestDomainInitializer;
 import org.ntrloc.graph.db.partition.ledger.LedgerPartitionManager;
-import org.ntrloc.graph.db.partition.register.RegisterPartitionManager;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -29,7 +29,8 @@ class MutationControllerIntegrationTest extends AbstractIntegrationTest {
     private WebTestClient webTestClient;
 
     @Autowired
-    private RegisterPartitionManager registerPartitionManager;
+
+    private ProjectionEngine projectionEngine;
 
     @Autowired
     private CoordinatorTestDomainInitializer fixture;
@@ -78,7 +79,7 @@ class MutationControllerIntegrationTest extends AbstractIntegrationTest {
         UUID productId = response.items().stream().filter(r -> "product-1".equals(r.refId())).findFirst().orElseThrow().itemId();
         UUID contributorId = response.items().stream().filter(r -> "contributor-1".equals(r.refId())).findFirst().orElseThrow().itemId();
 
-        var product = registerPartitionManager.projectOne(fixture.productTypeId(), productId, "http://binary").orElseThrow();
+        var product = projectionEngine.projectOne(fixture.productTypeId(), productId, "http://binary").orElseThrow();
         assertThat(product.links().values().stream().flatMap(List::stream))
                 .anyMatch(link -> link.item().itemId().equals(contributorId) && link.properties().get("role").equals("author"));
     }
@@ -137,7 +138,7 @@ class MutationControllerIntegrationTest extends AbstractIntegrationTest {
                 .exchange()
                 .expectStatus().isOk();
 
-        var updated = registerPartitionManager.projectOne(fixture.productTypeId(), realProductId, "http://binary").orElseThrow();
+        var updated = projectionEngine.projectOne(fixture.productTypeId(), realProductId, "http://binary").orElseThrow();
         assertThat(updated.properties()).containsEntry("name", "Widget Pro");
 
         // Deleting the product alone should auto-cascade the link, per ItemDeleteCascadeExpander.
@@ -147,8 +148,8 @@ class MutationControllerIntegrationTest extends AbstractIntegrationTest {
                 .exchange()
                 .expectStatus().isOk();
 
-        assertThat(registerPartitionManager.projectOne(fixture.productTypeId(), realProductId, "http://binary")).isEmpty();
-        var survivingContributor = registerPartitionManager.projectOne(fixture.contributorTypeId(), realContributorId, "http://binary").orElseThrow();
+        assertThat(projectionEngine.projectOne(fixture.productTypeId(), realProductId, "http://binary")).isEmpty();
+        var survivingContributor = projectionEngine.projectOne(fixture.contributorTypeId(), realContributorId, "http://binary").orElseThrow();
         assertThat(survivingContributor.links().values().stream().flatMap(List::stream)).isEmpty();
     }
 
