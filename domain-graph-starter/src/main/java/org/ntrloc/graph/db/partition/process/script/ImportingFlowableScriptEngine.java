@@ -22,7 +22,7 @@ import java.util.stream.Collectors;
 // ScriptEngineFactory/classloader level instead, since Groovy's `new X()` is a compile-time
 // construct `with` has no equivalent lever over.
 // `with` only affects lookups that don't already resolve to something in scope, so execution/
-// entityManager/etc. (real script bindings) and Packages/Java (Nashorn's own globals, never
+// entityReadService/etc. (real script bindings) and Packages/Java (Nashorn's own globals, never
 // matched by JavaImporter's own property list) fall through completely unaffected.
 class ImportingFlowableScriptEngine implements FlowableScriptEngine {
 

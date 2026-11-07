@@ -1,6 +1,5 @@
 package org.ntrloc.graph.db.partition.register;
 
-import org.ntrloc.graph.access.FactResolver;
 import org.ntrloc.graph.db.partition.register.ExplicitProjection.Access;
 import org.ntrloc.graph.db.partition.register.ExplicitProjection.Comparison;
 import org.ntrloc.graph.db.partition.register.ExplicitProjection.Condition;
@@ -47,7 +46,7 @@ import java.util.stream.Collectors;
 // writer. Also the FactResolver marker pipelines read current values through, and the keeper of each
 // type's table as the schema changes.
 @Component
-public class RegisterStore implements SchemaChangeListener, FactResolver {
+public class RegisterStore implements RegisterStoreReader, RegisterStoreWriter, SchemaChangeListener {
 
 
     private static final String STATE_CURRENT_STATE_ID = "currentStateId";
@@ -87,6 +86,7 @@ public class RegisterStore implements SchemaChangeListener, FactResolver {
         return "register_link_" + linkTypeId.toString().replace("-", "_");
     }
 
+    @Override
     public RegisterRows query(ExplicitProjection projection) {
         List<UUID> itemTypeIds = List.copyOf(projection.itemTypeIds());
         SqlFragment where = whereClause(projection.filter(), projection.access());
@@ -591,6 +591,7 @@ public class RegisterStore implements SchemaChangeListener, FactResolver {
 
     // binaryPropertyIds: the item type's BINARY properties, which go to register_binary_property
     // rather than the properties JSONB.
+    @Override
     public UUID stageItemCreate(UUID itemId, UUID itemTypeId, Map<UUID, Object> properties, Map<UUID, UUID> initialStates,
                                  Set<UUID> binaryPropertyIds, StagingContext staging) {
         Map<String, Object> states = new HashMap<>();
@@ -624,7 +625,8 @@ public class RegisterStore implements SchemaChangeListener, FactResolver {
     //
     // Deliberately deferred: stateChanges values are accepted unconditionally -- this does not check
     // that a given stateId is actually reachable from the item's current state via a defined
-    // transition. Transition validity/guard enforcement lives in EntityManagerImpl.executeTransition.
+    // transition. Transition validity/guard enforcement lives in EntityWriteService.executeTransition.
+    @Override
     public UUID stageItemChange(UUID itemId, Map<UUID, Object> propertiesDiff, Map<UUID, UUID> stateChanges,
                                  Set<UUID> stateMachinesEnded, Set<UUID> binaryPropertyIds, StagingContext staging) {
         UUID itemTypeId = findItemTypeId(itemId).orElseThrow();
@@ -747,6 +749,7 @@ public class RegisterStore implements SchemaChangeListener, FactResolver {
         return registerItemId;
     }
 
+    @Override
     public Optional<UUID> findItemTypeId(UUID itemId) {
         return jdbcClient.sql("SELECT item_type_id FROM register_item WHERE item_id = :itemId AND state = 'COMMITTED'")
                 .param(PARAM_ITEM_ID, itemId)
@@ -759,6 +762,7 @@ public class RegisterStore implements SchemaChangeListener, FactResolver {
     // own-property signals against this item's about-to-be-committed state. No name-resolution step
     // (unlike the now-retired DMN-input-map helpers this replaces), so an empty diff still needs the
     // current row read rather than skipping straight to an empty result.
+    @Override
     public Map<UUID, Object> resolveMergedPropertiesById(UUID itemId, UUID itemTypeId, Map<UUID, Object> propertiesDiff) {
         Map<String, Object> currentById = currentPropertiesByIdString(itemId, itemTypeId);
         Map<String, Object> mergedById = propertiesDiff.isEmpty()
@@ -768,6 +772,7 @@ public class RegisterStore implements SchemaChangeListener, FactResolver {
     }
 
     /** This item's current committed properties, keyed by property id -- what NoOpMutationFilter compares an incoming diff against. */
+    @Override
     public Map<UUID, Object> currentPropertiesById(UUID itemId, UUID itemTypeId) {
         return toUuidKeyedMap(currentPropertiesByIdString(itemId, itemTypeId));
     }
@@ -786,6 +791,7 @@ public class RegisterStore implements SchemaChangeListener, FactResolver {
     }
 
     /** This link's current committed properties, keyed by property id -- the link counterpart to currentPropertiesById. */
+    @Override
     public Map<UUID, Object> currentLinkPropertiesById(UUID linkId, UUID linkTypeId) {
         return toUuidKeyedMap(currentLinkPropertiesByIdString(linkId, linkTypeId));
     }
@@ -805,6 +811,7 @@ public class RegisterStore implements SchemaChangeListener, FactResolver {
 
     // Link counterpart to resolveMergedPropertiesById -- merges an update's property diff onto the
     // link's current committed properties, keyed by property id.
+    @Override
     public Map<UUID, Object> resolveMergedLinkPropertiesById(UUID linkId, UUID linkTypeId, Map<UUID, Object> propertiesDiff) {
         Map<String, Object> currentById = currentLinkPropertiesByIdString(linkId, linkTypeId);
         Map<String, Object> mergedById = propertiesDiff.isEmpty()
@@ -817,6 +824,7 @@ public class RegisterStore implements SchemaChangeListener, FactResolver {
     // same items)? Matching on both perspective ids already pins down the link type -- a
     // perspective id belongs to exactly one schema_link definition -- so no separate link-type
     // filter is needed.
+    @Override
     public Optional<UUID> findExistingLinkId(RegisterLinkEndpoint endpointA, RegisterLinkEndpoint endpointB) {
         return jdbcClient.sql("""
                 SELECT rl.link_id
@@ -838,6 +846,7 @@ public class RegisterStore implements SchemaChangeListener, FactResolver {
     }
 
     /** Does a COMMITTED link currently exist under this id? */
+    @Override
     public boolean linkExists(UUID linkId) {
         return jdbcClient.sql("SELECT 1 FROM register_link WHERE link_id = :linkId AND state = 'COMMITTED'")
                 .param(PARAM_LINK_ID, linkId)
@@ -855,6 +864,7 @@ public class RegisterStore implements SchemaChangeListener, FactResolver {
     // Returns the item's binary values in the replaced committed row (none for a create) and in the
     // newly committed one. Both are read before the old row is deleted, since its
     // register_binary_property rows cascade-delete with it.
+    @Override
     public BinaryValueChange commitItem(UUID itemId, UUID transactionId, UUID commitId) {
         UUID stagedRegisterItemId = jdbcClient.sql("""
                 SELECT id FROM register_item WHERE item_id = :itemId AND transaction_id = :transactionId AND state = 'UNCOMMITTED'
@@ -911,6 +921,7 @@ public class RegisterStore implements SchemaChangeListener, FactResolver {
 
     // Returns the binary values the item held, all now detached. They're read before the delete:
     // register_binary_property rows cascade-delete with the register_item row.
+    @Override
     public BinaryValueChange deleteItem(UUID itemId) {
         BinaryValueChange detached = jdbcClient.sql("SELECT id FROM register_item WHERE item_id = :itemId AND state = 'COMMITTED'")
                 .param(PARAM_ITEM_ID, itemId)
@@ -925,6 +936,7 @@ public class RegisterStore implements SchemaChangeListener, FactResolver {
         return detached;
     }
 
+    @Override
     public UUID stageLinkCreate(UUID linkId, UUID linkTypeId, RegisterLinkEndpoint endpointA, RegisterLinkEndpoint endpointB,
                                  Map<UUID, Object> properties, StagingContext staging) {
         UUID registerLinkId = insertLinkRow(linkId, linkTypeId, keysToStrings(properties), staging.transactionId(), RowAudit.created(staging));
@@ -932,6 +944,7 @@ public class RegisterStore implements SchemaChangeListener, FactResolver {
         return registerLinkId;
     }
 
+    @Override
     public Optional<UUID> findLinkTypeId(UUID linkId) {
         return jdbcClient.sql("SELECT link_definition_id FROM register_link WHERE link_id = :linkId AND state = 'COMMITTED'")
                 .param(PARAM_LINK_ID, linkId)
@@ -943,6 +956,7 @@ public class RegisterStore implements SchemaChangeListener, FactResolver {
     // MutationRequestProcessor.checkLinkPerspectiveCardinality baselines a new delta against for an
     // item that already existed before this request (a brand new item's own baseline is zero,
     // never queried at all).
+    @Override
     public int countLinksForPerspective(UUID itemId, UUID perspectiveId) {
         return jdbcClient.sql("""
                 SELECT count(*) FROM register_item_link_perspective rilp
@@ -961,6 +975,7 @@ public class RegisterStore implements SchemaChangeListener, FactResolver {
     // to know which perspective-cardinality counts it's about to lower, since the mutation itself
     // only ever carries the linkId. Mirrors the endpoint-lookup query stageLinkUpdate's own re-point
     // step already runs, just against the link's own id instead of its about-to-be-replaced register row.
+    @Override
     public List<RegisterLinkEndpoint> findLinkEndpoints(UUID linkId) {
         return jdbcClient.sql("""
                 SELECT rilp.perspective_id, ri.item_id
@@ -976,6 +991,7 @@ public class RegisterStore implements SchemaChangeListener, FactResolver {
                 .list();
     }
 
+    @Override
     public UUID stageLinkUpdate(UUID linkId, Map<UUID, Object> propertiesDiff, StagingContext staging) {
         var current = jdbcClient.sql("""
                 SELECT id AS current_register_link_id, created_date, created_by
@@ -1075,6 +1091,7 @@ public class RegisterStore implements SchemaChangeListener, FactResolver {
         }
     }
 
+    @Override
     public void commitLink(UUID linkId, UUID transactionId, UUID commitId) {
         UUID stagedRegisterLinkId = jdbcClient.sql("""
                 SELECT id FROM register_link WHERE link_id = :linkId AND transaction_id = :transactionId AND state = 'UNCOMMITTED'
@@ -1096,6 +1113,7 @@ public class RegisterStore implements SchemaChangeListener, FactResolver {
                 .update();
     }
 
+    @Override
     public void deleteLink(UUID linkId) {
         jdbcClient.sql("DELETE FROM register_link WHERE link_id = :linkId AND state = 'COMMITTED'")
                 .param(PARAM_LINK_ID, linkId)
@@ -1105,6 +1123,7 @@ public class RegisterStore implements SchemaChangeListener, FactResolver {
     // Markers are never staged (see LedgerRegisterCoordinatorImpl.prepare) -- unlike a create/
     // update, there's no new register_item/register_link row being built, just a plain
     // insert/delete against an already-COMMITTED one, applied directly at commit like a delete.
+    @Override
     public void postItemMarkerAdd(UUID itemId, UUID markerId) {
         jdbcClient.sql("""
                 INSERT INTO register_item_marker (register_item_id, marker_id)
@@ -1116,6 +1135,7 @@ public class RegisterStore implements SchemaChangeListener, FactResolver {
                 .update();
     }
 
+    @Override
     public void postItemMarkerRemove(UUID itemId, UUID markerId) {
         jdbcClient.sql("""
                 DELETE FROM register_item_marker
@@ -1127,7 +1147,7 @@ public class RegisterStore implements SchemaChangeListener, FactResolver {
                 .update();
     }
 
-    // FactResolver's own own item-traversal method -- see that interface's class comment for why
+    // FactResolver's own item-traversal method -- see that interface's class comment for why
     // this class implements it directly rather than through a separate adapter: every data access it
     // needs already lives here. Same join shape as findLinksForItem just below, narrowed to one
     // named perspective (as seen from itemId's own side) instead of every link the item has.
@@ -1160,9 +1180,8 @@ public class RegisterStore implements SchemaChangeListener, FactResolver {
         return currentStateIds(itemId).get(stateMachineId);
     }
 
-    public record RegisterLinkedItem(UUID linkId, UUID connectedItemId) {
-    }
 
+    @Override
     public List<RegisterLinkedItem> findLinksForItem(UUID itemId) {
         return jdbcClient.sql("""
                 SELECT rl.link_id AS link_id, ri_other.item_id AS connected_item_id
@@ -1202,6 +1221,7 @@ public class RegisterStore implements SchemaChangeListener, FactResolver {
     // Named to match LedgerStoreWriter.abort() -- this and that together are what
     // LedgerRegisterCoordinator.abort() calls to discard a prepared-but-not-yet-committed
     // transaction's staged rows on both sides.
+    @Override
     public void abort(UUID transactionId) {
         jdbcClient.sql("DELETE FROM register_item WHERE transaction_id = :transactionId AND state = 'UNCOMMITTED'")
                 .param(PARAM_TRANSACTION_ID, transactionId)
@@ -1241,6 +1261,7 @@ public class RegisterStore implements SchemaChangeListener, FactResolver {
     // The item's current state id per state machine it is participating in (empty for machines it
     // isn't in). Reads the committed register row's states JSONB, shape
     // { "<stateMachineId>": { "currentStateId": "<stateId>" } }.
+    @Override
     public Map<UUID, UUID> currentStateIds(UUID itemId) {
         UUID itemTypeId = findItemTypeId(itemId).orElseThrow(() -> new IllegalArgumentException("Unknown item: " + itemId));
         String statesJson = jdbcClient.sql("""

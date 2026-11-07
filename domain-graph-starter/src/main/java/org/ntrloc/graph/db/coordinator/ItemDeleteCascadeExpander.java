@@ -4,7 +4,7 @@ import org.ntrloc.graph.db.partition.ledger.ItemDeleteEntry;
 import org.ntrloc.graph.db.partition.ledger.ItemUpdateEntry;
 import org.ntrloc.graph.db.partition.ledger.LedgerEntry;
 import org.ntrloc.graph.db.partition.ledger.LinkDeleteEntry;
-import org.ntrloc.graph.db.partition.register.RegisterStore;
+import org.ntrloc.graph.db.partition.register.RegisterStoreReader;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -22,9 +22,9 @@ import java.util.UUID;
 @Component
 public class ItemDeleteCascadeExpander {
 
-    private final RegisterStore registerStore;
+    private final RegisterStoreReader registerStore;
 
-    public ItemDeleteCascadeExpander(RegisterStore registerStore) {
+    public ItemDeleteCascadeExpander(RegisterStoreReader registerStore) {
         this.registerStore = registerStore;
     }
 

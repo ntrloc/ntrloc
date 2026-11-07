@@ -9,7 +9,7 @@ import org.ntrloc.graph.db.partition.ledger.LinkDeleteEntry;
 import org.ntrloc.graph.db.partition.ledger.LinkEndpoint;
 import org.ntrloc.graph.db.partition.ledger.LinkUpdateEntry;
 import org.ntrloc.graph.db.partition.register.RegisterLinkEndpoint;
-import org.ntrloc.graph.db.partition.register.RegisterStore;
+import org.ntrloc.graph.db.partition.register.RegisterStoreReader;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
 import org.ntrloc.graph.db.partition.schema.repository.SchemaRepository;
 import org.springframework.stereotype.Component;
@@ -39,11 +39,11 @@ import java.util.UUID;
 @Component
 public class NoOpMutationFilter {
 
-    private final RegisterStore registerStore;
+    private final RegisterStoreReader registerStore;
     private final SchemaRepository schemaRepository;
     private final SchemaManager schemaManager;
 
-    public NoOpMutationFilter(RegisterStore registerStore, SchemaRepository schemaRepository,
+    public NoOpMutationFilter(RegisterStoreReader registerStore, SchemaRepository schemaRepository,
                               SchemaManager schemaManager) {
         this.registerStore = registerStore;
         this.schemaRepository = schemaRepository;

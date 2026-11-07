@@ -11,7 +11,7 @@ import org.ntrloc.graph.db.partition.ledger.LedgerStoreReader;
 import org.ntrloc.graph.db.partition.ledger.ManuallyAppliedMarker;
 import org.ntrloc.graph.db.partition.ledger.MarkerAttribution;
 import org.ntrloc.graph.db.partition.ledger.PipelineAppliedMarker;
-import org.ntrloc.graph.db.partition.register.RegisterStore;
+import org.ntrloc.graph.db.partition.register.RegisterStoreReader;
 import org.springframework.stereotype.Service;
 
 import java.util.HashMap;
@@ -42,10 +42,10 @@ import java.util.UUID;
 public class PipelineMarkerDecisionService {
 
     private final PipelineSource pipelineSource;
-    private final RegisterStore registerStore;
+    private final RegisterStoreReader registerStore;
     private final LedgerStoreReader ledgerStore;
 
-    public PipelineMarkerDecisionService(PipelineSource pipelineSource, RegisterStore registerStore,
+    public PipelineMarkerDecisionService(PipelineSource pipelineSource, RegisterStoreReader registerStore,
                                           LedgerStoreReader ledgerStore) {
         this.pipelineSource = pipelineSource;
         this.registerStore = registerStore;

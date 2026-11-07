@@ -8,7 +8,7 @@ import java.util.Map;
 public record CollectionProjectionSpec(
         String itemTypeName,
         // Mutually exclusive with itemTypeName -- exactly one must be set (enforced by
-        // EntityManagerImpl, not here). Resolves to every item type implementing this trait,
+        // EntityReadService, not here). Resolves to every item type implementing this trait,
         // directly or via any ancestor in its supertype chain (see SchemaManager.
         // resolveTraitImplementerItemTypeIds). Kept as a plain nullable String, not a primitive,
         // like every other optional field here -- this app's Jackson setup requires a primitive

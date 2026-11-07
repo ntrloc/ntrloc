@@ -41,7 +41,7 @@ class MutationControllerIntegrationTest extends AbstractIntegrationTest {
     @Autowired
     private JdbcClient jdbcClient;
 
-    // MutationController resolves a principal for ledger attribution (EntityManager.mutate's own
+    // MutationController resolves a principal for ledger attribution (EntityWriteService.mutate's own
     // note). "root" is AuthorizationTestDataInitializer's globally-seeded admin
     // (ProcessEngineIntegrationTest already relies on the same one), not a value invented for
     // this file specifically.

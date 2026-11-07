@@ -11,7 +11,7 @@ import org.ntrloc.graph.db.partition.ledger.LinkDeleteEntry;
 import org.ntrloc.graph.db.partition.ledger.LinkEndpoint;
 import org.ntrloc.graph.db.partition.ledger.LinkUpdateEntry;
 import org.ntrloc.graph.db.partition.register.RegisterLinkEndpoint;
-import org.ntrloc.graph.db.partition.register.RegisterStore;
+import org.ntrloc.graph.db.partition.register.RegisterStoreReader;
 import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemDefinitionView;
@@ -45,7 +45,7 @@ import java.util.UUID;
 //
 // process() demands a real, non-null principal via @PreAuthorize (see
 // docs/ntrloc-principal-enforcement-plan.md, Part C) -- this is a top-level component
-// independently reachable from EntityManagerImpl, so it carries its own guard. The helpers that
+// independently reachable from EntityWriteService, so it carries its own guard. The helpers that
 // take a principal (processItemCreate here, PropertyValidator's write checks) are only called from
 // process(), so they take a plain NtrlocPrincipal with no null check of their own.
 @Component
@@ -55,14 +55,14 @@ public class MutationRequestProcessor {
     private static final String ITEM_TYPE_NAME_PATH_SUFFIX = ".itemTypeName";
 
     private final LedgerRegisterCoordinator coordinator;
-    private final RegisterStore registerStore;
+    private final RegisterStoreReader registerStore;
     private final SchemaManager schemaManager;
     private final PropertyValidator propertyValidator;
     private final LinkEndpointResolver linkEndpointResolver;
     private final PermissionService permissionService;
 
     public MutationRequestProcessor(LedgerRegisterCoordinator coordinator,
-                                     RegisterStore registerStore,
+                                     RegisterStoreReader registerStore,
                                      SchemaManager schemaManager,
                                      PropertyValidator propertyValidator,
                                      LinkEndpointResolver linkEndpointResolver,
@@ -397,7 +397,7 @@ public class MutationRequestProcessor {
                 .toList();
     }
 
-    // Mirrors EntityManagerImpl.resolveItemTypeId -- the one existing name->id precedent in
+    // Mirrors EntityReadService.resolveItemTypeId -- the one existing name->id precedent in
     // this codebase, on the read side.
     private Optional<UUID> findItemTypeIdByName(String itemTypeName) {
         return schemaManager.getAdminSchema().items().stream()

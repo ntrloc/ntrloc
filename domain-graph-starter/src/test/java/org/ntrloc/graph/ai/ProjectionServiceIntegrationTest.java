@@ -23,7 +23,7 @@ import static org.mockito.Mockito.when;
 // Proves the whole MCP-tool-dispatch path for this read tool, end to end -- something no test
 // exercised at all before Part C of docs/ntrloc-principal-enforcement-plan.md (zero tests existed
 // for any of the four MCP tool services). Called as a real autowired Spring bean (so its own AOP
-// proxy, and every proxy of every bean it calls through -- EntityManager, PermissionService --
+// proxy, and every proxy of every bean it calls through -- EntityReadService, PermissionService --
 // is genuinely in play, not bypassed via direct instantiation), with a mocked
 // McpSyncRequestContext standing in for the one piece that would otherwise need real MCP wire
 // protocol machinery to construct; everything downstream of transportContext() is the real,
@@ -50,10 +50,10 @@ class ProjectionServiceIntegrationTest extends AbstractIntegrationTest {
     }
 
     // The property that matters here: a real, authenticated MCP call makes it all the way through
-    // EntityManager.project's own @PreAuthorize guard (added in Part C) without being incorrectly
+    // EntityReadService.project's own @PreAuthorize guard (added in Part C) without being incorrectly
     // rejected -- proving the new guard doesn't break the one legitimate path into this tool,
     // not just that an anonymous one gets refused (already covered by the test above and by this
-    // method's own pre-existing null-check, neither of which touch EntityManager at all).
+    // method's own pre-existing null-check, neither of which touch EntityReadService at all).
     @Test
     void projectItems_withAValidBearerToken_succeeds() {
         var user = securityRepo.createUser("MCP Projection Test User", "mcp-projection-user-" + UUID.randomUUID() + "@example.com", true);

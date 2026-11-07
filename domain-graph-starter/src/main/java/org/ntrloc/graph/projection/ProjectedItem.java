@@ -39,7 +39,7 @@ import java.util.UUID;
 // createdBy/updatedBy are UserInfo, resolved from the register row's own raw
 // createdByUserId/updatedByUserId -- RegisterStore populates only the *UserId fields
 // (register must never import the security partition, directly or via an injected resolver: it
-// has no way to produce a real UserInfo), leaving createdBy/updatedBy null; EntityManagerImpl
+// has no way to produce a real UserInfo), leaving createdBy/updatedBy null; EntityReadService
 // (which already legitimately crosses partition boundaries) resolves them afterward, batched
 // across the whole page, before anything reaches a controller. createdByUserId/updatedByUserId
 // are @JsonIgnore -- an implementation seam for that enrichment step, never part of the actual

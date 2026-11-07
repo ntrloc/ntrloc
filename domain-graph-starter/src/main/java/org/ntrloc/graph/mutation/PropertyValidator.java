@@ -13,7 +13,7 @@ import java.util.UUID;
 import org.ntrloc.graph.db.partition.authorization.PermissionService;
 import org.ntrloc.graph.db.partition.authorization.RequestPermissionContext;
 import org.ntrloc.graph.db.partition.binary.BinaryStore;
-import org.ntrloc.graph.db.partition.register.RegisterStore;
+import org.ntrloc.graph.db.partition.register.RegisterStoreReader;
 import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
 import org.ntrloc.graph.db.partition.schema.ControlledListManager;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
@@ -34,12 +34,12 @@ class PropertyValidator {
     private static final String PROPERTY_QUOTE_PREFIX = "Property '";
 
     private final SchemaManager schemaManager;
-    private final RegisterStore registerStore;
+    private final RegisterStoreReader registerStore;
     private final PermissionService permissionService;
     private final BinaryStore binaryStore;
     private final ControlledListManager controlledListManager;
 
-    PropertyValidator(SchemaManager schemaManager, RegisterStore registerStore, PermissionService permissionService,
+    PropertyValidator(SchemaManager schemaManager, RegisterStoreReader registerStore, PermissionService permissionService,
                       BinaryStore binaryStore, ControlledListManager controlledListManager) {
         this.schemaManager = schemaManager;
         this.registerStore = registerStore;

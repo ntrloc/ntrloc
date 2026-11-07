@@ -39,10 +39,10 @@ class MutationServiceIntegrationTest extends AbstractIntegrationTest {
 
     // Unlike ProjectionService (which has always refused an unresolvable caller), this used to be
     // the one real gap Part C found: executeMutation would resolve a null principal and pass it
-    // straight into entityManager.mutate(...) with no check of its own, relying on mutate()'s own
+    // straight into entityWriteService.mutate(...) with no check of its own, relying on mutate()'s own
     // (then-tolerant) handling. mutate() now demands a real principal via @PreAuthorize, so this
     // either needed its own explicit guard (added) or would otherwise surface as an
-    // AuthorizationDeniedException from deep inside EntityManager instead of a clean 401 at the
+    // AuthorizationDeniedException from deep inside EntityWriteService instead of a clean 401 at the
     // tool boundary -- asserting ResponseStatusException here is what proves the explicit guard
     // added to MutationService itself is the one actually firing, not just mutate()'s.
     @Test
@@ -57,7 +57,7 @@ class MutationServiceIntegrationTest extends AbstractIntegrationTest {
     }
 
     // The property that matters here: a real, authenticated MCP call makes it all the way through
-    // EntityManager.mutate's own @PreAuthorize guard (added in Part C) without being incorrectly
+    // EntityWriteService.mutate's own @PreAuthorize guard (added in Part C) without being incorrectly
     // rejected -- proving the new guard doesn't break the one legitimate path into this tool.
     @Test
     void executeMutation_withAValidBearerToken_succeeds() {

@@ -25,7 +25,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 // not a direct, unaudited register UPDATE. This covers that write path specifically -- read-side
 // behavior (projectOne reflecting the new state, StateValuePredicate filtering, state facets) is
 // already covered by RegisterPartitionManagerProjectionIntegrationTest and unaffected. The real
-// transition entry points (EntityManager.startStateMachine / executeTransition) are covered end to
+// transition entry points (EntityWriteService.startStateMachine / executeTransition) are covered end to
 // end by StateMachineExecutionIntegrationTest; here we drive the coordinator directly so the write
 // path is tested in isolation from START-pseudostate wiring and permission checks.
 class ItemStateChangeLedgerIntegrationTest extends AbstractIntegrationTest {

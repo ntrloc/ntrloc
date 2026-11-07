@@ -23,7 +23,7 @@ import java.util.stream.Collectors;
 // updatedByUserId (plain UUIDs) but leaves createdBy/updatedBy null; this is the one place that
 // resolves them into real UserInfo, batched once per call across the whole tree (every item,
 // every link, every linked item, however deeply nested), never one lookup per node. Called from
-// EntityManagerImpl right before a projection result reaches its caller -- the only three places
+// EntityReadService right before a projection result reaches its caller -- the only three places
 // that construct a ProjectedItem/ProjectionResult the outside world ever sees.
 @Component
 public class ProjectedUserInfoEnricher {

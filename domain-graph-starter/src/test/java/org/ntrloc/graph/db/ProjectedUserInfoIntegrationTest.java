@@ -30,14 +30,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 // Proves UserInfo actually shows up where the user asked for it: createdBy/updatedBy within a
 // real projection response (both single-item and collection), resolved by ProjectedUserInfoEnricher
-// at the EntityManagerImpl layer -- going through EntityManager (not RegisterStore
+// at the EntityReadService layer -- going through EntityReadService (not RegisterStore
 // directly, unlike RegisterProvenanceIntegrationTest) is the whole point here, since enrichment
 // only runs at that layer precisely because RegisterStore must never import the
 // security partition.
 class ProjectedUserInfoIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
-    private EntityManager entityManager;
+    private EntityReadService entityReadService;
 
     @Autowired
     private LedgerRegisterCoordinator coordinator;
@@ -67,7 +67,7 @@ class ProjectedUserInfoIntegrationTest extends AbstractIntegrationTest {
                 Map.of(fixture.namePropertyId(), "Widget"), Map.of(), Set.of())), txn, creator.id(), OffsetDateTime.now());
         coordinator.commit(txn, UUID.randomUUID());
 
-        ProjectedItem afterCreate = entityManager.project(new ItemProjectionSpec("CoordinatorTestProduct", itemId), "http://binary", ADMIN)
+        ProjectedItem afterCreate = entityReadService.project(new ItemProjectionSpec("CoordinatorTestProduct", itemId), "http://binary", ADMIN)
                 .orElseThrow();
 
         assertThat(afterCreate.createdBy().email()).isEqualTo(creator.email());
@@ -80,7 +80,7 @@ class ProjectedUserInfoIntegrationTest extends AbstractIntegrationTest {
                 Map.of(), Set.of(), Set.of(), Set.of())), updateTxn, editor.id(), OffsetDateTime.now());
         coordinator.commit(updateTxn, UUID.randomUUID());
 
-        ProjectedItem afterUpdate = entityManager.project(new ItemProjectionSpec("CoordinatorTestProduct", itemId), "http://binary", ADMIN)
+        ProjectedItem afterUpdate = entityReadService.project(new ItemProjectionSpec("CoordinatorTestProduct", itemId), "http://binary", ADMIN)
                 .orElseThrow();
 
         assertThat(afterUpdate.updatedBy().email()).isEqualTo(editor.email());
@@ -99,7 +99,7 @@ class ProjectedUserInfoIntegrationTest extends AbstractIntegrationTest {
 
         // Filtered to this item: other test classes share the database and add their own products,
         // so an unfiltered query's default first page may not include it.
-        var result = entityManager.project(new CollectionProjectionSpec("CoordinatorTestProduct", null, null,
+        var result = entityReadService.project(new CollectionProjectionSpec("CoordinatorTestProduct", null, null,
                 new PropertyValuePredicate("name", Operator.EQUALS, name)), "http://binary", ADMIN);
 
         var projected = result.items().stream().filter(i -> i.itemId().equals(itemId)).findFirst().orElseThrow();
@@ -137,7 +137,7 @@ class ProjectedUserInfoIntegrationTest extends AbstractIntegrationTest {
                 Map.of(fixture.rolePropertyId(), "Author"))), linkTxn, linkCreator.id(), OffsetDateTime.now());
         coordinator.commit(linkTxn, UUID.randomUUID());
 
-        ProjectedItem product = entityManager.project(
+        ProjectedItem product = entityReadService.project(
                 new ItemProjectionSpec("CoordinatorTestProduct", productId, Map.of("products", new LinkProjectionSpec(null))),
                 "http://binary", ADMIN).orElseThrow();
 

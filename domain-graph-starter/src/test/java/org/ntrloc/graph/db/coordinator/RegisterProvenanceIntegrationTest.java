@@ -34,9 +34,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 // not optional, called out by name in that doc's Part E section.
 //
 // Goes through LedgerRegisterCoordinator.prepare/commit directly (not through MutationRequestProcessor)
-// and reads back via ProjectionEngine.projectOne, one level below EntityManagerImpl. Asserts
+// and reads back via ProjectionEngine.projectOne, one level below EntityReadService. Asserts
 // against createdByUserId/updatedByUserId (the raw UUID ProjectionEngine populates), not createdBy/updatedBy (the resolved UserInfo
-// ProjectedUserInfoEnricher fills in afterward, at the EntityManagerImpl layer this test
+// ProjectedUserInfoEnricher fills in afterward, at the EntityReadService layer this test
 // deliberately bypasses) -- see ProjectedItem's own comment for why those are two different
 // fields. createdDate/updatedDate are read straight off the register row, never recomputed, so
 // asserting against them is asserting against the actual persisted columns.

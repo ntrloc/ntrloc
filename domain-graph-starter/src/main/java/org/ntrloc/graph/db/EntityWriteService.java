@@ -1,6 +1,16 @@
 package org.ntrloc.graph.db;
 
 import org.ntrloc.graph.db.coordinator.LedgerRegisterCoordinator;
+import org.ntrloc.graph.db.partition.authorization.PermissionService;
+import org.ntrloc.graph.db.partition.authorization.RequestPermissionContext;
+import org.ntrloc.graph.db.partition.ledger.ItemUpdateEntry;
+import org.ntrloc.graph.db.partition.register.RegisterStoreReader;
+import org.ntrloc.graph.db.partition.schema.SchemaManager;
+import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemDefinitionView;
+import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminStateMachineView;
+import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminStateView;
+import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminTransitionView;
+import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
 import org.ntrloc.graph.mutation.AbortResponse;
 import org.ntrloc.graph.mutation.CommitResponse;
 import org.ntrloc.graph.mutation.MutationRequest;
@@ -8,164 +18,63 @@ import org.ntrloc.graph.mutation.MutationRequestProcessor;
 import org.ntrloc.graph.mutation.MutationResponse;
 import org.ntrloc.graph.mutation.MutationValidationException;
 import org.ntrloc.graph.mutation.ValidationError;
-import org.ntrloc.graph.db.partition.ledger.ItemUpdateEntry;
-import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
-import org.ntrloc.graph.db.partition.authorization.PermissionService;
-import org.ntrloc.graph.db.partition.authorization.RequestPermissionContext;
-import org.ntrloc.graph.db.partition.register.RegisterStore;
-import org.ntrloc.graph.projection.ProjectionEngine;
-import org.ntrloc.graph.projection.ProjectionEngine.RenderOptions;
-import org.ntrloc.graph.db.partition.process.ProcessAccessible;
-import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemDefinitionView;
-import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminStateMachineView;
-import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminStateView;
-import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminTransitionView;
-import org.ntrloc.graph.projection.CollectionProjectionSpec;
 import org.ntrloc.graph.projection.PredicateEvaluator;
 import org.ntrloc.graph.projection.ProjectedItem;
-import org.ntrloc.graph.projection.ProjectionResult;
-import org.ntrloc.graph.projection.ItemProjectionSpec;
-import org.ntrloc.graph.db.partition.schema.SchemaManager;
+import org.ntrloc.graph.projection.ProjectionEngine;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
-// @ProcessAccessible: the only bean reachable from process scripts as ${entityManager}, now that
-// it fronts both reads and writes. RegisterStore and LedgerStore lost
-// the annotation for the same reason -- one seam is enough.
-@Service("entityManager")
-@ProcessAccessible
-public class EntityManagerImpl implements EntityManager {
+// Entity Write (docs/ntrloc-architecture-rationalization.md §5): mutations, their two-phase confirmation,
+// and state machine starts and transitions. May read (the register directly, unfiltered, and for a
+// guard the item as projected); never read by the read side.
+@Service
+public class EntityWriteService {
 
-    private final RegisterStore registerStore;
+    private final RegisterStoreReader registerStore;
     private final ProjectionEngine projectionEngine;
     private final SchemaManager schemaManager;
     private final PermissionService permissionService;
     private final MutationRequestProcessor mutationRequestProcessor;
     private final LedgerRegisterCoordinator coordinator;
-    private final ProjectedUserInfoEnricher userInfoEnricher;
 
-    public EntityManagerImpl(RegisterStore registerStore, ProjectionEngine projectionEngine, SchemaManager schemaManager,
+    public EntityWriteService(RegisterStoreReader registerStore, ProjectionEngine projectionEngine, SchemaManager schemaManager,
                               PermissionService permissionService, MutationRequestProcessor mutationRequestProcessor,
-                              LedgerRegisterCoordinator coordinator, ProjectedUserInfoEnricher userInfoEnricher) {
+                              LedgerRegisterCoordinator coordinator) {
         this.registerStore = registerStore;
         this.projectionEngine = projectionEngine;
         this.schemaManager = schemaManager;
         this.permissionService = permissionService;
         this.mutationRequestProcessor = mutationRequestProcessor;
         this.coordinator = coordinator;
-        this.userInfoEnricher = userInfoEnricher;
-    }
-
-    // Polymorphic by default: itemTypeName resolves to itself plus every descendant (see
-    // SchemaManager.resolveSupertypeInclusiveItemTypeIds), so a lookup by a supertype name still
-    // finds an item that actually exists as a concrete subtype. The permission check runs against
-    // the item's *actual* type, not the queried name -- what matters is whether this principal can
-    // read the concrete data being returned, not the root of however it was searched for.
-    @Override
-    public Optional<ProjectedItem> project(ItemProjectionSpec spec, String binaryBaseUrl, NtrlocPrincipal principal) {
-        UUID rootItemTypeId = resolveItemTypeId(spec.itemTypeName());
-        Set<UUID> allowedItemTypeIds = schemaManager.resolveSupertypeInclusiveItemTypeIds(rootItemTypeId);
-
-        Optional<UUID> actualItemTypeId = registerStore.findItemTypeId(spec.itemId());
-        if (actualItemTypeId.isEmpty() || !allowedItemTypeIds.contains(actualItemTypeId.get())) {
-            return Optional.empty();
-        }
-        requireReadAccess(principal, actualItemTypeId.get(), spec.itemTypeName());
-        // Instance-level check, separate from the type-level one above -- cheaper to check before
-        // fetching the item's own (possibly large) properties than to fetch first and discard; see
-        // ProjectionEngine.projectOne's own comment on why this lives here, not in a
-        // query-level semi-join.
-        if (!permissionService.canReadItem(principal, spec.itemId())) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown item type: " + spec.itemTypeName());
-        }
-        var permissionContext = permissionService.buildContext(principal);
-        return userInfoEnricher.enrich(projectionEngine.projectOne(actualItemTypeId.get(), spec.itemId(), binaryBaseUrl,
-                new RenderOptions(spec.links(), permissionContext, Boolean.TRUE.equals(spec.includePermissions()),
-                        Boolean.TRUE.equals(spec.includeStates()), spec.properties())));
-    }
-
-    @Override
-    public ProjectionResult project(CollectionProjectionSpec spec, String binaryBaseUrl, NtrlocPrincipal principal) {
-        Set<UUID> itemTypeIds = resolveItemTypeIds(spec);
-
-        // A *partial* drop (some branches unreadable, at least one isn't) proceeds silently --
-        // a principal who can't read one specific subtype should still see every other branch of a
-        // polymorphic query, not have the whole query fail. But if filtering leaves nothing
-        // readable at all, that has to behave exactly like the pre-existing single-type case
-        // already tested and relied on (AuthorizationEndpointsIntegrationTest): 404, not an empty
-        // 200 -- an empty-but-200 response would leak "something exists here, you're just not
-        // allowed to see it," which is exactly what the existing 404-not-403 principle exists to
-        // avoid. requireReadAccess below reuses that exact same signal for the "nothing readable"
-        // case, single-type or not.
-        Set<UUID> readableItemTypeIds = itemTypeIds.stream()
-                .filter(id -> permissionService.canReadItemType(principal, id))
-                .collect(Collectors.toSet());
-        if (readableItemTypeIds.isEmpty()) {
-            String queriedName = spec.itemTypeName() != null ? spec.itemTypeName() : spec.traitName();
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown item type: " + queriedName);
-        }
-
-        var permissionContext = permissionService.buildContext(principal);
-        // The common case (a type with no descendants, queried by name) goes through the existing,
-        // proven single-table path unchanged -- projectAcrossTypes only engages once polymorphism
-        // is actually in play, not on every request.
-        return userInfoEnricher.enrich(readableItemTypeIds.size() == 1
-                ? projectionEngine.project(readableItemTypeIds.iterator().next(), spec, binaryBaseUrl, permissionContext)
-                : projectionEngine.projectAcrossTypes(readableItemTypeIds, spec, binaryBaseUrl, permissionContext));
-    }
-
-    // Exactly one of itemTypeName/traitName must be set; resolves to the set of concrete item-type
-    // ids the query should span -- itself plus every descendant for a supertype root, or every
-    // implementer (direct or inherited) for a trait.
-    private Set<UUID> resolveItemTypeIds(CollectionProjectionSpec spec) {
-        boolean hasItemType = spec.itemTypeName() != null && !spec.itemTypeName().isBlank();
-        boolean hasTrait = spec.traitName() != null && !spec.traitName().isBlank();
-        if (hasItemType == hasTrait) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Specify exactly one of itemTypeName or traitName");
-        }
-        if (hasItemType) {
-            return schemaManager.resolveSupertypeInclusiveItemTypeIds(resolveItemTypeId(spec.itemTypeName()));
-        }
-        return schemaManager.resolveTraitImplementerItemTypeIds(resolveTraitId(spec.traitName()));
-    }
-
-    private UUID resolveTraitId(String traitName) {
-        return schemaManager.getAdminSchema().traits().stream()
-                .filter(t -> t.name().equals(traitName))
-                .map(t -> t.id())
-                .findFirst()
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown trait: " + traitName));
     }
 
     // Pure passthrough: MutationRequestProcessor does its own permission checks per mutation (see
-    // its class comment), and the interface's @PreAuthorize already guarantees principal is
-    // non-null by the time this runs.
-    @Override
+    // its class comment), and @PreAuthorize already guarantees principal is non-null by the time
+    // this runs.
+    @PreAuthorize("#principal != null")
     public MutationResponse mutate(MutationRequest request, NtrlocPrincipal principal) {
         return mutationRequestProcessor.process(request, principal);
     }
 
-    @Override
     public CommitResponse confirmCommit(UUID transactionId) {
         return mutationRequestProcessor.confirmCommit(transactionId);
     }
 
-    @Override
     public AbortResponse confirmAbort(UUID transactionId) {
         return mutationRequestProcessor.confirmAbort(transactionId);
     }
 
-    @Override
+    @PreAuthorize("#principal != null")
     public void startStateMachine(UUID itemId, String stateMachineName, NtrlocPrincipal principal) {
         UUID itemTypeId = requireItemType(itemId);
         UUID smId = schemaManager.resolveStateMachineId(itemTypeId, stateMachineName);
@@ -192,7 +101,7 @@ public class EntityManagerImpl implements EntityManager {
         commitStateEntry(new ItemUpdateEntry(itemId, Map.of(), Map.of(smId, startTransition.toStateId()), Set.of(), Set.of(), Set.of()), principal);
     }
 
-    @Override
+    @PreAuthorize("#principal != null")
     public void executeTransition(UUID itemId, String stateMachineName, UUID transitionId, NtrlocPrincipal principal) {
         UUID itemTypeId = requireItemType(itemId);
         UUID smId = schemaManager.resolveStateMachineId(itemTypeId, stateMachineName);
@@ -247,11 +156,13 @@ public class EntityManagerImpl implements EntityManager {
         return transition.guardCondition() != null && !transition.guardCondition().isNull();
     }
 
+    // Reads the item as projected, unfiltered (admin), since a guard is written against property and
+    // state names. Step 5 of the refactor can read the register directly instead.
     private boolean guardSatisfied(UUID itemTypeId, UUID itemId, AdminTransitionView transition) {
         ProjectedItem item = projectionEngine
                 .projectOne(itemTypeId, itemId, "", null, RequestPermissionContext.forAdmin())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown item: " + itemId));
-        Map<String, String> currentStateByMachine = new java.util.HashMap<>();
+        Map<String, String> currentStateByMachine = new HashMap<>();
         if (item.states() != null) {
             item.states().forEach((name, s) -> {
                 if (s.currentState() != null) currentStateByMachine.put(name, s.currentState());
@@ -261,26 +172,13 @@ public class EntityManagerImpl implements EntityManager {
                 PredicateEvaluator.fromJson(transition.guardCondition()), item.properties(), currentStateByMachine);
     }
 
+    // The second write path into the coordinator (alongside MutationRequestProcessor); step 5 of the
+    // refactor routes transitions through MutationRequestProcessor instead.
     private void commitStateEntry(ItemUpdateEntry entry, NtrlocPrincipal principal) {
         UUID transactionId = UUID.randomUUID();
         // principal is guaranteed non-null here -- both callers (startStateMachine,
-        // executeTransition) carry the interface's @PreAuthorize guard.
+        // executeTransition) carry @PreAuthorize.
         coordinator.prepare(List.of(entry), transactionId, principal.id(), OffsetDateTime.now(ZoneOffset.UTC));
         coordinator.commit(transactionId, UUID.randomUUID());
-    }
-
-    private void requireReadAccess(NtrlocPrincipal principal, UUID itemTypeId, String itemTypeName) {
-        if (!permissionService.canReadItemType(principal, itemTypeId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown item type: " + itemTypeName);
-        }
-    }
-
-    private UUID resolveItemTypeId(String itemTypeName) {
-        return schemaManager.getAdminSchema().items().stream()
-                .filter(item -> item.name().equals(itemTypeName))
-                .map(item -> item.id())
-                .findFirst()
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND, "Unknown item type: " + itemTypeName));
     }
 }

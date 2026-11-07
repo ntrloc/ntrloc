@@ -9,7 +9,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 import org.ntrloc.graph.db.partition.ledger.LinkEndpoint;
-import org.ntrloc.graph.db.partition.register.RegisterStore;
+import org.ntrloc.graph.db.partition.register.RegisterStoreReader;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemLinkPerspectiveView;
 import org.springframework.stereotype.Component;
@@ -23,9 +23,9 @@ class LinkEndpointResolver {
     record ResolvedLink(UUID linkTypeId, LinkEndpoint first, LinkEndpoint second) {}
 
     private final SchemaManager schemaManager;
-    private final RegisterStore registerStore;
+    private final RegisterStoreReader registerStore;
 
-    LinkEndpointResolver(SchemaManager schemaManager, RegisterStore registerStore) {
+    LinkEndpointResolver(SchemaManager schemaManager, RegisterStoreReader registerStore) {
         this.schemaManager = schemaManager;
         this.registerStore = registerStore;
     }

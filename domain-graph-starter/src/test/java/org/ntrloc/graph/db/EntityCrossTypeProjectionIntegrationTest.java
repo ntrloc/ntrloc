@@ -37,7 +37,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 // Phase 2 of item-type inheritance: the cross-type query engine (RegisterStore.
 // projectAcrossTypes, SchemaManager's supertype-inclusive/trait-implementer resolvers, and
-// EntityManagerImpl's dispatch between the single-table and cross-type paths), driven end to end
+// EntityReadService's dispatch between the single-table and cross-type paths), driven end to end
 // through the real /api/projection/collection HTTP endpoint against a real Postgres, matching
 // AuthorizationEndpointsIntegrationTest's own style for the permission-scoped case.
 class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
@@ -78,7 +78,7 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
     private JdbcClient jdbcClient;
 
     @Autowired
-    private EntityManager entityManager;
+    private EntityReadService entityReadService;
 
     private UUID idOf(String itemTypeName) {
         return schemaManager.getAdminSchema().items().stream()
@@ -130,7 +130,7 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void collectionProjection_byASupertype_withNoDescendants_stillWorks_theSingleTablePath() {
-        // A leaf type with no children resolves to a set of exactly one -- EntityManagerImpl routes
+        // A leaf type with no children resolves to a set of exactly one -- EntityReadService routes
         // this through the original, untouched project() rather than projectAcrossTypes. Not a
         // cross-type scenario at all; included here to pin down that the routing decision itself
         // doesn't break the plain case.
@@ -427,7 +427,7 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
 
         UUID carItemId = createItem(carName);
 
-        var result = entityManager.project(new ItemProjectionSpec(vehicleName, carItemId), "http://binary", SOME_PRINCIPAL);
+        var result = entityReadService.project(new ItemProjectionSpec(vehicleName, carItemId), "http://binary", SOME_PRINCIPAL);
 
         assertThat(result).isPresent();
         assertThat(result.get().itemId()).isEqualTo(carItemId);
@@ -444,7 +444,7 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
         UUID unrelatedItemId = createItem(unrelatedName);
 
         // unrelatedItemId genuinely exists, but its type isn't Vehicle or a descendant of it.
-        var result = entityManager.project(new ItemProjectionSpec(vehicleName, unrelatedItemId), "http://binary", SOME_PRINCIPAL);
+        var result = entityReadService.project(new ItemProjectionSpec(vehicleName, unrelatedItemId), "http://binary", SOME_PRINCIPAL);
 
         assertThat(result).isEmpty();
     }
@@ -463,7 +463,7 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
         NtrlocPrincipal restrictedPrincipal = TestPrincipals.of(restrictedUser.id(), "Restricted", restrictedUser.email(), Set.of(), false);
 
         org.assertj.core.api.Assertions.assertThatThrownBy(() ->
-                        entityManager.project(new ItemProjectionSpec(vehicleName, vehicleItemId), "http://binary", restrictedPrincipal))
+                        entityReadService.project(new ItemProjectionSpec(vehicleName, vehicleItemId), "http://binary", restrictedPrincipal))
                 .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
                 .hasMessageContaining("404");
     }

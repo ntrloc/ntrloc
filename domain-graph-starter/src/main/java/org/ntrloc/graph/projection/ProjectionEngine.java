@@ -19,7 +19,7 @@ import org.ntrloc.graph.db.partition.register.RegisterRows;
 import org.ntrloc.graph.db.partition.register.RegisterRows.ItemRow;
 import org.ntrloc.graph.db.partition.register.RegisterRows.LinkRow;
 import org.ntrloc.graph.db.partition.register.RegisterRows.ValueCount;
-import org.ntrloc.graph.db.partition.register.RegisterStore;
+import org.ntrloc.graph.db.partition.register.RegisterStoreReader;
 import org.ntrloc.graph.db.partition.schema.ControlledListLabels;
 import org.ntrloc.graph.db.partition.schema.ControlledListManager;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
@@ -110,7 +110,7 @@ public class ProjectionEngine {
     private final BinaryStore binaryStore;
     private final SchemaManager schemaManager;
     private final ControlledListManager controlledListManager;
-    private final RegisterStore registerStore;
+    private final RegisterStoreReader registerStore;
     // Keyed by pattern *string*, not item type -- a pure function cache (the same SpEL text always
     // compiles to the same Expression), so it needs no invalidation hook when a pattern is edited;
     // an edited pattern is simply a different string, a new cache entry. Unbounded is fine: the
@@ -121,7 +121,7 @@ public class ProjectionEngine {
             new AtomicReference<>(new DisplayLabelPatternsCache(null, Map.of()));
 
     public ProjectionEngine(AuthorizationRepository authorizationRepository, BinaryStore binaryStore,
-                            SchemaManager schemaManager, ControlledListManager controlledListManager, RegisterStore registerStore) {
+                            SchemaManager schemaManager, ControlledListManager controlledListManager, RegisterStoreReader registerStore) {
         this.authorizationRepository = authorizationRepository;
         this.binaryStore = binaryStore;
         this.schemaManager = schemaManager;
@@ -323,7 +323,7 @@ public class ProjectionEngine {
     // Parallel to project(), not a refactor of it: the single-table path is proven and
     // read-performance-critical, and reshaping it to always route through an N-branch code path
     // risked destabilizing it for the (still overwhelmingly common) case of a type with no
-    // descendants. EntityManagerImpl only calls this once a resolved type set actually has more
+    // descendants. EntityReadService only calls this once a resolved type set actually has more
     // than one member.
     public ProjectionResult projectAcrossTypes(Set<UUID> itemTypeIds, CollectionProjectionSpec spec, String binaryBaseUrl) {
         return projectAcrossTypes(itemTypeIds, spec, binaryBaseUrl, RequestPermissionContext.forAdmin());
@@ -502,7 +502,7 @@ public class ProjectionEngine {
     // Kept at "always include everything" -- unlike ProjectionSpec's HTTP-facing "default false"
     // policy (see its own comment), this overload has no spec to consult and predates
     // includePermissions/includeStates entirely; it's what every direct-Java caller (mostly tests)
-    // already relied on. EntityManagerImpl.projectOne, the real HTTP-facing caller, goes through
+    // already relied on. EntityReadService.project, the real HTTP-facing caller, goes through
     // the RenderOptions overload below instead, with real flags read off the caller's own spec.
     public Optional<ProjectedItem> projectOne(UUID itemTypeId, UUID itemId, String binaryBaseUrl,
                                                @Nullable Map<String, LinkProjectionSpec> requestedLinks,
@@ -513,7 +513,7 @@ public class ProjectionEngine {
     // permissions here only filters this item's *links* (see toLinkAccess) -- the item's own
     // existence isn't gated by this method at all, deliberately: unlike a paginated collection,
     // there's no totalCount/pagination correctness that requires it to be baked into this query,
-    // so the caller (EntityManagerImpl) checks PermissionService.canReadItem before ever calling
+    // so the caller (EntityReadService) checks PermissionService.canReadItem before ever calling
     // this, exactly like it already does for the type-level requireReadAccess check -- cheaper,
     // since a denied request never pays for fetching the item's own (possibly large) properties.
     public Optional<ProjectedItem> projectOne(UUID itemTypeId, UUID itemId, String binaryBaseUrl, RenderOptions options) {
@@ -1429,7 +1429,7 @@ public class ProjectionEngine {
                 computeDisplayLabel(row.itemId(), displayLabelInput(props, readableProps, ctx), ctx.displayLabelPatterns().get(itemTypeName)),
                 markerNames,
                 // createdBy/updatedBy are left null here -- RegisterStore must never
-                // resolve or import anything security-related; EntityManagerImpl fills these in
+                // resolve or import anything security-related; EntityReadService fills these in
                 // afterward from createdByUserId/updatedByUserId, batched across the whole page.
                 row.audit().createdDate(), row.audit().createdBy(), null, row.audit().updatedDate(), row.audit().updatedBy(), null);
     }

@@ -1,6 +1,6 @@
 package org.ntrloc.graph.mutation;
 
-import org.ntrloc.graph.db.EntityManager;
+import org.ntrloc.graph.db.EntityWriteService;
 import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
 import org.ntrloc.graph.db.partition.security.ExternalPrincipalResolver;
 import org.springframework.http.ResponseEntity;
@@ -17,24 +17,24 @@ import java.util.UUID;
 @RequestMapping("/api/mutation")
 public class MutationController {
 
-    // Goes through EntityManager, not MutationRequestProcessor directly -- EntityManager is now
+    // Goes through EntityWriteService, not MutationRequestProcessor directly -- EntityWriteService is now
     // the single entry point for both directions of the entity system (reads via project(),
     // writes via mutate()); MutationRequestProcessor is an implementation detail behind it.
-    private final EntityManager entityManager;
+    private final EntityWriteService entityWriteService;
     private final ExternalPrincipalResolver principalResolver;
 
-    public MutationController(EntityManager entityManager, ExternalPrincipalResolver principalResolver) {
-        this.entityManager = entityManager;
+    public MutationController(EntityWriteService entityWriteService, ExternalPrincipalResolver principalResolver) {
+        this.entityWriteService = entityWriteService;
         this.principalResolver = principalResolver;
     }
 
     @PostMapping
     ResponseEntity<?> mutate(@RequestBody MutationRequest request, Authentication authentication) {
         try {
-            // Never returns null (throws 401 instead), which entityManager.mutate() demands via
+            // Never returns null (throws 401 instead), which entityWriteService.mutate() demands via
             // @PreAuthorize (see docs/ntrloc-principal-enforcement-plan.md, Part C).
             NtrlocPrincipal principal = principalResolver.resolve(authentication);
-            return ResponseEntity.ok(entityManager.mutate(request, principal));
+            return ResponseEntity.ok(entityWriteService.mutate(request, principal));
         } catch (MutationValidationException e) {
             return ResponseEntity.badRequest().body(new MutationErrorResponse(e.errors()));
         }
@@ -44,12 +44,12 @@ public class MutationController {
     // that earlier call's MutationResponse.
     @PostMapping("/{transactionId}/commit")
     ResponseEntity<?> commit(@PathVariable UUID transactionId) {
-        return ResponseEntity.ok(entityManager.confirmCommit(transactionId));
+        return ResponseEntity.ok(entityWriteService.confirmCommit(transactionId));
     }
 
     // Discards a transaction previously submitted with commit=false.
     @PostMapping("/{transactionId}/abort")
     ResponseEntity<?> abort(@PathVariable UUID transactionId) {
-        return ResponseEntity.ok(entityManager.confirmAbort(transactionId));
+        return ResponseEntity.ok(entityWriteService.confirmAbort(transactionId));
     }
 }

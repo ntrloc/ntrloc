@@ -1,6 +1,6 @@
 package org.ntrloc.graph.ai;
 
-import org.ntrloc.graph.db.EntityManager;
+import org.ntrloc.graph.db.EntityReadService;
 import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
 import org.ntrloc.graph.projection.CollectionProjectionSpec;
 import org.ntrloc.graph.projection.ProjectionResult;
@@ -17,11 +17,11 @@ public class ProjectionService {
 
     private static final Logger LOG = LoggerFactory.getLogger(ProjectionService.class);
 
-    private final EntityManager entityManager;
+    private final EntityReadService entityReadService;
     private final McpPrincipalResolverAdapter principalResolver;
 
-    public ProjectionService(EntityManager entityManager, McpPrincipalResolverAdapter principalResolver) {
-        this.entityManager = entityManager;
+    public ProjectionService(EntityReadService entityReadService, McpPrincipalResolverAdapter principalResolver) {
+        this.entityReadService = entityReadService;
         this.principalResolver = principalResolver;
     }
 
@@ -53,7 +53,7 @@ public class ProjectionService {
         try {
             NtrlocPrincipal principal = principalResolver.requirePrincipal(requestContext);
             LOG.info("Projecting items with spec {} as {}", spec, principal.email());
-            ProjectionResult result = entityManager.project(spec, "", principal);
+            ProjectionResult result = entityReadService.project(spec, "", principal);
             LOG.info("Projected {} item(s)", result.items().size());
             return result;
         } catch (ResponseStatusException e) {

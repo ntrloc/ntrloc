@@ -16,8 +16,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-// Lives at the top level (alongside EntityManager), not inside the ledger package, for the same
-// reason EntityManagerImpl does: it crosses partition boundaries (ledger + security) that
+// Lives at the top level (alongside EntityReadService/EntityWriteService), not inside the ledger package, for the same
+// reason they do: it crosses partition boundaries (ledger + security) that
 // LedgerRegisterCoordinator's own "the only component permitted to import both ledger and
 // register" rule was never meant to extend to.
 @Service

@@ -65,7 +65,7 @@ import static org.assertj.core.api.Assertions.tuple;
 // table management) -- the read/query side of the class. The write side (create/update/delete via
 // the ledger/coordinator) is already exercised by MutationControllerIntegrationTest and
 // LedgerRegisterCoordinatorIntegrationTest; this file deliberately doesn't repeat that. State
-// changes here go straight through the coordinator (setState() helper) rather than an EntityManager
+// changes here go straight through the coordinator (setState() helper) rather than an EntityWriteService
 // entry point -- StateMachineExecutionIntegrationTest covers start/executeTransition end to end.
 class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrationTest {
 
@@ -1321,7 +1321,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
     // A machine that's neither active nor startable by the caller has nothing to report -- no
     // current state, no Start affordance -- so its entry is omitted entirely rather than surfacing
     // as startable:false with nothing else useful in it. Non-admin, zero grants of any kind:
-    // this bypasses EntityManagerImpl's own item:read gate (see projectOne's own comment -- that
+    // this bypasses EntityReadService's own item:read gate (see projectOne's own comment -- that
     // check happens one layer up, not here), which is fine since this test only cares about the
     // states filtering, not item-level visibility.
     @Test

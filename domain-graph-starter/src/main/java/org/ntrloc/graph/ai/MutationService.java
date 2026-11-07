@@ -1,6 +1,6 @@
 package org.ntrloc.graph.ai;
 
-import org.ntrloc.graph.db.EntityManager;
+import org.ntrloc.graph.db.EntityWriteService;
 import org.ntrloc.graph.mutation.MutationRequest;
 import org.ntrloc.graph.mutation.MutationResponse;
 import org.ntrloc.graph.mutation.MutationValidationException;
@@ -20,14 +20,14 @@ public class MutationService {
 
     private static final Logger LOG = LoggerFactory.getLogger(MutationService.class);
 
-    // Goes through EntityManager, not MutationRequestProcessor directly -- see
-    // MutationController's identical comment; EntityManager is the one entry point for both
+    // Goes through EntityWriteService, not MutationRequestProcessor directly -- see
+    // MutationController's identical comment; EntityWriteService is the one entry point for both
     // reads and writes now.
-    private final EntityManager entityManager;
+    private final EntityWriteService entityWriteService;
     private final McpPrincipalResolverAdapter principalResolver;
 
-    public MutationService(EntityManager entityManager, McpPrincipalResolverAdapter principalResolver) {
-        this.entityManager = entityManager;
+    public MutationService(EntityWriteService entityWriteService, McpPrincipalResolverAdapter principalResolver) {
+        this.entityWriteService = entityWriteService;
         this.principalResolver = principalResolver;
     }
 
@@ -64,7 +64,7 @@ public class MutationService {
         try {
             NtrlocPrincipal principal = principalResolver.requirePrincipal(requestContext);
             LOG.info("Executing mutation {} as {}", request, principal.email());
-            MutationResponse response = entityManager.mutate(request, principal);
+            MutationResponse response = entityWriteService.mutate(request, principal);
             LOG.info("Mutation applied: {} item(s), {} link(s)", response.items().size(), response.links().size());
             return response;
         } catch (ResponseStatusException e) {

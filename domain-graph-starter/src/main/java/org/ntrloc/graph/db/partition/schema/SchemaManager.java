@@ -172,7 +172,7 @@ public class SchemaManager {
     }
 
     // Top-level component, independently reachable (SchemaController) -- demands a real principal
-    // via @PreAuthorize, same as EntityManager/PermissionService/MutationRequestProcessor (see
+    // via @PreAuthorize, same as EntityReadService/EntityWriteService/PermissionService/MutationRequestProcessor (see
     // docs/ntrloc-principal-enforcement-plan.md, Part C).
     @PreAuthorize("#principal != null")
     public SchemaView getSchema(NtrlocPrincipal principal) {

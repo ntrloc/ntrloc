@@ -1,7 +1,7 @@
 package org.ntrloc.graph.projection;
 
 import jakarta.servlet.http.HttpServletRequest;
-import org.ntrloc.graph.db.EntityManager;
+import org.ntrloc.graph.db.EntityReadService;
 import org.ntrloc.graph.db.partition.security.ExternalPrincipalResolver;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -14,11 +14,11 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/projection")
 public class ProjectionController {
 
-    private final EntityManager entityManager;
+    private final EntityReadService entityReadService;
     private final ExternalPrincipalResolver principalResolver;
 
-    public ProjectionController(EntityManager entityManager, ExternalPrincipalResolver principalResolver) {
-        this.entityManager = entityManager;
+    public ProjectionController(EntityReadService entityReadService, ExternalPrincipalResolver principalResolver) {
+        this.entityReadService = entityReadService;
         this.principalResolver = principalResolver;
     }
 
@@ -26,14 +26,14 @@ public class ProjectionController {
     ResponseEntity<ProjectionResult> collection(@RequestBody CollectionProjectionSpec spec, HttpServletRequest request, Authentication authentication) {
         var principal = principalResolver.resolve(authentication);
         String binaryBaseUrl = extractBaseUrl(request);
-        return ResponseEntity.ok(entityManager.project(spec, binaryBaseUrl, principal));
+        return ResponseEntity.ok(entityReadService.project(spec, binaryBaseUrl, principal));
     }
 
     @PostMapping("/item")
     ResponseEntity<ProjectedItem> item(@RequestBody ItemProjectionSpec spec, HttpServletRequest request, Authentication authentication) {
         var principal = principalResolver.resolve(authentication);
         String binaryBaseUrl = extractBaseUrl(request);
-        return entityManager.project(spec, binaryBaseUrl, principal)
+        return entityReadService.project(spec, binaryBaseUrl, principal)
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }

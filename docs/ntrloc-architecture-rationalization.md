@@ -343,9 +343,14 @@ The item component first — everything else calls it or is called by it.
 3. **Rename `BinaryPartitionManager` → BinaryStore.** *(Done.)* The reader/writer split (and the
    BinaryReader / BinaryWriter services) waits on §10 q7.
 4. **Entity Read and Entity Write.** Split `EntityManager` along the two themes; I/O callers depend on the
-   side they need. Add ArchUnit rules for store write interfaces and read/write direction.
+   side they need. Add ArchUnit rules for store write interfaces and read/write direction. *(Done:
+   `EntityReadService` (process-accessible as `${entityReadService}` for now) and `EntityWriteService`;
+   `RegisterStoreReader` / `RegisterStoreWriter`; `ArchitectureRulesTest` checks that only the coordinator
+   holds a store writer, stores are used through their interfaces, reads never depend on writes, and stores
+   never depend on services.)*
 5. **One write path.** Transitions become mutations through State Machine Exec → MutationProcessor;
-   `EntityManagerImpl.commitStateEntry` goes away.
+   `EntityWriteService.commitStateEntry` goes away, and the transition guard reads the register rather than
+   a projection.
 6. **Access:** store publishes "grants changed" (fixes the `@Lazy` cycle); `NtrlocPrincipal` to a
    neutral package.
 7. **Principal Resolver** as the explicit identity component; confirm per-request resolution.
