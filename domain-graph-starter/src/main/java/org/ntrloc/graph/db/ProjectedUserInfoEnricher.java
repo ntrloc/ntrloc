@@ -17,9 +17,9 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 // Lives at the top level, same reason LedgerPropertyHistoryService does: it crosses partition
-// boundaries (register + security) that RegisterPartitionManager's own rule -- never import the
+// boundaries (register + security) that RegisterStore's own rule -- never import the
 // security partition, directly or via an injected resolver -- was never meant to extend to.
-// RegisterPartitionManager populates every ProjectedItem/ProjectedLink's createdByUserId/
+// RegisterStore populates every ProjectedItem/ProjectedLink's createdByUserId/
 // updatedByUserId (plain UUIDs) but leaves createdBy/updatedBy null; this is the one place that
 // resolves them into real UserInfo, batched once per call across the whole tree (every item,
 // every link, every linked item, however deeply nested), never one lookup per node. Called from
@@ -61,7 +61,7 @@ public class ProjectedUserInfoEnricher {
     }
 
     // updatedByUserId is null for an item/link that's never been updated (see
-    // RegisterPartitionManager.insertItemRow's own comment) -- added defensively, not because
+    // RegisterStore.insertItemRow's own comment) -- added defensively, not because
     // HashSet rejects null, but because that null would otherwise ride along into
     // SecurityRepository.findUsersByIds' own "WHERE id IN (:ids)" binding.
     private void collectUserIds(ProjectedItem item, Set<UUID> acc) {

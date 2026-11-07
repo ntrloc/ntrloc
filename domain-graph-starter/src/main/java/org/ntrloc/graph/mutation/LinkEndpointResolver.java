@@ -9,7 +9,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 import org.ntrloc.graph.db.partition.ledger.LinkEndpoint;
-import org.ntrloc.graph.db.partition.register.RegisterPartitionManager;
+import org.ntrloc.graph.db.partition.register.RegisterStore;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemLinkPerspectiveView;
 import org.springframework.stereotype.Component;
@@ -23,11 +23,11 @@ class LinkEndpointResolver {
     record ResolvedLink(UUID linkTypeId, LinkEndpoint first, LinkEndpoint second) {}
 
     private final SchemaManager schemaManager;
-    private final RegisterPartitionManager registerPartitionManager;
+    private final RegisterStore registerStore;
 
-    LinkEndpointResolver(SchemaManager schemaManager, RegisterPartitionManager registerPartitionManager) {
+    LinkEndpointResolver(SchemaManager schemaManager, RegisterStore registerStore) {
         this.schemaManager = schemaManager;
-        this.registerPartitionManager = registerPartitionManager;
+        this.registerStore = registerStore;
     }
 
     // refIdToItemId/refIdToItemTypeId: the items created earlier in the same request, by refId.
@@ -69,7 +69,7 @@ class LinkEndpointResolver {
                 return Optional.empty();
             }
         } else if (ref.item() instanceof ExistingItemReference r) {
-            Optional<UUID> resolved = registerPartitionManager.findItemTypeId(r.itemId());
+            Optional<UUID> resolved = registerStore.findItemTypeId(r.itemId());
             if (resolved.isEmpty()) {
                 errors.add(new ValidationError(path + ".item.itemId", "Unknown item: " + r.itemId()));
                 return Optional.empty();

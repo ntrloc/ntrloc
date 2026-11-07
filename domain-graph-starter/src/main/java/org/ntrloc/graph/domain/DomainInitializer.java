@@ -23,11 +23,11 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 // The one and only thing that seeds a domain -- schema, data, processes, everything. Nothing else
-// in the system (SchemaManager, RegisterPartitionManager, ProcessEngineConfig, DmnEngineConfig) has any
+// in the system (SchemaManager, RegisterStore, ProcessEngineConfig, DmnEngineConfig) has any
 // knowledge that a DomainInitializer exists or that the system is being "initialized": it starts
 // up empty, and a DomainInitializer implementation seeds it afterward through the same public APIs
 // any other caller would use (SchemaManager.applyMutations() publishes SchemaChangeEvent, which
-// RegisterPartitionManager already reacts to by creating per-item-type/per-link-type register
+// RegisterStore already reacts to by creating per-item-type/per-link-type register
 // tables -- no eager scan needed).
 //
 // Each of the three init* methods is a default no-op -- implement only what a given domain
@@ -35,7 +35,7 @@ import java.util.stream.Stream;
 // that also implements Spring's ApplicationRunner (not @PostConstruct -- see the class-level note
 // on any implementation for why: @EventListener methods elsewhere aren't wired up until *all*
 // singletons finish construction, so a @PostConstruct that publishes SchemaChangeEvent during its
-// own construction can fire before RegisterPartitionManager is even listening), constructor-
+// own construction can fire before RegisterStore is even listening), constructor-
 // injecting whatever it needs (SchemaManager, ControlledListManager, JdbcClient,
 // BinaryPartitionManager, RepositoryService, DmnRepositoryService) and calling its own overridden
 // method(s) from run(), in the order initSchema -> initData -> initProcesses.

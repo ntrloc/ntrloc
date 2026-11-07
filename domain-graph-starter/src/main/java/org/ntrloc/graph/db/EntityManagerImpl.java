@@ -12,7 +12,7 @@ import org.ntrloc.graph.db.partition.ledger.ItemUpdateEntry;
 import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
 import org.ntrloc.graph.db.partition.authorization.PermissionService;
 import org.ntrloc.graph.db.partition.authorization.RequestPermissionContext;
-import org.ntrloc.graph.db.partition.register.RegisterPartitionManager;
+import org.ntrloc.graph.db.partition.register.RegisterStore;
 import org.ntrloc.graph.projection.ProjectionEngine;
 import org.ntrloc.graph.projection.ProjectionEngine.RenderOptions;
 import org.ntrloc.graph.db.partition.process.ProcessAccessible;
@@ -40,13 +40,13 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 // @ProcessAccessible: the only bean reachable from process scripts as ${entityManager}, now that
-// it fronts both reads and writes. RegisterPartitionManager and LedgerPartitionManagerImpl lost
+// it fronts both reads and writes. RegisterStore and LedgerPartitionManagerImpl lost
 // the annotation for the same reason -- one seam is enough.
 @Service("entityManager")
 @ProcessAccessible
 public class EntityManagerImpl implements EntityManager {
 
-    private final RegisterPartitionManager registerPartitionManager;
+    private final RegisterStore registerStore;
     private final ProjectionEngine projectionEngine;
     private final SchemaManager schemaManager;
     private final PermissionService permissionService;
@@ -54,10 +54,10 @@ public class EntityManagerImpl implements EntityManager {
     private final LedgerRegisterCoordinator coordinator;
     private final ProjectedUserInfoEnricher userInfoEnricher;
 
-    public EntityManagerImpl(RegisterPartitionManager registerPartitionManager, ProjectionEngine projectionEngine, SchemaManager schemaManager,
+    public EntityManagerImpl(RegisterStore registerStore, ProjectionEngine projectionEngine, SchemaManager schemaManager,
                               PermissionService permissionService, MutationRequestProcessor mutationRequestProcessor,
                               LedgerRegisterCoordinator coordinator, ProjectedUserInfoEnricher userInfoEnricher) {
-        this.registerPartitionManager = registerPartitionManager;
+        this.registerStore = registerStore;
         this.projectionEngine = projectionEngine;
         this.schemaManager = schemaManager;
         this.permissionService = permissionService;
@@ -76,7 +76,7 @@ public class EntityManagerImpl implements EntityManager {
         UUID rootItemTypeId = resolveItemTypeId(spec.itemTypeName());
         Set<UUID> allowedItemTypeIds = schemaManager.resolveSupertypeInclusiveItemTypeIds(rootItemTypeId);
 
-        Optional<UUID> actualItemTypeId = registerPartitionManager.findItemTypeId(spec.itemId());
+        Optional<UUID> actualItemTypeId = registerStore.findItemTypeId(spec.itemId());
         if (actualItemTypeId.isEmpty() || !allowedItemTypeIds.contains(actualItemTypeId.get())) {
             return Optional.empty();
         }
@@ -171,7 +171,7 @@ public class EntityManagerImpl implements EntityManager {
         UUID smId = schemaManager.resolveStateMachineId(itemTypeId, stateMachineName);
         AdminStateMachineView machine = machineView(itemTypeId, smId);
 
-        if (registerPartitionManager.currentStateIds(itemId).containsKey(smId)) {
+        if (registerStore.currentStateIds(itemId).containsKey(smId)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "State machine '" + stateMachineName + "' is already active on this item");
         }
         AdminStateView startState = machine.states().stream()
@@ -198,7 +198,7 @@ public class EntityManagerImpl implements EntityManager {
         UUID smId = schemaManager.resolveStateMachineId(itemTypeId, stateMachineName);
         AdminStateMachineView machine = machineView(itemTypeId, smId);
 
-        UUID currentStateId = registerPartitionManager.currentStateIds(itemId).get(smId);
+        UUID currentStateId = registerStore.currentStateIds(itemId).get(smId);
         if (currentStateId == null) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "State machine '" + stateMachineName + "' is not active on this item");
         }
@@ -230,7 +230,7 @@ public class EntityManagerImpl implements EntityManager {
     }
 
     private UUID requireItemType(UUID itemId) {
-        return registerPartitionManager.findItemTypeId(itemId)
+        return registerStore.findItemTypeId(itemId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown item: " + itemId));
     }
 

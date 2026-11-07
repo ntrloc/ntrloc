@@ -6,7 +6,7 @@ import tools.jackson.databind.json.JsonMapper;
 import java.util.Map;
 
 // In-memory evaluation of a stored predicate against a single already-loaded item -- used to check
-// a transition's guard at execution time (RegisterPartitionManager.translatePredicate is the other
+// a transition's guard at execution time (RegisterStore.compile is the other
 // consumer, and only produces SQL). Guards are property/state predicates only (Predicate permits no
 // link leaf), so this needs just the item's name-keyed property values plus its current state per
 // machine.

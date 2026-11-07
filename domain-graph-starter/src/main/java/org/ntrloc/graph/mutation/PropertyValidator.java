@@ -13,7 +13,7 @@ import java.util.UUID;
 import org.ntrloc.graph.db.partition.authorization.PermissionService;
 import org.ntrloc.graph.db.partition.authorization.RequestPermissionContext;
 import org.ntrloc.graph.db.partition.binary.BinaryPartitionManager;
-import org.ntrloc.graph.db.partition.register.RegisterPartitionManager;
+import org.ntrloc.graph.db.partition.register.RegisterStore;
 import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
 import org.ntrloc.graph.db.partition.schema.ControlledListManager;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
@@ -34,15 +34,15 @@ class PropertyValidator {
     private static final String PROPERTY_QUOTE_PREFIX = "Property '";
 
     private final SchemaManager schemaManager;
-    private final RegisterPartitionManager registerPartitionManager;
+    private final RegisterStore registerStore;
     private final PermissionService permissionService;
     private final BinaryPartitionManager binaryPartitionManager;
     private final ControlledListManager controlledListManager;
 
-    PropertyValidator(SchemaManager schemaManager, RegisterPartitionManager registerPartitionManager, PermissionService permissionService,
+    PropertyValidator(SchemaManager schemaManager, RegisterStore registerStore, PermissionService permissionService,
                       BinaryPartitionManager binaryPartitionManager, ControlledListManager controlledListManager) {
         this.schemaManager = schemaManager;
-        this.registerPartitionManager = registerPartitionManager;
+        this.registerStore = registerStore;
         this.permissionService = permissionService;
         this.binaryPartitionManager = binaryPartitionManager;
         this.controlledListManager = controlledListManager;
@@ -81,7 +81,7 @@ class PropertyValidator {
     }
 
     void checkRequiredLinkPropertiesOnUpdate(UUID linkTypeId, UUID linkId, Map<UUID, Object> propertiesDiff, String path, List<ValidationError> errors) {
-        Map<UUID, Object> merged = registerPartitionManager.resolveMergedLinkPropertiesById(linkId, linkTypeId, propertiesDiff);
+        Map<UUID, Object> merged = registerStore.resolveMergedLinkPropertiesById(linkId, linkTypeId, propertiesDiff);
         checkRequiredPropertiesById(linkScope(linkTypeId), merged, path, errors);
     }
 
@@ -131,7 +131,7 @@ class PropertyValidator {
     // retroactively touched or invalidated (same philosophy as isAbstractItemType's own one-way
     // check: a schema change only ever blocks new writes, never rewrites or deletes existing data).
     // But the next write to *this* item has to leave it satisfying the schema as it stands today, so
-    // this checks the item's own *resulting* state -- registerPartitionManager's own current
+    // this checks the item's own *resulting* state -- registerStore's own current
     // register row merged with this update's diff (resolveMergedPropertiesById, the same merge
     // PipelineMarkerDecisionService.enrichUpdate uses to evaluate pipeline predicates against an
     // about-to-be-committed item) -- not just the diff in isolation the way
@@ -139,7 +139,7 @@ class PropertyValidator {
     // mentions at all still has to end up with a real value, which is exactly what merging onto the
     // current row (rather than just checking the diff) catches.
     void checkRequiredItemPropertiesOnUpdate(UUID itemTypeId, UUID itemId, Map<UUID, Object> propertiesDiff, String path, List<ValidationError> errors) {
-        Map<UUID, Object> merged = registerPartitionManager.resolveMergedPropertiesById(itemId, itemTypeId, propertiesDiff);
+        Map<UUID, Object> merged = registerStore.resolveMergedPropertiesById(itemId, itemTypeId, propertiesDiff);
         checkRequiredPropertiesById(itemScope(itemTypeId), merged, path, errors);
     }
 

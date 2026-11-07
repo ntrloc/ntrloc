@@ -60,7 +60,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 
-// Covers RegisterPartitionManager.project(...) and its supporting machinery (predicate
+// Covers ProjectionEngine.project(...) and its supporting machinery (predicate
 // translation, faceting, sorting/pagination, link expansion, state-change projection, schema-change
 // table management) -- the read/query side of the class. The write side (create/update/delete via
 // the ledger/coordinator) is already exercised by MutationControllerIntegrationTest and
@@ -217,7 +217,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
     }
 
     // Sets attachment to a binary of exactly contentLength bytes -- exists so
-    // RegisterPartitionManager.sortExpressionFor's binary-metadata-path resolution
+    // ProjectionEngine.toSort's binary-metadata-path resolution
     // (File.content.metadata.length, here "attachment.metadata.length") has real, distinguishable
     // content to sort/filter on. Content is filler bytes; only its length matters to these tests.
     private UUID createBookWithAttachment(String title, int contentLength) {
@@ -455,11 +455,11 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
         assertThat(project(spec).titles()).containsExactly("Foundation", "Neuromancer", "Dune");
     }
 
-    // --- Sorting by a binary property's intrinsic attributes (RegisterPartitionManager.sortExpressionFor) ---
+    // --- Sorting by a binary property's intrinsic attributes (ProjectionEngine.toSort) ---
     //
     // The sort field path is "attachment.length" -- the same path a client would walk in the
     // projected response to find the same value (content.length, see
-    // RegisterPartitionManager.assembleBinaryValue), not a shorter stand-in for it.
+    // ProjectionEngine.assembleBinaryValue), not a shorter stand-in for it.
 
     @Test
     void sortField_onBinaryContentLength_sortsByAttachmentSizeAscending() {
@@ -1381,7 +1381,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
         UUID throwawayTypeId = schemaManager.getAdminSchema().items().stream()
                 .filter(item -> item.name().equals("RegisterProjectionTestThrowaway"))
                 .findFirst().orElseThrow().id();
-        String tableName = RegisterPartitionManager.tableNameFor(throwawayTypeId);
+        String tableName = RegisterStore.tableNameFor(throwawayTypeId);
 
         assertThat(tableExists(tableName)).isTrue();
 
@@ -1402,7 +1402,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
     @Test
     void malformedPropertiesJsonInTheRegisterRow_failsClearlyRatherThanSilently() {
         UUID bookId = createBook("Dune", 400, true, "Fiction");
-        String tableName = RegisterPartitionManager.tableNameFor(fixture.bookTypeId());
+        String tableName = RegisterStore.tableNameFor(fixture.bookTypeId());
 
         // Postgres's jsonb column type itself rejects syntactically invalid JSON at write time, so
         // there's no way to get truly malformed JSON into this column -- what parseJsonb's catch

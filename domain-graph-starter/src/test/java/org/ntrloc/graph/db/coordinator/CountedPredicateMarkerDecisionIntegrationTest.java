@@ -50,7 +50,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 // of to-many links (self -> photos (each) -> portfolios (each) -> state machine) used to throw
 // UnsupportedOperationException the moment PipelineMarkerDecisionService ever evaluated it --
 // SignalEvaluatorTest already covers the pure evaluation logic with an in-memory FactResolver; this
-// covers RegisterPartitionManager's own FactResolver implementation (linkedItemIds/currentStateId)
+// covers RegisterStore's own FactResolver implementation (linkedItemIds/currentStateId)
 // against real register_item_link_perspective/register_link rows.
 class CountedPredicateMarkerDecisionIntegrationTest extends AbstractIntegrationTest {
 

@@ -13,7 +13,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 // Exercises BinaryDynamicPropertyRegistrar directly (not through a real item mutation -- that's
-// RegisterPartitionManager's own attach/detach wiring, covered separately) against
+// RegisterStore's own attach/detach wiring, covered separately) against
 // RegisterProjectionTestDomainInitializer's real "attachment" BINARY property, since
 // binary_property_dynamic_property.property_id is a real FK into schema_property.
 //

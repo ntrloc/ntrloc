@@ -92,12 +92,9 @@ public class BinaryDynamicPropertyRegistrar {
         });
     }
 
-    // How many distinct items currently point each property at this exact binary -- register_binary_
-    // property is owned by the register partition, not this one, but this registry already sits
-    // between the two (it links a schema_property id to facts about binary content), and
-    // RegisterPartitionManager already calls into this class the other direction (attach/detach), so
-    // reading this one table here doesn't introduce a new coupling direction, just uses the existing
-    // one from the other side.
+    // How many distinct items currently point each property at this exact binary. Reads
+    // register_binary_property, the register's table; parked to go through RegisterStore instead
+    // (docs/ntrloc-architecture-rationalization.md §8).
     private Map<UUID, Integer> referenceCountsByProperty(UUID binaryContentId) {
         Map<UUID, Integer> result = new HashMap<>();
         jdbcClient.sql("SELECT property_id, COUNT(*) AS n FROM register_binary_property WHERE binary_id = :binaryId GROUP BY property_id")
@@ -116,7 +113,7 @@ public class BinaryDynamicPropertyRegistrar {
     private record DiscoveredPath(String path, PropertyType type) {}
 
     // Flattens a binary's metadata into dot-paths with an inferred PropertyType -- the same
-    // recursive-descent shape RegisterPartitionManager.propertyPaths uses for ordinary properties,
+    // recursive-descent shape ProjectionEngine.propertyPaths uses for ordinary properties,
     // just keyed by string path instead of a schema id, since a discovered path has no id of its own
     // until ensureCatalogRow mints one. Arrays are skipped entirely, not descended into -- structured
     // list elements ("bags of structures") are still an open question in design-notes section 6;

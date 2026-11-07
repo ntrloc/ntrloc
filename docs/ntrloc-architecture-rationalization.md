@@ -115,10 +115,10 @@ Item work has two themes; every item concern informs a question or constrains a 
  State Machine Exec              │  (write side)    │
 ```
 
-- **ProjectionEngine** is today's `RegisterPartitionManager` projection code (`project`,
-  `projectAcrossTypes`, `projectOne`, result assembly). Its storage half becomes **RegisterStore**; its
-  schema lookups (`resolveStateMachineId`, `resolveStateId`) move to Schema. The two meet at an
-  **ExplicitProjection** (below).
+- **ProjectionEngine** (`org.ntrloc.graph.projection`) and **RegisterStore** replaced
+  `RegisterPartitionManager` (§9 step 1): the engine resolves and assembles projections, the store owns
+  every register table, reads and writes, and depends only on the database. They meet at an
+  **ExplicitProjection** (below). Marker names come through the authorization store.
 - **Whether Register and Binary should be one store is open (§10).** For now they're separate, and the
   one query that needs both uses rule 6's fragment.
 
@@ -302,6 +302,9 @@ parameters, never raw names; outputs use the same parameters, translated to ids 
 - **Stores whose SQL crosses partitions:** `AuthorizationRepository` joins `schema_item` (item type
   names) and `register_item` / `register_item_marker` (an item's markers). Target: callers pass item
   markers in; names come from Schema.
+- **Test names after the register split:** `RegisterPartitionManagerProjectionIntegrationTest` now tests
+  ProjectionEngine (and `RegisterPartitionManagerBinaryDynamicPropertyIntegrationTest` the coordinator's
+  reconciliation). Renaming means moving them out of the register test package, whose fixtures they share.
 - **`BinaryDynamicPropertyRegistrar` reads `register_binary_property`** (how many items reference a
   binary, per property) when a binary is re-extracted. Target: it asks RegisterStore.
 - **Store → service cycle:** `AuthorizationRepository` depends on `AuthorizationCacheManager` (`@Lazy`)
@@ -331,6 +334,7 @@ The item component first — everything else calls it or is called by it.
       `org.ntrloc.graph.projection.ProjectionEngine`; `RegisterPartitionManager` now depends only on the
       database.)*
    5. The remaining write-side SQL moves into RegisterStore; `RegisterPartitionManager` goes away.
+      *(Done.)* Read/write interface segregation on RegisterStore is step 4's.
 2. **Rename `LedgerPartitionManager` → LedgerStore**, with read and write interfaces.
 3. **Split `BinaryPartitionManager`** into BinaryReader / BinaryWriter over BinaryStore.
 4. **Entity Read and Entity Write.** Split `EntityManager` along the two themes; I/O callers depend on the

@@ -41,7 +41,7 @@ public class AuthorizationTestDataInitializer implements ApplicationRunner {
     }
 
     // Not @PostConstruct: applyMutations() below publishes SchemaChangeEvent, and
-    // RegisterPartitionManager's @EventListener reaction to it (creating this type's register
+    // RegisterStore's @EventListener reaction to it (creating this type's register
     // table) isn't wired up until every singleton has finished construction. ApplicationRunner
     // guarantees this runs after the whole context -- including that listener -- is ready.
     @Override

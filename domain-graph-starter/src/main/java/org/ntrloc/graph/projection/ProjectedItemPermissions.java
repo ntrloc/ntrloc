@@ -35,5 +35,5 @@ import java.util.Map;
 // omission convention as edit and ProjectedItemState. This is advisory, same as
 // ProjectedItemState.startable: it tells a client which perspectives are worth trying, not a
 // guarantee -- an actual link-create mutation still needs a valid, readable target item, which
-// can't be known generically here (see RegisterPartitionManager.creatableLinkPerspectiveNames).
+// can't be known generically here (see ProjectionEngine.creatableLinkPerspectiveNames).
 public record ProjectedItemPermissions(@Nullable Map<String, Object> edit, boolean delete, @Nullable List<String> createLinks) {}

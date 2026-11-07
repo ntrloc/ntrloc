@@ -31,7 +31,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-// Slice B: the item/link existence semi-joins wired into RegisterPartitionManager's actual query
+// Slice B: the item/link existence semi-joins wired into RegisterStore's actual query
 // paths (project/projectAcrossTypes, projectOne, and the link query in RegisterStore), driven through
 // EntityManager exactly the way the real HTTP endpoints do. Every non-admin fixture user is
 // added to the default "everyone" group, which already holds type-level item-type:read on these

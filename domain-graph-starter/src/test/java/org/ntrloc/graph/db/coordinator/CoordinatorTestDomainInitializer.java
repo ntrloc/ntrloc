@@ -27,7 +27,7 @@ import java.util.UUID;
 // comment for why ApplicationRunner, not @PostConstruct), before any coordinator/mutation test
 // reads its fixture ids. Everything goes through SchemaManager.applyMutations() -- the same API
 // the admin UI's schema editor uses -- rather than the lower-level SchemaRepository, so
-// RegisterPartitionManager's reaction to SchemaChangeEvent creates the per-item-type/per-link-type
+// RegisterStore's reaction to SchemaChangeEvent creates the per-item-type/per-link-type
 // register tables exactly the way it would for a live admin edit. One consequence: an item type
 // can never share a literal property with another item type (never legal in this schema model,
 // just different properties that happen to share a name/label) -- Product and Contributor each get

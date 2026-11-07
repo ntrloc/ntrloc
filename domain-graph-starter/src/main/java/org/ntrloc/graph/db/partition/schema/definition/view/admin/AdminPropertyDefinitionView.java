@@ -38,7 +38,7 @@ public sealed interface AdminPropertyDefinitionView permits AdminScalarPropertyD
     UUID controlledListId();
 
     // Admin-declared opt-in, separate from (and gated by) structural eligibility -- see
-    // RegisterPartitionManager.isTermsFacetable.
+    // ProjectionEngine.isTermsFacetable.
     boolean facetable();
 
     AdminPropertyDefinitionView withDefinedIn(DefinedInView definedIn);

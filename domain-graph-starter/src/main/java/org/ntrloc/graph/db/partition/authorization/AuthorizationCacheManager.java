@@ -15,7 +15,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 // Caches authorization_item_type_grant/marker_grant (+ its child tables) -- schema-sized,
 // admin-curated, rarely changing -- never register_item_marker (data-sized; that stays a real
-// per-page query in RegisterPartitionManager/AuthorizationRepository). See
+// per-page query in RegisterStore/AuthorizationRepository). See
 // docs/ntrloc-acl-design-notes.md "Caching grant definitions, not item-marker assignments".
 //
 // Mirrors SchemaManager's AtomicReference + Hazelcast ITopic pattern exactly -- same

@@ -9,7 +9,7 @@ import org.ntrloc.graph.db.partition.ledger.LinkDeleteEntry;
 import org.ntrloc.graph.db.partition.ledger.LinkEndpoint;
 import org.ntrloc.graph.db.partition.ledger.LinkUpdateEntry;
 import org.ntrloc.graph.db.partition.register.RegisterLinkEndpoint;
-import org.ntrloc.graph.db.partition.register.RegisterPartitionManager;
+import org.ntrloc.graph.db.partition.register.RegisterStore;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
 import org.ntrloc.graph.db.partition.schema.repository.SchemaRepository;
 import org.springframework.stereotype.Component;
@@ -39,13 +39,13 @@ import java.util.UUID;
 @Component
 public class NoOpMutationFilter {
 
-    private final RegisterPartitionManager registerPartitionManager;
+    private final RegisterStore registerStore;
     private final SchemaRepository schemaRepository;
     private final SchemaManager schemaManager;
 
-    public NoOpMutationFilter(RegisterPartitionManager registerPartitionManager, SchemaRepository schemaRepository,
+    public NoOpMutationFilter(RegisterStore registerStore, SchemaRepository schemaRepository,
                               SchemaManager schemaManager) {
-        this.registerPartitionManager = registerPartitionManager;
+        this.registerStore = registerStore;
         this.schemaRepository = schemaRepository;
         this.schemaManager = schemaManager;
     }
@@ -70,18 +70,18 @@ public class NoOpMutationFilter {
     }
 
     private ItemUpdateEntry filterItemUpdate(ItemUpdateEntry e) {
-        UUID itemTypeId = registerPartitionManager.findItemTypeId(e.itemId()).orElse(null);
+        UUID itemTypeId = registerStore.findItemTypeId(e.itemId()).orElse(null);
         if (itemTypeId == null) return e; // defensive only -- an update always targets an existing item
 
         Map<UUID, Object> properties = e.properties().isEmpty()
                 ? Map.of()
-                : dropNoOpProperties(e.properties(), registerPartitionManager.currentPropertiesById(e.itemId(), itemTypeId),
+                : dropNoOpProperties(e.properties(), registerStore.currentPropertiesById(e.itemId(), itemTypeId),
                         schemaManager.binaryPropertyIdsForItemType(itemTypeId));
 
         Map<UUID, UUID> stateChanges = Map.of();
         Set<UUID> stateMachinesEnded = Set.of();
         if (!e.stateChanges().isEmpty() || !e.stateMachinesEnded().isEmpty()) {
-            Map<UUID, UUID> currentStateIds = registerPartitionManager.currentStateIds(e.itemId());
+            Map<UUID, UUID> currentStateIds = registerStore.currentStateIds(e.itemId());
             stateChanges = dropNoOpStateChanges(e.stateChanges(), currentStateIds);
             stateMachinesEnded = dropAlreadyEndedMachines(e.stateMachinesEnded(), currentStateIds);
         }
@@ -138,23 +138,23 @@ public class NoOpMutationFilter {
     private LinkCreateEntry filterLinkCreate(LinkCreateEntry e) {
         Integer maxCardinality = schemaRepository.findPerspectiveById(e.endpointA().perspectiveId()).maxCardinality();
         if (maxCardinality == null || maxCardinality != 1) return e;
-        boolean alreadyLinked = registerPartitionManager.findExistingLinkId(
+        boolean alreadyLinked = registerStore.findExistingLinkId(
                 toRegisterEndpoint(e.endpointA()), toRegisterEndpoint(e.endpointB())).isPresent();
         return alreadyLinked ? null : e;
     }
 
     private LinkUpdateEntry filterLinkUpdate(LinkUpdateEntry e) {
         if (e.properties().isEmpty()) return null;
-        UUID linkTypeId = registerPartitionManager.findLinkTypeId(e.linkId()).orElse(null);
+        UUID linkTypeId = registerStore.findLinkTypeId(e.linkId()).orElse(null);
         if (linkTypeId == null) return e; // defensive only -- an update always targets an existing link
 
         Map<UUID, Object> properties = dropNoOpProperties(e.properties(),
-                registerPartitionManager.currentLinkPropertiesById(e.linkId(), linkTypeId));
+                registerStore.currentLinkPropertiesById(e.linkId(), linkTypeId));
         return properties.isEmpty() ? null : new LinkUpdateEntry(e.linkId(), properties);
     }
 
     private LinkDeleteEntry filterLinkDelete(LinkDeleteEntry e) {
-        return registerPartitionManager.linkExists(e.linkId()) ? e : null;
+        return registerStore.linkExists(e.linkId()) ? e : null;
     }
 
     private RegisterLinkEndpoint toRegisterEndpoint(LinkEndpoint endpoint) {

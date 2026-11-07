@@ -21,7 +21,7 @@ public sealed interface ProjectionSpec permits ItemProjectionSpec, CollectionPro
     @Nullable List<String> properties();
 
     // Both default to false (null treated the same as false at the point of use -- see
-    // RegisterPartitionManager) rather than true: most projections are read-only lookups with no
+    // RegisterStore) rather than true: most projections are read-only lookups with no
     // intent to edit or drive a workflow, and both permissions and state resolution do real work
     // (a schema-tree walk per item for edit; a marker-grant lookup plus per-machine resolution for
     // states) that a caller who only wants property values shouldn't have to pay for. Applies to

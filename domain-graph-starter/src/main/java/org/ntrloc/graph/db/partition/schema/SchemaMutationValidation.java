@@ -382,7 +382,7 @@ final class SchemaMutationValidation {
         }
     }
 
-    // Facetable is an admin-controlled opt-in (RegisterPartitionManager.isTermsFacetable), but
+    // Facetable is an admin-controlled opt-in (ProjectionEngine.isTermsFacetable), but
     // only ever meaningful on top of real structural eligibility -- SINGLE cardinality, and
     // either BOOLEAN or a type that can carry a controlled list (ControlledListValues.SUPPORTED_TYPES).
     // Deliberately does NOT also require a controlled list already be

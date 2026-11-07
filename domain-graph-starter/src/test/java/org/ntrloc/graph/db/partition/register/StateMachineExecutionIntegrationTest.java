@@ -37,7 +37,7 @@ class StateMachineExecutionIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired private EntityManager entityManager;
     @Autowired private LedgerRegisterCoordinator coordinator;
-    @Autowired private RegisterPartitionManager registerPartitionManager;
+    @Autowired private RegisterStore registerStore;
     @Autowired private SchemaManager schemaManager;
     @Autowired private AuthorizationRepository authRepo;
     @Autowired private ManualMarkerAssignmentService markerAssignmentService;
@@ -95,7 +95,7 @@ class StateMachineExecutionIntegrationTest extends AbstractIntegrationTest {
         entityManager.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, ADMIN);
 
         UUID availableId = schemaManager.resolveStateId(machineId(), RegisterProjectionTestDomainInitializer.AVAILABLE);
-        assertThat(registerPartitionManager.currentStateIds(book)).containsEntry(machineId(), availableId);
+        assertThat(registerStore.currentStateIds(book)).containsEntry(machineId(), availableId);
     }
 
     @Test
@@ -130,7 +130,7 @@ class StateMachineExecutionIntegrationTest extends AbstractIntegrationTest {
         assertThat(authRepo.getStateMachineStartGrantsForMarker(marker.id(), "USER", user.id())).contains(machineId());
 
         entityManager.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, user);
-        assertThat(registerPartitionManager.currentStateIds(book)).containsKey(machineId());
+        assertThat(registerStore.currentStateIds(book)).containsKey(machineId());
 
         // drive it (as admin) to Discontinued -> END so the machine is inactive again, then
         // revoke the start grant -- re-start must now be forbidden.
@@ -141,7 +141,7 @@ class StateMachineExecutionIntegrationTest extends AbstractIntegrationTest {
         entityManager.executeTransition(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, transitionId("MarkOutOfStock"), ADMIN);
         entityManager.executeTransition(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, transitionId("Discontinue"), ADMIN);
         entityManager.executeTransition(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, transitionId("RevokeTestEnd"), ADMIN);
-        assertThat(registerPartitionManager.currentStateIds(book)).doesNotContainKey(machineId());
+        assertThat(registerStore.currentStateIds(book)).doesNotContainKey(machineId());
         authRepo.revokeStateMachineStart(grantId, machineId());
 
         assertThatThrownBy(() -> entityManager.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, user))
@@ -160,7 +160,7 @@ class StateMachineExecutionIntegrationTest extends AbstractIntegrationTest {
         entityManager.executeTransition(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, transitionId("MarkOutOfStock"), ADMIN);
 
         UUID outOfStock = schemaManager.resolveStateId(machineId(), RegisterProjectionTestDomainInitializer.OUT_OF_STOCK);
-        assertThat(registerPartitionManager.currentStateIds(book)).containsEntry(machineId(), outOfStock);
+        assertThat(registerStore.currentStateIds(book)).containsEntry(machineId(), outOfStock);
     }
 
     @Test
@@ -222,11 +222,11 @@ class StateMachineExecutionIntegrationTest extends AbstractIntegrationTest {
         entityManager.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, ADMIN);
 
         entityManager.executeTransition(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, transitionId("Archive"), ADMIN);
-        assertThat(registerPartitionManager.currentStateIds(book)).doesNotContainKey(machineId());
+        assertThat(registerStore.currentStateIds(book)).doesNotContainKey(machineId());
 
         // re-entry
         entityManager.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, ADMIN);
-        assertThat(registerPartitionManager.currentStateIds(book)).containsEntry(machineId(), available);
+        assertThat(registerStore.currentStateIds(book)).containsEntry(machineId(), available);
     }
 
     private NtrlocPrincipal nonAdmin() {

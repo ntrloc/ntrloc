@@ -20,7 +20,6 @@ import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateItemDefini
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePropertyDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateTraitDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.ImplementTraitMutation;
-import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
 import org.ntrloc.graph.db.partition.security.TestPrincipals;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -36,7 +35,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-// Phase 2 of item-type inheritance: the cross-type query engine (RegisterPartitionManager.
+// Phase 2 of item-type inheritance: the cross-type query engine (RegisterStore.
 // projectAcrossTypes, SchemaManager's supertype-inclusive/trait-implementer resolvers, and
 // EntityManagerImpl's dispatch between the single-table and cross-type paths), driven end to end
 // through the real /api/projection/collection HTTP endpoint against a real Postgres, matching

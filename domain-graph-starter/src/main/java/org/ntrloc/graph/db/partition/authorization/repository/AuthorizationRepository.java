@@ -2,9 +2,11 @@ package org.ntrloc.graph.db.partition.authorization.repository;
 
 import org.ntrloc.graph.db.partition.authorization.AuthorizationCacheManager;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -209,6 +211,16 @@ public class AuthorizationRepository {
                         rs.getString("scope_kind"),
                         rs.getObject("scope_id", UUID.class)))
                 .list();
+    }
+
+    /** Each marker's name, for the given ids; unknown ids are absent. */
+    public Map<UUID, String> getMarkerNames(Set<UUID> markerIds) {
+        if (markerIds.isEmpty()) return Map.of();
+        Map<UUID, String> names = new HashMap<>();
+        jdbcClient.sql("SELECT id, name FROM authorization_marker WHERE id IN (:ids)")
+                .param("ids", markerIds)
+                .query((RowCallbackHandler) rs -> names.put(rs.getObject("id", UUID.class), rs.getString("name")));
+        return names;
     }
 
     /** Every marker id assigned to this item, for the batched per-page lookup used to resolve mode-2 (property/capability) checks. */

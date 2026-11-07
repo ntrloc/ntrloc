@@ -10,7 +10,7 @@ import org.ntrloc.graph.db.partition.ledger.LinkDeleteEntry;
 import org.ntrloc.graph.db.partition.ledger.LinkEndpoint;
 import org.ntrloc.graph.db.partition.ledger.LinkUpdateEntry;
 import org.ntrloc.graph.db.partition.register.RegisterLinkEndpoint;
-import org.ntrloc.graph.db.partition.register.RegisterPartitionManager;
+import org.ntrloc.graph.db.partition.register.RegisterStore;
 import org.ntrloc.graph.db.partition.register.StagingContext;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
 import org.springframework.stereotype.Component;
@@ -26,7 +26,7 @@ import java.util.UUID;
 public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator {
 
     private final LedgerPartitionManager ledgerPartitionManager;
-    private final RegisterPartitionManager registerPartitionManager;
+    private final RegisterStore registerStore;
     private final ItemDeleteCascadeExpander cascadeExpander;
     private final NoOpMutationFilter noOpMutationFilter;
     private final PipelineMarkerDecisionService pipelineMarkerDecisionService;
@@ -34,14 +34,14 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
     private final SchemaManager schemaManager;
 
     public LedgerRegisterCoordinatorImpl(LedgerPartitionManager ledgerPartitionManager,
-                                          RegisterPartitionManager registerPartitionManager,
+                                          RegisterStore registerStore,
                                           ItemDeleteCascadeExpander cascadeExpander,
                                           NoOpMutationFilter noOpMutationFilter,
                                           PipelineMarkerDecisionService pipelineMarkerDecisionService,
                                           BinaryAttachmentReconciler binaryAttachmentReconciler,
                                           SchemaManager schemaManager) {
         this.ledgerPartitionManager = ledgerPartitionManager;
-        this.registerPartitionManager = registerPartitionManager;
+        this.registerStore = registerStore;
         this.cascadeExpander = cascadeExpander;
         this.noOpMutationFilter = noOpMutationFilter;
         this.pipelineMarkerDecisionService = pipelineMarkerDecisionService;
@@ -85,9 +85,9 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
         StagingContext staging = new StagingContext(transactionId, actorUserId, createdDate);
         for (LedgerEntry entry : expanded) {
             switch (entry) {
-                case ItemCreateEntry e -> registerPartitionManager.stageItemCreate(e.itemId(), e.itemTypeId(), e.properties(), e.initialStates(),
+                case ItemCreateEntry e -> registerStore.stageItemCreate(e.itemId(), e.itemTypeId(), e.properties(), e.initialStates(),
                         schemaManager.binaryPropertyIdsForItemType(e.itemTypeId()), staging);
-                case ItemUpdateEntry e when hasRegisterEffect(e) -> registerPartitionManager.stageItemChange(e.itemId(), e.properties(),
+                case ItemUpdateEntry e when hasRegisterEffect(e) -> registerStore.stageItemChange(e.itemId(), e.properties(),
                         e.stateChanges(), e.stateMachinesEnded(), binaryPropertyIdsForItem(e.itemId()), staging);
                 default -> { /* handled in another phase */ }
             }
@@ -95,10 +95,10 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
         for (LedgerEntry entry : expanded) {
             switch (entry) {
                 case LinkCreateEntry e -> {
-                    registerPartitionManager.stageLinkCreate(e.linkId(), e.linkTypeId(),
+                    registerStore.stageLinkCreate(e.linkId(), e.linkTypeId(),
                             toRegisterEndpoint(e.endpointA()), toRegisterEndpoint(e.endpointB()), e.properties(), staging);
                 }
-                case LinkUpdateEntry e when !e.properties().isEmpty() -> registerPartitionManager.stageLinkUpdate(e.linkId(), e.properties(), staging);
+                case LinkUpdateEntry e when !e.properties().isEmpty() -> registerStore.stageLinkUpdate(e.linkId(), e.properties(), staging);
                 default -> { /* handled in another phase */ }
             }
         }
@@ -131,8 +131,8 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
     private void commitItems(List<LedgerEntry> entries, UUID transactionId, UUID commitId) {
         for (LedgerEntry entry : entries) {
             switch (entry) {
-                case ItemCreateEntry e -> binaryAttachmentReconciler.reconcile(registerPartitionManager.commitItem(e.itemId(), transactionId, commitId));
-                case ItemUpdateEntry e when hasRegisterEffect(e) -> binaryAttachmentReconciler.reconcile(registerPartitionManager.commitItem(e.itemId(), transactionId, commitId));
+                case ItemCreateEntry e -> binaryAttachmentReconciler.reconcile(registerStore.commitItem(e.itemId(), transactionId, commitId));
+                case ItemUpdateEntry e when hasRegisterEffect(e) -> binaryAttachmentReconciler.reconcile(registerStore.commitItem(e.itemId(), transactionId, commitId));
                 default -> { /* handled in another phase */ }
             }
         }
@@ -141,8 +141,8 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
     private void commitLinks(List<LedgerEntry> entries, UUID transactionId, UUID commitId) {
         for (LedgerEntry entry : entries) {
             switch (entry) {
-                case LinkCreateEntry e -> registerPartitionManager.commitLink(e.linkId(), transactionId, commitId);
-                case LinkUpdateEntry e when !e.properties().isEmpty() -> registerPartitionManager.commitLink(e.linkId(), transactionId, commitId);
+                case LinkCreateEntry e -> registerStore.commitLink(e.linkId(), transactionId, commitId);
+                case LinkUpdateEntry e when !e.properties().isEmpty() -> registerStore.commitLink(e.linkId(), transactionId, commitId);
                 default -> { /* handled in another phase */ }
             }
         }
@@ -150,23 +150,23 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
 
     private void deleteLinks(List<LedgerEntry> entries) {
         for (LedgerEntry entry : entries) {
-            if (entry instanceof LinkDeleteEntry e) registerPartitionManager.deleteLink(e.linkId());
+            if (entry instanceof LinkDeleteEntry e) registerStore.deleteLink(e.linkId());
         }
     }
 
     private void deleteItems(List<LedgerEntry> entries) {
         for (LedgerEntry entry : entries) {
-            if (entry instanceof ItemDeleteEntry e) binaryAttachmentReconciler.reconcile(registerPartitionManager.deleteItem(e.itemId()));
+            if (entry instanceof ItemDeleteEntry e) binaryAttachmentReconciler.reconcile(registerStore.deleteItem(e.itemId()));
         }
     }
 
     private void applyMarkers(List<LedgerEntry> entries) {
         for (LedgerEntry entry : entries) {
             switch (entry) {
-                case ItemCreateEntry e -> e.initialMarkers().forEach(m -> registerPartitionManager.postItemMarkerAdd(e.itemId(), m.markerId()));
+                case ItemCreateEntry e -> e.initialMarkers().forEach(m -> registerStore.postItemMarkerAdd(e.itemId(), m.markerId()));
                 case ItemUpdateEntry e -> {
-                    e.markersAdded().forEach(m -> registerPartitionManager.postItemMarkerAdd(e.itemId(), m.markerId()));
-                    e.markersRemoved().forEach(m -> registerPartitionManager.postItemMarkerRemove(e.itemId(), m.markerId()));
+                    e.markersAdded().forEach(m -> registerStore.postItemMarkerAdd(e.itemId(), m.markerId()));
+                    e.markersRemoved().forEach(m -> registerStore.postItemMarkerRemove(e.itemId(), m.markerId()));
                 }
                 default -> { /* handled in another phase */ }
             }
@@ -176,7 +176,7 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
     @Override
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void abort(UUID transactionId) {
-        registerPartitionManager.abort(transactionId);
+        registerStore.abort(transactionId);
         ledgerPartitionManager.abort(transactionId);
     }
 
@@ -188,7 +188,7 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
     }
 
     private Set<UUID> binaryPropertyIdsForItem(UUID itemId) {
-        return schemaManager.binaryPropertyIdsForItemType(registerPartitionManager.findItemTypeId(itemId).orElseThrow());
+        return schemaManager.binaryPropertyIdsForItemType(registerStore.findItemTypeId(itemId).orElseThrow());
     }
 
     private RegisterLinkEndpoint toRegisterEndpoint(LinkEndpoint endpoint) {

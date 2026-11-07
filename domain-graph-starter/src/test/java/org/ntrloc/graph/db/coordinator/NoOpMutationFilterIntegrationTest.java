@@ -10,7 +10,7 @@ import org.ntrloc.graph.db.partition.ledger.LinkCreateEntry;
 import org.ntrloc.graph.db.partition.ledger.LinkDeleteEntry;
 import org.ntrloc.graph.db.partition.ledger.LinkEndpoint;
 import org.ntrloc.graph.db.partition.ledger.LinkUpdateEntry;
-import org.ntrloc.graph.db.partition.register.RegisterPartitionManager;
+import org.ntrloc.graph.db.partition.register.RegisterStore;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateItemDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateLinkDefinitionMutation;
@@ -40,7 +40,7 @@ class NoOpMutationFilterIntegrationTest extends AbstractIntegrationTest {
     private LedgerRegisterCoordinator coordinator;
 
     @Autowired
-    private RegisterPartitionManager registerPartitionManager;
+    private RegisterStore registerStore;
 
     @Autowired
 
@@ -139,7 +139,7 @@ class NoOpMutationFilterIntegrationTest extends AbstractIntegrationTest {
         UUID smId = newThrowawayMachineStarted(itemId);
         long before = itemLedgerRowCount(itemId);
 
-        UUID currentStateId = registerPartitionManager.currentStateIds(itemId).get(smId);
+        UUID currentStateId = registerStore.currentStateIds(itemId).get(smId);
         Map<UUID, UUID> stateChanges = new HashMap<>();
         stateChanges.put(smId, currentStateId);
         UUID txn = UUID.randomUUID();

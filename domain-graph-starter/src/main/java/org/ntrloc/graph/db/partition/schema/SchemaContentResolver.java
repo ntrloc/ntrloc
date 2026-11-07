@@ -57,15 +57,15 @@ class SchemaContentResolver {
 
     // Recurses through groups so a scalar leaf nested under one is sortable via its dot-separated
     // path (e.g. "dimensions.width"); a trait's contributions sit under its namespace group, so they
-    // come out as "File.name" -- matching the dot-path resolution RegisterPartitionManager already
+    // come out as "File.name" -- matching the dot-path resolution RegisterStore already
     // does for both ORDER BY and filter predicates, this just exposes it as a pickable option.
     // Groups themselves, and LIST/SET-cardinality properties at any depth, are skipped: neither has
     // a single scalar value to order by. A BINARY leaf is skipped too -- its own value is never
     // stored in the register's flat properties JSONB, so it isn't itself a sort target (see
-    // RegisterPartitionManager.sortExpressionFor's own rejection of a bare BINARY leaf) -- instead
+    // ProjectionEngine.toSort's own rejection of a bare BINARY leaf) -- instead
     // its intrinsic attributes are offered, each addressed the same way it reads in the projected
     // response (content.length, not content.metadata.length -- see assembleBinaryValue), currently
-    // just ".length" (extend alongside RegisterPartitionManager.resolvePropertyPath's own binary-field
+    // just ".length" (extend alongside ProjectionEngine.resolvePropertyPath's own binary-field
     // resolution if this ever grows beyond that one field).
     private void appendSortableFields(List<AdminPropertyDefinitionView> properties, List<AdminPropertyGroupView> groups,
                                       String pathPrefix, List<SortableFieldView> result) {
@@ -96,7 +96,7 @@ class SchemaContentResolver {
     // for it (e.g. "File.content.metadata.exif.Make", "File.content.hash.md5") -- field.path() is
     // already the field's full path within the binary's own fields document (no separate "metadata."
     // prefix to splice in; see BinaryPartitionManagerImpl's fixed top-level keys), each of which
-    // narrows the response to just that value (RegisterPartitionManager.assembleBinaryValue's slicing,
+    // narrows the response to just that value (ProjectionEngine.assembleBinaryValue's slicing,
     // design-notes section 10) -- never the ".length"-style synthetic path sortableFieldsFor still
     // uses for sort/filter's narrower need (one typed scalar, not a response shape). System fields are
     // excluded entirely, unlike sortableFieldsFor: they're item metadata, never entries in

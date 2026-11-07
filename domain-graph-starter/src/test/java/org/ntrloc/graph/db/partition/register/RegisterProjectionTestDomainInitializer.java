@@ -64,7 +64,7 @@ public class RegisterProjectionTestDomainInitializer implements DomainInitialize
     @Override
     public void initSchema(SchemaManager schemaManager, ControlledListManager controlledListManager) {
         schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(
-                "RegisterProjectionTestBook", "RegisterPartitionManager projection/facet test fixture",
+                "RegisterProjectionTestBook", "RegisterStore projection/facet test fixture",
                 List.of(
                         property("title", PropertyType.STRING, PropertyCardinality.SINGLE),
                         property("pageCount", PropertyType.INTEGER, PropertyCardinality.SINGLE),
@@ -89,7 +89,7 @@ public class RegisterProjectionTestDomainInitializer implements DomainInitialize
                         // facetable property" auto-populate test.
                         property("testMarker", PropertyType.STRING, PropertyCardinality.SINGLE),
                         // Lets RegisterPartitionManagerProjectionIntegrationTest exercise sorting by a
-                        // binary property's intrinsic content length (RegisterPartitionManager.sortExpressionFor).
+                        // binary property's intrinsic content length (ProjectionEngine.toSort).
                         property("attachment", PropertyType.BINARY, PropertyCardinality.SINGLE)),
                 // Display label pattern: lets the projection tests check labels, including when
                 // "title" itself isn't among the requested properties.
@@ -98,7 +98,7 @@ public class RegisterProjectionTestDomainInitializer implements DomainInitialize
                 // resolution/filtering tests can exercise a real group-scoped lookup
                 // (dimensions.widthCm vs packaging.widthCm), not just a single unambiguous nested
                 // property. "dimensions.material" is facetable so facet tests can exercise
-                // RegisterPartitionManager.collectFacetableFieldNames' recursion through groups --
+                // ProjectionEngine.collectFacetableFieldNames' recursion through groups --
                 // a facetable leaf one level deep, resolved/auto-discovered under its dot-path
                 // name, the same way a top-level facetable property is.
                 List.of(
@@ -162,7 +162,7 @@ public class RegisterProjectionTestDomainInitializer implements DomainInitialize
                         new TransitionDefinition(OUT_OF_STOCK, DISCONTINUED, "Discontinue")));
 
         schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(
-                "RegisterProjectionTestAuthor", "RegisterPartitionManager projection/facet test fixture",
+                "RegisterProjectionTestAuthor", "RegisterStore projection/facet test fixture",
                 List.of(property("name", PropertyType.STRING, PropertyCardinality.SINGLE)), null, false, null)));
         authorTypeId = findItem("RegisterProjectionTestAuthor").id();
 
@@ -178,7 +178,7 @@ public class RegisterProjectionTestDomainInitializer implements DomainInitialize
         // Publisher) -- exists purely so multi-hop requested-link tests have a real third item type
         // to recurse into; no other test in this class needs it.
         schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(
-                "RegisterProjectionTestPublisher", "RegisterPartitionManager projection/facet test fixture",
+                "RegisterProjectionTestPublisher", "RegisterStore projection/facet test fixture",
                 List.of(property("name", PropertyType.STRING, PropertyCardinality.SINGLE)), null, false, null)));
         publisherTypeId = findItem("RegisterProjectionTestPublisher").id();
 

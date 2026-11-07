@@ -30,9 +30,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 // Proves UserInfo actually shows up where the user asked for it: createdBy/updatedBy within a
 // real projection response (both single-item and collection), resolved by ProjectedUserInfoEnricher
-// at the EntityManagerImpl layer -- going through EntityManager (not RegisterPartitionManager
+// at the EntityManagerImpl layer -- going through EntityManager (not RegisterStore
 // directly, unlike RegisterProvenanceIntegrationTest) is the whole point here, since enrichment
-// only runs at that layer precisely because RegisterPartitionManager must never import the
+// only runs at that layer precisely because RegisterStore must never import the
 // security partition.
 class ProjectedUserInfoIntegrationTest extends AbstractIntegrationTest {
 

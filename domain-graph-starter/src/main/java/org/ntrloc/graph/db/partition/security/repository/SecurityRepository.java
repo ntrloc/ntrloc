@@ -56,7 +56,7 @@ public class SecurityRepository {
                 .optional();
     }
 
-    // Batched id lookup -- what RegisterPartitionManager resolves a page's worth of
+    // Batched id lookup -- what RegisterStore resolves a page's worth of
     // createdBy/updatedBy UUIDs against in one round trip (UserInfo), rather than one
     // findUserById call per row. Empty input short-circuits rather than issuing "IN ()", which
     // Postgres rejects as a syntax error.

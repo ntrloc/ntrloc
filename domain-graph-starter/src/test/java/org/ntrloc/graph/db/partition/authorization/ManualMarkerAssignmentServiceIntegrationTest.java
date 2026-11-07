@@ -153,7 +153,7 @@ class ManualMarkerAssignmentServiceIntegrationTest extends AbstractIntegrationTe
     @Test
     void itemMarker_survivesAnOrdinaryPropertyUpdateAfterward() {
         // Regression guard: register_item_marker FKs to register_item.id (ON DELETE CASCADE), and
-        // an update swaps that row out for a new one wholesale (see RegisterPartitionManager.
+        // an update swaps that row out for a new one wholesale (see RegisterStore.
         // commitItem). Without explicitly carrying register_item_marker rows forward to the new id
         // before deleting the old one, this marker would be silently wiped by the cascade.
         NtrlocPrincipal actor = testActor();

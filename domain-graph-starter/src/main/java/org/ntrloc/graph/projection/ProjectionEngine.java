@@ -1,6 +1,7 @@
 package org.ntrloc.graph.projection;
 
 import org.ntrloc.graph.db.partition.authorization.RequestPermissionContext;
+import org.ntrloc.graph.db.partition.authorization.repository.AuthorizationRepository;
 import org.ntrloc.graph.db.partition.binary.BinaryPartitionManager;
 import org.ntrloc.graph.db.partition.binary.BinaryPropertyObject;
 import org.ntrloc.graph.db.partition.register.ExplicitProjection.Access;
@@ -40,7 +41,6 @@ import org.springframework.context.expression.MapAccessor;
 import org.springframework.expression.Expression;
 import org.springframework.expression.spel.standard.SpelExpressionParser;
 import org.springframework.expression.spel.support.SimpleEvaluationContext;
-import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Component;
 
@@ -106,7 +106,7 @@ public class ProjectionEngine {
     private static final String STATE_KIND_NORMAL = "NORMAL";
     private static final String STATE_KIND_START = "START";
 
-    private final JdbcClient jdbcClient;
+    private final AuthorizationRepository authorizationRepository;
     private final BinaryPartitionManager binaryPartitionManager;
     private final SchemaManager schemaManager;
     private final ControlledListManager controlledListManager;
@@ -120,8 +120,9 @@ public class ProjectionEngine {
     private final AtomicReference<DisplayLabelPatternsCache> displayLabelPatternsCache =
             new AtomicReference<>(new DisplayLabelPatternsCache(null, Map.of()));
 
-    public ProjectionEngine(JdbcClient jdbcClient, BinaryPartitionManager binaryPartitionManager, SchemaManager schemaManager, ControlledListManager controlledListManager, RegisterStore registerStore) {
-        this.jdbcClient = jdbcClient;
+    public ProjectionEngine(AuthorizationRepository authorizationRepository, BinaryPartitionManager binaryPartitionManager,
+                            SchemaManager schemaManager, ControlledListManager controlledListManager, RegisterStore registerStore) {
+        this.authorizationRepository = authorizationRepository;
         this.binaryPartitionManager = binaryPartitionManager;
         this.schemaManager = schemaManager;
         this.controlledListManager = controlledListManager;
@@ -534,18 +535,6 @@ public class ProjectionEngine {
     // --- Mode-2 (field/capability-affecting) permission resolution: batched per-page marker
     // lookup + in-memory set arithmetic against RequestPermissionContext's grant maps. Never a
     // WHERE-clause concern (see toAccess's own comment on the mode split).
-
-    // Marker id -> name, for ProjectedItem.markers -- display only, never a permission decision.
-    // Reads authorization_marker, another partition's table: the engine's to look up (through the
-    // authorization store), never RegisterStore's.
-    private Map<UUID, String> resolveMarkerNames(Set<UUID> markerIds) {
-        if (markerIds.isEmpty()) return Map.of();
-        return jdbcClient.sql("SELECT id, name FROM authorization_marker WHERE id IN (:ids)")
-                .param("ids", markerIds)
-                .query((rs, _) -> Map.entry(rs.getObject("id", UUID.class), rs.getString("name")))
-                .list().stream()
-                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
-    }
 
     // Union of a grant map's values across the markers a row actually carries -- the core mode-2
     // computation, reused for property:read/write, link_property:read/write, and (for the
@@ -1353,7 +1342,7 @@ public class ProjectionEngine {
         Set<UUID> markerIdsToName = permissions.isAdmin()
                 ? markerIdsByRegisterItemId.values().stream().flatMap(Set::stream).collect(Collectors.toSet())
                 : permissions.grantedItemReadMarkerIds();
-        Map<UUID, String> markerNamesById = resolveMarkerNames(markerIdsToName);
+        Map<UUID, String> markerNamesById = authorizationRepository.getMarkerNames(markerIdsToName);
 
         // Every binary attached anywhere in the result, the links' targets included, fetched at once.
         Map<UUID, BinaryPropertyObject> binaryObjects = binaryObjects(itemRows);
@@ -1439,7 +1428,7 @@ public class ProjectionEngine {
                 itemPermissions,
                 computeDisplayLabel(row.itemId(), displayLabelInput(props, readableProps, ctx), ctx.displayLabelPatterns().get(itemTypeName)),
                 markerNames,
-                // createdBy/updatedBy are left null here -- RegisterPartitionManager must never
+                // createdBy/updatedBy are left null here -- RegisterStore must never
                 // resolve or import anything security-related; EntityManagerImpl fills these in
                 // afterward from createdByUserId/updatedByUserId, batched across the whole page.
                 row.audit().createdDate(), row.audit().createdBy(), null, row.audit().updatedDate(), row.audit().updatedBy(), null);

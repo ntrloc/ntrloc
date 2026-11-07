@@ -10,7 +10,7 @@ import java.util.UUID;
 // current states, connected by named link perspectives. Pure, no database, used by every test in
 // this package that needs multi-instance traversal (ContextResolverTest, SignalEvaluatorTest,
 // PipelineEvaluatorTest) without paying for a real register. Production traversal is
-// RegisterPartitionManager's own job; this exists purely to keep this package's own tests as fast
+// RegisterStore's own job; this exists purely to keep this package's own tests as fast
 // and dependency-free as the rest of it.
 class InMemoryFactResolver implements FactResolver {
 

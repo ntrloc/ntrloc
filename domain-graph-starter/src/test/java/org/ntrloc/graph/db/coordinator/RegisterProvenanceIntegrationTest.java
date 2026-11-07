@@ -100,7 +100,7 @@ class RegisterProvenanceIntegrationTest extends AbstractIntegrationTest {
 
         ProjectedItem afterFirstUpdate = projectProduct(itemId, null);
         // created* must survive the update completely unchanged, even though the underlying
-        // register_item row was wholesale-replaced (see RegisterPartitionManager.stageItemChange).
+        // register_item row was wholesale-replaced (see RegisterStore.stageItemChange).
         assertThat(afterFirstUpdate.createdByUserId()).isEqualTo(creator);
         assertThat(afterFirstUpdate.createdDate().isEqual(createdAt)).isTrue();
         assertThat(afterFirstUpdate.updatedByUserId()).isEqualTo(firstEditor);
@@ -160,7 +160,7 @@ class RegisterProvenanceIntegrationTest extends AbstractIntegrationTest {
 
         ProjectedLink afterUpdate = soleLink(productId);
         // Same carry-forward requirement as items: register_link rows are wholesale-replaced on
-        // update too (RegisterPartitionManager.stageLinkUpdate), so this is a real assertion, not
+        // update too (RegisterStore.stageLinkUpdate), so this is a real assertion, not
         // a given.
         assertThat(afterUpdate.createdByUserId()).isEqualTo(creator);
         assertThat(afterUpdate.createdDate().isEqual(createdAt)).isTrue();

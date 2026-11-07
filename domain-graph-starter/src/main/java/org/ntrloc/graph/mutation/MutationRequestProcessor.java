@@ -11,7 +11,7 @@ import org.ntrloc.graph.db.partition.ledger.LinkDeleteEntry;
 import org.ntrloc.graph.db.partition.ledger.LinkEndpoint;
 import org.ntrloc.graph.db.partition.ledger.LinkUpdateEntry;
 import org.ntrloc.graph.db.partition.register.RegisterLinkEndpoint;
-import org.ntrloc.graph.db.partition.register.RegisterPartitionManager;
+import org.ntrloc.graph.db.partition.register.RegisterStore;
 import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemDefinitionView;
@@ -55,20 +55,20 @@ public class MutationRequestProcessor {
     private static final String ITEM_TYPE_NAME_PATH_SUFFIX = ".itemTypeName";
 
     private final LedgerRegisterCoordinator coordinator;
-    private final RegisterPartitionManager registerPartitionManager;
+    private final RegisterStore registerStore;
     private final SchemaManager schemaManager;
     private final PropertyValidator propertyValidator;
     private final LinkEndpointResolver linkEndpointResolver;
     private final PermissionService permissionService;
 
     public MutationRequestProcessor(LedgerRegisterCoordinator coordinator,
-                                     RegisterPartitionManager registerPartitionManager,
+                                     RegisterStore registerStore,
                                      SchemaManager schemaManager,
                                      PropertyValidator propertyValidator,
                                      LinkEndpointResolver linkEndpointResolver,
                                      PermissionService permissionService) {
         this.coordinator = coordinator;
-        this.registerPartitionManager = registerPartitionManager;
+        this.registerStore = registerStore;
         this.schemaManager = schemaManager;
         this.propertyValidator = propertyValidator;
         this.linkEndpointResolver = linkEndpointResolver;
@@ -184,7 +184,7 @@ public class MutationRequestProcessor {
 
     private void processItemUpdate(ItemUpdateMutation m, String path, NtrlocPrincipal principal, RequestState state) {
         List<ValidationError> errors = state.errors;
-        Optional<UUID> itemTypeId = registerPartitionManager.findItemTypeId(m.itemId());
+        Optional<UUID> itemTypeId = registerStore.findItemTypeId(m.itemId());
         if (itemTypeId.isEmpty()) {
             errors.add(new ValidationError(path + ".itemId", "Unknown item: " + m.itemId()));
             return;
@@ -254,12 +254,12 @@ public class MutationRequestProcessor {
 
     private void processLinkUpdate(LinkUpdateMutation m, String path, NtrlocPrincipal principal, RequestState state) {
         List<ValidationError> errors = state.errors;
-        Optional<UUID> linkTypeId = registerPartitionManager.findLinkTypeId(m.linkId());
+        Optional<UUID> linkTypeId = registerStore.findLinkTypeId(m.linkId());
         if (linkTypeId.isEmpty()) {
             errors.add(new ValidationError(path + ".linkId", "Unknown link: " + m.linkId()));
             return;
         }
-        List<UUID> endpointItemIds = registerPartitionManager.findLinkEndpoints(m.linkId()).stream().map(RegisterLinkEndpoint::itemId).toList();
+        List<UUID> endpointItemIds = registerStore.findLinkEndpoints(m.linkId()).stream().map(RegisterLinkEndpoint::itemId).toList();
         propertyValidator.checkCanWriteLinkProperties(principal, endpointItemIds, linkTypeId.get(), m.properties(), path + PROPERTIES_PATH_SUFFIX, errors);
         Map<UUID, Object> properties = propertyValidator.resolveLinkPropertyIds(linkTypeId.get(), m.properties(), path + PROPERTIES_PATH_SUFFIX, errors);
         propertyValidator.checkRequiredLinkPropertiesOnUpdate(linkTypeId.get(), m.linkId(), properties, path + PROPERTIES_PATH_SUFFIX, errors);
@@ -271,7 +271,7 @@ public class MutationRequestProcessor {
     // An update never changes endpoints (Section 8 -- see stageLinkUpdate's own comment), so unlike
     // create/delete there is no perspective-cardinality delta to record here.
     private void processLinkDelete(LinkDeleteMutation m, String path, NtrlocPrincipal principal, RequestState state) {
-        List<RegisterLinkEndpoint> endpoints = registerPartitionManager.findLinkEndpoints(m.linkId());
+        List<RegisterLinkEndpoint> endpoints = registerStore.findLinkEndpoints(m.linkId());
         // Both sides' own link:delete grant are required, same symmetric reasoning as
         // processLinkCreate's own link:create check.
         if (!canDeleteLink(principal, endpoints)) {
@@ -344,7 +344,7 @@ public class MutationRequestProcessor {
             if (change == 0) return;
             PerspectiveLookup perspective = findPerspectiveById(key.perspectiveId()).orElseThrow();
             NewItemInfo newItem = newItems.get(key.itemId());
-            int existing = newItem != null ? 0 : registerPartitionManager.countLinksForPerspective(key.itemId(), key.perspectiveId());
+            int existing = newItem != null ? 0 : registerStore.countLinksForPerspective(key.itemId(), key.perspectiveId());
             String path = newItem != null ? newItem.path() + ".links." + perspective.name() : state.lastLinkMutationPath.get(key);
             reportCardinalityViolation(perspective, existing + change, path, errors);
         });
