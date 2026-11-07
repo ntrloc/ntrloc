@@ -7,7 +7,7 @@ import org.ntrloc.graph.access.WatchDerivation;
 import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
 import org.ntrloc.graph.db.partition.ledger.ItemUpdateEntry;
 import org.ntrloc.graph.db.partition.ledger.LedgerEntry;
-import org.ntrloc.graph.db.partition.ledger.LedgerPartitionManager;
+import org.ntrloc.graph.db.partition.ledger.LedgerStoreReader;
 import org.ntrloc.graph.db.partition.ledger.ManuallyAppliedMarker;
 import org.ntrloc.graph.db.partition.ledger.MarkerAttribution;
 import org.ntrloc.graph.db.partition.ledger.PipelineAppliedMarker;
@@ -43,13 +43,13 @@ public class PipelineMarkerDecisionService {
 
     private final PipelineSource pipelineSource;
     private final RegisterStore registerStore;
-    private final LedgerPartitionManager ledgerPartitionManager;
+    private final LedgerStoreReader ledgerStore;
 
     public PipelineMarkerDecisionService(PipelineSource pipelineSource, RegisterStore registerStore,
-                                          LedgerPartitionManager ledgerPartitionManager) {
+                                          LedgerStoreReader ledgerStore) {
         this.pipelineSource = pipelineSource;
         this.registerStore = registerStore;
-        this.ledgerPartitionManager = ledgerPartitionManager;
+        this.ledgerStore = ledgerStore;
     }
 
     /** Pure: returns entries with markersAdded/markersRemoved (or initialMarkers) enriched wherever a pipeline watching one of this entry's actually-changed facts has a changed decision. Entries touching nothing any bound pipeline watches pass through unchanged. */
@@ -159,7 +159,7 @@ public class PipelineMarkerDecisionService {
     // itself previously asserted.
     private Map<UUID, UUID> replayCurrentPipelineAttribution(UUID itemId) {
         Map<UUID, UUID> current = new HashMap<>();
-        for (LedgerEntry entry : ledgerPartitionManager.readItemStream(itemId)) {
+        for (LedgerEntry entry : ledgerStore.readItemStream(itemId)) {
             switch (entry) {
                 case ItemCreateEntry e -> e.initialMarkers().forEach(m -> putIfPipeline(current, m));
                 case ItemUpdateEntry e -> {

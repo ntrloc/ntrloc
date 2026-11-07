@@ -1199,7 +1199,7 @@ public class RegisterStore implements SchemaChangeListener, FactResolver {
                 .single();
     }
 
-    // Named to match LedgerPartitionManager.abort() -- this and that together are what
+    // Named to match LedgerStoreWriter.abort() -- this and that together are what
     // LedgerRegisterCoordinator.abort() calls to discard a prepared-but-not-yet-committed
     // transaction's staged rows on both sides.
     public void abort(UUID transactionId) {

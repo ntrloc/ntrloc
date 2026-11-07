@@ -4,7 +4,7 @@ import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
 import org.ntrloc.graph.db.partition.ledger.ItemUpdateEntry;
 import org.ntrloc.graph.db.partition.ledger.LedgerEntry;
 import org.ntrloc.graph.db.partition.ledger.LedgerEntryRecord;
-import org.ntrloc.graph.db.partition.ledger.LedgerPartitionManager;
+import org.ntrloc.graph.db.partition.ledger.LedgerStoreReader;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.springframework.stereotype.Service;
 
@@ -31,11 +31,11 @@ public class LedgerPropertyHistoryService {
     public record PropertyHistoryEntry(OffsetDateTime editedOn, UUID editedByUserId, String editedByDisplayName, Object value) {
     }
 
-    private final LedgerPartitionManager ledgerPartitionManager;
+    private final LedgerStoreReader ledgerStore;
     private final SecurityRepository securityRepository;
 
-    public LedgerPropertyHistoryService(LedgerPartitionManager ledgerPartitionManager, SecurityRepository securityRepository) {
-        this.ledgerPartitionManager = ledgerPartitionManager;
+    public LedgerPropertyHistoryService(LedgerStoreReader ledgerStore, SecurityRepository securityRepository) {
+        this.ledgerStore = ledgerStore;
         this.securityRepository = securityRepository;
     }
 
@@ -44,7 +44,7 @@ public class LedgerPropertyHistoryService {
     // materialization needs.
     public List<PropertyHistoryEntry> history(UUID itemId, UUID propertyId) {
         Map<UUID, String> displayNameCache = new HashMap<>();
-        List<PropertyHistoryEntry> entries = ledgerPartitionManager.readItemStreamWithMetadata(itemId).stream()
+        List<PropertyHistoryEntry> entries = ledgerStore.readItemStreamWithMetadata(itemId).stream()
                 .filter(ledgerRecord -> touchesProperty(ledgerRecord.entry(), propertyId))
                 .map(ledgerRecord -> toHistoryEntry(ledgerRecord, propertyId, displayNameCache))
                 .toList();

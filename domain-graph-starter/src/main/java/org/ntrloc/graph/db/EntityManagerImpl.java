@@ -40,7 +40,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 // @ProcessAccessible: the only bean reachable from process scripts as ${entityManager}, now that
-// it fronts both reads and writes. RegisterStore and LedgerPartitionManagerImpl lost
+// it fronts both reads and writes. RegisterStore and LedgerStore lost
 // the annotation for the same reason -- one seam is enough.
 @Service("entityManager")
 @ProcessAccessible

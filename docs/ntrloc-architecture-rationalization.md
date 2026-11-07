@@ -37,7 +37,8 @@ fix, a new API shape) are called out as such (§9).
    When one query genuinely needs another partition's data (to sort or paginate by it), the owning
    store supplies that piece as a SQL fragment, and the querying store embeds it without knowing what's
    inside. Each store authors SQL only for its own tables, and the database still runs one query.
-7. **Interface segregation on stores.** Read and write interfaces are separate; only the owner of an
+7. **Interface segregation on stores.** Read and write interfaces are separate (`<Name>StoreReader` and
+   `<Name>StoreWriter`, both implemented by `<Name>Store`); only the owner of an
    invariant is given the write interface. Enforced by ArchUnit tests, not convention.
 
 ---
@@ -150,7 +151,8 @@ returns rows keyed by id.
 - RegisterStore then depends on nothing but the database: its `SchemaManager`, `BinaryPartitionManager`
   and `ControlledListManager` dependencies move to ProjectionEngine, and its SQL stops joining
   `schema_item`, `schema_entity_link_perspective` and `schema_property` for names.
-- **LedgerStore** is today's `LedgerPartitionManager`, renamed. It's hidden from projections; property
+- **LedgerStore** (was `LedgerPartitionManager`) implements `LedgerStoreReader` and `LedgerStoreWriter`; only
+  the coordinator holds the writer. It's hidden from projections; property
   history (`LedgerPropertyHistoryService`) is an audit-style reader beside the item component.
 - **BinaryReader / BinaryWriter** split today's `BinaryPartitionManager`.
 - **The write side reads its own stores directly, unfiltered.** Validation and marker decisions need the
@@ -335,7 +337,7 @@ The item component first — everything else calls it or is called by it.
       database.)*
    5. The remaining write-side SQL moves into RegisterStore; `RegisterPartitionManager` goes away.
       *(Done.)* Read/write interface segregation on RegisterStore is step 4's.
-2. **Rename `LedgerPartitionManager` → LedgerStore**, with read and write interfaces.
+2. **Rename `LedgerPartitionManager` → LedgerStore**, with read and write interfaces. *(Done.)*
 3. **Split `BinaryPartitionManager`** into BinaryReader / BinaryWriter over BinaryStore.
 4. **Entity Read and Entity Write.** Split `EntityManager` along the two themes; I/O callers depend on the
    side they need. Add ArchUnit rules for store write interfaces and read/write direction.

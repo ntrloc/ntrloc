@@ -4,7 +4,11 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
-public interface LedgerPartitionManager {
+/**
+ * Writing the ledger. Only the ledger/register coordinator holds this: it keeps the ledger and the
+ * register consistent, so nothing else may write either (docs/ntrloc-architecture-rationalization.md §2).
+ */
+public interface LedgerStoreWriter {
 
     // Writes entries as UNCOMMITTED under transactionId. Not visible via readItemStream/
     // readLinkStream until commit(transactionId) is called. createdBy/createdDate are single
@@ -19,20 +23,4 @@ public interface LedgerPartitionManager {
 
     // Deletes transactionId's UNCOMMITTED entries outright, rather than marking them aborted.
     void abort(UUID transactionId);
-
-    List<LedgerEntry> readItemStream(UUID itemId);
-
-    List<LedgerEntry> readLinkStream(UUID linkId);
-
-    // Same committed item stream as readItemStream, but with the per-row metadata
-    // (createdDate/createdBy) readItemStream itself discards -- needed for per-property edit
-    // history (LedgerPropertyHistoryService), not for anything readItemStream's existing callers
-    // (register materialization) ever needed.
-    List<LedgerEntryRecord> readItemStreamWithMetadata(UUID itemId);
-
-    // Returns transactionId's entries regardless of state, in append order. The caller of
-    // append() may not be the same process that later calls commit()/abort() (Section 11's
-    // future cross-domain door), so the transaction's entries must be re-fetchable from just
-    // its id rather than assuming an in-memory list survives across that boundary.
-    List<LedgerEntry> readTransaction(UUID transactionId);
 }

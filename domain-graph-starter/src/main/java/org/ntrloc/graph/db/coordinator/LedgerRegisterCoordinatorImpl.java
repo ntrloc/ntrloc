@@ -4,7 +4,8 @@ import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
 import org.ntrloc.graph.db.partition.ledger.ItemDeleteEntry;
 import org.ntrloc.graph.db.partition.ledger.ItemUpdateEntry;
 import org.ntrloc.graph.db.partition.ledger.LedgerEntry;
-import org.ntrloc.graph.db.partition.ledger.LedgerPartitionManager;
+import org.ntrloc.graph.db.partition.ledger.LedgerStoreReader;
+import org.ntrloc.graph.db.partition.ledger.LedgerStoreWriter;
 import org.ntrloc.graph.db.partition.ledger.LinkCreateEntry;
 import org.ntrloc.graph.db.partition.ledger.LinkDeleteEntry;
 import org.ntrloc.graph.db.partition.ledger.LinkEndpoint;
@@ -25,7 +26,8 @@ import java.util.UUID;
 @Component
 public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator {
 
-    private final LedgerPartitionManager ledgerPartitionManager;
+    private final LedgerStoreReader ledgerReader;
+    private final LedgerStoreWriter ledgerWriter;
     private final RegisterStore registerStore;
     private final ItemDeleteCascadeExpander cascadeExpander;
     private final NoOpMutationFilter noOpMutationFilter;
@@ -33,14 +35,15 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
     private final BinaryAttachmentReconciler binaryAttachmentReconciler;
     private final SchemaManager schemaManager;
 
-    public LedgerRegisterCoordinatorImpl(LedgerPartitionManager ledgerPartitionManager,
+    public LedgerRegisterCoordinatorImpl(LedgerStoreReader ledgerReader, LedgerStoreWriter ledgerWriter,
                                           RegisterStore registerStore,
                                           ItemDeleteCascadeExpander cascadeExpander,
                                           NoOpMutationFilter noOpMutationFilter,
                                           PipelineMarkerDecisionService pipelineMarkerDecisionService,
                                           BinaryAttachmentReconciler binaryAttachmentReconciler,
                                           SchemaManager schemaManager) {
-        this.ledgerPartitionManager = ledgerPartitionManager;
+        this.ledgerReader = ledgerReader;
+        this.ledgerWriter = ledgerWriter;
         this.registerStore = registerStore;
         this.cascadeExpander = cascadeExpander;
         this.noOpMutationFilter = noOpMutationFilter;
@@ -71,7 +74,7 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
         // prepare()'s job, not commit()'s. commit() needs no changes to apply what this produces:
         // it already reads markersAdded/Removed off whatever entries it's given.
         expanded = pipelineMarkerDecisionService.enrichWithPipelineDecisions(expanded);
-        ledgerPartitionManager.append(expanded, transactionId, actorUserId, createdDate);
+        ledgerWriter.append(expanded, transactionId, actorUserId, createdDate);
 
         // Items before links: link endpoint resolution needs same-transaction item staging
         // to already exist so it can prefer the fresh row over the old committed one.
@@ -107,7 +110,7 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
     @Override
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void commit(UUID transactionId, UUID commitId) {
-        List<LedgerEntry> entries = ledgerPartitionManager.readTransaction(transactionId);
+        List<LedgerEntry> entries = ledgerReader.readTransaction(transactionId);
 
         commitItems(entries, transactionId, commitId);
         commitLinks(entries, transactionId, commitId);
@@ -123,7 +126,7 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
         // comments).
         applyMarkers(entries);
 
-        ledgerPartitionManager.commit(transactionId, commitId);
+        ledgerWriter.commit(transactionId, commitId);
     }
 
     // Binary attachments are reconciled here and in deleteItems, at commit -- never at prepare, so an
@@ -177,7 +180,7 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void abort(UUID transactionId) {
         registerStore.abort(transactionId);
-        ledgerPartitionManager.abort(transactionId);
+        ledgerWriter.abort(transactionId);
     }
 
     // An ItemUpdateEntry only needs a staged/committed register row when it actually changes the

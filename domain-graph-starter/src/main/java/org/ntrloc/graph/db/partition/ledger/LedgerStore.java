@@ -9,9 +9,11 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
+// The ledger: the append-only record of every change, written UNCOMMITTED at prepare and committed or
+// deleted with its transaction. The register is materialized from it (see LedgerRegisterCoordinatorImpl).
 @Component
 @DependsOnDatabaseInitialization
-public class LedgerPartitionManagerImpl implements LedgerPartitionManager {
+public class LedgerStore implements LedgerStoreReader, LedgerStoreWriter {
 
     private static final String COL_PAYLOAD = "payload";
     private static final String PARAM_TRANSACTION_ID = "transactionId";
@@ -19,7 +21,7 @@ public class LedgerPartitionManagerImpl implements LedgerPartitionManager {
     private final JdbcClient jdbcClient;
     private final ObjectMapper objectMapper;
 
-    public LedgerPartitionManagerImpl(JdbcClient jdbcClient, ObjectMapper objectMapper) {
+    public LedgerStore(JdbcClient jdbcClient, ObjectMapper objectMapper) {
         this.jdbcClient = jdbcClient;
         this.objectMapper = objectMapper;
     }

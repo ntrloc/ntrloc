@@ -14,10 +14,10 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-class LedgerPartitionManagerIntegrationTest extends AbstractIntegrationTest {
+class LedgerStoreIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
-    private LedgerPartitionManager ledgerPartitionManager;
+    private LedgerStore ledgerStore;
 
     @Autowired
     private SecurityRepository securityRepo;
@@ -39,13 +39,13 @@ class LedgerPartitionManagerIntegrationTest extends AbstractIntegrationTest {
         UUID txn1 = UUID.randomUUID();
         UUID txn2 = UUID.randomUUID();
 
-        ledgerPartitionManager.append(List.of(new ItemCreateEntry(itemId, itemTypeId, Map.of(namePropertyId, "Widget"), Map.of(), Set.of())), txn1, actor, OffsetDateTime.now());
-        ledgerPartitionManager.commit(txn1, UUID.randomUUID());
+        ledgerStore.append(List.of(new ItemCreateEntry(itemId, itemTypeId, Map.of(namePropertyId, "Widget"), Map.of(), Set.of())), txn1, actor, OffsetDateTime.now());
+        ledgerStore.commit(txn1, UUID.randomUUID());
 
-        ledgerPartitionManager.append(List.of(new ItemUpdateEntry(itemId, Map.of(namePropertyId, "Widget Pro"), Map.of(), Set.of(), Set.of(), Set.of())), txn2, actor, OffsetDateTime.now());
-        ledgerPartitionManager.commit(txn2, UUID.randomUUID());
+        ledgerStore.append(List.of(new ItemUpdateEntry(itemId, Map.of(namePropertyId, "Widget Pro"), Map.of(), Set.of(), Set.of(), Set.of())), txn2, actor, OffsetDateTime.now());
+        ledgerStore.commit(txn2, UUID.randomUUID());
 
-        assertThat(ledgerPartitionManager.readItemStream(itemId)).containsExactly(
+        assertThat(ledgerStore.readItemStream(itemId)).containsExactly(
                 new ItemCreateEntry(itemId, itemTypeId, Map.of(namePropertyId, "Widget"), Map.of(), Set.of()),
                 new ItemUpdateEntry(itemId, Map.of(namePropertyId, "Widget Pro"), Map.of(), Set.of(), Set.of(), Set.of())
         );
@@ -56,9 +56,9 @@ class LedgerPartitionManagerIntegrationTest extends AbstractIntegrationTest {
         UUID itemId = UUID.randomUUID();
         UUID txn = UUID.randomUUID();
 
-        ledgerPartitionManager.append(List.of(new ItemCreateEntry(itemId, UUID.randomUUID(), Map.of(UUID.randomUUID(), "Ghost"), Map.of(), Set.of())), txn, actor, OffsetDateTime.now());
+        ledgerStore.append(List.of(new ItemCreateEntry(itemId, UUID.randomUUID(), Map.of(UUID.randomUUID(), "Ghost"), Map.of(), Set.of())), txn, actor, OffsetDateTime.now());
 
-        assertThat(ledgerPartitionManager.readItemStream(itemId)).isEmpty();
+        assertThat(ledgerStore.readItemStream(itemId)).isEmpty();
     }
 
     @Test
@@ -66,11 +66,11 @@ class LedgerPartitionManagerIntegrationTest extends AbstractIntegrationTest {
         UUID itemId = UUID.randomUUID();
         UUID txn = UUID.randomUUID();
 
-        ledgerPartitionManager.append(List.of(new ItemCreateEntry(itemId, UUID.randomUUID(), Map.of(UUID.randomUUID(), "Ghost"), Map.of(), Set.of())), txn, actor, OffsetDateTime.now());
-        ledgerPartitionManager.abort(txn);
-        ledgerPartitionManager.commit(txn, UUID.randomUUID());
+        ledgerStore.append(List.of(new ItemCreateEntry(itemId, UUID.randomUUID(), Map.of(UUID.randomUUID(), "Ghost"), Map.of(), Set.of())), txn, actor, OffsetDateTime.now());
+        ledgerStore.abort(txn);
+        ledgerStore.commit(txn, UUID.randomUUID());
 
-        assertThat(ledgerPartitionManager.readItemStream(itemId)).isEmpty();
+        assertThat(ledgerStore.readItemStream(itemId)).isEmpty();
     }
 
     @Test
@@ -79,15 +79,15 @@ class LedgerPartitionManagerIntegrationTest extends AbstractIntegrationTest {
         UUID linkId = UUID.randomUUID();
         UUID txn = UUID.randomUUID();
 
-        ledgerPartitionManager.append(List.of(
+        ledgerStore.append(List.of(
                 new ItemCreateEntry(itemId, UUID.randomUUID(), Map.of(), Map.of(), Set.of()),
                 new LinkDeleteEntry(linkId)
         ), txn, actor, OffsetDateTime.now());
-        ledgerPartitionManager.commit(txn, UUID.randomUUID());
+        ledgerStore.commit(txn, UUID.randomUUID());
 
-        assertThat(ledgerPartitionManager.readItemStream(itemId)).hasSize(1);
-        assertThat(ledgerPartitionManager.readLinkStream(linkId)).hasSize(1);
-        assertThat(ledgerPartitionManager.readItemStream(linkId)).isEmpty();
+        assertThat(ledgerStore.readItemStream(itemId)).hasSize(1);
+        assertThat(ledgerStore.readLinkStream(linkId)).hasSize(1);
+        assertThat(ledgerStore.readItemStream(linkId)).isEmpty();
     }
 
     @Test
@@ -99,10 +99,10 @@ class LedgerPartitionManagerIntegrationTest extends AbstractIntegrationTest {
                 new LinkEndpoint(UUID.randomUUID(), UUID.randomUUID()),
                 Map.of(UUID.randomUUID(), "2026"));
 
-        ledgerPartitionManager.append(List.of(entry), txn, actor, OffsetDateTime.now());
-        ledgerPartitionManager.commit(txn, UUID.randomUUID());
+        ledgerStore.append(List.of(entry), txn, actor, OffsetDateTime.now());
+        ledgerStore.commit(txn, UUID.randomUUID());
 
-        assertThat(ledgerPartitionManager.readLinkStream(linkId)).containsExactly(entry);
+        assertThat(ledgerStore.readLinkStream(linkId)).containsExactly(entry);
     }
 
     @Test
@@ -114,10 +114,10 @@ class LedgerPartitionManagerIntegrationTest extends AbstractIntegrationTest {
         UUID txn = UUID.randomUUID();
         ManuallyAppliedMarker attributed = new ManuallyAppliedMarker(markerId, actor, "flagged by pre-production naming rule");
 
-        ledgerPartitionManager.append(List.of(new ItemUpdateEntry(itemId, Map.of(), Map.of(), Set.of(), Set.of(attributed), Set.of())), txn, actor, OffsetDateTime.now());
-        ledgerPartitionManager.commit(txn, UUID.randomUUID());
+        ledgerStore.append(List.of(new ItemUpdateEntry(itemId, Map.of(), Map.of(), Set.of(), Set.of(attributed), Set.of())), txn, actor, OffsetDateTime.now());
+        ledgerStore.commit(txn, UUID.randomUUID());
 
-        assertThat(ledgerPartitionManager.readItemStream(itemId)).containsExactly(
+        assertThat(ledgerStore.readItemStream(itemId)).containsExactly(
                 new ItemUpdateEntry(itemId, Map.of(), Map.of(), Set.of(), Set.of(attributed), Set.of())
         );
     }
@@ -131,10 +131,10 @@ class LedgerPartitionManagerIntegrationTest extends AbstractIntegrationTest {
         UUID txn = UUID.randomUUID();
         PipelineAppliedMarker attributed = new PipelineAppliedMarker(markerId, pipelineId);
 
-        ledgerPartitionManager.append(List.of(new ItemUpdateEntry(itemId, Map.of(), Map.of(), Set.of(), Set.of(attributed), Set.of())), txn, actor, OffsetDateTime.now());
-        ledgerPartitionManager.commit(txn, UUID.randomUUID());
+        ledgerStore.append(List.of(new ItemUpdateEntry(itemId, Map.of(), Map.of(), Set.of(), Set.of(attributed), Set.of())), txn, actor, OffsetDateTime.now());
+        ledgerStore.commit(txn, UUID.randomUUID());
 
-        assertThat(ledgerPartitionManager.readItemStream(itemId)).containsExactly(
+        assertThat(ledgerStore.readItemStream(itemId)).containsExactly(
                 new ItemUpdateEntry(itemId, Map.of(), Map.of(), Set.of(), Set.of(attributed), Set.of())
         );
     }
@@ -144,9 +144,9 @@ class LedgerPartitionManagerIntegrationTest extends AbstractIntegrationTest {
         UUID itemId = UUID.randomUUID();
         UUID txn = UUID.randomUUID();
 
-        ledgerPartitionManager.append(List.of(new ItemDeleteEntry(itemId)), txn, actor, OffsetDateTime.now());
-        ledgerPartitionManager.commit(txn, UUID.randomUUID());
+        ledgerStore.append(List.of(new ItemDeleteEntry(itemId)), txn, actor, OffsetDateTime.now());
+        ledgerStore.commit(txn, UUID.randomUUID());
 
-        assertThat(ledgerPartitionManager.readItemStream(itemId)).containsExactly(new ItemDeleteEntry(itemId));
+        assertThat(ledgerStore.readItemStream(itemId)).containsExactly(new ItemDeleteEntry(itemId));
     }
 }

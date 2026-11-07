@@ -5,7 +5,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.coordinator.CoordinatorTestDomainInitializer;
-import org.ntrloc.graph.db.partition.ledger.LedgerPartitionManager;
+import org.ntrloc.graph.db.partition.ledger.LedgerStoreReader;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -36,7 +36,7 @@ class MutationControllerIntegrationTest extends AbstractIntegrationTest {
     private CoordinatorTestDomainInitializer fixture;
 
     @Autowired
-    private LedgerPartitionManager ledgerPartitionManager;
+    private LedgerStoreReader ledgerStore;
 
     @Autowired
     private JdbcClient jdbcClient;
@@ -317,7 +317,7 @@ class MutationControllerIntegrationTest extends AbstractIntegrationTest {
         MutationResponse response = postMutation(request);
         UUID itemId = response.items().get(0).itemId();
 
-        assertThat(ledgerPartitionManager.readTransaction(response.transactionId())).isNotEmpty();
+        assertThat(ledgerStore.readTransaction(response.transactionId())).isNotEmpty();
         assertThat(uncommittedRegisterItemCount(itemId, response.transactionId())).isEqualTo(1L);
         assertThat(committedRegisterItemCount(itemId)).isEqualTo(0L);
     }
@@ -333,7 +333,7 @@ class MutationControllerIntegrationTest extends AbstractIntegrationTest {
                 .exchange()
                 .expectStatus().isOk();
 
-        assertThat(ledgerPartitionManager.readTransaction(response.transactionId())).isEmpty();
+        assertThat(ledgerStore.readTransaction(response.transactionId())).isEmpty();
         assertThat(registerItemRowCount(itemId, response.transactionId())).isEqualTo(0L);
     }
 
@@ -348,7 +348,7 @@ class MutationControllerIntegrationTest extends AbstractIntegrationTest {
                 .exchange()
                 .expectStatus().isOk();
 
-        assertThat(ledgerPartitionManager.readTransaction(response.transactionId())).isNotEmpty();
+        assertThat(ledgerStore.readTransaction(response.transactionId())).isNotEmpty();
         assertThat(committedRegisterItemCount(itemId)).isEqualTo(1L);
         assertThat(uncommittedRegisterItemCount(itemId, response.transactionId())).isEqualTo(0L);
     }
