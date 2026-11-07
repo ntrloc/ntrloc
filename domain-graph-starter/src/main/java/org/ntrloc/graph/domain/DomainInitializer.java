@@ -2,7 +2,7 @@ package org.ntrloc.graph.domain;
 
 import org.flowable.dmn.api.DmnRepositoryService;
 import org.flowable.engine.RepositoryService;
-import org.ntrloc.graph.db.partition.binary.BinaryPartitionManager;
+import org.ntrloc.graph.db.partition.binary.BinaryStore;
 import org.ntrloc.graph.db.partition.schema.ControlledListManager;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateStateMachineMutation;
@@ -37,7 +37,7 @@ import java.util.stream.Stream;
 // singletons finish construction, so a @PostConstruct that publishes SchemaChangeEvent during its
 // own construction can fire before RegisterStore is even listening), constructor-
 // injecting whatever it needs (SchemaManager, ControlledListManager, JdbcClient,
-// BinaryPartitionManager, RepositoryService, DmnRepositoryService) and calling its own overridden
+// BinaryStore, RepositoryService, DmnRepositoryService) and calling its own overridden
 // method(s) from run(), in the order initSchema -> initData -> initProcesses.
 public interface DomainInitializer {
 
@@ -51,7 +51,7 @@ public interface DomainInitializer {
     /**
      * Implementations seed domain data via jdbcClient and may store binary content.
      */
-    default void initData(JdbcClient jdbcClient, BinaryPartitionManager binaryPartitionManager) {
+    default void initData(JdbcClient jdbcClient, BinaryStore binaryStore) {
     }
 
     /**

@@ -29,10 +29,10 @@ public class BinaryController {
 
     public record UploadResponse(UUID id) {}
 
-    private final BinaryPartitionManager binaryPartitionManager;
+    private final BinaryStore binaryStore;
 
-    public BinaryController(BinaryPartitionManager binaryPartitionManager) {
-        this.binaryPartitionManager = binaryPartitionManager;
+    public BinaryController(BinaryStore binaryStore) {
+        this.binaryStore = binaryStore;
     }
 
     // Spring MVC has no multipart handling that doesn't fully parse the request (via
@@ -62,7 +62,7 @@ public class BinaryController {
             if (item.isFormField()) {
                 continue;
             }
-            UUID id = binaryPartitionManager.store(item.getInputStream());
+            UUID id = binaryStore.store(item.getInputStream());
             return ResponseEntity.created(URI.create("/api/binary/" + id))
                     .body(new UploadResponse(id));
         }
@@ -75,7 +75,7 @@ public class BinaryController {
             @RequestHeader(value = HttpHeaders.IF_NONE_MATCH, required = false) String ifNoneMatch)
             throws IOException {
 
-        var result = binaryPartitionManager.retrieve(id);
+        var result = binaryStore.retrieve(id);
         if (result.isEmpty()) {
             return ResponseEntity.notFound().build();
         }

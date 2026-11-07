@@ -20,10 +20,10 @@ import java.util.UUID;
 // 10. Called by the coordinator (via BinaryAttachmentReconciler) whenever a binary property's value
 // is attached, detached, or repointed to a different binary (never on read); will also be the
 // reconciliation entry point
-// for re-extraction once that exists (BinaryPartitionManager.updateMetadata's own trigger 3). Shared
+// for re-extraction once that exists (BinaryStore.updateMetadata's own trigger 3). Shared
 // here so all triggers stay in lockstep rather than reimplementing the flatten/adjust walk per site.
 // Takes an already-parsed metadata map, not a raw JSON string: every caller already has one on hand
-// (BinaryPropertyObject.metadata() is parsed at the BinaryPartitionManager boundary; a re-extraction
+// (BinaryPropertyObject.metadata() is parsed at the BinaryStore boundary; a re-extraction
 // diff needs a parsed map to compare old/new anyway), so there's no reason to round-trip through JSON
 // text here.
 //
@@ -166,7 +166,7 @@ public class BinaryDynamicPropertyRegistrar {
     }
 
     // (xmax = 0) is the same "did this INSERT actually insert, or hit the ON CONFLICT branch" idiom
-    // BinaryPartitionManagerImpl.insert already uses -- true only the first time this property gains
+    // BinaryStore.insert already uses -- true only the first time this property gains
     // this path, which is exactly when dynamicFields structurally changes.
     private static final String INCREMENT_SQL = """
             INSERT INTO binary_property_dynamic_property (property_id, dynamic_property_id, reference_count)

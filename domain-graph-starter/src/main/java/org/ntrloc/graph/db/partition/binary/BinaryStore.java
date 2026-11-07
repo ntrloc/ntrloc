@@ -25,11 +25,14 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+// Binary content: uploaded bytes (behind a storage adapter), stored once per distinct content and shared
+// by every item that attaches it, plus their extracted metadata. How it relates to the register is an
+// open question (docs/ntrloc-architecture-rationalization.md §10).
 @Component
 @DependsOnDatabaseInitialization
-public class BinaryPartitionManagerImpl implements BinaryPartitionManager {
+public class BinaryStore {
 
-    private static final Logger LOG = LoggerFactory.getLogger(BinaryPartitionManagerImpl.class);
+    private static final Logger LOG = LoggerFactory.getLogger(BinaryStore.class);
 
     private static final String COL_SHA256 = "sha256";
     private static final String COL_LENGTH = "length";
@@ -53,7 +56,7 @@ public class BinaryPartitionManagerImpl implements BinaryPartitionManager {
     private final ApplicationEventPublisher eventPublisher;
     private final BinaryDynamicPropertyRegistrar dynamicPropertyRegistrar;
 
-    public BinaryPartitionManagerImpl(JdbcClient jdbcClient, BinaryStorageAdapter storageAdapter, ObjectMapper objectMapper,
+    public BinaryStore(JdbcClient jdbcClient, BinaryStorageAdapter storageAdapter, ObjectMapper objectMapper,
                                        ApplicationEventPublisher eventPublisher, BinaryDynamicPropertyRegistrar dynamicPropertyRegistrar) {
         this.jdbcClient = jdbcClient;
         this.storageAdapter = storageAdapter;
@@ -71,7 +74,6 @@ public class BinaryPartitionManagerImpl implements BinaryPartitionManager {
     // feeding.
     private static final int READ_BUFFER_SIZE = 8192;
 
-    @Override
     public UUID store(InputStream content) throws IOException {
         HashingBinaryDataWriter writer = storageAdapter.openWriter();
         try {
@@ -134,7 +136,6 @@ public class BinaryPartitionManagerImpl implements BinaryPartitionManager {
         return objectMapper.writeValueAsString(fields);
     }
 
-    @Override
     public Optional<BinaryContentStream> retrieve(UUID id) throws IOException {
         var info = getBinaryProperty(id);
         if (info.isEmpty()) return Optional.empty();
@@ -143,7 +144,6 @@ public class BinaryPartitionManagerImpl implements BinaryPartitionManager {
         return Optional.of(new BinaryContentStream(obj, stream));
     }
 
-    @Override
     public Optional<BinaryPropertyObject> getBinaryProperty(UUID id) {
         return jdbcClient.sql("""
                 SELECT id, sha256, md5, mime_type, length, metadata::text
@@ -154,7 +154,6 @@ public class BinaryPartitionManagerImpl implements BinaryPartitionManager {
                 .optional();
     }
 
-    @Override
     public Map<UUID, BinaryPropertyObject> getBinaryProperties(Collection<UUID> ids) {
         if (ids.isEmpty()) return Map.of();
         List<UUID> idList = ids instanceof List ? (List<UUID>) ids : List.copyOf(ids);
@@ -193,6 +192,17 @@ public class BinaryPartitionManagerImpl implements BinaryPartitionManager {
         }
     }
 
+    // Replaces (not merges) the "metadata"/"calculated" subtree of a binary's stored fields with a
+    // freshly (re-)extracted result -- extracted is what the media processor read directly off the
+    // file (stored under the "metadata" key), derived is what it computed from that (stored under
+    // "calculated"), two separate params rather than one pre-merged map so the wire-key mapping is
+    // explicit here rather than convention the caller has to know. Diffs the change against what was
+    // there before, and reconciles the dynamic-property registry accordingly -- see
+    // docs/ntrloc-dynamic-properties-design-notes.md section 10. The one write path for both first
+    // extraction and any future re-extraction; there is no separate "first time" method, since the
+    // diff against an empty prior value already behaves correctly as "everything is newly added."
+    // No-op if the binary content row doesn't exist.
+    //
     // FOR UPDATE locks the row for the rest of this transaction -- two concurrent re-extractions of
     // the same shared binary_content row (the actual race design-notes section 8 left as an open
     // "cache vs. record" question) at least can't interleave their own read-diff-write sequence here;
@@ -200,7 +210,6 @@ public class BinaryPartitionManagerImpl implements BinaryPartitionManager {
     // guarantee than a real answer to the cache-vs-record question -- it just stops one specific,
     // avoidable lost-update within a single call, not the broader "which extraction result should
     // win" policy question.
-    @Override
     @Transactional
     public void updateMetadata(UUID binaryContentId, Map<String, Object> extracted, Map<String, Object> derived) {
         String currentJson = jdbcClient.sql("SELECT metadata::text FROM binary_content WHERE id = :id FOR UPDATE")
@@ -233,9 +242,11 @@ public class BinaryPartitionManagerImpl implements BinaryPartitionManager {
         return value instanceof Map<?, ?> map ? (Map<String, Object>) map : Map.of();
     }
 
-    // Walks the metadata column one level per segment: ->'segment' for each but the last, ->>'segment'
-    // (text) for the last, e.g. ["hash", "sha256"] -> metadata->'hash'->>'sha256'.
-    @Override
+    // SQL for one field of a binary's metadata document, as text (NULL when absent), for the binary whose
+    // id is the correlation key -- for another store to embed, e.g. to sort by. fieldPath must already be
+    // validated against the dynamic-property registry: its segments are written into the SQL. Walks the
+    // metadata column one level per segment: ->'segment' for each but the last, ->>'segment' (text) for
+    // the last, e.g. ["hash", "sha256"] -> metadata->'hash'->>'sha256'.
     public CorrelatedSql metadataFieldText(List<String> fieldPath) {
         if (fieldPath.isEmpty()) throw new IllegalArgumentException("A metadata field path needs at least one segment");
         StringBuilder field = new StringBuilder("bc.metadata");

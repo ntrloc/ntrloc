@@ -1,7 +1,7 @@
 package org.ntrloc.graph.db.coordinator;
 
 import org.ntrloc.graph.db.partition.binary.BinaryDynamicPropertyRegistrar;
-import org.ntrloc.graph.db.partition.binary.BinaryPartitionManager;
+import org.ntrloc.graph.db.partition.binary.BinaryStore;
 import org.ntrloc.graph.db.partition.binary.BinaryPropertyObject;
 import org.ntrloc.graph.db.partition.register.BinaryValueChange;
 import org.springframework.stereotype.Component;
@@ -19,12 +19,12 @@ import java.util.UUID;
 @Component
 class BinaryAttachmentReconciler {
 
-    private final BinaryPartitionManager binaryPartitionManager;
+    private final BinaryStore binaryStore;
     private final BinaryDynamicPropertyRegistrar binaryDynamicPropertyRegistrar;
 
-    BinaryAttachmentReconciler(BinaryPartitionManager binaryPartitionManager,
+    BinaryAttachmentReconciler(BinaryStore binaryStore,
                                BinaryDynamicPropertyRegistrar binaryDynamicPropertyRegistrar) {
-        this.binaryPartitionManager = binaryPartitionManager;
+        this.binaryStore = binaryStore;
         this.binaryDynamicPropertyRegistrar = binaryDynamicPropertyRegistrar;
     }
 
@@ -45,6 +45,6 @@ class BinaryAttachmentReconciler {
     }
 
     private Map<String, Object> metadataFor(UUID binaryId) {
-        return binaryPartitionManager.getBinaryProperty(binaryId).map(BinaryPropertyObject::metadata).orElse(null);
+        return binaryStore.getBinaryProperty(binaryId).map(BinaryPropertyObject::metadata).orElse(null);
     }
 }

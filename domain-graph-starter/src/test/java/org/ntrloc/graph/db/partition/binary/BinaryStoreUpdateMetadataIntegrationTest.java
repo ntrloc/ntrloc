@@ -23,15 +23,15 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-// Covers BinaryPartitionManagerImpl.updateMetadata -- the diff/replace write (design-notes section
+// Covers BinaryStore.updateMetadata -- the diff/replace write (design-notes section
 // 10's "trigger 3") -- separately from ExtractBinaryMetadataDelegate, which is now just a thin
 // caller of it.
-class BinaryPartitionManagerImplUpdateMetadataIntegrationTest extends AbstractIntegrationTest {
+class BinaryStoreUpdateMetadataIntegrationTest extends AbstractIntegrationTest {
 
     private static final String BOOK_TYPE = "RegisterProjectionTestBook";
 
     @Autowired
-    private BinaryPartitionManager binaryPartitionManager;
+    private BinaryStore binaryStore;
 
     @Autowired
     private RegisterProjectionTestDomainInitializer fixture;
@@ -45,7 +45,7 @@ class BinaryPartitionManagerImplUpdateMetadataIntegrationTest extends AbstractIn
     private UUID storeBinary() {
         byte[] content = ("update-metadata test " + UUID.randomUUID()).getBytes();
         try {
-            return binaryPartitionManager.store(new ByteArrayInputStream(content));
+            return binaryStore.store(new ByteArrayInputStream(content));
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
@@ -54,13 +54,13 @@ class BinaryPartitionManagerImplUpdateMetadataIntegrationTest extends AbstractIn
     @Test
     void updateMetadata_firstExtraction_setsExtractedAndDerivedWithoutTouchingTheWriteOnceColumns() {
         UUID id = storeBinary();
-        var before = binaryPartitionManager.getBinaryProperty(id).orElseThrow();
+        var before = binaryStore.getBinaryProperty(id).orElseThrow();
 
-        binaryPartitionManager.updateMetadata(id,
+        binaryStore.updateMetadata(id,
                 Map.of("colorspace", "sRGB"),
                 Map.of("location", Map.of("latitude", 1.0, "longitude", 2.0)));
 
-        var after = binaryPartitionManager.getBinaryProperty(id).orElseThrow();
+        var after = binaryStore.getBinaryProperty(id).orElseThrow();
         assertThat(after.length()).isEqualTo(before.length());
         assertThat(after.sha256()).isEqualTo(before.sha256());
         assertThat(after.metadata()).containsKey("hash");
@@ -72,11 +72,11 @@ class BinaryPartitionManagerImplUpdateMetadataIntegrationTest extends AbstractIn
     @Test
     void updateMetadata_calledAgain_replacesRatherThanMergesTheExtractedSubtree() {
         UUID id = storeBinary();
-        binaryPartitionManager.updateMetadata(id, Map.of("colorspaceOld", "sRGB"), Map.of());
+        binaryStore.updateMetadata(id, Map.of("colorspaceOld", "sRGB"), Map.of());
 
-        binaryPartitionManager.updateMetadata(id, Map.of("colorspaceNew", "CMYK"), Map.of());
+        binaryStore.updateMetadata(id, Map.of("colorspaceNew", "CMYK"), Map.of());
 
-        var property = binaryPartitionManager.getBinaryProperty(id).orElseThrow();
+        var property = binaryStore.getBinaryProperty(id).orElseThrow();
         @SuppressWarnings("unchecked")
         var extracted = (Map<String, Object>) property.metadata().get("metadata");
         // A shallow jsonb merge (the old delegate's own SQL) would have left both keys present --
@@ -87,7 +87,7 @@ class BinaryPartitionManagerImplUpdateMetadataIntegrationTest extends AbstractIn
     @Test
     void updateMetadata_forAnUnknownBinaryId_isANoOp() {
         // No exception is the assertion -- the binary_content row simply doesn't exist.
-        binaryPartitionManager.updateMetadata(UUID.randomUUID(), Map.of("x", "y"), Map.of());
+        binaryStore.updateMetadata(UUID.randomUUID(), Map.of("x", "y"), Map.of());
     }
 
     @Test
@@ -103,7 +103,7 @@ class BinaryPartitionManagerImplUpdateMetadataIntegrationTest extends AbstractIn
         createBookWithAttachment(binaryId);
         createBookWithAttachment(binaryId);
 
-        binaryPartitionManager.updateMetadata(binaryId, Map.of(addedKey, "value"), Map.of());
+        binaryStore.updateMetadata(binaryId, Map.of(addedKey, "value"), Map.of());
 
         assertThat(referenceCount(propertyId, addedPath)).contains(before + 2);
     }

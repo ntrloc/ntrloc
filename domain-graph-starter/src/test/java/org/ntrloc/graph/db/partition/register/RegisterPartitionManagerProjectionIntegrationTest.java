@@ -15,7 +15,7 @@ import org.ntrloc.graph.mutation.LinkEndpointReference;
 import org.ntrloc.graph.mutation.MutationRequest;
 import org.ntrloc.graph.mutation.MutationResponse;
 import org.ntrloc.graph.db.partition.authorization.RequestPermissionContext;
-import org.ntrloc.graph.db.partition.binary.BinaryPartitionManager;
+import org.ntrloc.graph.db.partition.binary.BinaryStore;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateItemDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DeleteItemDefinitionMutation;
@@ -91,7 +91,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
     private JdbcClient jdbcClient;
 
     @Autowired
-    private BinaryPartitionManager binaryPartitionManager;
+    private BinaryStore binaryStore;
 
     @Autowired
     private SecurityRepository securityRepo;
@@ -210,7 +210,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
 
     private UUID storeBinary(byte[] content) {
         try {
-            return binaryPartitionManager.store(new ByteArrayInputStream(content));
+            return binaryStore.store(new ByteArrayInputStream(content));
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
@@ -1165,7 +1165,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
     @Test
     void requestedProperties_specificRegisteredDynamicPath_slicesToJustThatValue() {
         // "length" is registered automatically the moment any item attaches a binary (every binary's
-        // own fields document always has it -- see BinaryPartitionManagerImpl.metadataJson), so this
+        // own fields document always has it -- see BinaryStore.metadataJson), so this
         // is a real, currently-valid dynamic path, not a made-up one.
         createBookWithAttachment("Dune", 42);
 

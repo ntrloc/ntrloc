@@ -8,7 +8,7 @@ import org.ntrloc.graph.db.coordinator.CoordinatorTestDomainInitializer;
 import org.ntrloc.graph.db.partition.authorization.ManualMarkerAssignmentService;
 import org.ntrloc.graph.db.partition.authorization.PermissionService;
 import org.ntrloc.graph.db.partition.authorization.repository.AuthorizationRepository;
-import org.ntrloc.graph.db.partition.binary.BinaryPartitionManager;
+import org.ntrloc.graph.db.partition.binary.BinaryStore;
 import org.ntrloc.graph.db.partition.register.RegisterStore;
 import org.ntrloc.graph.db.partition.schema.ControlledListManager;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
@@ -89,7 +89,7 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
     private SchemaManager schemaManager;
 
     @Autowired
-    private BinaryPartitionManager binaryPartitionManager;
+    private BinaryStore binaryStore;
 
     @Autowired
     private JdbcClient jdbcClient;
@@ -114,7 +114,7 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
 
     private UUID storeBinary(byte[] content) {
         try {
-            return binaryPartitionManager.store(new ByteArrayInputStream(content));
+            return binaryStore.store(new ByteArrayInputStream(content));
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }

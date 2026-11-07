@@ -12,7 +12,7 @@ import java.util.UUID;
 
 import org.ntrloc.graph.db.partition.authorization.PermissionService;
 import org.ntrloc.graph.db.partition.authorization.RequestPermissionContext;
-import org.ntrloc.graph.db.partition.binary.BinaryPartitionManager;
+import org.ntrloc.graph.db.partition.binary.BinaryStore;
 import org.ntrloc.graph.db.partition.register.RegisterStore;
 import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
 import org.ntrloc.graph.db.partition.schema.ControlledListManager;
@@ -36,15 +36,15 @@ class PropertyValidator {
     private final SchemaManager schemaManager;
     private final RegisterStore registerStore;
     private final PermissionService permissionService;
-    private final BinaryPartitionManager binaryPartitionManager;
+    private final BinaryStore binaryStore;
     private final ControlledListManager controlledListManager;
 
     PropertyValidator(SchemaManager schemaManager, RegisterStore registerStore, PermissionService permissionService,
-                      BinaryPartitionManager binaryPartitionManager, ControlledListManager controlledListManager) {
+                      BinaryStore binaryStore, ControlledListManager controlledListManager) {
         this.schemaManager = schemaManager;
         this.registerStore = registerStore;
         this.permissionService = permissionService;
-        this.binaryPartitionManager = binaryPartitionManager;
+        this.binaryStore = binaryStore;
         this.controlledListManager = controlledListManager;
     }
 
@@ -361,7 +361,7 @@ class PropertyValidator {
             errors.add(new ValidationError(path, PROPERTY_QUOTE_PREFIX + property.name() + "' is not a valid binary id: " + s));
             return;
         }
-        if (binaryPartitionManager.getBinaryProperty(binaryId).isEmpty()) {
+        if (binaryStore.getBinaryProperty(binaryId).isEmpty()) {
             errors.add(new ValidationError(path, PROPERTY_QUOTE_PREFIX + property.name() + "' references a binary that does not exist: " + s));
         }
     }

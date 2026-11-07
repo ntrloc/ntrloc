@@ -154,7 +154,9 @@ returns rows keyed by id.
 - **LedgerStore** (was `LedgerPartitionManager`) implements `LedgerStoreReader` and `LedgerStoreWriter`; only
   the coordinator holds the writer. It's hidden from projections; property
   history (`LedgerPropertyHistoryService`) is an audit-style reader beside the item component.
-- **BinaryReader / BinaryWriter** split today's `BinaryPartitionManager`.
+- **BinaryStore** (was `BinaryPartitionManager`) is one class for now, with no reader/writer split, and the
+  BinaryReader / BinaryWriter services are on hold too: both wait on how BinaryStore fits with the
+  register (§10 q7).
 - **The write side reads its own stores directly, unfiltered.** Validation and marker decisions need the
   true data, independent of who's writing. Projections are always someone's question, so they're always
   filtered.
@@ -338,7 +340,8 @@ The item component first — everything else calls it or is called by it.
    5. The remaining write-side SQL moves into RegisterStore; `RegisterPartitionManager` goes away.
       *(Done.)* Read/write interface segregation on RegisterStore is step 4's.
 2. **Rename `LedgerPartitionManager` → LedgerStore**, with read and write interfaces. *(Done.)*
-3. **Split `BinaryPartitionManager`** into BinaryReader / BinaryWriter over BinaryStore.
+3. **Rename `BinaryPartitionManager` → BinaryStore.** *(Done.)* The reader/writer split (and the
+   BinaryReader / BinaryWriter services) waits on §10 q7.
 4. **Entity Read and Entity Write.** Split `EntityManager` along the two themes; I/O callers depend on the
    side they need. Add ArchUnit rules for store write interfaces and read/write direction.
 5. **One write path.** Transitions become mutations through State Machine Exec → MutationProcessor;
@@ -369,11 +372,12 @@ bound, so they're features, not refactor steps.
 5. Where mutation-independent process bindings live within the schema, and how binary enrichment (likely
    system-supplied) is bound.
 6. Preview instance isolation mechanism (Flowable tenant id or other).
-7. Should Register and Binary be one store? For: binaries are reached only through items, and the
-   features that cross the line (sort by binary metadata, reference counts) need both. Against: the
-   register is derived (rebuildable by posting the ledger) while binary content is source data with its
-   own lifecycle (uploaded before attachment, content-addressed and shared, rewritten by enrichment,
-   bytes behind storage adapters). Undecided; separate for now.
+7. **How does BinaryStore fit with the register?** One option is a single store. For: binaries are
+   reached only through items, and the features that cross the line (sort by binary metadata, reference
+   counts) need both. Against: the register is derived (rebuildable by posting the ledger) while binary
+   content is source data with its own lifecycle (uploaded before attachment, content-addressed and
+   shared, rewritten by enrichment, bytes behind storage adapters). Undecided; separate for now.
+   BinaryStore's reader/writer interfaces, and the BinaryReader / BinaryWriter services, wait on this.
 8. **Filtering on a property some items don't grant (revisit).** Filter, sort and facets accept a property
    the caller can read through *any* marker, then apply it to every item, including items whose markers
    don't grant it. Filtering `color = 'red'` can return a product whose color the caller can't see,

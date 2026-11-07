@@ -4,7 +4,7 @@ import com.google.protobuf.ByteString;
 import io.grpc.stub.StreamObserver;
 import org.flowable.engine.delegate.DelegateExecution;
 import org.flowable.engine.delegate.JavaDelegate;
-import org.ntrloc.graph.db.partition.binary.BinaryPartitionManager;
+import org.ntrloc.graph.db.partition.binary.BinaryStore;
 import org.ntrloc.graph.db.partition.process.ProcessAccessible;
 import org.ntrloc.mediaprocessor.grpc.ExtractMetadata;
 import org.ntrloc.mediaprocessor.grpc.ImageChunk;
@@ -45,13 +45,13 @@ public class ExtractBinaryMetadataDelegate implements JavaDelegate {
     private static final Duration RESPONSE_TIMEOUT = Duration.ofSeconds(30);
     private static final String OUTPUT_NAME = "metadata";
 
-    private final BinaryPartitionManager binaryPartitionManager;
+    private final BinaryStore binaryStore;
     private final ObjectMapper objectMapper;
     private final ObjectProvider<ImageProcessorGrpc.ImageProcessorStub> imageProcessorStub;
 
-    public ExtractBinaryMetadataDelegate(BinaryPartitionManager binaryPartitionManager, ObjectMapper objectMapper,
+    public ExtractBinaryMetadataDelegate(BinaryStore binaryStore, ObjectMapper objectMapper,
                                           ObjectProvider<ImageProcessorGrpc.ImageProcessorStub> imageProcessorStub) {
-        this.binaryPartitionManager = binaryPartitionManager;
+        this.binaryStore = binaryStore;
         this.objectMapper = objectMapper;
         this.imageProcessorStub = imageProcessorStub;
     }
@@ -61,7 +61,7 @@ public class ExtractBinaryMetadataDelegate implements JavaDelegate {
         UUID binaryContentId = UUID.fromString(
                 (String) execution.getVariable(BinaryMetadataExtractionTrigger.BINARY_CONTENT_ID_VARIABLE));
 
-        var property = binaryPartitionManager.getBinaryProperty(binaryContentId).orElse(null);
+        var property = binaryStore.getBinaryProperty(binaryContentId).orElse(null);
         if (property == null || property.mimeType() == null || !property.mimeType().startsWith("image/")) {
             // Not an artificial first-pass restriction -- VideoProcessorGrpc has no EXIF/IPTC-
             // equivalent operation at all today, so image is genuinely everything the media
@@ -89,7 +89,7 @@ public class ExtractBinaryMetadataDelegate implements JavaDelegate {
         }
 
         Map<String, Object> response = parseResponse(responseJson);
-        binaryPartitionManager.updateMetadata(binaryContentId, asMap(response.get("extracted")), asMap(response.get("derived")));
+        binaryStore.updateMetadata(binaryContentId, asMap(response.get("extracted")), asMap(response.get("derived")));
     }
 
     @SuppressWarnings("unchecked")
@@ -107,7 +107,7 @@ public class ExtractBinaryMetadataDelegate implements JavaDelegate {
     // {...facts it computed, e.g. GPS coordinates combined into decimal degrees...}}; an
     // admin-configurable exclusion list on the processor itself trims "extracted", "derived" is
     // exempt from it. execute() above splits this response into those two maps and hands them to
-    // BinaryPartitionManager.updateMetadata, which stores them under binary_content's own "metadata"/
+    // BinaryStore.updateMetadata, which stores them under binary_content's own "metadata"/
     // "calculated" keys respectively -- see ExtractMetadata's own proto
     // comment and ImageOperations.extractMetadata's javadoc) as the first chunk, then the binary's
     // own bytes, matching the chunked-request shape
@@ -147,7 +147,7 @@ public class ExtractBinaryMetadataDelegate implements JavaDelegate {
                 .setMetadata(ImageMetadata.newBuilder().addPipelines(pipeline))
                 .build());
 
-        var binary = binaryPartitionManager.retrieve(binaryContentId)
+        var binary = binaryStore.retrieve(binaryContentId)
                 .orElseThrow(() -> new IllegalStateException("Binary " + binaryContentId + " has no content to read"));
         try (InputStream in = binary.stream()) {
             byte[] buffer = new byte[CHUNK_SIZE];

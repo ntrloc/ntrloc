@@ -17,7 +17,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-// Proves BinaryPartitionManagerImpl.insert()'s own fresh-insert detection ("publish Created once
+// Proves BinaryStore.insert()'s own fresh-insert detection ("publish Created once
 // per genuine insert, never on a dedup hit") directly at the event-publish boundary -- deliberately
 // NOT via job-table row counts (see BinaryMetadataExtractionIntegrationTest, in the process package,
 // for why that's the wrong tool for this specific claim): any assertion that depends on comparing job
@@ -38,7 +38,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class BinaryContentEventPublishingIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
-    private BinaryPartitionManager binaryPartitionManager;
+    private BinaryStore binaryStore;
 
     @Autowired
     private ConfigurableApplicationContext applicationContext;
@@ -48,7 +48,7 @@ class BinaryContentEventPublishingIntegrationTest extends AbstractIntegrationTes
         List<BinaryContentEvent.Created> events = recordCreatedEvents();
         byte[] content = ("event publish test " + UUID.randomUUID()).getBytes(StandardCharsets.UTF_8);
 
-        binaryPartitionManager.store(new ByteArrayInputStream(content));
+        binaryStore.store(new ByteArrayInputStream(content));
 
         assertThat(events).hasSize(1);
     }
@@ -58,8 +58,8 @@ class BinaryContentEventPublishingIntegrationTest extends AbstractIntegrationTes
         List<BinaryContentEvent.Created> events = recordCreatedEvents();
         byte[] content = ("dedup event publish test " + UUID.randomUUID()).getBytes(StandardCharsets.UTF_8);
 
-        binaryPartitionManager.store(new ByteArrayInputStream(content));
-        binaryPartitionManager.store(new ByteArrayInputStream(content));
+        binaryStore.store(new ByteArrayInputStream(content));
+        binaryStore.store(new ByteArrayInputStream(content));
 
         assertThat(events).hasSize(1);
     }

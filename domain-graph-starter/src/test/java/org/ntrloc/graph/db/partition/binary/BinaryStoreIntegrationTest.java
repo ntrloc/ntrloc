@@ -18,7 +18,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-// Covers BinaryPartitionManagerImpl.store()/retrieve()/getBinaryProperty(ies)() end-to-end against
+// Covers BinaryStore.store()/retrieve()/getBinaryProperty(ies)() end-to-end against
 // the real block-device storage adapter configured for tests (see application.yml's
 // binary.storage.block.location) -- store() and the storage adapter are tested together
 // deliberately, since store()'s own correctness (computing the right hash, writing through the
@@ -29,10 +29,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 // cross-test pollution when tried inside this file's own 15-test class) and not job-table row counts
 // (which race Flowable's async job executor for any claim spanning two separate actions -- see
 // BinaryMetadataExtractionIntegrationTest, in the process package, for that pitfall in detail).
-class BinaryPartitionManagerImplIntegrationTest extends AbstractIntegrationTest {
+class BinaryStoreIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
-    private BinaryPartitionManager binaryPartitionManager;
+    private BinaryStore binaryStore;
 
     @Autowired
     private JdbcClient jdbcClient;
@@ -46,9 +46,9 @@ class BinaryPartitionManagerImplIntegrationTest extends AbstractIntegrationTest 
     void store_thenRetrieve_returnsTheSameBytes() throws Exception {
         byte[] content = ("hello world " + UUID.randomUUID()).getBytes(StandardCharsets.UTF_8);
 
-        UUID id = binaryPartitionManager.store(new ByteArrayInputStream(content));
+        UUID id = binaryStore.store(new ByteArrayInputStream(content));
 
-        var retrieved = binaryPartitionManager.retrieve(id).orElseThrow();
+        var retrieved = binaryStore.retrieve(id).orElseThrow();
         assertThat(retrieved.stream().readAllBytes()).isEqualTo(content);
         assertThat(retrieved.info().length()).isEqualTo(content.length);
         assertThat(retrieved.info().sha256()).isEqualTo(sha256Hex(content));
@@ -61,9 +61,9 @@ class BinaryPartitionManagerImplIntegrationTest extends AbstractIntegrationTest 
         byte[] content = new byte[8192 * 3 + 100];
         new java.util.Random(42).nextBytes(content);
 
-        UUID id = binaryPartitionManager.store(new ByteArrayInputStream(content));
+        UUID id = binaryStore.store(new ByteArrayInputStream(content));
 
-        var retrieved = binaryPartitionManager.retrieve(id).orElseThrow();
+        var retrieved = binaryStore.retrieve(id).orElseThrow();
         assertThat(retrieved.stream().readAllBytes()).isEqualTo(content);
     }
 
@@ -71,8 +71,8 @@ class BinaryPartitionManagerImplIntegrationTest extends AbstractIntegrationTest 
     void store_forIdenticalContentTwice_returnsTheSameId_contentIsDeduplicatedByHash() throws Exception {
         byte[] content = ("duplicate content " + UUID.randomUUID()).getBytes(StandardCharsets.UTF_8);
 
-        UUID firstId = binaryPartitionManager.store(new ByteArrayInputStream(content));
-        UUID secondId = binaryPartitionManager.store(new ByteArrayInputStream(content));
+        UUID firstId = binaryStore.store(new ByteArrayInputStream(content));
+        UUID secondId = binaryStore.store(new ByteArrayInputStream(content));
 
         assertThat(secondId).isEqualTo(firstId);
     }
@@ -86,28 +86,28 @@ class BinaryPartitionManagerImplIntegrationTest extends AbstractIntegrationTest 
             }
         };
 
-        org.assertj.core.api.Assertions.assertThatThrownBy(() -> binaryPartitionManager.store(failingContent))
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> binaryStore.store(failingContent))
                 .isInstanceOf(IOException.class)
                 .hasMessageContaining("simulated read failure");
     }
 
     @Test
     void retrieve_forAnUnknownId_returnsEmpty() throws Exception {
-        assertThat(binaryPartitionManager.retrieve(UUID.randomUUID())).isEmpty();
+        assertThat(binaryStore.retrieve(UUID.randomUUID())).isEmpty();
     }
 
     @Test
     void getBinaryProperty_forAnUnknownId_returnsEmpty() {
-        assertThat(binaryPartitionManager.getBinaryProperty(UUID.randomUUID())).isEmpty();
+        assertThat(binaryStore.getBinaryProperty(UUID.randomUUID())).isEmpty();
     }
 
     @Test
     void getBinaryProperty_returnsTheStoredMetadata() throws Exception {
         byte[] content = ("metadata test " + UUID.randomUUID()).getBytes(StandardCharsets.UTF_8);
 
-        UUID id = binaryPartitionManager.store(new ByteArrayInputStream(content));
+        UUID id = binaryStore.store(new ByteArrayInputStream(content));
 
-        var property = binaryPartitionManager.getBinaryProperty(id).orElseThrow();
+        var property = binaryStore.getBinaryProperty(id).orElseThrow();
         assertThat(property.id()).isEqualTo(id);
         assertThat(property.length()).isEqualTo(content.length);
         assertThat(property.sha256()).isEqualTo(sha256Hex(content));
@@ -115,28 +115,28 @@ class BinaryPartitionManagerImplIntegrationTest extends AbstractIntegrationTest 
 
     @Test
     void getBinaryProperties_forAnEmptyCollection_returnsAnEmptyMap() {
-        assertThat(binaryPartitionManager.getBinaryProperties(Set.of())).isEmpty();
+        assertThat(binaryStore.getBinaryProperties(Set.of())).isEmpty();
     }
 
     @Test
     void getBinaryProperties_returnsEveryRequestedIdThatExists() throws Exception {
-        UUID id1 = binaryPartitionManager.store(new ByteArrayInputStream(
+        UUID id1 = binaryStore.store(new ByteArrayInputStream(
                 ("content-a-" + UUID.randomUUID()).getBytes(StandardCharsets.UTF_8)));
-        UUID id2 = binaryPartitionManager.store(new ByteArrayInputStream(
+        UUID id2 = binaryStore.store(new ByteArrayInputStream(
                 ("content-b-" + UUID.randomUUID()).getBytes(StandardCharsets.UTF_8)));
         UUID unknownId = UUID.randomUUID();
 
-        Map<UUID, BinaryPropertyObject> found = binaryPartitionManager.getBinaryProperties(Set.of(id1, id2, unknownId));
+        Map<UUID, BinaryPropertyObject> found = binaryStore.getBinaryProperties(Set.of(id1, id2, unknownId));
 
         assertThat(found).containsOnlyKeys(id1, id2);
     }
 
     @Test
     void getBinaryProperties_acceptsAListDirectlyWithoutCopying() throws Exception {
-        UUID id = binaryPartitionManager.store(new ByteArrayInputStream(
+        UUID id = binaryStore.store(new ByteArrayInputStream(
                 ("content-" + UUID.randomUUID()).getBytes(StandardCharsets.UTF_8)));
 
-        Map<UUID, BinaryPropertyObject> found = binaryPartitionManager.getBinaryProperties(List.of(id));
+        Map<UUID, BinaryPropertyObject> found = binaryStore.getBinaryProperties(List.of(id));
 
         assertThat(found).containsOnlyKeys(id);
     }
@@ -149,13 +149,13 @@ class BinaryPartitionManagerImplIntegrationTest extends AbstractIntegrationTest 
     // Map.class" instead. Exists as a defensive fallback, not a documented possibility.
     @Test
     void getBinaryProperty_whenMetadataIsNotAJsonObject_returnsNullMetadataInsteadOfThrowing() throws Exception {
-        UUID id = binaryPartitionManager.store(new ByteArrayInputStream(
+        UUID id = binaryStore.store(new ByteArrayInputStream(
                 ("content-" + UUID.randomUUID()).getBytes(StandardCharsets.UTF_8)));
         jdbcClient.sql("UPDATE binary_content SET metadata = '[1, 2, 3]'::jsonb WHERE id = :id")
                 .param("id", id)
                 .update();
 
-        var property = binaryPartitionManager.getBinaryProperty(id).orElseThrow();
+        var property = binaryStore.getBinaryProperty(id).orElseThrow();
 
         assertThat(property.metadata()).isNull();
     }
@@ -168,9 +168,9 @@ class BinaryPartitionManagerImplIntegrationTest extends AbstractIntegrationTest 
     void store_mirrorsLengthMimeTypeAndHashesIntoMetadata() throws Exception {
         byte[] content = ("metadata shape test " + UUID.randomUUID()).getBytes(StandardCharsets.UTF_8);
 
-        UUID id = binaryPartitionManager.store(new ByteArrayInputStream(content));
+        UUID id = binaryStore.store(new ByteArrayInputStream(content));
 
-        var property = binaryPartitionManager.getBinaryProperty(id).orElseThrow();
+        var property = binaryStore.getBinaryProperty(id).orElseThrow();
         assertThat(property.metadata()).isNotNull();
         assertThat(((Number) property.metadata().get("length")).longValue()).isEqualTo(content.length);
         assertThat(property.metadata()).containsKey("mimeType");

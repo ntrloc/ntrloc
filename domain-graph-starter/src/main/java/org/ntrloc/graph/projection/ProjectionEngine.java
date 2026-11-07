@@ -2,7 +2,7 @@ package org.ntrloc.graph.projection;
 
 import org.ntrloc.graph.db.partition.authorization.RequestPermissionContext;
 import org.ntrloc.graph.db.partition.authorization.repository.AuthorizationRepository;
-import org.ntrloc.graph.db.partition.binary.BinaryPartitionManager;
+import org.ntrloc.graph.db.partition.binary.BinaryStore;
 import org.ntrloc.graph.db.partition.binary.BinaryPropertyObject;
 import org.ntrloc.graph.db.partition.register.ExplicitProjection.Access;
 import org.ntrloc.graph.db.partition.register.ExplicitProjection.Comparison;
@@ -107,7 +107,7 @@ public class ProjectionEngine {
     private static final String STATE_KIND_START = "START";
 
     private final AuthorizationRepository authorizationRepository;
-    private final BinaryPartitionManager binaryPartitionManager;
+    private final BinaryStore binaryStore;
     private final SchemaManager schemaManager;
     private final ControlledListManager controlledListManager;
     private final RegisterStore registerStore;
@@ -120,10 +120,10 @@ public class ProjectionEngine {
     private final AtomicReference<DisplayLabelPatternsCache> displayLabelPatternsCache =
             new AtomicReference<>(new DisplayLabelPatternsCache(null, Map.of()));
 
-    public ProjectionEngine(AuthorizationRepository authorizationRepository, BinaryPartitionManager binaryPartitionManager,
+    public ProjectionEngine(AuthorizationRepository authorizationRepository, BinaryStore binaryStore,
                             SchemaManager schemaManager, ControlledListManager controlledListManager, RegisterStore registerStore) {
         this.authorizationRepository = authorizationRepository;
-        this.binaryPartitionManager = binaryPartitionManager;
+        this.binaryStore = binaryStore;
         this.schemaManager = schemaManager;
         this.controlledListManager = controlledListManager;
         this.registerStore = registerStore;
@@ -238,7 +238,7 @@ public class ProjectionEngine {
         requirePropertyReadableByAnyMarker(permissions, resolution.property().id(), field);
         if (!resolution.binaryFieldPath().isEmpty()) {
             return new Sort(new SortKey.BinaryField(resolution.property().id(),
-                    binaryPartitionManager.metadataFieldText(resolution.binaryFieldPath()), valueType(resolution.binaryFieldType())), descending);
+                    binaryStore.metadataFieldText(resolution.binaryFieldPath()), valueType(resolution.binaryFieldType())), descending);
         }
         if (resolution.property().type() == PropertyType.BINARY) {
             throw new IllegalArgumentException("'" + field + "' is binary content -- sort by an intrinsic attribute instead, e.g. '"
@@ -1190,7 +1190,7 @@ public class ProjectionEngine {
     private Map<UUID, BinaryPropertyObject> binaryObjects(List<ItemRow> rows) {
         Set<UUID> binaryIds = new HashSet<>();
         collectBinaryIds(rows, binaryIds);
-        return binaryIds.isEmpty() ? Map.of() : binaryPartitionManager.getBinaryProperties(binaryIds);
+        return binaryIds.isEmpty() ? Map.of() : binaryStore.getBinaryProperties(binaryIds);
     }
 
     private void collectBinaryIds(List<ItemRow> rows, Set<UUID> into) {

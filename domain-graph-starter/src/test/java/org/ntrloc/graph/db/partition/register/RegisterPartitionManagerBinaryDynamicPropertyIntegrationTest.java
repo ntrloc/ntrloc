@@ -9,7 +9,7 @@ import org.ntrloc.graph.mutation.ItemUpdateMutation;
 import org.ntrloc.graph.mutation.MutationRequest;
 import org.ntrloc.graph.mutation.MutationResponse;
 import org.ntrloc.graph.db.coordinator.LedgerRegisterCoordinator;
-import org.ntrloc.graph.db.partition.binary.BinaryPartitionManager;
+import org.ntrloc.graph.db.partition.binary.BinaryStore;
 import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
 import org.ntrloc.graph.db.partition.ledger.ItemUpdateEntry;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
@@ -38,7 +38,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 // which drives the registrar directly and doesn't prove it's called at the right moments.
 //
 // Uses "hash.sha256" as the path under test -- every stored binary always has one (written by
-// BinaryPartitionManagerImpl.metadataJson at upload time, real extraction isn't configured in this
+// BinaryStore.metadataJson at upload time, real extraction isn't configured in this
 // test suite), so it's a real, predictable path without needing a media processor.
 class RegisterPartitionManagerBinaryDynamicPropertyIntegrationTest extends AbstractIntegrationTest {
 
@@ -52,7 +52,7 @@ class RegisterPartitionManagerBinaryDynamicPropertyIntegrationTest extends Abstr
     private RegisterProjectionTestDomainInitializer fixture;
 
     @Autowired
-    private BinaryPartitionManager binaryPartitionManager;
+    private BinaryStore binaryStore;
 
     @Autowired
     private JdbcClient jdbcClient;
@@ -71,7 +71,7 @@ class RegisterPartitionManagerBinaryDynamicPropertyIntegrationTest extends Abstr
     private UUID storeBinary() {
         byte[] content = ("dynamic property test " + UUID.randomUUID()).getBytes();
         try {
-            return binaryPartitionManager.store(new ByteArrayInputStream(content));
+            return binaryStore.store(new ByteArrayInputStream(content));
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }

@@ -13,7 +13,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-// Published directly (bypassing BinaryPartitionManagerImpl/the DB entirely) so this stays isolated
+// Published directly (bypassing BinaryStore/the DB entirely) so this stays isolated
 // to the listener's own behavior, not re-proving insert()'s own fresh-insert detection
 // (BinaryContentEventPublishingIntegrationTest already covers that).
 //

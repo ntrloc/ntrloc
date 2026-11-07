@@ -95,7 +95,7 @@ class SchemaContentResolver {
     // one additional entry per path AdminBinaryPropertyDefinitionView.dynamicFields currently records
     // for it (e.g. "File.content.metadata.exif.Make", "File.content.hash.md5") -- field.path() is
     // already the field's full path within the binary's own fields document (no separate "metadata."
-    // prefix to splice in; see BinaryPartitionManagerImpl's fixed top-level keys), each of which
+    // prefix to splice in; see BinaryStore's fixed top-level keys), each of which
     // narrows the response to just that value (ProjectionEngine.assembleBinaryValue's slicing,
     // design-notes section 10) -- never the ".length"-style synthetic path sortableFieldsFor still
     // uses for sort/filter's narrower need (one typed scalar, not a response shape). System fields are
