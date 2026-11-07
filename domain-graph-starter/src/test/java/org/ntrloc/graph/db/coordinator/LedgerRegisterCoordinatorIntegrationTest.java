@@ -10,7 +10,7 @@ import org.ntrloc.graph.db.partition.ledger.ItemUpdateEntry;
 import org.ntrloc.graph.db.partition.ledger.LinkCreateEntry;
 import org.ntrloc.graph.db.partition.ledger.LinkEndpoint;
 import org.ntrloc.graph.db.partition.ledger.LinkUpdateEntry;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
@@ -38,15 +38,15 @@ class LedgerRegisterCoordinatorIntegrationTest extends AbstractIntegrationTest {
     private JdbcClient jdbcClient;
 
     @Autowired
-    private SecurityRepository securityRepo;
+    private UserStore userStore;
 
     // ledger_entry.created_by/register_item.created_by (Part E) are NOT NULL FKs to
     // security_user.id -- every coordinator.prepare call below needs a real, backed actor.
-    private SecurityRepository.UserRow actor;
+    private UserStore.UserRow actor;
 
     @BeforeEach
     void setUpActor() {
-        actor = securityRepo.createUser("Coordinator Test Actor", "lrc-actor-" + UUID.randomUUID() + "@example.com", true);
+        actor = userStore.createUser("Coordinator Test Actor", "lrc-actor-" + UUID.randomUUID() + "@example.com", true);
     }
 
     @Test

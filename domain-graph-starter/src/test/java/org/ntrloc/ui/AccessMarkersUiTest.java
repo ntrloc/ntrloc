@@ -39,7 +39,7 @@ import org.ntrloc.graph.access.StepToStateMachine;
 import org.ntrloc.graph.access.StringEqualsPredicate;
 import org.ntrloc.graph.access.TotalityPredicate;
 import org.ntrloc.graph.db.partition.authorization.repository.AccessStore;
-import org.ntrloc.graph.db.partition.authorization.repository.MarkerDecisionPipelineRepository;
+import org.ntrloc.graph.db.partition.authorization.repository.MarkerDecisionPipelineStore;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateLinkDefinitionMutation;
@@ -68,10 +68,10 @@ class AccessMarkersUiTest extends AbstractUiIntegrationTest {
     private SchemaManager schemaManager;
 
     @Autowired
-    private AccessStore authorizationRepository;
+    private AccessStore accessStore;
 
     @Autowired
-    private MarkerDecisionPipelineRepository pipelineRepository;
+    private MarkerDecisionPipelineStore pipelineStore;
 
     // Marker names are unique system-wide, so every name a test creates carries this.
     private final String tag = UUID.randomUUID().toString().substring(0, 8);
@@ -142,7 +142,7 @@ class AccessMarkersUiTest extends AbstractUiIntegrationTest {
     @Test
     void renamesAMarker() {
         String type = createScratchType();
-        UUID markerId = authorizationRepository.createMarker("Draft " + tag, null, "ITEM_TYPE", testData.itemType(type).id()).id();
+        UUID markerId = accessStore.createMarker("Draft " + tag, null, "ITEM_TYPE", testData.itemType(type).id()).id();
         AccessMarkersPage page = AccessMarkersPage.open(schema, driver, type);
 
         page.openEditMarkerDialog("Draft " + tag);
@@ -161,11 +161,11 @@ class AccessMarkersUiTest extends AbstractUiIntegrationTest {
     @Test
     void renamingAMarkerSomeoneElseDeletedShowsTheError() {
         String type = createScratchType();
-        UUID markerId = authorizationRepository.createMarker("Doomed " + tag, null, "ITEM_TYPE", testData.itemType(type).id()).id();
+        UUID markerId = accessStore.createMarker("Doomed " + tag, null, "ITEM_TYPE", testData.itemType(type).id()).id();
         AccessMarkersPage page = AccessMarkersPage.open(schema, driver, type);
         page.openEditMarkerDialog("Doomed " + tag);
 
-        authorizationRepository.deleteMarker(markerId);
+        accessStore.deleteMarker(markerId);
         String error = page.typeName("Renamed " + tag).submitDialogExpectingError();
 
         assertThat(error).isNotBlank();
@@ -177,8 +177,8 @@ class AccessMarkersUiTest extends AbstractUiIntegrationTest {
     void deletesAMarkerOnlyOnceConfirmed() {
         String type = createScratchType();
         UUID itemTypeId = testData.itemType(type).id();
-        authorizationRepository.createMarker("Keep " + tag, null, "ITEM_TYPE", itemTypeId);
-        authorizationRepository.createMarker("Remove " + tag, null, "ITEM_TYPE", itemTypeId);
+        accessStore.createMarker("Keep " + tag, null, "ITEM_TYPE", itemTypeId);
+        accessStore.createMarker("Remove " + tag, null, "ITEM_TYPE", itemTypeId);
         AccessMarkersPage page = AccessMarkersPage.open(schema, driver, type);
 
         page.deleteMarker("Remove " + tag, false);
@@ -192,7 +192,7 @@ class AccessMarkersUiTest extends AbstractUiIntegrationTest {
     @Test
     void anItemTypeWithoutAPipelineSaysSo() {
         String type = createScratchType();
-        pipelineRepository.findByItemTypeId(testData.itemType(type).id()).ifPresent(p -> pipelineRepository.deletePipeline(p.id()));
+        pipelineStore.findByItemTypeId(testData.itemType(type).id()).ifPresent(p -> pipelineStore.deletePipeline(p.id()));
 
         AccessMarkersPage page = AccessMarkersPage.open(schema, driver, type);
 
@@ -340,7 +340,7 @@ class AccessMarkersUiTest extends AbstractUiIntegrationTest {
         assertThat(page.diagramTexts()).contains("name = bill");
         page.saveLayout();
 
-        Pipeline saved = pipelineRepository.findByItemTypeId(testData.itemType(type).id()).orElseThrow().pipeline();
+        Pipeline saved = pipelineStore.findByItemTypeId(testData.itemType(type).id()).orElseThrow().pipeline();
         Condition condition = (Condition) saved.topLevelSignals().getFirst();
         UUID name = UiTestData.propertyId(testData.itemType(type), "name");
         assertThat(condition.predicate()).isEqualTo(new StringEqualsPredicate(new StepToProperty(name, false, new Self()), "bill"));
@@ -354,7 +354,7 @@ class AccessMarkersUiTest extends AbstractUiIntegrationTest {
         AccessMarkersPage page = AccessMarkersPage.open(schema, driver, type).awaitDiagram();
         page.editLayout().dragBlock("Add", 60, 0);
 
-        pipelineRepository.deletePipeline(pipelineRepository.findByItemTypeId(testData.itemType(type).id()).orElseThrow().id());
+        pipelineStore.deletePipeline(pipelineStore.findByItemTypeId(testData.itemType(type).id()).orElseThrow().id());
         String error = page.saveLayoutExpectingError();
 
         assertThat(error).isNotBlank();
@@ -363,15 +363,15 @@ class AccessMarkersUiTest extends AbstractUiIntegrationTest {
 
     private List<AccessStore.MarkerRow> markersOf(String itemTypeName) {
         UUID itemTypeId = testData.itemType(itemTypeName).id();
-        return authorizationRepository.getAllMarkers().stream().filter(m -> itemTypeId.equals(m.scopeId())).toList();
+        return accessStore.getAllMarkers().stream().filter(m -> itemTypeId.equals(m.scopeId())).toList();
     }
 
     private PipelineLayout savedLayout(String itemTypeName) {
-        return pipelineRepository.findByItemTypeId(testData.itemType(itemTypeName).id()).orElseThrow().layout();
+        return pipelineStore.findByItemTypeId(testData.itemType(itemTypeName).id()).orElseThrow().layout();
     }
 
     private UUID addBlockId(String itemTypeName) {
-        return pipelineRepository.findByItemTypeId(testData.itemType(itemTypeName).id()).orElseThrow()
+        return pipelineStore.findByItemTypeId(testData.itemType(itemTypeName).id()).orElseThrow()
                 .pipeline().carrierBlocks().get(0).id();
     }
 
@@ -386,7 +386,7 @@ class AccessMarkersUiTest extends AbstractUiIntegrationTest {
     private String createScratchTypeWithAddBlock() {
         String name = createScratchType();
         UUID itemTypeId = testData.itemType(name).id();
-        UUID markerId = authorizationRepository.createMarker("Flagged " + tag, null, "ITEM_TYPE", itemTypeId).id();
+        UUID markerId = accessStore.createMarker("Flagged " + tag, null, "ITEM_TYPE", itemTypeId).id();
         Start start = new Start(UUID.randomUUID());
         End end = new End(UUID.randomUUID());
         AddMarkers add = new AddMarkers(UUID.randomUUID(), Gate.UNCONDITIONAL, List.of(markerId));
@@ -398,8 +398,8 @@ class AccessMarkersUiTest extends AbstractUiIntegrationTest {
 
     // Every item type is created with a pass-through pipeline, and may only have one.
     private void replacePipeline(UUID itemTypeId, Pipeline pipeline) {
-        UUID id = pipelineRepository.findByItemTypeId(itemTypeId).orElseThrow().id();
-        pipelineRepository.updatePipeline(id, pipeline, true, new PipelineLayout(Map.of(), Map.of()));
+        UUID id = pipelineStore.findByItemTypeId(itemTypeId).orElseThrow().id();
+        pipelineStore.updatePipeline(id, pipeline, true, new PipelineLayout(Map.of(), Map.of()));
     }
 
     // The shared context lives for the whole test run, so the fixture is created once, by whichever
@@ -472,7 +472,7 @@ class AccessMarkersUiTest extends AbstractUiIntegrationTest {
     }
 
     private UUID marker(AdminItemDefinitionView itemType, String name) {
-        return authorizationRepository.createMarker(name, null, "ITEM_TYPE", itemType.id()).id();
+        return accessStore.createMarker(name, null, "ITEM_TYPE", itemType.id()).id();
     }
 
     private static StepToProperty propertyStep(UUID propertyId) {

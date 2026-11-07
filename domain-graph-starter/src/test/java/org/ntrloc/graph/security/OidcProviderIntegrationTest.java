@@ -3,7 +3,7 @@ package org.ntrloc.graph.security;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.TestDatabases;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -31,7 +31,7 @@ class OidcProviderIntegrationTest extends AbstractOidcIntegrationTest {
     }
 
     @Autowired
-    private SecurityRepository securityRepo;
+    private UserStore userStore;
 
     @Autowired
     private JdbcClient jdbcClient;
@@ -42,8 +42,8 @@ class OidcProviderIntegrationTest extends AbstractOidcIntegrationTest {
     void signInAsAdmin() {
         for (String user : List.of("admin.user", "existing.user")) {
             String email = user + "@example.org";
-            securityRepo.findUserByEmail(email)
-                    .orElseGet(() -> securityRepo.createUser(user, email, user.equals("admin.user")));
+            userStore.findUserByEmail(email)
+                    .orElseGet(() -> userStore.createUser(user, email, user.equals("admin.user")));
         }
         admin = logIn("admin.user");
     }

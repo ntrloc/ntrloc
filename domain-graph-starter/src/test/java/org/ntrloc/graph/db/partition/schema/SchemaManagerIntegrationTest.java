@@ -58,9 +58,10 @@ import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyG
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminStateMachineView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminStateView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminTraitDefinitionView;
-import org.ntrloc.graph.db.partition.schema.repository.SchemaRepository;
+import org.ntrloc.graph.db.partition.schema.repository.SchemaStore;
 import org.ntrloc.graph.principal.TestPrincipals;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
+import org.ntrloc.graph.db.partition.schema.repository.ControlledListStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -94,16 +95,16 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     private SchemaManager schemaManager;
 
     @Autowired
-    private ControlledListManager controlledListManager;
+    private ControlledListStore controlledListStore;
 
     @Autowired
-    private AccessStore authRepo;
+    private AccessStore accessStore;
 
     @Autowired
-    private SecurityRepository securityRepo;
+    private UserStore userStore;
 
     @Autowired
-    private SchemaRepository schemaRepo;
+    private SchemaStore schemaStore;
 
     private UUID createItem(String name) {
         schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(name, "d", List.of(), null, false, null)));
@@ -244,7 +245,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     // Read straight from the database: the cached admin schema isn't rebuilt after a failed batch,
     // so it would show the old state whether or not the batch was rolled back.
     private Set<String> storedItemNames() {
-        return schemaRepo.getAllItems().stream().map(SchemaRepository.ItemRow::name).collect(Collectors.toSet());
+        return schemaStore.getAllItems().stream().map(SchemaStore.ItemRow::name).collect(Collectors.toSet());
     }
 
     private static CreateLinkDefinitionMutation linkToAnUnknownItemType() {
@@ -528,14 +529,14 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         UUID propId = schemaManager.getAdminSchema().items().stream()
                 .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
                 .properties().stream().filter(p -> p.name().equals("genre")).findFirst().orElseThrow().id();
-        var list = controlledListManager.createList("List-" + UUID.randomUUID(), PropertyType.STRING);
-        controlledListManager.setPropertyControlledList(propId, list.id());
-        controlledListManager.addValue(list.id(), "Old", "Old", 0);
+        var list = controlledListStore.createList("List-" + UUID.randomUUID(), PropertyType.STRING);
+        controlledListStore.setPropertyControlledList(propId, list.id());
+        controlledListStore.addValue(list.id(), "Old", "Old", 0);
 
         schemaManager.applyMutations(List.of(new ReplaceControlledListMutation(propId,
                 List.of(new ReplaceControlledListMutation.Entry("New", "New")))));
 
-        var values = controlledListManager.getValues(list.id(), PropertyType.STRING);
+        var values = controlledListStore.getValues(list.id(), PropertyType.STRING);
         assertThat(values).extracting(v -> v.value()).containsExactly("New");
     }
 
@@ -569,9 +570,9 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
                 List.of(new CreateControlledListMutation.Entry("A", "Alpha"),
                         new CreateControlledListMutation.Entry("B", "Beta")))));
 
-        var list = controlledListManager.getAllLists().stream()
+        var list = controlledListStore.getAllLists().stream()
                 .filter(l -> l.name().equals(name)).findFirst().orElseThrow();
-        assertThat(controlledListManager.getValues(list.id(), PropertyType.STRING))
+        assertThat(controlledListStore.getValues(list.id(), PropertyType.STRING))
                 .extracting(v -> v.value()).containsExactly("A", "B");
     }
 
@@ -588,52 +589,52 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void updateControlledListMutation_renamesWithoutTouchingValues_whenValuesAreNull() {
-        var list = controlledListManager.createList("List-" + UUID.randomUUID(), PropertyType.STRING);
-        controlledListManager.addValue(list.id(), "keep", "keep", 0);
+        var list = controlledListStore.createList("List-" + UUID.randomUUID(), PropertyType.STRING);
+        controlledListStore.addValue(list.id(), "keep", "keep", 0);
         String renamed = "Renamed-" + UUID.randomUUID();
 
         schemaManager.applyMutations(List.of(new UpdateControlledListMutation(list.id(), renamed, null)));
 
-        assertThat(controlledListManager.getListById(list.id())).hasValueSatisfying(l -> assertThat(l.name()).isEqualTo(renamed));
-        assertThat(controlledListManager.getValues(list.id(), PropertyType.STRING)).extracting(v -> v.value()).containsExactly("keep");
+        assertThat(controlledListStore.getListById(list.id())).hasValueSatisfying(l -> assertThat(l.name()).isEqualTo(renamed));
+        assertThat(controlledListStore.getValues(list.id(), PropertyType.STRING)).extracting(v -> v.value()).containsExactly("keep");
     }
 
     @Test
     void updateControlledListMutation_replacesValuesWithoutRenaming_whenNameIsNull() {
-        var list = controlledListManager.createList("List-" + UUID.randomUUID(), PropertyType.STRING);
-        controlledListManager.addValue(list.id(), "old", "old", 0);
+        var list = controlledListStore.createList("List-" + UUID.randomUUID(), PropertyType.STRING);
+        controlledListStore.addValue(list.id(), "old", "old", 0);
 
         schemaManager.applyMutations(List.of(new UpdateControlledListMutation(list.id(), null,
                 List.of(new UpdateControlledListMutation.Entry("new", "new")))));
 
-        assertThat(controlledListManager.getValues(list.id(), PropertyType.STRING)).extracting(v -> v.value()).containsExactly("new");
+        assertThat(controlledListStore.getValues(list.id(), PropertyType.STRING)).extracting(v -> v.value()).containsExactly("new");
     }
 
     @Test
     void deleteControlledListMutation_detachesProperties_andDropsTheValueTable() {
         UUID itemId = createItem("Item-" + UUID.randomUUID());
         UUID propId = createStringProp(itemId, "backed");
-        var list = controlledListManager.createList("List-" + UUID.randomUUID(), PropertyType.STRING);
-        controlledListManager.addValue(list.id(), "A", "A", 0);
-        controlledListManager.setPropertyControlledList(propId, list.id());
+        var list = controlledListStore.createList("List-" + UUID.randomUUID(), PropertyType.STRING);
+        controlledListStore.addValue(list.id(), "A", "A", 0);
+        controlledListStore.setPropertyControlledList(propId, list.id());
 
         schemaManager.applyMutations(List.of(new DeleteControlledListMutation(list.id())));
 
-        assertThat(controlledListManager.getListById(list.id())).isEmpty();
-        assertThat(controlledListManager.getListForProperty(propId)).isEmpty();
+        assertThat(controlledListStore.getListById(list.id())).isEmpty();
+        assertThat(controlledListStore.getListForProperty(propId)).isEmpty();
     }
 
     @Test
     void setPropertyControlledListMutation_attachesAndDetaches() {
         UUID itemId = createItem("Item-" + UUID.randomUUID());
         UUID propId = createStringProp(itemId, "genre");
-        var list = controlledListManager.createList("List-" + UUID.randomUUID(), PropertyType.STRING);
+        var list = controlledListStore.createList("List-" + UUID.randomUUID(), PropertyType.STRING);
 
         schemaManager.applyMutations(List.of(new SetPropertyControlledListMutation(propId, new ExistingControlledListReference(list.id()))));
-        assertThat(controlledListManager.getListForProperty(propId)).hasValueSatisfying(l -> assertThat(l.id()).isEqualTo(list.id()));
+        assertThat(controlledListStore.getListForProperty(propId)).hasValueSatisfying(l -> assertThat(l.id()).isEqualTo(list.id()));
 
         schemaManager.applyMutations(List.of(new SetPropertyControlledListMutation(propId, null)));
-        assertThat(controlledListManager.getListForProperty(propId)).isEmpty();
+        assertThat(controlledListStore.getListForProperty(propId)).isEmpty();
     }
 
     @Test
@@ -643,7 +644,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         UUID propId = schemaManager.getAdminSchema().items().stream()
                 .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
                 .properties().stream().filter(p -> p.name().equals("flag")).findFirst().orElseThrow().id();
-        var list = controlledListManager.createList("List-" + UUID.randomUUID(), PropertyType.STRING);
+        var list = controlledListStore.createList("List-" + UUID.randomUUID(), PropertyType.STRING);
 
         assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new SetPropertyControlledListMutation(propId, new ExistingControlledListReference(list.id())))))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -654,7 +655,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     void setPropertyControlledListMutation_withAValueTypeMismatch_throws() {
         UUID itemId = createItem("Item-" + UUID.randomUUID());
         UUID propId = createStringProp(itemId, "str");
-        var intList = controlledListManager.createList("List-" + UUID.randomUUID(), PropertyType.INTEGER);
+        var intList = controlledListStore.createList("List-" + UUID.randomUUID(), PropertyType.INTEGER);
 
         assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new SetPropertyControlledListMutation(propId, new ExistingControlledListReference(intList.id())))))
                 .isInstanceOf(IllegalArgumentException.class);
@@ -668,7 +669,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
 
         schemaManager.applyMutations(List.of(new CreateControlledListMutation(null, listName, PropertyType.STRING,
                 List.of(new CreateControlledListMutation.Entry("Open", "Open")))));
-        UUID listId = controlledListManager.getAllLists().stream()
+        UUID listId = controlledListStore.getAllLists().stream()
                 .filter(l -> l.name().equals(listName)).findFirst().orElseThrow().id();
         schemaManager.applyMutations(List.of(new SetPropertyControlledListMutation(propId, new ExistingControlledListReference(listId))));
 
@@ -686,7 +687,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     private UUID createStringList(String name) {
         schemaManager.applyMutations(List.of(new CreateControlledListMutation(null, name, PropertyType.STRING,
                 List.of(new CreateControlledListMutation.Entry("Open", "Open")))));
-        return controlledListManager.getAllLists().stream()
+        return controlledListStore.getAllLists().stream()
                 .filter(l -> l.name().equals(name)).findFirst().orElseThrow().id();
     }
 
@@ -700,7 +701,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
                 new UpdateControlledListMutation(listId, null, List.of(
                         new UpdateControlledListMutation.Entry("Open", "Open"), new UpdateControlledListMutation.Entry("Closed", "Closed")))));
 
-        assertThat(controlledListManager.getValues(listId, PropertyType.STRING)).extracting(AllowedValue::value).containsExactly("Open", "Closed");
+        assertThat(controlledListStore.getValues(listId, PropertyType.STRING)).extracting(AllowedValue::value).containsExactly("Open", "Closed");
     }
 
     @Test
@@ -715,7 +716,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
                 new UpdateControlledListMutation(listId, "Renamed-" + UUID.randomUUID(), null))))
                 .isInstanceOf(SchemaConflictException.class)
                 .hasMessageContaining("changed by someone else");
-        assertThat(controlledListManager.getListById(listId).orElseThrow().name()).isEqualTo(name);
+        assertThat(controlledListStore.getListById(listId).orElseThrow().name()).isEqualTo(name);
     }
 
     @Test
@@ -734,9 +735,9 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         String name = "List-" + UUID.randomUUID();
         schemaManager.applyMutations(List.of(new CreateControlledListMutation(null, name, PropertyType.INTEGER,
                 List.of(new CreateControlledListMutation.Entry("10", null), new CreateControlledListMutation.Entry("2", null)))));
-        UUID listId = controlledListManager.getAllLists().stream().filter(l -> l.name().equals(name)).findFirst().orElseThrow().id();
+        UUID listId = controlledListStore.getAllLists().stream().filter(l -> l.name().equals(name)).findFirst().orElseThrow().id();
 
-        assertThat(controlledListManager.getValues(listId, PropertyType.INTEGER)).extracting(AllowedValue::value).containsExactly(10L, 2L);
+        assertThat(controlledListStore.getValues(listId, PropertyType.INTEGER)).extracting(AllowedValue::value).containsExactly(10L, 2L);
     }
 
     @Test
@@ -778,7 +779,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("is STRING but property 'count' is INTEGER");
 
-        assertThat(schemaRepo.findChildNames(new SchemaRepository.PropertyOwnerRef(PropertyContainerKind.ITEM, itemId)))
+        assertThat(schemaStore.findChildNames(new SchemaStore.PropertyOwnerRef(PropertyContainerKind.ITEM, itemId)))
                 .doesNotContain("count");
     }
 
@@ -802,7 +803,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         UUID listId = results.get(0).listId();
         assertThat(results.get(0).refId()).isEqualTo("new-list");
 
-        assertThat(controlledListManager.getListForProperty(propId))
+        assertThat(controlledListStore.getListForProperty(propId))
                 .hasValueSatisfying(l -> assertThat(l.id()).isEqualTo(listId));
     }
 
@@ -1739,9 +1740,9 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         UUID visibleTypeId = createItem(visibleTypeName);
         UUID hiddenTypeId = createItem(hiddenTypeName);
 
-        var user = securityRepo.createUser("Restricted", "sme-" + UUID.randomUUID() + "@example.com", false);
+        var user = userStore.createUser("Restricted", "sme-" + UUID.randomUUID() + "@example.com", false);
         var principal = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), false);
-        authRepo.grantItemType(visibleTypeId, "USER", user.id(), PermissionService.ITEM_TYPE_READ);
+        accessStore.grantItemType(visibleTypeId, "USER", user.id(), PermissionService.ITEM_TYPE_READ);
 
         var visibleNames = schemaManager.getSchema(principal).items().stream().map(i -> i.name()).toList();
         assertThat(visibleNames).contains(visibleTypeName);

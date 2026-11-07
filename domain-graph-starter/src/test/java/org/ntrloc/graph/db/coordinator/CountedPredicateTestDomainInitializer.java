@@ -1,7 +1,6 @@
 package org.ntrloc.graph.db.coordinator;
 
-import org.ntrloc.graph.db.partition.authorization.repository.MarkerDecisionPipelineRepository;
-import org.ntrloc.graph.db.partition.schema.ControlledListManager;
+import org.ntrloc.graph.db.partition.authorization.repository.MarkerDecisionPipelineStore;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
@@ -38,7 +37,7 @@ public class CountedPredicateTestDomainInitializer implements DomainInitializer,
     public static final String PUBLISHED = "Published";
 
     private final SchemaManager schemaManager;
-    private final MarkerDecisionPipelineRepository pipelineRepository;
+    private final MarkerDecisionPipelineStore pipelineStore;
 
     private UUID photographerTypeId;
     private UUID photoTypeId;
@@ -50,18 +49,18 @@ public class CountedPredicateTestDomainInitializer implements DomainInitializer,
     private UUID draftStateId;
     private UUID publishedStateId;
 
-    public CountedPredicateTestDomainInitializer(SchemaManager schemaManager, MarkerDecisionPipelineRepository pipelineRepository) {
+    public CountedPredicateTestDomainInitializer(SchemaManager schemaManager, MarkerDecisionPipelineStore pipelineStore) {
         this.schemaManager = schemaManager;
-        this.pipelineRepository = pipelineRepository;
+        this.pipelineStore = pipelineStore;
     }
 
     @Override
     public void run(ApplicationArguments args) {
-        initSchema(schemaManager, null);
+        initSchema(schemaManager);
     }
 
     @Override
-    public void initSchema(SchemaManager schemaManager, ControlledListManager controlledListManager) {
+    public void initSchema(SchemaManager schemaManager) {
         schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(
                 "CountedPredicateTestPhotographer", "CountedPredicate integration test fixture",
                 // The one property this fixture's pipeline actually watches -- see the test class's
@@ -133,7 +132,7 @@ public class CountedPredicateTestDomainInitializer implements DomainInitializer,
     // removeAutoCreatedPipelines documents. Call this from a test's own @BeforeEach before it creates
     // its own pipeline against photographerTypeId.
     public void removeAutoCreatedPipeline() {
-        pipelineRepository.findByItemTypeId(photographerTypeId).ifPresent(p -> pipelineRepository.deletePipeline(p.id()));
+        pipelineStore.findByItemTypeId(photographerTypeId).ifPresent(p -> pipelineStore.deletePipeline(p.id()));
     }
 
     public UUID photographerTypeId() {

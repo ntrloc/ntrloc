@@ -11,7 +11,7 @@ import org.ntrloc.graph.db.partition.schema.definition.mutation.SetStateMachineL
 import org.ntrloc.graph.db.partition.schema.definition.mutation.UpdateStateMachineMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.UpdateStateMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.UpdateTransitionMutation;
-import org.ntrloc.graph.db.partition.schema.repository.SchemaRepository;
+import org.ntrloc.graph.db.partition.schema.repository.SchemaStore;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ArrayNode;
@@ -25,10 +25,10 @@ import java.util.UUID;
 @Component
 class StateMutationApplier {
 
-    private final SchemaRepository repo;
+    private final SchemaStore store;
 
-    StateMutationApplier(SchemaRepository repo) {
-        this.repo = repo;
+    StateMutationApplier(SchemaStore store) {
+        this.store = store;
     }
 
     // refIdToEntityId: the batch's refIds so far -- a state created with one is recorded in it, and a
@@ -36,45 +36,45 @@ class StateMutationApplier {
     boolean apply(DefinitionMutation mutation, Map<String, UUID> refIdToEntityId) {
         switch (mutation) {
             case CreateStateMachineMutation m -> {
-                var machine = repo.createStateMachine(m.itemDefinitionId(), m.name(), m.description());
+                var machine = store.createStateMachine(m.itemDefinitionId(), m.name(), m.description());
                 // Every machine is born with its START and END pseudostates -- undeletable, sentinel-named.
-                repo.createPseudoState(machine.id(), SchemaRepository.STATE_KIND_START);
-                repo.createPseudoState(machine.id(), SchemaRepository.STATE_KIND_END);
+                store.createPseudoState(machine.id(), SchemaStore.STATE_KIND_START);
+                store.createPseudoState(machine.id(), SchemaStore.STATE_KIND_END);
             }
-            case UpdateStateMachineMutation m -> repo.updateStateMachine(m.id(), m.name(), m.description());
-            case DeleteStateMachineMutation m -> repo.deleteStateMachine(m.id());
+            case UpdateStateMachineMutation m -> store.updateStateMachine(m.id(), m.name(), m.description());
+            case DeleteStateMachineMutation m -> store.deleteStateMachine(m.id());
             case SetStateMachineLayoutMutation m ->
-                    repo.setStateMachineLayout(m.stateMachineId(), withRefIdsResolved(m.layout(), refIdToEntityId));
+                    store.setStateMachineLayout(m.stateMachineId(), withRefIdsResolved(m.layout(), refIdToEntityId));
             case CreateStateMutation m -> {
                 SchemaMutationValidation.requireNotReservedStateName(m.name());
-                var state = repo.createState(m.stateMachineId(), m.name(), m.description(), SchemaRepository.STATE_KIND_NORMAL,
+                var state = store.createState(m.stateMachineId(), m.name(), m.description(), SchemaStore.STATE_KIND_NORMAL,
                         m.entryProcessId(), m.exitProcessId());
                 if (m.refId() != null) refIdToEntityId.put(m.refId(), state.id());
             }
             case UpdateStateMutation m -> {
                 SchemaMutationValidation.requireNotReservedStateName(m.name());
-                SchemaMutationValidation.requireDeletableState(repo, m.id()); // NORMAL-only -- same gate as delete
-                repo.updateState(m.id(), m.name(), m.description(), m.entryProcessId(), m.exitProcessId());
+                SchemaMutationValidation.requireDeletableState(store, m.id()); // NORMAL-only -- same gate as delete
+                store.updateState(m.id(), m.name(), m.description(), m.entryProcessId(), m.exitProcessId());
             }
             case DeleteStateMutation m -> {
-                SchemaMutationValidation.requireDeletableState(repo, m.id());
-                repo.deleteState(m.id());
+                SchemaMutationValidation.requireDeletableState(store, m.id());
+                store.deleteState(m.id());
             }
             case CreateTransitionMutation m -> {
-                String guard = repo.serializeGuardCondition(m.guardCondition());
+                String guard = store.serializeGuardCondition(m.guardCondition());
                 UUID from = m.fromStateId() != null ? m.fromStateId() : stateId(m.fromState(), refIdToEntityId);
                 UUID to = m.toStateId() != null ? m.toStateId() : stateId(m.toState(), refIdToEntityId);
-                SchemaMutationValidation.requireValidTransitionEndpoints(repo, from, to, guard, null);
-                var transition = repo.createTransition(from, to, m.name(), m.description(), m.processId(), guard);
+                SchemaMutationValidation.requireValidTransitionEndpoints(store, from, to, guard, null);
+                var transition = store.createTransition(from, to, m.name(), m.description(), m.processId(), guard);
                 if (m.refId() != null) refIdToEntityId.put(m.refId(), transition.id());
             }
             case UpdateTransitionMutation m -> {
-                String guard = repo.serializeGuardCondition(m.guardCondition());
+                String guard = store.serializeGuardCondition(m.guardCondition());
                 moveTransition(m, guard, refIdToEntityId);
-                SchemaMutationValidation.requireGuardAllowedOnTransition(repo, m.id(), guard);
-                repo.updateTransition(m.id(), m.name(), m.description(), m.processId(), guard);
+                SchemaMutationValidation.requireGuardAllowedOnTransition(store, m.id(), guard);
+                store.updateTransition(m.id(), m.name(), m.description(), m.processId(), guard);
             }
-            case DeleteTransitionMutation m -> repo.deleteTransition(m.id());
+            case DeleteTransitionMutation m -> store.deleteTransition(m.id());
             default -> {
                 return false;
             }
@@ -85,17 +85,17 @@ class StateMutationApplier {
     // Moves a transition to the states an update names, if it names any others.
     private void moveTransition(UpdateTransitionMutation m, String guard, Map<String, UUID> refIdToEntityId) {
         if (m.fromState() == null && m.toState() == null) return;
-        var current = repo.findTransition(m.id())
+        var current = store.findTransition(m.id())
                 .orElseThrow(() -> new IllegalArgumentException("Unknown transition: " + m.id()));
         UUID from = m.fromState() == null ? current.fromStateId() : stateId(m.fromState(), refIdToEntityId);
         UUID to = m.toState() == null ? current.toStateId() : stateId(m.toState(), refIdToEntityId);
         if (from.equals(current.fromStateId()) && to.equals(current.toStateId())) return;
-        var machineId = repo.findState(current.fromStateId()).orElseThrow().stateMachineId();
-        if (!repo.findState(from).map(s -> s.stateMachineId().equals(machineId)).orElse(true)) {
+        var machineId = store.findState(current.fromStateId()).orElseThrow().stateMachineId();
+        if (!store.findState(from).map(s -> s.stateMachineId().equals(machineId)).orElse(true)) {
             throw new IllegalArgumentException("A transition can't be moved to another state machine");
         }
-        SchemaMutationValidation.requireValidTransitionEndpoints(repo, from, to, guard, m.id());
-        repo.updateTransitionEndpoints(m.id(), from, to);
+        SchemaMutationValidation.requireValidTransitionEndpoints(store, from, to, guard, m.id());
+        store.updateTransitionEndpoints(m.id(), from, to);
     }
 
     // A state's id, or the refId of one created earlier in the batch.

@@ -36,7 +36,7 @@ import org.ntrloc.graph.projection.StateValuePredicate;
 import org.ntrloc.graph.projection.TermsFacetFilter;
 import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
 import org.ntrloc.graph.db.partition.ledger.ItemUpdateEntry;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.ntrloc.graph.domain.DomainInitializer;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
@@ -67,7 +67,7 @@ import static org.assertj.core.api.Assertions.tuple;
 // LedgerRegisterCoordinatorIntegrationTest; this file deliberately doesn't repeat that. State
 // changes here go straight through the coordinator (setState() helper) rather than an EntityWriteService
 // entry point -- StateMachineExecutionIntegrationTest covers start/executeTransition end to end.
-class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrationTest {
+class ProjectionEngineIntegrationTest extends AbstractIntegrationTest {
 
     private static final String BOOK_TYPE = "RegisterProjectionTestBook";
 
@@ -94,7 +94,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
     private BinaryStore binaryStore;
 
     @Autowired
-    private SecurityRepository securityRepo;
+    private UserStore userStore;
 
     // ledger_entry.created_by/register_item.created_by (Part E) are NOT NULL FKs to
     // security_user.id -- setState's/the raw ItemCreateEntry tests' direct coordinator.prepare
@@ -116,7 +116,7 @@ class RegisterPartitionManagerProjectionIntegrationTest extends AbstractIntegrat
         // Same "root" as MutationControllerIntegrationTest -- see that class's own comment.
         webTestClient = webTestClient.mutate().defaultHeader(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com")).build();
         marker = UUID.randomUUID().toString();
-        actor = securityRepo.createUser("Projection Test Actor", "rpmp-actor-" + UUID.randomUUID() + "@example.com", true).id();
+        actor = userStore.createUser("Projection Test Actor", "rpmp-actor-" + UUID.randomUUID() + "@example.com", true).id();
     }
 
     private UUID createBook(String title, Integer pageCount, Boolean inStock, String genre) {

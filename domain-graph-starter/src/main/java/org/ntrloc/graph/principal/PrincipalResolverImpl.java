@@ -1,7 +1,7 @@
 package org.ntrloc.graph.principal;
 
 import org.ntrloc.graph.db.partition.security.PersonalAccessTokenService;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -18,25 +18,25 @@ import java.util.UUID;
 @Component
 class PrincipalResolverImpl implements ExternalPrincipalResolver, InternalPrincipalResolver {
 
-    private final SecurityRepository repo;
+    private final UserStore store;
 
-    PrincipalResolverImpl(SecurityRepository repo) {
-        this.repo = repo;
+    PrincipalResolverImpl(UserStore store) {
+        this.store = store;
     }
 
     @Override
     public Optional<NtrlocPrincipal> byEmail(String email) {
-        return repo.findUserByEmail(email).map(this::toPrincipal);
+        return store.findUserByEmail(email).map(this::toPrincipal);
     }
 
     @Override
     public Optional<NtrlocPrincipal> byToken(String rawToken) {
-        return repo.findUserByValidTokenHash(PersonalAccessTokenService.hash(rawToken)).map(this::toPrincipal);
+        return store.findUserByValidTokenHash(PersonalAccessTokenService.hash(rawToken)).map(this::toPrincipal);
     }
 
     @Override
     public Optional<NtrlocPrincipal> byId(UUID id) {
-        return repo.findUserById(id).map(this::toPrincipal);
+        return store.findUserById(id).map(this::toPrincipal);
     }
 
     // Local, LDAP and PAT logins carry their NtrlocPrincipal as the Authentication's principal.
@@ -64,8 +64,8 @@ class PrincipalResolverImpl implements ExternalPrincipalResolver, InternalPrinci
         return new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Not authenticated");
     }
 
-    private NtrlocPrincipal toPrincipal(SecurityRepository.UserRow user) {
+    private NtrlocPrincipal toPrincipal(UserStore.UserRow user) {
         return new NtrlocPrincipal(user.id(), user.displayName(), user.email(),
-                repo.getUserGroupIdsForUser(user.id()), user.isAdmin());
+                store.getUserGroupIdsForUser(user.id()), user.isAdmin());
     }
 }

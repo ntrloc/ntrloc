@@ -11,7 +11,7 @@ import org.ntrloc.graph.db.partition.ledger.LinkUpdateEntry;
 import org.ntrloc.graph.db.partition.register.RegisterLinkEndpoint;
 import org.ntrloc.graph.db.partition.register.RegisterStoreReader;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
-import org.ntrloc.graph.db.partition.schema.repository.SchemaRepository;
+import org.ntrloc.graph.db.partition.schema.repository.SchemaStore;
 import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
@@ -40,13 +40,13 @@ import java.util.UUID;
 public class NoOpMutationFilter {
 
     private final RegisterStoreReader registerStore;
-    private final SchemaRepository schemaRepository;
+    private final SchemaStore schemaStore;
     private final SchemaManager schemaManager;
 
-    public NoOpMutationFilter(RegisterStoreReader registerStore, SchemaRepository schemaRepository,
+    public NoOpMutationFilter(RegisterStoreReader registerStore, SchemaStore schemaStore,
                               SchemaManager schemaManager) {
         this.registerStore = registerStore;
-        this.schemaRepository = schemaRepository;
+        this.schemaStore = schemaStore;
         this.schemaManager = schemaManager;
     }
 
@@ -136,7 +136,7 @@ public class NoOpMutationFilter {
     // state already, a no-op. to-many (null/unbounded, or > 1): never a no-op -- a second link to
     // the same target is a legitimate, distinct link, not a duplicate of the first.
     private LinkCreateEntry filterLinkCreate(LinkCreateEntry e) {
-        Integer maxCardinality = schemaRepository.findPerspectiveById(e.endpointA().perspectiveId()).maxCardinality();
+        Integer maxCardinality = schemaStore.findPerspectiveById(e.endpointA().perspectiveId()).maxCardinality();
         if (maxCardinality == null || maxCardinality != 1) return e;
         boolean alreadyLinked = registerStore.findExistingLinkId(
                 toRegisterEndpoint(e.endpointA()), toRegisterEndpoint(e.endpointB())).isPresent();

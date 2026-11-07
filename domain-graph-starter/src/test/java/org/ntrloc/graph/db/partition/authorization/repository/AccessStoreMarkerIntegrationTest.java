@@ -9,7 +9,7 @@ import org.ntrloc.graph.db.partition.authorization.ManualMarkerAssignmentService
 import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
 import org.ntrloc.graph.principal.NtrlocPrincipal;
 import org.ntrloc.graph.principal.TestPrincipals;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
@@ -29,10 +29,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 class AccessStoreMarkerIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
-    private AccessStore authRepo;
+    private AccessStore accessStore;
 
     @Autowired
-    private SecurityRepository securityRepo;
+    private UserStore userStore;
 
     @Autowired
     private ManualMarkerAssignmentService markerAssignmentService;
@@ -48,12 +48,12 @@ class AccessStoreMarkerIntegrationTest extends AbstractIntegrationTest {
 
     // Not static/final: needs a real, backed security_user row now that ledger_entry.created_by
     // (Part E) has a NOT NULL FK to security_user.id -- created fresh per test in setUp() via the
-    // already-autowired securityRepo, which a static initializer can't reach.
+    // already-autowired userStore, which a static initializer can't reach.
     private NtrlocPrincipal actor;
 
     @BeforeEach
     void setUpActor() {
-        var user = securityRepo.createUser("Authorization Test Actor", "arm-actor-" + UUID.randomUUID() + "@example.com", true);
+        var user = userStore.createUser("Authorization Test Actor", "arm-actor-" + UUID.randomUUID() + "@example.com", true);
         actor = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), true);
     }
 
@@ -67,7 +67,7 @@ class AccessStoreMarkerIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void createMarker_persistsScopeAndReturnsRow() {
-        var marker = authRepo.createMarker("arm-" + UUID.randomUUID(), "a description", "ITEM_TYPE", fixture.productTypeId());
+        var marker = accessStore.createMarker("arm-" + UUID.randomUUID(), "a description", "ITEM_TYPE", fixture.productTypeId());
         assertThat(marker.id()).isNotNull();
         assertThat(marker.description()).isEqualTo("a description");
         assertThat(marker.scopeKind()).isEqualTo("ITEM_TYPE");
@@ -76,19 +76,19 @@ class AccessStoreMarkerIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void updateMarker_forAMarkerSomeoneElseDeleted_isEmpty() {
-        var marker = authRepo.createMarker("arm-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId());
-        authRepo.deleteMarker(marker.id());
+        var marker = accessStore.createMarker("arm-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId());
+        accessStore.deleteMarker(marker.id());
 
-        assertThat(authRepo.updateMarker(marker.id(), "renamed", null)).isEmpty();
+        assertThat(accessStore.updateMarker(marker.id(), "renamed", null)).isEmpty();
     }
 
     @Test
     void ensureMarkerGrant_isIdempotent() {
-        var marker = authRepo.createMarker("arm-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId());
-        var group = securityRepo.createUserGroup("arm-" + UUID.randomUUID());
+        var marker = accessStore.createMarker("arm-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId());
+        var group = userStore.createUserGroup("arm-" + UUID.randomUUID());
 
-        UUID first = authRepo.ensureMarkerGrant(marker.id(), "USER_GROUP", group.id());
-        UUID second = authRepo.ensureMarkerGrant(marker.id(), "USER_GROUP", group.id());
+        UUID first = accessStore.ensureMarkerGrant(marker.id(), "USER_GROUP", group.id());
+        UUID second = accessStore.ensureMarkerGrant(marker.id(), "USER_GROUP", group.id());
 
         assertThat(second).isEqualTo(first);
         Long rows = jdbcClient.sql("SELECT COUNT(*) FROM marker_grant WHERE marker_id = :markerId")
@@ -98,20 +98,20 @@ class AccessStoreMarkerIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void findMarkerGrant_findsAnEnsuredGrant() {
-        var marker = authRepo.createMarker("arm-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId());
-        var group = securityRepo.createUserGroup("arm-" + UUID.randomUUID());
-        UUID grantId = authRepo.ensureMarkerGrant(marker.id(), "USER_GROUP", group.id());
+        var marker = accessStore.createMarker("arm-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId());
+        var group = userStore.createUserGroup("arm-" + UUID.randomUUID());
+        UUID grantId = accessStore.ensureMarkerGrant(marker.id(), "USER_GROUP", group.id());
 
-        assertThat(authRepo.findMarkerGrant(marker.id(), "USER_GROUP", group.id())).contains(grantId);
+        assertThat(accessStore.findMarkerGrant(marker.id(), "USER_GROUP", group.id())).contains(grantId);
     }
 
     @Test
     void setItemPermissions_persistsTheFlags() {
-        var marker = authRepo.createMarker("arm-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId());
-        var group = securityRepo.createUserGroup("arm-" + UUID.randomUUID());
-        UUID grantId = authRepo.ensureMarkerGrant(marker.id(), "USER_GROUP", group.id());
+        var marker = accessStore.createMarker("arm-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId());
+        var group = userStore.createUserGroup("arm-" + UUID.randomUUID());
+        UUID grantId = accessStore.ensureMarkerGrant(marker.id(), "USER_GROUP", group.id());
 
-        authRepo.setItemPermissions(grantId, true, false);
+        accessStore.setItemPermissions(grantId, true, false);
 
         var row = jdbcClient.sql("SELECT item_can_read, item_can_delete FROM marker_grant WHERE id = :id")
                 .param("id", grantId).query((rs, _) -> Map.entry(rs.getBoolean("item_can_read"), rs.getBoolean("item_can_delete"))).single();
@@ -121,12 +121,12 @@ class AccessStoreMarkerIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void grantPropertyAccess_upsertsOnConflict() {
-        var marker = authRepo.createMarker("arm-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId());
-        var group = securityRepo.createUserGroup("arm-" + UUID.randomUUID());
-        UUID grantId = authRepo.ensureMarkerGrant(marker.id(), "USER_GROUP", group.id());
+        var marker = accessStore.createMarker("arm-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId());
+        var group = userStore.createUserGroup("arm-" + UUID.randomUUID());
+        UUID grantId = accessStore.ensureMarkerGrant(marker.id(), "USER_GROUP", group.id());
 
-        authRepo.grantPropertyAccess(grantId, fixture.namePropertyId(), true, false);
-        authRepo.grantPropertyAccess(grantId, fixture.namePropertyId(), true, true);
+        accessStore.grantPropertyAccess(grantId, fixture.namePropertyId(), true, false);
+        accessStore.grantPropertyAccess(grantId, fixture.namePropertyId(), true, true);
 
         var row = jdbcClient.sql("SELECT can_read, can_write FROM marker_grant_property WHERE marker_grant_id = :id AND property_id = :propId")
                 .param("id", grantId).param("propId", fixture.namePropertyId())
@@ -140,12 +140,12 @@ class AccessStoreMarkerIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void grantLinkPerspectiveAccess_upsertsOnConflict() {
-        var marker = authRepo.createMarker("arm-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId());
-        var group = securityRepo.createUserGroup("arm-" + UUID.randomUUID());
-        UUID grantId = authRepo.ensureMarkerGrant(marker.id(), "USER_GROUP", group.id());
+        var marker = accessStore.createMarker("arm-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId());
+        var group = userStore.createUserGroup("arm-" + UUID.randomUUID());
+        UUID grantId = accessStore.ensureMarkerGrant(marker.id(), "USER_GROUP", group.id());
 
-        authRepo.grantLinkPerspectiveAccess(grantId, fixture.productPerspectiveId(), false, true, false);
-        authRepo.grantLinkPerspectiveAccess(grantId, fixture.productPerspectiveId(), true, true, true);
+        accessStore.grantLinkPerspectiveAccess(grantId, fixture.productPerspectiveId(), false, true, false);
+        accessStore.grantLinkPerspectiveAccess(grantId, fixture.productPerspectiveId(), true, true, true);
 
         var row = jdbcClient.sql("""
                 SELECT can_create, can_read, can_delete FROM marker_grant_link_perspective
@@ -158,11 +158,11 @@ class AccessStoreMarkerIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void grantLinkPropertyAccess_persists() {
-        var marker = authRepo.createMarker("arm-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId());
-        var group = securityRepo.createUserGroup("arm-" + UUID.randomUUID());
-        UUID grantId = authRepo.ensureMarkerGrant(marker.id(), "USER_GROUP", group.id());
+        var marker = accessStore.createMarker("arm-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId());
+        var group = userStore.createUserGroup("arm-" + UUID.randomUUID());
+        UUID grantId = accessStore.ensureMarkerGrant(marker.id(), "USER_GROUP", group.id());
 
-        authRepo.grantLinkPropertyAccess(grantId, fixture.rolePropertyId(), true, true);
+        accessStore.grantLinkPropertyAccess(grantId, fixture.rolePropertyId(), true, true);
 
         Long rows = jdbcClient.sql("""
                 SELECT COUNT(*) FROM marker_grant_link_property WHERE marker_grant_id = :id AND property_id = :propId AND can_read AND can_write
@@ -173,15 +173,15 @@ class AccessStoreMarkerIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void deleteMarkerGrant_cascadesToChildTables() {
-        var marker = authRepo.createMarker("arm-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId());
-        var group = securityRepo.createUserGroup("arm-" + UUID.randomUUID());
-        UUID grantId = authRepo.ensureMarkerGrant(marker.id(), "USER_GROUP", group.id());
-        authRepo.grantPropertyAccess(grantId, fixture.namePropertyId(), true, false);
-        authRepo.grantLinkPerspectiveAccess(grantId, fixture.productPerspectiveId(), false, true, false);
+        var marker = accessStore.createMarker("arm-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId());
+        var group = userStore.createUserGroup("arm-" + UUID.randomUUID());
+        UUID grantId = accessStore.ensureMarkerGrant(marker.id(), "USER_GROUP", group.id());
+        accessStore.grantPropertyAccess(grantId, fixture.namePropertyId(), true, false);
+        accessStore.grantLinkPerspectiveAccess(grantId, fixture.productPerspectiveId(), false, true, false);
 
-        authRepo.deleteMarkerGrant(grantId);
+        accessStore.deleteMarkerGrant(grantId);
 
-        assertThat(authRepo.findMarkerGrant(marker.id(), "USER_GROUP", group.id())).isEmpty();
+        assertThat(accessStore.findMarkerGrant(marker.id(), "USER_GROUP", group.id())).isEmpty();
         Long propertyRows = jdbcClient.sql("SELECT COUNT(*) FROM marker_grant_property WHERE marker_grant_id = :id")
                 .param("id", grantId).query(Long.class).single();
         Long perspectiveRows = jdbcClient.sql("SELECT COUNT(*) FROM marker_grant_link_perspective WHERE marker_grant_id = :id")
@@ -193,22 +193,22 @@ class AccessStoreMarkerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void getMarkerIdsForItem_returnsAssignedMarkers() {
         UUID itemId = createItem();
-        var marker = authRepo.createMarker("arm-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId());
+        var marker = accessStore.createMarker("arm-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId());
         markerAssignmentService.addItemMarker(itemId, marker.id(), actor, "test reason");
 
-        assertThat(authRepo.getMarkerIdsForItem(itemId)).containsExactly(marker.id());
+        assertThat(accessStore.getMarkerIdsForItem(itemId)).containsExactly(marker.id());
     }
 
     @Test
     void getMarkerIdsForItems_batchesAcrossMultipleItems() {
         UUID item1 = createItem();
         UUID item2 = createItem();
-        var marker1 = authRepo.createMarker("arm-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId());
-        var marker2 = authRepo.createMarker("arm-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId());
+        var marker1 = accessStore.createMarker("arm-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId());
+        var marker2 = accessStore.createMarker("arm-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId());
         markerAssignmentService.addItemMarker(item1, marker1.id(), actor, "test reason");
         markerAssignmentService.addItemMarker(item2, marker2.id(), actor, "test reason");
 
-        Map<UUID, Set<UUID>> byItem = authRepo.getMarkerIdsForItems(Set.of(item1, item2));
+        Map<UUID, Set<UUID>> byItem = accessStore.getMarkerIdsForItems(Set.of(item1, item2));
 
         assertThat(byItem.get(item1)).containsExactly(marker1.id());
         assertThat(byItem.get(item2)).containsExactly(marker2.id());

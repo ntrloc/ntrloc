@@ -3,7 +3,7 @@ package org.ntrloc.graph.db.partition.schema;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyContainerKind;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
-import org.ntrloc.graph.db.partition.schema.repository.SchemaRepository;
+import org.ntrloc.graph.db.partition.schema.repository.SchemaStore;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -60,14 +60,14 @@ final class SchemaMutationValidation {
     private record Namespace(String noun, Function<UUID, List<OwnedName>> declaredByItem,
                              Function<UUID, List<OwnedName>> declaredByTrait) {}
 
-    private static Namespace propertyNames(SchemaRepository repo) {
+    private static Namespace propertyNames(SchemaStore store) {
         return new Namespace("a property or group",
-                itemId -> owned(repo.findChildNames(new SchemaRepository.PropertyOwnerRef(PropertyContainerKind.ITEM, itemId)), itemId),
-                traitId -> owned(repo.findChildNames(new SchemaRepository.PropertyOwnerRef(PropertyContainerKind.TRAIT, traitId)), traitId));
+                itemId -> owned(store.findChildNames(new SchemaStore.PropertyOwnerRef(PropertyContainerKind.ITEM, itemId)), itemId),
+                traitId -> owned(store.findChildNames(new SchemaStore.PropertyOwnerRef(PropertyContainerKind.TRAIT, traitId)), traitId));
     }
 
-    private static Namespace perspectiveNames(SchemaRepository repo) {
-        Map<UUID, List<SchemaRepository.PerspectiveRow>> byEntity = repo.getPerspectivesByEntity();
+    private static Namespace perspectiveNames(SchemaStore store) {
+        Map<UUID, List<SchemaStore.PerspectiveRow>> byEntity = store.getPerspectivesByEntity();
         Function<UUID, List<OwnedName>> declared = entityId -> byEntity.getOrDefault(entityId, List.of()).stream()
                 .map(p -> new OwnedName(p.name(), p.linkId()))
                 .toList();
@@ -100,32 +100,32 @@ final class SchemaMutationValidation {
 
     // `added` joining item type itemId's namespace: checked against its own level and every level of
     // its supertype chain in both directions.
-    private static void requireAvailableAcrossChain(SchemaRepository repo, Namespace namespace, UUID itemId, List<OwnedName> added) {
-        Map<UUID, UUID> supertypeById = supertypeById(repo);
-        Map<UUID, List<UUID>> traitIdsByItem = repo.getTraitIdsByItem();
-        requireNoCollision(added, levelOf(namespace, traitIdsByItem, itemId), namespace, named("item type", repo, itemId));
+    private static void requireAvailableAcrossChain(SchemaStore store, Namespace namespace, UUID itemId, List<OwnedName> added) {
+        Map<UUID, UUID> supertypeById = supertypeById(store);
+        Map<UUID, List<UUID>> traitIdsByItem = store.getTraitIdsByItem();
+        requireNoCollision(added, levelOf(namespace, traitIdsByItem, itemId), namespace, named("item type", store, itemId));
         for (UUID ancestor : ancestorsOf(supertypeById, itemId)) {
-            requireNoCollision(added, levelOf(namespace, traitIdsByItem, ancestor), namespace, named(SUPERTYPE, repo, ancestor));
+            requireNoCollision(added, levelOf(namespace, traitIdsByItem, ancestor), namespace, named(SUPERTYPE, store, ancestor));
         }
         for (UUID descendant : descendantsOf(supertypeById, itemId)) {
-            requireNoCollision(added, levelOf(namespace, traitIdsByItem, descendant), namespace, named("subtype", repo, descendant));
+            requireNoCollision(added, levelOf(namespace, traitIdsByItem, descendant), namespace, named("subtype", store, descendant));
         }
     }
 
-    private static List<UUID> implementersOf(SchemaRepository repo, UUID traitId) {
-        return repo.getTraitIdsByItem().entrySet().stream()
+    private static List<UUID> implementersOf(SchemaStore store, UUID traitId) {
+        return store.getTraitIdsByItem().entrySet().stream()
                 .filter(entry -> entry.getValue().contains(traitId))
                 .map(Map.Entry::getKey)
                 .toList();
     }
 
-    private static Map<UUID, UUID> supertypeById(SchemaRepository repo) {
+    private static Map<UUID, UUID> supertypeById(SchemaStore store) {
         // Collectors.toMap throws on a null value, so items with no supertype (the common case) are
         // filtered out rather than mapped to null -- an absent key and a null-mapped key behave
         // identically for these walks.
-        return repo.getAllItems().stream()
+        return store.getAllItems().stream()
                 .filter(item -> item.supertypeId() != null)
-                .collect(Collectors.toMap(SchemaRepository.ItemRow::id, SchemaRepository.ItemRow::supertypeId));
+                .collect(Collectors.toMap(SchemaStore.ItemRow::id, SchemaStore.ItemRow::supertypeId));
     }
 
     private static List<UUID> ancestorsOf(Map<UUID, UUID> supertypeById, UUID itemId) {
@@ -153,24 +153,24 @@ final class SchemaMutationValidation {
     }
 
     // e.g. "supertype 'Vehicle'", for naming where a collision is.
-    private static String named(String role, SchemaRepository repo, UUID itemId) {
-        return role + " '" + itemName(repo, itemId) + "'";
+    private static String named(String role, SchemaStore store, UUID itemId) {
+        return role + " '" + itemName(store, itemId) + "'";
     }
 
-    private static String itemName(SchemaRepository repo, UUID itemId) {
-        return repo.getAllItems().stream()
+    private static String itemName(SchemaStore store, UUID itemId) {
+        return store.getAllItems().stream()
                 .filter(i -> i.id().equals(itemId))
                 .findFirst()
-                .map(SchemaRepository.ItemRow::name)
+                .map(SchemaStore.ItemRow::name)
                 .orElse(itemId.toString());
     }
 
-    static void requireKnownParent(SchemaRepository repo, SchemaRepository.PropertyOwnerRef parent) {
+    static void requireKnownParent(SchemaStore store, SchemaStore.PropertyOwnerRef parent) {
         boolean known = switch (parent.kind()) {
-            case ITEM -> repo.getAllItems().stream().anyMatch(i -> i.id().equals(parent.ownerId()));
-            case TRAIT -> repo.getAllTraits().stream().anyMatch(t -> t.id().equals(parent.ownerId()));
-            case LINK -> repo.getAllLinkIds().contains(parent.ownerId());
-            case GROUP -> repo.findGroup(parent.ownerId()).isPresent();
+            case ITEM -> store.getAllItems().stream().anyMatch(i -> i.id().equals(parent.ownerId()));
+            case TRAIT -> store.getAllTraits().stream().anyMatch(t -> t.id().equals(parent.ownerId()));
+            case LINK -> store.getAllLinkIds().contains(parent.ownerId());
+            case GROUP -> store.findGroup(parent.ownerId()).isPresent();
         };
         if (!known) {
             throw new IllegalArgumentException("Unknown " + parent.kind().name().toLowerCase() + ": " + parent.ownerId());
@@ -180,16 +180,16 @@ final class SchemaMutationValidation {
     // A new property or group named `name` under `parent` (also used for a rename, and a move's
     // target). At an item type's or a trait's top level, it joins every implementing item type's
     // namespace as well.
-    static void requireNameAvailable(SchemaRepository repo, SchemaRepository.PropertyOwnerRef parent, String name, String context) {
-        if (repo.findChildNames(parent).contains(name)) {
+    static void requireNameAvailable(SchemaStore store, SchemaStore.PropertyOwnerRef parent, String name, String context) {
+        if (store.findChildNames(parent).contains(name)) {
             throw new IllegalArgumentException("'" + name + "' already exists on " + context);
         }
-        Namespace namespace = propertyNames(repo);
+        Namespace namespace = propertyNames(store);
         List<OwnedName> added = List.of(new OwnedName(name, parent.ownerId()));
         switch (parent.kind()) {
-            case ITEM -> requireAvailableAcrossChain(repo, namespace, parent.ownerId(), added);
-            case TRAIT -> implementersOf(repo, parent.ownerId())
-                    .forEach(itemId -> requireAvailableAcrossChain(repo, namespace, itemId, added));
+            case ITEM -> requireAvailableAcrossChain(store, namespace, parent.ownerId(), added);
+            case TRAIT -> implementersOf(store, parent.ownerId())
+                    .forEach(itemId -> requireAvailableAcrossChain(store, namespace, itemId, added));
             default -> { /* only siblings share a group's or a link's namespace */ }
         }
     }
@@ -197,9 +197,9 @@ final class SchemaMutationValidation {
     // Implementing a trait puts its properties, groups and perspectives into the item type's
     // namespaces, so none of their names can already be taken there or anywhere in its supertype
     // chain in either direction.
-    static void requireTraitMembersAvailable(SchemaRepository repo, UUID itemId, UUID traitId) {
-        for (Namespace namespace : List.of(propertyNames(repo), perspectiveNames(repo))) {
-            requireAvailableAcrossChain(repo, namespace, itemId, namespace.declaredByTrait().apply(traitId));
+    static void requireTraitMembersAvailable(SchemaStore store, UUID itemId, UUID traitId) {
+        for (Namespace namespace : List.of(propertyNames(store), perspectiveNames(store))) {
+            requireAvailableAcrossChain(store, namespace, itemId, namespace.declaredByTrait().apply(traitId));
         }
     }
 
@@ -207,12 +207,12 @@ final class SchemaMutationValidation {
     // everything the traits it implements bring -- checked among themselves, then against everything
     // its supertype chain already owns. Inheritance is strictly additive -- no override, ever -- so a
     // name already owned anywhere up the chain can't be re-declared lower down.
-    static void requireNamesAvailableForNewItemType(SchemaRepository repo, UUID supertypeId, Set<String> ownNames, List<UUID> traitIds) {
-        requireNewLevelAvailable(repo, propertyNames(repo), owned(ownNames, new UUID(0, 0)), traitIds, supertypeId);
-        requireNewLevelAvailable(repo, perspectiveNames(repo), List.of(), traitIds, supertypeId);
+    static void requireNamesAvailableForNewItemType(SchemaStore store, UUID supertypeId, Set<String> ownNames, List<UUID> traitIds) {
+        requireNewLevelAvailable(store, propertyNames(store), owned(ownNames, new UUID(0, 0)), traitIds, supertypeId);
+        requireNewLevelAvailable(store, perspectiveNames(store), List.of(), traitIds, supertypeId);
     }
 
-    private static void requireNewLevelAvailable(SchemaRepository repo, Namespace namespace, List<OwnedName> own,
+    private static void requireNewLevelAvailable(SchemaStore store, Namespace namespace, List<OwnedName> own,
                                                  List<UUID> traitIds, UUID supertypeId) {
         List<OwnedName> level = new ArrayList<>(own);
         for (UUID traitId : traitIds) {
@@ -221,26 +221,26 @@ final class SchemaMutationValidation {
             level.addAll(traitNames);
         }
         if (supertypeId == null) return;
-        Map<UUID, List<UUID>> traitIdsByItem = repo.getTraitIdsByItem();
-        for (UUID ancestor : chainFrom(supertypeById(repo), supertypeId)) {
-            requireNoCollision(level, levelOf(namespace, traitIdsByItem, ancestor), namespace, named(SUPERTYPE, repo, ancestor));
+        Map<UUID, List<UUID>> traitIdsByItem = store.getTraitIdsByItem();
+        for (UUID ancestor : chainFrom(supertypeById(store), supertypeId)) {
+            requireNoCollision(level, levelOf(namespace, traitIdsByItem, ancestor), namespace, named(SUPERTYPE, store, ancestor));
         }
     }
 
     // Re-parenting: the item type's own namespaces, plus every descendant's (they all inherit the new
     // ancestors too), against the proposed supertype's whole chain.
-    static void requireNoTopLevelCollisionsForSupertype(SchemaRepository repo, UUID itemId, UUID proposedSupertypeId) {
-        Map<UUID, UUID> supertypeById = supertypeById(repo);
-        Map<UUID, List<UUID>> traitIdsByItem = repo.getTraitIdsByItem();
+    static void requireNoTopLevelCollisionsForSupertype(SchemaStore store, UUID itemId, UUID proposedSupertypeId) {
+        Map<UUID, UUID> supertypeById = supertypeById(store);
+        Map<UUID, List<UUID>> traitIdsByItem = store.getTraitIdsByItem();
         List<UUID> moving = new ArrayList<>();
         moving.add(itemId);
         moving.addAll(descendantsOf(supertypeById, itemId));
-        for (Namespace namespace : List.of(propertyNames(repo), perspectiveNames(repo))) {
+        for (Namespace namespace : List.of(propertyNames(store), perspectiveNames(store))) {
             for (UUID member : moving) {
                 List<OwnedName> names = levelOf(namespace, traitIdsByItem, member);
                 for (UUID ancestor : chainFrom(supertypeById, proposedSupertypeId)) {
                     requireNoCollision(names, levelOf(namespace, traitIdsByItem, ancestor), namespace,
-                            named(SUPERTYPE, repo, ancestor));
+                            named(SUPERTYPE, store, ancestor));
                 }
             }
         }
@@ -249,16 +249,16 @@ final class SchemaMutationValidation {
     // A perspective named `name`, one end of link linkId, on an item type or trait. On an item type
     // it joins that type's perspective namespace; on a trait, the trait's own and every implementing
     // item type's.
-    static void requirePerspectiveNameAvailable(SchemaRepository repo, UUID entityId, String name, UUID linkId) {
-        Namespace namespace = perspectiveNames(repo);
+    static void requirePerspectiveNameAvailable(SchemaStore store, UUID entityId, String name, UUID linkId) {
+        Namespace namespace = perspectiveNames(store);
         List<OwnedName> added = List.of(new OwnedName(name, linkId));
-        boolean isItemType = repo.getAllItems().stream().anyMatch(item -> item.id().equals(entityId));
+        boolean isItemType = store.getAllItems().stream().anyMatch(item -> item.id().equals(entityId));
         if (isItemType) {
-            requireAvailableAcrossChain(repo, namespace, entityId, added);
+            requireAvailableAcrossChain(store, namespace, entityId, added);
             return;
         }
         requireNoCollision(added, namespace.declaredByTrait().apply(entityId), namespace, "this trait");
-        implementersOf(repo, entityId).forEach(itemId -> requireAvailableAcrossChain(repo, namespace, itemId, added));
+        implementersOf(store, entityId).forEach(itemId -> requireAvailableAcrossChain(store, namespace, itemId, added));
     }
 
     // startId and every supertype above it.
@@ -278,9 +278,9 @@ final class SchemaMutationValidation {
     // PackComponent, where PackComponent is a trait implemented by several item types, not an
     // item type itself) threw "Unknown item" here even though the id was perfectly valid -- just
     // valid for a trait.
-    static void requireKnownItemOrTrait(SchemaRepository repo, UUID id) {
-        boolean known = repo.getAllItems().stream().anyMatch(item -> item.id().equals(id))
-                || repo.getAllTraits().stream().anyMatch(trait -> trait.id().equals(id));
+    static void requireKnownItemOrTrait(SchemaStore store, UUID id) {
+        boolean known = store.getAllItems().stream().anyMatch(item -> item.id().equals(id))
+                || store.getAllTraits().stream().anyMatch(trait -> trait.id().equals(id));
         if (!known) {
             throw new IllegalArgumentException("Unknown item or trait: " + id);
         }
@@ -291,24 +291,24 @@ final class SchemaMutationValidation {
     // a hard, symmetric gate for both traits and item types, not a warn-and-proceed check: if
     // either is in use, the fix is for the admin to remove the in-use references first (unassign
     // the trait, delete the items), never for the deletion itself to cascade into that data.
-    static void requireTraitNotInUse(SchemaRepository repo, UUID traitId) {
-        if (repo.isTraitInUse(traitId)) {
-            String name = repo.getAllTraits().stream()
+    static void requireTraitNotInUse(SchemaStore store, UUID traitId) {
+        if (store.isTraitInUse(traitId)) {
+            String name = store.getAllTraits().stream()
                     .filter(t -> t.id().equals(traitId))
                     .findFirst()
-                    .map(SchemaRepository.TraitRow::name)
+                    .map(SchemaStore.TraitRow::name)
                     .orElse(traitId.toString());
             throw new IllegalArgumentException(
                     "Cannot delete trait '" + name + "' because it is still implemented by an item type");
         }
     }
 
-    static void requireItemTypeNotInUse(SchemaRepository repo, UUID itemTypeId) {
-        if (repo.isItemTypeInUse(itemTypeId)) {
-            String name = repo.getAllItems().stream()
+    static void requireItemTypeNotInUse(SchemaStore store, UUID itemTypeId) {
+        if (store.isItemTypeInUse(itemTypeId)) {
+            String name = store.getAllItems().stream()
                     .filter(i -> i.id().equals(itemTypeId))
                     .findFirst()
-                    .map(SchemaRepository.ItemRow::name)
+                    .map(SchemaStore.ItemRow::name)
                     .orElse(itemTypeId.toString());
             throw new IllegalArgumentException(
                     "Cannot delete item type '" + name + "' because items of this type still exist");
@@ -316,16 +316,16 @@ final class SchemaMutationValidation {
     }
 
     // A subtype's shape includes everything it inherits, so its parent can't go out from under it.
-    static void requireNoSubtypes(SchemaRepository repo, UUID itemTypeId) {
-        var items = repo.getAllItems();
+    static void requireNoSubtypes(SchemaStore store, UUID itemTypeId) {
+        var items = store.getAllItems();
         List<String> subtypes = items.stream()
                 .filter(i -> itemTypeId.equals(i.supertypeId()))
-                .map(SchemaRepository.ItemRow::name)
+                .map(SchemaStore.ItemRow::name)
                 .sorted()
                 .toList();
         if (!subtypes.isEmpty()) {
             String name = items.stream().filter(i -> i.id().equals(itemTypeId)).findFirst()
-                    .map(SchemaRepository.ItemRow::name).orElse(itemTypeId.toString());
+                    .map(SchemaStore.ItemRow::name).orElse(itemTypeId.toString());
             throw new IllegalArgumentException("Cannot delete item type '" + name + "' because "
                     + String.join(", ", subtypes) + (subtypes.size() == 1 ? " inherits" : " inherit") + " from it");
         }
@@ -334,8 +334,8 @@ final class SchemaMutationValidation {
     // A supertype must be a concrete item type -- unlike a link perspective's polymorphic
     // target (see requireKnownItemOrTrait), "is-a" identity doesn't make sense against a trait,
     // which is a horizontal capability with no identity claim of its own.
-    static void requireKnownItem(SchemaRepository repo, UUID id) {
-        boolean known = repo.getAllItems().stream().anyMatch(item -> item.id().equals(id));
+    static void requireKnownItem(SchemaStore store, UUID id) {
+        boolean known = store.getAllItems().stream().anyMatch(item -> item.id().equals(id));
         if (!known) {
             throw new IllegalArgumentException("Unknown item type: " + id);
         }
@@ -344,13 +344,13 @@ final class SchemaMutationValidation {
     // Item types form a single-parent tree, not a DAG -- walk proposedSupertypeId's own ancestor
     // chain and reject if itemId would appear in it (including the trivial one-node cycle where
     // proposedSupertypeId equals itemId itself, an item can't be its own supertype).
-    static void requireNoSupertypeCycle(SchemaRepository repo, UUID itemId, UUID proposedSupertypeId) {
+    static void requireNoSupertypeCycle(SchemaStore store, UUID itemId, UUID proposedSupertypeId) {
         // Collectors.toMap uses Map.merge internally and throws on a null value, so items with no
         // supertype (the common case) are filtered out rather than mapped to null -- an absent key
         // and a key mapped to null behave identically for this walk (get() returns null either way).
-        Map<UUID, UUID> supertypeById = repo.getAllItems().stream()
+        Map<UUID, UUID> supertypeById = store.getAllItems().stream()
                 .filter(item -> item.supertypeId() != null)
-                .collect(Collectors.toMap(SchemaRepository.ItemRow::id, SchemaRepository.ItemRow::supertypeId));
+                .collect(Collectors.toMap(SchemaStore.ItemRow::id, SchemaStore.ItemRow::supertypeId));
         UUID current = proposedSupertypeId;
         while (current != null) {
             if (current.equals(itemId)) {
@@ -363,8 +363,8 @@ final class SchemaMutationValidation {
     // Property groups nest in a single-parent tree, the same shape as the supertype chain above --
     // same cycle risk, same walk. Only relevant when the *new* parent of a moved group is itself a
     // group (nesting into an item/trait/link can never cycle, and a property is always a leaf).
-    static void requireNoGroupContainmentCycle(SchemaRepository repo, UUID groupId, UUID proposedParentGroupId) {
-        Map<UUID, UUID> parentByGroup = repo.getParentGroupIdByGroup();
+    static void requireNoGroupContainmentCycle(SchemaStore store, UUID groupId, UUID proposedParentGroupId) {
+        Map<UUID, UUID> parentByGroup = store.getParentGroupIdByGroup();
         UUID current = proposedParentGroupId;
         while (current != null) {
             if (current.equals(groupId)) {
@@ -375,9 +375,9 @@ final class SchemaMutationValidation {
     }
 
     // A group that still contains anything is never deleted, and never cascades into what it holds.
-    static void requireGroupEmpty(SchemaRepository repo, UUID groupId) {
-        if (!repo.isGroupEmpty(groupId)) {
-            String name = repo.findGroup(groupId).map(SchemaRepository.GroupRow::name).orElse(groupId.toString());
+    static void requireGroupEmpty(SchemaStore store, UUID groupId) {
+        if (!store.isGroupEmpty(groupId)) {
+            String name = store.findGroup(groupId).map(SchemaStore.GroupRow::name).orElse(groupId.toString());
             throw new IllegalArgumentException("Cannot delete property group '" + name + "' because it is not empty");
         }
     }
@@ -410,15 +410,15 @@ final class SchemaMutationValidation {
     // reserved so a NORMAL state can never collide with a pseudostate row.
 
     static void requireNotReservedStateName(String name) {
-        if (SchemaRepository.START_STATE_NAME.equals(name) || SchemaRepository.END_STATE_NAME.equals(name)) {
+        if (SchemaStore.START_STATE_NAME.equals(name) || SchemaStore.END_STATE_NAME.equals(name)) {
             throw new IllegalArgumentException("State name '" + name + "' is reserved for the START/END pseudostates");
         }
     }
 
-    static void requireDeletableState(SchemaRepository repo, UUID stateId) {
-        SchemaRepository.StateRow state = repo.findState(stateId)
+    static void requireDeletableState(SchemaStore store, UUID stateId) {
+        SchemaStore.StateRow state = store.findState(stateId)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown state: " + stateId));
-        if (!SchemaRepository.STATE_KIND_NORMAL.equals(state.kind())) {
+        if (!SchemaStore.STATE_KIND_NORMAL.equals(state.kind())) {
             throw new IllegalArgumentException("The START and END pseudostates cannot be deleted");
         }
     }
@@ -426,11 +426,11 @@ final class SchemaMutationValidation {
     // Structural rules for a transition between fromStateId and toStateId, with the given
     // (already-serialized) guard: one being created, or `moving` (an existing one's id) being moved
     // there. Enforced here rather than the DB so the message is useful.
-    static void requireValidTransitionEndpoints(SchemaRepository repo, UUID fromStateId, UUID toStateId, String serializedGuard,
+    static void requireValidTransitionEndpoints(SchemaStore store, UUID fromStateId, UUID toStateId, String serializedGuard,
                                                 UUID moving) {
-        SchemaRepository.StateRow from = repo.findState(fromStateId)
+        SchemaStore.StateRow from = store.findState(fromStateId)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown from-state: " + fromStateId));
-        SchemaRepository.StateRow to = repo.findState(toStateId)
+        SchemaStore.StateRow to = store.findState(toStateId)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown to-state: " + toStateId));
         if (!from.stateMachineId().equals(to.stateMachineId())) {
             throw new IllegalArgumentException("A transition's states must belong to the same state machine");
@@ -438,19 +438,19 @@ final class SchemaMutationValidation {
         if (fromStateId.equals(toStateId)) {
             throw new IllegalArgumentException("A transition can't lead from a state back to itself");
         }
-        List<SchemaRepository.TransitionRow> others = repo.getTransitionsByFromState().getOrDefault(fromStateId, List.of()).stream()
+        List<SchemaStore.TransitionRow> others = store.getTransitionsByFromState().getOrDefault(fromStateId, List.of()).stream()
                 .filter(t -> !t.id().equals(moving))
                 .toList();
         if (others.stream().anyMatch(t -> t.toStateId().equals(toStateId))) {
             throw new IllegalArgumentException("There's already a transition from '" + from.name() + "' to '" + to.name() + "'");
         }
-        if (SchemaRepository.STATE_KIND_END.equals(from.kind())) {
+        if (SchemaStore.STATE_KIND_END.equals(from.kind())) {
             throw new IllegalArgumentException("The END pseudostate cannot have outgoing transitions");
         }
-        if (SchemaRepository.STATE_KIND_START.equals(to.kind())) {
+        if (SchemaStore.STATE_KIND_START.equals(to.kind())) {
             throw new IllegalArgumentException("The START pseudostate cannot have incoming transitions");
         }
-        if (SchemaRepository.STATE_KIND_START.equals(from.kind())) {
+        if (SchemaStore.STATE_KIND_START.equals(from.kind())) {
             if (serializedGuard != null) {
                 throw new IllegalArgumentException("The transition out of START cannot have a guard condition");
             }
@@ -461,12 +461,12 @@ final class SchemaMutationValidation {
     }
 
     // A guard may not be added to the START -> first-state transition on update either.
-    static void requireGuardAllowedOnTransition(SchemaRepository repo, UUID transitionId, String serializedGuard) {
+    static void requireGuardAllowedOnTransition(SchemaStore store, UUID transitionId, String serializedGuard) {
         if (serializedGuard == null) return;
-        SchemaRepository.TransitionRow transition = repo.findTransition(transitionId)
+        SchemaStore.TransitionRow transition = store.findTransition(transitionId)
                 .orElseThrow(() -> new IllegalArgumentException("Unknown transition: " + transitionId));
-        boolean fromStart = repo.findState(transition.fromStateId())
-                .map(s -> SchemaRepository.STATE_KIND_START.equals(s.kind()))
+        boolean fromStart = store.findState(transition.fromStateId())
+                .map(s -> SchemaStore.STATE_KIND_START.equals(s.kind()))
                 .orElse(false);
         if (fromStart) {
             throw new IllegalArgumentException("The transition out of START cannot have a guard condition");

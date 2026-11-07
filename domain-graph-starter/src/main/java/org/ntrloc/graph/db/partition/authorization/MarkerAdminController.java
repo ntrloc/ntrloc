@@ -3,7 +3,7 @@ package org.ntrloc.graph.db.partition.authorization;
 import org.ntrloc.graph.db.partition.authorization.repository.AccessStoreReader;
 import org.ntrloc.graph.db.partition.authorization.repository.AccessStoreWriter;
 import org.ntrloc.graph.principal.ExternalPrincipalResolver;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -48,14 +48,14 @@ public class MarkerAdminController {
 
     private final AccessStoreReader accessReader;
     private final AccessStoreWriter accessWriter;
-    private final SecurityRepository securityRepo;
+    private final UserStore userStore;
     private final ExternalPrincipalResolver principalResolver;
 
-    public MarkerAdminController(AccessStoreReader accessReader, AccessStoreWriter accessWriter, SecurityRepository securityRepo,
+    public MarkerAdminController(AccessStoreReader accessReader, AccessStoreWriter accessWriter, UserStore userStore,
                                   ExternalPrincipalResolver principalResolver) {
         this.accessReader = accessReader;
         this.accessWriter = accessWriter;
-        this.securityRepo = securityRepo;
+        this.userStore = userStore;
         this.principalResolver = principalResolver;
     }
 
@@ -110,10 +110,10 @@ public class MarkerAdminController {
     MarkerGrantPrincipalsView getMarkerGrantPrincipals(@PathVariable UUID markerId,
                                                         Authentication authentication) {
         requireAdmin(authentication);
-        var groupNames = securityRepo.listUserGroups().stream()
+        var groupNames = userStore.listUserGroups().stream()
                 .collect(Collectors.toMap(g -> g.id(), g -> g.name()));
-        var userNames = securityRepo.listUsers().stream()
-                .collect(Collectors.toMap(SecurityRepository.UserRow::id, SecurityRepository.UserRow::displayName));
+        var userNames = userStore.listUsers().stream()
+                .collect(Collectors.toMap(UserStore.UserRow::id, UserStore.UserRow::displayName));
 
         List<PrincipalRef> groups = new ArrayList<>();
         List<PrincipalRef> users = new ArrayList<>();

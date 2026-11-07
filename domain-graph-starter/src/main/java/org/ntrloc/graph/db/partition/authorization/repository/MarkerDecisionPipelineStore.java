@@ -32,7 +32,7 @@ import java.util.UUID;
 // path through this repository that can leave them out of sync -- callers never compute or pass
 // watches themselves.
 @Component
-public class MarkerDecisionPipelineRepository implements PipelineSource {
+public class MarkerDecisionPipelineStore implements PipelineSource {
 
     public record PipelineRow(UUID id, UUID itemTypeId, boolean enabled, Pipeline pipeline, PipelineLayout layout) {}
 
@@ -49,7 +49,7 @@ public class MarkerDecisionPipelineRepository implements PipelineSource {
     private final JdbcClient jdbcClient;
     private final ObjectMapper objectMapper;
 
-    public MarkerDecisionPipelineRepository(JdbcClient jdbcClient, ObjectMapper objectMapper) {
+    public MarkerDecisionPipelineStore(JdbcClient jdbcClient, ObjectMapper objectMapper) {
         this.jdbcClient = jdbcClient;
         this.objectMapper = objectMapper;
     }

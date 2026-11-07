@@ -337,17 +337,11 @@ parameters, never raw names; outputs use the same parameters, translated to ids 
 - **Manual marker assignment bypasses MutationProcessor:** `ManualMarkerAssignmentService` prepares and
   commits marker postings through the coordinator directly, so it skips the pipeline (§5.3). The one
   exception to "only MutationProcessor calls the coordinator" in `ArchitectureRulesTest`.
-- **Stores whose SQL crosses partitions:** `AuthorizationRepository` joins `schema_item` (item type
+- **Stores whose SQL crosses partitions:** `AccessStore` joins `schema_item` (item type
   names) and `register_item` / `register_item_marker` (an item's markers). Target: callers pass item
   markers in; names come from Schema.
-- **Test names after the register split:** `RegisterPartitionManagerProjectionIntegrationTest` now tests
-  ProjectionEngine (and `RegisterPartitionManagerBinaryDynamicPropertyIntegrationTest` the coordinator's
-  reconciliation). Renaming means moving them out of the register test package, whose fixtures they share.
 - **`BinaryDynamicPropertyRegistrar` reads `register_binary_property`** (how many items reference a
   binary, per property) when a binary is re-extracted. Target: it asks RegisterStore.
-- **Store → service cycle:** `AuthorizationRepository` depends on `AuthorizationCacheManager` (`@Lazy`)
-  to refresh the cache after writes. Target: the store publishes "grants changed"; the cache listens
-  (it already does for other nodes via the cluster topic).
 - **Orphaned grants:** deleting a user or group leaves their grants. The agreed behavior — warn, then
   cascade (schema evolution notes §3) — needs a small component above both stores.
 - **Schema evolution doc mismatch:** Appendix A.5 treats state machines as attachable to item types; in
@@ -401,7 +395,15 @@ The item component first — everything else calls it or is called by it.
    constructor is package-private again (settles §10 q10). Resolution is per request for tokens and
    processes but not browser sessions -- a behavior fix, parked in §8.)*
 8. **Renames:** MCP tool classes → `*Tools`; remaining `*PartitionManager` / `*Repository` that are
-   storage → `*Store`.
+   storage → `*Store`. *(Done: `ProcessTools`, `ProjectionTools`, `MutationTools`, `SchemaTools` (still
+   in `ai`); `SchemaStore`, `UserStore` (was `SecurityRepository`), `MarkerDecisionPipelineStore`,
+   `ProcessGroupStore`, `LdapConfigurationStore`, `OidcProviderStore`, `SamlProviderStore`, in their
+   existing `repository` packages. `ControlledListManager` split into `ControlledListService` (supported
+   types, value invariants, typing) and `ControlledListStore`; `DomainInitializer.initSchema` no longer
+   takes it — domains create lists through `applyMutations`. Tests renamed to match, including
+   `ProjectionEngineIntegrationTest` and `BinaryAttachmentReconciliationIntegrationTest`, which stay in
+   the register test package for its fixtures. `SchemaManager` already kept its storage in `SchemaStore`,
+   so it wasn't split. `WorkflowReferenceScanner` and the Flowable data managers keep their names.)*
 
 **Behavior changes, scheduled separately:** binaries read by item + property (§5.4); parked items (§8).
 

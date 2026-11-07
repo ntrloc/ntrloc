@@ -19,11 +19,12 @@ import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminTraitDefi
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminTransitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.PropertyTypeView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.TraitRefView;
-import org.ntrloc.graph.db.partition.schema.repository.SchemaRepository;
-import org.ntrloc.graph.db.partition.schema.repository.SchemaRepository.ItemRow;
-import org.ntrloc.graph.db.partition.schema.repository.SchemaRepository.StateMachineRow;
-import org.ntrloc.graph.db.partition.schema.repository.SchemaRepository.StateRow;
-import org.ntrloc.graph.db.partition.schema.repository.SchemaRepository.TraitRow;
+import org.ntrloc.graph.db.partition.schema.repository.ControlledListStore;
+import org.ntrloc.graph.db.partition.schema.repository.SchemaStore;
+import org.ntrloc.graph.db.partition.schema.repository.SchemaStore.ItemRow;
+import org.ntrloc.graph.db.partition.schema.repository.SchemaStore.StateMachineRow;
+import org.ntrloc.graph.db.partition.schema.repository.SchemaStore.StateRow;
+import org.ntrloc.graph.db.partition.schema.repository.SchemaStore.TraitRow;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -37,26 +38,26 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-// Builds the admin schema projection (full detail for the schema editor) from SchemaRepository's
+// Builds the admin schema projection (full detail for the schema editor) from SchemaStore's
 // raw rows, via SchemaContentResolver for the content-resolution logic shared with
 // SchemaCalculatedViewBuilder. Split out of the single SchemaViewBuilder that used to build both
 // projections -- see SchemaContentResolver's own comment for why.
 @Component
 class SchemaAdminViewBuilder {
 
-    private final SchemaRepository repo;
-    private final ControlledListManager controlledListManager;
+    private final SchemaStore store;
+    private final ControlledListStore controlledListStore;
     private final SchemaContentResolver contentResolver;
 
-    SchemaAdminViewBuilder(SchemaRepository repo, ControlledListManager controlledListManager, SchemaContentResolver contentResolver) {
-        this.repo = repo;
-        this.controlledListManager = controlledListManager;
+    SchemaAdminViewBuilder(SchemaStore store, ControlledListStore controlledListStore, SchemaContentResolver contentResolver) {
+        this.store = store;
+        this.controlledListStore = controlledListStore;
         this.contentResolver = contentResolver;
     }
 
     AdminSchemaView buildAdminSchema() {
-        var items  = repo.getAllItems();
-        var traits = repo.getAllTraits();
+        var items  = store.getAllItems();
+        var traits = store.getAllTraits();
 
         // id → name (for resolving perspective targets, which are keyed by item-or-trait id)
         Map<UUID, String> entityNameMap = new HashMap<>();
@@ -69,11 +70,11 @@ class SchemaAdminViewBuilder {
                 .collect(Collectors.toSet());
 
         var ownerContents        = contentResolver.loadOwnerContents();
-        var perspectivesByEntity = repo.getPerspectivesByEntity();
-        var traitIdsByItem       = repo.getTraitIdsByItem();
-        var stateMachinesByItem    = repo.getStateMachinesByItem();
-        var statesByStateMachine   = repo.getStatesByStateMachine();
-        var transitionsByFromState = repo.getTransitionsByFromState();
+        var perspectivesByEntity = store.getPerspectivesByEntity();
+        var traitIdsByItem       = store.getTraitIdsByItem();
+        var stateMachinesByItem    = store.getStateMachinesByItem();
+        var statesByStateMachine   = store.getStatesByStateMachine();
+        var transitionsByFromState = store.getTransitionsByFromState();
 
         Map<UUID, TraitRow> traitById = traits.stream()
                 .collect(Collectors.toMap(TraitRow::id, t -> t));
@@ -106,7 +107,7 @@ class SchemaAdminViewBuilder {
                     contentResolver.sortableFieldsFor(contents), contentResolver.projectableFieldsFor(contents));
         }).toList();
 
-        var linkViews = repo.getAllLinkIds().stream()
+        var linkViews = store.getAllLinkIds().stream()
                 .map(id -> {
                     var contents = ownerContents.byLink().getOrDefault(id, Contents.EMPTY);
                     return new AdminLinkView(id, contents.properties(), contents.groups());
@@ -122,7 +123,7 @@ class SchemaAdminViewBuilder {
         return new AdminSchemaView(itemViews, traitViews, linkViews, propertyTypes, controlledLists);
     }
 
-    // controlledListManager.getAllLists() + a valueCount per list + the reverse "which properties
+    // controlledListStore.getAllLists() + a valueCount per list + the reverse "which properties
     // point at each list" map, built from each owner's own (not inherited) contents, so each property
     // appears once, under its true owner. Link-owned list-backed properties are rare; they get a
     // generic owner label since links carry no name.
@@ -135,9 +136,9 @@ class SchemaAdminViewBuilder {
         ownerContents.byLink().forEach((ownerId, contents) -> collectListUsage(contents,
                 new ListOwner("(link property)", ownerId, PropertyContainerKind.LINK), usageByListId));
 
-        return controlledListManager.getAllLists().stream()
+        return controlledListStore.getAllLists().stream()
                 .map(list -> new AdminControlledListView(list.id(), list.name(), list.valueType(),
-                        controlledListManager.countValues(list.id()),
+                        controlledListStore.countValues(list.id()),
                         usageByListId.getOrDefault(list.id(), List.of())))
                 .toList();
     }
@@ -162,7 +163,7 @@ class SchemaAdminViewBuilder {
     }
 
     private Map<String, List<AdminItemLinkPerspectiveView>> ownAndTraitLinksAdmin(
-            ItemRow item, Map<UUID, List<SchemaRepository.PerspectiveRow>> perspectivesByEntity,
+            ItemRow item, Map<UUID, List<SchemaStore.PerspectiveRow>> perspectivesByEntity,
             Map<UUID, String> entityNameMap, Set<UUID> itemEntityIds,
             Map<UUID, List<UUID>> traitIdsByItem, Map<UUID, TraitRow> traitById) {
         var traitIds = traitIdsByItem.getOrDefault(item.id(), List.of());
@@ -184,7 +185,7 @@ class SchemaAdminViewBuilder {
     // of its own at all).
     private Map<String, List<AdminItemLinkPerspectiveView>> effectiveLinksAdmin(
             ItemRow item, Map<UUID, ItemRow> itemById,
-            Map<UUID, List<SchemaRepository.PerspectiveRow>> perspectivesByEntity,
+            Map<UUID, List<SchemaStore.PerspectiveRow>> perspectivesByEntity,
             Map<UUID, String> entityNameMap, Set<UUID> itemEntityIds,
             Map<UUID, List<UUID>> traitIdsByItem, Map<UUID, TraitRow> traitById) {
         var own = ownAndTraitLinksAdmin(item, perspectivesByEntity, entityNameMap, itemEntityIds, traitIdsByItem, traitById);
@@ -210,7 +211,7 @@ class SchemaAdminViewBuilder {
     private List<AdminStateMachineView> ownStateMachinesAdmin(
             ItemRow item, Map<UUID, List<StateMachineRow>> stateMachinesByItem,
             Map<UUID, List<StateRow>> statesByStateMachine,
-            Map<UUID, List<SchemaRepository.TransitionRow>> transitionsByFromState) {
+            Map<UUID, List<SchemaStore.TransitionRow>> transitionsByFromState) {
         var rawStateMachines = stateMachinesByItem.get(item.id());
         if (rawStateMachines == null || rawStateMachines.isEmpty()) return List.of();
         return rawStateMachines.stream().map(machine -> {
@@ -222,13 +223,13 @@ class SchemaAdminViewBuilder {
                         .map(t -> new AdminTransitionView(
                                 t.id(), t.toStateId(), stateNameById.get(t.toStateId()),
                                 t.name(), t.description(), t.processId(),
-                                repo.parseGuardCondition(t.guardCondition())))
+                                store.parseGuardCondition(t.guardCondition())))
                         .toList();
                 return new AdminStateView(state.id(), state.name(), state.description(),
                         state.kind(), state.entryProcessId(), state.exitProcessId(), transitions);
             }).toList();
             return new AdminStateMachineView(machine.id(), machine.name(), machine.description(), stateViews,
-                    repo.parseLayout(machine.layout()));
+                    store.parseLayout(machine.layout()));
         }).toList();
     }
 
@@ -240,7 +241,7 @@ class SchemaAdminViewBuilder {
             ItemRow item, Map<UUID, ItemRow> itemById,
             Map<UUID, List<StateMachineRow>> stateMachinesByItem,
             Map<UUID, List<StateRow>> statesByStateMachine,
-            Map<UUID, List<SchemaRepository.TransitionRow>> transitionsByFromState) {
+            Map<UUID, List<SchemaStore.TransitionRow>> transitionsByFromState) {
         var own = ownStateMachinesAdmin(item, stateMachinesByItem, statesByStateMachine, transitionsByFromState);
         var supertype = item.supertypeId() == null ? null : itemById.get(item.supertypeId());
         if (supertype == null) return own;
@@ -250,14 +251,14 @@ class SchemaAdminViewBuilder {
 
     private Map<String, List<AdminItemLinkPerspectiveView>> buildPerspectiveAdminViews(
             UUID entityId,
-            Map<UUID, List<SchemaRepository.PerspectiveRow>> perspectivesByEntity,
+            Map<UUID, List<SchemaStore.PerspectiveRow>> perspectivesByEntity,
             Map<UUID, String> entityNameMap,
             Set<UUID> itemEntityIds,
             DefinedInView definedIn) {
         var perspectives = perspectivesByEntity.get(entityId);
         if (perspectives == null || perspectives.isEmpty()) return null;
         return perspectives.stream().map(p -> {
-            var inverses = repo.findInversePerspectives(p.linkId(), p.id());
+            var inverses = store.findInversePerspectives(p.linkId(), p.id());
             var targets = inverses.stream()
                     .map(inv -> new TargetEntityView(entityNameMap.get(inv.entityId()),
                             itemEntityIds.contains(inv.entityId()) ? "item" : SchemaContentResolver.ENTITY_KIND_TRAIT))

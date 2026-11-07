@@ -9,7 +9,7 @@ import org.ntrloc.graph.db.partition.ledger.LinkCreateEntry;
 import org.ntrloc.graph.db.partition.ledger.LinkEndpoint;
 import org.ntrloc.graph.db.partition.ledger.LinkUpdateEntry;
 import org.ntrloc.graph.projection.ProjectionEngine;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.ntrloc.graph.projection.LinkProjectionSpec;
 import org.ntrloc.graph.projection.ProjectedItem;
 import org.ntrloc.graph.projection.ProjectedLink;
@@ -52,7 +52,7 @@ class RegisterProvenanceIntegrationTest extends AbstractIntegrationTest {
     private CoordinatorTestDomainInitializer fixture;
 
     @Autowired
-    private SecurityRepository securityRepo;
+    private UserStore userStore;
 
     // Truncated to microseconds -- Postgres TIMESTAMPTZ's own precision -- and pinned to UTC, so
     // the round trip through the DB can be compared by instant (isEqual), not exact string/offset
@@ -62,7 +62,7 @@ class RegisterProvenanceIntegrationTest extends AbstractIntegrationTest {
     }
 
     private UUID createUser(String prefix) {
-        return securityRepo.createUser(prefix + " display name", prefix + "-" + UUID.randomUUID() + "@example.com", true).id();
+        return userStore.createUser(prefix + " display name", prefix + "-" + UUID.randomUUID() + "@example.com", true).id();
     }
 
     private ProjectedItem projectProduct(UUID itemId, Map<String, LinkProjectionSpec> requestedLinks) {

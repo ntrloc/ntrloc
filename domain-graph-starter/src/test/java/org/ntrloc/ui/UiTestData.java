@@ -28,7 +28,7 @@ import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyD
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminStateMachineView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminStateView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminTraitDefinitionView;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 
 /**
  * Creates the schema and items a UI test needs, through the same SchemaManager and ledger paths the
@@ -42,12 +42,12 @@ final class UiTestData {
 
     private final SchemaManager schemaManager;
     private final LedgerRegisterCoordinator coordinator;
-    private final SecurityRepository securityRepository;
+    private final UserStore userStore;
 
-    UiTestData(SchemaManager schemaManager, LedgerRegisterCoordinator coordinator, SecurityRepository securityRepository) {
+    UiTestData(SchemaManager schemaManager, LedgerRegisterCoordinator coordinator, UserStore userStore) {
         this.schemaManager = schemaManager;
         this.coordinator = coordinator;
-        this.securityRepository = securityRepository;
+        this.userStore = userStore;
     }
 
     /** A transition between two states, by name; "__start__" and "__end__" are the pseudostates. */
@@ -166,7 +166,7 @@ final class UiTestData {
 
     private synchronized UUID actorId() {
         if (actorId == null) {
-            actorId = securityRepository.createUser("UI Test Fixture", "ui-fixture-" + UUID.randomUUID() + "@example.com", true).id();
+            actorId = userStore.createUser("UI Test Fixture", "ui-fixture-" + UUID.randomUUID() + "@example.com", true).id();
         }
         return actorId;
     }

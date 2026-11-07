@@ -1,6 +1,5 @@
 package org.ntrloc.graph.mutation;
 
-import org.ntrloc.graph.db.partition.schema.ControlledListManager;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateItemDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateLinkDefinitionMutation;
@@ -28,20 +27,18 @@ public class SelfLinkTestDomainInitializer implements DomainInitializer, Applica
     private UUID personTypeId;
 
     private final SchemaManager schemaManager;
-    private final ControlledListManager controlledListManager;
 
-    public SelfLinkTestDomainInitializer(SchemaManager schemaManager, ControlledListManager controlledListManager) {
+    public SelfLinkTestDomainInitializer(SchemaManager schemaManager) {
         this.schemaManager = schemaManager;
-        this.controlledListManager = controlledListManager;
     }
 
     @Override
     public void run(ApplicationArguments args) {
-        initSchema(schemaManager, controlledListManager);
+        initSchema(schemaManager);
     }
 
     @Override
-    public void initSchema(SchemaManager schemaManager, ControlledListManager controlledListManager) {
+    public void initSchema(SchemaManager schemaManager) {
         schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(
                 "SelfLinkPerson", "SelfLinkIntegrationTest fixture", List.of(), null, false, null)));
         personTypeId = findItem("SelfLinkPerson").id();

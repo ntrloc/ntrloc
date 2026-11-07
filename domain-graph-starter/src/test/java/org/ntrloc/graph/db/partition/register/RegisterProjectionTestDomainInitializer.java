@@ -1,6 +1,6 @@
 package org.ntrloc.graph.db.partition.register;
 
-import org.ntrloc.graph.db.partition.schema.ControlledListManager;
+import org.ntrloc.graph.db.partition.schema.repository.ControlledListStore;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
@@ -35,7 +35,7 @@ public class RegisterProjectionTestDomainInitializer implements DomainInitialize
     public static final String DISCONTINUED = "Discontinued";
 
     private final SchemaManager schemaManager;
-    private final ControlledListManager controlledListManager;
+    private final ControlledListStore controlledListStore;
 
     private UUID bookTypeId;
     private UUID authorTypeId;
@@ -51,18 +51,18 @@ public class RegisterProjectionTestDomainInitializer implements DomainInitialize
     private UUID authorsPerspectiveId;
     private UUID attachmentPropertyId;
 
-    public RegisterProjectionTestDomainInitializer(SchemaManager schemaManager, ControlledListManager controlledListManager) {
+    public RegisterProjectionTestDomainInitializer(SchemaManager schemaManager, ControlledListStore controlledListStore) {
         this.schemaManager = schemaManager;
-        this.controlledListManager = controlledListManager;
+        this.controlledListStore = controlledListStore;
     }
 
     @Override
     public void run(ApplicationArguments args) {
-        initSchema(schemaManager, controlledListManager);
+        initSchema(schemaManager);
     }
 
     @Override
-    public void initSchema(SchemaManager schemaManager, ControlledListManager controlledListManager) {
+    public void initSchema(SchemaManager schemaManager) {
         schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(
                 "RegisterProjectionTestBook", "RegisterStore projection/facet test fixture",
                 List.of(
@@ -126,29 +126,29 @@ public class RegisterProjectionTestDomainInitializer implements DomainInitialize
         // facetable=true, exercising the BOOLEAN branch (no controlled list needed, but the
         // explicit admin opt-in still is) -- between the two, both facetable-property code paths
         // are covered, not just one.
-        var genreList = controlledListManager.createList("RegisterProjectionTestGenre", PropertyType.STRING);
-        controlledListManager.setPropertyControlledList(genrePropertyId, genreList.id());
-        controlledListManager.addValue(genreList.id(), "Fiction", "Fiction", 0);
-        controlledListManager.addValue(genreList.id(), "Reference", "Reference", 1);
+        var genreList = controlledListStore.createList("RegisterProjectionTestGenre", PropertyType.STRING);
+        controlledListStore.setPropertyControlledList(genrePropertyId, genreList.id());
+        controlledListStore.addValue(genreList.id(), "Fiction", "Fiction", 0);
+        controlledListStore.addValue(genreList.id(), "Reference", "Reference", 1);
 
-        var materialList = controlledListManager.createList("RegisterProjectionTestMaterial", PropertyType.STRING);
-        controlledListManager.setPropertyControlledList(dimensionsMaterialPropertyId, materialList.id());
-        controlledListManager.addValue(materialList.id(), "Hardcover", "Hardcover", 0);
-        controlledListManager.addValue(materialList.id(), "Paperback", "Paperback", 1);
+        var materialList = controlledListStore.createList("RegisterProjectionTestMaterial", PropertyType.STRING);
+        controlledListStore.setPropertyControlledList(dimensionsMaterialPropertyId, materialList.id());
+        controlledListStore.addValue(materialList.id(), "Hardcover", "Hardcover", 0);
+        controlledListStore.addValue(materialList.id(), "Paperback", "Paperback", 1);
 
         // Real, distinct labels -- the one fixture property where projection/facet label resolution
         // (rule 4) has something actually observable to assert on.
-        var conditionList = controlledListManager.createList("RegisterProjectionTestCondition", PropertyType.STRING);
-        controlledListManager.setPropertyControlledList(conditionPropertyId, conditionList.id());
-        controlledListManager.addValue(conditionList.id(), "NEW", "Brand New", 0);
-        controlledListManager.addValue(conditionList.id(), "USED", "Pre-Owned", 1);
+        var conditionList = controlledListStore.createList("RegisterProjectionTestCondition", PropertyType.STRING);
+        controlledListStore.setPropertyControlledList(conditionPropertyId, conditionList.id());
+        controlledListStore.addValue(conditionList.id(), "NEW", "Brand New", 0);
+        controlledListStore.addValue(conditionList.id(), "USED", "Pre-Owned", 1);
 
         // No labels at all -- confirms a controlled-list-backed property whose list carries none
         // still projects/facets as a bare scalar (rule 4's other half).
-        var formatList = controlledListManager.createList("RegisterProjectionTestFormat", PropertyType.STRING);
-        controlledListManager.setPropertyControlledList(formatPropertyId, formatList.id());
-        controlledListManager.addValue(formatList.id(), "Hardback", null, 0);
-        controlledListManager.addValue(formatList.id(), "Ebook", null, 1);
+        var formatList = controlledListStore.createList("RegisterProjectionTestFormat", PropertyType.STRING);
+        controlledListStore.setPropertyControlledList(formatPropertyId, formatList.id());
+        controlledListStore.addValue(formatList.id(), "Hardback", null, 0);
+        controlledListStore.addValue(formatList.id(), "Ebook", null, 1);
 
         initStateMachine(schemaManager, bookTypeId, AVAILABILITY_MACHINE,
                 List.of(

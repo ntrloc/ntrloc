@@ -12,7 +12,8 @@ import org.ntrloc.graph.db.partition.schema.definition.mutation.ReplaceControlle
 import org.ntrloc.graph.db.partition.schema.definition.mutation.SetPropertyControlledListMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.UpdateControlledListMutation;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyDefinitionView;
-import org.ntrloc.graph.db.partition.schema.repository.SchemaRepository;
+import org.ntrloc.graph.db.partition.schema.repository.ControlledListStore;
+import org.ntrloc.graph.db.partition.schema.repository.SchemaStore;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -30,21 +31,23 @@ import java.util.UUID;
 @Component
 class ControlledListMutationApplier {
 
-    private final ControlledListManager controlledListManager;
-    private final SchemaRepository repo;
+    private final ControlledListService controlledListService;
+    private final ControlledListStore controlledListStore;
+    private final SchemaStore store;
 
-    ControlledListMutationApplier(ControlledListManager controlledListManager, SchemaRepository repo) {
-        this.controlledListManager = controlledListManager;
-        this.repo = repo;
+    ControlledListMutationApplier(ControlledListService controlledListService, ControlledListStore controlledListStore, SchemaStore store) {
+        this.controlledListService = controlledListService;
+        this.controlledListStore = controlledListStore;
+        this.store = store;
     }
 
     boolean apply(DefinitionMutation mutation, Map<String, UUID> refIdToListId, List<ControlledListMutationResult> results) {
         switch (mutation) {
             case CreateControlledListMutation m -> {
                 requireNameAvailable(m.name(), null);
-                var list = controlledListManager.createList(m.name(), m.valueType());
+                var list = controlledListService.createList(m.name(), m.valueType());
                 // Typed as replacing them would be: every value arrives as text.
-                controlledListManager.replaceValues(list.id(), list.valueType(), m.values() == null ? List.of()
+                controlledListService.replaceValues(list.id(), list.valueType(), m.values() == null ? List.of()
                         : m.values().stream().map(e -> new ReplaceControlledListMutation.Entry(e.value(), e.label())).toList());
                 if (m.refId() != null) {
                     refIdToListId.put(m.refId(), list.id());
@@ -52,17 +55,17 @@ class ControlledListMutationApplier {
                 results.add(new ControlledListMutationResult(m.refId(), list.id()));
             }
             case UpdateControlledListMutation m -> {
-                var list = controlledListManager.getListById(m.listId())
+                var list = controlledListStore.getListById(m.listId())
                         .orElseThrow(() -> new IllegalArgumentException("No controlled list: " + m.listId()));
                 if (m.name() != null) {
                     requireNameAvailable(m.name(), list.id());
-                    controlledListManager.renameList(list.id(), m.name());
+                    controlledListStore.renameList(list.id(), m.name());
                 }
                 if (m.values() != null) {
-                    controlledListManager.replaceValues(list.id(), list.valueType(), toReplaceEntries(m.values()));
+                    controlledListService.replaceValues(list.id(), list.valueType(), toReplaceEntries(m.values()));
                 }
             }
-            case DeleteControlledListMutation m -> controlledListManager.deleteList(m.listId());
+            case DeleteControlledListMutation m -> controlledListStore.deleteList(m.listId());
             case ExpectControlledListMutation m -> requireUnchanged(m);
             case SetPropertyControlledListMutation m -> applySetProperty(m, refIdToListId);
             default -> {
@@ -75,12 +78,12 @@ class ControlledListMutationApplier {
     private void applySetProperty(SetPropertyControlledListMutation m, Map<String, UUID> refIdToListId) {
         UUID listId = resolveListId(m.list(), refIdToListId);
         if (listId == null) {
-            controlledListManager.clearPropertyControlledList(m.propertyId());
+            controlledListStore.clearPropertyControlledList(m.propertyId());
             return;
         }
-        AdminPropertyDefinitionView property = repo.findProperty(m.propertyId())
+        AdminPropertyDefinitionView property = store.findProperty(m.propertyId())
                 .orElseThrow(() -> new IllegalArgumentException("No property: " + m.propertyId()));
-        controlledListManager.attachToProperty(property, listId);
+        controlledListService.attachToProperty(property, listId);
     }
 
     // null (detach) passes straight through; a NewControlledListReference resolves against this
@@ -107,11 +110,11 @@ class ControlledListMutationApplier {
     // Values compare in order, by canonical text (ControlledListValues.key), with a blank label the
     // same as none.
     private void requireUnchanged(ExpectControlledListMutation m) {
-        var list = controlledListManager.lockList(m.listId())
+        var list = controlledListStore.lockList(m.listId())
                 .orElseThrow(() -> new SchemaConflictException("This controlled list was deleted by someone else."));
         PropertyType type = list.valueType();
         boolean unchanged = list.name().equals(m.name())
-                && (m.values() == null || comparable(type, m.values()).equals(controlledListManager.getValues(list.id(), type).stream()
+                && (m.values() == null || comparable(type, m.values()).equals(controlledListStore.getValues(list.id(), type).stream()
                         .map(v -> new UpdateControlledListMutation.Entry(ControlledListValues.key(type, v.value()), blankToNull(v.label())))
                         .toList()));
         if (!unchanged) {
@@ -130,7 +133,7 @@ class ControlledListMutationApplier {
     }
 
     private void requireNameAvailable(String name, UUID excludeListId) {
-        boolean taken = controlledListManager.getAllLists().stream()
+        boolean taken = controlledListStore.getAllLists().stream()
                 .anyMatch(l -> l.name().equalsIgnoreCase(name) && !l.id().equals(excludeListId));
         if (taken) {
             throw new IllegalArgumentException("A controlled list named '" + name + "' already exists");

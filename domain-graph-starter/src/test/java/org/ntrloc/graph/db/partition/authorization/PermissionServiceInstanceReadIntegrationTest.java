@@ -9,7 +9,7 @@ import org.ntrloc.graph.db.partition.authorization.repository.AccessStore;
 import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
 import org.ntrloc.graph.principal.NtrlocPrincipal;
 import org.ntrloc.graph.principal.TestPrincipals;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.springframework.beans.factory.annotation.Autowired;
 
 import java.time.OffsetDateTime;
@@ -32,13 +32,13 @@ class PermissionServiceInstanceReadIntegrationTest extends AbstractIntegrationTe
     private PermissionService permissionService;
 
     @Autowired
-    private AccessStore authRepo;
+    private AccessStore accessStore;
 
     @Autowired
     private ManualMarkerAssignmentService markerAssignmentService;
 
     @Autowired
-    private SecurityRepository securityRepo;
+    private UserStore userStore;
 
     @Autowired
     private LedgerRegisterCoordinator coordinator;
@@ -48,12 +48,12 @@ class PermissionServiceInstanceReadIntegrationTest extends AbstractIntegrationTe
 
     // Not static/final: needs a real, backed security_user row now that ledger_entry.created_by
     // (Part E) has a NOT NULL FK to security_user.id -- created fresh per test in setUp() via the
-    // already-autowired securityRepo, which a static initializer can't reach.
+    // already-autowired userStore, which a static initializer can't reach.
     private NtrlocPrincipal actor;
 
     @BeforeEach
     void setUpActor() {
-        var user = securityRepo.createUser("Permission Test Actor", "pisr-actor-" + UUID.randomUUID() + "@example.com", true);
+        var user = userStore.createUser("Permission Test Actor", "pisr-actor-" + UUID.randomUUID() + "@example.com", true);
         actor = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), true);
     }
 
@@ -66,11 +66,11 @@ class PermissionServiceInstanceReadIntegrationTest extends AbstractIntegrationTe
     }
 
     private UUID createMarker() {
-        return authRepo.createMarker("pisr-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId()).id();
+        return accessStore.createMarker("pisr-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId()).id();
     }
 
     private void grantItemRead(UUID markerId, String principalType, UUID principalId) {
-        authRepo.setItemPermissions(authRepo.ensureMarkerGrant(markerId, principalType, principalId), true, false);
+        accessStore.setItemPermissions(accessStore.ensureMarkerGrant(markerId, principalType, principalId), true, false);
     }
 
     private NtrlocPrincipal principal(UUID id, String email, Set<UUID> groupIds, boolean isAdmin) {
@@ -80,7 +80,7 @@ class PermissionServiceInstanceReadIntegrationTest extends AbstractIntegrationTe
     @Test
     void itemWithNoMarker_isUnreadableForNonAdmin() {
         UUID itemId = createItem();
-        var user = securityRepo.createUser("User", "pisr-" + UUID.randomUUID() + "@example.com", false);
+        var user = userStore.createUser("User", "pisr-" + UUID.randomUUID() + "@example.com", false);
 
         assertThat(permissionService.canReadItem(principal(user.id(), user.email(), Set.of(), false), itemId)).isFalse();
     }
@@ -97,11 +97,11 @@ class PermissionServiceInstanceReadIntegrationTest extends AbstractIntegrationTe
         UUID itemId = createItem();
         UUID marker = createMarker();
         markerAssignmentService.addItemMarker(itemId, marker, actor, "test reason");
-        var group = securityRepo.createUserGroup("pisr-" + UUID.randomUUID());
+        var group = userStore.createUserGroup("pisr-" + UUID.randomUUID());
         grantItemRead(marker, "USER_GROUP", group.id());
 
-        var member = securityRepo.createUser("Member", "pisr-" + UUID.randomUUID() + "@example.com", false);
-        var nonMember = securityRepo.createUser("NonMember", "pisr-" + UUID.randomUUID() + "@example.com", false);
+        var member = userStore.createUser("Member", "pisr-" + UUID.randomUUID() + "@example.com", false);
+        var nonMember = userStore.createUser("NonMember", "pisr-" + UUID.randomUUID() + "@example.com", false);
 
         assertThat(permissionService.canReadItem(principal(member.id(), member.email(), Set.of(group.id()), false), itemId)).isTrue();
         assertThat(permissionService.canReadItem(principal(nonMember.id(), nonMember.email(), Set.of(), false), itemId)).isFalse();
@@ -112,8 +112,8 @@ class PermissionServiceInstanceReadIntegrationTest extends AbstractIntegrationTe
         UUID itemId = createItem();
         UUID marker = createMarker();
         markerAssignmentService.addItemMarker(itemId, marker, actor, "test reason");
-        var grantedUser = securityRepo.createUser("Granted", "pisr-" + UUID.randomUUID() + "@example.com", false);
-        var otherUser = securityRepo.createUser("Other", "pisr-" + UUID.randomUUID() + "@example.com", false);
+        var grantedUser = userStore.createUser("Granted", "pisr-" + UUID.randomUUID() + "@example.com", false);
+        var otherUser = userStore.createUser("Other", "pisr-" + UUID.randomUUID() + "@example.com", false);
         grantItemRead(marker, "USER", grantedUser.id());
 
         assertThat(permissionService.canReadItem(principal(grantedUser.id(), grantedUser.email(), Set.of(), false), itemId)).isTrue();
@@ -125,13 +125,13 @@ class PermissionServiceInstanceReadIntegrationTest extends AbstractIntegrationTe
         UUID itemId = createItem();
         UUID marker = createMarker();
         markerAssignmentService.addItemMarker(itemId, marker, actor, "test reason");
-        var user = securityRepo.createUser("User", "pisr-" + UUID.randomUUID() + "@example.com", false);
-        UUID grantId = authRepo.ensureMarkerGrant(marker, "USER", user.id());
-        authRepo.setItemPermissions(grantId, true, false);
+        var user = userStore.createUser("User", "pisr-" + UUID.randomUUID() + "@example.com", false);
+        UUID grantId = accessStore.ensureMarkerGrant(marker, "USER", user.id());
+        accessStore.setItemPermissions(grantId, true, false);
         var userPrincipal = principal(user.id(), user.email(), Set.of(), false);
         assertThat(permissionService.canReadItem(userPrincipal, itemId)).isTrue();
 
-        authRepo.deleteMarkerGrant(grantId);
+        accessStore.deleteMarkerGrant(grantId);
 
         assertThat(permissionService.canReadItem(userPrincipal, itemId)).isFalse();
     }
@@ -141,7 +141,7 @@ class PermissionServiceInstanceReadIntegrationTest extends AbstractIntegrationTe
         UUID itemId = createItem();
         UUID marker = createMarker();
         markerAssignmentService.addItemMarker(itemId, marker, actor, "test reason");
-        var user = securityRepo.createUser("User", "pisr-" + UUID.randomUUID() + "@example.com", false);
+        var user = userStore.createUser("User", "pisr-" + UUID.randomUUID() + "@example.com", false);
         grantItemRead(marker, "USER", user.id());
         var userPrincipal = principal(user.id(), user.email(), Set.of(), false);
         assertThat(permissionService.canReadItem(userPrincipal, itemId)).isTrue();

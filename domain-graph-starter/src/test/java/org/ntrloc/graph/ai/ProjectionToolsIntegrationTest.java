@@ -5,7 +5,7 @@ import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.partition.security.PersonalAccessTokenService;
 import org.ntrloc.graph.principal.TestPrincipals;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.ntrloc.graph.projection.CollectionProjectionSpec;
 import org.springframework.ai.mcp.annotation.context.McpSyncRequestContext;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,23 +28,23 @@ import static org.mockito.Mockito.when;
 // McpSyncRequestContext standing in for the one piece that would otherwise need real MCP wire
 // protocol machinery to construct; everything downstream of transportContext() is the real,
 // production call chain.
-class ProjectionServiceIntegrationTest extends AbstractIntegrationTest {
+class ProjectionToolsIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
-    private ProjectionService projectionService;
+    private ProjectionTools projectionTools;
 
     @Autowired
     private PersonalAccessTokenService tokenService;
 
     @Autowired
-    private SecurityRepository securityRepo;
+    private UserStore userStore;
 
     @Test
     void projectItems_withNoAuthorizationHeader_isRejected() {
         McpSyncRequestContext requestContext = mock(McpSyncRequestContext.class);
         when(requestContext.transportContext()).thenReturn(McpTransportContext.EMPTY);
 
-        assertThatThrownBy(() -> projectionService.projectItems(
+        assertThatThrownBy(() -> projectionTools.projectItems(
                 new CollectionProjectionSpec("CoordinatorTestProduct", null, null), requestContext))
                 .isInstanceOf(ResponseStatusException.class);
     }
@@ -56,7 +56,7 @@ class ProjectionServiceIntegrationTest extends AbstractIntegrationTest {
     // method's own pre-existing null-check, neither of which touch EntityReadService at all).
     @Test
     void projectItems_withAValidBearerToken_succeeds() {
-        var user = securityRepo.createUser("MCP Projection Test User", "mcp-projection-user-" + UUID.randomUUID() + "@example.com", true);
+        var user = userStore.createUser("MCP Projection Test User", "mcp-projection-user-" + UUID.randomUUID() + "@example.com", true);
         var principal = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), true);
         var issued = tokenService.issue(principal, "projection-test-token", null);
 
@@ -64,7 +64,7 @@ class ProjectionServiceIntegrationTest extends AbstractIntegrationTest {
         when(requestContext.transportContext())
                 .thenReturn(McpTransportContext.create(Map.of("authorization", "Bearer " + issued.rawToken())));
 
-        var result = projectionService.projectItems(
+        var result = projectionTools.projectItems(
                 new CollectionProjectionSpec("CoordinatorTestProduct", null, null), requestContext);
 
         assertThat(result).isNotNull();

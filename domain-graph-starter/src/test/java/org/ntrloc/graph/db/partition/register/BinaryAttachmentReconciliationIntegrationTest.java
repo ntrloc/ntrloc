@@ -12,7 +12,7 @@ import org.ntrloc.graph.db.coordinator.LedgerRegisterCoordinator;
 import org.ntrloc.graph.db.partition.binary.BinaryStore;
 import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
 import org.ntrloc.graph.db.partition.ledger.ItemUpdateEntry;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -40,7 +40,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 // Uses "hash.sha256" as the path under test -- every stored binary always has one (written by
 // BinaryStore.metadataJson at upload time, real extraction isn't configured in this
 // test suite), so it's a real, predictable path without needing a media processor.
-class RegisterPartitionManagerBinaryDynamicPropertyIntegrationTest extends AbstractIntegrationTest {
+class BinaryAttachmentReconciliationIntegrationTest extends AbstractIntegrationTest {
 
     private static final String BOOK_TYPE = "RegisterProjectionTestBook";
     private static final String PATH = "hash.sha256";
@@ -61,7 +61,7 @@ class RegisterPartitionManagerBinaryDynamicPropertyIntegrationTest extends Abstr
     private LedgerRegisterCoordinator coordinator;
 
     @Autowired
-    private SecurityRepository securityRepo;
+    private UserStore userStore;
 
     @BeforeEach
     void authenticateAsRoot() {
@@ -232,6 +232,6 @@ class RegisterPartitionManagerBinaryDynamicPropertyIntegrationTest extends Abstr
     }
 
     private UUID newActorId() {
-        return securityRepo.createUser("Binary Abort Test Actor", "binary-abort-" + UUID.randomUUID() + "@example.com", true).id();
+        return userStore.createUser("Binary Abort Test Actor", "binary-abort-" + UUID.randomUUID() + "@example.com", true).id();
     }
 }

@@ -13,7 +13,7 @@ import java.util.UUID;
 
 // security_oidc_provider. The secret column holds SecretCipher output, never plaintext.
 @Component
-public class OidcProviderRepository {
+public class OidcProviderStore {
 
     private static final String PARAM_REGISTRATION_ID = "registrationId";
 
@@ -34,7 +34,7 @@ public class OidcProviderRepository {
 
     private final JdbcClient jdbcClient;
 
-    public OidcProviderRepository(JdbcClient jdbcClient) {
+    public OidcProviderStore(JdbcClient jdbcClient) {
         this.jdbcClient = jdbcClient;
     }
 

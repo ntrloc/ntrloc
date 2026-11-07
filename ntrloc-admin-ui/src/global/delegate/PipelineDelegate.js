@@ -10,7 +10,7 @@ async function readErrorMessage(res, fallback) {
   return body?.message || fallback
 }
 
-// An item type has at most one pipeline (see MarkerDecisionPipelineRepository's own comment) --
+// An item type has at most one pipeline (see MarkerDecisionPipelineStore's own comment) --
 // null when it has none yet, not an error; any other failure still throws.
 export async function fetchPipelineForItemType(itemTypeId) {
   const res = await fetch(`/api/admin/marker-decision-pipelines/by-item-type/${itemTypeId}`, { credentials: 'same-origin' })

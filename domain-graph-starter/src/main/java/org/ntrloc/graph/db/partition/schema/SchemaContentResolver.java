@@ -7,9 +7,9 @@ import org.ntrloc.graph.db.partition.schema.definition.view.SortableFieldView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminBinaryPropertyDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyGroupView;
-import org.ntrloc.graph.db.partition.schema.repository.SchemaRepository;
-import org.ntrloc.graph.db.partition.schema.repository.SchemaRepository.ItemRow;
-import org.ntrloc.graph.db.partition.schema.repository.SchemaRepository.TraitRow;
+import org.ntrloc.graph.db.partition.schema.repository.SchemaStore;
+import org.ntrloc.graph.db.partition.schema.repository.SchemaStore.ItemRow;
+import org.ntrloc.graph.db.partition.schema.repository.SchemaStore.TraitRow;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -26,7 +26,7 @@ import java.util.stream.Stream;
 // past Sonar's class-coupling limit (S6539) the same way it once absorbed most of SchemaManager's
 // own coupling when it was first split out of that class (see this class's siblings' own comments).
 // Owns nothing about either view's shape; only how a container's own+inherited properties/groups
-// resolve from SchemaRepository's raw rows.
+// resolve from SchemaStore's raw rows.
 @Component
 class SchemaContentResolver {
 
@@ -43,10 +43,10 @@ class SchemaContentResolver {
             new SortableFieldView("visibilityState", true)
     );
 
-    private final SchemaRepository repo;
+    private final SchemaStore store;
 
-    SchemaContentResolver(SchemaRepository repo) {
-        this.repo = repo;
+    SchemaContentResolver(SchemaStore store) {
+        this.store = store;
     }
 
     List<SortableFieldView> sortableFieldsFor(Contents contents) {
@@ -132,17 +132,17 @@ class SchemaContentResolver {
     record OwnerContents(Map<UUID, Contents> byItem, Map<UUID, Contents> byTrait, Map<UUID, Contents> byLink) {}
 
     OwnerContents loadOwnerContents() {
-        var propertiesByGroup = repo.getPropertiesByGroup();
-        var groupsByGroup = repo.getGroupsByGroup();
+        var propertiesByGroup = store.getPropertiesByGroup();
+        var groupsByGroup = store.getGroupsByGroup();
         return new OwnerContents(
-                resolveContents(repo.getPropertiesByItem(), repo.getGroupsByItem(), propertiesByGroup, groupsByGroup),
-                resolveContents(repo.getPropertiesByTrait(), repo.getGroupsByTrait(), propertiesByGroup, groupsByGroup),
-                resolveContents(repo.getPropertiesByLink(), repo.getGroupsByLink(), propertiesByGroup, groupsByGroup));
+                resolveContents(store.getPropertiesByItem(), store.getGroupsByItem(), propertiesByGroup, groupsByGroup),
+                resolveContents(store.getPropertiesByTrait(), store.getGroupsByTrait(), propertiesByGroup, groupsByGroup),
+                resolveContents(store.getPropertiesByLink(), store.getGroupsByLink(), propertiesByGroup, groupsByGroup));
     }
 
     private Map<UUID, Contents> resolveContents(
-            Map<UUID, List<AdminPropertyDefinitionView>> propertiesByOwner, Map<UUID, List<SchemaRepository.GroupRow>> groupsByOwner,
-            Map<UUID, List<AdminPropertyDefinitionView>> propertiesByGroup, Map<UUID, List<SchemaRepository.GroupRow>> groupsByGroup) {
+            Map<UUID, List<AdminPropertyDefinitionView>> propertiesByOwner, Map<UUID, List<SchemaStore.GroupRow>> groupsByOwner,
+            Map<UUID, List<AdminPropertyDefinitionView>> propertiesByGroup, Map<UUID, List<SchemaStore.GroupRow>> groupsByGroup) {
         Set<UUID> owners = new HashSet<>(propertiesByOwner.keySet());
         owners.addAll(groupsByOwner.keySet());
         Map<UUID, Contents> result = new HashMap<>();
@@ -157,8 +157,8 @@ class SchemaContentResolver {
     }
 
     private AdminPropertyGroupView resolveGroup(
-            SchemaRepository.GroupRow group,
-            Map<UUID, List<AdminPropertyDefinitionView>> propertiesByGroup, Map<UUID, List<SchemaRepository.GroupRow>> groupsByGroup) {
+            SchemaStore.GroupRow group,
+            Map<UUID, List<AdminPropertyDefinitionView>> propertiesByGroup, Map<UUID, List<SchemaStore.GroupRow>> groupsByGroup) {
         return new AdminPropertyGroupView(group.id(), group.name(), group.description(), null,
                 propertiesByGroup.getOrDefault(group.id(), List.of()),
                 groupsByGroup.getOrDefault(group.id(), List.of()).stream()

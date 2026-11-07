@@ -36,10 +36,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 // routing) has to come back bit-for-bit equal, not just "close enough", since prepare()'s evaluation
 // depends on exact ids surviving the trip (a gate/signal UUID that silently changed would resolve to
 // nothing and throw).
-class MarkerDecisionPipelineRepositoryIntegrationTest extends AbstractIntegrationTest {
+class MarkerDecisionPipelineStoreIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
-    private MarkerDecisionPipelineRepository repository;
+    private MarkerDecisionPipelineStore store;
 
     @Autowired
     private CoordinatorTestDomainInitializer fixture;
@@ -77,14 +77,14 @@ class MarkerDecisionPipelineRepositoryIntegrationTest extends AbstractIntegratio
     @Test
     void createPipeline_roundTripsTheFullGraphStructureThroughJsonb() {
         Pipeline original = buildStructurallyRichPipeline();
-        var created = repository.createPipeline(fixture.productTypeId(), original, new PipelineLayout(Map.of(), Map.of()));
+        var created = store.createPipeline(fixture.productTypeId(), original, new PipelineLayout(Map.of(), Map.of()));
 
         try {
             assertThat(created.pipeline()).isEqualTo(original);
-            Pipeline reloaded = repository.findById(created.id()).orElseThrow().pipeline();
+            Pipeline reloaded = store.findById(created.id()).orElseThrow().pipeline();
             assertThat(reloaded).isEqualTo(original);
         } finally {
-            repository.deletePipeline(created.id());
+            store.deletePipeline(created.id());
         }
     }
 
@@ -93,55 +93,55 @@ class MarkerDecisionPipelineRepositoryIntegrationTest extends AbstractIntegratio
         // buildStructurallyRichPipeline watches both colorPropertyId (colorIsRed) and
         // namePropertyId (nameIsSet) -- either one changing is independently a reason to run it.
         Pipeline pipeline = buildStructurallyRichPipeline();
-        var created = repository.createPipeline(fixture.productTypeId(), pipeline, new PipelineLayout(Map.of(), Map.of()));
+        var created = store.createPipeline(fixture.productTypeId(), pipeline, new PipelineLayout(Map.of(), Map.of()));
 
         try {
-            assertThat(repository.pipelinesWatching(fixture.productTypeId(), Set.of(fixture.colorPropertyId())))
+            assertThat(store.pipelinesWatching(fixture.productTypeId(), Set.of(fixture.colorPropertyId())))
                     .contains(pipeline);
-            assertThat(repository.pipelinesWatching(fixture.productTypeId(), Set.of(fixture.namePropertyId())))
+            assertThat(store.pipelinesWatching(fixture.productTypeId(), Set.of(fixture.namePropertyId())))
                     .contains(pipeline);
         } finally {
-            repository.deletePipeline(created.id());
+            store.deletePipeline(created.id());
         }
     }
 
     @Test
     void pipelinesWatching_excludesAPipelineThatDoesNotWatchAnyOfTheChangedFacts() {
         Pipeline pipeline = buildStructurallyRichPipeline();
-        var created = repository.createPipeline(fixture.productTypeId(), pipeline, new PipelineLayout(Map.of(), Map.of()));
+        var created = store.createPipeline(fixture.productTypeId(), pipeline, new PipelineLayout(Map.of(), Map.of()));
 
         try {
-            assertThat(repository.pipelinesWatching(fixture.productTypeId(), Set.of(fixture.dimensionsWidthPropertyId())))
+            assertThat(store.pipelinesWatching(fixture.productTypeId(), Set.of(fixture.dimensionsWidthPropertyId())))
                     .doesNotContain(pipeline);
         } finally {
-            repository.deletePipeline(created.id());
+            store.deletePipeline(created.id());
         }
     }
 
     @Test
     void pipelinesWatching_excludesAPipelineBoundToADifferentItemType() {
         Pipeline pipeline = buildStructurallyRichPipeline();
-        var created = repository.createPipeline(fixture.productTypeId(), pipeline, new PipelineLayout(Map.of(), Map.of()));
+        var created = store.createPipeline(fixture.productTypeId(), pipeline, new PipelineLayout(Map.of(), Map.of()));
 
         try {
-            assertThat(repository.pipelinesWatching(fixture.contributorTypeId(), Set.of(fixture.colorPropertyId())))
+            assertThat(store.pipelinesWatching(fixture.contributorTypeId(), Set.of(fixture.colorPropertyId())))
                     .doesNotContain(pipeline);
         } finally {
-            repository.deletePipeline(created.id());
+            store.deletePipeline(created.id());
         }
     }
 
     @Test
     void pipelinesWatching_excludesADisabledPipeline() {
         Pipeline pipeline = buildStructurallyRichPipeline();
-        var created = repository.createPipeline(fixture.productTypeId(), pipeline, new PipelineLayout(Map.of(), Map.of()));
+        var created = store.createPipeline(fixture.productTypeId(), pipeline, new PipelineLayout(Map.of(), Map.of()));
 
         try {
-            repository.updatePipeline(created.id(), pipeline, false, new PipelineLayout(Map.of(), Map.of()));
-            assertThat(repository.pipelinesWatching(fixture.productTypeId(), Set.of(fixture.colorPropertyId())))
+            store.updatePipeline(created.id(), pipeline, false, new PipelineLayout(Map.of(), Map.of()));
+            assertThat(store.pipelinesWatching(fixture.productTypeId(), Set.of(fixture.colorPropertyId())))
                     .doesNotContain(pipeline);
         } finally {
-            repository.deletePipeline(created.id());
+            store.deletePipeline(created.id());
         }
     }
 
@@ -159,9 +159,9 @@ class MarkerDecisionPipelineRepositoryIntegrationTest extends AbstractIntegratio
                 new Route(start.id(), List.of(colorAdd.id())),
                 new Route(colorAdd.id(), List.of(end.id()))));
 
-        var created = repository.createPipeline(fixture.productTypeId(), colorPipeline, new PipelineLayout(Map.of(), Map.of()));
+        var created = store.createPipeline(fixture.productTypeId(), colorPipeline, new PipelineLayout(Map.of(), Map.of()));
         try {
-            assertThat(repository.pipelinesWatching(fixture.productTypeId(), Set.of(fixture.colorPropertyId())))
+            assertThat(store.pipelinesWatching(fixture.productTypeId(), Set.of(fixture.colorPropertyId())))
                     .contains(colorPipeline);
 
             Condition nameGate = new Condition(UUID.randomUUID(), new StepToProperty(fixture.namePropertyId(), false, new Self()),
@@ -170,52 +170,52 @@ class MarkerDecisionPipelineRepositoryIntegrationTest extends AbstractIntegratio
             Pipeline namePipeline = new Pipeline(colorPipeline.id(), List.of(nameGate), List.of(nameAdd), start, end, List.of(
                     new Route(start.id(), List.of(nameAdd.id())),
                     new Route(nameAdd.id(), List.of(end.id()))));
-            repository.updatePipeline(created.id(), namePipeline, true, new PipelineLayout(Map.of(), Map.of()));
+            store.updatePipeline(created.id(), namePipeline, true, new PipelineLayout(Map.of(), Map.of()));
 
-            assertThat(repository.pipelinesWatching(fixture.productTypeId(), Set.of(fixture.colorPropertyId())))
+            assertThat(store.pipelinesWatching(fixture.productTypeId(), Set.of(fixture.colorPropertyId())))
                     .isEmpty();
-            assertThat(repository.pipelinesWatching(fixture.productTypeId(), Set.of(fixture.namePropertyId())))
+            assertThat(store.pipelinesWatching(fixture.productTypeId(), Set.of(fixture.namePropertyId())))
                     .contains(namePipeline);
         } finally {
-            repository.deletePipeline(created.id());
+            store.deletePipeline(created.id());
         }
     }
 
     @Test
     void getAllPipelines_includesDisabledOnes() {
         Pipeline pipeline = buildStructurallyRichPipeline();
-        var created = repository.createPipeline(fixture.productTypeId(), pipeline, new PipelineLayout(Map.of(), Map.of()));
+        var created = store.createPipeline(fixture.productTypeId(), pipeline, new PipelineLayout(Map.of(), Map.of()));
 
         try {
-            repository.updatePipeline(created.id(), pipeline, false, new PipelineLayout(Map.of(), Map.of()));
+            store.updatePipeline(created.id(), pipeline, false, new PipelineLayout(Map.of(), Map.of()));
 
-            assertThat(repository.getAllPipelines()).extracting(MarkerDecisionPipelineRepository.PipelineRow::id)
+            assertThat(store.getAllPipelines()).extracting(MarkerDecisionPipelineStore.PipelineRow::id)
                     .contains(created.id());
         } finally {
-            repository.deletePipeline(created.id());
+            store.deletePipeline(created.id());
         }
     }
 
     @Test
     void deletePipeline_removesIt() {
         Pipeline pipeline = buildStructurallyRichPipeline();
-        var created = repository.createPipeline(fixture.productTypeId(), pipeline, new PipelineLayout(Map.of(), Map.of()));
+        var created = store.createPipeline(fixture.productTypeId(), pipeline, new PipelineLayout(Map.of(), Map.of()));
 
-        repository.deletePipeline(created.id());
+        store.deletePipeline(created.id());
 
-        assertThat(repository.findById(created.id())).isEmpty();
+        assertThat(store.findById(created.id())).isEmpty();
     }
 
     @Test
     void findByItemTypeId_returnsThePipelineBoundToThatType() {
         Pipeline pipeline = buildStructurallyRichPipeline();
-        var created = repository.createPipeline(fixture.productTypeId(), pipeline, new PipelineLayout(Map.of(), Map.of()));
+        var created = store.createPipeline(fixture.productTypeId(), pipeline, new PipelineLayout(Map.of(), Map.of()));
 
         try {
-            assertThat(repository.findByItemTypeId(fixture.productTypeId())).contains(created);
-            assertThat(repository.findByItemTypeId(fixture.contributorTypeId())).isEmpty();
+            assertThat(store.findByItemTypeId(fixture.productTypeId())).contains(created);
+            assertThat(store.findByItemTypeId(fixture.contributorTypeId())).isEmpty();
         } finally {
-            repository.deletePipeline(created.id());
+            store.deletePipeline(created.id());
         }
     }
 
@@ -224,13 +224,13 @@ class MarkerDecisionPipelineRepositoryIntegrationTest extends AbstractIntegratio
     @Test
     void createPipeline_rejectsASecondPipelineForAnItemTypeThatAlreadyHasOne() {
         Pipeline pipeline = buildStructurallyRichPipeline();
-        var created = repository.createPipeline(fixture.productTypeId(), pipeline, new PipelineLayout(Map.of(), Map.of()));
+        var created = store.createPipeline(fixture.productTypeId(), pipeline, new PipelineLayout(Map.of(), Map.of()));
 
         try {
-            assertThatThrownBy(() -> repository.createPipeline(fixture.productTypeId(), buildStructurallyRichPipeline(), new PipelineLayout(Map.of(), Map.of())))
+            assertThatThrownBy(() -> store.createPipeline(fixture.productTypeId(), buildStructurallyRichPipeline(), new PipelineLayout(Map.of(), Map.of())))
                     .isInstanceOf(DuplicateKeyException.class);
         } finally {
-            repository.deletePipeline(created.id());
+            store.deletePipeline(created.id());
         }
     }
 }

@@ -25,7 +25,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Component
-public class SchemaRepository {
+public class SchemaStore {
 
     public record ItemRow(UUID id, String name, String description, UUID supertypeId, boolean abstractType, String displayLabelPattern) {}
 
@@ -66,7 +66,7 @@ public class SchemaRepository {
 
     private final JdbcClient jdbcClient;
 
-    public SchemaRepository(JdbcClient jdbcClient) {
+    public SchemaStore(JdbcClient jdbcClient) {
         this.jdbcClient = jdbcClient;
     }
 

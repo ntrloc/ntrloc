@@ -3,7 +3,7 @@ package org.ntrloc.graph.db.partition.ledger;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.springframework.beans.factory.annotation.Autowired;
 
 import java.time.OffsetDateTime;
@@ -20,7 +20,7 @@ class LedgerStoreIntegrationTest extends AbstractIntegrationTest {
     private LedgerStore ledgerStore;
 
     @Autowired
-    private SecurityRepository securityRepo;
+    private UserStore userStore;
 
     // ledger_entry.created_by (Part E) is a NOT NULL FK to security_user.id -- every append call
     // below needs a real, backed actor.
@@ -28,7 +28,7 @@ class LedgerStoreIntegrationTest extends AbstractIntegrationTest {
 
     @BeforeEach
     void setUpActor() {
-        actor = securityRepo.createUser("Ledger Test Actor", "lpm-actor-" + UUID.randomUUID() + "@example.com", true).id();
+        actor = userStore.createUser("Ledger Test Actor", "lpm-actor-" + UUID.randomUUID() + "@example.com", true).id();
     }
 
     @Test

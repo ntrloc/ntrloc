@@ -4,15 +4,15 @@ import org.ntrloc.graph.db.partition.schema.SchemaManager;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminSchemaView;
 import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.context.McpSyncRequestContext;
-import org.springframework.stereotype.Service;
+import org.springframework.stereotype.Component;
 
-@Service
-public class SchemaService {
+@Component
+public class SchemaTools {
 
     private final SchemaManager schemaManager;
     private final McpPrincipalResolverAdapter principalResolver;
 
-    public SchemaService(SchemaManager schemaManager, McpPrincipalResolverAdapter principalResolver) {
+    public SchemaTools(SchemaManager schemaManager, McpPrincipalResolverAdapter principalResolver) {
         this.schemaManager = schemaManager;
         this.principalResolver = principalResolver;
     }

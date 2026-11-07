@@ -54,7 +54,7 @@ public class SchemaManager {
     // their own other browser tabs, not just other cluster nodes.
     private static final String SCHEMA_CHANGED_TOPIC = "schemaChanged";
 
-    private final ControlledListManager controlledListManager;
+    private final ControlledListService controlledListService;
     private final SchemaAdminViewBuilder adminViewBuilder;
     private final SchemaCalculatedViewBuilder calculatedViewBuilder;
     private final ItemMutationApplier itemMutationApplier;
@@ -79,14 +79,14 @@ public class SchemaManager {
     private final AtomicReference<AdminSchemaView> cachedAdminSchema = new AtomicReference<>();
     private final AtomicReference<SchemaView> cachedSchema = new AtomicReference<>();
 
-    public SchemaManager(ControlledListManager controlledListManager, SchemaAdminViewBuilder adminViewBuilder,
+    public SchemaManager(ControlledListService controlledListService, SchemaAdminViewBuilder adminViewBuilder,
                           SchemaCalculatedViewBuilder calculatedViewBuilder,
                           ItemMutationApplier itemMutationApplier, TraitMutationApplier traitMutationApplier,
                           PropertyMutationApplier propertyMutationApplier, LinkMutationApplier linkMutationApplier,
                           StateMutationApplier stateMutationApplier, ControlledListMutationApplier controlledListMutationApplier,
                           PermissionService permissionService, ClusterService clusterService,
                           ClusterEventBroadcaster clusterEventBroadcaster, TransactionTemplate transactionTemplate) {
-        this.controlledListManager = controlledListManager;
+        this.controlledListService = controlledListService;
         this.adminViewBuilder = adminViewBuilder;
         this.calculatedViewBuilder = calculatedViewBuilder;
         this.itemMutationApplier = itemMutationApplier;
@@ -135,11 +135,8 @@ public class SchemaManager {
         return results;
     }
 
-    // Public because BinaryDynamicPropertyRegistrar's own writes (new dynamic field paths
-    // discovered while scanning binary content) go straight to the DB too, outside applyMutations
-    // entirely -- same reasoning ControlledListManager's own writes used to need this for, before
-    // CreateControlledListMutation grew a refId and SchemaAdminController's own PUT endpoint
-    // started going through applyMutations like every other schema write.
+    // Public because BinaryDynamicPropertyRegistrar writes new dynamic field paths straight to the
+    // DB, outside applyMutations.
     public void refreshCache() {
         rebuildCache();
         LOG.info("Schema changed: cache rebuilt ({} item types), publishing schemaChanged", cachedAdminSchema.get().items().size());
@@ -159,9 +156,9 @@ public class SchemaManager {
         if (stateMutationApplier.apply(mutation, refIdToEntityId)) return;
         if (controlledListMutationApplier.apply(mutation, refIdToListId, results)) return;
         if (mutation instanceof ReplaceControlledListMutation m) {
-            var list = controlledListManager.getListForProperty(m.propertyId())
+            var list = controlledListService.getListForProperty(m.propertyId())
                     .orElseThrow(() -> new IllegalArgumentException("No controlled list for property: " + m.propertyId()));
-            controlledListManager.replaceValues(list.id(), list.valueType(), m.values());
+            controlledListService.replaceValues(list.id(), list.valueType(), m.values());
             return;
         }
         throw new IllegalArgumentException("Unsupported mutation: " + mutation.getClass().getSimpleName());

@@ -6,7 +6,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.ntrloc.graph.TestDatabases;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.ntrloc.graph.security.AbstractLdapIntegrationTest;
 import org.openqa.selenium.By;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -35,7 +35,7 @@ class LdapAdminUiTest extends AbstractLdapIntegrationTest implements UiBrowser.H
     private int port;
 
     @Autowired
-    private SecurityRepository securityRepo;
+    private UserStore userStore;
 
     private UiBrowser browser;
 
@@ -56,7 +56,7 @@ class LdapAdminUiTest extends AbstractLdapIntegrationTest implements UiBrowser.H
 
     @Test
     void anNtrlocAdmin_signingInThroughLdap_getsTheAdminUi() {
-        securityRepo.createUser("Admin User", "admin.user@example.org", true);
+        userStore.createUser("Admin User", "admin.user@example.org", true);
 
         browser.openAdminUiAs("admin.user", LDAP_PASSWORD, "/schema");
 
@@ -66,7 +66,7 @@ class LdapAdminUiTest extends AbstractLdapIntegrationTest implements UiBrowser.H
 
     @Test
     void aNonAdmin_signingInThroughLdap_isForbiddenFromTheAdminUi() {
-        securityRepo.createUser("Plain User", "plain.user@example.org", false);
+        userStore.createUser("Plain User", "plain.user@example.org", false);
 
         browser.openAdminUiAs("plain.user", LDAP_PASSWORD, "/schema");
 

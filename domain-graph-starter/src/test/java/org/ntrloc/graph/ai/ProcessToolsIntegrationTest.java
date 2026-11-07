@@ -5,7 +5,7 @@ import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.partition.security.PersonalAccessTokenService;
 import org.ntrloc.graph.principal.TestPrincipals;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.springframework.ai.mcp.annotation.context.McpSyncRequestContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.server.ResponseStatusException;
@@ -20,45 +20,44 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 // Proves the whole MCP-tool-dispatch path for this tool, end to end -- same motivation as
-// ProjectionServiceIntegrationTest (see its own comment); zero tests existed for any of the four
-// MCP tool services before Part C/D of docs/ntrloc-principal-enforcement-plan.md. Unlike
-// Projection/Mutation, getSchema's response isn't filtered by the resolved principal at all (see
-// SchemaService's own comment) -- what this proves is narrower and specific to that: an
-// unauthenticated caller is still rejected, and an authenticated one still gets the schema back,
-// even though the principal itself does nothing beyond existing.
-class SchemaServiceIntegrationTest extends AbstractIntegrationTest {
+// ProjectionToolsIntegrationTest and SchemaToolsIntegrationTest (see their own comments);
+// zero tests existed for any of the four MCP tool services before Part C/D of
+// docs/ntrloc-principal-enforcement-plan.md. Covers only the floor Part D actually added
+// (reject an unresolvable caller) via listProcesses, one representative method -- not the
+// separate, still-open gap (task operations bypassing ntrloc's own marker/permission system
+// entirely) that ProcessTools's own class comment flags as deliberately out of scope here.
+class ProcessToolsIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
-    private SchemaService schemaService;
+    private ProcessTools processTools;
 
     @Autowired
     private PersonalAccessTokenService tokenService;
 
     @Autowired
-    private SecurityRepository securityRepo;
+    private UserStore userStore;
 
     @Test
-    void getSchema_withNoAuthorizationHeader_isRejected() {
+    void listProcesses_withNoAuthorizationHeader_isRejected() {
         McpSyncRequestContext requestContext = mock(McpSyncRequestContext.class);
         when(requestContext.transportContext()).thenReturn(McpTransportContext.EMPTY);
 
-        assertThatThrownBy(() -> schemaService.getSchema(requestContext))
+        assertThatThrownBy(() -> processTools.listProcesses(requestContext))
                 .isInstanceOf(ResponseStatusException.class);
     }
 
     @Test
-    void getSchema_withAValidBearerToken_succeeds() {
-        var user = securityRepo.createUser("MCP Schema Test User", "mcp-schema-user-" + UUID.randomUUID() + "@example.com", true);
+    void listProcesses_withAValidBearerToken_succeeds() {
+        var user = userStore.createUser("MCP Process Test User", "mcp-process-user-" + UUID.randomUUID() + "@example.com", true);
         var principal = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), true);
-        var issued = tokenService.issue(principal, "schema-test-token", null);
+        var issued = tokenService.issue(principal, "process-test-token", null);
 
         McpSyncRequestContext requestContext = mock(McpSyncRequestContext.class);
         when(requestContext.transportContext())
                 .thenReturn(McpTransportContext.create(Map.of("authorization", "Bearer " + issued.rawToken())));
 
-        var result = schemaService.getSchema(requestContext);
+        var result = processTools.listProcesses(requestContext);
 
         assertThat(result).isNotNull();
-        assertThat(result.items()).isNotNull();
     }
 }

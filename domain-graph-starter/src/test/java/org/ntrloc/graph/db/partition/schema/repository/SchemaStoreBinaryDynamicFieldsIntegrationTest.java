@@ -18,7 +18,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 // Proves the admin schema actually surfaces the binary dynamic-property registry (design-notes
 // section 10) as AdminBinaryPropertyDefinitionView.dynamicFields, not just that the registrar writes
 // the right rows (BinaryDynamicPropertyRegistrarIntegrationTest already covers that in isolation).
-class SchemaRepositoryBinaryDynamicFieldsIntegrationTest extends AbstractIntegrationTest {
+class SchemaStoreBinaryDynamicFieldsIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     private SchemaManager schemaManager;

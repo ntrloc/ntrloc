@@ -9,18 +9,18 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.context.McpSyncRequestContext;
 import org.springframework.ai.tool.annotation.ToolParam;
-import org.springframework.stereotype.Service;
+import org.springframework.stereotype.Component;
 import org.springframework.web.server.ResponseStatusException;
 
-@Service
-public class ProjectionService {
+@Component
+public class ProjectionTools {
 
-    private static final Logger LOG = LoggerFactory.getLogger(ProjectionService.class);
+    private static final Logger LOG = LoggerFactory.getLogger(ProjectionTools.class);
 
     private final EntityReadService entityReadService;
     private final McpPrincipalResolverAdapter principalResolver;
 
-    public ProjectionService(EntityReadService entityReadService, McpPrincipalResolverAdapter principalResolver) {
+    public ProjectionTools(EntityReadService entityReadService, McpPrincipalResolverAdapter principalResolver) {
         this.entityReadService = entityReadService;
         this.principalResolver = principalResolver;
     }

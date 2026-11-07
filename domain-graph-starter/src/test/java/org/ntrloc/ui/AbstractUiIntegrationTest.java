@@ -9,7 +9,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.coordinator.LedgerRegisterCoordinator;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.support.ui.WebDriverWait;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -42,7 +42,7 @@ public abstract class AbstractUiIntegrationTest extends AbstractIntegrationTest 
     private int port;
 
     @Autowired
-    private SecurityRepository securityRepository;
+    private UserStore userStore;
 
     @Autowired
     private SchemaManager schemaManager;
@@ -66,7 +66,7 @@ public abstract class AbstractUiIntegrationTest extends AbstractIntegrationTest 
 
     @BeforeEach
     void openBrowser() {
-        testData = new UiTestData(schemaManager, coordinator, securityRepository);
+        testData = new UiTestData(schemaManager, coordinator, userStore);
         if (browser == null) {
             browser = new UiBrowser(port);
         }
@@ -101,8 +101,8 @@ public abstract class AbstractUiIntegrationTest extends AbstractIntegrationTest 
     protected LocalUser createLocalAdmin() {
         String email = "ui-admin-" + UUID.randomUUID() + "@example.com";
         String password = UUID.randomUUID().toString();
-        var user = securityRepository.createUser("UI Test Admin", email, true);
-        securityRepository.createLocalCredentials(user.id(), "{bcrypt}" + new BCryptPasswordEncoder().encode(password));
+        var user = userStore.createUser("UI Test Admin", email, true);
+        userStore.createLocalCredentials(user.id(), "{bcrypt}" + new BCryptPasswordEncoder().encode(password));
         return new LocalUser(user.id(), email, password);
     }
 

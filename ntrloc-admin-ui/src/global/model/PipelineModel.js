@@ -2,7 +2,7 @@ import { useEffect, useSyncExternalStore } from 'react'
 import { fetchPipelineForItemType, updatePipeline as updatePipelineRequest } from '../delegate/PipelineDelegate'
 
 // Keyed by itemTypeId, not a flat list -- an item type has at most one pipeline (see
-// MarkerDecisionPipelineRepository's own comment), so "the pipeline for this item type" is the only
+// MarkerDecisionPipelineStore's own comment), so "the pipeline for this item type" is the only
 // shape this model needs, fetched on demand per type rather than eagerly loading every pipeline in
 // the system up front the way MarkerModel loads every marker. Each cache entry is
 // { status: 'loading' | 'ready' | 'error', pipeline: PipelineView | null }.

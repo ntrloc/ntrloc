@@ -13,7 +13,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.db.partition.schema.AllowedValue;
-import org.ntrloc.graph.db.partition.schema.ControlledListManager;
+import org.ntrloc.graph.db.partition.schema.repository.ControlledListStore;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyContainerKind;
@@ -48,7 +48,7 @@ class SchemaEditingUiTest extends AbstractUiIntegrationTest {
     private SchemaManager schemaManager;
 
     @Autowired
-    private ControlledListManager controlledListManager;
+    private ControlledListStore controlledListStore;
 
     private SchemaPage schema;
     private String bookType;
@@ -208,7 +208,7 @@ class SchemaEditingUiTest extends AbstractUiIntegrationTest {
 
         schema.save();
 
-        assertThat(controlledListManager.getListById(listId).orElseThrow().name()).isEqualTo(name + "-renamed");
+        assertThat(controlledListStore.getListById(listId).orElseThrow().name()).isEqualTo(name + "-renamed");
         assertThat(labelsOf(listId)).containsExactly("Opened", "Held");
         assertThat(schema.cardTableRows("Values")).containsExactly("OPEN | Opened", "HELD | Held");
         assertThat(schema.unsavedControlledLists()).isEmpty();
@@ -253,9 +253,9 @@ class SchemaEditingUiTest extends AbstractUiIntegrationTest {
                 .addValue().typeInValue(2, "Value", "2");
         schema.save();
 
-        var saved = controlledListManager.getAllLists().stream().filter(l -> l.name().equals(name)).findFirst().orElseThrow();
+        var saved = controlledListStore.getAllLists().stream().filter(l -> l.name().equals(name)).findFirst().orElseThrow();
         assertThat(saved.valueType()).isEqualTo(PropertyType.INTEGER);
-        assertThat(controlledListManager.getValues(saved.id(), PropertyType.INTEGER)).extracting(AllowedValue::value).containsExactly(10L, 2L);
+        assertThat(controlledListStore.getValues(saved.id(), PropertyType.INTEGER)).extracting(AllowedValue::value).containsExactly(10L, 2L);
         assertThat(driver.getCurrentUrl()).endsWith("/schema/controlled-lists/" + saved.id());
         assertThat(schema.unsavedControlledLists()).isEmpty();
     }
@@ -271,7 +271,7 @@ class SchemaEditingUiTest extends AbstractUiIntegrationTest {
 
         schema.confirmDelete();
 
-        assertThat(controlledListManager.getListById(listId)).isEmpty();
+        assertThat(controlledListStore.getListById(listId)).isEmpty();
         assertThat(testData.itemType(bookType).properties()).filteredOn(p -> p.name().equals("title"))
                 .extracting(AdminPropertyDefinitionView::controlledListId).containsOnlyNulls();
         assertThat(driver.getCurrentUrl()).endsWith("/schema/controlled-lists");
@@ -283,11 +283,11 @@ class SchemaEditingUiTest extends AbstractUiIntegrationTest {
             entries.add(new CreateControlledListMutation.Entry(valuesAndLabels[i], valuesAndLabels[i + 1]));
         }
         schemaManager.applyMutations(List.of(new CreateControlledListMutation(null, name, PropertyType.STRING, entries)));
-        return controlledListManager.getAllLists().stream().filter(l -> l.name().equals(name)).findFirst().orElseThrow().id();
+        return controlledListStore.getAllLists().stream().filter(l -> l.name().equals(name)).findFirst().orElseThrow().id();
     }
 
     private List<String> labelsOf(UUID listId) {
-        return controlledListManager.getValues(listId, PropertyType.STRING).stream().map(AllowedValue::label).toList();
+        return controlledListStore.getValues(listId, PropertyType.STRING).stream().map(AllowedValue::label).toList();
     }
 
     @Test

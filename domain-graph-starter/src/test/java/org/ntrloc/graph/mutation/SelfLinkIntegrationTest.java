@@ -10,7 +10,7 @@ import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateLinkDefini
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePerspectiveDefinitionMutation;
 import org.ntrloc.graph.principal.NtrlocPrincipal;
 import org.ntrloc.graph.principal.TestPrincipals;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.springframework.beans.factory.annotation.Autowired;
 
 import java.util.List;
@@ -32,7 +32,7 @@ class SelfLinkIntegrationTest extends AbstractIntegrationTest {
 
     // Not static/final: needs a real, backed security_user row now that ledger_entry.created_by
     // (Part E) has a NOT NULL FK to security_user.id -- created fresh per test in setUp() via the
-    // already-autowired securityRepo, which a static initializer can't reach.
+    // already-autowired userStore, which a static initializer can't reach.
     private NtrlocPrincipal SOME_PRINCIPAL;
 
     @Autowired
@@ -49,11 +49,11 @@ class SelfLinkIntegrationTest extends AbstractIntegrationTest {
     private SelfLinkTestDomainInitializer fixture;
 
     @Autowired
-    private SecurityRepository securityRepo;
+    private UserStore userStore;
 
     @BeforeEach
     void setUpSomePrincipal() {
-        var user = securityRepo.createUser("Test User", "sli-test-user-" + UUID.randomUUID() + "@example.com", true);
+        var user = userStore.createUser("Test User", "sli-test-user-" + UUID.randomUUID() + "@example.com", true);
         SOME_PRINCIPAL = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), true);
     }
 

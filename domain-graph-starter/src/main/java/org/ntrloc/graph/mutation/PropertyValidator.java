@@ -15,7 +15,7 @@ import org.ntrloc.graph.db.partition.authorization.RequestPermissionContext;
 import org.ntrloc.graph.db.partition.binary.BinaryStore;
 import org.ntrloc.graph.db.partition.register.RegisterStoreReader;
 import org.ntrloc.graph.principal.NtrlocPrincipal;
-import org.ntrloc.graph.db.partition.schema.ControlledListManager;
+import org.ntrloc.graph.db.partition.schema.ControlledListService;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
@@ -37,15 +37,15 @@ class PropertyValidator {
     private final RegisterStoreReader registerStore;
     private final PermissionService permissionService;
     private final BinaryStore binaryStore;
-    private final ControlledListManager controlledListManager;
+    private final ControlledListService controlledListService;
 
     PropertyValidator(SchemaManager schemaManager, RegisterStoreReader registerStore, PermissionService permissionService,
-                      BinaryStore binaryStore, ControlledListManager controlledListManager) {
+                      BinaryStore binaryStore, ControlledListService controlledListService) {
         this.schemaManager = schemaManager;
         this.registerStore = registerStore;
         this.permissionService = permissionService;
         this.binaryStore = binaryStore;
-        this.controlledListManager = controlledListManager;
+        this.controlledListService = controlledListService;
     }
 
     private PropertyScope itemScope(UUID itemTypeId) {
@@ -383,7 +383,7 @@ class PropertyValidator {
         }
         // Applies identically whether this call is validating a SINGLE property's own value or one
         // element of a LIST/SET property's value list -- both route through this one method.
-        if (property.controlledListId() != null && !controlledListManager.containsValue(property.controlledListId(), property.type(), value)) {
+        if (property.controlledListId() != null && !controlledListService.containsValue(property.controlledListId(), property.type(), value)) {
             errors.add(new ValidationError(path,
                     PROPERTY_QUOTE_PREFIX + property.name() + "' value is not in its controlled list: " + describeValue(value)));
         }

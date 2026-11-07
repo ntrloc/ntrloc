@@ -78,7 +78,7 @@ class StateTransitionMutationAdvisor {
         return machine.states().stream().filter(s -> s.id().equals(stateId)).findFirst();
     }
 
-    // A stored JSON null (NullNode) is not a real guard -- see SchemaRepository.serializeGuardCondition.
+    // A stored JSON null (NullNode) is not a real guard -- see SchemaStore.serializeGuardCondition.
     private static boolean hasGuard(AdminTransitionView transition) {
         return transition.guardCondition() != null && !transition.guardCondition().isNull();
     }

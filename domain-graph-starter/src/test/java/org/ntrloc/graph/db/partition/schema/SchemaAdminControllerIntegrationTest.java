@@ -117,7 +117,7 @@ class SchemaAdminControllerIntegrationTest extends AbstractIntegrationTest {
                 .jsonPath("$.values.length()").isEqualTo(2);
     }
 
-    // Regression test: createOrReplaceControlledList writes via ControlledListManager directly,
+    // Regression test: createOrReplaceControlledList used to write controlled lists directly,
     // bypassing schemaManager.applyMutations (and therefore its cache-rebuild-and-broadcast tail)
     // entirely. Without an explicit refresh, GET /api/admin/schema kept serving its pre-write
     // cached snapshot -- controlledListId still null -- indefinitely, confirmed live against a
@@ -273,7 +273,7 @@ class SchemaAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
     // Mirror of createOrReplaceControlledList_refreshesTheCachedAdminSchema for the list-centric
     // path: a POST /mutations carrying the new controlled-list types must rebuild the cached
-    // AdminSchemaView, not just write through ControlledListManager.
+    // AdminSchemaView, not just write through ControlledListStore.
     @Test
     void applyMutations_withControlledListTypes_refreshesTheCachedAdminSchema() {
         String listName = "list-" + UUID.randomUUID();

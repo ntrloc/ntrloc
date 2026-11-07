@@ -38,16 +38,16 @@ public class TaskAdminController {
     public record TaskErrorResponse(String message) {}
 
     private final TaskService taskService;
-    private final ProcessGroupRepository groupRepo;
+    private final ProcessGroupStore groupStore;
     private final ExternalPrincipalResolver principalResolver;
     private final TaskViewAssembler taskViews;
     private final TaskEventBroadcaster broadcaster;
 
-    public TaskAdminController(TaskService taskService, ProcessGroupRepository groupRepo,
+    public TaskAdminController(TaskService taskService, ProcessGroupStore groupStore,
             ExternalPrincipalResolver principalResolver, TaskViewAssembler taskViews,
             TaskEventBroadcaster broadcaster) {
         this.taskService = taskService;
-        this.groupRepo = groupRepo;
+        this.groupStore = groupStore;
         this.principalResolver = principalResolver;
         this.taskViews = taskViews;
         this.broadcaster = broadcaster;
@@ -63,14 +63,14 @@ public class TaskAdminController {
 
     // Admins see every task (useful with only a couple of seed accounts to test with);
     // everyone else sees only tasks assigned to them or where they're a candidate (by user id
-    // directly, or via a process_group they belong to -- see ProcessGroupRepository, deliberately
+    // directly, or via a process_group they belong to -- see ProcessGroupStore, deliberately
     // not Flowable's own unwired IdentityService).
     @GetMapping("/tasks")
     List<TaskView> listTasks(Authentication authentication) {
         NtrlocPrincipal principal = principalResolver.resolve(authentication);
         var query = taskService.createTaskQuery();
         if (!principal.isAdmin()) {
-            Set<String> groupNames = groupRepo.getGroupNamesForUser(principal.id());
+            Set<String> groupNames = groupStore.getGroupNamesForUser(principal.id());
             var or = query.or()
                     .taskAssignee(principal.id().toString())
                     .taskCandidateUser(principal.id().toString());
@@ -109,7 +109,7 @@ public class TaskAdminController {
 
     @GetMapping("/groups")
     List<ProcessGroupView> listGroups() {
-        return groupRepo.listGroups().stream()
+        return groupStore.listGroups().stream()
                 .map(g -> new ProcessGroupView(g.name()))
                 .toList();
     }

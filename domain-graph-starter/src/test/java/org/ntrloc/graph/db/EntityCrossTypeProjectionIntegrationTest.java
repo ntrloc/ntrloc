@@ -21,7 +21,7 @@ import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePropertyDe
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateTraitDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.ImplementTraitMutation;
 import org.ntrloc.graph.principal.TestPrincipals;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -44,12 +44,12 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
 
     // Not static/final: needs a real, backed security_user row now that ledger_entry.created_by
     // (Part E) has a NOT NULL FK to security_user.id -- created fresh per test in setUp() via the
-    // already-autowired securityRepo, which a static initializer can't reach.
+    // already-autowired userStore, which a static initializer can't reach.
     private NtrlocPrincipal SOME_PRINCIPAL;
 
     @BeforeEach
     void setUpSomePrincipal() {
-        var user = securityRepo.createUser("Test User", "ectp-test-user-" + UUID.randomUUID() + "@example.com", true);
+        var user = userStore.createUser("Test User", "ectp-test-user-" + UUID.randomUUID() + "@example.com", true);
         SOME_PRINCIPAL = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), true);
     }
 
@@ -63,7 +63,7 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
     private WebTestClient webTestClient;
 
     @Autowired
-    private SecurityRepository securityRepo;
+    private UserStore userStore;
 
     @Autowired
     private DefaultUserGroupInitializer defaultUserGroupInitializer;
@@ -72,7 +72,7 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
     private ManualMarkerAssignmentService markerAssignmentService;
 
     @Autowired
-    private AccessStore authRepo;
+    private AccessStore accessStore;
 
     @Autowired
     private JdbcClient jdbcClient;
@@ -366,8 +366,8 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
         // ApplicationReadyEvent -- a user created here, mid-test, is never auto-added the way
         // alice/bob/carol/root were at boot, so joining explicitly is required to pick up
         // Vehicle's still-intact default read grant at all.
-        var restrictedUser = securityRepo.createUser("Restricted", "restricted-" + UUID.randomUUID() + "@example.com", false);
-        securityRepo.addUserToUserGroup(restrictedUser.id(), defaultUserGroupInitializer.getDefaultUserGroupId());
+        var restrictedUser = userStore.createUser("Restricted", "restricted-" + UUID.randomUUID() + "@example.com", false);
+        userStore.addUserToUserGroup(restrictedUser.id(), defaultUserGroupInitializer.getDefaultUserGroupId());
 
         UUID vehicleItemId = createItem(vehicleName);
         createItem(carName);
@@ -377,9 +377,9 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
         // is a separate, also-real gate now. Grant it on the Vehicle instance specifically so this
         // test keeps exercising type-level partial-branch-drop, the thing it's actually about,
         // without being blocked by the orthogonal instance-level check.
-        var marker = authRepo.createMarker("cross-type-vehicle-read-" + UUID.randomUUID(), "test fixture", "ITEM_TYPE", idOf(vehicleName));
+        var marker = accessStore.createMarker("cross-type-vehicle-read-" + UUID.randomUUID(), "test fixture", "ITEM_TYPE", idOf(vehicleName));
         markerAssignmentService.addItemMarker(vehicleItemId, marker.id(), SOME_PRINCIPAL, "test reason");
-        authRepo.setItemPermissions(authRepo.ensureMarkerGrant(marker.id(), "USER_GROUP", defaultUserGroupInitializer.getDefaultUserGroupId()), true, false);
+        accessStore.setItemPermissions(accessStore.ensureMarkerGrant(marker.id(), "USER_GROUP", defaultUserGroupInitializer.getDefaultUserGroupId()), true, false);
 
         var body = webTestClient.post().uri("/api/projection/collection")
                 .header(HttpHeaders.AUTHORIZATION, bearerTokenFor(restrictedUser.email()))
@@ -458,8 +458,8 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
 
         UUID vehicleItemId = createItem(vehicleName);
 
-        var restrictedUser = securityRepo.createUser("Restricted", "restricted-" + UUID.randomUUID() + "@example.com", false);
-        securityRepo.addUserToUserGroup(restrictedUser.id(), defaultUserGroupInitializer.getDefaultUserGroupId());
+        var restrictedUser = userStore.createUser("Restricted", "restricted-" + UUID.randomUUID() + "@example.com", false);
+        userStore.addUserToUserGroup(restrictedUser.id(), defaultUserGroupInitializer.getDefaultUserGroupId());
         NtrlocPrincipal restrictedPrincipal = TestPrincipals.of(restrictedUser.id(), "Restricted", restrictedUser.email(), Set.of(), false);
 
         org.assertj.core.api.Assertions.assertThatThrownBy(() ->

@@ -34,7 +34,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 // Proves the admin HTTP surface, not just the repository directly -- in particular that WebFlux's
 // own Jackson codec round-trips a Pipeline (sealed interfaces, nested graphs) correctly through a
-// real request/response body, the same way MarkerDecisionPipelineRepositoryIntegrationTest already
+// real request/response body, the same way MarkerDecisionPipelineStoreIntegrationTest already
 // proved for the JSONB storage path.
 class MarkerDecisionPipelineAdminControllerIntegrationTest extends AbstractIntegrationTest {
 

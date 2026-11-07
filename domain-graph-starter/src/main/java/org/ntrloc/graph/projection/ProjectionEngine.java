@@ -21,7 +21,7 @@ import org.ntrloc.graph.db.partition.register.RegisterRows.LinkRow;
 import org.ntrloc.graph.db.partition.register.RegisterRows.ValueCount;
 import org.ntrloc.graph.db.partition.register.RegisterStoreReader;
 import org.ntrloc.graph.db.partition.schema.ControlledListLabels;
-import org.ntrloc.graph.db.partition.schema.ControlledListManager;
+import org.ntrloc.graph.db.partition.schema.ControlledListService;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
@@ -109,7 +109,7 @@ public class ProjectionEngine {
     private final AccessStoreReader accessStore;
     private final BinaryStore binaryStore;
     private final SchemaManager schemaManager;
-    private final ControlledListManager controlledListManager;
+    private final ControlledListService controlledListService;
     private final RegisterStoreReader registerStore;
     // Keyed by pattern *string*, not item type -- a pure function cache (the same SpEL text always
     // compiles to the same Expression), so it needs no invalidation hook when a pattern is edited;
@@ -121,11 +121,11 @@ public class ProjectionEngine {
             new AtomicReference<>(new DisplayLabelPatternsCache(null, Map.of()));
 
     public ProjectionEngine(AccessStoreReader accessStore, BinaryStore binaryStore,
-                            SchemaManager schemaManager, ControlledListManager controlledListManager, RegisterStoreReader registerStore) {
+                            SchemaManager schemaManager, ControlledListService controlledListService, RegisterStoreReader registerStore) {
         this.accessStore = accessStore;
         this.binaryStore = binaryStore;
         this.schemaManager = schemaManager;
-        this.controlledListManager = controlledListManager;
+        this.controlledListService = controlledListService;
         this.registerStore = registerStore;
     }
 
@@ -393,10 +393,10 @@ public class ProjectionEngine {
     }
 
     // Empty when the property isn't controlled-list-backed, or its list has no labels at all (see
-    // ControlledListManager.getLabels).
+    // ControlledListService.getLabels).
     private ControlledListLabels labelsForFacetProperty(AdminPropertyDefinitionView property) {
         return property.controlledListId() == null ? new ControlledListLabels(property.type(), Map.of())
-                : controlledListManager.getLabels(property.controlledListId(), property.type());
+                : controlledListService.getLabels(property.controlledListId(), property.type());
     }
 
     private String labelFor(String value, ControlledListLabels labels) {
@@ -1037,7 +1037,7 @@ public class ProjectionEngine {
     // where applicable) rather than per row -- a controlled-list label lookup is a real query, and a
     // page of results shares the same schema, so paying for it once per property id here (not once
     // per property id per row) is what keeps this from becoming an N+1. Only properties that are both
-    // controlled-list-backed AND whose list actually has labels (ControlledListManager.getLabels
+    // controlled-list-backed AND whose list actually has labels (ControlledListService.getLabels
     // returns non-empty) end up with an entry -- an absent entry means applyControlledListLabels
     // leaves that property's value exactly as namesForIds already produced it.
     private Map<UUID, ControlledListLabels> resolveControlledListLabels(
@@ -1046,7 +1046,7 @@ public class ProjectionEngine {
         for (UUID propertyId : ownPropertyNames.keySet()) {
             AdminPropertyDefinitionView view = propertyViewsById.get(propertyId);
             if (view == null || view.controlledListId() == null) continue;
-            ControlledListLabels labels = controlledListManager.getLabels(view.controlledListId(), view.type());
+            ControlledListLabels labels = controlledListService.getLabels(view.controlledListId(), view.type());
             if (!labels.isEmpty()) {
                 result.put(propertyId, labels);
             }

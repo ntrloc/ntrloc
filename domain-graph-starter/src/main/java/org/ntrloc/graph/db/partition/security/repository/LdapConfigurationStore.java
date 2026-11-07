@@ -10,7 +10,7 @@ import java.util.UUID;
 
 // security_ldap_config's single row. The password column holds SecretCipher output, never plaintext.
 @Component
-public class LdapConfigurationRepository {
+public class LdapConfigurationStore {
 
     public record LdapConfigurationRow(boolean enabled, String url, String baseDn, String bindDn,
                                        String bindPasswordEncrypted, String userSearchBase, String userSearchFilter,
@@ -33,7 +33,7 @@ public class LdapConfigurationRepository {
 
     private final JdbcClient jdbcClient;
 
-    public LdapConfigurationRepository(JdbcClient jdbcClient) {
+    public LdapConfigurationStore(JdbcClient jdbcClient) {
         this.jdbcClient = jdbcClient;
     }
 

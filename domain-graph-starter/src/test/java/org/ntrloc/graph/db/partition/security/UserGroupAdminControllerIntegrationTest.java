@@ -3,7 +3,7 @@ package org.ntrloc.graph.db.partition.security;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.partition.authorization.DefaultUserGroupInitializer;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -29,7 +29,7 @@ class UserGroupAdminControllerIntegrationTest extends AbstractIntegrationTest {
     private WebTestClient webTestClient;
 
     @Autowired
-    private SecurityRepository securityRepo;
+    private UserStore userStore;
 
     @Autowired
     private DefaultUserGroupInitializer defaultUserGroupInitializer;
@@ -49,9 +49,9 @@ class UserGroupAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void listUserGroups_asAdmin_includesMemberCounts() {
-        var group = securityRepo.createUserGroup("group-" + UUID.randomUUID());
-        var member = securityRepo.createUser("Member", "user-" + UUID.randomUUID() + "@example.com", false);
-        securityRepo.addUserToUserGroup(member.id(), group.id());
+        var group = userStore.createUserGroup("group-" + UUID.randomUUID());
+        var member = userStore.createUser("Member", "user-" + UUID.randomUUID() + "@example.com", false);
+        userStore.addUserToUserGroup(member.id(), group.id());
 
         List<Map<String, Object>> groups = getAsRoot("/api/admin/user-groups");
 
@@ -83,7 +83,7 @@ class UserGroupAdminControllerIntegrationTest extends AbstractIntegrationTest {
                 .jsonPath("$.name").isEqualTo(name)
                 .jsonPath("$.memberCount").isEqualTo(0);
 
-        assertThat(securityRepo.findUserGroupByName(name)).isPresent();
+        assertThat(userStore.findUserGroupByName(name)).isPresent();
     }
 
     @Test
@@ -99,7 +99,7 @@ class UserGroupAdminControllerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void createUserGroup_withANameThatAlreadyExists_returnsConflict() {
         String name = "group-" + UUID.randomUUID();
-        securityRepo.createUserGroup(name);
+        userStore.createUserGroup(name);
 
         webTestClient.post().uri("/api/admin/user-groups")
                 .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com"))
@@ -113,7 +113,7 @@ class UserGroupAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void updateUserGroup_asAdmin_persistsTheNewName() {
-        var group = securityRepo.createUserGroup("group-" + UUID.randomUUID());
+        var group = userStore.createUserGroup("group-" + UUID.randomUUID());
         String newName = "renamed-" + UUID.randomUUID();
 
         webTestClient.put().uri("/api/admin/user-groups/" + group.id())
@@ -125,7 +125,7 @@ class UserGroupAdminControllerIntegrationTest extends AbstractIntegrationTest {
                 .expectBody()
                 .jsonPath("$.name").isEqualTo(newName);
 
-        assertThat(securityRepo.findUserGroupById(group.id())).isPresent().get()
+        assertThat(userStore.findUserGroupById(group.id())).isPresent().get()
                 .satisfies(g -> assertThat(g.name()).isEqualTo(newName));
     }
 
@@ -141,7 +141,7 @@ class UserGroupAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void updateUserGroup_withABlankName_returnsBadRequest() {
-        var group = securityRepo.createUserGroup("group-" + UUID.randomUUID());
+        var group = userStore.createUserGroup("group-" + UUID.randomUUID());
 
         webTestClient.put().uri("/api/admin/user-groups/" + group.id())
                 .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com"))
@@ -155,14 +155,14 @@ class UserGroupAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void deleteUserGroup_asAdmin_removesIt() {
-        var group = securityRepo.createUserGroup("group-" + UUID.randomUUID());
+        var group = userStore.createUserGroup("group-" + UUID.randomUUID());
 
         webTestClient.delete().uri("/api/admin/user-groups/" + group.id())
                 .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com"))
                 .exchange()
                 .expectStatus().isNoContent();
 
-        assertThat(securityRepo.findUserGroupById(group.id())).isEmpty();
+        assertThat(userStore.findUserGroupById(group.id())).isEmpty();
     }
 
     @Test
@@ -187,9 +187,9 @@ class UserGroupAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void listMembers_asAdmin_returnsEveryMember() {
-        var group = securityRepo.createUserGroup("group-" + UUID.randomUUID());
-        var member = securityRepo.createUser("Member", "user-" + UUID.randomUUID() + "@example.com", false);
-        securityRepo.addUserToUserGroup(member.id(), group.id());
+        var group = userStore.createUserGroup("group-" + UUID.randomUUID());
+        var member = userStore.createUser("Member", "user-" + UUID.randomUUID() + "@example.com", false);
+        userStore.addUserToUserGroup(member.id(), group.id());
 
         List<Map<String, Object>> members = getAsRoot("/api/admin/user-groups/" + group.id() + "/members");
 
@@ -206,8 +206,8 @@ class UserGroupAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void addMember_asAdmin_addsTheUserToTheUserGroup() {
-        var group = securityRepo.createUserGroup("group-" + UUID.randomUUID());
-        var user = securityRepo.createUser("New Member", "user-" + UUID.randomUUID() + "@example.com", false);
+        var group = userStore.createUserGroup("group-" + UUID.randomUUID());
+        var user = userStore.createUser("New Member", "user-" + UUID.randomUUID() + "@example.com", false);
 
         webTestClient.post().uri("/api/admin/user-groups/" + group.id() + "/members")
                 .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com"))
@@ -216,12 +216,12 @@ class UserGroupAdminControllerIntegrationTest extends AbstractIntegrationTest {
                 .exchange()
                 .expectStatus().isNoContent();
 
-        assertThat(securityRepo.getUserGroupIdsForUser(user.id())).contains(group.id());
+        assertThat(userStore.getUserGroupIdsForUser(user.id())).contains(group.id());
     }
 
     @Test
     void addMember_forAnUnknownUserGroup_returnsNotFound() {
-        var user = securityRepo.createUser("New Member", "user-" + UUID.randomUUID() + "@example.com", false);
+        var user = userStore.createUser("New Member", "user-" + UUID.randomUUID() + "@example.com", false);
 
         webTestClient.post().uri("/api/admin/user-groups/" + UUID.randomUUID() + "/members")
                 .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com"))
@@ -233,22 +233,22 @@ class UserGroupAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void removeMember_asAdmin_removesTheUserFromTheUserGroup() {
-        var group = securityRepo.createUserGroup("group-" + UUID.randomUUID());
-        var user = securityRepo.createUser("Member", "user-" + UUID.randomUUID() + "@example.com", false);
-        securityRepo.addUserToUserGroup(user.id(), group.id());
+        var group = userStore.createUserGroup("group-" + UUID.randomUUID());
+        var user = userStore.createUser("Member", "user-" + UUID.randomUUID() + "@example.com", false);
+        userStore.addUserToUserGroup(user.id(), group.id());
 
         webTestClient.delete().uri("/api/admin/user-groups/" + group.id() + "/members/" + user.id())
                 .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com"))
                 .exchange()
                 .expectStatus().isNoContent();
 
-        assertThat(securityRepo.getUserGroupIdsForUser(user.id())).doesNotContain(group.id());
+        assertThat(userStore.getUserGroupIdsForUser(user.id())).doesNotContain(group.id());
     }
 
     @Test
     void removeMember_asNonAdmin_isForbidden() {
-        var group = securityRepo.createUserGroup("group-" + UUID.randomUUID());
-        var user = securityRepo.createUser("Member", "user-" + UUID.randomUUID() + "@example.com", false);
+        var group = userStore.createUserGroup("group-" + UUID.randomUUID());
+        var user = userStore.createUser("Member", "user-" + UUID.randomUUID() + "@example.com", false);
 
         webTestClient.delete().uri("/api/admin/user-groups/" + group.id() + "/members/" + user.id())
                 .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("alice@example.com"))

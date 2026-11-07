@@ -5,7 +5,7 @@ import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.partition.security.PersonalAccessTokenService;
 import org.ntrloc.graph.principal.TestPrincipals;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.ntrloc.graph.mutation.ItemCreateMutation;
 import org.ntrloc.graph.mutation.MutationRequest;
 import org.springframework.ai.mcp.annotation.context.McpSyncRequestContext;
@@ -23,34 +23,34 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 // Proves the whole MCP-tool-dispatch path for this write tool, end to end -- same motivation as
-// ProjectionServiceIntegrationTest (see its own comment); zero tests existed for any of the four
+// ProjectionToolsIntegrationTest (see its own comment); zero tests existed for any of the four
 // MCP tool services before Part C of docs/ntrloc-principal-enforcement-plan.md. Called as a real
 // autowired Spring bean, same reasoning as that class.
-class MutationServiceIntegrationTest extends AbstractIntegrationTest {
+class MutationToolsIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
-    private MutationService mutationService;
+    private MutationTools mutationTools;
 
     @Autowired
     private PersonalAccessTokenService tokenService;
 
     @Autowired
-    private SecurityRepository securityRepo;
+    private UserStore userStore;
 
-    // Unlike ProjectionService (which has always refused an unresolvable caller), this used to be
+    // Unlike ProjectionTools (which has always refused an unresolvable caller), this used to be
     // the one real gap Part C found: executeMutation would resolve a null principal and pass it
     // straight into entityWriteService.mutate(...) with no check of its own, relying on mutate()'s own
     // (then-tolerant) handling. mutate() now demands a real principal via @PreAuthorize, so this
     // either needed its own explicit guard (added) or would otherwise surface as an
     // AuthorizationDeniedException from deep inside EntityWriteService instead of a clean 401 at the
     // tool boundary -- asserting ResponseStatusException here is what proves the explicit guard
-    // added to MutationService itself is the one actually firing, not just mutate()'s.
+    // added to MutationTools itself is the one actually firing, not just mutate()'s.
     @Test
     void executeMutation_withNoAuthorizationHeader_isRejected() {
         McpSyncRequestContext requestContext = mock(McpSyncRequestContext.class);
         when(requestContext.transportContext()).thenReturn(McpTransportContext.EMPTY);
 
-        assertThatThrownBy(() -> mutationService.executeMutation(
+        assertThatThrownBy(() -> mutationTools.executeMutation(
                 new MutationRequest(List.of(), List.of()), requestContext))
                 .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
                 .isNotInstanceOf(AuthorizationDeniedException.class);
@@ -61,7 +61,7 @@ class MutationServiceIntegrationTest extends AbstractIntegrationTest {
     // rejected -- proving the new guard doesn't break the one legitimate path into this tool.
     @Test
     void executeMutation_withAValidBearerToken_succeeds() {
-        var user = securityRepo.createUser("MCP Mutation Test User", "mcp-mutation-user-" + UUID.randomUUID() + "@example.com", true);
+        var user = userStore.createUser("MCP Mutation Test User", "mcp-mutation-user-" + UUID.randomUUID() + "@example.com", true);
         var principal = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), true);
         var issued = tokenService.issue(principal, "mutation-test-token", null);
 
@@ -69,7 +69,7 @@ class MutationServiceIntegrationTest extends AbstractIntegrationTest {
         when(requestContext.transportContext())
                 .thenReturn(McpTransportContext.create(Map.of("authorization", "Bearer " + issued.rawToken())));
 
-        var response = mutationService.executeMutation(
+        var response = mutationTools.executeMutation(
                 new MutationRequest(List.of(new ItemCreateMutation(null, "CoordinatorTestProduct", Map.of())), List.of()),
                 requestContext);
 

@@ -2,7 +2,7 @@ package org.ntrloc.graph.security;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.ntrloc.graph.TestApplication;
-import org.ntrloc.graph.db.partition.security.repository.SamlProviderRepository.KeyRole;
+import org.ntrloc.graph.db.partition.security.repository.SamlProviderStore.KeyRole;
 import org.ntrloc.graph.security.SamlProviderService.SamlProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;

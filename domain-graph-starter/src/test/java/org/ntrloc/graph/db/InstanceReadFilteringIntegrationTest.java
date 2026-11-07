@@ -13,7 +13,7 @@ import org.ntrloc.graph.db.partition.ledger.LinkCreateEntry;
 import org.ntrloc.graph.db.partition.ledger.LinkEndpoint;
 import org.ntrloc.graph.principal.NtrlocPrincipal;
 import org.ntrloc.graph.principal.TestPrincipals;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.ntrloc.graph.projection.CollectionProjectionSpec;
 import org.ntrloc.graph.projection.LinkProjectionSpec;
 import org.ntrloc.graph.projection.ItemProjectionSpec;
@@ -52,22 +52,22 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
     private ManualMarkerAssignmentService markerAssignmentService;
 
     @Autowired
-    private AccessStore authRepo;
+    private AccessStore accessStore;
 
     @Autowired
-    private SecurityRepository securityRepo;
+    private UserStore userStore;
 
     @Autowired
     private DefaultUserGroupInitializer defaultUserGroupInitializer;
 
     // Not static/final: needs a real, backed security_user row now that ledger_entry.created_by
     // (Part E) has a NOT NULL FK to security_user.id -- created fresh per test in setUp() via the
-    // already-autowired securityRepo, which a static initializer can't reach.
+    // already-autowired userStore, which a static initializer can't reach.
     private NtrlocPrincipal ADMIN;
 
     @BeforeEach
     void setUpAdmin() {
-        var user = securityRepo.createUser("Root", "irf-root-" + UUID.randomUUID() + "@example.com", true);
+        var user = userStore.createUser("Root", "irf-root-" + UUID.randomUUID() + "@example.com", true);
         ADMIN = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), true);
     }
 
@@ -99,9 +99,9 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
     }
 
     private NtrlocPrincipal newUserInEveryoneUserGroup() {
-        var user = securityRepo.createUser("Restricted", "irf-" + UUID.randomUUID() + "@example.com", false);
+        var user = userStore.createUser("Restricted", "irf-" + UUID.randomUUID() + "@example.com", false);
         UUID everyoneUserGroupId = defaultUserGroupInitializer.getDefaultUserGroupId();
-        securityRepo.addUserToUserGroup(user.id(), everyoneUserGroupId);
+        userStore.addUserToUserGroup(user.id(), everyoneUserGroupId);
         // groupIds is carried directly on the principal, not re-resolved from the DB per check --
         // must match the membership just added above or every type-level (and instance-level
         // group-granted) check below fails as if the user were in no groups at all.
@@ -109,9 +109,9 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
     }
 
     private void grantItemRead(UUID itemId, NtrlocPrincipal principal) {
-        var marker = authRepo.createMarker("irf-" + UUID.randomUUID(), "test fixture", "ITEM_TYPE", fixture.productTypeId());
+        var marker = accessStore.createMarker("irf-" + UUID.randomUUID(), "test fixture", "ITEM_TYPE", fixture.productTypeId());
         markerAssignmentService.addItemMarker(itemId, marker.id(), ADMIN, "test reason");
-        authRepo.setItemPermissions(authRepo.ensureMarkerGrant(marker.id(), "USER", principal.id()), true, false);
+        accessStore.setItemPermissions(accessStore.ensureMarkerGrant(marker.id(), "USER", principal.id()), true, false);
     }
 
     // link:read is anchored to the *source* item's own marker via a specific perspective now
@@ -119,10 +119,10 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
     // docs/ntrloc-marker-admin-ui-design-notes.md), so this grants a marker on sourceItemId itself,
     // with a link-perspective grant for the perspective the link is being traversed through.
     private void grantLinkRead(UUID sourceItemId, UUID perspectiveId, NtrlocPrincipal principal) {
-        var marker = authRepo.createMarker("irf-" + UUID.randomUUID(), "test fixture", "ITEM_TYPE", fixture.productTypeId());
+        var marker = accessStore.createMarker("irf-" + UUID.randomUUID(), "test fixture", "ITEM_TYPE", fixture.productTypeId());
         markerAssignmentService.addItemMarker(sourceItemId, marker.id(), ADMIN, "test reason");
-        UUID grantId = authRepo.ensureMarkerGrant(marker.id(), "USER", principal.id());
-        authRepo.grantLinkPerspectiveAccess(grantId, perspectiveId, false, true, false);
+        UUID grantId = accessStore.ensureMarkerGrant(marker.id(), "USER", principal.id());
+        accessStore.grantLinkPerspectiveAccess(grantId, perspectiveId, false, true, false);
     }
 
     // --- Collection projection ---
@@ -200,7 +200,7 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
     @Test
     void singleItemProjection_typeNotGrantedAtAll_throwsNotFound() {
         UUID productId = createProduct();
-        var user = securityRepo.createUser("Restricted", "irf-" + UUID.randomUUID() + "@example.com", false);
+        var user = userStore.createUser("Restricted", "irf-" + UUID.randomUUID() + "@example.com", false);
         var principal = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), false);
 
         assertThatThrownBy(() ->

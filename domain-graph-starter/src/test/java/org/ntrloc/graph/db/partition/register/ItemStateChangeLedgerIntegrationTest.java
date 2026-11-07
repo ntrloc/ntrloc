@@ -8,7 +8,7 @@ import org.ntrloc.graph.db.coordinator.LedgerRegisterCoordinator;
 import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
 import org.ntrloc.graph.db.partition.ledger.ItemUpdateEntry;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
@@ -24,7 +24,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 // populated, staged/committed through the same LedgerRegisterCoordinator every other mutation uses,
 // not a direct, unaudited register UPDATE. This covers that write path specifically -- read-side
 // behavior (projectOne reflecting the new state, StateValuePredicate filtering, state facets) is
-// already covered by RegisterPartitionManagerProjectionIntegrationTest and unaffected. The real
+// already covered by ProjectionEngineIntegrationTest and unaffected. The real
 // transition entry points (EntityWriteService.startStateMachine / executeTransition) are covered end to
 // end by StateMachineExecutionIntegrationTest; here we drive the coordinator directly so the write
 // path is tested in isolation from START-pseudostate wiring and permission checks.
@@ -47,7 +47,7 @@ class ItemStateChangeLedgerIntegrationTest extends AbstractIntegrationTest {
     private JdbcClient jdbcClient;
 
     @Autowired
-    private SecurityRepository securityRepo;
+    private UserStore userStore;
 
     // ledger_entry.created_by/register_item.created_by (Part E) are NOT NULL FKs to
     // security_user.id -- every coordinator.prepare call below needs a real, backed actor.
@@ -55,7 +55,7 @@ class ItemStateChangeLedgerIntegrationTest extends AbstractIntegrationTest {
 
     @BeforeEach
     void setUpActor() {
-        actor = securityRepo.createUser("State Change Test Actor", "iscl-actor-" + UUID.randomUUID() + "@example.com", true).id();
+        actor = userStore.createUser("State Change Test Actor", "iscl-actor-" + UUID.randomUUID() + "@example.com", true).id();
     }
 
     private UUID createBook(String title) {

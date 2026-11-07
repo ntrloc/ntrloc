@@ -8,26 +8,26 @@ import org.flowable.engine.runtime.ProcessInstance;
 import org.ntrloc.graph.db.partition.process.ProcessAdminController;
 import org.ntrloc.graph.db.partition.process.TaskAdminController;
 import org.ntrloc.graph.db.partition.process.TaskViewAssembler;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.McpToolParam;
 import org.springframework.ai.mcp.annotation.context.McpSyncRequestContext;
-import org.springframework.stereotype.Service;
+import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-@Service
-public class ProcessService {
+@Component
+public class ProcessTools {
 
-    private static final Logger LOG = LoggerFactory.getLogger(ProcessService.class);
+    private static final Logger LOG = LoggerFactory.getLogger(ProcessTools.class);
 
     // Every method here now requires a real, resolvable principal (Part D) before doing
     // anything else, same floor as the other three MCP tool services -- but, same as
-    // SchemaService, that's as far as Part D goes: the resolved principal isn't used for
+    // SchemaTools, that's as far as Part D goes: the resolved principal isn't used for
     // anything beyond existence-checking. These task operations still don't go through ntrloc's
     // own marker/permission system at all (TaskAdminController's principal-based filtering needs
     // both an HttpServletRequest and an Authentication, resolved as controller-method
@@ -41,17 +41,17 @@ public class ProcessService {
     private final TaskService taskService;
     private final McpPrincipalResolverAdapter principalResolver;
     private final TaskViewAssembler taskViews;
-    private final SecurityRepository securityRepository;
+    private final UserStore userStore;
 
-    public ProcessService(RepositoryService repositoryService, RuntimeService runtimeService, TaskService taskService,
+    public ProcessTools(RepositoryService repositoryService, RuntimeService runtimeService, TaskService taskService,
                            McpPrincipalResolverAdapter principalResolver, TaskViewAssembler taskViews,
-                           SecurityRepository securityRepository) {
+                           UserStore userStore) {
         this.repositoryService = repositoryService;
         this.runtimeService = runtimeService;
         this.taskService = taskService;
         this.principalResolver = principalResolver;
         this.taskViews = taskViews;
-        this.securityRepository = securityRepository;
+        this.userStore = userStore;
     }
 
     @McpTool(description = """
@@ -66,7 +66,7 @@ public class ProcessService {
         try {
             LOG.info("Listing process definitions");
             return repositoryService.createProcessDefinitionQuery().list().stream()
-                    .map(ProcessService::toDefinitionView)
+                    .map(ProcessTools::toDefinitionView)
                     .toList();
         } catch (Exception e) {
             LOG.error("Error while listing process definitions", e);
@@ -120,7 +120,7 @@ public class ProcessService {
         try {
             LOG.info("Claiming task {} for {}", taskId, assignee);
             UUID userId = UUID.fromString(assignee.trim());
-            if (securityRepository.findUserById(userId).isEmpty()) {
+            if (userStore.findUserById(userId).isEmpty()) {
                 throw new IllegalArgumentException("No user with id " + userId);
             }
             taskService.claim(taskId, userId.toString());

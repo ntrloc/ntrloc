@@ -2,7 +2,7 @@ package org.ntrloc.graph.security;
 
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.TestDatabases;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseCookie;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -25,11 +25,11 @@ class LdapLoginIntegrationTest extends AbstractLdapIntegrationTest {
     }
 
     @Autowired
-    private SecurityRepository securityRepo;
+    private UserStore userStore;
 
     @Test
     void aUserWithAnNtrlocAccount_logsInThroughLdapAsThatAccount() {
-        var account = securityRepo.createUser("Existing User", "existing.user@example.org", false);
+        var account = userStore.createUser("Existing User", "existing.user@example.org", false);
 
         ResponseCookie session = logIn("existing.user", LDAP_PASSWORD);
 
@@ -38,7 +38,7 @@ class LdapLoginIntegrationTest extends AbstractLdapIntegrationTest {
 
     @Test
     void theDirectorysEmail_matchesTheNtrlocAccountIgnoringCase() {
-        securityRepo.createUser("Mixed Case", "mixed.case@example.org", false);
+        userStore.createUser("Mixed Case", "mixed.case@example.org", false);
 
         ResponseCookie session = logIn("mixed.case", LDAP_PASSWORD);
 
@@ -49,7 +49,7 @@ class LdapLoginIntegrationTest extends AbstractLdapIntegrationTest {
     void aUserWithoutAnNtrlocAccount_isRejected_andNoAccountIsCreated() {
         assertLoginFails("unprovisioned.user", LDAP_PASSWORD);
 
-        assertThat(securityRepo.findUserByEmail("unprovisioned.user@example.org")).isEmpty();
+        assertThat(userStore.findUserByEmail("unprovisioned.user@example.org")).isEmpty();
     }
 
     @Test
@@ -65,14 +65,14 @@ class LdapLoginIntegrationTest extends AbstractLdapIntegrationTest {
     // Admin comes from the ntrloc account, never from the directory.
     @Test
     void anNtrlocAdmin_canOpenTheAdminUi_afterAnLdapLogin() {
-        securityRepo.createUser("Admin User", "admin.user@example.org", true);
+        userStore.createUser("Admin User", "admin.user@example.org", true);
 
         getAdminPage(logIn("admin.user", LDAP_PASSWORD)).expectStatus().isOk();
     }
 
     @Test
     void aNonAdmin_isForbiddenFromTheAdminUi_afterAnLdapLogin() {
-        securityRepo.createUser("Plain User", "plain.user@example.org", false);
+        userStore.createUser("Plain User", "plain.user@example.org", false);
 
         getAdminPage(logIn("plain.user", LDAP_PASSWORD)).expectStatus().isForbidden();
     }
@@ -80,8 +80,8 @@ class LdapLoginIntegrationTest extends AbstractLdapIntegrationTest {
     @Test
     void aLocalAccount_stillLogsInWithLdapEnabled() {
         String email = "local-" + UUID.randomUUID() + "@example.com";
-        var user = securityRepo.createUser("Local User", email, false);
-        securityRepo.createLocalCredentials(user.id(), "{bcrypt}" + new BCryptPasswordEncoder().encode("local-secret"));
+        var user = userStore.createUser("Local User", email, false);
+        userStore.createLocalCredentials(user.id(), "{bcrypt}" + new BCryptPasswordEncoder().encode("local-secret"));
 
         assertThat(me(logIn(email, "local-secret"))).containsEntry("email", email);
     }
@@ -89,8 +89,8 @@ class LdapLoginIntegrationTest extends AbstractLdapIntegrationTest {
     // Only an OIDC sign-in is also signed out of its provider; an LDAP one just ends the session.
     @Test
     void loggingOut_endsTheSession_andReturnsToTheLoginPage() {
-        securityRepo.findUserByEmail("resync.user@example.org")
-                .orElseGet(() -> securityRepo.createUser("Resync User", "resync.user@example.org", false));
+        userStore.findUserByEmail("resync.user@example.org")
+                .orElseGet(() -> userStore.createUser("Resync User", "resync.user@example.org", false));
         ResponseCookie session = logIn("resync.user", LDAP_PASSWORD);
 
         webTestClient.get().uri("/logout").cookie(session.getName(), session.getValue()).exchange()

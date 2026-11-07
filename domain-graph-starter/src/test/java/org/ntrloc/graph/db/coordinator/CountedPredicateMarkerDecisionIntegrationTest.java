@@ -22,7 +22,7 @@ import org.ntrloc.graph.access.StepToProperty;
 import org.ntrloc.graph.access.StepToStateMachine;
 import org.ntrloc.graph.access.Start;
 import org.ntrloc.graph.db.partition.authorization.repository.AccessStore;
-import org.ntrloc.graph.db.partition.authorization.repository.MarkerDecisionPipelineRepository;
+import org.ntrloc.graph.db.partition.authorization.repository.MarkerDecisionPipelineStore;
 import org.ntrloc.graph.db.partition.ledger.ItemUpdateEntry;
 import org.ntrloc.graph.mutation.ExistingItemReference;
 import org.ntrloc.graph.mutation.ItemCreateMutation;
@@ -31,7 +31,7 @@ import org.ntrloc.graph.mutation.LinkCreateMutation;
 import org.ntrloc.graph.mutation.LinkEndpointReference;
 import org.ntrloc.graph.mutation.MutationRequest;
 import org.ntrloc.graph.mutation.MutationResponse;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -58,10 +58,10 @@ class CountedPredicateMarkerDecisionIntegrationTest extends AbstractIntegrationT
     private LedgerRegisterCoordinator coordinator;
 
     @Autowired
-    private MarkerDecisionPipelineRepository pipelineRepository;
+    private MarkerDecisionPipelineStore pipelineStore;
 
     @Autowired
-    private AccessStore authRepo;
+    private AccessStore accessStore;
 
     @Autowired
     private CountedPredicateTestDomainInitializer fixture;
@@ -70,18 +70,18 @@ class CountedPredicateMarkerDecisionIntegrationTest extends AbstractIntegrationT
     private WebTestClient webTestClient;
 
     @Autowired
-    private SecurityRepository securityRepo;
+    private UserStore userStore;
 
     // ledger_entry.created_by/register_item.created_by (Part E) are NOT NULL FKs to
     // security_user.id -- setState's direct coordinator.prepare call needs a real, backed actor.
-    private SecurityRepository.UserRow actor;
+    private UserStore.UserRow actor;
 
     @BeforeEach
     void setUp() {
         // Same "root" as MutationControllerIntegrationTest -- see that class's own comment.
         webTestClient = webTestClient.mutate().defaultHeader(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com")).build();
         fixture.removeAutoCreatedPipeline();
-        actor = securityRepo.createUser("Counted Predicate Test Actor", "cpmd-actor-" + UUID.randomUUID() + "@example.com", true);
+        actor = userStore.createUser("Counted Predicate Test Actor", "cpmd-actor-" + UUID.randomUUID() + "@example.com", true);
     }
 
     // self -> photos (each) -> portfolios (each) -> state machine, subPredicate STATE_EQUALS with no
@@ -145,7 +145,7 @@ class CountedPredicateMarkerDecisionIntegrationTest extends AbstractIntegrationT
     }
 
     // Sets a Portfolio's current state directly, bypassing transition execution -- the same
-    // low-level mechanism RegisterPartitionManagerProjectionIntegrationTest's own setState helper
+    // low-level mechanism ProjectionEngineIntegrationTest's own setState helper
     // uses; this test only needs a recorded current state to read back via the CountedPredicate, not
     // real START/transition wiring.
     private void setState(UUID itemId, UUID stateMachineId, UUID stateId) {
@@ -156,8 +156,8 @@ class CountedPredicateMarkerDecisionIntegrationTest extends AbstractIntegrationT
 
     @Test
     void countedPredicate_overTwoLevelsOfLinkedItems_reflectsTheLinkedPortfoliosCurrentState() {
-        UUID markerId = authRepo.createMarker("cp-published-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.photographerTypeId()).id();
-        UUID pipelineId = pipelineRepository.createPipeline(fixture.photographerTypeId(),
+        UUID markerId = accessStore.createMarker("cp-published-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.photographerTypeId()).id();
+        UUID pipelineId = pipelineStore.createPipeline(fixture.photographerTypeId(),
                 publishedPortfolioPipeline(markerId), new PipelineLayout(Map.of(), Map.of())).id();
 
         try {
@@ -172,20 +172,20 @@ class CountedPredicateMarkerDecisionIntegrationTest extends AbstractIntegrationT
             // single mutation would have thrown UnsupportedOperationException and failed outright
             // the moment the counted condition was evaluated, regardless of the portfolio's state.
             updateActive(photographerId, true);
-            assertThat(authRepo.getMarkerIdsForItem(photographerId)).doesNotContain(markerId);
+            assertThat(accessStore.getMarkerIdsForItem(photographerId)).doesNotContain(markerId);
 
             // Publishing the portfolio is an update to a *different* item's own type -- the
             // Photographer's pipeline is never re-evaluated by this alone.
             setState(portfolioId, fixture.publicationMachineId(), fixture.publishedStateId());
-            assertThat(authRepo.getMarkerIdsForItem(photographerId)).doesNotContain(markerId);
+            assertThat(accessStore.getMarkerIdsForItem(photographerId)).doesNotContain(markerId);
 
             // Re-triggering the Photographer's own pipeline now correctly sees the portfolio's
             // *current* published state, reached by walking real register_item_link_perspective rows
             // two levels deep, and applies the marker.
             updateActive(photographerId, false);
-            assertThat(authRepo.getMarkerIdsForItem(photographerId)).contains(markerId);
+            assertThat(accessStore.getMarkerIdsForItem(photographerId)).contains(markerId);
         } finally {
-            pipelineRepository.deletePipeline(pipelineId);
+            pipelineStore.deletePipeline(pipelineId);
         }
     }
 }

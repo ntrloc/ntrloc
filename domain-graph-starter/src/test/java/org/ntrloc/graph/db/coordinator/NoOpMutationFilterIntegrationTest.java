@@ -16,7 +16,7 @@ import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateItemDefini
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateLinkDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePerspectiveDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemDefinitionView;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
@@ -56,15 +56,15 @@ class NoOpMutationFilterIntegrationTest extends AbstractIntegrationTest {
     private JdbcClient jdbcClient;
 
     @Autowired
-    private SecurityRepository securityRepo;
+    private UserStore userStore;
 
     // ledger_entry.created_by/register_item.created_by (Part E) are NOT NULL FKs to
     // security_user.id -- every coordinator.prepare call below needs a real, backed actor.
-    private SecurityRepository.UserRow actor;
+    private UserStore.UserRow actor;
 
     @BeforeEach
     void setUpActor() {
-        actor = securityRepo.createUser("NoOp Test Actor", "nomf-actor-" + UUID.randomUUID() + "@example.com", true);
+        actor = userStore.createUser("NoOp Test Actor", "nomf-actor-" + UUID.randomUUID() + "@example.com", true);
     }
 
     private long itemLedgerRowCount(UUID itemId) {

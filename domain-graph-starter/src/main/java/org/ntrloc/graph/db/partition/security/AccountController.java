@@ -2,7 +2,7 @@ package org.ntrloc.graph.db.partition.security;
 
 import org.ntrloc.graph.principal.ExternalPrincipalResolver;
 
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -22,12 +22,12 @@ public class AccountController {
 
     public record ChangePasswordRequest(String currentPassword, String newPassword) {}
 
-    private final SecurityRepository repo;
+    private final UserStore store;
     private final ExternalPrincipalResolver principalResolver;
     private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
 
-    public AccountController(SecurityRepository repo, ExternalPrincipalResolver principalResolver) {
-        this.repo = repo;
+    public AccountController(UserStore store, ExternalPrincipalResolver principalResolver) {
+        this.store = store;
         this.principalResolver = principalResolver;
     }
 
@@ -42,7 +42,7 @@ public class AccountController {
                                                 Authentication authentication) {
         var principal = principalResolver.resolve(authentication);
 
-        var credentials = repo.findCredentialsByUserId(principal.id())
+        var credentials = store.findCredentialsByUserId(principal.id())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "No local credentials for this account"));
 
         if (!encoder.matches(body.currentPassword(), credentials.passwordHash().replace("{bcrypt}", ""))) {
@@ -50,7 +50,7 @@ public class AccountController {
         }
 
         String newHash = "{bcrypt}" + encoder.encode(body.newPassword());
-        repo.updatePasswordHash(principal.id(), newHash);
+        store.updatePasswordHash(principal.id(), newHash);
         return ResponseEntity.noContent().build();
     }
 }

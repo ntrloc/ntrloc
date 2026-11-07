@@ -7,7 +7,7 @@ import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.ntrloc.graph.TestApplication;
 import org.ntrloc.graph.TestDatabases;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.ntrloc.graph.security.KeycloakContainers;
 import org.ntrloc.graph.security.SamlProviderService;
 import org.ntrloc.graph.security.SamlProviderService.SamlProvider;
@@ -64,7 +64,7 @@ class SamlAdminUiTest implements UiBrowser.Holder {
     private int port;
 
     @Autowired
-    private SecurityRepository securityRepo;
+    private UserStore userStore;
 
     @Autowired
     private SamlProviderService samlProviders;
@@ -93,7 +93,7 @@ class SamlAdminUiTest implements UiBrowser.Holder {
 
     @Test
     void anNtrlocAdmin_signingInThroughSaml_getsTheAdminUi() {
-        securityRepo.createUser("Admin User", "admin.user@example.org", true);
+        userStore.createUser("Admin User", "admin.user@example.org", true);
 
         browser.driver().get(browser.serverUrl(UiBrowser.ADMIN_UI_PATH + "/schema"));
         signInAtIdp("admin.user");
@@ -107,7 +107,7 @@ class SamlAdminUiTest implements UiBrowser.Holder {
     // shows the IdP's login form rather than signing straight back in.
     @Test
     void loggingOut_signsOutOfTheIdpToo() {
-        securityRepo.createUser("Plain User", "plain.user@example.org", false);
+        userStore.createUser("Plain User", "plain.user@example.org", false);
         browser.driver().get(browser.serverUrl("/login"));
         signInAtIdp("plain.user");
         browser.await().until(ExpectedConditions.not(ExpectedConditions.urlContains(idpUrl())));

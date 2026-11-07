@@ -2,7 +2,7 @@ package org.ntrloc.graph.security;
 
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.TestDatabases;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -24,7 +24,7 @@ class SamlLoginIntegrationTest extends AbstractSamlIntegrationTest {
     }
 
     @Autowired
-    private SecurityRepository securityRepo;
+    private UserStore userStore;
 
     @Test
     void theLoginPage_offersTheSamlProvider() {
@@ -62,7 +62,7 @@ class SamlLoginIntegrationTest extends AbstractSamlIntegrationTest {
     void aUserWithoutAnNtrlocAccount_isRejected_andNoAccountIsCreated() {
         assertLoginFails("unprovisioned.user");
 
-        assertThat(securityRepo.findUserByEmail("unprovisioned.user@example.org")).isEmpty();
+        assertThat(userStore.findUserByEmail("unprovisioned.user@example.org")).isEmpty();
     }
 
     @Test
@@ -157,7 +157,7 @@ class SamlLoginIntegrationTest extends AbstractSamlIntegrationTest {
 
     // Several tests here may use the same IdP user; its ntrloc account is created once.
     private void account(String displayName, String email, boolean isAdmin) {
-        securityRepo.findUserByEmail(email).orElseGet(() -> securityRepo.createUser(displayName, email, isAdmin));
+        userStore.findUserByEmail(email).orElseGet(() -> userStore.createUser(displayName, email, isAdmin));
     }
 
     private void assertSessionEnded(String session) {

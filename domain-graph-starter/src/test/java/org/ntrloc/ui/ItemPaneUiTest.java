@@ -51,7 +51,7 @@ class ItemPaneUiTest extends AbstractUiIntegrationTest {
     private SchemaManager schemaManager;
 
     @Autowired
-    private AccessStore authorizationRepository;
+    private AccessStore accessStore;
 
     @Autowired
     private ManualMarkerAssignmentService markerAssignmentService;
@@ -189,7 +189,7 @@ class ItemPaneUiTest extends AbstractUiIntegrationTest {
     void showsAssignedMarkersOnTheMarkersTab() {
         Gadget gadget = createGadget();
         String markerName = "ui-item-marker-" + UUID.randomUUID();
-        var marker = authorizationRepository.createMarker(markerName, "UI test fixture", "ITEM_TYPE", gadgetType.id());
+        var marker = accessStore.createMarker(markerName, "UI test fixture", "ITEM_TYPE", gadgetType.id());
         markerAssignmentService.addItemMarker(gadget.id(), marker.id(),
                 principalResolver.byId(admin.id()).orElseThrow(), "UI test");
 

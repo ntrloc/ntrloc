@@ -4,7 +4,7 @@ import org.ntrloc.graph.db.partition.authorization.DefaultUserGroupInitializer;
 import org.ntrloc.graph.db.partition.authorization.PermissionService;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateItemDefinitionMutation;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -25,16 +25,16 @@ import java.util.stream.Collectors;
 public class AuthorizationTestDataInitializer implements ApplicationRunner {
 
     private final SchemaManager schemaManager;
-    private final SecurityRepository securityRepo;
+    private final UserStore userStore;
     private final AccessStoreWriter accessWriter;
     private final JdbcClient jdbcClient;
     private final DefaultUserGroupInitializer defaultUserGroupInitializer;
 
-    public AuthorizationTestDataInitializer(SchemaManager schemaManager, SecurityRepository securityRepo,
+    public AuthorizationTestDataInitializer(SchemaManager schemaManager, UserStore userStore,
                                              AccessStoreWriter accessWriter, JdbcClient jdbcClient,
                                              DefaultUserGroupInitializer defaultUserGroupInitializer) {
         this.schemaManager = schemaManager;
-        this.securityRepo = securityRepo;
+        this.userStore = userStore;
         this.accessWriter = accessWriter;
         this.jdbcClient = jdbcClient;
         this.defaultUserGroupInitializer = defaultUserGroupInitializer;
@@ -72,25 +72,25 @@ public class AuthorizationTestDataInitializer implements ApplicationRunner {
         revokeDefaultReadGrant(confidentialDocId);
         revokeDefaultReadGrant(unmarkedDocId);
 
-        var alice = securityRepo.createUser("Alice (viewer group member)", "alice@example.com", false);
-        var bob = securityRepo.createUser("Bob (viewer group member)", "bob@example.com", false);
-        var carol = securityRepo.createUser("Carol (direct grant, no group)", "carol@example.com", false);
-        var root = securityRepo.createUser("Root (admin)", "root@example.com", true);
+        var alice = userStore.createUser("Alice (viewer group member)", "alice@example.com", false);
+        var bob = userStore.createUser("Bob (viewer group member)", "bob@example.com", false);
+        var carol = userStore.createUser("Carol (direct grant, no group)", "carol@example.com", false);
+        var root = userStore.createUser("Root (admin)", "root@example.com", true);
         defaultUserGroupInitializer.addUserToDefaultUserGroup(alice.id());
         defaultUserGroupInitializer.addUserToDefaultUserGroup(bob.id());
         defaultUserGroupInitializer.addUserToDefaultUserGroup(carol.id());
         defaultUserGroupInitializer.addUserToDefaultUserGroup(root.id());
 
-        var viewers = securityRepo.createUserGroup("viewers");
-        securityRepo.addUserToUserGroup(alice.id(), viewers.id());
-        securityRepo.addUserToUserGroup(bob.id(), viewers.id());
+        var viewers = userStore.createUserGroup("viewers");
+        userStore.addUserToUserGroup(alice.id(), viewers.id());
+        userStore.addUserToUserGroup(bob.id(), viewers.id());
 
         accessWriter.grantItemType(publicDocId, "USER_GROUP", viewers.id(), PermissionService.ITEM_TYPE_READ);
         accessWriter.grantItemType(confidentialDocId, "USER", carol.id(), PermissionService.ITEM_TYPE_READ);
     }
 
     private void revokeDefaultReadGrant(UUID itemTypeId) {
-        UUID everyoneUserGroupId = securityRepo.findUserGroupByName(DefaultUserGroupInitializer.DEFAULT_GROUP_NAME).orElseThrow().id();
+        UUID everyoneUserGroupId = userStore.findUserGroupByName(DefaultUserGroupInitializer.DEFAULT_GROUP_NAME).orElseThrow().id();
         jdbcClient.sql("""
                 DELETE FROM authorization_item_type_grant
                 WHERE item_type_id = :itemTypeId AND permission = :permission

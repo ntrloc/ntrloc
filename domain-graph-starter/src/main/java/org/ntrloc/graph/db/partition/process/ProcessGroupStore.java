@@ -9,15 +9,15 @@ import java.util.UUID;
 
 // Process-assignment groups (candidateGroups on a User Task) -- a distinct concept from
 // security_group, see V1_0_0_1__baseline.sql's note on process_group. Individual user identity still
-// comes from SecurityRepository/security_user; only the grouping is separate.
+// comes from UserStore/security_user; only the grouping is separate.
 @Component
-public class ProcessGroupRepository {
+public class ProcessGroupStore {
 
     public record ProcessGroupRow(UUID id, String name) {}
 
     private final JdbcClient jdbcClient;
 
-    public ProcessGroupRepository(JdbcClient jdbcClient) {
+    public ProcessGroupStore(JdbcClient jdbcClient) {
         this.jdbcClient = jdbcClient;
     }
 

@@ -14,7 +14,7 @@ import java.util.UUID;
 // security_saml_provider and its key pairs (security_saml_provider_key). A key's private key column
 // holds SecretCipher output, never plaintext.
 @Component
-public class SamlProviderRepository {
+public class SamlProviderStore {
 
     private static final String PARAM_REGISTRATION_ID = "registrationId";
     private static final String PARAM_ROLE = "role";
@@ -45,7 +45,7 @@ public class SamlProviderRepository {
 
     private final JdbcClient jdbcClient;
 
-    public SamlProviderRepository(JdbcClient jdbcClient) {
+    public SamlProviderStore(JdbcClient jdbcClient) {
         this.jdbcClient = jdbcClient;
     }
 

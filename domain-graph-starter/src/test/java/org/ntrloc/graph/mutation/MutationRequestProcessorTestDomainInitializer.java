@@ -1,6 +1,5 @@
 package org.ntrloc.graph.mutation;
 
-import org.ntrloc.graph.db.partition.schema.ControlledListManager;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
@@ -40,20 +39,18 @@ public class MutationRequestProcessorTestDomainInitializer implements DomainInit
     private UUID link3Id;
 
     private final SchemaManager schemaManager;
-    private final ControlledListManager controlledListManager;
 
-    public MutationRequestProcessorTestDomainInitializer(SchemaManager schemaManager, ControlledListManager controlledListManager) {
+    public MutationRequestProcessorTestDomainInitializer(SchemaManager schemaManager) {
         this.schemaManager = schemaManager;
-        this.controlledListManager = controlledListManager;
     }
 
     @Override
     public void run(ApplicationArguments args) {
-        initSchema(schemaManager, controlledListManager);
+        initSchema(schemaManager);
     }
 
     @Override
-    public void initSchema(SchemaManager schemaManager, ControlledListManager controlledListManager) {
+    public void initSchema(SchemaManager schemaManager) {
         // "extra" and "extra2" are property groups (structural, no value of their own); a payload
         // addresses their leaves by JSON nesting, resolved against the group's own children. Both
         // hold a leaf named "nested" -- exercises group-scoped resolution end to end (the two leaves

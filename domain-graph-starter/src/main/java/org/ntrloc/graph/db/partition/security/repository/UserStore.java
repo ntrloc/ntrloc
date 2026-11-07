@@ -11,7 +11,7 @@ import java.util.Set;
 import java.util.UUID;
 
 @Component
-public class SecurityRepository {
+public class UserStore {
 
     private static final String COL_EMAIL = "email";
     private static final String PARAM_USER_ID = "userId";
@@ -33,7 +33,7 @@ public class SecurityRepository {
 
     private final JdbcClient jdbcClient;
 
-    public SecurityRepository(JdbcClient jdbcClient) {
+    public UserStore(JdbcClient jdbcClient) {
         this.jdbcClient = jdbcClient;
     }
 

@@ -29,13 +29,13 @@ public class SchemaAdminController {
     public record ControlledListResponse(UUID listId, String name, PropertyType valueType, List<AllowedValue> values) {}
 
     private final SchemaManager schemaManager;
-    private final ControlledListManager controlledListManager;
+    private final ControlledListService controlledListService;
     private final SchemaChangeBroadcaster broadcaster;
 
-    public SchemaAdminController(SchemaManager schemaManager, ControlledListManager controlledListManager,
+    public SchemaAdminController(SchemaManager schemaManager, ControlledListService controlledListService,
                                   SchemaChangeBroadcaster broadcaster) {
         this.schemaManager = schemaManager;
-        this.controlledListManager = controlledListManager;
+        this.controlledListService = controlledListService;
         this.broadcaster = broadcaster;
     }
 
@@ -55,17 +55,17 @@ public class SchemaAdminController {
     // lazy-loads values here (AdminSchemaView.controlledLists carries only name/valueCount/usedBy).
     @GetMapping("/controlled-lists/{listId}")
     ResponseEntity<ControlledListResponse> getControlledListById(@PathVariable UUID listId) {
-        return controlledListManager.getListById(listId)
+        return controlledListService.getListById(listId)
                 .map(list -> ResponseEntity.ok(new ControlledListResponse(list.id(), list.name(), list.valueType(),
-                        controlledListManager.getValues(list.id(), list.valueType()))))
+                        controlledListService.getValues(list.id(), list.valueType()))))
                 .orElse(ResponseEntity.notFound().build());
     }
 
     @GetMapping("/properties/{propertyId}/controlled-list")
     ResponseEntity<ControlledListResponse> getControlledList(@PathVariable UUID propertyId) {
-        return controlledListManager.getListForProperty(propertyId)
+        return controlledListService.getListForProperty(propertyId)
                 .map(list -> {
-                    var values = controlledListManager.getValues(list.id(), list.valueType());
+                    var values = controlledListService.getValues(list.id(), list.valueType());
                     return ResponseEntity.ok(new ControlledListResponse(list.id(), list.name(), list.valueType(), values));
                 })
                 .orElse(ResponseEntity.notFound().build());
@@ -82,7 +82,7 @@ public class SchemaAdminController {
     }
 
     // Goes through schemaManager.applyMutations like every other schema write now -- no more
-    // reaching around it straight to ControlledListManager (see CreateControlledListMutation's own
+    // reaching around it straight to ControlledListService (see CreateControlledListMutation's own
     // refId and SchemaManager.applyMutations' own comment on why that bypass existed and what
     // closed the gap). The "does this property already have a list" branch stays here, since it's
     // this endpoint's own create-or-replace ergonomics, not a concern either mutation type owns --
@@ -90,7 +90,7 @@ public class SchemaAdminController {
     @PutMapping("/properties/{propertyId}/controlled-list")
     ResponseEntity<ControlledListResponse> createOrReplaceControlledList(
             @PathVariable UUID propertyId, @RequestBody CreateControlledListRequest body) {
-        var existing = controlledListManager.getListForProperty(propertyId);
+        var existing = controlledListService.getListForProperty(propertyId);
         if (existing.isPresent()) {
             schemaManager.applyMutations(List.of(new UpdateControlledListMutation(existing.get().id(), null,
                     body.values().stream()
@@ -108,8 +108,8 @@ public class SchemaAdminController {
                                     .toList()),
                     new SetPropertyControlledListMutation(propertyId, new NewControlledListReference(refId))));
         }
-        var finalList = controlledListManager.getListForProperty(propertyId).orElseThrow();
-        var values = controlledListManager.getValues(finalList.id(), finalList.valueType());
+        var finalList = controlledListService.getListForProperty(propertyId).orElseThrow();
+        var values = controlledListService.getValues(finalList.id(), finalList.valueType());
         return ResponseEntity.status(HttpStatus.OK)
                 .body(new ControlledListResponse(finalList.id(), finalList.name(), finalList.valueType(), values));
     }

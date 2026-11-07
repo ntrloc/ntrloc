@@ -16,7 +16,7 @@ import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminStateMach
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminTransitionView;
 import org.ntrloc.graph.principal.NtrlocPrincipal;
 import org.ntrloc.graph.principal.TestPrincipals;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.ntrloc.graph.mutation.MutationValidationException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.server.ResponseStatusException;
@@ -34,26 +34,26 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 // Covers EntityWriteService.startStateMachine / executeTransition: permission (state-machine:start,
 // transition:execute) checked first, the guard read from the register, END detach, and re-entry.
 // Read-side (projection startable / availableTransitions) is covered in
-// RegisterPartitionManagerProjectionIntegrationTest.
+// ProjectionEngineIntegrationTest.
 class StateMachineExecutionIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired private EntityWriteService entityWriteService;
     @Autowired private LedgerRegisterCoordinator coordinator;
     @Autowired private RegisterStore registerStore;
     @Autowired private SchemaManager schemaManager;
-    @Autowired private AccessStore authRepo;
+    @Autowired private AccessStore accessStore;
     @Autowired private ManualMarkerAssignmentService markerAssignmentService;
-    @Autowired private SecurityRepository securityRepo;
+    @Autowired private UserStore userStore;
     @Autowired private RegisterProjectionTestDomainInitializer fixture;
 
     // Not static/final: needs a real, backed security_user row now that ledger_entry.created_by
     // (Part E) has a NOT NULL FK to security_user.id -- created fresh per test in setUp() via the
-    // already-autowired securityRepo, which a static initializer can't reach.
+    // already-autowired userStore, which a static initializer can't reach.
     private NtrlocPrincipal ADMIN;
 
     @BeforeEach
     void setUpAdmin() {
-        var user = securityRepo.createUser("Root", "sme-root-" + UUID.randomUUID() + "@example.com", true);
+        var user = userStore.createUser("Root", "sme-root-" + UUID.randomUUID() + "@example.com", true);
         ADMIN = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), true);
     }
 
@@ -125,11 +125,11 @@ class StateMachineExecutionIntegrationTest extends AbstractIntegrationTest {
     void startStateMachine_startGrantViaAMarker_isHonoredAndRevocable() {
         UUID book = createBook("Dune");
         NtrlocPrincipal user = nonAdmin();
-        var marker = authRepo.createMarker("sme-" + UUID.randomUUID(), "fixture", "ITEM_TYPE", fixture.bookTypeId());
+        var marker = accessStore.createMarker("sme-" + UUID.randomUUID(), "fixture", "ITEM_TYPE", fixture.bookTypeId());
         markerAssignmentService.addItemMarker(book, marker.id(), ADMIN, "test");
-        UUID grantId = authRepo.ensureMarkerGrant(marker.id(), "USER", user.id());
-        authRepo.grantStateMachineStart(grantId, machineId());
-        assertThat(authRepo.getStateMachineStartGrantsForMarker(marker.id(), "USER", user.id())).contains(machineId());
+        UUID grantId = accessStore.ensureMarkerGrant(marker.id(), "USER", user.id());
+        accessStore.grantStateMachineStart(grantId, machineId());
+        assertThat(accessStore.getStateMachineStartGrantsForMarker(marker.id(), "USER", user.id())).contains(machineId());
 
         entityWriteService.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, user);
         assertThat(registerStore.currentStateIds(book)).containsKey(machineId());
@@ -144,7 +144,7 @@ class StateMachineExecutionIntegrationTest extends AbstractIntegrationTest {
         entityWriteService.executeTransition(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, transitionId("Discontinue"), ADMIN);
         entityWriteService.executeTransition(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, transitionId("RevokeTestEnd"), ADMIN);
         assertThat(registerStore.currentStateIds(book)).doesNotContainKey(machineId());
-        authRepo.revokeStateMachineStart(grantId, machineId());
+        accessStore.revokeStateMachineStart(grantId, machineId());
 
         assertThatThrownBy(() -> entityWriteService.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, user))
                 .isInstanceOf(MutationValidationException.class)
@@ -284,7 +284,7 @@ class StateMachineExecutionIntegrationTest extends AbstractIntegrationTest {
     }
 
     private NtrlocPrincipal nonAdmin() {
-        var user = securityRepo.createUser("User", "sme-" + UUID.randomUUID() + "@example.com", false);
+        var user = userStore.createUser("User", "sme-" + UUID.randomUUID() + "@example.com", false);
         return TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), false);
     }
 }

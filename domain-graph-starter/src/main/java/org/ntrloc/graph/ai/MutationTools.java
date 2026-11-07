@@ -10,15 +10,15 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.mcp.annotation.context.McpSyncRequestContext;
 import org.springframework.ai.tool.annotation.ToolParam;
-import org.springframework.stereotype.Service;
+import org.springframework.stereotype.Component;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.stream.Collectors;
 
-@Service
-public class MutationService {
+@Component
+public class MutationTools {
 
-    private static final Logger LOG = LoggerFactory.getLogger(MutationService.class);
+    private static final Logger LOG = LoggerFactory.getLogger(MutationTools.class);
 
     // Goes through EntityWriteService, not MutationRequestProcessor directly -- see
     // MutationController's identical comment; EntityWriteService is the one entry point for both
@@ -26,7 +26,7 @@ public class MutationService {
     private final EntityWriteService entityWriteService;
     private final McpPrincipalResolverAdapter principalResolver;
 
-    public MutationService(EntityWriteService entityWriteService, McpPrincipalResolverAdapter principalResolver) {
+    public MutationTools(EntityWriteService entityWriteService, McpPrincipalResolverAdapter principalResolver) {
         this.entityWriteService = entityWriteService;
         this.principalResolver = principalResolver;
     }

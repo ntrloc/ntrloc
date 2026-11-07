@@ -5,7 +5,7 @@ import org.ntrloc.graph.principal.ExternalPrincipalResolver;
 import org.ntrloc.graph.principal.NtrlocPrincipal;
 
 import org.ntrloc.graph.db.partition.authorization.DefaultUserGroupInitializer;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DuplicateKeyException;
@@ -24,16 +24,16 @@ public class ExternalUserProvisioner {
 
     private static final Logger LOG = LoggerFactory.getLogger(ExternalUserProvisioner.class);
 
-    private final SecurityRepository repo;
+    private final UserStore store;
     private final DefaultUserGroupInitializer defaultUserGroupInitializer;
     private final ExternalPrincipalResolver principals;
     private final TransactionTemplate transactionTemplate;
     private final SecurityProperties securityProperties;
 
-    public ExternalUserProvisioner(SecurityRepository repo, DefaultUserGroupInitializer defaultUserGroupInitializer,
+    public ExternalUserProvisioner(UserStore store, DefaultUserGroupInitializer defaultUserGroupInitializer,
                                    ExternalPrincipalResolver principals, TransactionTemplate transactionTemplate,
                                    SecurityProperties securityProperties) {
-        this.repo = repo;
+        this.store = store;
         this.defaultUserGroupInitializer = defaultUserGroupInitializer;
         this.principals = principals;
         this.transactionTemplate = transactionTemplate;
@@ -52,7 +52,7 @@ public class ExternalUserProvisioner {
         LOG.info("Provisioning an ntrloc account for {}", email);
         try {
             transactionTemplate.executeWithoutResult(status -> {
-                var user = repo.createUser(displayName, email, false);
+                var user = store.createUser(displayName, email, false);
                 defaultUserGroupInitializer.addUserToDefaultUserGroup(user.id());
             });
         } catch (DuplicateKeyException _) {

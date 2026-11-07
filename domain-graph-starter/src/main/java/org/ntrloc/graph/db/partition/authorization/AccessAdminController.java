@@ -2,9 +2,9 @@ package org.ntrloc.graph.db.partition.authorization;
 
 import org.ntrloc.graph.db.partition.authorization.repository.AccessStoreReader;
 import org.ntrloc.graph.db.partition.authorization.repository.AccessStoreWriter;
-import org.ntrloc.graph.db.partition.schema.repository.SchemaRepository;
+import org.ntrloc.graph.db.partition.schema.repository.SchemaStore;
 import org.ntrloc.graph.principal.ExternalPrincipalResolver;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -69,16 +69,16 @@ public class AccessAdminController {
 
     private final AccessStoreReader accessReader;
     private final AccessStoreWriter accessWriter;
-    private final SecurityRepository securityRepo;
-    private final SchemaRepository schemaRepo;
+    private final UserStore userStore;
+    private final SchemaStore schemaStore;
     private final ExternalPrincipalResolver principalResolver;
 
-    public AccessAdminController(AccessStoreReader accessReader, AccessStoreWriter accessWriter, SecurityRepository securityRepo,
-                                 SchemaRepository schemaRepo, ExternalPrincipalResolver principalResolver) {
+    public AccessAdminController(AccessStoreReader accessReader, AccessStoreWriter accessWriter, UserStore userStore,
+                                 SchemaStore schemaStore, ExternalPrincipalResolver principalResolver) {
         this.accessReader = accessReader;
         this.accessWriter = accessWriter;
-        this.securityRepo = securityRepo;
-        this.schemaRepo = schemaRepo;
+        this.userStore = userStore;
+        this.schemaStore = schemaStore;
         this.principalResolver = principalResolver;
     }
 
@@ -177,10 +177,10 @@ public class AccessAdminController {
     ItemTypeGrantPrincipalsView getItemTypeGrantPrincipals(@PathVariable("itemTypeId") UUID itemTypeId,
                                                             Authentication authentication) {
         requireAdmin(authentication);
-        var groupNames = securityRepo.listUserGroups().stream()
+        var groupNames = userStore.listUserGroups().stream()
                 .collect(Collectors.toMap(g -> g.id(), g -> g.name()));
-        var userNames = securityRepo.listUsers().stream()
-                .collect(Collectors.toMap(SecurityRepository.UserRow::id, SecurityRepository.UserRow::displayName));
+        var userNames = userStore.listUsers().stream()
+                .collect(Collectors.toMap(UserStore.UserRow::id, UserStore.UserRow::displayName));
 
         Set<UUID> groupIds = new LinkedHashSet<>();
         Set<UUID> userIds = new LinkedHashSet<>();
@@ -619,7 +619,7 @@ public class AccessAdminController {
         requireAdmin(authentication);
 
         // Get all groups user belongs to
-        var userUserGroups = securityRepo.getUserGroupsForUser(userId);
+        var userUserGroups = userStore.getUserGroupsForUser(userId);
         if (userUserGroups.isEmpty()) {
             return List.of();
         }
@@ -669,7 +669,7 @@ public class AccessAdminController {
     List<UserGroupMembershipView> getUserGroups(@PathVariable("userId") UUID userId,
                                             Authentication authentication) {
         requireAdmin(authentication);
-        return securityRepo.getUserGroupsForUser(userId).stream()
+        return userStore.getUserGroupsForUser(userId).stream()
                 .map(g -> new UserGroupMembershipView(g.id(), g.name()))
                 .toList();
     }
@@ -679,7 +679,7 @@ public class AccessAdminController {
     @GetMapping("/schema/item-types")
     List<ItemTypeView> listItemTypes(Authentication authentication) {
         requireAdmin(authentication);
-        return schemaRepo.getAllItems().stream()
+        return schemaStore.getAllItems().stream()
                 .map(item -> new ItemTypeView(item.id(), item.name()))
                 .sorted((a, b) -> a.name().compareToIgnoreCase(b.name()))
                 .toList();
@@ -695,7 +695,7 @@ public class AccessAdminController {
     }
 
     private void requireUserGroupExists(UUID groupId) {
-        securityRepo.findUserGroupById(groupId)
+        userStore.findUserGroupById(groupId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, GROUP_NOT_FOUND));
     }
 

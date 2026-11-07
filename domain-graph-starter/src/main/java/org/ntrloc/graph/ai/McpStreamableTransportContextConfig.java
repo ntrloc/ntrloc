@@ -19,7 +19,7 @@ import tools.jackson.databind.json.JsonMapper;
 // Overrides McpServerStreamableHttpWebMvcAutoConfiguration's own transport-provider bean (that
 // one is @ConditionalOnMissingBean, exactly for this kind of extension) purely to add a
 // contextExtractor -- see McpTransportContextConfig's own comment for why, and
-// MutationService.executeMutation for where it actually gets used.
+// MutationTools.executeMutation for where it actually gets used.
 //
 // A whole separate @Configuration class per transport (this one, and
 // McpSseTransportContextConfig), not two @Bean methods on one shared class: each condition class

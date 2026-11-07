@@ -2,7 +2,7 @@ package org.ntrloc.graph.security;
 
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.TestDatabases;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -21,7 +21,7 @@ class OidcAutoProvisioningIntegrationTest extends AbstractOidcIntegrationTest {
     }
 
     @Autowired
-    private SecurityRepository securityRepo;
+    private UserStore userStore;
 
     @Test
     void aFirstTimeOidcUser_getsANonAdminAccountInTheDefaultGroup_withNoLocalCredentials() {
@@ -31,9 +31,9 @@ class OidcAutoProvisioningIntegrationTest extends AbstractOidcIntegrationTest {
                 .containsEntry("email", "new.user@example.org")
                 .containsEntry("displayName", "New Person")
                 .containsEntry("isAdmin", false);
-        var account = securityRepo.findUserByEmail("new.user@example.org").orElseThrow();
-        assertThat(securityRepo.getUserGroupsForUser(account.id())).extracting(g -> g.name()).contains("everyone");
-        assertThat(securityRepo.findCredentialsByUserId(account.id())).isEmpty();
+        var account = userStore.findUserByEmail("new.user@example.org").orElseThrow();
+        assertThat(userStore.getUserGroupsForUser(account.id())).extracting(g -> g.name()).contains("everyone");
+        assertThat(userStore.findCredentialsByUserId(account.id())).isEmpty();
         getAdminPage(session).expectStatus().isForbidden();
     }
 
@@ -41,24 +41,24 @@ class OidcAutoProvisioningIntegrationTest extends AbstractOidcIntegrationTest {
     void anUnverifiedEmail_isNeverProvisioned() {
         assertLoginFails("unverified.user");
 
-        assertThat(securityRepo.findUserByEmail("unverified.user@example.org")).isEmpty();
+        assertThat(userStore.findUserByEmail("unverified.user@example.org")).isEmpty();
     }
 
     @Test
     void anExistingAccount_isUsed_notDuplicated() {
-        var existing = securityRepo.createUser("Existing User", "existing.user@example.org", false);
+        var existing = userStore.createUser("Existing User", "existing.user@example.org", false);
 
         logIn("existing.user");
 
-        assertThat(securityRepo.listUsers()).filteredOn(u -> u.email().equalsIgnoreCase("existing.user@example.org"))
+        assertThat(userStore.listUsers()).filteredOn(u -> u.email().equalsIgnoreCase("existing.user@example.org"))
                 .singleElement().extracting(u -> u.id()).isEqualTo(existing.id());
     }
 
     @Test
     void theProfile_isTakenFromTheProviderOnlyOnce() {
         logIn("resync.user");
-        var account = securityRepo.findUserByEmail("resync.user@example.org").orElseThrow();
-        securityRepo.updateUser(account.id(), "Renamed In ntrloc", account.email(), false);
+        var account = userStore.findUserByEmail("resync.user@example.org").orElseThrow();
+        userStore.updateUser(account.id(), "Renamed In ntrloc", account.email(), false);
 
         assertThat(me(logIn("resync.user"))).containsEntry("displayName", "Renamed In ntrloc");
     }

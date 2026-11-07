@@ -1,6 +1,6 @@
 package org.ntrloc.graph.db;
 
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.ntrloc.graph.projection.ProjectedItem;
 import org.ntrloc.graph.projection.ProjectedLink;
 import org.ntrloc.graph.projection.ProjectionResult;
@@ -28,10 +28,10 @@ import java.util.stream.Collectors;
 @Component
 public class ProjectedUserInfoEnricher {
 
-    private final SecurityRepository securityRepository;
+    private final UserStore userStore;
 
-    public ProjectedUserInfoEnricher(SecurityRepository securityRepository) {
-        this.securityRepository = securityRepository;
+    public ProjectedUserInfoEnricher(UserStore userStore) {
+        this.userStore = userStore;
     }
 
     public Optional<ProjectedItem> enrich(Optional<ProjectedItem> item) {
@@ -55,15 +55,15 @@ public class ProjectedUserInfoEnricher {
         if (userIds.isEmpty()) {
             return Map.of();
         }
-        return securityRepository.findUsersByIds(userIds).stream()
-                .collect(Collectors.toMap(SecurityRepository.UserRow::id,
+        return userStore.findUsersByIds(userIds).stream()
+                .collect(Collectors.toMap(UserStore.UserRow::id,
                         row -> new UserInfo(row.email())));
     }
 
     // updatedByUserId is null for an item/link that's never been updated (see
     // RegisterStore.insertItemRow's own comment) -- added defensively, not because
     // HashSet rejects null, but because that null would otherwise ride along into
-    // SecurityRepository.findUsersByIds' own "WHERE id IN (:ids)" binding.
+    // UserStore.findUsersByIds' own "WHERE id IN (:ids)" binding.
     private void collectUserIds(ProjectedItem item, Set<UUID> acc) {
         addIfPresent(acc, item.createdByUserId());
         addIfPresent(acc, item.updatedByUserId());

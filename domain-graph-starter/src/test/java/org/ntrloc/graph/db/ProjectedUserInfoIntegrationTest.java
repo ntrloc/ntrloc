@@ -11,7 +11,7 @@ import org.ntrloc.graph.db.partition.ledger.LinkCreateEntry;
 import org.ntrloc.graph.db.partition.ledger.LinkEndpoint;
 import org.ntrloc.graph.principal.NtrlocPrincipal;
 import org.ntrloc.graph.principal.TestPrincipals;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.ntrloc.graph.projection.CollectionProjectionSpec;
 import org.ntrloc.graph.projection.ItemProjectionSpec;
 import org.ntrloc.graph.projection.LinkProjectionSpec;
@@ -46,20 +46,20 @@ class ProjectedUserInfoIntegrationTest extends AbstractIntegrationTest {
     private CoordinatorTestDomainInitializer fixture;
 
     @Autowired
-    private SecurityRepository securityRepo;
+    private UserStore userStore;
 
     private NtrlocPrincipal ADMIN;
 
     @BeforeEach
     void setUpAdmin() {
-        var user = securityRepo.createUser("Root", "puiit-root-" + UUID.randomUUID() + "@example.com", true);
+        var user = userStore.createUser("Root", "puiit-root-" + UUID.randomUUID() + "@example.com", true);
         ADMIN = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), true);
     }
 
     @Test
     void itemProjection_resolvesCreatedByToRealUserInfo_andLeavesUpdatedByNullUntilActuallyUpdated() {
-        var creator = securityRepo.createUser("Creator Person", "creator-" + UUID.randomUUID() + "@example.com", false);
-        var editor = securityRepo.createUser("Editor Person", "editor-" + UUID.randomUUID() + "@example.com", false);
+        var creator = userStore.createUser("Creator Person", "creator-" + UUID.randomUUID() + "@example.com", false);
+        var editor = userStore.createUser("Editor Person", "editor-" + UUID.randomUUID() + "@example.com", false);
 
         UUID itemId = UUID.randomUUID();
         UUID txn = UUID.randomUUID();
@@ -88,7 +88,7 @@ class ProjectedUserInfoIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void collectionProjection_resolvesCreatedByForEveryItem() {
-        var creator = securityRepo.createUser("Collection Creator", "collection-" + UUID.randomUUID() + "@example.com", false);
+        var creator = userStore.createUser("Collection Creator", "collection-" + UUID.randomUUID() + "@example.com", false);
 
         UUID itemId = UUID.randomUUID();
         String name = "Gadget-" + itemId;
@@ -111,9 +111,9 @@ class ProjectedUserInfoIntegrationTest extends AbstractIntegrationTest {
     // UserInfo shows up somewhere in the tree."
     @Test
     void linkProjection_resolvesCreatedByForBothTheLinkItselfAndTheLinkedItem() {
-        var productCreator = securityRepo.createUser("Product Creator", "product-" + UUID.randomUUID() + "@example.com", false);
-        var contributorCreator = securityRepo.createUser("Contributor Creator", "contributor-" + UUID.randomUUID() + "@example.com", false);
-        var linkCreator = securityRepo.createUser("Link Creator", "link-" + UUID.randomUUID() + "@example.com", false);
+        var productCreator = userStore.createUser("Product Creator", "product-" + UUID.randomUUID() + "@example.com", false);
+        var contributorCreator = userStore.createUser("Contributor Creator", "contributor-" + UUID.randomUUID() + "@example.com", false);
+        var linkCreator = userStore.createUser("Link Creator", "link-" + UUID.randomUUID() + "@example.com", false);
 
         UUID productId = UUID.randomUUID();
         UUID contributorId = UUID.randomUUID();

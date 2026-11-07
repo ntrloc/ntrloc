@@ -5,7 +5,7 @@ import org.ntrloc.graph.db.partition.ledger.ItemUpdateEntry;
 import org.ntrloc.graph.db.partition.ledger.LedgerEntry;
 import org.ntrloc.graph.db.partition.ledger.LedgerEntryRecord;
 import org.ntrloc.graph.db.partition.ledger.LedgerStoreReader;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.springframework.stereotype.Service;
 
 import java.time.OffsetDateTime;
@@ -32,11 +32,11 @@ public class LedgerPropertyHistoryService {
     }
 
     private final LedgerStoreReader ledgerStore;
-    private final SecurityRepository securityRepository;
+    private final UserStore userStore;
 
-    public LedgerPropertyHistoryService(LedgerStoreReader ledgerStore, SecurityRepository securityRepository) {
+    public LedgerPropertyHistoryService(LedgerStoreReader ledgerStore, UserStore userStore) {
         this.ledgerStore = ledgerStore;
-        this.securityRepository = securityRepository;
+        this.userStore = userStore;
     }
 
     // Most-recent-first, matching how an edit-history view is normally read -- readItemStream*
@@ -71,8 +71,8 @@ public class LedgerPropertyHistoryService {
     }
 
     private String resolveDisplayName(UUID userId) {
-        return securityRepository.findUserById(userId)
-                .map(SecurityRepository.UserRow::displayName)
+        return userStore.findUserById(userId)
+                .map(UserStore.UserRow::displayName)
                 .orElse(null);
     }
 }

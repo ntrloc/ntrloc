@@ -2,7 +2,7 @@ package org.ntrloc.graph.security;
 
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.TestDatabases;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -20,7 +20,7 @@ class SamlAutoProvisioningIntegrationTest extends AbstractSamlIntegrationTest {
     }
 
     @Autowired
-    private SecurityRepository securityRepo;
+    private UserStore userStore;
 
     // The test IdP asserts each user's username as displayName.
     @Test
@@ -29,7 +29,7 @@ class SamlAutoProvisioningIntegrationTest extends AbstractSamlIntegrationTest {
                 .containsEntry("email", "new.user@example.org")
                 .containsEntry("displayName", "new.user")
                 .containsEntry("isAdmin", false);
-        assertThat(securityRepo.findUserByEmail("new.user@example.org")).isPresent();
+        assertThat(userStore.findUserByEmail("new.user@example.org")).isPresent();
     }
 
     @Test

@@ -3,7 +3,7 @@ package org.ntrloc.graph.db.partition.security;
 import org.ntrloc.graph.principal.ExternalPrincipalResolver;
 
 import org.ntrloc.graph.db.partition.authorization.DefaultUserGroupInitializer;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -41,13 +41,13 @@ public class UserGroupAdminController {
 
     public record AddMemberRequest(UUID userId) {}
 
-    private final SecurityRepository repo;
+    private final UserStore store;
     private final ExternalPrincipalResolver principalResolver;
     private final DefaultUserGroupInitializer defaultUserGroupInitializer;
 
-    public UserGroupAdminController(SecurityRepository repo, ExternalPrincipalResolver principalResolver,
+    public UserGroupAdminController(UserStore store, ExternalPrincipalResolver principalResolver,
                                 DefaultUserGroupInitializer defaultUserGroupInitializer) {
-        this.repo = repo;
+        this.store = store;
         this.principalResolver = principalResolver;
         this.defaultUserGroupInitializer = defaultUserGroupInitializer;
     }
@@ -55,7 +55,7 @@ public class UserGroupAdminController {
     @GetMapping
     List<UserGroupView> listUserGroups(Authentication authentication) {
         requireAdmin(authentication);
-        return repo.listUserGroups().stream()
+        return store.listUserGroups().stream()
                 .map(this::toView)
                 .toList();
     }
@@ -74,13 +74,13 @@ public class UserGroupAdminController {
         if (body.parentUserGroupId() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A parent group is required -- 'everyone' is the only top-level group");
         }
-        if (repo.findUserGroupByName(body.name().trim()).isPresent()) {
+        if (store.findUserGroupByName(body.name().trim()).isPresent()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "UserGroup already exists: " + body.name());
         }
-        repo.findUserGroupById(body.parentUserGroupId())
+        store.findUserGroupById(body.parentUserGroupId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Parent group not found"));
-        var group = repo.createUserGroup(body.name().trim());
-        repo.addUserGroupToUserGroup(group.id(), body.parentUserGroupId());
+        var group = store.createUserGroup(body.name().trim());
+        store.addUserGroupToUserGroup(group.id(), body.parentUserGroupId());
         return toView(group);
     }
 
@@ -88,12 +88,12 @@ public class UserGroupAdminController {
     UserGroupView updateUserGroup(@PathVariable("groupId") UUID groupId, @RequestBody UpdateUserGroupRequest body,
                           Authentication authentication) {
         requireAdmin(authentication);
-        repo.findUserGroupById(groupId)
+        store.findUserGroupById(groupId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, GROUP_NOT_FOUND));
         if (body.name() == null || body.name().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "UserGroup name is required");
         }
-        var updated = repo.updateUserGroup(groupId, body.name().trim());
+        var updated = store.updateUserGroup(groupId, body.name().trim());
         return toView(updated);
     }
 
@@ -109,27 +109,27 @@ public class UserGroupAdminController {
     UserGroupView updateParent(@PathVariable("groupId") UUID groupId, @RequestBody UpdateParentRequest body,
                            Authentication authentication) {
         requireAdmin(authentication);
-        var group = repo.findUserGroupById(groupId)
+        var group = store.findUserGroupById(groupId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, GROUP_NOT_FOUND));
         if (body.parentUserGroupId() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A parent group is required -- 'everyone' is the only top-level group");
         }
-        repo.findUserGroupById(body.parentUserGroupId())
+        store.findUserGroupById(body.parentUserGroupId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Parent group not found"));
-        for (var existingParent : repo.listContainingUserGroups(groupId)) {
-            repo.removeUserGroupFromUserGroup(groupId, existingParent.id());
+        for (var existingParent : store.listContainingUserGroups(groupId)) {
+            store.removeUserGroupFromUserGroup(groupId, existingParent.id());
         }
         try {
-            repo.addUserGroupToUserGroup(groupId, body.parentUserGroupId());
+            store.addUserGroupToUserGroup(groupId, body.parentUserGroupId());
         } catch (IllegalArgumentException e) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
         }
         return toView(group);
     }
 
-    private UserGroupView toView(SecurityRepository.UserGroupRow g) {
-        var parentIds = repo.listContainingUserGroups(g.id()).stream().map(SecurityRepository.UserGroupRow::id).toList();
-        return new UserGroupView(g.id(), g.name(), repo.listUserGroupMembers(g.id()).size(), parentIds);
+    private UserGroupView toView(UserStore.UserGroupRow g) {
+        var parentIds = store.listContainingUserGroups(g.id()).stream().map(UserStore.UserGroupRow::id).toList();
+        return new UserGroupView(g.id(), g.name(), store.listUserGroupMembers(g.id()).size(), parentIds);
     }
 
     @DeleteMapping("/{groupId}")
@@ -139,9 +139,9 @@ public class UserGroupAdminController {
         if (groupId.equals(defaultUserGroupInitializer.getDefaultUserGroupId())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Cannot delete the default group");
         }
-        repo.findUserGroupById(groupId)
+        store.findUserGroupById(groupId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, GROUP_NOT_FOUND));
-        repo.deleteUserGroup(groupId);
+        store.deleteUserGroup(groupId);
         return ResponseEntity.noContent().build();
     }
 
@@ -149,9 +149,9 @@ public class UserGroupAdminController {
     List<MemberView> listMembers(@PathVariable("groupId") UUID groupId,
                                  Authentication authentication) {
         requireAdmin(authentication);
-        repo.findUserGroupById(groupId)
+        store.findUserGroupById(groupId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, GROUP_NOT_FOUND));
-        return repo.listUserGroupMembers(groupId).stream()
+        return store.listUserGroupMembers(groupId).stream()
                 .map(u -> new MemberView(u.id(), u.displayName(), u.email(), u.isAdmin()))
                 .toList();
     }
@@ -160,9 +160,9 @@ public class UserGroupAdminController {
     ResponseEntity<Void> addMember(@PathVariable("groupId") UUID groupId, @RequestBody AddMemberRequest body,
                                    Authentication authentication) {
         requireAdmin(authentication);
-        repo.findUserGroupById(groupId)
+        store.findUserGroupById(groupId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, GROUP_NOT_FOUND));
-        repo.addUserToUserGroup(body.userId(), groupId);
+        store.addUserToUserGroup(body.userId(), groupId);
         return ResponseEntity.noContent().build();
     }
 
@@ -170,7 +170,7 @@ public class UserGroupAdminController {
     ResponseEntity<Void> removeMember(@PathVariable("groupId") UUID groupId, @PathVariable("userId") UUID userId,
                                       Authentication authentication) {
         requireAdmin(authentication);
-        repo.removeUserFromUserGroup(userId, groupId);
+        store.removeUserFromUserGroup(userId, groupId);
         return ResponseEntity.noContent().build();
     }
 

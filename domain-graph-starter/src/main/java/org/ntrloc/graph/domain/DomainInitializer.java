@@ -3,7 +3,6 @@ package org.ntrloc.graph.domain;
 import org.flowable.dmn.api.DmnRepositoryService;
 import org.flowable.engine.RepositoryService;
 import org.ntrloc.graph.db.partition.binary.BinaryStore;
-import org.ntrloc.graph.db.partition.schema.ControlledListManager;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateStateMachineMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateStateMutation;
@@ -36,7 +35,7 @@ import java.util.stream.Stream;
 // on any implementation for why: @EventListener methods elsewhere aren't wired up until *all*
 // singletons finish construction, so a @PostConstruct that publishes SchemaChangeEvent during its
 // own construction can fire before RegisterStore is even listening), constructor-
-// injecting whatever it needs (SchemaManager, ControlledListManager, JdbcClient,
+// injecting whatever it needs (SchemaManager, JdbcClient,
 // BinaryStore, RepositoryService, DmnRepositoryService) and calling its own overridden
 // method(s) from run(), in the order initSchema -> initData -> initProcesses.
 public interface DomainInitializer {
@@ -45,7 +44,7 @@ public interface DomainInitializer {
      * Implementations create item types, traits, links, properties, and controlled lists via
      * schemaManager.applyMutations(...) -- the same API the admin UI's schema editor uses.
      */
-    default void initSchema(SchemaManager schemaManager, ControlledListManager controlledListManager) {
+    default void initSchema(SchemaManager schemaManager) {
     }
 
     /**

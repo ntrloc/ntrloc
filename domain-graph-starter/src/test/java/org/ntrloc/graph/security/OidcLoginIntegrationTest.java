@@ -2,7 +2,7 @@ package org.ntrloc.graph.security;
 
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.TestDatabases;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
@@ -23,7 +23,7 @@ class OidcLoginIntegrationTest extends AbstractOidcIntegrationTest {
     }
 
     @Autowired
-    private SecurityRepository securityRepo;
+    private UserStore userStore;
 
     @Test
     void theLoginPage_offersEachConfiguredProvider() {
@@ -40,8 +40,8 @@ class OidcLoginIntegrationTest extends AbstractOidcIntegrationTest {
     // would otherwise reach Spring Security's global fallback AuthenticationManager.
     @Test
     void aLocalPassword_isRefused_whenLocalLoginIsOff() {
-        var user = securityRepo.createUser("Local Only", "local-only@example.org", false);
-        securityRepo.createLocalCredentials(user.id(), "{bcrypt}" + new BCryptPasswordEncoder().encode("local-secret"));
+        var user = userStore.createUser("Local Only", "local-only@example.org", false);
+        userStore.createLocalCredentials(user.id(), "{bcrypt}" + new BCryptPasswordEncoder().encode("local-secret"));
 
         webTestClient.get().uri("/api/account/me")
                 .headers(headers -> headers.setBasicAuth("local-only@example.org", "local-secret"))
@@ -51,7 +51,7 @@ class OidcLoginIntegrationTest extends AbstractOidcIntegrationTest {
 
     @Test
     void aUserWithAnNtrlocAccount_logsInThroughOidcAsThatAccount() {
-        var account = securityRepo.createUser("Existing ntrloc User", "existing.user@example.org", false);
+        var account = userStore.createUser("Existing ntrloc User", "existing.user@example.org", false);
 
         assertThat(me(logIn("existing.user")))
                 .containsEntry("email", account.email())
@@ -60,7 +60,7 @@ class OidcLoginIntegrationTest extends AbstractOidcIntegrationTest {
 
     @Test
     void theProvidersEmail_matchesTheNtrlocAccountIgnoringCase() {
-        securityRepo.createUser("Mixed Case", "mixed.case@example.org", false);
+        userStore.createUser("Mixed Case", "mixed.case@example.org", false);
 
         assertThat(me(logIn("mixed.case"))).containsEntry("email", "mixed.case@example.org");
     }
@@ -69,14 +69,14 @@ class OidcLoginIntegrationTest extends AbstractOidcIntegrationTest {
     void aUserWithoutAnNtrlocAccount_isRejected_andNoAccountIsCreated() {
         assertLoginFails("unprovisioned.user");
 
-        assertThat(securityRepo.findUserByEmail("unprovisioned.user@example.org")).isEmpty();
+        assertThat(userStore.findUserByEmail("unprovisioned.user@example.org")).isEmpty();
     }
 
     // An unverified email is never trusted, even when it matches an existing account -- otherwise
     // anyone able to set an arbitrary email at the provider could sign in as that account.
     @Test
     void anUnverifiedEmail_isRejected_evenWhenItMatchesAnAccount() {
-        securityRepo.createUser("Unverified User", "unverified.user@example.org", false);
+        userStore.createUser("Unverified User", "unverified.user@example.org", false);
 
         assertLoginFails("unverified.user");
     }
@@ -84,14 +84,14 @@ class OidcLoginIntegrationTest extends AbstractOidcIntegrationTest {
     // Admin comes from the ntrloc account, never from the provider.
     @Test
     void anNtrlocAdmin_canOpenTheAdminUi_afterAnOidcLogin() {
-        securityRepo.createUser("Admin User", "admin.user@example.org", true);
+        userStore.createUser("Admin User", "admin.user@example.org", true);
 
         getAdminPage(logIn("admin.user")).expectStatus().isOk();
     }
 
     @Test
     void aNonAdmin_isForbiddenFromTheAdminUi_afterAnOidcLogin() {
-        securityRepo.createUser("Plain User", "plain.user@example.org", false);
+        userStore.createUser("Plain User", "plain.user@example.org", false);
 
         getAdminPage(logIn("plain.user")).expectStatus().isForbidden();
     }
@@ -121,6 +121,6 @@ class OidcLoginIntegrationTest extends AbstractOidcIntegrationTest {
     }
 
     private void ensureAccount(String email) {
-        securityRepo.findUserByEmail(email).orElseGet(() -> securityRepo.createUser("Resync User", email, false));
+        userStore.findUserByEmail(email).orElseGet(() -> userStore.createUser("Resync User", email, false));
     }
 }
