@@ -25,7 +25,7 @@ import org.ntrloc.graph.db.partition.schema.definition.mutation.SetPropertyContr
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemLinkPerspectiveView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminStateMachineView;
-import org.ntrloc.graph.db.partition.security.InternalPrincipalResolver;
+import org.ntrloc.graph.principal.InternalPrincipalResolver;
 import org.ntrloc.ui.UiTestData.Transition;
 import org.springframework.beans.factory.annotation.Autowired;
 

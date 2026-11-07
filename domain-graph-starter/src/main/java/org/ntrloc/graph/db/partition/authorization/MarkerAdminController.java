@@ -2,7 +2,7 @@ package org.ntrloc.graph.db.partition.authorization;
 
 import org.ntrloc.graph.db.partition.authorization.repository.AccessStoreReader;
 import org.ntrloc.graph.db.partition.authorization.repository.AccessStoreWriter;
-import org.ntrloc.graph.db.partition.security.ExternalPrincipalResolver;
+import org.ntrloc.graph.principal.ExternalPrincipalResolver;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;

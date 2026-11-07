@@ -20,10 +20,6 @@ import org.ntrloc.graph.db.partition.ledger.LedgerStoreWriter;
 import org.ntrloc.graph.db.partition.register.RegisterStore;
 import org.ntrloc.graph.db.partition.register.RegisterStoreWriter;
 import org.ntrloc.graph.mutation.MutationRequestProcessor;
-import org.ntrloc.graph.principal.NtrlocPrincipal;
-
-import java.util.Set;
-import java.util.UUID;
 
 import static com.tngtech.archunit.base.DescribedPredicate.not;
 import static com.tngtech.archunit.core.domain.JavaClass.Predicates.resideInAPackage;
@@ -51,13 +47,6 @@ class ArchitectureRulesTest {
             .and().doNotBelongToAnyOf(MutationRequestProcessor.class, ManualMarkerAssignmentService.class)
             .should().dependOnClassesThat().belongToAnyOf(LedgerRegisterCoordinator.class)
             .because("every write goes through MutationRequestProcessor");
-
-    // A principal is only ever resolved, never fabricated (docs/ntrloc-principal-enforcement-plan.md, Part A).
-    @ArchTest
-    static final ArchRule onlyThePrincipalResolverCreatesPrincipals = noClasses()
-            .that().doNotHaveFullyQualifiedName("org.ntrloc.graph.db.partition.security.PrincipalResolverImpl")
-            .should().callConstructor(NtrlocPrincipal.class, UUID.class, String.class, String.class, Set.class, boolean.class)
-            .because("an NtrlocPrincipal comes only from resolving a real user");
 
     // §7: Access answers permission questions about a principal; it doesn't depend on how that principal
     // was authenticated or resolved. (The access admin controllers and startup initializers, which look

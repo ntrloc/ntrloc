@@ -1,7 +1,7 @@
 package org.ntrloc.graph.security;
 
 import org.ntrloc.graph.principal.NtrlocPrincipal;
-import org.ntrloc.graph.db.partition.security.NtrlocPrincipalHolder;
+import org.ntrloc.graph.principal.NtrlocPrincipalHolder;
 import org.springframework.security.oauth2.core.oidc.IdTokenClaimNames;
 import org.springframework.security.oauth2.core.oidc.user.DefaultOidcUser;
 import org.springframework.security.oauth2.core.oidc.user.OidcUser;

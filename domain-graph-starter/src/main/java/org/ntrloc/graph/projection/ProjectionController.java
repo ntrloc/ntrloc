@@ -2,7 +2,7 @@ package org.ntrloc.graph.projection;
 
 import jakarta.servlet.http.HttpServletRequest;
 import org.ntrloc.graph.db.EntityReadService;
-import org.ntrloc.graph.db.partition.security.ExternalPrincipalResolver;
+import org.ntrloc.graph.principal.ExternalPrincipalResolver;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.PostMapping;

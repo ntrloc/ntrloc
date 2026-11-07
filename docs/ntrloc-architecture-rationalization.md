@@ -315,9 +315,9 @@ parameters, never raw names; outputs use the same parameters, translated to ids 
   markers. Depends only on Access Store.
 - **Grants reference grantees by value** (`principal_type`, `principal_id`, no foreign key), so Access
   Store is independent of User Store.
-- **Principal Resolver** computes memberships (recursive CTE in User Store) when the principal is built.
-  Check during the refactor whether principals are resolved per request or held in the session —
-  membership changes, live or staged, need to show up.
+- **Principal Resolver** (`org.ntrloc.graph.principal`) computes memberships (recursive CTE in User Store)
+  when the principal is built, and is the only code that builds one. Membership changes, live or staged,
+  need to show up; browser sessions don't yet (§8).
 - `NtrlocPrincipal` is in a neutral package (`org.ntrloc.graph.principal`) so authorization doesn't import
   from security. The access admin controllers and startup initializers still look up users and groups in
   security; they're I/O, so that's allowed.
@@ -328,6 +328,12 @@ parameters, never raw names; outputs use the same parameters, translated to ids 
 
 ## 8. Parked (known issues, not yet addressed)
 
+- **Browser sessions hold a stale principal.** Local, LDAP, OIDC and SAML logins resolve the principal
+  once at login and keep it in the session, so group membership, admin status and user deletion don't
+  take effect until the session ends (a revoked admin stays admin; a deleted user keeps working). Tokens
+  and processes resolve per request and aren't affected; grants are always current. Likely fix:
+  `fromAuthentication` re-resolves by the session principal's id, once per request; a missing user ends
+  the session. Found 2026-11-07 in step 7; a behavior fix, to do soon, outside the refactor.
 - **Manual marker assignment bypasses MutationProcessor:** `ManualMarkerAssignmentService` prepares and
   commits marker postings through the coordinator directly, so it skips the pipeline (§5.3). The one
   exception to "only MutationProcessor calls the coordinator" in `ArchitectureRulesTest`.
@@ -389,7 +395,11 @@ The item component first — everything else calls it or is called by it.
    `AuthorizationCacheManager` is gone. `NtrlocPrincipal` is in `org.ntrloc.graph.principal` with a public
    constructor that ArchUnit restricts to `PrincipalResolverImpl` (§10 q10). ArchUnit also checks the
    access service and store don't depend on security.)*
-7. **Principal Resolver** as the explicit identity component; confirm per-request resolution.
+7. **Principal Resolver** as the explicit identity component; confirm per-request resolution. *(Done:
+   `PrincipalResolverImpl`, its `ExternalPrincipalResolver` / `InternalPrincipalResolver` interfaces and
+   `NtrlocPrincipalHolder` moved into `org.ntrloc.graph.principal` beside `NtrlocPrincipal`, whose
+   constructor is package-private again (settles §10 q10). Resolution is per request for tokens and
+   processes but not browser sessions -- a behavior fix, parked in §8.)*
 8. **Renames:** MCP tool classes → `*Tools`; remaining `*PartitionManager` / `*Repository` that are
    storage → `*Store`.
 
@@ -429,11 +439,9 @@ bound, so they're features, not refactor steps.
    (`PredicateEvaluator`: values compared as strings or doubles, LIKE as a substring), while the same
    predicate as a projection filter is typed SQL. Decide what a predicate means when a process or guard
    evaluates it, so the two can't disagree. Deferred 2026-11-07, with processes in general.
-10. **How is "a principal is only ever resolved" enforced?** `NtrlocPrincipal`'s constructor was
-    package-private beside `PrincipalResolverImpl`; since step 6 it's public in a neutral package and an
-    ArchUnit rule allows only the resolver to call it. Revisit with step 7 (Principal Resolver as the
-    identity component): e.g. the resolver and principal sharing a package again, or a factory only
-    identity holds.
+10. **How is "a principal is only ever resolved" enforced?** Settled in step 7: the resolver and
+    `NtrlocPrincipal` share `org.ntrloc.graph.principal`, so the constructor is package-private again
+    (step 6 had used a public constructor plus an ArchUnit rule in the interim).
 
 ---
 

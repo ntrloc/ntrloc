@@ -1,6 +1,6 @@
 package org.ntrloc.graph.db.partition.schema;
 
-import org.ntrloc.graph.db.partition.security.ExternalPrincipalResolver;
+import org.ntrloc.graph.principal.ExternalPrincipalResolver;
 import org.ntrloc.graph.db.partition.schema.definition.view.calculated.SchemaView;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;

@@ -1,6 +1,4 @@
-package org.ntrloc.graph.db.partition.security;
-
-import org.ntrloc.graph.principal.NtrlocPrincipal;
+package org.ntrloc.graph.principal;
 
 import org.springframework.security.core.Authentication;
 

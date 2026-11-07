@@ -4,7 +4,7 @@ import org.ntrloc.graph.access.Pipeline;
 import org.ntrloc.graph.access.PipelineLayout;
 import org.ntrloc.graph.db.partition.authorization.repository.MarkerDecisionPipelineRepository;
 import org.ntrloc.graph.db.partition.authorization.repository.MarkerDecisionPipelineRepository.PipelineRow;
-import org.ntrloc.graph.db.partition.security.ExternalPrincipalResolver;
+import org.ntrloc.graph.principal.ExternalPrincipalResolver;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;

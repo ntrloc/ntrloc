@@ -1,7 +1,6 @@
-package org.ntrloc.graph.db.partition.security;
+package org.ntrloc.graph.principal;
 
-import org.ntrloc.graph.principal.NtrlocPrincipal;
-
+import org.ntrloc.graph.db.partition.security.PersonalAccessTokenService;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
@@ -12,8 +11,9 @@ import org.springframework.web.server.ResponseStatusException;
 import java.util.Optional;
 import java.util.UUID;
 
-// The only code that builds an NtrlocPrincipal (NtrlocPrincipal's constructor is package-private
-// for exactly this reason). Callers depend on whichever of the two interfaces fits them:
+// Principal Resolver (docs/ntrloc-architecture-rationalization.md §4, §7): the identity component, and the
+// only code that builds an NtrlocPrincipal (its constructor is package-private for exactly this reason).
+// Reads User Store. Callers depend on whichever of the two interfaces fits them:
 // ExternalPrincipalResolver for requests, InternalPrincipalResolver for stored user references.
 @Component
 class PrincipalResolverImpl implements ExternalPrincipalResolver, InternalPrincipalResolver {

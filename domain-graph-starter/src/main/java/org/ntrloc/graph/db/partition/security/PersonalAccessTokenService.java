@@ -69,7 +69,7 @@ public class PersonalAccessTokenService {
     }
 
     // Package-private: ExternalPrincipalResolver.byToken looks a presented token up by this hash.
-    static String hash(String rawToken) {
+    public static String hash(String rawToken) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] hashed = digest.digest(rawToken.getBytes(StandardCharsets.UTF_8));

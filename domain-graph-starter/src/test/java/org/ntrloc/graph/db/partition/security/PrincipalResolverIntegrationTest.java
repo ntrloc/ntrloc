@@ -1,5 +1,9 @@
 package org.ntrloc.graph.db.partition.security;
 
+import org.ntrloc.graph.principal.InternalPrincipalResolver;
+
+import org.ntrloc.graph.principal.ExternalPrincipalResolver;
+
 import org.ntrloc.graph.principal.NtrlocPrincipal;
 
 import org.junit.jupiter.api.Test;

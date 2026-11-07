@@ -1,6 +1,4 @@
-package org.ntrloc.graph.db.partition.security;
-
-import org.ntrloc.graph.principal.NtrlocPrincipal;
+package org.ntrloc.graph.principal;
 
 /**
  * Implemented by an Authentication's principal object when Spring Security dictates its type

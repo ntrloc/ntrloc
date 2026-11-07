@@ -1,5 +1,7 @@
 package org.ntrloc.graph.db.partition.security;
 
+import org.ntrloc.graph.principal.ExternalPrincipalResolver;
+
 import org.ntrloc.graph.principal.NtrlocPrincipal;
 
 import org.ntrloc.graph.db.partition.authorization.DefaultUserGroupInitializer;

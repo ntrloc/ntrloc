@@ -1,5 +1,7 @@
 package org.ntrloc.graph.db.partition.security;
 
+import org.ntrloc.graph.principal.ExternalPrincipalResolver;
+
 import org.ntrloc.graph.db.partition.authorization.DefaultUserGroupInitializer;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.springframework.http.HttpStatus;

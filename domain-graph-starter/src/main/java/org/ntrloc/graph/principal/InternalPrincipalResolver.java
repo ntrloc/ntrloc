@@ -1,6 +1,4 @@
-package org.ntrloc.graph.db.partition.security;
-
-import org.ntrloc.graph.principal.NtrlocPrincipal;
+package org.ntrloc.graph.principal;
 
 import java.util.Optional;
 import java.util.UUID;

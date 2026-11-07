@@ -6,7 +6,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import org.ntrloc.graph.db.partition.security.ExternalPrincipalResolver;
+import org.ntrloc.graph.principal.ExternalPrincipalResolver;
 import org.ntrloc.graph.db.partition.security.ExternalUserProvisioner;
 import org.ntrloc.graph.db.partition.security.LocalAuthenticationProvider;
 import org.ntrloc.graph.principal.NtrlocPrincipal;

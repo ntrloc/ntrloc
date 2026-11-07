@@ -2,13 +2,12 @@ package org.ntrloc.graph.principal;
 
 import org.ntrloc.graph.principal.TestPrincipals;
 
-import org.ntrloc.graph.principal.NtrlocPrincipal;
 
 import java.util.Set;
 import java.util.UUID;
 
-// How tests make a principal without resolving one (production code may only get one from
-// PrincipalResolverImpl -- see NtrlocPrincipal's comment).
+// The one test-side door through NtrlocPrincipal's package-private constructor (see that class's
+// comment). Lives in this package for the access; tests elsewhere call TestPrincipals.of(...).
 public final class TestPrincipals {
 
     private TestPrincipals() {

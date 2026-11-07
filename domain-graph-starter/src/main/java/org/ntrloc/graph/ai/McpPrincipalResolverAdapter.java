@@ -1,7 +1,7 @@
 package org.ntrloc.graph.ai;
 
 import org.ntrloc.graph.principal.NtrlocPrincipal;
-import org.ntrloc.graph.db.partition.security.ExternalPrincipalResolver;
+import org.ntrloc.graph.principal.ExternalPrincipalResolver;
 import org.springframework.ai.mcp.annotation.context.McpSyncRequestContext;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
