@@ -16,9 +16,14 @@ import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemLinkPerspectiveView;
+import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminStateMachineView;
+import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminStateView;
+import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminTransitionView;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -60,19 +65,22 @@ public class MutationRequestProcessor {
     private final PropertyValidator propertyValidator;
     private final LinkEndpointResolver linkEndpointResolver;
     private final PermissionService permissionService;
+    private final StateTransitionMutationAdvisor stateTransitionAdvisor;
 
     public MutationRequestProcessor(LedgerRegisterCoordinator coordinator,
                                      RegisterStoreReader registerStore,
                                      SchemaManager schemaManager,
                                      PropertyValidator propertyValidator,
                                      LinkEndpointResolver linkEndpointResolver,
-                                     PermissionService permissionService) {
+                                     PermissionService permissionService,
+                                     StateTransitionMutationAdvisor stateTransitionAdvisor) {
         this.coordinator = coordinator;
         this.registerStore = registerStore;
         this.schemaManager = schemaManager;
         this.propertyValidator = propertyValidator;
         this.linkEndpointResolver = linkEndpointResolver;
         this.permissionService = permissionService;
+        this.stateTransitionAdvisor = stateTransitionAdvisor;
     }
 
     @Transactional
@@ -111,9 +119,16 @@ public class MutationRequestProcessor {
             throw new MutationValidationException(state.errors);
         }
 
+        UUID transactionId = submit(state.entries, principal, request.commit() == null || request.commit());
+        return new MutationResponse(state.itemResults, state.linkResults, transactionId);
+    }
+
+    // The one way into the coordinator for item and link changes: prepare, then commit unless the caller
+    // asked to confirm later.
+    private UUID submit(List<LedgerEntry> entries, NtrlocPrincipal principal, boolean commit) {
         UUID transactionId = UUID.randomUUID();
         UUID commitId = UUID.randomUUID();
-        // principal is guaranteed non-null here (process()'s own @PreAuthorize guard) -- this is
+        // principal is non-null here (both callers carry @PreAuthorize) -- this is
         // also ledger attribution (who made this change), not just a permission-check artifact.
         // One OffsetDateTime generated here, not left to each write's own NOW(): this exact value
         // becomes both the ledger entries' created_date and the register rows' resulting
@@ -124,12 +139,67 @@ public class MutationRequestProcessor {
         // REQUIRES_NEW) regardless of which branch runs next -- commit=false intentionally stops
         // here, leaving a genuinely prepared, independently-recoverable transaction for a later
         // confirmCommit() call, not a half-finished one.
-        coordinator.prepare(state.entries, transactionId, actorUserId, createdDate);
-        if (request.commit() == null || request.commit()) {
+        coordinator.prepare(entries, transactionId, actorUserId, createdDate);
+        if (commit) {
             coordinator.commit(transactionId, commitId);
         }
 
-        return new MutationResponse(state.itemResults, state.linkResults, transactionId);
+        return transactionId;
+    }
+
+    // A transition is a mutation like any other (docs/ntrloc-architecture-rationalization.md §5.2): resolve
+    // its targets, check permission first, then ask StateTransitionMutationAdvisor what it involves, and
+    // submit. The grant to start the machine or execute the transition covers whatever the transition does.
+    @Transactional
+    @PreAuthorize("#principal != null")
+    public MutationResponse processTransition(StateTransitionRequest request, NtrlocPrincipal principal) {
+        UUID itemId = request.itemId();
+        UUID itemTypeId = registerStore.findItemTypeId(itemId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown item: " + itemId));
+        AdminStateMachineView machine = findStateMachine(itemTypeId, request.stateMachineName())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown state machine"));
+        AdminTransitionView transition = request.isStart()
+                ? startTransition(machine)
+                : machine.states().stream().flatMap(s -> s.transitions().stream())
+                        .filter(t -> t.id().equals(request.transitionId())).findFirst()
+                        .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unknown transition"));
+
+        // A denial is a mutation rejection like any other -- see ApiExceptionHandler.handleMutationValidation.
+        var ctx = permissionService.buildContext(principal);
+        Set<UUID> markerIds = permissionService.markerIdsForItem(itemId);
+        if (request.isStart() && !permissionService.mayStartStateMachine(ctx, markerIds, machine.id())) {
+            throw new MutationValidationException(List.of(new ValidationError("stateMachine", "Not permitted to start this state machine")));
+        }
+        if (!request.isStart() && !permissionService.mayExecuteTransition(ctx, markerIds, transition.id())) {
+            throw new MutationValidationException(List.of(new ValidationError("stateMachine", "Not permitted to execute this transition")));
+        }
+
+        StateTransitionMutationAdvisor.Advice advice = request.isStart()
+                ? stateTransitionAdvisor.adviseStart(itemId, machine, transition)
+                : stateTransitionAdvisor.adviseTransition(itemId, itemTypeId, machine, transition);
+        StateTransitionMutationAdvisor.Changes changes = switch (advice) {
+            case StateTransitionMutationAdvisor.Rejection r -> throw new ResponseStatusException(r.status(), r.reason());
+            case StateTransitionMutationAdvisor.Changes c -> c;
+        };
+
+        UUID transactionId = submit(List.of(new ItemUpdateEntry(itemId, Map.of(), changes.stateChanges(), changes.stateMachinesEnded(),
+                Set.of(), Set.of())), principal, true);
+        return new MutationResponse(List.of(new ItemMutationResult(null, itemId, MutationOperation.UPDATE)), List.of(), transactionId);
+    }
+
+    private Optional<AdminStateMachineView> findStateMachine(UUID itemTypeId, String stateMachineName) {
+        return schemaManager.getAdminSchema().items().stream()
+                .filter(i -> i.id().equals(itemTypeId)).findFirst()
+                .map(AdminItemDefinitionView::stateMachines).orElse(List.of()).stream()
+                .filter(m -> m.name().equals(stateMachineName)).findFirst();
+    }
+
+    private static AdminTransitionView startTransition(AdminStateMachineView machine) {
+        AdminStateView startState = machine.states().stream()
+                .filter(s -> "START".equals(s.kind())).findFirst()
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "State machine has no START state"));
+        return startState.transitions().stream().findFirst()
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "State machine '" + machine.name() + "' has no start transition"));
     }
 
     // Confirms a transaction previously prepared with commit=false. Generates its own commitId --
@@ -156,12 +226,13 @@ public class MutationRequestProcessor {
             errors.add(new ValidationError(path + ITEM_TYPE_NAME_PATH_SUFFIX, "Unknown item type: " + m.itemTypeName()));
             return;
         }
-        if (isAbstractItemType(itemTypeId.get())) {
-            errors.add(new ValidationError(path + ITEM_TYPE_NAME_PATH_SUFFIX, "Cannot create an instance of abstract item type: " + m.itemTypeName()));
-            return;
-        }
+        // Permission before anything else about the request (§5.3): without it nothing else is relevant.
         if (!permissionService.canCreateItemType(principal, itemTypeId.get())) {
             errors.add(new ValidationError(path + ITEM_TYPE_NAME_PATH_SUFFIX, "Not permitted to create items of type: " + m.itemTypeName()));
+            return;
+        }
+        if (isAbstractItemType(itemTypeId.get())) {
+            errors.add(new ValidationError(path + ITEM_TYPE_NAME_PATH_SUFFIX, "Cannot create an instance of abstract item type: " + m.itemTypeName()));
             return;
         }
         UUID itemId = UUID.randomUUID();

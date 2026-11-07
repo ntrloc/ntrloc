@@ -11,6 +11,7 @@ import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateTransitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DefinitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.DeleteTransitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminStateMachineView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminTransitionView;
 import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
@@ -30,9 +31,10 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-// Covers EntityWriteService.startStateMachine / executeTransition -- permission (state-machine:start,
-// transition:execute), guard enforcement, END detach, and re-entry. Read-side (projection
-// startable / availableTransitions) is covered in RegisterPartitionManagerProjectionIntegrationTest.
+// Covers EntityWriteService.startStateMachine / executeTransition: permission (state-machine:start,
+// transition:execute) checked first, the guard read from the register, END detach, and re-entry.
+// Read-side (projection startable / availableTransitions) is covered in
+// RegisterPartitionManagerProjectionIntegrationTest.
 class StateMachineExecutionIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired private EntityWriteService entityWriteService;
@@ -197,17 +199,69 @@ class StateMachineExecutionIntegrationTest extends AbstractIntegrationTest {
     @Test
     void executeTransition_withAnUnsatisfiedGuard_throwsUnprocessable() {
         UUID book = createBook("Dune");
-        UUID available = schemaManager.resolveStateId(machineId(), RegisterProjectionTestDomainInitializer.AVAILABLE);
-        UUID discontinued = schemaManager.resolveStateId(machineId(), RegisterProjectionTestDomainInitializer.DISCONTINUED);
-        var guard = JsonMapper.builder().build().readTree(
-                "{\"type\":\"PROPERTY_VALUE\",\"propertyName\":\"title\",\"operator\":\"EQUALS\",\"value\":\"NOPE\"}");
-        schemaManager.applyMutations(List.<DefinitionMutation>of(
-                new CreateTransitionMutation(available, discontinued, "GuardedRetire", null, null, guard)));
+        addGuardedRetire("{\"type\":\"PROPERTY_VALUE\",\"propertyName\":\"title\",\"operator\":\"EQUALS\",\"value\":\"NOPE\"}");
         entityWriteService.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, ADMIN);
 
         assertThatThrownBy(() -> entityWriteService.executeTransition(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, transitionId("GuardedRetire"), ADMIN))
                 .isInstanceOf(ResponseStatusException.class)
                 .satisfies(e -> assertThat(status(e)).isEqualTo(422));
+    }
+
+    // The guard reads the item's committed values from the register: a property by name, and its current
+    // state in a machine by name.
+    @Test
+    void executeTransition_withASatisfiedGuard_advances() {
+        UUID book = createBook("Dune");
+        UUID discontinued = addGuardedRetire("""
+                {"type":"AND","predicates":[
+                  {"type":"PROPERTY_VALUE","propertyName":"title","operator":"EQUALS","value":"Dune"},
+                  {"type":"STATE_VALUE","stateMachineName":"%s","stateName":"%s"}]}"""
+                .formatted(RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, RegisterProjectionTestDomainInitializer.AVAILABLE));
+        entityWriteService.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, ADMIN);
+
+        entityWriteService.executeTransition(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, transitionId("GuardedRetire"), ADMIN);
+
+        assertThat(registerStore.currentStateIds(book)).containsEntry(machineId(), discontinued);
+    }
+
+    // Permission comes first: a caller who may not execute the transition learns only that, not whether
+    // the guard would have passed.
+    @Test
+    void executeTransition_withoutTheExecuteGrant_reportsThatBeforeTheGuard() {
+        UUID book = createBook("Dune");
+        addGuardedRetire("{\"type\":\"PROPERTY_VALUE\",\"propertyName\":\"title\",\"operator\":\"EQUALS\",\"value\":\"NOPE\"}");
+        entityWriteService.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, ADMIN);
+        NtrlocPrincipal user = nonAdmin();
+
+        assertThatThrownBy(() -> entityWriteService.executeTransition(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, transitionId("GuardedRetire"), user))
+                .isInstanceOf(MutationValidationException.class)
+                .satisfies(e -> assertThat(((MutationValidationException) e).errors())
+                        .anyMatch(err -> err.message().contains("Not permitted to execute")));
+    }
+
+    @Test
+    void startStateMachine_withoutTheStartGrant_reportsThatBeforeAlreadyActive() {
+        UUID book = createBook("Dune");
+        entityWriteService.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, ADMIN);
+        NtrlocPrincipal user = nonAdmin();
+
+        assertThatThrownBy(() -> entityWriteService.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, user))
+                .isInstanceOf(MutationValidationException.class)
+                .satisfies(e -> assertThat(((MutationValidationException) e).errors())
+                        .anyMatch(err -> err.message().contains("Not permitted to start")));
+    }
+
+    // Adds an Available -> Discontinued transition named GuardedRetire with the given guard, replacing one
+    // an earlier test added (the fixture's schema is shared across the class); returns Discontinued's id.
+    private UUID addGuardedRetire(String guardJson) {
+        machine().states().stream().flatMap(s -> s.transitions().stream())
+                .filter(t -> t.name().equals("GuardedRetire")).findFirst()
+                .ifPresent(t -> schemaManager.applyMutations(List.<DefinitionMutation>of(new DeleteTransitionMutation(t.id()))));
+        UUID available = schemaManager.resolveStateId(machineId(), RegisterProjectionTestDomainInitializer.AVAILABLE);
+        UUID discontinued = schemaManager.resolveStateId(machineId(), RegisterProjectionTestDomainInitializer.DISCONTINUED);
+        schemaManager.applyMutations(List.<DefinitionMutation>of(new CreateTransitionMutation(
+                available, discontinued, "GuardedRetire", null, null, JsonMapper.builder().build().readTree(guardJson))));
+        return discontinued;
     }
 
     // --- END detach + re-entry ---

@@ -113,7 +113,7 @@ Item work has two themes; every item concern informs a question or constrains a 
  MarkerDecisionEngine            │  Binary Store    │  BinaryReader
  LedgerRegisterCoordinator       │                  │
  BinaryWriter                    │  Ledger Store    │
- State Machine Exec              │  (write side)    │
+ StateTransitionMutationAdvisor  │  (write side)    │
 ```
 
 - **ProjectionEngine** (`org.ntrloc.graph.projection`) and **RegisterStore** replaced
@@ -163,29 +163,50 @@ returns rows keyed by id.
 
 ### 5.2 Transitions are mutations
 
-"Execute transition T on item X" is a kind of mutation, handled by **State Machine Exec** at the top of
-the write side. There's no raw "set state" anywhere; the only way to change state is a transition.
+"Execute transition T on item X" is a kind of mutation. There's no raw "set state" anywhere; the only way
+to change state is a transition. MutationProcessor handles it like any other mutation and decides
+whether it goes ahead. **StateTransitionMutationAdvisor** only advises what the transition involves (much as
+the delete cascade expander says what a delete involves): it never checks permission, decides, or writes.
 
-1. Get T from Schema (at X's version).
-2. Check X is in T's "from" state and the guard passes.
-3. Run exit A → T → entry B processes, in order (§6), each reading through a read facade decorated with
-   the proposals so far, as the initiator.
-4. Hand MutationProcessor one mutation: the proposals plus the new state. It goes through the normal path
-   — permissions, validation, markers, ledger, register — once, atomically.
+1. MutationProcessor resolves the item, the machine and T (at X's version), then checks the caller may
+   start the machine or execute T. Permission comes first: without it nothing else is relevant.
+2. StateTransitionMutationAdvisor checks X is in T's "from" state and the guard passes, then returns the changes that
+   put X in the target state: the new state (or the machine ending), plus whatever exit A → T → entry B
+   processes propose (§6), each reading through a read facade decorated with the proposals so far, as
+   the initiator. Or it returns why T can't apply, which the processor reports as the request's rejection.
+3. The processor validates and submits the whole mutation through the normal path — validation, markers,
+   ledger, register — once, atomically.
 
 If any process fails or a guard rejects, nothing is submitted. Starting a machine (START → first state) is
 a transition like any other.
+
+**Two kinds of check.** *May this caller do this* applies only to what the caller asked for: the
+transition, and any changes the caller sent directly. Granting `transition:execute` grants whatever the
+transition does; the admin who defined it made that decision, so a transition may set a property the
+caller couldn't set themselves. *Is the result valid* (types, required properties not cleared, deprecated
+properties not written) applies to every change, whoever proposed it. An optional property that later
+becomes required is a narrowing under schema versioning (schema evolution notes), so a transition is
+updated for the new version before it applies; no special case here.
+
+**Provenance.** Every change — item properties, links, link properties — records both who initiated it
+and what caused it: the caller directly, or "by proxy" through transition T (and later process P at
+version N). The ledger already does this for marker decisions (rule, version, reason). The processor
+therefore keeps the caller's changes and the expander's changes apart rather than merging them into one
+diff. Needed once transitions propose property or link changes (§6); a v1 transition changes only state.
 
 ### 5.3 Pipeline order
 
 ```
 mutation in
+  → resolve targets, then permission   (what the caller asked for)
   → modification processes   (reshape; may add changes, incl. to other items)
-  → built-in + admin validation processes   (accept / reject)
-  → state machine processes, if a transition   (propose changes)
+  → transition expansion, if a transition   ("from" state, guard, state machine processes)
+  → built-in + admin validation   (accept / reject; every change, whoever proposed it)
   → marker decision pipeline
   → coordinator: ledger + register, commit
 ```
+
+Validation now follows transition expansion, so a transition's own changes are validated too.
 
 The marker decision pipeline is the same architectural slot as the processes: admin rules applied in the
 write path, returning a result.
@@ -303,6 +324,9 @@ parameters, never raw names; outputs use the same parameters, translated to ids 
 
 ## 8. Parked (known issues, not yet addressed)
 
+- **Manual marker assignment bypasses MutationProcessor:** `ManualMarkerAssignmentService` prepares and
+  commits marker postings through the coordinator directly, so it skips the pipeline (§5.3). The one
+  exception to "only MutationProcessor calls the coordinator" in `ArchitectureRulesTest`.
 - **Stores whose SQL crosses partitions:** `AuthorizationRepository` joins `schema_item` (item type
   names) and `register_item` / `register_item_marker` (an item's markers). Target: callers pass item
   markers in; names come from Schema.
@@ -348,9 +372,12 @@ The item component first — everything else calls it or is called by it.
    `RegisterStoreReader` / `RegisterStoreWriter`; `ArchitectureRulesTest` checks that only the coordinator
    holds a store writer, stores are used through their interfaces, reads never depend on writes, and stores
    never depend on services.)*
-5. **One write path.** Transitions become mutations through State Machine Exec → MutationProcessor;
-   `EntityWriteService.commitStateEntry` goes away, and the transition guard reads the register rather than
-   a projection.
+5. **One write path.** Transitions become mutations: MutationProcessor resolves, checks permission, asks
+   StateTransitionMutationAdvisor for the changes (§5.2), validates and submits. *(Done:
+   `MutationRequestProcessor.processTransition`; `EntityWriteService.commitStateEntry` is gone; the guard
+   reads the register; `ArchitectureRulesTest` checks only the processor (and, parked, manual marker
+   assignment) calls the coordinator; item create checks permission before the abstract-type check.)*
+   Provenance (§5.2) waits until transitions propose more than a state change.
 6. **Access:** store publishes "grants changed" (fixes the `@Lazy` cycle); `NtrlocPrincipal` to a
    neutral package.
 7. **Principal Resolver** as the explicit identity component; confirm per-request resolution.
@@ -370,7 +397,8 @@ bound, so they're features, not refactor steps.
 1. Modification processes: do changes they add get modified too (run to a fixed point, with a loop
    guard), and may a rule remove a requested change?
 2. Whose permissions apply to changes a modification adds — the requester's (current assumption), with
-   errors that say the rule's change was refused?
+   errors that say the rule's change was refused? Transitions settled the other way (§5.2: the grant to run a
+   transition covers what it does, recorded with its provenance); decide whether modifications differ.
 3. Loops among mutation-independent processes ("item changed" → automation → item changed): no-op filter,
    plus a depth or causation limit.
 4. Identity for mutation-independent processes: the triggering user, or their own service identity?
@@ -388,6 +416,10 @@ bound, so they're features, not refactor steps.
    don't grant it. Filtering `color = 'red'` can return a product whose color the caller can't see,
    revealing its value (sort order and facet counts leak the same way). Likely fix: apply each clause
    only to items whose markers grant that property. Found 2026-11-06; not yet changed.
+9. **One predicate semantics for processes and guards.** A transition guard is evaluated in memory
+   (`PredicateEvaluator`: values compared as strings or doubles, LIKE as a substring), while the same
+   predicate as a projection filter is typed SQL. Decide what a predicate means when a process or guard
+   evaluates it, so the two can't disagree. Deferred 2026-11-07, with processes in general.
 
 ---
 

@@ -7,11 +7,14 @@ import com.tngtech.archunit.junit.ArchTest;
 import com.tngtech.archunit.lang.ArchRule;
 import org.ntrloc.graph.db.EntityReadService;
 import org.ntrloc.graph.db.EntityWriteService;
+import org.ntrloc.graph.db.coordinator.LedgerRegisterCoordinator;
 import org.ntrloc.graph.db.coordinator.LedgerRegisterCoordinatorImpl;
+import org.ntrloc.graph.db.partition.authorization.ManualMarkerAssignmentService;
 import org.ntrloc.graph.db.partition.ledger.LedgerStore;
 import org.ntrloc.graph.db.partition.ledger.LedgerStoreWriter;
 import org.ntrloc.graph.db.partition.register.RegisterStore;
 import org.ntrloc.graph.db.partition.register.RegisterStoreWriter;
+import org.ntrloc.graph.mutation.MutationRequestProcessor;
 
 import static com.tngtech.archunit.base.DescribedPredicate.not;
 import static com.tngtech.archunit.core.domain.JavaClass.Predicates.resideInAPackage;
@@ -30,6 +33,15 @@ class ArchitectureRulesTest {
                     RegisterStoreWriter.class, LedgerStoreWriter.class)
             .should().dependOnClassesThat().belongToAnyOf(RegisterStoreWriter.class, LedgerStoreWriter.class)
             .because("only the ledger/register coordinator may write the ledger or the register");
+
+    // §5.2: one write path. Item and link changes, transitions included, go through MutationRequestProcessor.
+    // ManualMarkerAssignmentService is a known second path (§8), allowed here so the exception stays visible.
+    @ArchTest
+    static final ArchRule onlyTheMutationProcessorCallsTheCoordinator = noClasses()
+            .that().resideOutsideOfPackage("org.ntrloc.graph.db.coordinator..")
+            .and().doNotBelongToAnyOf(MutationRequestProcessor.class, ManualMarkerAssignmentService.class)
+            .should().dependOnClassesThat().belongToAnyOf(LedgerRegisterCoordinator.class)
+            .because("every write goes through MutationRequestProcessor");
 
     // Rule 7: outside its own package a store is reached through its reader or writer interface, so who
     // holds the writer is visible (and checked above).
