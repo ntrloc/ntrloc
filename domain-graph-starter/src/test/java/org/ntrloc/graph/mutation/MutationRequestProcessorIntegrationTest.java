@@ -7,7 +7,7 @@ import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.coordinator.CoordinatorTestDomainInitializer;
 import org.ntrloc.graph.db.partition.authorization.ManualMarkerAssignmentService;
 import org.ntrloc.graph.db.partition.authorization.PermissionService;
-import org.ntrloc.graph.db.partition.authorization.repository.AuthorizationRepository;
+import org.ntrloc.graph.db.partition.authorization.repository.AccessStore;
 import org.ntrloc.graph.db.partition.binary.BinaryStore;
 import org.ntrloc.graph.db.partition.register.RegisterStore;
 import org.ntrloc.graph.db.partition.schema.ControlledListManager;
@@ -26,8 +26,8 @@ import org.ntrloc.graph.db.partition.schema.definition.mutation.ExistingControll
 import org.ntrloc.graph.db.partition.schema.definition.mutation.SetPropertyControlledListMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.UpdateItemDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.UpdatePropertyDefinitionMutation;
-import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
-import org.ntrloc.graph.db.partition.security.TestPrincipals;
+import org.ntrloc.graph.principal.NtrlocPrincipal;
+import org.ntrloc.graph.principal.TestPrincipals;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.ntrloc.graph.projection.ProjectedLink;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -98,7 +98,7 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
     private ControlledListManager controlledListManager;
 
     @Autowired
-    private AuthorizationRepository authRepo;
+    private AccessStore authRepo;
 
     @Autowired
     private SecurityRepository securityRepo;

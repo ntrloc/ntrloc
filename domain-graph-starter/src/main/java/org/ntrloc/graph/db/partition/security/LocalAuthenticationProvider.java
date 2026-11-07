@@ -1,5 +1,7 @@
 package org.ntrloc.graph.db.partition.security;
 
+import org.ntrloc.graph.principal.NtrlocPrincipal;
+
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.BadCredentialsException;

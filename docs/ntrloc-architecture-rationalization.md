@@ -318,7 +318,11 @@ parameters, never raw names; outputs use the same parameters, translated to ids 
 - **Principal Resolver** computes memberships (recursive CTE in User Store) when the principal is built.
   Check during the refactor whether principals are resolved per request or held in the session —
   membership changes, live or staged, need to show up.
-- `NtrlocPrincipal` moves to a neutral package so authorization doesn't import from security.
+- `NtrlocPrincipal` is in a neutral package (`org.ntrloc.graph.principal`) so authorization doesn't import
+  from security. The access admin controllers and startup initializers still look up users and groups in
+  security; they're I/O, so that's allowed.
+- **Callers never see the grant cache.** Access Store answers grant lookups from an in-memory snapshot it
+  owns and rebuilds after each grant write, signalling other nodes the way Schema does.
 
 ---
 
@@ -378,8 +382,13 @@ The item component first — everything else calls it or is called by it.
    reads the register; `ArchitectureRulesTest` checks only the processor (and, parked, manual marker
    assignment) calls the coordinator; item create checks permission before the abstract-type check.)*
    Provenance (§5.2) waits until transitions propose more than a state change.
-6. **Access:** store publishes "grants changed" (fixes the `@Lazy` cycle); `NtrlocPrincipal` to a
-   neutral package.
+6. **Access:** the grant cache becomes the Access Store's own implementation detail (fixes the `@Lazy`
+   cycle); `NtrlocPrincipal` to a neutral package. *(Done: `AccessStore` (was `AuthorizationRepository`)
+   with `AccessStoreReader` / `AccessStoreWriter`, answering grant lookups from a package-private
+   `GrantSnapshot` it rebuilds after each grant write and on other nodes via the cluster topic;
+   `AuthorizationCacheManager` is gone. `NtrlocPrincipal` is in `org.ntrloc.graph.principal` with a public
+   constructor that ArchUnit restricts to `PrincipalResolverImpl` (§10 q10). ArchUnit also checks the
+   access service and store don't depend on security.)*
 7. **Principal Resolver** as the explicit identity component; confirm per-request resolution.
 8. **Renames:** MCP tool classes → `*Tools`; remaining `*PartitionManager` / `*Repository` that are
    storage → `*Store`.
@@ -420,6 +429,11 @@ bound, so they're features, not refactor steps.
    (`PredicateEvaluator`: values compared as strings or doubles, LIKE as a substring), while the same
    predicate as a projection filter is typed SQL. Decide what a predicate means when a process or guard
    evaluates it, so the two can't disagree. Deferred 2026-11-07, with processes in general.
+10. **How is "a principal is only ever resolved" enforced?** `NtrlocPrincipal`'s constructor was
+    package-private beside `PrincipalResolverImpl`; since step 6 it's public in a neutral package and an
+    ArchUnit rule allows only the resolver to call it. Revisit with step 7 (Principal Resolver as the
+    identity component): e.g. the resolver and principal sharing a package again, or a factory only
+    identity holds.
 
 ---
 

@@ -1,6 +1,6 @@
 package org.ntrloc.graph.events;
 
-import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
+import org.ntrloc.graph.principal.NtrlocPrincipal;
 
 // Implemented by any component that needs to restrict a specific event *type* to a subset of
 // principals -- e.g. a future DAM chat extension restricting chatMessage events to conversation

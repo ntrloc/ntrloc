@@ -10,11 +10,20 @@ import org.ntrloc.graph.db.EntityWriteService;
 import org.ntrloc.graph.db.coordinator.LedgerRegisterCoordinator;
 import org.ntrloc.graph.db.coordinator.LedgerRegisterCoordinatorImpl;
 import org.ntrloc.graph.db.partition.authorization.ManualMarkerAssignmentService;
+import org.ntrloc.graph.db.partition.authorization.PermissionService;
+import org.ntrloc.graph.db.partition.authorization.RequestPermissionContext;
+import org.ntrloc.graph.db.partition.authorization.repository.AccessStore;
+import org.ntrloc.graph.db.partition.authorization.repository.AccessStoreReader;
+import org.ntrloc.graph.db.partition.authorization.repository.AccessStoreWriter;
 import org.ntrloc.graph.db.partition.ledger.LedgerStore;
 import org.ntrloc.graph.db.partition.ledger.LedgerStoreWriter;
 import org.ntrloc.graph.db.partition.register.RegisterStore;
 import org.ntrloc.graph.db.partition.register.RegisterStoreWriter;
 import org.ntrloc.graph.mutation.MutationRequestProcessor;
+import org.ntrloc.graph.principal.NtrlocPrincipal;
+
+import java.util.Set;
+import java.util.UUID;
 
 import static com.tngtech.archunit.base.DescribedPredicate.not;
 import static com.tngtech.archunit.core.domain.JavaClass.Predicates.resideInAPackage;
@@ -43,12 +52,30 @@ class ArchitectureRulesTest {
             .should().dependOnClassesThat().belongToAnyOf(LedgerRegisterCoordinator.class)
             .because("every write goes through MutationRequestProcessor");
 
+    // A principal is only ever resolved, never fabricated (docs/ntrloc-principal-enforcement-plan.md, Part A).
+    @ArchTest
+    static final ArchRule onlyThePrincipalResolverCreatesPrincipals = noClasses()
+            .that().doNotHaveFullyQualifiedName("org.ntrloc.graph.db.partition.security.PrincipalResolverImpl")
+            .should().callConstructor(NtrlocPrincipal.class, UUID.class, String.class, String.class, Set.class, boolean.class)
+            .because("an NtrlocPrincipal comes only from resolving a real user");
+
+    // §7: Access answers permission questions about a principal; it doesn't depend on how that principal
+    // was authenticated or resolved. (The access admin controllers and startup initializers, which look
+    // up users and groups, are I/O and may.)
+    @ArchTest
+    static final ArchRule accessDoesNotDependOnSecurity = noClasses()
+            .that().belongToAnyOf(PermissionService.class, ManualMarkerAssignmentService.class, RequestPermissionContext.class,
+                    AccessStore.class, AccessStoreReader.class, AccessStoreWriter.class)
+            .should().dependOnClassesThat().resideInAPackage("org.ntrloc.graph.db.partition.security..")
+            .because("the access service and store work from the principal alone");
+
     // Rule 7: outside its own package a store is reached through its reader or writer interface, so who
     // holds the writer is visible (and checked above).
     @ArchTest
     static final ArchRule storesAreUsedThroughTheirInterfaces = noClasses()
-            .that().resideOutsideOfPackages("org.ntrloc.graph.db.partition.register..", "org.ntrloc.graph.db.partition.ledger..")
-            .should().dependOnClassesThat().belongToAnyOf(RegisterStore.class, LedgerStore.class)
+            .that().resideOutsideOfPackages("org.ntrloc.graph.db.partition.register..", "org.ntrloc.graph.db.partition.ledger..",
+                    "org.ntrloc.graph.db.partition.authorization.repository..")
+            .should().dependOnClassesThat().belongToAnyOf(RegisterStore.class, LedgerStore.class, AccessStore.class)
             .because("stores are used through their <Name>StoreReader / <Name>StoreWriter interfaces");
 
     // Rule 5: the read side can be called by anything, so it never depends on the write side.
@@ -63,7 +90,7 @@ class ArchitectureRulesTest {
     // the one way in (a store keeps its tables in step with the schema), which is a notification, not a call.
     @ArchTest
     static final ArchRule storesDoNotDependOnServices = noClasses()
-            .that().belongToAnyOf(RegisterStore.class, LedgerStore.class)
+            .that().belongToAnyOf(RegisterStore.class, LedgerStore.class, AccessStore.class)
             .should().dependOnClassesThat(serviceLayer())
             .because("stores never depend on services");
 
@@ -75,7 +102,8 @@ class ArchitectureRulesTest {
                 "org.ntrloc.graph.db.coordinator..",
                 "org.ntrloc.graph.mutation..",
                 "org.ntrloc.graph.projection..")
-                .and(not(resideInAPackage("org.ntrloc.graph.db.partition.schema.event..")))
-                .as("service-layer classes (schema change events aside)");
+                .and(not(resideInAnyPackage("org.ntrloc.graph.db.partition.schema.event..",
+                        "org.ntrloc.graph.db.partition.authorization.repository..")))
+                .as("service-layer classes (schema change events and the access store's own package aside)");
     }
 }

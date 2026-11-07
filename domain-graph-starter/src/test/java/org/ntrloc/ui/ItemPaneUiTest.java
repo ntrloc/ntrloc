@@ -12,7 +12,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.db.partition.authorization.ManualMarkerAssignmentService;
-import org.ntrloc.graph.db.partition.authorization.repository.AuthorizationRepository;
+import org.ntrloc.graph.db.partition.authorization.repository.AccessStore;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
@@ -51,7 +51,7 @@ class ItemPaneUiTest extends AbstractUiIntegrationTest {
     private SchemaManager schemaManager;
 
     @Autowired
-    private AuthorizationRepository authorizationRepository;
+    private AccessStore authorizationRepository;
 
     @Autowired
     private ManualMarkerAssignmentService markerAssignmentService;

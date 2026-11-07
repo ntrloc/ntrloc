@@ -16,7 +16,7 @@ import org.ntrloc.graph.access.Start;
 import org.ntrloc.graph.access.StepToLink;
 import org.ntrloc.graph.access.StepToProperty;
 import org.ntrloc.graph.access.StringEqualsPredicate;
-import org.ntrloc.graph.db.partition.authorization.repository.AuthorizationRepository;
+import org.ntrloc.graph.db.partition.authorization.repository.AccessStore;
 import org.ntrloc.graph.db.partition.authorization.repository.MarkerDecisionPipelineRepository;
 import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
 import org.ntrloc.graph.db.partition.ledger.ItemUpdateEntry;
@@ -37,7 +37,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 // is actually wired into LedgerRegisterCoordinatorImpl.prepare(), not just exercised in isolation
 // by PipelineEvaluatorTest -- now reading through MarkerDecisionPipelineRepository, the real (only)
 // PipelineSource. Every test creates its own throwaway pipeline and deletes it in a finally block,
-// same discipline AuthorizationRepositoryMarkerIntegrationTest's rule tests used, since this suite's
+// same discipline AccessStoreMarkerIntegrationTest's rule tests used, since this suite's
 // Postgres container and Spring context are shared across the whole run.
 class PipelineMarkerDecisionIntegrationTest extends AbstractIntegrationTest {
 
@@ -48,7 +48,7 @@ class PipelineMarkerDecisionIntegrationTest extends AbstractIntegrationTest {
     private MarkerDecisionPipelineRepository pipelineRepository;
 
     @Autowired
-    private AuthorizationRepository authRepo;
+    private AccessStore authRepo;
 
     @Autowired
     private CoordinatorTestDomainInitializer fixture;

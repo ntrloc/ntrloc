@@ -1,7 +1,7 @@
 package org.ntrloc.graph.ai;
 
 import org.ntrloc.graph.db.EntityReadService;
-import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
+import org.ntrloc.graph.principal.NtrlocPrincipal;
 import org.ntrloc.graph.projection.CollectionProjectionSpec;
 import org.ntrloc.graph.projection.ProjectionResult;
 import org.slf4j.Logger;

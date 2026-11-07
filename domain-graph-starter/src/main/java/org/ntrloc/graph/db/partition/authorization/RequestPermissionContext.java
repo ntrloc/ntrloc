@@ -8,7 +8,7 @@ import java.util.UUID;
 // of a projection response -- never recomputed per item, per link, or per recursion level. See
 // docs/ntrloc-acl-design-notes.md "Request-scoped permission context".
 //
-// Deliberately a plain data record with no dependency back on PermissionService/AuthorizationRepository,
+// Deliberately a plain data record with no dependency back on PermissionService/AccessStore,
 // so RegisterStore (which builds SQL and does the in-memory mode-2 resolution from
 // this) doesn't need to depend on how these sets/maps are computed -- only on their shape.
 //

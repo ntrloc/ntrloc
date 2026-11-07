@@ -5,10 +5,10 @@ import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.coordinator.CoordinatorTestDomainInitializer;
 import org.ntrloc.graph.db.coordinator.LedgerRegisterCoordinator;
-import org.ntrloc.graph.db.partition.authorization.repository.AuthorizationRepository;
+import org.ntrloc.graph.db.partition.authorization.repository.AccessStore;
 import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
-import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
-import org.ntrloc.graph.db.partition.security.TestPrincipals;
+import org.ntrloc.graph.principal.NtrlocPrincipal;
+import org.ntrloc.graph.principal.TestPrincipals;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -32,7 +32,7 @@ class PermissionServiceInstanceReadIntegrationTest extends AbstractIntegrationTe
     private PermissionService permissionService;
 
     @Autowired
-    private AuthorizationRepository authRepo;
+    private AccessStore authRepo;
 
     @Autowired
     private ManualMarkerAssignmentService markerAssignmentService;

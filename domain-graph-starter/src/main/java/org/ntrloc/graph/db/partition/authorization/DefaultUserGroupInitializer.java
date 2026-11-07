@@ -1,7 +1,7 @@
 package org.ntrloc.graph.db.partition.authorization;
 
 import jakarta.annotation.PostConstruct;
-import org.ntrloc.graph.db.partition.authorization.repository.AuthorizationRepository;
+import org.ntrloc.graph.db.partition.authorization.repository.AccessStoreWriter;
 import org.ntrloc.graph.db.partition.schema.event.SchemaChangeEvent;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -26,13 +26,13 @@ public class DefaultUserGroupInitializer {
     public static final String DEFAULT_GROUP_NAME = "everyone";
 
     private final SecurityRepository securityRepo;
-    private final AuthorizationRepository authorizationRepo;
+    private final AccessStoreWriter accessWriter;
     private final JdbcClient jdbcClient;
 
-    public DefaultUserGroupInitializer(SecurityRepository securityRepo, AuthorizationRepository authorizationRepo,
+    public DefaultUserGroupInitializer(SecurityRepository securityRepo, AccessStoreWriter accessWriter,
                                     JdbcClient jdbcClient) {
         this.securityRepo = securityRepo;
-        this.authorizationRepo = authorizationRepo;
+        this.accessWriter = accessWriter;
         this.jdbcClient = jdbcClient;
     }
 
@@ -99,7 +99,7 @@ public class DefaultUserGroupInitializer {
     }
 
     private void grantReadForItemType(UUID itemTypeId, UUID groupId) {
-        authorizationRepo.grantItemTypeIfAbsent(itemTypeId, "USER_GROUP", groupId, PermissionService.ITEM_TYPE_READ);
+        accessWriter.grantItemTypeIfAbsent(itemTypeId, "USER_GROUP", groupId, PermissionService.ITEM_TYPE_READ);
         jdbcClient.sql("UPDATE schema_item SET default_visibility_decided = TRUE WHERE id = :itemTypeId")
                 .param("itemTypeId", itemTypeId).update();
     }

@@ -1,8 +1,8 @@
 package org.ntrloc.graph.events;
 
 import org.junit.jupiter.api.Test;
-import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
-import org.ntrloc.graph.db.partition.security.TestPrincipals;
+import org.ntrloc.graph.principal.NtrlocPrincipal;
+import org.ntrloc.graph.principal.TestPrincipals;
 
 import java.util.List;
 import java.util.Set;

@@ -38,7 +38,7 @@ import org.ntrloc.graph.access.StepToProperty;
 import org.ntrloc.graph.access.StepToStateMachine;
 import org.ntrloc.graph.access.StringEqualsPredicate;
 import org.ntrloc.graph.access.TotalityPredicate;
-import org.ntrloc.graph.db.partition.authorization.repository.AuthorizationRepository;
+import org.ntrloc.graph.db.partition.authorization.repository.AccessStore;
 import org.ntrloc.graph.db.partition.authorization.repository.MarkerDecisionPipelineRepository;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
@@ -68,7 +68,7 @@ class AccessMarkersUiTest extends AbstractUiIntegrationTest {
     private SchemaManager schemaManager;
 
     @Autowired
-    private AuthorizationRepository authorizationRepository;
+    private AccessStore authorizationRepository;
 
     @Autowired
     private MarkerDecisionPipelineRepository pipelineRepository;
@@ -109,7 +109,7 @@ class AccessMarkersUiTest extends AbstractUiIntegrationTest {
 
         // Listed alphabetically, names trimmed.
         page.awaitMarkerNames(List.of("Confidential " + tag, "Restricted " + tag));
-        assertThat(markersOf(type)).extracting(AuthorizationRepository.MarkerRow::name, AuthorizationRepository.MarkerRow::description)
+        assertThat(markersOf(type)).extracting(AccessStore.MarkerRow::name, AccessStore.MarkerRow::description)
                 .containsExactlyInAnyOrder(
                         tuple("Restricted " + tag, "Only reviewers"),
                         tuple("Confidential " + tag, null));
@@ -186,7 +186,7 @@ class AccessMarkersUiTest extends AbstractUiIntegrationTest {
 
         page.deleteMarker("Remove " + tag, true);
         page.awaitMarkerNames(List.of("Keep " + tag));
-        assertThat(markersOf(type)).extracting(AuthorizationRepository.MarkerRow::name).containsExactly("Keep " + tag);
+        assertThat(markersOf(type)).extracting(AccessStore.MarkerRow::name).containsExactly("Keep " + tag);
     }
 
     @Test
@@ -361,7 +361,7 @@ class AccessMarkersUiTest extends AbstractUiIntegrationTest {
         assertThat(page.isEditingLayout()).isTrue();
     }
 
-    private List<AuthorizationRepository.MarkerRow> markersOf(String itemTypeName) {
+    private List<AccessStore.MarkerRow> markersOf(String itemTypeName) {
         UUID itemTypeId = testData.itemType(itemTypeName).id();
         return authorizationRepository.getAllMarkers().stream().filter(m -> itemTypeId.equals(m.scopeId())).toList();
     }

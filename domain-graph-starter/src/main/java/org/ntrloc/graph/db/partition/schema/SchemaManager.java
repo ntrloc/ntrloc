@@ -13,7 +13,7 @@ import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminSchemaVie
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminStateMachineView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminStateView;
 import org.ntrloc.graph.db.partition.schema.definition.view.calculated.SchemaView;
-import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
+import org.ntrloc.graph.principal.NtrlocPrincipal;
 import org.ntrloc.graph.events.ClusterEventBroadcaster;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

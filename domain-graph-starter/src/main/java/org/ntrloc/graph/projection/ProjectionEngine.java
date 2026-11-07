@@ -1,7 +1,7 @@
 package org.ntrloc.graph.projection;
 
 import org.ntrloc.graph.db.partition.authorization.RequestPermissionContext;
-import org.ntrloc.graph.db.partition.authorization.repository.AuthorizationRepository;
+import org.ntrloc.graph.db.partition.authorization.repository.AccessStoreReader;
 import org.ntrloc.graph.db.partition.binary.BinaryStore;
 import org.ntrloc.graph.db.partition.binary.BinaryPropertyObject;
 import org.ntrloc.graph.db.partition.register.ExplicitProjection.Access;
@@ -106,7 +106,7 @@ public class ProjectionEngine {
     private static final String STATE_KIND_NORMAL = "NORMAL";
     private static final String STATE_KIND_START = "START";
 
-    private final AuthorizationRepository authorizationRepository;
+    private final AccessStoreReader accessStore;
     private final BinaryStore binaryStore;
     private final SchemaManager schemaManager;
     private final ControlledListManager controlledListManager;
@@ -120,9 +120,9 @@ public class ProjectionEngine {
     private final AtomicReference<DisplayLabelPatternsCache> displayLabelPatternsCache =
             new AtomicReference<>(new DisplayLabelPatternsCache(null, Map.of()));
 
-    public ProjectionEngine(AuthorizationRepository authorizationRepository, BinaryStore binaryStore,
+    public ProjectionEngine(AccessStoreReader accessStore, BinaryStore binaryStore,
                             SchemaManager schemaManager, ControlledListManager controlledListManager, RegisterStoreReader registerStore) {
-        this.authorizationRepository = authorizationRepository;
+        this.accessStore = accessStore;
         this.binaryStore = binaryStore;
         this.schemaManager = schemaManager;
         this.controlledListManager = controlledListManager;
@@ -1342,7 +1342,7 @@ public class ProjectionEngine {
         Set<UUID> markerIdsToName = permissions.isAdmin()
                 ? markerIdsByRegisterItemId.values().stream().flatMap(Set::stream).collect(Collectors.toSet())
                 : permissions.grantedItemReadMarkerIds();
-        Map<UUID, String> markerNamesById = authorizationRepository.getMarkerNames(markerIdsToName);
+        Map<UUID, String> markerNamesById = accessStore.getMarkerNames(markerIdsToName);
 
         // Every binary attached anywhere in the result, the links' targets included, fetched at once.
         Map<UUID, BinaryPropertyObject> binaryObjects = binaryObjects(itemRows);

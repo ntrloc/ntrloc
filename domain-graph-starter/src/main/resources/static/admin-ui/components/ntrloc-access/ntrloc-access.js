@@ -1659,7 +1659,7 @@ class NtrlocAccess extends HTMLElement {
 
   // OR-merges source's granted flags into target in place -- used to fold a group's ancestors'
   // own grants into one "effective" picture, the same union semantics the real enforcement path
-  // (AuthorizationCacheManager) applies across every group a user belongs to.
+  // (the Access Store's grant lookups) applies across every group a user belongs to.
   mergeGrantInto(target, source) {
     target.itemRead = target.itemRead || source.itemRead;
     target.itemDelete = target.itemDelete || source.itemDelete;

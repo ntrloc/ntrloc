@@ -21,7 +21,7 @@ import org.ntrloc.graph.access.StepToItem;
 import org.ntrloc.graph.access.StepToProperty;
 import org.ntrloc.graph.access.StepToStateMachine;
 import org.ntrloc.graph.access.Start;
-import org.ntrloc.graph.db.partition.authorization.repository.AuthorizationRepository;
+import org.ntrloc.graph.db.partition.authorization.repository.AccessStore;
 import org.ntrloc.graph.db.partition.authorization.repository.MarkerDecisionPipelineRepository;
 import org.ntrloc.graph.db.partition.ledger.ItemUpdateEntry;
 import org.ntrloc.graph.mutation.ExistingItemReference;
@@ -61,7 +61,7 @@ class CountedPredicateMarkerDecisionIntegrationTest extends AbstractIntegrationT
     private MarkerDecisionPipelineRepository pipelineRepository;
 
     @Autowired
-    private AuthorizationRepository authRepo;
+    private AccessStore authRepo;
 
     @Autowired
     private CountedPredicateTestDomainInitializer fixture;

@@ -4,7 +4,7 @@ import org.ntrloc.graph.db.coordinator.LedgerRegisterCoordinator;
 import org.ntrloc.graph.db.partition.ledger.ItemUpdateEntry;
 import org.ntrloc.graph.db.partition.ledger.LedgerEntry;
 import org.ntrloc.graph.db.partition.ledger.ManuallyAppliedMarker;
-import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
+import org.ntrloc.graph.principal.NtrlocPrincipal;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 

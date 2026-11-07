@@ -8,7 +8,7 @@ import org.flowable.engine.RuntimeService;
 import org.flowable.engine.repository.Deployment;
 import org.flowable.engine.repository.ProcessDefinition;
 import org.flowable.engine.runtime.ProcessInstance;
-import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
+import org.ntrloc.graph.principal.NtrlocPrincipal;
 import org.ntrloc.graph.db.partition.security.ExternalPrincipalResolver;
 import org.ntrloc.graph.db.partition.security.InternalPrincipalResolver;
 import org.springframework.http.HttpStatus;

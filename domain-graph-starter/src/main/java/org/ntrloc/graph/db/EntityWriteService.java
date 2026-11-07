@@ -1,6 +1,6 @@
 package org.ntrloc.graph.db;
 
-import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
+import org.ntrloc.graph.principal.NtrlocPrincipal;
 import org.ntrloc.graph.mutation.AbortResponse;
 import org.ntrloc.graph.mutation.CommitResponse;
 import org.ntrloc.graph.mutation.MutationRequest;

@@ -2,7 +2,7 @@ package org.ntrloc.graph.db.partition.process;
 
 import org.flowable.engine.TaskService;
 import org.flowable.task.api.Task;
-import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
+import org.ntrloc.graph.principal.NtrlocPrincipal;
 import org.ntrloc.graph.db.partition.security.ExternalPrincipalResolver;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;

@@ -1,9 +1,11 @@
 package org.ntrloc.graph.db.partition.schema;
 
+import org.ntrloc.graph.principal.NtrlocPrincipal;
+
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.partition.authorization.PermissionService;
-import org.ntrloc.graph.db.partition.authorization.repository.AuthorizationRepository;
+import org.ntrloc.graph.db.partition.authorization.repository.AccessStore;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyContainerKind;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
@@ -57,7 +59,7 @@ import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminStateMach
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminStateView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminTraitDefinitionView;
 import org.ntrloc.graph.db.partition.schema.repository.SchemaRepository;
-import org.ntrloc.graph.db.partition.security.TestPrincipals;
+import org.ntrloc.graph.principal.TestPrincipals;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import tools.jackson.databind.json.JsonMapper;
@@ -95,7 +97,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     private ControlledListManager controlledListManager;
 
     @Autowired
-    private AuthorizationRepository authRepo;
+    private AccessStore authRepo;
 
     @Autowired
     private SecurityRepository securityRepo;
@@ -1721,8 +1723,8 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         assertThat(itemView(itemId).groups()).extracting(AdminPropertyGroupView::name).doesNotContain("dimensions");
     }
 
-    private static final org.ntrloc.graph.db.partition.security.NtrlocPrincipal ADMIN =
-            org.ntrloc.graph.db.partition.security.TestPrincipals.of(UUID.randomUUID(), "Test Admin", null, java.util.Set.of(), true);
+    private static final org.ntrloc.graph.principal.NtrlocPrincipal ADMIN =
+            org.ntrloc.graph.principal.TestPrincipals.of(UUID.randomUUID(), "Test Admin", null, java.util.Set.of(), true);
 
     // --- Schema-view filtering by item-type:read permission (SchemaManager.getSchema) ---
     //

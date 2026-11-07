@@ -1,7 +1,7 @@
 package org.ntrloc.graph.mutation;
 
 import org.ntrloc.graph.db.EntityWriteService;
-import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
+import org.ntrloc.graph.principal.NtrlocPrincipal;
 import org.ntrloc.graph.db.partition.security.ExternalPrincipalResolver;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;

@@ -1,6 +1,6 @@
 package org.ntrloc.graph.events;
 
-import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
+import org.ntrloc.graph.principal.NtrlocPrincipal;
 import org.ntrloc.graph.db.partition.security.ExternalPrincipalResolver;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.Authentication;

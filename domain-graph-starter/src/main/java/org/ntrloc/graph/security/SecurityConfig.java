@@ -9,7 +9,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.ntrloc.graph.db.partition.security.ExternalPrincipalResolver;
 import org.ntrloc.graph.db.partition.security.ExternalUserProvisioner;
 import org.ntrloc.graph.db.partition.security.LocalAuthenticationProvider;
-import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
+import org.ntrloc.graph.principal.NtrlocPrincipal;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

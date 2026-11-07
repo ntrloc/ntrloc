@@ -6,7 +6,7 @@ import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.EntityWriteService;
 import org.ntrloc.graph.db.coordinator.LedgerRegisterCoordinator;
 import org.ntrloc.graph.db.partition.authorization.ManualMarkerAssignmentService;
-import org.ntrloc.graph.db.partition.authorization.repository.AuthorizationRepository;
+import org.ntrloc.graph.db.partition.authorization.repository.AccessStore;
 import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
 import org.ntrloc.graph.db.partition.schema.SchemaManager;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateTransitionMutation;
@@ -14,8 +14,8 @@ import org.ntrloc.graph.db.partition.schema.definition.mutation.DefinitionMutati
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DeleteTransitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminStateMachineView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminTransitionView;
-import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
-import org.ntrloc.graph.db.partition.security.TestPrincipals;
+import org.ntrloc.graph.principal.NtrlocPrincipal;
+import org.ntrloc.graph.principal.TestPrincipals;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.ntrloc.graph.mutation.MutationValidationException;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -41,7 +41,7 @@ class StateMachineExecutionIntegrationTest extends AbstractIntegrationTest {
     @Autowired private LedgerRegisterCoordinator coordinator;
     @Autowired private RegisterStore registerStore;
     @Autowired private SchemaManager schemaManager;
-    @Autowired private AuthorizationRepository authRepo;
+    @Autowired private AccessStore authRepo;
     @Autowired private ManualMarkerAssignmentService markerAssignmentService;
     @Autowired private SecurityRepository securityRepo;
     @Autowired private RegisterProjectionTestDomainInitializer fixture;

@@ -7,8 +7,8 @@ import org.ntrloc.graph.db.coordinator.CoordinatorTestDomainInitializer;
 import org.ntrloc.graph.db.coordinator.LedgerRegisterCoordinator;
 import org.ntrloc.graph.db.partition.authorization.ManualMarkerAssignmentService;
 import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
-import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
-import org.ntrloc.graph.db.partition.security.TestPrincipals;
+import org.ntrloc.graph.principal.NtrlocPrincipal;
+import org.ntrloc.graph.principal.TestPrincipals;
 import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -21,15 +21,15 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-// Covers AuthorizationRepository's marker/grant CRUD against the marker_grant + child-table shape
+// Covers AccessStore's marker/grant CRUD against the marker_grant + child-table shape
 // (see docs/ntrloc-marker-admin-ui-design-notes.md). Illegal states that used to need a DB CHECK
 // constraint (property_id required only for property-scoped operations) are now structurally
 // unrepresentable -- marker_grant_property always has a property_id column, item-level flags live
 // on marker_grant with no property_id at all -- so there's nothing left to test a constraint for.
-class AuthorizationRepositoryMarkerIntegrationTest extends AbstractIntegrationTest {
+class AccessStoreMarkerIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
-    private AuthorizationRepository authRepo;
+    private AccessStore authRepo;
 
     @Autowired
     private SecurityRepository securityRepo;

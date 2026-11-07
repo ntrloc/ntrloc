@@ -78,7 +78,7 @@ public class SecurityRepository {
 
     // Transitive: a user's effective groups are their direct groups, plus every group any of those
     // groups is itself (transitively) a member of via security_user_group_member_group. Everything
-    // downstream (AuthorizationCacheManager.effectiveSet/effectiveNestedSet, RequestPermissionContext)
+    // downstream (the Access Store's grant lookups, RequestPermissionContext)
     // already unions grants over whatever this returns, so nothing above this method needs to know
     // nesting exists at all -- the closure has to be complete by the time it leaves here.
     public Set<UUID> getUserGroupIdsForUser(UUID userId) {

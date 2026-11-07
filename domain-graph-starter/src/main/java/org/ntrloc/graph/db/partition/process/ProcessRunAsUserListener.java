@@ -9,7 +9,7 @@ import org.flowable.common.engine.api.delegate.event.FlowableEventType;
 import org.flowable.engine.RepositoryService;
 import org.flowable.engine.delegate.event.FlowableProcessStartedEvent;
 import org.flowable.engine.impl.persistence.entity.ExecutionEntity;
-import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
+import org.ntrloc.graph.principal.NtrlocPrincipal;
 import org.ntrloc.graph.db.partition.security.InternalPrincipalResolver;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;

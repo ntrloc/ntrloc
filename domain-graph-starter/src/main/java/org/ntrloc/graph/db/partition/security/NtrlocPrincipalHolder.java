@@ -1,5 +1,7 @@
 package org.ntrloc.graph.db.partition.security;
 
+import org.ntrloc.graph.principal.NtrlocPrincipal;
+
 /**
  * Implemented by an Authentication's principal object when Spring Security dictates its type
  * (an OIDC login's principal must be an OidcUser), so it carries the user's resolved

@@ -26,16 +26,16 @@ public class AuthorizationTestDataInitializer implements ApplicationRunner {
 
     private final SchemaManager schemaManager;
     private final SecurityRepository securityRepo;
-    private final AuthorizationRepository authorizationRepo;
+    private final AccessStoreWriter accessWriter;
     private final JdbcClient jdbcClient;
     private final DefaultUserGroupInitializer defaultUserGroupInitializer;
 
     public AuthorizationTestDataInitializer(SchemaManager schemaManager, SecurityRepository securityRepo,
-                                             AuthorizationRepository authorizationRepo, JdbcClient jdbcClient,
+                                             AccessStoreWriter accessWriter, JdbcClient jdbcClient,
                                              DefaultUserGroupInitializer defaultUserGroupInitializer) {
         this.schemaManager = schemaManager;
         this.securityRepo = securityRepo;
-        this.authorizationRepo = authorizationRepo;
+        this.accessWriter = accessWriter;
         this.jdbcClient = jdbcClient;
         this.defaultUserGroupInitializer = defaultUserGroupInitializer;
     }
@@ -85,8 +85,8 @@ public class AuthorizationTestDataInitializer implements ApplicationRunner {
         securityRepo.addUserToUserGroup(alice.id(), viewers.id());
         securityRepo.addUserToUserGroup(bob.id(), viewers.id());
 
-        authorizationRepo.grantItemType(publicDocId, "USER_GROUP", viewers.id(), PermissionService.ITEM_TYPE_READ);
-        authorizationRepo.grantItemType(confidentialDocId, "USER", carol.id(), PermissionService.ITEM_TYPE_READ);
+        accessWriter.grantItemType(publicDocId, "USER_GROUP", viewers.id(), PermissionService.ITEM_TYPE_READ);
+        accessWriter.grantItemType(confidentialDocId, "USER", carol.id(), PermissionService.ITEM_TYPE_READ);
     }
 
     private void revokeDefaultReadGrant(UUID itemTypeId) {
