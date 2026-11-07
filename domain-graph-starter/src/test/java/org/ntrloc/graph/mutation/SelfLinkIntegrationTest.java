@@ -4,7 +4,7 @@ import org.ntrloc.graph.projection.ProjectionEngine;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
-import org.ntrloc.graph.db.partition.schema.SchemaManager;
+import org.ntrloc.graph.db.partition.schema.SchemaService;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateItemDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateLinkDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePerspectiveDefinitionMutation;
@@ -43,7 +43,7 @@ class SelfLinkIntegrationTest extends AbstractIntegrationTest {
     private ProjectionEngine projectionEngine;
 
     @Autowired
-    private SchemaManager schemaManager;
+    private SchemaService schemaService;
 
     @Autowired
     private SelfLinkTestDomainInitializer fixture;
@@ -102,7 +102,7 @@ class SelfLinkIntegrationTest extends AbstractIntegrationTest {
     void perspectiveName_usedTwiceOnTheSameItemTypeByDifferentLinks_throws() {
         UUID otherTypeId = createOtherItemType();
 
-        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
+        assertThatThrownBy(() -> schemaService.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
                 new CreatePerspectiveDefinitionMutation(fixture.personTypeId(), "mother", "d", 0, 1),
                 new CreatePerspectiveDefinitionMutation(otherTypeId, "child", "d", 0, null))))))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -111,8 +111,8 @@ class SelfLinkIntegrationTest extends AbstractIntegrationTest {
 
     private UUID createOtherItemType() {
         String name = "SelfLinkOther-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(name, "d", List.of(), null, false, null)));
-        return schemaManager.getAdminSchema().items().stream()
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(name, "d", List.of(), null, false, null)));
+        return schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.name().equals(name)).findFirst().orElseThrow().id();
     }
 }

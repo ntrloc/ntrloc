@@ -1,7 +1,7 @@
 package org.ntrloc.graph.db.partition.register;
 
 import org.ntrloc.graph.db.partition.schema.repository.ControlledListStore;
-import org.ntrloc.graph.db.partition.schema.SchemaManager;
+import org.ntrloc.graph.db.partition.schema.SchemaService;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyUsage;
@@ -34,7 +34,7 @@ public class RegisterProjectionTestDomainInitializer implements DomainInitialize
     public static final String OUT_OF_STOCK = "OutOfStock";
     public static final String DISCONTINUED = "Discontinued";
 
-    private final SchemaManager schemaManager;
+    private final SchemaService schemaService;
     private final ControlledListStore controlledListStore;
 
     private UUID bookTypeId;
@@ -51,19 +51,19 @@ public class RegisterProjectionTestDomainInitializer implements DomainInitialize
     private UUID authorsPerspectiveId;
     private UUID attachmentPropertyId;
 
-    public RegisterProjectionTestDomainInitializer(SchemaManager schemaManager, ControlledListStore controlledListStore) {
-        this.schemaManager = schemaManager;
+    public RegisterProjectionTestDomainInitializer(SchemaService schemaService, ControlledListStore controlledListStore) {
+        this.schemaService = schemaService;
         this.controlledListStore = controlledListStore;
     }
 
     @Override
     public void run(ApplicationArguments args) {
-        initSchema(schemaManager);
+        initSchema(schemaService);
     }
 
     @Override
-    public void initSchema(SchemaManager schemaManager) {
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(
+    public void initSchema(SchemaService schemaService) {
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(
                 "RegisterProjectionTestBook", "RegisterStore projection/facet test fixture",
                 List.of(
                         property("title", PropertyType.STRING, PropertyCardinality.SINGLE),
@@ -150,7 +150,7 @@ public class RegisterProjectionTestDomainInitializer implements DomainInitialize
         controlledListStore.addValue(formatList.id(), "Hardback", null, 0);
         controlledListStore.addValue(formatList.id(), "Ebook", null, 1);
 
-        initStateMachine(schemaManager, bookTypeId, AVAILABILITY_MACHINE,
+        initStateMachine(schemaService, bookTypeId, AVAILABILITY_MACHINE,
                 List.of(
                         new StateDefinition(AVAILABLE),
                         new StateDefinition(OUT_OF_STOCK),
@@ -161,12 +161,12 @@ public class RegisterProjectionTestDomainInitializer implements DomainInitialize
                         new TransitionDefinition(OUT_OF_STOCK, AVAILABLE, "Restock"),
                         new TransitionDefinition(OUT_OF_STOCK, DISCONTINUED, "Discontinue")));
 
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(
                 "RegisterProjectionTestAuthor", "RegisterStore projection/facet test fixture",
                 List.of(property("name", PropertyType.STRING, PropertyCardinality.SINGLE)), null, false, null)));
         authorTypeId = findItem("RegisterProjectionTestAuthor").id();
 
-        schemaManager.applyMutations(List.of(new CreateLinkDefinitionMutation(
+        schemaService.applyMutations(List.of(new CreateLinkDefinitionMutation(
                 List.of(),
                 List.of(
                         new CreatePerspectiveDefinitionMutation(bookTypeId, "authors", "desc", 0, null),
@@ -177,12 +177,12 @@ public class RegisterProjectionTestDomainInitializer implements DomainInitialize
         // Publisher, linked one hop past Author (Book -> authors -> Author -> publisher ->
         // Publisher) -- exists purely so multi-hop requested-link tests have a real third item type
         // to recurse into; no other test in this class needs it.
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(
                 "RegisterProjectionTestPublisher", "RegisterStore projection/facet test fixture",
                 List.of(property("name", PropertyType.STRING, PropertyCardinality.SINGLE)), null, false, null)));
         publisherTypeId = findItem("RegisterProjectionTestPublisher").id();
 
-        schemaManager.applyMutations(List.of(new CreateLinkDefinitionMutation(
+        schemaService.applyMutations(List.of(new CreateLinkDefinitionMutation(
                 List.of(),
                 List.of(
                         new CreatePerspectiveDefinitionMutation(authorTypeId, "publisher", "desc", 0, null),
@@ -202,7 +202,7 @@ public class RegisterProjectionTestDomainInitializer implements DomainInitialize
     }
 
     private AdminItemDefinitionView findItem(String name) {
-        return schemaManager.getAdminSchema().items().stream()
+        return schemaService.getAdminSchema().items().stream()
                 .filter(item -> item.name().equals(name))
                 .findFirst()
                 .orElseThrow();

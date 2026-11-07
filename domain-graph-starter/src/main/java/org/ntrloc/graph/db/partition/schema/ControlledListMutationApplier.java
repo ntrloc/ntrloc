@@ -23,7 +23,7 @@ import java.util.UUID;
 // Applies the list-centric controlled-list mutations -- controlled lists are a first-class,
 // reusable schema element now, not a per-property appendage. (The property-keyed
 // ReplaceControlledListMutation still exists for API back-compat and is handled inline in
-// SchemaManager.) refIdToListId/results are threaded through from SchemaManager.applyMutations'
+// SchemaService.) refIdToListId/results are threaded through from SchemaService.applyMutations'
 // own batch walk: a CreateControlledListMutation that supplies a refId records its real id into
 // refIdToListId (so a SetPropertyControlledListMutation later in the *same* batch can resolve a
 // NewControlledListReference against it) and always appends to results (so the caller can learn

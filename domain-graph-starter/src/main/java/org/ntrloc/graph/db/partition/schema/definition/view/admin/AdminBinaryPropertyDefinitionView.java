@@ -16,7 +16,7 @@ import java.util.UUID;
 // dynamicFields is populated from the binary dynamic-property registry (see
 // docs/ntrloc-dynamic-properties-design-notes.md section 10) -- every path currently observed
 // somewhere under this property's binaries' metadata, with reference_count > 0. It reflects the
-// registry as of the last schema (re)build, not live -- see SchemaManager's own comment on how/when
+// registry as of the last schema (re)build, not live -- see SchemaService's own comment on how/when
 // the cache refreshes.
 public record AdminBinaryPropertyDefinitionView(
         UUID id, String name, String description, PropertyCardinality cardinality,

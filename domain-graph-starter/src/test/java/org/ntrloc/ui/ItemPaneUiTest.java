@@ -13,7 +13,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.db.partition.authorization.ManualMarkerAssignmentService;
 import org.ntrloc.graph.db.partition.authorization.repository.AccessStore;
-import org.ntrloc.graph.db.partition.schema.SchemaManager;
+import org.ntrloc.graph.db.partition.schema.SchemaService;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyUsage;
@@ -48,7 +48,7 @@ class ItemPaneUiTest extends AbstractUiIntegrationTest {
     private static AdminStateMachineView ticketWorkflow;
 
     @Autowired
-    private SchemaManager schemaManager;
+    private SchemaService schemaService;
 
     @Autowired
     private AccessStore accessStore;
@@ -314,7 +314,7 @@ class ItemPaneUiTest extends AbstractUiIntegrationTest {
                         property("features", PropertyType.STRING, PropertyCardinality.SET, PropertyUsage.OPTIONAL)),
                 List.of(group("dimensions", property("width", PropertyType.DECIMAL))));
 
-        schemaManager.applyMutations(List.of(
+        schemaService.applyMutations(List.of(
                 new CreateControlledListMutation("finish", "UiItemFinish", PropertyType.STRING, List.of(
                         new CreateControlledListMutation.Entry("MATTE", "Matte finish"),
                         new CreateControlledListMutation.Entry("GLOSS", "Gloss finish"))),
@@ -325,7 +325,7 @@ class ItemPaneUiTest extends AbstractUiIntegrationTest {
                 new SetPropertyControlledListMutation(propertyId(gadget, "features"), new NewControlledListReference("features"))));
 
         partTypeId = testData.createItemType(PART_TYPE, "name", List.of(property("name", PropertyType.STRING)), List.of()).id();
-        schemaManager.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
+        schemaService.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
                 new CreatePerspectiveDefinitionMutation(gadget.id(), "parts", "UI test fixture", 0, null),
                 new CreatePerspectiveDefinitionMutation(partTypeId, "gadgets", "UI test fixture", 0, null)))));
         AdminItemLinkPerspectiveView parts = testData.itemType(GADGET_TYPE).links().get("parts").get(0);

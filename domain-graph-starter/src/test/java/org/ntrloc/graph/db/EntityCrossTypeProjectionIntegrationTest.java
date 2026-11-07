@@ -11,7 +11,7 @@ import org.ntrloc.graph.db.partition.authorization.DefaultUserGroupInitializer;
 import org.ntrloc.graph.db.partition.authorization.ManualMarkerAssignmentService;
 import org.ntrloc.graph.db.partition.authorization.repository.AccessStore;
 import org.ntrloc.graph.principal.NtrlocPrincipal;
-import org.ntrloc.graph.db.partition.schema.SchemaManager;
+import org.ntrloc.graph.db.partition.schema.SchemaService;
 import org.ntrloc.graph.projection.ItemProjectionSpec;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
@@ -36,7 +36,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 // Phase 2 of item-type inheritance: the cross-type query engine (RegisterStore.
-// projectAcrossTypes, SchemaManager's supertype-inclusive/trait-implementer resolvers, and
+// projectAcrossTypes, SchemaService's supertype-inclusive/trait-implementer resolvers, and
 // EntityReadService's dispatch between the single-table and cross-type paths), driven end to end
 // through the real /api/projection/collection HTTP endpoint against a real Postgres, matching
 // AuthorizationEndpointsIntegrationTest's own style for the permission-scoped case.
@@ -54,7 +54,7 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Autowired
-    private SchemaManager schemaManager;
+    private SchemaService schemaService;
 
     @Autowired
     private MutationRequestProcessor processor;
@@ -81,7 +81,7 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
     private EntityReadService entityReadService;
 
     private UUID idOf(String itemTypeName) {
-        return schemaManager.getAdminSchema().items().stream()
+        return schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.name().equals(itemTypeName)).findFirst().orElseThrow().id();
     }
 
@@ -108,11 +108,11 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
     @Test
     void collectionProjection_byASupertype_returnsInstancesOfEveryDescendant() {
         String vehicleName = "CrossTypeVehicle-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(vehicleName, "d", List.of(), null, false, null)));
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(vehicleName, "d", List.of(), null, false, null)));
         UUID vehicleId = idOf(vehicleName);
 
         String carName = "CrossTypeCar-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(), vehicleId, false, null)));
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(), vehicleId, false, null)));
 
         UUID vehicleItemId = createItem(vehicleName);
         UUID carItemId = createItem(carName);
@@ -135,7 +135,7 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
         // cross-type scenario at all; included here to pin down that the routing decision itself
         // doesn't break the plain case.
         String leafName = "CrossTypeLeaf-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(leafName, "d", List.of(), null, false, null)));
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(leafName, "d", List.of(), null, false, null)));
         UUID leafItemId = createItem(leafName);
 
         var body = webTestClient.post().uri("/api/projection/collection")
@@ -152,15 +152,15 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
     @Test
     void collectionProjection_byARootThreeLevelsUp_returnsEveryLevel() {
         String vehicleName = "CrossTypeVehicle-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(vehicleName, "d", List.of(), null, false, null)));
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(vehicleName, "d", List.of(), null, false, null)));
         UUID vehicleId = idOf(vehicleName);
 
         String carName = "CrossTypeCar-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(), vehicleId, false, null)));
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(), vehicleId, false, null)));
         UUID carId = idOf(carName);
 
         String sportsCarName = "CrossTypeSportsCar-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(sportsCarName, "d", List.of(), carId, false, null)));
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(sportsCarName, "d", List.of(), carId, false, null)));
 
         UUID vehicleItemId = createItem(vehicleName);
         UUID carItemId = createItem(carName);
@@ -185,20 +185,20 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
     @Test
     void collectionProjection_byATrait_includesASubtypeThatInheritsItFromASupertype() {
         String vehicleName = "CrossTypeVehicle-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(vehicleName, "d", List.of(), null, false, null)));
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(vehicleName, "d", List.of(), null, false, null)));
         UUID vehicleId = idOf(vehicleName);
 
         String traitName = "CrossTypeInsurable-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateTraitDefinitionMutation(traitName, "d", List.of())));
-        UUID traitId = schemaManager.getAdminSchema().traits().stream()
+        schemaService.applyMutations(List.of(new CreateTraitDefinitionMutation(traitName, "d", List.of())));
+        UUID traitId = schemaService.getAdminSchema().traits().stream()
                 .filter(t -> t.name().equals(traitName)).findFirst().orElseThrow().id();
-        schemaManager.applyMutations(List.of(new ImplementTraitMutation(vehicleId, traitId)));
+        schemaService.applyMutations(List.of(new ImplementTraitMutation(vehicleId, traitId)));
 
         String carName = "CrossTypeCar-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(), vehicleId, false, null)));
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(), vehicleId, false, null)));
 
         String unrelatedName = "CrossTypeUnrelated-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(unrelatedName, "d", List.of(), null, false, null)));
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(unrelatedName, "d", List.of(), null, false, null)));
 
         UUID carItemId = createItem(carName);
         createItem(unrelatedName);
@@ -217,13 +217,13 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
     @Test
     void collectionProjection_sortAndFilterOnAnInheritedProperty_workAcrossBranches() {
         String vehicleName = "CrossTypeVehicle-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(vehicleName, "d", List.of(
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(vehicleName, "d", List.of(
                 new CreatePropertyDefinitionMutation("wheels", "d", PropertyType.INTEGER, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)),
                 null, false, null)));
         UUID vehicleId = idOf(vehicleName);
 
         String carName = "CrossTypeCar-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(), vehicleId, false, null)));
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(), vehicleId, false, null)));
 
         UUID vehicle4 = createItem(vehicleName, Map.of("wheels", 4));
         UUID car2 = createItem(carName, Map.of("wheels", 2));
@@ -258,13 +258,13 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
     @Test
     void collectionProjection_facetsAndFacetFiltersOnAnInheritedProperty_aggregateAcrossBranches() {
         String vehicleName = "CrossTypeVehicle-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(vehicleName, "d", List.of(
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(vehicleName, "d", List.of(
                 new CreatePropertyDefinitionMutation("electric", "d", PropertyType.BOOLEAN, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, true)),
                 null, false, null)));
         UUID vehicleId = idOf(vehicleName);
 
         String carName = "CrossTypeCar-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(), vehicleId, false, null)));
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(), vehicleId, false, null)));
 
         createItem(vehicleName, Map.of("electric", true));
         UUID gasCar = createItem(carName, Map.of("electric", false));
@@ -297,11 +297,11 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
     @Test
     void collectionProjection_sortedBySystemField_worksAcrossBranches() {
         String vehicleName = "CrossTypeVehicle-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(vehicleName, "d", List.of(), null, false, null)));
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(vehicleName, "d", List.of(), null, false, null)));
         UUID vehicleId = idOf(vehicleName);
 
         String carName = "CrossTypeCar-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(), vehicleId, false, null)));
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(), vehicleId, false, null)));
 
         UUID vehicleItemId = createItem(vehicleName);
         UUID carItemId = createItem(carName);
@@ -321,11 +321,11 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
     @Test
     void collectionProjection_sortedByItemType_ordersByTypeNameAcrossBranches() {
         String vehicleName = "CrossTypeVehicle-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(vehicleName, "d", List.of(), null, false, null)));
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(vehicleName, "d", List.of(), null, false, null)));
         UUID vehicleId = idOf(vehicleName);
 
         String carName = "CrossTypeCar-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(), vehicleId, false, null)));
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(), vehicleId, false, null)));
 
         UUID vehicleItemId = createItem(vehicleName);
         UUID carItemId = createItem(carName);
@@ -353,11 +353,11 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
     @Test
     void collectionProjection_silentlyDropsAnUnreadableBranch_butStillWorksForReadableOnes() {
         String vehicleName = "CrossTypeVehicle-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(vehicleName, "d", List.of(), null, false, null)));
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(vehicleName, "d", List.of(), null, false, null)));
         UUID vehicleId = idOf(vehicleName);
 
         String carName = "CrossTypeCar-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(), vehicleId, false, null)));
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(), vehicleId, false, null)));
         UUID carId = idOf(carName);
 
         revokeDefaultReadGrant(carId);
@@ -419,11 +419,11 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
     @Test
     void singleItemProjection_byASupertypeName_findsASubtypeInstance() {
         String vehicleName = "CrossTypeVehicle-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(vehicleName, "d", List.of(), null, false, null)));
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(vehicleName, "d", List.of(), null, false, null)));
         UUID vehicleId = idOf(vehicleName);
 
         String carName = "CrossTypeCar-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(), vehicleId, false, null)));
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(), vehicleId, false, null)));
 
         UUID carItemId = createItem(carName);
 
@@ -437,10 +437,10 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
     @Test
     void singleItemProjection_forAnItemOutsideTheQueriedTypesOwnLineage_returnsEmpty() {
         String vehicleName = "CrossTypeVehicle-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(vehicleName, "d", List.of(), null, false, null)));
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(vehicleName, "d", List.of(), null, false, null)));
 
         String unrelatedName = "CrossTypeUnrelated-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(unrelatedName, "d", List.of(), null, false, null)));
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(unrelatedName, "d", List.of(), null, false, null)));
         UUID unrelatedItemId = createItem(unrelatedName);
 
         // unrelatedItemId genuinely exists, but its type isn't Vehicle or a descendant of it.
@@ -452,7 +452,7 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
     @Test
     void singleItemProjection_forAnUnreadableType_throwsNotFound() {
         String vehicleName = "CrossTypeVehicle-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(vehicleName, "d", List.of(), null, false, null)));
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(vehicleName, "d", List.of(), null, false, null)));
         UUID vehicleId = idOf(vehicleName);
         revokeDefaultReadGrant(vehicleId);
 

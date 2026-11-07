@@ -25,7 +25,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-// Builds the calculated (client-facing) schema projection that SchemaManager caches and serves,
+// Builds the calculated (client-facing) schema projection that SchemaService caches and serves,
 // from SchemaStore's raw rows, via SchemaContentResolver for the content-resolution logic
 // shared with SchemaAdminViewBuilder. Split out of the single SchemaViewBuilder that used to build
 // both projections -- see SchemaContentResolver's own comment for why.

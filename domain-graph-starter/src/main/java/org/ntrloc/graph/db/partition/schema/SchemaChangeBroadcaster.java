@@ -11,11 +11,11 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 // connected SSE client (SchemaAdminController) gets every published event and just re-fetches
 // GET /api/admin/schema.
 //
-// Independently listens on SchemaManager's own "schemaChanged" Hazelcast topic rather than being
-// explicitly invoked by SchemaManager.applyMutations() -- that topic already fires unconditionally
+// Independently listens on SchemaService's own "schemaChanged" Hazelcast topic rather than being
+// explicitly invoked by SchemaService.applyMutations() -- that topic already fires unconditionally
 // on every successful mutation (property changes, renames, everything, not just create/delete),
-// so tapping it directly here needs no changes to SchemaManager at all. Deliberately does NOT
-// apply SchemaManager's own self-publishing-member filter: that filter exists because the
+// so tapping it directly here needs no changes to SchemaService at all. Deliberately does NOT
+// apply SchemaService's own self-publishing-member filter: that filter exists because the
 // *local* node's own AdminSchemaView/SchemaView cache was already rebuilt synchronously inside
 // applyMutations() before the publish, so re-rebuilding it from its own broadcast would be
 // redundant -- but a local admin's own edit should still refresh their own other browser tabs/
@@ -23,11 +23,11 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 // published by this same node.
 //
 // DEPRECATED, pending removal: superseded by org.ntrloc.graph.events.ClusterEventBroadcaster.
-// SchemaManager.refreshCache() now ALSO publishes to ClusterEventBroadcaster in parallel (see its
+// SchemaService.refreshCache() now ALSO publishes to ClusterEventBroadcaster in parallel (see its
 // own comment) -- proven working end to end against the React admin UI's SchemaView. Left alone
 // deliberately for now, unmodified in behavior (still converted off WebFlux below, same as
 // everything else in this app), alongside its existing consumer (SchemaAdminController.
-// schemaEvents / schema-events.js in the vanilla admin UI). Remove this class, SchemaManager's own
+// schemaEvents / schema-events.js in the vanilla admin UI). Remove this class, SchemaService's own
 // schemaChangedTopic field, and the /api/admin/schema/events endpoint once both admin UIs have
 // fully moved onto the new shared /api/events endpoint; see TaskEventBroadcaster for the same
 // deprecation, same reasoning.

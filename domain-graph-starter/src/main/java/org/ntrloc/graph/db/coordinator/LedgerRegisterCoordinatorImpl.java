@@ -14,7 +14,7 @@ import org.ntrloc.graph.db.partition.register.RegisterLinkEndpoint;
 import org.ntrloc.graph.db.partition.register.RegisterStoreReader;
 import org.ntrloc.graph.db.partition.register.RegisterStoreWriter;
 import org.ntrloc.graph.db.partition.register.StagingContext;
-import org.ntrloc.graph.db.partition.schema.SchemaManager;
+import org.ntrloc.graph.db.partition.schema.SchemaService;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,7 +35,7 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
     private final NoOpMutationFilter noOpMutationFilter;
     private final PipelineMarkerDecisionService pipelineMarkerDecisionService;
     private final BinaryAttachmentReconciler binaryAttachmentReconciler;
-    private final SchemaManager schemaManager;
+    private final SchemaService schemaService;
 
     public LedgerRegisterCoordinatorImpl(LedgerStoreReader ledgerReader, LedgerStoreWriter ledgerWriter,
                                           RegisterStoreReader registerReader, RegisterStoreWriter registerWriter,
@@ -43,7 +43,7 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
                                           NoOpMutationFilter noOpMutationFilter,
                                           PipelineMarkerDecisionService pipelineMarkerDecisionService,
                                           BinaryAttachmentReconciler binaryAttachmentReconciler,
-                                          SchemaManager schemaManager) {
+                                          SchemaService schemaService) {
         this.ledgerReader = ledgerReader;
         this.ledgerWriter = ledgerWriter;
         this.registerReader = registerReader;
@@ -52,7 +52,7 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
         this.noOpMutationFilter = noOpMutationFilter;
         this.pipelineMarkerDecisionService = pipelineMarkerDecisionService;
         this.binaryAttachmentReconciler = binaryAttachmentReconciler;
-        this.schemaManager = schemaManager;
+        this.schemaService = schemaService;
     }
 
     // REQUIRES_NEW on prepare/commit/abort, not the default REQUIRED: each must durably commit (or
@@ -92,7 +92,7 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
         for (LedgerEntry entry : expanded) {
             switch (entry) {
                 case ItemCreateEntry e -> registerWriter.stageItemCreate(e.itemId(), e.itemTypeId(), e.properties(), e.initialStates(),
-                        schemaManager.binaryPropertyIdsForItemType(e.itemTypeId()), staging);
+                        schemaService.binaryPropertyIdsForItemType(e.itemTypeId()), staging);
                 case ItemUpdateEntry e when hasRegisterEffect(e) -> registerWriter.stageItemChange(e.itemId(), e.properties(),
                         e.stateChanges(), e.stateMachinesEnded(), binaryPropertyIdsForItem(e.itemId()), staging);
                 default -> { /* handled in another phase */ }
@@ -194,7 +194,7 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
     }
 
     private Set<UUID> binaryPropertyIdsForItem(UUID itemId) {
-        return schemaManager.binaryPropertyIdsForItemType(registerReader.findItemTypeId(itemId).orElseThrow());
+        return schemaService.binaryPropertyIdsForItemType(registerReader.findItemTypeId(itemId).orElseThrow());
     }
 
     private RegisterLinkEndpoint toRegisterEndpoint(LinkEndpoint endpoint) {

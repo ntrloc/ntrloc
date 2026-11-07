@@ -11,7 +11,7 @@ import org.ntrloc.graph.db.coordinator.LedgerRegisterCoordinator;
 import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
 import org.ntrloc.graph.db.partition.ledger.LinkCreateEntry;
 import org.ntrloc.graph.db.partition.ledger.LinkEndpoint;
-import org.ntrloc.graph.db.partition.schema.SchemaManager;
+import org.ntrloc.graph.db.partition.schema.SchemaService;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyUsage;
@@ -31,7 +31,7 @@ import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminTraitDefi
 import org.ntrloc.graph.db.partition.security.repository.UserStore;
 
 /**
- * Creates the schema and items a UI test needs, through the same SchemaManager and ledger paths the
+ * Creates the schema and items a UI test needs, through the same SchemaService and ledger paths the
  * application itself uses. A plain class rather than a Spring bean: importing a bean into the UI
  * tests would give them a second application context (see AbstractUiIntegrationTest).
  */
@@ -40,12 +40,12 @@ final class UiTestData {
     // Every fixture item needs a real, existing creator; one per test run is enough.
     private static UUID actorId;
 
-    private final SchemaManager schemaManager;
+    private final SchemaService schemaService;
     private final LedgerRegisterCoordinator coordinator;
     private final UserStore userStore;
 
-    UiTestData(SchemaManager schemaManager, LedgerRegisterCoordinator coordinator, UserStore userStore) {
-        this.schemaManager = schemaManager;
+    UiTestData(SchemaService schemaService, LedgerRegisterCoordinator coordinator, UserStore userStore) {
+        this.schemaService = schemaService;
         this.coordinator = coordinator;
         this.userStore = userStore;
     }
@@ -64,14 +64,14 @@ final class UiTestData {
                                            List<CreatePropertyDefinitionMutation> properties,
                                            List<CreatePropertyGroupDefinitionMutation> groups,
                                            UUID supertypeId, boolean abstractType, List<UUID> traitIds) {
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(
                 name, "UI test fixture", properties, supertypeId, abstractType, displayLabelPattern, traitIds, groups)));
         return itemType(name);
     }
 
     AdminTraitDefinitionView createTrait(String name, List<CreatePropertyDefinitionMutation> properties) {
-        schemaManager.applyMutations(List.of(new CreateTraitDefinitionMutation(name, "UI test fixture", properties, List.of())));
-        return schemaManager.getAdminSchema().traits().stream()
+        schemaService.applyMutations(List.of(new CreateTraitDefinitionMutation(name, "UI test fixture", properties, List.of())));
+        return schemaService.getAdminSchema().traits().stream()
                 .filter(trait -> trait.name().equals(name))
                 .findFirst()
                 .orElseThrow();
@@ -79,13 +79,13 @@ final class UiTestData {
 
     /** Creates a state machine with the given NORMAL states, then the given transitions between them. */
     AdminStateMachineView createStateMachine(String itemTypeName, String name, List<String> states, List<Transition> transitions) {
-        schemaManager.applyMutations(List.of(new CreateStateMachineMutation(itemType(itemTypeName).id(), name, null)));
+        schemaService.applyMutations(List.of(new CreateStateMachineMutation(itemType(itemTypeName).id(), name, null)));
         UUID machineId = stateMachine(itemTypeName, name).id();
-        schemaManager.applyMutations(states.stream()
+        schemaService.applyMutations(states.stream()
                 .<DefinitionMutation>map(state -> new CreateStateMutation(machineId, state, null, null, null))
                 .toList());
         Map<String, UUID> stateIds = stateIds(stateMachine(itemTypeName, name));
-        schemaManager.applyMutations(transitions.stream()
+        schemaService.applyMutations(transitions.stream()
                 .<DefinitionMutation>map(t -> new CreateTransitionMutation(stateIds.get(t.from()), stateIds.get(t.to()), t.name(), null, null, null))
                 .toList());
         return stateMachine(itemTypeName, name);
@@ -103,14 +103,14 @@ final class UiTestData {
     }
 
     AdminTraitDefinitionView trait(String name) {
-        return schemaManager.getAdminSchema().traits().stream()
+        return schemaService.getAdminSchema().traits().stream()
                 .filter(trait -> trait.name().equals(name))
                 .findFirst()
                 .orElseThrow();
     }
 
     AdminItemDefinitionView itemType(String name) {
-        return schemaManager.getAdminSchema().items().stream()
+        return schemaService.getAdminSchema().items().stream()
                 .filter(item -> item.name().equals(name))
                 .findFirst()
                 .orElseThrow();

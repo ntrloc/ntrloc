@@ -16,7 +16,7 @@ import org.ntrloc.graph.mutation.MutationRequest;
 import org.ntrloc.graph.mutation.MutationResponse;
 import org.ntrloc.graph.db.partition.authorization.RequestPermissionContext;
 import org.ntrloc.graph.db.partition.binary.BinaryStore;
-import org.ntrloc.graph.db.partition.schema.SchemaManager;
+import org.ntrloc.graph.db.partition.schema.SchemaService;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateItemDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DeleteItemDefinitionMutation;
 import org.ntrloc.graph.projection.AndPredicate;
@@ -85,7 +85,7 @@ class ProjectionEngineIntegrationTest extends AbstractIntegrationTest {
     private RegisterProjectionTestDomainInitializer fixture;
 
     @Autowired
-    private SchemaManager schemaManager;
+    private SchemaService schemaService;
 
     @Autowired
     private JdbcClient jdbcClient;
@@ -243,8 +243,8 @@ class ProjectionEngineIntegrationTest extends AbstractIntegrationTest {
     // internally. The real transition entry points are covered by StateMachineExecutionIntegrationTest;
     // these projection/facet tests only need a recorded current state, not START-pseudostate wiring.
     private void setState(UUID itemId, String machineName, String stateName) {
-        UUID smId = schemaManager.resolveStateMachineId(fixture.bookTypeId(), machineName);
-        UUID stateId = schemaManager.resolveStateId(smId, stateName);
+        UUID smId = schemaService.resolveStateMachineId(fixture.bookTypeId(), machineName);
+        UUID stateId = schemaService.resolveStateId(smId, stateName);
         UUID txn = UUID.randomUUID();
         coordinator.prepare(List.of(new ItemUpdateEntry(itemId, Map.of(), Map.of(smId, stateId), Set.of(), Set.of(), Set.of())), txn, actor, OffsetDateTime.now());
         coordinator.commit(txn, UUID.randomUUID());
@@ -750,14 +750,14 @@ class ProjectionEngineIntegrationTest extends AbstractIntegrationTest {
         // old behavior) would produce a different, wrong order here.
         String itemTypeName = "RegisterProjectionTestFacetOrderThrowaway";
         String machineName = "FacetOrderMachine";
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(
                 itemTypeName, "created only for stateMachineFacet ordering test", List.of(), null, false, null)));
-        UUID throwawayTypeId = schemaManager.getAdminSchema().items().stream()
+        UUID throwawayTypeId = schemaService.getAdminSchema().items().stream()
                 .filter(item -> item.name().equals(itemTypeName))
                 .findFirst().orElseThrow().id();
         List<UUID> createdItemIds = new ArrayList<>();
         try {
-            new DomainInitializer() {}.initStateMachine(schemaManager, throwawayTypeId, machineName,
+            new DomainInitializer() {}.initStateMachine(schemaService, throwawayTypeId, machineName,
                     List.of(
                             new DomainInitializer.StateDefinition("Available"),
                             new DomainInitializer.StateDefinition("OutOfStock"),
@@ -800,7 +800,7 @@ class ProjectionEngineIntegrationTest extends AbstractIntegrationTest {
                         .exchange()
                         .expectStatus().isOk();
             }
-            schemaManager.applyMutations(List.of(new DeleteItemDefinitionMutation(throwawayTypeId)));
+            schemaService.applyMutations(List.of(new DeleteItemDefinitionMutation(throwawayTypeId)));
         }
     }
 
@@ -816,8 +816,8 @@ class ProjectionEngineIntegrationTest extends AbstractIntegrationTest {
     }
 
     private void setStateForType(UUID itemTypeId, UUID itemId, String machineName, String stateName) {
-        UUID smId = schemaManager.resolveStateMachineId(itemTypeId, machineName);
-        UUID stateId = schemaManager.resolveStateId(smId, stateName);
+        UUID smId = schemaService.resolveStateMachineId(itemTypeId, machineName);
+        UUID stateId = schemaService.resolveStateId(smId, stateName);
         UUID txn = UUID.randomUUID();
         coordinator.prepare(List.of(new ItemUpdateEntry(itemId, Map.of(), Map.of(smId, stateId), Set.of(), Set.of(), Set.of())), txn, actor, OffsetDateTime.now());
         coordinator.commit(txn, UUID.randomUUID());
@@ -1376,16 +1376,16 @@ class ProjectionEngineIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void deletingAnItemType_dropsItsRegisterTable() {
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(
                 "RegisterProjectionTestThrowaway", "created only to be deleted in this test", List.of(), null, false, null)));
-        UUID throwawayTypeId = schemaManager.getAdminSchema().items().stream()
+        UUID throwawayTypeId = schemaService.getAdminSchema().items().stream()
                 .filter(item -> item.name().equals("RegisterProjectionTestThrowaway"))
                 .findFirst().orElseThrow().id();
         String tableName = RegisterStore.tableNameFor(throwawayTypeId);
 
         assertThat(tableExists(tableName)).isTrue();
 
-        schemaManager.applyMutations(List.of(new DeleteItemDefinitionMutation(throwawayTypeId)));
+        schemaService.applyMutations(List.of(new DeleteItemDefinitionMutation(throwawayTypeId)));
 
         assertThat(tableExists(tableName)).isFalse();
     }

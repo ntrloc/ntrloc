@@ -10,7 +10,7 @@ import java.util.stream.Collectors;
 
 import org.ntrloc.graph.db.partition.ledger.LinkEndpoint;
 import org.ntrloc.graph.db.partition.register.RegisterStoreReader;
-import org.ntrloc.graph.db.partition.schema.SchemaManager;
+import org.ntrloc.graph.db.partition.schema.SchemaService;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemLinkPerspectiveView;
 import org.springframework.stereotype.Component;
 
@@ -22,11 +22,11 @@ class LinkEndpointResolver {
 
     record ResolvedLink(UUID linkTypeId, LinkEndpoint first, LinkEndpoint second) {}
 
-    private final SchemaManager schemaManager;
+    private final SchemaService schemaService;
     private final RegisterStoreReader registerStore;
 
-    LinkEndpointResolver(SchemaManager schemaManager, RegisterStoreReader registerStore) {
-        this.schemaManager = schemaManager;
+    LinkEndpointResolver(SchemaService schemaService, RegisterStoreReader registerStore) {
+        this.schemaService = schemaService;
         this.registerStore = registerStore;
     }
 
@@ -80,7 +80,7 @@ class LinkEndpointResolver {
             throw new IllegalArgumentException("Unsupported item reference: " + ref.item().getClass().getSimpleName());
         }
 
-        List<AdminItemLinkPerspectiveView> candidates = schemaManager.getAdminSchema().items().stream()
+        List<AdminItemLinkPerspectiveView> candidates = schemaService.getAdminSchema().items().stream()
                 .filter(item -> item.id().equals(itemTypeId))
                 .findFirst()
                 .map(item -> item.links().getOrDefault(ref.perspectiveName(), List.of()))

@@ -14,7 +14,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.db.partition.schema.AllowedValue;
 import org.ntrloc.graph.db.partition.schema.repository.ControlledListStore;
-import org.ntrloc.graph.db.partition.schema.SchemaManager;
+import org.ntrloc.graph.db.partition.schema.SchemaService;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyContainerKind;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
@@ -39,13 +39,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 /**
  * Editing an item type's Structure tab, end to end: edits are held until Save or Cancel, survive
  * browsing other item types, and are saved together. Changes made elsewhere while editing (here,
- * straight through SchemaManager, as another admin's save would be) show up live; one to a field
+ * straight through SchemaService, as another admin's save would be) show up live; one to a field
  * being edited has to be settled before saving. Every test edits its own item types.
  */
 class SchemaEditingUiTest extends AbstractUiIntegrationTest {
 
     @Autowired
-    private SchemaManager schemaManager;
+    private SchemaService schemaService;
 
     @Autowired
     private ControlledListStore controlledListStore;
@@ -62,7 +62,7 @@ class SchemaEditingUiTest extends AbstractUiIntegrationTest {
         UUID bookId = testData.createItemType(bookType, "title",
                 List.of(property("title", PropertyType.STRING), property("pages", PropertyType.INTEGER)), List.of()).id();
         UUID authorId = testData.createItemType(authorType, null, List.of(property("name", PropertyType.STRING)), List.of()).id();
-        schemaManager.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
+        schemaService.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
                 new CreatePerspectiveDefinitionMutation(bookId, "authors", "UI test fixture", 0, null),
                 new CreatePerspectiveDefinitionMutation(authorId, "books", "UI test fixture", 0, null)))));
 
@@ -99,7 +99,7 @@ class SchemaEditingUiTest extends AbstractUiIntegrationTest {
         assertThat(schema.overviewEditable()).isTrue();
         assertThat(schema.itemTypeOverview()).containsEntry("Item type name", name);
         assertThat(schema.unsavedItemTypes()).contains(name);
-        assertThat(schemaManager.getAdminSchema().items()).extracting(AdminItemDefinitionView::name).doesNotContain(name);
+        assertThat(schemaService.getAdminSchema().items()).extracting(AdminItemDefinitionView::name).doesNotContain(name);
 
         schema.typeInto("Description", "Made in the UI")
                 .newProperty().typeInPropertyEditor("Name", "issue").chooseInPropertyEditor("Type", "Integer").applyPropertyEditor();
@@ -157,12 +157,12 @@ class SchemaEditingUiTest extends AbstractUiIntegrationTest {
 
         assertThat(schema.startDelete()).isEqualTo("Its links go with it: authors (to " + authorType + "). This can't be undone.");
         schema.cancelDelete();
-        assertThat(schemaManager.getAdminSchema().items()).extracting(AdminItemDefinitionView::name).contains(bookType);
+        assertThat(schemaService.getAdminSchema().items()).extracting(AdminItemDefinitionView::name).contains(bookType);
 
         schema.startDelete();
         schema.confirmDelete();
 
-        assertThat(schemaManager.getAdminSchema().items()).extracting(AdminItemDefinitionView::name).doesNotContain(bookType);
+        assertThat(schemaService.getAdminSchema().items()).extracting(AdminItemDefinitionView::name).doesNotContain(bookType);
         assertThat(Objects.requireNonNullElse(testData.itemType(authorType).links(), Map.of())).doesNotContainKey("books");
         assertThat(schema.itemTypeNames()).doesNotContain(bookType);
         assertThat(schema.unsavedItemTypes()).isEmpty();
@@ -177,7 +177,7 @@ class SchemaEditingUiTest extends AbstractUiIntegrationTest {
         String error = schema.confirmDeleteExpectingError();
 
         assertThat(error).contains("Cannot delete item type '" + bookType + "' because items of this type still exist");
-        assertThat(schemaManager.getAdminSchema().items()).extracting(AdminItemDefinitionView::name).contains(bookType);
+        assertThat(schemaService.getAdminSchema().items()).extracting(AdminItemDefinitionView::name).contains(bookType);
     }
 
     @Test
@@ -188,7 +188,7 @@ class SchemaEditingUiTest extends AbstractUiIntegrationTest {
 
         schema.confirmDelete();
 
-        assertThat(schemaManager.getAdminSchema().traits()).extracting(AdminTraitDefinitionView::name).doesNotContain(name);
+        assertThat(schemaService.getAdminSchema().traits()).extracting(AdminTraitDefinitionView::name).doesNotContain(name);
         assertThat(schema.traitNames()).doesNotContain(name);
         assertThat(driver.getCurrentUrl()).endsWith("/schema/traits");
     }
@@ -265,7 +265,7 @@ class SchemaEditingUiTest extends AbstractUiIntegrationTest {
         String name = "UiEditDoomedList-" + UUID.randomUUID().toString().substring(0, 8);
         UUID listId = controlledList(name, "A", "Aye");
         UUID titleId = UiTestData.propertyId(testData.itemType(bookType), "title");
-        schemaManager.applyMutations(List.of(new SetPropertyControlledListMutation(titleId, new ExistingControlledListReference(listId))));
+        schemaService.applyMutations(List.of(new SetPropertyControlledListMutation(titleId, new ExistingControlledListReference(listId))));
         assertThat(schema.openSection("Controlled Lists").selectControlledList(name).startDelete())
                 .isEqualTo("Properties using it stop using it: " + bookType + " · title. This can't be undone.");
 
@@ -282,7 +282,7 @@ class SchemaEditingUiTest extends AbstractUiIntegrationTest {
         for (int i = 0; i < valuesAndLabels.length; i += 2) {
             entries.add(new CreateControlledListMutation.Entry(valuesAndLabels[i], valuesAndLabels[i + 1]));
         }
-        schemaManager.applyMutations(List.of(new CreateControlledListMutation(null, name, PropertyType.STRING, entries)));
+        schemaService.applyMutations(List.of(new CreateControlledListMutation(null, name, PropertyType.STRING, entries)));
         return controlledListStore.getAllLists().stream().filter(l -> l.name().equals(name)).findFirst().orElseThrow().id();
     }
 
@@ -298,7 +298,7 @@ class SchemaEditingUiTest extends AbstractUiIntegrationTest {
         assertThat(schema.overviewEditable()).isTrue();
         assertThat(schema.itemTypeOverview()).containsEntry("Trait name", name);
         assertThat(schema.unsavedTraits()).contains(name);
-        assertThat(schemaManager.getAdminSchema().traits()).extracting(AdminTraitDefinitionView::name).doesNotContain(name);
+        assertThat(schemaService.getAdminSchema().traits()).extracting(AdminTraitDefinitionView::name).doesNotContain(name);
 
         schema.typeInto("Description", "Made in the UI")
                 .newProperty().typeInPropertyEditor("Name", "tag").applyPropertyEditor();
@@ -467,7 +467,7 @@ class SchemaEditingUiTest extends AbstractUiIntegrationTest {
     @Test
     void newGroupsAndEverythingInsideThemAreSavedTogether() {
         String listName = "UiEditFormats-" + UUID.randomUUID().toString().substring(0, 8);
-        schemaManager.applyMutations(List.of(new CreateControlledListMutation(null, listName, PropertyType.STRING, List.of(
+        schemaService.applyMutations(List.of(new CreateControlledListMutation(null, listName, PropertyType.STRING, List.of(
                 new CreateControlledListMutation.Entry("HARDBACK", "Hardback")))));
 
         schema.edit().newGroup();
@@ -497,7 +497,7 @@ class SchemaEditingUiTest extends AbstractUiIntegrationTest {
     @Test
     void savedGroupsTakeNewPropertiesAndGroupsToo() {
         UUID bookId = testData.itemType(bookType).id();
-        schemaManager.applyMutations(List.of(new AddPropertyGroupDefinitionMutation(PropertyContainerKind.ITEM, bookId, "details", "d",
+        schemaService.applyMutations(List.of(new AddPropertyGroupDefinitionMutation(PropertyContainerKind.ITEM, bookId, "details", "d",
                 List.of(), List.of())));
         schema.awaitGroup("details").edit();
         assertThat(schema.groupActions("details"))
@@ -642,7 +642,7 @@ class SchemaEditingUiTest extends AbstractUiIntegrationTest {
         String suffix = UUID.randomUUID().toString().substring(0, 8);
         String traitName = "UiEditCiting-" + suffix;
         UUID traitId = testData.createTrait(traitName, List.of()).id();
-        schemaManager.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
+        schemaService.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
                 new CreatePerspectiveDefinitionMutation(traitId, "cites", "UI test fixture", 0, null),
                 new CreatePerspectiveDefinitionMutation(testData.itemType(authorType).id(), "citedBy", "UI test fixture", 0, null)))));
         String essayType = "UiEditEssay-" + suffix;
@@ -672,7 +672,7 @@ class SchemaEditingUiTest extends AbstractUiIntegrationTest {
     @Test
     void aPropertysEditsAreHeldUntilSaveAndThenAppliedTogether() {
         String listName = "UiEditGenres-" + UUID.randomUUID().toString().substring(0, 8);
-        schemaManager.applyMutations(List.of(new CreateControlledListMutation(null, listName, PropertyType.STRING, List.of(
+        schemaService.applyMutations(List.of(new CreateControlledListMutation(null, listName, PropertyType.STRING, List.of(
                 new CreateControlledListMutation.Entry("FICTION", "Fiction")))));
         schema.edit().editProperty("title");
         assertThat(schema.propertyEditorFields()).containsExactly(
@@ -742,7 +742,7 @@ class SchemaEditingUiTest extends AbstractUiIntegrationTest {
     @Test
     void aNewPropertyCanComeWithAControlledList() {
         String listName = "UiEditFormats-" + UUID.randomUUID().toString().substring(0, 8);
-        schemaManager.applyMutations(List.of(new CreateControlledListMutation(null, listName, PropertyType.STRING, List.of(
+        schemaService.applyMutations(List.of(new CreateControlledListMutation(null, listName, PropertyType.STRING, List.of(
                 new CreateControlledListMutation.Entry("HARDBACK", "Hardback")))));
 
         schema.edit().newProperty()
@@ -784,7 +784,7 @@ class SchemaEditingUiTest extends AbstractUiIntegrationTest {
         schema.edit().editProperty("title").typeInPropertyEditor("Description", "Mine").applyPropertyEditor();
 
         AdminPropertyDefinitionView title = propertyNamed(bookType, "title");
-        schemaManager.applyMutations(List.of(new UpdatePropertyDefinitionMutation(title.id(), "title", "Theirs",
+        schemaService.applyMutations(List.of(new UpdatePropertyDefinitionMutation(title.id(), "title", "Theirs",
                 title.cardinality(), title.usage(), title.facetable())));
         schema.awaitConflict();
         assertThat(schema.conflicts()).containsExactly("Property title was changed by someone else");
@@ -842,13 +842,13 @@ class SchemaEditingUiTest extends AbstractUiIntegrationTest {
     // Another admin's save of a new group on the book type.
     private void addSavedGroup(String name, List<CreatePropertyDefinitionMutation> properties,
                                List<CreatePropertyGroupDefinitionMutation> groups) {
-        schemaManager.applyMutations(List.of(new AddPropertyGroupDefinitionMutation(PropertyContainerKind.ITEM,
+        schemaService.applyMutations(List.of(new AddPropertyGroupDefinitionMutation(PropertyContainerKind.ITEM,
                 testData.itemType(bookType).id(), name, null, properties, groups)));
     }
 
     private List<AdminPropertyDefinitionView> linkProperties(String perspectiveName) {
         UUID linkId = testData.itemType(bookType).links().get(perspectiveName).getFirst().linkId();
-        return schemaManager.getAdminSchema().links().stream()
+        return schemaService.getAdminSchema().links().stream()
                 .filter(link -> link.id().equals(linkId))
                 .findFirst()
                 .orElseThrow()
@@ -867,7 +867,7 @@ class SchemaEditingUiTest extends AbstractUiIntegrationTest {
     }
 
     private AdminControlledListView controlledList(String name) {
-        return schemaManager.getAdminSchema().controlledLists().stream()
+        return schemaService.getAdminSchema().controlledLists().stream()
                 .filter(list -> list.name().equals(name))
                 .findFirst()
                 .orElseThrow();
@@ -876,7 +876,7 @@ class SchemaEditingUiTest extends AbstractUiIntegrationTest {
     // Another admin's save of the item type's own fields.
     private void changeElsewhere(String itemTypeName, String description, String displayLabelPattern) {
         AdminItemDefinitionView itemType = testData.itemType(itemTypeName);
-        schemaManager.applyMutations(List.of(new UpdateItemDefinitionMutation(itemType.id(), itemType.name(), description,
+        schemaService.applyMutations(List.of(new UpdateItemDefinitionMutation(itemType.id(), itemType.name(), description,
                 itemType.supertypeId(), itemType.abstractType(), displayLabelPattern)));
     }
 }

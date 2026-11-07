@@ -12,17 +12,17 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/schema")
 public class SchemaController {
 
-    private final SchemaManager schemaManager;
+    private final SchemaService schemaService;
     private final ExternalPrincipalResolver principalResolver;
 
-    public SchemaController(SchemaManager schemaManager, ExternalPrincipalResolver principalResolver) {
-        this.schemaManager = schemaManager;
+    public SchemaController(SchemaService schemaService, ExternalPrincipalResolver principalResolver) {
+        this.schemaService = schemaService;
         this.principalResolver = principalResolver;
     }
 
     @GetMapping
     ResponseEntity<SchemaView> getSchema(Authentication authentication) {
         var principal = principalResolver.resolve(authentication);
-        return ResponseEntity.ok(schemaManager.getSchema(principal));
+        return ResponseEntity.ok(schemaService.getSchema(principal));
     }
 }

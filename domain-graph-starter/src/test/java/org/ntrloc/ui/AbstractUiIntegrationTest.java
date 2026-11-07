@@ -8,7 +8,7 @@ import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.coordinator.LedgerRegisterCoordinator;
-import org.ntrloc.graph.db.partition.schema.SchemaManager;
+import org.ntrloc.graph.db.partition.schema.SchemaService;
 import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.openqa.selenium.WebDriver;
 import org.openqa.selenium.support.ui.WebDriverWait;
@@ -45,7 +45,7 @@ public abstract class AbstractUiIntegrationTest extends AbstractIntegrationTest 
     private UserStore userStore;
 
     @Autowired
-    private SchemaManager schemaManager;
+    private SchemaService schemaService;
 
     @Autowired
     private LedgerRegisterCoordinator coordinator;
@@ -66,7 +66,7 @@ public abstract class AbstractUiIntegrationTest extends AbstractIntegrationTest 
 
     @BeforeEach
     void openBrowser() {
-        testData = new UiTestData(schemaManager, coordinator, userStore);
+        testData = new UiTestData(schemaService, coordinator, userStore);
         if (browser == null) {
             browser = new UiBrowser(port);
         }

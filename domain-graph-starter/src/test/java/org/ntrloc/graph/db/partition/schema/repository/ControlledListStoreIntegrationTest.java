@@ -2,7 +2,7 @@ package org.ntrloc.graph.db.partition.schema.repository;
 
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
-import org.ntrloc.graph.db.partition.schema.SchemaManager;
+import org.ntrloc.graph.db.partition.schema.SchemaService;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyContainerKind;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
@@ -26,17 +26,17 @@ class ControlledListStoreIntegrationTest extends AbstractIntegrationTest {
     private ControlledListStore controlledListStore;
 
     @Autowired
-    private SchemaManager schemaManager;
+    private SchemaService schemaService;
 
     private UUID createStringProperty() {
         String itemName = "CLMTest-" + UUID.randomUUID();
         String propName = "prop-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(itemName, "d", List.of(), null, false, null)));
-        UUID itemId = schemaManager.getAdminSchema().items().stream()
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(itemName, "d", List.of(), null, false, null)));
+        UUID itemId = schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.name().equals(itemName)).findFirst().orElseThrow().id();
-        schemaManager.applyMutations(List.of(new AddPropertyDefinitionMutation(
+        schemaService.applyMutations(List.of(new AddPropertyDefinitionMutation(
                 PropertyContainerKind.ITEM, itemId, propName, "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)));
-        return schemaManager.getAdminSchema().items().stream()
+        return schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
                 .properties().stream().filter(p -> p.name().equals(propName)).findFirst().orElseThrow().id();
     }

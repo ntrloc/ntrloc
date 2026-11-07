@@ -10,7 +10,7 @@ import org.ntrloc.graph.db.partition.ledger.LinkEndpoint;
 import org.ntrloc.graph.db.partition.ledger.LinkUpdateEntry;
 import org.ntrloc.graph.db.partition.register.RegisterLinkEndpoint;
 import org.ntrloc.graph.db.partition.register.RegisterStoreReader;
-import org.ntrloc.graph.db.partition.schema.SchemaManager;
+import org.ntrloc.graph.db.partition.schema.SchemaService;
 import org.ntrloc.graph.db.partition.schema.repository.SchemaStore;
 import org.springframework.stereotype.Component;
 
@@ -41,13 +41,13 @@ public class NoOpMutationFilter {
 
     private final RegisterStoreReader registerStore;
     private final SchemaStore schemaStore;
-    private final SchemaManager schemaManager;
+    private final SchemaService schemaService;
 
     public NoOpMutationFilter(RegisterStoreReader registerStore, SchemaStore schemaStore,
-                              SchemaManager schemaManager) {
+                              SchemaService schemaService) {
         this.registerStore = registerStore;
         this.schemaStore = schemaStore;
-        this.schemaManager = schemaManager;
+        this.schemaService = schemaService;
     }
 
     public List<LedgerEntry> filter(List<LedgerEntry> entries) {
@@ -76,7 +76,7 @@ public class NoOpMutationFilter {
         Map<UUID, Object> properties = e.properties().isEmpty()
                 ? Map.of()
                 : dropNoOpProperties(e.properties(), registerStore.currentPropertiesById(e.itemId(), itemTypeId),
-                        schemaManager.binaryPropertyIdsForItemType(itemTypeId));
+                        schemaService.binaryPropertyIdsForItemType(itemTypeId));
 
         Map<UUID, UUID> stateChanges = Map.of();
         Set<UUID> stateMachinesEnded = Set.of();
@@ -100,7 +100,7 @@ public class NoOpMutationFilter {
     }
 
     // BINARY-typed properties are never stored in the properties JSONB `current` is read from
-    // (see SchemaManager.binaryPropertyIdsForItemType) -- "current" would always look like null
+    // (see SchemaService.binaryPropertyIdsForItemType) -- "current" would always look like null
     // for one regardless of whether a binary is actually attached, which would make clearing an
     // already-set attachment look identical to a no-op. Always pass those through unfiltered
     // rather than risk silently swallowing a real change.

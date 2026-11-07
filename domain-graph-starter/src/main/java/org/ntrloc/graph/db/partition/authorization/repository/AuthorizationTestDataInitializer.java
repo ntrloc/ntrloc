@@ -2,7 +2,7 @@ package org.ntrloc.graph.db.partition.authorization.repository;
 
 import org.ntrloc.graph.db.partition.authorization.DefaultUserGroupInitializer;
 import org.ntrloc.graph.db.partition.authorization.PermissionService;
-import org.ntrloc.graph.db.partition.schema.SchemaManager;
+import org.ntrloc.graph.db.partition.schema.SchemaService;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateItemDefinitionMutation;
 import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.springframework.boot.ApplicationArguments;
@@ -20,20 +20,20 @@ import java.util.stream.Collectors;
 
 @Component
 @ConditionalOnProperty(prefix = "graph.security", name = "seed-test-data", havingValue = "true")
-@DependsOn("schemaManager")
+@DependsOn("schemaService")
 @DependsOnDatabaseInitialization
 public class AuthorizationTestDataInitializer implements ApplicationRunner {
 
-    private final SchemaManager schemaManager;
+    private final SchemaService schemaService;
     private final UserStore userStore;
     private final AccessStoreWriter accessWriter;
     private final JdbcClient jdbcClient;
     private final DefaultUserGroupInitializer defaultUserGroupInitializer;
 
-    public AuthorizationTestDataInitializer(SchemaManager schemaManager, UserStore userStore,
+    public AuthorizationTestDataInitializer(SchemaService schemaService, UserStore userStore,
                                              AccessStoreWriter accessWriter, JdbcClient jdbcClient,
                                              DefaultUserGroupInitializer defaultUserGroupInitializer) {
-        this.schemaManager = schemaManager;
+        this.schemaService = schemaService;
         this.userStore = userStore;
         this.accessWriter = accessWriter;
         this.jdbcClient = jdbcClient;
@@ -47,16 +47,16 @@ public class AuthorizationTestDataInitializer implements ApplicationRunner {
     @Override
     public void run(ApplicationArguments args) {
         // Test item types are created through the real mutation pipeline (not raw DDL) so
-        // SchemaManager's cache stays consistent — it has no external invalidation hook
+        // SchemaService's cache stays consistent — it has no external invalidation hook
         // besides applyMutations. AclTestUnmarkedDoc deliberately gets no marker assignment at
         // all, to prove admins bypass the default-deny behavior that blocks everyone else.
-        schemaManager.applyMutations(List.of(
+        schemaService.applyMutations(List.of(
                 new CreateItemDefinitionMutation("AclTestPublicDoc", "ACL tracer bullet: group-granted type", List.of(), null, false, null),
                 new CreateItemDefinitionMutation("AclTestConfidentialDoc", "ACL tracer bullet: user-granted type", List.of(), null, false, null),
                 new CreateItemDefinitionMutation("AclTestUnmarkedDoc", "ACL tracer bullet: no marker assigned, admin-only", List.of(), null, false, null)
         ));
 
-        Map<String, UUID> itemsByName = schemaManager.getAdminSchema().items().stream()
+        Map<String, UUID> itemsByName = schemaService.getAdminSchema().items().stream()
                 .collect(Collectors.toMap(item -> item.name(), item -> item.id()));
         UUID publicDocId = itemsByName.get("AclTestPublicDoc");
         UUID confidentialDocId = itemsByName.get("AclTestConfidentialDoc");

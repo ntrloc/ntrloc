@@ -28,20 +28,20 @@ public class SchemaAdminController {
 
     public record ControlledListResponse(UUID listId, String name, PropertyType valueType, List<AllowedValue> values) {}
 
-    private final SchemaManager schemaManager;
+    private final SchemaService schemaService;
     private final ControlledListService controlledListService;
     private final SchemaChangeBroadcaster broadcaster;
 
-    public SchemaAdminController(SchemaManager schemaManager, ControlledListService controlledListService,
+    public SchemaAdminController(SchemaService schemaService, ControlledListService controlledListService,
                                   SchemaChangeBroadcaster broadcaster) {
-        this.schemaManager = schemaManager;
+        this.schemaService = schemaService;
         this.controlledListService = controlledListService;
         this.broadcaster = broadcaster;
     }
 
     @GetMapping
     ResponseEntity<AdminSchemaView> getAdminSchema() {
-        return ResponseEntity.ok(schemaManager.getAdminSchema());
+        return ResponseEntity.ok(schemaService.getAdminSchema());
     }
 
     // A trivial "something changed" signal, not a data channel -- every connected client just
@@ -73,7 +73,7 @@ public class SchemaAdminController {
 
     @PostMapping("/mutations")
     ResponseEntity<Void> applyMutations(@RequestBody List<DefinitionMutation> mutations) {
-        schemaManager.applyMutations(mutations);
+        schemaService.applyMutations(mutations);
         return ResponseEntity.noContent().build();
     }
 
@@ -81,9 +81,9 @@ public class SchemaAdminController {
         public record Entry(String value, String label) {}
     }
 
-    // Goes through schemaManager.applyMutations like every other schema write now -- no more
+    // Goes through schemaService.applyMutations like every other schema write now -- no more
     // reaching around it straight to ControlledListService (see CreateControlledListMutation's own
-    // refId and SchemaManager.applyMutations' own comment on why that bypass existed and what
+    // refId and SchemaService.applyMutations' own comment on why that bypass existed and what
     // closed the gap). The "does this property already have a list" branch stays here, since it's
     // this endpoint's own create-or-replace ergonomics, not a concern either mutation type owns --
     // it just now ends in a real mutation batch either way instead of a direct manager call.
@@ -92,7 +92,7 @@ public class SchemaAdminController {
             @PathVariable UUID propertyId, @RequestBody CreateControlledListRequest body) {
         var existing = controlledListService.getListForProperty(propertyId);
         if (existing.isPresent()) {
-            schemaManager.applyMutations(List.of(new UpdateControlledListMutation(existing.get().id(), null,
+            schemaService.applyMutations(List.of(new UpdateControlledListMutation(existing.get().id(), null,
                     body.values().stream()
                             .map(e -> new UpdateControlledListMutation.Entry(e.value(), e.label()))
                             .toList())));
@@ -101,7 +101,7 @@ public class SchemaAdminController {
             // own refId (NewControlledListReference) rather than this endpoint needing to look the
             // new list back up by name in between, the way two separate applyMutations calls would.
             String refId = UUID.randomUUID().toString();
-            schemaManager.applyMutations(List.of(
+            schemaService.applyMutations(List.of(
                     new CreateControlledListMutation(refId, body.name(), PropertyType.STRING,
                             body.values().stream()
                                     .map(e -> new CreateControlledListMutation.Entry(e.value(), e.label()))

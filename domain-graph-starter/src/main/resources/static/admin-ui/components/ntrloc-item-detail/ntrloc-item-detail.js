@@ -477,7 +477,7 @@ class NtrlocItemDetail extends HTMLElement {
   }
 
   // Excludes the current item (an item can't be its own parent type) and every one of its own
-  // current descendants (picking one would close a cycle) -- mirrors SchemaManager.
+  // current descendants (picking one would close a cycle) -- mirrors SchemaService.
   // resolveSupertypeInclusiveItemTypeIds' server-side BFS client-side, so the dropdown itself
   // never offers a choice the backend would reject. The backend's cycle guard remains the actual
   // enforcement point regardless; this is a UX nicety, not a correctness requirement.

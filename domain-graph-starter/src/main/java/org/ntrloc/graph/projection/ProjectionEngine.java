@@ -22,7 +22,7 @@ import org.ntrloc.graph.db.partition.register.RegisterRows.ValueCount;
 import org.ntrloc.graph.db.partition.register.RegisterStoreReader;
 import org.ntrloc.graph.db.partition.schema.ControlledListLabels;
 import org.ntrloc.graph.db.partition.schema.ControlledListService;
-import org.ntrloc.graph.db.partition.schema.SchemaManager;
+import org.ntrloc.graph.db.partition.schema.SchemaService;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminBinaryPropertyDefinitionView;
@@ -108,7 +108,7 @@ public class ProjectionEngine {
 
     private final AccessStoreReader accessStore;
     private final BinaryStore binaryStore;
-    private final SchemaManager schemaManager;
+    private final SchemaService schemaService;
     private final ControlledListService controlledListService;
     private final RegisterStoreReader registerStore;
     // Keyed by pattern *string*, not item type -- a pure function cache (the same SpEL text always
@@ -121,16 +121,16 @@ public class ProjectionEngine {
             new AtomicReference<>(new DisplayLabelPatternsCache(null, Map.of()));
 
     public ProjectionEngine(AccessStoreReader accessStore, BinaryStore binaryStore,
-                            SchemaManager schemaManager, ControlledListService controlledListService, RegisterStoreReader registerStore) {
+                            SchemaService schemaService, ControlledListService controlledListService, RegisterStoreReader registerStore) {
         this.accessStore = accessStore;
         this.binaryStore = binaryStore;
-        this.schemaManager = schemaManager;
+        this.schemaService = schemaService;
         this.controlledListService = controlledListService;
         this.registerStore = registerStore;
     }
 
     // Memoizes resolveEffectiveDisplayLabelPatterns() by reference-identity of the last-seen
-    // AdminSchemaView -- schemaManager.getAdminSchema() only ever returns a new instance when
+    // AdminSchemaView -- schemaService.getAdminSchema() only ever returns a new instance when
     // rebuildCache() runs (on any schema mutation), so a normal run of project()/projectOne()/
     // projectAcrossTypes() (which each call assembleProjectedItems, and thus this resolution,
     // once) is a cache hit rather than an O(item types) supertype-chain walk every time.
@@ -150,7 +150,7 @@ public class ProjectionEngine {
     }
 
     private List<String> facetableFieldsFor(UUID itemTypeId) {
-        return schemaManager.getAdminSchema().items().stream()
+        return schemaService.getAdminSchema().items().stream()
                 .filter(item -> item.id().equals(itemTypeId))
                 .findFirst()
                 .map(item -> collectFacetableFieldNames(item.properties(), item.groups(), ""))
@@ -266,7 +266,7 @@ public class ProjectionEngine {
     }
 
     private @Nullable String itemTypeNameOrNull(UUID itemTypeId) {
-        return schemaManager.getAdminSchema().items().stream()
+        return schemaService.getAdminSchema().items().stream()
                 .filter(item -> item.id().equals(itemTypeId))
                 .map(AdminItemDefinitionView::name)
                 .findFirst()
@@ -286,7 +286,7 @@ public class ProjectionEngine {
         // Never auto-populated: only machines the client named (see CollectionProjectionSpec.stateMachineFacets).
         Map<String, UUID> stateMachineIds = new LinkedHashMap<>();
         (spec.stateMachineFacets() != null ? spec.stateMachineFacets() : List.<String>of())
-                .forEach(name -> stateMachineIds.put(name, schemaManager.resolveStateMachineId(itemTypeId, name)));
+                .forEach(name -> stateMachineIds.put(name, schemaService.resolveStateMachineId(itemTypeId, name)));
 
         RegisterRows rows = registerStore.query(new ExplicitProjection(Set.of(itemTypeId), filter, toAccess(permissions), termsFilters,
                 facetProperties.entrySet().stream().map(e -> new TermsFacet(e.getKey(), e.getValue().id())).toList(),
@@ -308,7 +308,7 @@ public class ProjectionEngine {
         List<ItemRow> itemRows = rows.items();
 
         Map<UUID, AdminPropertyDefinitionView> propertyViewsById = propertyViewsByIdForItemType(itemTypeId);
-        List<AdminStateMachineView> stateMachines = schemaManager.getAdminSchema().items().stream()
+        List<AdminStateMachineView> stateMachines = schemaService.getAdminSchema().items().stream()
                 .filter(item -> item.id().equals(itemTypeId))
                 .findFirst()
                 .map(AdminItemDefinitionView::stateMachines)
@@ -333,7 +333,7 @@ public class ProjectionEngine {
         List<UUID> branches = List.copyOf(itemTypeIds);
         // Property/sort/facet field names resolve against a single representative branch, not each
         // one individually -- deliberate: every branch in a resolved set is guaranteed (by
-        // construction of SchemaManager's resolvers) to have inherited whichever properties are
+        // construction of SchemaService's resolvers) to have inherited whichever properties are
         // common to the whole set, so any single member resolves them identically. A field valid on
         // only one specific sibling branch correctly fails to resolve here, same as it would
         // against project() for that branch alone -- querying it means querying that concrete type
@@ -379,7 +379,7 @@ public class ProjectionEngine {
         for (UUID branchId : branches) {
             mergedPropertyNames.putAll(propertyPathsByIdForItemType(branchId));
             mergedPropertyViews.putAll(propertyViewsByIdForItemType(branchId));
-            schemaManager.getAdminSchema().items().stream()
+            schemaService.getAdminSchema().items().stream()
                     .filter(item -> item.id().equals(branchId))
                     .findFirst()
                     .map(AdminItemDefinitionView::stateMachines)
@@ -430,7 +430,7 @@ public class ProjectionEngine {
     }
 
     private AdminStateMachineView stateMachineView(UUID stateMachineId) {
-        return schemaManager.getAdminSchema().items().stream()
+        return schemaService.getAdminSchema().items().stream()
                 .flatMap(item -> Optional.ofNullable(item.stateMachines()).orElse(List.of()).stream())
                 .filter(m -> m.id().equals(stateMachineId))
                 .findFirst()
@@ -523,7 +523,7 @@ public class ProjectionEngine {
             return Optional.empty();
         }
         Map<UUID, AdminPropertyDefinitionView> propertyViewsById = propertyViewsByIdForItemType(itemTypeId);
-        List<AdminStateMachineView> stateMachines = schemaManager.getAdminSchema().items().stream()
+        List<AdminStateMachineView> stateMachines = schemaService.getAdminSchema().items().stream()
                 .filter(item -> item.id().equals(itemTypeId))
                 .findFirst()
                 .map(AdminItemDefinitionView::stateMachines)
@@ -701,7 +701,7 @@ public class ProjectionEngine {
     }
 
     private PropertyRoot rootPropertiesForItemType(UUID itemTypeId) {
-        return schemaManager.getAdminSchema().items().stream()
+        return schemaService.getAdminSchema().items().stream()
                 .filter(item -> item.id().equals(itemTypeId))
                 .findFirst()
                 .map(item -> new PropertyRoot(item.properties(), item.groups()))
@@ -709,7 +709,7 @@ public class ProjectionEngine {
     }
 
     private Map<String, List<AdminItemLinkPerspectiveView>> linkPerspectivesForItemType(UUID itemTypeId) {
-        return schemaManager.getAdminSchema().items().stream()
+        return schemaService.getAdminSchema().items().stream()
                 .filter(item -> item.id().equals(itemTypeId))
                 .findFirst()
                 .map(AdminItemDefinitionView::links)
@@ -717,7 +717,7 @@ public class ProjectionEngine {
     }
 
     private PropertyRoot rootPropertiesForLinkType(UUID linkTypeId) {
-        return schemaManager.getAdminSchema().links().stream()
+        return schemaService.getAdminSchema().links().stream()
                 .filter(link -> link.id().equals(linkTypeId))
                 .findFirst()
                 .map(link -> new PropertyRoot(link.properties(), link.groups()))
@@ -761,7 +761,7 @@ public class ProjectionEngine {
     // under a group's id, only under each of its leaf properties'. A trait's contributions sit
     // under a path segment named for the trait.
     private Map<UUID, List<String>> propertyPathsByIdForItemType(UUID itemTypeId) {
-        return schemaManager.getAdminSchema().items().stream()
+        return schemaService.getAdminSchema().items().stream()
                 .filter(item -> item.id().equals(itemTypeId))
                 .findFirst()
                 .map(item -> propertyPaths(item.properties(), item.groups()))
@@ -774,7 +774,7 @@ public class ProjectionEngine {
     // which requires checking that leaf's own AdminBinaryPropertyDefinitionView.dynamicFields, not
     // just its static path.
     private Map<UUID, AdminPropertyDefinitionView> propertyViewsByIdForItemType(UUID itemTypeId) {
-        return schemaManager.getAdminSchema().items().stream()
+        return schemaService.getAdminSchema().items().stream()
                 .filter(item -> item.id().equals(itemTypeId))
                 .findFirst()
                 .map(item -> propertyViewsById(item.properties(), item.groups()))
@@ -858,7 +858,7 @@ public class ProjectionEngine {
     }
 
     private Map<UUID, List<String>> propertyPathsByIdForLinkType(UUID linkTypeId) {
-        return schemaManager.getAdminSchema().links().stream()
+        return schemaService.getAdminSchema().links().stream()
                 .filter(link -> link.id().equals(linkTypeId))
                 .findFirst()
                 .map(link -> propertyPaths(link.properties(), link.groups()))
@@ -869,7 +869,7 @@ public class ProjectionEngine {
     // comment -- fetchPropertiesByRegisterItemId needs the views themselves (not just paths) to
     // resolve controlled-list labels for a link's own properties.
     private Map<UUID, AdminPropertyDefinitionView> propertyViewsByIdForLinkType(UUID linkTypeId) {
-        return schemaManager.getAdminSchema().links().stream()
+        return schemaService.getAdminSchema().links().stream()
                 .filter(link -> link.id().equals(linkTypeId))
                 .findFirst()
                 .map(link -> propertyViewsById(link.properties(), link.groups()))
@@ -939,7 +939,7 @@ public class ProjectionEngine {
     }
 
     private PropertyPathResolution resolvePropertyPath(UUID itemTypeId, String propertyName) {
-        PropertyRoot root = schemaManager.getAdminSchema().items().stream()
+        PropertyRoot root = schemaService.getAdminSchema().items().stream()
                 .filter(item -> item.id().equals(itemTypeId))
                 .findFirst()
                 .map(item -> new PropertyRoot(item.properties(), item.groups()))
@@ -1095,10 +1095,10 @@ public class ProjectionEngine {
     // this is unambiguous). Resolved for the whole schema, not just the branch(es) a given call is
     // querying: a linked item reachable via linksByItem below can be of a type completely
     // unrelated to the outer query, so a branch-scoped resolution (like the property-name merge
-    // projectAcrossTypes already does) wouldn't cover it. Mirrors SchemaManager's own
+    // projectAcrossTypes already does) wouldn't cover it. Mirrors SchemaService's own
     // implementsTraitInChain walk-up-supertype-chain idiom.
     private Map<String, String> resolveEffectiveDisplayLabelPatterns() {
-        AdminSchemaView schema = schemaManager.getAdminSchema();
+        AdminSchemaView schema = schemaService.getAdminSchema();
         DisplayLabelPatternsCache cached = displayLabelPatternsCache.get();
         if (schema == cached.schema()) {
             return cached.resolved();
@@ -1181,7 +1181,7 @@ public class ProjectionEngine {
 
     private Map<UUID, String> perspectiveNamesById() {
         Map<UUID, String> names = new HashMap<>();
-        schemaManager.getAdminSchema().items().forEach(item -> Optional.ofNullable(item.links()).orElse(Map.of())
+        schemaService.getAdminSchema().items().forEach(item -> Optional.ofNullable(item.links()).orElse(Map.of())
                 .forEach((name, perspectives) -> perspectives.forEach(perspective -> names.put(perspective.id(), name))));
         return names;
     }
@@ -1576,8 +1576,8 @@ public class ProjectionEngine {
             case PropertyValuePredicate p -> new Condition.PropertyCompare(readablePropertyId(itemTypeId, p.propertyName(), permissions),
                     toComparison(p.operator()), p.value());
             case StateValuePredicate p -> {
-                UUID stateMachineId = schemaManager.resolveStateMachineId(itemTypeId, p.stateMachineName());
-                yield new Condition.InState(stateMachineId, schemaManager.resolveStateId(stateMachineId, p.stateName()));
+                UUID stateMachineId = schemaService.resolveStateMachineId(itemTypeId, p.stateMachineName());
+                yield new Condition.InState(stateMachineId, schemaService.resolveStateId(stateMachineId, p.stateName()));
             }
         };
     }

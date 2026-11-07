@@ -20,7 +20,7 @@ import tools.jackson.databind.node.ObjectNode;
 import java.util.Map;
 import java.util.UUID;
 
-// Applies state-machine/state/transition mutations -- split out of SchemaManager (see its own
+// Applies state-machine/state/transition mutations -- split out of SchemaService (see its own
 // history).
 @Component
 class StateMutationApplier {

@@ -37,13 +37,13 @@ import java.util.stream.Collectors;
 
 @Service
 @DependsOnDatabaseInitialization
-public class SchemaManager {
+public class SchemaService {
 
-    private static final Logger LOG = LoggerFactory.getLogger(SchemaManager.class);
+    private static final Logger LOG = LoggerFactory.getLogger(SchemaService.class);
 
     // Cluster-wide "the schema changed, refresh your own copy" signal -- an ITopic, not the
     // IMap.put()-as-a-side-channel trick the old domain-graph-starter SchemaManagerImpl used
-    // (its own comment flagged that as a hack). Every node's own SchemaManager, including the one
+    // (its own comment flagged that as a hack). Every node's own SchemaService, including the one
     // that made the change, subscribes; the publishing node's rebuild already happened locally
     // (see applyMutations), so its own message is filtered out by publishing-member comparison
     // rather than skipped some other way.
@@ -79,7 +79,7 @@ public class SchemaManager {
     private final AtomicReference<AdminSchemaView> cachedAdminSchema = new AtomicReference<>();
     private final AtomicReference<SchemaView> cachedSchema = new AtomicReference<>();
 
-    public SchemaManager(ControlledListService controlledListService, SchemaAdminViewBuilder adminViewBuilder,
+    public SchemaService(ControlledListService controlledListService, SchemaAdminViewBuilder adminViewBuilder,
                           SchemaCalculatedViewBuilder calculatedViewBuilder,
                           ItemMutationApplier itemMutationApplier, TraitMutationApplier traitMutationApplier,
                           PropertyMutationApplier propertyMutationApplier, LinkMutationApplier linkMutationApplier,

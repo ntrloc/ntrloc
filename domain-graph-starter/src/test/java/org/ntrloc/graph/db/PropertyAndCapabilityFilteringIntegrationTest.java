@@ -15,7 +15,7 @@ import org.ntrloc.graph.principal.NtrlocPrincipal;
 import org.ntrloc.graph.principal.TestPrincipals;
 import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.ntrloc.graph.db.partition.authorization.repository.AccessStoreReader.MarkerRow;
-import org.ntrloc.graph.db.partition.schema.SchemaManager;
+import org.ntrloc.graph.db.partition.schema.SchemaService;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyUsage;
@@ -78,7 +78,7 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
     private DefaultUserGroupInitializer defaultUserGroupInitializer;
 
     @Autowired
-    private SchemaManager schemaManager;
+    private SchemaService schemaService;
 
     // Not static/final: needs a real, backed security_user row now that ledger_entry.created_by
     // (Part E) has a NOT NULL FK to security_user.id -- created fresh per test in setUp() via the
@@ -667,7 +667,7 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
 
     private String createFacetableItemType() {
         String typeName = "PcfFacet-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(typeName, "d", List.of(
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(typeName, "d", List.of(
                 new CreatePropertyDefinitionMutation("active", "d", PropertyType.BOOLEAN, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, true)),
                 null, false, null)));
         return typeName;
@@ -721,13 +721,13 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
     @Test
     void collectionProjection_explicitlyRequestedFacetGrantedViaAnyMarker_succeeds() {
         String typeName = createFacetableItemType();
-        UUID activePropertyId = schemaManager.getAdminSchema().items().stream()
+        UUID activePropertyId = schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.name().equals(typeName)).findFirst().orElseThrow()
                 .properties().stream().filter(p -> p.name().equals("active")).findFirst().orElseThrow().id();
         var principal = newUserInEveryoneUserGroup();
         UUID itemId = UUID.randomUUID();
         UUID txn = UUID.randomUUID();
-        UUID typeId = schemaManager.getAdminSchema().items().stream()
+        UUID typeId = schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.name().equals(typeName)).findFirst().orElseThrow().id();
         coordinator.prepare(List.of(new ItemCreateEntry(itemId, typeId, Map.of(activePropertyId, true), Map.of(), Set.of())), txn, ADMIN.id(), OffsetDateTime.now());
         coordinator.commit(txn, UUID.randomUUID());

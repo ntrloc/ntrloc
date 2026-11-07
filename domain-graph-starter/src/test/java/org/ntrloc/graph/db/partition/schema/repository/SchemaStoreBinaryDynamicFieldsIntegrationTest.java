@@ -4,7 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.partition.binary.BinaryDynamicPropertyRegistrar;
 import org.ntrloc.graph.db.partition.register.RegisterProjectionTestDomainInitializer;
-import org.ntrloc.graph.db.partition.schema.SchemaManager;
+import org.ntrloc.graph.db.partition.schema.SchemaService;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminBinaryPropertyDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.DynamicFieldView;
@@ -21,7 +21,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class SchemaStoreBinaryDynamicFieldsIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
-    private SchemaManager schemaManager;
+    private SchemaService schemaService;
 
     @Autowired
     private BinaryDynamicPropertyRegistrar registrar;
@@ -34,9 +34,9 @@ class SchemaStoreBinaryDynamicFieldsIntegrationTest extends AbstractIntegrationT
         UUID propertyId = fixture.attachmentPropertyId();
         String path = "metadata." + UUID.randomUUID();
         registrar.onAttach(propertyId, Map.of("metadata", Map.of(path.substring("metadata.".length()), "sRGB")));
-        schemaManager.refreshCache();
+        schemaService.refreshCache();
 
-        var book = schemaManager.getAdminSchema().items().stream()
+        var book = schemaService.getAdminSchema().items().stream()
                 .filter(item -> item.id().equals(fixture.bookTypeId()))
                 .findFirst()
                 .orElseThrow();

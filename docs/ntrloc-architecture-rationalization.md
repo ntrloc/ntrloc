@@ -402,8 +402,9 @@ The item component first — everything else calls it or is called by it.
    types, value invariants, typing) and `ControlledListStore`; `DomainInitializer.initSchema` no longer
    takes it — domains create lists through `applyMutations`. Tests renamed to match, including
    `ProjectionEngineIntegrationTest` and `BinaryAttachmentReconciliationIntegrationTest`, which stay in
-   the register test package for its fixtures. `SchemaManager` already kept its storage in `SchemaStore`,
-   so it wasn't split. `WorkflowReferenceScanner` and the Flowable data managers keep their names.)*
+   the register test package for its fixtures. `SchemaManager` → `SchemaService`: it already kept its
+   storage in `SchemaStore`, so only the name changed; where its cache belongs is §10 q11.
+   `WorkflowReferenceScanner` and the Flowable data managers keep their names.)*
 
 **Behavior changes, scheduled separately:** binaries read by item + property (§5.4); parked items (§8).
 
@@ -444,6 +445,17 @@ bound, so they're features, not refactor steps.
 10. **How is "a principal is only ever resolved" enforced?** Settled in step 7: the resolver and
     `NtrlocPrincipal` share `org.ntrloc.graph.principal`, so the constructor is package-private again
     (step 6 had used a public constructor plus an ArchUnit rule in the interim).
+11. **Does the schema cache belong to the Schema Store?** `SchemaService` caches the views it builds
+    (`AdminSchemaView`, `SchemaView`), rebuilds them after `applyMutations` commits, and announces the
+    change to other nodes. `applyMutations` and per-caller filtering (`getSchema(principal)`) stay in the
+    service either way. The grant cache moved into the Access Store (step 6), but it holds indexed rows;
+    the schema views are built with schema logic (supertype chains, traits, inherited state machines,
+    controlled-list values), which belongs in a service. One option: the store keeps a snapshot of the
+    schema's rows, rebuilt after each commit and on the cluster signal, and the service rebuilds its views
+    whenever the snapshot changes, knowing nothing of invalidation. That needs an after-commit rebuild
+    (a batch is one transaction), one snapshot over `SchemaStore` and `ControlledListStore` (or the two
+    merged), and `BinaryDynamicPropertyRegistrar` writing through the store so the public
+    `refreshCache()` goes away. Deferred 2026-11-07: the next round of work is likely to affect it.
 
 ---
 

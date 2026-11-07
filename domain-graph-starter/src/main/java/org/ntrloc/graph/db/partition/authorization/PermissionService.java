@@ -12,7 +12,7 @@ import java.util.UUID;
 // The five methods below that take an NtrlocPrincipal directly each demand a real, non-null one
 // via @PreAuthorize, enforced by Spring (see docs/ntrloc-principal-enforcement-plan.md, Part C) --
 // this is a top-level component independently reachable from EntityReadService/EntityWriteService,
-// MutationRequestProcessor, and SchemaManager, so it carries its own guard rather than trusting
+// MutationRequestProcessor, and SchemaService, so it carries its own guard rather than trusting
 // every caller to have already checked. The RequestPermissionContext-taking methods below that
 // don't (mayStartStateMachine, mayExecuteTransition, etc.) don't need their own guard: a
 // RequestPermissionContext can only ever have been built by buildContext(), which already demands

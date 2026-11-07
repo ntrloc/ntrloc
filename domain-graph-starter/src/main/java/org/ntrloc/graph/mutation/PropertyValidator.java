@@ -16,7 +16,7 @@ import org.ntrloc.graph.db.partition.binary.BinaryStore;
 import org.ntrloc.graph.db.partition.register.RegisterStoreReader;
 import org.ntrloc.graph.principal.NtrlocPrincipal;
 import org.ntrloc.graph.db.partition.schema.ControlledListService;
-import org.ntrloc.graph.db.partition.schema.SchemaManager;
+import org.ntrloc.graph.db.partition.schema.SchemaService;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyUsage;
@@ -33,15 +33,15 @@ class PropertyValidator {
 
     private static final String PROPERTY_QUOTE_PREFIX = "Property '";
 
-    private final SchemaManager schemaManager;
+    private final SchemaService schemaService;
     private final RegisterStoreReader registerStore;
     private final PermissionService permissionService;
     private final BinaryStore binaryStore;
     private final ControlledListService controlledListService;
 
-    PropertyValidator(SchemaManager schemaManager, RegisterStoreReader registerStore, PermissionService permissionService,
+    PropertyValidator(SchemaService schemaService, RegisterStoreReader registerStore, PermissionService permissionService,
                       BinaryStore binaryStore, ControlledListService controlledListService) {
-        this.schemaManager = schemaManager;
+        this.schemaService = schemaService;
         this.registerStore = registerStore;
         this.permissionService = permissionService;
         this.binaryStore = binaryStore;
@@ -49,7 +49,7 @@ class PropertyValidator {
     }
 
     private PropertyScope itemScope(UUID itemTypeId) {
-        return schemaManager.getAdminSchema().items().stream()
+        return schemaService.getAdminSchema().items().stream()
                 .filter(item -> item.id().equals(itemTypeId))
                 .findFirst()
                 .map(item -> PropertyScope.of(item.properties(), item.groups()))
@@ -61,7 +61,7 @@ class PropertyValidator {
     }
 
     private PropertyScope linkScope(UUID linkTypeId) {
-        return schemaManager.getAdminSchema().links().stream()
+        return schemaService.getAdminSchema().links().stream()
                 .filter(link -> link.id().equals(linkTypeId))
                 .findFirst()
                 .map(link -> PropertyScope.of(link.properties(), link.groups()))

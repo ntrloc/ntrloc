@@ -76,7 +76,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.tuple;
 
-// Covers SchemaManager.applyMutations()'s mutation types that nothing else in the suite exercises
+// Covers SchemaService.applyMutations()'s mutation types that nothing else in the suite exercises
 // (jacoco showed create/delete-item, create-link-with-perspectives, create-state-machine/state/
 // transition already covered via other fixtures -- e.g. RegisterProjectionTestDomainInitializer --
 // but every trait mutation, every update*/delete* mutation, and ReplaceControlledListMutation
@@ -89,10 +89,10 @@ import static org.assertj.core.api.Assertions.tuple;
 // requireKnownItemOrTrait()'s trait-target branch (a link perspective whose target is a trait, not
 // an item type -- see that method's own class comment on why that distinction matters) and
 // TargetEntityView's "trait" kind (as opposed to "item").
-class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
+class SchemaServiceIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
-    private SchemaManager schemaManager;
+    private SchemaService schemaService;
 
     @Autowired
     private ControlledListStore controlledListStore;
@@ -107,17 +107,17 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     private SchemaStore schemaStore;
 
     private UUID createItem(String name) {
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(name, "d", List.of(), null, false, null)));
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(name, "d", List.of(), null, false, null)));
         return findItem(name).id();
     }
 
     private AdminItemDefinitionView findItem(String name) {
-        return schemaManager.getAdminSchema().items().stream()
+        return schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.name().equals(name)).findFirst().orElseThrow();
     }
 
     private AdminTraitDefinitionView findTrait(String name) {
-        return schemaManager.getAdminSchema().traits().stream()
+        return schemaService.getAdminSchema().traits().stream()
                 .filter(t -> t.name().equals(name)).findFirst().orElseThrow();
     }
 
@@ -128,7 +128,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         String name = "Trait-" + UUID.randomUUID();
         var duplicateProp = new CreatePropertyDefinitionMutation("dup", "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false);
 
-        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(
+        assertThatThrownBy(() -> schemaService.applyMutations(List.of(
                 new CreateTraitDefinitionMutation(name, "d", List.of(duplicateProp, duplicateProp)))))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("defined more than once");
@@ -141,15 +141,15 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         String reviewerName = "Reviewer-" + UUID.randomUUID();
 
         UUID itemId = createItem(itemName);
-        schemaManager.applyMutations(List.of(new CreateTraitDefinitionMutation(traitName, "d", List.of(
+        schemaService.applyMutations(List.of(new CreateTraitDefinitionMutation(traitName, "d", List.of(
                 new CreatePropertyDefinitionMutation("inheritedProp", "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)))));
         UUID traitId = findTrait(traitName).id();
-        schemaManager.applyMutations(List.of(new ImplementTraitMutation(itemId, traitId)));
+        schemaService.applyMutations(List.of(new ImplementTraitMutation(itemId, traitId)));
 
         UUID reviewerId = createItem(reviewerName);
         // Perspective targets the TRAIT, not the item -- exercises requireKnownItemOrTrait's
         // trait branch and TargetEntityView's "trait" kind, neither reachable via an item-only link.
-        schemaManager.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
+        schemaService.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
                 new CreatePerspectiveDefinitionMutation(traitId, "reviewers", "d", 0, null),
                 new CreatePerspectiveDefinitionMutation(reviewerId, "reviewedTrait", "d", 0, null)))));
 
@@ -167,7 +167,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         assertThat(reviewerAdminItem.links().get("reviewedTrait").get(0).targets())
                 .extracting(t -> t.kind()).contains("trait");
 
-        var calculatedItem = schemaManager.getSchema(ADMIN).items().stream()
+        var calculatedItem = schemaService.getSchema(ADMIN).items().stream()
                 .filter(i -> i.name().equals(itemName)).findFirst().orElseThrow();
         assertThat(calculatedItem.properties()).extracting(p -> p.name()).contains("inheritedProp");
         assertThat(calculatedItem.links()).containsKey("reviewers");
@@ -176,12 +176,12 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void deleteTraitDefinitionMutation_removesIt() {
         String traitName = "Trait-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateTraitDefinitionMutation(traitName, "d", List.of())));
+        schemaService.applyMutations(List.of(new CreateTraitDefinitionMutation(traitName, "d", List.of())));
         UUID traitId = findTrait(traitName).id();
 
-        schemaManager.applyMutations(List.of(new DeleteTraitDefinitionMutation(traitId)));
+        schemaService.applyMutations(List.of(new DeleteTraitDefinitionMutation(traitId)));
 
-        assertThat(schemaManager.getAdminSchema().traits()).extracting(t -> t.name()).doesNotContain(traitName);
+        assertThat(schemaService.getAdminSchema().traits()).extracting(t -> t.name()).doesNotContain(traitName);
     }
 
     @Test
@@ -189,12 +189,12 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         String itemName = "Item-" + UUID.randomUUID();
         String traitName = "Trait-" + UUID.randomUUID();
         UUID itemId = createItem(itemName);
-        schemaManager.applyMutations(List.of(new CreateTraitDefinitionMutation(traitName, "d", List.of())));
+        schemaService.applyMutations(List.of(new CreateTraitDefinitionMutation(traitName, "d", List.of())));
         UUID traitId = findTrait(traitName).id();
-        schemaManager.applyMutations(List.of(new ImplementTraitMutation(itemId, traitId)));
+        schemaService.applyMutations(List.of(new ImplementTraitMutation(itemId, traitId)));
         assertThat(findItem(itemName).traits()).extracting(t -> t.name()).contains(traitName);
 
-        schemaManager.applyMutations(List.of(new RemoveTraitMutation(itemId, traitId)));
+        schemaService.applyMutations(List.of(new RemoveTraitMutation(itemId, traitId)));
 
         assertThat(findItem(itemName).traits()).extracting(t -> t.name()).doesNotContain(traitName);
     }
@@ -206,11 +206,11 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         String itemName = "Item-" + UUID.randomUUID();
         String traitName = "Trait-" + UUID.randomUUID();
         UUID itemId = createItem(itemName);
-        schemaManager.applyMutations(List.of(new CreateTraitDefinitionMutation(traitName, "d", List.of())));
+        schemaService.applyMutations(List.of(new CreateTraitDefinitionMutation(traitName, "d", List.of())));
         UUID traitId = findTrait(traitName).id();
-        schemaManager.applyMutations(List.of(new ImplementTraitMutation(itemId, traitId)));
+        schemaService.applyMutations(List.of(new ImplementTraitMutation(itemId, traitId)));
 
-        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new DeleteTraitDefinitionMutation(traitId))))
+        assertThatThrownBy(() -> schemaService.applyMutations(List.of(new DeleteTraitDefinitionMutation(traitId))))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("still implemented by an item type")
                 .hasMessageContaining(traitName);
@@ -220,7 +220,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void createLinkDefinitionMutation_withAPerspectiveTargetingAnUnknownId_throws() {
-        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
+        assertThatThrownBy(() -> schemaService.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
                 new CreatePerspectiveDefinitionMutation(UUID.randomUUID(), "ghost", "d", 0, null))))))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Unknown item or trait");
@@ -233,7 +233,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         UUID itemId = createItem("Item-" + UUID.randomUUID());
         String newName = "Renamed-" + UUID.randomUUID();
 
-        schemaManager.applyMutations(List.of(new UpdateItemDefinitionMutation(itemId, newName, "updated description", null, false, null)));
+        schemaService.applyMutations(List.of(new UpdateItemDefinitionMutation(itemId, newName, "updated description", null, false, null)));
 
         var updated = findItem(newName);
         assertThat(updated.id()).isEqualTo(itemId);
@@ -259,7 +259,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         UUID itemId = createItem(name);
         String newName = "Renamed-" + UUID.randomUUID();
 
-        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(
+        assertThatThrownBy(() -> schemaService.applyMutations(List.of(
                 new UpdateItemDefinitionMutation(itemId, newName, "d", null, false, null),
                 linkToAnUnknownItemType())))
                 .isInstanceOf(IllegalArgumentException.class);
@@ -271,7 +271,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     void aBatchThatFailsAfterCreatingAnItemType_leavesNoItemTypeBehind() {
         String name = "Item-" + UUID.randomUUID();
 
-        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(
+        assertThatThrownBy(() -> schemaService.applyMutations(List.of(
                 new CreateItemDefinitionMutation(name, "d", List.of(), null, false, null),
                 linkToAnUnknownItemType())))
                 .isInstanceOf(IllegalArgumentException.class);
@@ -287,7 +287,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         UUID itemId = createItem(name);
         String newName = "Renamed-" + UUID.randomUUID();
 
-        schemaManager.applyMutations(List.of(
+        schemaService.applyMutations(List.of(
                 new ExpectItemDefinitionMutation(itemId, name, "d", null, false, null),
                 new UpdateItemDefinitionMutation(itemId, newName, "d", null, false, null)));
 
@@ -297,11 +297,11 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void updateTraitDefinitionMutation_afterAMatchingExpectation_renamesAndRedescribesTheTrait() {
         String name = "Trait-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateTraitDefinitionMutation(name, "d", List.of())));
+        schemaService.applyMutations(List.of(new CreateTraitDefinitionMutation(name, "d", List.of())));
         UUID traitId = findTrait(name).id();
         String newName = "Renamed-" + UUID.randomUUID();
 
-        schemaManager.applyMutations(List.of(
+        schemaService.applyMutations(List.of(
                 new ExpectTraitDefinitionMutation(traitId, name, "d"),
                 new UpdateTraitDefinitionMutation(traitId, newName, "changed")));
 
@@ -312,11 +312,11 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void aTraitExpectationAboutAFieldSomeoneElseChanged_rejectsTheWholeBatch() {
         String name = "Trait-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateTraitDefinitionMutation(name, "d", List.of())));
+        schemaService.applyMutations(List.of(new CreateTraitDefinitionMutation(name, "d", List.of())));
         UUID traitId = findTrait(name).id();
-        schemaManager.applyMutations(List.of(new UpdateTraitDefinitionMutation(traitId, name, "changed elsewhere")));
+        schemaService.applyMutations(List.of(new UpdateTraitDefinitionMutation(traitId, name, "changed elsewhere")));
 
-        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(
+        assertThatThrownBy(() -> schemaService.applyMutations(List.of(
                 new ExpectTraitDefinitionMutation(traitId, name, "d"),
                 new UpdateTraitDefinitionMutation(traitId, "Renamed-" + UUID.randomUUID(), "d"))))
                 .isInstanceOf(SchemaConflictException.class)
@@ -327,11 +327,11 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void aTraitExpectationAboutADeletedTrait_isAConflict() {
         String name = "Trait-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateTraitDefinitionMutation(name, "d", List.of())));
+        schemaService.applyMutations(List.of(new CreateTraitDefinitionMutation(name, "d", List.of())));
         UUID traitId = findTrait(name).id();
-        schemaManager.applyMutations(List.of(new DeleteTraitDefinitionMutation(traitId)));
+        schemaService.applyMutations(List.of(new DeleteTraitDefinitionMutation(traitId)));
 
-        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new ExpectTraitDefinitionMutation(traitId, name, null))))
+        assertThatThrownBy(() -> schemaService.applyMutations(List.of(new ExpectTraitDefinitionMutation(traitId, name, null))))
                 .isInstanceOf(SchemaConflictException.class)
                 .hasMessageContaining("deleted");
     }
@@ -340,10 +340,10 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     void anExpectationAboutAFieldSomeoneElseChanged_rejectsTheWholeBatch() {
         String name = "Item-" + UUID.randomUUID();
         UUID itemId = createItem(name);
-        schemaManager.applyMutations(List.of(new UpdateItemDefinitionMutation(itemId, name, "changed elsewhere", null, false, null)));
+        schemaService.applyMutations(List.of(new UpdateItemDefinitionMutation(itemId, name, "changed elsewhere", null, false, null)));
         String newName = "Renamed-" + UUID.randomUUID();
 
-        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(
+        assertThatThrownBy(() -> schemaService.applyMutations(List.of(
                 new ExpectItemDefinitionMutation(itemId, name, "d", null, false, null),
                 new UpdateItemDefinitionMutation(itemId, newName, "d", null, false, null))))
                 .isInstanceOf(SchemaConflictException.class)
@@ -357,11 +357,11 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         String authorName = "Author-" + UUID.randomUUID();
         UUID authorId = createItem(authorName);
         UUID bookId = createItem("Book-" + UUID.randomUUID());
-        schemaManager.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
+        schemaService.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
                 new CreatePerspectiveDefinitionMutation(bookId, "writtenBy", "d", 0, null),
                 new CreatePerspectiveDefinitionMutation(authorId, "wrote", "d", 0, null)))));
 
-        schemaManager.applyMutations(List.of(new DeleteItemDefinitionMutation(bookId)));
+        schemaService.applyMutations(List.of(new DeleteItemDefinitionMutation(bookId)));
 
         assertThat(Objects.requireNonNullElse(findItem(authorName).links(), Map.of())).doesNotContainKey("wrote");
     }
@@ -371,9 +371,9 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         String vehicleName = "Vehicle-" + UUID.randomUUID();
         UUID vehicleId = createItem(vehicleName);
         String carName = "Car-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(), vehicleId, false, null)));
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(), vehicleId, false, null)));
 
-        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new DeleteItemDefinitionMutation(vehicleId))))
+        assertThatThrownBy(() -> schemaService.applyMutations(List.of(new DeleteItemDefinitionMutation(vehicleId))))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessage("Cannot delete item type '" + vehicleName + "' because " + carName + " inherits from it");
         assertThat(storedItemNames()).contains(vehicleName);
@@ -384,24 +384,24 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         String authorName = "Author-" + UUID.randomUUID();
         UUID authorId = createItem(authorName);
         String traitName = "Authored-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateTraitDefinitionMutation(traitName, "d", List.of())));
+        schemaService.applyMutations(List.of(new CreateTraitDefinitionMutation(traitName, "d", List.of())));
         UUID traitId = findTrait(traitName).id();
-        schemaManager.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
+        schemaService.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
                 new CreatePerspectiveDefinitionMutation(traitId, "writtenBy", "d", 0, null),
                 new CreatePerspectiveDefinitionMutation(authorId, "wrote", "d", 0, null)))));
 
-        schemaManager.applyMutations(List.of(new DeleteTraitDefinitionMutation(traitId)));
+        schemaService.applyMutations(List.of(new DeleteTraitDefinitionMutation(traitId)));
 
-        assertThat(schemaManager.getAdminSchema().traits()).extracting(t -> t.name()).doesNotContain(traitName);
+        assertThat(schemaService.getAdminSchema().traits()).extracting(t -> t.name()).doesNotContain(traitName);
         assertThat(Objects.requireNonNullElse(findItem(authorName).links(), Map.of())).doesNotContainKey("wrote");
     }
 
     @Test
     void anExpectationAboutADeletedItemType_isAConflict() {
         UUID itemId = createItem("Item-" + UUID.randomUUID());
-        schemaManager.applyMutations(List.of(new DeleteItemDefinitionMutation(itemId)));
+        schemaService.applyMutations(List.of(new DeleteItemDefinitionMutation(itemId)));
 
-        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(
+        assertThatThrownBy(() -> schemaService.applyMutations(List.of(
                 new ExpectItemDefinitionMutation(itemId, "anything", null, null, false, null))))
                 .isInstanceOf(SchemaConflictException.class)
                 .hasMessageContaining("deleted");
@@ -410,18 +410,18 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void anExpectation_treatsBlankAndMissingTextAsTheSame() {
         String name = "Item-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(name, null, List.of(), null, false, null)));
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(name, null, List.of(), null, false, null)));
         UUID itemId = findItem(name).id();
 
-        schemaManager.applyMutations(List.of(new ExpectItemDefinitionMutation(itemId, name, "", null, false, "")));
+        schemaService.applyMutations(List.of(new ExpectItemDefinitionMutation(itemId, name, "", null, false, "")));
     }
 
     @Test
     void createItemPropertyDefinitionMutation_withACollidingName_throws() {
         UUID itemId = createItem("Item-" + UUID.randomUUID());
-        schemaManager.applyMutations(List.of(new AddPropertyDefinitionMutation(PropertyContainerKind.ITEM, itemId, "shared", "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)));
+        schemaService.applyMutations(List.of(new AddPropertyDefinitionMutation(PropertyContainerKind.ITEM, itemId, "shared", "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)));
 
-        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new AddPropertyDefinitionMutation(PropertyContainerKind.ITEM, itemId, "shared", "d2", PropertyType.INTEGER, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false))))
+        assertThatThrownBy(() -> schemaService.applyMutations(List.of(new AddPropertyDefinitionMutation(PropertyContainerKind.ITEM, itemId, "shared", "d2", PropertyType.INTEGER, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false))))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("already exists");
     }
@@ -429,9 +429,9 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void createLinkPropertyDefinitionMutation_withACollidingName_throws() {
         UUID linkId = createBareLink();
-        schemaManager.applyMutations(List.of(new AddPropertyDefinitionMutation(PropertyContainerKind.LINK, linkId, "shared", "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)));
+        schemaService.applyMutations(List.of(new AddPropertyDefinitionMutation(PropertyContainerKind.LINK, linkId, "shared", "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)));
 
-        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new AddPropertyDefinitionMutation(PropertyContainerKind.LINK, linkId, "shared", "d2", PropertyType.INTEGER, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false))))
+        assertThatThrownBy(() -> schemaService.applyMutations(List.of(new AddPropertyDefinitionMutation(PropertyContainerKind.LINK, linkId, "shared", "d2", PropertyType.INTEGER, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false))))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("already exists");
     }
@@ -441,7 +441,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         String itemBName = "Item-" + UUID.randomUUID();
         UUID itemAId = createItem(itemAName);
         UUID itemBId = createItem(itemBName);
-        schemaManager.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
+        schemaService.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
                 new CreatePerspectiveDefinitionMutation(itemAId, "toB-" + UUID.randomUUID(), "d", 0, null),
                 new CreatePerspectiveDefinitionMutation(itemBId, "toA-" + UUID.randomUUID(), "d", 0, null)))));
         return findItem(itemAName).links().values().stream().findFirst().orElseThrow().get(0).linkId();
@@ -450,19 +450,19 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void updatePropertyDefinitionMutation_andDeletePropertyDefinitionMutation_persistChanges() {
         UUID itemId = createItem("Item-" + UUID.randomUUID());
-        schemaManager.applyMutations(List.of(new AddPropertyDefinitionMutation(PropertyContainerKind.ITEM, itemId, "original", "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)));
-        UUID propId = findItem(schemaManager.getAdminSchema().items().stream()
+        schemaService.applyMutations(List.of(new AddPropertyDefinitionMutation(PropertyContainerKind.ITEM, itemId, "original", "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)));
+        UUID propId = findItem(schemaService.getAdminSchema().items().stream()
                         .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow().name())
                 .properties().stream().filter(p -> p.name().equals("original")).findFirst().orElseThrow().id();
 
-        schemaManager.applyMutations(List.of(new UpdatePropertyDefinitionMutation(
+        schemaService.applyMutations(List.of(new UpdatePropertyDefinitionMutation(
                 propId, "renamed", "updated", PropertyCardinality.SINGLE, PropertyUsage.REQUIRED, false)));
-        var afterUpdate = schemaManager.getAdminSchema().items().stream()
+        var afterUpdate = schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow();
         assertThat(afterUpdate.properties()).extracting(p -> p.name()).contains("renamed");
 
-        schemaManager.applyMutations(List.of(new DeletePropertyDefinitionMutation(propId)));
-        var afterDelete = schemaManager.getAdminSchema().items().stream()
+        schemaService.applyMutations(List.of(new DeletePropertyDefinitionMutation(propId)));
+        var afterDelete = schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow();
         assertThat(afterDelete.properties()).extracting(p -> p.name()).doesNotContain("renamed");
     }
@@ -473,9 +473,9 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     void deleteLinkDefinitionMutation_removesTheLink() {
         UUID linkId = createBareLink();
 
-        schemaManager.applyMutations(List.of(new DeleteLinkDefinitionMutation(linkId)));
+        schemaService.applyMutations(List.of(new DeleteLinkDefinitionMutation(linkId)));
 
-        assertThat(schemaManager.getAdminSchema().links()).extracting(l -> l.id()).doesNotContain(linkId);
+        assertThat(schemaService.getAdminSchema().links()).extracting(l -> l.id()).doesNotContain(linkId);
     }
 
     @Test
@@ -484,12 +484,12 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         String itemBName = "Item-" + UUID.randomUUID();
         UUID itemAId = createItem(itemAName);
         UUID itemBId = createItem(itemBName);
-        schemaManager.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
+        schemaService.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
                 new CreatePerspectiveDefinitionMutation(itemAId, "original", "d", 0, 1),
                 new CreatePerspectiveDefinitionMutation(itemBId, "inverse", "d", 0, 1)))));
         UUID perspectiveId = findItem(itemAName).links().get("original").get(0).id();
 
-        schemaManager.applyMutations(List.of(new UpdatePerspectiveDefinitionMutation(perspectiveId, "renamed", "updated", 1, 5)));
+        schemaService.applyMutations(List.of(new UpdatePerspectiveDefinitionMutation(perspectiveId, "renamed", "updated", 1, 5)));
 
         var updated = findItem(itemAName);
         assertThat(updated.links()).containsKey("renamed");
@@ -504,17 +504,17 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         UUID itemAId = createItem("Item-" + UUID.randomUUID());
         UUID itemBId = createItem("Item-" + UUID.randomUUID());
         UUID itemCId = createItem("Item-" + UUID.randomUUID());
-        schemaManager.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
+        schemaService.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
                 new CreatePerspectiveDefinitionMutation(itemAId, "existingName", "d", 0, 1),
                 new CreatePerspectiveDefinitionMutation(itemBId, "inverse", "d", 0, 1)))));
-        schemaManager.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
+        schemaService.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
                 new CreatePerspectiveDefinitionMutation(itemAId, "renameMe", "d", 0, 1),
                 new CreatePerspectiveDefinitionMutation(itemCId, "inverse2", "d", 0, 1)))));
-        UUID perspectiveToRename = schemaManager.getAdminSchema().items().stream()
+        UUID perspectiveToRename = schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.id().equals(itemAId)).findFirst().orElseThrow()
                 .links().get("renameMe").get(0).id();
 
-        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(
+        assertThatThrownBy(() -> schemaService.applyMutations(List.of(
                 new UpdatePerspectiveDefinitionMutation(perspectiveToRename, "existingName", "d", 0, 1))))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("is already a link perspective");
@@ -525,15 +525,15 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void replaceControlledListMutation_replacesTheValues() {
         UUID itemId = createItem("Item-" + UUID.randomUUID());
-        schemaManager.applyMutations(List.of(new AddPropertyDefinitionMutation(PropertyContainerKind.ITEM, itemId, "genre", "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)));
-        UUID propId = schemaManager.getAdminSchema().items().stream()
+        schemaService.applyMutations(List.of(new AddPropertyDefinitionMutation(PropertyContainerKind.ITEM, itemId, "genre", "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)));
+        UUID propId = schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
                 .properties().stream().filter(p -> p.name().equals("genre")).findFirst().orElseThrow().id();
         var list = controlledListStore.createList("List-" + UUID.randomUUID(), PropertyType.STRING);
         controlledListStore.setPropertyControlledList(propId, list.id());
         controlledListStore.addValue(list.id(), "Old", "Old", 0);
 
-        schemaManager.applyMutations(List.of(new ReplaceControlledListMutation(propId,
+        schemaService.applyMutations(List.of(new ReplaceControlledListMutation(propId,
                 List.of(new ReplaceControlledListMutation.Entry("New", "New")))));
 
         var values = controlledListStore.getValues(list.id(), PropertyType.STRING);
@@ -543,12 +543,12 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void replaceControlledListMutation_forAPropertyWithNoControlledList_throws() {
         UUID itemId = createItem("Item-" + UUID.randomUUID());
-        schemaManager.applyMutations(List.of(new AddPropertyDefinitionMutation(PropertyContainerKind.ITEM, itemId, "plain", "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)));
-        UUID propId = schemaManager.getAdminSchema().items().stream()
+        schemaService.applyMutations(List.of(new AddPropertyDefinitionMutation(PropertyContainerKind.ITEM, itemId, "plain", "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)));
+        UUID propId = schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
                 .properties().stream().filter(p -> p.name().equals("plain")).findFirst().orElseThrow().id();
 
-        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new ReplaceControlledListMutation(propId, List.of()))))
+        assertThatThrownBy(() -> schemaService.applyMutations(List.of(new ReplaceControlledListMutation(propId, List.of()))))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("No controlled list");
     }
@@ -556,8 +556,8 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     // --- List-centric controlled-list mutations (ControlledListMutationApplier) ---
 
     private UUID createStringProp(UUID itemId, String propName) {
-        schemaManager.applyMutations(List.of(new AddPropertyDefinitionMutation(PropertyContainerKind.ITEM, itemId, propName, "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)));
-        return schemaManager.getAdminSchema().items().stream()
+        schemaService.applyMutations(List.of(new AddPropertyDefinitionMutation(PropertyContainerKind.ITEM, itemId, propName, "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)));
+        return schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
                 .properties().stream().filter(p -> p.name().equals(propName)).findFirst().orElseThrow().id();
     }
@@ -566,7 +566,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     void createControlledListMutation_createsAReusableList_withValues() {
         String name = "List-" + UUID.randomUUID();
 
-        schemaManager.applyMutations(List.of(new CreateControlledListMutation(null, name, PropertyType.STRING,
+        schemaService.applyMutations(List.of(new CreateControlledListMutation(null, name, PropertyType.STRING,
                 List.of(new CreateControlledListMutation.Entry("A", "Alpha"),
                         new CreateControlledListMutation.Entry("B", "Beta")))));
 
@@ -579,9 +579,9 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void createControlledListMutation_withACaseInsensitivelyDuplicateName_throws() {
         String name = "Dup-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateControlledListMutation(null, name, PropertyType.STRING, List.of())));
+        schemaService.applyMutations(List.of(new CreateControlledListMutation(null, name, PropertyType.STRING, List.of())));
 
-        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(
+        assertThatThrownBy(() -> schemaService.applyMutations(List.of(
                 new CreateControlledListMutation(null, name.toUpperCase(), PropertyType.STRING, List.of()))))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("already exists");
@@ -593,7 +593,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         controlledListStore.addValue(list.id(), "keep", "keep", 0);
         String renamed = "Renamed-" + UUID.randomUUID();
 
-        schemaManager.applyMutations(List.of(new UpdateControlledListMutation(list.id(), renamed, null)));
+        schemaService.applyMutations(List.of(new UpdateControlledListMutation(list.id(), renamed, null)));
 
         assertThat(controlledListStore.getListById(list.id())).hasValueSatisfying(l -> assertThat(l.name()).isEqualTo(renamed));
         assertThat(controlledListStore.getValues(list.id(), PropertyType.STRING)).extracting(v -> v.value()).containsExactly("keep");
@@ -604,7 +604,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         var list = controlledListStore.createList("List-" + UUID.randomUUID(), PropertyType.STRING);
         controlledListStore.addValue(list.id(), "old", "old", 0);
 
-        schemaManager.applyMutations(List.of(new UpdateControlledListMutation(list.id(), null,
+        schemaService.applyMutations(List.of(new UpdateControlledListMutation(list.id(), null,
                 List.of(new UpdateControlledListMutation.Entry("new", "new")))));
 
         assertThat(controlledListStore.getValues(list.id(), PropertyType.STRING)).extracting(v -> v.value()).containsExactly("new");
@@ -618,7 +618,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         controlledListStore.addValue(list.id(), "A", "A", 0);
         controlledListStore.setPropertyControlledList(propId, list.id());
 
-        schemaManager.applyMutations(List.of(new DeleteControlledListMutation(list.id())));
+        schemaService.applyMutations(List.of(new DeleteControlledListMutation(list.id())));
 
         assertThat(controlledListStore.getListById(list.id())).isEmpty();
         assertThat(controlledListStore.getListForProperty(propId)).isEmpty();
@@ -630,23 +630,23 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         UUID propId = createStringProp(itemId, "genre");
         var list = controlledListStore.createList("List-" + UUID.randomUUID(), PropertyType.STRING);
 
-        schemaManager.applyMutations(List.of(new SetPropertyControlledListMutation(propId, new ExistingControlledListReference(list.id()))));
+        schemaService.applyMutations(List.of(new SetPropertyControlledListMutation(propId, new ExistingControlledListReference(list.id()))));
         assertThat(controlledListStore.getListForProperty(propId)).hasValueSatisfying(l -> assertThat(l.id()).isEqualTo(list.id()));
 
-        schemaManager.applyMutations(List.of(new SetPropertyControlledListMutation(propId, null)));
+        schemaService.applyMutations(List.of(new SetPropertyControlledListMutation(propId, null)));
         assertThat(controlledListStore.getListForProperty(propId)).isEmpty();
     }
 
     @Test
     void setPropertyControlledListMutation_onANonStringProperty_throws() {
         UUID itemId = createItem("Item-" + UUID.randomUUID());
-        schemaManager.applyMutations(List.of(new AddPropertyDefinitionMutation(PropertyContainerKind.ITEM, itemId, "flag", "d", PropertyType.BOOLEAN, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)));
-        UUID propId = schemaManager.getAdminSchema().items().stream()
+        schemaService.applyMutations(List.of(new AddPropertyDefinitionMutation(PropertyContainerKind.ITEM, itemId, "flag", "d", PropertyType.BOOLEAN, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)));
+        UUID propId = schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
                 .properties().stream().filter(p -> p.name().equals("flag")).findFirst().orElseThrow().id();
         var list = controlledListStore.createList("List-" + UUID.randomUUID(), PropertyType.STRING);
 
-        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new SetPropertyControlledListMutation(propId, new ExistingControlledListReference(list.id())))))
+        assertThatThrownBy(() -> schemaService.applyMutations(List.of(new SetPropertyControlledListMutation(propId, new ExistingControlledListReference(list.id())))))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("not supported");
     }
@@ -657,7 +657,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         UUID propId = createStringProp(itemId, "str");
         var intList = controlledListStore.createList("List-" + UUID.randomUUID(), PropertyType.INTEGER);
 
-        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new SetPropertyControlledListMutation(propId, new ExistingControlledListReference(intList.id())))))
+        assertThatThrownBy(() -> schemaService.applyMutations(List.of(new SetPropertyControlledListMutation(propId, new ExistingControlledListReference(intList.id())))))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
@@ -667,13 +667,13 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         UUID propId = createStringProp(itemId, "status");
         String listName = "List-" + UUID.randomUUID();
 
-        schemaManager.applyMutations(List.of(new CreateControlledListMutation(null, listName, PropertyType.STRING,
+        schemaService.applyMutations(List.of(new CreateControlledListMutation(null, listName, PropertyType.STRING,
                 List.of(new CreateControlledListMutation.Entry("Open", "Open")))));
         UUID listId = controlledListStore.getAllLists().stream()
                 .filter(l -> l.name().equals(listName)).findFirst().orElseThrow().id();
-        schemaManager.applyMutations(List.of(new SetPropertyControlledListMutation(propId, new ExistingControlledListReference(listId))));
+        schemaService.applyMutations(List.of(new SetPropertyControlledListMutation(propId, new ExistingControlledListReference(listId))));
 
-        var schema = schemaManager.getAdminSchema();
+        var schema = schemaService.getAdminSchema();
         var prop = schema.items().stream().filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
                 .properties().stream().filter(p -> p.id().equals(propId)).findFirst().orElseThrow();
         assertThat(prop.controlledListId()).isEqualTo(listId);
@@ -685,7 +685,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     }
 
     private UUID createStringList(String name) {
-        schemaManager.applyMutations(List.of(new CreateControlledListMutation(null, name, PropertyType.STRING,
+        schemaService.applyMutations(List.of(new CreateControlledListMutation(null, name, PropertyType.STRING,
                 List.of(new CreateControlledListMutation.Entry("Open", "Open")))));
         return controlledListStore.getAllLists().stream()
                 .filter(l -> l.name().equals(name)).findFirst().orElseThrow().id();
@@ -696,7 +696,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         String name = "List-" + UUID.randomUUID();
         UUID listId = createStringList(name);
 
-        schemaManager.applyMutations(List.of(
+        schemaService.applyMutations(List.of(
                 new ExpectControlledListMutation(listId, name, List.of(new UpdateControlledListMutation.Entry("Open", "Open"))),
                 new UpdateControlledListMutation(listId, null, List.of(
                         new UpdateControlledListMutation.Entry("Open", "Open"), new UpdateControlledListMutation.Entry("Closed", "Closed")))));
@@ -708,10 +708,10 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     void aControlledListExpectationAboutValuesSomeoneElseChanged_rejectsTheWholeBatch() {
         String name = "List-" + UUID.randomUUID();
         UUID listId = createStringList(name);
-        schemaManager.applyMutations(List.of(new UpdateControlledListMutation(listId, null,
+        schemaService.applyMutations(List.of(new UpdateControlledListMutation(listId, null,
                 List.of(new UpdateControlledListMutation.Entry("Open", "Opened elsewhere")))));
 
-        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(
+        assertThatThrownBy(() -> schemaService.applyMutations(List.of(
                 new ExpectControlledListMutation(listId, name, List.of(new UpdateControlledListMutation.Entry("Open", "Open"))),
                 new UpdateControlledListMutation(listId, "Renamed-" + UUID.randomUUID(), null))))
                 .isInstanceOf(SchemaConflictException.class)
@@ -723,9 +723,9 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     void aControlledListExpectationAboutADeletedList_isAConflict() {
         String name = "List-" + UUID.randomUUID();
         UUID listId = createStringList(name);
-        schemaManager.applyMutations(List.of(new DeleteControlledListMutation(listId)));
+        schemaService.applyMutations(List.of(new DeleteControlledListMutation(listId)));
 
-        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new ExpectControlledListMutation(listId, name, null))))
+        assertThatThrownBy(() -> schemaService.applyMutations(List.of(new ExpectControlledListMutation(listId, name, null))))
                 .isInstanceOf(SchemaConflictException.class)
                 .hasMessageContaining("deleted");
     }
@@ -733,7 +733,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void creatingAnIntegerControlledList_storesItsValuesAsNumbers() {
         String name = "List-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateControlledListMutation(null, name, PropertyType.INTEGER,
+        schemaService.applyMutations(List.of(new CreateControlledListMutation(null, name, PropertyType.INTEGER,
                 List.of(new CreateControlledListMutation.Entry("10", null), new CreateControlledListMutation.Entry("2", null)))));
         UUID listId = controlledListStore.getAllLists().stream().filter(l -> l.name().equals(name)).findFirst().orElseThrow().id();
 
@@ -745,10 +745,10 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         UUID itemId = createItem("Item-" + UUID.randomUUID());
         UUID listId = createStringList("List-" + UUID.randomUUID());
 
-        schemaManager.applyMutations(List.of(new AddPropertyDefinitionMutation(PropertyContainerKind.ITEM, itemId, "status", "d",
+        schemaService.applyMutations(List.of(new AddPropertyDefinitionMutation(PropertyContainerKind.ITEM, itemId, "status", "d",
                 PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false, listId)));
 
-        var status = schemaManager.getAdminSchema().items().stream().filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
+        var status = schemaService.getAdminSchema().items().stream().filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
                 .properties().stream().filter(p -> p.name().equals("status")).findFirst().orElseThrow();
         assertThat(status.controlledListId()).isEqualTo(listId);
     }
@@ -758,11 +758,11 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         UUID itemId = createItem("Item-" + UUID.randomUUID());
         UUID listId = createStringList("List-" + UUID.randomUUID());
 
-        schemaManager.applyMutations(List.of(new AddPropertyGroupDefinitionMutation(PropertyContainerKind.ITEM, itemId, "details", "d",
+        schemaService.applyMutations(List.of(new AddPropertyGroupDefinitionMutation(PropertyContainerKind.ITEM, itemId, "details", "d",
                 List.of(), List.of(new CreatePropertyGroupDefinitionMutation("inner", "d", List.of(new CreatePropertyDefinitionMutation(
                         "status", "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false, listId)), List.of())))));
 
-        var details = schemaManager.getAdminSchema().items().stream().filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
+        var details = schemaService.getAdminSchema().items().stream().filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
                 .groups().stream().filter(g -> g.name().equals("details")).findFirst().orElseThrow();
         var status = details.groups().getFirst().properties().getFirst();
         assertThat(status.name()).isEqualTo("status");
@@ -774,7 +774,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         UUID itemId = createItem("Item-" + UUID.randomUUID());
         UUID listId = createStringList("List-" + UUID.randomUUID());
 
-        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new AddPropertyDefinitionMutation(PropertyContainerKind.ITEM, itemId,
+        assertThatThrownBy(() -> schemaService.applyMutations(List.of(new AddPropertyDefinitionMutation(PropertyContainerKind.ITEM, itemId,
                 "count", "d", PropertyType.INTEGER, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false, listId))))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("is STRING but property 'count' is INTEGER");
@@ -794,7 +794,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         UUID propId = createStringProp(itemId, "status");
         String listName = "List-" + UUID.randomUUID();
 
-        List<ControlledListMutationResult> results = schemaManager.applyMutations(List.of(
+        List<ControlledListMutationResult> results = schemaService.applyMutations(List.of(
                 new CreateControlledListMutation("new-list", listName, PropertyType.STRING,
                         List.of(new CreateControlledListMutation.Entry("Open", "Open"))),
                 new SetPropertyControlledListMutation(propId, new NewControlledListReference("new-list"))));
@@ -812,7 +812,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         UUID itemId = createItem("Item-" + UUID.randomUUID());
         UUID propId = createStringProp(itemId, "status");
 
-        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(
+        assertThatThrownBy(() -> schemaService.applyMutations(List.of(
                 new SetPropertyControlledListMutation(propId, new NewControlledListReference("never-created")))))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Unknown controlled list refId");
@@ -823,19 +823,19 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void updateStateMachineMutation_andDeleteStateMachineMutation() {
         UUID itemId = createItem("Item-" + UUID.randomUUID());
-        schemaManager.applyMutations(List.of(new CreateStateMachineMutation(itemId, "original", "d")));
-        UUID machineId = schemaManager.getAdminSchema().items().stream()
+        schemaService.applyMutations(List.of(new CreateStateMachineMutation(itemId, "original", "d")));
+        UUID machineId = schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
                 .stateMachines().get(0).id();
 
-        schemaManager.applyMutations(List.of(new UpdateStateMachineMutation(machineId, "renamed", "updated")));
-        var afterUpdate = schemaManager.getAdminSchema().items().stream()
+        schemaService.applyMutations(List.of(new UpdateStateMachineMutation(machineId, "renamed", "updated")));
+        var afterUpdate = schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
                 .stateMachines().get(0);
         assertThat(afterUpdate.name()).isEqualTo("renamed");
 
-        schemaManager.applyMutations(List.of(new DeleteStateMachineMutation(machineId)));
-        var afterDelete = schemaManager.getAdminSchema().items().stream()
+        schemaService.applyMutations(List.of(new DeleteStateMachineMutation(machineId)));
+        var afterDelete = schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
                 .stateMachines();
         assertThat(afterDelete).isNullOrEmpty();
@@ -844,30 +844,30 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void setStateMachineLayoutMutation_storesTheLayoutAsGiven_andNullClearsIt() {
         UUID itemId = createItem("Item-" + UUID.randomUUID());
-        schemaManager.applyMutations(List.of(new CreateStateMachineMutation(itemId, "machine", null)));
+        schemaService.applyMutations(List.of(new CreateStateMachineMutation(itemId, "machine", null)));
         var machine = onlyStateMachine(itemId);
         assertThat(machine.layout()).isNull();
 
         var layout = JsonMapper.builder().build().readTree("""
                 {"positions": {"%s": {"x": 40, "y": -24}}, "transitions": {}}
                 """.formatted(machine.states().get(0).id()));
-        schemaManager.applyMutations(List.of(new SetStateMachineLayoutMutation(machine.id(), layout)));
+        schemaService.applyMutations(List.of(new SetStateMachineLayoutMutation(machine.id(), layout)));
         assertThat(onlyStateMachine(itemId).layout()).isEqualTo(layout);
 
-        schemaManager.applyMutations(List.of(new SetStateMachineLayoutMutation(machine.id(), null)));
+        schemaService.applyMutations(List.of(new SetStateMachineLayoutMutation(machine.id(), null)));
         assertThat(onlyStateMachine(itemId).layout()).isNull();
     }
 
     @Test
     void aStateCreatedWithARefId_canBePlacedByItInTheSameBatch() {
         UUID itemId = createItem("Item-" + UUID.randomUUID());
-        schemaManager.applyMutations(List.of(new CreateStateMachineMutation(itemId, "machine", null)));
+        schemaService.applyMutations(List.of(new CreateStateMachineMutation(itemId, "machine", null)));
         UUID machineId = onlyStateMachine(itemId).id();
 
         var layout = JsonMapper.builder().build().readTree("""
                 {"positions": {"new-state-1": {"x": 160, "y": 80}}, "transitions": {}}
                 """);
-        schemaManager.applyMutations(List.of(
+        schemaService.applyMutations(List.of(
                 new CreateStateMutation(machineId, "Drafted", null, null, null, "new-state-1"),
                 new SetStateMachineLayoutMutation(machineId, layout)));
 
@@ -884,15 +884,15 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
 
     private MovingTransition aMachineWithATransitionFromAToB() {
         UUID itemId = createItem("Item-" + UUID.randomUUID());
-        schemaManager.applyMutations(List.of(new CreateStateMachineMutation(itemId, "machine", null)));
+        schemaService.applyMutations(List.of(new CreateStateMachineMutation(itemId, "machine", null)));
         UUID machineId = onlyStateMachine(itemId).id();
-        schemaManager.applyMutations(List.of(
+        schemaService.applyMutations(List.of(
                 new CreateStateMutation(machineId, "A", null, null, null),
                 new CreateStateMutation(machineId, "B", null, null, null),
                 new CreateStateMutation(machineId, "C", null, null, null)));
         UUID a = stateNamed(itemId, "A").id();
         UUID b = stateNamed(itemId, "B").id();
-        schemaManager.applyMutations(List.of(new CreateTransitionMutation(a, b, "go", null, null, null)));
+        schemaService.applyMutations(List.of(new CreateTransitionMutation(a, b, "go", null, null, null)));
         return new MovingTransition(itemId, machineId, a, b, stateNamed(itemId, "C").id(), stateNamed(itemId, "A").transitions().get(0).id());
     }
 
@@ -904,7 +904,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     void movingATransitionsEnds_keepsTheSameTransition() {
         var m = aMachineWithATransitionFromAToB();
 
-        schemaManager.applyMutations(List.of(
+        schemaService.applyMutations(List.of(
                 new UpdateTransitionMutation(m.transitionId(), "go", null, null, null, m.c().toString(), m.a().toString())));
 
         assertThat(stateNamed(m.itemId(), "A").transitions()).isEmpty();
@@ -919,7 +919,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     void aTransitionCanBeMovedToAStateCreatedInTheSameBatch() {
         var m = aMachineWithATransitionFromAToB();
 
-        schemaManager.applyMutations(List.of(
+        schemaService.applyMutations(List.of(
                 new CreateStateMutation(m.machineId(), "D", null, null, null, "new-state-1"),
                 new UpdateTransitionMutation(m.transitionId(), "go", null, null, null, null, "new-state-1")));
 
@@ -930,15 +930,15 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     void movingATransition_keepsToTheStructuralRules() {
         var m = aMachineWithATransitionFromAToB();
         UUID start = onlyStateMachine(m.itemId()).states().stream().filter(s -> s.kind().equals("START")).findFirst().orElseThrow().id();
-        schemaManager.applyMutations(List.of(new CreateTransitionMutation(m.a(), m.c(), "other", null, null, null)));
+        schemaService.applyMutations(List.of(new CreateTransitionMutation(m.a(), m.c(), "other", null, null, null)));
 
-        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(
+        assertThatThrownBy(() -> schemaService.applyMutations(List.of(
                 new UpdateTransitionMutation(m.transitionId(), "go", null, null, null, null, start.toString()))))
                 .hasMessageContaining("START pseudostate cannot have incoming transitions");
-        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(
+        assertThatThrownBy(() -> schemaService.applyMutations(List.of(
                 new UpdateTransitionMutation(m.transitionId(), "go", null, null, null, null, m.c().toString()))))
                 .hasMessageContaining("There's already a transition from 'A' to 'C'");
-        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(
+        assertThatThrownBy(() -> schemaService.applyMutations(List.of(
                 new UpdateTransitionMutation(m.transitionId(), "go", null, null, null, null, m.a().toString()))))
                 .hasMessageContaining("can't lead from a state back to itself");
         assertThat(stateNamed(m.itemId(), "A").transitions()).extracting(t -> t.toStateId()).containsExactlyInAnyOrder(m.b(), m.c());
@@ -951,7 +951,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
                 {"positions": {}, "transitions": {"new-transition-1": {"to": {"side": "top", "at": 0.5}}}}
                 """);
 
-        schemaManager.applyMutations(List.of(
+        schemaService.applyMutations(List.of(
                 new CreateStateMutation(m.machineId(), "D", null, null, null, "new-state-1"),
                 new CreateTransitionMutation(m.b(), null, "onward", null, null, null, null, "new-state-1", "new-transition-1"),
                 new SetStateMachineLayoutMutation(m.machineId(), layout)));
@@ -962,7 +962,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     }
 
     private AdminStateMachineView onlyStateMachine(UUID itemId) {
-        return schemaManager.getAdminSchema().items().stream()
+        return schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
                 .stateMachines().get(0);
     }
@@ -970,21 +970,21 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void updateStateMutation_andDeleteStateMutation() {
         UUID itemId = createItem("Item-" + UUID.randomUUID());
-        schemaManager.applyMutations(List.of(new CreateStateMachineMutation(itemId, "machine", "d")));
-        UUID machineId = schemaManager.getAdminSchema().items().stream()
+        schemaService.applyMutations(List.of(new CreateStateMachineMutation(itemId, "machine", "d")));
+        UUID machineId = schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
                 .stateMachines().get(0).id();
-        schemaManager.applyMutations(List.of(new CreateStateMutation(machineId, "original", "d", null, null)));
+        schemaService.applyMutations(List.of(new CreateStateMutation(machineId, "original", "d", null, null)));
         UUID stateId = normalStateNamed(itemId, "original").id();
 
-        schemaManager.applyMutations(List.of(
+        schemaService.applyMutations(List.of(
                 new UpdateStateMutation(stateId, "renamed", "updated", "entry-proc", "exit-proc")));
         var afterUpdate = normalStateNamed(itemId, "renamed");
         assertThat(afterUpdate.name()).isEqualTo("renamed");
         assertThat(afterUpdate.kind()).isEqualTo("NORMAL");
 
-        schemaManager.applyMutations(List.of(new DeleteStateMutation(stateId)));
-        var afterDelete = schemaManager.getAdminSchema().items().stream()
+        schemaService.applyMutations(List.of(new DeleteStateMutation(stateId)));
+        var afterDelete = schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
                 .stateMachines().get(0).states();
         // The user-defined state is gone; the START/END pseudostates remain.
@@ -993,7 +993,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
 
     // The user-defined (NORMAL) state of a given name within the item's single state machine.
     private org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminStateView normalStateNamed(UUID itemId, String name) {
-        return schemaManager.getAdminSchema().items().stream()
+        return schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
                 .stateMachines().get(0).states().stream()
                 .filter(s -> s.name().equals(name)).findFirst().orElseThrow();
@@ -1002,9 +1002,9 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void createStateMachine_alsoCreatesStartAndEndPseudostates() {
         UUID itemId = createItem("Item-" + UUID.randomUUID());
-        schemaManager.applyMutations(List.of(new CreateStateMachineMutation(itemId, "machine", "d")));
+        schemaService.applyMutations(List.of(new CreateStateMachineMutation(itemId, "machine", "d")));
 
-        var states = schemaManager.getAdminSchema().items().stream()
+        var states = schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
                 .stateMachines().get(0).states();
         assertThat(states).extracting(s -> s.kind()).containsExactlyInAnyOrder("START", "END");
@@ -1014,13 +1014,13 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void deleteStateMutation_onAPseudostate_isRejected() {
         UUID itemId = createItem("Item-" + UUID.randomUUID());
-        schemaManager.applyMutations(List.of(new CreateStateMachineMutation(itemId, "machine", "d")));
-        UUID startId = schemaManager.getAdminSchema().items().stream()
+        schemaService.applyMutations(List.of(new CreateStateMachineMutation(itemId, "machine", "d")));
+        UUID startId = schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
                 .stateMachines().get(0).states().stream()
                 .filter(s -> s.kind().equals("START")).findFirst().orElseThrow().id();
 
-        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new DeleteStateMutation(startId))))
+        assertThatThrownBy(() -> schemaService.applyMutations(List.of(new DeleteStateMutation(startId))))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("cannot be deleted");
     }
@@ -1028,12 +1028,12 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void createStateMutation_withAReservedName_isRejected() {
         UUID itemId = createItem("Item-" + UUID.randomUUID());
-        schemaManager.applyMutations(List.of(new CreateStateMachineMutation(itemId, "machine", "d")));
-        UUID machineId = schemaManager.getAdminSchema().items().stream()
+        schemaService.applyMutations(List.of(new CreateStateMachineMutation(itemId, "machine", "d")));
+        UUID machineId = schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
                 .stateMachines().get(0).id();
 
-        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new CreateStateMutation(machineId, "__start__", "d", null, null))))
+        assertThatThrownBy(() -> schemaService.applyMutations(List.of(new CreateStateMutation(machineId, "__start__", "d", null, null))))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("reserved");
     }
@@ -1041,14 +1041,14 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void transitionsAroundPseudostates_enforceTheStructuralRules() {
         UUID itemId = createItem("Item-" + UUID.randomUUID());
-        schemaManager.applyMutations(List.of(new CreateStateMachineMutation(itemId, "machine", "d")));
-        UUID machineId = schemaManager.getAdminSchema().items().stream()
+        schemaService.applyMutations(List.of(new CreateStateMachineMutation(itemId, "machine", "d")));
+        UUID machineId = schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
                 .stateMachines().get(0).id();
-        schemaManager.applyMutations(List.of(
+        schemaService.applyMutations(List.of(
                 new CreateStateMutation(machineId, "s1", "d", null, null),
                 new CreateStateMutation(machineId, "s2", "d", null, null)));
-        var states = schemaManager.getAdminSchema().items().stream()
+        var states = schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
                 .stateMachines().get(0).states();
         UUID startId = states.stream().filter(s -> s.kind().equals("START")).findFirst().orElseThrow().id();
@@ -1057,17 +1057,17 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         UUID s2 = states.stream().filter(s -> s.name().equals("s2")).findFirst().orElseThrow().id();
 
         // into START -> rejected
-        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new CreateTransitionMutation(s1, startId, "x", null, null, null))))
+        assertThatThrownBy(() -> schemaService.applyMutations(List.of(new CreateTransitionMutation(s1, startId, "x", null, null, null))))
                 .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("START");
         // out of END -> rejected
-        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new CreateTransitionMutation(endId, s1, "x", null, null, null))))
+        assertThatThrownBy(() -> schemaService.applyMutations(List.of(new CreateTransitionMutation(endId, s1, "x", null, null, null))))
                 .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("END");
         // START -> s1 with a guard -> rejected
-        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new CreateTransitionMutation(startId, s1, "start", null, null, guardJson()))))
+        assertThatThrownBy(() -> schemaService.applyMutations(List.of(new CreateTransitionMutation(startId, s1, "start", null, null, guardJson()))))
                 .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("guard");
         // START -> s1 (no guard) -> ok; a second outgoing from START -> rejected
-        schemaManager.applyMutations(List.of(new CreateTransitionMutation(startId, s1, "start", null, null, null)));
-        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new CreateTransitionMutation(startId, s2, "start2", null, null, null))))
+        schemaService.applyMutations(List.of(new CreateTransitionMutation(startId, s1, "start", null, null, null)));
+        assertThatThrownBy(() -> schemaService.applyMutations(List.of(new CreateTransitionMutation(startId, s2, "start2", null, null, null))))
                 .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("outgoing");
     }
 
@@ -1078,35 +1078,35 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void updateTransitionMutation_andDeleteTransitionMutation() {
         UUID itemId = createItem("Item-" + UUID.randomUUID());
-        schemaManager.applyMutations(List.of(new CreateStateMachineMutation(itemId, "machine", "d")));
-        UUID machineId = schemaManager.getAdminSchema().items().stream()
+        schemaService.applyMutations(List.of(new CreateStateMachineMutation(itemId, "machine", "d")));
+        UUID machineId = schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
                 .stateMachines().get(0).id();
-        schemaManager.applyMutations(List.of(
+        schemaService.applyMutations(List.of(
                 new CreateStateMutation(machineId, "from", "d", null, null),
                 new CreateStateMutation(machineId, "to", "d", null, null)));
-        var states = schemaManager.getAdminSchema().items().stream()
+        var states = schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
                 .stateMachines().get(0).states();
         UUID fromId = states.stream().filter(s -> s.name().equals("from")).findFirst().orElseThrow().id();
         UUID toId = states.stream().filter(s -> s.name().equals("to")).findFirst().orElseThrow().id();
-        schemaManager.applyMutations(List.of(new CreateTransitionMutation(fromId, toId, "original", "d", null, null)));
-        UUID transitionId = schemaManager.getAdminSchema().items().stream()
+        schemaService.applyMutations(List.of(new CreateTransitionMutation(fromId, toId, "original", "d", null, null)));
+        UUID transitionId = schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
                 .stateMachines().get(0).states().stream().filter(s -> s.id().equals(fromId)).findFirst().orElseThrow()
                 .transitions().get(0).id();
 
-        schemaManager.applyMutations(List.of(
+        schemaService.applyMutations(List.of(
                 new UpdateTransitionMutation(transitionId, "renamed", "updated", "guard-proc", null)));
-        var afterUpdate = schemaManager.getAdminSchema().items().stream()
+        var afterUpdate = schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
                 .stateMachines().get(0).states().stream().filter(s -> s.id().equals(fromId)).findFirst().orElseThrow()
                 .transitions().get(0);
         assertThat(afterUpdate.name()).isEqualTo("renamed");
         assertThat(afterUpdate.processId()).isEqualTo("guard-proc");
 
-        schemaManager.applyMutations(List.of(new DeleteTransitionMutation(transitionId)));
-        var afterDelete = schemaManager.getAdminSchema().items().stream()
+        schemaService.applyMutations(List.of(new DeleteTransitionMutation(transitionId)));
+        var afterDelete = schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
                 .stateMachines().get(0).states().stream().filter(s -> s.id().equals(fromId)).findFirst().orElseThrow()
                 .transitions();
@@ -1120,9 +1120,9 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         String vehicleName = "Item-" + UUID.randomUUID();
         String carName = "Item-" + UUID.randomUUID();
         UUID vehicleId = createItem(vehicleName);
-        schemaManager.applyMutations(List.of(new AddPropertyDefinitionMutation(PropertyContainerKind.ITEM, vehicleId, "wheels", "d", PropertyType.INTEGER, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)));
+        schemaService.applyMutations(List.of(new AddPropertyDefinitionMutation(PropertyContainerKind.ITEM, vehicleId, "wheels", "d", PropertyType.INTEGER, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)));
 
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(
                 new CreatePropertyDefinitionMutation("doors", "d", PropertyType.INTEGER, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)),
                 vehicleId, false, null)));
 
@@ -1138,7 +1138,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         assertThat(car.properties()).filteredOn(p -> p.name().equals("doors"))
                 .allSatisfy(p -> assertThat(p.definedIn()).isNull());
 
-        var calculatedCar = schemaManager.getSchema(ADMIN).items().stream()
+        var calculatedCar = schemaService.getSchema(ADMIN).items().stream()
                 .filter(i -> i.name().equals(carName)).findFirst().orElseThrow();
         assertThat(calculatedCar.properties()).extracting(p -> p.name()).contains("wheels", "doors");
         assertThat(calculatedCar.supertypeId()).isEqualTo(vehicleId);
@@ -1147,16 +1147,16 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void multiLevelSupertypeChain_accumulatesPropertiesFromEveryAncestor() {
         UUID vehicleId = createItem("Item-" + UUID.randomUUID());
-        schemaManager.applyMutations(List.of(new AddPropertyDefinitionMutation(PropertyContainerKind.ITEM, vehicleId, "wheels", "d", PropertyType.INTEGER, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)));
+        schemaService.applyMutations(List.of(new AddPropertyDefinitionMutation(PropertyContainerKind.ITEM, vehicleId, "wheels", "d", PropertyType.INTEGER, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)));
 
         String carName = "Item-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(
                 new CreatePropertyDefinitionMutation("doors", "d", PropertyType.INTEGER, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)),
                 vehicleId, false, null)));
         UUID carId = findItem(carName).id();
 
         String sportsCarName = "Item-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(sportsCarName, "d", List.of(
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(sportsCarName, "d", List.of(
                 new CreatePropertyDefinitionMutation("topSpeed", "d", PropertyType.INTEGER, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)),
                 carId, false, null)));
 
@@ -1167,9 +1167,9 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void createItemDefinitionMutation_reDeclaringAPropertyNameFromItsSupertype_throws() {
         UUID vehicleId = createItem("Item-" + UUID.randomUUID());
-        schemaManager.applyMutations(List.of(new AddPropertyDefinitionMutation(PropertyContainerKind.ITEM, vehicleId, "wheels", "d", PropertyType.INTEGER, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)));
+        schemaService.applyMutations(List.of(new AddPropertyDefinitionMutation(PropertyContainerKind.ITEM, vehicleId, "wheels", "d", PropertyType.INTEGER, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)));
 
-        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(
+        assertThatThrownBy(() -> schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(
                 "Item-" + UUID.randomUUID(), "d", List.of(
                         new CreatePropertyDefinitionMutation("wheels", "d", PropertyType.INTEGER, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)),
                 vehicleId, false, null))))
@@ -1181,12 +1181,12 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void createItemDefinitionMutation_reDeclaringAPropertyNameFromAMultiHopSupertypeChain_throws() {
         UUID vehicleId = createItem("Item-" + UUID.randomUUID());
-        schemaManager.applyMutations(List.of(new AddPropertyDefinitionMutation(PropertyContainerKind.ITEM, vehicleId, "wheels", "d", PropertyType.INTEGER, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)));
+        schemaService.applyMutations(List.of(new AddPropertyDefinitionMutation(PropertyContainerKind.ITEM, vehicleId, "wheels", "d", PropertyType.INTEGER, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)));
         String carName = "Item-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(), vehicleId, false, null)));
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(), vehicleId, false, null)));
         UUID carId = findItem(carName).id();
 
-        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(
+        assertThatThrownBy(() -> schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(
                 "Item-" + UUID.randomUUID(), "d", List.of(
                         new CreatePropertyDefinitionMutation("wheels", "d", PropertyType.INTEGER, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)),
                 carId, false, null))))
@@ -1197,12 +1197,12 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void createItemPropertyDefinitionMutation_reDeclaringAPropertyNameFromItsSupertype_throws() {
         UUID vehicleId = createItem("Item-" + UUID.randomUUID());
-        schemaManager.applyMutations(List.of(new AddPropertyDefinitionMutation(PropertyContainerKind.ITEM, vehicleId, "wheels", "d", PropertyType.INTEGER, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)));
+        schemaService.applyMutations(List.of(new AddPropertyDefinitionMutation(PropertyContainerKind.ITEM, vehicleId, "wheels", "d", PropertyType.INTEGER, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)));
         String carName = "Item-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(), vehicleId, false, null)));
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(), vehicleId, false, null)));
         UUID carId = findItem(carName).id();
 
-        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new AddPropertyDefinitionMutation(PropertyContainerKind.ITEM, carId, "wheels", "d", PropertyType.INTEGER, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false))))
+        assertThatThrownBy(() -> schemaService.applyMutations(List.of(new AddPropertyDefinitionMutation(PropertyContainerKind.ITEM, carId, "wheels", "d", PropertyType.INTEGER, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false))))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("wheels")
                 .hasMessageContaining("is already a property or group");
@@ -1211,14 +1211,14 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void updateItemDefinitionMutation_reParentingIntoACollisionWithItsOwnProperty_throws() {
         UUID vehicleId = createItem("Item-" + UUID.randomUUID());
-        schemaManager.applyMutations(List.of(new AddPropertyDefinitionMutation(PropertyContainerKind.ITEM, vehicleId, "wheels", "d", PropertyType.INTEGER, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)));
+        schemaService.applyMutations(List.of(new AddPropertyDefinitionMutation(PropertyContainerKind.ITEM, vehicleId, "wheels", "d", PropertyType.INTEGER, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)));
         String boatName = "Item-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(boatName, "d", List.of(
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(boatName, "d", List.of(
                 new CreatePropertyDefinitionMutation("wheels", "d", PropertyType.INTEGER, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)),
                 null, false, null)));
         UUID boatId = findItem(boatName).id();
 
-        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(
+        assertThatThrownBy(() -> schemaService.applyMutations(List.of(
                 new UpdateItemDefinitionMutation(boatId, boatName, "d", vehicleId, false, null))))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("wheels")
@@ -1228,18 +1228,18 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void itemWithBothATraitAndASupertype_inheritsFromBoth() {
         UUID vehicleId = createItem("Item-" + UUID.randomUUID());
-        schemaManager.applyMutations(List.of(new AddPropertyDefinitionMutation(PropertyContainerKind.ITEM, vehicleId, "wheels", "d", PropertyType.INTEGER, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)));
+        schemaService.applyMutations(List.of(new AddPropertyDefinitionMutation(PropertyContainerKind.ITEM, vehicleId, "wheels", "d", PropertyType.INTEGER, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)));
         String traitName = "Trait-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateTraitDefinitionMutation(traitName, "d", List.of(
+        schemaService.applyMutations(List.of(new CreateTraitDefinitionMutation(traitName, "d", List.of(
                 new CreatePropertyDefinitionMutation("insured", "d", PropertyType.BOOLEAN, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)))));
         UUID traitId = findTrait(traitName).id();
 
         String carName = "Item-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(
                 new CreatePropertyDefinitionMutation("doors", "d", PropertyType.INTEGER, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)),
                 vehicleId, false, null)));
         UUID carId = findItem(carName).id();
-        schemaManager.applyMutations(List.of(new ImplementTraitMutation(carId, traitId)));
+        schemaService.applyMutations(List.of(new ImplementTraitMutation(carId, traitId)));
 
         var car = findItem(carName);
         assertThat(car.properties()).extracting(p -> p.name()).containsExactlyInAnyOrder("doors", "wheels", "insured");
@@ -1249,12 +1249,12 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     void linkPerspectiveDeclaredOnASupertype_isInheritedBySubtype() {
         UUID vehicleId = createItem("Item-" + UUID.randomUUID());
         UUID ownerId = createItem("Item-" + UUID.randomUUID());
-        schemaManager.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
+        schemaService.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
                 new CreatePerspectiveDefinitionMutation(vehicleId, "ownedBy", "d", 0, 1),
                 new CreatePerspectiveDefinitionMutation(ownerId, "owns", "d", 0, null)))));
 
         String carName = "Item-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(), vehicleId, false, null)));
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(), vehicleId, false, null)));
 
         var car = findItem(carName);
         assertThat(car.links()).containsKey("ownedBy");
@@ -1265,10 +1265,10 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void stateMachineDeclaredOnASupertype_isInheritedBySubtype() {
         UUID vehicleId = createItem("Item-" + UUID.randomUUID());
-        schemaManager.applyMutations(List.of(new CreateStateMachineMutation(vehicleId, "lifecycle", "d")));
+        schemaService.applyMutations(List.of(new CreateStateMachineMutation(vehicleId, "lifecycle", "d")));
 
         String carName = "Item-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(), vehicleId, false, null)));
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(), vehicleId, false, null)));
 
         var car = findItem(carName);
         assertThat(car.stateMachines()).extracting(m -> m.name()).contains("lifecycle");
@@ -1280,7 +1280,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         UUID authorId = createItem(authorName);
         String bookName = "Book-" + UUID.randomUUID();
 
-        schemaManager.applyMutations(List.of(
+        schemaService.applyMutations(List.of(
                 new CreateItemDefinitionMutation(bookName, "d", List.of(), null, false, null, List.of(), List.of(), "book"),
                 new CreateLinkDefinitionMutation(List.of(), List.of(
                         new CreatePerspectiveDefinitionMutation(null, "writtenBy", "d", 0, null, "book"),
@@ -1297,7 +1297,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         UUID authorId = createItem(authorName);
         String traitName = "Authored-" + UUID.randomUUID();
 
-        schemaManager.applyMutations(List.of(
+        schemaService.applyMutations(List.of(
                 new CreateTraitDefinitionMutation(traitName, "d", List.of(), List.of(), "authored"),
                 new CreateLinkDefinitionMutation(List.of(), List.of(
                         new CreatePerspectiveDefinitionMutation(null, "writtenBy", "d", 0, null, "authored"),
@@ -1313,7 +1313,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         UUID authorId = createItem("Author-" + UUID.randomUUID());
         String bookName = "Book-" + UUID.randomUUID();
 
-        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(
+        assertThatThrownBy(() -> schemaService.applyMutations(List.of(
                 new CreateItemDefinitionMutation(bookName, "d", List.of(), null, false, null, List.of(), List.of(), "book"),
                 new CreateLinkDefinitionMutation(List.of(), List.of(
                         new CreatePerspectiveDefinitionMutation(null, "writtenBy", "d", 0, null, "no-such-ref"),
@@ -1327,7 +1327,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     void createLinkDefinitionMutation_withBothAnItemIdAndAnItemRefId_throws() {
         UUID authorId = createItem("Author-" + UUID.randomUUID());
 
-        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
+        assertThatThrownBy(() -> schemaService.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
                 new CreatePerspectiveDefinitionMutation(authorId, "self", "d", 0, null, "book"),
                 new CreatePerspectiveDefinitionMutation(authorId, "selfBack", "d", 0, null))))))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -1336,7 +1336,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void createItemDefinitionMutation_withAnUnknownSupertype_throws() {
-        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(
+        assertThatThrownBy(() -> schemaService.applyMutations(List.of(
                 new CreateItemDefinitionMutation("Item-" + UUID.randomUUID(), "d", List.of(), UUID.randomUUID(), false, null))))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Unknown item type");
@@ -1346,10 +1346,10 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     void updateItemDefinitionMutation_withATraitIdAsSupertype_throws() {
         UUID itemId = createItem("Item-" + UUID.randomUUID());
         String traitName = "Trait-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateTraitDefinitionMutation(traitName, "d", List.of())));
+        schemaService.applyMutations(List.of(new CreateTraitDefinitionMutation(traitName, "d", List.of())));
         UUID traitId = findTrait(traitName).id();
 
-        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(
+        assertThatThrownBy(() -> schemaService.applyMutations(List.of(
                 new UpdateItemDefinitionMutation(itemId, "Item-" + UUID.randomUUID(), "d", traitId, false, null))))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Unknown item type");
@@ -1359,7 +1359,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     void updateItemDefinitionMutation_settingSupertypeToItself_throws() {
         UUID itemId = createItem("Item-" + UUID.randomUUID());
 
-        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(
+        assertThatThrownBy(() -> schemaService.applyMutations(List.of(
                 new UpdateItemDefinitionMutation(itemId, "Item-" + UUID.randomUUID(), "d", itemId, false, null))))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("cycle");
@@ -1370,15 +1370,15 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         String aName = "Item-" + UUID.randomUUID();
         UUID aId = createItem(aName);
         String bName = "Item-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(bName, "d", List.of(), aId, false, null)));
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(bName, "d", List.of(), aId, false, null)));
         UUID bId = findItem(bName).id();
         String cName = "Item-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(cName, "d", List.of(), bId, false, null)));
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(cName, "d", List.of(), bId, false, null)));
         UUID cId = findItem(cName).id();
 
         // Chain: C's supertype is B, B's supertype is A. Setting A's supertype to C would close
         // the loop (A -> C -> B -> A).
-        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(
+        assertThatThrownBy(() -> schemaService.applyMutations(List.of(
                 new UpdateItemDefinitionMutation(aId, aName, "d", cId, false, null))))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("cycle");
@@ -1389,13 +1389,13 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         UUID firstSupertypeId = createItem("Item-" + UUID.randomUUID());
         UUID secondSupertypeId = createItem("Item-" + UUID.randomUUID());
         String itemName = "Item-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(itemName, "d", List.of(), firstSupertypeId, false, null)));
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(itemName, "d", List.of(), firstSupertypeId, false, null)));
         UUID itemId = findItem(itemName).id();
         assertThat(findItem(itemName).supertypeId()).isEqualTo(firstSupertypeId);
 
         // Unlike deletion (requireItemTypeNotInUse), re-parenting has no "in use" guard at all --
         // this is intentionally live/forward-only, matching how trait reassignment already works.
-        schemaManager.applyMutations(List.of(new UpdateItemDefinitionMutation(itemId, itemName, "d", secondSupertypeId, false, null)));
+        schemaService.applyMutations(List.of(new UpdateItemDefinitionMutation(itemId, itemName, "d", secondSupertypeId, false, null)));
 
         assertThat(findItem(itemName).supertypeId()).isEqualTo(secondSupertypeId);
     }
@@ -1403,14 +1403,14 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void abstractFlag_roundTripsThroughCreateAndUpdate_andCanBeToggledFreely() {
         String itemName = "Item-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(itemName, "d", List.of(), null, true, null)));
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(itemName, "d", List.of(), null, true, null)));
         UUID itemId = findItem(itemName).id();
         assertThat(findItem(itemName).abstractType()).isTrue();
 
-        schemaManager.applyMutations(List.of(new UpdateItemDefinitionMutation(itemId, itemName, "d", null, false, null)));
+        schemaService.applyMutations(List.of(new UpdateItemDefinitionMutation(itemId, itemName, "d", null, false, null)));
         assertThat(findItem(itemName).abstractType()).isFalse();
 
-        schemaManager.applyMutations(List.of(new UpdateItemDefinitionMutation(itemId, itemName, "d", null, true, null)));
+        schemaService.applyMutations(List.of(new UpdateItemDefinitionMutation(itemId, itemName, "d", null, true, null)));
         assertThat(findItem(itemName).abstractType()).isTrue();
     }
 
@@ -1424,7 +1424,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     }
 
     private AdminItemDefinitionView itemView(UUID itemId) {
-        return schemaManager.getAdminSchema().items().stream()
+        return schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow();
     }
 
@@ -1434,12 +1434,12 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
 
     // Only item-owned groups are looked up afterwards; nested groups are reached through findGroup.
     private UUID createGroup(PropertyContainerKind parentKind, UUID parentId, String name) {
-        schemaManager.applyMutations(List.of(new AddPropertyGroupDefinitionMutation(parentKind, parentId, name, "d", List.of(), List.of())));
+        schemaService.applyMutations(List.of(new AddPropertyGroupDefinitionMutation(parentKind, parentId, name, "d", List.of(), List.of())));
         return findGroup(parentId, name).id();
     }
 
     private void addProperty(PropertyContainerKind parentKind, UUID parentId, String name, PropertyType type) {
-        schemaManager.applyMutations(List.of(new AddPropertyDefinitionMutation(parentKind, parentId, name, "d", type, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)));
+        schemaService.applyMutations(List.of(new AddPropertyDefinitionMutation(parentKind, parentId, name, "d", type, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)));
     }
 
     @Test
@@ -1457,21 +1457,21 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void addPropertyDefinitionMutation_onALinkOwnedGroup_isVisibleOnTheLink() {
         UUID linkId = createBareLink();
-        schemaManager.applyMutations(List.of(new AddPropertyGroupDefinitionMutation(PropertyContainerKind.LINK, linkId, "details", "d", List.of(), List.of())));
-        UUID detailsId = schemaManager.getAdminSchema().links().stream()
+        schemaService.applyMutations(List.of(new AddPropertyGroupDefinitionMutation(PropertyContainerKind.LINK, linkId, "details", "d", List.of(), List.of())));
+        UUID detailsId = schemaService.getAdminSchema().links().stream()
                 .filter(l -> l.id().equals(linkId)).findFirst().orElseThrow()
                 .groups().get(0).id();
 
         addProperty(GROUP, detailsId, "role", PropertyType.STRING);
 
-        var details = schemaManager.getAdminSchema().links().stream()
+        var details = schemaService.getAdminSchema().links().stream()
                 .filter(l -> l.id().equals(linkId)).findFirst().orElseThrow().groups().get(0);
         assertThat(details.properties()).extracting(AdminPropertyDefinitionView::name).containsExactly("role");
     }
 
     @Test
     void addPropertyDefinitionMutation_toAnUnknownGroup_throws() {
-        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new AddPropertyDefinitionMutation(
+        assertThatThrownBy(() -> schemaService.applyMutations(List.of(new AddPropertyDefinitionMutation(
                 GROUP, UUID.randomUUID(), "child", "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false))))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Unknown group");
@@ -1480,12 +1480,12 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void aTraitsContributions_appearOnImplementingItemsUnderTheirOwnNames() {
         String traitName = "Trait-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateTraitDefinitionMutation(traitName, "d", List.of(
+        schemaService.applyMutations(List.of(new CreateTraitDefinitionMutation(traitName, "d", List.of(
                 new CreatePropertyDefinitionMutation("name", "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)))));
         UUID traitId = findTrait(traitName).id();
         UUID itemId = createItem("Item-" + UUID.randomUUID());
 
-        schemaManager.applyMutations(List.of(new ImplementTraitMutation(itemId, traitId)));
+        schemaService.applyMutations(List.of(new ImplementTraitMutation(itemId, traitId)));
 
         assertThat(itemView(itemId).properties()).filteredOn(p -> p.name().equals("name")).singleElement()
                 .satisfies(p -> assertThat(p.definedIn().entityName()).isEqualTo(traitName));
@@ -1496,13 +1496,13 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void aTraitOwnedGroup_appearsAtTheImplementingItemsTopLevel() {
         String traitName = "Trait-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateTraitDefinitionMutation(traitName, "d", List.of())));
+        schemaService.applyMutations(List.of(new CreateTraitDefinitionMutation(traitName, "d", List.of())));
         UUID traitId = findTrait(traitName).id();
-        schemaManager.applyMutations(List.of(new AddPropertyGroupDefinitionMutation(PropertyContainerKind.TRAIT, traitId, "file", "d",
+        schemaService.applyMutations(List.of(new AddPropertyGroupDefinitionMutation(PropertyContainerKind.TRAIT, traitId, "file", "d",
                 List.of(new CreatePropertyDefinitionMutation("name", "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)), List.of())));
         UUID itemId = createItem("Item-" + UUID.randomUUID());
 
-        schemaManager.applyMutations(List.of(new ImplementTraitMutation(itemId, traitId)));
+        schemaService.applyMutations(List.of(new ImplementTraitMutation(itemId, traitId)));
 
         var file = findGroup(itemId, "file");
         assertThat(file.definedIn().entityName()).isEqualTo(traitName);
@@ -1512,11 +1512,11 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void addPropertyDefinitionMutation_withACollidingNameInTheSameTrait_throws() {
         String traitName = "Trait-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateTraitDefinitionMutation(traitName, "d", List.of(
+        schemaService.applyMutations(List.of(new CreateTraitDefinitionMutation(traitName, "d", List.of(
                 new CreatePropertyDefinitionMutation("shared", "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)))));
         UUID traitId = findTrait(traitName).id();
 
-        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new AddPropertyDefinitionMutation(PropertyContainerKind.TRAIT, traitId, "shared", "d2", PropertyType.INTEGER, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false))))
+        assertThatThrownBy(() -> schemaService.applyMutations(List.of(new AddPropertyDefinitionMutation(PropertyContainerKind.TRAIT, traitId, "shared", "d2", PropertyType.INTEGER, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false))))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("already exists");
     }
@@ -1560,7 +1560,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     void addPropertyDefinitionMutation_onAnItemType_cannotShareANameWithAnImplementedTraitsProperty() {
         UUID traitId = createTraitWithProperty("Trait-" + UUID.randomUUID(), "code");
         UUID itemId = createItem("Item-" + UUID.randomUUID());
-        schemaManager.applyMutations(List.of(new ImplementTraitMutation(itemId, traitId)));
+        schemaService.applyMutations(List.of(new ImplementTraitMutation(itemId, traitId)));
 
         assertThatThrownBy(() -> addProperty(ITEM, itemId, "code", PropertyType.STRING))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -1570,10 +1570,10 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void anItemTypeMayHaveAPropertyNamedForATraitItImplements() {
         String traitName = "Trait-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateTraitDefinitionMutation(traitName, "d", List.of())));
+        schemaService.applyMutations(List.of(new CreateTraitDefinitionMutation(traitName, "d", List.of())));
         UUID traitId = findTrait(traitName).id();
         UUID itemId = createItem("Item-" + UUID.randomUUID());
-        schemaManager.applyMutations(List.of(new ImplementTraitMutation(itemId, traitId)));
+        schemaService.applyMutations(List.of(new ImplementTraitMutation(itemId, traitId)));
 
         addProperty(ITEM, itemId, traitName, PropertyType.STRING);
 
@@ -1585,7 +1585,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         UUID traitId = createTraitWithProperty("Trait-" + UUID.randomUUID(), "code");
         UUID itemId = createItem("Item-" + UUID.randomUUID());
         addProperty(ITEM, itemId, "region", PropertyType.STRING);
-        schemaManager.applyMutations(List.of(new ImplementTraitMutation(itemId, traitId)));
+        schemaService.applyMutations(List.of(new ImplementTraitMutation(itemId, traitId)));
 
         assertThatThrownBy(() -> addProperty(PropertyContainerKind.TRAIT, traitId, "region", PropertyType.STRING))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -1597,9 +1597,9 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         UUID firstTraitId = createTraitWithProperty("Trait-" + UUID.randomUUID(), "code");
         UUID secondTraitId = createTraitWithProperty("Trait-" + UUID.randomUUID(), "code");
         UUID itemId = createItem("Item-" + UUID.randomUUID());
-        schemaManager.applyMutations(List.of(new ImplementTraitMutation(itemId, firstTraitId)));
+        schemaService.applyMutations(List.of(new ImplementTraitMutation(itemId, firstTraitId)));
 
-        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new ImplementTraitMutation(itemId, secondTraitId))))
+        assertThatThrownBy(() -> schemaService.applyMutations(List.of(new ImplementTraitMutation(itemId, secondTraitId))))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("'code' is already a property or group");
     }
@@ -1608,12 +1608,12 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     void aTraitImplementedByBothAnItemTypeAndItsSupertype_contributesItsPropertiesOnce() {
         UUID traitId = createTraitWithProperty("Trait-" + UUID.randomUUID(), "code");
         UUID vehicleId = createItem("Item-" + UUID.randomUUID());
-        schemaManager.applyMutations(List.of(new ImplementTraitMutation(vehicleId, traitId)));
+        schemaService.applyMutations(List.of(new ImplementTraitMutation(vehicleId, traitId)));
         String carName = "Item-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(), vehicleId, false, null)));
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(), vehicleId, false, null)));
         UUID carId = findItem(carName).id();
 
-        schemaManager.applyMutations(List.of(new ImplementTraitMutation(carId, traitId)));
+        schemaService.applyMutations(List.of(new ImplementTraitMutation(carId, traitId)));
 
         assertThat(findItem(carName).properties()).extracting(p -> p.name()).containsExactly("code");
     }
@@ -1621,17 +1621,17 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void createLinkDefinitionMutation_onATrait_isCheckedAgainstEveryImplementingItemTypesPerspectives() {
         String traitName = "Trait-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateTraitDefinitionMutation(traitName, "d", List.of())));
+        schemaService.applyMutations(List.of(new CreateTraitDefinitionMutation(traitName, "d", List.of())));
         UUID traitId = findTrait(traitName).id();
         UUID itemId = createItem("Item-" + UUID.randomUUID());
         UUID otherId = createItem("Item-" + UUID.randomUUID());
-        schemaManager.applyMutations(List.of(
+        schemaService.applyMutations(List.of(
                 new ImplementTraitMutation(itemId, traitId),
                 new CreateLinkDefinitionMutation(List.of(), List.of(
                         new CreatePerspectiveDefinitionMutation(itemId, "related", "d", 0, null),
                         new CreatePerspectiveDefinitionMutation(otherId, "relatedFrom", "d", 0, null)))));
 
-        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
+        assertThatThrownBy(() -> schemaService.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
                 new CreatePerspectiveDefinitionMutation(traitId, "related", "d", 0, null),
                 new CreatePerspectiveDefinitionMutation(otherId, "relatedTrait", "d", 0, null))))))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -1639,7 +1639,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     }
 
     private UUID createTraitWithProperty(String traitName, String propertyName) {
-        schemaManager.applyMutations(List.of(new CreateTraitDefinitionMutation(traitName, "d", List.of(
+        schemaService.applyMutations(List.of(new CreateTraitDefinitionMutation(traitName, "d", List.of(
                 new CreatePropertyDefinitionMutation(propertyName, "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)))));
         return findTrait(traitName).id();
     }
@@ -1650,7 +1650,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         UUID itemId = createItem("Item-" + UUID.randomUUID());
         addProperty(ITEM, itemId, "code", PropertyType.STRING);
 
-        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new ImplementTraitMutation(itemId, traitId))))
+        assertThatThrownBy(() -> schemaService.applyMutations(List.of(new ImplementTraitMutation(itemId, traitId))))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("'code' is already a property or group");
     }
@@ -1658,7 +1658,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void addPropertyDefinitionMutation_onASupertype_isCheckedAgainstExistingSubtypeNames() {
         UUID superId = createItem("Super-" + UUID.randomUUID());
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation("Sub-" + UUID.randomUUID(), "d", List.of(
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation("Sub-" + UUID.randomUUID(), "d", List.of(
                 new CreatePropertyDefinitionMutation("clash", "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)), superId, false, null)));
 
         assertThatThrownBy(() -> addProperty(ITEM, superId, "clash", PropertyType.STRING))
@@ -1673,7 +1673,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         addProperty(ITEM, itemId, "length", PropertyType.INTEGER);
         UUID lengthId = findProperty(itemId, "length").id();
 
-        schemaManager.applyMutations(List.of(new MovePropertyDefinitionMutation(lengthId, GROUP, dimensionsId)));
+        schemaService.applyMutations(List.of(new MovePropertyDefinitionMutation(lengthId, GROUP, dimensionsId)));
 
         assertThat(itemView(itemId).properties()).extracting(AdminPropertyDefinitionView::name).doesNotContain("length");
         assertThat(findGroup(itemId, "dimensions").properties()).extracting(AdminPropertyDefinitionView::name).containsExactly("length");
@@ -1686,7 +1686,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         addProperty(GROUP, dimensionsId, "length", PropertyType.INTEGER);
         UUID lengthId = findGroup(itemId, "dimensions").properties().get(0).id();
 
-        schemaManager.applyMutations(List.of(new MovePropertyDefinitionMutation(lengthId, ITEM, itemId)));
+        schemaService.applyMutations(List.of(new MovePropertyDefinitionMutation(lengthId, ITEM, itemId)));
 
         assertThat(itemView(itemId).properties()).extracting(AdminPropertyDefinitionView::name).contains("length");
         assertThat(findGroup(itemId, "dimensions").properties()).isEmpty();
@@ -1696,12 +1696,12 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     void movePropertyGroupDefinitionMutation_wouldCreateACycle_throws() {
         UUID itemId = createItem("Item-" + UUID.randomUUID());
         UUID outerId = createGroup(ITEM, itemId, "outer");
-        schemaManager.applyMutations(List.of(new AddPropertyGroupDefinitionMutation(GROUP, outerId, "inner", "d", List.of(), List.of())));
+        schemaService.applyMutations(List.of(new AddPropertyGroupDefinitionMutation(GROUP, outerId, "inner", "d", List.of(), List.of())));
         UUID innerId = findGroup(itemId, "outer").groups().get(0).id();
 
         // inner is already nested inside outer -- moving outer to become a child of inner would
         // create a cycle (outer -> inner -> outer).
-        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(
+        assertThatThrownBy(() -> schemaService.applyMutations(List.of(
                 new MovePropertyGroupDefinitionMutation(outerId, GROUP, innerId))))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("cycle");
@@ -1713,13 +1713,13 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         UUID dimensionsId = createGroup(ITEM, itemId, "dimensions");
         addProperty(GROUP, dimensionsId, "length", PropertyType.INTEGER);
 
-        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new DeletePropertyGroupDefinitionMutation(dimensionsId))))
+        assertThatThrownBy(() -> schemaService.applyMutations(List.of(new DeletePropertyGroupDefinitionMutation(dimensionsId))))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("not empty");
 
         UUID lengthId = findGroup(itemId, "dimensions").properties().get(0).id();
-        schemaManager.applyMutations(List.of(new DeletePropertyDefinitionMutation(lengthId)));
-        schemaManager.applyMutations(List.of(new DeletePropertyGroupDefinitionMutation(dimensionsId)));
+        schemaService.applyMutations(List.of(new DeletePropertyDefinitionMutation(lengthId)));
+        schemaService.applyMutations(List.of(new DeletePropertyGroupDefinitionMutation(dimensionsId)));
 
         assertThat(itemView(itemId).groups()).extracting(AdminPropertyGroupView::name).doesNotContain("dimensions");
     }
@@ -1727,7 +1727,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
     private static final org.ntrloc.graph.principal.NtrlocPrincipal ADMIN =
             org.ntrloc.graph.principal.TestPrincipals.of(UUID.randomUUID(), "Test Admin", null, java.util.Set.of(), true);
 
-    // --- Schema-view filtering by item-type:read permission (SchemaManager.getSchema) ---
+    // --- Schema-view filtering by item-type:read permission (SchemaService.getSchema) ---
     //
     // A user not added to the default "everyone" group (which auto-grants item-type:read on every
     // item type, existing or future -- see DefaultUserGroupInitializer.onItemTypeCreated) starts
@@ -1744,7 +1744,7 @@ class SchemaManagerIntegrationTest extends AbstractIntegrationTest {
         var principal = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), false);
         accessStore.grantItemType(visibleTypeId, "USER", user.id(), PermissionService.ITEM_TYPE_READ);
 
-        var visibleNames = schemaManager.getSchema(principal).items().stream().map(i -> i.name()).toList();
+        var visibleNames = schemaService.getSchema(principal).items().stream().map(i -> i.name()).toList();
         assertThat(visibleNames).contains(visibleTypeName);
         assertThat(visibleNames).doesNotContain(hiddenTypeName);
     }

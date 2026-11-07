@@ -15,7 +15,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-// Applies link-definition mutations -- split out of SchemaManager (see its own history).
+// Applies link-definition mutations -- split out of SchemaService (see its own history).
 @Component
 class LinkMutationApplier {
 

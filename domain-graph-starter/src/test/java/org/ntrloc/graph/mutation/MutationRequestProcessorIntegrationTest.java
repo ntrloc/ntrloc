@@ -11,7 +11,7 @@ import org.ntrloc.graph.db.partition.authorization.repository.AccessStore;
 import org.ntrloc.graph.db.partition.binary.BinaryStore;
 import org.ntrloc.graph.db.partition.register.RegisterStore;
 import org.ntrloc.graph.db.partition.schema.repository.ControlledListStore;
-import org.ntrloc.graph.db.partition.schema.SchemaManager;
+import org.ntrloc.graph.db.partition.schema.SchemaService;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyUsage;
@@ -86,7 +86,7 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
     private MutationRequestProcessorTestDomainInitializer fixture;
 
     @Autowired
-    private SchemaManager schemaManager;
+    private SchemaService schemaService;
 
     @Autowired
     private BinaryStore binaryStore;
@@ -272,7 +272,7 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
     @Test
     void itemCreateMutation_missingARequiredProperty_reportsAValidationErrorNamingIt() {
         String typeName = "MutReqProcRequired-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(typeName, "d", List.of(
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(typeName, "d", List.of(
                 new CreatePropertyDefinitionMutation("title", "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.REQUIRED, false)),
                 null, false, null)));
 
@@ -286,7 +286,7 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
     @Test
     void itemCreateMutation_missingMultipleRequiredProperties_reportsAValidationErrorForEachOneButNotForOptionalOnes() {
         String typeName = "MutReqProcRequiredMulti-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(typeName, "d", List.of(
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(typeName, "d", List.of(
                 new CreatePropertyDefinitionMutation("title", "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.REQUIRED, false),
                 new CreatePropertyDefinitionMutation("author", "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.REQUIRED, false),
                 new CreatePropertyDefinitionMutation("subtitle", "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)),
@@ -306,7 +306,7 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
     @Test
     void itemCreateMutation_providingEveryRequiredProperty_succeeds() {
         String typeName = "MutReqProcRequiredOk-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(typeName, "d", List.of(
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(typeName, "d", List.of(
                 new CreatePropertyDefinitionMutation("title", "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.REQUIRED, false)),
                 null, false, null)));
 
@@ -319,7 +319,7 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
     @Test
     void itemUpdateMutation_settingARequiredPropertyToNull_reportsAValidationErrorNamingIt() {
         String typeName = "MutReqProcRequiredClear-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(typeName, "d", List.of(
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(typeName, "d", List.of(
                 new CreatePropertyDefinitionMutation("title", "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.REQUIRED, false)),
                 null, false, null)));
         UUID itemId = processor.process(new MutationRequest(
@@ -353,11 +353,11 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
     @Test
     void itemUpdateMutation_omittingAPropertyThatBecameRequiredAfterTheItemWasCreated_reportsAValidationErrorSayingItMustBeSet() {
         String typeName = "MutReqProcRetroRequired-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(typeName, "d", List.of(
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(typeName, "d", List.of(
                 new CreatePropertyDefinitionMutation("notes", "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false),
                 new CreatePropertyDefinitionMutation("title", "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)),
                 null, false, null)));
-        UUID notesPropertyId = schemaManager.getAdminSchema().items().stream()
+        UUID notesPropertyId = schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.name().equals(typeName)).findFirst().orElseThrow()
                 .properties().stream().filter(p -> p.name().equals("notes")).findFirst().orElseThrow().id();
 
@@ -366,7 +366,7 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
                 List.of(new ItemCreateMutation(null, typeName, Map.of())), List.of()), SOME_PRINCIPAL)
                 .items().get(0).itemId();
 
-        schemaManager.applyMutations(List.of(new UpdatePropertyDefinitionMutation(
+        schemaService.applyMutations(List.of(new UpdatePropertyDefinitionMutation(
                 notesPropertyId, "notes", "d", PropertyCardinality.SINGLE, PropertyUsage.REQUIRED, false)));
 
         assertThatThrownBy(() -> processor.process(new MutationRequest(
@@ -383,7 +383,7 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
     @Test
     void itemCreateMutation_settingADeprecatedProperty_reportsAValidationErrorNamingIt() {
         String typeName = "MutReqProcDeprecated-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(typeName, "d", List.of(
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(typeName, "d", List.of(
                 new CreatePropertyDefinitionMutation("legacyCode", "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.DEPRECATED, false)),
                 null, false, null)));
 
@@ -402,10 +402,10 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
     @Test
     void itemUpdateMutation_settingADeprecatedProperty_reportsAValidationErrorNamingIt() {
         String typeName = "MutReqProcDeprecatedUpdate-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(typeName, "d", List.of(
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(typeName, "d", List.of(
                 new CreatePropertyDefinitionMutation("legacyCode", "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)),
                 null, false, null)));
-        UUID legacyCodePropertyId = schemaManager.getAdminSchema().items().stream()
+        UUID legacyCodePropertyId = schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.name().equals(typeName)).findFirst().orElseThrow()
                 .properties().stream().filter(p -> p.name().equals("legacyCode")).findFirst().orElseThrow().id();
 
@@ -413,7 +413,7 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
                 List.of(new ItemCreateMutation(null, typeName, Map.of())), List.of()), SOME_PRINCIPAL)
                 .items().get(0).itemId();
 
-        schemaManager.applyMutations(List.of(new UpdatePropertyDefinitionMutation(
+        schemaService.applyMutations(List.of(new UpdatePropertyDefinitionMutation(
                 legacyCodePropertyId, "legacyCode", "d", PropertyCardinality.SINGLE, PropertyUsage.DEPRECATED, false)));
 
         assertThatThrownBy(() -> processor.process(new MutationRequest(
@@ -442,12 +442,12 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
     private FreshLinkFixture createFreshLinkType(List<CreatePropertyDefinitionMutation> properties) {
         String aName = "MutReqProcLinkA-" + UUID.randomUUID();
         String bName = "MutReqProcLinkB-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(aName, "d", List.of(), null, false, null)));
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(bName, "d", List.of(), null, false, null)));
-        UUID aTypeId = schemaManager.getAdminSchema().items().stream().filter(i -> i.name().equals(aName)).findFirst().orElseThrow().id();
-        UUID bTypeId = schemaManager.getAdminSchema().items().stream().filter(i -> i.name().equals(bName)).findFirst().orElseThrow().id();
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(aName, "d", List.of(), null, false, null)));
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(bName, "d", List.of(), null, false, null)));
+        UUID aTypeId = schemaService.getAdminSchema().items().stream().filter(i -> i.name().equals(aName)).findFirst().orElseThrow().id();
+        UUID bTypeId = schemaService.getAdminSchema().items().stream().filter(i -> i.name().equals(bName)).findFirst().orElseThrow().id();
 
-        schemaManager.applyMutations(List.of(new CreateLinkDefinitionMutation(properties, List.of(
+        schemaService.applyMutations(List.of(new CreateLinkDefinitionMutation(properties, List.of(
                 new CreatePerspectiveDefinitionMutation(aTypeId, "toB", "d", 0, null),
                 new CreatePerspectiveDefinitionMutation(bTypeId, "toA", "d", 0, null)))));
 
@@ -509,7 +509,7 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
         String notesPropertyName = "linkNotes-" + UUID.randomUUID();
         FreshLinkFixture link = createFreshLinkType(List.of(
                 new CreatePropertyDefinitionMutation(notesPropertyName, "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)));
-        UUID notesPropertyId = schemaManager.getAdminSchema().links().stream()
+        UUID notesPropertyId = schemaService.getAdminSchema().links().stream()
                 .flatMap(l -> l.properties().stream())
                 .filter(p -> p.name().equals(notesPropertyName))
                 .findFirst().orElseThrow().id();
@@ -519,7 +519,7 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
                 List.of(link.create(Map.of()))), SOME_PRINCIPAL)
                 .links().get(0).linkId();
 
-        schemaManager.applyMutations(List.of(new UpdatePropertyDefinitionMutation(
+        schemaService.applyMutations(List.of(new UpdatePropertyDefinitionMutation(
                 notesPropertyId, notesPropertyName, "d", PropertyCardinality.SINGLE, PropertyUsage.REQUIRED, false)));
 
         assertThatThrownBy(() -> processor.process(new MutationRequest(List.of(),
@@ -555,7 +555,7 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
 
     private String createCardinalityTestItemType() {
         String typeName = "MutReqProcCardinality-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(typeName, "d", List.of(
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(typeName, "d", List.of(
                 new CreatePropertyDefinitionMutation("single", "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false),
                 new CreatePropertyDefinitionMutation("list", "d", PropertyType.STRING, PropertyCardinality.LIST, PropertyUsage.OPTIONAL, false),
                 new CreatePropertyDefinitionMutation("set", "d", PropertyType.STRING, PropertyCardinality.SET, PropertyUsage.OPTIONAL, false)),
@@ -736,13 +736,13 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
 
     private String createControlledListBackedItemType(PropertyCardinality cardinality) {
         String typeName = "MutReqProcControlledItem-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(typeName, "d", List.of(
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(typeName, "d", List.of(
                 new CreatePropertyDefinitionMutation("choice", "d", PropertyType.STRING, cardinality, PropertyUsage.OPTIONAL, false)),
                 null, false, null)));
-        UUID propId = schemaManager.getAdminSchema().items().stream()
+        UUID propId = schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.name().equals(typeName)).findFirst().orElseThrow()
                 .properties().stream().filter(p -> p.name().equals("choice")).findFirst().orElseThrow().id();
-        schemaManager.applyMutations(List.of(new SetPropertyControlledListMutation(propId,
+        schemaService.applyMutations(List.of(new SetPropertyControlledListMutation(propId,
                 new ExistingControlledListReference(createControlledList("A", "B")))));
         return typeName;
     }
@@ -754,11 +754,11 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
     private FreshLinkFixture createControlledListBackedLinkType(PropertyCardinality cardinality, String propertyName) {
         FreshLinkFixture link = createFreshLinkType(List.of(
                 new CreatePropertyDefinitionMutation(propertyName, "d", PropertyType.STRING, cardinality, PropertyUsage.OPTIONAL, false)));
-        UUID propId = schemaManager.getAdminSchema().links().stream()
+        UUID propId = schemaService.getAdminSchema().links().stream()
                 .flatMap(l -> l.properties().stream())
                 .filter(p -> p.name().equals(propertyName))
                 .findFirst().orElseThrow().id();
-        schemaManager.applyMutations(List.of(new SetPropertyControlledListMutation(propId,
+        schemaService.applyMutations(List.of(new SetPropertyControlledListMutation(propId,
                 new ExistingControlledListReference(createControlledList("A", "B")))));
         return link;
     }
@@ -930,11 +930,11 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
     private CardinalityLinkSchema createCardinalityLinkSchema(Integer minA, Integer maxA) {
         String aName = "MutReqProcCardLinkA-" + UUID.randomUUID();
         String bName = "MutReqProcCardLinkB-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(aName, "d", List.of(), null, false, null)));
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(bName, "d", List.of(), null, false, null)));
-        UUID aTypeId = schemaManager.getAdminSchema().items().stream().filter(i -> i.name().equals(aName)).findFirst().orElseThrow().id();
-        UUID bTypeId = schemaManager.getAdminSchema().items().stream().filter(i -> i.name().equals(bName)).findFirst().orElseThrow().id();
-        schemaManager.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(aName, "d", List.of(), null, false, null)));
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(bName, "d", List.of(), null, false, null)));
+        UUID aTypeId = schemaService.getAdminSchema().items().stream().filter(i -> i.name().equals(aName)).findFirst().orElseThrow().id();
+        UUID bTypeId = schemaService.getAdminSchema().items().stream().filter(i -> i.name().equals(bName)).findFirst().orElseThrow().id();
+        schemaService.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
                 new CreatePerspectiveDefinitionMutation(aTypeId, "toB", "d", minA, maxA),
                 new CreatePerspectiveDefinitionMutation(bTypeId, "toA", "d", 0, null)))));
         return new CardinalityLinkSchema("toB", "toA", aName, bName);
@@ -1066,10 +1066,10 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
         // any item had ever set used to 500 on a raw Postgres FK violation instead of succeeding
         // the way deleting a scalar property (no such FK) already does.
         String itemTypeName = "DeletePropTest-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(itemTypeName, "d", List.of(
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(itemTypeName, "d", List.of(
                 new CreatePropertyDefinitionMutation("attachment", "d", PropertyType.BINARY, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)),
                 null, false, null)));
-        UUID propertyId = schemaManager.getAdminSchema().items().stream()
+        UUID propertyId = schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.name().equals(itemTypeName)).findFirst().orElseThrow()
                 .properties().stream().filter(p -> p.name().equals("attachment")).findFirst().orElseThrow().id();
 
@@ -1082,12 +1082,12 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
                 .param("id", propertyId).query(Long.class).single();
         assertThat(before).isEqualTo(1L);
 
-        schemaManager.applyMutations(List.of(new DeletePropertyDefinitionMutation(propertyId)));
+        schemaService.applyMutations(List.of(new DeletePropertyDefinitionMutation(propertyId)));
 
         long after = jdbcClient.sql("SELECT COUNT(*) FROM register_binary_property WHERE property_id = :id")
                 .param("id", propertyId).query(Long.class).single();
         assertThat(after).isEqualTo(0L);
-        assertThat(schemaManager.getAdminSchema().items().stream()
+        assertThat(schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.name().equals(itemTypeName)).findFirst().orElseThrow().properties())
                 .extracting(p -> p.name()).doesNotContain("attachment");
     }
@@ -1101,13 +1101,13 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
     @Test
     void nestedBinaryProperty_projectsAtItsSchemaNestedLocation_notFlattenedToTopLevel() {
         String itemTypeName = "NestedBinaryTest-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(itemTypeName, "d", List.of(
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(itemTypeName, "d", List.of(
                 new CreatePropertyDefinitionMutation("placeholder", "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)),
                 null, false, null, List.of(), List.of(
                 new CreatePropertyGroupDefinitionMutation("file", "d", List.of(
                         new CreatePropertyDefinitionMutation("name", "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false),
                         new CreatePropertyDefinitionMutation("content", "d", PropertyType.BINARY, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)), List.of())))));
-        UUID itemTypeId = schemaManager.getAdminSchema().items().stream()
+        UUID itemTypeId = schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.name().equals(itemTypeName)).findFirst().orElseThrow().id();
 
         UUID binaryId = storeBinary("nested binary regression content".getBytes());
@@ -1436,7 +1436,7 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
     @Test
     void itemCreateMutation_forAnAbstractItemType_reportsAValidationError() {
         String typeName = "MutReqProcAbstract-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(typeName, "d", List.of(), null, true, null)));
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(typeName, "d", List.of(), null, true, null)));
 
         assertThatThrownBy(() -> processor.process(new MutationRequest(
                 List.of(new ItemCreateMutation(null, typeName, Map.of())), List.of()), SOME_PRINCIPAL))
@@ -1448,14 +1448,14 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
     @Test
     void itemCreateMutation_forASubtype_canSetAnInheritedPropertyFromItsSupertype() {
         String supertypeName = "MutReqProcSuper-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(supertypeName, "d", List.of(
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(supertypeName, "d", List.of(
                 new CreatePropertyDefinitionMutation("inheritedProp", "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)), null, false, null)));
-        UUID supertypeId = schemaManager.getAdminSchema().items().stream()
+        UUID supertypeId = schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.name().equals(supertypeName)).findFirst().orElseThrow().id();
 
         String subtypeName = "MutReqProcSub-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(subtypeName, "d", List.of(), supertypeId, false, null)));
-        UUID subtypeId = schemaManager.getAdminSchema().items().stream()
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(subtypeName, "d", List.of(), supertypeId, false, null)));
+        UUID subtypeId = schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.name().equals(subtypeName)).findFirst().orElseThrow().id();
 
         MutationResponse response = processor.process(new MutationRequest(
@@ -1478,17 +1478,17 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
     }
 
     // requireItemTypeNotInUse's actually-in-use branch needs a real, committed register_item row
-    // to trigger -- SchemaManagerIntegrationTest (schema-mutations only, no item CRUD) can't
+    // to trigger -- SchemaServiceIntegrationTest (schema-mutations only, no item CRUD) can't
     // produce that, so this lives here instead, alongside the other real-instance-creating tests.
     @Test
     void deleteItemDefinitionMutation_forATypeWithAnExistingInstance_throwsWithItsName() {
         String typeName = "MutReqProcInUse-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(typeName, "d", List.of(), null, false, null)));
-        UUID typeId = schemaManager.getAdminSchema().items().stream()
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(typeName, "d", List.of(), null, false, null)));
+        UUID typeId = schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.name().equals(typeName)).findFirst().orElseThrow().id();
         createItem(typeName);
 
-        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new DeleteItemDefinitionMutation(typeId))))
+        assertThatThrownBy(() -> schemaService.applyMutations(List.of(new DeleteItemDefinitionMutation(typeId))))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("items of this type still exist")
                 .hasMessageContaining(typeName);
@@ -1502,20 +1502,20 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
     @Test
     void linkCreateMutation_perspectiveDeclaredOnASupertype_isUsableByASubtypeInstance() {
         String vehicleName = "MutReqProcVehicle-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(vehicleName, "d", List.of(), null, false, null)));
-        UUID vehicleId = schemaManager.getAdminSchema().items().stream()
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(vehicleName, "d", List.of(), null, false, null)));
+        UUID vehicleId = schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.name().equals(vehicleName)).findFirst().orElseThrow().id();
 
         String carName = "MutReqProcCar-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(), vehicleId, false, null)));
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(carName, "d", List.of(), vehicleId, false, null)));
 
         String ownerName = "MutReqProcOwner-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(ownerName, "d", List.of(), null, false, null)));
-        UUID ownerTypeId = schemaManager.getAdminSchema().items().stream()
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(ownerName, "d", List.of(), null, false, null)));
+        UUID ownerTypeId = schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.name().equals(ownerName)).findFirst().orElseThrow().id();
 
         // The perspective is declared against Vehicle, never against Car directly.
-        schemaManager.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
+        schemaService.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
                 new CreatePerspectiveDefinitionMutation(vehicleId, "ownedBy", "d", 0, 1),
                 new CreatePerspectiveDefinitionMutation(ownerTypeId, "owns", "d", 0, null)))));
 
@@ -1534,12 +1534,12 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
     @Test
     void markingAnItemTypeAbstract_doesNotAffectExistingInstances_onlyBlocksNewOnes() {
         String typeName = "MutReqProcRetro-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(typeName, "d", List.of(), null, false, null)));
-        UUID typeId = schemaManager.getAdminSchema().items().stream()
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(typeName, "d", List.of(), null, false, null)));
+        UUID typeId = schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.name().equals(typeName)).findFirst().orElseThrow().id();
         UUID existingItemId = createItem(typeName);
 
-        schemaManager.applyMutations(List.of(new UpdateItemDefinitionMutation(typeId, typeName, "d", null, true, null)));
+        schemaService.applyMutations(List.of(new UpdateItemDefinitionMutation(typeId, typeName, "d", null, true, null)));
 
         // Existing instance is untouched -- still readable, not retroactively invalidated.
         assertThat(projectionEngine.projectOne(typeId, existingItemId, "http://binary")).isPresent();
@@ -1554,14 +1554,14 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
 
     // --- Item-create permission (item-type:create) ---
     //
-    // Independent of item-type:read (SchemaManagerIntegrationTest's own schema-view test) -- a user
+    // Independent of item-type:read (SchemaServiceIntegrationTest's own schema-view test) -- a user
     // can see a type exists without being allowed to create instances of it, and vice versa. A null
     // principal fails closed, same as one with no grants at all -- see this class's own doc comment.
 
     @Test
     void itemCreateMutation_byAUserLackingItemTypeCreatePermission_reportsAValidationError() {
         String typeName = "MutReqProcCreatePerm-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(typeName, "d", List.of(), null, false, null)));
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(typeName, "d", List.of(), null, false, null)));
         var user = userStore.createUser("Restricted", "sme-" + UUID.randomUUID() + "@example.com", false);
         var principal = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), false);
 
@@ -1575,8 +1575,8 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
     @Test
     void itemCreateMutation_byAUserGrantedItemTypeCreatePermission_succeeds() {
         String typeName = "MutReqProcCreatePermOk-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(typeName, "d", List.of(), null, false, null)));
-        UUID typeId = schemaManager.getAdminSchema().items().stream()
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(typeName, "d", List.of(), null, false, null)));
+        UUID typeId = schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.name().equals(typeName)).findFirst().orElseThrow().id();
         var user = userStore.createUser("Restricted", "sme-" + UUID.randomUUID() + "@example.com", false);
         var principal = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), false);
@@ -1596,10 +1596,10 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
     @Test
     void itemUpdateMutation_byAUserLackingPropertyWritePermission_reportsAValidationError() {
         String typeName = "MutReqProcWritePerm-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(typeName, "d", List.of(
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(typeName, "d", List.of(
                 new CreatePropertyDefinitionMutation("notes", "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)),
                 null, false, null)));
-        UUID typeId = schemaManager.getAdminSchema().items().stream()
+        UUID typeId = schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.name().equals(typeName)).findFirst().orElseThrow().id();
         UUID itemId = processor.process(new MutationRequest(
                 List.of(new ItemCreateMutation(null, typeName, Map.of())), List.of()), SOME_PRINCIPAL)
@@ -1622,12 +1622,12 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
     @Test
     void itemUpdateMutation_byAUserGrantedPropertyWritePermission_succeeds() {
         String typeName = "MutReqProcWritePermOk-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(typeName, "d", List.of(
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(typeName, "d", List.of(
                 new CreatePropertyDefinitionMutation("notes", "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)),
                 null, false, null)));
-        UUID typeId = schemaManager.getAdminSchema().items().stream()
+        UUID typeId = schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.name().equals(typeName)).findFirst().orElseThrow().id();
-        UUID notesPropertyId = schemaManager.getAdminSchema().items().stream()
+        UUID notesPropertyId = schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.id().equals(typeId)).findFirst().orElseThrow()
                 .properties().stream().filter(p -> p.name().equals("notes")).findFirst().orElseThrow().id();
         UUID itemId = processor.process(new MutationRequest(
@@ -1652,8 +1652,8 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
     @Test
     void itemDeleteMutation_byAUserLackingItemDeletePermission_reportsAValidationError() {
         String typeName = "MutReqProcDeletePerm-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(typeName, "d", List.of(), null, false, null)));
-        UUID typeId = schemaManager.getAdminSchema().items().stream()
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(typeName, "d", List.of(), null, false, null)));
+        UUID typeId = schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.name().equals(typeName)).findFirst().orElseThrow().id();
         UUID itemId = processor.process(new MutationRequest(
                 List.of(new ItemCreateMutation(null, typeName, Map.of())), List.of()), SOME_PRINCIPAL)
@@ -1676,8 +1676,8 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
     @Test
     void itemDeleteMutation_byAUserGrantedItemDeletePermission_succeeds() {
         String typeName = "MutReqProcDeletePermOk-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(typeName, "d", List.of(), null, false, null)));
-        UUID typeId = schemaManager.getAdminSchema().items().stream()
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(typeName, "d", List.of(), null, false, null)));
+        UUID typeId = schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.name().equals(typeName)).findFirst().orElseThrow().id();
         UUID itemId = processor.process(new MutationRequest(
                 List.of(new ItemCreateMutation(null, typeName, Map.of())), List.of()), SOME_PRINCIPAL)
@@ -1702,7 +1702,7 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
 
     private UUID perspectiveIdFor(UUID itemId, String perspectiveName) {
         UUID typeId = registerStore.findItemTypeId(itemId).orElseThrow();
-        return schemaManager.getAdminSchema().items().stream()
+        return schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.id().equals(typeId)).findFirst().orElseThrow()
                 .links().get(perspectiveName).get(0).id();
     }
@@ -1817,7 +1817,7 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
     }
 
     private UUID linkPropertyId(String propertyName) {
-        return schemaManager.getAdminSchema().links().stream()
+        return schemaService.getAdminSchema().links().stream()
                 .flatMap(l -> l.properties().stream())
                 .filter(p -> p.name().equals(propertyName))
                 .findFirst().orElseThrow().id();

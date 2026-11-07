@@ -1,6 +1,6 @@
 package org.ntrloc.graph.db.partition.binary;
 
-import org.ntrloc.graph.db.partition.schema.SchemaManager;
+import org.ntrloc.graph.db.partition.schema.SchemaService;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.lang.Nullable;
@@ -27,7 +27,7 @@ import java.util.UUID;
 // diff needs a parsed map to compare old/new anyway), so there's no reason to round-trip through JSON
 // text here.
 //
-// Also tells SchemaManager when a *structural* change happened -- a join row created or deleted,
+// Also tells SchemaService when a *structural* change happened -- a join row created or deleted,
 // meaning some property's AdminBinaryPropertyDefinitionView.dynamicFields actually gained or lost an
 // entry -- not on every reference-count increment/decrement, which never changes what's advertised.
 // Confirmed necessary, not just a nice-to-have: without it, sort/filter resolution against a newly
@@ -42,11 +42,11 @@ public class BinaryDynamicPropertyRegistrar {
     private static final String PARAM_DYNAMIC_PROPERTY_ID = "dynamicPropertyId";
 
     private final JdbcClient jdbcClient;
-    private final SchemaManager schemaManager;
+    private final SchemaService schemaService;
 
-    public BinaryDynamicPropertyRegistrar(JdbcClient jdbcClient, SchemaManager schemaManager) {
+    public BinaryDynamicPropertyRegistrar(JdbcClient jdbcClient, SchemaService schemaService) {
         this.jdbcClient = jdbcClient;
-        this.schemaManager = schemaManager;
+        this.schemaService = schemaService;
     }
 
     // A binary property gained a reference to a binary (create, or update pointing at a new/
@@ -221,7 +221,7 @@ public class BinaryDynamicPropertyRegistrar {
 
     private void scheduleSchemaRefreshAfterCommit() {
         if (!TransactionSynchronizationManager.isSynchronizationActive()) {
-            schemaManager.refreshCache();
+            schemaService.refreshCache();
             return;
         }
         if (TransactionSynchronizationManager.hasResource(REFRESH_SCHEDULED_RESOURCE_KEY)) return;
@@ -229,7 +229,7 @@ public class BinaryDynamicPropertyRegistrar {
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
-                schemaManager.refreshCache();
+                schemaService.refreshCache();
             }
 
             @Override

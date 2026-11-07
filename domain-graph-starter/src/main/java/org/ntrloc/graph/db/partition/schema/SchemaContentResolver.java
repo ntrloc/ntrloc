@@ -23,7 +23,7 @@ import java.util.stream.Stream;
 
 // Raw-content resolution shared by SchemaAdminViewBuilder and SchemaCalculatedViewBuilder -- split
 // out of the single SchemaViewBuilder that used to build both projections, once that class grew
-// past Sonar's class-coupling limit (S6539) the same way it once absorbed most of SchemaManager's
+// past Sonar's class-coupling limit (S6539) the same way it once absorbed most of SchemaService's
 // own coupling when it was first split out of that class (see this class's siblings' own comments).
 // Owns nothing about either view's shape; only how a container's own+inherited properties/groups
 // resolve from SchemaStore's raw rows.

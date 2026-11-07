@@ -17,7 +17,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
-// Applies trait-definition mutations -- split out of SchemaManager (see its own history).
+// Applies trait-definition mutations -- split out of SchemaService (see its own history).
 @Component
 class TraitMutationApplier {
 

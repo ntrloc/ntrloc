@@ -1,7 +1,7 @@
 package org.ntrloc.graph.mutation;
 
 import org.ntrloc.graph.db.partition.register.RegisterStoreReader;
-import org.ntrloc.graph.db.partition.schema.SchemaManager;
+import org.ntrloc.graph.db.partition.schema.SchemaService;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminStateMachineView;
@@ -34,11 +34,11 @@ class StateTransitionMutationAdvisor {
     record Rejection(HttpStatus status, String reason) implements Advice {}
 
     private final RegisterStoreReader registerStore;
-    private final SchemaManager schemaManager;
+    private final SchemaService schemaService;
 
-    StateTransitionMutationAdvisor(RegisterStoreReader registerStore, SchemaManager schemaManager) {
+    StateTransitionMutationAdvisor(RegisterStoreReader registerStore, SchemaService schemaService) {
         this.registerStore = registerStore;
-        this.schemaManager = schemaManager;
+        this.schemaService = schemaService;
     }
 
     // Starting a machine is its START state's transition.
@@ -86,7 +86,7 @@ class StateTransitionMutationAdvisor {
     // A guard is written against property and state names (top-level properties, as before), so the
     // register's id-keyed values are named through the schema.
     private boolean guardSatisfied(UUID itemId, UUID itemTypeId, Map<UUID, UUID> currentStateIds, AdminTransitionView transition) {
-        AdminItemDefinitionView itemType = schemaManager.getAdminSchema().items().stream()
+        AdminItemDefinitionView itemType = schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.id().equals(itemTypeId)).findFirst().orElseThrow();
 
         Map<UUID, Object> valuesById = registerStore.currentPropertiesById(itemId, itemTypeId);

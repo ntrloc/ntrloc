@@ -649,7 +649,7 @@ public class SchemaStore {
     // Every path currently observed under this BINARY property's binaries' metadata, with a live
     // reference (reference_count > 0) -- see docs/ntrloc-dynamic-properties-design-notes.md section
     // 10. One extra query per BINARY property found while building the admin schema, not per
-    // projection/search request: SchemaManager caches the whole built schema and only rebuilds it on
+    // projection/search request: SchemaService caches the whole built schema and only rebuilds it on
     // a schema change, so this never runs on the read/query hot path. BINARY properties are also rare
     // relative to the schema as a whole, so this isn't a real N+1 concern in practice.
     private List<DynamicFieldView> dynamicFieldsFor(UUID propertyId) {

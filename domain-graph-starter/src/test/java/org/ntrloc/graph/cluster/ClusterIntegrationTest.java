@@ -11,7 +11,7 @@ import org.junit.jupiter.api.TestInstance;
 import org.ntrloc.graph.TestApplication;
 import org.ntrloc.graph.TestDatabases;
 import org.ntrloc.graph.db.partition.authorization.PermissionService;
-import org.ntrloc.graph.db.partition.schema.SchemaManager;
+import org.ntrloc.graph.db.partition.schema.SchemaService;
 import org.ntrloc.graph.db.partition.security.PersonalAccessTokenService;
 import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.ntrloc.graph.security.KeycloakContainers;
@@ -421,7 +421,7 @@ class ClusterIntegrationTest {
     }
 
     private UUID itemTypeId(String name) {
-        return nodeA.getBean(SchemaManager.class).getAdminSchema().items().stream()
+        return nodeA.getBean(SchemaService.class).getAdminSchema().items().stream()
                 .filter(item -> item.name().equals(name)).findFirst().orElseThrow().id();
     }
 

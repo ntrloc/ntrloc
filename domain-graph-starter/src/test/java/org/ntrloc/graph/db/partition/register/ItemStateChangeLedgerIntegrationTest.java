@@ -7,7 +7,7 @@ import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.coordinator.LedgerRegisterCoordinator;
 import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
 import org.ntrloc.graph.db.partition.ledger.ItemUpdateEntry;
-import org.ntrloc.graph.db.partition.schema.SchemaManager;
+import org.ntrloc.graph.db.partition.schema.SchemaService;
 import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -38,7 +38,7 @@ class ItemStateChangeLedgerIntegrationTest extends AbstractIntegrationTest {
     private ProjectionEngine projectionEngine;
 
     @Autowired
-    private SchemaManager schemaManager;
+    private SchemaService schemaService;
 
     @Autowired
     private RegisterProjectionTestDomainInitializer fixture;
@@ -68,8 +68,8 @@ class ItemStateChangeLedgerIntegrationTest extends AbstractIntegrationTest {
     }
 
     private void setState(UUID itemId, String machineName, String stateName) {
-        UUID smId = schemaManager.resolveStateMachineId(fixture.bookTypeId(), machineName);
-        UUID stateId = schemaManager.resolveStateId(smId, stateName);
+        UUID smId = schemaService.resolveStateMachineId(fixture.bookTypeId(), machineName);
+        UUID stateId = schemaService.resolveStateId(smId, stateName);
         UUID txn = UUID.randomUUID();
         coordinator.prepare(List.of(new ItemUpdateEntry(itemId, Map.of(), Map.of(smId, stateId), Set.of(), Set.of(), Set.of())), txn, actor, OffsetDateTime.now());
         coordinator.commit(txn, UUID.randomUUID());
@@ -133,9 +133,9 @@ class ItemStateChangeLedgerIntegrationTest extends AbstractIntegrationTest {
         // that need reconciling -- this proves one entry with both facets populated produces exactly
         // one committed row carrying both changes, with a single ledger entry recording them together.
         UUID bookId = createBook("Combined Change Book");
-        UUID stateMachineId = schemaManager.resolveStateMachineId(fixture.bookTypeId(),
+        UUID stateMachineId = schemaService.resolveStateMachineId(fixture.bookTypeId(),
                 RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE);
-        UUID stateId = schemaManager.resolveStateId(stateMachineId,
+        UUID stateId = schemaService.resolveStateId(stateMachineId,
                 RegisterProjectionTestDomainInitializer.OUT_OF_STOCK);
 
         UUID txn = UUID.randomUUID();

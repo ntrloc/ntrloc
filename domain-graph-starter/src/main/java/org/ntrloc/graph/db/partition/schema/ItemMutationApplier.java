@@ -16,7 +16,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
-// Applies item-definition mutations -- split out of SchemaManager (see its own history) to keep
+// Applies item-definition mutations -- split out of SchemaService (see its own history) to keep
 // each mutation-family applier's own dependency footprint small.
 @Component
 class ItemMutationApplier {

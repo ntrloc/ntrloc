@@ -3,7 +3,7 @@ package org.ntrloc.graph.db;
 import org.ntrloc.graph.db.partition.authorization.PermissionService;
 import org.ntrloc.graph.db.partition.process.ProcessAccessible;
 import org.ntrloc.graph.db.partition.register.RegisterStoreReader;
-import org.ntrloc.graph.db.partition.schema.SchemaManager;
+import org.ntrloc.graph.db.partition.schema.SchemaService;
 import org.ntrloc.graph.principal.NtrlocPrincipal;
 import org.ntrloc.graph.projection.CollectionProjectionSpec;
 import org.ntrloc.graph.projection.ItemProjectionSpec;
@@ -33,28 +33,28 @@ public class EntityReadService {
 
     private final RegisterStoreReader registerStore;
     private final ProjectionEngine projectionEngine;
-    private final SchemaManager schemaManager;
+    private final SchemaService schemaService;
     private final PermissionService permissionService;
     private final ProjectedUserInfoEnricher userInfoEnricher;
 
-    public EntityReadService(RegisterStoreReader registerStore, ProjectionEngine projectionEngine, SchemaManager schemaManager,
+    public EntityReadService(RegisterStoreReader registerStore, ProjectionEngine projectionEngine, SchemaService schemaService,
                              PermissionService permissionService, ProjectedUserInfoEnricher userInfoEnricher) {
         this.registerStore = registerStore;
         this.projectionEngine = projectionEngine;
-        this.schemaManager = schemaManager;
+        this.schemaService = schemaService;
         this.permissionService = permissionService;
         this.userInfoEnricher = userInfoEnricher;
     }
 
     // Polymorphic by default: itemTypeName resolves to itself plus every descendant (see
-    // SchemaManager.resolveSupertypeInclusiveItemTypeIds), so a lookup by a supertype name still
+    // SchemaService.resolveSupertypeInclusiveItemTypeIds), so a lookup by a supertype name still
     // finds an item that actually exists as a concrete subtype. The permission check runs against
     // the item's *actual* type, not the queried name -- what matters is whether this principal can
     // read the concrete data being returned, not the root of however it was searched for.
     @PreAuthorize("#principal != null")
     public Optional<ProjectedItem> project(ItemProjectionSpec spec, String binaryBaseUrl, NtrlocPrincipal principal) {
         UUID rootItemTypeId = resolveItemTypeId(spec.itemTypeName());
-        Set<UUID> allowedItemTypeIds = schemaManager.resolveSupertypeInclusiveItemTypeIds(rootItemTypeId);
+        Set<UUID> allowedItemTypeIds = schemaService.resolveSupertypeInclusiveItemTypeIds(rootItemTypeId);
 
         Optional<UUID> actualItemTypeId = registerStore.findItemTypeId(spec.itemId());
         if (actualItemTypeId.isEmpty() || !allowedItemTypeIds.contains(actualItemTypeId.get())) {
@@ -114,13 +114,13 @@ public class EntityReadService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Specify exactly one of itemTypeName or traitName");
         }
         if (hasItemType) {
-            return schemaManager.resolveSupertypeInclusiveItemTypeIds(resolveItemTypeId(spec.itemTypeName()));
+            return schemaService.resolveSupertypeInclusiveItemTypeIds(resolveItemTypeId(spec.itemTypeName()));
         }
-        return schemaManager.resolveTraitImplementerItemTypeIds(resolveTraitId(spec.traitName()));
+        return schemaService.resolveTraitImplementerItemTypeIds(resolveTraitId(spec.traitName()));
     }
 
     private UUID resolveTraitId(String traitName) {
-        return schemaManager.getAdminSchema().traits().stream()
+        return schemaService.getAdminSchema().traits().stream()
                 .filter(t -> t.name().equals(traitName))
                 .map(t -> t.id())
                 .findFirst()
@@ -134,7 +134,7 @@ public class EntityReadService {
     }
 
     private UUID resolveItemTypeId(String itemTypeName) {
-        return schemaManager.getAdminSchema().items().stream()
+        return schemaService.getAdminSchema().items().stream()
                 .filter(item -> item.name().equals(itemTypeName))
                 .map(item -> item.id())
                 .findFirst()

@@ -1,7 +1,7 @@
 package org.ntrloc.graph.db.coordinator;
 
 import org.ntrloc.graph.db.partition.authorization.repository.MarkerDecisionPipelineStore;
-import org.ntrloc.graph.db.partition.schema.SchemaManager;
+import org.ntrloc.graph.db.partition.schema.SchemaService;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyUsage;
@@ -36,7 +36,7 @@ public class CountedPredicateTestDomainInitializer implements DomainInitializer,
     public static final String DRAFT = "Draft";
     public static final String PUBLISHED = "Published";
 
-    private final SchemaManager schemaManager;
+    private final SchemaService schemaService;
     private final MarkerDecisionPipelineStore pipelineStore;
 
     private UUID photographerTypeId;
@@ -49,19 +49,19 @@ public class CountedPredicateTestDomainInitializer implements DomainInitializer,
     private UUID draftStateId;
     private UUID publishedStateId;
 
-    public CountedPredicateTestDomainInitializer(SchemaManager schemaManager, MarkerDecisionPipelineStore pipelineStore) {
-        this.schemaManager = schemaManager;
+    public CountedPredicateTestDomainInitializer(SchemaService schemaService, MarkerDecisionPipelineStore pipelineStore) {
+        this.schemaService = schemaService;
         this.pipelineStore = pipelineStore;
     }
 
     @Override
     public void run(ApplicationArguments args) {
-        initSchema(schemaManager);
+        initSchema(schemaService);
     }
 
     @Override
-    public void initSchema(SchemaManager schemaManager) {
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(
+    public void initSchema(SchemaService schemaService) {
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(
                 "CountedPredicateTestPhotographer", "CountedPredicate integration test fixture",
                 // The one property this fixture's pipeline actually watches -- see the test class's
                 // own comment on why the CountedPredicate's own subject (photosPerspectiveId etc.)
@@ -71,29 +71,29 @@ public class CountedPredicateTestDomainInitializer implements DomainInitializer,
         photographerTypeId = findItem("CountedPredicateTestPhotographer").id();
         activePropertyId = findProperty(findItem("CountedPredicateTestPhotographer").properties(), "active");
 
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(
                 "CountedPredicateTestPhoto", "CountedPredicate integration test fixture", List.of(), null, false, null)));
         photoTypeId = findItem("CountedPredicateTestPhoto").id();
 
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(
                 "CountedPredicateTestPortfolio", "CountedPredicate integration test fixture", List.of(), null, false, null)));
         portfolioTypeId = findItem("CountedPredicateTestPortfolio").id();
 
-        schemaManager.applyMutations(List.of(new CreateLinkDefinitionMutation(
+        schemaService.applyMutations(List.of(new CreateLinkDefinitionMutation(
                 List.of(),
                 List.of(
                         new CreatePerspectiveDefinitionMutation(photographerTypeId, "photos", "desc", 0, null),
                         new CreatePerspectiveDefinitionMutation(photoTypeId, "photographer", "desc", 0, null)))));
         photosPerspectiveId = findItem("CountedPredicateTestPhotographer").links().get("photos").get(0).id();
 
-        schemaManager.applyMutations(List.of(new CreateLinkDefinitionMutation(
+        schemaService.applyMutations(List.of(new CreateLinkDefinitionMutation(
                 List.of(),
                 List.of(
                         new CreatePerspectiveDefinitionMutation(photoTypeId, "portfolios", "desc", 0, null),
                         new CreatePerspectiveDefinitionMutation(portfolioTypeId, "photo", "desc", 0, null)))));
         portfoliosPerspectiveId = findItem("CountedPredicateTestPhoto").links().get("portfolios").get(0).id();
 
-        initStateMachine(schemaManager, portfolioTypeId, PUBLICATION_MACHINE,
+        initStateMachine(schemaService, portfolioTypeId, PUBLICATION_MACHINE,
                 List.of(new StateDefinition(DRAFT), new StateDefinition(PUBLISHED)),
                 List.of(
                         new TransitionDefinition(START_STATE, DRAFT, "start"),
@@ -113,7 +113,7 @@ public class CountedPredicateTestDomainInitializer implements DomainInitializer,
     }
 
     private AdminItemDefinitionView findItem(String name) {
-        return schemaManager.getAdminSchema().items().stream()
+        return schemaService.getAdminSchema().items().stream()
                 .filter(item -> item.name().equals(name))
                 .findFirst()
                 .orElseThrow();

@@ -15,9 +15,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 // Covers SchemaStore's update/delete methods and trait CRUD, none of which were previously
-// exercised -- SchemaManager's own tests only ever *create* schema objects (see this class's
+// exercised -- SchemaService's own tests only ever *create* schema objects (see this class's
 // jacoco gap: every create*/getAllX method was already covered, every update*/delete* method
-// wasn't). Talks straight to the repository, not through SchemaManager.applyMutations()'s
+// wasn't). Talks straight to the repository, not through SchemaService.applyMutations()'s
 // higher-level mutation API, since these are plain CRUD wrappers being tested in their own right.
 class SchemaStoreIntegrationTest extends AbstractIntegrationTest {
 

@@ -40,7 +40,7 @@ import org.ntrloc.graph.access.StringEqualsPredicate;
 import org.ntrloc.graph.access.TotalityPredicate;
 import org.ntrloc.graph.db.partition.authorization.repository.AccessStore;
 import org.ntrloc.graph.db.partition.authorization.repository.MarkerDecisionPipelineStore;
-import org.ntrloc.graph.db.partition.schema.SchemaManager;
+import org.ntrloc.graph.db.partition.schema.SchemaService;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateLinkDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePerspectiveDefinitionMutation;
@@ -65,7 +65,7 @@ class AccessMarkersUiTest extends AbstractUiIntegrationTest {
     private static boolean fixtureCreated;
 
     @Autowired
-    private SchemaManager schemaManager;
+    private SchemaService schemaService;
 
     @Autowired
     private AccessStore accessStore;
@@ -413,7 +413,7 @@ class AccessMarkersUiTest extends AbstractUiIntegrationTest {
                 property("score", PropertyType.INTEGER),
                 property("confidential", PropertyType.BOOLEAN)), List.of());
         UUID reviewerTypeId = testData.createItemType(REVIEWER_TYPE, "name", List.of(property("name", PropertyType.STRING)), List.of()).id();
-        schemaManager.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
+        schemaService.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
                 new CreatePerspectiveDefinitionMutation(report.id(), "reviewers", "UI test fixture", 0, null),
                 new CreatePerspectiveDefinitionMutation(reviewerTypeId, "reports", "UI test fixture", 0, null)), List.of())));
         UUID reviewersPerspectiveId = testData.itemType(REPORT_TYPE).links().get("reviewers").get(0).id();

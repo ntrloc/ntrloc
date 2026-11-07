@@ -48,12 +48,12 @@ public class AccessStore implements AccessStoreReader, AccessStoreWriter {
     private final ClusterService clusterService;
     private final ITopic<String> grantsChangedTopic;
     // AtomicReference: a rebuild can run on the Hazelcast listener thread (another node's change) as
-    // well as on the writing thread -- same as SchemaManager's cachedAdminSchema.
+    // well as on the writing thread -- same as SchemaService's cachedAdminSchema.
     private final AtomicReference<GrantSnapshot> grants = new AtomicReference<>();
 
     // Grant lookups are answered from an in-memory GrantSnapshot of every grant definition, rebuilt after
     // each grant write (so a write then read is always consistent) and on every other node through the
-    // cluster topic -- the same pattern as SchemaManager. Callers can't tell; that's the point.
+    // cluster topic -- the same pattern as SchemaService. Callers can't tell; that's the point.
     public AccessStore(JdbcClient jdbcClient, ClusterService clusterService) {
         this.jdbcClient = jdbcClient;
         this.clusterService = clusterService;

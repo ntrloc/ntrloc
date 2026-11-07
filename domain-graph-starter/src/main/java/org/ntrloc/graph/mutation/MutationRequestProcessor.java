@@ -13,7 +13,7 @@ import org.ntrloc.graph.db.partition.ledger.LinkUpdateEntry;
 import org.ntrloc.graph.db.partition.register.RegisterLinkEndpoint;
 import org.ntrloc.graph.db.partition.register.RegisterStoreReader;
 import org.ntrloc.graph.principal.NtrlocPrincipal;
-import org.ntrloc.graph.db.partition.schema.SchemaManager;
+import org.ntrloc.graph.db.partition.schema.SchemaService;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemLinkPerspectiveView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminStateMachineView;
@@ -44,7 +44,7 @@ import java.util.UUID;
 // resolvable reference is resolved in one pass, accumulating a ValidationError per bad reference
 // rather than failing on the first one. If anything failed, MutationValidationException carries
 // the complete list and the coordinator is never called -- nothing has been written yet at that
-// point (schema lookups are all against SchemaManager's in-memory cache), so there's nothing to
+// point (schema lookups are all against SchemaService's in-memory cache), so there's nothing to
 // roll back. Permission checks live in this same accumulation (see checkCanCreateItemType and
 // friends) -- a denial is a mutation rejection like any other, not a separate mechanism.
 //
@@ -61,7 +61,7 @@ public class MutationRequestProcessor {
 
     private final LedgerRegisterCoordinator coordinator;
     private final RegisterStoreReader registerStore;
-    private final SchemaManager schemaManager;
+    private final SchemaService schemaService;
     private final PropertyValidator propertyValidator;
     private final LinkEndpointResolver linkEndpointResolver;
     private final PermissionService permissionService;
@@ -69,14 +69,14 @@ public class MutationRequestProcessor {
 
     public MutationRequestProcessor(LedgerRegisterCoordinator coordinator,
                                      RegisterStoreReader registerStore,
-                                     SchemaManager schemaManager,
+                                     SchemaService schemaService,
                                      PropertyValidator propertyValidator,
                                      LinkEndpointResolver linkEndpointResolver,
                                      PermissionService permissionService,
                                      StateTransitionMutationAdvisor stateTransitionAdvisor) {
         this.coordinator = coordinator;
         this.registerStore = registerStore;
-        this.schemaManager = schemaManager;
+        this.schemaService = schemaService;
         this.propertyValidator = propertyValidator;
         this.linkEndpointResolver = linkEndpointResolver;
         this.permissionService = permissionService;
@@ -188,7 +188,7 @@ public class MutationRequestProcessor {
     }
 
     private Optional<AdminStateMachineView> findStateMachine(UUID itemTypeId, String stateMachineName) {
-        return schemaManager.getAdminSchema().items().stream()
+        return schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.id().equals(itemTypeId)).findFirst()
                 .map(AdminItemDefinitionView::stateMachines).orElse(List.of()).stream()
                 .filter(m -> m.name().equals(stateMachineName)).findFirst();
@@ -450,14 +450,14 @@ public class MutationRequestProcessor {
     private record PerspectiveLookup(String name, AdminItemLinkPerspectiveView view) {}
 
     private Optional<PerspectiveLookup> findPerspectiveById(UUID perspectiveId) {
-        return schemaManager.getAdminSchema().items().stream()
+        return schemaService.getAdminSchema().items().stream()
                 .flatMap(item -> perspectivesFor(item.id()).stream())
                 .filter(pl -> pl.view().id().equals(perspectiveId))
                 .findFirst();
     }
 
     private List<PerspectiveLookup> perspectivesFor(UUID itemTypeId) {
-        Map<String, List<AdminItemLinkPerspectiveView>> links = schemaManager.getAdminSchema().items().stream()
+        Map<String, List<AdminItemLinkPerspectiveView>> links = schemaService.getAdminSchema().items().stream()
                 .filter(item -> item.id().equals(itemTypeId))
                 .findFirst()
                 .map(AdminItemDefinitionView::links)
@@ -471,7 +471,7 @@ public class MutationRequestProcessor {
     // Mirrors EntityReadService.resolveItemTypeId -- the one existing name->id precedent in
     // this codebase, on the read side.
     private Optional<UUID> findItemTypeIdByName(String itemTypeName) {
-        return schemaManager.getAdminSchema().items().stream()
+        return schemaService.getAdminSchema().items().stream()
                 .filter(item -> item.name().equals(itemTypeName))
                 .map(item -> item.id())
                 .findFirst();
@@ -482,7 +482,7 @@ public class MutationRequestProcessor {
     // item-instance write-path concern, not a schema-mutation one (see this class's ValidationError
     // convention vs. that class's IllegalArgumentException one).
     private boolean isAbstractItemType(UUID itemTypeId) {
-        return schemaManager.getAdminSchema().items().stream()
+        return schemaService.getAdminSchema().items().stream()
                 .filter(item -> item.id().equals(itemTypeId))
                 .findFirst()
                 .map(AdminItemDefinitionView::abstractType)

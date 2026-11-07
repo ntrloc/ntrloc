@@ -21,7 +21,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-// Applies property and property-group definition mutations -- split out of SchemaManager (see its
+// Applies property and property-group definition mutations -- split out of SchemaService (see its
 // own history). Every property and group has exactly one parent (an item type, trait, link type,
 // or group); a move is just repointing that parent, and data is untouched because register/ledger
 // values are keyed by property id, never by containment path.

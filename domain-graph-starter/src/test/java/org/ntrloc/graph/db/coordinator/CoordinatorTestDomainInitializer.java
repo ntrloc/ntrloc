@@ -1,7 +1,7 @@
 package org.ntrloc.graph.db.coordinator;
 
 import org.ntrloc.graph.db.partition.authorization.repository.MarkerDecisionPipelineStore;
-import org.ntrloc.graph.db.partition.schema.SchemaManager;
+import org.ntrloc.graph.db.partition.schema.SchemaService;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyUsage;
@@ -24,7 +24,7 @@ import java.util.UUID;
 
 // Runs once, self-triggered like every other DomainInitializer (see that interface's class
 // comment for why ApplicationRunner, not @PostConstruct), before any coordinator/mutation test
-// reads its fixture ids. Everything goes through SchemaManager.applyMutations() -- the same API
+// reads its fixture ids. Everything goes through SchemaService.applyMutations() -- the same API
 // the admin UI's schema editor uses -- rather than the lower-level SchemaStore, so
 // RegisterStore's reaction to SchemaChangeEvent creates the per-item-type/per-link-type
 // register tables exactly the way it would for a live admin edit. One consequence: an item type
@@ -35,7 +35,7 @@ import java.util.UUID;
 @ConditionalOnProperty(prefix = "graph.security", name = "seed-test-data", havingValue = "true")
 public class CoordinatorTestDomainInitializer implements DomainInitializer, ApplicationRunner {
 
-    private final SchemaManager schemaManager;
+    private final SchemaService schemaService;
     private final MarkerDecisionPipelineStore pipelineStore;
 
     private UUID productTypeId;
@@ -50,19 +50,19 @@ public class CoordinatorTestDomainInitializer implements DomainInitializer, Appl
     private UUID dimensionsWidthPropertyId;
     private UUID dimensionsHeightPropertyId;
 
-    public CoordinatorTestDomainInitializer(SchemaManager schemaManager, MarkerDecisionPipelineStore pipelineStore) {
-        this.schemaManager = schemaManager;
+    public CoordinatorTestDomainInitializer(SchemaService schemaService, MarkerDecisionPipelineStore pipelineStore) {
+        this.schemaService = schemaService;
         this.pipelineStore = pipelineStore;
     }
 
     @Override
     public void run(ApplicationArguments args) {
-        initSchema(schemaManager);
+        initSchema(schemaService);
     }
 
     @Override
-    public void initSchema(SchemaManager schemaManager) {
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(
+    public void initSchema(SchemaService schemaService) {
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(
                 "CoordinatorTestProduct", "Coordinator integration test fixture",
                 List.of(
                         property("name", PropertyType.STRING, PropertyCardinality.SINGLE),
@@ -74,7 +74,7 @@ public class CoordinatorTestDomainInitializer implements DomainInitializer, Appl
                         property("width", PropertyType.STRING, PropertyCardinality.SINGLE),
                         property("height", PropertyType.STRING, PropertyCardinality.SINGLE))))));
 
-        AdminItemDefinitionView product = findItem(schemaManager, "CoordinatorTestProduct");
+        AdminItemDefinitionView product = findItem(schemaService, "CoordinatorTestProduct");
         productTypeId = product.id();
         namePropertyId = findProperty(product.properties(), "name");
         colorPropertyId = findProperty(product.properties(), "color");
@@ -82,29 +82,29 @@ public class CoordinatorTestDomainInitializer implements DomainInitializer, Appl
         dimensionsWidthPropertyId = findProperty(dimensions.properties(), "width");
         dimensionsHeightPropertyId = findProperty(dimensions.properties(), "height");
 
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(
                 "CoordinatorTestContributor", "Coordinator integration test fixture",
                 List.of(property("name", PropertyType.STRING, PropertyCardinality.SINGLE)), null, false, null)));
 
-        AdminItemDefinitionView contributor = findItem(schemaManager, "CoordinatorTestContributor");
+        AdminItemDefinitionView contributor = findItem(schemaService, "CoordinatorTestContributor");
         contributorTypeId = contributor.id();
         contributorNamePropertyId = findProperty(contributor.properties(), "name");
 
-        schemaManager.applyMutations(List.of(new CreateLinkDefinitionMutation(
+        schemaService.applyMutations(List.of(new CreateLinkDefinitionMutation(
                 List.of(property("role", PropertyType.STRING, PropertyCardinality.SINGLE)),
                 List.of(
                         new CreatePerspectiveDefinitionMutation(productTypeId, "products", "desc", 0, null),
                         new CreatePerspectiveDefinitionMutation(contributorTypeId, "contributors", "desc", 0, null)))));
 
-        AdminItemDefinitionView productAfterLink = findItem(schemaManager, "CoordinatorTestProduct");
+        AdminItemDefinitionView productAfterLink = findItem(schemaService, "CoordinatorTestProduct");
         AdminItemLinkPerspectiveView productPerspective = productAfterLink.links().get("products").get(0);
         productPerspectiveId = productPerspective.id();
         linkTypeId = productPerspective.linkId();
 
-        AdminItemDefinitionView contributorAfterLink = findItem(schemaManager, "CoordinatorTestContributor");
+        AdminItemDefinitionView contributorAfterLink = findItem(schemaService, "CoordinatorTestContributor");
         contributorPerspectiveId = contributorAfterLink.links().get("contributors").get(0).id();
 
-        rolePropertyId = schemaManager.getAdminSchema().links().stream()
+        rolePropertyId = schemaService.getAdminSchema().links().stream()
                 .filter(link -> link.id().equals(linkTypeId))
                 .findFirst()
                 .map(link -> findProperty(link.properties(), "role"))
@@ -119,8 +119,8 @@ public class CoordinatorTestDomainInitializer implements DomainInitializer, Appl
         return new CreatePropertyGroupDefinitionMutation(name, "Coordinator integration test fixture", List.of(properties), List.of());
     }
 
-    private AdminItemDefinitionView findItem(SchemaManager schemaManager, String name) {
-        return schemaManager.getAdminSchema().items().stream()
+    private AdminItemDefinitionView findItem(SchemaService schemaService, String name) {
+        return schemaService.getAdminSchema().items().stream()
                 .filter(item -> item.name().equals(name))
                 .findFirst()
                 .orElseThrow();
