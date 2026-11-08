@@ -7,13 +7,13 @@ import org.ntrloc.graph.db.coordinator.CoordinatorTestDomainInitializer;
 import org.ntrloc.graph.db.coordinator.LedgerRegisterCoordinator;
 import org.ntrloc.graph.db.partition.authorization.DefaultUserGroupInitializer;
 import org.ntrloc.graph.db.partition.authorization.ManualMarkerAssignmentService;
-import org.ntrloc.graph.db.partition.authorization.repository.AuthorizationRepository;
+import org.ntrloc.graph.db.partition.authorization.repository.AccessStore;
 import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
 import org.ntrloc.graph.db.partition.ledger.LinkCreateEntry;
 import org.ntrloc.graph.db.partition.ledger.LinkEndpoint;
-import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
-import org.ntrloc.graph.db.partition.security.TestPrincipals;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.principal.NtrlocPrincipal;
+import org.ntrloc.graph.principal.TestPrincipals;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.ntrloc.graph.projection.CollectionProjectionSpec;
 import org.ntrloc.graph.projection.LinkProjectionSpec;
 import org.ntrloc.graph.projection.ItemProjectionSpec;
@@ -31,16 +31,16 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-// Slice B: the item/link existence semi-joins wired into RegisterPartitionManager's actual query
-// paths (project/projectAcrossTypes, projectOne, and fetchLinksByItem), driven through
-// EntityManager exactly the way the real HTTP endpoints do. Every non-admin fixture user is
+// Slice B: the item/link existence semi-joins wired into RegisterStore's actual query
+// paths (project/projectAcrossTypes, projectOne, and the link query in RegisterStore), driven through
+// EntityReadService exactly the way the real HTTP endpoints do. Every non-admin fixture user is
 // added to the default "everyone" group, which already holds type-level item-type:read on these
 // fixture types (DefaultUserGroupInitializer's default-open-until-narrowed grant) -- so every test
 // here is isolating the *instance*-level marker gate specifically, not type-level visibility.
 class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
-    private EntityManager entityManager;
+    private EntityReadService entityReadService;
 
     @Autowired
     private LedgerRegisterCoordinator coordinator;
@@ -52,22 +52,22 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
     private ManualMarkerAssignmentService markerAssignmentService;
 
     @Autowired
-    private AuthorizationRepository authRepo;
+    private AccessStore accessStore;
 
     @Autowired
-    private SecurityRepository securityRepo;
+    private UserStore userStore;
 
     @Autowired
     private DefaultUserGroupInitializer defaultUserGroupInitializer;
 
     // Not static/final: needs a real, backed security_user row now that ledger_entry.created_by
     // (Part E) has a NOT NULL FK to security_user.id -- created fresh per test in setUp() via the
-    // already-autowired securityRepo, which a static initializer can't reach.
+    // already-autowired userStore, which a static initializer can't reach.
     private NtrlocPrincipal ADMIN;
 
     @BeforeEach
     void setUpAdmin() {
-        var user = securityRepo.createUser("Root", "irf-root-" + UUID.randomUUID() + "@example.com", true);
+        var user = userStore.createUser("Root", "irf-root-" + UUID.randomUUID() + "@example.com", true);
         ADMIN = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), true);
     }
 
@@ -99,9 +99,9 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
     }
 
     private NtrlocPrincipal newUserInEveryoneUserGroup() {
-        var user = securityRepo.createUser("Restricted", "irf-" + UUID.randomUUID() + "@example.com", false);
+        var user = userStore.createUser("Restricted", "irf-" + UUID.randomUUID() + "@example.com", false);
         UUID everyoneUserGroupId = defaultUserGroupInitializer.getDefaultUserGroupId();
-        securityRepo.addUserToUserGroup(user.id(), everyoneUserGroupId);
+        userStore.addUserToUserGroup(user.id(), everyoneUserGroupId);
         // groupIds is carried directly on the principal, not re-resolved from the DB per check --
         // must match the membership just added above or every type-level (and instance-level
         // group-granted) check below fails as if the user were in no groups at all.
@@ -109,9 +109,9 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
     }
 
     private void grantItemRead(UUID itemId, NtrlocPrincipal principal) {
-        var marker = authRepo.createMarker("irf-" + UUID.randomUUID(), "test fixture", "ITEM_TYPE", fixture.productTypeId());
+        var marker = accessStore.createMarker("irf-" + UUID.randomUUID(), "test fixture", "ITEM_TYPE", fixture.productTypeId());
         markerAssignmentService.addItemMarker(itemId, marker.id(), ADMIN, "test reason");
-        authRepo.setItemPermissions(authRepo.ensureMarkerGrant(marker.id(), "USER", principal.id()), true, false);
+        accessStore.setItemPermissions(accessStore.ensureMarkerGrant(marker.id(), "USER", principal.id()), true, false);
     }
 
     // link:read is anchored to the *source* item's own marker via a specific perspective now
@@ -119,10 +119,10 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
     // docs/ntrloc-marker-admin-ui-design-notes.md), so this grants a marker on sourceItemId itself,
     // with a link-perspective grant for the perspective the link is being traversed through.
     private void grantLinkRead(UUID sourceItemId, UUID perspectiveId, NtrlocPrincipal principal) {
-        var marker = authRepo.createMarker("irf-" + UUID.randomUUID(), "test fixture", "ITEM_TYPE", fixture.productTypeId());
+        var marker = accessStore.createMarker("irf-" + UUID.randomUUID(), "test fixture", "ITEM_TYPE", fixture.productTypeId());
         markerAssignmentService.addItemMarker(sourceItemId, marker.id(), ADMIN, "test reason");
-        UUID grantId = authRepo.ensureMarkerGrant(marker.id(), "USER", principal.id());
-        authRepo.grantLinkPerspectiveAccess(grantId, perspectiveId, false, true, false);
+        UUID grantId = accessStore.ensureMarkerGrant(marker.id(), "USER", principal.id());
+        accessStore.grantLinkPerspectiveAccess(grantId, perspectiveId, false, true, false);
     }
 
     // --- Collection projection ---
@@ -132,7 +132,7 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
         createProduct(); // no marker assigned
         var principal = newUserInEveryoneUserGroup();
 
-        var result = entityManager.project(new CollectionProjectionSpec("CoordinatorTestProduct", null, null), "http://binary", principal);
+        var result = entityReadService.project(new CollectionProjectionSpec("CoordinatorTestProduct", null, null), "http://binary", principal);
 
         assertThat(result.items()).isEmpty();
         assertThat(result.totalCount()).isZero();
@@ -144,7 +144,7 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
         var principal = newUserInEveryoneUserGroup();
         grantItemRead(productId, principal);
 
-        var result = entityManager.project(new CollectionProjectionSpec("CoordinatorTestProduct", null, null), "http://binary", principal);
+        var result = entityReadService.project(new CollectionProjectionSpec("CoordinatorTestProduct", null, null), "http://binary", principal);
 
         assertThat(result.items()).extracting(i -> i.itemId()).contains(productId);
     }
@@ -156,7 +156,7 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
         var principal = newUserInEveryoneUserGroup();
         grantItemRead(visible, principal);
 
-        var result = entityManager.project(new CollectionProjectionSpec("CoordinatorTestProduct", null, null), "http://binary", principal);
+        var result = entityReadService.project(new CollectionProjectionSpec("CoordinatorTestProduct", null, null), "http://binary", principal);
 
         assertThat(result.items()).extracting(i -> i.itemId()).containsExactly(visible);
         assertThat(result.totalCount()).isEqualTo(1L);
@@ -169,7 +169,7 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
 
         // Filtered to this item: an admin sees every product other test classes have created in
         // the shared database, so an unfiltered query's default first page may not include it.
-        var result = entityManager.project(new CollectionProjectionSpec("CoordinatorTestProduct", null, null,
+        var result = entityReadService.project(new CollectionProjectionSpec("CoordinatorTestProduct", null, null,
                 new PropertyValuePredicate("name", Operator.EQUALS, name)), "http://binary", ADMIN);
 
         assertThat(result.items()).extracting(i -> i.itemId()).contains(productId);
@@ -184,14 +184,14 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
 
         // project() throws rather than returning Optional.empty() on a permission denial (matching
         // requireReadAccess's existing type-level behavior) -- Optional.empty() is reserved for a
-        // genuinely nonexistent item, a distinct case EntityManagerImpl already handles earlier.
+        // genuinely nonexistent item, a distinct case EntityReadService already handles earlier.
         assertThatThrownBy(() ->
-                        entityManager.project(new ItemProjectionSpec("CoordinatorTestProduct", productId), "http://binary", principal))
+                        entityReadService.project(new ItemProjectionSpec("CoordinatorTestProduct", productId), "http://binary", principal))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("404");
     }
 
-    // Covers requireReadAccess's own type-level gate (EntityManagerImpl line ~75) on the
+    // Covers requireReadAccess's own type-level gate (EntityReadService) on the
     // single-item projection path specifically -- AuthorizationEndpointsIntegrationTest already
     // covers this same gate on the *collection* path, and the test above covers this path's
     // separate *instance*-marker gate, but nothing yet proved the type-level gate also fires here
@@ -200,11 +200,11 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
     @Test
     void singleItemProjection_typeNotGrantedAtAll_throwsNotFound() {
         UUID productId = createProduct();
-        var user = securityRepo.createUser("Restricted", "irf-" + UUID.randomUUID() + "@example.com", false);
+        var user = userStore.createUser("Restricted", "irf-" + UUID.randomUUID() + "@example.com", false);
         var principal = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), false);
 
         assertThatThrownBy(() ->
-                        entityManager.project(new ItemProjectionSpec("CoordinatorTestProduct", productId), "http://binary", principal))
+                        entityReadService.project(new ItemProjectionSpec("CoordinatorTestProduct", productId), "http://binary", principal))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("404");
     }
@@ -215,13 +215,13 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
         var principal = newUserInEveryoneUserGroup();
         grantItemRead(productId, principal);
 
-        var result = entityManager.project(new ItemProjectionSpec("CoordinatorTestProduct", productId), "http://binary", principal);
+        var result = entityReadService.project(new ItemProjectionSpec("CoordinatorTestProduct", productId), "http://binary", principal);
 
         assertThat(result).isPresent();
         assertThat(result.get().itemId()).isEqualTo(productId);
     }
 
-    // --- Link filtering (fetchLinksByItem) ---
+    // --- Link filtering (RegisterStore's link query) ---
 
     @Test
     void linkFiltering_targetWithoutItemRead_linkIsExcluded() {
@@ -231,7 +231,7 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
         var principal = newUserInEveryoneUserGroup();
         grantItemRead(productId, principal);
 
-        var result = entityManager.project(
+        var result = entityReadService.project(
                 new ItemProjectionSpec("CoordinatorTestProduct", productId, Map.of("products", new LinkProjectionSpec(null))),
                 "http://binary", principal);
 
@@ -239,14 +239,10 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
         assertThat(result.get().links().values().stream().flatMap(List::stream)).isEmpty();
     }
 
-    // Naming "products" explicitly (a non-null links map) is an explicit request for that specific
-    // perspective, not the "give me every direct link" default (links == null) -- so an unreadable
-    // link under it is a loud rejection, not a silent exclusion (see
-    // RegisterPartitionManager.requireExplicitlyRequestedLinksAreReadable's own comment). This test
-    // used to assert the opposite (silent exclusion) before that check existed; the exclusion
-    // behavior itself still holds for the *default*, unnamed case -- see the sibling test below.
+    // Naming "products" explicitly is allowed without link:read; the unreadable link is left out,
+    // exactly as in the default (links == null) case below. An error would reveal that it exists.
     @Test
-    void linkFiltering_explicitlyRequestedPerspectiveWithoutLinkRead_throwsIllegalArgumentException() {
+    void linkFiltering_explicitlyRequestedPerspectiveWithoutLinkRead_returnsNoLinks() {
         UUID productId = createProduct();
         UUID contributorId = createContributor();
         createLink(productId, contributorId);
@@ -255,15 +251,14 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
         grantItemRead(contributorId, principal);
         // Deliberately no grantLinkRead(...) -- link:read is a separate, still-required condition.
 
-        assertThatThrownBy(() -> entityManager.project(
+        var item = entityReadService.project(
                 new ItemProjectionSpec("CoordinatorTestProduct", productId, Map.of("products", new LinkProjectionSpec(null))),
-                "http://binary", principal))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("products");
+                "http://binary", principal).orElseThrow();
+
+        assertThat(item.links().getOrDefault("products", List.of())).isEmpty();
     }
 
-    // The default (links == null, "every direct link, one hop") still stays silent on a denial --
-    // only an *explicitly named* perspective (the sibling test above) is a loud rejection.
+    // The default (links == null, "every direct link, one hop") is silent on a denial too.
     @Test
     void linkFiltering_defaultLinksWithoutLinkRead_isExcludedEvenWhenBothEndpointsAreVisible() {
         UUID productId = createProduct();
@@ -274,7 +269,7 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
         grantItemRead(contributorId, principal);
         // Deliberately no grantLinkRead(...) -- link:read is a separate, still-required condition.
 
-        var result = entityManager.project(
+        var result = entityReadService.project(
                 new ItemProjectionSpec("CoordinatorTestProduct", productId), "http://binary", principal);
 
         assertThat(result.get().links().values().stream().flatMap(List::stream)).isEmpty();
@@ -290,7 +285,7 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
         grantItemRead(contributorId, principal);
         grantLinkRead(productId, fixture.productPerspectiveId(), principal);
 
-        var result = entityManager.project(
+        var result = entityReadService.project(
                 new ItemProjectionSpec("CoordinatorTestProduct", productId, Map.of("products", new LinkProjectionSpec(null))),
                 "http://binary", principal);
 
@@ -304,7 +299,7 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
         UUID contributorId = createContributor();
         createLink(productId, contributorId);
 
-        var result = entityManager.project(
+        var result = entityReadService.project(
                 new ItemProjectionSpec("CoordinatorTestProduct", productId, Map.of("products", new LinkProjectionSpec(null))),
                 "http://binary", ADMIN);
 

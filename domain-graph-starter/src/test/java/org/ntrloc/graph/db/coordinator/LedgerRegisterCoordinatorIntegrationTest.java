@@ -1,5 +1,6 @@
 package org.ntrloc.graph.db.coordinator;
 
+import org.ntrloc.graph.projection.ProjectionEngine;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
@@ -9,8 +10,7 @@ import org.ntrloc.graph.db.partition.ledger.ItemUpdateEntry;
 import org.ntrloc.graph.db.partition.ledger.LinkCreateEntry;
 import org.ntrloc.graph.db.partition.ledger.LinkEndpoint;
 import org.ntrloc.graph.db.partition.ledger.LinkUpdateEntry;
-import org.ntrloc.graph.db.partition.register.RegisterPartitionManager;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
@@ -28,7 +28,8 @@ class LedgerRegisterCoordinatorIntegrationTest extends AbstractIntegrationTest {
     private LedgerRegisterCoordinator coordinator;
 
     @Autowired
-    private RegisterPartitionManager registerPartitionManager;
+
+    private ProjectionEngine projectionEngine;
 
     @Autowired
     private CoordinatorTestDomainInitializer fixture;
@@ -37,15 +38,15 @@ class LedgerRegisterCoordinatorIntegrationTest extends AbstractIntegrationTest {
     private JdbcClient jdbcClient;
 
     @Autowired
-    private SecurityRepository securityRepo;
+    private UserStore userStore;
 
     // ledger_entry.created_by/register_item.created_by (Part E) are NOT NULL FKs to
     // security_user.id -- every coordinator.prepare call below needs a real, backed actor.
-    private SecurityRepository.UserRow actor;
+    private UserStore.UserRow actor;
 
     @BeforeEach
     void setUpActor() {
-        actor = securityRepo.createUser("Coordinator Test Actor", "lrc-actor-" + UUID.randomUUID() + "@example.com", true);
+        actor = userStore.createUser("Coordinator Test Actor", "lrc-actor-" + UUID.randomUUID() + "@example.com", true);
     }
 
     @Test
@@ -56,7 +57,7 @@ class LedgerRegisterCoordinatorIntegrationTest extends AbstractIntegrationTest {
         coordinator.prepare(List.of(new ItemCreateEntry(itemId, fixture.productTypeId(), Map.of(fixture.namePropertyId(), "Widget"), Map.of(), Set.of())), txn, actor.id(), OffsetDateTime.now());
         coordinator.commit(txn, UUID.randomUUID());
 
-        var projected = registerPartitionManager.projectOne(fixture.productTypeId(), itemId, "http://binary").orElseThrow();
+        var projected = projectionEngine.projectOne(fixture.productTypeId(), itemId, "http://binary").orElseThrow();
         assertThat(projected.properties()).containsEntry("name", "Widget");
     }
 
@@ -76,7 +77,7 @@ class LedgerRegisterCoordinatorIntegrationTest extends AbstractIntegrationTest {
         coordinator.prepare(List.of(new ItemUpdateEntry(itemId, diff, Map.of(), Set.of(), Set.of(), Set.of())), updateTxn, actor.id(), OffsetDateTime.now());
         coordinator.commit(updateTxn, UUID.randomUUID());
 
-        var projected = registerPartitionManager.projectOne(fixture.productTypeId(), itemId, "http://binary").orElseThrow();
+        var projected = projectionEngine.projectOne(fixture.productTypeId(), itemId, "http://binary").orElseThrow();
         assertThat(projected.properties()).containsEntry("name", "Widget Pro");
         assertThat(projected.properties()).doesNotContainKey("color");
 
@@ -97,7 +98,7 @@ class LedgerRegisterCoordinatorIntegrationTest extends AbstractIntegrationTest {
         coordinator.prepare(List.of(new ItemDeleteEntry(itemId)), deleteTxn, actor.id(), OffsetDateTime.now());
         coordinator.commit(deleteTxn, UUID.randomUUID());
 
-        assertThat(registerPartitionManager.projectOne(fixture.productTypeId(), itemId, "http://binary")).isEmpty();
+        assertThat(projectionEngine.projectOne(fixture.productTypeId(), itemId, "http://binary")).isEmpty();
     }
 
     @Test
@@ -121,8 +122,8 @@ class LedgerRegisterCoordinatorIntegrationTest extends AbstractIntegrationTest {
         coordinator.prepare(List.of(linkCreate), linkTxn, actor.id(), OffsetDateTime.now());
         coordinator.commit(linkTxn, UUID.randomUUID());
 
-        var product = registerPartitionManager.projectOne(fixture.productTypeId(), productId, "http://binary").orElseThrow();
-        var contributor = registerPartitionManager.projectOne(fixture.contributorTypeId(), contributorId, "http://binary").orElseThrow();
+        var product = projectionEngine.projectOne(fixture.productTypeId(), productId, "http://binary").orElseThrow();
+        var contributor = projectionEngine.projectOne(fixture.contributorTypeId(), contributorId, "http://binary").orElseThrow();
 
         assertThat(product.links().values().stream().flatMap(List::stream))
                 .anyMatch(link -> link.item().itemId().equals(contributorId) && link.properties().get("role").equals("author"));
@@ -154,7 +155,7 @@ class LedgerRegisterCoordinatorIntegrationTest extends AbstractIntegrationTest {
         coordinator.prepare(List.of(new LinkUpdateEntry(linkId, Map.of(fixture.rolePropertyId(), "editor"))), linkUpdateTxn, actor.id(), OffsetDateTime.now());
         coordinator.commit(linkUpdateTxn, UUID.randomUUID());
 
-        var product = registerPartitionManager.projectOne(fixture.productTypeId(), productId, "http://binary").orElseThrow();
+        var product = projectionEngine.projectOne(fixture.productTypeId(), productId, "http://binary").orElseThrow();
         assertThat(product.links().values().stream().flatMap(List::stream))
                 .anyMatch(link -> link.item().itemId().equals(contributorId) && link.properties().get("role").equals("editor"));
     }
@@ -187,8 +188,8 @@ class LedgerRegisterCoordinatorIntegrationTest extends AbstractIntegrationTest {
         coordinator.prepare(List.of(new ItemDeleteEntry(productId)), cascadeTxn, actor.id(), OffsetDateTime.now());
         coordinator.commit(cascadeTxn, UUID.randomUUID());
 
-        assertThat(registerPartitionManager.projectOne(fixture.productTypeId(), productId, "http://binary")).isEmpty();
-        var contributor = registerPartitionManager.projectOne(fixture.contributorTypeId(), contributorId, "http://binary").orElseThrow();
+        assertThat(projectionEngine.projectOne(fixture.productTypeId(), productId, "http://binary")).isEmpty();
+        var contributor = projectionEngine.projectOne(fixture.contributorTypeId(), contributorId, "http://binary").orElseThrow();
         assertThat(contributor.links().values().stream().flatMap(List::stream)).isEmpty();
     }
 
@@ -219,8 +220,8 @@ class LedgerRegisterCoordinatorIntegrationTest extends AbstractIntegrationTest {
         coordinator.prepare(List.of(new ItemDeleteEntry(productId), new ItemDeleteEntry(contributorId)), cascadeTxn, actor.id(), OffsetDateTime.now());
         coordinator.commit(cascadeTxn, UUID.randomUUID());
 
-        assertThat(registerPartitionManager.projectOne(fixture.productTypeId(), productId, "http://binary")).isEmpty();
-        assertThat(registerPartitionManager.projectOne(fixture.contributorTypeId(), contributorId, "http://binary")).isEmpty();
+        assertThat(projectionEngine.projectOne(fixture.productTypeId(), productId, "http://binary")).isEmpty();
+        assertThat(projectionEngine.projectOne(fixture.contributorTypeId(), contributorId, "http://binary")).isEmpty();
     }
 
     @Test
@@ -250,12 +251,12 @@ class LedgerRegisterCoordinatorIntegrationTest extends AbstractIntegrationTest {
         coordinator.prepare(List.of(new ItemUpdateEntry(productId, Map.of(fixture.namePropertyId(), "Widget Pro"), Map.of(), Set.of(), Set.of(), Set.of())), updateTxn, actor.id(), OffsetDateTime.now());
         coordinator.commit(updateTxn, UUID.randomUUID());
 
-        var product = registerPartitionManager.projectOne(fixture.productTypeId(), productId, "http://binary").orElseThrow();
+        var product = projectionEngine.projectOne(fixture.productTypeId(), productId, "http://binary").orElseThrow();
         assertThat(product.properties()).containsEntry("name", "Widget Pro");
         assertThat(product.links().values().stream().flatMap(List::stream))
                 .anyMatch(link -> link.item().itemId().equals(contributorId));
 
-        var contributor = registerPartitionManager.projectOne(fixture.contributorTypeId(), contributorId, "http://binary").orElseThrow();
+        var contributor = projectionEngine.projectOne(fixture.contributorTypeId(), contributorId, "http://binary").orElseThrow();
         assertThat(contributor.links().values().stream().flatMap(List::stream))
                 .anyMatch(link -> link.item().itemId().equals(productId));
     }
@@ -268,7 +269,7 @@ class LedgerRegisterCoordinatorIntegrationTest extends AbstractIntegrationTest {
         coordinator.prepare(List.of(new ItemCreateEntry(itemId, fixture.productTypeId(), Map.of(fixture.namePropertyId(), "Ghost"), Map.of(), Set.of())), txn, actor.id(), OffsetDateTime.now());
         coordinator.abort(txn);
 
-        assertThat(registerPartitionManager.projectOne(fixture.productTypeId(), itemId, "http://binary")).isEmpty();
+        assertThat(projectionEngine.projectOne(fixture.productTypeId(), itemId, "http://binary")).isEmpty();
 
         Long staged = jdbcClient.sql("SELECT COUNT(*) FROM register_item WHERE item_id = :itemId")
                 .param("itemId", itemId).query(Long.class).single();
@@ -277,7 +278,7 @@ class LedgerRegisterCoordinatorIntegrationTest extends AbstractIntegrationTest {
 
     // Foundational guarantee, not previously covered: an ordinary projection, outside any
     // transaction, must only ever present COMMITTED data -- including for a LINKED item, not just
-    // the item being projected directly. The most adversarial case fetchLinksByItem's own query
+    // the item being projected directly. The most adversarial case RegisterStore's link query
     // allows for: an existing, already-committed link to an item that's independently had a *new*
     // update staged (prepared, never committed) in a separate transaction. If the guarantee held
     // only by accident -- relying on the link-perspective repoint happening at commit time rather
@@ -310,7 +311,7 @@ class LedgerRegisterCoordinatorIntegrationTest extends AbstractIntegrationTest {
                 Map.of(fixture.contributorNamePropertyId(), "Ada (should not be visible)"), Map.of(), Set.of(), Set.of(), Set.of())),
                 staleUpdateTxn, actor.id(), OffsetDateTime.now());
 
-        var product = registerPartitionManager.projectOne(fixture.productTypeId(), productId, "http://binary").orElseThrow();
+        var product = projectionEngine.projectOne(fixture.productTypeId(), productId, "http://binary").orElseThrow();
         var contributorLinks = product.links().values().stream().flatMap(List::stream).toList();
 
         assertThat(contributorLinks).hasSize(1);

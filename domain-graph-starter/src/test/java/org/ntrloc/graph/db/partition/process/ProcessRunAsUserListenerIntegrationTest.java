@@ -6,8 +6,8 @@ import org.flowable.engine.runtime.ProcessInstance;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
-import org.ntrloc.graph.db.partition.security.InternalPrincipalResolver;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.principal.InternalPrincipalResolver;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.springframework.beans.factory.annotation.Autowired;
 
 import java.util.ArrayList;
@@ -29,7 +29,7 @@ class ProcessRunAsUserListenerIntegrationTest extends AbstractIntegrationTest {
     private RuntimeService runtimeService;
 
     @Autowired
-    private SecurityRepository securityRepo;
+    private UserStore userStore;
 
     private final List<String> deploymentIds = new ArrayList<>();
 
@@ -62,7 +62,7 @@ class ProcessRunAsUserListenerIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void aProcessStartedWithNoCaller_runsAsTheDeclaredUserId() {
-        var user = securityRepo.createUser("Run As User", "run-as-" + UUID.randomUUID() + "@example.com", false);
+        var user = userStore.createUser("Run As User", "run-as-" + UUID.randomUUID() + "@example.com", false);
         String key = deployRunningAs(user.id().toString());
 
         ProcessInstance instance = runtimeService.startProcessInstanceByKey(key);
@@ -73,7 +73,7 @@ class ProcessRunAsUserListenerIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void aRunAsUserGivenAsAnEmail_failsTheStart() {
-        var user = securityRepo.createUser("Run As User", "run-as-" + UUID.randomUUID() + "@example.com", false);
+        var user = userStore.createUser("Run As User", "run-as-" + UUID.randomUUID() + "@example.com", false);
         String key = deployRunningAs(user.email());
 
         assertThatThrownBy(() -> runtimeService.startProcessInstanceByKey(key))

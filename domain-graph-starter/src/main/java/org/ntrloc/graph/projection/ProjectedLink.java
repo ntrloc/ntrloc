@@ -18,7 +18,7 @@ import java.util.UUID;
 // ProjectedItem's own fields, see its comment, including updatedDate/updatedByUserId/updatedBy
 // being null until the link is actually updated) -- not the linked item's own provenance, which
 // lives on item's own createdDate/createdBy/updatedDate/updatedBy instead. createdBy/updatedBy
-// are UserInfo, resolved the same way and at the same point (EntityManagerImpl) as ProjectedItem's
+// are UserInfo, resolved the same way and at the same point (EntityReadService) as ProjectedItem's
 // own fields -- see that record's comment for why createdByUserId/updatedByUserId exist and are
 // @JsonIgnore.
 public record ProjectedLink(UUID linkId, Map<String, Object> properties, ProjectedItem item, @Nullable ProjectedItemPermissions permissions,

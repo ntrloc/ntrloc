@@ -2,7 +2,7 @@ package org.ntrloc.graph.db.partition.security;
 
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -27,7 +27,7 @@ class UserAdminControllerIntegrationTest extends AbstractIntegrationTest {
     private WebTestClient webTestClient;
 
     @Autowired
-    private SecurityRepository securityRepo;
+    private UserStore userStore;
 
     @SuppressWarnings("unchecked")
     private List<Map<String, Object>> getAsRoot(String uri) {
@@ -68,9 +68,9 @@ class UserAdminControllerIntegrationTest extends AbstractIntegrationTest {
                 .jsonPath("$.email").isEqualTo(email)
                 .jsonPath("$.isAdmin").isEqualTo(false);
 
-        var user = securityRepo.findUserByEmail(email).orElseThrow();
-        assertThat(securityRepo.findCredentialsByUserId(user.id())).isPresent();
-        assertThat(securityRepo.getUserGroupsForUser(user.id())).extracting(g -> g.name()).contains("everyone");
+        var user = userStore.findUserByEmail(email).orElseThrow();
+        assertThat(userStore.findCredentialsByUserId(user.id())).isPresent();
+        assertThat(userStore.getUserGroupsForUser(user.id())).extracting(g -> g.name()).contains("everyone");
     }
 
     @Test
@@ -120,7 +120,7 @@ class UserAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void updateUser_asAdmin_persistsChanges() {
-        var user = securityRepo.createUser("Original Name", uniqueEmail(), false);
+        var user = userStore.createUser("Original Name", uniqueEmail(), false);
         String newEmail = uniqueEmail();
 
         webTestClient.put().uri("/api/admin/users/" + user.id())
@@ -134,7 +134,7 @@ class UserAdminControllerIntegrationTest extends AbstractIntegrationTest {
                 .jsonPath("$.email").isEqualTo(newEmail)
                 .jsonPath("$.isAdmin").isEqualTo(true);
 
-        var reloaded = securityRepo.findUserById(user.id()).orElseThrow();
+        var reloaded = userStore.findUserById(user.id()).orElseThrow();
         assertThat(reloaded.displayName()).isEqualTo("Updated Name");
         assertThat(reloaded.email()).isEqualTo(newEmail);
         assertThat(reloaded.isAdmin()).isTrue();
@@ -142,7 +142,7 @@ class UserAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void updateUser_toAnotherUsersEmail_returnsConflict() {
-        var user = securityRepo.createUser("Original Name", uniqueEmail(), false);
+        var user = userStore.createUser("Original Name", uniqueEmail(), false);
 
         webTestClient.put().uri("/api/admin/users/" + user.id())
                 .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com"))
@@ -154,7 +154,7 @@ class UserAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void updateUser_asNonAdmin_isForbidden() {
-        var user = securityRepo.createUser("Original Name", uniqueEmail(), false);
+        var user = userStore.createUser("Original Name", uniqueEmail(), false);
 
         webTestClient.put().uri("/api/admin/users/" + user.id())
                 .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("alice@example.com"))
@@ -168,8 +168,8 @@ class UserAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void resetPassword_asAdmin_persistsANewHash() {
-        var user = securityRepo.createUser("Local User", uniqueEmail(), false);
-        securityRepo.createLocalCredentials(user.id(), "{bcrypt}old-hash");
+        var user = userStore.createUser("Local User", uniqueEmail(), false);
+        userStore.createLocalCredentials(user.id(), "{bcrypt}old-hash");
 
         webTestClient.put().uri("/api/admin/users/" + user.id() + "/password")
                 .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com"))
@@ -178,13 +178,13 @@ class UserAdminControllerIntegrationTest extends AbstractIntegrationTest {
                 .exchange()
                 .expectStatus().isNoContent();
 
-        var credentials = securityRepo.findCredentialsByUserId(user.id()).orElseThrow();
+        var credentials = userStore.findCredentialsByUserId(user.id()).orElseThrow();
         assertThat(credentials.passwordHash()).startsWith("{bcrypt}").isNotEqualTo("{bcrypt}old-hash");
     }
 
     @Test
     void resetPassword_asNonAdmin_isForbidden() {
-        var user = securityRepo.createUser("Local User", "user-" + UUID.randomUUID() + "@example.com", false);
+        var user = userStore.createUser("Local User", "user-" + UUID.randomUUID() + "@example.com", false);
 
         webTestClient.put().uri("/api/admin/users/" + user.id() + "/password")
                 .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("alice@example.com"))
@@ -198,7 +198,7 @@ class UserAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void tokenLifecycle_createListAndRevoke() {
-        var user = securityRepo.createUser("Token User", "user-" + UUID.randomUUID() + "@example.com", false);
+        var user = userStore.createUser("Token User", "user-" + UUID.randomUUID() + "@example.com", false);
 
         webTestClient.get().uri("/api/admin/users/" + user.id() + "/tokens")
                 .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com"))
@@ -243,7 +243,7 @@ class UserAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void listTokens_asNonAdmin_isForbidden() {
-        var user = securityRepo.createUser("Token User", "user-" + UUID.randomUUID() + "@example.com", false);
+        var user = userStore.createUser("Token User", "user-" + UUID.randomUUID() + "@example.com", false);
 
         webTestClient.get().uri("/api/admin/users/" + user.id() + "/tokens")
                 .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("alice@example.com"))

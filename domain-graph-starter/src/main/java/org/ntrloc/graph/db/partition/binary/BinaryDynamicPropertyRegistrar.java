@@ -1,6 +1,6 @@
 package org.ntrloc.graph.db.partition.binary;
 
-import org.ntrloc.graph.db.partition.schema.SchemaManager;
+import org.ntrloc.graph.db.partition.schema.SchemaService;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.lang.Nullable;
@@ -17,16 +17,17 @@ import java.util.UUID;
 
 // Populates/reconciles the binary dynamic-property registry (binary_dynamic_property +
 // binary_property_dynamic_property) -- see docs/ntrloc-dynamic-properties-design-notes.md section
-// 10. Called by RegisterPartitionManager whenever a binary property's value is attached, detached,
-// or repointed to a different binary (never on read); will also be the reconciliation entry point
-// for re-extraction once that exists (BinaryPartitionManager.updateMetadata's own trigger 3). Shared
+// 10. Called by the coordinator (via BinaryAttachmentReconciler) whenever a binary property's value
+// is attached, detached, or repointed to a different binary (never on read); will also be the
+// reconciliation entry point
+// for re-extraction once that exists (BinaryStore.updateMetadata's own trigger 3). Shared
 // here so all triggers stay in lockstep rather than reimplementing the flatten/adjust walk per site.
 // Takes an already-parsed metadata map, not a raw JSON string: every caller already has one on hand
-// (BinaryPropertyObject.metadata() is parsed at the BinaryPartitionManager boundary; a re-extraction
+// (BinaryPropertyObject.metadata() is parsed at the BinaryStore boundary; a re-extraction
 // diff needs a parsed map to compare old/new anyway), so there's no reason to round-trip through JSON
 // text here.
 //
-// Also tells SchemaManager when a *structural* change happened -- a join row created or deleted,
+// Also tells SchemaService when a *structural* change happened -- a join row created or deleted,
 // meaning some property's AdminBinaryPropertyDefinitionView.dynamicFields actually gained or lost an
 // entry -- not on every reference-count increment/decrement, which never changes what's advertised.
 // Confirmed necessary, not just a nice-to-have: without it, sort/filter resolution against a newly
@@ -41,11 +42,11 @@ public class BinaryDynamicPropertyRegistrar {
     private static final String PARAM_DYNAMIC_PROPERTY_ID = "dynamicPropertyId";
 
     private final JdbcClient jdbcClient;
-    private final SchemaManager schemaManager;
+    private final SchemaService schemaService;
 
-    public BinaryDynamicPropertyRegistrar(JdbcClient jdbcClient, SchemaManager schemaManager) {
+    public BinaryDynamicPropertyRegistrar(JdbcClient jdbcClient, SchemaService schemaService) {
         this.jdbcClient = jdbcClient;
-        this.schemaManager = schemaManager;
+        this.schemaService = schemaService;
     }
 
     // A binary property gained a reference to a binary (create, or update pointing at a new/
@@ -91,12 +92,9 @@ public class BinaryDynamicPropertyRegistrar {
         });
     }
 
-    // How many distinct items currently point each property at this exact binary -- register_binary_
-    // property is owned by the register partition, not this one, but this registry already sits
-    // between the two (it links a schema_property id to facts about binary content), and
-    // RegisterPartitionManager already calls into this class the other direction (attach/detach), so
-    // reading this one table here doesn't introduce a new coupling direction, just uses the existing
-    // one from the other side.
+    // How many distinct items currently point each property at this exact binary. Reads
+    // register_binary_property, the register's table; parked to go through RegisterStore instead
+    // (docs/ntrloc-architecture-rationalization.md §8).
     private Map<UUID, Integer> referenceCountsByProperty(UUID binaryContentId) {
         Map<UUID, Integer> result = new HashMap<>();
         jdbcClient.sql("SELECT property_id, COUNT(*) AS n FROM register_binary_property WHERE binary_id = :binaryId GROUP BY property_id")
@@ -115,7 +113,7 @@ public class BinaryDynamicPropertyRegistrar {
     private record DiscoveredPath(String path, PropertyType type) {}
 
     // Flattens a binary's metadata into dot-paths with an inferred PropertyType -- the same
-    // recursive-descent shape RegisterPartitionManager.propertyPaths uses for ordinary properties,
+    // recursive-descent shape ProjectionEngine.propertyPaths uses for ordinary properties,
     // just keyed by string path instead of a schema id, since a discovered path has no id of its own
     // until ensureCatalogRow mints one. Arrays are skipped entirely, not descended into -- structured
     // list elements ("bags of structures") are still an open question in design-notes section 6;
@@ -168,7 +166,7 @@ public class BinaryDynamicPropertyRegistrar {
     }
 
     // (xmax = 0) is the same "did this INSERT actually insert, or hit the ON CONFLICT branch" idiom
-    // BinaryPartitionManagerImpl.insert already uses -- true only the first time this property gains
+    // BinaryStore.insert already uses -- true only the first time this property gains
     // this path, which is exactly when dynamicFields structurally changes.
     private static final String INCREMENT_SQL = """
             INSERT INTO binary_property_dynamic_property (property_id, dynamic_property_id, reference_count)
@@ -223,7 +221,7 @@ public class BinaryDynamicPropertyRegistrar {
 
     private void scheduleSchemaRefreshAfterCommit() {
         if (!TransactionSynchronizationManager.isSynchronizationActive()) {
-            schemaManager.refreshCache();
+            schemaService.refreshCache();
             return;
         }
         if (TransactionSynchronizationManager.hasResource(REFRESH_SCHEDULED_RESOURCE_KEY)) return;
@@ -231,7 +229,7 @@ public class BinaryDynamicPropertyRegistrar {
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
-                schemaManager.refreshCache();
+                schemaService.refreshCache();
             }
 
             @Override

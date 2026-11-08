@@ -1,8 +1,8 @@
 package org.ntrloc.graph.security;
 
-import org.ntrloc.graph.db.partition.security.ExternalPrincipalResolver;
+import org.ntrloc.graph.principal.ExternalPrincipalResolver;
 import org.ntrloc.graph.db.partition.security.ExternalUserProvisioner;
-import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
+import org.ntrloc.graph.principal.NtrlocPrincipal;
 import org.ntrloc.graph.security.LdapConfigurationService.Directory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

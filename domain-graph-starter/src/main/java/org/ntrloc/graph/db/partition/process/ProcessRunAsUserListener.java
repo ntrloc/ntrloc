@@ -9,8 +9,8 @@ import org.flowable.common.engine.api.delegate.event.FlowableEventType;
 import org.flowable.engine.RepositoryService;
 import org.flowable.engine.delegate.event.FlowableProcessStartedEvent;
 import org.flowable.engine.impl.persistence.entity.ExecutionEntity;
-import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
-import org.ntrloc.graph.db.partition.security.InternalPrincipalResolver;
+import org.ntrloc.graph.principal.NtrlocPrincipal;
+import org.ntrloc.graph.principal.InternalPrincipalResolver;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 
@@ -22,7 +22,7 @@ import java.util.EnumSet;
 //
 // Closes a real gap: a timer/signal/message start event never goes through
 // ProcessAdminController.startProcessInstance, so nothing ever sets the "principal" variable a
-// script might need for entityManager.project(...).
+// script might need for entityReadService.project(...).
 //
 // PROCESS_STARTED, not PROCESS_CREATED, is what makes this safe to layer on top of a real HTTP
 // caller without a race: confirmed by reading ProcessInstanceHelper directly --

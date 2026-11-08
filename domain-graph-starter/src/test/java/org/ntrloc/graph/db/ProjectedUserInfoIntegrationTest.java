@@ -9,9 +9,9 @@ import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
 import org.ntrloc.graph.db.partition.ledger.ItemUpdateEntry;
 import org.ntrloc.graph.db.partition.ledger.LinkCreateEntry;
 import org.ntrloc.graph.db.partition.ledger.LinkEndpoint;
-import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
-import org.ntrloc.graph.db.partition.security.TestPrincipals;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.principal.NtrlocPrincipal;
+import org.ntrloc.graph.principal.TestPrincipals;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.ntrloc.graph.projection.CollectionProjectionSpec;
 import org.ntrloc.graph.projection.ItemProjectionSpec;
 import org.ntrloc.graph.projection.LinkProjectionSpec;
@@ -30,14 +30,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 // Proves UserInfo actually shows up where the user asked for it: createdBy/updatedBy within a
 // real projection response (both single-item and collection), resolved by ProjectedUserInfoEnricher
-// at the EntityManagerImpl layer -- going through EntityManager (not RegisterPartitionManager
+// at the EntityReadService layer -- going through EntityReadService (not RegisterStore
 // directly, unlike RegisterProvenanceIntegrationTest) is the whole point here, since enrichment
-// only runs at that layer precisely because RegisterPartitionManager must never import the
+// only runs at that layer precisely because RegisterStore must never import the
 // security partition.
 class ProjectedUserInfoIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
-    private EntityManager entityManager;
+    private EntityReadService entityReadService;
 
     @Autowired
     private LedgerRegisterCoordinator coordinator;
@@ -46,20 +46,20 @@ class ProjectedUserInfoIntegrationTest extends AbstractIntegrationTest {
     private CoordinatorTestDomainInitializer fixture;
 
     @Autowired
-    private SecurityRepository securityRepo;
+    private UserStore userStore;
 
     private NtrlocPrincipal ADMIN;
 
     @BeforeEach
     void setUpAdmin() {
-        var user = securityRepo.createUser("Root", "puiit-root-" + UUID.randomUUID() + "@example.com", true);
+        var user = userStore.createUser("Root", "puiit-root-" + UUID.randomUUID() + "@example.com", true);
         ADMIN = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), true);
     }
 
     @Test
     void itemProjection_resolvesCreatedByToRealUserInfo_andLeavesUpdatedByNullUntilActuallyUpdated() {
-        var creator = securityRepo.createUser("Creator Person", "creator-" + UUID.randomUUID() + "@example.com", false);
-        var editor = securityRepo.createUser("Editor Person", "editor-" + UUID.randomUUID() + "@example.com", false);
+        var creator = userStore.createUser("Creator Person", "creator-" + UUID.randomUUID() + "@example.com", false);
+        var editor = userStore.createUser("Editor Person", "editor-" + UUID.randomUUID() + "@example.com", false);
 
         UUID itemId = UUID.randomUUID();
         UUID txn = UUID.randomUUID();
@@ -67,7 +67,7 @@ class ProjectedUserInfoIntegrationTest extends AbstractIntegrationTest {
                 Map.of(fixture.namePropertyId(), "Widget"), Map.of(), Set.of())), txn, creator.id(), OffsetDateTime.now());
         coordinator.commit(txn, UUID.randomUUID());
 
-        ProjectedItem afterCreate = entityManager.project(new ItemProjectionSpec("CoordinatorTestProduct", itemId), "http://binary", ADMIN)
+        ProjectedItem afterCreate = entityReadService.project(new ItemProjectionSpec("CoordinatorTestProduct", itemId), "http://binary", ADMIN)
                 .orElseThrow();
 
         assertThat(afterCreate.createdBy().email()).isEqualTo(creator.email());
@@ -80,7 +80,7 @@ class ProjectedUserInfoIntegrationTest extends AbstractIntegrationTest {
                 Map.of(), Set.of(), Set.of(), Set.of())), updateTxn, editor.id(), OffsetDateTime.now());
         coordinator.commit(updateTxn, UUID.randomUUID());
 
-        ProjectedItem afterUpdate = entityManager.project(new ItemProjectionSpec("CoordinatorTestProduct", itemId), "http://binary", ADMIN)
+        ProjectedItem afterUpdate = entityReadService.project(new ItemProjectionSpec("CoordinatorTestProduct", itemId), "http://binary", ADMIN)
                 .orElseThrow();
 
         assertThat(afterUpdate.updatedBy().email()).isEqualTo(editor.email());
@@ -88,7 +88,7 @@ class ProjectedUserInfoIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void collectionProjection_resolvesCreatedByForEveryItem() {
-        var creator = securityRepo.createUser("Collection Creator", "collection-" + UUID.randomUUID() + "@example.com", false);
+        var creator = userStore.createUser("Collection Creator", "collection-" + UUID.randomUUID() + "@example.com", false);
 
         UUID itemId = UUID.randomUUID();
         String name = "Gadget-" + itemId;
@@ -99,7 +99,7 @@ class ProjectedUserInfoIntegrationTest extends AbstractIntegrationTest {
 
         // Filtered to this item: other test classes share the database and add their own products,
         // so an unfiltered query's default first page may not include it.
-        var result = entityManager.project(new CollectionProjectionSpec("CoordinatorTestProduct", null, null,
+        var result = entityReadService.project(new CollectionProjectionSpec("CoordinatorTestProduct", null, null,
                 new PropertyValuePredicate("name", Operator.EQUALS, name)), "http://binary", ADMIN);
 
         var projected = result.items().stream().filter(i -> i.itemId().equals(itemId)).findFirst().orElseThrow();
@@ -111,9 +111,9 @@ class ProjectedUserInfoIntegrationTest extends AbstractIntegrationTest {
     // UserInfo shows up somewhere in the tree."
     @Test
     void linkProjection_resolvesCreatedByForBothTheLinkItselfAndTheLinkedItem() {
-        var productCreator = securityRepo.createUser("Product Creator", "product-" + UUID.randomUUID() + "@example.com", false);
-        var contributorCreator = securityRepo.createUser("Contributor Creator", "contributor-" + UUID.randomUUID() + "@example.com", false);
-        var linkCreator = securityRepo.createUser("Link Creator", "link-" + UUID.randomUUID() + "@example.com", false);
+        var productCreator = userStore.createUser("Product Creator", "product-" + UUID.randomUUID() + "@example.com", false);
+        var contributorCreator = userStore.createUser("Contributor Creator", "contributor-" + UUID.randomUUID() + "@example.com", false);
+        var linkCreator = userStore.createUser("Link Creator", "link-" + UUID.randomUUID() + "@example.com", false);
 
         UUID productId = UUID.randomUUID();
         UUID contributorId = UUID.randomUUID();
@@ -137,7 +137,7 @@ class ProjectedUserInfoIntegrationTest extends AbstractIntegrationTest {
                 Map.of(fixture.rolePropertyId(), "Author"))), linkTxn, linkCreator.id(), OffsetDateTime.now());
         coordinator.commit(linkTxn, UUID.randomUUID());
 
-        ProjectedItem product = entityManager.project(
+        ProjectedItem product = entityReadService.project(
                 new ItemProjectionSpec("CoordinatorTestProduct", productId, Map.of("products", new LinkProjectionSpec(null))),
                 "http://binary", ADMIN).orElseThrow();
 

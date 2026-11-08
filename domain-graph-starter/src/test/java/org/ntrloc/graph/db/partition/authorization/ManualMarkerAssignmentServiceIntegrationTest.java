@@ -4,12 +4,12 @@ import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.coordinator.CoordinatorTestDomainInitializer;
 import org.ntrloc.graph.db.coordinator.LedgerRegisterCoordinator;
-import org.ntrloc.graph.db.partition.authorization.repository.AuthorizationRepository;
+import org.ntrloc.graph.db.partition.authorization.repository.AccessStore;
 import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
 import org.ntrloc.graph.db.partition.ledger.ItemUpdateEntry;
-import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
-import org.ntrloc.graph.db.partition.security.TestPrincipals;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.principal.NtrlocPrincipal;
+import org.ntrloc.graph.principal.TestPrincipals;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
@@ -35,7 +35,7 @@ class ManualMarkerAssignmentServiceIntegrationTest extends AbstractIntegrationTe
     private LedgerRegisterCoordinator coordinator;
 
     @Autowired
-    private AuthorizationRepository authRepo;
+    private AccessStore accessStore;
 
     @Autowired
     private CoordinatorTestDomainInitializer fixture;
@@ -44,10 +44,10 @@ class ManualMarkerAssignmentServiceIntegrationTest extends AbstractIntegrationTe
     private JdbcClient jdbcClient;
 
     @Autowired
-    private SecurityRepository securityRepo;
+    private UserStore userStore;
 
     private NtrlocPrincipal testActor() {
-        var user = securityRepo.createUser("Marker Test Actor", "mast-actor-" + UUID.randomUUID() + "@example.com", true);
+        var user = userStore.createUser("Marker Test Actor", "mast-actor-" + UUID.randomUUID() + "@example.com", true);
         return TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), true);
     }
 
@@ -60,7 +60,7 @@ class ManualMarkerAssignmentServiceIntegrationTest extends AbstractIntegrationTe
     }
 
     private UUID createMarker() {
-        return authRepo.createMarker("mast-" + UUID.randomUUID(), "test marker", "ITEM_TYPE", fixture.productTypeId()).id();
+        return accessStore.createMarker("mast-" + UUID.randomUUID(), "test marker", "ITEM_TYPE", fixture.productTypeId()).id();
     }
 
     @Test
@@ -71,7 +71,7 @@ class ManualMarkerAssignmentServiceIntegrationTest extends AbstractIntegrationTe
 
         markerAssignmentService.addItemMarker(itemId, markerId, actor, "flagged for review");
 
-        assertThat(authRepo.getMarkerIdsForItem(itemId)).contains(markerId);
+        assertThat(accessStore.getMarkerIdsForItem(itemId)).contains(markerId);
 
         Long ledgerRows = jdbcClient.sql("""
                 SELECT COUNT(*) FROM ledger_entry
@@ -131,7 +131,7 @@ class ManualMarkerAssignmentServiceIntegrationTest extends AbstractIntegrationTe
 
         markerAssignmentService.removeItemMarker(itemId, markerId, actor, "test reason");
 
-        assertThat(authRepo.getMarkerIdsForItem(itemId)).doesNotContain(markerId);
+        assertThat(accessStore.getMarkerIdsForItem(itemId)).doesNotContain(markerId);
 
         // Both add and remove write an ITEM_UPDATE entry now (markers are a facet, not their own
         // entry type) -- entry_type alone can't distinguish them, so this checks the payload's
@@ -153,7 +153,7 @@ class ManualMarkerAssignmentServiceIntegrationTest extends AbstractIntegrationTe
     @Test
     void itemMarker_survivesAnOrdinaryPropertyUpdateAfterward() {
         // Regression guard: register_item_marker FKs to register_item.id (ON DELETE CASCADE), and
-        // an update swaps that row out for a new one wholesale (see RegisterPartitionManager.
+        // an update swaps that row out for a new one wholesale (see RegisterStore.
         // commitItem). Without explicitly carrying register_item_marker rows forward to the new id
         // before deleting the old one, this marker would be silently wiped by the cascade.
         NtrlocPrincipal actor = testActor();
@@ -165,6 +165,6 @@ class ManualMarkerAssignmentServiceIntegrationTest extends AbstractIntegrationTe
         coordinator.prepare(List.of(new ItemUpdateEntry(itemId, Map.of(fixture.namePropertyId(), "Widget Pro"), Map.of(), Set.of(), Set.of(), Set.of())), updateTxn, actor.id(), OffsetDateTime.now());
         coordinator.commit(updateTxn, UUID.randomUUID());
 
-        assertThat(authRepo.getMarkerIdsForItem(itemId)).contains(markerId);
+        assertThat(accessStore.getMarkerIdsForItem(itemId)).contains(markerId);
     }
 }

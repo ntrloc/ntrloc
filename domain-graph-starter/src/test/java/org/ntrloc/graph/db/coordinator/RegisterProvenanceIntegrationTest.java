@@ -8,8 +8,8 @@ import org.ntrloc.graph.db.partition.ledger.ItemUpdateEntry;
 import org.ntrloc.graph.db.partition.ledger.LinkCreateEntry;
 import org.ntrloc.graph.db.partition.ledger.LinkEndpoint;
 import org.ntrloc.graph.db.partition.ledger.LinkUpdateEntry;
-import org.ntrloc.graph.db.partition.register.RegisterPartitionManager;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.projection.ProjectionEngine;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.ntrloc.graph.projection.LinkProjectionSpec;
 import org.ntrloc.graph.projection.ProjectedItem;
 import org.ntrloc.graph.projection.ProjectedLink;
@@ -34,10 +34,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 // not optional, called out by name in that doc's Part E section.
 //
 // Goes through LedgerRegisterCoordinator.prepare/commit directly (not through MutationRequestProcessor)
-// and reads back via RegisterPartitionManager.projectOne -- the register layer itself, one level
-// below EntityManagerImpl. Asserts against createdByUserId/updatedByUserId (the raw UUID
-// RegisterPartitionManager actually populates), not createdBy/updatedBy (the resolved UserInfo
-// ProjectedUserInfoEnricher fills in afterward, at the EntityManagerImpl layer this test
+// and reads back via ProjectionEngine.projectOne, one level below EntityReadService. Asserts
+// against createdByUserId/updatedByUserId (the raw UUID ProjectionEngine populates), not createdBy/updatedBy (the resolved UserInfo
+// ProjectedUserInfoEnricher fills in afterward, at the EntityReadService layer this test
 // deliberately bypasses) -- see ProjectedItem's own comment for why those are two different
 // fields. createdDate/updatedDate are read straight off the register row, never recomputed, so
 // asserting against them is asserting against the actual persisted columns.
@@ -47,13 +46,13 @@ class RegisterProvenanceIntegrationTest extends AbstractIntegrationTest {
     private LedgerRegisterCoordinator coordinator;
 
     @Autowired
-    private RegisterPartitionManager registerPartitionManager;
+    private ProjectionEngine projectionEngine;
 
     @Autowired
     private CoordinatorTestDomainInitializer fixture;
 
     @Autowired
-    private SecurityRepository securityRepo;
+    private UserStore userStore;
 
     // Truncated to microseconds -- Postgres TIMESTAMPTZ's own precision -- and pinned to UTC, so
     // the round trip through the DB can be compared by instant (isEqual), not exact string/offset
@@ -63,11 +62,11 @@ class RegisterProvenanceIntegrationTest extends AbstractIntegrationTest {
     }
 
     private UUID createUser(String prefix) {
-        return securityRepo.createUser(prefix + " display name", prefix + "-" + UUID.randomUUID() + "@example.com", true).id();
+        return userStore.createUser(prefix + " display name", prefix + "-" + UUID.randomUUID() + "@example.com", true).id();
     }
 
     private ProjectedItem projectProduct(UUID itemId, Map<String, LinkProjectionSpec> requestedLinks) {
-        return registerPartitionManager
+        return projectionEngine
                 .projectOne(fixture.productTypeId(), itemId, "", requestedLinks, RequestPermissionContext.forAdmin())
                 .orElseThrow();
     }
@@ -101,7 +100,7 @@ class RegisterProvenanceIntegrationTest extends AbstractIntegrationTest {
 
         ProjectedItem afterFirstUpdate = projectProduct(itemId, null);
         // created* must survive the update completely unchanged, even though the underlying
-        // register_item row was wholesale-replaced (see RegisterPartitionManager.stageItemChange).
+        // register_item row was wholesale-replaced (see RegisterStore.stageItemChange).
         assertThat(afterFirstUpdate.createdByUserId()).isEqualTo(creator);
         assertThat(afterFirstUpdate.createdDate().isEqual(createdAt)).isTrue();
         assertThat(afterFirstUpdate.updatedByUserId()).isEqualTo(firstEditor);
@@ -161,7 +160,7 @@ class RegisterProvenanceIntegrationTest extends AbstractIntegrationTest {
 
         ProjectedLink afterUpdate = soleLink(productId);
         // Same carry-forward requirement as items: register_link rows are wholesale-replaced on
-        // update too (RegisterPartitionManager.stageLinkUpdate), so this is a real assertion, not
+        // update too (RegisterStore.stageLinkUpdate), so this is a real assertion, not
         // a given.
         assertThat(afterUpdate.createdByUserId()).isEqualTo(creator);
         assertThat(afterUpdate.createdDate().isEqual(createdAt)).isTrue();

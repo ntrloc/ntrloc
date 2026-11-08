@@ -1,7 +1,7 @@
 package org.ntrloc.graph.db.partition.register;
 
-import org.ntrloc.graph.db.partition.schema.ControlledListManager;
-import org.ntrloc.graph.db.partition.schema.SchemaManager;
+import org.ntrloc.graph.db.partition.schema.repository.ControlledListStore;
+import org.ntrloc.graph.db.partition.schema.SchemaService;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyUsage;
@@ -34,8 +34,8 @@ public class RegisterProjectionTestDomainInitializer implements DomainInitialize
     public static final String OUT_OF_STOCK = "OutOfStock";
     public static final String DISCONTINUED = "Discontinued";
 
-    private final SchemaManager schemaManager;
-    private final ControlledListManager controlledListManager;
+    private final SchemaService schemaService;
+    private final ControlledListStore controlledListStore;
 
     private UUID bookTypeId;
     private UUID authorTypeId;
@@ -51,20 +51,20 @@ public class RegisterProjectionTestDomainInitializer implements DomainInitialize
     private UUID authorsPerspectiveId;
     private UUID attachmentPropertyId;
 
-    public RegisterProjectionTestDomainInitializer(SchemaManager schemaManager, ControlledListManager controlledListManager) {
-        this.schemaManager = schemaManager;
-        this.controlledListManager = controlledListManager;
+    public RegisterProjectionTestDomainInitializer(SchemaService schemaService, ControlledListStore controlledListStore) {
+        this.schemaService = schemaService;
+        this.controlledListStore = controlledListStore;
     }
 
     @Override
     public void run(ApplicationArguments args) {
-        initSchema(schemaManager, controlledListManager);
+        initSchema(schemaService);
     }
 
     @Override
-    public void initSchema(SchemaManager schemaManager, ControlledListManager controlledListManager) {
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(
-                "RegisterProjectionTestBook", "RegisterPartitionManager projection/facet test fixture",
+    public void initSchema(SchemaService schemaService) {
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(
+                "RegisterProjectionTestBook", "RegisterStore projection/facet test fixture",
                 List.of(
                         property("title", PropertyType.STRING, PropertyCardinality.SINGLE),
                         property("pageCount", PropertyType.INTEGER, PropertyCardinality.SINGLE),
@@ -89,7 +89,7 @@ public class RegisterProjectionTestDomainInitializer implements DomainInitialize
                         // facetable property" auto-populate test.
                         property("testMarker", PropertyType.STRING, PropertyCardinality.SINGLE),
                         // Lets RegisterPartitionManagerProjectionIntegrationTest exercise sorting by a
-                        // binary property's intrinsic content length (RegisterPartitionManager.sortExpressionFor).
+                        // binary property's intrinsic content length (ProjectionEngine.toSort).
                         property("attachment", PropertyType.BINARY, PropertyCardinality.SINGLE)),
                 // Display label pattern: lets the projection tests check labels, including when
                 // "title" itself isn't among the requested properties.
@@ -98,7 +98,7 @@ public class RegisterProjectionTestDomainInitializer implements DomainInitialize
                 // resolution/filtering tests can exercise a real group-scoped lookup
                 // (dimensions.widthCm vs packaging.widthCm), not just a single unambiguous nested
                 // property. "dimensions.material" is facetable so facet tests can exercise
-                // RegisterPartitionManager.collectFacetableFieldNames' recursion through groups --
+                // ProjectionEngine.collectFacetableFieldNames' recursion through groups --
                 // a facetable leaf one level deep, resolved/auto-discovered under its dot-path
                 // name, the same way a top-level facetable property is.
                 List.of(
@@ -126,31 +126,31 @@ public class RegisterProjectionTestDomainInitializer implements DomainInitialize
         // facetable=true, exercising the BOOLEAN branch (no controlled list needed, but the
         // explicit admin opt-in still is) -- between the two, both facetable-property code paths
         // are covered, not just one.
-        var genreList = controlledListManager.createList("RegisterProjectionTestGenre", PropertyType.STRING);
-        controlledListManager.setPropertyControlledList(genrePropertyId, genreList.id());
-        controlledListManager.addValue(genreList.id(), "Fiction", "Fiction", 0);
-        controlledListManager.addValue(genreList.id(), "Reference", "Reference", 1);
+        var genreList = controlledListStore.createList("RegisterProjectionTestGenre", PropertyType.STRING);
+        controlledListStore.setPropertyControlledList(genrePropertyId, genreList.id());
+        controlledListStore.addValue(genreList.id(), "Fiction", "Fiction", 0);
+        controlledListStore.addValue(genreList.id(), "Reference", "Reference", 1);
 
-        var materialList = controlledListManager.createList("RegisterProjectionTestMaterial", PropertyType.STRING);
-        controlledListManager.setPropertyControlledList(dimensionsMaterialPropertyId, materialList.id());
-        controlledListManager.addValue(materialList.id(), "Hardcover", "Hardcover", 0);
-        controlledListManager.addValue(materialList.id(), "Paperback", "Paperback", 1);
+        var materialList = controlledListStore.createList("RegisterProjectionTestMaterial", PropertyType.STRING);
+        controlledListStore.setPropertyControlledList(dimensionsMaterialPropertyId, materialList.id());
+        controlledListStore.addValue(materialList.id(), "Hardcover", "Hardcover", 0);
+        controlledListStore.addValue(materialList.id(), "Paperback", "Paperback", 1);
 
         // Real, distinct labels -- the one fixture property where projection/facet label resolution
         // (rule 4) has something actually observable to assert on.
-        var conditionList = controlledListManager.createList("RegisterProjectionTestCondition", PropertyType.STRING);
-        controlledListManager.setPropertyControlledList(conditionPropertyId, conditionList.id());
-        controlledListManager.addValue(conditionList.id(), "NEW", "Brand New", 0);
-        controlledListManager.addValue(conditionList.id(), "USED", "Pre-Owned", 1);
+        var conditionList = controlledListStore.createList("RegisterProjectionTestCondition", PropertyType.STRING);
+        controlledListStore.setPropertyControlledList(conditionPropertyId, conditionList.id());
+        controlledListStore.addValue(conditionList.id(), "NEW", "Brand New", 0);
+        controlledListStore.addValue(conditionList.id(), "USED", "Pre-Owned", 1);
 
         // No labels at all -- confirms a controlled-list-backed property whose list carries none
         // still projects/facets as a bare scalar (rule 4's other half).
-        var formatList = controlledListManager.createList("RegisterProjectionTestFormat", PropertyType.STRING);
-        controlledListManager.setPropertyControlledList(formatPropertyId, formatList.id());
-        controlledListManager.addValue(formatList.id(), "Hardback", null, 0);
-        controlledListManager.addValue(formatList.id(), "Ebook", null, 1);
+        var formatList = controlledListStore.createList("RegisterProjectionTestFormat", PropertyType.STRING);
+        controlledListStore.setPropertyControlledList(formatPropertyId, formatList.id());
+        controlledListStore.addValue(formatList.id(), "Hardback", null, 0);
+        controlledListStore.addValue(formatList.id(), "Ebook", null, 1);
 
-        initStateMachine(schemaManager, bookTypeId, AVAILABILITY_MACHINE,
+        initStateMachine(schemaService, bookTypeId, AVAILABILITY_MACHINE,
                 List.of(
                         new StateDefinition(AVAILABLE),
                         new StateDefinition(OUT_OF_STOCK),
@@ -161,12 +161,12 @@ public class RegisterProjectionTestDomainInitializer implements DomainInitialize
                         new TransitionDefinition(OUT_OF_STOCK, AVAILABLE, "Restock"),
                         new TransitionDefinition(OUT_OF_STOCK, DISCONTINUED, "Discontinue")));
 
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(
-                "RegisterProjectionTestAuthor", "RegisterPartitionManager projection/facet test fixture",
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(
+                "RegisterProjectionTestAuthor", "RegisterStore projection/facet test fixture",
                 List.of(property("name", PropertyType.STRING, PropertyCardinality.SINGLE)), null, false, null)));
         authorTypeId = findItem("RegisterProjectionTestAuthor").id();
 
-        schemaManager.applyMutations(List.of(new CreateLinkDefinitionMutation(
+        schemaService.applyMutations(List.of(new CreateLinkDefinitionMutation(
                 List.of(),
                 List.of(
                         new CreatePerspectiveDefinitionMutation(bookTypeId, "authors", "desc", 0, null),
@@ -177,12 +177,12 @@ public class RegisterProjectionTestDomainInitializer implements DomainInitialize
         // Publisher, linked one hop past Author (Book -> authors -> Author -> publisher ->
         // Publisher) -- exists purely so multi-hop requested-link tests have a real third item type
         // to recurse into; no other test in this class needs it.
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(
-                "RegisterProjectionTestPublisher", "RegisterPartitionManager projection/facet test fixture",
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(
+                "RegisterProjectionTestPublisher", "RegisterStore projection/facet test fixture",
                 List.of(property("name", PropertyType.STRING, PropertyCardinality.SINGLE)), null, false, null)));
         publisherTypeId = findItem("RegisterProjectionTestPublisher").id();
 
-        schemaManager.applyMutations(List.of(new CreateLinkDefinitionMutation(
+        schemaService.applyMutations(List.of(new CreateLinkDefinitionMutation(
                 List.of(),
                 List.of(
                         new CreatePerspectiveDefinitionMutation(authorTypeId, "publisher", "desc", 0, null),
@@ -202,7 +202,7 @@ public class RegisterProjectionTestDomainInitializer implements DomainInitialize
     }
 
     private AdminItemDefinitionView findItem(String name) {
-        return schemaManager.getAdminSchema().items().stream()
+        return schemaService.getAdminSchema().items().stream()
                 .filter(item -> item.name().equals(name))
                 .findFirst()
                 .orElseThrow();

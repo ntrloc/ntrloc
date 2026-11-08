@@ -31,7 +31,7 @@ public class ApiExceptionHandler {
     }
 
     // Catches MutationValidationException for every caller that doesn't already handle it locally
-    // (MutationController does, inline) -- in particular EntityManagerImpl.startStateMachine/
+    // (MutationController does, inline) -- in particular EntityWriteService.startStateMachine/
     // executeTransition via ItemController, which have no catch block of their own. Keeps every
     // mutation rejection (validation or permission) on the one 400 + MutationErrorResponse shape,
     // rather than a permission denial alone surfacing as a bare 500.

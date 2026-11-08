@@ -1,9 +1,12 @@
 package org.ntrloc.graph.db.partition.security;
 
+import org.ntrloc.graph.principal.NtrlocPrincipal;
+import org.ntrloc.graph.principal.TestPrincipals;
+
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.TestApplication;
 import org.ntrloc.graph.TestDatabases;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.annotation.DirtiesContext;
@@ -46,12 +49,12 @@ class PersonalAccessTokenAuthenticationIntegrationTest {
     private PersonalAccessTokenService tokenService;
 
     @Autowired
-    private SecurityRepository securityRepo;
+    private UserStore userStore;
 
     @Test
     void bearerTokenAuthenticatesAsTheOwningUser() {
-        var user = securityRepo.createUser("PAT Test User", "pat-user-" + UUID.randomUUID() + "@example.com", false);
-        var principal = new NtrlocPrincipal(user.id(), user.displayName(), user.email(), Set.of(), false);
+        var user = userStore.createUser("PAT Test User", "pat-user-" + UUID.randomUUID() + "@example.com", false);
+        var principal = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), false);
         var issued = tokenService.issue(principal, "test-token", null);
 
         webTestClient.get().uri("/api/schema")
@@ -70,8 +73,8 @@ class PersonalAccessTokenAuthenticationIntegrationTest {
 
     @Test
     void revokedTokenNoLongerAuthenticates() {
-        var user = securityRepo.createUser("PAT Revoke User", "pat-revoke-user-" + UUID.randomUUID() + "@example.com", false);
-        var principal = new NtrlocPrincipal(user.id(), user.displayName(), user.email(), Set.of(), false);
+        var user = userStore.createUser("PAT Revoke User", "pat-revoke-user-" + UUID.randomUUID() + "@example.com", false);
+        var principal = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), false);
         var issued = tokenService.issue(principal, "revoke-me", null);
 
         tokenService.revoke(principal, issued.id());
@@ -84,8 +87,8 @@ class PersonalAccessTokenAuthenticationIntegrationTest {
 
     @Test
     void expiredTokenIsRejected() {
-        var user = securityRepo.createUser("PAT Expired User", "pat-expired-user-" + UUID.randomUUID() + "@example.com", false);
-        var principal = new NtrlocPrincipal(user.id(), user.displayName(), user.email(), Set.of(), false);
+        var user = userStore.createUser("PAT Expired User", "pat-expired-user-" + UUID.randomUUID() + "@example.com", false);
+        var principal = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), false);
         var issued = tokenService.issue(principal, "already-expired", -1);
 
         webTestClient.get().uri("/api/schema")

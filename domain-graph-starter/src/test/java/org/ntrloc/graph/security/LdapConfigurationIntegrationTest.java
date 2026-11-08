@@ -3,7 +3,7 @@ package org.ntrloc.graph.security;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.TestDatabases;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.ntrloc.graph.security.LdapConfigurationService.LdapSettings;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseCookie;
@@ -33,7 +33,7 @@ class LdapConfigurationIntegrationTest extends AbstractLdapIntegrationTest {
     }
 
     @Autowired
-    private SecurityRepository securityRepo;
+    private UserStore userStore;
 
     @Autowired
     private JdbcClient jdbcClient;
@@ -43,8 +43,8 @@ class LdapConfigurationIntegrationTest extends AbstractLdapIntegrationTest {
     @BeforeEach
     void signInAsLocalAdmin() {
         admin = logIn(localAccount(true), "local-secret");
-        securityRepo.findUserByEmail("existing.user@example.org")
-                .orElseGet(() -> securityRepo.createUser("Existing User", "existing.user@example.org", false));
+        userStore.findUserByEmail("existing.user@example.org")
+                .orElseGet(() -> userStore.createUser("Existing User", "existing.user@example.org", false));
     }
 
     @Test
@@ -118,8 +118,8 @@ class LdapConfigurationIntegrationTest extends AbstractLdapIntegrationTest {
 
     private String localAccount(boolean isAdmin) {
         String email = "local-" + UUID.randomUUID() + "@example.com";
-        var user = securityRepo.createUser("Local User", email, isAdmin);
-        securityRepo.createLocalCredentials(user.id(), "{bcrypt}" + new BCryptPasswordEncoder().encode("local-secret"));
+        var user = userStore.createUser("Local User", email, isAdmin);
+        userStore.createLocalCredentials(user.id(), "{bcrypt}" + new BCryptPasswordEncoder().encode("local-secret"));
         return email;
     }
 

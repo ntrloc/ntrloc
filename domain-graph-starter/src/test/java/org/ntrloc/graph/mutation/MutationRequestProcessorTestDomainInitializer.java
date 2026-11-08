@@ -1,7 +1,6 @@
 package org.ntrloc.graph.mutation;
 
-import org.ntrloc.graph.db.partition.schema.ControlledListManager;
-import org.ntrloc.graph.db.partition.schema.SchemaManager;
+import org.ntrloc.graph.db.partition.schema.SchemaService;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyUsage;
@@ -39,26 +38,24 @@ public class MutationRequestProcessorTestDomainInitializer implements DomainInit
     private UUID dTypeId;
     private UUID link3Id;
 
-    private final SchemaManager schemaManager;
-    private final ControlledListManager controlledListManager;
+    private final SchemaService schemaService;
 
-    public MutationRequestProcessorTestDomainInitializer(SchemaManager schemaManager, ControlledListManager controlledListManager) {
-        this.schemaManager = schemaManager;
-        this.controlledListManager = controlledListManager;
+    public MutationRequestProcessorTestDomainInitializer(SchemaService schemaService) {
+        this.schemaService = schemaService;
     }
 
     @Override
     public void run(ApplicationArguments args) {
-        initSchema(schemaManager, controlledListManager);
+        initSchema(schemaService);
     }
 
     @Override
-    public void initSchema(SchemaManager schemaManager, ControlledListManager controlledListManager) {
+    public void initSchema(SchemaService schemaService) {
         // "extra" and "extra2" are property groups (structural, no value of their own); a payload
         // addresses their leaves by JSON nesting, resolved against the group's own children. Both
         // hold a leaf named "nested" -- exercises group-scoped resolution end to end (the two leaves
         // must resolve to distinct property ids and never collide in storage).
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(
                 "MutReqProcA", "MutationRequestProcessor test fixture",
                 List.of(
                         property("attachment", PropertyType.BINARY, PropertyCardinality.SINGLE),
@@ -74,20 +71,20 @@ public class MutationRequestProcessorTestDomainInitializer implements DomainInit
                                 property("nested", PropertyType.STRING, PropertyCardinality.SINGLE))))));
         aTypeId = findItem("MutReqProcA").id();
 
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(
                 "MutReqProcB", "MutationRequestProcessor test fixture", List.of(), null, false, null)));
         bTypeId = findItem("MutReqProcB").id();
 
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(
                 "MutReqProcC", "MutationRequestProcessor test fixture", List.of(), null, false, null)));
         cTypeId = findItem("MutReqProcC").id();
 
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(
                 "MutReqProcD", "MutationRequestProcessor test fixture", List.of(), null, false, null)));
         dTypeId = findItem("MutReqProcD").id();
 
         // link1: "toB" on A, "fromA" on B.
-        schemaManager.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
+        schemaService.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
                 new CreatePerspectiveDefinitionMutation(aTypeId, "toB", "d", 0, null),
                 new CreatePerspectiveDefinitionMutation(bTypeId, "fromA", "d", 0, null)))));
 
@@ -100,7 +97,7 @@ public class MutationRequestProcessorTestDomainInitializer implements DomainInit
         // "linkExtra" whose leaf name ("nested") deliberately collides with MutReqProcA's own
         // "extra.nested" leaf -- same group-scoped-resolution proof, now crossing the item/link
         // boundary.
-        schemaManager.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
+        schemaService.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
                 new CreatePerspectiveDefinitionMutation(cTypeId, "onlyC", "d", 0, null),
                 new CreatePerspectiveDefinitionMutation(dTypeId, "onlyD", "d", 0, null)),
                 List.of(group("linkExtra",
@@ -118,7 +115,7 @@ public class MutationRequestProcessorTestDomainInitializer implements DomainInit
     }
 
     private AdminItemDefinitionView findItem(String name) {
-        return schemaManager.getAdminSchema().items().stream()
+        return schemaService.getAdminSchema().items().stream()
                 .filter(item -> item.name().equals(name))
                 .findFirst()
                 .orElseThrow();

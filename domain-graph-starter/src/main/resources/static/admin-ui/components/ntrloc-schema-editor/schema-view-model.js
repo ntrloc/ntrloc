@@ -231,7 +231,7 @@ const schemaViewModel = {
   },
 
   // Direct, immediate write (see marker-service.js's own comment) -- unlike newItem()/newTrait(),
-  // there's no local draft stage; the marker exists on the server (and in AuthorizationCacheManager)
+  // there's no local draft stage; the marker exists on the server (and in the Access Store's grant snapshot)
   // the moment this resolves. Throws on failure so the caller (ntrloc-item-detail.js) can show the
   // error inline rather than this silently doing nothing.
   async createMarker({ name, description, scopeKind, scopeId }) {

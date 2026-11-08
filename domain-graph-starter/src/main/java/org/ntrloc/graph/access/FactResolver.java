@@ -8,7 +8,7 @@ import java.util.UUID;
 // data. ContextResolver.resolveInstances calls back into this for everything it can't answer from
 // the single properties map a caller already has in hand: every other item reached by stepping off
 // a link perspective, that item's own properties, and its current state in a given state machine.
-// Implemented by a real, DB-backed adapter in production (RegisterPartitionManager itself) and by a
+// Implemented by a real, DB-backed adapter in production (RegisterStore itself) and by a
 // simple in-memory fake in tests -- this package itself never talks to a database, same as every
 // other class in here.
 //

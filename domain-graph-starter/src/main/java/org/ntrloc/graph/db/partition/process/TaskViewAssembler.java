@@ -3,7 +3,7 @@ package org.ntrloc.graph.db.partition.process;
 import org.flowable.task.api.Task;
 import org.ntrloc.graph.db.partition.process.TaskAdminController.AssigneeView;
 import org.ntrloc.graph.db.partition.process.TaskAdminController.TaskView;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.springframework.stereotype.Component;
 
 import java.util.HashSet;
@@ -21,10 +21,10 @@ import java.util.stream.Collectors;
 @Component
 public class TaskViewAssembler {
 
-    private final SecurityRepository securityRepository;
+    private final UserStore userStore;
 
-    public TaskViewAssembler(SecurityRepository securityRepository) {
-        this.securityRepository = securityRepository;
+    public TaskViewAssembler(UserStore userStore) {
+        this.userStore = userStore;
     }
 
     public TaskView toView(Task task) {
@@ -34,15 +34,15 @@ public class TaskViewAssembler {
     public List<TaskView> toViews(List<Task> tasks) {
         Set<UUID> assigneeIds = new HashSet<>();
         tasks.forEach(task -> parseUserId(task.getAssignee()).ifPresent(assigneeIds::add));
-        Map<UUID, SecurityRepository.UserRow> users = securityRepository.findUsersByIds(assigneeIds).stream()
-                .collect(Collectors.toMap(SecurityRepository.UserRow::id, Function.identity()));
+        Map<UUID, UserStore.UserRow> users = userStore.findUsersByIds(assigneeIds).stream()
+                .collect(Collectors.toMap(UserStore.UserRow::id, Function.identity()));
         return tasks.stream()
                 .map(task -> new TaskView(task.getId(), task.getName(), task.getProcessInstanceId(),
                         toAssigneeView(task.getAssignee(), users), task.getCreateTime()))
                 .toList();
     }
 
-    private static AssigneeView toAssigneeView(String assignee, Map<UUID, SecurityRepository.UserRow> users) {
+    private static AssigneeView toAssigneeView(String assignee, Map<UUID, UserStore.UserRow> users) {
         if (assignee == null) {
             return null;
         }

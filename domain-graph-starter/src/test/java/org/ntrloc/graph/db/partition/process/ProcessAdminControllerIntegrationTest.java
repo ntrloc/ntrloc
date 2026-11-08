@@ -5,7 +5,7 @@ import org.flowable.engine.TaskService;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.partition.process.ProcessAdminController.ProcessDefinitionView;
-import org.ntrloc.graph.db.partition.schema.SchemaManager;
+import org.ntrloc.graph.db.partition.schema.SchemaService;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateItemDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateStateMachineMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateStateMutation;
@@ -40,7 +40,7 @@ class ProcessAdminControllerIntegrationTest extends AbstractIntegrationTest {
     private TaskService taskService;
 
     @Autowired
-    private SchemaManager schemaManager;
+    private SchemaService schemaService;
 
     @Test
     void listsDeployedDefinitionsIncludingHelloWorld() {
@@ -143,14 +143,14 @@ class ProcessAdminControllerIntegrationTest extends AbstractIntegrationTest {
         deploy(key, "Referenced Process Test", "v1");
 
         String itemName = "DeleteGuardItem-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(itemName, "d", List.of(), null, false, null)));
-        UUID itemId = schemaManager.getAdminSchema().items().stream()
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(itemName, "d", List.of(), null, false, null)));
+        UUID itemId = schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.name().equals(itemName)).findFirst().orElseThrow().id();
-        schemaManager.applyMutations(List.of(new CreateStateMachineMutation(itemId, "DeleteGuardSM", null)));
-        UUID stateMachineId = schemaManager.getAdminSchema().items().stream()
+        schemaService.applyMutations(List.of(new CreateStateMachineMutation(itemId, "DeleteGuardSM", null)));
+        UUID stateMachineId = schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
                 .stateMachines().get(0).id();
-        schemaManager.applyMutations(List.of(new CreateStateMutation(stateMachineId, "GuardState", null, key, null)));
+        schemaService.applyMutations(List.of(new CreateStateMutation(stateMachineId, "GuardState", null, key, null)));
 
         webTestClient.delete().uri("/api/admin/process/definitions/{key}", key)
                 .exchange()

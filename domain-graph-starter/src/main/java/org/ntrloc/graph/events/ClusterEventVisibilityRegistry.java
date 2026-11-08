@@ -1,6 +1,6 @@
 package org.ntrloc.graph.events;
 
-import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
+import org.ntrloc.graph.principal.NtrlocPrincipal;
 import org.springframework.stereotype.Component;
 
 import java.util.List;

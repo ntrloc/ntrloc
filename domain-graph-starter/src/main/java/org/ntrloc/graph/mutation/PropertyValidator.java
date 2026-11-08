@@ -12,11 +12,11 @@ import java.util.UUID;
 
 import org.ntrloc.graph.db.partition.authorization.PermissionService;
 import org.ntrloc.graph.db.partition.authorization.RequestPermissionContext;
-import org.ntrloc.graph.db.partition.binary.BinaryPartitionManager;
-import org.ntrloc.graph.db.partition.register.RegisterPartitionManager;
-import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
-import org.ntrloc.graph.db.partition.schema.ControlledListManager;
-import org.ntrloc.graph.db.partition.schema.SchemaManager;
+import org.ntrloc.graph.db.partition.binary.BinaryStore;
+import org.ntrloc.graph.db.partition.register.RegisterStoreReader;
+import org.ntrloc.graph.principal.NtrlocPrincipal;
+import org.ntrloc.graph.db.partition.schema.ControlledListService;
+import org.ntrloc.graph.db.partition.schema.SchemaService;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyUsage;
@@ -33,23 +33,23 @@ class PropertyValidator {
 
     private static final String PROPERTY_QUOTE_PREFIX = "Property '";
 
-    private final SchemaManager schemaManager;
-    private final RegisterPartitionManager registerPartitionManager;
+    private final SchemaService schemaService;
+    private final RegisterStoreReader registerStore;
     private final PermissionService permissionService;
-    private final BinaryPartitionManager binaryPartitionManager;
-    private final ControlledListManager controlledListManager;
+    private final BinaryStore binaryStore;
+    private final ControlledListService controlledListService;
 
-    PropertyValidator(SchemaManager schemaManager, RegisterPartitionManager registerPartitionManager, PermissionService permissionService,
-                      BinaryPartitionManager binaryPartitionManager, ControlledListManager controlledListManager) {
-        this.schemaManager = schemaManager;
-        this.registerPartitionManager = registerPartitionManager;
+    PropertyValidator(SchemaService schemaService, RegisterStoreReader registerStore, PermissionService permissionService,
+                      BinaryStore binaryStore, ControlledListService controlledListService) {
+        this.schemaService = schemaService;
+        this.registerStore = registerStore;
         this.permissionService = permissionService;
-        this.binaryPartitionManager = binaryPartitionManager;
-        this.controlledListManager = controlledListManager;
+        this.binaryStore = binaryStore;
+        this.controlledListService = controlledListService;
     }
 
     private PropertyScope itemScope(UUID itemTypeId) {
-        return schemaManager.getAdminSchema().items().stream()
+        return schemaService.getAdminSchema().items().stream()
                 .filter(item -> item.id().equals(itemTypeId))
                 .findFirst()
                 .map(item -> PropertyScope.of(item.properties(), item.groups()))
@@ -61,7 +61,7 @@ class PropertyValidator {
     }
 
     private PropertyScope linkScope(UUID linkTypeId) {
-        return schemaManager.getAdminSchema().links().stream()
+        return schemaService.getAdminSchema().links().stream()
                 .filter(link -> link.id().equals(linkTypeId))
                 .findFirst()
                 .map(link -> PropertyScope.of(link.properties(), link.groups()))
@@ -81,7 +81,7 @@ class PropertyValidator {
     }
 
     void checkRequiredLinkPropertiesOnUpdate(UUID linkTypeId, UUID linkId, Map<UUID, Object> propertiesDiff, String path, List<ValidationError> errors) {
-        Map<UUID, Object> merged = registerPartitionManager.resolveMergedLinkPropertiesById(linkId, linkTypeId, propertiesDiff);
+        Map<UUID, Object> merged = registerStore.resolveMergedLinkPropertiesById(linkId, linkTypeId, propertiesDiff);
         checkRequiredPropertiesById(linkScope(linkTypeId), merged, path, errors);
     }
 
@@ -131,7 +131,7 @@ class PropertyValidator {
     // retroactively touched or invalidated (same philosophy as isAbstractItemType's own one-way
     // check: a schema change only ever blocks new writes, never rewrites or deletes existing data).
     // But the next write to *this* item has to leave it satisfying the schema as it stands today, so
-    // this checks the item's own *resulting* state -- registerPartitionManager's own current
+    // this checks the item's own *resulting* state -- registerStore's own current
     // register row merged with this update's diff (resolveMergedPropertiesById, the same merge
     // PipelineMarkerDecisionService.enrichUpdate uses to evaluate pipeline predicates against an
     // about-to-be-committed item) -- not just the diff in isolation the way
@@ -139,7 +139,7 @@ class PropertyValidator {
     // mentions at all still has to end up with a real value, which is exactly what merging onto the
     // current row (rather than just checking the diff) catches.
     void checkRequiredItemPropertiesOnUpdate(UUID itemTypeId, UUID itemId, Map<UUID, Object> propertiesDiff, String path, List<ValidationError> errors) {
-        Map<UUID, Object> merged = registerPartitionManager.resolveMergedPropertiesById(itemId, itemTypeId, propertiesDiff);
+        Map<UUID, Object> merged = registerStore.resolveMergedPropertiesById(itemId, itemTypeId, propertiesDiff);
         checkRequiredPropertiesById(itemScope(itemTypeId), merged, path, errors);
     }
 
@@ -361,7 +361,7 @@ class PropertyValidator {
             errors.add(new ValidationError(path, PROPERTY_QUOTE_PREFIX + property.name() + "' is not a valid binary id: " + s));
             return;
         }
-        if (binaryPartitionManager.getBinaryProperty(binaryId).isEmpty()) {
+        if (binaryStore.getBinaryProperty(binaryId).isEmpty()) {
             errors.add(new ValidationError(path, PROPERTY_QUOTE_PREFIX + property.name() + "' references a binary that does not exist: " + s));
         }
     }
@@ -383,7 +383,7 @@ class PropertyValidator {
         }
         // Applies identically whether this call is validating a SINGLE property's own value or one
         // element of a LIST/SET property's value list -- both route through this one method.
-        if (property.controlledListId() != null && !controlledListManager.containsValue(property.controlledListId(), property.type(), value)) {
+        if (property.controlledListId() != null && !controlledListService.containsValue(property.controlledListId(), property.type(), value)) {
             errors.add(new ValidationError(path,
                     PROPERTY_QUOTE_PREFIX + property.name() + "' value is not in its controlled list: " + describeValue(value)));
         }

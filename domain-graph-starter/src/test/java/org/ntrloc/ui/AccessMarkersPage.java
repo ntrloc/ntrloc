@@ -399,9 +399,12 @@ class AccessMarkersPage {
         return driver.findElement(DIALOG);
     }
 
+    // Waits for the row: the list loads after the view appears, so a marker created just before
+    // open() may not be listed yet.
     private WebElement markerRow(String markerName) {
-        return view().findElement(By.xpath(".//ul[contains(@class,'access-markers-list')]/li[span[contains(@class,'access-marker-name')][.='"
-                + markerName + "']]"));
+        By row = By.xpath(".//ul[contains(@class,'access-markers-list')]/li[span[contains(@class,'access-marker-name')][.='"
+                + markerName + "']]");
+        return await().until(d -> view().findElement(row));
     }
 
     private void clickDialogButton() {

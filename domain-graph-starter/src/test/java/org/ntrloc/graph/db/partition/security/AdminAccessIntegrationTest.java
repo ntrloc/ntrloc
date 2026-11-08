@@ -4,7 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.ntrloc.graph.AbstractIntegrationTest;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -32,11 +32,11 @@ class AdminAccessIntegrationTest extends AbstractIntegrationTest {
     private WebTestClient webTestClient;
 
     @Autowired
-    private SecurityRepository securityRepo;
+    private UserStore userStore;
 
-    private SecurityRepository.UserRow createUser(boolean isAdmin) {
-        var user = securityRepo.createUser("Admin Access User", "admin-access-" + UUID.randomUUID() + "@example.com", isAdmin);
-        securityRepo.createLocalCredentials(user.id(), "{bcrypt}" + new BCryptPasswordEncoder().encode(PASSWORD));
+    private UserStore.UserRow createUser(boolean isAdmin) {
+        var user = userStore.createUser("Admin Access User", "admin-access-" + UUID.randomUUID() + "@example.com", isAdmin);
+        userStore.createLocalCredentials(user.id(), "{bcrypt}" + new BCryptPasswordEncoder().encode(PASSWORD));
         return user;
     }
 
@@ -62,7 +62,7 @@ class AdminAccessIntegrationTest extends AbstractIntegrationTest {
         return session;
     }
 
-    private void setAdmin(SecurityRepository.UserRow user, boolean isAdmin) {
+    private void setAdmin(UserStore.UserRow user, boolean isAdmin) {
         webTestClient.put().uri("/api/admin/users/" + user.id())
                 .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com"))
                 .contentType(MediaType.APPLICATION_JSON)

@@ -1,7 +1,9 @@
 package org.ntrloc.graph.db.partition.security;
 
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository.PersonalAccessTokenRow;
+import org.ntrloc.graph.principal.NtrlocPrincipal;
+
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
+import org.ntrloc.graph.db.partition.security.repository.UserStore.PersonalAccessTokenRow;
 import org.springframework.stereotype.Service;
 
 import java.nio.charset.StandardCharsets;
@@ -21,10 +23,10 @@ public class PersonalAccessTokenService {
     private static final String TOKEN_PREFIX = "";
     private static final SecureRandom RANDOM = new SecureRandom();
 
-    private final SecurityRepository repo;
+    private final UserStore store;
 
-    public PersonalAccessTokenService(SecurityRepository repo) {
-        this.repo = repo;
+    public PersonalAccessTokenService(UserStore store) {
+        this.store = store;
     }
 
     /** The raw token is included here and nowhere else — it's never stored, only its hash is. */
@@ -33,31 +35,31 @@ public class PersonalAccessTokenService {
     public IssuedToken issue(NtrlocPrincipal principal, String name, Integer expiresInDays) {
         String rawToken = generateToken();
         OffsetDateTime expiresAt = expiresInDays == null ? null : OffsetDateTime.now(ZoneOffset.UTC).plusDays(expiresInDays);
-        UUID id = repo.createPersonalAccessToken(principal.id(), hash(rawToken), name, expiresAt);
+        UUID id = store.createPersonalAccessToken(principal.id(), hash(rawToken), name, expiresAt);
         return new IssuedToken(id, name, rawToken, expiresAt);
     }
 
     public List<PersonalAccessTokenRow> list(NtrlocPrincipal principal) {
-        return repo.listTokensForUser(principal.id());
+        return store.listTokensForUser(principal.id());
     }
 
     public List<PersonalAccessTokenRow> listForUser(UUID userId) {
-        return repo.listTokensForUser(userId);
+        return store.listTokensForUser(userId);
     }
 
     public IssuedToken issueForUser(UUID userId, String name, Integer expiresInDays) {
         String rawToken = generateToken();
         OffsetDateTime expiresAt = expiresInDays == null ? null : OffsetDateTime.now(ZoneOffset.UTC).plusDays(expiresInDays);
-        UUID id = repo.createPersonalAccessToken(userId, hash(rawToken), name, expiresAt);
+        UUID id = store.createPersonalAccessToken(userId, hash(rawToken), name, expiresAt);
         return new IssuedToken(id, name, rawToken, expiresAt);
     }
 
     public void revokeForUser(UUID userId, UUID tokenId) {
-        repo.revokeToken(tokenId, userId);
+        store.revokeToken(tokenId, userId);
     }
 
     public void revoke(NtrlocPrincipal principal, UUID tokenId) {
-        repo.revokeToken(tokenId, principal.id());
+        store.revokeToken(tokenId, principal.id());
     }
 
     private static String generateToken() {
@@ -67,7 +69,7 @@ public class PersonalAccessTokenService {
     }
 
     // Package-private: ExternalPrincipalResolver.byToken looks a presented token up by this hash.
-    static String hash(String rawToken) {
+    public static String hash(String rawToken) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] hashed = digest.digest(rawToken.getBytes(StandardCharsets.UTF_8));

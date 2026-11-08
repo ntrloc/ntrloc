@@ -11,7 +11,7 @@ import java.util.UUID;
 // Scoped by watched facts, not just item type: a pipeline bound to an item type that doesn't watch
 // anything in changedFactIds has no reason to run (see WatchDerivation) -- pushing that filter into
 // the source itself (a single indexed lookup against each pipeline's precomputed watch set, for the
-// one real implementation, MarkerDecisionPipelineRepository) means a mutation never pays to walk,
+// one real implementation, MarkerDecisionPipelineStore) means a mutation never pays to walk,
 // deserialize, or evaluate a pipeline it was never going to fire.
 public interface PipelineSource {
 

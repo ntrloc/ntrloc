@@ -9,8 +9,8 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 import org.ntrloc.graph.db.partition.ledger.LinkEndpoint;
-import org.ntrloc.graph.db.partition.register.RegisterPartitionManager;
-import org.ntrloc.graph.db.partition.schema.SchemaManager;
+import org.ntrloc.graph.db.partition.register.RegisterStoreReader;
+import org.ntrloc.graph.db.partition.schema.SchemaService;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemLinkPerspectiveView;
 import org.springframework.stereotype.Component;
 
@@ -22,12 +22,12 @@ class LinkEndpointResolver {
 
     record ResolvedLink(UUID linkTypeId, LinkEndpoint first, LinkEndpoint second) {}
 
-    private final SchemaManager schemaManager;
-    private final RegisterPartitionManager registerPartitionManager;
+    private final SchemaService schemaService;
+    private final RegisterStoreReader registerStore;
 
-    LinkEndpointResolver(SchemaManager schemaManager, RegisterPartitionManager registerPartitionManager) {
-        this.schemaManager = schemaManager;
-        this.registerPartitionManager = registerPartitionManager;
+    LinkEndpointResolver(SchemaService schemaService, RegisterStoreReader registerStore) {
+        this.schemaService = schemaService;
+        this.registerStore = registerStore;
     }
 
     // refIdToItemId/refIdToItemTypeId: the items created earlier in the same request, by refId.
@@ -69,7 +69,7 @@ class LinkEndpointResolver {
                 return Optional.empty();
             }
         } else if (ref.item() instanceof ExistingItemReference r) {
-            Optional<UUID> resolved = registerPartitionManager.findItemTypeId(r.itemId());
+            Optional<UUID> resolved = registerStore.findItemTypeId(r.itemId());
             if (resolved.isEmpty()) {
                 errors.add(new ValidationError(path + ".item.itemId", "Unknown item: " + r.itemId()));
                 return Optional.empty();
@@ -80,7 +80,7 @@ class LinkEndpointResolver {
             throw new IllegalArgumentException("Unsupported item reference: " + ref.item().getClass().getSimpleName());
         }
 
-        List<AdminItemLinkPerspectiveView> candidates = schemaManager.getAdminSchema().items().stream()
+        List<AdminItemLinkPerspectiveView> candidates = schemaService.getAdminSchema().items().stream()
                 .filter(item -> item.id().equals(itemTypeId))
                 .findFirst()
                 .map(item -> item.links().getOrDefault(ref.perspectiveName(), List.of()))

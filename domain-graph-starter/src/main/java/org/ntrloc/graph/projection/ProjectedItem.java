@@ -9,12 +9,12 @@ import java.util.Map;
 import java.util.UUID;
 
 // states is keyed by state machine name (resolved from the register's id-keyed storage at
-// assembly time -- see RegisterPartitionManager's own comments on this), a sibling of properties,
+// assembly time -- see RegisterStore's own comments on this), a sibling of properties,
 // not folded into it: state-machine info is a distinct concept from an item's own properties. Null
 // (not an empty map) for the common case of an item type with no state machines at all.
 //
 // displayLabel is always populated (never null in practice) -- computed at assembly time from the
-// item type's effective display-label pattern (RegisterPartitionManager.computeDisplayLabel), or
+// item type's effective display-label pattern (ProjectionEngine.computeDisplayLabel), or
 // the item's own id if no pattern is configured or evaluation failed. Every UI consumer should use
 // this directly rather than guessing a label from properties.
 //
@@ -23,12 +23,11 @@ import java.util.UUID;
 // non-admin only sees an item at all because one of its markers is granted, this list is
 // non-empty in practice for them. Currently only populated on the top-level projected item, not on
 // any item reached through a link's own nested ProjectedItem -- a real follow-up, not an oversight
-// (RegisterPartitionManager.fetchLinksByItem skips fetching marker ids at all for an admin
-// today, purely as a filtering-cost optimization that predates this field existing).
+// (the store now returns every linked item's marker ids, so it's an assembly change).
 //
 // createdDate/createdBy read straight off the register row -- that row already carries the
 // authoritative values (set at staging/commit time by LedgerRegisterCoordinatorImpl, see
-// RegisterPartitionManager.insertItemRow's own comment), so this is never a ledger read at
+// RegisterStore.insertItemRow's own comment), so this is never a ledger read at
 // projection time. createdDate/createdBy never change after the item's first commit, no matter
 // how many updates follow.
 //
@@ -38,9 +37,9 @@ import java.util.UUID;
 // recent update's actor/time, same as createdDate/createdBy do for creation.
 //
 // createdBy/updatedBy are UserInfo, resolved from the register row's own raw
-// createdByUserId/updatedByUserId -- RegisterPartitionManager populates only the *UserId fields
+// createdByUserId/updatedByUserId -- RegisterStore populates only the *UserId fields
 // (register must never import the security partition, directly or via an injected resolver: it
-// has no way to produce a real UserInfo), leaving createdBy/updatedBy null; EntityManagerImpl
+// has no way to produce a real UserInfo), leaving createdBy/updatedBy null; EntityReadService
 // (which already legitimately crosses partition boundaries) resolves them afterward, batched
 // across the whole page, before anything reaches a controller. createdByUserId/updatedByUserId
 // are @JsonIgnore -- an implementation seam for that enrichment step, never part of the actual

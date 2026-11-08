@@ -1,6 +1,10 @@
 package org.ntrloc.graph.db.partition.security;
 
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.principal.ExternalPrincipalResolver;
+
+import org.ntrloc.graph.principal.NtrlocPrincipal;
+
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -23,13 +27,13 @@ import java.util.Optional;
 public class LocalAuthenticationProvider implements AuthenticationProvider {
 
     private final ExternalPrincipalResolver principals;
-    private final SecurityRepository repo;
+    private final UserStore store;
     private final PasswordEncoder passwordEncoder = PasswordEncoderFactories.createDelegatingPasswordEncoder();
     private final String unknownUserHash = passwordEncoder.encode("unknown-user");
 
-    public LocalAuthenticationProvider(ExternalPrincipalResolver principals, SecurityRepository repo) {
+    public LocalAuthenticationProvider(ExternalPrincipalResolver principals, UserStore store) {
         this.principals = principals;
-        this.repo = repo;
+        this.store = store;
     }
 
     @Override
@@ -38,10 +42,10 @@ public class LocalAuthenticationProvider implements AuthenticationProvider {
         String password = String.valueOf(authentication.getCredentials());
 
         Optional<NtrlocPrincipal> principal = principals.byEmail(email);
-        Optional<SecurityRepository.LocalCredentialsRow> credentials =
-                principal.flatMap(p -> repo.findCredentialsByUserId(p.id()));
+        Optional<UserStore.LocalCredentialsRow> credentials =
+                principal.flatMap(p -> store.findCredentialsByUserId(p.id()));
         boolean passwordMatches = passwordEncoder.matches(password,
-                credentials.map(SecurityRepository.LocalCredentialsRow::passwordHash).orElse(unknownUserHash));
+                credentials.map(UserStore.LocalCredentialsRow::passwordHash).orElse(unknownUserHash));
 
         if (credentials.isEmpty() || !credentials.get().active() || !passwordMatches) {
             throw new BadCredentialsException("Bad credentials");

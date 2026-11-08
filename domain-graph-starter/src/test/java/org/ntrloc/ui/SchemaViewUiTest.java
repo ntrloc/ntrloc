@@ -9,7 +9,7 @@ import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.ntrloc.graph.db.partition.schema.SchemaManager;
+import org.ntrloc.graph.db.partition.schema.SchemaService;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyUsage;
@@ -27,7 +27,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 /**
  * The Schema view, end to end: a real user signs in and browses item types, traits, and controlled
  * lists -- each item type's Structure (overview, property tree, links) and state machine diagrams --
- * for a schema created through the same SchemaManager the application itself uses. Nothing here
+ * for a schema created through the same SchemaService the application itself uses. Nothing here
  * changes the schema, so the fixture is shared by every test; SchemaEditingUiTest covers editing.
  */
 class SchemaViewUiTest extends AbstractUiIntegrationTest {
@@ -41,7 +41,7 @@ class SchemaViewUiTest extends AbstractUiIntegrationTest {
     private static UUID bookTypeId;
 
     @Autowired
-    private SchemaManager schemaManager;
+    private SchemaService schemaService;
 
     private SchemaPage schema;
 
@@ -305,7 +305,7 @@ class SchemaViewUiTest extends AbstractUiIntegrationTest {
                 publicationTypeId, false, List.of(trackedTraitId)).id();
         UUID authorTypeId = testData.createItemType(AUTHOR_TYPE, "name", List.of(property("name", PropertyType.STRING)), List.of()).id();
 
-        schemaManager.applyMutations(List.of(
+        schemaService.applyMutations(List.of(
                 new CreateLinkDefinitionMutation(
                         List.of(described("role", PropertyType.STRING, "The author's role")),
                         List.of(

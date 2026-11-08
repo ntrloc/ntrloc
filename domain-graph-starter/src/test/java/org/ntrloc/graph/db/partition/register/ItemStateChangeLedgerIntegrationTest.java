@@ -1,12 +1,14 @@
 package org.ntrloc.graph.db.partition.register;
 
+import org.ntrloc.graph.projection.ProjectionEngine;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.coordinator.LedgerRegisterCoordinator;
 import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
 import org.ntrloc.graph.db.partition.ledger.ItemUpdateEntry;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.db.partition.schema.SchemaService;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
@@ -22,8 +24,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 // populated, staged/committed through the same LedgerRegisterCoordinator every other mutation uses,
 // not a direct, unaudited register UPDATE. This covers that write path specifically -- read-side
 // behavior (projectOne reflecting the new state, StateValuePredicate filtering, state facets) is
-// already covered by RegisterPartitionManagerProjectionIntegrationTest and unaffected. The real
-// transition entry points (EntityManager.startStateMachine / executeTransition) are covered end to
+// already covered by ProjectionEngineIntegrationTest and unaffected. The real
+// transition entry points (EntityWriteService.startStateMachine / executeTransition) are covered end to
 // end by StateMachineExecutionIntegrationTest; here we drive the coordinator directly so the write
 // path is tested in isolation from START-pseudostate wiring and permission checks.
 class ItemStateChangeLedgerIntegrationTest extends AbstractIntegrationTest {
@@ -32,7 +34,11 @@ class ItemStateChangeLedgerIntegrationTest extends AbstractIntegrationTest {
     private LedgerRegisterCoordinator coordinator;
 
     @Autowired
-    private RegisterPartitionManager registerPartitionManager;
+
+    private ProjectionEngine projectionEngine;
+
+    @Autowired
+    private SchemaService schemaService;
 
     @Autowired
     private RegisterProjectionTestDomainInitializer fixture;
@@ -41,7 +47,7 @@ class ItemStateChangeLedgerIntegrationTest extends AbstractIntegrationTest {
     private JdbcClient jdbcClient;
 
     @Autowired
-    private SecurityRepository securityRepo;
+    private UserStore userStore;
 
     // ledger_entry.created_by/register_item.created_by (Part E) are NOT NULL FKs to
     // security_user.id -- every coordinator.prepare call below needs a real, backed actor.
@@ -49,7 +55,7 @@ class ItemStateChangeLedgerIntegrationTest extends AbstractIntegrationTest {
 
     @BeforeEach
     void setUpActor() {
-        actor = securityRepo.createUser("State Change Test Actor", "iscl-actor-" + UUID.randomUUID() + "@example.com", true).id();
+        actor = userStore.createUser("State Change Test Actor", "iscl-actor-" + UUID.randomUUID() + "@example.com", true).id();
     }
 
     private UUID createBook(String title) {
@@ -62,8 +68,8 @@ class ItemStateChangeLedgerIntegrationTest extends AbstractIntegrationTest {
     }
 
     private void setState(UUID itemId, String machineName, String stateName) {
-        UUID smId = registerPartitionManager.resolveStateMachineId(fixture.bookTypeId(), machineName);
-        UUID stateId = registerPartitionManager.resolveStateId(smId, stateName);
+        UUID smId = schemaService.resolveStateMachineId(fixture.bookTypeId(), machineName);
+        UUID stateId = schemaService.resolveStateId(smId, stateName);
         UUID txn = UUID.randomUUID();
         coordinator.prepare(List.of(new ItemUpdateEntry(itemId, Map.of(), Map.of(smId, stateId), Set.of(), Set.of(), Set.of())), txn, actor, OffsetDateTime.now());
         coordinator.commit(txn, UUID.randomUUID());
@@ -98,7 +104,7 @@ class ItemStateChangeLedgerIntegrationTest extends AbstractIntegrationTest {
         coordinator.prepare(List.of(new ItemUpdateEntry(bookId, Map.of(fixture.pageCountPropertyId(), 250), Map.of(), Set.of(), Set.of(), Set.of())), updateTxn, actor, OffsetDateTime.now());
         coordinator.commit(updateTxn, UUID.randomUUID());
 
-        var book = registerPartitionManager.projectOne(fixture.bookTypeId(), bookId, "http://binary").orElseThrow();
+        var book = projectionEngine.projectOne(fixture.bookTypeId(), bookId, "http://binary").orElseThrow();
         assertThat(book.states().get(RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE).currentState())
                 .isEqualTo(RegisterProjectionTestDomainInitializer.OUT_OF_STOCK);
         assertThat(book.properties()).containsEntry("pageCount", 250);
@@ -114,7 +120,7 @@ class ItemStateChangeLedgerIntegrationTest extends AbstractIntegrationTest {
         setState(bookId, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE,
                 RegisterProjectionTestDomainInitializer.OUT_OF_STOCK);
 
-        var book = registerPartitionManager.projectOne(fixture.bookTypeId(), bookId, "http://binary").orElseThrow();
+        var book = projectionEngine.projectOne(fixture.bookTypeId(), bookId, "http://binary").orElseThrow();
         assertThat(book.properties()).containsEntry("title", "Symmetric Test Book");
         assertThat(book.properties()).containsEntry("pageCount", 400);
         assertThat(book.states().get(RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE).currentState())
@@ -127,9 +133,9 @@ class ItemStateChangeLedgerIntegrationTest extends AbstractIntegrationTest {
         // that need reconciling -- this proves one entry with both facets populated produces exactly
         // one committed row carrying both changes, with a single ledger entry recording them together.
         UUID bookId = createBook("Combined Change Book");
-        UUID stateMachineId = registerPartitionManager.resolveStateMachineId(fixture.bookTypeId(),
+        UUID stateMachineId = schemaService.resolveStateMachineId(fixture.bookTypeId(),
                 RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE);
-        UUID stateId = registerPartitionManager.resolveStateId(stateMachineId,
+        UUID stateId = schemaService.resolveStateId(stateMachineId,
                 RegisterProjectionTestDomainInitializer.OUT_OF_STOCK);
 
         UUID txn = UUID.randomUUID();
@@ -137,7 +143,7 @@ class ItemStateChangeLedgerIntegrationTest extends AbstractIntegrationTest {
                 Map.of(stateMachineId, stateId), Set.of(), Set.of(), Set.of())), txn, actor, OffsetDateTime.now());
         coordinator.commit(txn, UUID.randomUUID());
 
-        var book = registerPartitionManager.projectOne(fixture.bookTypeId(), bookId, "http://binary").orElseThrow();
+        var book = projectionEngine.projectOne(fixture.bookTypeId(), bookId, "http://binary").orElseThrow();
         assertThat(book.properties()).containsEntry("pageCount", 500);
         assertThat(book.states().get(RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE).currentState())
                 .isEqualTo(RegisterProjectionTestDomainInitializer.OUT_OF_STOCK);

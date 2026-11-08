@@ -1,9 +1,9 @@
 package org.ntrloc.graph.db.partition.authorization;
 
 import jakarta.annotation.PostConstruct;
-import org.ntrloc.graph.db.partition.authorization.repository.AuthorizationRepository;
+import org.ntrloc.graph.db.partition.authorization.repository.AccessStoreWriter;
 import org.ntrloc.graph.db.partition.schema.event.SchemaChangeEvent;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.boot.sql.init.dependency.DependsOnDatabaseInitialization;
 import org.springframework.context.event.EventListener;
@@ -25,34 +25,34 @@ public class DefaultUserGroupInitializer {
 
     public static final String DEFAULT_GROUP_NAME = "everyone";
 
-    private final SecurityRepository securityRepo;
-    private final AuthorizationRepository authorizationRepo;
+    private final UserStore userStore;
+    private final AccessStoreWriter accessWriter;
     private final JdbcClient jdbcClient;
 
-    public DefaultUserGroupInitializer(SecurityRepository securityRepo, AuthorizationRepository authorizationRepo,
+    public DefaultUserGroupInitializer(UserStore userStore, AccessStoreWriter accessWriter,
                                     JdbcClient jdbcClient) {
-        this.securityRepo = securityRepo;
-        this.authorizationRepo = authorizationRepo;
+        this.userStore = userStore;
+        this.accessWriter = accessWriter;
         this.jdbcClient = jdbcClient;
     }
 
     @PostConstruct
     void ensureUserGroupExists() {
-        if (securityRepo.findUserGroupByName(DEFAULT_GROUP_NAME).isEmpty()) {
-            securityRepo.createUserGroup(DEFAULT_GROUP_NAME);
+        if (userStore.findUserGroupByName(DEFAULT_GROUP_NAME).isEmpty()) {
+            userStore.createUserGroup(DEFAULT_GROUP_NAME);
         }
     }
 
     @EventListener(ApplicationReadyEvent.class)
     void populateAfterStartup() {
-        var group = securityRepo.findUserGroupByName(DEFAULT_GROUP_NAME).orElseThrow();
+        var group = userStore.findUserGroupByName(DEFAULT_GROUP_NAME).orElseThrow();
         addAllExistingUsersToUserGroup(group.id());
         grantReadForUncoveredItemTypes(group.id());
     }
 
     @EventListener
     public void onItemTypeCreated(SchemaChangeEvent.ItemTypeCreated event) {
-        var group = securityRepo.findUserGroupByName(DEFAULT_GROUP_NAME).orElseThrow();
+        var group = userStore.findUserGroupByName(DEFAULT_GROUP_NAME).orElseThrow();
         grantReadForItemType(event.itemTypeId(), group.id());
     }
 
@@ -64,7 +64,7 @@ public class DefaultUserGroupInitializer {
     }
 
     public UUID getDefaultUserGroupId() {
-        return securityRepo.findUserGroupByName(DEFAULT_GROUP_NAME).orElseThrow().id();
+        return userStore.findUserGroupByName(DEFAULT_GROUP_NAME).orElseThrow().id();
     }
 
     // Every user-creation path (UserAdminController, LocalAccountSeeder,
@@ -75,7 +75,7 @@ public class DefaultUserGroupInitializer {
     // (Spring fully initializes a bean, @PostConstruct included, before handing it to a dependent
     // bean's constructor), so getDefaultUserGroupId() below never races the group's own creation.
     public void addUserToDefaultUserGroup(UUID userId) {
-        securityRepo.addUserToUserGroup(userId, getDefaultUserGroupId());
+        userStore.addUserToUserGroup(userId, getDefaultUserGroupId());
     }
 
     private void addAllExistingUsersToUserGroup(UUID groupId) {
@@ -99,7 +99,7 @@ public class DefaultUserGroupInitializer {
     }
 
     private void grantReadForItemType(UUID itemTypeId, UUID groupId) {
-        authorizationRepo.grantItemTypeIfAbsent(itemTypeId, "USER_GROUP", groupId, PermissionService.ITEM_TYPE_READ);
+        accessWriter.grantItemTypeIfAbsent(itemTypeId, "USER_GROUP", groupId, PermissionService.ITEM_TYPE_READ);
         jdbcClient.sql("UPDATE schema_item SET default_visibility_decided = TRUE WHERE id = :itemTypeId")
                 .param("itemTypeId", itemTypeId).update();
     }

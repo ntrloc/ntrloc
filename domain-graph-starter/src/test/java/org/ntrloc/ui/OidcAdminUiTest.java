@@ -7,7 +7,7 @@ import org.junit.jupiter.api.TestInfo;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.ntrloc.graph.TestApplication;
 import org.ntrloc.graph.TestDatabases;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.ntrloc.graph.security.KeycloakContainers;
 import org.ntrloc.graph.security.OidcProviderService;
 import org.openqa.selenium.By;
@@ -72,7 +72,7 @@ class OidcAdminUiTest implements UiBrowser.Holder {
     private int port;
 
     @Autowired
-    private SecurityRepository securityRepo;
+    private UserStore userStore;
 
     private UiBrowser browser;
 
@@ -109,7 +109,7 @@ class OidcAdminUiTest implements UiBrowser.Holder {
 
     @Test
     void anNtrlocAdmin_signingInThroughKeycloak_getsTheAdminUi() {
-        securityRepo.createUser("Admin User", "admin.user@example.org", true);
+        userStore.createUser("Admin User", "admin.user@example.org", true);
 
         openAdminUiThroughKeycloakAs("admin.user", "/schema");
 
@@ -119,7 +119,7 @@ class OidcAdminUiTest implements UiBrowser.Holder {
 
     @Test
     void aNonAdmin_signingInThroughKeycloak_isForbiddenFromTheAdminUi() {
-        securityRepo.createUser("Plain User", "plain.user@example.org", false);
+        userStore.createUser("Plain User", "plain.user@example.org", false);
 
         openAdminUiThroughKeycloakAs("plain.user", "/schema");
 

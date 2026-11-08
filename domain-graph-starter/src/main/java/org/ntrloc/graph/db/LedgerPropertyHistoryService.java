@@ -4,8 +4,8 @@ import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
 import org.ntrloc.graph.db.partition.ledger.ItemUpdateEntry;
 import org.ntrloc.graph.db.partition.ledger.LedgerEntry;
 import org.ntrloc.graph.db.partition.ledger.LedgerEntryRecord;
-import org.ntrloc.graph.db.partition.ledger.LedgerPartitionManager;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.db.partition.ledger.LedgerStoreReader;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.springframework.stereotype.Service;
 
 import java.time.OffsetDateTime;
@@ -16,8 +16,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-// Lives at the top level (alongside EntityManager), not inside the ledger package, for the same
-// reason EntityManagerImpl does: it crosses partition boundaries (ledger + security) that
+// Lives at the top level (alongside EntityReadService/EntityWriteService), not inside the ledger package, for the same
+// reason they do: it crosses partition boundaries (ledger + security) that
 // LedgerRegisterCoordinator's own "the only component permitted to import both ledger and
 // register" rule was never meant to extend to.
 @Service
@@ -31,12 +31,12 @@ public class LedgerPropertyHistoryService {
     public record PropertyHistoryEntry(OffsetDateTime editedOn, UUID editedByUserId, String editedByDisplayName, Object value) {
     }
 
-    private final LedgerPartitionManager ledgerPartitionManager;
-    private final SecurityRepository securityRepository;
+    private final LedgerStoreReader ledgerStore;
+    private final UserStore userStore;
 
-    public LedgerPropertyHistoryService(LedgerPartitionManager ledgerPartitionManager, SecurityRepository securityRepository) {
-        this.ledgerPartitionManager = ledgerPartitionManager;
-        this.securityRepository = securityRepository;
+    public LedgerPropertyHistoryService(LedgerStoreReader ledgerStore, UserStore userStore) {
+        this.ledgerStore = ledgerStore;
+        this.userStore = userStore;
     }
 
     // Most-recent-first, matching how an edit-history view is normally read -- readItemStream*
@@ -44,7 +44,7 @@ public class LedgerPropertyHistoryService {
     // materialization needs.
     public List<PropertyHistoryEntry> history(UUID itemId, UUID propertyId) {
         Map<UUID, String> displayNameCache = new HashMap<>();
-        List<PropertyHistoryEntry> entries = ledgerPartitionManager.readItemStreamWithMetadata(itemId).stream()
+        List<PropertyHistoryEntry> entries = ledgerStore.readItemStreamWithMetadata(itemId).stream()
                 .filter(ledgerRecord -> touchesProperty(ledgerRecord.entry(), propertyId))
                 .map(ledgerRecord -> toHistoryEntry(ledgerRecord, propertyId, displayNameCache))
                 .toList();
@@ -71,8 +71,8 @@ public class LedgerPropertyHistoryService {
     }
 
     private String resolveDisplayName(UUID userId) {
-        return securityRepository.findUserById(userId)
-                .map(SecurityRepository.UserRow::displayName)
+        return userStore.findUserById(userId)
+                .map(UserStore.UserRow::displayName)
                 .orElse(null);
     }
 }

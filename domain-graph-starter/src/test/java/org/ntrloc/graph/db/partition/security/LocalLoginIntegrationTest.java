@@ -2,7 +2,7 @@ package org.ntrloc.graph.db.partition.security;
 
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -24,15 +24,15 @@ class LocalLoginIntegrationTest extends AbstractIntegrationTest {
     private WebTestClient webTestClient;
 
     @Autowired
-    private SecurityRepository securityRepo;
+    private UserStore userStore;
 
     @Autowired
     private JdbcClient jdbcClient;
 
     private String createLocalUser() {
         String email = "Login.User-" + UUID.randomUUID() + "@Example.com";
-        var user = securityRepo.createUser("Login User", email, false);
-        securityRepo.createLocalCredentials(user.id(), "{bcrypt}" + new BCryptPasswordEncoder().encode(PASSWORD));
+        var user = userStore.createUser("Login User", email, false);
+        userStore.createLocalCredentials(user.id(), "{bcrypt}" + new BCryptPasswordEncoder().encode(PASSWORD));
         return email;
     }
 
@@ -82,7 +82,7 @@ class LocalLoginIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void signingInAsAUserWithoutLocalCredentials_fails() {
-        var user = securityRepo.createUser("No Local Login", "no-local-" + UUID.randomUUID() + "@example.com", false);
+        var user = userStore.createUser("No Local Login", "no-local-" + UUID.randomUUID() + "@example.com", false);
 
         assertLoginFails(user.email(), PASSWORD);
     }

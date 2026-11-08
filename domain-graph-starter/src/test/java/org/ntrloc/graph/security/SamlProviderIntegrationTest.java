@@ -3,7 +3,7 @@ package org.ntrloc.graph.security;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.TestDatabases;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseCookie;
 import org.springframework.jdbc.core.simple.JdbcClient;
@@ -37,7 +37,7 @@ class SamlProviderIntegrationTest extends AbstractSamlIntegrationTest {
     }
 
     @Autowired
-    private SecurityRepository securityRepo;
+    private UserStore userStore;
 
     @Autowired
     private JdbcClient jdbcClient;
@@ -62,8 +62,8 @@ class SamlProviderIntegrationTest extends AbstractSamlIntegrationTest {
         registerAtIdp(false);
         assertThat(new Browser().idpAsksForPassword()).isTrue();
 
-        securityRepo.findUserByEmail("existing.user@example.org")
-                .orElseGet(() -> securityRepo.createUser("Existing User", "existing.user@example.org", false));
+        userStore.findUserByEmail("existing.user@example.org")
+                .orElseGet(() -> userStore.createUser("Existing User", "existing.user@example.org", false));
         assertThat(me(logIn("existing.user"))).containsEntry("email", "existing.user@example.org");
     }
 
@@ -205,13 +205,13 @@ class SamlProviderIntegrationTest extends AbstractSamlIntegrationTest {
     }
 
     private void account(String email) {
-        securityRepo.findUserByEmail(email).orElseGet(() -> securityRepo.createUser("Existing User", email, false));
+        userStore.findUserByEmail(email).orElseGet(() -> userStore.createUser("Existing User", email, false));
     }
 
     private ResponseCookie logInLocally(boolean isAdmin) {
         String email = "local-" + UUID.randomUUID() + "@example.com";
-        var user = securityRepo.createUser("Local User", email, isAdmin);
-        securityRepo.createLocalCredentials(user.id(), "{bcrypt}" + new BCryptPasswordEncoder().encode("local-secret"));
+        var user = userStore.createUser("Local User", email, isAdmin);
+        userStore.createLocalCredentials(user.id(), "{bcrypt}" + new BCryptPasswordEncoder().encode("local-secret"));
         return webTestClient.post().uri("/login")
                 .body(BodyInserters.fromFormData("username", email).with("password", "local-secret"))
                 .exchange()

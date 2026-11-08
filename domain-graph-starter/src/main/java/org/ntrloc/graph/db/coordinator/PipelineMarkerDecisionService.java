@@ -7,11 +7,11 @@ import org.ntrloc.graph.access.WatchDerivation;
 import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
 import org.ntrloc.graph.db.partition.ledger.ItemUpdateEntry;
 import org.ntrloc.graph.db.partition.ledger.LedgerEntry;
-import org.ntrloc.graph.db.partition.ledger.LedgerPartitionManager;
+import org.ntrloc.graph.db.partition.ledger.LedgerStoreReader;
 import org.ntrloc.graph.db.partition.ledger.ManuallyAppliedMarker;
 import org.ntrloc.graph.db.partition.ledger.MarkerAttribution;
 import org.ntrloc.graph.db.partition.ledger.PipelineAppliedMarker;
-import org.ntrloc.graph.db.partition.register.RegisterPartitionManager;
+import org.ntrloc.graph.db.partition.register.RegisterStoreReader;
 import org.springframework.stereotype.Service;
 
 import java.util.HashMap;
@@ -33,7 +33,7 @@ import java.util.UUID;
 // fetched, deserialized, or evaluated -- "bound to the type" and "relevant to this change" are
 // different questions, and only the second one gates execution.
 //
-// registerPartitionManager doubles as PipelineEvaluator's FactResolver -- a CountedPredicate whose
+// registerStore doubles as PipelineEvaluator's FactResolver -- a CountedPredicate whose
 // subject steps off a link (e.g. "do any of this item's photos have a portfolio in state X") now
 // resolves through the same real register reads every other traversal in this class already uses,
 // rather than ContextResolver's own still-standing StepToLink gap (reading a link's own properties,
@@ -42,14 +42,14 @@ import java.util.UUID;
 public class PipelineMarkerDecisionService {
 
     private final PipelineSource pipelineSource;
-    private final RegisterPartitionManager registerPartitionManager;
-    private final LedgerPartitionManager ledgerPartitionManager;
+    private final RegisterStoreReader registerStore;
+    private final LedgerStoreReader ledgerStore;
 
-    public PipelineMarkerDecisionService(PipelineSource pipelineSource, RegisterPartitionManager registerPartitionManager,
-                                          LedgerPartitionManager ledgerPartitionManager) {
+    public PipelineMarkerDecisionService(PipelineSource pipelineSource, RegisterStoreReader registerStore,
+                                          LedgerStoreReader ledgerStore) {
         this.pipelineSource = pipelineSource;
-        this.registerPartitionManager = registerPartitionManager;
-        this.ledgerPartitionManager = ledgerPartitionManager;
+        this.registerStore = registerStore;
+        this.ledgerStore = ledgerStore;
     }
 
     /** Pure: returns entries with markersAdded/markersRemoved (or initialMarkers) enriched wherever a pipeline watching one of this entry's actually-changed facts has a changed decision. Entries touching nothing any bound pipeline watches pass through unchanged. */
@@ -94,7 +94,7 @@ public class PipelineMarkerDecisionService {
         // pipeline decision here can only ever be an add.
         Set<MarkerAttribution> toAdd = new HashSet<>();
         for (Pipeline pipeline : pipelines) {
-            for (UUID markerId : PipelineEvaluator.evaluate(pipeline, e.properties(), e.itemId(), registerPartitionManager)) {
+            for (UUID markerId : PipelineEvaluator.evaluate(pipeline, e.properties(), e.itemId(), registerStore)) {
                 toAdd.add(new PipelineAppliedMarker(markerId, pipeline.id()));
             }
         }
@@ -108,13 +108,13 @@ public class PipelineMarkerDecisionService {
         Set<UUID> changedFacts = changedFacts(e);
         if (changedFacts.isEmpty()) return e;
 
-        UUID itemTypeId = registerPartitionManager.findItemTypeId(e.itemId()).orElse(null);
+        UUID itemTypeId = registerStore.findItemTypeId(e.itemId()).orElse(null);
         if (itemTypeId == null) return e; // defensive only -- an update always targets an existing, already-typed item
 
         List<Pipeline> pipelines = pipelineSource.pipelinesWatching(itemTypeId, changedFacts);
         if (pipelines.isEmpty()) return e;
 
-        Map<UUID, Object> merged = registerPartitionManager.resolveMergedPropertiesById(e.itemId(), itemTypeId, e.properties());
+        Map<UUID, Object> merged = registerStore.resolveMergedPropertiesById(e.itemId(), itemTypeId, e.properties());
         Map<UUID, UUID> currentPipelineAttribution = replayCurrentPipelineAttribution(e.itemId());
 
         Set<MarkerAttribution> toAdd = new HashSet<>();
@@ -133,7 +133,7 @@ public class PipelineMarkerDecisionService {
                                            Map<UUID, UUID> currentPipelineAttribution,
                                            Set<MarkerAttribution> toAdd, Set<MarkerAttribution> toRemove) {
         for (Pipeline pipeline : pipelines) {
-            Set<UUID> desired = PipelineEvaluator.evaluate(pipeline, merged, itemId, registerPartitionManager);
+            Set<UUID> desired = PipelineEvaluator.evaluate(pipeline, merged, itemId, registerStore);
             Set<UUID> currentlyHeld = currentlyHeldMarkers(currentPipelineAttribution, pipeline.id());
             for (UUID markerId : desired) {
                 if (!currentlyHeld.contains(markerId)) toAdd.add(new PipelineAppliedMarker(markerId, pipeline.id()));
@@ -159,7 +159,7 @@ public class PipelineMarkerDecisionService {
     // itself previously asserted.
     private Map<UUID, UUID> replayCurrentPipelineAttribution(UUID itemId) {
         Map<UUID, UUID> current = new HashMap<>();
-        for (LedgerEntry entry : ledgerPartitionManager.readItemStream(itemId)) {
+        for (LedgerEntry entry : ledgerStore.readItemStream(itemId)) {
             switch (entry) {
                 case ItemCreateEntry e -> e.initialMarkers().forEach(m -> putIfPipeline(current, m));
                 case ItemUpdateEntry e -> {

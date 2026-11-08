@@ -1,7 +1,7 @@
 package org.ntrloc.graph.db.partition.process;
 
 import jakarta.annotation.PostConstruct;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.sql.init.dependency.DependsOnDatabaseInitialization;
 import org.springframework.context.annotation.DependsOn;
@@ -14,13 +14,13 @@ import org.springframework.stereotype.Component;
 @DependsOnDatabaseInitialization
 public class ProcessGroupSeeder {
 
-    private final ProcessGroupRepository groupRepo;
-    private final SecurityRepository userRepo;
+    private final ProcessGroupStore groupStore;
+    private final UserStore userStore;
     private final JdbcClient jdbcClient;
 
-    public ProcessGroupSeeder(ProcessGroupRepository groupRepo, SecurityRepository userRepo, JdbcClient jdbcClient) {
-        this.groupRepo = groupRepo;
-        this.userRepo = userRepo;
+    public ProcessGroupSeeder(ProcessGroupStore groupStore, UserStore userStore, JdbcClient jdbcClient) {
+        this.groupStore = groupStore;
+        this.userStore = userStore;
         this.jdbcClient = jdbcClient;
     }
 
@@ -31,8 +31,8 @@ public class ProcessGroupSeeder {
                 .query(Integer.class).single() > 0;
         if (exists) return;
 
-        var reviewers = groupRepo.createGroup("reviewers");
-        userRepo.findUserByEmail("localuser@local")
-                .ifPresent(user -> groupRepo.addUserToGroup(user.id(), reviewers.id()));
+        var reviewers = groupStore.createGroup("reviewers");
+        userStore.findUserByEmail("localuser@local")
+                .ifPresent(user -> groupStore.addUserToGroup(user.id(), reviewers.id()));
     }
 }

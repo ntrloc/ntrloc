@@ -6,11 +6,11 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import org.ntrloc.graph.db.partition.security.ExternalPrincipalResolver;
+import org.ntrloc.graph.principal.ExternalPrincipalResolver;
 import org.ntrloc.graph.db.partition.security.ExternalUserProvisioner;
 import org.ntrloc.graph.db.partition.security.LocalAuthenticationProvider;
-import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.principal.NtrlocPrincipal;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
@@ -59,19 +59,19 @@ public class SecurityConfig {
     private static final String LOGIN_PATH = "/login";
 
     private final AuthProperties authProperties;
-    private final SecurityRepository securityRepository;
+    private final UserStore userStore;
     private final ExternalPrincipalResolver principals;
     private final ExternalUserProvisioner provisioner;
     private final LdapConfigurationService ldapConfiguration;
     private final OidcProviderService oidcProviders;
     private final SamlProviderService samlProviders;
 
-    public SecurityConfig(AuthProperties authProperties, SecurityRepository securityRepository,
+    public SecurityConfig(AuthProperties authProperties, UserStore userStore,
                            ExternalPrincipalResolver principals, ExternalUserProvisioner provisioner,
                            LdapConfigurationService ldapConfiguration, OidcProviderService oidcProviders,
                            SamlProviderService samlProviders) {
         this.authProperties = authProperties;
-        this.securityRepository = securityRepository;
+        this.userStore = userStore;
         this.principals = principals;
         this.provisioner = provisioner;
         this.ldapConfiguration = ldapConfiguration;
@@ -99,7 +99,7 @@ public class SecurityConfig {
         // BadCredentialsException from one moves on to the next.
         http.authenticationProvider(new NtrlocLdapAuthenticationProvider(ldapConfiguration, principals, provisioner));
         if (authProperties.getLocal().isEnabled()) {
-            http.authenticationProvider(new LocalAuthenticationProvider(principals, securityRepository));
+            http.authenticationProvider(new LocalAuthenticationProvider(principals, userStore));
         }
 
         http

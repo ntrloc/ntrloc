@@ -1,8 +1,14 @@
 package org.ntrloc.graph.db.partition.security;
 
+import org.ntrloc.graph.principal.InternalPrincipalResolver;
+
+import org.ntrloc.graph.principal.ExternalPrincipalResolver;
+
+import org.ntrloc.graph.principal.NtrlocPrincipal;
+
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.springframework.beans.factory.annotation.Autowired;
 
 import java.util.UUID;
@@ -21,15 +27,15 @@ class PrincipalResolverIntegrationTest extends AbstractIntegrationTest {
     private InternalPrincipalResolver internal;
 
     @Autowired
-    private SecurityRepository securityRepo;
+    private UserStore userStore;
 
     @Autowired
     private PersonalAccessTokenService tokenService;
 
-    private SecurityRepository.UserRow createUserInAGroup() {
-        var user = securityRepo.createUser("Resolver User", "Resolver-" + UUID.randomUUID() + "@Example.com", false);
-        var group = securityRepo.createUserGroup("resolver-group-" + UUID.randomUUID());
-        securityRepo.addUserToUserGroup(user.id(), group.id());
+    private UserStore.UserRow createUserInAGroup() {
+        var user = userStore.createUser("Resolver User", "Resolver-" + UUID.randomUUID() + "@Example.com", false);
+        var group = userStore.createUserGroup("resolver-group-" + UUID.randomUUID());
+        userStore.addUserToUserGroup(user.id(), group.id());
         return user;
     }
 
@@ -43,7 +49,7 @@ class PrincipalResolverIntegrationTest extends AbstractIntegrationTest {
 
         assertThat(principal.id()).isEqualTo(user.id());
         assertThat(principal.email()).isEqualTo(user.email());
-        assertThat(principal.groupIds()).isEqualTo(securityRepo.getUserGroupIdsForUser(user.id()));
+        assertThat(principal.groupIds()).isEqualTo(userStore.getUserGroupIdsForUser(user.id()));
         assertThat(principal.isAdmin()).isFalse();
     }
 
@@ -94,7 +100,7 @@ class PrincipalResolverIntegrationTest extends AbstractIntegrationTest {
         var user = createUserInAGroup();
         assertThat(internal.byId(user.id()).orElseThrow().isAdmin()).isFalse();
 
-        securityRepo.updateUser(user.id(), user.displayName(), user.email(), true);
+        userStore.updateUser(user.id(), user.displayName(), user.email(), true);
 
         assertThat(internal.byId(user.id()).orElseThrow().isAdmin()).isTrue();
     }

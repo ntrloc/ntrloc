@@ -5,7 +5,7 @@ import org.ntrloc.graph.access.Pipeline;
 import org.ntrloc.graph.access.PipelineLayout;
 import org.ntrloc.graph.access.Route;
 import org.ntrloc.graph.access.Start;
-import org.ntrloc.graph.db.partition.authorization.repository.MarkerDecisionPipelineRepository;
+import org.ntrloc.graph.db.partition.authorization.repository.MarkerDecisionPipelineStore;
 import org.ntrloc.graph.db.partition.schema.event.SchemaChangeEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
@@ -22,10 +22,10 @@ import java.util.UUID;
 @Component
 public class DefaultPipelineInitializer {
 
-    private final MarkerDecisionPipelineRepository pipelineRepo;
+    private final MarkerDecisionPipelineStore pipelineStore;
 
-    public DefaultPipelineInitializer(MarkerDecisionPipelineRepository pipelineRepo) {
-        this.pipelineRepo = pipelineRepo;
+    public DefaultPipelineInitializer(MarkerDecisionPipelineStore pipelineStore) {
+        this.pipelineStore = pipelineStore;
     }
 
     @EventListener
@@ -34,6 +34,6 @@ public class DefaultPipelineInitializer {
         End end = new End(UUID.randomUUID());
         Pipeline pipeline = new Pipeline(UUID.randomUUID(), List.of(), List.of(), start, end,
                 List.of(new Route(start.id(), List.of(end.id()))));
-        pipelineRepo.createPipeline(event.itemTypeId(), pipeline, new PipelineLayout(null, null));
+        pipelineStore.createPipeline(event.itemTypeId(), pipeline, new PipelineLayout(null, null));
     }
 }

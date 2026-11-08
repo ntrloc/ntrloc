@@ -1,9 +1,10 @@
 package org.ntrloc.graph.db.partition.authorization;
 
-import org.ntrloc.graph.db.partition.authorization.repository.AuthorizationRepository;
-import org.ntrloc.graph.db.partition.schema.repository.SchemaRepository;
-import org.ntrloc.graph.db.partition.security.ExternalPrincipalResolver;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.db.partition.authorization.repository.AccessStoreReader;
+import org.ntrloc.graph.db.partition.authorization.repository.AccessStoreWriter;
+import org.ntrloc.graph.db.partition.schema.repository.SchemaStore;
+import org.ntrloc.graph.principal.ExternalPrincipalResolver;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -66,16 +67,18 @@ public class AccessAdminController {
 
     // --- Dependencies ---
 
-    private final AuthorizationRepository authRepo;
-    private final SecurityRepository securityRepo;
-    private final SchemaRepository schemaRepo;
+    private final AccessStoreReader accessReader;
+    private final AccessStoreWriter accessWriter;
+    private final UserStore userStore;
+    private final SchemaStore schemaStore;
     private final ExternalPrincipalResolver principalResolver;
 
-    public AccessAdminController(AuthorizationRepository authRepo, SecurityRepository securityRepo,
-                                 SchemaRepository schemaRepo, ExternalPrincipalResolver principalResolver) {
-        this.authRepo = authRepo;
-        this.securityRepo = securityRepo;
-        this.schemaRepo = schemaRepo;
+    public AccessAdminController(AccessStoreReader accessReader, AccessStoreWriter accessWriter, UserStore userStore,
+                                 SchemaStore schemaStore, ExternalPrincipalResolver principalResolver) {
+        this.accessReader = accessReader;
+        this.accessWriter = accessWriter;
+        this.userStore = userStore;
+        this.schemaStore = schemaStore;
         this.principalResolver = principalResolver;
     }
 
@@ -97,7 +100,7 @@ public class AccessAdminController {
         requireAdmin(authentication);
         requireUserGroupExists(groupId);
         requireValidPermissionRequest(body);
-        authRepo.grantItemTypeIfAbsent(body.itemTypeId(), GROUP_PRINCIPAL_TYPE, groupId, body.operation());
+        accessWriter.grantItemTypeIfAbsent(body.itemTypeId(), GROUP_PRINCIPAL_TYPE, groupId, body.operation());
         return ResponseEntity.noContent().build();
     }
 
@@ -127,7 +130,7 @@ public class AccessAdminController {
                                              Authentication authentication) {
         requireAdmin(authentication);
         requireValidPermissionRequest(body);
-        authRepo.grantItemTypeIfAbsent(body.itemTypeId(), USER_PRINCIPAL_TYPE, userId, body.operation());
+        accessWriter.grantItemTypeIfAbsent(body.itemTypeId(), USER_PRINCIPAL_TYPE, userId, body.operation());
         return ResponseEntity.noContent().build();
     }
 
@@ -141,7 +144,7 @@ public class AccessAdminController {
     }
 
     private List<UserGroupPermissionView> getOwnPermissions(String principalType, UUID principalId) {
-        var grants = authRepo.getItemTypeGrantsForPrincipal(principalType, principalId);
+        var grants = accessReader.getItemTypeGrantsForPrincipal(principalType, principalId);
         Map<UUID, UserGroupPermissionView> byItemType = new LinkedHashMap<>();
         for (var g : grants) {
             byItemType.compute(g.itemTypeId(), (_, existing) -> {
@@ -160,9 +163,9 @@ public class AccessAdminController {
 
     private void revokePermission(String principalType, UUID principalId, PermissionRequest body) {
         requireValidPermissionRequest(body);
-        UUID grantId = authRepo.findItemTypeGrant(body.itemTypeId(), principalType, principalId, body.operation())
+        UUID grantId = accessReader.findItemTypeGrant(body.itemTypeId(), principalType, principalId, body.operation())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Grant not found"));
-        authRepo.deleteItemTypeGrant(grantId);
+        accessWriter.deleteItemTypeGrant(grantId);
     }
 
     // --- Which groups and users have any type-level grant (read or create) on one item type --
@@ -174,14 +177,14 @@ public class AccessAdminController {
     ItemTypeGrantPrincipalsView getItemTypeGrantPrincipals(@PathVariable("itemTypeId") UUID itemTypeId,
                                                             Authentication authentication) {
         requireAdmin(authentication);
-        var groupNames = securityRepo.listUserGroups().stream()
+        var groupNames = userStore.listUserGroups().stream()
                 .collect(Collectors.toMap(g -> g.id(), g -> g.name()));
-        var userNames = securityRepo.listUsers().stream()
-                .collect(Collectors.toMap(SecurityRepository.UserRow::id, SecurityRepository.UserRow::displayName));
+        var userNames = userStore.listUsers().stream()
+                .collect(Collectors.toMap(UserStore.UserRow::id, UserStore.UserRow::displayName));
 
         Set<UUID> groupIds = new LinkedHashSet<>();
         Set<UUID> userIds = new LinkedHashSet<>();
-        for (var grant : authRepo.getAllItemTypeGrants()) {
+        for (var grant : accessReader.getAllItemTypeGrants()) {
             if (!grant.itemTypeId().equals(itemTypeId)) continue;
             if (GROUP_PRINCIPAL_TYPE.equals(grant.principalType()) && groupNames.containsKey(grant.principalId())) {
                 groupIds.add(grant.principalId());
@@ -203,7 +206,7 @@ public class AccessAdminController {
                                          Authentication authentication) {
         requireAdmin(authentication);
         requireUserGroupExists(groupId);
-        return authRepo.getAllMarkerGrants().stream()
+        return accessReader.getAllMarkerGrants().stream()
                 .filter(g -> GROUP_PRINCIPAL_TYPE.equals(g.principalType()) && g.principalId().equals(groupId))
                 .map(g -> g.markerId())
                 .distinct()
@@ -216,7 +219,7 @@ public class AccessAdminController {
     List<UUID> getUserGrantedMarkerIds(@PathVariable("userId") UUID userId,
                                         Authentication authentication) {
         requireAdmin(authentication);
-        return authRepo.getAllMarkerGrants().stream()
+        return accessReader.getAllMarkerGrants().stream()
                 .filter(g -> USER_PRINCIPAL_TYPE.equals(g.principalType()) && g.principalId().equals(userId))
                 .map(g -> g.markerId())
                 .distinct()
@@ -274,14 +277,14 @@ public class AccessAdminController {
     }
 
     private List<MarkerPropertyGrantView> getMarkerPropertyGrants(String principalType, UUID principalId, UUID markerId) {
-        return authRepo.getPropertyGrantsForMarker(markerId, principalType, principalId).stream()
+        return accessReader.getPropertyGrantsForMarker(markerId, principalType, principalId).stream()
                 .map(r -> new MarkerPropertyGrantView(r.propertyId(), r.canRead(), r.canWrite()))
                 .toList();
     }
 
     private void setMarkerPropertyGrant(String principalType, UUID principalId, UUID markerId, UUID propertyId, MarkerPropertyGrantRequest body) {
-        UUID markerGrantId = authRepo.ensureMarkerGrant(markerId, principalType, principalId);
-        authRepo.grantPropertyAccess(markerGrantId, propertyId, body.canRead(), body.canWrite());
+        UUID markerGrantId = accessWriter.ensureMarkerGrant(markerId, principalType, principalId);
+        accessWriter.grantPropertyAccess(markerGrantId, propertyId, body.canRead(), body.canWrite());
     }
 
     // --- Marker-scoped item-level grants (Read/Delete of the item carrying the marker --
@@ -326,13 +329,13 @@ public class AccessAdminController {
     }
 
     private MarkerItemGrantView getMarkerItemGrant(String principalType, UUID principalId, UUID markerId) {
-        var row = authRepo.getItemPermissionsForMarker(markerId, principalType, principalId);
+        var row = accessReader.getItemPermissionsForMarker(markerId, principalType, principalId);
         return new MarkerItemGrantView(row.canRead(), row.canDelete());
     }
 
     private void setMarkerItemGrant(String principalType, UUID principalId, UUID markerId, MarkerItemGrantRequest body) {
-        UUID markerGrantId = authRepo.ensureMarkerGrant(markerId, principalType, principalId);
-        authRepo.setItemPermissions(markerGrantId, body.canRead(), body.canDelete());
+        UUID markerGrantId = accessWriter.ensureMarkerGrant(markerId, principalType, principalId);
+        accessWriter.setItemPermissions(markerGrantId, body.canRead(), body.canDelete());
     }
 
     // --- Marker-scoped link-property grants -- same shape as item properties above, just against
@@ -379,14 +382,14 @@ public class AccessAdminController {
     }
 
     private List<MarkerPropertyGrantView> getMarkerLinkPropertyGrants(String principalType, UUID principalId, UUID markerId) {
-        return authRepo.getLinkPropertyGrantsForMarker(markerId, principalType, principalId).stream()
+        return accessReader.getLinkPropertyGrantsForMarker(markerId, principalType, principalId).stream()
                 .map(r -> new MarkerPropertyGrantView(r.propertyId(), r.canRead(), r.canWrite()))
                 .toList();
     }
 
     private void setMarkerLinkPropertyGrant(String principalType, UUID principalId, UUID markerId, UUID propertyId, MarkerPropertyGrantRequest body) {
-        UUID markerGrantId = authRepo.ensureMarkerGrant(markerId, principalType, principalId);
-        authRepo.grantLinkPropertyAccess(markerGrantId, propertyId, body.canRead(), body.canWrite());
+        UUID markerGrantId = accessWriter.ensureMarkerGrant(markerId, principalType, principalId);
+        accessWriter.grantLinkPropertyAccess(markerGrantId, propertyId, body.canRead(), body.canWrite());
     }
 
     // --- Marker-scoped link-perspective grants (Create/Read/Delete per perspective) ---
@@ -432,18 +435,18 @@ public class AccessAdminController {
     }
 
     private List<LinkPerspectiveGrantView> getMarkerLinkPerspectiveGrants(String principalType, UUID principalId, UUID markerId) {
-        return authRepo.getLinkPerspectiveGrantsForMarker(markerId, principalType, principalId).stream()
+        return accessReader.getLinkPerspectiveGrantsForMarker(markerId, principalType, principalId).stream()
                 .map(r -> new LinkPerspectiveGrantView(r.perspectiveId(), r.canCreate(), r.canRead(), r.canDelete()))
                 .toList();
     }
 
     private void setMarkerLinkPerspectiveGrant(String principalType, UUID principalId, UUID markerId, UUID perspectiveId, LinkPerspectiveGrantRequest body) {
-        UUID markerGrantId = authRepo.ensureMarkerGrant(markerId, principalType, principalId);
-        authRepo.grantLinkPerspectiveAccess(markerGrantId, perspectiveId, body.canCreate(), body.canRead(), body.canDelete());
+        UUID markerGrantId = accessWriter.ensureMarkerGrant(markerId, principalType, principalId);
+        accessWriter.grantLinkPerspectiveAccess(markerGrantId, perspectiveId, body.canCreate(), body.canRead(), body.canDelete());
     }
 
     // --- Marker-scoped transition-execute grants (existence-only, see
-    // AuthorizationRepository.grantTransitionExecute's own comment) ---
+    // AccessStore.grantTransitionExecute's own comment) ---
 
     @GetMapping("/user-groups/{groupId}/markers/{markerId}/transitions")
     Set<UUID> getUserGroupMarkerTransitionGrants(@PathVariable("groupId") UUID groupId,
@@ -451,7 +454,7 @@ public class AccessAdminController {
                                               Authentication authentication) {
         requireAdmin(authentication);
         requireUserGroupExists(groupId);
-        return authRepo.getTransitionGrantsForMarker(markerId, GROUP_PRINCIPAL_TYPE, groupId);
+        return accessReader.getTransitionGrantsForMarker(markerId, GROUP_PRINCIPAL_TYPE, groupId);
     }
 
     @PostMapping("/user-groups/{groupId}/markers/{markerId}/transitions/{transitionId}")
@@ -481,7 +484,7 @@ public class AccessAdminController {
                                              @PathVariable("markerId") UUID markerId,
                                              Authentication authentication) {
         requireAdmin(authentication);
-        return authRepo.getTransitionGrantsForMarker(markerId, USER_PRINCIPAL_TYPE, userId);
+        return accessReader.getTransitionGrantsForMarker(markerId, USER_PRINCIPAL_TYPE, userId);
     }
 
     @PostMapping("/users/{userId}/markers/{markerId}/transitions/{transitionId}")
@@ -505,13 +508,13 @@ public class AccessAdminController {
     }
 
     private void grantMarkerTransition(String principalType, UUID principalId, UUID markerId, UUID transitionId) {
-        UUID markerGrantId = authRepo.ensureMarkerGrant(markerId, principalType, principalId);
-        authRepo.grantTransitionExecute(markerGrantId, transitionId);
+        UUID markerGrantId = accessWriter.ensureMarkerGrant(markerId, principalType, principalId);
+        accessWriter.grantTransitionExecute(markerGrantId, transitionId);
     }
 
     private void revokeMarkerTransition(String principalType, UUID principalId, UUID markerId, UUID transitionId) {
-        authRepo.findMarkerGrant(markerId, principalType, principalId)
-                .ifPresent(markerGrantId -> authRepo.revokeTransitionExecute(markerGrantId, transitionId));
+        accessReader.findMarkerGrant(markerId, principalType, principalId)
+                .ifPresent(markerGrantId -> accessWriter.revokeTransitionExecute(markerGrantId, transitionId));
     }
 
     // --- Marker-scoped state-machine:start grants (existence-only, mirrors transitions above) ---
@@ -522,7 +525,7 @@ public class AccessAdminController {
                                                      Authentication authentication) {
         requireAdmin(authentication);
         requireUserGroupExists(groupId);
-        return authRepo.getStateMachineStartGrantsForMarker(markerId, GROUP_PRINCIPAL_TYPE, groupId);
+        return accessReader.getStateMachineStartGrantsForMarker(markerId, GROUP_PRINCIPAL_TYPE, groupId);
     }
 
     @PostMapping("/user-groups/{groupId}/markers/{markerId}/state-machines/{stateMachineId}/start")
@@ -552,7 +555,7 @@ public class AccessAdminController {
                                                     @PathVariable("markerId") UUID markerId,
                                                     Authentication authentication) {
         requireAdmin(authentication);
-        return authRepo.getStateMachineStartGrantsForMarker(markerId, USER_PRINCIPAL_TYPE, userId);
+        return accessReader.getStateMachineStartGrantsForMarker(markerId, USER_PRINCIPAL_TYPE, userId);
     }
 
     @PostMapping("/users/{userId}/markers/{markerId}/state-machines/{stateMachineId}/start")
@@ -576,13 +579,13 @@ public class AccessAdminController {
     }
 
     private void grantMarkerStateMachineStart(String principalType, UUID principalId, UUID markerId, UUID stateMachineId) {
-        UUID markerGrantId = authRepo.ensureMarkerGrant(markerId, principalType, principalId);
-        authRepo.grantStateMachineStart(markerGrantId, stateMachineId);
+        UUID markerGrantId = accessWriter.ensureMarkerGrant(markerId, principalType, principalId);
+        accessWriter.grantStateMachineStart(markerGrantId, stateMachineId);
     }
 
     private void revokeMarkerStateMachineStart(String principalType, UUID principalId, UUID markerId, UUID stateMachineId) {
-        authRepo.findMarkerGrant(markerId, principalType, principalId)
-                .ifPresent(markerGrantId -> authRepo.revokeStateMachineStart(markerGrantId, stateMachineId));
+        accessReader.findMarkerGrant(markerId, principalType, principalId)
+                .ifPresent(markerGrantId -> accessWriter.revokeStateMachineStart(markerGrantId, stateMachineId));
     }
 
     // --- Deleting a principal's entire grant of one marker (the wireframe's "Delete" action next
@@ -595,7 +598,7 @@ public class AccessAdminController {
                                                 Authentication authentication) {
         requireAdmin(authentication);
         requireUserGroupExists(groupId);
-        authRepo.findMarkerGrant(markerId, GROUP_PRINCIPAL_TYPE, groupId).ifPresent(authRepo::deleteMarkerGrant);
+        accessReader.findMarkerGrant(markerId, GROUP_PRINCIPAL_TYPE, groupId).ifPresent(accessWriter::deleteMarkerGrant);
         return ResponseEntity.noContent().build();
     }
 
@@ -604,7 +607,7 @@ public class AccessAdminController {
                                                @PathVariable("markerId") UUID markerId,
                                                Authentication authentication) {
         requireAdmin(authentication);
-        authRepo.findMarkerGrant(markerId, USER_PRINCIPAL_TYPE, userId).ifPresent(authRepo::deleteMarkerGrant);
+        accessReader.findMarkerGrant(markerId, USER_PRINCIPAL_TYPE, userId).ifPresent(accessWriter::deleteMarkerGrant);
         return ResponseEntity.noContent().build();
     }
 
@@ -616,7 +619,7 @@ public class AccessAdminController {
         requireAdmin(authentication);
 
         // Get all groups user belongs to
-        var userUserGroups = securityRepo.getUserGroupsForUser(userId);
+        var userUserGroups = userStore.getUserGroupsForUser(userId);
         if (userUserGroups.isEmpty()) {
             return List.of();
         }
@@ -626,7 +629,7 @@ public class AccessAdminController {
         record GrantWithUserGroup(UUID itemTypeId, String itemTypeName, String operation, String groupName) {}
         List<GrantWithUserGroup> grantsWithUserGroup = new ArrayList<>();
         for (var group : userUserGroups) {
-            var groupGrants = authRepo.getItemTypeGrantsForPrincipal(GROUP_PRINCIPAL_TYPE, group.id());
+            var groupGrants = accessReader.getItemTypeGrantsForPrincipal(GROUP_PRINCIPAL_TYPE, group.id());
             for (var g : groupGrants) {
                 grantsWithUserGroup.add(new GrantWithUserGroup(g.itemTypeId(), g.itemTypeName(), g.permission(), group.name()));
             }
@@ -666,7 +669,7 @@ public class AccessAdminController {
     List<UserGroupMembershipView> getUserGroups(@PathVariable("userId") UUID userId,
                                             Authentication authentication) {
         requireAdmin(authentication);
-        return securityRepo.getUserGroupsForUser(userId).stream()
+        return userStore.getUserGroupsForUser(userId).stream()
                 .map(g -> new UserGroupMembershipView(g.id(), g.name()))
                 .toList();
     }
@@ -676,7 +679,7 @@ public class AccessAdminController {
     @GetMapping("/schema/item-types")
     List<ItemTypeView> listItemTypes(Authentication authentication) {
         requireAdmin(authentication);
-        return schemaRepo.getAllItems().stream()
+        return schemaStore.getAllItems().stream()
                 .map(item -> new ItemTypeView(item.id(), item.name()))
                 .sorted((a, b) -> a.name().compareToIgnoreCase(b.name()))
                 .toList();
@@ -692,7 +695,7 @@ public class AccessAdminController {
     }
 
     private void requireUserGroupExists(UUID groupId) {
-        securityRepo.findUserGroupById(groupId)
+        userStore.findUserGroupById(groupId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, GROUP_NOT_FOUND));
     }
 

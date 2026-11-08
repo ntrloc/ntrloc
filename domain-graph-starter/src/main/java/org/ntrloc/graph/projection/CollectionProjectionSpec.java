@@ -8,8 +8,8 @@ import java.util.Map;
 public record CollectionProjectionSpec(
         String itemTypeName,
         // Mutually exclusive with itemTypeName -- exactly one must be set (enforced by
-        // EntityManagerImpl, not here). Resolves to every item type implementing this trait,
-        // directly or via any ancestor in its supertype chain (see SchemaManager.
+        // EntityReadService, not here). Resolves to every item type implementing this trait,
+        // directly or via any ancestor in its supertype chain (see SchemaService.
         // resolveTraitImplementerItemTypeIds). Kept as a plain nullable String, not a primitive,
         // like every other optional field here -- this app's Jackson setup requires a primitive
         // field be present in the JSON body, but tolerates an absent reference-typed one.
@@ -26,7 +26,7 @@ public record CollectionProjectionSpec(
         // behavior: null or empty always means none -- computing these has a real query cost per
         // machine, so a client has to name exactly which machines it wants, every time.
         @Nullable List<String> stateMachineFacets,
-        // Both optional -- RegisterPartitionManager applies a default page size when limit is null
+        // Both optional -- RegisterStore applies a default page size when limit is null
         // (and clamps it to a hard maximum regardless) rather than returning every matching row
         // unbounded, and treats a null/negative offset as 0. Left as plain nullable Integers here,
         // not defaulted in the record itself, matching how facets/facetFilters are already

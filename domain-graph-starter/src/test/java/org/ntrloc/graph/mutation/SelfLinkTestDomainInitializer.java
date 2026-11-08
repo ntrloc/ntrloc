@@ -1,7 +1,6 @@
 package org.ntrloc.graph.mutation;
 
-import org.ntrloc.graph.db.partition.schema.ControlledListManager;
-import org.ntrloc.graph.db.partition.schema.SchemaManager;
+import org.ntrloc.graph.db.partition.schema.SchemaService;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateItemDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateLinkDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePerspectiveDefinitionMutation;
@@ -27,36 +26,34 @@ public class SelfLinkTestDomainInitializer implements DomainInitializer, Applica
 
     private UUID personTypeId;
 
-    private final SchemaManager schemaManager;
-    private final ControlledListManager controlledListManager;
+    private final SchemaService schemaService;
 
-    public SelfLinkTestDomainInitializer(SchemaManager schemaManager, ControlledListManager controlledListManager) {
-        this.schemaManager = schemaManager;
-        this.controlledListManager = controlledListManager;
+    public SelfLinkTestDomainInitializer(SchemaService schemaService) {
+        this.schemaService = schemaService;
     }
 
     @Override
     public void run(ApplicationArguments args) {
-        initSchema(schemaManager, controlledListManager);
+        initSchema(schemaService);
     }
 
     @Override
-    public void initSchema(SchemaManager schemaManager, ControlledListManager controlledListManager) {
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(
+    public void initSchema(SchemaService schemaService) {
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(
                 "SelfLinkPerson", "SelfLinkIntegrationTest fixture", List.of(), null, false, null)));
         personTypeId = findItem("SelfLinkPerson").id();
 
-        schemaManager.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
+        schemaService.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
                 new CreatePerspectiveDefinitionMutation(personTypeId, "mother", "the mother of this person", 0, 1),
                 new CreatePerspectiveDefinitionMutation(personTypeId, "children", "the children of this person", 0, null)))));
 
-        schemaManager.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
+        schemaService.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
                 new CreatePerspectiveDefinitionMutation(personTypeId, "sibling", "the siblings of this person", 0, null),
                 new CreatePerspectiveDefinitionMutation(personTypeId, "sibling", "the siblings of this person", 0, null)))));
     }
 
     private AdminItemDefinitionView findItem(String name) {
-        return schemaManager.getAdminSchema().items().stream()
+        return schemaService.getAdminSchema().items().stream()
                 .filter(item -> item.name().equals(name))
                 .findFirst()
                 .orElseThrow();

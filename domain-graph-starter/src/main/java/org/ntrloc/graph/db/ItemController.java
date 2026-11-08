@@ -1,6 +1,6 @@
 package org.ntrloc.graph.db;
 
-import org.ntrloc.graph.db.partition.security.ExternalPrincipalResolver;
+import org.ntrloc.graph.principal.ExternalPrincipalResolver;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -14,11 +14,11 @@ import java.util.UUID;
 @RequestMapping("/api/item/{itemId}")
 public class ItemController {
 
-    private final EntityManager entityManager;
+    private final EntityWriteService entityWriteService;
     private final ExternalPrincipalResolver principalResolver;
 
-    public ItemController(EntityManager entityManager, ExternalPrincipalResolver principalResolver) {
-        this.entityManager = entityManager;
+    public ItemController(EntityWriteService entityWriteService, ExternalPrincipalResolver principalResolver) {
+        this.entityWriteService = entityWriteService;
         this.principalResolver = principalResolver;
     }
 
@@ -26,7 +26,7 @@ public class ItemController {
     @PostMapping("/state-machines/{stateMachineName}/start")
     ResponseEntity<Void> startStateMachine(@PathVariable UUID itemId, @PathVariable String stateMachineName,
                                             Authentication authentication) {
-        entityManager.startStateMachine(itemId, stateMachineName, principalResolver.resolve(authentication));
+        entityWriteService.startStateMachine(itemId, stateMachineName, principalResolver.resolve(authentication));
         return ResponseEntity.noContent().build();
     }
 
@@ -35,7 +35,7 @@ public class ItemController {
     ResponseEntity<Void> executeTransition(@PathVariable UUID itemId, @PathVariable String stateMachineName,
                                             @PathVariable UUID transitionId,
                                             Authentication authentication) {
-        entityManager.executeTransition(itemId, stateMachineName, transitionId, principalResolver.resolve(authentication));
+        entityWriteService.executeTransition(itemId, stateMachineName, transitionId, principalResolver.resolve(authentication));
         return ResponseEntity.noContent().build();
     }
 }

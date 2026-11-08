@@ -20,7 +20,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 // Covers SchemaAdminController's schema/controlled-list/mutation endpoints. Uses a fresh,
-// UUID-suffixed item type + property per test (via SchemaManager directly) rather than
+// UUID-suffixed item type + property per test (via SchemaService directly) rather than
 // CoordinatorTestDomainInitializer's shared fixture, since the controlled-list tests mutate a
 // specific property's controlled-list state and shouldn't risk perturbing another test class's
 // assumptions about that fixture.
@@ -42,17 +42,17 @@ class SchemaAdminControllerIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Autowired
-    private SchemaManager schemaManager;
+    private SchemaService schemaService;
 
     private UUID createProperty() {
         String itemName = "SchemaAdminTest-" + UUID.randomUUID();
         String propName = "prop-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(itemName, "d", List.of(), null, false, null)));
-        UUID itemId = schemaManager.getAdminSchema().items().stream()
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(itemName, "d", List.of(), null, false, null)));
+        UUID itemId = schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.name().equals(itemName)).findFirst().orElseThrow().id();
-        schemaManager.applyMutations(List.of(new AddPropertyDefinitionMutation(
+        schemaService.applyMutations(List.of(new AddPropertyDefinitionMutation(
                 PropertyContainerKind.ITEM, itemId, propName, "d", PropertyType.STRING, PropertyCardinality.SINGLE, PropertyUsage.OPTIONAL, false)));
-        return schemaManager.getAdminSchema().items().stream()
+        return schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.id().equals(itemId)).findFirst().orElseThrow()
                 .properties().stream().filter(p -> p.name().equals(propName)).findFirst().orElseThrow().id();
     }
@@ -60,7 +60,7 @@ class SchemaAdminControllerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void getAdminSchema_returnsTheCurrentSchema() {
         String itemName = "SchemaAdminTest-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(itemName, "d", List.of(), null, false, null)));
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(itemName, "d", List.of(), null, false, null)));
 
         webTestClient.get().uri("/api/admin/schema")
                 .exchange()
@@ -72,8 +72,8 @@ class SchemaAdminControllerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void applyMutations_whenTheItemTypeChangedSinceTheEditorLoadedIt_returnsConflict() {
         String itemName = "SchemaAdminTest-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(itemName, "d", List.of(), null, false, null)));
-        UUID itemId = schemaManager.getAdminSchema().items().stream()
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(itemName, "d", List.of(), null, false, null)));
+        UUID itemId = schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.name().equals(itemName)).findFirst().orElseThrow().id();
 
         webTestClient.post().uri("/api/admin/schema/mutations")
@@ -117,12 +117,12 @@ class SchemaAdminControllerIntegrationTest extends AbstractIntegrationTest {
                 .jsonPath("$.values.length()").isEqualTo(2);
     }
 
-    // Regression test: createOrReplaceControlledList writes via ControlledListManager directly,
-    // bypassing schemaManager.applyMutations (and therefore its cache-rebuild-and-broadcast tail)
+    // Regression test: createOrReplaceControlledList used to write controlled lists directly,
+    // bypassing schemaService.applyMutations (and therefore its cache-rebuild-and-broadcast tail)
     // entirely. Without an explicit refresh, GET /api/admin/schema kept serving its pre-write
     // cached snapshot -- controlledListId still null -- indefinitely, confirmed live against a
-    // running dev server before SchemaManager.refreshCache existed. This asserts the fix by
-    // reading back through the same cached path (schemaManager.getAdminSchema()), not just the
+    // running dev server before SchemaService.refreshCache existed. This asserts the fix by
+    // reading back through the same cached path (schemaService.getAdminSchema()), not just the
     // dedicated GET .../controlled-list endpoint (which always re-queries the DB fresh and so
     // would never have caught this).
     @Test
@@ -138,7 +138,7 @@ class SchemaAdminControllerIntegrationTest extends AbstractIntegrationTest {
                 .expectBody(SchemaAdminController.ControlledListResponse.class)
                 .returnResult().getResponseBody();
 
-        UUID cachedControlledListId = schemaManager.getAdminSchema().items().stream()
+        UUID cachedControlledListId = schemaService.getAdminSchema().items().stream()
                 .flatMap(i -> i.properties().stream())
                 .filter(p -> p.id().equals(propertyId))
                 .findFirst().orElseThrow()
@@ -170,12 +170,12 @@ class SchemaAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
     // Item-type inheritance: a rejected supertype mutation must surface as a friendly 400 with
     // the message in the body (via ApiExceptionHandler), not a bare 500 -- exercises that wiring
-    // end to end through the real HTTP endpoint, not just SchemaManager directly.
+    // end to end through the real HTTP endpoint, not just SchemaService directly.
     @Test
     void applyMutations_settingASupertypeThatWouldCreateACycle_returnsBadRequestWithMessage() {
         String itemName = "SchemaAdminTest-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(itemName, "d", List.of(), null, false, null)));
-        UUID itemId = schemaManager.getAdminSchema().items().stream()
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(itemName, "d", List.of(), null, false, null)));
+        UUID itemId = schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.name().equals(itemName)).findFirst().orElseThrow().id();
 
         String rawJson = """
@@ -206,7 +206,7 @@ class SchemaAdminControllerIntegrationTest extends AbstractIntegrationTest {
                 .exchange()
                 .expectStatus().isNoContent();
 
-        assertThat(schemaManager.getAdminSchema().items()).extracting(i -> i.name()).contains(itemName);
+        assertThat(schemaService.getAdminSchema().items()).extracting(i -> i.name()).contains(itemName);
     }
 
     // --- Controlled lists as a first-class schema element ---
@@ -223,7 +223,7 @@ class SchemaAdminControllerIntegrationTest extends AbstractIntegrationTest {
                 .contentType(MediaType.APPLICATION_JSON).bodyValue(createList)
                 .exchange().expectStatus().isNoContent();
 
-        UUID listId = schemaManager.getAdminSchema().controlledLists().stream()
+        UUID listId = schemaService.getAdminSchema().controlledLists().stream()
                 .filter(l -> l.name().equals(listName)).findFirst().orElseThrow().id();
         String attach = """
                 [{"type":"SET_PROPERTY_CONTROLLED_LIST","propertyId":"%s",
@@ -239,7 +239,7 @@ class SchemaAdminControllerIntegrationTest extends AbstractIntegrationTest {
                 .expectBody()
                 .jsonPath("$.controlledLists[?(@.name == '" + listName + "')]").exists();
 
-        var listView = schemaManager.getAdminSchema().controlledLists().stream()
+        var listView = schemaService.getAdminSchema().controlledLists().stream()
                 .filter(l -> l.id().equals(listId)).findFirst().orElseThrow();
         assertThat(listView.valueCount()).isEqualTo(2);
         assertThat(listView.usedBy()).extracting(u -> u.propertyId()).contains(propertyId);
@@ -255,7 +255,7 @@ class SchemaAdminControllerIntegrationTest extends AbstractIntegrationTest {
         webTestClient.post().uri("/api/admin/schema/mutations")
                 .contentType(MediaType.APPLICATION_JSON).bodyValue(createList)
                 .exchange().expectStatus().isNoContent();
-        UUID listId = schemaManager.getAdminSchema().controlledLists().stream()
+        UUID listId = schemaService.getAdminSchema().controlledLists().stream()
                 .filter(l -> l.name().equals(listName)).findFirst().orElseThrow().id();
 
         webTestClient.get().uri("/api/admin/schema/controlled-lists/{id}", listId)
@@ -273,7 +273,7 @@ class SchemaAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
     // Mirror of createOrReplaceControlledList_refreshesTheCachedAdminSchema for the list-centric
     // path: a POST /mutations carrying the new controlled-list types must rebuild the cached
-    // AdminSchemaView, not just write through ControlledListManager.
+    // AdminSchemaView, not just write through ControlledListStore.
     @Test
     void applyMutations_withControlledListTypes_refreshesTheCachedAdminSchema() {
         String listName = "list-" + UUID.randomUUID();
@@ -285,6 +285,6 @@ class SchemaAdminControllerIntegrationTest extends AbstractIntegrationTest {
                 .contentType(MediaType.APPLICATION_JSON).bodyValue(rawJson)
                 .exchange().expectStatus().isNoContent();
 
-        assertThat(schemaManager.getAdminSchema().controlledLists()).extracting(l -> l.name()).contains(listName);
+        assertThat(schemaService.getAdminSchema().controlledLists()).extracting(l -> l.name()).contains(listName);
     }
 }

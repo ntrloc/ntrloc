@@ -3,19 +3,20 @@ package org.ntrloc.graph.db.partition.register;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
-import org.ntrloc.graph.db.EntityManager;
+import org.ntrloc.graph.db.EntityWriteService;
 import org.ntrloc.graph.db.coordinator.LedgerRegisterCoordinator;
 import org.ntrloc.graph.db.partition.authorization.ManualMarkerAssignmentService;
-import org.ntrloc.graph.db.partition.authorization.repository.AuthorizationRepository;
+import org.ntrloc.graph.db.partition.authorization.repository.AccessStore;
 import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
-import org.ntrloc.graph.db.partition.schema.SchemaManager;
+import org.ntrloc.graph.db.partition.schema.SchemaService;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateTransitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DefinitionMutation;
+import org.ntrloc.graph.db.partition.schema.definition.mutation.DeleteTransitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminStateMachineView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminTransitionView;
-import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
-import org.ntrloc.graph.db.partition.security.TestPrincipals;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.principal.NtrlocPrincipal;
+import org.ntrloc.graph.principal.TestPrincipals;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.ntrloc.graph.mutation.MutationValidationException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.server.ResponseStatusException;
@@ -30,28 +31,29 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-// Covers EntityManager.startStateMachine / executeTransition -- permission (state-machine:start,
-// transition:execute), guard enforcement, END detach, and re-entry. Read-side (projection
-// startable / availableTransitions) is covered in RegisterPartitionManagerProjectionIntegrationTest.
+// Covers EntityWriteService.startStateMachine / executeTransition: permission (state-machine:start,
+// transition:execute) checked first, the guard read from the register, END detach, and re-entry.
+// Read-side (projection startable / availableTransitions) is covered in
+// ProjectionEngineIntegrationTest.
 class StateMachineExecutionIntegrationTest extends AbstractIntegrationTest {
 
-    @Autowired private EntityManager entityManager;
+    @Autowired private EntityWriteService entityWriteService;
     @Autowired private LedgerRegisterCoordinator coordinator;
-    @Autowired private RegisterPartitionManager registerPartitionManager;
-    @Autowired private SchemaManager schemaManager;
-    @Autowired private AuthorizationRepository authRepo;
+    @Autowired private RegisterStore registerStore;
+    @Autowired private SchemaService schemaService;
+    @Autowired private AccessStore accessStore;
     @Autowired private ManualMarkerAssignmentService markerAssignmentService;
-    @Autowired private SecurityRepository securityRepo;
+    @Autowired private UserStore userStore;
     @Autowired private RegisterProjectionTestDomainInitializer fixture;
 
     // Not static/final: needs a real, backed security_user row now that ledger_entry.created_by
     // (Part E) has a NOT NULL FK to security_user.id -- created fresh per test in setUp() via the
-    // already-autowired securityRepo, which a static initializer can't reach.
+    // already-autowired userStore, which a static initializer can't reach.
     private NtrlocPrincipal ADMIN;
 
     @BeforeEach
     void setUpAdmin() {
-        var user = securityRepo.createUser("Root", "sme-root-" + UUID.randomUUID() + "@example.com", true);
+        var user = userStore.createUser("Root", "sme-root-" + UUID.randomUUID() + "@example.com", true);
         ADMIN = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), true);
     }
 
@@ -65,7 +67,7 @@ class StateMachineExecutionIntegrationTest extends AbstractIntegrationTest {
     }
 
     private UUID machineId() {
-        return registerPartitionManager.resolveStateMachineId(fixture.bookTypeId(),
+        return schemaService.resolveStateMachineId(fixture.bookTypeId(),
                 RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE);
     }
 
@@ -78,7 +80,7 @@ class StateMachineExecutionIntegrationTest extends AbstractIntegrationTest {
     }
 
     private AdminStateMachineView machine() {
-        return schemaManager.getAdminSchema().items().stream()
+        return schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.id().equals(fixture.bookTypeId())).findFirst().orElseThrow()
                 .stateMachines().stream().filter(m -> m.id().equals(machineId())).findFirst().orElseThrow();
     }
@@ -92,18 +94,18 @@ class StateMachineExecutionIntegrationTest extends AbstractIntegrationTest {
     @Test
     void startStateMachine_entersTheStartTargetState() {
         UUID book = createBook("Dune");
-        entityManager.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, ADMIN);
+        entityWriteService.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, ADMIN);
 
-        UUID availableId = registerPartitionManager.resolveStateId(machineId(), RegisterProjectionTestDomainInitializer.AVAILABLE);
-        assertThat(registerPartitionManager.currentStateIds(book)).containsEntry(machineId(), availableId);
+        UUID availableId = schemaService.resolveStateId(machineId(), RegisterProjectionTestDomainInitializer.AVAILABLE);
+        assertThat(registerStore.currentStateIds(book)).containsEntry(machineId(), availableId);
     }
 
     @Test
     void startStateMachine_whenAlreadyActive_throwsConflict() {
         UUID book = createBook("Dune");
-        entityManager.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, ADMIN);
+        entityWriteService.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, ADMIN);
 
-        assertThatThrownBy(() -> entityManager.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, ADMIN))
+        assertThatThrownBy(() -> entityWriteService.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, ADMIN))
                 .isInstanceOf(ResponseStatusException.class)
                 .satisfies(e -> assertThat(status(e)).isEqualTo(409));
     }
@@ -113,7 +115,7 @@ class StateMachineExecutionIntegrationTest extends AbstractIntegrationTest {
         UUID book = createBook("Dune");
         NtrlocPrincipal user = nonAdmin();
 
-        assertThatThrownBy(() -> entityManager.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, user))
+        assertThatThrownBy(() -> entityWriteService.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, user))
                 .isInstanceOf(MutationValidationException.class)
                 .satisfies(e -> assertThat(((MutationValidationException) e).errors())
                         .anyMatch(err -> err.message().contains("Not permitted to start")));
@@ -123,28 +125,28 @@ class StateMachineExecutionIntegrationTest extends AbstractIntegrationTest {
     void startStateMachine_startGrantViaAMarker_isHonoredAndRevocable() {
         UUID book = createBook("Dune");
         NtrlocPrincipal user = nonAdmin();
-        var marker = authRepo.createMarker("sme-" + UUID.randomUUID(), "fixture", "ITEM_TYPE", fixture.bookTypeId());
+        var marker = accessStore.createMarker("sme-" + UUID.randomUUID(), "fixture", "ITEM_TYPE", fixture.bookTypeId());
         markerAssignmentService.addItemMarker(book, marker.id(), ADMIN, "test");
-        UUID grantId = authRepo.ensureMarkerGrant(marker.id(), "USER", user.id());
-        authRepo.grantStateMachineStart(grantId, machineId());
-        assertThat(authRepo.getStateMachineStartGrantsForMarker(marker.id(), "USER", user.id())).contains(machineId());
+        UUID grantId = accessStore.ensureMarkerGrant(marker.id(), "USER", user.id());
+        accessStore.grantStateMachineStart(grantId, machineId());
+        assertThat(accessStore.getStateMachineStartGrantsForMarker(marker.id(), "USER", user.id())).contains(machineId());
 
-        entityManager.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, user);
-        assertThat(registerPartitionManager.currentStateIds(book)).containsKey(machineId());
+        entityWriteService.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, user);
+        assertThat(registerStore.currentStateIds(book)).containsKey(machineId());
 
         // drive it (as admin) to Discontinued -> END so the machine is inactive again, then
         // revoke the start grant -- re-start must now be forbidden.
-        UUID discontinued = registerPartitionManager.resolveStateId(machineId(), RegisterProjectionTestDomainInitializer.DISCONTINUED);
-        UUID endStateId = registerPartitionManager.resolveStateId(machineId(), "__end__");
-        schemaManager.applyMutations(List.<DefinitionMutation>of(
+        UUID discontinued = schemaService.resolveStateId(machineId(), RegisterProjectionTestDomainInitializer.DISCONTINUED);
+        UUID endStateId = schemaService.resolveStateId(machineId(), "__end__");
+        schemaService.applyMutations(List.<DefinitionMutation>of(
                 new CreateTransitionMutation(discontinued, endStateId, "RevokeTestEnd", null, null, null)));
-        entityManager.executeTransition(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, transitionId("MarkOutOfStock"), ADMIN);
-        entityManager.executeTransition(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, transitionId("Discontinue"), ADMIN);
-        entityManager.executeTransition(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, transitionId("RevokeTestEnd"), ADMIN);
-        assertThat(registerPartitionManager.currentStateIds(book)).doesNotContainKey(machineId());
-        authRepo.revokeStateMachineStart(grantId, machineId());
+        entityWriteService.executeTransition(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, transitionId("MarkOutOfStock"), ADMIN);
+        entityWriteService.executeTransition(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, transitionId("Discontinue"), ADMIN);
+        entityWriteService.executeTransition(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, transitionId("RevokeTestEnd"), ADMIN);
+        assertThat(registerStore.currentStateIds(book)).doesNotContainKey(machineId());
+        accessStore.revokeStateMachineStart(grantId, machineId());
 
-        assertThatThrownBy(() -> entityManager.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, user))
+        assertThatThrownBy(() -> entityWriteService.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, user))
                 .isInstanceOf(MutationValidationException.class)
                 .satisfies(e -> assertThat(((MutationValidationException) e).errors())
                         .anyMatch(err -> err.message().contains("Not permitted to start")));
@@ -155,21 +157,21 @@ class StateMachineExecutionIntegrationTest extends AbstractIntegrationTest {
     @Test
     void executeTransition_advancesToTheTargetState() {
         UUID book = createBook("Dune");
-        entityManager.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, ADMIN);
+        entityWriteService.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, ADMIN);
 
-        entityManager.executeTransition(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, transitionId("MarkOutOfStock"), ADMIN);
+        entityWriteService.executeTransition(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, transitionId("MarkOutOfStock"), ADMIN);
 
-        UUID outOfStock = registerPartitionManager.resolveStateId(machineId(), RegisterProjectionTestDomainInitializer.OUT_OF_STOCK);
-        assertThat(registerPartitionManager.currentStateIds(book)).containsEntry(machineId(), outOfStock);
+        UUID outOfStock = schemaService.resolveStateId(machineId(), RegisterProjectionTestDomainInitializer.OUT_OF_STOCK);
+        assertThat(registerStore.currentStateIds(book)).containsEntry(machineId(), outOfStock);
     }
 
     @Test
     void executeTransition_notAvailableFromTheCurrentState_throwsBadRequest() {
         UUID book = createBook("Dune");
-        entityManager.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, ADMIN);
+        entityWriteService.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, ADMIN);
 
         // Restock is OutOfStock -> Available; not reachable from Available
-        assertThatThrownBy(() -> entityManager.executeTransition(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, transitionId("Restock"), ADMIN))
+        assertThatThrownBy(() -> entityWriteService.executeTransition(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, transitionId("Restock"), ADMIN))
                 .isInstanceOf(ResponseStatusException.class)
                 .satisfies(e -> assertThat(status(e)).isEqualTo(400));
     }
@@ -177,7 +179,7 @@ class StateMachineExecutionIntegrationTest extends AbstractIntegrationTest {
     @Test
     void executeTransition_whenMachineNotActive_throwsConflict() {
         UUID book = createBook("Dune");
-        assertThatThrownBy(() -> entityManager.executeTransition(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, transitionId("MarkOutOfStock"), ADMIN))
+        assertThatThrownBy(() -> entityWriteService.executeTransition(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, transitionId("MarkOutOfStock"), ADMIN))
                 .isInstanceOf(ResponseStatusException.class)
                 .satisfies(e -> assertThat(status(e)).isEqualTo(409));
     }
@@ -185,10 +187,10 @@ class StateMachineExecutionIntegrationTest extends AbstractIntegrationTest {
     @Test
     void executeTransition_withoutTheExecuteGrant_throwsMutationValidationException() {
         UUID book = createBook("Dune");
-        entityManager.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, ADMIN);
+        entityWriteService.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, ADMIN);
         NtrlocPrincipal user = nonAdmin();
 
-        assertThatThrownBy(() -> entityManager.executeTransition(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, transitionId("MarkOutOfStock"), user))
+        assertThatThrownBy(() -> entityWriteService.executeTransition(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, transitionId("MarkOutOfStock"), user))
                 .isInstanceOf(MutationValidationException.class)
                 .satisfies(e -> assertThat(((MutationValidationException) e).errors())
                         .anyMatch(err -> err.message().contains("Not permitted to execute")));
@@ -197,17 +199,69 @@ class StateMachineExecutionIntegrationTest extends AbstractIntegrationTest {
     @Test
     void executeTransition_withAnUnsatisfiedGuard_throwsUnprocessable() {
         UUID book = createBook("Dune");
-        UUID available = registerPartitionManager.resolveStateId(machineId(), RegisterProjectionTestDomainInitializer.AVAILABLE);
-        UUID discontinued = registerPartitionManager.resolveStateId(machineId(), RegisterProjectionTestDomainInitializer.DISCONTINUED);
-        var guard = JsonMapper.builder().build().readTree(
-                "{\"type\":\"PROPERTY_VALUE\",\"propertyName\":\"title\",\"operator\":\"EQUALS\",\"value\":\"NOPE\"}");
-        schemaManager.applyMutations(List.<DefinitionMutation>of(
-                new CreateTransitionMutation(available, discontinued, "GuardedRetire", null, null, guard)));
-        entityManager.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, ADMIN);
+        addGuardedRetire("{\"type\":\"PROPERTY_VALUE\",\"propertyName\":\"title\",\"operator\":\"EQUALS\",\"value\":\"NOPE\"}");
+        entityWriteService.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, ADMIN);
 
-        assertThatThrownBy(() -> entityManager.executeTransition(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, transitionId("GuardedRetire"), ADMIN))
+        assertThatThrownBy(() -> entityWriteService.executeTransition(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, transitionId("GuardedRetire"), ADMIN))
                 .isInstanceOf(ResponseStatusException.class)
                 .satisfies(e -> assertThat(status(e)).isEqualTo(422));
+    }
+
+    // The guard reads the item's committed values from the register: a property by name, and its current
+    // state in a machine by name.
+    @Test
+    void executeTransition_withASatisfiedGuard_advances() {
+        UUID book = createBook("Dune");
+        UUID discontinued = addGuardedRetire("""
+                {"type":"AND","predicates":[
+                  {"type":"PROPERTY_VALUE","propertyName":"title","operator":"EQUALS","value":"Dune"},
+                  {"type":"STATE_VALUE","stateMachineName":"%s","stateName":"%s"}]}"""
+                .formatted(RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, RegisterProjectionTestDomainInitializer.AVAILABLE));
+        entityWriteService.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, ADMIN);
+
+        entityWriteService.executeTransition(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, transitionId("GuardedRetire"), ADMIN);
+
+        assertThat(registerStore.currentStateIds(book)).containsEntry(machineId(), discontinued);
+    }
+
+    // Permission comes first: a caller who may not execute the transition learns only that, not whether
+    // the guard would have passed.
+    @Test
+    void executeTransition_withoutTheExecuteGrant_reportsThatBeforeTheGuard() {
+        UUID book = createBook("Dune");
+        addGuardedRetire("{\"type\":\"PROPERTY_VALUE\",\"propertyName\":\"title\",\"operator\":\"EQUALS\",\"value\":\"NOPE\"}");
+        entityWriteService.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, ADMIN);
+        NtrlocPrincipal user = nonAdmin();
+
+        assertThatThrownBy(() -> entityWriteService.executeTransition(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, transitionId("GuardedRetire"), user))
+                .isInstanceOf(MutationValidationException.class)
+                .satisfies(e -> assertThat(((MutationValidationException) e).errors())
+                        .anyMatch(err -> err.message().contains("Not permitted to execute")));
+    }
+
+    @Test
+    void startStateMachine_withoutTheStartGrant_reportsThatBeforeAlreadyActive() {
+        UUID book = createBook("Dune");
+        entityWriteService.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, ADMIN);
+        NtrlocPrincipal user = nonAdmin();
+
+        assertThatThrownBy(() -> entityWriteService.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, user))
+                .isInstanceOf(MutationValidationException.class)
+                .satisfies(e -> assertThat(((MutationValidationException) e).errors())
+                        .anyMatch(err -> err.message().contains("Not permitted to start")));
+    }
+
+    // Adds an Available -> Discontinued transition named GuardedRetire with the given guard, replacing one
+    // an earlier test added (the fixture's schema is shared across the class); returns Discontinued's id.
+    private UUID addGuardedRetire(String guardJson) {
+        machine().states().stream().flatMap(s -> s.transitions().stream())
+                .filter(t -> t.name().equals("GuardedRetire")).findFirst()
+                .ifPresent(t -> schemaService.applyMutations(List.<DefinitionMutation>of(new DeleteTransitionMutation(t.id()))));
+        UUID available = schemaService.resolveStateId(machineId(), RegisterProjectionTestDomainInitializer.AVAILABLE);
+        UUID discontinued = schemaService.resolveStateId(machineId(), RegisterProjectionTestDomainInitializer.DISCONTINUED);
+        schemaService.applyMutations(List.<DefinitionMutation>of(new CreateTransitionMutation(
+                available, discontinued, "GuardedRetire", null, null, JsonMapper.builder().build().readTree(guardJson))));
+        return discontinued;
     }
 
     // --- END detach + re-entry ---
@@ -215,22 +269,22 @@ class StateMachineExecutionIntegrationTest extends AbstractIntegrationTest {
     @Test
     void executeTransition_intoEnd_detachesTheMachine_andReStartWorks() {
         UUID book = createBook("Dune");
-        UUID available = registerPartitionManager.resolveStateId(machineId(), RegisterProjectionTestDomainInitializer.AVAILABLE);
-        UUID endStateId = registerPartitionManager.resolveStateId(machineId(), "__end__");
-        schemaManager.applyMutations(List.<DefinitionMutation>of(
+        UUID available = schemaService.resolveStateId(machineId(), RegisterProjectionTestDomainInitializer.AVAILABLE);
+        UUID endStateId = schemaService.resolveStateId(machineId(), "__end__");
+        schemaService.applyMutations(List.<DefinitionMutation>of(
                 new CreateTransitionMutation(available, endStateId, "Archive", null, null, null)));
-        entityManager.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, ADMIN);
+        entityWriteService.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, ADMIN);
 
-        entityManager.executeTransition(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, transitionId("Archive"), ADMIN);
-        assertThat(registerPartitionManager.currentStateIds(book)).doesNotContainKey(machineId());
+        entityWriteService.executeTransition(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, transitionId("Archive"), ADMIN);
+        assertThat(registerStore.currentStateIds(book)).doesNotContainKey(machineId());
 
         // re-entry
-        entityManager.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, ADMIN);
-        assertThat(registerPartitionManager.currentStateIds(book)).containsEntry(machineId(), available);
+        entityWriteService.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, ADMIN);
+        assertThat(registerStore.currentStateIds(book)).containsEntry(machineId(), available);
     }
 
     private NtrlocPrincipal nonAdmin() {
-        var user = securityRepo.createUser("User", "sme-" + UUID.randomUUID() + "@example.com", false);
+        var user = userStore.createUser("User", "sme-" + UUID.randomUUID() + "@example.com", false);
         return TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), false);
     }
 }

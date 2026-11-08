@@ -2,9 +2,8 @@ package org.ntrloc.graph.domain;
 
 import org.flowable.dmn.api.DmnRepositoryService;
 import org.flowable.engine.RepositoryService;
-import org.ntrloc.graph.db.partition.binary.BinaryPartitionManager;
-import org.ntrloc.graph.db.partition.schema.ControlledListManager;
-import org.ntrloc.graph.db.partition.schema.SchemaManager;
+import org.ntrloc.graph.db.partition.binary.BinaryStore;
+import org.ntrloc.graph.db.partition.schema.SchemaService;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateStateMachineMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateStateMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateTransitionMutation;
@@ -23,11 +22,11 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 // The one and only thing that seeds a domain -- schema, data, processes, everything. Nothing else
-// in the system (SchemaManager, RegisterPartitionManager, ProcessEngineConfig, DmnEngineConfig) has any
+// in the system (SchemaService, RegisterStore, ProcessEngineConfig, DmnEngineConfig) has any
 // knowledge that a DomainInitializer exists or that the system is being "initialized": it starts
 // up empty, and a DomainInitializer implementation seeds it afterward through the same public APIs
-// any other caller would use (SchemaManager.applyMutations() publishes SchemaChangeEvent, which
-// RegisterPartitionManager already reacts to by creating per-item-type/per-link-type register
+// any other caller would use (SchemaService.applyMutations() publishes SchemaChangeEvent, which
+// RegisterStore already reacts to by creating per-item-type/per-link-type register
 // tables -- no eager scan needed).
 //
 // Each of the three init* methods is a default no-op -- implement only what a given domain
@@ -35,23 +34,23 @@ import java.util.stream.Stream;
 // that also implements Spring's ApplicationRunner (not @PostConstruct -- see the class-level note
 // on any implementation for why: @EventListener methods elsewhere aren't wired up until *all*
 // singletons finish construction, so a @PostConstruct that publishes SchemaChangeEvent during its
-// own construction can fire before RegisterPartitionManager is even listening), constructor-
-// injecting whatever it needs (SchemaManager, ControlledListManager, JdbcClient,
-// BinaryPartitionManager, RepositoryService, DmnRepositoryService) and calling its own overridden
+// own construction can fire before RegisterStore is even listening), constructor-
+// injecting whatever it needs (SchemaService, JdbcClient,
+// BinaryStore, RepositoryService, DmnRepositoryService) and calling its own overridden
 // method(s) from run(), in the order initSchema -> initData -> initProcesses.
 public interface DomainInitializer {
 
     /**
      * Implementations create item types, traits, links, properties, and controlled lists via
-     * schemaManager.applyMutations(...) -- the same API the admin UI's schema editor uses.
+     * schemaService.applyMutations(...) -- the same API the admin UI's schema editor uses.
      */
-    default void initSchema(SchemaManager schemaManager, ControlledListManager controlledListManager) {
+    default void initSchema(SchemaService schemaService) {
     }
 
     /**
      * Implementations seed domain data via jdbcClient and may store binary content.
      */
-    default void initData(JdbcClient jdbcClient, BinaryPartitionManager binaryPartitionManager) {
+    default void initData(JdbcClient jdbcClient, BinaryStore binaryStore) {
     }
 
     /**
@@ -85,11 +84,11 @@ public interface DomainInitializer {
      * need it), and state ids don't exist until CreateStateMutation runs (transitions need real
      * ids, not names). See StateDefinition/TransitionDefinition below.
      */
-    default void initStateMachine(SchemaManager schemaManager, UUID itemDefinitionId, String machineName,
+    default void initStateMachine(SchemaService schemaService, UUID itemDefinitionId, String machineName,
                                    List<StateDefinition> states, List<TransitionDefinition> transitions) {
-        schemaManager.applyMutations(List.of(new CreateStateMachineMutation(itemDefinitionId, machineName, null)));
+        schemaService.applyMutations(List.of(new CreateStateMachineMutation(itemDefinitionId, machineName, null)));
 
-        UUID stateMachineId = schemaManager.getAdminSchema().items().stream()
+        UUID stateMachineId = schemaService.getAdminSchema().items().stream()
                 .filter(item -> item.id().equals(itemDefinitionId))
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("No item type with id: " + itemDefinitionId))
@@ -99,12 +98,12 @@ public interface DomainInitializer {
                 .orElseThrow(() -> new IllegalStateException("State machine '" + machineName + "' was not created"))
                 .id();
 
-        schemaManager.applyMutations(states.stream()
+        schemaService.applyMutations(states.stream()
                 .<DefinitionMutation>map(s -> new CreateStateMutation(
                         stateMachineId, s.name(), s.description(), s.entryProcessId(), s.exitProcessId()))
                 .toList());
 
-        List<AdminStateView> createdStates = schemaManager.getAdminSchema().items().stream()
+        List<AdminStateView> createdStates = schemaService.getAdminSchema().items().stream()
                 .filter(item -> item.id().equals(itemDefinitionId))
                 .findFirst()
                 .orElseThrow(() -> new IllegalArgumentException("No item type with id: " + itemDefinitionId))
@@ -118,7 +117,7 @@ public interface DomainInitializer {
                 .orElseGet(Stream::empty)
                 .collect(Collectors.toMap(AdminStateView::name, AdminStateView::id));
 
-        schemaManager.applyMutations(transitions.stream()
+        schemaService.applyMutations(transitions.stream()
                 .<DefinitionMutation>map(t -> new CreateTransitionMutation(
                         requireStateId(resolved, t.fromStateName()),
                         requireStateId(resolved, t.toStateName()),

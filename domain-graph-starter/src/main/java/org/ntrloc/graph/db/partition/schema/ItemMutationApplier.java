@@ -7,7 +7,7 @@ import org.ntrloc.graph.db.partition.schema.definition.mutation.DeleteItemDefini
 import org.ntrloc.graph.db.partition.schema.definition.mutation.ExpectItemDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.UpdateItemDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.event.SchemaChangeEvent;
-import org.ntrloc.graph.db.partition.schema.repository.SchemaRepository;
+import org.ntrloc.graph.db.partition.schema.repository.SchemaStore;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
 
@@ -16,19 +16,19 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
-// Applies item-definition mutations -- split out of SchemaManager (see its own history) to keep
+// Applies item-definition mutations -- split out of SchemaService (see its own history) to keep
 // each mutation-family applier's own dependency footprint small.
 @Component
 class ItemMutationApplier {
 
-    private final SchemaRepository repo;
+    private final SchemaStore store;
     private final ApplicationEventPublisher eventPublisher;
     private final PropertyMutationApplier propertyMutationApplier;
     private final LinkMutationApplier linkMutationApplier;
 
-    ItemMutationApplier(SchemaRepository repo, ApplicationEventPublisher eventPublisher, PropertyMutationApplier propertyMutationApplier,
+    ItemMutationApplier(SchemaStore store, ApplicationEventPublisher eventPublisher, PropertyMutationApplier propertyMutationApplier,
                         LinkMutationApplier linkMutationApplier) {
-        this.repo = repo;
+        this.store = store;
         this.eventPublisher = eventPublisher;
         this.propertyMutationApplier = propertyMutationApplier;
         this.linkMutationApplier = linkMutationApplier;
@@ -57,18 +57,18 @@ class ItemMutationApplier {
 
     private void applyCreate(CreateItemDefinitionMutation m, Map<String, UUID> refIdToEntityId) {
         if (m.supertypeId() != null) {
-            SchemaMutationValidation.requireKnownItem(repo, m.supertypeId());
+            SchemaMutationValidation.requireKnownItem(store, m.supertypeId());
         }
         // Everything the new item type will own at the top level -- its own properties and groups, and
         // whatever the traits it implements bring -- checked before anything is written, so a failure
         // leaves no half-built item behind.
         Set<String> ownNames = PropertyMutationApplier.topLevelNames(m.properties(), m.groups());
-        SchemaMutationValidation.requireNamesAvailableForNewItemType(repo, m.supertypeId(), ownNames, m.traitIds());
-        var item = repo.createItem(m.name(), m.description(), m.supertypeId(), m.abstractType(), m.displayLabelPattern());
-        propertyMutationApplier.createContents(new SchemaRepository.PropertyOwnerRef(PropertyContainerKind.ITEM, item.id()),
+        SchemaMutationValidation.requireNamesAvailableForNewItemType(store, m.supertypeId(), ownNames, m.traitIds());
+        var item = store.createItem(m.name(), m.description(), m.supertypeId(), m.abstractType(), m.displayLabelPattern());
+        propertyMutationApplier.createContents(new SchemaStore.PropertyOwnerRef(PropertyContainerKind.ITEM, item.id()),
                 m.properties(), m.groups(), "item type '" + m.name() + "'");
         for (var traitId : m.traitIds()) {
-            repo.implementTrait(item.id(), traitId);
+            store.implementTrait(item.id(), traitId);
         }
         if (m.refId() != null) {
             refIdToEntityId.put(m.refId(), item.id());
@@ -78,16 +78,16 @@ class ItemMutationApplier {
 
     private void applyUpdate(UpdateItemDefinitionMutation m) {
         if (m.supertypeId() != null) {
-            SchemaMutationValidation.requireKnownItem(repo, m.supertypeId());
-            SchemaMutationValidation.requireNoSupertypeCycle(repo, m.id(), m.supertypeId());
-            SchemaMutationValidation.requireNoTopLevelCollisionsForSupertype(repo, m.id(), m.supertypeId());
+            SchemaMutationValidation.requireKnownItem(store, m.supertypeId());
+            SchemaMutationValidation.requireNoSupertypeCycle(store, m.id(), m.supertypeId());
+            SchemaMutationValidation.requireNoTopLevelCollisionsForSupertype(store, m.id(), m.supertypeId());
         }
-        repo.updateItem(m.id(), m.name(), m.description(), m.supertypeId(), m.abstractType(), m.displayLabelPattern());
+        store.updateItem(m.id(), m.name(), m.description(), m.supertypeId(), m.abstractType(), m.displayLabelPattern());
     }
 
     // Blank and absent text are the same to an editor, so they're the same here too.
     private void applyExpect(ExpectItemDefinitionMutation m) {
-        var row = repo.lockItem(m.id())
+        var row = store.lockItem(m.id())
                 .orElseThrow(() -> new SchemaConflictException("This item type was deleted by someone else."));
         boolean unchanged = row.name().equals(m.name())
                 && Objects.equals(blankToNull(row.description()), blankToNull(m.description()))
@@ -104,10 +104,10 @@ class ItemMutationApplier {
     }
 
     private void applyDelete(DeleteItemDefinitionMutation m) {
-        SchemaMutationValidation.requireItemTypeNotInUse(repo, m.id());
-        SchemaMutationValidation.requireNoSubtypes(repo, m.id());
+        SchemaMutationValidation.requireItemTypeNotInUse(store, m.id());
+        SchemaMutationValidation.requireNoSubtypes(store, m.id());
         linkMutationApplier.deleteLinksTouching(m.id());
-        repo.deleteItem(m.id());
+        store.deleteItem(m.id());
         eventPublisher.publishEvent(new SchemaChangeEvent.ItemTypeDeleted(m.id()));
     }
 }

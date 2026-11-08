@@ -4,41 +4,55 @@ import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
 import org.ntrloc.graph.db.partition.ledger.ItemDeleteEntry;
 import org.ntrloc.graph.db.partition.ledger.ItemUpdateEntry;
 import org.ntrloc.graph.db.partition.ledger.LedgerEntry;
-import org.ntrloc.graph.db.partition.ledger.LedgerPartitionManager;
+import org.ntrloc.graph.db.partition.ledger.LedgerStoreReader;
+import org.ntrloc.graph.db.partition.ledger.LedgerStoreWriter;
 import org.ntrloc.graph.db.partition.ledger.LinkCreateEntry;
 import org.ntrloc.graph.db.partition.ledger.LinkDeleteEntry;
 import org.ntrloc.graph.db.partition.ledger.LinkEndpoint;
 import org.ntrloc.graph.db.partition.ledger.LinkUpdateEntry;
 import org.ntrloc.graph.db.partition.register.RegisterLinkEndpoint;
-import org.ntrloc.graph.db.partition.register.RegisterPartitionManager;
+import org.ntrloc.graph.db.partition.register.RegisterStoreReader;
+import org.ntrloc.graph.db.partition.register.RegisterStoreWriter;
 import org.ntrloc.graph.db.partition.register.StagingContext;
+import org.ntrloc.graph.db.partition.schema.SchemaService;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 @Component
 public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator {
 
-    private final LedgerPartitionManager ledgerPartitionManager;
-    private final RegisterPartitionManager registerPartitionManager;
+    private final LedgerStoreReader ledgerReader;
+    private final LedgerStoreWriter ledgerWriter;
+    private final RegisterStoreReader registerReader;
+    private final RegisterStoreWriter registerWriter;
     private final ItemDeleteCascadeExpander cascadeExpander;
     private final NoOpMutationFilter noOpMutationFilter;
     private final PipelineMarkerDecisionService pipelineMarkerDecisionService;
+    private final BinaryAttachmentReconciler binaryAttachmentReconciler;
+    private final SchemaService schemaService;
 
-    public LedgerRegisterCoordinatorImpl(LedgerPartitionManager ledgerPartitionManager,
-                                          RegisterPartitionManager registerPartitionManager,
+    public LedgerRegisterCoordinatorImpl(LedgerStoreReader ledgerReader, LedgerStoreWriter ledgerWriter,
+                                          RegisterStoreReader registerReader, RegisterStoreWriter registerWriter,
                                           ItemDeleteCascadeExpander cascadeExpander,
                                           NoOpMutationFilter noOpMutationFilter,
-                                          PipelineMarkerDecisionService pipelineMarkerDecisionService) {
-        this.ledgerPartitionManager = ledgerPartitionManager;
-        this.registerPartitionManager = registerPartitionManager;
+                                          PipelineMarkerDecisionService pipelineMarkerDecisionService,
+                                          BinaryAttachmentReconciler binaryAttachmentReconciler,
+                                          SchemaService schemaService) {
+        this.ledgerReader = ledgerReader;
+        this.ledgerWriter = ledgerWriter;
+        this.registerReader = registerReader;
+        this.registerWriter = registerWriter;
         this.cascadeExpander = cascadeExpander;
         this.noOpMutationFilter = noOpMutationFilter;
         this.pipelineMarkerDecisionService = pipelineMarkerDecisionService;
+        this.binaryAttachmentReconciler = binaryAttachmentReconciler;
+        this.schemaService = schemaService;
     }
 
     // REQUIRES_NEW on prepare/commit/abort, not the default REQUIRED: each must durably commit (or
@@ -63,7 +77,7 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
         // prepare()'s job, not commit()'s. commit() needs no changes to apply what this produces:
         // it already reads markersAdded/Removed off whatever entries it's given.
         expanded = pipelineMarkerDecisionService.enrichWithPipelineDecisions(expanded);
-        ledgerPartitionManager.append(expanded, transactionId, actorUserId, createdDate);
+        ledgerWriter.append(expanded, transactionId, actorUserId, createdDate);
 
         // Items before links: link endpoint resolution needs same-transaction item staging
         // to already exist so it can prefer the fresh row over the old committed one.
@@ -77,18 +91,20 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
         StagingContext staging = new StagingContext(transactionId, actorUserId, createdDate);
         for (LedgerEntry entry : expanded) {
             switch (entry) {
-                case ItemCreateEntry e -> registerPartitionManager.stageItemCreate(e.itemId(), e.itemTypeId(), e.properties(), e.initialStates(), staging);
-                case ItemUpdateEntry e when hasRegisterEffect(e) -> registerPartitionManager.stageItemChange(e.itemId(), e.properties(), e.stateChanges(), e.stateMachinesEnded(), staging);
+                case ItemCreateEntry e -> registerWriter.stageItemCreate(e.itemId(), e.itemTypeId(), e.properties(), e.initialStates(),
+                        schemaService.binaryPropertyIdsForItemType(e.itemTypeId()), staging);
+                case ItemUpdateEntry e when hasRegisterEffect(e) -> registerWriter.stageItemChange(e.itemId(), e.properties(),
+                        e.stateChanges(), e.stateMachinesEnded(), binaryPropertyIdsForItem(e.itemId()), staging);
                 default -> { /* handled in another phase */ }
             }
         }
         for (LedgerEntry entry : expanded) {
             switch (entry) {
                 case LinkCreateEntry e -> {
-                    registerPartitionManager.stageLinkCreate(e.linkId(), e.linkTypeId(),
+                    registerWriter.stageLinkCreate(e.linkId(), e.linkTypeId(),
                             toRegisterEndpoint(e.endpointA()), toRegisterEndpoint(e.endpointB()), e.properties(), staging);
                 }
-                case LinkUpdateEntry e when !e.properties().isEmpty() -> registerPartitionManager.stageLinkUpdate(e.linkId(), e.properties(), staging);
+                case LinkUpdateEntry e when !e.properties().isEmpty() -> registerWriter.stageLinkUpdate(e.linkId(), e.properties(), staging);
                 default -> { /* handled in another phase */ }
             }
         }
@@ -97,7 +113,7 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
     @Override
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void commit(UUID transactionId, UUID commitId) {
-        List<LedgerEntry> entries = ledgerPartitionManager.readTransaction(transactionId);
+        List<LedgerEntry> entries = ledgerReader.readTransaction(transactionId);
 
         commitItems(entries, transactionId, commitId);
         commitLinks(entries, transactionId, commitId);
@@ -113,14 +129,16 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
         // comments).
         applyMarkers(entries);
 
-        ledgerPartitionManager.commit(transactionId, commitId);
+        ledgerWriter.commit(transactionId, commitId);
     }
 
+    // Binary attachments are reconciled here and in deleteItems, at commit -- never at prepare, so an
+    // aborted transaction leaves the binary dynamic-property counts untouched.
     private void commitItems(List<LedgerEntry> entries, UUID transactionId, UUID commitId) {
         for (LedgerEntry entry : entries) {
             switch (entry) {
-                case ItemCreateEntry e -> registerPartitionManager.commitItem(e.itemId(), transactionId, commitId);
-                case ItemUpdateEntry e when hasRegisterEffect(e) -> registerPartitionManager.commitItem(e.itemId(), transactionId, commitId);
+                case ItemCreateEntry e -> binaryAttachmentReconciler.reconcile(registerWriter.commitItem(e.itemId(), transactionId, commitId));
+                case ItemUpdateEntry e when hasRegisterEffect(e) -> binaryAttachmentReconciler.reconcile(registerWriter.commitItem(e.itemId(), transactionId, commitId));
                 default -> { /* handled in another phase */ }
             }
         }
@@ -129,8 +147,8 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
     private void commitLinks(List<LedgerEntry> entries, UUID transactionId, UUID commitId) {
         for (LedgerEntry entry : entries) {
             switch (entry) {
-                case LinkCreateEntry e -> registerPartitionManager.commitLink(e.linkId(), transactionId, commitId);
-                case LinkUpdateEntry e when !e.properties().isEmpty() -> registerPartitionManager.commitLink(e.linkId(), transactionId, commitId);
+                case LinkCreateEntry e -> registerWriter.commitLink(e.linkId(), transactionId, commitId);
+                case LinkUpdateEntry e when !e.properties().isEmpty() -> registerWriter.commitLink(e.linkId(), transactionId, commitId);
                 default -> { /* handled in another phase */ }
             }
         }
@@ -138,23 +156,23 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
 
     private void deleteLinks(List<LedgerEntry> entries) {
         for (LedgerEntry entry : entries) {
-            if (entry instanceof LinkDeleteEntry e) registerPartitionManager.deleteLink(e.linkId());
+            if (entry instanceof LinkDeleteEntry e) registerWriter.deleteLink(e.linkId());
         }
     }
 
     private void deleteItems(List<LedgerEntry> entries) {
         for (LedgerEntry entry : entries) {
-            if (entry instanceof ItemDeleteEntry e) registerPartitionManager.deleteItem(e.itemId());
+            if (entry instanceof ItemDeleteEntry e) binaryAttachmentReconciler.reconcile(registerWriter.deleteItem(e.itemId()));
         }
     }
 
     private void applyMarkers(List<LedgerEntry> entries) {
         for (LedgerEntry entry : entries) {
             switch (entry) {
-                case ItemCreateEntry e -> e.initialMarkers().forEach(m -> registerPartitionManager.postItemMarkerAdd(e.itemId(), m.markerId()));
+                case ItemCreateEntry e -> e.initialMarkers().forEach(m -> registerWriter.postItemMarkerAdd(e.itemId(), m.markerId()));
                 case ItemUpdateEntry e -> {
-                    e.markersAdded().forEach(m -> registerPartitionManager.postItemMarkerAdd(e.itemId(), m.markerId()));
-                    e.markersRemoved().forEach(m -> registerPartitionManager.postItemMarkerRemove(e.itemId(), m.markerId()));
+                    e.markersAdded().forEach(m -> registerWriter.postItemMarkerAdd(e.itemId(), m.markerId()));
+                    e.markersRemoved().forEach(m -> registerWriter.postItemMarkerRemove(e.itemId(), m.markerId()));
                 }
                 default -> { /* handled in another phase */ }
             }
@@ -164,8 +182,8 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
     @Override
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void abort(UUID transactionId) {
-        registerPartitionManager.abort(transactionId);
-        ledgerPartitionManager.abort(transactionId);
+        registerWriter.abort(transactionId);
+        ledgerWriter.abort(transactionId);
     }
 
     // An ItemUpdateEntry only needs a staged/committed register row when it actually changes the
@@ -173,6 +191,10 @@ public class LedgerRegisterCoordinatorImpl implements LedgerRegisterCoordinator 
     // to the already-committed row and never gate staging).
     private static boolean hasRegisterEffect(ItemUpdateEntry e) {
         return !e.properties().isEmpty() || !e.stateChanges().isEmpty() || !e.stateMachinesEnded().isEmpty();
+    }
+
+    private Set<UUID> binaryPropertyIdsForItem(UUID itemId) {
+        return schemaService.binaryPropertyIdsForItemType(registerReader.findItemTypeId(itemId).orElseThrow());
     }
 
     private RegisterLinkEndpoint toRegisterEndpoint(LinkEndpoint endpoint) {

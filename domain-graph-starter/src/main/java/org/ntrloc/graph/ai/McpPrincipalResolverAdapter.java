@@ -1,14 +1,14 @@
 package org.ntrloc.graph.ai;
 
-import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
-import org.ntrloc.graph.db.partition.security.ExternalPrincipalResolver;
+import org.ntrloc.graph.principal.NtrlocPrincipal;
+import org.ntrloc.graph.principal.ExternalPrincipalResolver;
 import org.springframework.ai.mcp.annotation.context.McpSyncRequestContext;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ResponseStatusException;
 
-// Shared by all four MCP tool services (ProjectionService, MutationService, SchemaService,
-// ProcessService) -- see docs/ntrloc-principal-enforcement-plan.md, Part D, for why this used to
+// Shared by all four MCP tool classes (ProjectionTools, MutationTools, SchemaTools,
+// ProcessTools) -- see docs/ntrloc-principal-enforcement-plan.md, Part D, for why this used to
 // be copy-pasted across the first two and why that stopped being acceptable once a third and
 // fourth tool needed the exact same logic: there is no Spring mechanism that hands an MCP tool
 // method its caller's identity automatically the way a servlet filter chain does for a controller
@@ -17,7 +17,7 @@ import org.springframework.web.server.ResponseStatusException;
 // off the underlying HTTP request, re-resolved via ExternalPrincipalResolver.byToken -- and
 // every tool must reject an unresolvable one the same way. There is no legitimate anonymous MCP
 // call (Part C): requirePrincipal is the one method every @McpTool method on every one of the
-// four services calls first, even the two (SchemaService, ProcessService) whose own responses
+// four tool classes calls first, even the two (SchemaTools, ProcessTools) whose own responses
 // aren't filtered by identity today -- rejecting an unauthenticated caller is a floor, not
 // conditional on whether this particular tool's output happens to be scoped by who's asking.
 @Component

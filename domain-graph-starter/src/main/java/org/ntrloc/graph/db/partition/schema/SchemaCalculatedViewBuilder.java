@@ -11,9 +11,10 @@ import org.ntrloc.graph.db.partition.schema.definition.view.calculated.PropertyD
 import org.ntrloc.graph.db.partition.schema.definition.view.calculated.PropertyGroupDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.calculated.SchemaView;
 import org.ntrloc.graph.db.partition.schema.definition.view.calculated.TraitDefinitionView;
-import org.ntrloc.graph.db.partition.schema.repository.SchemaRepository;
-import org.ntrloc.graph.db.partition.schema.repository.SchemaRepository.ItemRow;
-import org.ntrloc.graph.db.partition.schema.repository.SchemaRepository.TraitRow;
+import org.ntrloc.graph.db.partition.schema.repository.ControlledListStore;
+import org.ntrloc.graph.db.partition.schema.repository.SchemaStore;
+import org.ntrloc.graph.db.partition.schema.repository.SchemaStore.ItemRow;
+import org.ntrloc.graph.db.partition.schema.repository.SchemaStore.TraitRow;
 import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
@@ -24,26 +25,26 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-// Builds the calculated (client-facing) schema projection that SchemaManager caches and serves,
-// from SchemaRepository's raw rows, via SchemaContentResolver for the content-resolution logic
+// Builds the calculated (client-facing) schema projection that SchemaService caches and serves,
+// from SchemaStore's raw rows, via SchemaContentResolver for the content-resolution logic
 // shared with SchemaAdminViewBuilder. Split out of the single SchemaViewBuilder that used to build
 // both projections -- see SchemaContentResolver's own comment for why.
 @Component
 class SchemaCalculatedViewBuilder {
 
-    private final SchemaRepository repo;
-    private final ControlledListManager controlledListManager;
+    private final SchemaStore store;
+    private final ControlledListStore controlledListStore;
     private final SchemaContentResolver contentResolver;
 
-    SchemaCalculatedViewBuilder(SchemaRepository repo, ControlledListManager controlledListManager, SchemaContentResolver contentResolver) {
-        this.repo = repo;
-        this.controlledListManager = controlledListManager;
+    SchemaCalculatedViewBuilder(SchemaStore store, ControlledListStore controlledListStore, SchemaContentResolver contentResolver) {
+        this.store = store;
+        this.controlledListStore = controlledListStore;
         this.contentResolver = contentResolver;
     }
 
     SchemaView buildSchema() {
-        var items  = repo.getAllItems();
-        var traits = repo.getAllTraits();
+        var items  = store.getAllItems();
+        var traits = store.getAllTraits();
 
         Map<UUID, String> entityNameMap = new HashMap<>();
         items.forEach(i -> entityNameMap.put(i.id(), i.name()));
@@ -54,8 +55,8 @@ class SchemaCalculatedViewBuilder {
                 .collect(Collectors.toSet());
 
         var ownerContents = contentResolver.loadOwnerContents();
-        var perspectivesByEntity = repo.getPerspectivesByEntity();
-        var traitIdsByItem    = repo.getTraitIdsByItem();
+        var perspectivesByEntity = store.getPerspectivesByEntity();
+        var traitIdsByItem    = store.getTraitIdsByItem();
 
         Map<UUID, TraitRow> traitById = traits.stream()
                 .collect(Collectors.toMap(TraitRow::id, t -> t));
@@ -107,7 +108,7 @@ class SchemaCalculatedViewBuilder {
     // without changing behavior; every field here is still exactly what buildSchema() already
     // builds once per call and passes down.
     private record LinkBuildContext(
-            Map<UUID, List<SchemaRepository.PerspectiveRow>> perspectivesByEntity,
+            Map<UUID, List<SchemaStore.PerspectiveRow>> perspectivesByEntity,
             Map<UUID, String> entityNameMap,
             Set<UUID> itemEntityIds,
             Map<UUID, Contents> contentsByLink,
@@ -154,7 +155,7 @@ class SchemaCalculatedViewBuilder {
         var perspectives = ctx.perspectivesByEntity().get(entityId);
         if (perspectives == null || perspectives.isEmpty()) return null;
         return perspectives.stream().map(p -> {
-            var inverses = repo.findInversePerspectives(p.linkId(), p.id());
+            var inverses = store.findInversePerspectives(p.linkId(), p.id());
             var targets = inverses.stream()
                     .map(inv -> new TargetEntityView(ctx.entityNameMap().get(inv.entityId()),
                             ctx.itemEntityIds().contains(inv.entityId()) ? "item" : SchemaContentResolver.ENTITY_KIND_TRAIT))
@@ -180,6 +181,6 @@ class SchemaCalculatedViewBuilder {
 
     private List<AllowedValue> allowedValuesFor(AdminPropertyDefinitionView p) {
         if (p.controlledListId() == null) return null;
-        return controlledListManager.getValues(p.controlledListId(), p.type());
+        return controlledListStore.getValues(p.controlledListId(), p.type());
     }
 }

@@ -1,7 +1,9 @@
 package org.ntrloc.graph.db.partition.security;
 
+import org.ntrloc.graph.principal.ExternalPrincipalResolver;
+
 import org.ntrloc.graph.db.partition.authorization.DefaultUserGroupInitializer;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -38,15 +40,15 @@ public class UserAdminController {
 
     public record TokenSummaryResponse(UUID id, String name, OffsetDateTime createdAt, OffsetDateTime expiresAt) {}
 
-    private final SecurityRepository repo;
+    private final UserStore store;
     private final PersonalAccessTokenService patService;
     private final ExternalPrincipalResolver principalResolver;
     private final DefaultUserGroupInitializer defaultUserGroupInitializer;
     private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
 
-    public UserAdminController(SecurityRepository repo, PersonalAccessTokenService patService,
+    public UserAdminController(UserStore store, PersonalAccessTokenService patService,
                                ExternalPrincipalResolver principalResolver, DefaultUserGroupInitializer defaultUserGroupInitializer) {
-        this.repo = repo;
+        this.store = store;
         this.patService = patService;
         this.principalResolver = principalResolver;
         this.defaultUserGroupInitializer = defaultUserGroupInitializer;
@@ -54,7 +56,7 @@ public class UserAdminController {
 
     @GetMapping
     List<UserView> listUsers() {
-        return repo.listUsers().stream()
+        return store.listUsers().stream()
                 .map(u -> new UserView(u.id(), u.displayName(), u.email(), u.isAdmin()))
                 .toList();
     }
@@ -69,14 +71,14 @@ public class UserAdminController {
         if (isBlank(body.password())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Password is required");
         }
-        if (repo.findUserByEmail(body.email()).isPresent()) {
+        if (store.findUserByEmail(body.email()).isPresent()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Email already in use: " + body.email());
         }
 
         boolean isAdmin = isAdminRole(body.role());
-        var user = repo.createUser(body.displayName(), body.email(), isAdmin);
+        var user = store.createUser(body.displayName(), body.email(), isAdmin);
         String passwordHash = "{bcrypt}" + encoder.encode(body.password());
-        repo.createLocalCredentials(user.id(), passwordHash);
+        store.createLocalCredentials(user.id(), passwordHash);
         defaultUserGroupInitializer.addUserToDefaultUserGroup(user.id());
         return new UserView(user.id(), user.displayName(), user.email(), user.isAdmin());
     }
@@ -89,13 +91,13 @@ public class UserAdminController {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only admins can update users");
         }
         requireIdentityFields(body.displayName(), body.email());
-        repo.findUserByEmail(body.email())
+        store.findUserByEmail(body.email())
                 .filter(existing -> !existing.id().equals(userId))
                 .ifPresent(existing -> {
                     throw new ResponseStatusException(HttpStatus.CONFLICT, "Email already in use: " + body.email());
                 });
         boolean isAdmin = isAdminRole(body.role());
-        repo.updateUser(userId, body.displayName(), body.email(), isAdmin);
+        store.updateUser(userId, body.displayName(), body.email(), isAdmin);
         return new UserView(userId, body.displayName(), body.email(), isAdmin);
     }
 
@@ -108,7 +110,7 @@ public class UserAdminController {
         if (principal.id().equals(userId)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "You cannot delete your own account");
         }
-        repo.deleteUser(userId);
+        store.deleteUser(userId);
         return ResponseEntity.noContent().build();
     }
 
@@ -120,7 +122,7 @@ public class UserAdminController {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only admins can reset passwords");
         }
         String passwordHash = "{bcrypt}" + encoder.encode(body.newPassword());
-        repo.updatePasswordHash(userId, passwordHash);
+        store.updatePasswordHash(userId, passwordHash);
         return ResponseEntity.noContent().build();
     }
 

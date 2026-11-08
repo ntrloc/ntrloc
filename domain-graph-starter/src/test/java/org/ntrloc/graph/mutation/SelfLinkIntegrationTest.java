@@ -1,16 +1,16 @@
 package org.ntrloc.graph.mutation;
 
+import org.ntrloc.graph.projection.ProjectionEngine;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
-import org.ntrloc.graph.db.partition.register.RegisterPartitionManager;
-import org.ntrloc.graph.db.partition.schema.SchemaManager;
+import org.ntrloc.graph.db.partition.schema.SchemaService;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateItemDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateLinkDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePerspectiveDefinitionMutation;
-import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
-import org.ntrloc.graph.db.partition.security.TestPrincipals;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.principal.NtrlocPrincipal;
+import org.ntrloc.graph.principal.TestPrincipals;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.springframework.beans.factory.annotation.Autowired;
 
 import java.util.List;
@@ -32,27 +32,28 @@ class SelfLinkIntegrationTest extends AbstractIntegrationTest {
 
     // Not static/final: needs a real, backed security_user row now that ledger_entry.created_by
     // (Part E) has a NOT NULL FK to security_user.id -- created fresh per test in setUp() via the
-    // already-autowired securityRepo, which a static initializer can't reach.
+    // already-autowired userStore, which a static initializer can't reach.
     private NtrlocPrincipal SOME_PRINCIPAL;
 
     @Autowired
     private MutationRequestProcessor processor;
 
     @Autowired
-    private RegisterPartitionManager registerPartitionManager;
+
+    private ProjectionEngine projectionEngine;
 
     @Autowired
-    private SchemaManager schemaManager;
+    private SchemaService schemaService;
 
     @Autowired
     private SelfLinkTestDomainInitializer fixture;
 
     @Autowired
-    private SecurityRepository securityRepo;
+    private UserStore userStore;
 
     @BeforeEach
     void setUpSomePrincipal() {
-        var user = securityRepo.createUser("Test User", "sli-test-user-" + UUID.randomUUID() + "@example.com", true);
+        var user = userStore.createUser("Test User", "sli-test-user-" + UUID.randomUUID() + "@example.com", true);
         SOME_PRINCIPAL = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), true);
     }
 
@@ -64,7 +65,7 @@ class SelfLinkIntegrationTest extends AbstractIntegrationTest {
     }
 
     private List<UUID> linkedItemIds(UUID personId, String perspectiveName) {
-        var projected = registerPartitionManager.projectOne(fixture.personTypeId(), personId, "http://binary").orElseThrow();
+        var projected = projectionEngine.projectOne(fixture.personTypeId(), personId, "http://binary").orElseThrow();
         return projected.links().getOrDefault(perspectiveName, List.of()).stream()
                 .map(link -> link.item().itemId())
                 .toList();
@@ -101,7 +102,7 @@ class SelfLinkIntegrationTest extends AbstractIntegrationTest {
     void perspectiveName_usedTwiceOnTheSameItemTypeByDifferentLinks_throws() {
         UUID otherTypeId = createOtherItemType();
 
-        assertThatThrownBy(() -> schemaManager.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
+        assertThatThrownBy(() -> schemaService.applyMutations(List.of(new CreateLinkDefinitionMutation(List.of(), List.of(
                 new CreatePerspectiveDefinitionMutation(fixture.personTypeId(), "mother", "d", 0, 1),
                 new CreatePerspectiveDefinitionMutation(otherTypeId, "child", "d", 0, null))))))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -110,8 +111,8 @@ class SelfLinkIntegrationTest extends AbstractIntegrationTest {
 
     private UUID createOtherItemType() {
         String name = "SelfLinkOther-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(name, "d", List.of(), null, false, null)));
-        return schemaManager.getAdminSchema().items().stream()
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(name, "d", List.of(), null, false, null)));
+        return schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.name().equals(name)).findFirst().orElseThrow().id();
     }
 }

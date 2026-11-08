@@ -7,9 +7,9 @@ import org.ntrloc.graph.db.partition.schema.definition.view.SortableFieldView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminBinaryPropertyDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyDefinitionView;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminPropertyGroupView;
-import org.ntrloc.graph.db.partition.schema.repository.SchemaRepository;
-import org.ntrloc.graph.db.partition.schema.repository.SchemaRepository.ItemRow;
-import org.ntrloc.graph.db.partition.schema.repository.SchemaRepository.TraitRow;
+import org.ntrloc.graph.db.partition.schema.repository.SchemaStore;
+import org.ntrloc.graph.db.partition.schema.repository.SchemaStore.ItemRow;
+import org.ntrloc.graph.db.partition.schema.repository.SchemaStore.TraitRow;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -23,10 +23,10 @@ import java.util.stream.Stream;
 
 // Raw-content resolution shared by SchemaAdminViewBuilder and SchemaCalculatedViewBuilder -- split
 // out of the single SchemaViewBuilder that used to build both projections, once that class grew
-// past Sonar's class-coupling limit (S6539) the same way it once absorbed most of SchemaManager's
+// past Sonar's class-coupling limit (S6539) the same way it once absorbed most of SchemaService's
 // own coupling when it was first split out of that class (see this class's siblings' own comments).
 // Owns nothing about either view's shape; only how a container's own+inherited properties/groups
-// resolve from SchemaRepository's raw rows.
+// resolve from SchemaStore's raw rows.
 @Component
 class SchemaContentResolver {
 
@@ -43,10 +43,10 @@ class SchemaContentResolver {
             new SortableFieldView("visibilityState", true)
     );
 
-    private final SchemaRepository repo;
+    private final SchemaStore store;
 
-    SchemaContentResolver(SchemaRepository repo) {
-        this.repo = repo;
+    SchemaContentResolver(SchemaStore store) {
+        this.store = store;
     }
 
     List<SortableFieldView> sortableFieldsFor(Contents contents) {
@@ -57,15 +57,15 @@ class SchemaContentResolver {
 
     // Recurses through groups so a scalar leaf nested under one is sortable via its dot-separated
     // path (e.g. "dimensions.width"); a trait's contributions sit under its namespace group, so they
-    // come out as "File.name" -- matching the dot-path resolution RegisterPartitionManager already
+    // come out as "File.name" -- matching the dot-path resolution RegisterStore already
     // does for both ORDER BY and filter predicates, this just exposes it as a pickable option.
     // Groups themselves, and LIST/SET-cardinality properties at any depth, are skipped: neither has
     // a single scalar value to order by. A BINARY leaf is skipped too -- its own value is never
     // stored in the register's flat properties JSONB, so it isn't itself a sort target (see
-    // RegisterPartitionManager.sortExpressionFor's own rejection of a bare BINARY leaf) -- instead
+    // ProjectionEngine.toSort's own rejection of a bare BINARY leaf) -- instead
     // its intrinsic attributes are offered, each addressed the same way it reads in the projected
     // response (content.length, not content.metadata.length -- see assembleBinaryValue), currently
-    // just ".length" (extend alongside RegisterPartitionManager.resolvePropertyPath's own binary-field
+    // just ".length" (extend alongside ProjectionEngine.resolvePropertyPath's own binary-field
     // resolution if this ever grows beyond that one field).
     private void appendSortableFields(List<AdminPropertyDefinitionView> properties, List<AdminPropertyGroupView> groups,
                                       String pathPrefix, List<SortableFieldView> result) {
@@ -95,8 +95,8 @@ class SchemaContentResolver {
     // one additional entry per path AdminBinaryPropertyDefinitionView.dynamicFields currently records
     // for it (e.g. "File.content.metadata.exif.Make", "File.content.hash.md5") -- field.path() is
     // already the field's full path within the binary's own fields document (no separate "metadata."
-    // prefix to splice in; see BinaryPartitionManagerImpl's fixed top-level keys), each of which
-    // narrows the response to just that value (RegisterPartitionManager.assembleBinaryValue's slicing,
+    // prefix to splice in; see BinaryStore's fixed top-level keys), each of which
+    // narrows the response to just that value (ProjectionEngine.assembleBinaryValue's slicing,
     // design-notes section 10) -- never the ".length"-style synthetic path sortableFieldsFor still
     // uses for sort/filter's narrower need (one typed scalar, not a response shape). System fields are
     // excluded entirely, unlike sortableFieldsFor: they're item metadata, never entries in
@@ -132,17 +132,17 @@ class SchemaContentResolver {
     record OwnerContents(Map<UUID, Contents> byItem, Map<UUID, Contents> byTrait, Map<UUID, Contents> byLink) {}
 
     OwnerContents loadOwnerContents() {
-        var propertiesByGroup = repo.getPropertiesByGroup();
-        var groupsByGroup = repo.getGroupsByGroup();
+        var propertiesByGroup = store.getPropertiesByGroup();
+        var groupsByGroup = store.getGroupsByGroup();
         return new OwnerContents(
-                resolveContents(repo.getPropertiesByItem(), repo.getGroupsByItem(), propertiesByGroup, groupsByGroup),
-                resolveContents(repo.getPropertiesByTrait(), repo.getGroupsByTrait(), propertiesByGroup, groupsByGroup),
-                resolveContents(repo.getPropertiesByLink(), repo.getGroupsByLink(), propertiesByGroup, groupsByGroup));
+                resolveContents(store.getPropertiesByItem(), store.getGroupsByItem(), propertiesByGroup, groupsByGroup),
+                resolveContents(store.getPropertiesByTrait(), store.getGroupsByTrait(), propertiesByGroup, groupsByGroup),
+                resolveContents(store.getPropertiesByLink(), store.getGroupsByLink(), propertiesByGroup, groupsByGroup));
     }
 
     private Map<UUID, Contents> resolveContents(
-            Map<UUID, List<AdminPropertyDefinitionView>> propertiesByOwner, Map<UUID, List<SchemaRepository.GroupRow>> groupsByOwner,
-            Map<UUID, List<AdminPropertyDefinitionView>> propertiesByGroup, Map<UUID, List<SchemaRepository.GroupRow>> groupsByGroup) {
+            Map<UUID, List<AdminPropertyDefinitionView>> propertiesByOwner, Map<UUID, List<SchemaStore.GroupRow>> groupsByOwner,
+            Map<UUID, List<AdminPropertyDefinitionView>> propertiesByGroup, Map<UUID, List<SchemaStore.GroupRow>> groupsByGroup) {
         Set<UUID> owners = new HashSet<>(propertiesByOwner.keySet());
         owners.addAll(groupsByOwner.keySet());
         Map<UUID, Contents> result = new HashMap<>();
@@ -157,8 +157,8 @@ class SchemaContentResolver {
     }
 
     private AdminPropertyGroupView resolveGroup(
-            SchemaRepository.GroupRow group,
-            Map<UUID, List<AdminPropertyDefinitionView>> propertiesByGroup, Map<UUID, List<SchemaRepository.GroupRow>> groupsByGroup) {
+            SchemaStore.GroupRow group,
+            Map<UUID, List<AdminPropertyDefinitionView>> propertiesByGroup, Map<UUID, List<SchemaStore.GroupRow>> groupsByGroup) {
         return new AdminPropertyGroupView(group.id(), group.name(), group.description(), null,
                 propertiesByGroup.getOrDefault(group.id(), List.of()),
                 groupsByGroup.getOrDefault(group.id(), List.of()).stream()

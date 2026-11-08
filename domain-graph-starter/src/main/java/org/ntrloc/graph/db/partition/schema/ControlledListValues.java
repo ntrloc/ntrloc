@@ -23,7 +23,7 @@ public final class ControlledListValues {
 
     private ControlledListValues() {}
 
-    static String columnType(PropertyType type) {
+    public static String columnType(PropertyType type) {
         return switch (type) {
             case STRING -> "VARCHAR(4000)";
             case INTEGER -> "BIGINT";
@@ -68,7 +68,7 @@ public final class ControlledListValues {
     }
 
     // A stored value read back, as the API shows it.
-    static Object read(ResultSet rs, String column, PropertyType type) throws SQLException {
+    public static Object read(ResultSet rs, String column, PropertyType type) throws SQLException {
         return switch (type) {
             case STRING -> rs.getString(column);
             case INTEGER -> rs.getLong(column);

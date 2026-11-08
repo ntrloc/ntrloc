@@ -4,7 +4,7 @@ import org.ntrloc.graph.db.partition.ledger.ItemDeleteEntry;
 import org.ntrloc.graph.db.partition.ledger.ItemUpdateEntry;
 import org.ntrloc.graph.db.partition.ledger.LedgerEntry;
 import org.ntrloc.graph.db.partition.ledger.LinkDeleteEntry;
-import org.ntrloc.graph.db.partition.register.RegisterPartitionManager;
+import org.ntrloc.graph.db.partition.register.RegisterStoreReader;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -22,10 +22,10 @@ import java.util.UUID;
 @Component
 public class ItemDeleteCascadeExpander {
 
-    private final RegisterPartitionManager registerPartitionManager;
+    private final RegisterStoreReader registerStore;
 
-    public ItemDeleteCascadeExpander(RegisterPartitionManager registerPartitionManager) {
-        this.registerPartitionManager = registerPartitionManager;
+    public ItemDeleteCascadeExpander(RegisterStoreReader registerStore) {
+        this.registerStore = registerStore;
     }
 
     public List<LedgerEntry> expand(List<LedgerEntry> entries) {
@@ -40,7 +40,7 @@ public class ItemDeleteCascadeExpander {
         for (LedgerEntry entry : entries) {
             if (!(entry instanceof ItemDeleteEntry itemDelete)) continue;
 
-            for (var linked : registerPartitionManager.findLinksForItem(itemDelete.itemId())) {
+            for (var linked : registerStore.findLinksForItem(itemDelete.itemId())) {
                 if (!linksAlreadyExpanded.add(linked.linkId())) continue; // already expanded from the other side
 
                 expanded.add(new LinkDeleteEntry(linked.linkId()));

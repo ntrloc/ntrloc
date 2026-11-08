@@ -11,9 +11,9 @@ import org.junit.jupiter.api.TestInstance;
 import org.ntrloc.graph.TestApplication;
 import org.ntrloc.graph.TestDatabases;
 import org.ntrloc.graph.db.partition.authorization.PermissionService;
-import org.ntrloc.graph.db.partition.schema.SchemaManager;
+import org.ntrloc.graph.db.partition.schema.SchemaService;
 import org.ntrloc.graph.db.partition.security.PersonalAccessTokenService;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.ntrloc.graph.security.KeycloakContainers;
 import org.ntrloc.graph.security.OidcProviderService;
 import org.ntrloc.graph.security.SamlProviderService;
@@ -134,7 +134,7 @@ class ClusterIntegrationTest {
         @Test
         @DisplayName("a permission granted on one node is enforced on the other")
         void permissionGrantReachesTheOtherNode() {
-            UUID carol = nodeA.getBean(SecurityRepository.class).findUserByEmail("carol@example.com").orElseThrow().id();
+            UUID carol = nodeA.getBean(UserStore.class).findUserByEmail("carol@example.com").orElseThrow().id();
             UUID publicDoc = itemTypeId("AclTestPublicDoc");
             String carolsToken = tokenFor("carol@example.com");
             assertThat(schemaAs(b, "/api/schema", carolsToken)).doesNotContain("AclTestPublicDoc");
@@ -415,13 +415,13 @@ class ClusterIntegrationTest {
     }
 
     private String tokenFor(String email) {
-        var user = nodeA.getBean(SecurityRepository.class).findUserByEmail(email).orElseThrow();
+        var user = nodeA.getBean(UserStore.class).findUserByEmail(email).orElseThrow();
         return "Bearer " + nodeA.getBean(PersonalAccessTokenService.class)
                 .issueForUser(user.id(), "cluster-test", null).rawToken();
     }
 
     private UUID itemTypeId(String name) {
-        return nodeA.getBean(SchemaManager.class).getAdminSchema().items().stream()
+        return nodeA.getBean(SchemaService.class).getAdminSchema().items().stream()
                 .filter(item -> item.name().equals(name)).findFirst().orElseThrow().id();
     }
 
@@ -452,7 +452,7 @@ class ClusterIntegrationTest {
     }
 
     private String createLocalUser() {
-        SecurityRepository users = nodeA.getBean(SecurityRepository.class);
+        UserStore users = nodeA.getBean(UserStore.class);
         var user = users.createUser("Cluster User", "cluster-" + UUID.randomUUID() + "@example.com", false);
         users.createLocalCredentials(user.id(), "{bcrypt}" + new BCryptPasswordEncoder().encode(PASSWORD));
         return user.email();
@@ -486,7 +486,7 @@ class ClusterIntegrationTest {
         }
         String metadata = new SsoBrowser(loadBalancer).get(loadBalancer.url("/saml2/metadata/" + SAML_ID)).body();
         KeycloakContainers.registerSamlClientFromMetadata(KEYCLOAK, metadata, false);
-        SecurityRepository users = nodeA.getBean(SecurityRepository.class);
+        UserStore users = nodeA.getBean(UserStore.class);
         users.findUserByEmail(SSO_EMAIL).orElseGet(() -> users.createUser("SSO User", SSO_EMAIL, false));
     }
 

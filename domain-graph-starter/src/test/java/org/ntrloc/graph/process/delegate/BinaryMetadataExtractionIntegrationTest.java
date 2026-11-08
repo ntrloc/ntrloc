@@ -2,7 +2,7 @@ package org.ntrloc.graph.process.delegate;
 
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
-import org.ntrloc.graph.db.partition.binary.BinaryPartitionManager;
+import org.ntrloc.graph.db.partition.binary.BinaryStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
@@ -14,7 +14,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-// End to end: BinaryPartitionManagerImpl.store() -> BinaryContentEvent.Created (only on a genuine
+// End to end: BinaryStore.store() -> BinaryContentEvent.Created (only on a genuine
 // fresh insert) -> BinaryMetadataExtractionTrigger -> extractBinaryMetadata process started.
 //
 // Diffs the *set* of process_job ids immediately before/after store(), not a raw row count --
@@ -35,7 +35,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 // Deliberately only one test here, proving the full pipeline is wired together end to end for a
 // single fresh insert. The "dedup publishes the event only once" claim used to live here too (a
 // second store() of identical content, asserting no second job appeared) but that's a claim about
-// BinaryPartitionManagerImpl.insert()'s own fresh-insert detection, not about Flowable -- proving it
+// BinaryStore.insert()'s own fresh-insert detection, not about Flowable -- proving it
 // via job-table evidence means racing the async executor across two separate actions, which stays
 // unreliable no matter how the reads bracket each action (confirmed: the executor can sweep the first
 // store()'s no-op job while the second store() is still doing its own real hashing/disk I/O). See
@@ -44,7 +44,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class BinaryMetadataExtractionIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
-    private BinaryPartitionManager binaryPartitionManager;
+    private BinaryStore binaryStore;
 
     @Autowired
     private JdbcClient jdbcClient;
@@ -54,7 +54,7 @@ class BinaryMetadataExtractionIntegrationTest extends AbstractIntegrationTest {
         Set<String> jobsBefore = jobIds();
         byte[] content = ("extraction trigger test " + UUID.randomUUID()).getBytes(StandardCharsets.UTF_8);
 
-        binaryPartitionManager.store(new ByteArrayInputStream(content));
+        binaryStore.store(new ByteArrayInputStream(content));
 
         Set<String> newJobs = new HashSet<>(jobIds());
         newJobs.removeAll(jobsBefore);

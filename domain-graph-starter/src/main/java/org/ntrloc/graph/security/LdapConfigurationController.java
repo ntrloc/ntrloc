@@ -1,7 +1,7 @@
 package org.ntrloc.graph.security;
 
-import org.ntrloc.graph.db.partition.security.ExternalPrincipalResolver;
-import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
+import org.ntrloc.graph.principal.ExternalPrincipalResolver;
+import org.ntrloc.graph.principal.NtrlocPrincipal;
 import org.ntrloc.graph.security.LdapConfigurationService.LdapSettings;
 import org.ntrloc.graph.security.LdapConfigurationService.StoredLdapSettings;
 import org.ntrloc.graph.security.LdapConfigurationService.TestResult;

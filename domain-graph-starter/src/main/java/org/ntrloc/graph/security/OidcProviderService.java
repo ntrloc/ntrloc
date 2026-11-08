@@ -1,7 +1,7 @@
 package org.ntrloc.graph.security;
 
-import org.ntrloc.graph.db.partition.security.repository.OidcProviderRepository;
-import org.ntrloc.graph.db.partition.security.repository.OidcProviderRepository.OidcProviderRow;
+import org.ntrloc.graph.db.partition.security.repository.OidcProviderStore;
+import org.ntrloc.graph.db.partition.security.repository.OidcProviderStore.OidcProviderRow;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DuplicateKeyException;
@@ -55,21 +55,21 @@ public class OidcProviderService implements ClientRegistrationRepository {
 
     private record CachedRegistration(long version, ClientRegistration registration) {}
 
-    private final OidcProviderRepository repository;
+    private final OidcProviderStore store;
     private final SecretCipher cipher;
     private final Map<String, CachedRegistration> registrations = new ConcurrentHashMap<>();
 
-    public OidcProviderService(OidcProviderRepository repository, SecretCipher cipher) {
-        this.repository = repository;
+    public OidcProviderService(OidcProviderStore store, SecretCipher cipher) {
+        this.store = store;
         this.cipher = cipher;
     }
 
     public List<StoredOidcProvider> list() {
-        return repository.findAll().stream().map(OidcProviderService::stored).toList();
+        return store.findAll().stream().map(OidcProviderService::stored).toList();
     }
 
     public List<OidcProvider> enabledProviders() {
-        return repository.findAll().stream().filter(OidcProviderRow::enabled).map(OidcProviderService::providerOf).toList();
+        return store.findAll().stream().filter(OidcProviderRow::enabled).map(OidcProviderService::providerOf).toList();
     }
 
     public StoredOidcProvider create(OidcProvider requested, String clientSecret, UUID updatedBy) {
@@ -80,32 +80,32 @@ public class OidcProviderService implements ClientRegistrationRepository {
             throw new IllegalArgumentException("A client secret is required");
         }
         try {
-            repository.insert(rowOf(provider, encrypt(clientSecret)), updatedBy);
+            store.insert(rowOf(provider, encrypt(clientSecret)), updatedBy);
         } catch (DuplicateKeyException e) {
             throw new IllegalArgumentException("A provider with the registration ID " + provider.registrationId()
                     + " already exists");
         }
         LOG.info("OIDC provider {} created by user {}: {}", provider.registrationId(), updatedBy, provider.issuerUri());
-        return stored(repository.find(provider.registrationId()).orElseThrow());
+        return stored(store.find(provider.registrationId()).orElseThrow());
     }
 
     // A null or blank clientSecret keeps the stored one. The registration ID can't change.
     public StoredOidcProvider update(String registrationId, OidcProvider requested, String clientSecret, UUID updatedBy) {
-        OidcProviderRow existing = repository.find(registrationId)
+        OidcProviderRow existing = store.find(registrationId)
                 .orElseThrow(() -> new NoSuchProviderException(registrationId));
         OidcProvider provider = new OidcProvider(registrationId, requested.displayName(), requested.issuerUri(),
                 requested.clientId(), requested.scopes(), requested.enabled()).normalized();
         validate(provider);
         String secret = (clientSecret == null || clientSecret.isEmpty())
                 ? existing.clientSecretEncrypted() : encrypt(clientSecret);
-        repository.update(rowOf(provider, secret), updatedBy);
+        store.update(rowOf(provider, secret), updatedBy);
         LOG.info("OIDC provider {} updated by user {}: {} {}", registrationId, updatedBy,
                 provider.enabled() ? "enabled," : "disabled,", provider.issuerUri());
-        return stored(repository.find(registrationId).orElseThrow());
+        return stored(store.find(registrationId).orElseThrow());
     }
 
     public void delete(String registrationId, UUID deletedBy) {
-        if (!repository.delete(registrationId)) {
+        if (!store.delete(registrationId)) {
             throw new NoSuchProviderException(registrationId);
         }
         registrations.remove(registrationId);
@@ -135,7 +135,7 @@ public class OidcProviderService implements ClientRegistrationRepository {
     // disabled, deleted, or unreachable provider has no registration, so no one signs in through it.
     @Override
     public ClientRegistration findByRegistrationId(String registrationId) {
-        OidcProviderRow row = repository.find(registrationId).filter(OidcProviderRow::enabled).orElse(null);
+        OidcProviderRow row = store.find(registrationId).filter(OidcProviderRow::enabled).orElse(null);
         if (row == null) {
             registrations.remove(registrationId);
             return null;

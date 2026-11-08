@@ -2,9 +2,9 @@ package org.ntrloc.graph.db.partition.authorization;
 
 import org.ntrloc.graph.access.Pipeline;
 import org.ntrloc.graph.access.PipelineLayout;
-import org.ntrloc.graph.db.partition.authorization.repository.MarkerDecisionPipelineRepository;
-import org.ntrloc.graph.db.partition.authorization.repository.MarkerDecisionPipelineRepository.PipelineRow;
-import org.ntrloc.graph.db.partition.security.ExternalPrincipalResolver;
+import org.ntrloc.graph.db.partition.authorization.repository.MarkerDecisionPipelineStore;
+import org.ntrloc.graph.db.partition.authorization.repository.MarkerDecisionPipelineStore.PipelineRow;
+import org.ntrloc.graph.principal.ExternalPrincipalResolver;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
@@ -30,11 +30,11 @@ import java.util.UUID;
 // MarkerAdminController rule endpoints (/api/admin/markers/rules). Raw JSON for now: a caller
 // submits/receives the full org.ntrloc.graph.access.Pipeline graph as-is, relying on its own
 // sealed-interface Jackson annotations to (de)serialize through WebFlux's codecs -- there's no
-// visual editor yet (see MarkerDecisionPipelineRepository's own comment), so this is script/API
+// visual editor yet (see MarkerDecisionPipelineStore's own comment), so this is script/API
 // authoring only until one exists.
 //
 // No name anywhere here -- a pipeline is identified by the item type it belongs to (one-to-one, see
-// the repository's own comment), not by an admin-chosen label.
+// the store's own comment), not by an admin-chosen label.
 @RestController
 @RequestMapping("/api/admin/marker-decision-pipelines")
 public class MarkerDecisionPipelineAdminController {
@@ -47,13 +47,13 @@ public class MarkerDecisionPipelineAdminController {
 
     public record UpdatePipelineRequest(Pipeline pipeline, boolean enabled, PipelineLayout layout) {}
 
-    private final MarkerDecisionPipelineRepository repository;
+    private final MarkerDecisionPipelineStore store;
     private final ExternalPrincipalResolver principalResolver;
     private final ObjectMapper objectMapper;
 
-    public MarkerDecisionPipelineAdminController(MarkerDecisionPipelineRepository repository, ExternalPrincipalResolver principalResolver,
+    public MarkerDecisionPipelineAdminController(MarkerDecisionPipelineStore store, ExternalPrincipalResolver principalResolver,
                                                  ObjectMapper objectMapper) {
-        this.repository = repository;
+        this.store = store;
         this.principalResolver = principalResolver;
         this.objectMapper = objectMapper;
     }
@@ -61,13 +61,13 @@ public class MarkerDecisionPipelineAdminController {
     @GetMapping
     List<PipelineView> listPipelines(Authentication authentication) {
         requireAdmin(authentication);
-        return repository.getAllPipelines().stream().map(this::toView).toList();
+        return store.getAllPipelines().stream().map(this::toView).toList();
     }
 
     @GetMapping("/{id}")
     PipelineView getPipeline(@PathVariable UUID id, Authentication authentication) {
         requireAdmin(authentication);
-        return repository.findById(id).map(this::toView)
+        return store.findById(id).map(this::toView)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No such pipeline"));
     }
 
@@ -76,7 +76,7 @@ public class MarkerDecisionPipelineAdminController {
     @GetMapping("/by-item-type/{itemTypeId}")
     PipelineView getPipelineForItemType(@PathVariable UUID itemTypeId, Authentication authentication) {
         requireAdmin(authentication);
-        return repository.findByItemTypeId(itemTypeId).map(this::toView)
+        return store.findByItemTypeId(itemTypeId).map(this::toView)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No pipeline for this item type"));
     }
 
@@ -90,7 +90,7 @@ public class MarkerDecisionPipelineAdminController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "pipeline is required");
         }
         try {
-            return toView(repository.createPipeline(body.itemTypeId(), body.pipeline(), orEmpty(body.layout())));
+            return toView(store.createPipeline(body.itemTypeId(), body.pipeline(), orEmpty(body.layout())));
         } catch (DuplicateKeyException e) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "This item type already has a pipeline", e);
         }
@@ -105,7 +105,7 @@ public class MarkerDecisionPipelineAdminController {
         if (body.pipeline() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "pipeline is required");
         }
-        return toView(repository.updatePipeline(id, body.pipeline(), body.enabled(), orEmpty(body.layout()))
+        return toView(store.updatePipeline(id, body.pipeline(), body.enabled(), orEmpty(body.layout()))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "This pipeline was deleted by someone else.")));
     }
 
@@ -123,7 +123,7 @@ public class MarkerDecisionPipelineAdminController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     void deletePipeline(@PathVariable UUID id, Authentication authentication) {
         requireAdmin(authentication);
-        repository.deletePipeline(id);
+        store.deletePipeline(id);
     }
 
     private PipelineView toView(PipelineRow row) {

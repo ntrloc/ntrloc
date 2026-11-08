@@ -4,7 +4,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.ntrloc.graph.db.partition.security.PersonalAccessTokenService;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webtestclient.autoconfigure.AutoConfigureWebTestClient;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -34,7 +34,7 @@ public abstract class AbstractIntegrationTest {
     private static final Map<String, String> BEARER_TOKENS = new ConcurrentHashMap<>();
 
     @Autowired
-    private SecurityRepository securityRepository;
+    private UserStore userStore;
 
     @Autowired
     private PersonalAccessTokenService personalAccessTokenService;
@@ -45,7 +45,7 @@ public abstract class AbstractIntegrationTest {
      */
     protected String bearerTokenFor(String email) {
         return BEARER_TOKENS.computeIfAbsent(email, e -> {
-            var user = securityRepository.findUserByEmail(e)
+            var user = userStore.findUserByEmail(e)
                     .orElseThrow(() -> new IllegalArgumentException("No user with email " + e));
             return "Bearer " + personalAccessTokenService.issueForUser(user.id(), "integration-test", null).rawToken();
         });

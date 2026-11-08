@@ -7,7 +7,7 @@ import org.ntrloc.graph.db.partition.schema.definition.mutation.DefinitionMutati
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DeleteLinkDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.UpdatePerspectiveDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.event.SchemaChangeEvent;
-import org.ntrloc.graph.db.partition.schema.repository.SchemaRepository;
+import org.ntrloc.graph.db.partition.schema.repository.SchemaStore;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
 
@@ -15,16 +15,16 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-// Applies link-definition mutations -- split out of SchemaManager (see its own history).
+// Applies link-definition mutations -- split out of SchemaService (see its own history).
 @Component
 class LinkMutationApplier {
 
-    private final SchemaRepository repo;
+    private final SchemaStore store;
     private final ApplicationEventPublisher eventPublisher;
     private final PropertyMutationApplier propertyMutationApplier;
 
-    LinkMutationApplier(SchemaRepository repo, ApplicationEventPublisher eventPublisher, PropertyMutationApplier propertyMutationApplier) {
-        this.repo = repo;
+    LinkMutationApplier(SchemaStore store, ApplicationEventPublisher eventPublisher, PropertyMutationApplier propertyMutationApplier) {
+        this.store = store;
         this.eventPublisher = eventPublisher;
         this.propertyMutationApplier = propertyMutationApplier;
     }
@@ -48,19 +48,19 @@ class LinkMutationApplier {
     }
 
     private void applyCreate(CreateLinkDefinitionMutation m, Map<String, UUID> refIdToEntityId) {
-        UUID linkId = repo.createLink();
-        propertyMutationApplier.createContents(new SchemaRepository.PropertyOwnerRef(PropertyContainerKind.LINK, linkId),
+        UUID linkId = store.createLink();
+        propertyMutationApplier.createContents(new SchemaStore.PropertyOwnerRef(PropertyContainerKind.LINK, linkId),
                 m.properties(), m.groups(), "this link type");
         var perspectives = m.perspectives();
         List<UUID> itemIds = perspectives.stream().map(p -> resolveItemId(p, refIdToEntityId)).toList();
         // Every perspective is checked before any is written, so a failure leaves no half-built link.
         for (int i = 0; i < perspectives.size(); i++) {
-            SchemaMutationValidation.requireKnownItemOrTrait(repo, itemIds.get(i));
-            SchemaMutationValidation.requirePerspectiveNameAvailable(repo, itemIds.get(i), perspectives.get(i).name(), linkId);
+            SchemaMutationValidation.requireKnownItemOrTrait(store, itemIds.get(i));
+            SchemaMutationValidation.requirePerspectiveNameAvailable(store, itemIds.get(i), perspectives.get(i).name(), linkId);
         }
         for (int i = 0; i < perspectives.size(); i++) {
             var perspective = perspectives.get(i);
-            repo.createPerspective(itemIds.get(i), linkId, perspective.name(), perspective.description(),
+            store.createPerspective(itemIds.get(i), linkId, perspective.name(), perspective.description(),
                     perspective.minCardinality(), perspective.maxCardinality());
         }
         eventPublisher.publishEvent(new SchemaChangeEvent.LinkTypeCreated(linkId));
@@ -85,19 +85,19 @@ class LinkMutationApplier {
     // Deleting an item type or trait takes every link with an end at it along -- only once it's
     // not in use, so no link of these has any data.
     void deleteLinksTouching(UUID entityId) {
-        repo.linkIdsTouching(entityId).forEach(this::deleteLink);
+        store.linkIdsTouching(entityId).forEach(this::deleteLink);
     }
 
     private void deleteLink(UUID linkId) {
-        repo.deleteLink(linkId);
+        store.deleteLink(linkId);
         eventPublisher.publishEvent(new SchemaChangeEvent.LinkTypeDeleted(linkId));
     }
 
     private void applyUpdatePerspective(UpdatePerspectiveDefinitionMutation m) {
-        var existing = repo.findPerspectiveById(m.id());
+        var existing = store.findPerspectiveById(m.id());
         if (!existing.name().equals(m.name())) {
-            SchemaMutationValidation.requirePerspectiveNameAvailable(repo, existing.entityId(), m.name(), existing.linkId());
+            SchemaMutationValidation.requirePerspectiveNameAvailable(store, existing.entityId(), m.name(), existing.linkId());
         }
-        repo.updatePerspective(m.id(), m.name(), m.description(), m.minCardinality(), m.maxCardinality());
+        store.updatePerspective(m.id(), m.name(), m.description(), m.minCardinality(), m.maxCardinality());
     }
 }

@@ -1,5 +1,6 @@
 package org.ntrloc.graph.db.coordinator;
 
+import org.ntrloc.graph.projection.ProjectionEngine;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
@@ -9,13 +10,13 @@ import org.ntrloc.graph.db.partition.ledger.LinkCreateEntry;
 import org.ntrloc.graph.db.partition.ledger.LinkDeleteEntry;
 import org.ntrloc.graph.db.partition.ledger.LinkEndpoint;
 import org.ntrloc.graph.db.partition.ledger.LinkUpdateEntry;
-import org.ntrloc.graph.db.partition.register.RegisterPartitionManager;
-import org.ntrloc.graph.db.partition.schema.SchemaManager;
+import org.ntrloc.graph.db.partition.register.RegisterStore;
+import org.ntrloc.graph.db.partition.schema.SchemaService;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateItemDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateLinkDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreatePerspectiveDefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.view.admin.AdminItemDefinitionView;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.simple.JdbcClient;
 
@@ -39,10 +40,14 @@ class NoOpMutationFilterIntegrationTest extends AbstractIntegrationTest {
     private LedgerRegisterCoordinator coordinator;
 
     @Autowired
-    private RegisterPartitionManager registerPartitionManager;
+    private RegisterStore registerStore;
 
     @Autowired
-    private SchemaManager schemaManager;
+
+    private ProjectionEngine projectionEngine;
+
+    @Autowired
+    private SchemaService schemaService;
 
     @Autowired
     private CoordinatorTestDomainInitializer fixture;
@@ -51,15 +56,15 @@ class NoOpMutationFilterIntegrationTest extends AbstractIntegrationTest {
     private JdbcClient jdbcClient;
 
     @Autowired
-    private SecurityRepository securityRepo;
+    private UserStore userStore;
 
     // ledger_entry.created_by/register_item.created_by (Part E) are NOT NULL FKs to
     // security_user.id -- every coordinator.prepare call below needs a real, backed actor.
-    private SecurityRepository.UserRow actor;
+    private UserStore.UserRow actor;
 
     @BeforeEach
     void setUpActor() {
-        actor = securityRepo.createUser("NoOp Test Actor", "nomf-actor-" + UUID.randomUUID() + "@example.com", true);
+        actor = userStore.createUser("NoOp Test Actor", "nomf-actor-" + UUID.randomUUID() + "@example.com", true);
     }
 
     private long itemLedgerRowCount(UUID itemId) {
@@ -124,7 +129,7 @@ class NoOpMutationFilterIntegrationTest extends AbstractIntegrationTest {
         coordinator.prepare(List.of(new ItemUpdateEntry(itemId, diff, Map.of(), Set.of(), Set.of(), Set.of())), txn, actor.id(), OffsetDateTime.now());
         coordinator.commit(txn, UUID.randomUUID());
 
-        var projected = registerPartitionManager.projectOne(fixture.productTypeId(), itemId, "http://binary").orElseThrow();
+        var projected = projectionEngine.projectOne(fixture.productTypeId(), itemId, "http://binary").orElseThrow();
         assertThat(projected.properties()).containsEntry("name", "Widget Pro").containsEntry("color", "red");
     }
 
@@ -134,7 +139,7 @@ class NoOpMutationFilterIntegrationTest extends AbstractIntegrationTest {
         UUID smId = newThrowawayMachineStarted(itemId);
         long before = itemLedgerRowCount(itemId);
 
-        UUID currentStateId = registerPartitionManager.currentStateIds(itemId).get(smId);
+        UUID currentStateId = registerStore.currentStateIds(itemId).get(smId);
         Map<UUID, UUID> stateChanges = new HashMap<>();
         stateChanges.put(smId, currentStateId);
         UUID txn = UUID.randomUUID();
@@ -252,7 +257,7 @@ class NoOpMutationFilterIntegrationTest extends AbstractIntegrationTest {
         coordinator.prepare(List.of(new ItemUpdateEntry(itemId, diff, Map.of(), Set.of(), Set.of(), Set.of())), txn, actor.id(), OffsetDateTime.now());
         coordinator.commit(txn, UUID.randomUUID());
 
-        var projected = registerPartitionManager.projectOne(fixture.productTypeId(), itemId, "http://binary").orElseThrow();
+        var projected = projectionEngine.projectOne(fixture.productTypeId(), itemId, "http://binary").orElseThrow();
         assertThat(projected.properties()).containsEntry("color", "red");
     }
 
@@ -277,28 +282,28 @@ class NoOpMutationFilterIntegrationTest extends AbstractIntegrationTest {
         String suffix = UUID.randomUUID().toString();
         String typeNameA = "NoOpTestToOneA-" + suffix;
         String typeNameB = "NoOpTestToOneB-" + suffix;
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(typeNameA, "no-op filter test fixture", List.of(), null, false, null)));
-        schemaManager.applyMutations(List.of(new CreateItemDefinitionMutation(typeNameB, "no-op filter test fixture", List.of(), null, false, null)));
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(typeNameA, "no-op filter test fixture", List.of(), null, false, null)));
+        schemaService.applyMutations(List.of(new CreateItemDefinitionMutation(typeNameB, "no-op filter test fixture", List.of(), null, false, null)));
         UUID typeA = findItemTypeId(typeNameA);
         UUID typeB = findItemTypeId(typeNameB);
 
-        schemaManager.applyMutations(List.of(new CreateLinkDefinitionMutation(
+        schemaService.applyMutations(List.of(new CreateLinkDefinitionMutation(
                 List.of(),
                 List.of(
                         new CreatePerspectiveDefinitionMutation(typeA, "toOne", "desc", 0, 1),
                         new CreatePerspectiveDefinitionMutation(typeB, "toOneInverse", "desc", 0, null)))));
 
-        AdminItemDefinitionView itemA = schemaManager.getAdminSchema().items().stream()
+        AdminItemDefinitionView itemA = schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.id().equals(typeA)).findFirst().orElseThrow();
         var perspectiveA = itemA.links().get("toOne").get(0);
-        AdminItemDefinitionView itemB = schemaManager.getAdminSchema().items().stream()
+        AdminItemDefinitionView itemB = schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.id().equals(typeB)).findFirst().orElseThrow();
         var perspectiveB = itemB.links().get("toOneInverse").get(0);
         return new ToOneLinkFixture(typeA, typeB, perspectiveA.linkId(), perspectiveA.id(), perspectiveB.id());
     }
 
     private UUID findItemTypeId(String name) {
-        return schemaManager.getAdminSchema().items().stream()
+        return schemaService.getAdminSchema().items().stream()
                 .filter(i -> i.name().equals(name))
                 .findFirst().orElseThrow().id();
     }
@@ -313,19 +318,19 @@ class NoOpMutationFilterIntegrationTest extends AbstractIntegrationTest {
 
     private UUID defineThrowawayMachine() {
         String name = "NoOpTestMachine-" + UUID.randomUUID();
-        schemaManager.applyMutations(List.<org.ntrloc.graph.db.partition.schema.definition.mutation.DefinitionMutation>of(
+        schemaService.applyMutations(List.<org.ntrloc.graph.db.partition.schema.definition.mutation.DefinitionMutation>of(
                 new org.ntrloc.graph.db.partition.schema.definition.mutation.CreateStateMachineMutation(fixture.productTypeId(), name, null)));
-        UUID smId = registerPartitionManager.resolveStateMachineId(fixture.productTypeId(), name);
-        schemaManager.applyMutations(List.<org.ntrloc.graph.db.partition.schema.definition.mutation.DefinitionMutation>of(
+        UUID smId = schemaService.resolveStateMachineId(fixture.productTypeId(), name);
+        schemaService.applyMutations(List.<org.ntrloc.graph.db.partition.schema.definition.mutation.DefinitionMutation>of(
                 new org.ntrloc.graph.db.partition.schema.definition.mutation.CreateStateMutation(smId, "S1", null, null, null, null)));
         return smId;
     }
 
     private UUID newThrowawayMachineStarted(UUID itemId) {
         UUID smId = defineThrowawayMachine();
-        UUID s1 = registerPartitionManager.resolveStateId(smId, "S1");
-        UUID start = registerPartitionManager.resolveStateId(smId, "__start__");
-        schemaManager.applyMutations(List.<org.ntrloc.graph.db.partition.schema.definition.mutation.DefinitionMutation>of(
+        UUID s1 = schemaService.resolveStateId(smId, "S1");
+        UUID start = schemaService.resolveStateId(smId, "__start__");
+        schemaService.applyMutations(List.<org.ntrloc.graph.db.partition.schema.definition.mutation.DefinitionMutation>of(
                 new org.ntrloc.graph.db.partition.schema.definition.mutation.CreateTransitionMutation(start, s1, "Begin", null, null, null)));
 
         Map<UUID, UUID> stateChanges = new HashMap<>();

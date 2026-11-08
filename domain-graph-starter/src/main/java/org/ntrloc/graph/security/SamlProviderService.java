@@ -1,9 +1,9 @@
 package org.ntrloc.graph.security;
 
-import org.ntrloc.graph.db.partition.security.repository.SamlProviderRepository;
-import org.ntrloc.graph.db.partition.security.repository.SamlProviderRepository.KeyRole;
-import org.ntrloc.graph.db.partition.security.repository.SamlProviderRepository.SamlKeyRow;
-import org.ntrloc.graph.db.partition.security.repository.SamlProviderRepository.SamlProviderRow;
+import org.ntrloc.graph.db.partition.security.repository.SamlProviderStore;
+import org.ntrloc.graph.db.partition.security.repository.SamlProviderStore.KeyRole;
+import org.ntrloc.graph.db.partition.security.repository.SamlProviderStore.SamlKeyRow;
+import org.ntrloc.graph.db.partition.security.repository.SamlProviderStore.SamlProviderRow;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DuplicateKeyException;
@@ -76,21 +76,21 @@ public class SamlProviderService implements RelyingPartyRegistrationRepository {
 
     private record CachedRegistration(long version, RelyingPartyRegistration registration) {}
 
-    private final SamlProviderRepository repository;
+    private final SamlProviderStore store;
     private final SecretCipher cipher;
     private final Map<String, CachedRegistration> registrations = new ConcurrentHashMap<>();
 
-    public SamlProviderService(SamlProviderRepository repository, SecretCipher cipher) {
-        this.repository = repository;
+    public SamlProviderService(SamlProviderStore store, SecretCipher cipher) {
+        this.store = store;
         this.cipher = cipher;
     }
 
     public List<StoredSamlProvider> list() {
-        return repository.findAll().stream().map(this::stored).toList();
+        return store.findAll().stream().map(this::stored).toList();
     }
 
     public List<SamlProvider> enabledProviders() {
-        return repository.findAll().stream().filter(SamlProviderRow::enabled).map(SamlProviderService::providerOf).toList();
+        return store.findAll().stream().filter(SamlProviderRow::enabled).map(SamlProviderService::providerOf).toList();
     }
 
     // Whether signing out of ntrloc can also sign this provider's user out of the IdP: the IdP's
@@ -103,7 +103,7 @@ public class SamlProviderService implements RelyingPartyRegistrationRepository {
     // How a sign-in through this provider finds the person's email and name; empty if it's
     // disabled or gone.
     public Optional<SamlProvider> enabledProvider(String registrationId) {
-        return repository.find(registrationId).filter(SamlProviderRow::enabled).map(SamlProviderService::providerOf);
+        return store.find(registrationId).filter(SamlProviderRow::enabled).map(SamlProviderService::providerOf);
     }
 
     @Transactional
@@ -116,26 +116,26 @@ public class SamlProviderService implements RelyingPartyRegistrationRepository {
                     + "graph.security.secret-key to encrypt its signing key with");
         }
         try {
-            repository.insert(rowOf(provider), updatedBy);
+            store.insert(rowOf(provider), updatedBy);
             insertKey(provider.registrationId(), KeyRole.ACTIVE, generated(provider.registrationId()));
         } catch (DuplicateKeyException e) {
             throw new IllegalArgumentException("A provider with the registration ID " + provider.registrationId()
                     + " already exists");
         }
         LOG.info("SAML provider {} created by user {}: {}", provider.registrationId(), updatedBy, provider.metadataUri());
-        return stored(repository.find(provider.registrationId()).orElseThrow());
+        return stored(store.find(provider.registrationId()).orElseThrow());
     }
 
     // The registration ID can't change; key pairs change through the key methods below.
     public StoredSamlProvider update(String registrationId, SamlProvider requested, UUID updatedBy) {
-        repository.find(registrationId).orElseThrow(() -> new NoSuchProviderException(registrationId));
+        store.find(registrationId).orElseThrow(() -> new NoSuchProviderException(registrationId));
         SamlProvider provider = new SamlProvider(registrationId, requested.displayName(), requested.metadataUri(),
                 requested.emailAttribute(), requested.displayNameAttribute(), requested.enabled()).trimmed();
         validate(provider);
-        repository.update(rowOf(provider), updatedBy);
+        store.update(rowOf(provider), updatedBy);
         LOG.info("SAML provider {} updated by user {}: {} {}", registrationId, updatedBy,
                 provider.enabled() ? "enabled," : "disabled,", provider.metadataUri());
-        return stored(repository.find(registrationId).orElseThrow());
+        return stored(store.find(registrationId).orElseThrow());
     }
 
     // --- Key rotation: add a NEXT key, give the IdP ntrloc's updated metadata, activate it (the old
@@ -153,7 +153,7 @@ public class SamlProviderService implements RelyingPartyRegistrationRepository {
                 ? SamlCertificates.uploaded(trimToEmpty(privateKeyPem), trimToEmpty(certificatePem))
                 : generated(registrationId);
         insertKey(registrationId, KeyRole.NEXT, pair);
-        repository.touch(registrationId, updatedBy);
+        store.touch(registrationId, updatedBy);
         LOG.info("SAML provider {}: next key {} by user {}", registrationId, upload ? "uploaded" : "generated", updatedBy);
         return stored(requireProvider(registrationId));
     }
@@ -164,10 +164,10 @@ public class SamlProviderService implements RelyingPartyRegistrationRepository {
         if (keyRow(registrationId, KeyRole.NEXT).isEmpty()) {
             throw new IllegalArgumentException("There's no next key to activate");
         }
-        repository.deleteKey(registrationId, KeyRole.RETIRING);
-        repository.moveKey(registrationId, KeyRole.ACTIVE, KeyRole.RETIRING);
-        repository.moveKey(registrationId, KeyRole.NEXT, KeyRole.ACTIVE);
-        repository.touch(registrationId, updatedBy);
+        store.deleteKey(registrationId, KeyRole.RETIRING);
+        store.moveKey(registrationId, KeyRole.ACTIVE, KeyRole.RETIRING);
+        store.moveKey(registrationId, KeyRole.NEXT, KeyRole.ACTIVE);
+        store.touch(registrationId, updatedBy);
         LOG.info("SAML provider {}: next key activated by user {}", registrationId, updatedBy);
         return stored(requireProvider(registrationId));
     }
@@ -179,16 +179,16 @@ public class SamlProviderService implements RelyingPartyRegistrationRepository {
         if (role == KeyRole.ACTIVE) {
             throw new IllegalArgumentException("The active key can't be removed: activate a next key to replace it");
         }
-        if (!repository.deleteKey(registrationId, role)) {
+        if (!store.deleteKey(registrationId, role)) {
             throw new IllegalArgumentException("There's no " + role.name().toLowerCase() + " key");
         }
-        repository.touch(registrationId, updatedBy);
+        store.touch(registrationId, updatedBy);
         LOG.info("SAML provider {}: {} key removed by user {}", registrationId, role.name().toLowerCase(), updatedBy);
         return stored(requireProvider(registrationId));
     }
 
     public void delete(String registrationId, UUID deletedBy) {
-        if (!repository.delete(registrationId)) {
+        if (!store.delete(registrationId)) {
             throw new NoSuchProviderException(registrationId);
         }
         registrations.remove(registrationId);
@@ -217,7 +217,7 @@ public class SamlProviderService implements RelyingPartyRegistrationRepository {
     // disabled, deleted, or unreachable provider has no registration, so no one signs in through it.
     @Override
     public RelyingPartyRegistration findByRegistrationId(String registrationId) {
-        SamlProviderRow row = repository.find(registrationId).filter(SamlProviderRow::enabled).orElse(null);
+        SamlProviderRow row = store.find(registrationId).filter(SamlProviderRow::enabled).orElse(null);
         if (row == null) {
             registrations.remove(registrationId);
             return null;
@@ -233,7 +233,7 @@ public class SamlProviderService implements RelyingPartyRegistrationRepository {
             // any certificate it was given. Encryption is the IdP's choice.
             List<Saml2X509Credential> signing = new ArrayList<>();
             List<Saml2X509Credential> decryption = new ArrayList<>();
-            List<SamlKeyRow> keys = repository.findKeys(registrationId).stream()
+            List<SamlKeyRow> keys = store.findKeys(registrationId).stream()
                     .sorted(Comparator.comparing(SamlKeyRow::role))
                     .toList();
             for (SamlKeyRow key : keys) {
@@ -271,11 +271,11 @@ public class SamlProviderService implements RelyingPartyRegistrationRepository {
     }
 
     private SamlProviderRow requireProvider(String registrationId) {
-        return repository.find(registrationId).orElseThrow(() -> new NoSuchProviderException(registrationId));
+        return store.find(registrationId).orElseThrow(() -> new NoSuchProviderException(registrationId));
     }
 
     private Optional<SamlKeyRow> keyRow(String registrationId, KeyRole role) {
-        return repository.findKeys(registrationId).stream().filter(key -> key.role() == role).findFirst();
+        return store.findKeys(registrationId).stream().filter(key -> key.role() == role).findFirst();
     }
 
     private static SamlCertificates.SigningPair generated(String registrationId) {
@@ -287,7 +287,7 @@ public class SamlProviderService implements RelyingPartyRegistrationRepository {
             throw new IllegalArgumentException("The key can't be saved: this server has no "
                     + "graph.security.secret-key to encrypt it with");
         }
-        repository.insertKey(registrationId, role, cipher.encrypt(pair.privateKeyPem()), pair.certificatePem());
+        store.insertKey(registrationId, role, cipher.encrypt(pair.privateKeyPem()), pair.certificatePem());
     }
 
     private static boolean isBlank(String value) {
@@ -309,7 +309,7 @@ public class SamlProviderService implements RelyingPartyRegistrationRepository {
     }
 
     private StoredSamlProvider stored(SamlProviderRow row) {
-        List<StoredKey> keys = repository.findKeys(row.registrationId()).stream()
+        List<StoredKey> keys = store.findKeys(row.registrationId()).stream()
                 .map(key -> {
                     X509Certificate certificate = SamlCertificates.certificate(key.certificate());
                     return new StoredKey(key.role(), certificate.getNotAfter().toInstant(),

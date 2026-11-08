@@ -1,7 +1,7 @@
 package org.ntrloc.graph.db.partition.authorization;
 
-import org.ntrloc.graph.db.partition.authorization.repository.AuthorizationRepository;
-import org.ntrloc.graph.db.partition.security.NtrlocPrincipal;
+import org.ntrloc.graph.db.partition.authorization.repository.AccessStoreReader;
+import org.ntrloc.graph.principal.NtrlocPrincipal;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 
@@ -11,8 +11,8 @@ import java.util.UUID;
 
 // The five methods below that take an NtrlocPrincipal directly each demand a real, non-null one
 // via @PreAuthorize, enforced by Spring (see docs/ntrloc-principal-enforcement-plan.md, Part C) --
-// this is a top-level component independently reachable from EntityManagerImpl,
-// MutationRequestProcessor, and SchemaManager, so it carries its own guard rather than trusting
+// this is a top-level component independently reachable from EntityReadService/EntityWriteService,
+// MutationRequestProcessor, and SchemaService, so it carries its own guard rather than trusting
 // every caller to have already checked. The RequestPermissionContext-taking methods below that
 // don't (mayStartStateMachine, mayExecuteTransition, etc.) don't need their own guard: a
 // RequestPermissionContext can only ever have been built by buildContext(), which already demands
@@ -23,15 +23,10 @@ public class PermissionService {
     public static final String ITEM_TYPE_READ = "item-type:read";
     public static final String ITEM_TYPE_CREATE = "item-type:create";
 
-    // repo is only needed here now for getMarkerIdsForItem -- a data-sized register_item_marker
-    // lookup that's deliberately never cached (see AuthorizationCacheManager's own comment). Every
-    // grant/permission read below goes through the cache manager instead of issuing a live query.
-    private final AuthorizationRepository repo;
-    private final AuthorizationCacheManager cache;
+    private final AccessStoreReader accessStore;
 
-    public PermissionService(AuthorizationRepository repo, AuthorizationCacheManager cache) {
-        this.repo = repo;
-        this.cache = cache;
+    public PermissionService(AccessStoreReader accessStore) {
+        this.accessStore = accessStore;
     }
 
     /**
@@ -43,7 +38,7 @@ public class PermissionService {
         if (principal.isAdmin()) {
             return true;
         }
-        return cache.hasItemTypeGrant(principal.id(), principal.groupIds(), itemTypeId, ITEM_TYPE_READ);
+        return accessStore.hasItemTypeGrant(principal.id(), principal.groupIds(), itemTypeId, ITEM_TYPE_READ);
     }
 
     /** Type-level create gate — a prerequisite for the (separate) hypothetical-instance create check. */
@@ -52,13 +47,13 @@ public class PermissionService {
         if (principal.isAdmin()) {
             return true;
         }
-        return cache.hasItemTypeGrant(principal.id(), principal.groupIds(), itemTypeId, ITEM_TYPE_CREATE);
+        return accessStore.hasItemTypeGrant(principal.id(), principal.groupIds(), itemTypeId, ITEM_TYPE_CREATE);
     }
 
     /** Every item type this principal can read, directly or via any group. Used to project the schema. */
     @PreAuthorize("#principal != null")
     public Set<UUID> readableItemTypeIds(NtrlocPrincipal principal) {
-        return cache.getGrantedItemTypeIds(principal.id(), principal.groupIds(), ITEM_TYPE_READ);
+        return accessStore.getGrantedItemTypeIds(principal.id(), principal.groupIds(), ITEM_TYPE_READ);
     }
 
     /**
@@ -70,11 +65,11 @@ public class PermissionService {
         if (principal.isAdmin()) {
             return true;
         }
-        Set<UUID> granted = cache.getGrantedItemReadMarkerIds(principal.id(), principal.groupIds());
+        Set<UUID> granted = accessStore.getGrantedItemReadMarkerIds(principal.id(), principal.groupIds());
         if (granted.isEmpty()) {
             return false;
         }
-        return !Collections.disjoint(repo.getMarkerIdsForItem(itemId), granted);
+        return !Collections.disjoint(accessStore.getMarkerIdsForItem(itemId), granted);
     }
 
     /**
@@ -93,17 +88,17 @@ public class PermissionService {
         return new RequestPermissionContext(
                 false,
                 readableItemTypeIds(principal),
-                cache.getGrantedItemReadMarkerIds(userId, groupIds),
-                cache.getGrantedItemDeleteMarkerIds(userId, groupIds),
-                cache.getPropertyReadGrantsByMarker(userId, groupIds),
-                cache.getPropertyWriteGrantsByMarker(userId, groupIds),
-                cache.getLinkPropertyReadGrantsByMarker(userId, groupIds),
-                cache.getLinkPropertyWriteGrantsByMarker(userId, groupIds),
-                cache.getLinkPerspectiveCreateGrantsByMarker(userId, groupIds),
-                cache.getLinkPerspectiveReadGrantsByMarker(userId, groupIds),
-                cache.getLinkPerspectiveDeleteGrantsByMarker(userId, groupIds),
-                cache.getTransitionExecuteGrantsByMarker(userId, groupIds),
-                cache.getStateMachineStartGrantsByMarker(userId, groupIds));
+                accessStore.getGrantedItemReadMarkerIds(userId, groupIds),
+                accessStore.getGrantedItemDeleteMarkerIds(userId, groupIds),
+                accessStore.getPropertyReadGrantsByMarker(userId, groupIds),
+                accessStore.getPropertyWriteGrantsByMarker(userId, groupIds),
+                accessStore.getLinkPropertyReadGrantsByMarker(userId, groupIds),
+                accessStore.getLinkPropertyWriteGrantsByMarker(userId, groupIds),
+                accessStore.getLinkPerspectiveCreateGrantsByMarker(userId, groupIds),
+                accessStore.getLinkPerspectiveReadGrantsByMarker(userId, groupIds),
+                accessStore.getLinkPerspectiveDeleteGrantsByMarker(userId, groupIds),
+                accessStore.getTransitionExecuteGrantsByMarker(userId, groupIds),
+                accessStore.getStateMachineStartGrantsByMarker(userId, groupIds));
     }
 
     /** May this principal begin an item carrying {@code itemMarkerIds} in state machine {@code smId}? */
@@ -150,6 +145,6 @@ public class PermissionService {
 
     /** The markers currently on this item -- data-sized, never cached (see class comment). */
     public Set<UUID> markerIdsForItem(UUID itemId) {
-        return repo.getMarkerIdsForItem(itemId);
+        return accessStore.getMarkerIdsForItem(itemId);
     }
 }

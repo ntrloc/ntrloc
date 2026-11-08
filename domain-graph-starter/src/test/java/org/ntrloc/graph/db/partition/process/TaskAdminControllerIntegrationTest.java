@@ -7,7 +7,7 @@ import org.flowable.engine.runtime.ProcessInstance;
 import org.flowable.task.api.Task;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
-import org.ntrloc.graph.db.partition.security.repository.SecurityRepository;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpHeaders;
@@ -33,7 +33,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 // same precedent as ProcessEngineIntegrationTest.userTaskClaimAndCompleteAdvancesProcessToCompletion.
 // Every non-admin check below uses a freshly created, UUID-suffixed throwaway user rather than
 // the standing alice/bob/carol fixture, since this class also needs "reviewers" process-group
-// membership (a distinct concept from security_group -- see ProcessGroupRepository's own comment)
+// membership (a distinct concept from security_group -- see ProcessGroupStore's own comment)
 // and doesn't want to risk perturbing another test class's assumptions about those three.
 class TaskAdminControllerIntegrationTest extends AbstractIntegrationTest {
 
@@ -54,10 +54,10 @@ class TaskAdminControllerIntegrationTest extends AbstractIntegrationTest {
     private TaskService taskService;
 
     @Autowired
-    private SecurityRepository securityRepo;
+    private UserStore userStore;
 
     @Autowired
-    private ProcessGroupRepository groupRepo;
+    private ProcessGroupStore groupStore;
 
     @Autowired
     private TaskEventBroadcaster broadcaster;
@@ -77,8 +77,8 @@ class TaskAdminControllerIntegrationTest extends AbstractIntegrationTest {
                 .orElseThrow();
     }
 
-    private SecurityRepository.UserRow createUser() {
-        return securityRepo.createUser("Test User", "user-" + UUID.randomUUID() + "@example.com", false);
+    private UserStore.UserRow createUser() {
+        return userStore.createUser("Test User", "user-" + UUID.randomUUID() + "@example.com", false);
     }
 
     // Every test that starts a process instance must reach this by its end: the reviewGreeting
@@ -145,7 +145,7 @@ class TaskAdminControllerIntegrationTest extends AbstractIntegrationTest {
         var assignee = createUser();
         taskService.claim(task.getId(), assignee.id().toString());
         String newEmail = "renamed-" + UUID.randomUUID() + "@example.com";
-        securityRepo.updateUser(assignee.id(), assignee.displayName(), newEmail, false);
+        userStore.updateUser(assignee.id(), assignee.displayName(), newEmail, false);
 
         List<Map<String, Object>> tasks = listTasksAs(newEmail);
 
@@ -159,12 +159,12 @@ class TaskAdminControllerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void listTasks_forAReviewersGroupMember_showsItViaCandidateGroup() {
         Task task = startProcessAndGetReviewTask();
-        var reviewersGroup = groupRepo.listGroups().stream()
+        var reviewersGroup = groupStore.listGroups().stream()
                 .filter(g -> g.name().equals("reviewers"))
                 .findFirst()
-                .orElseGet(() -> groupRepo.createGroup("reviewers"));
+                .orElseGet(() -> groupStore.createGroup("reviewers"));
         var candidate = createUser();
-        groupRepo.addUserToGroup(candidate.id(), reviewersGroup.id());
+        groupStore.addUserToGroup(candidate.id(), reviewersGroup.id());
 
         List<Map<String, Object>> tasks = listTasksAs(candidate.email());
 
@@ -177,7 +177,7 @@ class TaskAdminControllerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void claim_asAdmin_setsTheAssigneeToTheirUserId() {
         Task task = startProcessAndGetReviewTask();
-        var root = securityRepo.findUserByEmail("root@example.com").orElseThrow();
+        var root = userStore.findUserByEmail("root@example.com").orElseThrow();
 
         webTestClient.post().uri("/api/admin/process/tasks/{id}/claim", task.getId())
                 .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com"))
@@ -242,7 +242,7 @@ class TaskAdminControllerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void listGroups_includesCreatedGroups() {
         String name = "group-" + UUID.randomUUID();
-        groupRepo.createGroup(name);
+        groupStore.createGroup(name);
 
         webTestClient.get().uri("/api/admin/process/groups")
                 .exchange()

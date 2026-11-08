@@ -23,7 +23,7 @@ public class TaskEventListener extends AbstractFlowableEventListener {
     private final TaskEventBroadcaster broadcaster;
     // New, parallel signal -- see ClusterEventBroadcaster's own comment. Published alongside
     // broadcaster above, not instead of it, while the new SSE relay is proven out (mirrors
-    // SchemaManager.refreshCache()'s same additive change for schemaChanged).
+    // SchemaService.refreshCache()'s same additive change for schemaChanged).
     private final ClusterEventBroadcaster clusterEventBroadcaster;
 
     public TaskEventListener(TaskEventBroadcaster broadcaster, ClusterEventBroadcaster clusterEventBroadcaster) {

@@ -1,7 +1,7 @@
 package org.ntrloc.graph.security;
 
-import org.ntrloc.graph.db.partition.security.repository.LdapConfigurationRepository;
-import org.ntrloc.graph.db.partition.security.repository.LdapConfigurationRepository.LdapConfigurationRow;
+import org.ntrloc.graph.db.partition.security.repository.LdapConfigurationStore;
+import org.ntrloc.graph.db.partition.security.repository.LdapConfigurationStore.LdapConfigurationRow;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ldap.CommunicationException;
@@ -64,17 +64,17 @@ public class LdapConfigurationService {
 
     private record CachedDirectory(long version, Optional<Directory> directory) {}
 
-    private final LdapConfigurationRepository repository;
+    private final LdapConfigurationStore store;
     private final SecretCipher cipher;
     private final AtomicReference<CachedDirectory> cached = new AtomicReference<>();
 
-    public LdapConfigurationService(LdapConfigurationRepository repository, SecretCipher cipher) {
-        this.repository = repository;
+    public LdapConfigurationService(LdapConfigurationStore store, SecretCipher cipher) {
+        this.store = store;
         this.cipher = cipher;
     }
 
     public StoredLdapSettings stored() {
-        return repository.find()
+        return store.find()
                 .map(row -> new StoredLdapSettings(settingsOf(row), row.bindPasswordEncrypted() != null, row.updatedAt()))
                 .orElse(new StoredLdapSettings(LdapSettings.DEFAULTS, false, null));
     }
@@ -91,7 +91,7 @@ public class LdapConfigurationService {
         if (settings.anonymous()) {
             encryptedPassword = null;
         } else if (newPassword == null || newPassword.isEmpty()) {
-            encryptedPassword = repository.find().map(LdapConfigurationRow::bindPasswordEncrypted).orElse(null);
+            encryptedPassword = store.find().map(LdapConfigurationRow::bindPasswordEncrypted).orElse(null);
         } else if (!cipher.isConfigured()) {
             throw new IllegalArgumentException("The bind password can't be saved: this server has no "
                     + "graph.security.secret-key to encrypt it with");
@@ -102,7 +102,7 @@ public class LdapConfigurationService {
             throw new IllegalArgumentException("A bind DN needs a password (or clear the bind DN to search anonymously)");
         }
 
-        repository.save(new LdapConfigurationRow(settings.enabled(), settings.url(), settings.baseDn(),
+        store.save(new LdapConfigurationRow(settings.enabled(), settings.url(), settings.baseDn(),
                 settings.bindDn(), encryptedPassword, settings.userSearchBase(), settings.userSearchFilter(),
                 settings.emailAttribute(), settings.displayNameAttribute(), 0, null, null), updatedBy);
         LOG.info("LDAP configuration saved by user {}: {} {}", updatedBy, settings.enabled() ? "enabled," : "disabled,",
@@ -149,7 +149,7 @@ public class LdapConfigurationService {
     // One cheap version read per login; the directory connection is rebuilt only after a save, on
     // whichever node next needs it -- which is how a save reaches every node in a cluster.
     public Optional<Directory> directory() {
-        Optional<Long> version = repository.findVersion();
+        Optional<Long> version = store.findVersion();
         if (version.isEmpty()) {
             return Optional.empty();
         }
@@ -158,7 +158,7 @@ public class LdapConfigurationService {
             return current.directory();
         }
         synchronized (this) {
-            LdapConfigurationRow row = repository.find().orElseThrow();
+            LdapConfigurationRow row = store.find().orElseThrow();
             CachedDirectory rebuilt = new CachedDirectory(row.version(), buildDirectory(row));
             cached.set(rebuilt);
             return rebuilt.directory();
@@ -166,7 +166,7 @@ public class LdapConfigurationService {
     }
 
     public boolean isEnabled() {
-        return repository.find().map(LdapConfigurationRow::enabled).orElse(false);
+        return store.find().map(LdapConfigurationRow::enabled).orElse(false);
     }
 
     private Optional<Directory> buildDirectory(LdapConfigurationRow row) {
@@ -191,7 +191,7 @@ public class LdapConfigurationService {
     }
 
     private Optional<String> storedPassword() {
-        return repository.find().map(LdapConfigurationRow::bindPasswordEncrypted).map(cipher::decrypt);
+        return store.find().map(LdapConfigurationRow::bindPasswordEncrypted).map(cipher::decrypt);
     }
 
     private static LdapContextSource contextSource(LdapSettings settings, String password) {
