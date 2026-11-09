@@ -1,5 +1,5 @@
 // A static downward chevron -- the "this is a dropdown" affordance shared by every select-style
-// trigger (Select's own native <select>, PopoverButton, TreeSelect) so they all render one
+// trigger (Select's own native <select>, PopoverButton) so they all render one
 // visually identical indicator, regardless of whether the control underneath is a native <select>
 // (whose own arrow otherwise varies by browser/OS and can't be reused directly) or a custom
 // button. Distinct from ChevronIcon in this same folder -- that one is for collapse/expand toggles

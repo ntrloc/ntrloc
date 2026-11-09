@@ -1,0 +1,66 @@
+/* The cards on the user and group Overview tabs, and the rows inside them. */
+access-panels {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 24px;
+}
+
+.access-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 0 14px 14px;
+  /* Same look as the Permissions tab's cards (CollapsibleCard). */
+  border: 1px solid color-mix(in srgb, var(--border) 85%, white 15%);
+  background: color-mix(in srgb, var(--bg) 96%, white 4%);
+}
+
+.access-panel > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 46px;
+  border-bottom: 1px solid var(--border);
+}
+
+.access-panel h3 {
+  margin: 0;
+  color: var(--text-h);
+  font-size: 1.1em;
+  font-weight: 600;
+}
+
+.access-rows {
+  display: flex;
+  flex-direction: column;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.access-rows > li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+}
+
+.access-rows > li:last-child {
+  border-bottom: none;
+}
+
+.access-row-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  color: var(--text-h);
+}
+
+.access-muted {
+  color: var(--text);
+  font-size: 13px;
+}

@@ -1,8 +1,8 @@
 import Button from '../../../controls/button/Button'
 import OptionList from '../../../controls/option-list/OptionList'
+import CheckboxTree from '../../../controls/checkbox-tree/CheckboxTree'
 import PopoverButton from '../../../controls/popover-button/PopoverButton'
 import Select from '../../../controls/select/Select'
-import TreeSelect from '../../../controls/tree-select/TreeSelect'
 import { FILTER_OPERATORS, PAGE_SIZE_OPTIONS, useSearchPaneControlsViewModel } from './SearchPaneControlsViewModel'
 import './SearchPaneControlsView.css'
 
@@ -14,7 +14,7 @@ function itemTypeSummaryFor(schemaStatus, showSchemaSpinner, selectedItemType) {
 
 // Item-type select, property-selection tree, sort, and filter are each a Select-like PopoverButton
 // trigger (collapsed behind a closed, compact button until clicked -- a "Sort"/"Filter" button
-// that reveals its own options panel, same shape TreeSelect's "Properties" trigger already uses),
+// that reveals its own options panel),
 // plus page size and the search button inline. Item type is a PopoverButton + OptionList rather
 // than a native <select>, specifically so its popup always opens below the trigger like the
 // others -- a native <select>'s own popup position is browser/OS-controlled (it tends to align
@@ -92,13 +92,11 @@ function SearchPaneControlsView({ onSearch }) {
           />
         )}
       </PopoverButton>
-      <TreeSelect
-        nodes={[propertyTree]}
-        selectedKeys={selectedPropertyKeys}
-        onChange={setSelectedPropertyKeys}
-        summary={selectedPropertySummary}
-        disabled={disabled}
-      />
+      <search-pane-properties>
+        <PopoverButton summary={selectedPropertySummary} disabled={disabled}>
+          <CheckboxTree nodes={[propertyTree]} selectedKeys={selectedPropertyKeys} onChange={setSelectedPropertyKeys} />
+        </PopoverButton>
+      </search-pane-properties>
       <PopoverButton summary={sortSummary} disabled={disabled}>
         <PopoverButton summary={sortField || 'None'} disabled={disabled}>
           {({ close }) => (

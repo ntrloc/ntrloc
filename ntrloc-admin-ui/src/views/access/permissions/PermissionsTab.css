@@ -1,0 +1,186 @@
+/* Fills the tab panel; the cards scroll under the legend. */
+permissions-tab {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+permissions-header {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 10px 14px;
+}
+
+.permissions-admin-note {
+  margin: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-h);
+  font-size: 13px;
+}
+
+permissions-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+permissions-legend .permission-pill {
+  cursor: default;
+}
+
+permissions-cards {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 0 10px 20px;
+}
+
+.permissions-summary {
+  color: var(--text-h);
+  font-size: 13px;
+}
+
+.permissions-summary[data-empty] {
+  color: var(--text);
+  opacity: 0.7;
+}
+
+permissions-type-row,
+permissions-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 30px;
+}
+
+.permissions-row-label {
+  flex: none;
+  width: 140px;
+  color: var(--text);
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+permissions-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.permissions-markers-title,
+permissions-area h4 {
+  margin: 16px 0 6px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.permissions-markers {
+  display: flex;
+  flex-direction: column;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--border);
+}
+
+.permissions-marker {
+  border-bottom: 1px solid var(--border);
+}
+
+.permissions-marker-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 4px;
+  border: none;
+  background: transparent;
+  color: var(--text-h);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.permissions-marker-toggle:hover .permissions-marker-name {
+  color: var(--primary);
+}
+
+.permissions-marker-name {
+  flex: none;
+  width: 170px;
+  font-weight: 500;
+}
+
+permissions-marker-body {
+  display: flex;
+  flex-direction: column;
+  padding: 0 4px 12px 26px;
+}
+
+permissions-area h4 {
+  margin-top: 10px;
+}
+
+/* The pill: dim when not granted, outlined when only a group grants it, filled when granted
+   directly. */
+.permission-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  line-height: 20px;
+  cursor: pointer;
+}
+
+.permission-pill[data-state='none'] {
+  opacity: 0.65;
+}
+
+.permission-pill[data-state='inherited'] {
+  border-color: var(--primary-border);
+  color: var(--primary);
+}
+
+.permission-pill[data-state='direct'] {
+  border-color: var(--primary);
+  background: var(--primary-bg);
+  color: var(--primary);
+  font-weight: 500;
+}
+
+.permission-pill:hover:not(:disabled) {
+  border-color: var(--primary);
+}
+
+.permission-pill:disabled {
+  cursor: default;
+}
+
+.permissions-muted {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.permissions-error {
+  margin: 0;
+  color: var(--danger);
+}

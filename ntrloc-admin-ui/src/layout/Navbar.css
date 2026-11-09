@@ -14,3 +14,18 @@ layout-navbar {
   font-weight: 600;
   color: var(--text-h);
 }
+
+navbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+}
+
+/* In a draft the whole bar says so: tinted, with a 2px draft-coloured rule beneath it -- the border
+   plus an inset shadow, so the bar's height (and everything below it) doesn't shift. */
+layout-navbar[data-draft] {
+  background: var(--surface-sheen), color-mix(in srgb, var(--secondary-bg) 100%, var(--bg-nav));
+  border-bottom-color: var(--secondary);
+  box-shadow: inset 0 -1px 0 var(--secondary);
+}

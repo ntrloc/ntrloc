@@ -1,0 +1,46 @@
+/* Same header-over-tabs shape as the schema editors' detail views (ItemTypeDetailView.css). */
+user-detail-view {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+
+  tab-view {
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+  }
+}
+
+user-detail-header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin: 10px;
+}
+
+user-detail-header h2 {
+  margin: 0;
+}
+
+.user-detail-badge {
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.user-detail-sign-in {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.user-detail-message {
+  margin: 10px;
+  color: var(--text);
+}
+
+.user-detail-error {
+  color: var(--danger);
+}

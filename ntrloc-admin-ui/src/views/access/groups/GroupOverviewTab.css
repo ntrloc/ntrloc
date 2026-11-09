@@ -1,0 +1,28 @@
+/* Name and parent on the left, members on the right, as in the mockup. */
+group-overview {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) minmax(320px, 1.4fr);
+  align-items: start;
+  gap: 32px;
+  padding: 10px;
+}
+
+group-overview-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+group-overview-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.group-overview-message {
+  margin: 0;
+  color: var(--secondary);
+}
+
+.group-overview-error {
+  color: var(--danger);
+}

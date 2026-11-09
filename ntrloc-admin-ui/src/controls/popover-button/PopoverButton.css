@@ -1,7 +1,3 @@
-/* Identical shell to tree-select's own (src/controls/tree-select/TreeSelect.css) -- kept as two
-   copies rather than one shared class, since the two controls are independent and a future tweak
-   to one (e.g. tree-select's own min-width, sized for a property tree) shouldn't silently affect
-   the other (sized for a few form controls). */
 popover-button {
   position: relative;
   display: inline-block;

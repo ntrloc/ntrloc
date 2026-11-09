@@ -1,4 +1,54 @@
+/* Users / Groups / Permissions tabs; under each, a list on the left and the selected entry's
+   detail on the right. */
 access-view {
-  display: block;
-  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding-top: 10px;
+  box-sizing: border-box;
+
+  > tab-view {
+    flex: 1;
+    min-height: 0;
+  }
+}
+
+access-view-split {
+  display: flex;
+  height: 100%;
+}
+
+access-view-nav {
+  flex: none;
+  width: 240px;
+  padding: 10px;
+  box-sizing: border-box;
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+}
+
+access-view-content {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+
+  user-detail-view {
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+  }
+}
+
+.access-view-loading,
+.access-view-placeholder {
+  margin: 20px;
+  color: var(--text);
+}
+
+.access-view-error {
+  margin: 20px;
+  color: var(--danger);
 }

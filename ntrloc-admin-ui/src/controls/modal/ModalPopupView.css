@@ -1,5 +1,5 @@
 /* Fixed, not a portal -- nothing in this app transforms an ancestor, so this stays positioned
-   against the viewport same as TreeSelect's own popover does without one. */
+   against the viewport same as PopoverButton's own popover does without one. */
 modal-popup-backdrop {
   position: fixed;
   inset: 0;

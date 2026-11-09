@@ -1,0 +1,50 @@
+draft-mode-switch {
+  display: inline-block;
+}
+
+/* In a draft, the trigger itself carries the draft colour, so the mode reads at a glance. */
+draft-mode-switch[data-draft] .popover-button-trigger {
+  border-color: var(--secondary-border);
+  background: var(--secondary-bg);
+}
+
+.draft-mode-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.draft-mode-badge {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--secondary);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+draft-mode-options {
+  display: flex;
+  flex-direction: column;
+  min-width: 220px;
+}
+
+.draft-mode-note {
+  margin: 0;
+  padding: 8px 12px;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.draft-mode-error {
+  color: var(--danger);
+}
+
+draft-mode-actions {
+  display: flex;
+  padding: 6px 8px;
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+}

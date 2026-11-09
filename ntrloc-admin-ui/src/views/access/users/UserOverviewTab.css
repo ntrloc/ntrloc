@@ -1,0 +1,64 @@
+user-overview {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 10px;
+}
+
+.user-overview-draft-note {
+  margin: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--secondary-border);
+  border-radius: 6px;
+  background: var(--secondary-bg);
+  color: var(--text-h);
+  font-size: 13px;
+}
+
+/* Name, email and admin across one row, as in the mockup; Edit (or Cancel and Save) at its end. */
+user-overview-identity {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto auto;
+  align-items: end;
+  gap: 32px;
+}
+
+user-overview-identity-actions {
+  display: flex;
+  gap: 8px;
+}
+
+user-overview-sign-in {
+  display: block;
+}
+
+/* Shared by the user dialogs. */
+user-dialog-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 360px;
+}
+
+.user-dialog-message {
+  margin: 0;
+  color: var(--secondary);
+}
+
+.user-dialog-error {
+  color: var(--danger);
+}
+
+.user-dialog-text {
+  margin: 0 0 12px;
+}
+
+.user-dialog-token {
+  display: block;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--code-bg);
+  font-family: var(--mono);
+  user-select: all;
+  overflow-wrap: anywhere;
+}

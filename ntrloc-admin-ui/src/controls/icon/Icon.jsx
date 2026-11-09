@@ -35,6 +35,12 @@ const ICONS = {
     </>
   ),
   check: <polyline points="20 6 9 17 4 12" />,
+  key: (
+    <>
+      <circle cx="7.5" cy="15.5" r="5.5" />
+      <path d="m21 2-9.6 9.6M15.5 7.5l3 3L22 7l-3-3" />
+    </>
+  ),
   x: <path d="M18 6 6 18M6 6l12 12" />,
   undo: (
     <>

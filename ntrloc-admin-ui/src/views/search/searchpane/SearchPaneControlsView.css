@@ -33,3 +33,14 @@ search-pane-controls-view {
   opacity: 0.6;
   cursor: default;
 }
+
+/* The property tree's popover: wide enough for nested names, and scrolls rather than running off
+   the window. display: contents keeps the wrapper out of the row's layout. */
+search-pane-properties {
+  display: contents;
+}
+
+search-pane-properties popover-button-popover {
+  min-width: 320px;
+  max-height: 320px;
+}

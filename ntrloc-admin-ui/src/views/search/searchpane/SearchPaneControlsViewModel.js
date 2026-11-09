@@ -89,8 +89,7 @@ export function useSearchPaneControlsViewModel() {
   // granularity request -- see checkboxTreeSelection.js -- so they're forwarded as-is.
   const selectedPropertyPaths = selectedPropertyKeys.has(ALL_PROPERTIES_KEY) ? null : Array.from(selectedPropertyKeys)
 
-  // TreeSelect's own closed-state label -- computed here, not inside TreeSelect itself, since only
-  // this view model knows what the root key/selection actually means.
+  // The property picker's closed-state label -- only this view model knows what the selection means.
   const selectedPropertySummary = propertySelectionSummary(selectedPropertyKeys)
 
   // null (not an empty-string propertyName) when no property/value is chosen -- matches

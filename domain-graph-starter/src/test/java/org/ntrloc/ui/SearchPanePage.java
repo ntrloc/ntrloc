@@ -87,7 +87,7 @@ class SearchPanePage {
 
     /** Unchecks "(All properties)", then checks only the named top-level properties. */
     SearchPanePage onlyProperties(String... names) {
-        WebElement trigger = pane.findElement(By.cssSelector("tree-select > .tree-select-trigger"));
+        WebElement trigger = pane.findElement(By.cssSelector("search-pane-properties .popover-button-trigger"));
         trigger.click();
         checkboxLabeled("(All properties)").click();
         for (String name : names) {
@@ -188,7 +188,7 @@ class SearchPanePage {
     }
 
     private WebElement checkboxLabeled(String label) {
-        return pane.findElement(By.xpath(".//tree-select-popover//label[normalize-space()='" + label + "']/input[@type='checkbox']"));
+        return pane.findElement(By.xpath(".//search-pane-properties//popover-button-popover//label[normalize-space()='" + label + "']/input[@type='checkbox']"));
     }
 
     // A search replaces the results list with "Searching…" and then a new list, so the old list

@@ -113,7 +113,7 @@ function ItemPanePropertyInput({ leaf, value, onChange }) {
 
 // The PopoverButton trigger's own closed-state label -- resolves selected value(s) to their list
 // labels where already loaded, falling back to the raw value(s) (or a placeholder) otherwise, same
-// reasoning TreeSelect/SearchPaneControlsViewModel's own summaries already use: only the thing that
+// reasoning SearchPaneControlsViewModel's own summaries already use: only the thing that
 // knows what a selection *means* should compute its label.
 function controlledListSummary({ status, values: options }, selected, isMulti) {
   if (status === 'loading') return 'Loading…'

@@ -1,16 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
-import { toggleCheckboxTreeNode } from './checkboxTreeSelection'
+import { selectDownward } from './checkboxTreeSelection'
 import './CheckboxTree.css'
 
-// A generic, reusable checkbox tree -- knows nothing about properties, schema, or search. `nodes` is
-// a plain recursive shape ({ key, label, children? }); `selectedKeys` is the set of node keys the
-// caller currently considers selected (any granularity); `onChange(newSelectedKeys)` reports the
-// updated set after a toggle, with the add/remove/flatten mechanics already applied -- see
-// checkboxTreeSelection.js for that logic. Everything starts expanded; collapsed state is local,
-// per-node UI state, never reported outward.
-function CheckboxTree({ nodes, selectedKeys, onChange }) {
-  function handleToggle(node, ancestors, wasChecked) {
-    onChange(toggleCheckboxTreeNode(node, ancestors, selectedKeys, wasChecked))
+// A generic checkbox tree -- knows nothing about properties, groups, or search. `nodes` is a plain
+// recursive shape ({ key, label, children?, disabled? }); `selectedKeys` is the set the caller
+// considers selected; `onChange(newSelectedKeys)` reports the set after a click. What a selection
+// means -- whether a branch covers what's below it, or a node implies what's above it -- is the
+// `selection` model's business (see checkboxTreeSelection.js). `defaultExpanded(node)` decides
+// which branches start open (all, unless given); after that, open/closed is local UI state.
+function CheckboxTree({ nodes, selectedKeys, onChange, selection = selectDownward, defaultExpanded = () => true }) {
+  function handleToggle(node, ancestors) {
+    onChange(selection.toggle(node, ancestors, selectedKeys))
   }
 
   return (
@@ -21,7 +21,8 @@ function CheckboxTree({ nodes, selectedKeys, onChange }) {
           node={node}
           ancestors={[]}
           selectedKeys={selectedKeys}
-          ancestorChecked={false}
+          selection={selection}
+          defaultExpanded={defaultExpanded}
           onToggle={handleToggle}
         />
       ))}
@@ -29,15 +30,11 @@ function CheckboxTree({ nodes, selectedKeys, onChange }) {
   )
 }
 
-// ancestorChecked is threaded down rather than recomputed from scratch at every node: once some
-// ancestor's own key is found in selectedKeys, every descendant below it renders checked with no
-// further lookups needed.
-function CheckboxTreeNode({ node, ancestors, selectedKeys, ancestorChecked, onToggle }) {
-  const [expanded, setExpanded] = useState(true)
+function CheckboxTreeNode({ node, ancestors, selectedKeys, selection, defaultExpanded, onToggle }) {
+  const [expanded, setExpanded] = useState(() => defaultExpanded(node))
   const checkboxRef = useRef(null)
   const isLeaf = !node.children || node.children.length === 0
-  const checked = ancestorChecked || selectedKeys.has(node.key)
-  const indeterminate = !checked && !isLeaf && hasCheckedDescendant(node, selectedKeys)
+  const { checked, indeterminate, implied, disabled } = selection.stateOf(node, ancestors, selectedKeys)
 
   // The DOM's indeterminate state has no JSX/HTML attribute equivalent -- it can only be set
   // imperatively on the element itself.
@@ -47,7 +44,7 @@ function CheckboxTreeNode({ node, ancestors, selectedKeys, ancestorChecked, onTo
 
   return (
     <li className="checkbox-tree-node">
-      <div className="checkbox-tree-row">
+      <div className="checkbox-tree-row" data-implied={implied || undefined}>
         {isLeaf ? (
           <span className="checkbox-tree-toggle-spacer" aria-hidden="true" />
         ) : (
@@ -61,8 +58,14 @@ function CheckboxTreeNode({ node, ancestors, selectedKeys, ancestorChecked, onTo
             {expanded ? '▼' : '▶'}
           </button>
         )}
-        <label className="checkbox-tree-label">
-          <input type="checkbox" ref={checkboxRef} checked={checked} onChange={() => onToggle(node, ancestors, checked)} />
+        <label className="checkbox-tree-label" data-disabled={disabled || undefined}>
+          <input
+            type="checkbox"
+            ref={checkboxRef}
+            checked={checked}
+            disabled={disabled}
+            onChange={() => onToggle(node, ancestors)}
+          />
           {node.label}
         </label>
       </div>
@@ -74,7 +77,8 @@ function CheckboxTreeNode({ node, ancestors, selectedKeys, ancestorChecked, onTo
               node={child}
               ancestors={[...ancestors, node]}
               selectedKeys={selectedKeys}
-              ancestorChecked={checked}
+              selection={selection}
+              defaultExpanded={defaultExpanded}
               onToggle={onToggle}
             />
           ))}
@@ -82,10 +86,6 @@ function CheckboxTreeNode({ node, ancestors, selectedKeys, ancestorChecked, onTo
       )}
     </li>
   )
-}
-
-function hasCheckedDescendant(node, selectedKeys) {
-  return (node.children || []).some((child) => selectedKeys.has(child.key) || hasCheckedDescendant(child, selectedKeys))
 }
 
 export default CheckboxTree

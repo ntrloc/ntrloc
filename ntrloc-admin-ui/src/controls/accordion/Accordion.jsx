@@ -5,7 +5,7 @@ import './Accordion.css'
 // makes it the active section, showing its own view directly beneath it and collapsing whichever
 // section was active before. Only ever one section open at a time -- distinct from
 // ItemPaneView's own CollapsibleSection, where every section expands/collapses independently.
-// Uncontrolled by default (own internal state, same convention as TreeSelect's open/closed state),
+// Uncontrolled by default (own internal state, same convention as PopoverButton's open/closed state),
 // but accepts an optional activeKey/onActiveKeyChange pair for a consumer that needs to switch
 // sections itself -- e.g. SchemaView jumping to "Traits" when a trait link elsewhere is clicked.
 // Starts on the first section when uncontrolled, same "start expanded" precedent

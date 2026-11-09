@@ -3,7 +3,7 @@ import './Select.css'
 
 // Wraps a native <select> with its own chevron (the native arrow is hidden -- see Select.css's
 // own appearance: none) rather than relying on the browser's own rendering, so this matches
-// PopoverButton/TreeSelect's identical ChevronDownIcon exactly instead of approximating it.
+// PopoverButton's ChevronDownIcon exactly instead of approximating it.
 function Select({ className = '', children, ...rest }) {
   const classes = ['select', className].filter(Boolean).join(' ')
   return (

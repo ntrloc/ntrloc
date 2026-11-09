@@ -7,9 +7,9 @@ import './ModalPopupView.css'
 // {...rest} spread onto the native <button>, no ref needed): callers reach for this mainly to
 // confirm something destructive, so defaulting focus to the safe action means an accidental
 // Enter/Space keypress cancels rather than confirms. Backdrop click and Escape both count as
-// cancel too, matching TreeSelect's own click-outside-closes convention. Controlled, like every
+// cancel too, matching PopoverButton's own click-outside-closes convention. Controlled, like every
 // other control here (open/message/onConfirm/onCancel all owned by the caller) -- no internal
-// open state of its own, unlike TreeSelect's popover, since a caller always needs to know the
+// open state of its own, unlike PopoverButton's popover, since a caller always needs to know the
 // outcome to act on it.
 function ModalPopupView({ open, message, onConfirm, onCancel }) {
   useEffect(() => {

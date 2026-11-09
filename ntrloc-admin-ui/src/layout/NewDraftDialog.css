@@ -1,0 +1,14 @@
+.new-draft-message {
+  margin: 12px 0 0;
+  color: var(--secondary);
+}
+
+.new-draft-error {
+  color: var(--danger);
+}
+
+.new-draft-hint {
+  margin: 16px 0 0;
+  color: var(--text);
+  font-size: 13px;
+}

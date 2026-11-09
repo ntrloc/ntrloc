@@ -42,3 +42,13 @@
   font: inherit;
   cursor: pointer;
 }
+
+.checkbox-tree-label[data-disabled] {
+  cursor: default;
+}
+
+/* Checked because of another selection (see the selection model), not chosen itself. */
+.checkbox-tree-row[data-implied] .checkbox-tree-label {
+  color: var(--text);
+  opacity: 0.7;
+}

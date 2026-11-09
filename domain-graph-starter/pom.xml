@@ -604,6 +604,34 @@
                 </plugins>
             </build>
         </profile>
+
+        <!-- Benchmarks (*Benchmark) never run in an ordinary build. -Dbenchmarks runs them, and only
+             them; results go to benchmark-results/ at the repo root (gitignored), which mvn clean
+             leaves alone. See ProjectionBenchmark for options. -->
+        <profile>
+            <id>benchmarks</id>
+            <activation>
+                <property>
+                    <name>benchmarks</name>
+                </property>
+            </activation>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <configuration>
+                            <includes>
+                                <include>**/*Benchmark.java</include>
+                            </includes>
+                            <systemPropertyVariables>
+                                <benchmarks.dir>${maven.multiModuleProjectDirectory}/benchmark-results/projection</benchmarks.dir>
+                            </systemPropertyVariables>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
     </profiles>
 
 </project>
