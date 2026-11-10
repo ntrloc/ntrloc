@@ -4,7 +4,8 @@ import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.coordinator.CoordinatorTestDomainInitializer;
 import org.ntrloc.graph.db.coordinator.LedgerRegisterCoordinator;
-import org.ntrloc.graph.db.partition.authorization.repository.AccessStore;
+import org.ntrloc.graph.db.partition.authorization.repository.MarkerStore;
+import org.ntrloc.graph.db.partition.register.RegisterStore;
 import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
 import org.ntrloc.graph.db.partition.ledger.ItemUpdateEntry;
 import org.ntrloc.graph.principal.NtrlocPrincipal;
@@ -22,7 +23,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 
 // Covers ManualMarkerAssignmentService's ledger+register write path in isolation from any
-// permission enforcement (that's PermissionServiceInstanceReadIntegrationTest) -- just: does
+// permission enforcement (that's UserGrantsViewItemReadIntegrationTest) -- just: does
 // adding/removing a marker actually write a ledger_entry and land in register_item_marker. Items
 // only -- markers never apply to links (see docs/ntrloc-marker-admin-ui-design-notes.md,
 // "Decision: markers apply to items only").
@@ -35,7 +36,10 @@ class ManualMarkerAssignmentServiceIntegrationTest extends AbstractIntegrationTe
     private LedgerRegisterCoordinator coordinator;
 
     @Autowired
-    private AccessStore accessStore;
+    private MarkerStore markerStore;
+
+    @Autowired
+    private RegisterStore registerStore;
 
     @Autowired
     private CoordinatorTestDomainInitializer fixture;
@@ -60,7 +64,7 @@ class ManualMarkerAssignmentServiceIntegrationTest extends AbstractIntegrationTe
     }
 
     private UUID createMarker() {
-        return accessStore.createMarker("mast-" + UUID.randomUUID(), "test marker", "ITEM_TYPE", fixture.productTypeId()).id();
+        return markerStore.createMarker("mast-" + UUID.randomUUID(), "test marker", "ITEM_TYPE", fixture.productTypeId()).id();
     }
 
     @Test
@@ -71,7 +75,7 @@ class ManualMarkerAssignmentServiceIntegrationTest extends AbstractIntegrationTe
 
         markerAssignmentService.addItemMarker(itemId, markerId, actor, "flagged for review");
 
-        assertThat(accessStore.getMarkerIdsForItem(itemId)).contains(markerId);
+        assertThat(registerStore.getMarkerIdsForItem(itemId)).contains(markerId);
 
         Long ledgerRows = jdbcClient.sql("""
                 SELECT COUNT(*) FROM ledger_entry
@@ -131,7 +135,7 @@ class ManualMarkerAssignmentServiceIntegrationTest extends AbstractIntegrationTe
 
         markerAssignmentService.removeItemMarker(itemId, markerId, actor, "test reason");
 
-        assertThat(accessStore.getMarkerIdsForItem(itemId)).doesNotContain(markerId);
+        assertThat(registerStore.getMarkerIdsForItem(itemId)).doesNotContain(markerId);
 
         // Both add and remove write an ITEM_UPDATE entry now (markers are a facet, not their own
         // entry type) -- entry_type alone can't distinguish them, so this checks the payload's
@@ -165,6 +169,6 @@ class ManualMarkerAssignmentServiceIntegrationTest extends AbstractIntegrationTe
         coordinator.prepare(List.of(new ItemUpdateEntry(itemId, Map.of(fixture.namePropertyId(), "Widget Pro"), Map.of(), Set.of(), Set.of(), Set.of())), updateTxn, actor.id(), OffsetDateTime.now());
         coordinator.commit(updateTxn, UUID.randomUUID());
 
-        assertThat(accessStore.getMarkerIdsForItem(itemId)).contains(markerId);
+        assertThat(registerStore.getMarkerIdsForItem(itemId)).contains(markerId);
     }
 }

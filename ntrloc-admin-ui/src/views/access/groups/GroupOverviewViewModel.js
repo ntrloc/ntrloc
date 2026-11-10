@@ -1,14 +1,17 @@
 import { useState } from 'react'
+import { useDraftMode } from '../../../global/viewmodel/useDraftMode'
 import { addUserToGroup, removeUserFromGroup, renameGroup, setGroupParent } from '../AccessDelegate'
 import { groupHierarchy } from '../permissions/grantModel'
 
 const EVERYONE = 'everyone'
 
 // The group Info / Members tab's state and edits: its name and parent (edited together, with Save),
-// and its members. Groups and membership are drafted, so all of it stays editable in draft mode.
+// and its members. Groups and membership aren't drafted yet (Phase 2, docs/ntrloc-drafts-plan.md), so
+// in draft mode it's all read-only.
 export function useGroupOverviewViewModel({ detail, allGroups, users, reload, onGroupsChanged }) {
   const { group, members } = detail
   const isEveryone = group.name === EVERYONE
+  const { inDraft } = useDraftMode()
   const parentId = group.parentIds[0] ?? null
 
   const [form, setForm] = useState(null)
@@ -53,6 +56,9 @@ export function useGroupOverviewViewModel({ detail, allGroups, users, reload, on
     members,
     isEveryone,
     editing,
+    inDraft,
+    // 'everyone' is fixed, and nothing here is drafted yet.
+    canEdit: !isEveryone && !inDraft,
     name: editing ? form.name : group.name,
     setName: (name) => setForm((current) => ({ ...current, name })),
     parentName: nameOf(editing ? form.parentId : parentId),

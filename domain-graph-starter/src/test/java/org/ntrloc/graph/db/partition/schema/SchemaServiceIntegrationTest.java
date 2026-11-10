@@ -1,11 +1,11 @@
 package org.ntrloc.graph.db.partition.schema;
 
+import org.ntrloc.graph.db.partition.authorization.repository.GrantStoreReader;
 import org.ntrloc.graph.principal.NtrlocPrincipal;
 
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
-import org.ntrloc.graph.db.partition.authorization.PermissionService;
-import org.ntrloc.graph.db.partition.authorization.repository.AccessStore;
+import org.ntrloc.graph.db.partition.authorization.repository.GrantStore;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyContainerKind;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
@@ -98,7 +98,7 @@ class SchemaServiceIntegrationTest extends AbstractIntegrationTest {
     private ControlledListStore controlledListStore;
 
     @Autowired
-    private AccessStore accessStore;
+    private GrantStore grantStore;
 
     @Autowired
     private UserStore userStore;
@@ -1742,7 +1742,7 @@ class SchemaServiceIntegrationTest extends AbstractIntegrationTest {
 
         var user = userStore.createUser("Restricted", "sme-" + UUID.randomUUID() + "@example.com", false);
         var principal = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), false);
-        accessStore.grantItemType(visibleTypeId, "USER", user.id(), PermissionService.ITEM_TYPE_READ);
+        grantStore.grantItemType(visibleTypeId, "USER", user.id(), GrantStoreReader.ITEM_TYPE_READ);
 
         var visibleNames = schemaService.getSchema(principal).items().stream().map(i -> i.name()).toList();
         assertThat(visibleNames).contains(visibleTypeName);

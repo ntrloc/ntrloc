@@ -1,15 +1,17 @@
 // Owns the calls to the projection API -- what the Search view shows the user is really a
 // collection or single-item projection over the graph, not a distinct "search" concept on the
-// backend.
-export async function fetchCollectionProjection(spec) {
-  return postProjection('/api/projection/collection', spec)
+// backend. In a draft, projections read live's items with the user's draft grants.
+const projectionAddress = (draftId) => (draftId ? `/api/drafts/${draftId}/projection` : '/api/projection')
+
+export async function fetchCollectionProjection(draftId, spec) {
+  return postProjection(`${projectionAddress(draftId)}/collection`, spec)
 }
 
 // Unlike fetchCollectionProjection, a 404 here is a real, expected outcome (the item was deleted,
 // or the caller can no longer read it) -- returned as null rather than thrown, so callers don't
 // need to special-case an HTTP status out of a generic error path.
-export async function fetchItemProjection(spec) {
-  const res = await fetch('/api/projection/item', {
+export async function fetchItemProjection(draftId, spec) {
+  const res = await fetch(`${projectionAddress(draftId)}/item`, {
     method: 'POST',
     credentials: 'same-origin',
     headers: { 'Content-Type': 'application/json' },

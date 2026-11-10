@@ -1,5 +1,6 @@
 package org.ntrloc.graph.cluster;
 
+import org.ntrloc.graph.db.partition.authorization.repository.GrantStoreReader;
 import com.hazelcast.core.HazelcastInstance;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -10,7 +11,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInstance;
 import org.ntrloc.graph.TestApplication;
 import org.ntrloc.graph.TestDatabases;
-import org.ntrloc.graph.db.partition.authorization.PermissionService;
 import org.ntrloc.graph.db.partition.schema.SchemaService;
 import org.ntrloc.graph.db.partition.security.PersonalAccessTokenService;
 import org.ntrloc.graph.db.partition.security.repository.UserStore;
@@ -440,7 +440,7 @@ class ClusterIntegrationTest {
         request.uri("/api/admin/users/{userId}/permissions", userId)
                 .header(HttpHeaders.AUTHORIZATION, rootToken)
                 .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue(Map.of("itemTypeId", itemTypeId, "operation", PermissionService.ITEM_TYPE_READ))
+                .bodyValue(Map.of("itemTypeId", itemTypeId, "operation", GrantStoreReader.ITEM_TYPE_READ))
                 .exchange()
                 .expectStatus().isNoContent();
     }

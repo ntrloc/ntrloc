@@ -1,7 +1,7 @@
 package org.ntrloc.graph.projection;
 
-import org.ntrloc.graph.db.partition.authorization.RequestPermissionContext;
-import org.ntrloc.graph.db.partition.authorization.repository.AccessStoreReader;
+import org.ntrloc.graph.db.partition.authorization.repository.UserGrantsView;
+import org.ntrloc.graph.db.partition.authorization.repository.MarkerStoreReader;
 import org.ntrloc.graph.db.partition.binary.BinaryStore;
 import org.ntrloc.graph.db.partition.binary.BinaryPropertyObject;
 import org.ntrloc.graph.db.partition.register.ExplicitProjection.Access;
@@ -106,7 +106,7 @@ public class ProjectionEngine {
     private static final String STATE_KIND_NORMAL = "NORMAL";
     private static final String STATE_KIND_START = "START";
 
-    private final AccessStoreReader accessStore;
+    private final MarkerStoreReader markerStore;
     private final BinaryStore binaryStore;
     private final SchemaService schemaService;
     private final ControlledListService controlledListService;
@@ -120,9 +120,9 @@ public class ProjectionEngine {
     private final AtomicReference<DisplayLabelPatternsCache> displayLabelPatternsCache =
             new AtomicReference<>(new DisplayLabelPatternsCache(null, Map.of()));
 
-    public ProjectionEngine(AccessStoreReader accessStore, BinaryStore binaryStore,
+    public ProjectionEngine(MarkerStoreReader markerStore, BinaryStore binaryStore,
                             SchemaService schemaService, ControlledListService controlledListService, RegisterStoreReader registerStore) {
-        this.accessStore = accessStore;
+        this.markerStore = markerStore;
         this.binaryStore = binaryStore;
         this.schemaService = schemaService;
         this.controlledListService = controlledListService;
@@ -181,7 +181,7 @@ public class ProjectionEngine {
     // so an unreadable one is silently excluded here rather than rejected. A non-empty list is an
     // explicit request naming specific fields, which has to be a loud rejection instead if any of
     // them is unreadable -- same rule filter/sort already apply, via the same check.
-    private List<String> resolveRequestedFacets(CollectionProjectionSpec spec, UUID itemTypeId, RequestPermissionContext permissions) {
+    private List<String> resolveRequestedFacets(CollectionProjectionSpec spec, UUID itemTypeId, UserGrantsView permissions) {
         if (spec.facets() == null) return List.of();
         if (spec.facets().isEmpty()) {
             return facetableFieldsFor(itemTypeId).stream()
@@ -220,7 +220,7 @@ public class ProjectionEngine {
     // sorting by type name. A field inside a binary's metadata (e.g. "attachment.length") is only
     // sortable within a single type, and sorts by Binary Store's SQL for that field.
     private Sort toSort(CollectionProjectionSpec spec, UUID resolveAgainst, Collection<UUID> itemTypeIds,
-                        RequestPermissionContext permissions, boolean allowBinaryFields) {
+                        UserGrantsView permissions, boolean allowBinaryFields) {
         String field = spec.sortField();
         if (field == null || field.isBlank()) return Sort.DEFAULT;
         boolean descending = "DESC".equalsIgnoreCase(spec.sortDirection());
@@ -274,10 +274,10 @@ public class ProjectionEngine {
     }
 
     public ProjectionResult project(UUID itemTypeId, CollectionProjectionSpec spec, String binaryBaseUrl) {
-        return project(itemTypeId, spec, binaryBaseUrl, RequestPermissionContext.forAdmin());
+        return project(itemTypeId, spec, binaryBaseUrl, UserGrantsView.forAdmin());
     }
 
-    public ProjectionResult project(UUID itemTypeId, CollectionProjectionSpec spec, String binaryBaseUrl, RequestPermissionContext permissions) {
+    public ProjectionResult project(UUID itemTypeId, CollectionProjectionSpec spec, String binaryBaseUrl, UserGrantsView permissions) {
         Condition filter = toCondition(spec.filter(), itemTypeId, permissions);
         List<TermsFilter> termsFilters = toTermsFilters(spec, itemTypeId, permissions);
         Map<String, AdminPropertyDefinitionView> facetProperties = new LinkedHashMap<>();
@@ -326,10 +326,10 @@ public class ProjectionEngine {
     // descendants. EntityReadService only calls this once a resolved type set actually has more
     // than one member.
     public ProjectionResult projectAcrossTypes(Set<UUID> itemTypeIds, CollectionProjectionSpec spec, String binaryBaseUrl) {
-        return projectAcrossTypes(itemTypeIds, spec, binaryBaseUrl, RequestPermissionContext.forAdmin());
+        return projectAcrossTypes(itemTypeIds, spec, binaryBaseUrl, UserGrantsView.forAdmin());
     }
 
-    public ProjectionResult projectAcrossTypes(Set<UUID> itemTypeIds, CollectionProjectionSpec spec, String binaryBaseUrl, RequestPermissionContext permissions) {
+    public ProjectionResult projectAcrossTypes(Set<UUID> itemTypeIds, CollectionProjectionSpec spec, String binaryBaseUrl, UserGrantsView permissions) {
         List<UUID> branches = List.copyOf(itemTypeIds);
         // Property/sort/facet field names resolve against a single representative branch, not each
         // one individually -- deliberate: every branch in a resolved set is guaranteed (by
@@ -471,7 +471,7 @@ public class ProjectionEngine {
     // The client's facet filters, one per property (a later filter on the same field replaces an
     // earlier one), each property checked readable. A filter selecting nothing (no values, no null)
     // narrows nothing, so it's dropped unresolved.
-    private List<TermsFilter> toTermsFilters(CollectionProjectionSpec spec, UUID itemTypeId, RequestPermissionContext permissions) {
+    private List<TermsFilter> toTermsFilters(CollectionProjectionSpec spec, UUID itemTypeId, UserGrantsView permissions) {
         if (spec.facetFilters() == null) return List.of();
         Map<UUID, TermsFilter> byProperty = new LinkedHashMap<>();
         for (FacetFilter facetFilter : spec.facetFilters()) {
@@ -491,12 +491,12 @@ public class ProjectionEngine {
     }
 
     public Optional<ProjectedItem> projectOne(UUID itemTypeId, UUID itemId, String binaryBaseUrl) {
-        return projectOne(itemTypeId, itemId, binaryBaseUrl, null, RequestPermissionContext.forAdmin());
+        return projectOne(itemTypeId, itemId, binaryBaseUrl, null, UserGrantsView.forAdmin());
     }
 
     public Optional<ProjectedItem> projectOne(UUID itemTypeId, UUID itemId, String binaryBaseUrl,
                                                @Nullable Map<String, LinkProjectionSpec> requestedLinks) {
-        return projectOne(itemTypeId, itemId, binaryBaseUrl, requestedLinks, RequestPermissionContext.forAdmin());
+        return projectOne(itemTypeId, itemId, binaryBaseUrl, requestedLinks, UserGrantsView.forAdmin());
     }
 
     // Kept at "always include everything" -- unlike ProjectionSpec's HTTP-facing "default false"
@@ -506,14 +506,14 @@ public class ProjectionEngine {
     // the RenderOptions overload below instead, with real flags read off the caller's own spec.
     public Optional<ProjectedItem> projectOne(UUID itemTypeId, UUID itemId, String binaryBaseUrl,
                                                @Nullable Map<String, LinkProjectionSpec> requestedLinks,
-                                               RequestPermissionContext permissions) {
+                                               UserGrantsView permissions) {
         return projectOne(itemTypeId, itemId, binaryBaseUrl, new RenderOptions(requestedLinks, permissions, true, true, null));
     }
 
     // permissions here only filters this item's *links* (see toLinkAccess) -- the item's own
     // existence isn't gated by this method at all, deliberately: unlike a paginated collection,
     // there's no totalCount/pagination correctness that requires it to be baked into this query,
-    // so the caller (EntityReadService) checks PermissionService.canReadItem before ever calling
+    // so the caller (EntityReadService) checks UserGrantsView.mayReadItem before ever calling
     // this, exactly like it already does for the type-level requireReadAccess check -- cheaper,
     // since a denied request never pays for fetching the item's own (possibly large) properties.
     public Optional<ProjectedItem> projectOne(UUID itemTypeId, UUID itemId, String binaryBaseUrl, RenderOptions options) {
@@ -533,7 +533,7 @@ public class ProjectionEngine {
     }
 
     // --- Mode-2 (field/capability-affecting) permission resolution: batched per-page marker
-    // lookup + in-memory set arithmetic against RequestPermissionContext's grant maps. Never a
+    // lookup + in-memory set arithmetic against UserGrantsView's grant maps. Never a
     // WHERE-clause concern (see toAccess's own comment on the mode split).
 
     // Union of a grant map's values across the markers a row actually carries -- the core mode-2
@@ -558,13 +558,13 @@ public class ProjectionEngine {
     // whatever the real per-item checks allow); it only ever rejects a query shape the principal has
     // no conceivable use for, same spirit as resolvePropertyPath's own "unknown property" rejection
     // just above -- both are IllegalArgumentException, both map to 400 the same way.
-    private boolean isPropertyReadableByAnyMarker(RequestPermissionContext permissions, UUID propertyId) {
+    private boolean isPropertyReadableByAnyMarker(UserGrantsView permissions, UUID propertyId) {
         if (permissions.isAdmin()) return true;
         return permissions.propertyReadGrantsByMarker().values().stream().anyMatch(ids -> ids.contains(propertyId))
                 || permissions.propertyWriteGrantsByMarker().values().stream().anyMatch(ids -> ids.contains(propertyId));
     }
 
-    private void requirePropertyReadableByAnyMarker(RequestPermissionContext permissions, UUID propertyId, String propertyName) {
+    private void requirePropertyReadableByAnyMarker(UserGrantsView permissions, UUID propertyId, String propertyName) {
         if (!isPropertyReadableByAnyMarker(permissions, propertyId)) {
             throw new IllegalArgumentException("Not permitted to filter, sort, or facet on property: " + propertyName);
         }
@@ -603,7 +603,7 @@ public class ProjectionEngine {
     // capability flag. Admin goes through the same buildEditTree walk as everyone else
     // (buildFullEditTree just never has to check a granted-id set to know the answer is "yes") --
     // no shortcut, so edit's shape never depends on who's asking.
-    private ProjectedItemPermissions buildPermissions(RequestPermissionContext permissions, Set<UUID> markerIds,
+    private ProjectedItemPermissions buildPermissions(UserGrantsView permissions, Set<UUID> markerIds,
                                                         Map<UUID, Set<UUID>> writeGrantsByMarker, Set<UUID> deleteGrantedMarkerIds,
                                                         PropertyRoot rootProperties,
                                                         Map<String, List<AdminItemLinkPerspectiveView>> linkPerspectives) {
@@ -729,7 +729,7 @@ public class ProjectionEngine {
     // link:delete is anchored to the source item's marker via the specific perspective traversed --
     // same reasoning as link:read's own filtering above. Edit (link_property:write) uses the same
     // tree shape as buildPermissions, since link properties can sit inside groups too.
-    private ProjectedItemPermissions buildLinkPermissions(RequestPermissionContext permissions, Set<UUID> sourceMarkerIds, UUID perspectiveId,
+    private ProjectedItemPermissions buildLinkPermissions(UserGrantsView permissions, Set<UUID> sourceMarkerIds, UUID perspectiveId,
                                                             PropertyRoot linkRootProperties) {
         if (permissions.isAdmin()) {
             return new ProjectedItemPermissions(buildFullEditTree(linkRootProperties), true, null);
@@ -1173,7 +1173,7 @@ public class ProjectionEngine {
     // A link is visible only if the caller may read it through its source's markers, and may read the
     // target's item type and the target itself; otherwise it's left out as if absent, whether or not the
     // client named its perspective.
-    private static ExplicitProjection.LinkAccess toLinkAccess(RequestPermissionContext permissions) {
+    private static ExplicitProjection.LinkAccess toLinkAccess(UserGrantsView permissions) {
         return permissions.isAdmin() ? ExplicitProjection.LinkAccess.Unrestricted.INSTANCE
                 : new ExplicitProjection.LinkAccess.Granted(permissions.linkPerspectiveReadGrantsByMarker(),
                         permissions.readableItemTypeIds(), permissions.grantedItemReadMarkerIds());
@@ -1218,7 +1218,7 @@ public class ProjectionEngine {
     // What assembling a tree of links needs, resolved once per request. itemReadGrants/linkReadGrants
     // are null for an admin (nothing filtered). The two maps cache each item or link type's property
     // paths and controlled-list labels across the tree.
-    private record LinkAssembly(RequestPermissionContext permissions, boolean includePermissions, String binaryBaseUrl,
+    private record LinkAssembly(UserGrantsView permissions, boolean includePermissions, String binaryBaseUrl,
                                 Map<UUID, BinaryPropertyObject> binaryObjects, Map<String, String> displayLabelPatterns,
                                 Map<UUID, String> perspectiveNamesById,
                                 @Nullable Map<UUID, Set<UUID>> itemReadGrants, @Nullable Map<UUID, Set<UUID>> linkReadGrants,
@@ -1278,7 +1278,7 @@ public class ProjectionEngine {
                 filterPropertiesByReadGrant(keysToStrings(link.properties()), sourceMarkerIds, ctx.linkReadGrants()), linkType.paths());
         applyControlledListLabels(linkProperties, linkType.paths(), linkType.labels());
 
-        RequestPermissionContext permissions = ctx.permissions();
+        UserGrantsView permissions = ctx.permissions();
         ProjectedItem targetItem = new ProjectedItem(
                 target.itemId(),
                 targetTypeName,
@@ -1315,7 +1315,7 @@ public class ProjectionEngine {
     // ownPropertyNames map) because slicing a BINARY leaf's metadata needs the caller's *exact*
     // requested strings -- restrictToRequestedProperties already decided *whether* to include the
     // leaf at all, but not which of its dynamic paths (if any) to narrow the response to.
-    public record RenderOptions(@Nullable Map<String, LinkProjectionSpec> requestedLinks, RequestPermissionContext permissions,
+    public record RenderOptions(@Nullable Map<String, LinkProjectionSpec> requestedLinks, UserGrantsView permissions,
                                   boolean includePermissions, boolean includeStates, @Nullable List<String> requestedProperties) {}
 
     // allPropertyNames is every property path of the item type(s), unrestricted: the response's
@@ -1330,7 +1330,7 @@ public class ProjectionEngine {
         // row (offset >= totalCount) reaches here with an empty list; it must come back as [], not 500.
         if (itemRows.isEmpty()) return List.of();
         Map<UUID, List<String>> ownPropertyNames = restrictToRequestedProperties(allPropertyNames, propertyViewsById, options.requestedProperties());
-        RequestPermissionContext permissions = options.permissions();
+        UserGrantsView permissions = options.permissions();
         boolean includePermissions = options.includePermissions();
         Map<String, String> displayLabelPatterns = resolveEffectiveDisplayLabelPatterns();
         Map<UUID, Set<UUID>> markerIdsByRegisterItemId = itemRows.stream()
@@ -1342,7 +1342,7 @@ public class ProjectionEngine {
         Set<UUID> markerIdsToName = permissions.isAdmin()
                 ? markerIdsByRegisterItemId.values().stream().flatMap(Set::stream).collect(Collectors.toSet())
                 : permissions.grantedItemReadMarkerIds();
-        Map<UUID, String> markerNamesById = accessStore.getMarkerNames(markerIdsToName);
+        Map<UUID, String> markerNamesById = markerStore.getMarkerNames(markerIdsToName);
 
         // Every binary attached anywhere in the result, the links' targets included, fetched at once.
         Map<UUID, BinaryPropertyObject> binaryObjects = binaryObjects(itemRows);
@@ -1381,7 +1381,7 @@ public class ProjectionEngine {
             Map<UUID, List<AssembledBinary>> binaryPropsByItem,
             @Nullable Map<UUID, Set<UUID>> effectiveReadGrants,
             Map<UUID, String> markerNamesById,
-            RequestPermissionContext permissions,
+            UserGrantsView permissions,
             boolean includePermissions,
             boolean includeStates,
             @Nullable List<String> requestedProperties) {}
@@ -1464,7 +1464,7 @@ public class ProjectionEngine {
     // nothing" convention buildEditTree uses. Returns null (not an empty map) when nothing survives
     // that filter -- either the type has no machines at all, or every machine on it does.
     private Map<String, ProjectedItemState> buildProjectedItemStates(Map<UUID, UUID> currentStateIds,
-            List<AdminStateMachineView> stateMachines, Set<UUID> markerIds, RequestPermissionContext permissions) {
+            List<AdminStateMachineView> stateMachines, Set<UUID> markerIds, UserGrantsView permissions) {
         if (stateMachines == null || stateMachines.isEmpty()) {
             return null;
         }
@@ -1566,7 +1566,7 @@ public class ProjectionEngine {
 
     // The client's predicate resolved against the schema: names to ids, and each property it reads
     // checked as readable (a request error otherwise). RegisterStore compiles the result.
-    private Condition toCondition(@Nullable Predicate predicate, UUID itemTypeId, RequestPermissionContext permissions) {
+    private Condition toCondition(@Nullable Predicate predicate, UUID itemTypeId, UserGrantsView permissions) {
         if (predicate == null) return Condition.All.INSTANCE;
         return switch (predicate) {
             case AndPredicate and -> new Condition.And(and.predicates().stream().map(p -> toCondition(p, itemTypeId, permissions)).toList());
@@ -1582,7 +1582,7 @@ public class ProjectionEngine {
         };
     }
 
-    private UUID readablePropertyId(UUID itemTypeId, String propertyName, RequestPermissionContext permissions) {
+    private UUID readablePropertyId(UUID itemTypeId, String propertyName, UserGrantsView permissions) {
         UUID propertyId = resolvePropertyId(itemTypeId, propertyName);
         requirePropertyReadableByAnyMarker(permissions, propertyId, propertyName);
         return propertyId;
@@ -1602,7 +1602,7 @@ public class ProjectionEngine {
 
     // Mode-1 (existence-affecting) item:read, applied in SQL so every count, facet and page reflects
     // it -- never a post-fetch filter (see docs/ntrloc-acl-design-notes.md "Performance model").
-    private static Access toAccess(RequestPermissionContext permissions) {
+    private static Access toAccess(UserGrantsView permissions) {
         return permissions.isAdmin() ? Access.Unrestricted.INSTANCE : new Access.AnyMarker(permissions.grantedItemReadMarkerIds());
     }
 }

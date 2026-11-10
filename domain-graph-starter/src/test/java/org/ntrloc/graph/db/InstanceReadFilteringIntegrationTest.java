@@ -7,7 +7,8 @@ import org.ntrloc.graph.db.coordinator.CoordinatorTestDomainInitializer;
 import org.ntrloc.graph.db.coordinator.LedgerRegisterCoordinator;
 import org.ntrloc.graph.db.partition.authorization.DefaultUserGroupInitializer;
 import org.ntrloc.graph.db.partition.authorization.ManualMarkerAssignmentService;
-import org.ntrloc.graph.db.partition.authorization.repository.AccessStore;
+import org.ntrloc.graph.db.partition.authorization.repository.GrantStore;
+import org.ntrloc.graph.db.partition.authorization.repository.MarkerStore;
 import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
 import org.ntrloc.graph.db.partition.ledger.LinkCreateEntry;
 import org.ntrloc.graph.db.partition.ledger.LinkEndpoint;
@@ -52,7 +53,10 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
     private ManualMarkerAssignmentService markerAssignmentService;
 
     @Autowired
-    private AccessStore accessStore;
+    private GrantStore grantStore;
+
+    @Autowired
+    private MarkerStore markerStore;
 
     @Autowired
     private UserStore userStore;
@@ -109,9 +113,9 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
     }
 
     private void grantItemRead(UUID itemId, NtrlocPrincipal principal) {
-        var marker = accessStore.createMarker("irf-" + UUID.randomUUID(), "test fixture", "ITEM_TYPE", fixture.productTypeId());
+        var marker = markerStore.createMarker("irf-" + UUID.randomUUID(), "test fixture", "ITEM_TYPE", fixture.productTypeId());
         markerAssignmentService.addItemMarker(itemId, marker.id(), ADMIN, "test reason");
-        accessStore.setItemPermissions(accessStore.ensureMarkerGrant(marker.id(), "USER", principal.id()), true, false);
+        grantStore.setItemPermissions(grantStore.ensureMarkerGrant(marker.id(), "USER", principal.id()), true, false);
     }
 
     // link:read is anchored to the *source* item's own marker via a specific perspective now
@@ -119,10 +123,10 @@ class InstanceReadFilteringIntegrationTest extends AbstractIntegrationTest {
     // docs/ntrloc-marker-admin-ui-design-notes.md), so this grants a marker on sourceItemId itself,
     // with a link-perspective grant for the perspective the link is being traversed through.
     private void grantLinkRead(UUID sourceItemId, UUID perspectiveId, NtrlocPrincipal principal) {
-        var marker = accessStore.createMarker("irf-" + UUID.randomUUID(), "test fixture", "ITEM_TYPE", fixture.productTypeId());
+        var marker = markerStore.createMarker("irf-" + UUID.randomUUID(), "test fixture", "ITEM_TYPE", fixture.productTypeId());
         markerAssignmentService.addItemMarker(sourceItemId, marker.id(), ADMIN, "test reason");
-        UUID grantId = accessStore.ensureMarkerGrant(marker.id(), "USER", principal.id());
-        accessStore.grantLinkPerspectiveAccess(grantId, perspectiveId, false, true, false);
+        UUID grantId = grantStore.ensureMarkerGrant(marker.id(), "USER", principal.id());
+        grantStore.grantLinkPerspectiveAccess(grantId, perspectiveId, false, true, false);
     }
 
     // --- Collection projection ---

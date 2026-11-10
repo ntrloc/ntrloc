@@ -53,7 +53,7 @@ function UserDetailView({ userId, allGroups, onUserChanged }) {
       <user-detail-header>
         <h2>{user.displayName}</h2>
         {user.isAdmin && <span className="user-detail-badge">Admin</span>}
-        <span className="user-detail-sign-in">{SIGN_IN_LABELS[user.signIn] ?? user.signIn}</span>
+        {user.signIn && <span className="user-detail-sign-in">{SIGN_IN_LABELS[user.signIn] ?? user.signIn}</span>}
       </user-detail-header>
       <TabView sections={sections} activeKey={tabKey} onActiveKeyChange={setTabKey} borderStyle="top" />
     </user-detail-view>

@@ -21,7 +21,8 @@ import org.ntrloc.graph.access.StepToItem;
 import org.ntrloc.graph.access.StepToProperty;
 import org.ntrloc.graph.access.StepToStateMachine;
 import org.ntrloc.graph.access.Start;
-import org.ntrloc.graph.db.partition.authorization.repository.AccessStore;
+import org.ntrloc.graph.db.partition.authorization.repository.MarkerStore;
+import org.ntrloc.graph.db.partition.register.RegisterStore;
 import org.ntrloc.graph.db.partition.authorization.repository.MarkerDecisionPipelineStore;
 import org.ntrloc.graph.db.partition.ledger.ItemUpdateEntry;
 import org.ntrloc.graph.mutation.ExistingItemReference;
@@ -61,7 +62,10 @@ class CountedPredicateMarkerDecisionIntegrationTest extends AbstractIntegrationT
     private MarkerDecisionPipelineStore pipelineStore;
 
     @Autowired
-    private AccessStore accessStore;
+    private MarkerStore markerStore;
+
+    @Autowired
+    private RegisterStore registerStore;
 
     @Autowired
     private CountedPredicateTestDomainInitializer fixture;
@@ -156,7 +160,7 @@ class CountedPredicateMarkerDecisionIntegrationTest extends AbstractIntegrationT
 
     @Test
     void countedPredicate_overTwoLevelsOfLinkedItems_reflectsTheLinkedPortfoliosCurrentState() {
-        UUID markerId = accessStore.createMarker("cp-published-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.photographerTypeId()).id();
+        UUID markerId = markerStore.createMarker("cp-published-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.photographerTypeId()).id();
         UUID pipelineId = pipelineStore.createPipeline(fixture.photographerTypeId(),
                 publishedPortfolioPipeline(markerId), new PipelineLayout(Map.of(), Map.of())).id();
 
@@ -172,18 +176,18 @@ class CountedPredicateMarkerDecisionIntegrationTest extends AbstractIntegrationT
             // single mutation would have thrown UnsupportedOperationException and failed outright
             // the moment the counted condition was evaluated, regardless of the portfolio's state.
             updateActive(photographerId, true);
-            assertThat(accessStore.getMarkerIdsForItem(photographerId)).doesNotContain(markerId);
+            assertThat(registerStore.getMarkerIdsForItem(photographerId)).doesNotContain(markerId);
 
             // Publishing the portfolio is an update to a *different* item's own type -- the
             // Photographer's pipeline is never re-evaluated by this alone.
             setState(portfolioId, fixture.publicationMachineId(), fixture.publishedStateId());
-            assertThat(accessStore.getMarkerIdsForItem(photographerId)).doesNotContain(markerId);
+            assertThat(registerStore.getMarkerIdsForItem(photographerId)).doesNotContain(markerId);
 
             // Re-triggering the Photographer's own pipeline now correctly sees the portfolio's
             // *current* published state, reached by walking real register_item_link_perspective rows
             // two levels deep, and applies the marker.
             updateActive(photographerId, false);
-            assertThat(accessStore.getMarkerIdsForItem(photographerId)).contains(markerId);
+            assertThat(registerStore.getMarkerIdsForItem(photographerId)).contains(markerId);
         } finally {
             pipelineStore.deletePipeline(pipelineId);
         }

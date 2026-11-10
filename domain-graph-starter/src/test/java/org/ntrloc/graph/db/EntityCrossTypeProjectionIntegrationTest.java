@@ -9,7 +9,8 @@ import org.ntrloc.graph.mutation.MutationRequestProcessor;
 import org.ntrloc.graph.mutation.MutationResponse;
 import org.ntrloc.graph.db.partition.authorization.DefaultUserGroupInitializer;
 import org.ntrloc.graph.db.partition.authorization.ManualMarkerAssignmentService;
-import org.ntrloc.graph.db.partition.authorization.repository.AccessStore;
+import org.ntrloc.graph.db.partition.authorization.repository.GrantStore;
+import org.ntrloc.graph.db.partition.authorization.repository.MarkerStore;
 import org.ntrloc.graph.principal.NtrlocPrincipal;
 import org.ntrloc.graph.db.partition.schema.SchemaService;
 import org.ntrloc.graph.projection.ItemProjectionSpec;
@@ -72,7 +73,10 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
     private ManualMarkerAssignmentService markerAssignmentService;
 
     @Autowired
-    private AccessStore accessStore;
+    private GrantStore grantStore;
+
+    @Autowired
+    private MarkerStore markerStore;
 
     @Autowired
     private JdbcClient jdbcClient;
@@ -373,13 +377,13 @@ class EntityCrossTypeProjectionIntegrationTest extends AbstractIntegrationTest {
         createItem(carName);
 
         // Type-level read (revoked/kept above) is a prerequisite, not sufficient on its own --
-        // instance-level item:read (marker-based, see PermissionServiceInstanceReadIntegrationTest)
+        // instance-level item:read (marker-based, see UserGrantsViewItemReadIntegrationTest)
         // is a separate, also-real gate now. Grant it on the Vehicle instance specifically so this
         // test keeps exercising type-level partial-branch-drop, the thing it's actually about,
         // without being blocked by the orthogonal instance-level check.
-        var marker = accessStore.createMarker("cross-type-vehicle-read-" + UUID.randomUUID(), "test fixture", "ITEM_TYPE", idOf(vehicleName));
+        var marker = markerStore.createMarker("cross-type-vehicle-read-" + UUID.randomUUID(), "test fixture", "ITEM_TYPE", idOf(vehicleName));
         markerAssignmentService.addItemMarker(vehicleItemId, marker.id(), SOME_PRINCIPAL, "test reason");
-        accessStore.setItemPermissions(accessStore.ensureMarkerGrant(marker.id(), "USER_GROUP", defaultUserGroupInitializer.getDefaultUserGroupId()), true, false);
+        grantStore.setItemPermissions(grantStore.ensureMarkerGrant(marker.id(), "USER_GROUP", defaultUserGroupInitializer.getDefaultUserGroupId()), true, false);
 
         var body = webTestClient.post().uri("/api/projection/collection")
                 .header(HttpHeaders.AUTHORIZATION, bearerTokenFor(restrictedUser.email()))

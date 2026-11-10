@@ -1,7 +1,6 @@
 package org.ntrloc.graph.db.partition.authorization;
 
-import org.ntrloc.graph.db.partition.authorization.repository.AccessStoreReader;
-import org.ntrloc.graph.db.partition.authorization.repository.AccessStoreWriter;
+import org.ntrloc.graph.db.partition.authorization.repository.GrantStoreReader;
 import org.ntrloc.graph.db.partition.schema.repository.SchemaStore;
 import org.ntrloc.graph.principal.ExternalPrincipalResolver;
 import org.ntrloc.graph.db.partition.security.repository.UserStore;
@@ -67,16 +66,16 @@ public class AccessAdminController {
 
     // --- Dependencies ---
 
-    private final AccessStoreReader accessReader;
-    private final AccessStoreWriter accessWriter;
+    private final GrantStoreReader accessReader;
+    private final AccessService accessService;
     private final UserStore userStore;
     private final SchemaStore schemaStore;
     private final ExternalPrincipalResolver principalResolver;
 
-    public AccessAdminController(AccessStoreReader accessReader, AccessStoreWriter accessWriter, UserStore userStore,
+    public AccessAdminController(GrantStoreReader accessReader, AccessService accessService, UserStore userStore,
                                  SchemaStore schemaStore, ExternalPrincipalResolver principalResolver) {
         this.accessReader = accessReader;
-        this.accessWriter = accessWriter;
+        this.accessService = accessService;
         this.userStore = userStore;
         this.schemaStore = schemaStore;
         this.principalResolver = principalResolver;
@@ -100,7 +99,7 @@ public class AccessAdminController {
         requireAdmin(authentication);
         requireUserGroupExists(groupId);
         requireValidPermissionRequest(body);
-        accessWriter.grantItemTypeIfAbsent(body.itemTypeId(), GROUP_PRINCIPAL_TYPE, groupId, body.operation());
+        accessService.grantItemType(body.itemTypeId(), GROUP_PRINCIPAL_TYPE, groupId, body.operation());
         return ResponseEntity.noContent().build();
     }
 
@@ -130,7 +129,7 @@ public class AccessAdminController {
                                              Authentication authentication) {
         requireAdmin(authentication);
         requireValidPermissionRequest(body);
-        accessWriter.grantItemTypeIfAbsent(body.itemTypeId(), USER_PRINCIPAL_TYPE, userId, body.operation());
+        accessService.grantItemType(body.itemTypeId(), USER_PRINCIPAL_TYPE, userId, body.operation());
         return ResponseEntity.noContent().build();
     }
 
@@ -163,9 +162,9 @@ public class AccessAdminController {
 
     private void revokePermission(String principalType, UUID principalId, PermissionRequest body) {
         requireValidPermissionRequest(body);
-        UUID grantId = accessReader.findItemTypeGrant(body.itemTypeId(), principalType, principalId, body.operation())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Grant not found"));
-        accessWriter.deleteItemTypeGrant(grantId);
+        if (!accessService.revokeItemType(body.itemTypeId(), principalType, principalId, body.operation())) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Grant not found");
+        }
     }
 
     // --- Which groups and users have any type-level grant (read or create) on one item type --
@@ -283,8 +282,7 @@ public class AccessAdminController {
     }
 
     private void setMarkerPropertyGrant(String principalType, UUID principalId, UUID markerId, UUID propertyId, MarkerPropertyGrantRequest body) {
-        UUID markerGrantId = accessWriter.ensureMarkerGrant(markerId, principalType, principalId);
-        accessWriter.grantPropertyAccess(markerGrantId, propertyId, body.canRead(), body.canWrite());
+        accessService.setPropertyAccess(markerId, principalType, principalId, propertyId, body.canRead(), body.canWrite());
     }
 
     // --- Marker-scoped item-level grants (Read/Delete of the item carrying the marker --
@@ -334,8 +332,7 @@ public class AccessAdminController {
     }
 
     private void setMarkerItemGrant(String principalType, UUID principalId, UUID markerId, MarkerItemGrantRequest body) {
-        UUID markerGrantId = accessWriter.ensureMarkerGrant(markerId, principalType, principalId);
-        accessWriter.setItemPermissions(markerGrantId, body.canRead(), body.canDelete());
+        accessService.setItemPermissions(markerId, principalType, principalId, body.canRead(), body.canDelete());
     }
 
     // --- Marker-scoped link-property grants -- same shape as item properties above, just against
@@ -388,8 +385,7 @@ public class AccessAdminController {
     }
 
     private void setMarkerLinkPropertyGrant(String principalType, UUID principalId, UUID markerId, UUID propertyId, MarkerPropertyGrantRequest body) {
-        UUID markerGrantId = accessWriter.ensureMarkerGrant(markerId, principalType, principalId);
-        accessWriter.grantLinkPropertyAccess(markerGrantId, propertyId, body.canRead(), body.canWrite());
+        accessService.setLinkPropertyAccess(markerId, principalType, principalId, propertyId, body.canRead(), body.canWrite());
     }
 
     // --- Marker-scoped link-perspective grants (Create/Read/Delete per perspective) ---
@@ -441,12 +437,11 @@ public class AccessAdminController {
     }
 
     private void setMarkerLinkPerspectiveGrant(String principalType, UUID principalId, UUID markerId, UUID perspectiveId, LinkPerspectiveGrantRequest body) {
-        UUID markerGrantId = accessWriter.ensureMarkerGrant(markerId, principalType, principalId);
-        accessWriter.grantLinkPerspectiveAccess(markerGrantId, perspectiveId, body.canCreate(), body.canRead(), body.canDelete());
+        accessService.setLinkPerspectiveAccess(markerId, principalType, principalId, perspectiveId, body.canCreate(), body.canRead(), body.canDelete());
     }
 
     // --- Marker-scoped transition-execute grants (existence-only, see
-    // AccessStore.grantTransitionExecute's own comment) ---
+    // GrantStore.grantTransitionExecute's own comment) ---
 
     @GetMapping("/user-groups/{groupId}/markers/{markerId}/transitions")
     Set<UUID> getUserGroupMarkerTransitionGrants(@PathVariable("groupId") UUID groupId,
@@ -508,13 +503,11 @@ public class AccessAdminController {
     }
 
     private void grantMarkerTransition(String principalType, UUID principalId, UUID markerId, UUID transitionId) {
-        UUID markerGrantId = accessWriter.ensureMarkerGrant(markerId, principalType, principalId);
-        accessWriter.grantTransitionExecute(markerGrantId, transitionId);
+        accessService.grantTransition(markerId, principalType, principalId, transitionId);
     }
 
     private void revokeMarkerTransition(String principalType, UUID principalId, UUID markerId, UUID transitionId) {
-        accessReader.findMarkerGrant(markerId, principalType, principalId)
-                .ifPresent(markerGrantId -> accessWriter.revokeTransitionExecute(markerGrantId, transitionId));
+        accessService.revokeTransition(markerId, principalType, principalId, transitionId);
     }
 
     // --- Marker-scoped state-machine:start grants (existence-only, mirrors transitions above) ---
@@ -579,13 +572,11 @@ public class AccessAdminController {
     }
 
     private void grantMarkerStateMachineStart(String principalType, UUID principalId, UUID markerId, UUID stateMachineId) {
-        UUID markerGrantId = accessWriter.ensureMarkerGrant(markerId, principalType, principalId);
-        accessWriter.grantStateMachineStart(markerGrantId, stateMachineId);
+        accessService.grantStateMachineStart(markerId, principalType, principalId, stateMachineId);
     }
 
     private void revokeMarkerStateMachineStart(String principalType, UUID principalId, UUID markerId, UUID stateMachineId) {
-        accessReader.findMarkerGrant(markerId, principalType, principalId)
-                .ifPresent(markerGrantId -> accessWriter.revokeStateMachineStart(markerGrantId, stateMachineId));
+        accessService.revokeStateMachineStart(markerId, principalType, principalId, stateMachineId);
     }
 
     // --- Deleting a principal's entire grant of one marker (the wireframe's "Delete" action next
@@ -598,7 +589,7 @@ public class AccessAdminController {
                                                 Authentication authentication) {
         requireAdmin(authentication);
         requireUserGroupExists(groupId);
-        accessReader.findMarkerGrant(markerId, GROUP_PRINCIPAL_TYPE, groupId).ifPresent(accessWriter::deleteMarkerGrant);
+        accessService.deleteMarkerGrant(markerId, GROUP_PRINCIPAL_TYPE, groupId);
         return ResponseEntity.noContent().build();
     }
 
@@ -607,7 +598,7 @@ public class AccessAdminController {
                                                @PathVariable("markerId") UUID markerId,
                                                Authentication authentication) {
         requireAdmin(authentication);
-        accessReader.findMarkerGrant(markerId, USER_PRINCIPAL_TYPE, userId).ifPresent(accessWriter::deleteMarkerGrant);
+        accessService.deleteMarkerGrant(markerId, USER_PRINCIPAL_TYPE, userId);
         return ResponseEntity.noContent().build();
     }
 
@@ -703,9 +694,9 @@ public class AccessAdminController {
         if (body.itemTypeId() == null || body.operation() == null || body.operation().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "itemTypeId and operation are required");
         }
-        if (!PermissionService.ITEM_TYPE_READ.equals(body.operation()) && !PermissionService.ITEM_TYPE_CREATE.equals(body.operation())) {
+        if (!GrantStoreReader.ITEM_TYPE_READ.equals(body.operation()) && !GrantStoreReader.ITEM_TYPE_CREATE.equals(body.operation())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "operation must be one of: " + PermissionService.ITEM_TYPE_READ + ", " + PermissionService.ITEM_TYPE_CREATE);
+                    "operation must be one of: " + GrantStoreReader.ITEM_TYPE_READ + ", " + GrantStoreReader.ITEM_TYPE_CREATE);
         }
     }
 }

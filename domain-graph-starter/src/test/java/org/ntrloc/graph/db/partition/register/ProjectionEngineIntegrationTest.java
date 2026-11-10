@@ -14,7 +14,7 @@ import org.ntrloc.graph.mutation.LinkCreateMutation;
 import org.ntrloc.graph.mutation.LinkEndpointReference;
 import org.ntrloc.graph.mutation.MutationRequest;
 import org.ntrloc.graph.mutation.MutationResponse;
-import org.ntrloc.graph.db.partition.authorization.RequestPermissionContext;
+import org.ntrloc.graph.db.partition.authorization.repository.UserGrantsView;
 import org.ntrloc.graph.db.partition.binary.BinaryStore;
 import org.ntrloc.graph.db.partition.schema.SchemaService;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateItemDefinitionMutation;
@@ -1269,7 +1269,7 @@ class ProjectionEngineIntegrationTest extends AbstractIntegrationTest {
         UUID bookId = createBook("Dune", 400, true, "Fiction");
 
         var book = projectionEngine.projectOne(fixture.bookTypeId(), bookId, "http://binary",
-                new RenderOptions(null, RequestPermissionContext.forAdmin(), false, false, List.of("pageCount"))).orElseThrow();
+                new RenderOptions(null, UserGrantsView.forAdmin(), false, false, List.of("pageCount"))).orElseThrow();
 
         assertThat(book.properties()).containsOnlyKeys("pageCount");
         assertThat(book.displayLabel()).isEqualTo("Dune");
@@ -1282,7 +1282,7 @@ class ProjectionEngineIntegrationTest extends AbstractIntegrationTest {
 
         var requestedLinks = Map.of("authors", new LinkProjectionSpec(null));
         var book = projectionEngine.projectOne(fixture.bookTypeId(), bookId, "http://binary",
-                new RenderOptions(requestedLinks, RequestPermissionContext.forAdmin(), true, true, List.of("title"))).orElseThrow();
+                new RenderOptions(requestedLinks, UserGrantsView.forAdmin(), true, true, List.of("title"))).orElseThrow();
 
         assertThat(book.properties()).containsOnlyKeys("title");
         var author = book.links().get("authors").get(0).item();
@@ -1327,7 +1327,7 @@ class ProjectionEngineIntegrationTest extends AbstractIntegrationTest {
     @Test
     void projection_forAnItemNotInAMachine_andNotStartable_omitsTheMachineEntirely() {
         UUID bookId = createBook("Dune", 400, true, "Fiction");
-        var noGrants = new RequestPermissionContext(false, java.util.Set.of(), java.util.Set.of(), java.util.Set.of(),
+        var noGrants = new UserGrantsView(false, java.util.Set.of(), java.util.Set.of(), java.util.Set.of(), java.util.Set.of(),
                 java.util.Map.of(), java.util.Map.of(), java.util.Map.of(), java.util.Map.of(),
                 java.util.Map.of(), java.util.Map.of(), java.util.Map.of(), java.util.Map.of(), java.util.Map.of());
 

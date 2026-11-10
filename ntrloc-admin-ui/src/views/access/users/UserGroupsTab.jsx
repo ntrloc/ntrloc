@@ -1,6 +1,7 @@
 import CheckboxTree from '../../../controls/checkbox-tree/CheckboxTree'
 import { selectUpward } from '../../../controls/checkbox-tree/checkboxTreeSelection'
 import { useUserGroupsViewModel } from './UserGroupsViewModel'
+import '../AccessPanels.css'
 import './UserGroupsTab.css'
 
 // Which groups a user is in: tick a group to add them, untick to remove them. Groups they're in
@@ -9,6 +10,7 @@ function UserGroupsTab(props) {
   const vm = useUserGroupsViewModel(props)
   return (
     <user-groups-tab>
+      {vm.inDraft && <p className="access-draft-note">You're in a draft: group membership isn't drafted yet, so it's read-only here.</p>}
       {vm.error && <p className="user-dialog-message user-dialog-error">{vm.error}</p>}
       <CheckboxTree nodes={vm.groupTree} selectedKeys={vm.directGroupKeys} onChange={vm.setDirectGroups} selection={selectUpward} />
     </user-groups-tab>

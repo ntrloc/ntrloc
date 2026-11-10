@@ -25,20 +25,21 @@ public class ProjectionController {
     @PostMapping("/collection")
     ResponseEntity<ProjectionResult> collection(@RequestBody CollectionProjectionSpec spec, HttpServletRequest request, Authentication authentication) {
         var principal = principalResolver.resolve(authentication);
-        String binaryBaseUrl = extractBaseUrl(request);
+        String binaryBaseUrl = baseUrl(request);
         return ResponseEntity.ok(entityReadService.project(spec, binaryBaseUrl, principal));
     }
 
     @PostMapping("/item")
     ResponseEntity<ProjectedItem> item(@RequestBody ItemProjectionSpec spec, HttpServletRequest request, Authentication authentication) {
         var principal = principalResolver.resolve(authentication);
-        String binaryBaseUrl = extractBaseUrl(request);
+        String binaryBaseUrl = baseUrl(request);
         return entityReadService.project(spec, binaryBaseUrl, principal)
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
-    private String extractBaseUrl(HttpServletRequest request) {
+    /** Binary property URLs in a projection are absolute, built from this. */
+    public static String baseUrl(HttpServletRequest request) {
         String scheme = request.getScheme();
         String host = request.getServerName();
         int port = request.getServerPort();

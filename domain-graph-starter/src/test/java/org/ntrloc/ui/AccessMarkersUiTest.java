@@ -38,7 +38,8 @@ import org.ntrloc.graph.access.StepToProperty;
 import org.ntrloc.graph.access.StepToStateMachine;
 import org.ntrloc.graph.access.StringEqualsPredicate;
 import org.ntrloc.graph.access.TotalityPredicate;
-import org.ntrloc.graph.db.partition.authorization.repository.AccessStore;
+import org.ntrloc.graph.db.partition.authorization.repository.MarkerStore;
+import org.ntrloc.graph.db.partition.authorization.repository.MarkerStoreReader;
 import org.ntrloc.graph.db.partition.authorization.repository.MarkerDecisionPipelineStore;
 import org.ntrloc.graph.db.partition.schema.SchemaService;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
@@ -68,7 +69,7 @@ class AccessMarkersUiTest extends AbstractUiIntegrationTest {
     private SchemaService schemaService;
 
     @Autowired
-    private AccessStore accessStore;
+    private MarkerStore markerStore;
 
     @Autowired
     private MarkerDecisionPipelineStore pipelineStore;
@@ -109,7 +110,7 @@ class AccessMarkersUiTest extends AbstractUiIntegrationTest {
 
         // Listed alphabetically, names trimmed.
         page.awaitMarkerNames(List.of("Confidential " + tag, "Restricted " + tag));
-        assertThat(markersOf(type)).extracting(AccessStore.MarkerRow::name, AccessStore.MarkerRow::description)
+        assertThat(markersOf(type)).extracting(MarkerStoreReader.MarkerRow::name, MarkerStoreReader.MarkerRow::description)
                 .containsExactlyInAnyOrder(
                         tuple("Restricted " + tag, "Only reviewers"),
                         tuple("Confidential " + tag, null));
@@ -142,7 +143,7 @@ class AccessMarkersUiTest extends AbstractUiIntegrationTest {
     @Test
     void renamesAMarker() {
         String type = createScratchType();
-        UUID markerId = accessStore.createMarker("Draft " + tag, null, "ITEM_TYPE", testData.itemType(type).id()).id();
+        UUID markerId = markerStore.createMarker("Draft " + tag, null, "ITEM_TYPE", testData.itemType(type).id()).id();
         AccessMarkersPage page = AccessMarkersPage.open(schema, driver, type);
 
         page.openEditMarkerDialog("Draft " + tag);
@@ -161,11 +162,11 @@ class AccessMarkersUiTest extends AbstractUiIntegrationTest {
     @Test
     void renamingAMarkerSomeoneElseDeletedShowsTheError() {
         String type = createScratchType();
-        UUID markerId = accessStore.createMarker("Doomed " + tag, null, "ITEM_TYPE", testData.itemType(type).id()).id();
+        UUID markerId = markerStore.createMarker("Doomed " + tag, null, "ITEM_TYPE", testData.itemType(type).id()).id();
         AccessMarkersPage page = AccessMarkersPage.open(schema, driver, type);
         page.openEditMarkerDialog("Doomed " + tag);
 
-        accessStore.deleteMarker(markerId);
+        markerStore.deleteMarker(markerId);
         String error = page.typeName("Renamed " + tag).submitDialogExpectingError();
 
         assertThat(error).isNotBlank();
@@ -177,8 +178,8 @@ class AccessMarkersUiTest extends AbstractUiIntegrationTest {
     void deletesAMarkerOnlyOnceConfirmed() {
         String type = createScratchType();
         UUID itemTypeId = testData.itemType(type).id();
-        accessStore.createMarker("Keep " + tag, null, "ITEM_TYPE", itemTypeId);
-        accessStore.createMarker("Remove " + tag, null, "ITEM_TYPE", itemTypeId);
+        markerStore.createMarker("Keep " + tag, null, "ITEM_TYPE", itemTypeId);
+        markerStore.createMarker("Remove " + tag, null, "ITEM_TYPE", itemTypeId);
         AccessMarkersPage page = AccessMarkersPage.open(schema, driver, type);
 
         page.deleteMarker("Remove " + tag, false);
@@ -186,7 +187,7 @@ class AccessMarkersUiTest extends AbstractUiIntegrationTest {
 
         page.deleteMarker("Remove " + tag, true);
         page.awaitMarkerNames(List.of("Keep " + tag));
-        assertThat(markersOf(type)).extracting(AccessStore.MarkerRow::name).containsExactly("Keep " + tag);
+        assertThat(markersOf(type)).extracting(MarkerStoreReader.MarkerRow::name).containsExactly("Keep " + tag);
     }
 
     @Test
@@ -361,9 +362,9 @@ class AccessMarkersUiTest extends AbstractUiIntegrationTest {
         assertThat(page.isEditingLayout()).isTrue();
     }
 
-    private List<AccessStore.MarkerRow> markersOf(String itemTypeName) {
+    private List<MarkerStoreReader.MarkerRow> markersOf(String itemTypeName) {
         UUID itemTypeId = testData.itemType(itemTypeName).id();
-        return accessStore.getAllMarkers().stream().filter(m -> itemTypeId.equals(m.scopeId())).toList();
+        return markerStore.getAllMarkers().stream().filter(m -> itemTypeId.equals(m.scopeId())).toList();
     }
 
     private PipelineLayout savedLayout(String itemTypeName) {
@@ -386,7 +387,7 @@ class AccessMarkersUiTest extends AbstractUiIntegrationTest {
     private String createScratchTypeWithAddBlock() {
         String name = createScratchType();
         UUID itemTypeId = testData.itemType(name).id();
-        UUID markerId = accessStore.createMarker("Flagged " + tag, null, "ITEM_TYPE", itemTypeId).id();
+        UUID markerId = markerStore.createMarker("Flagged " + tag, null, "ITEM_TYPE", itemTypeId).id();
         Start start = new Start(UUID.randomUUID());
         End end = new End(UUID.randomUUID());
         AddMarkers add = new AddMarkers(UUID.randomUUID(), Gate.UNCONDITIONAL, List.of(markerId));
@@ -472,7 +473,7 @@ class AccessMarkersUiTest extends AbstractUiIntegrationTest {
     }
 
     private UUID marker(AdminItemDefinitionView itemType, String name) {
-        return accessStore.createMarker(name, null, "ITEM_TYPE", itemType.id()).id();
+        return markerStore.createMarker(name, null, "ITEM_TYPE", itemType.id()).id();
     }
 
     private static StepToProperty propertyStep(UUID propertyId) {

@@ -7,14 +7,17 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Reading the Access Store: grant lookups for a principal (its own grants plus its groups'), the admin
- * listings, markers, and an item's markers. Anything may read it. See AccessStore.
+ * Reading the Grant Store: grant lookups for a principal (its own grants plus its groups'), and the
+ * admin listings. Anything may read it. See GrantStore.
  */
-public interface AccessStoreReader {
+public interface GrantStoreReader {
+
+    // The item-type grants' permissions, as stored.
+    String ITEM_TYPE_READ = "item-type:read";
+    String ITEM_TYPE_CREATE = "item-type:create";
 
     record GrantRow(UUID grantId, UUID itemTypeId, String itemTypeName, String permission) {}
 
-    record MarkerRow(UUID id, String name, String description, String scopeKind, UUID scopeId) {}
 
     // Raw grant rows, one per grantee.
     record ItemTypeGrantRow(String principalType, UUID principalId, String permission, UUID itemTypeId) {}
@@ -71,6 +74,12 @@ public interface AccessStoreReader {
     /** markerId -> state-machine ids this marker grants state-machine:start for. */
     Map<UUID, Set<UUID>> getStateMachineStartGrantsByMarker(UUID userId, Set<UUID> groupIds);
 
+    /** A user's or group's own permissions -- not their groups'. */
+    Set<Permission> getPermissions(String principalType, UUID principalId);
+
+    /** Every live grant, as the lookups above answer them. Replaced whole on change. */
+    GrantsView getGrantsView();
+
     // --- Admin listings, per grantee or marker ---
 
     Optional<UUID> findItemTypeGrant(UUID itemTypeId, String principalType, UUID principalId, String permission);
@@ -97,16 +106,4 @@ public interface AccessStoreReader {
 
     Set<UUID> getStateMachineStartGrantsForMarker(UUID markerId, String principalType, UUID principalId);
 
-    // --- Markers ---
-
-    List<MarkerRow> getAllMarkers();
-
-    /** Each marker's name, for the given ids; unknown ids are absent. */
-    Map<UUID, String> getMarkerNames(Set<UUID> markerIds);
-
-    /** Every marker id assigned to this item. Reads register_item_marker -- parked (§8). */
-    Set<UUID> getMarkerIdsForItem(UUID itemId);
-
-    /** Marker ids per item for a whole page at once -- one query, not one per item. */
-    Map<UUID, Set<UUID>> getMarkerIdsForItems(Set<UUID> itemIds);
 }

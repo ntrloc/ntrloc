@@ -2,7 +2,7 @@ package org.ntrloc.graph.db.partition.authorization;
 
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
-import org.ntrloc.graph.db.partition.authorization.repository.AccessStore;
+import org.ntrloc.graph.db.partition.authorization.repository.GrantStore;
 import org.ntrloc.graph.db.partition.schema.repository.SchemaStore;
 import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -37,7 +37,7 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
     private UserStore userStore;
 
     @Autowired
-    private AccessStore accessStore;
+    private GrantStore grantStore;
 
     @Autowired
     private SchemaStore schemaStore;
@@ -94,8 +94,8 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void getUserGroupPermissions_groupsMultipleOperationsOnTheSameItemTypeIntoOneEntry() {
         var group = userStore.createUserGroup("access-admin-test-" + UUID.randomUUID());
-        accessStore.grantItemTypeIfAbsent(publicDocId(), "USER_GROUP", group.id(), "item-type:read");
-        accessStore.grantItemTypeIfAbsent(publicDocId(), "USER_GROUP", group.id(), "item-type:create");
+        grantStore.grantItemTypeIfAbsent(publicDocId(), "USER_GROUP", group.id(), "item-type:read");
+        grantStore.grantItemTypeIfAbsent(publicDocId(), "USER_GROUP", group.id(), "item-type:create");
 
         List<Map<String, Object>> permissions = getAsRoot("/api/admin/user-groups/" + group.id() + "/permissions");
 
@@ -116,7 +116,7 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void grantUserGroupPermission_addsAGrantThatWasNotPreviouslyThere() {
         var group = userStore.createUserGroup("access-admin-test-" + UUID.randomUUID());
-        assertThat(accessStore.findItemTypeGrant(publicDocId(), "USER_GROUP", group.id(), "item-type:read")).isEmpty();
+        assertThat(grantStore.findItemTypeGrant(publicDocId(), "USER_GROUP", group.id(), "item-type:read")).isEmpty();
 
         webTestClient.post().uri("/api/admin/user-groups/" + group.id() + "/permissions")
                 .header(HttpHeaders.AUTHORIZATION, bearerTokenFor("root@example.com"))
@@ -125,7 +125,7 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
                 .exchange()
                 .expectStatus().isNoContent();
 
-        assertThat(accessStore.findItemTypeGrant(publicDocId(), "USER_GROUP", group.id(), "item-type:read")).isPresent();
+        assertThat(grantStore.findItemTypeGrant(publicDocId(), "USER_GROUP", group.id(), "item-type:read")).isPresent();
     }
 
     @Test
@@ -165,7 +165,7 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
     @Test
     void revokeUserGroupPermission_removesAnExistingGrant() {
         var group = userStore.createUserGroup("access-admin-test-" + UUID.randomUUID());
-        accessStore.grantItemTypeIfAbsent(publicDocId(), "USER_GROUP", group.id(), "item-type:read");
+        grantStore.grantItemTypeIfAbsent(publicDocId(), "USER_GROUP", group.id(), "item-type:read");
 
         webTestClient.method(org.springframework.http.HttpMethod.DELETE)
                 .uri("/api/admin/user-groups/" + group.id() + "/permissions")
@@ -175,7 +175,7 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
                 .exchange()
                 .expectStatus().isNoContent();
 
-        assertThat(accessStore.findItemTypeGrant(publicDocId(), "USER_GROUP", group.id(), "item-type:read")).isEmpty();
+        assertThat(grantStore.findItemTypeGrant(publicDocId(), "USER_GROUP", group.id(), "item-type:read")).isEmpty();
     }
 
     @Test
@@ -236,8 +236,8 @@ class AccessAdminControllerIntegrationTest extends AbstractIntegrationTest {
         var group = userStore.createUserGroup("access-admin-test-" + UUID.randomUUID());
         var user = userStore.createUser("Multi-Op User", "access-admin-test-" + UUID.randomUUID() + "@example.com", false);
         userStore.addUserToUserGroup(user.id(), group.id());
-        accessStore.grantItemTypeIfAbsent(publicDocId(), "USER_GROUP", group.id(), "item-type:read");
-        accessStore.grantItemTypeIfAbsent(publicDocId(), "USER_GROUP", group.id(), "item-type:create");
+        grantStore.grantItemTypeIfAbsent(publicDocId(), "USER_GROUP", group.id(), "item-type:read");
+        grantStore.grantItemTypeIfAbsent(publicDocId(), "USER_GROUP", group.id(), "item-type:create");
 
         List<Map<String, Object>> permissions = getAsRoot("/api/admin/users/" + user.id() + "/permissions");
 

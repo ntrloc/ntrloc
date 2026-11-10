@@ -1,7 +1,7 @@
 package org.ntrloc.graph.db.partition.authorization.repository;
 
+import org.ntrloc.graph.db.partition.authorization.AccessService;
 import org.ntrloc.graph.db.partition.authorization.DefaultUserGroupInitializer;
-import org.ntrloc.graph.db.partition.authorization.PermissionService;
 import org.ntrloc.graph.db.partition.schema.SchemaService;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateItemDefinitionMutation;
 import org.ntrloc.graph.db.partition.security.repository.UserStore;
@@ -10,7 +10,6 @@ import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.sql.init.dependency.DependsOnDatabaseInitialization;
 import org.springframework.context.annotation.DependsOn;
-import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -26,17 +25,15 @@ public class AuthorizationTestDataInitializer implements ApplicationRunner {
 
     private final SchemaService schemaService;
     private final UserStore userStore;
-    private final AccessStoreWriter accessWriter;
-    private final JdbcClient jdbcClient;
+    private final AccessService accessService;
     private final DefaultUserGroupInitializer defaultUserGroupInitializer;
 
     public AuthorizationTestDataInitializer(SchemaService schemaService, UserStore userStore,
-                                             AccessStoreWriter accessWriter, JdbcClient jdbcClient,
+                                             AccessService accessService,
                                              DefaultUserGroupInitializer defaultUserGroupInitializer) {
         this.schemaService = schemaService;
         this.userStore = userStore;
-        this.accessWriter = accessWriter;
-        this.jdbcClient = jdbcClient;
+        this.accessService = accessService;
         this.defaultUserGroupInitializer = defaultUserGroupInitializer;
     }
 
@@ -85,20 +82,12 @@ public class AuthorizationTestDataInitializer implements ApplicationRunner {
         userStore.addUserToUserGroup(alice.id(), viewers.id());
         userStore.addUserToUserGroup(bob.id(), viewers.id());
 
-        accessWriter.grantItemType(publicDocId, "USER_GROUP", viewers.id(), PermissionService.ITEM_TYPE_READ);
-        accessWriter.grantItemType(confidentialDocId, "USER", carol.id(), PermissionService.ITEM_TYPE_READ);
+        accessService.grantItemType(publicDocId, "USER_GROUP", viewers.id(), GrantStoreReader.ITEM_TYPE_READ);
+        accessService.grantItemType(confidentialDocId, "USER", carol.id(), GrantStoreReader.ITEM_TYPE_READ);
     }
 
     private void revokeDefaultReadGrant(UUID itemTypeId) {
         UUID everyoneUserGroupId = userStore.findUserGroupByName(DefaultUserGroupInitializer.DEFAULT_GROUP_NAME).orElseThrow().id();
-        jdbcClient.sql("""
-                DELETE FROM authorization_item_type_grant
-                WHERE item_type_id = :itemTypeId AND permission = :permission
-                  AND principal_type = 'USER_GROUP' AND principal_id = :groupId
-                """)
-                .param("itemTypeId", itemTypeId)
-                .param("permission", PermissionService.ITEM_TYPE_READ)
-                .param("groupId", everyoneUserGroupId)
-                .update();
+        accessService.revokeItemType(itemTypeId, "USER_GROUP", everyoneUserGroupId, GrantStoreReader.ITEM_TYPE_READ);
     }
 }

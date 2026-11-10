@@ -1,145 +1,116 @@
-import { createMockAccessData } from './mockAccessData'
-import { setPermission } from './permissions/grantModel'
+// Every call the Access screens make: users, groups and membership (/api/admin/users,
+// /api/admin/user-groups) and grants (/api/admin/grants).
 
-// Every call the Access screens make. TEMPORARY: served from in-memory mock data while the screens
-// are being designed (see mockAccessData.js) -- edits change that memory only and are gone on
-// reload. Swapping in the real API changes this file alone; the views and view models already call
-// it as they will then.
-
-const LATENCY_MS = 150
-
-let data = createMockAccessData()
-
-function respond(value) {
-  return new Promise((resolve) => setTimeout(() => resolve(structuredClone(value)), LATENCY_MS))
+async function readErrorMessage(res, fallback) {
+  const body = await res.json().catch(() => null)
+  return body?.message || body?.reason || fallback
 }
 
-export function fetchUsers() {
-  return respond([...data.users].sort((a, b) => a.displayName.localeCompare(b.displayName)))
-}
-
-export function fetchGroups() {
-  return respond([...data.groups].sort((a, b) => a.name.localeCompare(b.name)))
-}
-
-// One user, with what the Overview tab shows alongside: their tokens and the groups they're
-// directly in.
-export function fetchUserDetail(userId) {
-  const user = data.users.find((u) => u.id === userId)
-  if (!user) return Promise.reject(new Error('No such user'))
-  const groupIds = data.memberships[userId] ?? []
-  return respond({
-    user,
-    tokens: data.tokens[userId] ?? [],
-    groups: data.groups.filter((g) => groupIds.includes(g.id)),
+async function request(method, url, what, body) {
+  const res = await fetch(url, {
+    method,
+    credentials: 'same-origin',
+    headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
   })
+  if (!res.ok) throw new Error(await readErrorMessage(res, `Failed to ${what} (${res.status})`))
+  return res.status === 204 ? null : res.json()
 }
 
-// One group, with its direct members.
-export function fetchGroupDetail(groupId) {
-  const group = data.groups.find((g) => g.id === groupId)
-  if (!group) return Promise.reject(new Error('No such group'))
-  const members = data.users
-    .filter((u) => (data.memberships[u.id] ?? []).includes(groupId))
-    .sort((a, b) => a.displayName.localeCompare(b.displayName))
-  return respond({ group, members })
+const get = (url, what) => request('GET', url, what)
+
+// --- Users ---
+
+// signIn isn't in the API yet; until it is, it's unknown (null).
+const withSignIn = (user) => ({ signIn: null, ...user })
+
+export async function fetchUsers() {
+  const users = await get('/api/admin/users', 'fetch users')
+  return users.map(withSignIn).sort((a, b) => a.displayName.localeCompare(b.displayName))
 }
 
-function requireGroup(groupId) {
-  const group = data.groups.find((g) => g.id === groupId)
-  if (!group) throw new Error('No such group')
-  return group
-}
-
-export async function renameGroup(groupId, name) {
-  const group = requireGroup(groupId)
-  if (data.groups.some((g) => g.id !== groupId && g.name.toLowerCase() === name.toLowerCase())) {
-    throw new Error(`There's already a group called ${name}.`)
-  }
-  group.name = name
-  return respond(group)
-}
-
-// As the real API: one parent, replacing the old one; 'everyone' stays the only top-level group,
-// and a group can't sit under itself or anything below it.
-export async function setGroupParent(groupId, parentId) {
-  const group = requireGroup(groupId)
-  requireGroup(parentId)
-  const below = (id) => data.groups.filter((g) => g.parentIds.includes(id)).flatMap((g) => [g.id, ...below(g.id)])
-  if (parentId === groupId || below(groupId).includes(parentId)) {
-    throw new Error("A group can't sit under itself or a group below it.")
-  }
-  group.parentIds = [parentId]
-  return respond(group)
-}
-
-function respondOk() {
-  return respond(null)
-}
-
-function requireUser(userId) {
-  const user = data.users.find((u) => u.id === userId)
+// One user, with what the Info / Tokens tab shows alongside: their tokens and the groups they're
+// directly in.
+export async function fetchUserDetail(userId) {
+  const [users, tokens, memberships, groups] = await Promise.all([
+    get('/api/admin/users', 'fetch the user'),
+    get(`/api/admin/users/${userId}/tokens`, "fetch the user's tokens"),
+    get(`/api/admin/users/${userId}/user-groups`, "fetch the user's groups"),
+    fetchGroups(),
+  ])
+  const user = users.find((u) => u.id === userId)
   if (!user) throw new Error('No such user')
-  return user
+  const direct = new Set(memberships.map((m) => m.id))
+  return { user: withSignIn(user), tokens, groups: groups.filter((g) => direct.has(g.id)) }
 }
 
-export async function updateUser(userId, { displayName, email, isAdmin }) {
-  const user = requireUser(userId)
-  if (data.users.some((u) => u.id !== userId && u.email.toLowerCase() === email.toLowerCase())) {
-    throw new Error(`There's already a user with the email ${email}.`)
-  }
-  Object.assign(user, { displayName, email, isAdmin })
-  return respond(user)
+export function updateUser(userId, { displayName, email, isAdmin }) {
+  return request('PUT', `/api/admin/users/${userId}`, 'update the user', { displayName, email, role: isAdmin ? 'ADMIN' : 'USER' })
 }
 
-// Local accounts only; the mock just accepts it.
-export async function resetPassword(userId) {
-  if (requireUser(userId).signIn !== 'local') throw new Error('This user has no local password.')
-  return respondOk()
+export function resetPassword(userId, newPassword) {
+  return request('PUT', `/api/admin/users/${userId}/password`, 'reset the password', { newPassword })
 }
 
 // Returns the new token with its raw value -- the only time it's ever shown.
-export async function createToken(userId, { name, expiresInDays }) {
-  requireUser(userId)
-  const now = new Date()
-  const token = {
-    id: `t-${crypto.randomUUID()}`,
-    name,
-    createdAt: now.toISOString(),
-    expiresAt: expiresInDays ? new Date(now.getTime() + expiresInDays * 86_400_000).toISOString() : null,
-  }
-  data.tokens[userId] = [...(data.tokens[userId] ?? []), token]
-  return respond({ ...token, token: `ntrloc_${crypto.randomUUID().replaceAll('-', '')}` })
+export function createToken(userId, { name, expiresInDays }) {
+  return request('POST', `/api/admin/users/${userId}/tokens`, 'create the token', { name, expiresInDays })
 }
 
 export function revokeToken(userId, tokenId) {
-  data.tokens[userId] = (data.tokens[userId] ?? []).filter((t) => t.id !== tokenId)
-  return respondOk()
+  return request('DELETE', `/api/admin/users/${userId}/tokens/${tokenId}`, 'revoke the token')
+}
+
+// --- Groups ---
+
+export async function fetchGroups() {
+  const groups = await get('/api/admin/user-groups', 'fetch groups')
+  return groups.sort((a, b) => a.name.localeCompare(b.name))
+}
+
+// One group, with its direct members.
+export async function fetchGroupDetail(groupId) {
+  const [groups, members] = await Promise.all([fetchGroups(), get(`/api/admin/user-groups/${groupId}/members`, 'fetch members')])
+  const group = groups.find((g) => g.id === groupId)
+  if (!group) throw new Error('No such group')
+  return { group, members: members.sort((a, b) => a.displayName.localeCompare(b.displayName)) }
+}
+
+export function renameGroup(groupId, name) {
+  return request('PUT', `/api/admin/user-groups/${groupId}`, 'rename the group', { name })
+}
+
+// One parent, replacing the old one.
+export function setGroupParent(groupId, parentId) {
+  return request('PUT', `/api/admin/user-groups/${groupId}/parent`, "change the group's parent", { parentUserGroupId: parentId })
 }
 
 export function addUserToGroup(userId, groupId) {
-  const current = data.memberships[userId] ?? []
-  if (!current.includes(groupId)) data.memberships[userId] = [...current, groupId]
-  return respondOk()
+  return request('POST', `/api/admin/user-groups/${groupId}/members`, 'add to the group', { userId })
 }
 
 export function removeUserFromGroup(userId, groupId) {
-  data.memberships[userId] = (data.memberships[userId] ?? []).filter((id) => id !== groupId)
-  return respondOk()
+  return request('DELETE', `/api/admin/user-groups/${groupId}/members/${userId}`, 'remove from the group')
 }
+
+// --- Grants ---
+// Each takes the draft to work in (its id), or null for live.
+
+const grantsAddress = (draftId) => (draftId ? `/api/drafts/${draftId}/admin/grants` : '/api/admin/grants')
 
 // What grants are made against: item types (with their properties, link perspectives and state
 // machines) and markers.
-export function fetchGrantTargets() {
-  return respond({ itemTypes: data.itemTypes, markers: data.markers })
+export function fetchGrantTargets(draftId) {
+  return get(`${grantsAddress(draftId)}/targets`, 'fetch what can be granted')
 }
 
-// Every grant. The real API will answer per principal; one list keeps the prototype simple.
-export function fetchGrants() {
-  return respond(data.grants)
+// Each principal's own permissions: [{ principal: { kind, id }, permissions: [permission] }], a
+// principal being { kind: 'user' | 'group', id }.
+export function fetchPermissions(draftId, principals) {
+  const query = principals.map((p) => `principal=${p.kind}:${p.id}`).join('&')
+  return get(`${grantsAddress(draftId)}?${query}`, 'fetch grants')
 }
 
-export function setGrantPermission(principal, permission, on) {
-  data.grants = setPermission(data.grants, principal, permission, on)
-  return respondOk()
+export function setPermission(draftId, principal, permission, value) {
+  return request('PUT', grantsAddress(draftId), 'change the grant', { principal, permission, value })
 }

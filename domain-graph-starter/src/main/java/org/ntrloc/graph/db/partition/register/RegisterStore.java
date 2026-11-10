@@ -132,6 +132,36 @@ public class RegisterStore implements RegisterStoreReader, RegisterStoreWriter, 
                 .toList();
     }
 
+    /** Every marker id assigned to this item, for the batched per-page lookup used to resolve mode-2 (property/capability) checks. */
+    @Override
+    public Set<UUID> getMarkerIdsForItem(UUID itemId) {
+        return Set.copyOf(jdbcClient.sql("""
+                SELECT rim.marker_id FROM register_item_marker rim
+                JOIN register_item ri ON ri.id = rim.register_item_id
+                WHERE ri.item_id = :itemId AND ri.state = 'COMMITTED'
+                """)
+                .param("itemId", itemId)
+                .query((rs, _) -> rs.getObject("marker_id", UUID.class))
+                .list());
+    }
+
+    /** Marker ids per item for a whole page at once -- one query, not one per item. */
+    @Override
+    public Map<UUID, Set<UUID>> getMarkerIdsForItems(Set<UUID> itemIds) {
+        if (itemIds.isEmpty()) {
+            return Map.of();
+        }
+        return jdbcClient.sql("""
+                SELECT ri.item_id AS item_id, rim.marker_id FROM register_item_marker rim
+                JOIN register_item ri ON ri.id = rim.register_item_id
+                WHERE ri.item_id IN (:itemIds) AND ri.state = 'COMMITTED'
+                """)
+                .param("itemIds", itemIds)
+                .query((rs, _) -> Map.entry(rs.getObject("item_id", UUID.class), rs.getObject("marker_id", UUID.class)))
+                .list().stream()
+                .collect(Collectors.groupingBy(Map.Entry::getKey, Collectors.mapping(Map.Entry::getValue, Collectors.toSet())));
+    }
+
     private Map<UUID, Set<UUID>> markerIds(List<UUID> registerItemIds) {
         return jdbcClient.sql("SELECT register_item_id, marker_id FROM register_item_marker WHERE register_item_id IN (:ids)")
                 .param("ids", registerItemIds)

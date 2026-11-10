@@ -1,7 +1,7 @@
 package org.ntrloc.graph.mutation;
 
 import org.ntrloc.graph.db.coordinator.LedgerRegisterCoordinator;
-import org.ntrloc.graph.db.partition.authorization.PermissionService;
+import org.ntrloc.graph.db.partition.authorization.AccessService;
 import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
 import org.ntrloc.graph.db.partition.ledger.ItemDeleteEntry;
 import org.ntrloc.graph.db.partition.ledger.ItemUpdateEntry;
@@ -34,6 +34,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Supplier;
 
 // Turns a client-facing MutationRequest -- which speaks only in names (item type, property,
 // perspective), never internal schema ids -- into concrete LedgerEntry objects (which speak
@@ -64,7 +65,7 @@ public class MutationRequestProcessor {
     private final SchemaService schemaService;
     private final PropertyValidator propertyValidator;
     private final LinkEndpointResolver linkEndpointResolver;
-    private final PermissionService permissionService;
+    private final AccessService accessService;
     private final StateTransitionMutationAdvisor stateTransitionAdvisor;
 
     public MutationRequestProcessor(LedgerRegisterCoordinator coordinator,
@@ -72,14 +73,14 @@ public class MutationRequestProcessor {
                                      SchemaService schemaService,
                                      PropertyValidator propertyValidator,
                                      LinkEndpointResolver linkEndpointResolver,
-                                     PermissionService permissionService,
+                                     AccessService accessService,
                                      StateTransitionMutationAdvisor stateTransitionAdvisor) {
         this.coordinator = coordinator;
         this.registerStore = registerStore;
         this.schemaService = schemaService;
         this.propertyValidator = propertyValidator;
         this.linkEndpointResolver = linkEndpointResolver;
-        this.permissionService = permissionService;
+        this.accessService = accessService;
         this.stateTransitionAdvisor = stateTransitionAdvisor;
     }
 
@@ -165,12 +166,12 @@ public class MutationRequestProcessor {
                         .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unknown transition"));
 
         // A denial is a mutation rejection like any other -- see ApiExceptionHandler.handleMutationValidation.
-        var ctx = permissionService.buildContext(principal);
-        Set<UUID> markerIds = permissionService.markerIdsForItem(itemId);
-        if (request.isStart() && !permissionService.mayStartStateMachine(ctx, markerIds, machine.id())) {
+        var grants = accessService.getUserGrants(principal);
+        Supplier<Set<UUID>> markerIds = () -> registerStore.getMarkerIdsForItem(itemId);
+        if (request.isStart() && !grants.mayStartStateMachine(markerIds, machine.id())) {
             throw new MutationValidationException(List.of(new ValidationError("stateMachine", "Not permitted to start this state machine")));
         }
-        if (!request.isStart() && !permissionService.mayExecuteTransition(ctx, markerIds, transition.id())) {
+        if (!request.isStart() && !grants.mayExecuteTransition(markerIds, transition.id())) {
             throw new MutationValidationException(List.of(new ValidationError("stateMachine", "Not permitted to execute this transition")));
         }
 
@@ -227,7 +228,7 @@ public class MutationRequestProcessor {
             return;
         }
         // Permission before anything else about the request (§5.3): without it nothing else is relevant.
-        if (!permissionService.canCreateItemType(principal, itemTypeId.get())) {
+        if (!accessService.getUserGrants(principal).mayCreateItemType(itemTypeId.get())) {
             errors.add(new ValidationError(path + ITEM_TYPE_NAME_PATH_SUFFIX, "Not permitted to create items of type: " + m.itemTypeName()));
             return;
         }
@@ -287,14 +288,12 @@ public class MutationRequestProcessor {
 
     private boolean canDeleteItem(NtrlocPrincipal principal, UUID itemId) {
         if (principal.isAdmin()) return true;
-        var ctx = permissionService.buildContext(principal);
-        return permissionService.mayDeleteItem(ctx, permissionService.markerIdsForItem(itemId));
+        return accessService.getUserGrants(principal).mayDeleteItem(() -> registerStore.getMarkerIdsForItem(itemId));
     }
 
     private boolean canCreateLink(NtrlocPrincipal principal, LinkEndpoint endpoint) {
         if (principal.isAdmin()) return true;
-        var ctx = permissionService.buildContext(principal);
-        return permissionService.mayCreateLink(ctx, permissionService.markerIdsForItem(endpoint.itemId()), endpoint.perspectiveId());
+        return accessService.getUserGrants(principal).mayCreateLink(() -> registerStore.getMarkerIdsForItem(endpoint.itemId()), endpoint.perspectiveId());
     }
 
     private void processLinkCreate(LinkCreateMutation m, String path, NtrlocPrincipal principal, RequestState state) {
@@ -358,9 +357,9 @@ public class MutationRequestProcessor {
 
     private boolean canDeleteLink(NtrlocPrincipal principal, List<RegisterLinkEndpoint> endpoints) {
         if (principal.isAdmin()) return true;
-        var ctx = permissionService.buildContext(principal);
+        var grants = accessService.getUserGrants(principal);
         for (RegisterLinkEndpoint endpoint : endpoints) {
-            if (!permissionService.mayDeleteLink(ctx, permissionService.markerIdsForItem(endpoint.itemId()), endpoint.perspectiveId())) {
+            if (!grants.mayDeleteLink(() -> registerStore.getMarkerIdsForItem(endpoint.itemId()), endpoint.perspectiveId())) {
                 return false;
             }
         }

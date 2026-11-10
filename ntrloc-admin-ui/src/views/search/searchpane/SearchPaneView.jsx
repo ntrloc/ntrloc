@@ -5,7 +5,7 @@ import { useSearchPaneViewModel } from './SearchPaneViewModel'
 import './SearchPaneView.css'
 
 function SearchPaneView({ label = 'Search', onClose, onOpenItem, onItemDeleted, maximized, onToggleMaximize }) {
-  const { searchStatus, results, runSearch, deleteItem, pageable } = useSearchPaneViewModel()
+  const { searchStatus, results, runSearch, deleteItem, writable, pageable } = useSearchPaneViewModel()
 
   // Composes this pane's own delete (server call + re-fetch, see SearchModel) with the
   // cross-pane consequence a search result's own delete has no way to know about itself --
@@ -23,7 +23,7 @@ function SearchPaneView({ label = 'Search', onClose, onOpenItem, onItemDeleted, 
         results={results}
         pageable={pageable}
         onOpenItem={onOpenItem}
-        onDeleteItem={handleDeleteItem}
+        onDeleteItem={writable ? handleDeleteItem : undefined}
       />
     </PaneView>
   )

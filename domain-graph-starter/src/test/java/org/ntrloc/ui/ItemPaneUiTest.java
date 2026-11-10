@@ -12,7 +12,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.db.partition.authorization.ManualMarkerAssignmentService;
-import org.ntrloc.graph.db.partition.authorization.repository.AccessStore;
+import org.ntrloc.graph.db.partition.authorization.repository.MarkerStore;
 import org.ntrloc.graph.db.partition.schema.SchemaService;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
@@ -51,7 +51,7 @@ class ItemPaneUiTest extends AbstractUiIntegrationTest {
     private SchemaService schemaService;
 
     @Autowired
-    private AccessStore accessStore;
+    private MarkerStore markerStore;
 
     @Autowired
     private ManualMarkerAssignmentService markerAssignmentService;
@@ -189,7 +189,7 @@ class ItemPaneUiTest extends AbstractUiIntegrationTest {
     void showsAssignedMarkersOnTheMarkersTab() {
         Gadget gadget = createGadget();
         String markerName = "ui-item-marker-" + UUID.randomUUID();
-        var marker = accessStore.createMarker(markerName, "UI test fixture", "ITEM_TYPE", gadgetType.id());
+        var marker = markerStore.createMarker(markerName, "UI test fixture", "ITEM_TYPE", gadgetType.id());
         markerAssignmentService.addItemMarker(gadget.id(), marker.id(),
                 principalResolver.byId(admin.id()).orElseThrow(), "UI test");
 

@@ -240,6 +240,37 @@ the *consequences* of other partitions' drafts — derived, and potentially enor
 both are "not yet live" — or different enough to keep apart. Partly answered by §7.3: items authored
 *inside* a draft are draft data, distinct from the two-phase commit of a live edit.
 
+### 7.2.1 Grants (decided 2026-11-09, Phase 1.0)
+
+Grants reach the rest of the system only through the in-memory grant snapshot (renamed **`GrantsView`**
+in step 1.1: every grant, shaped for permission checks, one instance per context, replaced whole on
+change). No projection SQL reads the grant tables. So a draft needs its own `GrantsView` and nothing more
+on the read path.
+
+**Agreed:**
+
+1. **What a draft holds:** overrides, not a copy -- one row per permission the draft changed: the
+   principal, the permission, the value the draft sets (on or off), and the live value when it was set
+   (its *base*). Everything else comes from live.
+2. **Live-plus-draft:** `DraftGrantStore` yields the live grant records with the overrides applied; a
+   per-draft `GrantsView` built from them feeds that draft's permission checks. It's rebuilt when the
+   draft changes or live grants change (the existing cluster topic). The live path is untouched.
+3. **Apply:** in one transaction, each override is compared with live. Live still at base: written
+   through `GrantService`. Live already at the draft's value: nothing to do. Live changed to something
+   else: a **conflict** -- apply stops and lists them, resolved per permission (keep the draft's value
+   or take live's). Rebasing is implicit: live changes to permissions the draft didn't touch flow
+   straight through, so grants need no draft-wide base version. *Found in step 1.7:* a permission is
+   on or off, so live can't hold "something else" -- grants never conflict on value. Apply reports each
+   override as applied, already live, or dropped (point 4). The sync conversation after Phase 1 may
+   revisit what else should count as a conflict.
+4. **Dependents:** only permissions (what projections show and what actions are allowed in that draft);
+   no stored data depends on grants. An override whose target live has since deleted is ignored on read
+   and dropped on apply.
+
+**Physical:** one table, `draft_grant_override`, keyed by draft and the permission descriptor the Access
+UI already uses (principal; kind; item type, marker, area, target; op), plus `value` and `base_value`.
+No foreign keys on the target (hence the orphan rule above).
+
 ### 7.3 Items authored inside a draft
 
 **Agreed (2026-11-09):** Inventory has draft stores too. Example: a draft narrows an existing item type,
@@ -389,7 +420,9 @@ Collision to resolve: the admin UI uses "draft" for an editor's unsaved, browser
   transaction; split when they never consult each other's data, or when a concept's sides have very
   different dependencies (Inventory's write and read sides).
 - **Each store has exactly one service that writes it**; services may read more widely. So a service is at
-  least as large as the stores it writes. Opposing force: every service has a draft twin.
+  least as large as the stores it writes. Opposing force: every service has a draft twin. Agreed
+  (2026-11-10): services needn't match stores one to one — `AccessService` writes both `GrantStore` and
+  `MarkerStore`, since a marker's rules (its grants go before it) span both.
 - **View**: one per kind of consumer, named for what it carries (`MarkerPermissionsView`), rather than one
   view everyone picks from (`SchemaView`).
 
@@ -413,8 +446,10 @@ stores is inevitable, and the transaction boundary — the unit of consistency f
 to the logical layer: the service for a one-service operation, a coordinator for a write spanning
 services (applying a draft is the decisive case). Store methods that need atomicity internally (a
 read-modify-write, `createList`'s insert plus `CREATE TABLE`) would *require* a transaction without
-starting one (`Propagation.MANDATORY`), which makes the rule checkable. Post-commit effects (cache
-rebuilds, cluster broadcasts, events) also belong to the logical layer. Previews need one consistent read
+starting one (`Propagation.MANDATORY`), which makes the rule checkable. Post-commit effects follow
+locality (agreed 2026-11-10): one that concerns only a store's own data (rebuilding `GrantsView`, telling
+other nodes) is the store's, run when the caller's transaction commits; one that depends on the outcome
+across stores (events about a whole operation) is the calling service's or coordinator's. Previews need one consistent read
 across many stores — again a logical-layer transaction.
 
 Today, transactions are already mostly in the logical layer (`MutationRequestProcessor`,
@@ -588,7 +623,7 @@ Consequences, **proposed**:
   differing only in what they gather; a base class; or composition.
 - Queries pushed down to SQL (search and projection over the register) don't fit a record overlay
   easily; they may need query rewriting, sampling or another approach.
-- Cached snapshots (`GrantSnapshot`, the schema cache) need an instance per draft — which suggests caches
+- Cached snapshots (`GrantSnapshot`, now `GrantsView`, §7.2.1; the schema cache) need an instance per draft — which suggests caches
   belong in the store layer too (rationalization §10 q11).
 
 Vocabulary from the diagrams: see §8.5.
@@ -662,8 +697,54 @@ wrong mode because of stale session state.
 - Participants refer to users by id (draft → Users, one way).
 - Status: open → applied or discarded; perhaps an "applying" step while it's rebased and validated.
 
+**Agreed (2026-11-09, Phase 1.0):** registry tables `draft` (id, name, created by/at, status, closed
+by/at) and `draft_participant` (draft, user). One open draft at a time for Phase 1, enforced by the
+service; everything keyed by draft id, so lifting the limit is policy, not schema. Base versions are per
+partition and only where a partition needs them (grants don't, §7.2.1).
+
 **Open:**
 
 - Whether a participant can belong to several drafts at once (§9.2), and so whether the switch picks a
   draft or just toggles.
 - What a participant's writes in a draft are, beyond try-out items (§7.3).
+
+## 12. What Phase 1 taught us (grants, 2026-11-10)
+
+The first slice (`ntrloc-drafts-plan.md` Phase 1) took grants through the whole draft design. What it
+confirmed, changed or raised:
+
+1. **Conflicts depend on the value's domain.** A permission is on or off, so live can never hold a value
+   that conflicts with a draft's override (§7.2.1 point 3): apply reports each override as applied,
+   already live, or dropped. Each later partition has to say what its values are before it can say what
+   a conflict is; the sync conversation after Phase 1 takes this up.
+2. **Views carry their rules** (§8.5). `UserGrantsView` -- one user's grants, built once per request
+   from a `GrantsView` -- answers `mayReadItemType`, `mayReadItem(markers)` and the rest. Live and a draft
+   build the same view from different `GrantsView`s, so the rules exist once and the live path has no
+   draft code (§9.3, confirmed; ArchUnit enforces it).
+3. **Preview needs no draft projection engine.** Draft projection and schema endpoints read live's items
+   and schema with the user's draft grants, through the same `EntityReadService` and `SchemaService`
+   methods live uses. Answers part of §9.1's open question: grants admin, projection and schema have
+   draft counterparts; item writes stay live-only and the UI turns them off in a draft.
+4. **Caching per draft, invalidated after commit.** A draft's `GrantsView` is cached against the identity
+   of the live view it was built from, so a live change rebuilds it without being told; a draft change or
+   a draft closing evicts it on every node through a cluster topic. The same shape is planned for group
+   memberships in Phase 2 (plan, Phase 2 groundwork).
+5. **Closing races writing.** A write into a draft holds the draft open (`FOR SHARE`) and apply or
+   discard locks it (`FOR UPDATE`), so nothing lands in a closed draft. Every draft store will need the
+   same hold.
+6. **No foreign keys, so validity is checked twice:** when an override is written (`GrantsApi.requireValid`)
+   and at apply, where an override whose principal or target is gone is dropped and reported.
+7. **Apply lives with the lifecycle.** `DraftService` applies, writing through the services that own live
+   data (`AccessService` for grants); no apply service of its own. Overrides stay after a draft closes,
+   as the record of what it changed.
+8. **A user's groups are fixed at sign-in** for session logins (personal access tokens and processes
+   resolve them each time). Fine while groups aren't drafted; Phase 2 reads memberships from a cache
+   instead, never a query per request (plan, Phase 2).
+9. **Impersonation is needed.** The admin UI is admin-only and an admin's grants allow everything, so
+   what a non-admin sees in a draft can only be checked through the API. Seeing the system as a given
+   user is needed in a later phase (plan, "Impersonation").
+10. **Live projections held their speed.** Benchmark `20261110-220149-phase1-close` against the Phase 0
+    baseline: every median within the +15% threshold, most slightly faster. Largest rise: a single item
+    with links for an admin, 4.43 → 5.00 ms (+12.9%), matching a marker lookup step 1.6a added for admins
+    on single-item reads. Removed afterwards: the view's marker-scoped rules take the lookup and make it
+    only for a non-admin.

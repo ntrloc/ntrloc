@@ -1,6 +1,7 @@
 package org.ntrloc.graph.db;
 
-import org.ntrloc.graph.db.partition.authorization.PermissionService;
+import org.ntrloc.graph.db.partition.authorization.AccessService;
+import org.ntrloc.graph.db.partition.authorization.repository.UserGrantsView;
 import org.ntrloc.graph.db.partition.process.ProcessAccessible;
 import org.ntrloc.graph.db.partition.register.RegisterStoreReader;
 import org.ntrloc.graph.db.partition.schema.SchemaService;
@@ -34,15 +35,15 @@ public class EntityReadService {
     private final RegisterStoreReader registerStore;
     private final ProjectionEngine projectionEngine;
     private final SchemaService schemaService;
-    private final PermissionService permissionService;
+    private final AccessService accessService;
     private final ProjectedUserInfoEnricher userInfoEnricher;
 
     public EntityReadService(RegisterStoreReader registerStore, ProjectionEngine projectionEngine, SchemaService schemaService,
-                             PermissionService permissionService, ProjectedUserInfoEnricher userInfoEnricher) {
+                             AccessService accessService, ProjectedUserInfoEnricher userInfoEnricher) {
         this.registerStore = registerStore;
         this.projectionEngine = projectionEngine;
         this.schemaService = schemaService;
-        this.permissionService = permissionService;
+        this.accessService = accessService;
         this.userInfoEnricher = userInfoEnricher;
     }
 
@@ -53,6 +54,12 @@ public class EntityReadService {
     // read the concrete data being returned, not the root of however it was searched for.
     @PreAuthorize("#principal != null")
     public Optional<ProjectedItem> project(ItemProjectionSpec spec, String binaryBaseUrl, NtrlocPrincipal principal) {
+        return project(spec, binaryBaseUrl, accessService.getUserGrants(principal));
+    }
+
+    /** As project(spec, binaryBaseUrl, principal), as the user these grants are for. */
+    @PreAuthorize("#grants != null")
+    public Optional<ProjectedItem> project(ItemProjectionSpec spec, String binaryBaseUrl, UserGrantsView grants) {
         UUID rootItemTypeId = resolveItemTypeId(spec.itemTypeName());
         Set<UUID> allowedItemTypeIds = schemaService.resolveSupertypeInclusiveItemTypeIds(rootItemTypeId);
 
@@ -60,22 +67,27 @@ public class EntityReadService {
         if (actualItemTypeId.isEmpty() || !allowedItemTypeIds.contains(actualItemTypeId.get())) {
             return Optional.empty();
         }
-        requireReadAccess(principal, actualItemTypeId.get(), spec.itemTypeName());
+        requireReadAccess(grants, actualItemTypeId.get(), spec.itemTypeName());
         // Instance-level check, separate from the type-level one above -- cheaper to check before
         // fetching the item's own (possibly large) properties than to fetch first and discard; see
         // ProjectionEngine.projectOne's own comment on why this lives here, not in a
         // query-level semi-join.
-        if (!permissionService.canReadItem(principal, spec.itemId())) {
+        if (!grants.mayReadItem(() -> registerStore.getMarkerIdsForItem(spec.itemId()))) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown item type: " + spec.itemTypeName());
         }
-        var permissionContext = permissionService.buildContext(principal);
         return userInfoEnricher.enrich(projectionEngine.projectOne(actualItemTypeId.get(), spec.itemId(), binaryBaseUrl,
-                new RenderOptions(spec.links(), permissionContext, Boolean.TRUE.equals(spec.includePermissions()),
+                new RenderOptions(spec.links(), grants, Boolean.TRUE.equals(spec.includePermissions()),
                         Boolean.TRUE.equals(spec.includeStates()), spec.properties())));
     }
 
     @PreAuthorize("#principal != null")
     public ProjectionResult project(CollectionProjectionSpec spec, String binaryBaseUrl, NtrlocPrincipal principal) {
+        return project(spec, binaryBaseUrl, accessService.getUserGrants(principal));
+    }
+
+    /** As project(spec, binaryBaseUrl, principal), as the user these grants are for. */
+    @PreAuthorize("#grants != null")
+    public ProjectionResult project(CollectionProjectionSpec spec, String binaryBaseUrl, UserGrantsView grants) {
         Set<UUID> itemTypeIds = resolveItemTypeIds(spec);
 
         // A *partial* drop (some branches unreadable, at least one isn't) proceeds silently --
@@ -88,20 +100,19 @@ public class EntityReadService {
         // avoid. requireReadAccess below reuses that exact same signal for the "nothing readable"
         // case, single-type or not.
         Set<UUID> readableItemTypeIds = itemTypeIds.stream()
-                .filter(id -> permissionService.canReadItemType(principal, id))
+                .filter(grants::mayReadItemType)
                 .collect(Collectors.toSet());
         if (readableItemTypeIds.isEmpty()) {
             String queriedName = spec.itemTypeName() != null ? spec.itemTypeName() : spec.traitName();
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown item type: " + queriedName);
         }
 
-        var permissionContext = permissionService.buildContext(principal);
         // The common case (a type with no descendants, queried by name) goes through the existing,
         // proven single-table path unchanged -- projectAcrossTypes only engages once polymorphism
         // is actually in play, not on every request.
         return userInfoEnricher.enrich(readableItemTypeIds.size() == 1
-                ? projectionEngine.project(readableItemTypeIds.iterator().next(), spec, binaryBaseUrl, permissionContext)
-                : projectionEngine.projectAcrossTypes(readableItemTypeIds, spec, binaryBaseUrl, permissionContext));
+                ? projectionEngine.project(readableItemTypeIds.iterator().next(), spec, binaryBaseUrl, grants)
+                : projectionEngine.projectAcrossTypes(readableItemTypeIds, spec, binaryBaseUrl, grants));
     }
 
     // Exactly one of itemTypeName/traitName must be set; resolves to the set of concrete item-type
@@ -127,8 +138,8 @@ public class EntityReadService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown trait: " + traitName));
     }
 
-    private void requireReadAccess(NtrlocPrincipal principal, UUID itemTypeId, String itemTypeName) {
-        if (!permissionService.canReadItemType(principal, itemTypeId)) {
+    private static void requireReadAccess(UserGrantsView grants, UUID itemTypeId, String itemTypeName) {
+        if (!grants.mayReadItemType(itemTypeId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Unknown item type: " + itemTypeName);
         }
     }

@@ -16,6 +16,7 @@ function GroupOverviewTab(props) {
 
   return (
     <group-overview>
+      {vm.inDraft && <p className="access-draft-note">You're in a draft: groups and their members aren't drafted yet, so they're read-only here.</p>}
       <group-overview-fields>
         <Input name="Name" editable={vm.editing} value={vm.name} onChange={(e) => vm.setName(e.target.value)} />
         {vm.isEveryone ? (
@@ -35,7 +36,7 @@ function GroupOverviewTab(props) {
             )}
           </PopoverButton>
         )}
-        {!vm.isEveryone && (
+        {vm.canEdit && (
           <group-overview-actions>
             {vm.editing ? (
               <>
@@ -60,7 +61,7 @@ function GroupOverviewTab(props) {
       <section className="access-panel">
         <header>
           <h3>Members</h3>
-          {!vm.isEveryone && vm.joinableUsers.length > 0 && (
+          {vm.canEdit && vm.joinableUsers.length > 0 && (
             <PopoverButton summary="Add member">
               {({ close }) => (
                 <OptionList
@@ -85,7 +86,7 @@ function GroupOverviewTab(props) {
                   <span>{member.displayName}</span>
                   <span className="access-muted">{member.email}</span>
                 </span>
-                {!vm.isEveryone && (
+                {vm.canEdit && (
                   <IconButton icon="x" label={`Remove ${member.displayName}`} onClick={() => void vm.removeMember(member.id)} />
                 )}
               </li>

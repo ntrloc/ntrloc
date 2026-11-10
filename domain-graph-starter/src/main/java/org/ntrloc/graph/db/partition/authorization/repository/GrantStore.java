@@ -2,23 +2,22 @@ package org.ntrloc.graph.db.partition.authorization.repository;
 
 import com.hazelcast.topic.ITopic;
 import org.ntrloc.graph.cluster.ClusterService;
-import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.stream.Collectors;
 
-// The Access Store (docs/ntrloc-architecture-rationalization.md §4, §7): item-type grants, markers, and
-// marker grants with their child tables. Reads through AccessStoreReader, writes through AccessStoreWriter.
+// The Grant Store: item-type grants, and marker grants with their child tables (docs/ntrloc-drafts-plan.md
+// step 1.1). Reads through GrantStoreReader, writes through GrantStoreWriter.
 @Component
-public class AccessStore implements AccessStoreReader, AccessStoreWriter {
+public class GrantStore implements GrantStoreReader, GrantStoreWriter {
 
     private static final String COL_ITEM_TYPE_ID = "item_type_id";
     private static final String COL_PERMISSION = "permission";
@@ -35,12 +34,10 @@ public class AccessStore implements AccessStoreReader, AccessStoreWriter {
     private static final String PARAM_PERMISSION = "permission";
     private static final String PARAM_MARKER_ID = "markerId";
     private static final String PARAM_MARKER_GRANT_ID = "markerGrantId";
-    private static final String PARAM_ITEM_ID = "itemId";
     private static final String PARAM_PROPERTY_ID = "propertyId";
     private static final String PARAM_PERSPECTIVE_ID = "perspectiveId";
     private static final String PARAM_CAN_READ = "canRead";
     private static final String PARAM_CAN_WRITE = "canWrite";
-    private static final String COL_DESCRIPTION = "description";
 
     private static final String GRANTS_CHANGED_TOPIC = "authorizationChanged";
 
@@ -49,12 +46,12 @@ public class AccessStore implements AccessStoreReader, AccessStoreWriter {
     private final ITopic<String> grantsChangedTopic;
     // AtomicReference: a rebuild can run on the Hazelcast listener thread (another node's change) as
     // well as on the writing thread -- same as SchemaService's cachedAdminSchema.
-    private final AtomicReference<GrantSnapshot> grants = new AtomicReference<>();
+    private final AtomicReference<GrantsView> grants = new AtomicReference<>();
 
-    // Grant lookups are answered from an in-memory GrantSnapshot of every grant definition, rebuilt after
+    // Grant lookups are answered from an in-memory GrantsView of every grant definition, rebuilt after
     // each grant write (so a write then read is always consistent) and on every other node through the
     // cluster topic -- the same pattern as SchemaService. Callers can't tell; that's the point.
-    public AccessStore(JdbcClient jdbcClient, ClusterService clusterService) {
+    public GrantStore(JdbcClient jdbcClient, ClusterService clusterService) {
         this.jdbcClient = jdbcClient;
         this.clusterService = clusterService;
         rebuildGrants();
@@ -67,12 +64,33 @@ public class AccessStore implements AccessStoreReader, AccessStoreWriter {
     }
 
     private void rebuildGrants() {
-        grants.set(new GrantSnapshot(new GrantSnapshot.Rows(getAllItemTypeGrants(), getAllMarkerGrants(), getAllPropertyGrants(),
+        grants.set(new GrantsView(new GrantsView.Rows(getAllItemTypeGrants(), getAllMarkerGrants(), getAllPropertyGrants(),
                 getAllLinkPropertyGrants(), getAllLinkPerspectiveGrants(), getAllTransitionGrants(), getAllStateMachineStartGrants())));
     }
 
-    // After every grant write: rebuild this node's snapshot, then tell the other nodes.
+    // After every grant write: rebuild this node's view, then tell the other nodes. Inside a transaction
+    // that waits for the commit (once per transaction), so neither sees uncommitted or rolled-back rows.
     private void grantsChanged() {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            publishGrantsChanged();
+            return;
+        }
+        if (TransactionSynchronizationManager.hasResource(this)) {
+            return;
+        }
+        TransactionSynchronizationManager.bindResource(this, Boolean.TRUE);
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCompletion(int status) {
+                TransactionSynchronizationManager.unbindResource(GrantStore.this);
+                if (status == STATUS_COMMITTED) {
+                    publishGrantsChanged();
+                }
+            }
+        });
+    }
+
+    private void publishGrantsChanged() {
         rebuildGrants();
         grantsChangedTopic.publish(UUID.randomUUID().toString());
     }
@@ -191,6 +209,72 @@ public class AccessStore implements AccessStoreReader, AccessStoreWriter {
         grantsChanged();
     }
 
+    @Override
+    public Set<Permission> getPermissions(String principalType, UUID principalId) {
+        return grants.get().permissionsOf(principalType, principalId);
+    }
+
+    @Override
+    public GrantsView getGrantsView() {
+        return grants.get();
+    }
+
+    // One permission is one op on one row; the row's other ops are read first and kept.
+    @Override
+    public void setPermission(String principalType, UUID principalId, Permission permission, boolean value) {
+        if (Permission.ITEM_TYPE.equals(permission.kind())) {
+            String grant = "item-type:" + permission.op();
+            if (value) {
+                grantItemTypeIfAbsent(permission.itemTypeId(), principalType, principalId, grant);
+            } else {
+                findItemTypeGrant(permission.itemTypeId(), principalType, principalId, grant).ifPresent(this::deleteItemTypeGrant);
+            }
+            return;
+        }
+        UUID markerId = permission.markerId();
+        UUID targetId = permission.targetId();
+        String op = permission.op();
+        switch (permission.area()) {
+            case Permission.AREA_ITEM -> {
+                var current = getItemPermissionsForMarker(markerId, principalType, principalId);
+                setItemPermissions(ensureMarkerGrant(markerId, principalType, principalId),
+                        "read".equals(op) ? value : current.canRead(), "delete".equals(op) ? value : current.canDelete());
+            }
+            case Permission.AREA_PROPERTY -> {
+                var current = propertyAccess(getPropertyGrantsForMarker(markerId, principalType, principalId), targetId);
+                grantPropertyAccess(ensureMarkerGrant(markerId, principalType, principalId), targetId,
+                        "read".equals(op) ? value : current.canRead(), "write".equals(op) ? value : current.canWrite());
+            }
+            case Permission.AREA_LINK_PROPERTY -> {
+                var current = propertyAccess(getLinkPropertyGrantsForMarker(markerId, principalType, principalId), targetId);
+                grantLinkPropertyAccess(ensureMarkerGrant(markerId, principalType, principalId), targetId,
+                        "read".equals(op) ? value : current.canRead(), "write".equals(op) ? value : current.canWrite());
+            }
+            case Permission.AREA_PERSPECTIVE -> {
+                var current = getLinkPerspectiveGrantsForMarker(markerId, principalType, principalId).stream()
+                        .filter(r -> r.perspectiveId().equals(targetId)).findFirst()
+                        .orElse(new LinkPerspectiveAccessRow(targetId, false, false, false));
+                grantLinkPerspectiveAccess(ensureMarkerGrant(markerId, principalType, principalId), targetId,
+                        "create".equals(op) ? value : current.canCreate(), "read".equals(op) ? value : current.canRead(),
+                        "delete".equals(op) ? value : current.canDelete());
+            }
+            case Permission.AREA_TRANSITION -> {
+                if (value) grantTransitionExecute(ensureMarkerGrant(markerId, principalType, principalId), targetId);
+                else findMarkerGrant(markerId, principalType, principalId).ifPresent(id -> revokeTransitionExecute(id, targetId));
+            }
+            case Permission.AREA_START -> {
+                if (value) grantStateMachineStart(ensureMarkerGrant(markerId, principalType, principalId), targetId);
+                else findMarkerGrant(markerId, principalType, principalId).ifPresent(id -> revokeStateMachineStart(id, targetId));
+            }
+            default -> throw new IllegalArgumentException("unknown area " + permission.area());
+        }
+    }
+
+    private static PropertyAccessRow propertyAccess(List<PropertyAccessRow> rows, UUID propertyId) {
+        return rows.stream().filter(r -> r.propertyId().equals(propertyId)).findFirst()
+                .orElse(new PropertyAccessRow(propertyId, false, false));
+    }
+
     // --- Admin permission reads (low-traffic admin-panel listings; not cached) ---
 
     @Override
@@ -233,102 +317,6 @@ public class AccessStore implements AccessStoreReader, AccessStoreWriter {
                 .list();
     }
 
-    // --- Markers ---
-    // scope_kind/scope_id are mandatory at creation -- a marker's scope is what makes its property/
-    // link-perspective grants meaningful at all (see docs/ntrloc-marker-admin-ui-design-notes.md).
-    // Deeper validation (does scope_id actually resolve to a real item/trait/perspective, are
-    // referenced properties/perspectives actually within scope) is deliberately not implemented yet --
-    // this pass is the schema/grant-shape refactor; scope *enforcement* is later, separately-scoped
-    // work per the design doc's own sequencing.
-
-    @Override
-    public MarkerRow createMarker(String name, String description, String scopeKind, UUID scopeId) {
-        UUID id = jdbcClient.sql("""
-                INSERT INTO authorization_marker (name, description, scope_kind, scope_id)
-                VALUES (:name, :description, :scopeKind, :scopeId) RETURNING id
-                """)
-                .param("name", name).param(COL_DESCRIPTION, description)
-                .param("scopeKind", scopeKind).param("scopeId", scopeId)
-                .query(UUID.class).single();
-        return new MarkerRow(id, name, description, scopeKind, scopeId);
-    }
-
-    // Name/description only -- scope is immutable after creation (see the design doc: scope is
-    // what a marker's grants are validated against, so changing it out from under existing grants
-    // would silently invalidate them). Doesn't touch the grant snapshot, which
-    // keys everything by marker id, never by name/description, so no snapshot rebuild here.
-    // Empty when there's no such marker -- e.g. someone else deleted it meanwhile.
-    @Override
-    public Optional<MarkerRow> updateMarker(UUID id, String name, String description) {
-        return jdbcClient.sql("""
-                UPDATE authorization_marker SET name = :name, description = :description
-                WHERE id = :id RETURNING id, name, description, scope_kind, scope_id
-                """)
-                .param("id", id).param("name", name).param(COL_DESCRIPTION, description)
-                .query((rs, _) -> new MarkerRow(
-                        rs.getObject("id", UUID.class), rs.getString("name"), rs.getString(COL_DESCRIPTION),
-                        rs.getString("scope_kind"), rs.getObject("scope_id", UUID.class)))
-                .optional();
-    }
-
-    @Override
-    public void deleteMarker(UUID id) {
-        jdbcClient.sql("DELETE FROM authorization_marker WHERE id = :id").param("id", id).update();
-        grantsChanged();
-    }
-
-    @Override
-    public List<MarkerRow> getAllMarkers() {
-        return jdbcClient.sql("SELECT id, name, description, scope_kind, scope_id FROM authorization_marker ORDER BY name")
-                .query((rs, _) -> new MarkerRow(
-                        rs.getObject("id", UUID.class),
-                        rs.getString("name"),
-                        rs.getString(COL_DESCRIPTION),
-                        rs.getString("scope_kind"),
-                        rs.getObject("scope_id", UUID.class)))
-                .list();
-    }
-
-    /** Each marker's name, for the given ids; unknown ids are absent. */
-    @Override
-    public Map<UUID, String> getMarkerNames(Set<UUID> markerIds) {
-        if (markerIds.isEmpty()) return Map.of();
-        Map<UUID, String> names = new HashMap<>();
-        jdbcClient.sql("SELECT id, name FROM authorization_marker WHERE id IN (:ids)")
-                .param("ids", markerIds)
-                .query((RowCallbackHandler) rs -> names.put(rs.getObject("id", UUID.class), rs.getString("name")));
-        return names;
-    }
-
-    /** Every marker id assigned to this item, for the batched per-page lookup used to resolve mode-2 (property/capability) checks. */
-    @Override
-    public Set<UUID> getMarkerIdsForItem(UUID itemId) {
-        return Set.copyOf(jdbcClient.sql("""
-                SELECT rim.marker_id FROM register_item_marker rim
-                JOIN register_item ri ON ri.id = rim.register_item_id
-                WHERE ri.item_id = :itemId AND ri.state = 'COMMITTED'
-                """)
-                .param(PARAM_ITEM_ID, itemId)
-                .query((rs, _) -> rs.getObject(COL_MARKER_ID, UUID.class))
-                .list());
-    }
-
-    /** Marker ids per item for a whole page at once -- one query, not one per item. */
-    @Override
-    public Map<UUID, Set<UUID>> getMarkerIdsForItems(Set<UUID> itemIds) {
-        if (itemIds.isEmpty()) {
-            return Map.of();
-        }
-        return jdbcClient.sql("""
-                SELECT ri.item_id AS item_id, rim.marker_id FROM register_item_marker rim
-                JOIN register_item ri ON ri.id = rim.register_item_id
-                WHERE ri.item_id IN (:itemIds) AND ri.state = 'COMMITTED'
-                """)
-                .param("itemIds", itemIds)
-                .query((rs, _) -> Map.entry(rs.getObject("item_id", UUID.class), rs.getObject(COL_MARKER_ID, UUID.class)))
-                .list().stream()
-                .collect(Collectors.groupingBy(Map.Entry::getKey, Collectors.mapping(Map.Entry::getValue, Collectors.toSet())));
-    }
 
     // --- Marker grant writes (each rebuilds the grant snapshot) ---
     // One marker_grant row per (marker, principal) pair -- item_can_read/item_can_delete live
@@ -442,6 +430,14 @@ public class AccessStore implements AccessStoreReader, AccessStoreWriter {
         jdbcClient.sql("DELETE FROM marker_grant_state_machine_start WHERE marker_grant_id = :markerGrantId AND state_machine_id = :stateMachineId")
                 .param(PARAM_MARKER_GRANT_ID, markerGrantId).param("stateMachineId", stateMachineId)
                 .update();
+        grantsChanged();
+    }
+
+    // Before a marker is deleted (MarkerStore): its grants go first, here, so the grants view is
+    // rebuilt -- rather than leaving them to the database cascade, which this store wouldn't see.
+    @Override
+    public void deleteGrantsForMarker(UUID markerId) {
+        jdbcClient.sql("DELETE FROM marker_grant WHERE marker_id = :markerId").param(PARAM_MARKER_ID, markerId).update();
         grantsChanged();
     }
 

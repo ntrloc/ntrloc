@@ -6,7 +6,8 @@ import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.EntityWriteService;
 import org.ntrloc.graph.db.coordinator.LedgerRegisterCoordinator;
 import org.ntrloc.graph.db.partition.authorization.ManualMarkerAssignmentService;
-import org.ntrloc.graph.db.partition.authorization.repository.AccessStore;
+import org.ntrloc.graph.db.partition.authorization.repository.GrantStore;
+import org.ntrloc.graph.db.partition.authorization.repository.MarkerStore;
 import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
 import org.ntrloc.graph.db.partition.schema.SchemaService;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateTransitionMutation;
@@ -41,7 +42,8 @@ class StateMachineExecutionIntegrationTest extends AbstractIntegrationTest {
     @Autowired private LedgerRegisterCoordinator coordinator;
     @Autowired private RegisterStore registerStore;
     @Autowired private SchemaService schemaService;
-    @Autowired private AccessStore accessStore;
+    @Autowired private GrantStore grantStore;
+    @Autowired private MarkerStore markerStore;
     @Autowired private ManualMarkerAssignmentService markerAssignmentService;
     @Autowired private UserStore userStore;
     @Autowired private RegisterProjectionTestDomainInitializer fixture;
@@ -125,11 +127,11 @@ class StateMachineExecutionIntegrationTest extends AbstractIntegrationTest {
     void startStateMachine_startGrantViaAMarker_isHonoredAndRevocable() {
         UUID book = createBook("Dune");
         NtrlocPrincipal user = nonAdmin();
-        var marker = accessStore.createMarker("sme-" + UUID.randomUUID(), "fixture", "ITEM_TYPE", fixture.bookTypeId());
+        var marker = markerStore.createMarker("sme-" + UUID.randomUUID(), "fixture", "ITEM_TYPE", fixture.bookTypeId());
         markerAssignmentService.addItemMarker(book, marker.id(), ADMIN, "test");
-        UUID grantId = accessStore.ensureMarkerGrant(marker.id(), "USER", user.id());
-        accessStore.grantStateMachineStart(grantId, machineId());
-        assertThat(accessStore.getStateMachineStartGrantsForMarker(marker.id(), "USER", user.id())).contains(machineId());
+        UUID grantId = grantStore.ensureMarkerGrant(marker.id(), "USER", user.id());
+        grantStore.grantStateMachineStart(grantId, machineId());
+        assertThat(grantStore.getStateMachineStartGrantsForMarker(marker.id(), "USER", user.id())).contains(machineId());
 
         entityWriteService.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, user);
         assertThat(registerStore.currentStateIds(book)).containsKey(machineId());
@@ -144,7 +146,7 @@ class StateMachineExecutionIntegrationTest extends AbstractIntegrationTest {
         entityWriteService.executeTransition(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, transitionId("Discontinue"), ADMIN);
         entityWriteService.executeTransition(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, transitionId("RevokeTestEnd"), ADMIN);
         assertThat(registerStore.currentStateIds(book)).doesNotContainKey(machineId());
-        accessStore.revokeStateMachineStart(grantId, machineId());
+        grantStore.revokeStateMachineStart(grantId, machineId());
 
         assertThatThrownBy(() -> entityWriteService.startStateMachine(book, RegisterProjectionTestDomainInitializer.AVAILABILITY_MACHINE, user))
                 .isInstanceOf(MutationValidationException.class)

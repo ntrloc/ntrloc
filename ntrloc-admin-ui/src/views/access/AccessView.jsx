@@ -13,7 +13,7 @@ function groupItems(groups) {
 }
 
 // Who can do what: users, groups (each a list beside the selected one's detail), and the same
-// grants seen from the schema's side. Prototype -- runs on mock data for now (see AccessDelegate).
+// grants seen from the schema's side.
 function AccessView() {
   const {
     status,

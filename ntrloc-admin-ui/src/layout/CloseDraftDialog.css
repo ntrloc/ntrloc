@@ -1,0 +1,14 @@
+.close-draft-text {
+  margin: 0 0 12px;
+  color: var(--text-h);
+}
+
+.close-draft-error {
+  color: var(--danger);
+}
+
+.close-draft-outcomes {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--text-h);
+}

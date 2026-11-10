@@ -27,7 +27,21 @@ function markerAreas(itemType, markerId) {
       })),
     })
   }
-  for (const sm of itemType.stateMachines) {
+  // A link property is granted once per marker, whichever perspective reaches the link.
+  const linkProperties = new Map()
+  for (const lp of itemType.perspectives) {
+    for (const prop of lp.properties ?? []) if (!linkProperties.has(prop.id)) linkProperties.set(prop.id, `${lp.name} · ${prop.name}`)
+  }
+  if (linkProperties.size > 0) {
+    areas.push({
+      title: 'Link properties',
+      rows: [...linkProperties].map(([id, label]) => ({
+        label,
+        permissions: [['Read', m('linkProperty', id, 'read')], ['Write', m('linkProperty', id, 'write')]],
+      })),
+    })
+  }
+  for (const sm of itemType.stateMachines ?? []) {
     areas.push({
       title: sm.name,
       rows: [{ permissions: [['Start', m('start', sm.id)], ...sm.transitions.map((t) => [t.name, m('transition', t.id)])] }],
@@ -36,6 +50,9 @@ function markerAreas(itemType, markerId) {
   return areas
 }
 
+// Areas summarised by how many of their rows grant anything.
+const COUNTED_AREAS = { Properties: ['property', 'properties'], Links: ['link', 'links'], 'Link properties': ['link property', 'link properties'] }
+
 // A marker's one-line summary of what's granted, so a closed row still says something useful.
 function markerSummary(areas, sourcesOf) {
   const parts = []
@@ -43,10 +60,10 @@ function markerSummary(areas, sourcesOf) {
     const granted = area.rows.flatMap((row) => row.permissions.filter(([, p]) => has(sourcesOf(p))).map(([label]) => label))
     if (granted.length === 0) continue
     if (area.title === 'Items') parts.push(granted.join(' & '))
-    else if (area.title === 'Properties' || area.title === 'Links') {
+    else if (COUNTED_AREAS[area.title]) {
       const rows = area.rows.filter((row) => row.permissions.some(([, p]) => has(sourcesOf(p)))).length
-      const noun = area.title === 'Properties' ? (rows === 1 ? 'property' : 'properties') : rows === 1 ? 'link' : 'links'
-      parts.push(`${rows} ${noun}`)
+      const [one, many] = COUNTED_AREAS[area.title]
+      parts.push(`${rows} ${rows === 1 ? one : many}`)
     } else parts.push(`${area.title}: ${granted.join(', ')}`)
   }
   return parts.length > 0 ? parts.join(' · ') : 'No access'
@@ -154,7 +171,7 @@ function PermissionsTab({ principal, inheritedFrom, adminNote, editable = true }
             <span className="permission-pill" data-state="inherited" aria-hidden="true">Through a group</span>
           )}
           <span className="permission-pill" data-state="none" aria-hidden="true">Not granted</span>
-          <span className="permissions-muted">Click to grant or remove directly.</span>
+          {editable && <span className="permissions-muted">Click to grant or remove directly.</span>}
         </permissions-legend>
         {vm.error && <p className="permissions-error">{vm.error}</p>}
       </permissions-header>

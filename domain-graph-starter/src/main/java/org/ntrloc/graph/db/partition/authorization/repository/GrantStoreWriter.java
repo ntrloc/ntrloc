@@ -1,24 +1,18 @@
 package org.ntrloc.graph.db.partition.authorization.repository;
 
-import org.ntrloc.graph.db.partition.authorization.repository.AccessStoreReader.MarkerRow;
 
-import java.util.Optional;
 import java.util.UUID;
 
-/** Writing the Access Store: item-type grants, markers, and marker grants. See AccessStore. */
-public interface AccessStoreWriter {
+/** Writing the Grant Store: item-type grants and marker grants. See GrantStore. */
+public interface GrantStoreWriter {
+    /** One permission on or off, keeping the principal's other permissions as they are. */
+    void setPermission(String principalType, UUID principalId, Permission permission, boolean value);
 
     void grantItemType(UUID itemTypeId, String principalType, UUID principalId, String permission);
 
     void grantItemTypeIfAbsent(UUID itemTypeId, String principalType, UUID principalId, String permission);
 
     void deleteItemTypeGrant(UUID grantId);
-
-    MarkerRow createMarker(String name, String description, String scopeKind, UUID scopeId);
-
-    Optional<MarkerRow> updateMarker(UUID id, String name, String description);
-
-    void deleteMarker(UUID id);
 
     UUID ensureMarkerGrant(UUID markerId, String principalType, UUID principalId);
 
@@ -39,4 +33,7 @@ public interface AccessStoreWriter {
     void revokeStateMachineStart(UUID markerGrantId, UUID stateMachineId);
 
     void deleteMarkerGrant(UUID markerGrantId);
+
+    /** Every grant made against this marker -- before the marker itself is deleted. */
+    void deleteGrantsForMarker(UUID markerId);
 }

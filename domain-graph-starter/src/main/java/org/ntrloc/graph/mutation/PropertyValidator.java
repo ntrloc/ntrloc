@@ -10,8 +10,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
-import org.ntrloc.graph.db.partition.authorization.PermissionService;
-import org.ntrloc.graph.db.partition.authorization.RequestPermissionContext;
+import org.ntrloc.graph.db.partition.authorization.AccessService;
+import org.ntrloc.graph.db.partition.authorization.repository.UserGrantsView;
 import org.ntrloc.graph.db.partition.binary.BinaryStore;
 import org.ntrloc.graph.db.partition.register.RegisterStoreReader;
 import org.ntrloc.graph.principal.NtrlocPrincipal;
@@ -35,15 +35,15 @@ class PropertyValidator {
 
     private final SchemaService schemaService;
     private final RegisterStoreReader registerStore;
-    private final PermissionService permissionService;
+    private final AccessService accessService;
     private final BinaryStore binaryStore;
     private final ControlledListService controlledListService;
 
-    PropertyValidator(SchemaService schemaService, RegisterStoreReader registerStore, PermissionService permissionService,
+    PropertyValidator(SchemaService schemaService, RegisterStoreReader registerStore, AccessService accessService,
                       BinaryStore binaryStore, ControlledListService controlledListService) {
         this.schemaService = schemaService;
         this.registerStore = registerStore;
-        this.permissionService = permissionService;
+        this.accessService = accessService;
         this.binaryStore = binaryStore;
         this.controlledListService = controlledListService;
     }
@@ -198,12 +198,12 @@ class PropertyValidator {
                                               Map<String, Object> propertiesByName, String path, List<ValidationError> errors) {
         if (propertiesByName == null || propertiesByName.isEmpty()) return;
         if (principal.isAdmin()) return;
-        var ctx = permissionService.buildContext(principal);
-        Set<UUID> itemMarkerIds = permissionService.markerIdsForItem(itemId);
-        checkCanWriteProperties(ctx, itemMarkerIds, itemScope(itemTypeId), propertiesByName, path, errors);
+        var grants = accessService.getUserGrants(principal);
+        Set<UUID> itemMarkerIds = registerStore.getMarkerIdsForItem(itemId);
+        checkCanWriteProperties(grants, itemMarkerIds, itemScope(itemTypeId), propertiesByName, path, errors);
     }
 
-    private void checkCanWriteProperties(RequestPermissionContext ctx, Set<UUID> itemMarkerIds, PropertyScope scope,
+    private void checkCanWriteProperties(UserGrantsView grants, Set<UUID> itemMarkerIds, PropertyScope scope,
                                           Map<String, Object> propertiesByName, String path, List<ValidationError> errors) {
         propertiesByName.forEach((name, value) -> {
             String childPath = path + "." + name;
@@ -212,12 +212,12 @@ class PropertyValidator {
                 if (value instanceof Map<?, ?> rawMap) {
                     @SuppressWarnings("unchecked")
                     Map<String, Object> nested = (Map<String, Object>) rawMap;
-                    checkCanWriteProperties(ctx, itemMarkerIds, PropertyScope.of(group.properties(), group.groups()), nested, childPath, errors);
+                    checkCanWriteProperties(grants, itemMarkerIds, PropertyScope.of(group.properties(), group.groups()), nested, childPath, errors);
                 }
                 return;
             }
             AdminPropertyDefinitionView property = scope.properties().get(name);
-            if (property != null && !permissionService.mayWriteProperty(ctx, itemMarkerIds, property.id())) {
+            if (property != null && !grants.mayWriteProperty(() -> itemMarkerIds, property.id())) {
                 errors.add(new ValidationError(childPath, "Not permitted to write property: " + property.name()));
             }
         });
@@ -232,12 +232,12 @@ class PropertyValidator {
                                               Map<String, Object> propertiesByName, String path, List<ValidationError> errors) {
         if (propertiesByName == null || propertiesByName.isEmpty()) return;
         if (principal.isAdmin()) return;
-        var ctx = permissionService.buildContext(principal);
-        List<Set<UUID>> endpointMarkerSets = endpointItemIds.stream().map(permissionService::markerIdsForItem).toList();
-        checkCanWriteLinkProperties(ctx, endpointMarkerSets, linkScope(linkTypeId), propertiesByName, path, errors);
+        var grants = accessService.getUserGrants(principal);
+        List<Set<UUID>> endpointMarkerSets = endpointItemIds.stream().map(registerStore::getMarkerIdsForItem).toList();
+        checkCanWriteLinkProperties(grants, endpointMarkerSets, linkScope(linkTypeId), propertiesByName, path, errors);
     }
 
-    private void checkCanWriteLinkProperties(RequestPermissionContext ctx, List<Set<UUID>> endpointMarkerSets, PropertyScope scope,
+    private void checkCanWriteLinkProperties(UserGrantsView grants, List<Set<UUID>> endpointMarkerSets, PropertyScope scope,
                                                Map<String, Object> propertiesByName, String path, List<ValidationError> errors) {
         propertiesByName.forEach((name, value) -> {
             String childPath = path + "." + name;
@@ -246,14 +246,14 @@ class PropertyValidator {
                 if (value instanceof Map<?, ?> rawMap) {
                     @SuppressWarnings("unchecked")
                     Map<String, Object> nested = (Map<String, Object>) rawMap;
-                    checkCanWriteLinkProperties(ctx, endpointMarkerSets, PropertyScope.of(group.properties(), group.groups()), nested, childPath, errors);
+                    checkCanWriteLinkProperties(grants, endpointMarkerSets, PropertyScope.of(group.properties(), group.groups()), nested, childPath, errors);
                 }
                 return;
             }
             AdminPropertyDefinitionView property = scope.properties().get(name);
             if (property == null) return;
             boolean allEndpointsGranted = endpointMarkerSets.stream()
-                    .allMatch(markerIds -> permissionService.mayWriteLinkProperty(ctx, markerIds, property.id()));
+                    .allMatch(markerIds -> grants.mayWriteLinkProperty(() -> markerIds, property.id()));
             if (!allEndpointsGranted) {
                 errors.add(new ValidationError(childPath, "Not permitted to write link property: " + property.name()));
             }

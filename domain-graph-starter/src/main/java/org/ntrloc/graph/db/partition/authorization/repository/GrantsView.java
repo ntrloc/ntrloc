@@ -1,10 +1,10 @@
 package org.ntrloc.graph.db.partition.authorization.repository;
 
-import org.ntrloc.graph.db.partition.authorization.repository.AccessStoreReader.ItemTypeGrantRow;
-import org.ntrloc.graph.db.partition.authorization.repository.AccessStoreReader.LinkPerspectiveGrantRow;
-import org.ntrloc.graph.db.partition.authorization.repository.AccessStoreReader.MarkerGrantRow;
-import org.ntrloc.graph.db.partition.authorization.repository.AccessStoreReader.MarkerScopedGrantRow;
-import org.ntrloc.graph.db.partition.authorization.repository.AccessStoreReader.PropertyGrantRow;
+import org.ntrloc.graph.db.partition.authorization.repository.GrantStoreReader.ItemTypeGrantRow;
+import org.ntrloc.graph.db.partition.authorization.repository.GrantStoreReader.LinkPerspectiveGrantRow;
+import org.ntrloc.graph.db.partition.authorization.repository.GrantStoreReader.MarkerGrantRow;
+import org.ntrloc.graph.db.partition.authorization.repository.GrantStoreReader.MarkerScopedGrantRow;
+import org.ntrloc.graph.db.partition.authorization.repository.GrantStoreReader.PropertyGrantRow;
 
 import java.util.HashMap;
 import java.util.HashSet;
@@ -13,25 +13,28 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
-// AccessStore's in-memory copy of every grant definition -- schema-sized, admin-curated, rarely changing --
-// never item markers (data-sized; those stay a real query). Immutable: AccessStore builds a new one after
-// each grant write and swaps it in. See docs/ntrloc-acl-design-notes.md "Caching grant definitions, not
+// An in-memory view of every grant definition -- schema-sized, admin-curated, rarely changing -- never
+// item markers (data-sized; those stay a real query). Immutable: one for live (GrantStore) and one per
+// draft (DraftGrantStore, from live's rows with the draft's overrides), each replaced whole on change. See docs/ntrloc-acl-design-notes.md "Caching grant definitions, not
 // item-marker assignments".
 //
 // Indexed by grantee (user or group), never by resolved principal: a principal's effective set is a
 // lookup-time union over their own key and each of their groups' keys -- a few hashmap lookups, no I/O.
 // So group-membership changes need no rebuild, and a grant change on one group never touches its members.
-final class GrantSnapshot {
+public final class GrantsView {
 
     private static final String PRINCIPAL_USER = "USER";
     private static final String PRINCIPAL_GROUP = "USER_GROUP";
+
+    // item-type grant permission -> the grants API's op.
+    private static final Map<String, String> PERMISSION_OPS = Map.of(GrantStoreReader.ITEM_TYPE_READ, "read", GrantStoreReader.ITEM_TYPE_CREATE, "create");
 
     private record PrincipalKey(String principalType, UUID principalId) {}
 
     private record PrincipalOpKey(String principalType, UUID principalId, String operation) {}
 
     // Every grant row, as read from the store's tables.
-    record Rows(List<ItemTypeGrantRow> itemTypeGrants, List<MarkerGrantRow> markerGrants,
+    public record Rows(List<ItemTypeGrantRow> itemTypeGrants, List<MarkerGrantRow> markerGrants,
                 List<PropertyGrantRow> propertyGrants, List<PropertyGrantRow> linkPropertyGrants,
                 List<LinkPerspectiveGrantRow> linkPerspectiveGrants, List<MarkerScopedGrantRow> transitionGrants,
                 List<MarkerScopedGrantRow> stateMachineStartGrants) {}
@@ -49,8 +52,13 @@ final class GrantSnapshot {
     // Existence-only grants (transition:execute, state-machine:start): a row present == granted.
     private final Map<PrincipalKey, Map<UUID, Set<UUID>>> transitionExecuteGrants = new HashMap<>();
     private final Map<PrincipalKey, Map<UUID, Set<UUID>>> stateMachineStartGrants = new HashMap<>();
+    // Each grantee's own permissions, as the grants API lists them.
+    private final Map<PrincipalKey, Set<Permission>> permissions = new HashMap<>();
 
-    GrantSnapshot(Rows rows) {
+    private final Rows rows;
+
+    public GrantsView(Rows rows) {
+        this.rows = rows;
         for (var row : rows.itemTypeGrants()) {
             itemTypeGrants.computeIfAbsent(new PrincipalOpKey(row.principalType(), row.principalId(), row.permission()), k -> new HashSet<>())
                     .add(row.itemTypeId());
@@ -70,6 +78,69 @@ final class GrantSnapshot {
         }
         indexExistenceGrants(rows.transitionGrants(), transitionExecuteGrants);
         indexExistenceGrants(rows.stateMachineStartGrants(), stateMachineStartGrants);
+        indexPermissions(rows);
+    }
+
+    private void indexPermissions(Rows rows) {
+        for (var row : rows.itemTypeGrants()) {
+            String op = PERMISSION_OPS.get(row.permission());
+            if (op != null) addPermission(row.principalType(), row.principalId(), Permission.itemType(row.itemTypeId(), op));
+        }
+        for (var row : rows.markerGrants()) {
+            if (row.itemCanRead()) addPermission(row.principalType(), row.principalId(), Permission.marker(row.markerId(), Permission.AREA_ITEM, null, "read"));
+            if (row.itemCanDelete()) addPermission(row.principalType(), row.principalId(), Permission.marker(row.markerId(), Permission.AREA_ITEM, null, "delete"));
+        }
+        indexPropertyPermissions(rows.propertyGrants(), Permission.AREA_PROPERTY);
+        indexPropertyPermissions(rows.linkPropertyGrants(), Permission.AREA_LINK_PROPERTY);
+        for (var row : rows.linkPerspectiveGrants()) {
+            if (row.canRead()) addPermission(row.principalType(), row.principalId(), Permission.marker(row.markerId(), Permission.AREA_PERSPECTIVE, row.perspectiveId(), "read"));
+            if (row.canCreate()) addPermission(row.principalType(), row.principalId(), Permission.marker(row.markerId(), Permission.AREA_PERSPECTIVE, row.perspectiveId(), "create"));
+            if (row.canDelete()) addPermission(row.principalType(), row.principalId(), Permission.marker(row.markerId(), Permission.AREA_PERSPECTIVE, row.perspectiveId(), "delete"));
+        }
+        for (var row : rows.transitionGrants()) {
+            addPermission(row.principalType(), row.principalId(), Permission.marker(row.markerId(), Permission.AREA_TRANSITION, row.targetId(), null));
+        }
+        for (var row : rows.stateMachineStartGrants()) {
+            addPermission(row.principalType(), row.principalId(), Permission.marker(row.markerId(), Permission.AREA_START, row.targetId(), null));
+        }
+    }
+
+    private void indexPropertyPermissions(List<PropertyGrantRow> rows, String area) {
+        for (var row : rows) {
+            if (row.canRead()) addPermission(row.principalType(), row.principalId(), Permission.marker(row.markerId(), area, row.propertyId(), "read"));
+            if (row.canWrite()) addPermission(row.principalType(), row.principalId(), Permission.marker(row.markerId(), area, row.propertyId(), "write"));
+        }
+    }
+
+    private void addPermission(String principalType, UUID principalId, Permission permission) {
+        permissions.computeIfAbsent(new PrincipalKey(principalType, principalId), k -> new HashSet<>()).add(permission);
+    }
+
+    /** One user's effective grants: their own and those of each of their groups. */
+    public UserGrantsView forUser(UUID userId, Set<UUID> groupIds) {
+        return new UserGrantsView(false,
+                grantedItemTypeIds(userId, groupIds, GrantStoreReader.ITEM_TYPE_READ),
+                grantedItemTypeIds(userId, groupIds, GrantStoreReader.ITEM_TYPE_CREATE),
+                itemReadMarkerIds(userId, groupIds),
+                itemDeleteMarkerIds(userId, groupIds),
+                propertyReadGrantsByMarker(userId, groupIds),
+                propertyWriteGrantsByMarker(userId, groupIds),
+                linkPropertyReadGrantsByMarker(userId, groupIds),
+                linkPropertyWriteGrantsByMarker(userId, groupIds),
+                linkPerspectiveCreateGrantsByMarker(userId, groupIds),
+                linkPerspectiveReadGrantsByMarker(userId, groupIds),
+                linkPerspectiveDeleteGrantsByMarker(userId, groupIds),
+                transitionExecuteGrantsByMarker(userId, groupIds),
+                stateMachineStartGrantsByMarker(userId, groupIds));
+    }
+
+    /** The rows this view was built from. */
+    public Rows rows() {
+        return rows;
+    }
+
+    public Set<Permission> permissionsOf(String principalType, UUID principalId) {
+        return Set.copyOf(permissions.getOrDefault(new PrincipalKey(principalType, principalId), Set.of()));
     }
 
     private static void indexPropertyGrants(List<PropertyGrantRow> rows, Map<PrincipalKey, Map<UUID, Set<UUID>>> readGrants,
@@ -91,7 +162,7 @@ final class GrantSnapshot {
         index.computeIfAbsent(key, k -> new HashMap<>()).computeIfAbsent(markerId, k -> new HashSet<>()).add(objectId);
     }
 
-    Set<UUID> grantedItemTypeIds(UUID userId, Set<UUID> groupIds, String permission) {
+    public Set<UUID> grantedItemTypeIds(UUID userId, Set<UUID> groupIds, String permission) {
         Set<UUID> result = new HashSet<>(itemTypeGrants.getOrDefault(new PrincipalOpKey(PRINCIPAL_USER, userId, permission), Set.of()));
         for (UUID groupId : groupIds) {
             result.addAll(itemTypeGrants.getOrDefault(new PrincipalOpKey(PRINCIPAL_GROUP, groupId, permission), Set.of()));
@@ -99,47 +170,47 @@ final class GrantSnapshot {
         return result;
     }
 
-    Set<UUID> itemReadMarkerIds(UUID userId, Set<UUID> groupIds) {
+    public Set<UUID> itemReadMarkerIds(UUID userId, Set<UUID> groupIds) {
         return effectiveSet(itemReadMarkers, userId, groupIds);
     }
 
-    Set<UUID> itemDeleteMarkerIds(UUID userId, Set<UUID> groupIds) {
+    public Set<UUID> itemDeleteMarkerIds(UUID userId, Set<UUID> groupIds) {
         return effectiveSet(itemDeleteMarkers, userId, groupIds);
     }
 
-    Map<UUID, Set<UUID>> propertyReadGrantsByMarker(UUID userId, Set<UUID> groupIds) {
+    public Map<UUID, Set<UUID>> propertyReadGrantsByMarker(UUID userId, Set<UUID> groupIds) {
         return effectiveNestedSet(propertyReadGrants, userId, groupIds);
     }
 
-    Map<UUID, Set<UUID>> propertyWriteGrantsByMarker(UUID userId, Set<UUID> groupIds) {
+    public Map<UUID, Set<UUID>> propertyWriteGrantsByMarker(UUID userId, Set<UUID> groupIds) {
         return effectiveNestedSet(propertyWriteGrants, userId, groupIds);
     }
 
-    Map<UUID, Set<UUID>> linkPropertyReadGrantsByMarker(UUID userId, Set<UUID> groupIds) {
+    public Map<UUID, Set<UUID>> linkPropertyReadGrantsByMarker(UUID userId, Set<UUID> groupIds) {
         return effectiveNestedSet(linkPropertyReadGrants, userId, groupIds);
     }
 
-    Map<UUID, Set<UUID>> linkPropertyWriteGrantsByMarker(UUID userId, Set<UUID> groupIds) {
+    public Map<UUID, Set<UUID>> linkPropertyWriteGrantsByMarker(UUID userId, Set<UUID> groupIds) {
         return effectiveNestedSet(linkPropertyWriteGrants, userId, groupIds);
     }
 
-    Map<UUID, Set<UUID>> linkPerspectiveCreateGrantsByMarker(UUID userId, Set<UUID> groupIds) {
+    public Map<UUID, Set<UUID>> linkPerspectiveCreateGrantsByMarker(UUID userId, Set<UUID> groupIds) {
         return effectiveNestedSet(linkPerspectiveCreateGrants, userId, groupIds);
     }
 
-    Map<UUID, Set<UUID>> linkPerspectiveReadGrantsByMarker(UUID userId, Set<UUID> groupIds) {
+    public Map<UUID, Set<UUID>> linkPerspectiveReadGrantsByMarker(UUID userId, Set<UUID> groupIds) {
         return effectiveNestedSet(linkPerspectiveReadGrants, userId, groupIds);
     }
 
-    Map<UUID, Set<UUID>> linkPerspectiveDeleteGrantsByMarker(UUID userId, Set<UUID> groupIds) {
+    public Map<UUID, Set<UUID>> linkPerspectiveDeleteGrantsByMarker(UUID userId, Set<UUID> groupIds) {
         return effectiveNestedSet(linkPerspectiveDeleteGrants, userId, groupIds);
     }
 
-    Map<UUID, Set<UUID>> transitionExecuteGrantsByMarker(UUID userId, Set<UUID> groupIds) {
+    public Map<UUID, Set<UUID>> transitionExecuteGrantsByMarker(UUID userId, Set<UUID> groupIds) {
         return effectiveNestedSet(transitionExecuteGrants, userId, groupIds);
     }
 
-    Map<UUID, Set<UUID>> stateMachineStartGrantsByMarker(UUID userId, Set<UUID> groupIds) {
+    public Map<UUID, Set<UUID>> stateMachineStartGrantsByMarker(UUID userId, Set<UUID> groupIds) {
         return effectiveNestedSet(stateMachineStartGrants, userId, groupIds);
     }
 

@@ -23,7 +23,7 @@ import static org.mockito.Mockito.when;
 // Proves the whole MCP-tool-dispatch path for this read tool, end to end -- something no test
 // exercised at all before Part C of docs/ntrloc-principal-enforcement-plan.md (zero tests existed
 // for any of the four MCP tool services). Called as a real autowired Spring bean (so its own AOP
-// proxy, and every proxy of every bean it calls through -- EntityReadService, PermissionService --
+// proxy, and every proxy of every bean it calls through -- EntityReadService, AccessService --
 // is genuinely in play, not bypassed via direct instantiation), with a mocked
 // McpSyncRequestContext standing in for the one piece that would otherwise need real MCP wire
 // protocol machinery to construct; everything downstream of transportContext() is the real,

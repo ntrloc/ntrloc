@@ -1,4 +1,5 @@
-import { useState, useSyncExternalStore } from 'react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
+import { useDraftMode } from '../../../global/viewmodel/useDraftMode'
 import { SearchModel } from './SearchModel'
 
 // Owns this pane's SearchModel instance -- search execution, delegate access, and response shaping
@@ -12,7 +13,10 @@ import { SearchModel } from './SearchModel'
 // because of the useSyncExternalStore calls below already hands pageable's consumers fresh values
 // on every render, so Pager gets reactivity for free just by being a child in that render tree.
 export function useSearchPaneViewModel() {
-  const [model] = useState(() => new SearchModel())
+  const { draft } = useDraftMode()
+  const draftId = draft?.id ?? null
+  const [model] = useState(() => new SearchModel(draftId))
+  useEffect(() => model.setDraftId(draftId), [model, draftId])
   const searchStatus = useSyncExternalStore(model.subscribe, model.getStatus)
   const results = useSyncExternalStore(model.subscribe, model.getItems)
   const offset = useSyncExternalStore(model.subscribe, model.getOffset)
@@ -27,5 +31,7 @@ export function useSearchPaneViewModel() {
     moveToPage: (page) => model.fetchOffset((page - 1) * limit),
   }
 
-  return { searchStatus, results, runSearch: model.search, deleteItem: model.deleteItem, pageable }
+  // Items aren't drafted yet, so a draft only reads them.
+  const writable = draftId === null
+  return { searchStatus, results, runSearch: model.search, deleteItem: model.deleteItem, writable, pageable }
 }

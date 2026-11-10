@@ -840,3 +840,57 @@ CREATE TABLE decision_historic_execution (
 );
 CREATE INDEX decision_hist_exec_def_idx ON decision_historic_execution (decision_definition_id);
 CREATE INDEX decision_hist_exec_inst_idx ON decision_historic_execution (instance_id);
+
+-- === draft_* (drafts, docs/ntrloc-drafts-plan.md) ===
+
+-- The draft registry (docs/ntrloc-system-model-notes.md §11).
+-- Drafts are live data and never drafted themselves. How many drafts may be open at once is the
+-- service's rule, not the schema's. A user who is deleted leaves their drafts behind, unattributed.
+
+CREATE TABLE draft (
+    id         UUID PRIMARY KEY DEFAULT uuidv7(),
+    name       TEXT NOT NULL,
+    status     TEXT NOT NULL DEFAULT 'OPEN' CHECK (status IN ('OPEN', 'APPLIED', 'DISCARDED')),
+    created_by UUID REFERENCES security_user(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    closed_by  UUID REFERENCES security_user(id) ON DELETE SET NULL,
+    closed_at  TIMESTAMPTZ,
+    CHECK ((status = 'OPEN') = (closed_at IS NULL))
+);
+
+CREATE INDEX draft_status_idx ON draft (status);
+
+-- Non-admins invited to work in a draft. Admins reach every draft and are never listed here.
+CREATE TABLE draft_participant (
+    draft_id UUID NOT NULL REFERENCES draft(id) ON DELETE CASCADE,
+    user_id  UUID NOT NULL REFERENCES security_user(id) ON DELETE CASCADE,
+    added_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (draft_id, user_id)
+);
+
+CREATE INDEX draft_participant_user_idx ON draft_participant (user_id);
+
+-- A draft's grants (docs/ntrloc-system-model-notes.md §7.2.1): one row per permission the draft changed,
+-- with the value it sets and live's value when it was set (its base). Everything else reads from live.
+-- The target columns name different tables depending on the area, so they have no foreign keys; an
+-- override whose target live has since deleted is left behind and dropped on apply.
+
+CREATE TABLE draft_grant_override (
+    draft_id       UUID NOT NULL REFERENCES draft(id) ON DELETE CASCADE,
+    principal_type TEXT NOT NULL CHECK (principal_type IN ('USER', 'USER_GROUP')),
+    principal_id   UUID NOT NULL,
+    kind           TEXT NOT NULL CHECK (kind IN ('itemType', 'marker')),
+    item_type_id   UUID,
+    marker_id      UUID,
+    area           TEXT,
+    target_id      UUID,
+    op             TEXT,
+    value          BOOLEAN NOT NULL,
+    base_value     BOOLEAN NOT NULL,
+    CHECK (value <> base_value)
+);
+
+-- One override per draft, principal and permission. NULLS NOT DISTINCT: most permissions leave some of
+-- the descriptor's columns empty.
+CREATE UNIQUE INDEX draft_grant_override_permission_idx ON draft_grant_override
+    (draft_id, principal_type, principal_id, kind, item_type_id, marker_id, area, target_id, op) NULLS NOT DISTINCT;

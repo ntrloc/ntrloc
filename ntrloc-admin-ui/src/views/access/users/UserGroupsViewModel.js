@@ -1,20 +1,22 @@
 import { useState } from 'react'
+import { useDraftMode } from '../../../global/viewmodel/useDraftMode'
 import { addUserToGroup, removeUserFromGroup } from '../AccessDelegate'
 import { groupHierarchy } from '../permissions/grantModel'
 
 const EVERYONE = 'everyone'
 
 // The Group membership tab: the whole group hierarchy, ticked where the user was added directly.
-// CheckboxTree's selectUpward shows the groups above those as implied. Membership is drafted, so
-// this stays editable in draft mode.
+// CheckboxTree's selectUpward shows the groups above those as implied. Membership isn't drafted yet
+// (Phase 2, docs/ntrloc-drafts-plan.md), so in draft mode it's read-only.
 export function useUserGroupsViewModel({ detail, allGroups, reload }) {
   const { user, groups } = detail
+  const { inDraft } = useDraftMode()
   const [error, setError] = useState(null)
 
   const directGroupIds = groups.map((g) => g.id)
   const directGroupKeys = new Set(directGroupIds)
   // Everyone is in everyone.
-  const groupTree = groupHierarchy(allGroups, (g) => ({ disabled: g.name === EVERYONE }))
+  const groupTree = groupHierarchy(allGroups, (g) => ({ disabled: inDraft || g.name === EVERYONE }))
 
   async function run(action) {
     setError(null)
@@ -34,5 +36,5 @@ export function useUserGroupsViewModel({ detail, allGroups, reload }) {
     else if (left) void run(() => removeUserFromGroup(user.id, left))
   }
 
-  return { groupTree, directGroupKeys, setDirectGroups, error }
+  return { groupTree, directGroupKeys, setDirectGroups, error, inDraft }
 }

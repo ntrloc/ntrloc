@@ -30,7 +30,7 @@ public class SchemaTools {
     public AdminSchemaView getSchema(McpSyncRequestContext requestContext) {
         // Still rejects an unresolvable caller (Part D) even though the admin schema isn't
         // filtered by identity -- unlike SchemaService.getSchema(principal), which
-        // PermissionService-scopes its result for a non-admin caller, getAdminSchema() here
+        // scopes its result to a non-admin caller's grants, getAdminSchema() here
         // is deliberately still the full, unfiltered view every MCP caller gets (explicitly
         // confirmed in scope by the user, see docs/ntrloc-principal-enforcement-plan.md, Part D):
         // an MCP agent needs to see the whole schema to construct valid projection/mutation

@@ -1,13 +1,14 @@
 package org.ntrloc.graph.mutation;
 
+import org.ntrloc.graph.db.partition.authorization.repository.GrantStoreReader;
 import org.ntrloc.graph.projection.ProjectionEngine;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.coordinator.CoordinatorTestDomainInitializer;
 import org.ntrloc.graph.db.partition.authorization.ManualMarkerAssignmentService;
-import org.ntrloc.graph.db.partition.authorization.PermissionService;
-import org.ntrloc.graph.db.partition.authorization.repository.AccessStore;
+import org.ntrloc.graph.db.partition.authorization.repository.GrantStore;
+import org.ntrloc.graph.db.partition.authorization.repository.MarkerStore;
 import org.ntrloc.graph.db.partition.binary.BinaryStore;
 import org.ntrloc.graph.db.partition.register.RegisterStore;
 import org.ntrloc.graph.db.partition.schema.repository.ControlledListStore;
@@ -98,7 +99,10 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
     private ControlledListStore controlledListStore;
 
     @Autowired
-    private AccessStore accessStore;
+    private GrantStore grantStore;
+
+    @Autowired
+    private MarkerStore markerStore;
 
     @Autowired
     private UserStore userStore;
@@ -1580,7 +1584,7 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
                 .filter(i -> i.name().equals(typeName)).findFirst().orElseThrow().id();
         var user = userStore.createUser("Restricted", "sme-" + UUID.randomUUID() + "@example.com", false);
         var principal = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), false);
-        accessStore.grantItemType(typeId, "USER", user.id(), PermissionService.ITEM_TYPE_CREATE);
+        grantStore.grantItemType(typeId, "USER", user.id(), GrantStoreReader.ITEM_TYPE_CREATE);
 
         MutationResponse response = processor.process(new MutationRequest(
                 List.of(new ItemCreateMutation(null, typeName, Map.of())), List.of()), principal);
@@ -1607,9 +1611,9 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
 
         var user = userStore.createUser("Restricted", "sme-" + UUID.randomUUID() + "@example.com", false);
         var principal = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), false);
-        var marker = accessStore.createMarker("sme-" + UUID.randomUUID(), "test", "ITEM_TYPE", typeId);
+        var marker = markerStore.createMarker("sme-" + UUID.randomUUID(), "test", "ITEM_TYPE", typeId);
         markerAssignmentService.addItemMarker(itemId, marker.id(), SOME_PRINCIPAL, "test");
-        accessStore.ensureMarkerGrant(marker.id(), "USER", user.id());
+        grantStore.ensureMarkerGrant(marker.id(), "USER", user.id());
         // Deliberately no property:write grant for "notes".
 
         assertThatThrownBy(() -> processor.process(new MutationRequest(
@@ -1636,10 +1640,10 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
 
         var user = userStore.createUser("Restricted", "sme-" + UUID.randomUUID() + "@example.com", false);
         var principal = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), false);
-        var marker = accessStore.createMarker("sme-" + UUID.randomUUID(), "test", "ITEM_TYPE", typeId);
+        var marker = markerStore.createMarker("sme-" + UUID.randomUUID(), "test", "ITEM_TYPE", typeId);
         markerAssignmentService.addItemMarker(itemId, marker.id(), SOME_PRINCIPAL, "test");
-        UUID grantId = accessStore.ensureMarkerGrant(marker.id(), "USER", user.id());
-        accessStore.grantPropertyAccess(grantId, notesPropertyId, false, true);
+        UUID grantId = grantStore.ensureMarkerGrant(marker.id(), "USER", user.id());
+        grantStore.grantPropertyAccess(grantId, notesPropertyId, false, true);
 
         MutationResponse response = processor.process(new MutationRequest(
                 List.of(new ItemUpdateMutation(itemId, Map.of("notes", "hello"))), List.of()), principal);
@@ -1661,10 +1665,10 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
 
         var user = userStore.createUser("Restricted", "sme-" + UUID.randomUUID() + "@example.com", false);
         var principal = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), false);
-        var marker = accessStore.createMarker("sme-" + UUID.randomUUID(), "test", "ITEM_TYPE", typeId);
+        var marker = markerStore.createMarker("sme-" + UUID.randomUUID(), "test", "ITEM_TYPE", typeId);
         markerAssignmentService.addItemMarker(itemId, marker.id(), SOME_PRINCIPAL, "test");
-        UUID grantId = accessStore.ensureMarkerGrant(marker.id(), "USER", user.id());
-        accessStore.setItemPermissions(grantId, true, false); // item:read only, no item:delete
+        UUID grantId = grantStore.ensureMarkerGrant(marker.id(), "USER", user.id());
+        grantStore.setItemPermissions(grantId, true, false); // item:read only, no item:delete
 
         assertThatThrownBy(() -> processor.process(new MutationRequest(
                 List.of(new ItemDeleteMutation(itemId)), List.of()), principal))
@@ -1685,10 +1689,10 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
 
         var user = userStore.createUser("Restricted", "sme-" + UUID.randomUUID() + "@example.com", false);
         var principal = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), false);
-        var marker = accessStore.createMarker("sme-" + UUID.randomUUID(), "test", "ITEM_TYPE", typeId);
+        var marker = markerStore.createMarker("sme-" + UUID.randomUUID(), "test", "ITEM_TYPE", typeId);
         markerAssignmentService.addItemMarker(itemId, marker.id(), SOME_PRINCIPAL, "test");
-        UUID grantId = accessStore.ensureMarkerGrant(marker.id(), "USER", user.id());
-        accessStore.setItemPermissions(grantId, true, true); // item:read + item:delete
+        UUID grantId = grantStore.ensureMarkerGrant(marker.id(), "USER", user.id());
+        grantStore.setItemPermissions(grantId, true, true); // item:read + item:delete
 
         MutationResponse response = processor.process(new MutationRequest(
                 List.of(new ItemDeleteMutation(itemId)), List.of()), principal);
@@ -1714,10 +1718,10 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
 
         var user = userStore.createUser("Restricted", "sme-" + UUID.randomUUID() + "@example.com", false);
         var principal = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), false);
-        var marker = accessStore.createMarker("sme-" + UUID.randomUUID(), "test", "ITEM_TYPE", registerStore.findItemTypeId(link.aItemId()).orElseThrow());
+        var marker = markerStore.createMarker("sme-" + UUID.randomUUID(), "test", "ITEM_TYPE", registerStore.findItemTypeId(link.aItemId()).orElseThrow());
         markerAssignmentService.addItemMarker(link.aItemId(), marker.id(), SOME_PRINCIPAL, "test");
-        UUID grantId = accessStore.ensureMarkerGrant(marker.id(), "USER", user.id());
-        accessStore.grantLinkPerspectiveAccess(grantId, perspectiveAId, true, false, false); // link:create on side A only
+        UUID grantId = grantStore.ensureMarkerGrant(marker.id(), "USER", user.id());
+        grantStore.grantLinkPerspectiveAccess(grantId, perspectiveAId, true, false, false); // link:create on side A only
 
         assertThatThrownBy(() -> processor.process(new MutationRequest(List.of(),
                 List.of(link.create(Map.of()))), principal))
@@ -1734,14 +1738,14 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
 
         var user = userStore.createUser("Restricted", "sme-" + UUID.randomUUID() + "@example.com", false);
         var principal = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), false);
-        var markerA = accessStore.createMarker("sme-" + UUID.randomUUID(), "test", "ITEM_TYPE", registerStore.findItemTypeId(link.aItemId()).orElseThrow());
+        var markerA = markerStore.createMarker("sme-" + UUID.randomUUID(), "test", "ITEM_TYPE", registerStore.findItemTypeId(link.aItemId()).orElseThrow());
         markerAssignmentService.addItemMarker(link.aItemId(), markerA.id(), SOME_PRINCIPAL, "test");
-        UUID grantIdA = accessStore.ensureMarkerGrant(markerA.id(), "USER", user.id());
-        accessStore.grantLinkPerspectiveAccess(grantIdA, perspectiveAId, true, false, false);
-        var markerB = accessStore.createMarker("sme-" + UUID.randomUUID(), "test", "ITEM_TYPE", registerStore.findItemTypeId(link.bItemId()).orElseThrow());
+        UUID grantIdA = grantStore.ensureMarkerGrant(markerA.id(), "USER", user.id());
+        grantStore.grantLinkPerspectiveAccess(grantIdA, perspectiveAId, true, false, false);
+        var markerB = markerStore.createMarker("sme-" + UUID.randomUUID(), "test", "ITEM_TYPE", registerStore.findItemTypeId(link.bItemId()).orElseThrow());
         markerAssignmentService.addItemMarker(link.bItemId(), markerB.id(), SOME_PRINCIPAL, "test");
-        UUID grantIdB = accessStore.ensureMarkerGrant(markerB.id(), "USER", user.id());
-        accessStore.grantLinkPerspectiveAccess(grantIdB, perspectiveBId, true, false, false);
+        UUID grantIdB = grantStore.ensureMarkerGrant(markerB.id(), "USER", user.id());
+        grantStore.grantLinkPerspectiveAccess(grantIdB, perspectiveBId, true, false, false);
 
         MutationResponse response = processor.process(new MutationRequest(List.of(),
                 List.of(link.create(Map.of()))), principal);
@@ -1763,10 +1767,10 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
 
         var user = userStore.createUser("Restricted", "sme-" + UUID.randomUUID() + "@example.com", false);
         var principal = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), false);
-        var marker = accessStore.createMarker("sme-" + UUID.randomUUID(), "test", "ITEM_TYPE", registerStore.findItemTypeId(link.aItemId()).orElseThrow());
+        var marker = markerStore.createMarker("sme-" + UUID.randomUUID(), "test", "ITEM_TYPE", registerStore.findItemTypeId(link.aItemId()).orElseThrow());
         markerAssignmentService.addItemMarker(link.aItemId(), marker.id(), SOME_PRINCIPAL, "test");
-        UUID grantId = accessStore.ensureMarkerGrant(marker.id(), "USER", user.id());
-        accessStore.grantLinkPerspectiveAccess(grantId, perspectiveAId, false, false, true); // link:delete on side A only
+        UUID grantId = grantStore.ensureMarkerGrant(marker.id(), "USER", user.id());
+        grantStore.grantLinkPerspectiveAccess(grantId, perspectiveAId, false, false, true); // link:delete on side A only
 
         assertThatThrownBy(() -> processor.process(new MutationRequest(List.of(),
                 List.of(new LinkDeleteMutation(linkId))), principal))
@@ -1786,14 +1790,14 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
 
         var user = userStore.createUser("Restricted", "sme-" + UUID.randomUUID() + "@example.com", false);
         var principal = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), false);
-        var markerA = accessStore.createMarker("sme-" + UUID.randomUUID(), "test", "ITEM_TYPE", registerStore.findItemTypeId(link.aItemId()).orElseThrow());
+        var markerA = markerStore.createMarker("sme-" + UUID.randomUUID(), "test", "ITEM_TYPE", registerStore.findItemTypeId(link.aItemId()).orElseThrow());
         markerAssignmentService.addItemMarker(link.aItemId(), markerA.id(), SOME_PRINCIPAL, "test");
-        UUID grantIdA = accessStore.ensureMarkerGrant(markerA.id(), "USER", user.id());
-        accessStore.grantLinkPerspectiveAccess(grantIdA, perspectiveAId, false, false, true);
-        var markerB = accessStore.createMarker("sme-" + UUID.randomUUID(), "test", "ITEM_TYPE", registerStore.findItemTypeId(link.bItemId()).orElseThrow());
+        UUID grantIdA = grantStore.ensureMarkerGrant(markerA.id(), "USER", user.id());
+        grantStore.grantLinkPerspectiveAccess(grantIdA, perspectiveAId, false, false, true);
+        var markerB = markerStore.createMarker("sme-" + UUID.randomUUID(), "test", "ITEM_TYPE", registerStore.findItemTypeId(link.bItemId()).orElseThrow());
         markerAssignmentService.addItemMarker(link.bItemId(), markerB.id(), SOME_PRINCIPAL, "test");
-        UUID grantIdB = accessStore.ensureMarkerGrant(markerB.id(), "USER", user.id());
-        accessStore.grantLinkPerspectiveAccess(grantIdB, perspectiveBId, false, false, true);
+        UUID grantIdB = grantStore.ensureMarkerGrant(markerB.id(), "USER", user.id());
+        grantStore.grantLinkPerspectiveAccess(grantIdB, perspectiveBId, false, false, true);
 
         MutationResponse response = processor.process(new MutationRequest(List.of(),
                 List.of(new LinkDeleteMutation(linkId))), principal);
@@ -1834,10 +1838,10 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
 
         var user = userStore.createUser("Restricted", "sme-" + UUID.randomUUID() + "@example.com", false);
         var principal = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), false);
-        var markerA = accessStore.createMarker("sme-" + UUID.randomUUID(), "test", "ITEM_TYPE", registerStore.findItemTypeId(link.aItemId()).orElseThrow());
+        var markerA = markerStore.createMarker("sme-" + UUID.randomUUID(), "test", "ITEM_TYPE", registerStore.findItemTypeId(link.aItemId()).orElseThrow());
         markerAssignmentService.addItemMarker(link.aItemId(), markerA.id(), SOME_PRINCIPAL, "test");
-        UUID grantIdA = accessStore.ensureMarkerGrant(markerA.id(), "USER", user.id());
-        accessStore.grantLinkPropertyAccess(grantIdA, notePropertyId, false, true); // write on side A only
+        UUID grantIdA = grantStore.ensureMarkerGrant(markerA.id(), "USER", user.id());
+        grantStore.grantLinkPropertyAccess(grantIdA, notePropertyId, false, true); // write on side A only
 
         assertThatThrownBy(() -> processor.process(new MutationRequest(List.of(),
                 List.of(new LinkUpdateMutation(linkId, Map.of(propertyName, "hello")))), principal))
@@ -1857,14 +1861,14 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
 
         var user = userStore.createUser("Restricted", "sme-" + UUID.randomUUID() + "@example.com", false);
         var principal = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), false);
-        var markerA = accessStore.createMarker("sme-" + UUID.randomUUID(), "test", "ITEM_TYPE", registerStore.findItemTypeId(link.aItemId()).orElseThrow());
+        var markerA = markerStore.createMarker("sme-" + UUID.randomUUID(), "test", "ITEM_TYPE", registerStore.findItemTypeId(link.aItemId()).orElseThrow());
         markerAssignmentService.addItemMarker(link.aItemId(), markerA.id(), SOME_PRINCIPAL, "test");
-        UUID grantIdA = accessStore.ensureMarkerGrant(markerA.id(), "USER", user.id());
-        accessStore.grantLinkPropertyAccess(grantIdA, notePropertyId, false, true);
-        var markerB = accessStore.createMarker("sme-" + UUID.randomUUID(), "test", "ITEM_TYPE", registerStore.findItemTypeId(link.bItemId()).orElseThrow());
+        UUID grantIdA = grantStore.ensureMarkerGrant(markerA.id(), "USER", user.id());
+        grantStore.grantLinkPropertyAccess(grantIdA, notePropertyId, false, true);
+        var markerB = markerStore.createMarker("sme-" + UUID.randomUUID(), "test", "ITEM_TYPE", registerStore.findItemTypeId(link.bItemId()).orElseThrow());
         markerAssignmentService.addItemMarker(link.bItemId(), markerB.id(), SOME_PRINCIPAL, "test");
-        UUID grantIdB = accessStore.ensureMarkerGrant(markerB.id(), "USER", user.id());
-        accessStore.grantLinkPropertyAccess(grantIdB, notePropertyId, false, true);
+        UUID grantIdB = grantStore.ensureMarkerGrant(markerB.id(), "USER", user.id());
+        grantStore.grantLinkPropertyAccess(grantIdB, notePropertyId, false, true);
 
         MutationResponse response = processor.process(new MutationRequest(List.of(),
                 List.of(new LinkUpdateMutation(linkId, Map.of(propertyName, "hello")))), principal);
@@ -1884,14 +1888,14 @@ class MutationRequestProcessorIntegrationTest extends AbstractIntegrationTest {
 
         var user = userStore.createUser("Restricted", "sme-" + UUID.randomUUID() + "@example.com", false);
         var principal = TestPrincipals.of(user.id(), user.displayName(), user.email(), Set.of(), false);
-        var markerA = accessStore.createMarker("sme-" + UUID.randomUUID(), "test", "ITEM_TYPE", registerStore.findItemTypeId(link.aItemId()).orElseThrow());
+        var markerA = markerStore.createMarker("sme-" + UUID.randomUUID(), "test", "ITEM_TYPE", registerStore.findItemTypeId(link.aItemId()).orElseThrow());
         markerAssignmentService.addItemMarker(link.aItemId(), markerA.id(), SOME_PRINCIPAL, "test");
-        UUID grantIdA = accessStore.ensureMarkerGrant(markerA.id(), "USER", user.id());
-        accessStore.grantLinkPerspectiveAccess(grantIdA, perspectiveAId, true, false, false);
-        var markerB = accessStore.createMarker("sme-" + UUID.randomUUID(), "test", "ITEM_TYPE", registerStore.findItemTypeId(link.bItemId()).orElseThrow());
+        UUID grantIdA = grantStore.ensureMarkerGrant(markerA.id(), "USER", user.id());
+        grantStore.grantLinkPerspectiveAccess(grantIdA, perspectiveAId, true, false, false);
+        var markerB = markerStore.createMarker("sme-" + UUID.randomUUID(), "test", "ITEM_TYPE", registerStore.findItemTypeId(link.bItemId()).orElseThrow());
         markerAssignmentService.addItemMarker(link.bItemId(), markerB.id(), SOME_PRINCIPAL, "test");
-        UUID grantIdB = accessStore.ensureMarkerGrant(markerB.id(), "USER", user.id());
-        accessStore.grantLinkPerspectiveAccess(grantIdB, perspectiveBId, true, false, false);
+        UUID grantIdB = grantStore.ensureMarkerGrant(markerB.id(), "USER", user.id());
+        grantStore.grantLinkPerspectiveAccess(grantIdB, perspectiveBId, true, false, false);
         // Deliberately no link_property:write grant for this property on either side.
 
         assertThatThrownBy(() -> processor.process(new MutationRequest(List.of(),

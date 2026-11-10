@@ -19,7 +19,7 @@ function SearchResultItemView({ item, onOpen, onDelete }) {
           <span className="search-result-item-type">{item.itemType}</span>
         </search-result-item-identity>
         <search-result-item-actions>
-          {item.permissions?.delete && (
+          {onDelete && item.permissions?.delete && (
             <button
               type="button"
               className="search-result-item-delete-btn"

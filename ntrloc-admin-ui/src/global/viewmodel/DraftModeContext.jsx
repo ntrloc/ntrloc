@@ -6,8 +6,8 @@ import { DraftModeContext } from './useDraftMode'
 // Whether this tab is working live or in a draft, and which draft. The mode belongs to the tab, not
 // the user or the server (docs/ntrloc-system-model-notes.md §11): one tab can stay live while another
 // works in a draft, so it's kept in sessionStorage, which is per tab, and the server never stores it.
-// Requests made in draft mode will address the draft (/api/drafts/{id}/...) -- not wired yet; until
-// it is, no draft can be entered (see DraftDelegate).
+// In draft mode, requests for what a draft can hold address the draft (/api/drafts/{id}/...); each
+// view takes the draft's id from here and passes it to its delegate.
 //
 // Who sees drafts at all: admins always, and may start them; a non-admin only while invited to at
 // least one, and never starts one.

@@ -2,7 +2,8 @@ package org.ntrloc.graph.db.partition.schema;
 
 import com.hazelcast.topic.ITopic;
 import org.ntrloc.graph.cluster.ClusterService;
-import org.ntrloc.graph.db.partition.authorization.PermissionService;
+import org.ntrloc.graph.db.partition.authorization.AccessService;
+import org.ntrloc.graph.db.partition.authorization.repository.UserGrantsView;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.DefinitionMutation;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.ReplaceControlledListMutation;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
@@ -63,7 +64,7 @@ public class SchemaService {
     private final LinkMutationApplier linkMutationApplier;
     private final StateMutationApplier stateMutationApplier;
     private final ControlledListMutationApplier controlledListMutationApplier;
-    private final PermissionService permissionService;
+    private final AccessService accessService;
     private final ClusterService clusterService;
     private final ITopic<String> schemaChangedTopic;
     // New, parallel signal -- see ClusterEventBroadcaster's own comment. Published alongside
@@ -84,7 +85,7 @@ public class SchemaService {
                           ItemMutationApplier itemMutationApplier, TraitMutationApplier traitMutationApplier,
                           PropertyMutationApplier propertyMutationApplier, LinkMutationApplier linkMutationApplier,
                           StateMutationApplier stateMutationApplier, ControlledListMutationApplier controlledListMutationApplier,
-                          PermissionService permissionService, ClusterService clusterService,
+                          AccessService accessService, ClusterService clusterService,
                           ClusterEventBroadcaster clusterEventBroadcaster, TransactionTemplate transactionTemplate) {
         this.controlledListService = controlledListService;
         this.adminViewBuilder = adminViewBuilder;
@@ -95,7 +96,7 @@ public class SchemaService {
         this.linkMutationApplier = linkMutationApplier;
         this.stateMutationApplier = stateMutationApplier;
         this.controlledListMutationApplier = controlledListMutationApplier;
-        this.permissionService = permissionService;
+        this.accessService = accessService;
         this.clusterService = clusterService;
         this.clusterEventBroadcaster = clusterEventBroadcaster;
         this.transactionTemplate = transactionTemplate;
@@ -169,17 +170,22 @@ public class SchemaService {
     }
 
     // Top-level component, independently reachable (SchemaController) -- demands a real principal
-    // via @PreAuthorize, same as EntityReadService/EntityWriteService/PermissionService/MutationRequestProcessor (see
+    // via @PreAuthorize, same as EntityReadService/EntityWriteService/MutationRequestProcessor (see
     // docs/ntrloc-principal-enforcement-plan.md, Part C).
     @PreAuthorize("#principal != null")
     public SchemaView getSchema(NtrlocPrincipal principal) {
+        return getSchema(accessService.getUserGrants(principal));
+    }
+
+    /** The schema as the user these grants are for sees it: only the item types they may read. */
+    @PreAuthorize("#grants != null")
+    public SchemaView getSchema(UserGrantsView grants) {
         SchemaView schema = cachedSchema.get();
-        if (principal.isAdmin()) {
+        if (grants.isAdmin()) {
             return schema;
         }
-        var readableItemTypeIds = permissionService.readableItemTypeIds(principal);
         var visibleItems = schema.items().stream()
-                .filter(item -> readableItemTypeIds.contains(item.id()))
+                .filter(item -> grants.mayReadItemType(item.id()))
                 .toList();
         return new SchemaView(visibleItems, schema.traits());
     }

@@ -7,14 +7,15 @@ import org.ntrloc.graph.db.coordinator.CoordinatorTestDomainInitializer;
 import org.ntrloc.graph.db.coordinator.LedgerRegisterCoordinator;
 import org.ntrloc.graph.db.partition.authorization.DefaultUserGroupInitializer;
 import org.ntrloc.graph.db.partition.authorization.ManualMarkerAssignmentService;
-import org.ntrloc.graph.db.partition.authorization.repository.AccessStore;
+import org.ntrloc.graph.db.partition.authorization.repository.GrantStore;
+import org.ntrloc.graph.db.partition.authorization.repository.MarkerStore;
 import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
 import org.ntrloc.graph.db.partition.ledger.LinkCreateEntry;
 import org.ntrloc.graph.db.partition.ledger.LinkEndpoint;
 import org.ntrloc.graph.principal.NtrlocPrincipal;
 import org.ntrloc.graph.principal.TestPrincipals;
 import org.ntrloc.graph.db.partition.security.repository.UserStore;
-import org.ntrloc.graph.db.partition.authorization.repository.AccessStoreReader.MarkerRow;
+import org.ntrloc.graph.db.partition.authorization.repository.MarkerStoreReader.MarkerRow;
 import org.ntrloc.graph.db.partition.schema.SchemaService;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyCardinality;
 import org.ntrloc.graph.db.partition.schema.definition.PropertyType;
@@ -69,7 +70,10 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
     private ManualMarkerAssignmentService markerAssignmentService;
 
     @Autowired
-    private AccessStore accessStore;
+    private GrantStore grantStore;
+
+    @Autowired
+    private MarkerStore markerStore;
 
     @Autowired
     private UserStore userStore;
@@ -128,13 +132,13 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
     }
 
     private MarkerRow markerOnItem(UUID itemId) {
-        var marker = accessStore.createMarker("pcf-" + UUID.randomUUID(), "test fixture", "ITEM_TYPE", fixture.productTypeId());
+        var marker = markerStore.createMarker("pcf-" + UUID.randomUUID(), "test fixture", "ITEM_TYPE", fixture.productTypeId());
         markerAssignmentService.addItemMarker(itemId, marker.id(), ADMIN, "test reason");
         return marker;
     }
 
     private UUID grantId(UUID markerId, NtrlocPrincipal principal) {
-        return accessStore.ensureMarkerGrant(markerId, "USER", principal.id());
+        return grantStore.ensureMarkerGrant(markerId, "USER", principal.id());
     }
 
     // --- Item property read filtering ---
@@ -146,9 +150,9 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
         UUID productId = createProduct("Widget", "red");
         var principal = newUserInEveryoneUserGroup();
         UUID grantId = grantId(markerOnItem(productId).id(), principal);
-        accessStore.setItemPermissions(grantId, true, false);
-        accessStore.grantPropertyAccess(grantId, fixture.namePropertyId(), true, false);
-        accessStore.grantPropertyAccess(grantId, fixture.colorPropertyId(), true, false);
+        grantStore.setItemPermissions(grantId, true, false);
+        grantStore.grantPropertyAccess(grantId, fixture.namePropertyId(), true, false);
+        grantStore.grantPropertyAccess(grantId, fixture.colorPropertyId(), true, false);
 
         var item = entityReadService.project(new ItemProjectionSpec("CoordinatorTestProduct", productId, null, List.of("color"), false, false),
                 "http://binary", principal).orElseThrow();
@@ -162,8 +166,8 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
         UUID productId = createProduct("Secret Widget", "red");
         var principal = newUserInEveryoneUserGroup();
         UUID grantId = grantId(markerOnItem(productId).id(), principal);
-        accessStore.setItemPermissions(grantId, true, false);
-        accessStore.grantPropertyAccess(grantId, fixture.colorPropertyId(), true, false);
+        grantStore.setItemPermissions(grantId, true, false);
+        grantStore.grantPropertyAccess(grantId, fixture.colorPropertyId(), true, false);
         // name -- the property the label pattern reads -- deliberately not granted
 
         var requestingAll = entityReadService.project(new ItemProjectionSpec("CoordinatorTestProduct", productId, null, true, false),
@@ -180,8 +184,8 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
         UUID productId = createProduct("Widget", "red");
         var principal = newUserInEveryoneUserGroup();
         UUID grantId = grantId(markerOnItem(productId).id(), principal);
-        accessStore.setItemPermissions(grantId, true, false);
-        accessStore.grantPropertyAccess(grantId, fixture.namePropertyId(), true, false);
+        grantStore.setItemPermissions(grantId, true, false);
+        grantStore.grantPropertyAccess(grantId, fixture.namePropertyId(), true, false);
         // color deliberately not granted
 
         var result = entityReadService.project(new ItemProjectionSpec("CoordinatorTestProduct", productId, null, true, false), "http://binary", principal);
@@ -194,9 +198,9 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
     void propertyGrantedViaOneOfSeveralMarkers_isPresent_unionSemantics() {
         UUID productId = createProduct("Widget", "red");
         var principal = newUserInEveryoneUserGroup();
-        accessStore.setItemPermissions(grantId(markerOnItem(productId).id(), principal), true, false);
-        accessStore.grantPropertyAccess(grantId(markerOnItem(productId).id(), principal), fixture.namePropertyId(), true, false);
-        accessStore.grantPropertyAccess(grantId(markerOnItem(productId).id(), principal), fixture.colorPropertyId(), true, false);
+        grantStore.setItemPermissions(grantId(markerOnItem(productId).id(), principal), true, false);
+        grantStore.grantPropertyAccess(grantId(markerOnItem(productId).id(), principal), fixture.namePropertyId(), true, false);
+        grantStore.grantPropertyAccess(grantId(markerOnItem(productId).id(), principal), fixture.colorPropertyId(), true, false);
 
         var result = entityReadService.project(new ItemProjectionSpec("CoordinatorTestProduct", productId, null, true, false), "http://binary", principal);
 
@@ -208,8 +212,8 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
         UUID productId = createProduct("Widget", "red");
         var principal = newUserInEveryoneUserGroup();
         UUID grantId = grantId(markerOnItem(productId).id(), principal);
-        accessStore.setItemPermissions(grantId, true, false);
-        accessStore.grantPropertyAccess(grantId, fixture.namePropertyId(), false, true);
+        grantStore.setItemPermissions(grantId, true, false);
+        grantStore.grantPropertyAccess(grantId, fixture.namePropertyId(), false, true);
         // Write grant but no explicit read grant for "name" -- a write grant implies read (editing a
         // value you can't see back is not a coherent capability; the admin UI already shows read as
         // "implied by write").
@@ -236,8 +240,8 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
         UUID productId = createProduct("Widget", "red");
         var principal = newUserInEveryoneUserGroup();
         UUID grantId = grantId(markerOnItem(productId).id(), principal);
-        accessStore.setItemPermissions(grantId, true, false);
-        accessStore.grantPropertyAccess(grantId, fixture.namePropertyId(), false, true);
+        grantStore.setItemPermissions(grantId, true, false);
+        grantStore.grantPropertyAccess(grantId, fixture.namePropertyId(), false, true);
 
         var result = entityReadService.project(new ItemProjectionSpec("CoordinatorTestProduct", productId, null, true, false), "http://binary", principal);
 
@@ -250,7 +254,7 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
         UUID productId = createProduct("Widget", "red");
         var principal = newUserInEveryoneUserGroup();
         UUID grantId = grantId(markerOnItem(productId).id(), principal);
-        accessStore.setItemPermissions(grantId, true, true);
+        grantStore.setItemPermissions(grantId, true, true);
 
         var result = entityReadService.project(new ItemProjectionSpec("CoordinatorTestProduct", productId, null, true, false), "http://binary", principal);
 
@@ -279,9 +283,9 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
         UUID productId = createProduct("Widget", "red");
         var principal = newUserInEveryoneUserGroup();
         UUID grantId = grantId(markerOnItem(productId).id(), principal);
-        accessStore.setItemPermissions(grantId, true, false);
-        accessStore.grantPropertyAccess(grantId, fixture.dimensionsWidthPropertyId(), false, true);
-        accessStore.grantPropertyAccess(grantId, fixture.dimensionsHeightPropertyId(), false, true);
+        grantStore.setItemPermissions(grantId, true, false);
+        grantStore.grantPropertyAccess(grantId, fixture.dimensionsWidthPropertyId(), false, true);
+        grantStore.grantPropertyAccess(grantId, fixture.dimensionsHeightPropertyId(), false, true);
 
         var result = entityReadService.project(new ItemProjectionSpec("CoordinatorTestProduct", productId, null, true, false), "http://binary", principal);
 
@@ -296,8 +300,8 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
         UUID productId = createProduct("Widget", "red");
         var principal = newUserInEveryoneUserGroup();
         UUID grantId = grantId(markerOnItem(productId).id(), principal);
-        accessStore.setItemPermissions(grantId, true, false);
-        accessStore.grantPropertyAccess(grantId, fixture.dimensionsWidthPropertyId(), false, true);
+        grantStore.setItemPermissions(grantId, true, false);
+        grantStore.grantPropertyAccess(grantId, fixture.dimensionsWidthPropertyId(), false, true);
         // Deliberately no grant on dimensions.height.
 
         var result = entityReadService.project(new ItemProjectionSpec("CoordinatorTestProduct", productId, null, true, false), "http://binary", principal);
@@ -316,8 +320,8 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
         UUID productId = createProduct("Widget", "red");
         var principal = newUserInEveryoneUserGroup();
         UUID sourceGrantId = grantId(markerOnItem(productId).id(), principal);
-        accessStore.setItemPermissions(sourceGrantId, true, false);
-        accessStore.grantLinkPerspectiveAccess(sourceGrantId, fixture.productPerspectiveId(), true, false, false); // link:create only
+        grantStore.setItemPermissions(sourceGrantId, true, false);
+        grantStore.grantLinkPerspectiveAccess(sourceGrantId, fixture.productPerspectiveId(), true, false, false); // link:create only
 
         var result = entityReadService.project(new ItemProjectionSpec("CoordinatorTestProduct", productId, null, true, false), "http://binary", principal);
 
@@ -329,8 +333,8 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
         UUID productId = createProduct("Widget", "red");
         var principal = newUserInEveryoneUserGroup();
         UUID sourceGrantId = grantId(markerOnItem(productId).id(), principal);
-        accessStore.setItemPermissions(sourceGrantId, true, false);
-        accessStore.grantLinkPerspectiveAccess(sourceGrantId, fixture.productPerspectiveId(), false, true, false); // link:read only, no create
+        grantStore.setItemPermissions(sourceGrantId, true, false);
+        grantStore.grantLinkPerspectiveAccess(sourceGrantId, fixture.productPerspectiveId(), false, true, false); // link:read only, no create
 
         var result = entityReadService.project(new ItemProjectionSpec("CoordinatorTestProduct", productId, null, true, false), "http://binary", principal);
 
@@ -351,9 +355,9 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
         createLink(productId, contributorId, "author");
         var principal = newUserInEveryoneUserGroup();
         UUID sourceGrantId = grantId(markerOnItem(productId).id(), principal);
-        accessStore.setItemPermissions(sourceGrantId, true, false);
-        accessStore.grantLinkPerspectiveAccess(sourceGrantId, fixture.productPerspectiveId(), false, true, false);
-        accessStore.setItemPermissions(grantId(markerOnItem(contributorId).id(), principal), true, false);
+        grantStore.setItemPermissions(sourceGrantId, true, false);
+        grantStore.grantLinkPerspectiveAccess(sourceGrantId, fixture.productPerspectiveId(), false, true, false);
+        grantStore.setItemPermissions(grantId(markerOnItem(contributorId).id(), principal), true, false);
         // Deliberately no property:read grant for the contributor's own "name" property.
 
         var result = entityReadService.project(
@@ -371,11 +375,11 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
         createLink(productId, contributorId, "author");
         var principal = newUserInEveryoneUserGroup();
         UUID sourceGrantId = grantId(markerOnItem(productId).id(), principal);
-        accessStore.setItemPermissions(sourceGrantId, true, false);
-        accessStore.grantLinkPerspectiveAccess(sourceGrantId, fixture.productPerspectiveId(), false, true, false);
+        grantStore.setItemPermissions(sourceGrantId, true, false);
+        grantStore.grantLinkPerspectiveAccess(sourceGrantId, fixture.productPerspectiveId(), false, true, false);
         UUID contributorGrantId = grantId(markerOnItem(contributorId).id(), principal);
-        accessStore.setItemPermissions(contributorGrantId, true, false);
-        accessStore.grantPropertyAccess(contributorGrantId, fixture.contributorNamePropertyId(), true, false);
+        grantStore.setItemPermissions(contributorGrantId, true, false);
+        grantStore.grantPropertyAccess(contributorGrantId, fixture.contributorNamePropertyId(), true, false);
 
         var result = entityReadService.project(
                 new ItemProjectionSpec("CoordinatorTestProduct", productId, Map.of("products", new LinkProjectionSpec(null)), true, false),
@@ -392,9 +396,9 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
         createLink(productId, contributorId, "author");
         var principal = newUserInEveryoneUserGroup();
         UUID sourceGrantId = grantId(markerOnItem(productId).id(), principal);
-        accessStore.setItemPermissions(sourceGrantId, true, false);
-        accessStore.grantLinkPerspectiveAccess(sourceGrantId, fixture.productPerspectiveId(), false, true, false);
-        accessStore.setItemPermissions(grantId(markerOnItem(contributorId).id(), principal), true, false);
+        grantStore.setItemPermissions(sourceGrantId, true, false);
+        grantStore.grantLinkPerspectiveAccess(sourceGrantId, fixture.productPerspectiveId(), false, true, false);
+        grantStore.setItemPermissions(grantId(markerOnItem(contributorId).id(), principal), true, false);
         // Deliberately no link_property:read grant for "role".
 
         var result = entityReadService.project(
@@ -412,10 +416,10 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
         createLink(productId, contributorId, "author");
         var principal = newUserInEveryoneUserGroup();
         UUID sourceGrantId = grantId(markerOnItem(productId).id(), principal);
-        accessStore.setItemPermissions(sourceGrantId, true, false);
-        accessStore.grantLinkPerspectiveAccess(sourceGrantId, fixture.productPerspectiveId(), false, true, false);
-        accessStore.grantLinkPropertyAccess(sourceGrantId, fixture.rolePropertyId(), true, false);
-        accessStore.setItemPermissions(grantId(markerOnItem(contributorId).id(), principal), true, false);
+        grantStore.setItemPermissions(sourceGrantId, true, false);
+        grantStore.grantLinkPerspectiveAccess(sourceGrantId, fixture.productPerspectiveId(), false, true, false);
+        grantStore.grantLinkPropertyAccess(sourceGrantId, fixture.rolePropertyId(), true, false);
+        grantStore.setItemPermissions(grantId(markerOnItem(contributorId).id(), principal), true, false);
 
         var result = entityReadService.project(
                 new ItemProjectionSpec("CoordinatorTestProduct", productId, Map.of("products", new LinkProjectionSpec(null)), true, false),
@@ -432,9 +436,9 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
         createLink(productId, contributorId, "author");
         var principal = newUserInEveryoneUserGroup();
         UUID sourceGrantId = grantId(markerOnItem(productId).id(), principal);
-        accessStore.setItemPermissions(sourceGrantId, true, true); // item:read + item:delete on the product itself
-        accessStore.grantLinkPerspectiveAccess(sourceGrantId, fixture.productPerspectiveId(), false, true, true); // link:read + link:delete
-        accessStore.setItemPermissions(grantId(markerOnItem(contributorId).id(), principal), true, false); // target item:read only
+        grantStore.setItemPermissions(sourceGrantId, true, true); // item:read + item:delete on the product itself
+        grantStore.grantLinkPerspectiveAccess(sourceGrantId, fixture.productPerspectiveId(), false, true, true); // link:read + link:delete
+        grantStore.setItemPermissions(grantId(markerOnItem(contributorId).id(), principal), true, false); // target item:read only
 
         var result = entityReadService.project(
                 new ItemProjectionSpec("CoordinatorTestProduct", productId, Map.of("products", new LinkProjectionSpec(null)), true, false),
@@ -458,10 +462,10 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
         createLink(productId, contributorId, "author");
         var principal = newUserInEveryoneUserGroup();
         UUID sourceGrantId = grantId(markerOnItem(productId).id(), principal);
-        accessStore.setItemPermissions(sourceGrantId, true, false);
-        accessStore.grantLinkPerspectiveAccess(sourceGrantId, fixture.productPerspectiveId(), false, true, false);
-        accessStore.grantLinkPropertyAccess(sourceGrantId, fixture.rolePropertyId(), false, true);
-        accessStore.setItemPermissions(grantId(markerOnItem(contributorId).id(), principal), true, false);
+        grantStore.setItemPermissions(sourceGrantId, true, false);
+        grantStore.grantLinkPerspectiveAccess(sourceGrantId, fixture.productPerspectiveId(), false, true, false);
+        grantStore.grantLinkPropertyAccess(sourceGrantId, fixture.rolePropertyId(), false, true);
+        grantStore.setItemPermissions(grantId(markerOnItem(contributorId).id(), principal), true, false);
 
         var result = entityReadService.project(
                 new ItemProjectionSpec("CoordinatorTestProduct", productId, Map.of("products", new LinkProjectionSpec(null)), true, false),
@@ -492,7 +496,7 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
         // empty before it runs.
         UUID productId = createProduct("Widget", "red");
         UUID grantId = grantId(markerOnItem(productId).id(), principal);
-        accessStore.setItemPermissions(grantId, true, false);
+        grantStore.setItemPermissions(grantId, true, false);
 
         assertThatThrownBy(() -> entityReadService.project(
                 new CollectionProjectionSpec("CoordinatorTestProduct", "color", "ASC"), "http://binary", principal))
@@ -516,8 +520,8 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
         var principal = newUserInEveryoneUserGroup();
         UUID productId = createProduct("Widget", "red");
         UUID grantId = grantId(markerOnItem(productId).id(), principal);
-        accessStore.setItemPermissions(grantId, true, false);
-        accessStore.grantPropertyAccess(grantId, fixture.colorPropertyId(), true, false);
+        grantStore.setItemPermissions(grantId, true, false);
+        grantStore.grantPropertyAccess(grantId, fixture.colorPropertyId(), true, false);
 
         var result = entityReadService.project(
                 new CollectionProjectionSpec("CoordinatorTestProduct", "color", "ASC"), "http://binary", principal);
@@ -547,8 +551,8 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
         UUID productId = createProduct("Widget", "red");
         var principal = newUserInEveryoneUserGroup();
         UUID grantId = grantId(markerOnItem(productId).id(), principal);
-        accessStore.setItemPermissions(grantId, true, false);
-        accessStore.grantPropertyAccess(grantId, fixture.namePropertyId(), true, false);
+        grantStore.setItemPermissions(grantId, true, false);
+        grantStore.grantPropertyAccess(grantId, fixture.namePropertyId(), true, false);
         // color deliberately not granted, but explicitly requested below.
 
         var item = entityReadService.project(
@@ -565,12 +569,12 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
         UUID notGranted = createProduct("NotGranted-" + suffix, "blue");
         var principal = newUserInEveryoneUserGroup();
         UUID grantedGrant = grantId(markerOnItem(granted).id(), principal);
-        accessStore.setItemPermissions(grantedGrant, true, false);
-        accessStore.grantPropertyAccess(grantedGrant, fixture.namePropertyId(), true, false);
-        accessStore.grantPropertyAccess(grantedGrant, fixture.colorPropertyId(), true, false);
+        grantStore.setItemPermissions(grantedGrant, true, false);
+        grantStore.grantPropertyAccess(grantedGrant, fixture.namePropertyId(), true, false);
+        grantStore.grantPropertyAccess(grantedGrant, fixture.colorPropertyId(), true, false);
         UUID notGrantedGrant = grantId(markerOnItem(notGranted).id(), principal);
-        accessStore.setItemPermissions(notGrantedGrant, true, false);
-        accessStore.grantPropertyAccess(notGrantedGrant, fixture.namePropertyId(), true, false);
+        grantStore.setItemPermissions(notGrantedGrant, true, false);
+        grantStore.grantPropertyAccess(notGrantedGrant, fixture.namePropertyId(), true, false);
 
         var result = entityReadService.project(
                 new CollectionProjectionSpec("CoordinatorTestProduct", null, null, null,
@@ -591,8 +595,8 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
         UUID productId = createProduct("Widget", "red");
         var principal = newUserInEveryoneUserGroup();
         UUID grantId = grantId(markerOnItem(productId).id(), principal);
-        accessStore.setItemPermissions(grantId, true, false);
-        accessStore.grantPropertyAccess(grantId, fixture.namePropertyId(), true, false);
+        grantStore.setItemPermissions(grantId, true, false);
+        grantStore.grantPropertyAccess(grantId, fixture.namePropertyId(), true, false);
 
         var result = entityReadService.project(
                 new ItemProjectionSpec("CoordinatorTestProduct", productId, null, List.of("name"), true, false),
@@ -614,9 +618,9 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
         createLink(productId, contributorId, "author");
         var principal = newUserInEveryoneUserGroup();
         UUID sourceGrantId = grantId(markerOnItem(productId).id(), principal);
-        accessStore.setItemPermissions(sourceGrantId, true, false);
+        grantStore.setItemPermissions(sourceGrantId, true, false);
         // The target is readable, so only the missing link:read grant can hide the link.
-        accessStore.setItemPermissions(grantId(markerOnItem(contributorId).id(), principal), true, false);
+        grantStore.setItemPermissions(grantId(markerOnItem(contributorId).id(), principal), true, false);
         // Deliberately no grantLinkPerspectiveAccess call, but "products" is explicitly named below.
 
         var item = entityReadService.project(
@@ -636,13 +640,13 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
         createLink(notGranted, contributorId, "editor");
         var principal = newUserInEveryoneUserGroup();
         UUID grantedGrant = grantId(markerOnItem(granted).id(), principal);
-        accessStore.setItemPermissions(grantedGrant, true, false);
-        accessStore.grantPropertyAccess(grantedGrant, fixture.namePropertyId(), true, false);
-        accessStore.grantLinkPerspectiveAccess(grantedGrant, fixture.productPerspectiveId(), false, true, false);
+        grantStore.setItemPermissions(grantedGrant, true, false);
+        grantStore.grantPropertyAccess(grantedGrant, fixture.namePropertyId(), true, false);
+        grantStore.grantLinkPerspectiveAccess(grantedGrant, fixture.productPerspectiveId(), false, true, false);
         UUID notGrantedGrant = grantId(markerOnItem(notGranted).id(), principal);
-        accessStore.setItemPermissions(notGrantedGrant, true, false);
-        accessStore.grantPropertyAccess(notGrantedGrant, fixture.namePropertyId(), true, false);
-        accessStore.setItemPermissions(grantId(markerOnItem(contributorId).id(), principal), true, false);
+        grantStore.setItemPermissions(notGrantedGrant, true, false);
+        grantStore.grantPropertyAccess(notGrantedGrant, fixture.namePropertyId(), true, false);
+        grantStore.setItemPermissions(grantId(markerOnItem(contributorId).id(), principal), true, false);
 
         var result = entityReadService.project(
                 new CollectionProjectionSpec("CoordinatorTestProduct", null, null, null,
@@ -732,8 +736,8 @@ class PropertyAndCapabilityFilteringIntegrationTest extends AbstractIntegrationT
         coordinator.prepare(List.of(new ItemCreateEntry(itemId, typeId, Map.of(activePropertyId, true), Map.of(), Set.of())), txn, ADMIN.id(), OffsetDateTime.now());
         coordinator.commit(txn, UUID.randomUUID());
         UUID grantId = grantId(markerOnItem(itemId).id(), principal);
-        accessStore.setItemPermissions(grantId, true, false);
-        accessStore.grantPropertyAccess(grantId, activePropertyId, true, false);
+        grantStore.setItemPermissions(grantId, true, false);
+        grantStore.grantPropertyAccess(grantId, activePropertyId, true, false);
 
         var result = entityReadService.project(
                 new CollectionProjectionSpec(typeName, null, null, null, null, List.of("active"), null, null, null, null),

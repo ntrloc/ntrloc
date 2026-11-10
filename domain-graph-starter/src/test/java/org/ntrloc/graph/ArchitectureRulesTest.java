@@ -15,12 +15,20 @@ import org.ntrloc.graph.db.EntityReadService;
 import org.ntrloc.graph.db.EntityWriteService;
 import org.ntrloc.graph.db.coordinator.LedgerRegisterCoordinator;
 import org.ntrloc.graph.db.coordinator.LedgerRegisterCoordinatorImpl;
+import org.ntrloc.graph.db.partition.authorization.AccessService;
+import org.ntrloc.graph.draft.DraftAccessService;
+import org.ntrloc.graph.draft.DraftGrantStore;
+import org.ntrloc.graph.draft.DraftService;
+import org.ntrloc.graph.draft.DraftStore;
 import org.ntrloc.graph.db.partition.authorization.ManualMarkerAssignmentService;
-import org.ntrloc.graph.db.partition.authorization.PermissionService;
-import org.ntrloc.graph.db.partition.authorization.RequestPermissionContext;
-import org.ntrloc.graph.db.partition.authorization.repository.AccessStore;
-import org.ntrloc.graph.db.partition.authorization.repository.AccessStoreReader;
-import org.ntrloc.graph.db.partition.authorization.repository.AccessStoreWriter;
+import org.ntrloc.graph.db.partition.authorization.repository.GrantsView;
+import org.ntrloc.graph.db.partition.authorization.repository.UserGrantsView;
+import org.ntrloc.graph.db.partition.authorization.repository.GrantStore;
+import org.ntrloc.graph.db.partition.authorization.repository.GrantStoreReader;
+import org.ntrloc.graph.db.partition.authorization.repository.GrantStoreWriter;
+import org.ntrloc.graph.db.partition.authorization.repository.MarkerStore;
+import org.ntrloc.graph.db.partition.authorization.repository.MarkerStoreReader;
+import org.ntrloc.graph.db.partition.authorization.repository.MarkerStoreWriter;
 import org.ntrloc.graph.db.partition.ledger.LedgerStore;
 import org.ntrloc.graph.db.partition.ledger.LedgerStoreWriter;
 import org.ntrloc.graph.db.partition.register.RegisterStore;
@@ -66,8 +74,9 @@ class ArchitectureRulesTest {
     // up users and groups, are I/O and may.)
     @ArchTest
     static final ArchRule accessDoesNotDependOnSecurity = noClasses()
-            .that().belongToAnyOf(PermissionService.class, ManualMarkerAssignmentService.class, RequestPermissionContext.class,
-                    AccessStore.class, AccessStoreReader.class, AccessStoreWriter.class)
+            .that().belongToAnyOf(AccessService.class, ManualMarkerAssignmentService.class, UserGrantsView.class, GrantsView.class,
+                    GrantStore.class, GrantStoreReader.class, GrantStoreWriter.class,
+                    MarkerStore.class, MarkerStoreReader.class, MarkerStoreWriter.class)
             .should().dependOnClassesThat().resideInAPackage("org.ntrloc.graph.db.partition.security..")
             .because("the access service and store work from the principal alone");
 
@@ -77,7 +86,7 @@ class ArchitectureRulesTest {
     static final ArchRule storesAreUsedThroughTheirInterfaces = noClasses()
             .that().resideOutsideOfPackages("org.ntrloc.graph.db.partition.register..", "org.ntrloc.graph.db.partition.ledger..",
                     "org.ntrloc.graph.db.partition.authorization.repository..")
-            .should().dependOnClassesThat().belongToAnyOf(RegisterStore.class, LedgerStore.class, AccessStore.class)
+            .should().dependOnClassesThat().belongToAnyOf(RegisterStore.class, LedgerStore.class, GrantStore.class, MarkerStore.class)
             .because("stores are used through their <Name>StoreReader / <Name>StoreWriter interfaces");
 
     // Rule 5: the read side can be called by anything, so it never depends on the write side.
@@ -92,7 +101,7 @@ class ArchitectureRulesTest {
     // the one way in (a store keeps its tables in step with the schema), which is a notification, not a call.
     @ArchTest
     static final ArchRule storesDoNotDependOnServices = noClasses()
-            .that().belongToAnyOf(RegisterStore.class, LedgerStore.class, AccessStore.class)
+            .that().belongToAnyOf(RegisterStore.class, LedgerStore.class, GrantStore.class, MarkerStore.class)
             .should().dependOnClassesThat(serviceLayer())
             .because("stores never depend on services");
 
@@ -111,15 +120,19 @@ class ArchitectureRulesTest {
     // writer interface, or the store itself if it has none. Listed as each partition is restructured.
     private record SingleWriter(Class<?> writeAccess, Class<?> writer) {}
 
-    private static final List<SingleWriter> SINGLE_WRITERS = List.of();
+    private static final List<SingleWriter> SINGLE_WRITERS = List.of(
+            new SingleWriter(GrantStoreWriter.class, AccessService.class),
+            new SingleWriter(MarkerStoreWriter.class, AccessService.class),
+            new SingleWriter(DraftStore.class, DraftService.class),
+            new SingleWriter(DraftGrantStore.class, DraftAccessService.class));
 
-    // §8.6: each store has exactly one service that writes it.
+    // §8.6: each store has exactly one service that writes it (a service may own several stores).
     @ArchTest
     static void eachStoreHasOneWritingService(JavaClasses classes) {
         for (SingleWriter entry : SINGLE_WRITERS) {
             noClasses()
                     .that().doNotBelongToAnyOf(entry.writer(), entry.writeAccess())
-                    .and().doNotImplement(entry.writeAccess())
+                    .and().areNotAssignableTo(entry.writeAccess())
                     .should().dependOnClassesThat().belongToAnyOf(entry.writeAccess())
                     .because(entry.writer().getSimpleName() + " is the only service that writes through "
                             + entry.writeAccess().getSimpleName())
@@ -128,7 +141,7 @@ class ArchitectureRulesTest {
     }
 
     // Stores covered by the transaction rule below. Listed as each partition is restructured.
-    private static final List<Class<?>> TRANSACTION_FREE_STORES = List.of();
+    private static final List<Class<?>> TRANSACTION_FREE_STORES = List.of(GrantStore.class, MarkerStore.class, DraftStore.class, DraftGrantStore.class);
 
     // §8.6: stores own their storage, not transactions. The logical layer decides where a transaction
     // starts and ends; a store method needing atomicity requires one (Propagation.MANDATORY) without

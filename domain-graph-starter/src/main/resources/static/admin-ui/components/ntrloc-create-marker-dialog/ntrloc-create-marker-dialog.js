@@ -104,7 +104,7 @@ function openCreateMarkerDialog({ scopeKind, scopeId, scopeLabel }) {
 // Same promise-based shape as openCreateMarkerDialog, prefilled from the existing marker.
 // Scope is shown but never editable here -- see the design doc's reasoning that scope is what a
 // marker's own grants are validated against, so changing it after grants exist would silently
-// invalidate them (AccessStore.updateMarker only ever touches name/description).
+// invalidate them (MarkerStore.updateMarker only ever touches name/description).
 // Resolves with { id, name, description }, or null on cancel.
 function openEditMarkerDialog({ id, name, description, scopeLabel }) {
   return new Promise((resolve) => {

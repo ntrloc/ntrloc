@@ -5,6 +5,7 @@ import org.ntrloc.graph.access.FactResolver;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -38,6 +39,12 @@ public interface RegisterStoreReader extends FactResolver {
     int countLinksForPerspective(UUID itemId, UUID perspectiveId);
 
     List<RegisterLinkedItem> findLinksForItem(UUID itemId);
+
+    /** Every marker id assigned to this item. Reads register_item_marker. */
+    Set<UUID> getMarkerIdsForItem(UUID itemId);
+
+    /** Marker ids per item for a whole page at once -- one query, not one per item. */
+    Map<UUID, Set<UUID>> getMarkerIdsForItems(Set<UUID> itemIds);
 
     /** A committed link from an item: the link, and the item at its other end. */
     record RegisterLinkedItem(UUID linkId, UUID connectedItemId) {}

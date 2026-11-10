@@ -1,7 +1,7 @@
 package org.ntrloc.graph.db.partition.authorization;
 
-import org.ntrloc.graph.db.partition.authorization.repository.AccessStoreReader;
-import org.ntrloc.graph.db.partition.authorization.repository.AccessStoreWriter;
+import org.ntrloc.graph.db.partition.authorization.repository.GrantStoreReader;
+import org.ntrloc.graph.db.partition.authorization.repository.MarkerStoreReader;
 import org.ntrloc.graph.principal.ExternalPrincipalResolver;
 import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.springframework.http.HttpStatus;
@@ -26,8 +26,8 @@ import java.util.stream.Collectors;
 // Marker CRUD -- deliberately its own controller, separate from AccessAdminController (which
 // covers type-level grants only), since the marker/grant admin surface is expected to keep growing
 // (see docs/ntrloc-marker-admin-ui-design-notes.md). Markers live outside the schema-mutation batch
-// system entirely (authorization_marker isn't a schema_* table, AccessStore.createMarker
-// is a direct, immediate INSERT that refreshes the store's grant snapshot synchronously) -- so unlike
+// system entirely (authorization_marker isn't a schema_* table, MarkerStore.createMarker
+// is a direct, immediate INSERT) -- so unlike
 // item types/traits, marker creation here is a direct write, not staged into
 // schemaViewModel.collectMutations()'s batched Save.
 @RestController
@@ -46,15 +46,17 @@ public class MarkerAdminController {
 
     public record MarkerGrantPrincipalsView(List<PrincipalRef> groups, List<PrincipalRef> users) {}
 
-    private final AccessStoreReader accessReader;
-    private final AccessStoreWriter accessWriter;
+    private final MarkerStoreReader markerReader;
+    private final GrantStoreReader grantReader;
+    private final AccessService accessService;
     private final UserStore userStore;
     private final ExternalPrincipalResolver principalResolver;
 
-    public MarkerAdminController(AccessStoreReader accessReader, AccessStoreWriter accessWriter, UserStore userStore,
-                                  ExternalPrincipalResolver principalResolver) {
-        this.accessReader = accessReader;
-        this.accessWriter = accessWriter;
+    public MarkerAdminController(MarkerStoreReader markerReader, GrantStoreReader grantReader, AccessService accessService,
+                                  UserStore userStore, ExternalPrincipalResolver principalResolver) {
+        this.markerReader = markerReader;
+        this.grantReader = grantReader;
+        this.accessService = accessService;
         this.userStore = userStore;
         this.principalResolver = principalResolver;
     }
@@ -62,7 +64,7 @@ public class MarkerAdminController {
     @GetMapping
     List<MarkerView> listMarkers(Authentication authentication) {
         requireAdmin(authentication);
-        return accessReader.getAllMarkers().stream()
+        return markerReader.getAllMarkers().stream()
                 .map(m -> new MarkerView(m.id(), m.name(), m.description(), m.scopeKind(), m.scopeId()))
                 .toList();
     }
@@ -79,7 +81,7 @@ public class MarkerAdminController {
         if (body.scopeId() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "scopeId is required");
         }
-        var marker = accessWriter.createMarker(body.name(), body.description(), body.scopeKind(), body.scopeId());
+        var marker = accessService.createMarker(body.name(), body.description(), body.scopeKind(), body.scopeId());
         return new MarkerView(marker.id(), marker.name(), marker.description(), marker.scopeKind(), marker.scopeId());
     }
 
@@ -89,7 +91,7 @@ public class MarkerAdminController {
         if (body.name() == null || body.name().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "name is required");
         }
-        var marker = accessWriter.updateMarker(id, body.name(), body.description())
+        var marker = accessService.updateMarker(id, body.name(), body.description())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "This marker was deleted by someone else."));
         return new MarkerView(marker.id(), marker.name(), marker.description(), marker.scopeKind(), marker.scopeId());
     }
@@ -98,7 +100,7 @@ public class MarkerAdminController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     void deleteMarker(@PathVariable UUID id, Authentication authentication) {
         requireAdmin(authentication);
-        accessWriter.deleteMarker(id);
+        accessService.deleteMarker(id);
     }
 
     // Which groups and users have their own marker_grant row for this marker -- a row exists the
@@ -117,7 +119,7 @@ public class MarkerAdminController {
 
         List<PrincipalRef> groups = new ArrayList<>();
         List<PrincipalRef> users = new ArrayList<>();
-        for (var grant : accessReader.getAllMarkerGrants()) {
+        for (var grant : grantReader.getAllMarkerGrants()) {
             if (!grant.markerId().equals(markerId)) continue;
             if ("USER_GROUP".equals(grant.principalType()) && groupNames.containsKey(grant.principalId())) {
                 groups.add(new PrincipalRef(grant.principalId(), groupNames.get(grant.principalId())));

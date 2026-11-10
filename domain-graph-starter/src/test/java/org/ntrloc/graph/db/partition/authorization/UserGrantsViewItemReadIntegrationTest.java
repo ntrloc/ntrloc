@@ -5,8 +5,10 @@ import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
 import org.ntrloc.graph.db.coordinator.CoordinatorTestDomainInitializer;
 import org.ntrloc.graph.db.coordinator.LedgerRegisterCoordinator;
-import org.ntrloc.graph.db.partition.authorization.repository.AccessStore;
+import org.ntrloc.graph.db.partition.authorization.repository.GrantStore;
+import org.ntrloc.graph.db.partition.authorization.repository.MarkerStore;
 import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
+import org.ntrloc.graph.db.partition.register.RegisterStoreReader;
 import org.ntrloc.graph.principal.NtrlocPrincipal;
 import org.ntrloc.graph.principal.TestPrincipals;
 import org.ntrloc.graph.db.partition.security.repository.UserStore;
@@ -20,19 +22,23 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-// End-to-end: grant a marker permission, assign the marker to a real item, verify
-// PermissionService.canReadItem actually reflects it -- and that revoking either the grant or the
-// marker assignment independently removes access. Link visibility no longer has a standalone
-// PermissionService method (markers only ever apply to items now -- see
-// docs/ntrloc-marker-admin-ui-design-notes.md; link:read is applied in RegisterStore's link
-// query, covered by InstanceReadFilteringIntegrationTest).
-class PermissionServiceInstanceReadIntegrationTest extends AbstractIntegrationTest {
+// End-to-end: grant a marker permission, assign the marker to a real item, verify a user's grants
+// (UserGrantsView.mayReadItem) reflect it -- and that revoking either the grant or the marker assignment
+// independently removes access. Link visibility is applied in RegisterStore's link query, covered by
+// InstanceReadFilteringIntegrationTest.
+class UserGrantsViewItemReadIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
-    private PermissionService permissionService;
+    private AccessService accessService;
 
     @Autowired
-    private AccessStore accessStore;
+    private RegisterStoreReader registerStore;
+
+    @Autowired
+    private GrantStore grantStore;
+
+    @Autowired
+    private MarkerStore markerStore;
 
     @Autowired
     private ManualMarkerAssignmentService markerAssignmentService;
@@ -66,11 +72,15 @@ class PermissionServiceInstanceReadIntegrationTest extends AbstractIntegrationTe
     }
 
     private UUID createMarker() {
-        return accessStore.createMarker("pisr-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId()).id();
+        return markerStore.createMarker("pisr-" + UUID.randomUUID(), "d", "ITEM_TYPE", fixture.productTypeId()).id();
     }
 
     private void grantItemRead(UUID markerId, String principalType, UUID principalId) {
-        accessStore.setItemPermissions(accessStore.ensureMarkerGrant(markerId, principalType, principalId), true, false);
+        grantStore.setItemPermissions(grantStore.ensureMarkerGrant(markerId, principalType, principalId), true, false);
+    }
+
+    private boolean canRead(NtrlocPrincipal user, UUID itemId) {
+        return accessService.getUserGrants(user).mayReadItem(() -> registerStore.getMarkerIdsForItem(itemId));
     }
 
     private NtrlocPrincipal principal(UUID id, String email, Set<UUID> groupIds, boolean isAdmin) {
@@ -82,14 +92,14 @@ class PermissionServiceInstanceReadIntegrationTest extends AbstractIntegrationTe
         UUID itemId = createItem();
         var user = userStore.createUser("User", "pisr-" + UUID.randomUUID() + "@example.com", false);
 
-        assertThat(permissionService.canReadItem(principal(user.id(), user.email(), Set.of(), false), itemId)).isFalse();
+        assertThat(canRead(principal(user.id(), user.email(), Set.of(), false), itemId)).isFalse();
     }
 
     @Test
     void itemWithNoMarker_isReadableForAdmin() {
         UUID itemId = createItem();
 
-        assertThat(permissionService.canReadItem(principal(UUID.randomUUID(), "root", Set.of(), true), itemId)).isTrue();
+        assertThat(canRead(principal(UUID.randomUUID(), "root", Set.of(), true), itemId)).isTrue();
     }
 
     @Test
@@ -103,8 +113,8 @@ class PermissionServiceInstanceReadIntegrationTest extends AbstractIntegrationTe
         var member = userStore.createUser("Member", "pisr-" + UUID.randomUUID() + "@example.com", false);
         var nonMember = userStore.createUser("NonMember", "pisr-" + UUID.randomUUID() + "@example.com", false);
 
-        assertThat(permissionService.canReadItem(principal(member.id(), member.email(), Set.of(group.id()), false), itemId)).isTrue();
-        assertThat(permissionService.canReadItem(principal(nonMember.id(), nonMember.email(), Set.of(), false), itemId)).isFalse();
+        assertThat(canRead(principal(member.id(), member.email(), Set.of(group.id()), false), itemId)).isTrue();
+        assertThat(canRead(principal(nonMember.id(), nonMember.email(), Set.of(), false), itemId)).isFalse();
     }
 
     @Test
@@ -116,8 +126,8 @@ class PermissionServiceInstanceReadIntegrationTest extends AbstractIntegrationTe
         var otherUser = userStore.createUser("Other", "pisr-" + UUID.randomUUID() + "@example.com", false);
         grantItemRead(marker, "USER", grantedUser.id());
 
-        assertThat(permissionService.canReadItem(principal(grantedUser.id(), grantedUser.email(), Set.of(), false), itemId)).isTrue();
-        assertThat(permissionService.canReadItem(principal(otherUser.id(), otherUser.email(), Set.of(), false), itemId)).isFalse();
+        assertThat(canRead(principal(grantedUser.id(), grantedUser.email(), Set.of(), false), itemId)).isTrue();
+        assertThat(canRead(principal(otherUser.id(), otherUser.email(), Set.of(), false), itemId)).isFalse();
     }
 
     @Test
@@ -126,14 +136,14 @@ class PermissionServiceInstanceReadIntegrationTest extends AbstractIntegrationTe
         UUID marker = createMarker();
         markerAssignmentService.addItemMarker(itemId, marker, actor, "test reason");
         var user = userStore.createUser("User", "pisr-" + UUID.randomUUID() + "@example.com", false);
-        UUID grantId = accessStore.ensureMarkerGrant(marker, "USER", user.id());
-        accessStore.setItemPermissions(grantId, true, false);
+        UUID grantId = grantStore.ensureMarkerGrant(marker, "USER", user.id());
+        grantStore.setItemPermissions(grantId, true, false);
         var userPrincipal = principal(user.id(), user.email(), Set.of(), false);
-        assertThat(permissionService.canReadItem(userPrincipal, itemId)).isTrue();
+        assertThat(canRead(userPrincipal, itemId)).isTrue();
 
-        accessStore.deleteMarkerGrant(grantId);
+        grantStore.deleteMarkerGrant(grantId);
 
-        assertThat(permissionService.canReadItem(userPrincipal, itemId)).isFalse();
+        assertThat(canRead(userPrincipal, itemId)).isFalse();
     }
 
     @Test
@@ -144,10 +154,10 @@ class PermissionServiceInstanceReadIntegrationTest extends AbstractIntegrationTe
         var user = userStore.createUser("User", "pisr-" + UUID.randomUUID() + "@example.com", false);
         grantItemRead(marker, "USER", user.id());
         var userPrincipal = principal(user.id(), user.email(), Set.of(), false);
-        assertThat(permissionService.canReadItem(userPrincipal, itemId)).isTrue();
+        assertThat(canRead(userPrincipal, itemId)).isTrue();
 
         markerAssignmentService.removeItemMarker(itemId, marker, actor, "test reason");
 
-        assertThat(permissionService.canReadItem(userPrincipal, itemId)).isFalse();
+        assertThat(canRead(userPrincipal, itemId)).isFalse();
     }
 }

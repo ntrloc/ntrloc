@@ -27,7 +27,19 @@ export class SearchModel {
   #offset = 0
   #limit = DEFAULT_LIMIT
   #totalCount = 0
+  #draftId
   #listeners = new Set()
+
+  constructor(draftId = null) {
+    this.#draftId = draftId
+  }
+
+  // Switching between live and a draft re-runs the last search, if there was one.
+  setDraftId = (draftId) => {
+    if (draftId === this.#draftId) return
+    this.#draftId = draftId
+    if (this.#itemTypeName !== null) void this.#fetch()
+  }
 
   // propertyPaths is an array of dot-paths, or null for "no restriction at all" -- passed straight
   // through to fetchProjection unchanged, matching CollectionProjectionSpec's own "null means all,
@@ -68,7 +80,7 @@ export class SearchModel {
     this.#status = 'loading'
     this.#notify()
     try {
-      const raw = await fetchCollectionProjection({
+      const raw = await fetchCollectionProjection(this.#draftId, {
         itemTypeName: this.#itemTypeName,
         offset: this.#offset,
         limit: this.#limit,

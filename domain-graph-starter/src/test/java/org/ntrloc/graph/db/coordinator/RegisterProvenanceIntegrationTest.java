@@ -2,7 +2,7 @@ package org.ntrloc.graph.db.coordinator;
 
 import org.junit.jupiter.api.Test;
 import org.ntrloc.graph.AbstractIntegrationTest;
-import org.ntrloc.graph.db.partition.authorization.RequestPermissionContext;
+import org.ntrloc.graph.db.partition.authorization.repository.UserGrantsView;
 import org.ntrloc.graph.db.partition.ledger.ItemCreateEntry;
 import org.ntrloc.graph.db.partition.ledger.ItemUpdateEntry;
 import org.ntrloc.graph.db.partition.ledger.LinkCreateEntry;
@@ -67,7 +67,7 @@ class RegisterProvenanceIntegrationTest extends AbstractIntegrationTest {
 
     private ProjectedItem projectProduct(UUID itemId, Map<String, LinkProjectionSpec> requestedLinks) {
         return projectionEngine
-                .projectOne(fixture.productTypeId(), itemId, "", requestedLinks, RequestPermissionContext.forAdmin())
+                .projectOne(fixture.productTypeId(), itemId, "", requestedLinks, UserGrantsView.forAdmin())
                 .orElseThrow();
     }
 

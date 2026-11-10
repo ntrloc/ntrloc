@@ -1,5 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
 import { ItemPaneModel } from './ItemPaneModel'
+import { useDraftMode } from '../../../global/viewmodel/useDraftMode'
 import { useItemTypeModel } from '../../../global/model/ItemTypeModel'
 import { controlledListRawValue, isControlledListValue } from '../../../global/model/ControlledListValue'
 
@@ -14,10 +15,12 @@ export function useItemPaneViewModel(itemTypeName, itemId) {
   const status = useSyncExternalStore(model.subscribe, model.getStatus)
   const item = useSyncExternalStore(model.subscribe, model.getItem)
   const { getEditablePropertyGroups } = useItemTypeModel()
+  const { draft } = useDraftMode()
+  const draftId = draft?.id ?? null
 
   useEffect(() => {
-    void model.load(itemTypeName, itemId)
-  }, [model, itemTypeName, itemId])
+    void model.load(itemTypeName, itemId, draftId)
+  }, [model, itemTypeName, itemId, draftId])
 
   return {
     status,
@@ -27,7 +30,9 @@ export function useItemPaneViewModel(itemTypeName, itemId) {
     // value for) merged with the item's own current values -- what editing needs that read-only
     // display doesn't, see ItemTypeModel.getEditablePropertyGroups' own comment.
     editableGroups: item ? mergeEditableGroups(getEditablePropertyGroups(itemTypeName), item.properties) : [],
-    reload: () => model.load(itemTypeName, itemId),
+    reload: () => model.load(itemTypeName, itemId, draftId),
+    // Items aren't drafted yet, so a draft only reads them.
+    writable: draftId === null,
   }
 }
 

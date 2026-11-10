@@ -24,9 +24,9 @@ function UserOverviewTab({ detail, reload, onUserChanged }) {
   return (
     <user-overview>
       {vm.inDraft && (
-        <p className="user-overview-draft-note">
+        <p className="access-draft-note">
           You're in a draft: a user's details, password and tokens are edited live, so they're read-only
-          here. Group memberships and grants can be drafted.
+          here.
         </p>
       )}
 
@@ -62,7 +62,8 @@ function UserOverviewTab({ detail, reload, onUserChanged }) {
       {vm.error && <p className="user-dialog-message user-dialog-error">{vm.error}</p>}
 
       <user-overview-sign-in>
-        {user.signIn === 'local' ? (
+        {/* signIn is null until the API says how a user signs in; a reset then applies to a local password. */}
+        {user.signIn === 'local' || user.signIn == null ? (
           vm.identityEditable && (
             <Button variant="ghost-secondary" icon="key" onClick={() => vm.setResettingPassword(true)}>
               Reset password

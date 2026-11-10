@@ -11,11 +11,11 @@ export class ItemPaneModel {
   #item = null
   #listeners = new Set()
 
-  load = async (itemTypeName, itemId) => {
+  load = async (itemTypeName, itemId, draftId) => {
     this.#status = 'loading'
     this.#notify()
     try {
-      const item = await fetchItemProjection({
+      const item = await fetchItemProjection(draftId, {
         itemTypeName,
         itemId,
         includePermissions: true,

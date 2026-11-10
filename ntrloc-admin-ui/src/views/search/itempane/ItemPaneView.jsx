@@ -12,7 +12,7 @@ import { useItemPaneViewModel, buildDraft, buildPropertyDiff } from './ItemPaneV
 import './ItemPaneView.css'
 
 function ItemPaneView({ itemTypeName, itemId, onClose, onItemDeleted, maximized, onToggleMaximize }) {
-  const { status, item, groupedProperties, editableGroups, reload } = useItemPaneViewModel(itemTypeName, itemId)
+  const { status, item, groupedProperties, editableGroups, reload, writable } = useItemPaneViewModel(itemTypeName, itemId)
   // "Photo: IMG_0988.JPG" -- the item type used to be shown as its own line in the content area;
   // folding it into the header leaves the content area free for just the tabs (see
   // ItemPaneContent) and matches how SearchResultItemView already pairs type + label.
@@ -30,13 +30,14 @@ function ItemPaneView({ itemTypeName, itemId, onClose, onItemDeleted, maximized,
           editableGroups={editableGroups}
           onItemDeleted={onItemDeleted}
           onSaved={reload}
+          writable={writable}
         />
       )}
     </PaneView>
   )
 }
 
-function ItemPaneContent({ item, groupedProperties, editableGroups, onItemDeleted, onSaved }) {
+function ItemPaneContent({ item, groupedProperties, editableGroups, onItemDeleted, onSaved, writable }) {
   const { getHasStateMachines, getHasTrait } = useItemTypeModel()
   // File is the trait's own fixed namespace/group name, "content" the fixed BINARY property name
   // within it (see ControlledListManager-adjacent schema: every File-trait item type shares this
@@ -136,7 +137,7 @@ function ItemPaneContent({ item, groupedProperties, editableGroups, onItemDelete
           not edit -- doesn't pull the remaining button to the wrong side. */}
       <item-pane-actions>
         <div className="item-pane-actions-left">
-          {!editing && item.permissions?.edit && (
+          {writable && !editing && item.permissions?.edit && (
             <button type="button" className="item-pane-action-btn" title="Edit" onClick={handleEditClick}>
               <span aria-hidden="true">✎</span> Edit
             </button>
@@ -153,7 +154,7 @@ function ItemPaneContent({ item, groupedProperties, editableGroups, onItemDelete
           )}
         </div>
         <div className="item-pane-actions-right">
-          {item.permissions?.delete && (
+          {writable && item.permissions?.delete && (
             <button
               type="button"
               className="item-pane-action-btn item-pane-action-delete"
