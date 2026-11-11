@@ -54,13 +54,7 @@ public class TimerJobDataManagerImpl extends AbstractJobDataManager<TimerJobEnti
 
     @Override
     public List<TimerJobEntity> findJobsToExecute(List<String> enabledCategories, Page page) {
-        return jdbcClient().sql("""
-                SELECT id, revision, category, job_type, job_handler_type, job_handler_configuration,
-                       lock_owner, lock_expiration_time, is_exclusive, execution_id, process_instance_id,
-                       process_definition_id, element_id, element_name, scope_id, sub_scope_id, scope_type,
-                       scope_definition_id, correlation_id, retries, exception_message, due_date,
-                       repeat_cycle, end_date, max_iterations, create_time
-                FROM process_job
+        return jdbcClient().sql(SELECT_COLUMNS + """
                 WHERE job_kind = :kind AND lock_expiration_time IS NULL AND due_date <= :now
                 ORDER BY id LIMIT :limit OFFSET :offset
                 """)
@@ -74,13 +68,7 @@ public class TimerJobDataManagerImpl extends AbstractJobDataManager<TimerJobEnti
 
     @Override
     public List<TimerJobEntity> findExpiredJobs(List<String> enabledCategories, Page page) {
-        return jdbcClient().sql("""
-                SELECT id, revision, category, job_type, job_handler_type, job_handler_configuration,
-                       lock_owner, lock_expiration_time, is_exclusive, execution_id, process_instance_id,
-                       process_definition_id, element_id, element_name, scope_id, sub_scope_id, scope_type,
-                       scope_definition_id, correlation_id, retries, exception_message, due_date,
-                       repeat_cycle, end_date, max_iterations, create_time
-                FROM process_job
+        return jdbcClient().sql(SELECT_COLUMNS + """
                 WHERE job_kind = :kind AND lock_expiration_time IS NOT NULL AND lock_expiration_time < :now
                 ORDER BY id LIMIT :limit OFFSET :offset
                 """)

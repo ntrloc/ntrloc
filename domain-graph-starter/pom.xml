@@ -121,6 +121,26 @@
             <artifactId>bcpkix-jdk18on</artifactId>
             <version>1.84</version>
         </dependency>
+        <!-- OpenSAML brings HttpClient 5.3, but Spring Boot 4.1's HTTP client support needs 5.4+
+             (TlsSocketStrategy) once HttpClient is on the classpath. Declared here, at the root pom's
+             managed versions, so projects outside this build that use the starter get them too:
+             Maven 3 doesn't apply the root pom's dependencyManagement to OpenSAML's own dependencies
+             there, and a declaration this near wins over OpenSAML's. -->
+        <dependency>
+            <groupId>org.apache.httpcomponents.client5</groupId>
+            <artifactId>httpclient5</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.httpcomponents.core5</groupId>
+            <artifactId>httpcore5</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.httpcomponents.core5</groupId>
+            <artifactId>httpcore5-h2</artifactId>
+            <scope>runtime</scope>
+        </dependency>
 
         <!-- SpEL evaluation of item-type display-label patterns (RegisterPartitionManager). Both
              were already transitively resolved at this exact version via

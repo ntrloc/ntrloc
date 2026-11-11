@@ -1,6 +1,8 @@
 package org.ntrloc.graph.db.partition.process.persistence;
 
 import org.flowable.common.engine.api.FlowableOptimisticLockingException;
+import org.flowable.common.engine.impl.context.Context;
+import org.flowable.common.engine.impl.persistence.entity.ByteArrayRef;
 import org.flowable.job.service.impl.persistence.entity.AbstractRuntimeJobEntity;
 
 import java.sql.ResultSet;
@@ -31,14 +33,17 @@ abstract class AbstractJobDataManager<T extends AbstractRuntimeJobEntity> extend
     private static final String PARAM_CORRELATION_ID = "correlationId";
     private static final String COL_RETRIES = "retries";
 
-    private static final String SELECT = """
+    // Every job query's columns, shared with the subclasses' own finders so the list can't drift.
+    protected static final String SELECT_COLUMNS = """
             SELECT id, revision, category, job_type, job_handler_type, job_handler_configuration,
                    lock_owner, lock_expiration_time, is_exclusive, execution_id, process_instance_id,
                    process_definition_id, element_id, element_name, scope_id, sub_scope_id, scope_type,
-                   scope_definition_id, correlation_id, retries, exception_message, due_date,
-                   repeat_cycle, end_date, max_iterations, create_time
-            FROM process_job WHERE job_kind = :kind
+                   scope_definition_id, correlation_id, retries, exception_message, exception_stack_id,
+                   custom_values_id, due_date, repeat_cycle, end_date, max_iterations, create_time
+            FROM process_job
             """;
+
+    private static final String SELECT = SELECT_COLUMNS + " WHERE job_kind = :kind";
 
     protected abstract String jobKind();
 
@@ -99,14 +104,14 @@ abstract class AbstractJobDataManager<T extends AbstractRuntimeJobEntity> extend
                     (id, revision, job_kind, category, job_type, job_handler_type, job_handler_configuration,
                      lock_owner, lock_expiration_time, is_exclusive, execution_id, process_instance_id,
                      process_definition_id, element_id, element_name, scope_id, sub_scope_id, scope_type,
-                     scope_definition_id, correlation_id, retries, exception_message, due_date, repeat_cycle,
-                     end_date, max_iterations, create_time)
+                     scope_definition_id, correlation_id, retries, exception_message, exception_stack_id, custom_values_id,
+                     due_date, repeat_cycle, end_date, max_iterations, create_time)
                 VALUES
                     (:id, :revision, :jobKind, :category, :jobType, :jobHandlerType, :jobHandlerConfiguration,
                      :lockOwner, :lockExpirationTime, :isExclusive, :executionId, :processInstanceId,
                      :processDefinitionId, :elementId, :elementName, :scopeId, :subScopeId, :scopeType,
-                     :scopeDefinitionId, :correlationId, :retries, :exceptionMessage, :dueDate, :repeatCycle,
-                     :endDate, :maxIterations, :createTime)
+                     :scopeDefinitionId, :correlationId, :retries, :exceptionMessage, :exceptionStackId, :customValuesId,
+                     :dueDate, :repeatCycle, :endDate, :maxIterations, :createTime)
                 ON CONFLICT (id) DO UPDATE SET
                     revision = EXCLUDED.revision, job_kind = EXCLUDED.job_kind, category = EXCLUDED.category,
                     job_type = EXCLUDED.job_type, job_handler_type = EXCLUDED.job_handler_type,
@@ -119,6 +124,7 @@ abstract class AbstractJobDataManager<T extends AbstractRuntimeJobEntity> extend
                     sub_scope_id = EXCLUDED.sub_scope_id, scope_type = EXCLUDED.scope_type,
                     scope_definition_id = EXCLUDED.scope_definition_id, correlation_id = EXCLUDED.correlation_id,
                     retries = EXCLUDED.retries, exception_message = EXCLUDED.exception_message,
+                    exception_stack_id = EXCLUDED.exception_stack_id, custom_values_id = EXCLUDED.custom_values_id,
                     due_date = EXCLUDED.due_date, repeat_cycle = EXCLUDED.repeat_cycle,
                     end_date = EXCLUDED.end_date, max_iterations = EXCLUDED.max_iterations,
                     create_time = EXCLUDED.create_time
@@ -145,6 +151,8 @@ abstract class AbstractJobDataManager<T extends AbstractRuntimeJobEntity> extend
                 .param(PARAM_CORRELATION_ID, entity.getCorrelationId())
                 .param(COL_RETRIES, entity.getRetries())
                 .param("exceptionMessage", entity.getExceptionMessage())
+                .param("exceptionStackId", refId(entity.getExceptionByteArrayRef()))
+                .param("customValuesId", refId(entity.getCustomValuesByteArrayRef()))
                 .param("dueDate", toTimestamp(entity.getDuedate()))
                 .param("repeatCycle", entity.getRepeat())
                 .param("endDate", toTimestamp(entity.getEndDate()))
@@ -166,6 +174,7 @@ abstract class AbstractJobDataManager<T extends AbstractRuntimeJobEntity> extend
                     element_name = :elementName, scope_id = :scopeId, sub_scope_id = :subScopeId,
                     scope_type = :scopeType, scope_definition_id = :scopeDefinitionId,
                     correlation_id = :correlationId, retries = :retries, exception_message = :exceptionMessage,
+                    exception_stack_id = :exceptionStackId, custom_values_id = :customValuesId,
                     due_date = :dueDate, repeat_cycle = :repeatCycle, end_date = :endDate,
                     max_iterations = :maxIterations, create_time = :createTime, revision = revision + 1
                 WHERE id = :id AND revision = :revision
@@ -191,6 +200,8 @@ abstract class AbstractJobDataManager<T extends AbstractRuntimeJobEntity> extend
                 .param(PARAM_CORRELATION_ID, entity.getCorrelationId())
                 .param(COL_RETRIES, entity.getRetries())
                 .param("exceptionMessage", entity.getExceptionMessage())
+                .param("exceptionStackId", refId(entity.getExceptionByteArrayRef()))
+                .param("customValuesId", refId(entity.getCustomValuesByteArrayRef()))
                 .param("dueDate", toTimestamp(entity.getDuedate()))
                 .param("repeatCycle", entity.getRepeat())
                 .param("endDate", toTimestamp(entity.getEndDate()))
@@ -287,12 +298,24 @@ abstract class AbstractJobDataManager<T extends AbstractRuntimeJobEntity> extend
         entity.setCorrelationId(rs.getString("correlation_id"));
         entity.setRetries(rs.getInt(COL_RETRIES));
         entity.setExceptionMessage(rs.getString("exception_message"));
+        entity.setExceptionByteArrayRef(ref(rs.getString("exception_stack_id")));
+        entity.setCustomValuesByteArrayRef(ref(rs.getString("custom_values_id")));
         entity.setDuedate(fromTimestamp(rs.getTimestamp("due_date")));
         entity.setRepeat(rs.getString("repeat_cycle"));
         entity.setEndDate(fromTimestamp(rs.getTimestamp("end_date")));
         entity.setMaxIterations(rs.getInt("max_iterations"));
         entity.setCreateTime(fromTimestamp(rs.getTimestamp("create_time")));
         return entity;
+    }
+
+    // A job's stack trace and custom values live in process_bytearray (ByteArrayDataManagerImpl); the
+    // job row keeps only their ids, as Flowable's own tables do.
+    private static String refId(ByteArrayRef ref) {
+        return ref == null ? null : ref.getId();
+    }
+
+    private static ByteArrayRef ref(String id) {
+        return id == null ? null : new ByteArrayRef(id, Context.getCommandContext().getCommandExecutor());
     }
 
     static Timestamp toTimestamp(Date date) {

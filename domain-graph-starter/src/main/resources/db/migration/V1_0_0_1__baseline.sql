@@ -736,6 +736,8 @@ CREATE TABLE process_job (
     correlation_id              VARCHAR(255),
     retries                    INT NOT NULL DEFAULT 0,
     exception_message           TEXT,
+    exception_stack_id          VARCHAR(64),
+    custom_values_id            VARCHAR(64),
     due_date                    TIMESTAMPTZ,
     repeat_cycle                VARCHAR(255),
     end_date                    TIMESTAMPTZ,
@@ -784,6 +786,15 @@ CREATE TABLE process_activity_instance (
 );
 CREATE INDEX process_activity_inst_proc_inst_idx ON process_activity_instance (process_instance_id);
 CREATE INDEX process_activity_inst_exec_act_idx ON process_activity_instance (execution_id, activity_id);
+
+-- Flowable's byte arrays (ACT_GE_BYTEARRAY): e.g. a failed job's stack trace (process_job.exception_stack_id).
+CREATE TABLE process_bytearray (
+    id            VARCHAR(64) PRIMARY KEY,
+    revision      INT NOT NULL DEFAULT 1,
+    name          VARCHAR(255),
+    deployment_id VARCHAR(64),
+    bytes         BYTEA
+);
 
 CREATE TABLE process_property (
     name     VARCHAR(255) PRIMARY KEY,

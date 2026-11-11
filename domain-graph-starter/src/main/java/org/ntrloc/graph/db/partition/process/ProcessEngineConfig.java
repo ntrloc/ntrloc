@@ -8,6 +8,7 @@ import org.flowable.engine.RepositoryService;
 import org.flowable.engine.RuntimeService;
 import org.flowable.engine.TaskService;
 import org.ntrloc.graph.db.partition.process.persistence.ActivityInstanceDataManagerImpl;
+import org.ntrloc.graph.db.partition.process.persistence.ByteArrayDataManagerImpl;
 import org.ntrloc.graph.db.partition.process.persistence.DeploymentDataManagerImpl;
 import org.ntrloc.graph.db.partition.process.persistence.EventSubscriptionServiceConfigurator;
 import org.ntrloc.graph.db.partition.process.persistence.ExecutionDataManagerImpl;
@@ -85,6 +86,9 @@ public class ProcessEngineConfig {
         // unconditionally during every buildEngine() call -- a third, independent path to
         // ACT_GE_PROPERTY beyond schema management and the id generator above.
         config.setPropertyDataManager(new PropertyDataManagerImpl());
+        // Flowable's byte arrays (a failed job's stack trace, among others): without this they went to
+        // ACT_GE_BYTEARRAY, which doesn't exist, so a failing async job couldn't record its failure.
+        config.setByteArrayDataManager(new ByteArrayDataManagerImpl());
         config.setApplicationContext(applicationContext);
         // Pre-set before buildEngine() runs so Spring's default "if beans == null" guard never
         // fires -- otherwise every bean in the ApplicationContext is exposed, unrestricted, to

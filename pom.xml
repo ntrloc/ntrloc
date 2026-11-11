@@ -118,9 +118,8 @@
 
     <dependencyManagement>
         <dependencies>
-            <!-- OpenSAML brings HttpClient 5.3, but Spring Boot 4.1's HTTP client support needs the
-                 version it's built against (5.4+: TlsSocketStrategy) once HttpClient is on the
-                 classpath at all. 5.x is backward compatible, so OpenSAML runs on these too. -->
+            <!-- HttpClient for Spring Boot 4.1 (5.4+) over OpenSAML's 5.3; 5.x is backward compatible.
+                 domain-graph-starter declares these directly, so its consumers get them too. -->
             <dependency>
                 <groupId>org.apache.httpcomponents.client5</groupId>
                 <artifactId>httpclient5</artifactId>
