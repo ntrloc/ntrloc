@@ -7,3 +7,11 @@
   background: var(--secondary);
   vertical-align: middle;
 }
+
+.modified-dot[data-kind='reconcile'] {
+  background: var(--danger);
+}
+
+.modified-dot[data-kind='notice'] {
+  background: var(--primary);
+}

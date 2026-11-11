@@ -4,6 +4,8 @@ import org.ntrloc.graph.db.partition.authorization.repository.GrantStoreReader;
 import jakarta.annotation.PostConstruct;
 import org.ntrloc.graph.db.partition.schema.event.SchemaChangeEvent;
 import org.ntrloc.graph.db.partition.security.repository.UserStore;
+import org.ntrloc.graph.db.partition.changelog.ChangeLog;
+import org.ntrloc.graph.db.partition.security.UserService;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.boot.sql.init.dependency.DependsOnDatabaseInitialization;
 import org.springframework.context.event.EventListener;
@@ -26,12 +28,14 @@ public class DefaultUserGroupInitializer {
     public static final String DEFAULT_GROUP_NAME = "everyone";
 
     private final UserStore userStore;
+    private final UserService userService;
     private final AccessService accessService;
     private final JdbcClient jdbcClient;
 
-    public DefaultUserGroupInitializer(UserStore userStore, AccessService accessService,
+    public DefaultUserGroupInitializer(UserStore userStore, UserService userService, AccessService accessService,
                                     JdbcClient jdbcClient) {
         this.userStore = userStore;
+        this.userService = userService;
         this.accessService = accessService;
         this.jdbcClient = jdbcClient;
     }
@@ -39,15 +43,17 @@ public class DefaultUserGroupInitializer {
     @PostConstruct
     void ensureUserGroupExists() {
         if (userStore.findUserGroupByName(DEFAULT_GROUP_NAME).isEmpty()) {
-            userStore.createUserGroup(DEFAULT_GROUP_NAME);
+            ChangeLog.withSource("startup", () -> userService.createRootUserGroup(DEFAULT_GROUP_NAME));
         }
     }
 
     @EventListener(ApplicationReadyEvent.class)
     void populateAfterStartup() {
         var group = userStore.findUserGroupByName(DEFAULT_GROUP_NAME).orElseThrow();
-        addAllExistingUsersToUserGroup(group.id());
-        grantReadForUncoveredItemTypes(group.id());
+        ChangeLog.withSource("startup", () -> {
+            userService.addEveryUser(group.id());
+            grantReadForUncoveredItemTypes(group.id());
+        });
     }
 
     @EventListener
@@ -75,17 +81,7 @@ public class DefaultUserGroupInitializer {
     // (Spring fully initializes a bean, @PostConstruct included, before handing it to a dependent
     // bean's constructor), so getDefaultUserGroupId() below never races the group's own creation.
     public void addUserToDefaultUserGroup(UUID userId) {
-        userStore.addUserToUserGroup(userId, getDefaultUserGroupId());
-    }
-
-    private void addAllExistingUsersToUserGroup(UUID groupId) {
-        jdbcClient.sql("""
-                INSERT INTO security_user_group_member (user_id, group_id)
-                SELECT id, :groupId FROM security_user
-                WHERE id NOT IN (SELECT user_id FROM security_user_group_member WHERE group_id = :groupId)
-                """)
-                .param("groupId", groupId)
-                .update();
+        userService.addMember(userId, getDefaultUserGroupId());
     }
 
     // "Uncovered" means no default-visibility decision has ever been made for this type -- not

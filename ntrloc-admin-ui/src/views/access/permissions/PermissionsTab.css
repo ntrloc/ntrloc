@@ -206,3 +206,11 @@ permissions-area h4 {
   border-radius: 50%;
   background: var(--secondary);
 }
+
+.permission-pill[data-modified='reconcile']::after {
+  background: var(--danger);
+}
+
+.permission-pill[data-modified='notice']::after {
+  background: var(--primary);
+}

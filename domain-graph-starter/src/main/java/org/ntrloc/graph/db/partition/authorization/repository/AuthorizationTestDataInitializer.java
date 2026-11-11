@@ -5,6 +5,8 @@ import org.ntrloc.graph.db.partition.authorization.DefaultUserGroupInitializer;
 import org.ntrloc.graph.db.partition.schema.SchemaService;
 import org.ntrloc.graph.db.partition.schema.definition.mutation.CreateItemDefinitionMutation;
 import org.ntrloc.graph.db.partition.security.repository.UserStore;
+import org.ntrloc.graph.db.partition.changelog.ChangeLog;
+import org.ntrloc.graph.db.partition.security.UserService;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -25,14 +27,16 @@ public class AuthorizationTestDataInitializer implements ApplicationRunner {
 
     private final SchemaService schemaService;
     private final UserStore userStore;
+    private final UserService userService;
     private final AccessService accessService;
     private final DefaultUserGroupInitializer defaultUserGroupInitializer;
 
-    public AuthorizationTestDataInitializer(SchemaService schemaService, UserStore userStore,
+    public AuthorizationTestDataInitializer(SchemaService schemaService, UserStore userStore, UserService userService,
                                              AccessService accessService,
                                              DefaultUserGroupInitializer defaultUserGroupInitializer) {
         this.schemaService = schemaService;
         this.userStore = userStore;
+        this.userService = userService;
         this.accessService = accessService;
         this.defaultUserGroupInitializer = defaultUserGroupInitializer;
     }
@@ -43,6 +47,10 @@ public class AuthorizationTestDataInitializer implements ApplicationRunner {
     // guarantees this runs after the whole context -- including that listener -- is ready.
     @Override
     public void run(ApplicationArguments args) {
+        ChangeLog.withSource("test data", this::createTestData);
+    }
+
+    private void createTestData() {
         // Test item types are created through the real mutation pipeline (not raw DDL) so
         // SchemaService's cache stays consistent — it has no external invalidation hook
         // besides applyMutations. AclTestUnmarkedDoc deliberately gets no marker assignment at
@@ -69,18 +77,18 @@ public class AuthorizationTestDataInitializer implements ApplicationRunner {
         revokeDefaultReadGrant(confidentialDocId);
         revokeDefaultReadGrant(unmarkedDocId);
 
-        var alice = userStore.createUser("Alice (viewer group member)", "alice@example.com", false);
-        var bob = userStore.createUser("Bob (viewer group member)", "bob@example.com", false);
-        var carol = userStore.createUser("Carol (direct grant, no group)", "carol@example.com", false);
-        var root = userStore.createUser("Root (admin)", "root@example.com", true);
+        var alice = userService.createUser("Alice (viewer group member)", "alice@example.com", false);
+        var bob = userService.createUser("Bob (viewer group member)", "bob@example.com", false);
+        var carol = userService.createUser("Carol (direct grant, no group)", "carol@example.com", false);
+        var root = userService.createUser("Root (admin)", "root@example.com", true);
         defaultUserGroupInitializer.addUserToDefaultUserGroup(alice.id());
         defaultUserGroupInitializer.addUserToDefaultUserGroup(bob.id());
         defaultUserGroupInitializer.addUserToDefaultUserGroup(carol.id());
         defaultUserGroupInitializer.addUserToDefaultUserGroup(root.id());
 
-        var viewers = userStore.createUserGroup("viewers");
-        userStore.addUserToUserGroup(alice.id(), viewers.id());
-        userStore.addUserToUserGroup(bob.id(), viewers.id());
+        var viewers = userService.createUserGroup("viewers", userStore.findUserGroupByName(DefaultUserGroupInitializer.DEFAULT_GROUP_NAME).orElseThrow().id());
+        userService.addMember(alice.id(), viewers.id());
+        userService.addMember(bob.id(), viewers.id());
 
         accessService.grantItemType(publicDocId, "USER_GROUP", viewers.id(), GrantStoreReader.ITEM_TYPE_READ);
         accessService.grantItemType(confidentialDocId, "USER", carol.id(), GrantStoreReader.ITEM_TYPE_READ);

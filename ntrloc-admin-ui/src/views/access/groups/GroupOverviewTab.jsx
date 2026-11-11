@@ -5,14 +5,18 @@ import IconButton from '../../../controls/icon-button/IconButton'
 import Input from '../../../controls/input/Input'
 import OptionList from '../../../controls/option-list/OptionList'
 import PopoverButton from '../../../controls/popover-button/PopoverButton'
+import { useState } from 'react'
+import AddGroupDialog from './AddGroupDialog'
 import { useGroupOverviewViewModel } from './GroupOverviewViewModel'
 import '../AccessPanels.css'
 import './GroupOverviewTab.css'
 
 // A group's name and the group it sits under (left), and its direct members (right). 'everyone' is
-// fixed: it can't be renamed or moved, and every user is in it.
+// fixed: it can't be renamed or moved, and every user is in it. Add group makes a new group under this
+// one (live only, like every group edit).
 function GroupOverviewTab(props) {
   const vm = useGroupOverviewViewModel(props)
+  const [adding, setAdding] = useState(false)
 
   return (
     <group-overview>
@@ -36,9 +40,9 @@ function GroupOverviewTab(props) {
             )}
           </PopoverButton>
         )}
-        {vm.canEdit && (
+        {!vm.inDraft && (
           <group-overview-actions>
-            {vm.editing ? (
+            {vm.editing && (
               <>
                 <Button variant="ghost-secondary" onClick={vm.cancelEdit}>
                   Cancel
@@ -47,12 +51,21 @@ function GroupOverviewTab(props) {
                   Save
                 </Button>
               </>
-            ) : (
+            )}
+            {!vm.editing && vm.canEdit && (
               <Button variant="ghost-secondary" icon="edit" onClick={vm.startEdit}>
                 Edit
               </Button>
             )}
+            {!vm.editing && (
+              <Button variant="ghost-secondary" icon="plus" onClick={() => setAdding(true)}>
+                Add group
+              </Button>
+            )}
           </group-overview-actions>
+        )}
+        {adding && (
+          <AddGroupDialog parent={props.detail.group} onCancel={() => setAdding(false)} onCreated={props.onCreated} />
         )}
         {vm.nameError && <p className="group-overview-message">{vm.nameError}</p>}
         {vm.error && <p className="group-overview-message group-overview-error">{vm.error}</p>}

@@ -18,6 +18,14 @@ user-detail-header {
   margin: 10px;
 }
 
+/* Pushed to the right end of the header, centred on the heading rather than its baseline. */
+user-detail-actions {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+  align-self: center;
+}
+
 user-detail-header h2 {
   margin: 0;
 }

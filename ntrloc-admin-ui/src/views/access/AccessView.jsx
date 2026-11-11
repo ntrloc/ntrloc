@@ -28,6 +28,7 @@ function AccessView() {
     selectUser,
     selectedGroupId,
     selectGroup,
+    focusTab,
   } = useAccessViewModel()
   const changes = useGrantChanges()
 
@@ -40,7 +41,7 @@ function AccessView() {
       key: 'users',
       label: 'Users',
       padding: 0,
-      modified: changes.kindChanged('user'),
+      mark: changes.kindMark('user'),
       view: (
         <access-view-split>
           <access-view-nav>
@@ -50,7 +51,7 @@ function AccessView() {
                 id: u.id,
                 label: u.displayName,
                 admin: u.isAdmin,
-                modified: changes.principalChanged({ kind: 'user', id: u.id }),
+                mark: changes.principalMark({ kind: 'user', id: u.id }),
               }))}
               selectedId={selectedUserId}
               onSelect={selectUser}
@@ -58,7 +59,14 @@ function AccessView() {
           </access-view-nav>
           <access-view-content>
             {selectedUserId ? (
-              <UserDetailView key={selectedUserId} userId={selectedUserId} allGroups={groups} onUserChanged={reloadUsers} />
+              <UserDetailView
+                key={`${selectedUserId}-${focusTab ?? ''}`}
+                userId={selectedUserId}
+                allGroups={groups}
+                users={users}
+                onUserChanged={reloadUsers}
+                initialTab={focusTab}
+              />
             ) : (
               placeholder('Select a user.')
             )}
@@ -70,13 +78,12 @@ function AccessView() {
       key: 'groups',
       label: 'Groups',
       padding: 0,
-      modified: changes.kindChanged('group'),
+      mark: changes.kindMark('group'),
       view: (
         <access-view-split>
           <access-view-nav>
             <AccessList
-              addLabel="Add group"
-              items={groupItems(groups).map((g) => ({ ...g, modified: changes.principalChanged({ kind: 'group', id: g.id }) }))}
+              items={groupItems(groups).map((g) => ({ ...g, mark: changes.principalMark({ kind: 'group', id: g.id }) }))}
               selectedId={selectedGroupId}
               onSelect={selectGroup}
             />
@@ -84,11 +91,19 @@ function AccessView() {
           <access-view-content>
             {selectedGroupId ? (
               <GroupDetailView
-                key={selectedGroupId}
+                key={`${selectedGroupId}-${focusTab ?? ''}`}
                 groupId={selectedGroupId}
                 allGroups={groups}
                 users={users}
                 onGroupsChanged={reloadGroups}
+                onDeleted={() => {
+                  selectGroup(null)
+                  void reloadGroups()
+                }}
+                initialTab={focusTab}
+                onCreated={(newGroupId) => {
+                  void reloadGroups().then(() => selectGroup(newGroupId))
+                }}
               />
             ) : (
               placeholder('Select a group.')

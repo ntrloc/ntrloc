@@ -265,7 +265,8 @@ on the read path.
    revisit what else should count as a conflict.
 4. **Dependents:** only permissions (what projections show and what actions are allowed in that draft);
    no stored data depends on grants. An override whose target live has since deleted is ignored on read
-   and dropped on apply.
+   and dropped on apply. (Changed in Phase 1R: it's now a reconciliation item, and apply waits for it;
+   §13.4.)
 
 **Physical:** one table, `draft_grant_override`, keyed by draft and the permission descriptor the Access
 UI already uses (principal; kind; item type, marker, area, target; op), plus `value` and `base_value`.
@@ -752,3 +753,244 @@ confirmed, changed or raised:
     with links for an admin, 4.43 → 5.00 ms (+12.9%), matching a marker lookup step 1.6a added for admins
     on single-item reads. Removed afterwards: the view's marker-scoped rules take the lookup and make it
     only for a non-admin.
+
+---
+
+## 13. Keeping a draft in step with live (2026-11-11)
+
+The design conversation planned for right after Phase 1 (`ntrloc-drafts-plan.md`). It starts from §6:
+drafts are opt-in, live keeps changing while a draft is open, and rebasing is normal.
+
+### 13.1 Draft work never touches live
+
+**Agreed:** no work for a draft may interfere with live, and that has to be guaranteed mechanically,
+not by care. The example that sets the rule: if live pushed its changes into drafts synchronously and
+that sync code had a bug, the bug would stop live from being changed.
+
+- **Agreed: live never pushes to a draft.** Live never notifies a draft, never waits on one, and never
+  asks whether one exists (§6, §9.3). A draft learns what live did only by comparing itself with live
+  (§13.3), as draft work.
+- **Already true (Phase 1).** ArchUnit keeps `Draft*` classes off the live path. A draft's `GrantsView`
+  is cached against the identity of the live view it was built from, so a live change rebuilds it on
+  the draft's next read, and live does nothing for that (§12 point 4).
+- **Draft work stays within its own bounds**, so a bug can only hurt drafts:
+  - **Built (plan R.1):** draft code never listens to live. ArchUnit forbids, in the draft package,
+    event-listener methods (`@EventListener` and its variants), `ApplicationListener` and Flowable event
+    listeners, and any use of `ClusterService` or Hazelcast except through `DraftTopics`, which names
+    every topic it hands out under `draft.`;
+  - **proposed:** a bounded executor for any background draft work;
+  - a cap on cached draft views per node.
+- **Agreed: no separate connection pool or database role for drafts.** Draft stores share live's pool.
+- **Proposed: apply is the one sanctioned crossing, and it's a live write.** It goes through the live
+  services, like a direct admin change, and closes the draft in the same transaction (as Phase 1 does).
+
+### 13.2 Live stays consistent on its own; a draft is consistent only with live
+
+**Agreed.** Live enforces its own consistency on every write: foreign keys with cascades (deleting a
+marker deletes its grants), and checks in code where a key can't reach (`GrantsApi.requireValid`). Live
+never takes drafts into account.
+
+A draft refers to live things, and live can change or delete them, so a draft is consistent only together
+with live as it is now. The schema evolution notes already allow this: the live schema is never
+inconsistent, a draft may be (their §2.1, §5.4). Working out whether live plus the draft is consistent is
+the draft's job.
+
+**Built (plan R.2), closing gaps where live wasn't:** deleting a user or group now deletes their grants
+(grant tables refer to principals by a bare UUID, so nothing cascaded); deleting a group with subgroups is
+refused unless forced, which deletes them too; and when a schema delete cascades grants away, every
+node's grant view reloads.
+
+### 13.3 The draft floats on live, but never silently
+
+**Agreed.** A draft always shows live as it is now plus its own changes. Pinning a draft to live as it was
+when it started would show testers something Apply would no longer produce, and would cost far more,
+especially for schema.
+
+Floating silently confuses people, though. **Example (possible today):** a draft grants Create to group
+G. Another admin moves G under a new parent P in live. In the draft, G's members now also get everything P
+grants. The testers see different results, and nothing in the draft says why. The draft never touched G's
+parent, so comparing only what the draft *changed* finds nothing. What moved is something the draft's
+change *depends on*.
+
+So, **proposed:**
+
+- **Revisions beyond schema.** Every kind of live element a draft can change or depend on has a revision
+  that live bumps in its own write: groups, group parent links, memberships, grants, markers, pipelines,
+  state machines, processes. A revision just says "this changed". It's ordinary versioning, and live
+  never consults drafts to keep it. **Versions** stay where something must remain pinned to an older
+  definition: schema (a narrowing, which items' conformance depends on), and possibly processes, which
+  Flowable already versions. The schema's `<version>.<revision>` (schema evolution notes §5.1) becomes
+  one case of this.
+- **Each draft change records what it depends on**, as the live revisions it was based on. For a grant to
+  group G: G itself, its parent links, its ancestors' grants, its memberships, and the grant's target.
+  Databases catch conflicts this way: they track what a transaction read, not only what it wrote.
+  **Agreed: per element**, not per family, so reconciliation shows exactly what moved and flags nothing
+  else. A relationship that's a set (a group's parents, a group's members, a user's groups) is versioned on
+  the element that owns the set, so an addition is noticed as well as a removal.
+- **Agreed: a group has at most one parent**, so groups form a tree. (Today the link table allows several
+  and the legacy `addGroupToGroup` API can add a second; both are to be closed.)
+- **Agreed: a relationship change bumps every element on either side of it.** Moving G from parent A to
+  parent P bumps G (its parent), A (lost a child) and P (gained one). Nothing further up needs bumping: a
+  draft change records the revisions of every group along the paths it depends on (a grant to G: G and its
+  ancestors; a grant to X: X and its subtree), so it already includes A or P.
+- **The draft compares, never live.** On read, on apply, or in a background job on the draft's own
+  executor, the draft compares each change's recorded revisions with live's. A difference marks that
+  change as needing reconciliation (§13.4).
+- **Built (plan R.3, 2026-11-11): what a grant change depends on**, recorded as each override is written or
+  reconciled (`GrantDependencies`):
+  - the principal's revision (a group's covers its members, parent, subgroups and name; a user's, their
+    groups, details and admin flag);
+  - the *path*: the groups the effect also runs through, compared as a list. For a group, its ancestors,
+    nearest first; for a user, their effective groups. Not the ancestors' revisions: those move whenever
+    anything happens to the group, and the root's moves with every new group, which flagged every change.
+    What matters about an ancestor is that it's still there, in the same place;
+  - whether live gives the same permission through that path (`inherited`).
+
+  **Known gaps:** a member joining one of G's *subgroups* in live isn't flagged, though they now get G's
+  grant; and renaming G flags it, though a name doesn't change what a grant gives.
+- **Who changed it is optional.** "G was moved under P" comes from comparing. "…by Admin X at 10:42"
+  needs a history of live configuration changes. Schema plans one (its ledger); groups and grants have
+  none yet.
+
+### 13.4 Draft reconciliation
+
+**Agreed:** reconciliation is the explicit, visible form of rebasing: bringing a draft's changes into
+line with live as it is now, one item at a time.
+
+- **What it works through.** Everything about the draft that live has invalidated or put in question:
+  - **moved underneath:** live changed something a change depends on (G's parent, above);
+  - **orphaned:** a change points at something live deleted;
+  - **no longer valid:** live and the draft together break a rule, such as a cycle in group parents or a
+    duplicate name;
+  - **conflicting:** both changed the same thing to different values (can't happen for grants, §12
+    point 1; can for groups and schema).
+
+  Changes live has made redundant (already live) and live changes the draft doesn't depend on need no
+  reconciliation.
+- **How each item is resolved:** keep the draft's change after reviewing it against live as it is now;
+  take live's value; adjust the change; or discard it. Resolving moves that change's base up to live as
+  it is now.
+- **Agreed: admins only.** Participants test; admins reconcile.
+- **Agreed: item by item.** There's no all-or-nothing rebase.
+- **Agreed: a draft can't be applied while it's internally inconsistent or not fully reconciled with
+  live.** Apply checks both again inside its transaction, since only then is the comparison current.
+- **Agreed: testing isn't tracked by the system.** Whether earlier testing still holds after
+  reconciliation is for admins and testing partners to settle among themselves; the draft doesn't record
+  "tested as of".
+- **Agreed: Phase 1's orphan rule changes.** An override whose principal or target live deleted was ignored
+  on read and dropped at apply (§7.2.1 point 4, §12 point 6). It's now a reconciliation item, resolved only
+  by dropping it, and apply refuses until it is. (Still ignored on read: the draft's grant view skips it.)
+- **Built (plan R.4-R.6, 2026-11-11).** `/api/drafts/{id}/changes` lists each change with why it needs
+  reconciling (principal or target deleted, principal changed, a group on its path changed or deleted, the
+  inherited value flipped); only changes still differing from live are checked. `POST
+  /api/drafts/{id}/reconcile` keeps a change (recording live as it is now) or takes live's value; toggling a
+  pill records live afresh too. Apply re-checks inside its transaction and refuses with a count. For grants
+  only these kinds can arise: a permission is on or off, so there are no value conflicts, and grants break
+  no rules together. The UI rechecks when the draft menu opens, when a grants tab loads, and every 30
+  seconds.
+- **In the UI:** a second kind of mark, distinct from the modified dot, on the same trail
+  (`ntrloc-drafts-plan.md` step 1.8a), leads to each item; a Reconcile view lists them all.
+
+#### 13.4.1 Conflicts (agreed 2026-11-11; built in Phase 2, with group editing in drafts)
+
+A **conflict** is both sides changing the same thing, from the same starting point, to different values.
+Grants can't produce one (a permission is on or off); groups can. Like a git merge conflict, it's settled by
+choosing a side.
+
+**Example.** A sits under P1. A draft moves A to P2 (recording that it started from P1). Live then moves A
+to P3.
+
+- **Shown as:** a red conflict mark on A, and on the trail to it, with both sides: *A's parent: draft P2 ·
+  live P3 (P1 when the draft started).*
+- **Keep the draft's:** A goes to P2 on apply. The change now starts from P3, so applying moves A from P3
+  to P2.
+- **Use live's:** the draft drops its move; A stays where live has it.
+- **Proposed, a third choice (edit):** a different parent altogether, like resolving a merge by hand. It's
+  the same as changing the draft's move again.
+
+**What isn't a conflict:**
+
+- Live also moved A to P2: both agree; the draft's change is simply redundant (already live).
+- Live moved A away and back to P1: live's net change is nothing, so the draft's move still applies.
+  Comparing against where A was when the draft started gets this right.
+- Live deleted P2 (the draft's target): **no longer valid**, not a conflict. Choices: another parent, or
+  abandon the move.
+- Live deleted A: an orphan; the move can only be abandoned.
+- Live moved P2 under A: the draft's move would now make a cycle; **no longer valid**, with the same
+  choices.
+
+**Notices:** where a conflict covers an element, the red item takes the place of its blue notice, and
+settling the conflict also acknowledges the notice, so the admin isn't asked twice.
+
+### 13.5 What this reopens elsewhere
+
+- **"Refuse live changes where a draft reaches"** (schema evolution notes §5.4; system change preview
+  notes §3, there still to be confirmed for groups and grants). It keeps a draft from going stale by
+  having live's write path check open drafts, so a bug in that check would block live writes: the case
+  §13.1 rules out. Floating with reconciliation removes the need for it. **Open:** to be revisited when
+  schema drafts are designed (plan, Phase 3).
+- **Changesets across environments** (dev → test → production) were raised and set aside as probably
+  overkill. Noted only because the same choices (changes recorded with what they expect to find, stable
+  identities) would serve them if they ever come back.
+
+### 13.6 Live changes a draft should hear about, and the live changelog (2026-11-11)
+
+**Agreed:** there are two kinds of reconciliation.
+
+- **Required** (§13.4): live changed something a draft *change* depends on. It blocks apply until resolved.
+- **Informational:** live changed something the draft *shows*, whether or not the draft changed anything
+  there. Example: a draft with no changes yet, and a group moves in live. Nothing is wrong (the draft
+  floats on live), but the admin should be told what changed. It never blocks apply.
+
+**Agreed:**
+
+- **Each item is acknowledged once per draft** (by any admin), and **independently**: acknowledging one
+  leaves the others open, for as long as it takes ("I might need to make some phone calls").
+- **Scope:** informational items cover everything Phase 1 touches (groups, memberships, grants); each later
+  phase adds its own.
+- **Actions** on them (accept, or put it back) open Phase 2, for the Phase 1 items too. Until then an
+  informational item can only be acknowledged.
+- **Push:** a tab showing a draft mustn't show stale data while live changes in another tab. Live tells
+  *browsers* that it changed (as it already does for schema changes), without knowing whether drafts exist;
+  a draft tab then reads again. This keeps §13.1: no server-side draft work runs because of it.
+- **No copies of live data** to find out what changed, not even reduced ones.
+
+**Agreed: a live changelog.** Live appends one entry per configuration change, in the same transaction as
+the change: what kind, which element, before and after, who, and when (e.g. `#1043 · 10:44 · Admin X ·
+group moved · Sales: Marketing → Operations`). A membership change is a user, a group, added or removed.
+
+- A draft remembers only its position in the log (the latest entry when it started); its informational
+  items are the entries after it. An acknowledgement is recorded against the entry.
+- Storage grows with changes, not with data; who and when come for free (§13.3's missing attribution);
+  the before value is what Phase 2's "put it back" needs.
+- **Repeated changes:** the log keeps every entry; the draft reflects only the latest for each element.
+- **Retention is configurable, from a new Operations screen** (planned anyway). Entries an open draft still
+  needs are kept regardless.
+- **It points to a system-wide audit of changes**, which would be very valuable; the schema evolution
+  notes' schema ledger would be its sibling.
+- **Built (plan R.7, 2026-11-11):** table `config_change_log`. Users, groups, memberships and grants are
+  logged by the stores that write them (`UserStore`, `GrantStore`), joining the caller's transaction; every
+  user and group change goes through `UserService`'s transactional methods (ArchUnit enforces it), and
+  grant writes through `AccessService`'s. A grant write logs one entry per permission it actually changes
+  (read from the tables before and after), so nested writes don't double up. A deletion of a user, group or
+  marker is one entry listing what went with it (groups, members, grants). Who: the request's principal;
+  outside a request, "system" with a source (startup, sign-in provisioning, local account seeding).
+  Retention: `operations_setting`, unset = keep everything; hourly pruning on the leader keeps everything an
+  open draft needs. **Known gap:** grants removed by a schema delete's cascade aren't logged until schema
+  changes are (Phase 3).
+- **A draft changelog too** (the user's idea; **built, plan R.7b**): who changed what in the draft, and
+  when. Table `draft_change_log`, the same entry shape scoped to the draft, written only by draft code, so
+  draft activity never adds rows or contention to live's log (§13.1). It records the draft's start and close,
+  participants invited and removed, grant changes (granted, revoked, set back to live) and reconciliations
+  (kept, used live's value). At apply, live's entries carry the source "draft '<name>'", with the applying
+  admin as actor. `GET /api/drafts/{id}/log`, admins only.
+- **Built (plan R.8-R.10, 2026-11-11):** live announces "accessChanged" to admins' browsers after each
+  committed change (the changelog does it, once per transaction); tabs read Access and the draft's changes
+  and notices again, so the 30-second poll is gone. A draft's notices are live's entries since its starting
+  position, the latest per element with a count, less those acknowledged (`draft_notice_ack`); acknowledging
+  is per element and a later change opens it again. In the UI: a blue mark ("changed in live") on the same
+  trail, the strongest mark winning (red, blue, amber); a "Changed in live" panel in a user's or group's
+  details with Acknowledge; a bar under the header with both counts; one Review dialog with both lists and
+  Show links into Access.
+- **It may make revisions unnecessary:** "has any entry touched this group since position N?" answers what
+  revision numbers do (§13.3), and more robustly. Expected to replace them.

@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { useAccessChanged } from '../../global/viewmodel/useAccessChanged'
 import { fetchGroups, fetchUsers } from './AccessDelegate'
 
 // The Access screen's own state: which tab is showing (users, groups, or permissions by item type),
@@ -7,6 +9,24 @@ export function useAccessViewModel() {
   const [activeSection, setActiveSection] = useState('users')
   const [selectedUserId, setSelectedUserId] = useState(null)
   const [selectedGroupId, setSelectedGroupId] = useState(null)
+  const [focusTab, setFocusTab] = useState(null)
+
+  // Shown from elsewhere (a draft's review dialog): navigation state { focus: { kind, id, tab } } selects that
+  // user or group, on that tab. Taken once, then cleared, so going back doesn't repeat it.
+  const location = useLocation()
+  const navigate = useNavigate()
+  const focus = location.state?.focus
+  const [focusTaken, setFocusTaken] = useState(null)
+  if (focus && focusTaken !== location.key) {
+    setFocusTaken(location.key)
+    setActiveSection(focus.kind === 'user' ? 'users' : 'groups')
+    if (focus.kind === 'user') setSelectedUserId(focus.id)
+    else setSelectedGroupId(focus.id)
+    setFocusTab(focus.tab)
+  }
+  useEffect(() => {
+    if (focus) navigate(location.pathname, { replace: true, state: null })
+  }, [focus, location.pathname, navigate])
   const [users, setUsers] = useState([])
   const [groups, setGroups] = useState([])
   const [status, setStatus] = useState('loading')
@@ -25,6 +45,11 @@ export function useAccessViewModel() {
   const reloadUsers = useCallback(() => fetchUsers().then(setUsers), [])
   // After a group is renamed or moved (the list, and every group tree, show those).
   const reloadGroups = useCallback(() => fetchGroups().then(setGroups), [])
+  // Another tab or admin changed users or groups.
+  useAccessChanged(() => {
+    void reloadUsers()
+    void reloadGroups()
+  })
 
   return {
     status,
@@ -35,8 +60,15 @@ export function useAccessViewModel() {
     users,
     groups,
     selectedUserId,
-    selectUser: setSelectedUserId,
+    focusTab,
+    selectUser: (id) => {
+      setFocusTab(null)
+      setSelectedUserId(id)
+    },
     selectedGroupId,
-    selectGroup: setSelectedGroupId,
+    selectGroup: (id) => {
+      setFocusTab(null)
+      setSelectedGroupId(id)
+    },
   }
 }

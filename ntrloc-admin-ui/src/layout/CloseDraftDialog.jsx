@@ -8,7 +8,6 @@ import './CloseDraftDialog.css'
 const OUTCOMES = [
   ['APPLIED', 'changed in live'],
   ['ALREADY_LIVE', 'already in live'],
-  ['DROPPED', 'dropped: the user, group or something it named no longer exists'],
 ]
 
 function countOf(grants, outcome) {
@@ -16,15 +15,17 @@ function countOf(grants, outcome) {
 }
 
 // Applies or discards this tab's draft, after asking. Applying then says what happened to each grant;
-// either way the tab goes back to live.
-function CloseDraftDialog({ action, onClose }) {
-  const { draft, leaveDraft, loadDrafts } = useDraftMode()
+// either way the tab goes back to live. A draft with changes live has moved underneath can't be applied
+// until they're reconciled (the server checks too).
+function CloseDraftDialog({ action, onClose, onReconcile }) {
+  const { draft, leaveDraft, loadDrafts, needsReconciling } = useDraftMode()
   // Kept from when the dialog opened: closing the draft leaves it, and draft becomes null.
   const [{ id, name }] = useState(() => draft)
   const [working, setWorking] = useState(false)
   const [error, setError] = useState(null)
   const [applied, setApplied] = useState(null)
   const applying = action === 'apply'
+  const blocked = applying && needsReconciling > 0
 
   async function confirm() {
     setWorking(true)
@@ -81,7 +82,12 @@ function CloseDraftDialog({ action, onClose }) {
           <Button variant="ghost-secondary" onClick={onClose} disabled={working}>
             Cancel
           </Button>
-          <Button variant={applying ? 'secondary' : 'danger'} onClick={confirm} disabled={working}>
+          {blocked && (
+            <Button variant="ghost-secondary" onClick={onReconcile}>
+              Reconcile…
+            </Button>
+          )}
+          <Button variant={applying ? 'secondary' : 'danger'} onClick={confirm} disabled={working || blocked}>
             {applying ? 'Apply' : 'Discard'}
           </Button>
         </>
@@ -92,6 +98,12 @@ function CloseDraftDialog({ action, onClose }) {
           ? `Apply “${name}”? Its changes go into live for everyone, and the draft closes.`
           : `Discard “${name}”? Its changes are thrown away, and the draft closes. Live is unchanged.`}
       </p>
+      {blocked && (
+        <p className="close-draft-text close-draft-error">
+          {needsReconciling === 1 ? '1 change needs' : `${needsReconciling} changes need`} reconciling with live before
+          this draft can be applied.
+        </p>
+      )}
       {error && <p className="close-draft-text close-draft-error">{error}</p>}
     </Dialog>
   )

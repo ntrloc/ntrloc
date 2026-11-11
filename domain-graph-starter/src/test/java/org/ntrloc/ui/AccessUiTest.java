@@ -179,13 +179,55 @@ class AccessUiTest extends AbstractUiIntegrationTest {
         access.click("Edit").type("Name", "Moved " + tag).chooseParent("Parent " + tag).click("Save");
         access.await().until(d -> access.heading().equals("Moved " + tag));
         assertThat(userStore.findUserGroupById(group).orElseThrow().name()).isEqualTo("Moved " + tag);
-        assertThat(userStore.listContainingUserGroups(group)).extracting(UserStore.UserGroupRow::id).containsExactly(parent);
+        assertThat(userStore.findUserGroupById(group).orElseThrow().parentId()).isEqualTo(parent);
 
         access.choose("Add member", user.displayName());
         access.await().until(d -> access.rows().contains(user.displayName()));
         access.rowAction("Remove " + user.displayName());
         access.await().until(d -> !access.rows().contains(user.displayName()));
         assertThat(userStore.getUserGroupIdsForUser(user.id())).doesNotContain(group);
+    }
+
+    @Test
+    void aGroupIsAddedUnderTheSelectedGroup_andThenSelected() {
+        UUID parent = newGroup("Container");
+        reload();
+        access.section("Groups").select("Container " + tag).click("Add group");
+        assertThat(access.dialogText()).contains("New group in Container " + tag);
+
+        access.type("Name", "Added " + tag).dialogButton("Create").awaitDialogClosed();
+
+        access.await().until(d -> access.heading().equals("Added " + tag));
+        assertThat(userStore.findUserGroupByName("Added " + tag).orElseThrow().parentId()).isEqualTo(parent);
+    }
+
+    @Test
+    void deletingAGroup_saysWhichSubgroupsGoWithIt_andDeletesThemAndTheirGrants() {
+        UUID parent = newGroup("Doomed");
+        UUID child = userStore.createUserGroup("Doomed child " + tag, parent).id();
+        accessService.setPermission("USER_GROUP", child, Permission.itemType(thingTypeId, "create"), true);
+        reload();
+        access.section("Groups").select("Doomed " + tag).click("Delete");
+
+        assertThat(access.dialogText()).contains("Its subgroup is deleted too").contains("Doomed child " + tag);
+        access.dialogButton("Delete").awaitDialogClosed();
+
+        access.await().until(d -> !access.listed().contains("Doomed " + tag) && !access.listed().contains("Doomed child " + tag));
+        assertThat(userStore.findUserGroupById(child)).isEmpty();
+        assertThat(grants.getPermissions("USER_GROUP", child)).isEmpty();
+    }
+
+    @Test
+    void everyoneCantBeDeleted_andNoGroupCanBeDeletedInADraft() {
+        newGroup("Kept");
+        reload();
+        access.section("Groups").select("everyone");
+        assertThat(access.hasButton("Delete")).isFalse();
+
+        DraftSwitchPage.of(driver).startDraft("No deleting " + tag);
+        access.section("Groups").select("Kept " + tag);
+        assertThat(access.hasButton("Delete")).isFalse();
+        assertThat(access.hasButton("Add group")).isFalse();
     }
 
     @Test

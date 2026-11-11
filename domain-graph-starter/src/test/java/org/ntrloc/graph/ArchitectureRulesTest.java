@@ -20,6 +20,13 @@ import org.ntrloc.graph.draft.DraftAccessService;
 import org.ntrloc.graph.draft.DraftGrantStore;
 import org.ntrloc.graph.draft.DraftService;
 import org.ntrloc.graph.draft.DraftStore;
+import org.ntrloc.graph.draft.DraftTopics;
+import org.ntrloc.graph.db.partition.security.UserService;
+import org.ntrloc.graph.db.partition.security.repository.UserStore;
+import org.ntrloc.graph.cluster.ClusterService;
+import org.flowable.common.engine.api.delegate.event.FlowableEventListener;
+import org.springframework.context.ApplicationListener;
+import org.springframework.context.event.EventListener;
 import org.ntrloc.graph.db.partition.authorization.ManualMarkerAssignmentService;
 import org.ntrloc.graph.db.partition.authorization.repository.GrantsView;
 import org.ntrloc.graph.db.partition.authorization.repository.UserGrantsView;
@@ -45,6 +52,7 @@ import static com.tngtech.archunit.base.DescribedPredicate.not;
 import static com.tngtech.archunit.core.domain.JavaClass.Predicates.resideInAPackage;
 import static com.tngtech.archunit.core.domain.JavaClass.Predicates.resideInAnyPackage;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.codeUnits;
+import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noMethods;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 
 // The architecture's rules (docs/ntrloc-architecture-rationalization.md §2), checked against production
@@ -109,12 +117,51 @@ class ArchitectureRulesTest {
 
     // §9.3: the live path has no draft code in it. Draft classes are named Draft*; only other draft
     // classes, and the draft machinery's own package (registry, routing, apply), may refer to them.
+    private static final String DRAFT_PACKAGE = "org.ntrloc.graph.draft..";
+
     @ArchTest
     static final ArchRule theLivePathNeverRefersToDraftClasses = noClasses()
             .that().haveSimpleNameNotStartingWith("Draft")
             .and().resideOutsideOfPackage("org.ntrloc.graph.draft..")
             .should().dependOnClassesThat().haveSimpleNameStartingWith("Draft")
             .because("draft code is kept off the live path: live and draft services differ only in their stores");
+
+    // Notes §13.1: draft work never touches live. A draft learns what live did only by comparing itself with
+    // live, never by listening, so draft code can't hold up or break live's events. Its cluster topics come
+    // only through DraftTopics, which names them all under "draft.".
+    @ArchTest
+    static final ArchRule draftCodeReachesTheClusterOnlyThroughDraftTopics = noClasses()
+            .that().resideInAPackage(DRAFT_PACKAGE)
+            .and().doNotBelongToAnyOf(DraftTopics.class)
+            .should().dependOnClassesThat().belongToAnyOf(ClusterService.class)
+            .orShould().dependOnClassesThat().resideInAPackage("com.hazelcast..")
+            .because("draft code may use only its own cluster topics, never live's (notes §13.1)");
+
+    @ArchTest
+    static final ArchRule draftCodeNeverListensToEvents = noMethods()
+            .that().areDeclaredInClassesThat().resideInAPackage(DRAFT_PACKAGE)
+            .should().beMetaAnnotatedWith(EventListener.class)
+            .because("a draft compares itself with live; it never listens for live's events (notes §13.1)");
+
+    @ArchTest
+    static final ArchRule draftClassesAreNotEventListeners = noClasses()
+            .that().resideInAPackage(DRAFT_PACKAGE)
+            .should().beAssignableTo(ApplicationListener.class)
+            .orShould().beAssignableTo(FlowableEventListener.class)
+            .because("a draft compares itself with live; it never listens for live's events (notes §13.1)");
+
+    // Notes §13.6: a change to users or groups and its changelog entry commit together, so every one goes
+    // through UserService, whose methods are transactional (UserStore writes the entry).
+    @ArchTest
+    static final ArchRule usersAndGroupsChangeOnlyThroughUserService = noClasses()
+            .that().doNotBelongToAnyOf(UserService.class, UserStore.class)
+            .should().callMethodWhere(com.tngtech.archunit.core.domain.JavaCall.Predicates.target(
+                    com.tngtech.archunit.core.domain.properties.HasOwner.Predicates.With.<com.tngtech.archunit.core.domain.JavaClass>owner(
+                            com.tngtech.archunit.core.domain.JavaClass.Predicates.equivalentTo(UserStore.class)))
+                    .and(com.tngtech.archunit.core.domain.JavaCall.Predicates.target(
+                            com.tngtech.archunit.core.domain.properties.HasName.Predicates.nameMatching(
+                                    "create(Root)?UserGroup|createUser|updateUser(Group)?|deleteUser(Group)?|setParent|addUserToUserGroup|removeUserFromUserGroup|addAllUsersToUserGroup"))))
+            .because("a change to users or groups is logged in the same transaction, which UserService provides (notes §13.6)");
 
     // A store and the one service allowed to write it. `writeAccess` is what writing takes: the store's
     // writer interface, or the store itself if it has none. Listed as each partition is restructured.
@@ -124,7 +171,8 @@ class ArchitectureRulesTest {
             new SingleWriter(GrantStoreWriter.class, AccessService.class),
             new SingleWriter(MarkerStoreWriter.class, AccessService.class),
             new SingleWriter(DraftStore.class, DraftService.class),
-            new SingleWriter(DraftGrantStore.class, DraftAccessService.class));
+            new SingleWriter(DraftGrantStore.class, DraftAccessService.class),
+            new SingleWriter(org.ntrloc.graph.draft.DraftNoticeStore.class, DraftAccessService.class));
 
     // §8.6: each store has exactly one service that writes it (a service may own several stores).
     @ArchTest
@@ -141,7 +189,7 @@ class ArchitectureRulesTest {
     }
 
     // Stores covered by the transaction rule below. Listed as each partition is restructured.
-    private static final List<Class<?>> TRANSACTION_FREE_STORES = List.of(GrantStore.class, MarkerStore.class, DraftStore.class, DraftGrantStore.class);
+    private static final List<Class<?>> TRANSACTION_FREE_STORES = List.of(GrantStore.class, MarkerStore.class, DraftStore.class, DraftGrantStore.class, org.ntrloc.graph.draft.DraftNoticeStore.class);
 
     // §8.6: stores own their storage, not transactions. The logical layer decides where a transaction
     // starts and ends; a store method needing atomicity requires one (Propagation.MANDATORY) without

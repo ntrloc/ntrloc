@@ -16,7 +16,7 @@ import java.util.UUID;
 @Component
 public class DraftStore {
 
-    private static final String DRAFT_COLUMNS = "d.id, d.name, d.status, d.created_by, d.created_at, d.closed_by, d.closed_at";
+    private static final String DRAFT_COLUMNS = "d.id, d.name, d.status, d.created_by, d.created_at, d.closed_by, d.closed_at, d.changelog_position";
     private static final String SELECT_DRAFTS = "SELECT " + DRAFT_COLUMNS + " FROM draft d ";
     private static final String PARAM_DRAFT_ID = "draftId";
     private static final String PARAM_USER_ID = "userId";
@@ -36,9 +36,10 @@ public class DraftStore {
         jdbcClient.sql("SELECT pg_advisory_xact_lock(:key)").param("key", CREATE_LOCK_KEY).query((rs, _) -> 0).single();
     }
 
-    public DraftRecord create(String name, UUID createdBy) {
-        return jdbcClient.sql("INSERT INTO draft (name, created_by) VALUES (:name, :createdBy) RETURNING " + DRAFT_COLUMNS.replace("d.", ""))
-                .param("name", name).param("createdBy", createdBy)
+    public DraftRecord create(String name, UUID createdBy, long changelogPosition) {
+        return jdbcClient.sql("INSERT INTO draft (name, created_by, changelog_position) VALUES (:name, :createdBy, :position) RETURNING "
+                        + DRAFT_COLUMNS.replace("d.", ""))
+                .param("name", name).param("createdBy", createdBy).param("position", changelogPosition)
                 .query((rs, _) -> row(rs)).single();
     }
 
@@ -106,6 +107,6 @@ public class DraftStore {
     private static DraftRecord row(java.sql.ResultSet rs) throws java.sql.SQLException {
         return new DraftRecord(rs.getObject("id", UUID.class), rs.getString("name"), Status.valueOf(rs.getString("status")),
                 rs.getObject("created_by", UUID.class), rs.getObject("created_at", OffsetDateTime.class),
-                rs.getObject("closed_by", UUID.class), rs.getObject("closed_at", OffsetDateTime.class));
+                rs.getObject("closed_by", UUID.class), rs.getObject("closed_at", OffsetDateTime.class), rs.getLong("changelog_position"));
     }
 }

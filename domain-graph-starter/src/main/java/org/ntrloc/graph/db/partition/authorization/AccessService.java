@@ -1,6 +1,9 @@
 package org.ntrloc.graph.db.partition.authorization;
 
 import org.ntrloc.graph.db.partition.authorization.repository.GrantStoreReader;
+import org.ntrloc.graph.db.partition.authorization.repository.GrantsView;
+import org.ntrloc.graph.db.partition.authorization.repository.MarkerStoreReader;
+import org.ntrloc.graph.db.partition.changelog.ChangeLog;
 import org.ntrloc.graph.db.partition.authorization.repository.GrantStoreWriter;
 import org.ntrloc.graph.db.partition.authorization.repository.MarkerStoreReader.MarkerRow;
 import org.ntrloc.graph.db.partition.authorization.repository.MarkerStoreWriter;
@@ -11,7 +14,13 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Collection;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 // Grants and markers (docs/ntrloc-drafts-plan.md step 1.2): their only writer, and where a user's
@@ -23,12 +32,17 @@ public class AccessService {
 
     private final GrantStoreReader grantReader;
     private final GrantStoreWriter grantWriter;
+    private final MarkerStoreReader markerReader;
     private final MarkerStoreWriter markerWriter;
+    private final ChangeLog changeLog;
 
-    public AccessService(GrantStoreReader grantReader, GrantStoreWriter grantWriter, MarkerStoreWriter markerWriter) {
+    public AccessService(GrantStoreReader grantReader, GrantStoreWriter grantWriter, MarkerStoreReader markerReader,
+                         MarkerStoreWriter markerWriter, ChangeLog changeLog) {
         this.grantReader = grantReader;
         this.grantWriter = grantWriter;
+        this.markerReader = markerReader;
         this.markerWriter = markerWriter;
+        this.changeLog = changeLog;
     }
 
     /**
@@ -131,9 +145,42 @@ public class AccessService {
         return markerWriter.updateMarker(id, name, description);
     }
 
+    /**
+     * After a schema change has committed (SchemaService, on every node): deleting a schema element deletes
+     * its grants by database cascade, which the grant view wouldn't otherwise see.
+     */
+    public void schemaChanged() {
+        grantWriter.reloadAfterCascade();
+    }
+
+    /** The principal's own permissions in live (not those it gets through groups). */
+    public Set<Permission> getPermissions(String principalType, UUID principalId) {
+        return grantReader.getPermissions(principalType, principalId);
+    }
+
+        /** Removes every grant to these users or groups, as they're deleted (UserService), in the caller's transaction. */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public void deleteGrantsForPrincipals(String principalType, Collection<UUID> principalIds) {
+        grantWriter.deleteGrantsForPrincipals(principalType, principalIds);
+    }
+
+    // One changelog entry for the marker, listing the grants that go with it (docs/ntrloc-system-model-notes.md §13.6).
     @Transactional
     public void deleteMarker(UUID id) {
+        GrantsView view = grantReader.getGrantsView();
+        List<Map<String, Object>> grants = new ArrayList<>();
+        List<UUID> refs = new ArrayList<>(List.of(id));
+        view.rows().markerGrants().stream().filter(g -> g.markerId().equals(id)).forEach(g -> {
+            var permissions = view.permissionsOf(g.principalType(), g.principalId()).stream().filter(p -> id.equals(p.markerId())).toList();
+            if (permissions.isEmpty()) return;
+            grants.add(Map.of("principalType", g.principalType(), "principalId", g.principalId(), "permissions", permissions));
+            refs.add(g.principalId());
+        });
+        Map<String, Object> before = new LinkedHashMap<>();
+        before.put("name", markerReader.getMarkerNames(Set.of(id)).get(id));
+        before.put("grants", grants);
         grantWriter.deleteGrantsForMarker(id);
         markerWriter.deleteMarker(id);
+        changeLog.append("marker.deleted", "marker:" + id, refs, before, null);
     }
 }

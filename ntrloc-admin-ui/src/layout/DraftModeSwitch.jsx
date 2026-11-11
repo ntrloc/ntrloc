@@ -6,6 +6,8 @@ import { useDraftMode } from '../global/viewmodel/useDraftMode'
 import NewDraftDialog from './NewDraftDialog'
 import CloseDraftDialog from './CloseDraftDialog'
 import ParticipantsDialog from './ParticipantsDialog'
+import ReconcileDialog from './ReconcileDialog'
+import ModifiedDot from '../controls/modified-dot/ModifiedDot'
 import './DraftModeSwitch.css'
 
 const LIVE = 'live'
@@ -13,12 +15,13 @@ const LIVE = 'live'
 // The popover's content: live, plus every draft this user can work in, and for admins, ways to manage
 // the current draft's participants, to apply or discard it, and to start a new one. The list is fetched each time it opens, so a draft started or joined since shows up without
 // a reload.
-function DraftOptions({ close, onNewDraft, onCloseDraft, onParticipants }) {
-  const { draft, drafts, canStartDrafts, loading, error, loadDrafts, enterDraft, leaveDraft } = useDraftMode()
+function DraftOptions({ close, onNewDraft, onCloseDraft, onParticipants, onReconcile }) {
+  const { draft, drafts, canStartDrafts, loading, error, loadDrafts, enterDraft, leaveDraft, needsReconciling, notices, reloadChanges } = useDraftMode()
 
   useEffect(() => {
     void loadDrafts()
-  }, [loadDrafts])
+    reloadChanges()
+  }, [loadDrafts, reloadChanges])
 
   function choose(value) {
     if (value === LIVE) leaveDraft()
@@ -44,6 +47,17 @@ function DraftOptions({ close, onNewDraft, onCloseDraft, onParticipants }) {
           >
             Participants…
           </Button>
+          {needsReconciling + notices.length > 0 && (
+            <Button
+              variant="ghost-secondary"
+              onClick={() => {
+                close()
+                onReconcile()
+              }}
+            >
+              Review… ({needsReconciling + notices.length})
+            </Button>
+          )}
           <Button
             variant="ghost-secondary"
             onClick={() => {
@@ -85,16 +99,18 @@ function DraftOptions({ close, onNewDraft, onCloseDraft, onParticipants }) {
 // Switches this tab between live and a draft, and shows which it's in. Shown to admins, and to a
 // non-admin only while they're invited to a draft.
 function DraftModeSwitch() {
-  const { draft, visible } = useDraftMode()
+  const { draft, visible, changesMark } = useDraftMode()
   const [creating, setCreating] = useState(false)
   // 'apply' | 'discard' while asking
   const [closing, setClosing] = useState(null)
   const [managingParticipants, setManagingParticipants] = useState(false)
+  const [reconciling, setReconciling] = useState(false)
   if (!visible) return null
   const summary = draft ? (
     <span className="draft-mode-summary">
       <span className="draft-mode-badge">Draft</span>
       {draft.name}
+      {(changesMark === 'reconcile' || changesMark === 'notice') && <ModifiedDot kind={changesMark} />}
     </span>
   ) : (
     'Live'
@@ -109,11 +125,22 @@ function DraftModeSwitch() {
             onNewDraft={() => setCreating(true)}
             onCloseDraft={setClosing}
             onParticipants={() => setManagingParticipants(true)}
+            onReconcile={() => setReconciling(true)}
           />
         )}
       </PopoverButton>
       {creating && <NewDraftDialog onClose={() => setCreating(false)} />}
-      {closing && <CloseDraftDialog action={closing} onClose={() => setClosing(null)} />}
+      {closing && (
+        <CloseDraftDialog
+          action={closing}
+          onClose={() => setClosing(null)}
+          onReconcile={() => {
+            setClosing(null)
+            setReconciling(true)
+          }}
+        />
+      )}
+      {reconciling && <ReconcileDialog onClose={() => setReconciling(false)} />}
       {managingParticipants && <ParticipantsDialog onClose={() => setManagingParticipants(false)} />}
     </draft-mode-switch>
   )

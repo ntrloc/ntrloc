@@ -34,6 +34,9 @@ class DraftModeUiTest extends AbstractUiIntegrationTest {
     private UserStore userStore;
 
     @Autowired
+    private org.ntrloc.graph.db.partition.security.UserService userService;
+
+    @Autowired
     private GrantStoreReader grants;
 
     @Autowired
@@ -150,6 +153,66 @@ class DraftModeUiTest extends AbstractUiIntegrationTest {
 
         grantCreate("Dotted " + tag);
         access.await().until(d -> access.modified().isEmpty());
+    }
+
+    // The example behind reconciliation (notes §13.3): another admin moves the group in live.
+    @Test
+    void aGroupMovedInLive_marksTheDraftsChange_andApplyWaitsUntilItsReconciled() {
+        UUID oldParent = userStore.createUserGroup("Old parent " + tag).id();
+        UUID newParent = userStore.createUserGroup("New parent " + tag).id();
+        UUID moved = userStore.createUserGroup("Moved " + tag, oldParent).id();
+        reload();
+        drafts.startDraft("Reconcile " + tag);
+        grantCreate("Moved " + tag);
+
+        userStore.setParent(moved, newParent);
+
+        drafts.openReview();
+        assertThat(drafts.dialogText()).contains("Moved " + tag + ": " + WIDGET_TYPE + ": Create granted")
+                .contains("This group has changed in live");
+        drafts.done();
+        AccessPage access = AccessPage.of(driver);
+        access.await().until(d -> access.needingReconciling().contains("pill Create"));
+        assertThat(access.needingReconciling()).containsExactlyInAnyOrder(
+                "DRAFT Reconcile " + tag, "1 change needs reconciling with live before this draft can be applied",
+                "Access", "Groups", "Moved " + tag, "Permission grants", WIDGET_TYPE, "pill Create");
+
+        drafts.openApply();
+        assertThat(drafts.dialogText()).contains("1 change needs reconciling with live");
+        assertThat(drafts.dialogButtonEnabled("Apply")).isFalse();
+        drafts.cancel();
+
+        drafts.openReview().resolveFirst("Keep the draft's change");
+        access.await().until(d -> drafts.dialogText().contains("Nothing needs reconciling."));
+        drafts.done();
+        assertThat(access.needingReconciling()).isEmpty();
+        assertThat(access.modified()).contains("pill Create");
+
+        assertThat(drafts.apply()).containsExactly("1 permission changed in live");
+        drafts.done();
+    }
+
+    // The other example behind notices (notes §13.6): nothing changed in the draft, and a group moves in live.
+    @Test
+    void aGroupMovedInLive_isAChangeToReview_inContextAndFromTheBar_untilAcknowledged() {
+        UUID moving = userStore.createUserGroup("Moving " + tag).id();
+        UUID target = userStore.createUserGroup("Target " + tag).id();
+        reload();
+        drafts.startDraft("Notices " + tag);
+        AccessPage access = AccessPage.of(driver).section("Groups").select("Moving " + tag);
+
+        userService.setParent(moving, target);
+
+        access.await().until(d -> drafts.noticeBar().contains("1 live change to review"));
+        assertThat(access.changedInLive()).contains("Access", "Groups", "Moving " + tag, "Info / Members");
+        assertThat(access.liveNotices()).contains("Moving " + tag + " was moved from everyone to Target " + tag)
+                .contains("system");
+
+        access.acknowledgeFirstNotice();
+
+        access.await().until(d -> drafts.noticeBar().isEmpty());
+        assertThat(access.changedInLive()).isEmpty();
+        assertThat(access.liveNotices()).isEmpty();
     }
 
     @Test

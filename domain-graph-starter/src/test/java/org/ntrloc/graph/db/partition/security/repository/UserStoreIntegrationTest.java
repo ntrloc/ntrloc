@@ -102,9 +102,24 @@ class UserStoreIntegrationTest extends AbstractIntegrationTest {
     void deleteUserGroup_removesIt() {
         var group = userStore.createUserGroup("group-" + UUID.randomUUID());
 
-        userStore.deleteUserGroup(group.id());
+        assertThat(userStore.deleteUserGroup(group.id(), false)).containsExactly(group.id());
 
         assertThat(userStore.findUserGroupById(group.id())).isEmpty();
+    }
+
+    @Test
+    void deleteUserGroup_withSubgroups_isRefused_unlessForced_whichDeletesThemToo() {
+        var top = userStore.createUserGroup("top-" + UUID.randomUUID());
+        var middle = userStore.createUserGroup("middle-" + UUID.randomUUID(), top.id());
+        var bottom = userStore.createUserGroup("bottom-" + UUID.randomUUID(), middle.id());
+
+        assertThatThrownBy(() -> userStore.deleteUserGroup(top.id(), false))
+                .isInstanceOf(UserStore.HasSubgroupsException.class)
+                .hasMessageContaining("2 subgroups");
+        assertThat(userStore.findUserGroupById(top.id())).isPresent();
+
+        assertThat(userStore.deleteUserGroup(top.id(), true)).containsExactly(top.id(), middle.id(), bottom.id());
+        assertThat(userStore.findUserGroupById(bottom.id())).isEmpty();
     }
 
     @Test
@@ -131,94 +146,69 @@ class UserStoreIntegrationTest extends AbstractIntegrationTest {
         assertThat(userStore.getUserGroupIdsForUser(user.id())).doesNotContain(group.id());
     }
 
-    // --- UserGroup nesting ---
+    // --- The group tree ---
 
     @Test
-    void getUserGroupIdsForUser_includesUserGroupsTransitivelyContainingTheUsersDirectUserGroup() {
-        var outer = userStore.createUserGroup("outer-" + UUID.randomUUID());
-        var inner = userStore.createUserGroup("inner-" + UUID.randomUUID());
-        var user = userStore.createUser("Member", "user-" + UUID.randomUUID() + "@example.com", false);
-        userStore.addUserGroupToUserGroup(inner.id(), outer.id());
-        userStore.addUserToUserGroup(user.id(), inner.id());
+    void aGroupCreatedWithoutAParent_goesUnderTheRoot() {
+        var root = userStore.listUserGroups().stream().filter(g -> g.parentId() == null).findFirst().orElseThrow();
 
-        assertThat(userStore.getUserGroupIdsForUser(user.id())).contains(inner.id(), outer.id());
+        assertThat(userStore.createUserGroup("group-" + UUID.randomUUID()).parentId()).isEqualTo(root.id());
     }
 
     @Test
-    void getUserGroupIdsForUser_resolvesMultipleLevelsOfNesting() {
+    void thereIsOnlyOneRoot() {
+        assertThatThrownBy(() -> userStore.createRootUserGroup("second-root-" + UUID.randomUUID()))
+                .isInstanceOf(DuplicateKeyException.class);
+    }
+
+    @Test
+    void getUserGroupIdsForUser_includesEveryGroupAboveTheUsersGroups() {
         var grandparent = userStore.createUserGroup("grandparent-" + UUID.randomUUID());
-        var parent = userStore.createUserGroup("parent-" + UUID.randomUUID());
-        var child = userStore.createUserGroup("child-" + UUID.randomUUID());
+        var parent = userStore.createUserGroup("parent-" + UUID.randomUUID(), grandparent.id());
+        var child = userStore.createUserGroup("child-" + UUID.randomUUID(), parent.id());
         var user = userStore.createUser("Member", "user-" + UUID.randomUUID() + "@example.com", false);
-        userStore.addUserGroupToUserGroup(parent.id(), grandparent.id());
-        userStore.addUserGroupToUserGroup(child.id(), parent.id());
         userStore.addUserToUserGroup(user.id(), child.id());
 
         assertThat(userStore.getUserGroupIdsForUser(user.id())).contains(child.id(), parent.id(), grandparent.id());
     }
 
     @Test
-    void addUserGroupToUserGroup_rejectsSelfMembership() {
+    void setParent_movesTheGroup_andWhatItsMembersInherit() {
+        var oldParent = userStore.createUserGroup("old-" + UUID.randomUUID());
+        var newParent = userStore.createUserGroup("new-" + UUID.randomUUID());
+        var group = userStore.createUserGroup("group-" + UUID.randomUUID(), oldParent.id());
+        var user = userStore.createUser("Member", "user-" + UUID.randomUUID() + "@example.com", false);
+        userStore.addUserToUserGroup(user.id(), group.id());
+
+        userStore.setParent(group.id(), newParent.id());
+
+        assertThat(userStore.findUserGroupById(group.id()).orElseThrow().parentId()).isEqualTo(newParent.id());
+        assertThat(userStore.getUserGroupIdsForUser(user.id())).contains(newParent.id()).doesNotContain(oldParent.id());
+    }
+
+    @Test
+    void setParent_refusesTheGroupItself() {
         var group = userStore.createUserGroup("group-" + UUID.randomUUID());
 
-        assertThatThrownBy(() -> userStore.addUserGroupToUserGroup(group.id(), group.id()))
-                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> userStore.setParent(group.id(), group.id())).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
-    void addUserGroupToUserGroup_rejectsACycle() {
+    void setParent_refusesASubgroup_whichWouldMakeACycle() {
         var a = userStore.createUserGroup("a-" + UUID.randomUUID());
-        var b = userStore.createUserGroup("b-" + UUID.randomUUID());
-        userStore.addUserGroupToUserGroup(a.id(), b.id()); // a is a member of b
+        var b = userStore.createUserGroup("b-" + UUID.randomUUID(), a.id());
+        var c = userStore.createUserGroup("c-" + UUID.randomUUID(), b.id());
 
-        assertThatThrownBy(() -> userStore.addUserGroupToUserGroup(b.id(), a.id())) // b member of a would close the loop
-                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> userStore.setParent(a.id(), c.id())).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
-    void addUserGroupToUserGroup_rejectsAMultiLevelCycle() {
-        var a = userStore.createUserGroup("a-" + UUID.randomUUID());
-        var b = userStore.createUserGroup("b-" + UUID.randomUUID());
-        var c = userStore.createUserGroup("c-" + UUID.randomUUID());
-        userStore.addUserGroupToUserGroup(a.id(), b.id()); // a member of b
-        userStore.addUserGroupToUserGroup(b.id(), c.id()); // b member of c, so a is transitively a member of c
-
-        assertThatThrownBy(() -> userStore.addUserGroupToUserGroup(c.id(), a.id())) // c member of a would close a->b->c->a
-                .isInstanceOf(IllegalArgumentException.class);
-    }
-
-    @Test
-    void listMemberUserGroups_returnsOnlyDirectChildren() {
+    void listMemberUserGroups_returnsOnlyDirectSubgroups() {
         var outer = userStore.createUserGroup("outer-" + UUID.randomUUID());
-        var inner = userStore.createUserGroup("inner-" + UUID.randomUUID());
-        var innermost = userStore.createUserGroup("innermost-" + UUID.randomUUID());
-        userStore.addUserGroupToUserGroup(inner.id(), outer.id());
-        userStore.addUserGroupToUserGroup(innermost.id(), inner.id());
+        var inner = userStore.createUserGroup("inner-" + UUID.randomUUID(), outer.id());
+        userStore.createUserGroup("innermost-" + UUID.randomUUID(), inner.id());
 
-        // innermost is a transitive, not direct, member of outer -- must not appear here.
         assertThat(userStore.listMemberUserGroups(outer.id())).containsExactly(inner);
-    }
-
-    @Test
-    void listContainingUserGroups_returnsOnlyDirectParents() {
-        var outer = userStore.createUserGroup("outer-" + UUID.randomUUID());
-        var inner = userStore.createUserGroup("inner-" + UUID.randomUUID());
-        userStore.addUserGroupToUserGroup(inner.id(), outer.id());
-
-        assertThat(userStore.listContainingUserGroups(inner.id())).containsExactly(outer);
-    }
-
-    @Test
-    void removeUserGroupFromUserGroup_removesTransitiveMembershipEffect() {
-        var outer = userStore.createUserGroup("outer-" + UUID.randomUUID());
-        var inner = userStore.createUserGroup("inner-" + UUID.randomUUID());
-        var user = userStore.createUser("Member", "user-" + UUID.randomUUID() + "@example.com", false);
-        userStore.addUserGroupToUserGroup(inner.id(), outer.id());
-        userStore.addUserToUserGroup(user.id(), inner.id());
-
-        userStore.removeUserGroupFromUserGroup(inner.id(), outer.id());
-
-        assertThat(userStore.getUserGroupIdsForUser(user.id())).contains(inner.id()).doesNotContain(outer.id());
     }
 
     // --- Local credentials ---

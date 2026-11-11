@@ -13,16 +13,16 @@ export function TriangleIcon({ expanded }) {
 // A bordered card with a title bar that collapses it down to just that bar. Unlike Accordion, each
 // card expands and collapses on its own, so several can be open at once. Controlled: the caller
 // owns expanded and onToggle. `actions` (e.g. a "New" button) sit at the far end of the title bar,
-// outside the toggle, so clicking one doesn't also collapse the card. `modified` marks the card as
-// holding a change in the current draft.
-function CollapsibleCard({ title, expanded, onToggle, actions, modified, children }) {
+// outside the toggle, so clicking one doesn't also collapse the card. `mark` ('modified' or 'reconcile')
+// shows the card holds a change in the current draft (ModifiedDot).
+function CollapsibleCard({ title, expanded, onToggle, actions, mark, children }) {
   return (
     <collapsible-card data-expanded={expanded || undefined}>
       <collapsible-card-header>
         <button type="button" className="collapsible-card-toggle" aria-expanded={expanded} onClick={onToggle}>
           <TriangleIcon expanded={expanded} />
           <span className="collapsible-card-title">{title}</span>
-          {modified && <ModifiedDot />}
+          {mark && <ModifiedDot kind={mark} />}
         </button>
         {actions && <collapsible-card-actions>{actions}</collapsible-card-actions>}
       </collapsible-card-header>

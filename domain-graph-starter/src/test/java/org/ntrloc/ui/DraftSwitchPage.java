@@ -101,6 +101,42 @@ class DraftSwitchPage {
         return this;
     }
 
+    /** Opens the Review dialog, once the menu offers it (it reads the draft's changes as it opens). */
+    DraftSwitchPage openReview() {
+        WebElement menu = openMenu();
+        await().until(d -> !menu.findElements(By.xpath(".//button[starts-with(normalize-space(),'Review…')]")).isEmpty());
+        menu.findElement(By.xpath(".//button[starts-with(normalize-space(),'Review…')]")).click();
+        await().until(d -> !dialog().getText().contains("Loading…"));
+        return this;
+    }
+
+    /** Clicks a button on the first row of the Review dialog's first list. */
+    DraftSwitchPage resolveFirst(String label) {
+        dialog().findElement(By.xpath(".//ul[@class='reconcile-rows']/li[1]//button[normalize-space()=\"" + label + "\"]")).click();
+        return this;
+    }
+
+    /** Opens Apply draft… without applying; the dialog is left open. */
+    DraftSwitchPage openApply() {
+        menuAction("Apply draft…");
+        dialog();
+        return this;
+    }
+
+    boolean dialogButtonEnabled(String label) {
+        return dialog().findElement(By.xpath(".//button[normalize-space()='" + label + "']")).isEnabled();
+    }
+
+    void cancel() {
+        dialog().findElement(By.xpath(".//button[normalize-space()='Cancel']")).click();
+        await().until(ExpectedConditions.invisibilityOfElementLocated(DIALOG));
+    }
+
+    /** The bar under the header while live has done something the draft should know about; "" when it's hidden. */
+    String noticeBar() {
+        return driver.findElements(By.cssSelector("draft-notice-bar")).stream().findFirst().map(WebElement::getText).orElse("");
+    }
+
     /** Opens the current draft's participants and returns the dialog, for the methods below. */
     DraftSwitchPage openParticipants() {
         menuAction("Participants…");
@@ -134,6 +170,9 @@ class DraftSwitchPage {
     }
 
     private WebDriverWait await() {
-        return new WebDriverWait(driver, Duration.ofSeconds(15));
+        // A re-render can replace an element while a wait is reading it; try again rather than fail.
+        var wait = new WebDriverWait(driver, Duration.ofSeconds(15));
+        wait.ignoring(org.openqa.selenium.StaleElementReferenceException.class);
+        return wait;
     }
 }

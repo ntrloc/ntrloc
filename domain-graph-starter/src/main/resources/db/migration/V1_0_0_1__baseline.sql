@@ -192,33 +192,36 @@ CREATE TABLE security_user (
     id           UUID PRIMARY KEY DEFAULT uuidv7(),
     display_name TEXT NOT NULL,
     email        TEXT NOT NULL,
-    is_admin BOOLEAN NOT NULL DEFAULT FALSE
+    is_admin BOOLEAN NOT NULL DEFAULT FALSE,
+    -- Bumped by every change to the user or to the set of groups they're in, so a draft can tell
+    -- that a user it depends on has changed (docs/ntrloc-system-model-notes.md §13.3).
+    revision BIGINT NOT NULL DEFAULT 1
 );
 
 CREATE UNIQUE INDEX security_user_email_lower_idx ON security_user (lower(email));
 
+-- Groups form a tree: every group has exactly one parent except the root, "everyone", which the system
+-- creates (DefaultUserGroupInitializer). The partial unique index allows only one group without a
+-- parent; cycles are refused by UserStore.setParent. A group's members get its grants and those of
+-- every group above it.
+--
+-- revision is bumped by every change to the group, to its parent, to its set of child groups, or to its
+-- set of members, so a draft can tell that a group it depends on has changed
+-- (docs/ntrloc-system-model-notes.md §13.3).
 CREATE TABLE security_user_group (
-    id   UUID PRIMARY KEY DEFAULT uuidv7(),
-    name TEXT NOT NULL UNIQUE
+    id        UUID PRIMARY KEY DEFAULT uuidv7(),
+    name      TEXT NOT NULL UNIQUE,
+    parent_id UUID REFERENCES security_user_group(id),
+    revision  BIGINT NOT NULL DEFAULT 1,
+    CHECK (parent_id <> id)
 );
+CREATE UNIQUE INDEX security_user_group_one_root_idx ON security_user_group ((parent_id IS NULL)) WHERE parent_id IS NULL;
+CREATE INDEX security_user_group_parent_idx ON security_user_group (parent_id);
 
 CREATE TABLE security_user_group_member (
     user_id  UUID NOT NULL REFERENCES security_user(id)  ON DELETE CASCADE,
     group_id UUID NOT NULL REFERENCES security_user_group(id) ON DELETE CASCADE,
     PRIMARY KEY (user_id, group_id)
-);
-
--- A group can itself be a member of another group -- member_group_id is a member of group_id,
--- exactly the same shape as security_user_group_member's user_id being a member of group_id. A separate
--- table rather than making security_user_group_member's user_id polymorphic: two real FKs beat one loose
--- one. Self-membership is rejected by the CHECK; deeper cycles (A member of B member of A) are
--- rejected at the application layer (SecurityRepository.addGroupToGroup) -- a CHECK constraint
--- can't express "no path already exists back to this row."
-CREATE TABLE security_user_group_member_group (
-    member_group_id UUID NOT NULL REFERENCES security_user_group(id) ON DELETE CASCADE,
-    group_id        UUID NOT NULL REFERENCES security_user_group(id) ON DELETE CASCADE,
-    PRIMARY KEY (member_group_id, group_id),
-    CHECK (member_group_id != group_id)
 );
 
 -- Local logins look the user up by security_user.email; this table holds only the credentials.
@@ -866,6 +869,9 @@ CREATE TABLE draft (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     closed_by  UUID REFERENCES security_user(id) ON DELETE SET NULL,
     closed_at  TIMESTAMPTZ,
+    -- The live changelog's latest entry when the draft started: live changes after it are the draft's to
+    -- hear about (docs/ntrloc-system-model-notes.md §13.6).
+    changelog_position BIGINT NOT NULL DEFAULT 0,
     CHECK ((status = 'OPEN') = (closed_at IS NULL))
 );
 
@@ -898,6 +904,10 @@ CREATE TABLE draft_grant_override (
     op             TEXT,
     value          BOOLEAN NOT NULL,
     base_value     BOOLEAN NOT NULL,
+    -- What the override's effect depends on in live, as it was when last written or reconciled
+    -- (GrantDependencies; docs/ntrloc-system-model-notes.md §13.3): user and group revisions, and
+    -- whether live gave the permission through the principal's groups.
+    depends_on     JSONB NOT NULL,
     CHECK (value <> base_value)
 );
 
@@ -905,3 +915,61 @@ CREATE TABLE draft_grant_override (
 -- the descriptor's columns empty.
 CREATE UNIQUE INDEX draft_grant_override_permission_idx ON draft_grant_override
     (draft_id, principal_type, principal_id, kind, item_type_id, marker_id, area, target_id, op) NULLS NOT DISTINCT;
+
+-- === config_change_log: the live changelog (docs/ntrloc-system-model-notes.md §13.6) ===
+-- One entry per configuration change, appended in the same transaction as the change: users, groups,
+-- memberships and grants so far. element_key names what changed (group:<id>, membership:<group>:<user>,
+-- user:<id>, grant:<principal type>:<principal id>:<permission>, marker:<id>), so the latest entry per
+-- element can be found; refs holds every id the change touches. actor_* is who made it, or NULL for the
+-- system, with source saying what (startup, sign-in provisioning, ...). before/after: enough to describe
+-- the change in words, names included, so an entry still reads well after what it names is gone.
+CREATE TABLE config_change_log (
+    seq         BIGSERIAL PRIMARY KEY,
+    at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    actor_id    UUID,
+    actor_name  TEXT,
+    source      TEXT,
+    kind        TEXT NOT NULL,
+    element_key TEXT NOT NULL,
+    refs        UUID[] NOT NULL,
+    before      JSONB,
+    after       JSONB
+);
+CREATE INDEX config_change_log_element_idx ON config_change_log (element_key, seq);
+CREATE INDEX config_change_log_refs_idx ON config_change_log USING GIN (refs);
+CREATE INDEX config_change_log_at_idx ON config_change_log (at);
+
+-- Operational settings, set from the Operations screen (e.g. changelog.retention-days; absent = default).
+CREATE TABLE operations_setting (
+    name  TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
+-- The draft changelog: who changed what in a draft, and when (docs/ntrloc-system-model-notes.md §13.6).
+-- The same shape as config_change_log, scoped to its draft, in a table of its own so draft activity never
+-- adds rows or contention to live's log.
+CREATE TABLE draft_change_log (
+    seq         BIGSERIAL PRIMARY KEY,
+    draft_id    UUID NOT NULL REFERENCES draft(id) ON DELETE CASCADE,
+    at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    actor_id    UUID,
+    actor_name  TEXT,
+    source      TEXT,
+    kind        TEXT NOT NULL,
+    element_key TEXT NOT NULL,
+    refs        UUID[] NOT NULL,
+    before      JSONB,
+    after       JSONB
+);
+CREATE INDEX draft_change_log_draft_idx ON draft_change_log (draft_id, seq);
+
+-- Live changes a draft has acknowledged (docs/ntrloc-system-model-notes.md §13.6): per element, the latest
+-- entry acknowledged. A later entry for the same element opens it again.
+CREATE TABLE draft_notice_ack (
+    draft_id    UUID NOT NULL REFERENCES draft(id) ON DELETE CASCADE,
+    element_key TEXT NOT NULL,
+    seq         BIGINT NOT NULL,
+    acked_by    UUID REFERENCES security_user(id) ON DELETE SET NULL,
+    acked_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (draft_id, element_key)
+);

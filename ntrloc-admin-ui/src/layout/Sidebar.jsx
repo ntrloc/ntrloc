@@ -16,7 +16,7 @@ function Sidebar({ extensions = [] }) {
   const { locked, collapsed, floating, toggleLocked, onMouseEnter, onMouseLeave, schemaPath, isSchemaActive } =
     useSidebarViewModel()
   // Phase 1 drafts grants only, and they're all under Access.
-  const { hasChanges } = useDraftMode()
+  const { changesMark } = useDraftMode()
 
   return (
     <CollapsiblePanel
@@ -86,7 +86,7 @@ function Sidebar({ extensions = [] }) {
             <path d="M7 11V7a5 5 0 0 1 10 0v4" />
           </svg>
           <span className="sidebar-nav-label">Access</span>
-          {hasChanges && <ModifiedDot />}
+          {changesMark && <ModifiedDot kind={changesMark} />}
         </NavLink>
         <NavLink to="/security" aria-label="Security" className={navItemClassName}>
           <svg

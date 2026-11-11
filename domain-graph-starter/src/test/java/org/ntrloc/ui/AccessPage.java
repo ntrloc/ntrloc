@@ -258,11 +258,43 @@ class AccessPage {
         return Stream.concat(dotted, pills).toList();
     }
 
+    /** Like modified(), for the marks that say live has moved underneath a change ("needs reconciling"). */
+    List<String> needingReconciling() {
+        return marked("reconcile");
+    }
+
+    /** Like modified(), for the marks that say live changed something here ("changed in live"). */
+    List<String> changedInLive() {
+        return marked("notice");
+    }
+
+    private List<String> marked(String kind) {
+        var dotted = driver.findElements(By.cssSelector(".modified-dot[data-kind='" + kind + "']")).stream()
+                .map(dot -> dot.findElement(By.xpath("..")).getText().replaceAll("\\s+", " ").trim());
+        var pills = driver.findElements(By.cssSelector(".permission-pill[data-modified='" + kind + "']")).stream()
+                .map(pill -> "pill " + pill.getText().trim());
+        return Stream.concat(dotted, pills).toList();
+    }
+
+    /** The detail's "Changed in live" panel, or "" when there's none. */
+    String liveNotices() {
+        return detail().findElements(By.cssSelector("live-notices")).stream().findFirst().map(WebElement::getText).orElse("");
+    }
+
+    /** Acknowledges the first notice in the detail's "Changed in live" panel. */
+    AccessPage acknowledgeFirstNotice() {
+        detail().findElement(By.xpath(".//live-notices//li[1]//button[normalize-space()='Acknowledge']")).click();
+        return this;
+    }
+
     private WebElement detail() {
         return await().until(ExpectedConditions.visibilityOfElementLocated(DETAIL));
     }
 
     WebDriverWait await() {
-        return new WebDriverWait(driver, Duration.ofSeconds(15));
+        // A re-render can replace an element while a wait is reading it; try again rather than fail.
+        var wait = new WebDriverWait(driver, Duration.ofSeconds(15));
+        wait.ignoring(org.openqa.selenium.StaleElementReferenceException.class);
+        return wait;
     }
 }

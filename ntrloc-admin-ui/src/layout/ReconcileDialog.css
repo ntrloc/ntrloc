@@ -1,0 +1,65 @@
+.reconcile-hint {
+  margin: 0 0 12px;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.reconcile-rows {
+  display: flex;
+  flex-direction: column;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--border);
+
+  > li {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 0;
+    border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  }
+
+  > li:last-child {
+    border-bottom: none;
+  }
+}
+
+.reconcile-row-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  color: var(--text-h);
+}
+
+reconcile-actions {
+  display: flex;
+  flex: none;
+  gap: 4px;
+}
+
+.reconcile-muted {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.reconcile-error {
+  margin: 12px 0 0;
+  color: var(--danger);
+}
+
+.reconcile-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 16px 0 8px;
+  color: var(--text-h);
+  font-size: 14px;
+}
+
+.reconcile-heading:first-child {
+  margin-top: 0;
+}

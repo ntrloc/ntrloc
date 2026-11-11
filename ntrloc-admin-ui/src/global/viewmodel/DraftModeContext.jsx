@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { fetchMe } from '../delegate/AccountDelegate'
-import { createDraft, fetchDraftChanges, fetchDrafts } from '../delegate/DraftDelegate'
+import { acknowledgeLiveChange, createDraft, fetchDraftChanges, fetchDrafts } from '../delegate/DraftDelegate'
 import { DraftModeContext } from './useDraftMode'
+import { useAccessChanged } from './useAccessChanged'
 
 // Whether this tab is working live or in a draft, and which draft. The mode belongs to the tab, not
 // the user or the server (docs/ntrloc-system-model-notes.md §11): one tab can stay live while another
@@ -21,8 +22,8 @@ const NO_CHANGES = []
 function loadChanges(draftId, latestRequest, setChanges) {
   const request = ++latestRequest.current
   fetchDraftChanges(draftId)
-    .then(({ grants }) => {
-      if (request === latestRequest.current) setChanges({ draftId, grants })
+    .then(({ grants, notices }) => {
+      if (request === latestRequest.current) setChanges({ draftId, grants, notices })
     })
     .catch(() => {})
 }
@@ -36,7 +37,7 @@ export function DraftModeProvider({ children }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   // The changes as last fetched, tagged with the draft they're for.
-  const [changes, setChanges] = useState({ draftId: null, grants: [] })
+  const [changes, setChanges] = useState({ draftId: null, grants: [], notices: [] })
   const changesRequest = useRef(0)
 
   // Takes the drafts this user can work in. If this tab's draft is no longer among them (applied,
@@ -72,9 +73,23 @@ export function DraftModeProvider({ children }) {
     if (draftId && isAdmin === true) loadChanges(draftId, changesRequest, setChanges)
   }, [draftId, isAdmin])
 
+  // Live can change underneath the draft at any time: the server says so (accessChanged), and the
+  // changes are read again then, as well as when the draft menu opens or a Permission grants tab loads.
   useEffect(reloadChanges, [reloadChanges])
+  useAccessChanged(reloadChanges)
 
   const grantChanges = changes.draftId === draftId ? changes.grants : NO_CHANGES
+  const notices = changes.draftId === draftId ? changes.notices : NO_CHANGES
+  const needsReconciling = grantChanges.filter((c) => c.reconcile.length > 0).length
+
+  // Acknowledges one live change; the notices are then read again.
+  const acknowledgeNotice = useCallback(
+    async (notice) => {
+      await acknowledgeLiveChange(draftId, notice.latest.elementKey, notice.latest.seq)
+      reloadChanges()
+    },
+    [draftId, reloadChanges],
+  )
 
   const enterDraft = useCallback((next) => {
     setDraft({ id: next.id, name: next.name })
@@ -108,10 +123,15 @@ export function DraftModeProvider({ children }) {
       startDraft,
       leaveDraft,
       grantChanges,
-      hasChanges: grantChanges.length > 0,
+      // The sidebar's mark: 'reconcile' if live has moved underneath any change, 'modified' if there are any.
+      changesMark:
+        needsReconciling > 0 ? 'reconcile' : notices.length > 0 ? 'notice' : grantChanges.length > 0 ? 'modified' : null,
+      notices,
+      acknowledgeNotice,
+      needsReconciling,
       reloadChanges,
     }),
-    [draft, drafts, isAdmin, loading, error, loadDrafts, enterDraft, startDraft, leaveDraft, grantChanges, reloadChanges],
+    [draft, drafts, isAdmin, loading, error, loadDrafts, enterDraft, startDraft, leaveDraft, grantChanges, notices, needsReconciling, reloadChanges, acknowledgeNotice],
   )
   return <DraftModeContext.Provider value={value}>{children}</DraftModeContext.Provider>
 }

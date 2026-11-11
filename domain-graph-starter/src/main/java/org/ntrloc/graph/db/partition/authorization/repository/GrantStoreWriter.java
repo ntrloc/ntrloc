@@ -1,6 +1,7 @@
 package org.ntrloc.graph.db.partition.authorization.repository;
 
 
+import java.util.Collection;
 import java.util.UUID;
 
 /** Writing the Grant Store: item-type grants and marker grants. See GrantStore. */
@@ -36,4 +37,10 @@ public interface GrantStoreWriter {
 
     /** Every grant made against this marker -- before the marker itself is deleted. */
     void deleteGrantsForMarker(UUID markerId);
+
+    /** Reloads this node's view: grant rows went by a database cascade (a schema element deleted). */
+    void reloadAfterCascade();
+
+    /** Every grant to these users or groups (principalType USER or USER_GROUP) -- as they're deleted. */
+    void deleteGrantsForPrincipals(String principalType, Collection<UUID> principalIds);
 }

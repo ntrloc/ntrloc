@@ -41,14 +41,16 @@ public class UserAdminController {
     public record TokenSummaryResponse(UUID id, String name, OffsetDateTime createdAt, OffsetDateTime expiresAt) {}
 
     private final UserStore store;
+    private final UserService userService;
     private final PersonalAccessTokenService patService;
     private final ExternalPrincipalResolver principalResolver;
     private final DefaultUserGroupInitializer defaultUserGroupInitializer;
     private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder();
 
-    public UserAdminController(UserStore store, PersonalAccessTokenService patService,
+    public UserAdminController(UserStore store, UserService userService, PersonalAccessTokenService patService,
                                ExternalPrincipalResolver principalResolver, DefaultUserGroupInitializer defaultUserGroupInitializer) {
         this.store = store;
+        this.userService = userService;
         this.patService = patService;
         this.principalResolver = principalResolver;
         this.defaultUserGroupInitializer = defaultUserGroupInitializer;
@@ -76,7 +78,7 @@ public class UserAdminController {
         }
 
         boolean isAdmin = isAdminRole(body.role());
-        var user = store.createUser(body.displayName(), body.email(), isAdmin);
+        var user = userService.createUser(body.displayName(), body.email(), isAdmin);
         String passwordHash = "{bcrypt}" + encoder.encode(body.password());
         store.createLocalCredentials(user.id(), passwordHash);
         defaultUserGroupInitializer.addUserToDefaultUserGroup(user.id());
@@ -97,7 +99,7 @@ public class UserAdminController {
                     throw new ResponseStatusException(HttpStatus.CONFLICT, "Email already in use: " + body.email());
                 });
         boolean isAdmin = isAdminRole(body.role());
-        store.updateUser(userId, body.displayName(), body.email(), isAdmin);
+        userService.updateUser(userId, body.displayName(), body.email(), isAdmin);
         return new UserView(userId, body.displayName(), body.email(), isAdmin);
     }
 
@@ -110,7 +112,7 @@ public class UserAdminController {
         if (principal.id().equals(userId)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "You cannot delete your own account");
         }
-        store.deleteUser(userId);
+        userService.deleteUser(userId);
         return ResponseEntity.noContent().build();
     }
 

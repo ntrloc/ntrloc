@@ -106,6 +106,7 @@ public class SchemaService {
         schemaChangedTopic.addMessageListener(message -> {
             if (!message.getPublishingMember().equals(clusterService.getLocalMember())) {
                 rebuildCache();
+                accessService.schemaChanged();
             }
         });
     }
@@ -140,6 +141,7 @@ public class SchemaService {
     // DB, outside applyMutations.
     public void refreshCache() {
         rebuildCache();
+        accessService.schemaChanged();
         LOG.info("Schema changed: cache rebuilt ({} item types), publishing schemaChanged", cachedAdminSchema.get().items().size());
         schemaChangedTopic.publish(UUID.randomUUID().toString());
         clusterEventBroadcaster.publish(SCHEMA_CHANGED_TOPIC, UUID.randomUUID().toString());

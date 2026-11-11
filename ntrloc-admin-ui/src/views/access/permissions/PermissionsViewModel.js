@@ -1,15 +1,21 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useDraftMode } from '../../../global/viewmodel/useDraftMode'
 import { fetchGrantTargets, fetchPermissions, setPermission } from '../AccessDelegate'
-import { permissionKey, permissionKeys, permissionSources } from './grantModel'
+import { markOf, permissionKey, permissionKeys, permissionSources, strongestMark } from './grantModel'
 import { useGrantChanges } from './useGrantChanges'
+import { useAccessChanged } from '../../../global/viewmodel/useAccessChanged'
 
 // A principal's permissions (a user's or a group's): the item types and markers there are to grant
 // against, the principal's own grants (editable), and the grants it inherits from `inheritedFrom`
 // groups (shown, not editable here). In draft mode, all of it is the draft's, and what the draft
-// changes for this principal is marked (changed, markerChanged, itemTypeChanged).
+// changes for this principal is marked: 'modified', or 'reconcile' where live has moved underneath it
+// (markOf, markerMark, itemTypeMark).
 export function usePermissionsViewModel(principal, inheritedFrom) {
   const { draft, loadDrafts, reloadChanges } = useDraftMode()
+  // Live may have moved underneath the draft's changes since they were last read.
+  useEffect(() => {
+    if (draft) reloadChanges()
+  }, [draft, reloadChanges])
   const draftId = draft?.id ?? null
   const [targets, setTargets] = useState(null)
   const [loaded, setLoaded] = useState(null)
@@ -66,8 +72,15 @@ export function usePermissionsViewModel(principal, inheritedFrom) {
   }, [loaded, inheritedIds])
 
   const changes = useGrantChanges()
-  const changedPermissions = changes.changedOf(principal)
-  const changedKeys = useMemo(() => permissionKeys(changedPermissions), [changedPermissions])
+  const principalChanges = changes.changesOf(principal)
+  const changesByKey = useMemo(() => new Map(principalChanges.map((c) => [permissionKey(c.permission), c])), [principalChanges])
+
+  // Another tab or admin changed grants or groups: show them as they are now.
+  useAccessChanged(() => {
+    loadPermissions()
+      .then(setLoaded)
+      .catch(fail)
+  })
 
   const sourcesOf = useCallback((permission) => permissionSources(permission, directKeys, groupKeys), [directKeys, groupKeys])
 
@@ -94,11 +107,19 @@ export function usePermissionsViewModel(principal, inheritedFrom) {
     error,
     targets,
     sourcesOf,
-    changed: (permission) => changedKeys.has(permissionKey(permission)),
-    markerChanged: (markerId) => changedPermissions.some((p) => p.markerId === markerId),
+    markOf: (permission) => {
+      const change = changesByKey.get(permissionKey(permission))
+      return strongestMark(change ? markOf([change]) : null, changes.live.permissionMark(principal, permission))
+    },
+    reconcileOf: (permission) => changesByKey.get(permissionKey(permission))?.reconcile ?? [],
+    markerMark: (markerId) =>
+      strongestMark(markOf(principalChanges.filter((c) => c.permission.markerId === markerId)), changes.live.markerMark(principal, markerId)),
     // An item type's card holds its own permissions and those of its markers.
-    itemTypeChanged: (itemTypeId, markers) =>
-      changedPermissions.some((p) => p.itemTypeId === itemTypeId || markers.some((mk) => mk.id === p.markerId)),
+    itemTypeMark: (itemTypeId, markers) =>
+      strongestMark(
+        markOf(principalChanges.filter((c) => c.permission.itemTypeId === itemTypeId || markers.some((mk) => mk.id === c.permission.markerId))),
+        changes.live.itemTypeMark(principal, itemTypeId, markers),
+      ),
     toggle,
     itemTypeOpen,
     toggleItemType,

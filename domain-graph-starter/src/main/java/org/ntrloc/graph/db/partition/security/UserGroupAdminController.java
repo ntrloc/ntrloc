@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -26,9 +27,7 @@ public class UserGroupAdminController {
 
     private static final String GROUP_NOT_FOUND = "UserGroup not found";
 
-    // parentIds is every group this one is directly nested under -- the schema (security_user_group_
-    // member_group) technically allows more than one, but the admin UI only ever offers a single
-    // parent picker, so in practice this list has 0 or 1 entries for anything created there.
+    // parentIds holds the group's one parent, or nothing for the root ("everyone").
     public record UserGroupView(UUID id, String name, int memberCount, List<UUID> parentIds) {}
 
     public record CreateUserGroupRequest(String name, UUID parentUserGroupId) {}
@@ -42,12 +41,14 @@ public class UserGroupAdminController {
     public record AddMemberRequest(UUID userId) {}
 
     private final UserStore store;
+    private final UserService userService;
     private final ExternalPrincipalResolver principalResolver;
     private final DefaultUserGroupInitializer defaultUserGroupInitializer;
 
-    public UserGroupAdminController(UserStore store, ExternalPrincipalResolver principalResolver,
+    public UserGroupAdminController(UserStore store, UserService userService, ExternalPrincipalResolver principalResolver,
                                 DefaultUserGroupInitializer defaultUserGroupInitializer) {
         this.store = store;
+        this.userService = userService;
         this.principalResolver = principalResolver;
         this.defaultUserGroupInitializer = defaultUserGroupInitializer;
     }
@@ -79,9 +80,7 @@ public class UserGroupAdminController {
         }
         store.findUserGroupById(body.parentUserGroupId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Parent group not found"));
-        var group = store.createUserGroup(body.name().trim());
-        store.addUserGroupToUserGroup(group.id(), body.parentUserGroupId());
-        return toView(group);
+        return toView(userService.createUserGroup(body.name().trim(), body.parentUserGroupId()));
     }
 
     @PutMapping("/{groupId}")
@@ -93,18 +92,12 @@ public class UserGroupAdminController {
         if (body.name() == null || body.name().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "UserGroup name is required");
         }
-        var updated = store.updateUserGroup(groupId, body.name().trim());
+        var updated = userService.renameUserGroup(groupId, body.name().trim());
         return toView(updated);
     }
 
-    // Sets this group's single parent, replacing whatever it was nested under before. A null
-    // parentUserGroupId is rejected -- "everyone" is the only group allowed to have no parent (see
-    // createUserGroup's own comment), and it's seeded directly by DefaultUserGroupInitializer rather than
-    // ever passing through this endpoint, so there's no legitimate caller that needs to clear a
-    // group's parent entirely. The admin UI's tree only ever shows/edits one parent per group (see
-    // UserGroupView's own comment), so "reparent" here means "clear every existing containing-group
-    // edge, then add the new one" rather than a general multi-parent add/remove; that's still
-    // exactly what the DAG-shaped schema underneath allows, just used in a restricted way.
+    // Moves the group under another. A parent is required: only "everyone", which the system creates, has
+    // none.
     @PutMapping("/{groupId}/parent")
     UserGroupView updateParent(@PathVariable("groupId") UUID groupId, @RequestBody UpdateParentRequest body,
                            Authentication authentication) {
@@ -116,24 +109,24 @@ public class UserGroupAdminController {
         }
         store.findUserGroupById(body.parentUserGroupId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Parent group not found"));
-        for (var existingParent : store.listContainingUserGroups(groupId)) {
-            store.removeUserGroupFromUserGroup(groupId, existingParent.id());
-        }
         try {
-            store.addUserGroupToUserGroup(groupId, body.parentUserGroupId());
+            userService.setParent(groupId, body.parentUserGroupId());
         } catch (IllegalArgumentException e) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
         }
-        return toView(group);
+        return toView(store.findUserGroupById(group.id()).orElseThrow());
     }
 
     private UserGroupView toView(UserStore.UserGroupRow g) {
-        var parentIds = store.listContainingUserGroups(g.id()).stream().map(UserStore.UserGroupRow::id).toList();
+        var parentIds = g.parentId() == null ? List.<UUID>of() : List.of(g.parentId());
         return new UserGroupView(g.id(), g.name(), store.listUserGroupMembers(g.id()).size(), parentIds);
     }
 
+    // A group with subgroups is refused (409) unless force=true, which deletes the subgroups too. The
+    // deleted groups' grants go with them.
     @DeleteMapping("/{groupId}")
     ResponseEntity<Void> deleteUserGroup(@PathVariable("groupId") UUID groupId,
+                                     @RequestParam(name = "force", defaultValue = "false") boolean force,
                                      Authentication authentication) {
         requireAdmin(authentication);
         if (groupId.equals(defaultUserGroupInitializer.getDefaultUserGroupId())) {
@@ -141,7 +134,11 @@ public class UserGroupAdminController {
         }
         store.findUserGroupById(groupId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, GROUP_NOT_FOUND));
-        store.deleteUserGroup(groupId);
+        try {
+            userService.deleteUserGroup(groupId, force);
+        } catch (UserStore.HasSubgroupsException e) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, e.getMessage());
+        }
         return ResponseEntity.noContent().build();
     }
 
@@ -162,7 +159,7 @@ public class UserGroupAdminController {
         requireAdmin(authentication);
         store.findUserGroupById(groupId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, GROUP_NOT_FOUND));
-        store.addUserToUserGroup(body.userId(), groupId);
+        userService.addMember(body.userId(), groupId);
         return ResponseEntity.noContent().build();
     }
 
@@ -170,7 +167,7 @@ public class UserGroupAdminController {
     ResponseEntity<Void> removeMember(@PathVariable("groupId") UUID groupId, @PathVariable("userId") UUID userId,
                                       Authentication authentication) {
         requireAdmin(authentication);
-        store.removeUserFromUserGroup(userId, groupId);
+        userService.removeMember(userId, groupId);
         return ResponseEntity.noContent().build();
     }
 

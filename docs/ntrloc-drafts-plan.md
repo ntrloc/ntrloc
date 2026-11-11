@@ -77,30 +77,62 @@ it's retired. Registry: `/api/drafts` (list, create), `/api/drafts/{id}/particip
 | 1.8a | **Modified dots.** In a draft, a dot in the draft colour marks the way to each change: Access in the sidebar, the Users/Groups tab, the user or group, its Permission grants tab, the item type card, the marker row, and the pill itself. `GET /api/drafts/{id}/changes` (admins) lists the draft's grant changes that still differ from live as it is now, so a change set back, or one live has caught up with, loses its dot. Later phases add their own families of change to the same endpoint and their own trail. | Follow the dots to a changed pill; undo it and the dots go |
 | 1.9 | **Close the phase.** Benchmark against the baseline (`20261110-220149-phase1-close`: no regression past +15%; largest +12.9%, an admin's single item); what the slice taught us is notes §12. | Phase review |
 
-## Right after Phase 1 — Keeping a draft in sync with live (design conversation)
+## Phase 1R — Keeping a draft in step with live (reconciliation)
 
-**Raised (2026-11-10), not settled.** Every aspect of live keeps changing while a draft is open, so we
-need one mechanism that keeps a draft in step with live, where what "in sync" means depends on the data:
+**Designed 2026-11-11** (notes §13). A draft floats on live: it always shows live as it is now plus its
+own changes, but never silently. Each draft change records the live revisions of what it depends on; the
+draft (never live) compares them with live; anything that moved, was deleted, or no longer fits becomes a
+reconciliation item an admin resolves one at a time; and a draft can't be applied while it's internally
+inconsistent or has anything left to reconcile. Built for grants first, before Phase 2, since groups
+build on it. Live's only part is bumping revisions in its own writes; it never consults drafts.
 
-- **Grants** (Phase 1): live changes to permissions the draft didn't touch flow through on read;
-  overrides keep their base value, so a later live change to one becomes a conflict at apply; an
-  override whose target live deleted is left orphaned (no foreign key), and today only apply drops it.
-- **Still to define** for groups, schema, inventory and processes: what live change a draft must react
-  to, whether it reacts when the change happens or when the draft is applied, and what counts as a
-  conflict, as stale, or as safe to absorb.
-
-Inputs: notes §7.2.1 (grant overrides and base values), §9.2 (rebasing, and each draft recording what
-it's based on). The outcome may revise Phase 1's orphan handling and step 1.7's conflicts.
+| Step | What | Checkpoint |
+|---|---|---|
+| R.1 | **Isolation made mechanical.** ArchUnit: no event listeners in the draft package, and cluster topics only through `DraftTopics` (every name under `draft.`). Draft stores share live's connection pool; no separate database role (notes §13.1). *Done 2026-11-11: each rule shown failing on a deliberate violation.* | Rules in the build |
+| R.2 | **Live revisions** for what Phase 1 drafts depend on: users and groups, per element (notes §13.3). A group's revision covers its name, parent, subgroups and members; a user's, their details and groups. A relationship change bumps every element on either side (moving G from A to P bumps G, A and P). Grant targets count by existence only (their revisions come with Phase 3's schema versions). Also, so live stays consistent on its own (notes §13.2): groups form a tree (one parent each; only `everyone` has none), enforced by the database; deleting a group with subgroups is refused unless forced, which deletes them too; deleting a user or group deletes their grants (new `UserService`); and a schema delete's cascaded grants leave the grant view on every node. React Access UI: Delete on a group (not `everyone`, not in a draft), listing the subgroups that go with it. *Done 2026-11-11.* | Live writes bump exactly what they change; benchmark shows no regression past +15% |
+| R.3 | **Draft changes record their dependencies.** Each grant override stores the live revisions it was based on when written. *Done 2026-11-11: principal revision, the path as a list, and the inherited value (notes §13.3).* | Overrides carry their bases |
+| R.4 | **Detection.** The draft compares each override's bases with live, on read and at apply, and lists reconciliation items: moved underneath, orphaned, no longer valid (conflicting can't happen for grants). Orphans stop being dropped silently at apply. Admin-only API next to `/changes`. *Done 2026-11-11.* | Integration tests: a live group move, a deleted marker, a deleted group each produce the right item |
+| R.5 | **Reconcile UI.** A second kind of mark, distinct from the modified dot, on the same trail; a Reconcile view listing the items; per item: keep (after review), take live, adjust, or discard. Resolving moves the override's base up to live as it is now. *Done 2026-11-11: "Reconcile…" in the draft menu, a red mark replacing the amber dot along the trail and beside the draft's name.* | Selenium: follow the mark from the sidebar, resolve each kind of item |
+| R.6 | **Apply gate.** Apply refuses while any item is unresolved, re-checking inside its transaction; the close dialog says why and links to the Reconcile view. *Done 2026-11-11.* | Apply blocked, then allowed once reconciled |
+| R.7 | **Live changelog** (notes §13.6). Live appends an entry per group, membership and grant change, in the same transaction: kind, element, before and after, who, when. Retention setting (default: keep everything) with pruning that keeps whatever an open draft still needs. *Done 2026-11-11: user and group writes now all go through `UserService` (ArchUnit); deletions of users, groups and markers are one entry each; schema-cascade grant removals not yet logged.* | Every live write to these leaves exactly one entry; benchmark |
+| R.7b | **Draft changelog** (notes §13.6; *done 2026-11-11*): who changed what in a draft, and when; same entry shape, its own table, written only by draft stores. At apply, live's entries say they came from the draft. | Each draft write leaves one entry; apply's live entries name the draft |
+| R.8 | **Push to browsers.** After such a change commits, live sends an "access changed" event on the existing server-sent-events channel; any tab showing Access reads again, and a draft tab also its changes and notices. The 30-second poll goes. *Done 2026-11-11: sent once per transaction after commit, admins only; a failure to send is logged, never thrown into the committed change. The event stream now opens at once (an initial comment), not at the first 30-second heartbeat. Gap: a second admin in the same draft sees the other's draft changes on their next read, not pushed.* | A second tab updates without a reload |
+| R.9 | **Informational notices.** A draft records its starting position in the log; `/changes` adds the entries since, latest per element, minus those acknowledged. `POST .../acknowledge` per entry, admins only. *Done 2026-11-11: `/changes` carries `notices` (latest per element, with a count); `POST /api/drafts/{id}/acknowledge`, recorded in the draft's log.* | Integration tests: move, rename, membership, grant; acknowledge one of two |
+| R.10 | **Notices in the UI.** In a group's or user's details, each notice in words with Acknowledge; a blue mark on the trail (red still wins); a bar under the header ("3 live changes to review · 1 change needs reconciling [Review…]"); one review dialog with both lists and Show links. *Done 2026-11-11: blue marks; the strongest mark wins (reconcile, then live change, then draft change); a "Changed in live" panel in a user's or group's details; the bar under the header; one Review dialog (menu "Review…") with both lists and Show links.* | Selenium: move a group in live, see it in the draft, acknowledge |
+| R.11 | **Revisions replaced by the changelog.** Required reconciliation asks whether any entry touched what a change depends on since its recorded position; the revision columns go. *Moved to Phase 2 (step 2.2), 2026-11-11.* | The R.3-R.6 tests pass unchanged in meaning |
+| R.12 | **Operations screen**, first item: changelog retention. *Moved to Phase 2 (step 2.3), 2026-11-11.* | Set and honoured |
 
 **Impersonation (raised 2026-11-10, phase not chosen).** An admin seeing the system -- live or a draft
 -- as a given user. Needed in one of the phases below; the React admin UI is admin-only, so until then
 a non-admin's view of a draft is checked through the API.
 
+## Phase 2 — Groups in drafts
+
+**Planned 2026-11-11.** A draft can change groups and memberships, as Phase 1 lets it change grants, with
+the conflicts that brings (notes §13.4.1). It opens with what Phase 1R left to do.
+
+| Step | What | Checkpoint |
+|---|---|---|
+| 2.1 | **Actions on live changes** for the Phase 1 items (notes §13.6): accept a live change, or put it back (for a grant, the draft sets the old value again; for groups and memberships once 2.5 lands). | Put a revoked grant back from its notice |
+| 2.2 | **Revisions replaced by the changelog** (was R.11). Required reconciliation asks whether any changelog entry touched what a change depends on since its recorded position; the revision columns go. Expected to close the gap where a member joining a group's subgroup isn't flagged. | The R.3-R.6 tests pass unchanged in meaning |
+| 2.3 | **Operations screen** (was R.12), first item: changelog retention. | Set and honoured |
+| 2.4 | **Groundwork.** Groups out of `UserStore` behind `UserService` (begun in Phase 1R); memberships and admin flags held in memory, replaced after a change commits and announced across the cluster, like `GrantsView`, so `getUserGrants` reads them at no per-request query. Cache `UserGrantsView` per user only if the benchmark shows `forUser` matters. | Benchmark |
+| 2.5 | **`DraftGroupStore`.** Create, rename, move and delete groups, and add and remove members, in a draft, each recorded with what it started from; the draft's group view floats on live with those applied; apply writes through `UserService`. | Integration tests per kind of change |
+| 2.6 | **Conflicts and invalid combinations** (notes §13.4.1): both sides changed the same thing (keep the draft's, or use live's, or edit); the draft's change no longer valid (a deleted parent or group, a cycle, a duplicate name). Apply waits for all of them. | Integration tests: each case in §13.4.1 |
+| 2.7 | **The UI:** group editing in a draft, and conflicts in place, both sides side by side, on the trail of marks. | Selenium: the P1/P2/P3 example |
+
+**Paused (2026-11-11):** further work on the marks themselves (the dots and their trail).
+
+**Known gaps to keep in view:** renaming a group flags its draft changes though a name changes nothing they
+do; grants removed by a schema delete's cascade aren't logged until schema changes are (Phase 3); a second
+admin in the same draft sees the other's changes only on their next read; the legacy `/admin` UI isn't kept
+in step.
+
 ## Later phases (outline)
 
 | Phase | Groundwork | Draft work |
 |---|---|---|
-| 2 — Groups | Split groups out of `UserStore`; a service in front of it (19 dependents today). That service holds memberships (and admin flags) in memory, replaced after a change commits and announced across the cluster, like `GrantsView`; `getUserGrants` reads groups from it rather than from the principal, so changes apply on the next request at no per-request query. Cache `UserGrantsView` per user only if the benchmark shows `forUser` matters | `DraftGroupStore`, reusing Phase 1's machinery |
-| 3 — Schema | Split `SchemaStore` into per-element stores (notes §8.7); fix controlled-list column ownership | Schema drafts, after the schema-versioning design |
+| 2 — Groups | See "Phase 2 — Groups in drafts" above | See above |
+| 3 — Schema | Split `SchemaStore` into per-element stores (notes §8.7); fix controlled-list column ownership | Schema drafts, after the schema-versioning design; revisit "refuse live changes where a draft reaches" against notes §13.1 and §13.5 |
 | 4 — Inventory | — | Try-out items in the draft ledger and register; the physical form (notes §7.3); a draft's consequences for existing items |
 | 5 — Processes | Outbound integrations as definitions (notes §10) | Preview process instances; outbound sending suppressed in drafts |

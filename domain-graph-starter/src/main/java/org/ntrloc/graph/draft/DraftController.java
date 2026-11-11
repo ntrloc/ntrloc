@@ -1,6 +1,7 @@
 package org.ntrloc.graph.draft;
 
 import org.ntrloc.graph.db.partition.authorization.GrantsApi;
+import org.ntrloc.graph.db.partition.changelog.ChangeEntries;
 import org.ntrloc.graph.db.partition.authorization.GrantsApi.PrincipalRef;
 import org.ntrloc.graph.db.partition.authorization.repository.Permission;
 import org.ntrloc.graph.db.partition.security.repository.UserStore;
@@ -41,18 +42,25 @@ public class DraftController {
 
     public record AppliedDraftView(DraftView draft, List<AppliedGrantView> grants) {}
 
-    public record GrantChangeView(PrincipalRef principal, Permission permission, boolean value) {}
+    /** `reconcile`: why live has moved underneath this change since it was made; empty if it hasn't. */
+    public record GrantChangeView(PrincipalRef principal, Permission permission, boolean value, List<GrantDependencyTracker.Reason> reconcile) {}
 
-    /** What the draft changes against live, by family; Phase 1 drafts grants only. */
-    public record DraftChangesView(List<GrantChangeView> grants) {}
+    public record ReconcileRequest(PrincipalRef principal, Permission permission, DraftAccessService.Resolution resolution) {}
+
+    /** What the draft changes against live, by family (Phase 1 drafts grants only); and the live changes it has yet to acknowledge. */
+    public record DraftChangesView(List<GrantChangeView> grants, List<DraftNotice> notices) {}
+
+    public record AcknowledgeRequest(String elementKey, Long seq) {}
 
     private final DraftService draftService;
     private final DraftAccessService draftAccessService;
+    private final DraftChangeLog draftLog;
     private final UserStore userStore;
     private final ExternalPrincipalResolver principalResolver;
 
-    public DraftController(DraftService draftService, DraftAccessService draftAccessService, UserStore userStore,
+    public DraftController(DraftService draftService, DraftAccessService draftAccessService, DraftChangeLog draftLog, UserStore userStore,
                            ExternalPrincipalResolver principalResolver) {
+        this.draftLog = draftLog;
         this.draftService = draftService;
         this.draftAccessService = draftAccessService;
         this.userStore = userStore;
@@ -93,8 +101,38 @@ public class DraftController {
     @GetMapping("/{draftId}/changes")
     DraftChangesView changes(DraftScope scope) {
         GrantsApi.requireAdmin(scope.user());
-        return new DraftChangesView(draftAccessService.changes(scope).stream()
-                .map(o -> new GrantChangeView(principalOf(o), o.permission(), o.value())).toList());
+        return new DraftChangesView(draftAccessService.changes(scope.draftId()).stream()
+                .map(c -> new GrantChangeView(principalOf(c.override()), c.override().permission(), c.override().value(), c.reconcile())).toList(),
+                draftAccessService.notices(scope));
+    }
+
+    // Acknowledging a live change the draft was told about (docs/ntrloc-system-model-notes.md §13.6), admins only.
+    @PostMapping("/{draftId}/acknowledge")
+    ResponseEntity<Void> acknowledge(DraftScope scope, @RequestBody AcknowledgeRequest body) {
+        GrantsApi.requireAdmin(scope.user());
+        if (body.elementKey() == null || body.seq() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "elementKey and seq are required");
+        }
+        draftAccessService.acknowledge(scope, body.elementKey(), body.seq());
+        return ResponseEntity.noContent().build();
+    }
+
+    // What has happened in the draft, oldest first (docs/ntrloc-system-model-notes.md §13.6), admins only.
+    @GetMapping("/{draftId}/log")
+    List<ChangeEntries.Entry> log(DraftScope scope) {
+        GrantsApi.requireAdmin(scope.user());
+        return draftLog.entries(scope.draftId());
+    }
+
+    // Reconciling a change with live (docs/ntrloc-system-model-notes.md §13.4), admins only.
+    @PostMapping("/{draftId}/reconcile")
+    ResponseEntity<Void> reconcile(DraftScope scope, @RequestBody ReconcileRequest body) {
+        GrantsApi.requireAdmin(scope.user());
+        if (body.principal() == null || body.permission() == null || body.resolution() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "principal, permission and resolution are required");
+        }
+        draftAccessService.reconcile(scope, GrantsApi.principalType(body.principal()), body.principal().id(), body.permission(), body.resolution());
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/{draftId}/participants")

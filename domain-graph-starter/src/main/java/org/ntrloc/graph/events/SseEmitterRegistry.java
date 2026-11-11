@@ -48,6 +48,9 @@ public class SseEmitterRegistry<T> {
         emitter.onCompletion(() -> unregister(registration, "completed"));
         emitter.onTimeout(() -> unregister(registration, "timed out"));
         emitter.onError(e -> unregister(registration, "failed"));
+        // Sent at once, so the response starts now: otherwise nothing reaches the client, not even the
+        // headers that open its EventSource, until the first event or heartbeat (up to 30 seconds).
+        send(registration, SseEmitter.event().comment("connected"));
         return emitter;
     }
 

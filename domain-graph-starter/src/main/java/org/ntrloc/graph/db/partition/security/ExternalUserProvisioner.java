@@ -5,9 +5,9 @@ import org.ntrloc.graph.principal.ExternalPrincipalResolver;
 import org.ntrloc.graph.principal.NtrlocPrincipal;
 
 import org.ntrloc.graph.db.partition.authorization.DefaultUserGroupInitializer;
-import org.ntrloc.graph.db.partition.security.repository.UserStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.ntrloc.graph.db.partition.changelog.ChangeLog;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -24,16 +24,16 @@ public class ExternalUserProvisioner {
 
     private static final Logger LOG = LoggerFactory.getLogger(ExternalUserProvisioner.class);
 
-    private final UserStore store;
+    private final UserService userService;
     private final DefaultUserGroupInitializer defaultUserGroupInitializer;
     private final ExternalPrincipalResolver principals;
     private final TransactionTemplate transactionTemplate;
     private final SecurityProperties securityProperties;
 
-    public ExternalUserProvisioner(UserStore store, DefaultUserGroupInitializer defaultUserGroupInitializer,
+    public ExternalUserProvisioner(UserService userService, DefaultUserGroupInitializer defaultUserGroupInitializer,
                                    ExternalPrincipalResolver principals, TransactionTemplate transactionTemplate,
                                    SecurityProperties securityProperties) {
-        this.store = store;
+        this.userService = userService;
         this.defaultUserGroupInitializer = defaultUserGroupInitializer;
         this.principals = principals;
         this.transactionTemplate = transactionTemplate;
@@ -51,10 +51,10 @@ public class ExternalUserProvisioner {
     private NtrlocPrincipal provision(String email, String displayName) {
         LOG.info("Provisioning an ntrloc account for {}", email);
         try {
-            transactionTemplate.executeWithoutResult(status -> {
-                var user = store.createUser(displayName, email, false);
+            ChangeLog.withSource("sign-in provisioning", () -> transactionTemplate.executeWithoutResult(status -> {
+                var user = userService.createUser(displayName, email, false);
                 defaultUserGroupInitializer.addUserToDefaultUserGroup(user.id());
-            });
+            }));
         } catch (DuplicateKeyException _) {
             // A concurrent first login for the same email created the account first; use that one.
         }

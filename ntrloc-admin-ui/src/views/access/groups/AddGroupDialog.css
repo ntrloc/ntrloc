@@ -1,0 +1,14 @@
+.add-group-message {
+  margin: 12px 0 0;
+  color: var(--secondary);
+}
+
+.add-group-error {
+  color: var(--danger);
+}
+
+.add-group-hint {
+  margin: 16px 0 0;
+  color: var(--text);
+  font-size: 13px;
+}

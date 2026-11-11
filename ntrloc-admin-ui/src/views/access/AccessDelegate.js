@@ -82,6 +82,16 @@ export function renameGroup(groupId, name) {
 }
 
 // One parent, replacing the old one.
+// A new group under parentId. Returns it as { id, name, memberCount, parentIds }.
+export function createGroup(name, parentId) {
+  return request('POST', '/api/admin/user-groups', 'create the group', { name, parentUserGroupId: parentId })
+}
+
+// A group with subgroups is refused unless force is true, which deletes them too. Grants go with them.
+export function deleteGroup(groupId, force) {
+  return request('DELETE', `/api/admin/user-groups/${groupId}${force ? '?force=true' : ''}`, 'delete the group')
+}
+
 export function setGroupParent(groupId, parentId) {
   return request('PUT', `/api/admin/user-groups/${groupId}/parent`, "change the group's parent", { parentUserGroupId: parentId })
 }

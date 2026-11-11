@@ -8,7 +8,8 @@
 // "start simple" step.
 import { logInfo } from '../log'
 
-const EVENT_TYPES = ['schemaChanged']
+// accessChanged: users, groups, memberships or grants changed in live (sent to admins only).
+const EVENT_TYPES = ['schemaChanged', 'accessChanged']
 
 let eventSource = null
 const listenersByType = new Map()
@@ -42,9 +43,18 @@ if (document.readyState === 'complete') {
   window.addEventListener('load', connect)
 }
 
-export function onSchemaChanged(listener) {
-  if (!listenersByType.has('schemaChanged')) listenersByType.set('schemaChanged', new Set())
-  const listeners = listenersByType.get('schemaChanged')
+function on(type, listener) {
+  if (!listenersByType.has(type)) listenersByType.set(type, new Set())
+  const listeners = listenersByType.get(type)
   listeners.add(listener)
   return () => listeners.delete(listener)
+}
+
+export function onSchemaChanged(listener) {
+  return on('schemaChanged', listener)
+}
+
+// Also called when the stream (re)connects, since changes made meanwhile weren't sent.
+export function onAccessChanged(listener) {
+  return on('accessChanged', listener)
 }

@@ -1,0 +1,18 @@
+/* A slim strip under the header, in the draft's colour family, saying what live has done meanwhile. */
+draft-notice-bar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 16px;
+  padding: 4px 16px;
+  border-bottom: 1px solid var(--secondary-border);
+  background: var(--secondary-bg);
+  color: var(--text-h);
+  font-size: 13px;
+}
+
+.draft-notice-part {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}

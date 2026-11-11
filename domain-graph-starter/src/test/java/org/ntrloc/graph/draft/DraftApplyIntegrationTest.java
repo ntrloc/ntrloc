@@ -168,19 +168,39 @@ class DraftApplyIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Test
-    void grantsWhosePrincipalOrTargetIsGone_areDropped_andTheRestApply() {
+    void grantsWhosePrincipalOrTargetIsGone_blockApply_untilReconciled_andNothingAppliesMeanwhile() {
         UUID deletedGroup = newGroup();
         UUID keptGroup = newGroup();
         UUID deletedMarker = newMarker();
         setInDraft(deletedGroup, createProducts(), true);
         setInDraft(keptGroup, readItems(deletedMarker), true);
         setInDraft(keptGroup, createProducts(), true);
-        userStore.deleteUserGroup(deletedGroup);
+        userStore.deleteUserGroup(deletedGroup, false);
         accessService.deleteMarker(deletedMarker);
 
-        assertThat(apply()).containsExactlyInAnyOrder(deletedGroup + " DROPPED", keptGroup + " DROPPED", keptGroup + " APPLIED");
+        post("apply", ADMIN).expectStatus().isEqualTo(409)
+                .expectBody().jsonPath("$.message").isEqualTo("2 changes need reconciling with live before the draft can be applied");
+        assertThat(live(keptGroup, createProducts())).isFalse();
+
+        reconcile(deletedGroup, createProducts(), "USE_LIVE");
+        reconcile(keptGroup, readItems(deletedMarker), "USE_LIVE");
+
+        assertThat(apply()).containsExactly(keptGroup + " APPLIED");
         assertThat(live(keptGroup, createProducts())).isTrue();
         assertThat(liveGrants.getPermissions("USER_GROUP", deletedGroup)).isEmpty();
+    }
+
+    private void reconcile(UUID groupId, Permission permission, String resolution) {
+        var body = new HashMap<String, Object>();
+        body.put("kind", permission.kind());
+        body.put("itemTypeId", permission.itemTypeId());
+        body.put("markerId", permission.markerId());
+        body.put("area", permission.area());
+        body.put("targetId", permission.targetId());
+        body.put("op", permission.op());
+        webTestClient.post().uri("/api/drafts/" + draftId + "/reconcile").header(HttpHeaders.AUTHORIZATION, bearerTokenFor(ADMIN))
+                .bodyValue(Map.of("principal", Map.of("kind", "group", "id", groupId), "permission", body, "resolution", resolution))
+                .exchange().expectStatus().isNoContent();
     }
 
     @Test

@@ -285,7 +285,8 @@ class TaskAdminControllerIntegrationTest extends AbstractIntegrationTest {
                     .returnResult(new ParameterizedTypeReference<ServerSentEvent<String>>() {})
                     .getResponseBody();
 
-            StepVerifier.create(body)
+            // Comments (the "connected" sent at once, heartbeats) aren't events: EventSource ignores them.
+            StepVerifier.create(body.filter(event -> event.data() != null))
                     .assertNext(event -> assertThat(event.data()).isEqualTo("task-changed"))
                     .thenCancel()
                     .verify(Duration.ofSeconds(5));

@@ -81,7 +81,7 @@ function MarkerRow({ marker, itemType, vm, editable }) {
         {/* The dot sits inside the name's fixed-width column, so it follows the last word. */}
         <span className="permissions-marker-name">
           {marker.name}
-          {vm.markerChanged(marker.id) && <ModifiedDot />}
+          {vm.markerMark(marker.id) && <ModifiedDot kind={vm.markerMark(marker.id)} />}
         </span>
         <span className="permissions-summary" data-empty={summary === 'No access' || undefined}>
           {summary}
@@ -102,7 +102,7 @@ function MarkerRow({ marker, itemType, vm, editable }) {
                         label={label}
                         sources={vm.sourcesOf(permission)}
                         editable={editable}
-                        modified={vm.changed(permission)}
+                        mark={vm.markOf(permission)}
                         onToggle={() => vm.toggle(permission)}
                       />
                     ))}
@@ -136,7 +136,7 @@ function ItemTypeCard({ itemType, markers, vm, editable }) {
       title={itemType.name}
       expanded={vm.itemTypeOpen(itemType.id, hasAny)}
       onToggle={() => vm.toggleItemType(itemType.id, hasAny)}
-      modified={vm.itemTypeChanged(itemType.id, markers)}
+      mark={vm.itemTypeMark(itemType.id, markers)}
       actions={<span className="permissions-summary" data-empty={!hasAny || undefined}>{summary}</span>}
     >
       <permissions-type-row>
@@ -148,7 +148,7 @@ function ItemTypeCard({ itemType, markers, vm, editable }) {
               label={label}
               sources={vm.sourcesOf(permission)}
               editable={editable}
-              modified={vm.changed(permission)}
+              mark={vm.markOf(permission)}
               onToggle={() => vm.toggle(permission)}
             />
           ))}
