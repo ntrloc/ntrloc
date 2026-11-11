@@ -1,8 +1,8 @@
-// Draft ids reach request URLs and session storage, so each is checked to be what the server issues
-// (a UUID) before it's used in either; anything else is refused rather than sent.
+// Ids reach request URLs, so each is checked to be what the server issues (a UUID) before it's used;
+// anything else is refused rather than sent.
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-export function isId(value) {
+function isId(value) {
   return typeof value === 'string' && UUID.test(value)
 }
 

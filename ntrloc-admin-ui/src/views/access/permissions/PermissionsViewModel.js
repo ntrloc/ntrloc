@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useDraftMode } from '../../../global/viewmodel/useDraftMode'
 import { fetchGrantTargets, fetchPermissions, setPermission } from '../AccessDelegate'
-import { permissionKeys, permissionSources } from './grantModel'
+import { permissionKey, permissionKeys, permissionSources } from './grantModel'
+import { useGrantChanges } from './useGrantChanges'
 
 // A principal's permissions (a user's or a group's): the item types and markers there are to grant
 // against, the principal's own grants (editable), and the grants it inherits from `inheritedFrom`
-// groups (shown, not editable here). In draft mode, all of it is the draft's.
+// groups (shown, not editable here). In draft mode, all of it is the draft's, and what the draft
+// changes for this principal is marked (changed, markerChanged, itemTypeChanged).
 export function usePermissionsViewModel(principal, inheritedFrom) {
-  const { draft, loadDrafts } = useDraftMode()
+  const { draft, loadDrafts, reloadChanges } = useDraftMode()
   const draftId = draft?.id ?? null
   const [targets, setTargets] = useState(null)
   const [loaded, setLoaded] = useState(null)
@@ -63,6 +65,10 @@ export function usePermissionsViewModel(principal, inheritedFrom) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loaded, inheritedIds])
 
+  const changes = useGrantChanges()
+  const changedPermissions = changes.changedOf(principal)
+  const changedKeys = useMemo(() => permissionKeys(changedPermissions), [changedPermissions])
+
   const sourcesOf = useCallback((permission) => permissionSources(permission, directKeys, groupKeys), [directKeys, groupKeys])
 
   // Item types with anything granted start open, the rest closed; after that, each card remembers
@@ -77,6 +83,7 @@ export function usePermissionsViewModel(principal, inheritedFrom) {
     try {
       await setPermission(draftId, principal, permission, !sourcesOf(permission).direct)
       setLoaded(await loadPermissions())
+      if (draftId) void reloadChanges()
     } catch (e) {
       fail(e)
     }
@@ -87,6 +94,11 @@ export function usePermissionsViewModel(principal, inheritedFrom) {
     error,
     targets,
     sourcesOf,
+    changed: (permission) => changedKeys.has(permissionKey(permission)),
+    markerChanged: (markerId) => changedPermissions.some((p) => p.markerId === markerId),
+    // An item type's card holds its own permissions and those of its markers.
+    itemTypeChanged: (itemTypeId, markers) =>
+      changedPermissions.some((p) => p.itemTypeId === itemTypeId || markers.some((mk) => mk.id === p.markerId)),
     toggle,
     itemTypeOpen,
     toggleItemType,

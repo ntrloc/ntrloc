@@ -46,3 +46,8 @@ collapsible-card-body {
   display: block;
   padding: 0 14px 14px;
 }
+
+/* 6px from the title, as everywhere else (the toggle's gap is 10px). */
+.collapsible-card-toggle > .modified-dot {
+  margin-left: -4px;
+}

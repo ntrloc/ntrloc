@@ -34,6 +34,11 @@ public class DraftAccessService {
         return draftGrantStore.overrides(draftId);
     }
 
+    /** What the draft changes in grants, against live as it is now. */
+    public List<DraftGrantOverride> changes(DraftScope scope) {
+        return draftGrantStore.changes(scope.draftId());
+    }
+
     /** As AccessService.setPermission, in the draft: live is untouched. Not once the draft has closed. */
     @Transactional
     public void setPermission(DraftScope scope, String principalType, UUID principalId, Permission permission, boolean value) {

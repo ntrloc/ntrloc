@@ -1,5 +1,6 @@
 package org.ntrloc.graph.draft;
 
+import org.ntrloc.graph.db.partition.authorization.GrantsApi;
 import org.ntrloc.graph.db.partition.authorization.GrantsApi.PrincipalRef;
 import org.ntrloc.graph.db.partition.authorization.repository.Permission;
 import org.ntrloc.graph.db.partition.security.repository.UserStore;
@@ -40,12 +41,20 @@ public class DraftController {
 
     public record AppliedDraftView(DraftView draft, List<AppliedGrantView> grants) {}
 
+    public record GrantChangeView(PrincipalRef principal, Permission permission, boolean value) {}
+
+    /** What the draft changes against live, by family; Phase 1 drafts grants only. */
+    public record DraftChangesView(List<GrantChangeView> grants) {}
+
     private final DraftService draftService;
+    private final DraftAccessService draftAccessService;
     private final UserStore userStore;
     private final ExternalPrincipalResolver principalResolver;
 
-    public DraftController(DraftService draftService, UserStore userStore, ExternalPrincipalResolver principalResolver) {
+    public DraftController(DraftService draftService, DraftAccessService draftAccessService, UserStore userStore,
+                           ExternalPrincipalResolver principalResolver) {
         this.draftService = draftService;
+        this.draftAccessService = draftAccessService;
         this.userStore = userStore;
         this.principalResolver = principalResolver;
     }
@@ -76,9 +85,16 @@ public class DraftController {
         var applied = draftService.apply(draftId, principalResolver.resolve(authentication));
         return new AppliedDraftView(view(applied.draft()), applied.grants().stream().map(g -> {
             var o = g.override();
-            var principal = new PrincipalRef("USER".equals(o.principalType()) ? "user" : "group", o.principalId());
-            return new AppliedGrantView(principal, o.permission(), o.value(), g.outcome().name());
+            return new AppliedGrantView(principalOf(o), o.permission(), o.value(), g.outcome().name());
         }).toList());
+    }
+
+    // Grant changes are shown in the Access view, which is for admins.
+    @GetMapping("/{draftId}/changes")
+    DraftChangesView changes(DraftScope scope) {
+        GrantsApi.requireAdmin(scope.user());
+        return new DraftChangesView(draftAccessService.changes(scope).stream()
+                .map(o -> new GrantChangeView(principalOf(o), o.permission(), o.value())).toList());
     }
 
     @GetMapping("/{draftId}/participants")
@@ -99,6 +115,10 @@ public class DraftController {
     ResponseEntity<Void> uninvite(@PathVariable UUID draftId, @PathVariable UUID userId, Authentication authentication) {
         draftService.uninvite(draftId, userId, principalResolver.resolve(authentication));
         return ResponseEntity.noContent().build();
+    }
+
+    private static PrincipalRef principalOf(DraftGrantOverride o) {
+        return new PrincipalRef("USER".equals(o.principalType()) ? "user" : "group", o.principalId());
     }
 
     private DraftView view(DraftRecord draft) {

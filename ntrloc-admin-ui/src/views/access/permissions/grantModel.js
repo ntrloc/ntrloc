@@ -55,3 +55,23 @@ export function permissionSources(permission, directKeys, groupKeys) {
     groups: groupKeys.filter(({ keys }) => keys.has(key)).map(({ group }) => group),
   }
 }
+
+const NO_PERMISSIONS = []
+
+// A draft's grant changes ([{ principal, permission, value }]), for the modified dots: whether any
+// principal of a kind changed, and each principal's changed permissions.
+export function indexGrantChanges(grants) {
+  const byPrincipal = new Map()
+  for (const { principal, permission } of grants) {
+    const key = `${principal.kind}:${principal.id}`
+    if (!byPrincipal.has(key)) byPrincipal.set(key, [])
+    byPrincipal.get(key).push(permission)
+  }
+  const kinds = new Set(grants.map((g) => g.principal.kind))
+  const changedOf = (principal) => byPrincipal.get(`${principal.kind}:${principal.id}`) ?? NO_PERMISSIONS
+  return {
+    kindChanged: (kind) => kinds.has(kind),
+    changedOf,
+    principalChanged: (principal) => changedOf(principal).length > 0,
+  }
+}

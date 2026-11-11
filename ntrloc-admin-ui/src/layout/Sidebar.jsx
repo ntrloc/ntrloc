@@ -1,5 +1,7 @@
 import { NavLink } from 'react-router-dom'
 import CollapsiblePanel from '../controls/collapsible-panel/CollapsiblePanel'
+import ModifiedDot from '../controls/modified-dot/ModifiedDot'
+import { useDraftMode } from '../global/viewmodel/useDraftMode'
 import { useSidebarViewModel } from './SidebarViewModel'
 import './Sidebar.css'
 
@@ -13,6 +15,8 @@ function navItemClassName({ isActive }) {
 function Sidebar({ extensions = [] }) {
   const { locked, collapsed, floating, toggleLocked, onMouseEnter, onMouseLeave, schemaPath, isSchemaActive } =
     useSidebarViewModel()
+  // Phase 1 drafts grants only, and they're all under Access.
+  const { hasChanges } = useDraftMode()
 
   return (
     <CollapsiblePanel
@@ -82,6 +86,7 @@ function Sidebar({ extensions = [] }) {
             <path d="M7 11V7a5 5 0 0 1 10 0v4" />
           </svg>
           <span className="sidebar-nav-label">Access</span>
+          {hasChanges && <ModifiedDot />}
         </NavLink>
         <NavLink to="/security" aria-label="Security" className={navItemClassName}>
           <svg

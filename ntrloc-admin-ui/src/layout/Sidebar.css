@@ -65,3 +65,8 @@ collapsible-panel[data-collapsed]:not([data-floating]) .sidebar-nav-item.active 
   writing-mode: vertical-rl;
   transform: rotate(180deg);
 }
+
+/* 6px from the label, as everywhere else (the item's gap is 10px). */
+.sidebar-nav-item .modified-dot {
+  margin-left: -4px;
+}

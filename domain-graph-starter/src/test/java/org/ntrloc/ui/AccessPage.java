@@ -2,6 +2,7 @@ package org.ntrloc.ui;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.stream.Stream;
 
 import org.openqa.selenium.By;
 import org.openqa.selenium.Keys;
@@ -243,6 +244,18 @@ class AccessPage {
 
     private static WebElement pill(WebElement scope, String label) {
         return scope.findElement(By.xpath(".//button[contains(@class,'permission-pill') and starts-with(@aria-label,'" + label + ":')]"));
+    }
+
+    /**
+     * What the current draft marks as changed: the text of each element carrying a modified dot (the
+     * sidebar link, a tab, a list entry, a card, a marker row), and each marked pill as "pill {label}".
+     */
+    List<String> modified() {
+        var dotted = driver.findElements(By.cssSelector(".modified-dot")).stream()
+                .map(dot -> dot.findElement(By.xpath("..")).getText().trim());
+        var pills = driver.findElements(By.cssSelector(".permission-pill[data-modified]")).stream()
+                .map(pill -> "pill " + pill.getText().trim());
+        return Stream.concat(dotted, pills).toList();
     }
 
     private WebElement detail() {

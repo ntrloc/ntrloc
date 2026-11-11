@@ -40,6 +40,14 @@ export async function discardDraft(draftId) {
   return res.json()
 }
 
+// What the draft changes against live as it is now (admins only), by family; Phase 1 drafts grants
+// only: { grants: [{ principal: { kind, id }, permission, value }] }.
+export async function fetchDraftChanges(draftId) {
+  const res = await fetch(draftAddress(draftId, 'changes'), { credentials: 'same-origin' })
+  if (!res.ok) throw new Error(await readErrorMessage(res, `Failed to fetch the draft's changes (${res.status})`))
+  return res.json()
+}
+
 // The draft's participants (admins only): the non-admins invited to work in it, as
 // { id, displayName, email, addedAt }.
 export async function fetchParticipants(draftId) {

@@ -1,6 +1,7 @@
 import TabView from '../../../controls/tabview/TabView'
 import { groupClosure } from '../permissions/grantModel'
 import PermissionsTab from '../permissions/PermissionsTab'
+import { useGrantChanges } from '../permissions/useGrantChanges'
 import { useUserDetailViewModel } from './UserDetailViewModel'
 import UserGroupsTab from './UserGroupsTab'
 import UserOverviewTab from './UserOverviewTab'
@@ -11,6 +12,7 @@ const SIGN_IN_LABELS = { local: 'Local account', ldap: 'LDAP', oidc: 'OpenID Con
 // A user: who they are and their tokens, the groups they're in, and what they're granted.
 function UserDetailView({ userId, allGroups, onUserChanged }) {
   const { status, detail, reload, tabKey, setTabKey } = useUserDetailViewModel(userId)
+  const changes = useGrantChanges()
 
   if (status === 'error') return <p className="user-detail-message user-detail-error">Failed to load this user.</p>
   if (status !== 'ready') return <p className="user-detail-message">Loading…</p>
@@ -34,6 +36,7 @@ function UserDetailView({ userId, allGroups, onUserChanged }) {
       key: 'permissions',
       label: 'Permission grants',
       padding: 0,
+      modified: changes.principalChanged({ kind: 'user', id: userId }),
       view: (
         <PermissionsTab
           principal={{ kind: 'user', id: user.id }}

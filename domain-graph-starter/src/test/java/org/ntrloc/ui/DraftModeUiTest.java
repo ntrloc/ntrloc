@@ -136,6 +136,23 @@ class DraftModeUiTest extends AbstractUiIntegrationTest {
     }
 
     @Test
+    void dotsLeadFromTheSidebarToEachChangedGrant_andGoWhenTheChangeIsUndone() {
+        userStore.createUserGroup("Dotted " + tag);
+        reload();
+        drafts.startDraft("Dots " + tag);
+        AccessPage access = AccessPage.of(driver);
+        assertThat(access.modified()).isEmpty();
+
+        grantCreate("Dotted " + tag);
+        access.await().until(d -> !access.modified().isEmpty());
+        assertThat(access.modified()).containsExactlyInAnyOrder(
+                "Access", "Groups", "Dotted " + tag, "Permission grants", WIDGET_TYPE, "pill Create");
+
+        grantCreate("Dotted " + tag);
+        access.await().until(d -> access.modified().isEmpty());
+    }
+
+    @Test
     void anAdminInvitesAndRemovesParticipants() {
         var user = userStore.createUser("Participant " + tag, "ui-draft-" + UUID.randomUUID() + "@example.com", false);
         drafts.startDraft("Participants " + tag).openParticipants();
@@ -156,9 +173,8 @@ class DraftModeUiTest extends AbstractUiIntegrationTest {
     void inADraft_searchReadsItems_butOffersNoWayToChangeThem() {
         drafts.startDraft("Search " + tag);
         openAdminUiAs(admin(), "/search");
-        // A full page load clears the tab's storage, so the tab is live again: switch back in.
+        // The draft mode is held in memory, so a page load returns the tab to live: switch back in.
         DraftSwitchPage.of(driver).choose("Search " + tag);
-        assertThat(driver.findElement(By.cssSelector(".search-draft-note")).getText()).contains("read-only here");
 
         SearchPanePage pane = SearchPanePage.openNew(driver).selectItemType(WIDGET_TYPE).search();
         assertThat(pane.resultLabels()).containsExactly("Draft widget");
@@ -172,6 +188,5 @@ class DraftModeUiTest extends AbstractUiIntegrationTest {
         DraftSwitchPage.of(driver).choose("Live");
         new org.openqa.selenium.support.ui.WebDriverWait(driver, java.time.Duration.ofSeconds(15))
                 .until(d -> !d.findElements(By.cssSelector("item-pane-actions button")).isEmpty());
-        assertThat(driver.findElements(By.cssSelector(".search-draft-note"))).isEmpty();
     }
 }

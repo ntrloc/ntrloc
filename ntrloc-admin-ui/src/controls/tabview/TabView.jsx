@@ -1,3 +1,4 @@
+import ModifiedDot from '../modified-dot/ModifiedDot'
 import { useTabViewModel } from './TabViewModel'
 import './TabView.css'
 
@@ -12,7 +13,9 @@ import './TabView.css'
 // the panel's own padding, 10px by default -- a section may carry its own `padding` instead (see
 // sections' own shape below), which wins over this default while that section is the active one.
 //
-// sections: array of { key, label, view, padding? }. padding is optional, per-section -- overrides
+// sections: array of { key, label, view, padding?, modified? }. modified marks the tab as leading to
+// a change in the current draft.
+// padding is optional, per-section -- overrides
 // contentPadding for the panel only while that particular section is the active one, e.g. a section
 // whose own view already manages its own inset (full-bleed content, a diagram that wants to use
 // every pixel) can ask for 0 without changing what every other tab gets.
@@ -33,6 +36,7 @@ function TabView({ sections, activeKey: controlledActiveKey, onActiveKeyChange, 
             onClick={() => selectTab(section.key)}
           >
             {section.label}
+            {section.modified && <ModifiedDot />}
           </button>
         ))}
       </tab-view-tabs>

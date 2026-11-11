@@ -76,6 +76,14 @@ public class DraftGrantStore {
                 .list();
     }
 
+    /** The overrides that still differ from live as it is now: live may since have caught up with some. */
+    public List<DraftGrantOverride> changes(UUID draftId) {
+        GrantsView live = liveGrants.getGrantsView();
+        return overrides(draftId).stream()
+                .filter(o -> o.value() != live.permissionsOf(o.principalType(), o.principalId()).contains(o.permission()))
+                .toList();
+    }
+
     /**
      * Keeps the draft open until the caller's transaction ends: applying or discarding it waits. False
      * when it's no longer open.

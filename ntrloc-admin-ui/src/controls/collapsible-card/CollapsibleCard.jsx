@@ -1,3 +1,4 @@
+import ModifiedDot from '../modified-dot/ModifiedDot'
 import './CollapsibleCard.css'
 
 // Also used by other collapsible boxes that should read the same as a card, e.g. a link's.
@@ -12,14 +13,16 @@ export function TriangleIcon({ expanded }) {
 // A bordered card with a title bar that collapses it down to just that bar. Unlike Accordion, each
 // card expands and collapses on its own, so several can be open at once. Controlled: the caller
 // owns expanded and onToggle. `actions` (e.g. a "New" button) sit at the far end of the title bar,
-// outside the toggle, so clicking one doesn't also collapse the card.
-function CollapsibleCard({ title, expanded, onToggle, actions, children }) {
+// outside the toggle, so clicking one doesn't also collapse the card. `modified` marks the card as
+// holding a change in the current draft.
+function CollapsibleCard({ title, expanded, onToggle, actions, modified, children }) {
   return (
     <collapsible-card data-expanded={expanded || undefined}>
       <collapsible-card-header>
         <button type="button" className="collapsible-card-toggle" aria-expanded={expanded} onClick={onToggle}>
           <TriangleIcon expanded={expanded} />
           <span className="collapsible-card-title">{title}</span>
+          {modified && <ModifiedDot />}
         </button>
         {actions && <collapsible-card-actions>{actions}</collapsible-card-actions>}
       </collapsible-card-header>

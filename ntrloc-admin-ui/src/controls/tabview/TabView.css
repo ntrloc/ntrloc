@@ -18,6 +18,9 @@ tab-view-tabs {
 
 .tab-view-tab {
   flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   padding: 10px 20px;
   border: none;
   /* Top corners only -- the bottom edge butts directly against tab-view-panel's border below,

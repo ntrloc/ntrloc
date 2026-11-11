@@ -1,6 +1,7 @@
 import TabView from '../../../controls/tabview/TabView'
 import { groupClosure } from '../permissions/grantModel'
 import PermissionsTab from '../permissions/PermissionsTab'
+import { useGrantChanges } from '../permissions/useGrantChanges'
 import { useGroupDetailViewModel } from './GroupDetailViewModel'
 import GroupOverviewTab from './GroupOverviewTab'
 import '../users/UserDetailView.css'
@@ -9,6 +10,7 @@ import '../users/UserDetailView.css'
 // Same header-over-tabs shape as a user's detail.
 function GroupDetailView({ groupId, allGroups, users, onGroupsChanged }) {
   const { status, detail, reload, tabKey, setTabKey } = useGroupDetailViewModel(groupId)
+  const changes = useGrantChanges()
 
   if (status === 'error') return <p className="user-detail-message user-detail-error">Failed to load this group.</p>
   if (status !== 'ready') return <p className="user-detail-message">Loading…</p>
@@ -27,6 +29,7 @@ function GroupDetailView({ groupId, allGroups, users, onGroupsChanged }) {
       key: 'permissions',
       label: 'Permission grants',
       padding: 0,
+      modified: changes.principalChanged({ kind: 'group', id: groupId }),
       view: <PermissionsTab principal={{ kind: 'group', id: group.id }} inheritedFrom={above} />,
     },
   ]

@@ -3,6 +3,7 @@ import { useAccessViewModel } from './AccessViewModel'
 import AccessList from './AccessList'
 import GroupDetailView from './groups/GroupDetailView'
 import { groupHierarchy } from './permissions/grantModel'
+import { useGrantChanges } from './permissions/useGrantChanges'
 import UserDetailView from './users/UserDetailView'
 import './AccessView.css'
 
@@ -28,6 +29,7 @@ function AccessView() {
     selectedGroupId,
     selectGroup,
   } = useAccessViewModel()
+  const changes = useGrantChanges()
 
   if (status === 'error') return <p className="access-view-error">Failed to load users and groups.</p>
   if (status !== 'ready') return <p className="access-view-loading">Loading…</p>
@@ -38,12 +40,18 @@ function AccessView() {
       key: 'users',
       label: 'Users',
       padding: 0,
+      modified: changes.kindChanged('user'),
       view: (
         <access-view-split>
           <access-view-nav>
             <AccessList
               addLabel="Add user"
-              items={users.map((u) => ({ id: u.id, label: u.displayName, admin: u.isAdmin }))}
+              items={users.map((u) => ({
+                id: u.id,
+                label: u.displayName,
+                admin: u.isAdmin,
+                modified: changes.principalChanged({ kind: 'user', id: u.id }),
+              }))}
               selectedId={selectedUserId}
               onSelect={selectUser}
             />
@@ -62,10 +70,16 @@ function AccessView() {
       key: 'groups',
       label: 'Groups',
       padding: 0,
+      modified: changes.kindChanged('group'),
       view: (
         <access-view-split>
           <access-view-nav>
-            <AccessList addLabel="Add group" items={groupItems(groups)} selectedId={selectedGroupId} onSelect={selectGroup} />
+            <AccessList
+              addLabel="Add group"
+              items={groupItems(groups).map((g) => ({ ...g, modified: changes.principalChanged({ kind: 'group', id: g.id }) }))}
+              selectedId={selectedGroupId}
+              onSelect={selectGroup}
+            />
           </access-view-nav>
           <access-view-content>
             {selectedGroupId ? (

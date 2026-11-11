@@ -124,6 +124,12 @@ permissions-area h4 {
   font-weight: 500;
 }
 
+.permissions-marker-name .modified-dot {
+  margin-left: 6px;
+  /* Inline, middle sits on the x-height's middle; this lifts it to the line's. */
+  vertical-align: 0.2em;
+}
+
 permissions-marker-body {
   display: flex;
   flex-direction: column;
@@ -183,4 +189,20 @@ permissions-area h4 {
 .permissions-error {
   margin: 0;
   color: var(--danger);
+}
+
+/* A pill the current draft changes: a dot on its top-right corner, in the draft colour. */
+.permission-pill[data-modified] {
+  position: relative;
+}
+
+.permission-pill[data-modified]::after {
+  content: '';
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--secondary);
 }

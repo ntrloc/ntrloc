@@ -1,4 +1,5 @@
 import CollapsibleCard, { TriangleIcon } from '../../../controls/collapsible-card/CollapsibleCard'
+import ModifiedDot from '../../../controls/modified-dot/ModifiedDot'
 import { usePermissionsViewModel } from './PermissionsViewModel'
 import PermissionPill from './PermissionPill'
 import './PermissionsTab.css'
@@ -77,7 +78,11 @@ function MarkerRow({ marker, itemType, vm, editable }) {
     <li className="permissions-marker" data-open={open || undefined}>
       <button type="button" className="permissions-marker-toggle" aria-expanded={open} onClick={() => vm.toggleMarker(marker.id)}>
         <TriangleIcon expanded={open} />
-        <span className="permissions-marker-name">{marker.name}</span>
+        {/* The dot sits inside the name's fixed-width column, so it follows the last word. */}
+        <span className="permissions-marker-name">
+          {marker.name}
+          {vm.markerChanged(marker.id) && <ModifiedDot />}
+        </span>
         <span className="permissions-summary" data-empty={summary === 'No access' || undefined}>
           {summary}
         </span>
@@ -97,6 +102,7 @@ function MarkerRow({ marker, itemType, vm, editable }) {
                         label={label}
                         sources={vm.sourcesOf(permission)}
                         editable={editable}
+                        modified={vm.changed(permission)}
                         onToggle={() => vm.toggle(permission)}
                       />
                     ))}
@@ -130,13 +136,21 @@ function ItemTypeCard({ itemType, markers, vm, editable }) {
       title={itemType.name}
       expanded={vm.itemTypeOpen(itemType.id, hasAny)}
       onToggle={() => vm.toggleItemType(itemType.id, hasAny)}
+      modified={vm.itemTypeChanged(itemType.id, markers)}
       actions={<span className="permissions-summary" data-empty={!hasAny || undefined}>{summary}</span>}
     >
       <permissions-type-row>
         <span className="permissions-row-label">This item type</span>
         <permissions-pills>
           {typePermissions.map(({ label, permission }) => (
-            <PermissionPill key={label} label={label} sources={vm.sourcesOf(permission)} editable={editable} onToggle={() => vm.toggle(permission)} />
+            <PermissionPill
+              key={label}
+              label={label}
+              sources={vm.sourcesOf(permission)}
+              editable={editable}
+              modified={vm.changed(permission)}
+              onToggle={() => vm.toggle(permission)}
+            />
           ))}
         </permissions-pills>
       </permissions-type-row>

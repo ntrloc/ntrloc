@@ -690,6 +690,10 @@ requests under `/api/drafts/{draftId}/...` (§9.1). Nothing on the server rememb
 in, so one browser tab can be live while another is in a draft, and a request can never land in the
 wrong mode because of stale session state.
 
+**Agreed (2026-11-11):** the tab holds its mode in memory only, so a reload returns it to live. Restoring
+the mode across a reload (perhaps from server-side client state, alongside user preferences) is left
+**open** for a later phase.
+
 **Proposed:**
 
 - A draft is itself live data — a draft registry (id, name, owner, status, participants, and the base
