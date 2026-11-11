@@ -223,12 +223,7 @@ public class GrantStore implements GrantStoreReader, GrantStoreWriter {
     @Override
     public void setPermission(String principalType, UUID principalId, Permission permission, boolean value) {
         if (Permission.ITEM_TYPE.equals(permission.kind())) {
-            String grant = "item-type:" + permission.op();
-            if (value) {
-                grantItemTypeIfAbsent(permission.itemTypeId(), principalType, principalId, grant);
-            } else {
-                findItemTypeGrant(permission.itemTypeId(), principalType, principalId, grant).ifPresent(this::deleteItemTypeGrant);
-            }
+            setItemTypePermission(principalType, principalId, permission, value);
             return;
         }
         UUID markerId = permission.markerId();
@@ -238,26 +233,19 @@ public class GrantStore implements GrantStoreReader, GrantStoreWriter {
             case Permission.AREA_ITEM -> {
                 var current = getItemPermissionsForMarker(markerId, principalType, principalId);
                 setItemPermissions(ensureMarkerGrant(markerId, principalType, principalId),
-                        "read".equals(op) ? value : current.canRead(), "delete".equals(op) ? value : current.canDelete());
+                        opOr(op, "read", value, current.canRead()), opOr(op, "delete", value, current.canDelete()));
             }
             case Permission.AREA_PROPERTY -> {
                 var current = propertyAccess(getPropertyGrantsForMarker(markerId, principalType, principalId), targetId);
                 grantPropertyAccess(ensureMarkerGrant(markerId, principalType, principalId), targetId,
-                        "read".equals(op) ? value : current.canRead(), "write".equals(op) ? value : current.canWrite());
+                        opOr(op, "read", value, current.canRead()), opOr(op, "write", value, current.canWrite()));
             }
             case Permission.AREA_LINK_PROPERTY -> {
                 var current = propertyAccess(getLinkPropertyGrantsForMarker(markerId, principalType, principalId), targetId);
                 grantLinkPropertyAccess(ensureMarkerGrant(markerId, principalType, principalId), targetId,
-                        "read".equals(op) ? value : current.canRead(), "write".equals(op) ? value : current.canWrite());
+                        opOr(op, "read", value, current.canRead()), opOr(op, "write", value, current.canWrite()));
             }
-            case Permission.AREA_PERSPECTIVE -> {
-                var current = getLinkPerspectiveGrantsForMarker(markerId, principalType, principalId).stream()
-                        .filter(r -> r.perspectiveId().equals(targetId)).findFirst()
-                        .orElse(new LinkPerspectiveAccessRow(targetId, false, false, false));
-                grantLinkPerspectiveAccess(ensureMarkerGrant(markerId, principalType, principalId), targetId,
-                        "create".equals(op) ? value : current.canCreate(), "read".equals(op) ? value : current.canRead(),
-                        "delete".equals(op) ? value : current.canDelete());
-            }
+            case Permission.AREA_PERSPECTIVE -> setPerspectivePermission(principalType, principalId, markerId, targetId, op, value);
             case Permission.AREA_TRANSITION -> {
                 if (value) grantTransitionExecute(ensureMarkerGrant(markerId, principalType, principalId), targetId);
                 else findMarkerGrant(markerId, principalType, principalId).ifPresent(id -> revokeTransitionExecute(id, targetId));
@@ -268,6 +256,29 @@ public class GrantStore implements GrantStoreReader, GrantStoreWriter {
             }
             default -> throw new IllegalArgumentException("unknown area " + permission.area());
         }
+    }
+
+    private void setItemTypePermission(String principalType, UUID principalId, Permission permission, boolean value) {
+        String grant = "item-type:" + permission.op();
+        if (value) {
+            grantItemTypeIfAbsent(permission.itemTypeId(), principalType, principalId, grant);
+        } else {
+            findItemTypeGrant(permission.itemTypeId(), principalType, principalId, grant).ifPresent(this::deleteItemTypeGrant);
+        }
+    }
+
+    private void setPerspectivePermission(String principalType, UUID principalId, UUID markerId, UUID perspectiveId, String op, boolean value) {
+        var current = getLinkPerspectiveGrantsForMarker(markerId, principalType, principalId).stream()
+                .filter(r -> r.perspectiveId().equals(perspectiveId)).findFirst()
+                .orElse(new LinkPerspectiveAccessRow(perspectiveId, false, false, false));
+        grantLinkPerspectiveAccess(ensureMarkerGrant(markerId, principalType, principalId), perspectiveId,
+                opOr(op, "create", value, current.canCreate()), opOr(op, "read", value, current.canRead()),
+                opOr(op, "delete", value, current.canDelete()));
+    }
+
+    // The new value for the op being set; the row's current value for each of its other ops.
+    private static boolean opOr(String op, String rowOp, boolean value, boolean current) {
+        return rowOp.equals(op) ? value : current;
     }
 
     private static PropertyAccessRow propertyAccess(List<PropertyAccessRow> rows, UUID propertyId) {

@@ -24,6 +24,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class DraftGrantStore {
 
     private static final String DRAFT_GRANTS_CHANGED_TOPIC = "draftGrantsChanged";
+    private static final String PARAM_DRAFT_ID = "draftId";
 
     // The same permission: the descriptor's columns, NULL matching NULL.
     private static final String SAME_PERMISSION = """
@@ -67,7 +68,7 @@ public class DraftGrantStore {
                 SELECT principal_type, principal_id, kind, item_type_id, marker_id, area, target_id, op, value, base_value
                 FROM draft_grant_override WHERE draft_id = :draftId
                 """)
-                .param("draftId", draftId)
+                .param(PARAM_DRAFT_ID, draftId)
                 .query((rs, _) -> new DraftGrantOverride(rs.getString("principal_type"), rs.getObject("principal_id", UUID.class),
                         new Permission(rs.getString("kind"), rs.getObject("item_type_id", UUID.class), rs.getObject("marker_id", UUID.class),
                                 rs.getString("area"), rs.getObject("target_id", UUID.class), rs.getString("op")),
@@ -82,7 +83,7 @@ public class DraftGrantStore {
     @Transactional(propagation = Propagation.MANDATORY)
     public boolean holdOpen(UUID draftId) {
         return jdbcClient.sql("SELECT 1 FROM draft WHERE id = :draftId AND status = 'OPEN' FOR SHARE")
-                .param("draftId", draftId).query((rs, _) -> 1).optional().isPresent();
+                .param(PARAM_DRAFT_ID, draftId).query((rs, _) -> 1).optional().isPresent();
     }
 
     boolean hasCachedView(UUID draftId) {
@@ -114,7 +115,7 @@ public class DraftGrantStore {
     }
 
     private static JdbcClient.StatementSpec bind(JdbcClient.StatementSpec sql, UUID draftId, String principalType, UUID principalId, Permission p) {
-        return sql.param("draftId", draftId).param("principalType", principalType).param("principalId", principalId)
+        return sql.param(PARAM_DRAFT_ID, draftId).param("principalType", principalType).param("principalId", principalId)
                 .param("kind", p.kind()).param("itemTypeId", p.itemTypeId()).param("markerId", p.markerId())
                 .param("area", p.area()).param("targetId", p.targetId()).param("op", p.op());
     }

@@ -53,7 +53,7 @@ export function useUserOverviewViewModel({ detail, reload, onUserChanged }) {
     })
   }
 
-  const formError = form && (form.displayName.trim() === '' ? 'A user needs a name.' : form.email.trim() === '' ? 'A user needs an email.' : null)
+  const formError = form && userFormError(form)
 
   return {
     user,
@@ -83,4 +83,10 @@ export function useUserOverviewViewModel({ detail, reload, onUserChanged }) {
       void run(() => revokeToken(user.id, token.id))
     },
   }
+}
+
+function userFormError(form) {
+  if (form.displayName.trim() === '') return 'A user needs a name.'
+  if (form.email.trim() === '') return 'A user needs an email.'
+  return null
 }

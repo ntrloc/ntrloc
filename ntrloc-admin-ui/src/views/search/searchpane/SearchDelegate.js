@@ -1,7 +1,9 @@
 // Owns the calls to the projection API -- what the Search view shows the user is really a
 // collection or single-item projection over the graph, not a distinct "search" concept on the
 // backend. In a draft, projections read live's items with the user's draft grants.
-const projectionAddress = (draftId) => (draftId ? `/api/drafts/${draftId}/projection` : '/api/projection')
+import { draftAddress } from '../../../global/delegate/draftAddress'
+
+const projectionAddress = (draftId) => (draftId ? draftAddress(draftId, 'projection') : '/api/projection')
 
 export async function fetchCollectionProjection(draftId, spec) {
   return postProjection(`${projectionAddress(draftId)}/collection`, spec)

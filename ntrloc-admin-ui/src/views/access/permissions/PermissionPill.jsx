@@ -3,9 +3,14 @@ import Icon from '../../../controls/icon/Icon'
 // One permission, as a small toggle. Filled: granted directly. Outlined: granted only through a
 // group (the tooltip says which). Dim: not granted. Clicking changes the direct grant alone, so a
 // group's grant stays as it is.
+function pillState(direct, viaGroups) {
+  if (direct) return 'direct'
+  return viaGroups.length > 0 ? 'inherited' : 'none'
+}
+
 function PermissionPill({ label, sources, editable, onToggle }) {
   const viaGroups = sources.groups.map((g) => g.name)
-  const state = sources.direct ? 'direct' : viaGroups.length > 0 ? 'inherited' : 'none'
+  const state = pillState(sources.direct, viaGroups)
   const parts = []
   if (sources.direct) parts.push('Granted directly')
   if (viaGroups.length > 0) parts.push(`Through ${viaGroups.join(', ')}`)

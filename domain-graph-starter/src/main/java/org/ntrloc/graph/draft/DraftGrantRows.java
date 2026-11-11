@@ -62,14 +62,10 @@ final class DraftGrantRows {
             case Permission.AREA_ITEM -> change(markerGrants,
                     r -> r.principalType().equals(pt) && r.principalId().equals(pid) && r.markerId().equals(markerId),
                     () -> new MarkerGrantRow(pt, pid, markerId, false, false),
-                    r -> new MarkerGrantRow(pt, pid, markerId, "read".equals(op) ? value : r.itemCanRead(), "delete".equals(op) ? value : r.itemCanDelete()));
+                    r -> new MarkerGrantRow(pt, pid, markerId, opOr(op, "read", value, r.itemCanRead()), opOr(op, "delete", value, r.itemCanDelete())));
             case Permission.AREA_PROPERTY -> changeProperty(propertyGrants, pt, pid, markerId, targetId, op, value);
             case Permission.AREA_LINK_PROPERTY -> changeProperty(linkPropertyGrants, pt, pid, markerId, targetId, op, value);
-            case Permission.AREA_PERSPECTIVE -> change(linkPerspectiveGrants,
-                    r -> r.principalType().equals(pt) && r.principalId().equals(pid) && r.markerId().equals(markerId) && r.perspectiveId().equals(targetId),
-                    () -> new LinkPerspectiveGrantRow(pt, pid, markerId, targetId, false, false, false),
-                    r -> new LinkPerspectiveGrantRow(pt, pid, markerId, targetId, "create".equals(op) ? value : r.canCreate(),
-                            "read".equals(op) ? value : r.canRead(), "delete".equals(op) ? value : r.canDelete()));
+            case Permission.AREA_PERSPECTIVE -> changePerspective(pt, pid, markerId, targetId, op, value);
             case Permission.AREA_TRANSITION -> setPresent(transitionGrants, new MarkerScopedGrantRow(pt, pid, markerId, targetId), value);
             case Permission.AREA_START -> setPresent(stateMachineStartGrants, new MarkerScopedGrantRow(pt, pid, markerId, targetId), value);
             default -> throw new IllegalArgumentException("unknown area " + p.area());
@@ -80,7 +76,20 @@ final class DraftGrantRows {
         change(rows,
                 r -> r.principalType().equals(pt) && r.principalId().equals(pid) && r.markerId().equals(markerId) && r.propertyId().equals(propertyId),
                 () -> new PropertyGrantRow(pt, pid, markerId, propertyId, false, false),
-                r -> new PropertyGrantRow(pt, pid, markerId, propertyId, "read".equals(op) ? value : r.canRead(), "write".equals(op) ? value : r.canWrite()));
+                r -> new PropertyGrantRow(pt, pid, markerId, propertyId, opOr(op, "read", value, r.canRead()), opOr(op, "write", value, r.canWrite())));
+    }
+
+    private void changePerspective(String pt, UUID pid, UUID markerId, UUID perspectiveId, String op, boolean value) {
+        change(linkPerspectiveGrants,
+                r -> r.principalType().equals(pt) && r.principalId().equals(pid) && r.markerId().equals(markerId) && r.perspectiveId().equals(perspectiveId),
+                () -> new LinkPerspectiveGrantRow(pt, pid, markerId, perspectiveId, false, false, false),
+                r -> new LinkPerspectiveGrantRow(pt, pid, markerId, perspectiveId, opOr(op, "create", value, r.canCreate()),
+                        opOr(op, "read", value, r.canRead()), opOr(op, "delete", value, r.canDelete())));
+    }
+
+    // The override's value for its own op; the row's current value for each of its other ops.
+    private static boolean opOr(String op, String rowOp, boolean value, boolean current) {
+        return rowOp.equals(op) ? value : current;
     }
 
     // Changes the matching row, or adds a new one (as `blank` changed) when there's none.

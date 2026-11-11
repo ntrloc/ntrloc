@@ -42,7 +42,7 @@ public record Permission(String kind, UUID itemTypeId, UUID markerId, String are
         return new Permission(ITEM_TYPE, itemTypeId, null, null, null, op);
     }
 
-    public static Permission marker(UUID markerId, String area, UUID targetId, String op) {
+    public static Permission forMarker(UUID markerId, String area, UUID targetId, String op) {
         return new Permission(MARKER, null, markerId, area, targetId, op);
     }
 

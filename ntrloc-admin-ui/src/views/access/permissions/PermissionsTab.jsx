@@ -113,10 +113,10 @@ function MarkerRow({ marker, itemType, vm, editable }) {
 
 function ItemTypeCard({ itemType, markers, vm, editable }) {
   const typePermissions = [
-    ['Read', { kind: 'itemType', itemTypeId: itemType.id, op: 'read' }],
-    ['Create', { kind: 'itemType', itemTypeId: itemType.id, op: 'create' }],
+    { label: 'Read', permission: { kind: 'itemType', itemTypeId: itemType.id, op: 'read' } },
+    { label: 'Create', permission: { kind: 'itemType', itemTypeId: itemType.id, op: 'create' } },
   ]
-  const granted = typePermissions.filter(([, p]) => has(vm.sourcesOf(p))).map(([label]) => label)
+  const granted = typePermissions.filter((t) => has(vm.sourcesOf(t.permission))).map((t) => t.label)
   const markerAccess = markers.filter((mk) => markerSummary(markerAreas(itemType, mk.id), vm.sourcesOf) !== 'No access').length
   const hasAny = granted.length > 0 || markerAccess > 0
   const summary = hasAny
@@ -135,7 +135,7 @@ function ItemTypeCard({ itemType, markers, vm, editable }) {
       <permissions-type-row>
         <span className="permissions-row-label">This item type</span>
         <permissions-pills>
-          {typePermissions.map(([label, permission]) => (
+          {typePermissions.map(({ label, permission }) => (
             <PermissionPill key={label} label={label} sources={vm.sourcesOf(permission)} editable={editable} onToggle={() => vm.toggle(permission)} />
           ))}
         </permissions-pills>

@@ -17,6 +17,9 @@ import java.util.UUID;
 public class DraftStore {
 
     private static final String DRAFT_COLUMNS = "d.id, d.name, d.status, d.created_by, d.created_at, d.closed_by, d.closed_at";
+    private static final String SELECT_DRAFTS = "SELECT " + DRAFT_COLUMNS + " FROM draft d ";
+    private static final String PARAM_DRAFT_ID = "draftId";
+    private static final String PARAM_USER_ID = "userId";
 
     // Any key works, as long as only draft creation takes it.
     private static final long CREATE_LOCK_KEY = 0x6472616674L;
@@ -40,12 +43,12 @@ public class DraftStore {
     }
 
     public Optional<DraftRecord> find(UUID id) {
-        return jdbcClient.sql("SELECT " + DRAFT_COLUMNS + " FROM draft d WHERE d.id = :id")
+        return jdbcClient.sql(SELECT_DRAFTS + "WHERE d.id = :id")
                 .param("id", id).query((rs, _) -> row(rs)).optional();
     }
 
     public List<DraftRecord> listOpen() {
-        return jdbcClient.sql("SELECT " + DRAFT_COLUMNS + " FROM draft d WHERE d.status = 'OPEN' ORDER BY d.created_at")
+        return jdbcClient.sql(SELECT_DRAFTS + "WHERE d.status = 'OPEN' ORDER BY d.created_at")
                 .query((rs, _) -> row(rs)).list();
     }
 
@@ -54,13 +57,13 @@ public class DraftStore {
                 SELECT %s FROM draft d JOIN draft_participant p ON p.draft_id = d.id
                 WHERE d.status = 'OPEN' AND p.user_id = :userId ORDER BY d.created_at
                 """.formatted(DRAFT_COLUMNS))
-                .param("userId", userId).query((rs, _) -> row(rs)).list();
+                .param(PARAM_USER_ID, userId).query((rs, _) -> row(rs)).list();
     }
 
     /** Locks an open draft until the caller's transaction ends. Empty when it isn't open. */
     @Transactional(propagation = Propagation.MANDATORY)
     public Optional<DraftRecord> lockOpen(UUID id) {
-        return jdbcClient.sql("SELECT " + DRAFT_COLUMNS + " FROM draft d WHERE d.id = :id AND d.status = 'OPEN' FOR UPDATE")
+        return jdbcClient.sql(SELECT_DRAFTS + "WHERE d.id = :id AND d.status = 'OPEN' FOR UPDATE")
                 .param("id", id).query((rs, _) -> row(rs)).optional();
     }
 
@@ -79,7 +82,7 @@ public class DraftStore {
                 SELECT u.id, u.display_name, u.email, p.added_at FROM draft_participant p
                 JOIN security_user u ON u.id = p.user_id WHERE p.draft_id = :draftId ORDER BY u.display_name
                 """)
-                .param("draftId", draftId)
+                .param(PARAM_DRAFT_ID, draftId)
                 .query((rs, _) -> new DraftParticipantRecord(rs.getObject("id", UUID.class), rs.getString("display_name"),
                         rs.getString("email"), rs.getObject("added_at", OffsetDateTime.class)))
                 .list();
@@ -87,17 +90,17 @@ public class DraftStore {
 
     public boolean isParticipant(UUID draftId, UUID userId) {
         return jdbcClient.sql("SELECT EXISTS (SELECT 1 FROM draft_participant WHERE draft_id = :draftId AND user_id = :userId)")
-                .param("draftId", draftId).param("userId", userId).query(Boolean.class).single();
+                .param(PARAM_DRAFT_ID, draftId).param(PARAM_USER_ID, userId).query(Boolean.class).single();
     }
 
     public void addParticipant(UUID draftId, UUID userId) {
         jdbcClient.sql("INSERT INTO draft_participant (draft_id, user_id) VALUES (:draftId, :userId) ON CONFLICT DO NOTHING")
-                .param("draftId", draftId).param("userId", userId).update();
+                .param(PARAM_DRAFT_ID, draftId).param(PARAM_USER_ID, userId).update();
     }
 
     public void removeParticipant(UUID draftId, UUID userId) {
         jdbcClient.sql("DELETE FROM draft_participant WHERE draft_id = :draftId AND user_id = :userId")
-                .param("draftId", draftId).param("userId", userId).update();
+                .param(PARAM_DRAFT_ID, draftId).param(PARAM_USER_ID, userId).update();
     }
 
     private static DraftRecord row(java.sql.ResultSet rs) throws java.sql.SQLException {

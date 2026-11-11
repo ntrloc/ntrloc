@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { fetchMe } from '../delegate/AccountDelegate'
 import { createDraft, fetchDrafts } from '../delegate/DraftDelegate'
 import { DraftModeContext } from './useDraftMode'
+import { isId } from '../delegate/draftAddress'
 
 // Whether this tab is working live or in a draft, and which draft. The mode belongs to the tab, not
 // the user or the server (docs/ntrloc-system-model-notes.md §11): one tab can stay live while another
@@ -13,10 +14,15 @@ import { DraftModeContext } from './useDraftMode'
 // least one, and never starts one.
 const STORAGE_KEY = 'draft'
 
+// Only { id, name } with a real draft id is kept or read back; anything else counts as live.
+function asStoredDraft(value) {
+  return value && isId(value.id) && typeof value.name === 'string' ? { id: value.id, name: value.name } : null
+}
+
 function readStoredDraft() {
   try {
     const stored = sessionStorage.getItem(STORAGE_KEY)
-    return stored ? JSON.parse(stored) : null
+    return stored ? asStoredDraft(JSON.parse(stored)) : null
   } catch {
     return null
   }
@@ -24,7 +30,8 @@ function readStoredDraft() {
 
 function storeDraft(draft) {
   try {
-    if (draft) sessionStorage.setItem(STORAGE_KEY, JSON.stringify(draft))
+    const stored = asStoredDraft(draft)
+    if (stored) sessionStorage.setItem(STORAGE_KEY, JSON.stringify(stored))
     else sessionStorage.removeItem(STORAGE_KEY)
   } catch {
     // Storage unavailable: the mode still holds for this page's lifetime.

@@ -1,5 +1,6 @@
 // Every call the Access screens make: users, groups and membership (/api/admin/users,
 // /api/admin/user-groups) and grants (/api/admin/grants).
+import { draftAddress } from '../../global/delegate/draftAddress'
 
 async function readErrorMessage(res, fallback) {
   const body = await res.json().catch(() => null)
@@ -96,7 +97,7 @@ export function removeUserFromGroup(userId, groupId) {
 // --- Grants ---
 // Each takes the draft to work in (its id), or null for live.
 
-const grantsAddress = (draftId) => (draftId ? `/api/drafts/${draftId}/admin/grants` : '/api/admin/grants')
+const grantsAddress = (draftId) => (draftId ? draftAddress(draftId, 'admin', 'grants') : '/api/admin/grants')
 
 // What grants are made against: item types (with their properties, link perspectives and state
 // machines) and markers.

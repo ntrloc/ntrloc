@@ -86,29 +86,37 @@ public final class GrantsView {
             String op = PERMISSION_OPS.get(row.permission());
             if (op != null) addPermission(row.principalType(), row.principalId(), Permission.itemType(row.itemTypeId(), op));
         }
-        for (var row : rows.markerGrants()) {
-            if (row.itemCanRead()) addPermission(row.principalType(), row.principalId(), Permission.marker(row.markerId(), Permission.AREA_ITEM, null, "read"));
-            if (row.itemCanDelete()) addPermission(row.principalType(), row.principalId(), Permission.marker(row.markerId(), Permission.AREA_ITEM, null, "delete"));
-        }
+        indexItemPermissions(rows.markerGrants());
         indexPropertyPermissions(rows.propertyGrants(), Permission.AREA_PROPERTY);
         indexPropertyPermissions(rows.linkPropertyGrants(), Permission.AREA_LINK_PROPERTY);
-        for (var row : rows.linkPerspectiveGrants()) {
-            if (row.canRead()) addPermission(row.principalType(), row.principalId(), Permission.marker(row.markerId(), Permission.AREA_PERSPECTIVE, row.perspectiveId(), "read"));
-            if (row.canCreate()) addPermission(row.principalType(), row.principalId(), Permission.marker(row.markerId(), Permission.AREA_PERSPECTIVE, row.perspectiveId(), "create"));
-            if (row.canDelete()) addPermission(row.principalType(), row.principalId(), Permission.marker(row.markerId(), Permission.AREA_PERSPECTIVE, row.perspectiveId(), "delete"));
-        }
+        indexPerspectivePermissions(rows.linkPerspectiveGrants());
         for (var row : rows.transitionGrants()) {
-            addPermission(row.principalType(), row.principalId(), Permission.marker(row.markerId(), Permission.AREA_TRANSITION, row.targetId(), null));
+            addPermission(row.principalType(), row.principalId(), Permission.forMarker(row.markerId(), Permission.AREA_TRANSITION, row.targetId(), null));
         }
         for (var row : rows.stateMachineStartGrants()) {
-            addPermission(row.principalType(), row.principalId(), Permission.marker(row.markerId(), Permission.AREA_START, row.targetId(), null));
+            addPermission(row.principalType(), row.principalId(), Permission.forMarker(row.markerId(), Permission.AREA_START, row.targetId(), null));
+        }
+    }
+
+    private void indexItemPermissions(List<MarkerGrantRow> rows) {
+        for (var row : rows) {
+            if (row.itemCanRead()) addPermission(row.principalType(), row.principalId(), Permission.forMarker(row.markerId(), Permission.AREA_ITEM, null, "read"));
+            if (row.itemCanDelete()) addPermission(row.principalType(), row.principalId(), Permission.forMarker(row.markerId(), Permission.AREA_ITEM, null, "delete"));
+        }
+    }
+
+    private void indexPerspectivePermissions(List<LinkPerspectiveGrantRow> rows) {
+        for (var row : rows) {
+            if (row.canRead()) addPermission(row.principalType(), row.principalId(), Permission.forMarker(row.markerId(), Permission.AREA_PERSPECTIVE, row.perspectiveId(), "read"));
+            if (row.canCreate()) addPermission(row.principalType(), row.principalId(), Permission.forMarker(row.markerId(), Permission.AREA_PERSPECTIVE, row.perspectiveId(), "create"));
+            if (row.canDelete()) addPermission(row.principalType(), row.principalId(), Permission.forMarker(row.markerId(), Permission.AREA_PERSPECTIVE, row.perspectiveId(), "delete"));
         }
     }
 
     private void indexPropertyPermissions(List<PropertyGrantRow> rows, String area) {
         for (var row : rows) {
-            if (row.canRead()) addPermission(row.principalType(), row.principalId(), Permission.marker(row.markerId(), area, row.propertyId(), "read"));
-            if (row.canWrite()) addPermission(row.principalType(), row.principalId(), Permission.marker(row.markerId(), area, row.propertyId(), "write"));
+            if (row.canRead()) addPermission(row.principalType(), row.principalId(), Permission.forMarker(row.markerId(), area, row.propertyId(), "read"));
+            if (row.canWrite()) addPermission(row.principalType(), row.principalId(), Permission.forMarker(row.markerId(), area, row.propertyId(), "write"));
         }
     }
 

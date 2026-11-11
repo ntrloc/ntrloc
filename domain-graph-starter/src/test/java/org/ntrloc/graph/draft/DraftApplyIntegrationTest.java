@@ -95,7 +95,7 @@ class DraftApplyIntegrationTest extends AbstractIntegrationTest {
     }
 
     private static Permission readItems(UUID markerId) {
-        return Permission.marker(markerId, Permission.AREA_ITEM, null, "read");
+        return Permission.forMarker(markerId, Permission.AREA_ITEM, null, "read");
     }
 
     private void setInDraft(UUID groupId, Permission permission, boolean value) {
