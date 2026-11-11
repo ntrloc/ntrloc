@@ -846,8 +846,15 @@ So, **proposed:**
     What matters about an ancestor is that it's still there, in the same place;
   - whether live gives the same permission through that path (`inherited`).
 
-  **Known gaps:** a member joining one of G's *subgroups* in live isn't flagged, though they now get G's
-  grant; and renaming G flags it, though a name doesn't change what a grant gives.
+  **Replaced in Phase 2 step 2.1 (2026-11-11): revisions gave way to the live changelog** (§13.6). A
+  change records, for each user or group it depends on, how many relevant log entries there were since
+  the draft started; a count that has grown means live moved underneath it. Counting, not comparing
+  positions, so a change committed late with an earlier position still shows; and only entries after the
+  draft's start count, which pruning never removes while the draft is open. What's relevant depends on
+  the role: the principal (moved, deleted, members or subgroups; for a user, their groups or admin flag);
+  groups above it (only being moved or deleted); a group principal's subgroups (their members and place).
+  Renames never count. The revision columns are gone. **This closed both earlier gaps:** a member joining a
+  subgroup is now flagged (naming the subgroup), and a rename no longer is.
 - **Who changed it is optional.** "G was moved under P" comes from comparing. "…by Admin X at 10:42"
   needs a history of live configuration changes. Schema plans one (its ledger); groups and grants have
   none yet.
@@ -902,9 +909,9 @@ to P3.
 
 - **Shown as:** a red conflict mark on A, and on the trail to it, with both sides: *A's parent: draft P2 ·
   live P3 (P1 when the draft started).*
-- **Keep the draft's:** A goes to P2 on apply. The change now starts from P3, so applying moves A from P3
+- **Keep draft change:** A goes to P2 on apply. The change now starts from P3, so applying moves A from P3
   to P2.
-- **Use live's:** the draft drops its move; A stays where live has it.
+- **Preserve live change:** the draft drops its move; A stays where live has it.
 - **Proposed, a third choice (edit):** a different parent altogether, like resolving a merge by hand. It's
   the same as changing the draft's move again.
 
@@ -948,8 +955,10 @@ settling the conflict also acknowledges the notice, so the admin isn't asked twi
   leaves the others open, for as long as it takes ("I might need to make some phone calls").
 - **Scope:** informational items cover everything Phase 1 touches (groups, memberships, grants); each later
   phase adds its own.
-- **Actions** on them (accept, or put it back) open Phase 2, for the Phase 1 items too. Until then an
-  informational item can only be acknowledged.
+- **An informational item is only ever acknowledged** (corrected 2026-11-11). Live changed something the
+  draft didn't, so there's nothing to choose between and nothing to put back. Choices belong to
+  conflicts: **Keep draft change** or **Preserve live change** (§13.4.1); the same two labels serve the
+  required items of §13.4.
 - **Push:** a tab showing a draft mustn't show stale data while live changes in another tab. Live tells
   *browsers* that it changed (as it already does for schema changes), without knowing whether drafts exist;
   a draft tab then reads again. This keeps §13.1: no server-side draft work runs because of it.
@@ -962,10 +971,11 @@ group moved · Sales: Marketing → Operations`). A membership change is a user,
 - A draft remembers only its position in the log (the latest entry when it started); its informational
   items are the entries after it. An acknowledgement is recorded against the entry.
 - Storage grows with changes, not with data; who and when come for free (§13.3's missing attribution);
-  the before value is what Phase 2's "put it back" needs.
+  the before value is what a conflict's two sides are shown from (§13.4.1).
 - **Repeated changes:** the log keeps every entry; the draft reflects only the latest for each element.
 - **Retention is configurable, from a new Operations screen** (planned anyway). Entries an open draft still
-  needs are kept regardless.
+  needs are kept regardless. **Built (plan step 2.2):** Operations → Changelog: days to keep, or blank for everything;
+  saving prunes at once, then hourly.
 - **It points to a system-wide audit of changes**, which would be very valuable; the schema evolution
   notes' schema ledger would be its sibling.
 - **Built (plan R.7, 2026-11-11):** table `config_change_log`. Users, groups, memberships and grants are

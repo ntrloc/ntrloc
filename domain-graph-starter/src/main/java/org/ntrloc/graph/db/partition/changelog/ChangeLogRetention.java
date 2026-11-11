@@ -51,6 +51,15 @@ public class ChangeLogRetention {
         if (clusterService.isLeaderNode()) prune();
     }
 
+    /** How many entries the log holds, and when the oldest was made (null when it's empty). */
+    public record Size(long entries, java.time.OffsetDateTime oldest) {}
+
+    public Size size() {
+        return jdbcClient.sql("SELECT COUNT(*) AS entries, MIN(at) AS oldest FROM config_change_log")
+                .query((rs, _) -> new Size(rs.getLong("entries"), rs.getObject("oldest", java.time.OffsetDateTime.class)))
+                .single();
+    }
+
     /** Removes entries older than the retention period that no open draft needs; returns how many. */
     public int prune() {
         return retentionDays().map(days -> jdbcClient.sql("""

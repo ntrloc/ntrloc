@@ -152,6 +152,40 @@ class DraftReconciliationIntegrationTest extends AbstractIntegrationTest {
         assertThat(reasons().get(g)).containsExactly("GROUP_CHANGED " + parent);
     }
 
+    // Closed in Phase 2.1 (the changelog in place of revisions): a member joining a subgroup now gets the grant.
+    @Test
+    void someoneJoiningASubgroupInLive_marksTheChange_namingTheSubgroup() {
+        UUID g = group("granted");
+        UUID sub = group("sub", g);
+        setInDraft("group", g, createProducts(), true);
+
+        userStore.addUserToUserGroup(userStore.createUser("Joiner", "joiner-" + UUID.randomUUID() + "@example.com", false).id(), sub);
+
+        assertThat(reasons().get(g)).containsExactly("GROUP_CHANGED " + sub);
+    }
+
+    // Also closed in 2.1: a name changes nothing a grant does.
+    @Test
+    void renamingTheGroupInLive_needsNoReconciling() {
+        UUID g = group("renamed");
+        setInDraft("group", g, createProducts(), true);
+
+        userStore.updateUserGroup(g, "renamed-again-" + UUID.randomUUID());
+
+        assertThat(reasons().get(g)).isEmpty();
+    }
+
+    @Test
+    void someoneJoiningAGroupAbove_needsNoReconciling() {
+        UUID parent = group("parent");
+        UUID g = group("child", parent);
+        setInDraft("group", g, createProducts(), true);
+
+        userStore.addUserToUserGroup(userStore.createUser("Above", "above-" + UUID.randomUUID() + "@example.com", false).id(), parent);
+
+        assertThat(reasons().get(g)).isEmpty();
+    }
+
     @Test
     void liveGrantingTheSamePermissionToAParent_marksTheChange() {
         UUID parent = group("parent");

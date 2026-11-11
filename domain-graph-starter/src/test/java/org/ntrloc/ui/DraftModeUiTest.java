@@ -182,7 +182,7 @@ class DraftModeUiTest extends AbstractUiIntegrationTest {
         assertThat(drafts.dialogButtonEnabled("Apply")).isFalse();
         drafts.cancel();
 
-        drafts.openReview().resolveFirst("Keep the draft's change");
+        drafts.openReview().resolveFirst("Keep draft change");
         access.await().until(d -> drafts.dialogText().contains("Nothing needs reconciling."));
         drafts.done();
         assertThat(access.needingReconciling()).isEmpty();

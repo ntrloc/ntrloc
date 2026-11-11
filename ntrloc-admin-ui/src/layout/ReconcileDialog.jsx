@@ -19,9 +19,9 @@ const PRINCIPAL_GONE = new Set(['PRINCIPAL_DELETED', 'TARGET_DELETED'])
 
 // Everything live has done that this draft should know about (docs/ntrloc-system-model-notes.md §13.4,
 // §13.6), in two lists:
-// - Needs reconciling: changes in the draft that live has moved underneath. Keep the draft's change (now
-//   depending on live as it is), or use live's value; one whose user, group or target is gone can only be
-//   dropped. The draft can't be applied until this list is empty.
+// - Needs reconciling: changes in the draft that live has moved underneath. Keep draft change (now
+//   depending on live as it is), or Preserve live change; one whose user, group or target is gone can only
+//   be dropped. The draft can't be applied until this list is empty.
 // - Changed in live: everything else live changed since the draft started, each acknowledged on its own.
 // Show goes to the place in Access it concerns.
 function ReconcileDialog({ onClose }) {
@@ -112,7 +112,7 @@ function ReconcileDialog({ onClose }) {
                             disabled={working}
                             onClick={() => void act(() => reconcileChange(draft.id, change.principal, change.permission, 'KEEP').then(reloadChanges))}
                           >
-                            Keep the draft's change
+                            Keep draft change
                           </Button>
                         )}
                         <Button
@@ -120,7 +120,7 @@ function ReconcileDialog({ onClose }) {
                           disabled={working}
                           onClick={() => void act(() => reconcileChange(draft.id, change.principal, change.permission, 'USE_LIVE').then(reloadChanges))}
                         >
-                          {gone ? 'Drop' : "Use live's value"}
+                          {gone ? 'Drop' : 'Preserve live change'}
                         </Button>
                       </reconcile-actions>
                     </li>

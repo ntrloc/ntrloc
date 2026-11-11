@@ -7,8 +7,6 @@ import org.springframework.stereotype.Component;
 
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -115,8 +113,8 @@ public class UserStore {
                 .list();
     }
 
-    // --- Writes. Each bumps the revision of every user and group it changes (see the baseline's
-    // security_user and security_user_group comments), in the same statement batch as the change. ---
+    // --- Writes. Each appends its changelog entry (docs/ntrloc-system-model-notes.md §13.6), in the
+    // caller's transaction (UserService). ---
 
     public UserRow createUser(String displayName, String email, boolean isAdmin) {
         UUID id = jdbcClient.sql("""
@@ -150,7 +148,6 @@ public class UserStore {
                 .param("name", name)
                 .param("parentId", java.util.Objects.requireNonNull(parentId, "every group but the root has a parent"))
                 .query(UUID.class).single();
-        bumpGroups(List.of(parentId));
         changeLog.append("group.created", "group:" + id, List.of(id, parentId), null,
                 Map.of("name", name, "parentId", parentId, "parentName", groupName(parentId)));
         return new UserGroupRow(id, name, parentId);
@@ -168,7 +165,6 @@ public class UserStore {
                 .param("parentId", newParentId).param("id", groupId).update();
         var changed = new ArrayList<UUID>(List.of(groupId, newParentId));
         if (oldParentId != null) changed.add(oldParentId);
-        bumpGroups(changed);
         Map<String, Object> before = new LinkedHashMap<>();
         before.put("parentId", oldParentId);
         before.put("parentName", oldParentId == null ? null : groupName(oldParentId));
@@ -178,7 +174,7 @@ public class UserStore {
 
     public UserGroupRow updateUserGroup(UUID groupId, String name) {
         String oldName = groupName(groupId);
-        jdbcClient.sql("UPDATE security_user_group SET name = :name, revision = revision + 1 WHERE id = :id")
+        jdbcClient.sql("UPDATE security_user_group SET name = :name WHERE id = :id")
                 .param("name", name).param("id", groupId).update();
         if (!name.equals(oldName)) {
             changeLog.append("group.renamed", "group:" + groupId, List.of(groupId), Map.of("name", oldName), Map.of("name", name));
@@ -188,16 +184,12 @@ public class UserStore {
 
     /**
      * Deletes the group and, only with force, every group below it; returns the ids deleted. Without force,
-     * a group with subgroups is refused (HasSubgroupsException). Bumps the parent and every member of a
-     * deleted group. The deleted groups' grants are the caller's to remove (UserService).
+     * a group with subgroups is refused (HasSubgroupsException). The deleted groups' grants, and the
+     * changelog entries, are the caller's (UserService).
      */
     public List<UUID> deleteUserGroup(UUID groupId, boolean force) {
         List<UUID> subtree = subtreeOf(groupId);
         if (subtree.size() > 1 && !force) throw new HasSubgroupsException(subtree.size() - 1);
-        UUID parentId = findUserGroupById(groupId).map(UserGroupRow::parentId).orElse(null);
-        bumpUsers(jdbcClient.sql("SELECT DISTINCT user_id FROM security_user_group_member WHERE group_id IN (:ids)")
-                .param("ids", subtree).query(UUID.class).list());
-        if (parentId != null) bumpGroups(List.of(parentId));
         jdbcClient.sql("DELETE FROM security_user_group WHERE id IN (:ids)").param("ids", subtree).update();
         return subtree;
     }
@@ -213,8 +205,6 @@ public class UserStore {
         int added = jdbcClient.sql("INSERT INTO security_user_group_member (user_id, group_id) VALUES (:userId, :groupId) ON CONFLICT DO NOTHING")
                 .param(PARAM_USER_ID, userId).param(PARAM_GROUP_ID, groupId).update();
         if (added > 0) {
-            bumpUsers(List.of(userId));
-            bumpGroups(List.of(groupId));
             logMembership("membership.added", userId, groupId);
         }
     }
@@ -223,8 +213,6 @@ public class UserStore {
         int removed = jdbcClient.sql("DELETE FROM security_user_group_member WHERE user_id = :userId AND group_id = :groupId")
                 .param(PARAM_USER_ID, userId).param(PARAM_GROUP_ID, groupId).update();
         if (removed > 0) {
-            bumpUsers(List.of(userId));
-            bumpGroups(List.of(groupId));
             logMembership("membership.removed", userId, groupId);
         }
     }
@@ -253,20 +241,8 @@ public class UserStore {
                 """)
                 .param(PARAM_GROUP_ID, groupId).query(UUID.class).list();
         if (!added.isEmpty()) {
-            bumpUsers(added);
-            bumpGroups(List.of(groupId));
             added.forEach(userId -> logMembership("membership.added", userId, groupId));
         }
-    }
-
-    private void bumpGroups(Collection<UUID> ids) {
-        if (ids.isEmpty()) return;
-        jdbcClient.sql("UPDATE security_user_group SET revision = revision + 1 WHERE id IN (:ids)").param("ids", Set.copyOf(ids)).update();
-    }
-
-    private void bumpUsers(Collection<UUID> ids) {
-        if (ids.isEmpty()) return;
-        jdbcClient.sql("UPDATE security_user SET revision = revision + 1 WHERE id IN (:ids)").param("ids", Set.copyOf(ids)).update();
     }
 
     // --- Group reads ---
@@ -336,25 +312,6 @@ public class UserStore {
                 .optional();
     }
 
-    // --- Revisions, for drafts to compare against (docs/ntrloc-system-model-notes.md §13.3). A deleted
-    // user or group is absent from the result. ---
-
-    public Map<UUID, Long> groupRevisions(Collection<UUID> groupIds) {
-        return revisions("security_user_group", groupIds);
-    }
-
-    public Map<UUID, Long> userRevisions(Collection<UUID> userIds) {
-        return revisions("security_user", userIds);
-    }
-
-    private Map<UUID, Long> revisions(String table, Collection<UUID> ids) {
-        if (ids.isEmpty()) return Map.of();
-        Map<UUID, Long> revisions = new HashMap<>();
-        jdbcClient.sql("SELECT id, revision FROM " + table + " WHERE id IN (:ids)").param("ids", Set.copyOf(ids))
-                .query((rs, _) -> revisions.put(rs.getObject("id", UUID.class), rs.getLong("revision"))).list();
-        return revisions;
-    }
-
     // --- Local credentials ---
 
     public void createLocalCredentials(UUID userId, String passwordHash) {
@@ -376,7 +333,7 @@ public class UserStore {
 
     public void updateUser(UUID userId, String displayName, String email, boolean isAdmin) {
         UserRow old = findUserById(userId).orElseThrow();
-        jdbcClient.sql("UPDATE security_user SET display_name = :displayName, email = :email, is_admin = :isAdmin, revision = revision + 1 WHERE id = :userId")
+        jdbcClient.sql("UPDATE security_user SET display_name = :displayName, email = :email, is_admin = :isAdmin WHERE id = :userId")
                 .param("displayName", displayName)
                 .param(COL_EMAIL, email)
                 .param("isAdmin", isAdmin)
@@ -394,12 +351,9 @@ public class UserStore {
     }
 
     // Cascades to memberships, credentials, tokens and process_group_member. Grant tables refer to
-    // principals by a bare UUID, so the user's grants are the caller's to remove (UserService). The
-    // user's groups lose a member, so each is bumped.
+    // principals by a bare UUID, so the user's grants, and the changelog entry, are the caller's
+    // (UserService).
     public void deleteUser(UUID userId) {
-        List<UUID> groups = jdbcClient.sql("SELECT group_id FROM security_user_group_member WHERE user_id = :userId")
-                .param(PARAM_USER_ID, userId).query(UUID.class).list();
-        if (!groups.isEmpty()) bumpGroups(groups);
         jdbcClient.sql("DELETE FROM security_user WHERE id = :userId")
                 .param(PARAM_USER_ID, userId)
                 .update();

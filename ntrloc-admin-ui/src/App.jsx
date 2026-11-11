@@ -6,6 +6,7 @@ import SearchView from './views/search/SearchView'
 import SchemaView from './views/schema/SchemaView'
 import AccessView from './views/access/AccessView'
 import SecurityView from './views/security/SecurityView'
+import OperationsView from './views/operations/OperationsView'
 import AccountView from './views/account/AccountView'
 import './App.css'
 
@@ -52,6 +53,9 @@ function App({ extensions = [] }) {
         </ViewGate>
         <ViewGate active={path.startsWith('/security')}>
           <SecurityView />
+        </ViewGate>
+        <ViewGate active={path.startsWith('/operations')}>
+          <OperationsView />
         </ViewGate>
         <ViewGate active={path === '/account'}>
           <AccountView />

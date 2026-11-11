@@ -99,8 +99,8 @@ build on it. Live's only part is bumping revisions in its own writes; it never c
 | R.8 | **Push to browsers.** After such a change commits, live sends an "access changed" event on the existing server-sent-events channel; any tab showing Access reads again, and a draft tab also its changes and notices. The 30-second poll goes. *Done 2026-11-11: sent once per transaction after commit, admins only; a failure to send is logged, never thrown into the committed change. The event stream now opens at once (an initial comment), not at the first 30-second heartbeat. Gap: a second admin in the same draft sees the other's draft changes on their next read, not pushed.* | A second tab updates without a reload |
 | R.9 | **Informational notices.** A draft records its starting position in the log; `/changes` adds the entries since, latest per element, minus those acknowledged. `POST .../acknowledge` per entry, admins only. *Done 2026-11-11: `/changes` carries `notices` (latest per element, with a count); `POST /api/drafts/{id}/acknowledge`, recorded in the draft's log.* | Integration tests: move, rename, membership, grant; acknowledge one of two |
 | R.10 | **Notices in the UI.** In a group's or user's details, each notice in words with Acknowledge; a blue mark on the trail (red still wins); a bar under the header ("3 live changes to review · 1 change needs reconciling [Review…]"); one review dialog with both lists and Show links. *Done 2026-11-11: blue marks; the strongest mark wins (reconcile, then live change, then draft change); a "Changed in live" panel in a user's or group's details; the bar under the header; one Review dialog (menu "Review…") with both lists and Show links.* | Selenium: move a group in live, see it in the draft, acknowledge |
-| R.11 | **Revisions replaced by the changelog.** Required reconciliation asks whether any entry touched what a change depends on since its recorded position; the revision columns go. *Moved to Phase 2 (step 2.2), 2026-11-11.* | The R.3-R.6 tests pass unchanged in meaning |
-| R.12 | **Operations screen**, first item: changelog retention. *Moved to Phase 2 (step 2.3), 2026-11-11.* | Set and honoured |
+| R.11 | **Revisions replaced by the changelog.** Required reconciliation asks whether any entry touched what a change depends on since its recorded position; the revision columns go. *Moved to Phase 2 (step 2.1), 2026-11-11.* | The R.3-R.6 tests pass unchanged in meaning |
+| R.12 | **Operations screen**, first item: changelog retention. *Moved to Phase 2 (step 2.2), 2026-11-11.* | Set and honoured |
 
 **Impersonation (raised 2026-11-10, phase not chosen).** An admin seeing the system -- live or a draft
 -- as a given user. Needed in one of the phases below; the React admin UI is admin-only, so until then
@@ -109,22 +109,22 @@ a non-admin's view of a draft is checked through the API.
 ## Phase 2 — Groups in drafts
 
 **Planned 2026-11-11.** A draft can change groups and memberships, as Phase 1 lets it change grants, with
-the conflicts that brings (notes §13.4.1). It opens with what Phase 1R left to do.
+the conflicts that brings (notes §13.4.1). It opens with what Phase 1R left to do. (A step for "accept or
+put back" live changes was dropped, 2026-11-11: an informational item is only ever acknowledged; choices
+belong to conflicts.)
 
 | Step | What | Checkpoint |
 |---|---|---|
-| 2.1 | **Actions on live changes** for the Phase 1 items (notes §13.6): accept a live change, or put it back (for a grant, the draft sets the old value again; for groups and memberships once 2.5 lands). | Put a revoked grant back from its notice |
-| 2.2 | **Revisions replaced by the changelog** (was R.11). Required reconciliation asks whether any changelog entry touched what a change depends on since its recorded position; the revision columns go. Expected to close the gap where a member joining a group's subgroup isn't flagged. | The R.3-R.6 tests pass unchanged in meaning |
-| 2.3 | **Operations screen** (was R.12), first item: changelog retention. | Set and honoured |
-| 2.4 | **Groundwork.** Groups out of `UserStore` behind `UserService` (begun in Phase 1R); memberships and admin flags held in memory, replaced after a change commits and announced across the cluster, like `GrantsView`, so `getUserGrants` reads them at no per-request query. Cache `UserGrantsView` per user only if the benchmark shows `forUser` matters. | Benchmark |
-| 2.5 | **`DraftGroupStore`.** Create, rename, move and delete groups, and add and remove members, in a draft, each recorded with what it started from; the draft's group view floats on live with those applied; apply writes through `UserService`. | Integration tests per kind of change |
-| 2.6 | **Conflicts and invalid combinations** (notes §13.4.1): both sides changed the same thing (keep the draft's, or use live's, or edit); the draft's change no longer valid (a deleted parent or group, a cycle, a duplicate name). Apply waits for all of them. | Integration tests: each case in §13.4.1 |
-| 2.7 | **The UI:** group editing in a draft, and conflicts in place, both sides side by side, on the trail of marks. | Selenium: the P1/P2/P3 example |
+| 2.1 | **Revisions replaced by the changelog** (was R.11). Required reconciliation asks whether any changelog entry touched what a change depends on since its recorded position; the revision columns go. Expected to close the gap where a member joining a group's subgroup isn't flagged. *Done 2026-11-11: counts of relevant entries since the draft started, per role (principal, groups above, subgroups); renames don't count. Both gaps closed; revision columns removed.* | The R.3-R.6 tests pass unchanged in meaning |
+| 2.2 | **Operations screen** (was R.12), first item: changelog retention. *Done 2026-11-11: an Operations entry in the sidebar; a Changelog card (days to keep, blank for everything; entries held and since when); saving prunes at once. `GET`/`PUT /api/admin/operations/changelog`, admins only.* | Set and honoured |
+| 2.3 | **Groundwork.** Groups out of `UserStore` behind `UserService` (begun in Phase 1R); memberships and admin flags held in memory, replaced after a change commits and announced across the cluster, like `GrantsView`, so `getUserGrants` reads them at no per-request query. Cache `UserGrantsView` per user only if the benchmark shows `forUser` matters. | Benchmark |
+| 2.4 | **`DraftGroupStore`.** Create, rename, move and delete groups, and add and remove members, in a draft, each recorded with what it started from; the draft's group view floats on live with those applied; apply writes through `UserService`. | Integration tests per kind of change |
+| 2.5 | **Conflicts and invalid combinations** (notes §13.4.1): both sides changed the same thing (Keep draft change, or Preserve live change, or edit); the draft's change no longer valid (a deleted parent or group, a cycle, a duplicate name). Apply waits for all of them. | Integration tests: each case in §13.4.1 |
+| 2.6 | **The UI:** group editing in a draft, and conflicts in place, both sides side by side, on the trail of marks. | Selenium: the P1/P2/P3 example |
 
 **Paused (2026-11-11):** further work on the marks themselves (the dots and their trail).
 
-**Known gaps to keep in view:** renaming a group flags its draft changes though a name changes nothing they
-do; grants removed by a schema delete's cascade aren't logged until schema changes are (Phase 3); a second
+**Known gaps to keep in view:** grants removed by a schema delete's cascade aren't logged until schema changes are (Phase 3); a second
 admin in the same draft sees the other's changes only on their next read; the legacy `/admin` UI isn't kept
 in step.
 

@@ -4,17 +4,20 @@ import org.ntrloc.graph.db.partition.authorization.GrantsApi;
 import org.ntrloc.graph.db.partition.authorization.repository.GrantStoreReader;
 import org.ntrloc.graph.db.partition.authorization.repository.Permission;
 import org.ntrloc.graph.db.partition.security.repository.UserStore;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 // What a draft grant override depends on in live, and whether live has moved underneath it since
-// (docs/ntrloc-system-model-notes.md §13.3-13.4). Draft work: it only reads live, and live never calls it.
+// (docs/ntrloc-system-model-notes.md §13.3-13.4), read from the live changelog. Draft work: it only reads
+// live, and live never calls it.
 @Component
 public class GrantDependencyTracker {
 
@@ -26,9 +29,9 @@ public class GrantDependencyTracker {
         PRINCIPAL_DELETED,
         /** What it grants on (an item type, marker, property, ...) has been deleted. */
         TARGET_DELETED,
-        /** The user or group itself changed: its groups, parent, members, subgroups, name or admin flag. */
+        /** The user or group itself changed: moved, its members or subgroups, a user's groups or admin flag. */
         PRINCIPAL_CHANGED,
-        /** A group the effect runs through changed, or the principal's groups now include it. */
+        /** A group the effect runs through was moved, or a subgroup's members or place changed. */
         GROUP_CHANGED,
         /** A group the effect ran through has been deleted. */
         GROUP_DELETED,
@@ -36,19 +39,42 @@ public class GrantDependencyTracker {
         INHERITED_CHANGED
     }
 
+    // Which changelog entries count, for each way an override depends on a user or group. Renames never
+    // count: a name changes nothing a grant does.
+    private enum Role {
+        GROUP("l.kind IN ('group.moved', 'group.deleted', 'group.created', 'membership.added', 'membership.removed')"),
+        USER("(l.kind IN ('membership.added', 'membership.removed', 'user.deleted') OR (l.kind = 'user.updated' AND jsonb_exists(l.after, 'isAdmin')))"),
+        PATH("l.kind IN ('group.moved', 'group.deleted') AND l.element_key = 'group:' || d.id"),
+        BELOW("l.kind IN ('group.moved', 'group.deleted', 'group.created', 'membership.added', 'membership.removed')");
+
+        final String filter;
+
+        Role(String filter) {
+            this.filter = filter;
+        }
+    }
+
     private final UserStore userStore;
     private final GrantStoreReader liveGrants;
     private final GrantsApi grantsApi;
+    private final JdbcClient jdbcClient;
 
-    public GrantDependencyTracker(UserStore userStore, GrantStoreReader liveGrants, GrantsApi grantsApi) {
+    public GrantDependencyTracker(UserStore userStore, GrantStoreReader liveGrants, GrantsApi grantsApi, JdbcClient jdbcClient) {
         this.userStore = userStore;
         this.liveGrants = liveGrants;
         this.grantsApi = grantsApi;
+        this.jdbcClient = jdbcClient;
     }
 
-    public GrantDependencies capture(String principalType, UUID principalId, Permission permission) {
+    /** What the override depends on now, counted from `since`, the draft's starting position. */
+    public GrantDependencies capture(String principalType, UUID principalId, Permission permission, long since) {
         List<UUID> path = pathOf(principalType, principalId);
-        return new GrantDependencies(revisionOf(principalType, List.of(principalId)), path, inherited(path, permission));
+        List<UUID> below = isUser(principalType) ? List.of() : userStore.subtreeOf(principalId).stream().filter(id -> !id.equals(principalId)).toList();
+        return new GrantDependencies(since,
+                touches(isUser(principalType) ? Role.USER : Role.GROUP, List.of(principalId), since),
+                touches(Role.PATH, path, since),
+                touches(Role.BELOW, below, since),
+                inherited(path, permission));
     }
 
     /** For each override, why it needs reconciling with live as it is now; overrides that don't are left out. */
@@ -64,48 +90,55 @@ public class GrantDependencyTracker {
     }
 
     private List<Reason> check(DraftGrantOverride o, GrantsApi.GrantTargets targets) {
-        Long now = revisionOf(o.principalType(), List.of(o.principalId())).get(o.principalId());
-        if (now == null) return List.of(new Reason(Kind.PRINCIPAL_DELETED, o.principalId(), null));
+        boolean user = isUser(o.principalType());
+        boolean exists = user ? userStore.findUserById(o.principalId()).isPresent() : userStore.findUserGroupById(o.principalId()).isPresent();
+        if (!exists) return List.of(new Reason(Kind.PRINCIPAL_DELETED, o.principalId(), null));
         if (!grantsApi.isGrantable(o.principalType(), o.principalId(), o.permission(), targets)) return List.of(new Reason(Kind.TARGET_DELETED, null, null));
 
         var recorded = o.dependsOn();
         List<Reason> reasons = new ArrayList<>();
-        List<UUID> path = pathOf(o.principalType(), o.principalId());
-        if (!now.equals(recorded.principal().get(o.principalId()))) {
-            // Moved, or its members or groups changed: that covers any change to the path, too.
+        if (!touches(user ? Role.USER : Role.GROUP, List.of(o.principalId()), recorded.since()).equals(recorded.principal())) {
+            // The principal itself changed: that covers its place and members, so say just that.
             reasons.add(new Reason(Kind.PRINCIPAL_CHANGED, o.principalId(), null));
-        } else if (!path.equals(recorded.path())) {
-            reasons.addAll(pathChanges(o.principalType(), recorded.path(), path));
+        } else {
+            reasons.addAll(changed(Role.PATH, recorded.path(), recorded.since()));
+            reasons.addAll(changed(Role.BELOW, recorded.below(), recorded.since()));
         }
-        if (inherited(path, o.permission()) != recorded.inherited()) reasons.add(new Reason(Kind.INHERITED_CHANGED, null, null));
+        if (inherited(pathOf(o.principalType(), o.principalId()), o.permission()) != recorded.inherited()) {
+            reasons.add(new Reason(Kind.INHERITED_CHANGED, null, null));
+        }
         return reasons;
     }
 
-    // A group's ancestors: the nearest one still in place that was moved, i.e. the last before the lists
-    // part. A user's groups: each group that left or joined the set (a group above one of theirs moved).
-    private List<Reason> pathChanges(String principalType, List<UUID> recorded, List<UUID> now) {
-        if (!isUser(principalType)) {
-            int same = 0;
-            while (same < recorded.size() && same < now.size() && recorded.get(same).equals(now.get(same))) same++;
-            // At the first link, the group's own parent changed, which its revision already reports.
-            return same == 0 ? List.of() : List.of(named(Kind.GROUP_CHANGED, recorded.get(same - 1)));
-        }
+    // The groups whose relevant changes have grown in number since they were recorded, each with its name.
+    private List<Reason> changed(Role role, Map<UUID, Integer> recorded, long since) {
+        Map<UUID, Integer> now = touches(role, recorded.keySet(), since);
         List<Reason> reasons = new ArrayList<>();
-        for (UUID id : recorded) if (!now.contains(id)) reasons.add(named(Kind.GROUP_CHANGED, id));
-        for (UUID id : now) if (!recorded.contains(id)) reasons.add(named(Kind.GROUP_CHANGED, id));
+        recorded.forEach((id, count) -> {
+            if (!count.equals(now.get(id))) {
+                var group = userStore.findUserGroupById(id);
+                reasons.add(new Reason(group.isPresent() ? Kind.GROUP_CHANGED : Kind.GROUP_DELETED, id, group.map(UserStore.UserGroupRow::name).orElse(null)));
+            }
+        });
         return reasons;
     }
 
-    private Reason named(Kind kind, UUID groupId) {
-        var group = userStore.findUserGroupById(groupId);
-        return new Reason(group.isPresent() ? kind : Kind.GROUP_DELETED, groupId, group.map(UserStore.UserGroupRow::name).orElse(null));
+    // For each id, how many changelog entries after `since` concern it in this role.
+    private Map<UUID, Integer> touches(Role role, Collection<UUID> ids, long since) {
+        if (ids.isEmpty()) return Map.of();
+        Map<UUID, Integer> counts = new HashMap<>();
+        ids.forEach(id -> counts.put(id, 0));
+        jdbcClient.sql("SELECT d.id, COUNT(l.seq) AS touches FROM unnest(CAST(:ids AS uuid[])) AS d(id)"
+                        + " JOIN config_change_log l ON l.refs @> ARRAY[d.id] AND l.seq > :since AND " + role.filter
+                        + " GROUP BY d.id")
+                .param("ids", ids.stream().map(UUID::toString).collect(java.util.stream.Collectors.joining(",", "{", "}")))
+                .param("since", since)
+                .query((rs, _) -> counts.put(rs.getObject("id", UUID.class), rs.getInt("touches")))
+                .list();
+        return counts;
     }
 
-    private Map<UUID, Long> revisionOf(String principalType, List<UUID> ids) {
-        return isUser(principalType) ? userStore.userRevisions(ids) : userStore.groupRevisions(ids);
-    }
-
-    // The groups the override's effect also runs through: a group's ancestors, nearest first; a user's groups, sorted.
+    // The groups the override's effect also runs through: a group's ancestors; a user's groups and theirs.
     private List<UUID> pathOf(String principalType, UUID principalId) {
         return isUser(principalType) ? userStore.getUserGroupIdsForUser(principalId).stream().sorted().toList() : userStore.ancestorsOf(principalId);
     }

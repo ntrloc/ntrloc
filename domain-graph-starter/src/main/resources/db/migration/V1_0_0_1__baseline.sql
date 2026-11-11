@@ -192,10 +192,7 @@ CREATE TABLE security_user (
     id           UUID PRIMARY KEY DEFAULT uuidv7(),
     display_name TEXT NOT NULL,
     email        TEXT NOT NULL,
-    is_admin BOOLEAN NOT NULL DEFAULT FALSE,
-    -- Bumped by every change to the user or to the set of groups they're in, so a draft can tell
-    -- that a user it depends on has changed (docs/ntrloc-system-model-notes.md §13.3).
-    revision BIGINT NOT NULL DEFAULT 1
+    is_admin BOOLEAN NOT NULL DEFAULT FALSE
 );
 
 CREATE UNIQUE INDEX security_user_email_lower_idx ON security_user (lower(email));
@@ -203,16 +200,12 @@ CREATE UNIQUE INDEX security_user_email_lower_idx ON security_user (lower(email)
 -- Groups form a tree: every group has exactly one parent except the root, "everyone", which the system
 -- creates (DefaultUserGroupInitializer). The partial unique index allows only one group without a
 -- parent; cycles are refused by UserStore.setParent. A group's members get its grants and those of
--- every group above it.
---
--- revision is bumped by every change to the group, to its parent, to its set of child groups, or to its
--- set of members, so a draft can tell that a group it depends on has changed
--- (docs/ntrloc-system-model-notes.md §13.3).
+-- every group above it. Changes to groups and memberships are recorded in config_change_log, which is
+-- also how a draft tells that a group it depends on has changed (docs/ntrloc-system-model-notes.md §13.3).
 CREATE TABLE security_user_group (
     id        UUID PRIMARY KEY DEFAULT uuidv7(),
     name      TEXT NOT NULL UNIQUE,
     parent_id UUID REFERENCES security_user_group(id),
-    revision  BIGINT NOT NULL DEFAULT 1,
     CHECK (parent_id <> id)
 );
 CREATE UNIQUE INDEX security_user_group_one_root_idx ON security_user_group ((parent_id IS NULL)) WHERE parent_id IS NULL;

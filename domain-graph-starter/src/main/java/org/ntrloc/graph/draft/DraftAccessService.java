@@ -86,7 +86,7 @@ public class DraftAccessService {
         if (!draftGrantStore.holdOpen(scope.draftId())) throw new DraftService.DraftNotFoundException();
         switch (resolution) {
             case KEEP -> draftGrantStore.rebase(scope.draftId(), principalType, principalId, permission,
-                    dependencies.capture(principalType, principalId, permission));
+                    dependencies.capture(principalType, principalId, permission, scope.draft().changelogPosition()));
             case USE_LIVE -> draftGrantStore.discard(scope.draftId(), principalType, principalId, permission);
         }
     }
@@ -96,7 +96,7 @@ public class DraftAccessService {
     public void setPermission(DraftScope scope, String principalType, UUID principalId, Permission permission, boolean value) {
         if (!draftGrantStore.holdOpen(scope.draftId())) throw new DraftService.DraftNotFoundException();
         draftGrantStore.setPermission(scope.draftId(), principalType, principalId, permission, value,
-                dependencies.capture(principalType, principalId, permission));
+                dependencies.capture(principalType, principalId, permission, scope.draft().changelogPosition()));
     }
 
     /** Called as the draft closes, in the same transaction. */

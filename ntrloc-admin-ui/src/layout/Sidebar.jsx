@@ -104,6 +104,22 @@ function Sidebar({ extensions = [] }) {
           </svg>
           <span className="sidebar-nav-label">Security</span>
         </NavLink>
+        <NavLink to="/operations" aria-label="Operations" className={navItemClassName}>
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 24 24"
+            width="18"
+            height="18"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+          </svg>
+          <span className="sidebar-nav-label">Operations</span>
+        </NavLink>
         {extensions.map(({ navPath, navLabel }) => (
           <NavLink key={navPath} to={navPath} aria-label={navLabel} className={navItemClassName}>
             <span className="sidebar-nav-label">{navLabel}</span>

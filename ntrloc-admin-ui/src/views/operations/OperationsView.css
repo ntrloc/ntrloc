@@ -1,0 +1,71 @@
+/* Same card layout as the Security screen's (SecurityView.css). */
+operations-view {
+  display: block;
+  padding: 20px;
+}
+
+operations-card {
+  display: block;
+  margin-bottom: 20px;
+  max-width: 900px;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+
+  h3 {
+    margin: 0;
+    color: var(--text-h);
+  }
+}
+
+operations-card-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+operations-card-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px 40px;
+  margin-top: 20px;
+}
+
+@media (max-width: 640px) {
+  operations-card-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+operations-card-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.operations-hint {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.operations-message {
+  color: var(--secondary);
+  font-size: 13px;
+}
+
+.operations-error {
+  margin: 16px 0 0;
+  color: var(--danger);
+}
+
+operations-card-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 24px;
+
+  .btn {
+    --btn-padding: 7px 16px;
+  }
+}
